@@ -202,6 +202,8 @@ pub fn sources(catalog: &Catalog) -> (Vec<Source>, Vec<Source>, Vec<String>) {
             traces: None,
             tasks: catalog.sources.tasks.clone(),
             index: catalog.sources.index.clone(),
+            microcoder: Vec::new(),
+            knowledge: None,
         });
         for run in mirror.runs {
             if runs.get(&run.id()).is_none_or(|existing| existing.retained) {
@@ -691,6 +693,45 @@ impl Replay {
                     trial.started_at.as_deref().and_then(timestamp_ms),
                     trial.finished_at.as_deref().and_then(timestamp_ms),
                     "Harbor step timestamps; tool results share their step's timestamp".to_owned(),
+                )
+            }
+            Source::Local(run) if run.agent == crate::runs::Agent::Microcoder => {
+                // Microcoder's event log: each event at the run's start plus
+                // its recorded seconds.
+                let items = crate::runs_microcoder::replay_items(run)
+                    .ok_or_else(|| "No retained events.jsonl for this run".to_owned())?;
+                let events = items
+                    .into_iter()
+                    .map(|item| {
+                        let parts: Vec<Part> = item
+                            .parts
+                            .into_iter()
+                            .map(|(text, prose)| Part::new(text, prose))
+                            .collect();
+                        Pending {
+                            at: item.at,
+                            timing: "event seconds from the run's start",
+                            title: item.title,
+                            text: parts
+                                .iter()
+                                .map(|part| part.text.as_str())
+                                .collect::<Vec<_>>()
+                                .join("\n\n"),
+                            parts,
+                            record: safe_text(&item.record),
+                            extracted: crate::runs_phases::Extracted::default(),
+                        }
+                    })
+                    .collect();
+                let end = run
+                    .started_ms
+                    .zip(run.agent_ms)
+                    .map(|(s, duration)| s.saturating_add(duration as i64));
+                (
+                    events,
+                    run.started_ms,
+                    end,
+                    "Microcoder's events.jsonl: each event's seconds since the run started; the start is the run directory's stamp".to_owned(),
                 )
             }
             Source::Local(run) => {

@@ -81,6 +81,69 @@ print the same words, and a missing record prints as missing rather than as
 zero. `--jobs-dir PATH` and `--traces-dir PATH` read other directories, and
 `--no-jobs` and `--no-traces` skip one.
 
+## Read Microcoder runs
+
+`gym runs` also lists [Microcoder](../coder/guides/microcoder.md) runs, as
+`microcoder/<run directory>` with the agent **Microcoder**. They come from
+this computer's `~/.openagents/microcoder/runs/` and from the retained host
+directories under `bench/terminal-bench/microcoder-runs/`, in that order; a
+run in the first wins over a retained copy. `--microcoder-dir PATH`
+(repeatable) reads other directories instead, `--no-microcoder` skips them,
+and `--knowledge-dir PATH` names the knowledge base whose provenance
+decides which runs are in-sample (the checkout's `knowledge/` by default).
+
+```sh
+gym runs --agent microcoder
+gym runs show gsea-proteomics-1790430415859             # summary, labels, entries
+gym runs show gsea-proteomics-1790430415859 --transcript
+gym runs show gsea-proteomics-1790430415859 --json      # `microcoder` holds the labels
+```
+
+Each run's `summary.json` and `events.jsonl` become the same run record
+Harbor and Coder One runs use: the task, the model, the verifier's reward
+and test counts, the loop's own time (`outcome.seconds`), and the cost
+(model, Jev, and embeddings; unknown when the record names a component
+without a number). The transcript is built from
+`events.jsonl`: each step's rationale and commands, Jev's judgments, the
+entries retrieval kept, and the acceptance tests. A Microcoder run also
+carries the labels a claim about it must print:
+
+| Field | Where it comes from |
+| --- | --- |
+| Provider | The record's `provider`; else the model's name: an OpenRouter name has a `vendor/` prefix (`openai/gpt-6-luna`), the Codex login's doesn't (`gpt-6-luna`). The summary says when it was read from the name. |
+| Cost basis | The record's `cost_basis`; else `billed` for OpenRouter (what OpenRouter reported) and `list_price` for the Codex login (GPT-6 Luna's list price for the tokens it reported, since `fce6f51897`). Anything else is `unknown`. A run with no model cost has an unknown cost, never `$0`. |
+| Knowledge-assisted | The record's `knowledge_assisted`; else whether it used any entry. |
+| Entries | Each entry the prompts listed or showed: ID, digest, the version from the run's `started` event, and the steps that kept and expanded it. |
+| In-sample | Per run: `in_sample` when any used entry's `provenance.written_from` in `knowledge/*.md` names this run's task, by the task-name rule of `knowledge::evidence::task_of`; `out_of_sample` when none does; `unknown` when none does but some used entry isn't in `knowledge/`; `no_knowledge` when it used none. |
+| Retrieval | The record's `retrieval.mode` (since `dabfc62ca3`); else the same words from each step's retrieval: `embeddings` (words and embeddings), `lexical` (words alone), `mixed`, or `off` with the knowledge base off. |
+| Commit | The record's `commit`; else the retained manifest's attribution, printed as attributed. |
+
+Two runs that started in the same second shared one directory before run
+directories carried milliseconds (`4c749622f2`). A directory whose events
+show a second start or times that go backwards, or that the retained
+manifest marks, is **mixed**: it stays in the list with a note and is left
+out of every claim. `gym runs rank` doesn't ask Jev about Microcoder runs
+yet, because the evidence state Jev reads doesn't include their records.
+
+### The retained records
+
+`bench/terminal-bench/microcoder-runs/coderos-4080/` holds a copy of every
+run directory on the execution host `coderos-4080` as of 2026-09-26: 88
+runs, `summary.json` and `events.jsonl` only (the `artifacts/` directories
+aren't retained). Its `MANIFEST.json`
+(SHA-256 `640b0df4114abf389abf5220e76e3c47658c7f96d19bcfc3941f5d0c96a72bae`)
+names each file's SHA-256; `gym runs show` prints them, and a file that
+doesn't match is noted on the run. Microcoder's records name no commit, so
+the manifest attributes one by a rule: the last commit to
+`crates/microcoder` on `main` at or before the run's start. One run is
+attributed by hand: `gsea-proteomics-1790430415859` used the Codex-login
+change committed as `fce6f51897` about 50 seconds after it started. Two
+directories are marked mixed: `fin-saccr-rwa-1790406355` and
+`fin-saccr-rwa-1790406697` (runs 4 and 5, and 6 and 7, in the
+[TB4 results](../terminal-bench/tb4-results.md#microcoder-development-runs-in-sample)).
+`bench/terminal-bench/tools/microcoder_manifest.py` rewrites the manifest
+from a copied directory.
+
 ## Analyze one run
 
 `gym runs analyze` computes a finished run's analysis: the verifier's
@@ -300,6 +363,7 @@ The rules:
 | `leaderboard` | An arm here passed a task that the leaderboard's rows ranked 5 or better pass in at most 20% of their trials, from `bench/terminal-bench/reference/tb4-leaderboard.json`. |
 | `shared-failure` | A low-hanging-fruit or misbehavior judgment Jev gave runs of at least 2 agents, 3 runs in all, from the same groups as `gym runs group --by reason`. |
 | `surprise` | A run Jev judged `surprise` at 0.70 or above; the 8 strongest. |
+| `beats-winner` | A Microcoder pass cost less than Fable 5.1 low's cheapest winning run on the same task, or finished faster than its fastest winning run. |
 
 The reference solution, the do-nothing control, and runs without a grade
 never count. Each claim carries:
@@ -329,6 +393,51 @@ are added. The source flags, `--learning-dir`, `--marks-dir`, and
 `--no-reference` work as they do for `gym runs`. The Runs pane lists the
 same claims under `h`; see
 [Find highlights](terminal-bench-tui.md#find-highlights).
+
+### Beat the winner
+
+`beats-winner` compares [Microcoder runs](#read-microcoder-runs) with a
+named reference: Claude Code with Fable 5.1 at low effort, and its public
+trials that passed, from the replay cache's manifest or
+`bench/terminal-bench/reference/fable-5.1-replays.json` (`--fable PATH`
+reads another). Microcoder makes claims only through this rule; the other
+rules leave its runs out, since they don't print its labels.
+
+Microcoder's graded runs of a task are grouped by model, whether they were
+knowledge-assisted, and whether they were in-sample. A group gets one claim
+when at least one of its passes cost less than the reference's cheapest
+winning run or finished faster than its fastest. The claim states the
+group's passes out of its graded runs, so failures count; how many passes
+beat the cheapest winning run, from what to what, as a fraction of it; and
+how many beat the fastest. Its text starts with the labels in brackets,
+in-sample or out-of-sample, knowledge-assisted, and each provider with its
+cost basis, so a quote of the claim carries them. The JSON's `detail` has
+the same labels as fields, the reference's winning runs with their costs
+and times, and each pass with its cost basis, provider, retrieval mode,
+commit and where it came from, entries, and retained digests. The caveats
+say which entries make the runs in-sample, that Microcoder's time is its
+loop's own while Fable's is the public trial's wall time, what each cost
+includes, the group's failures, the same model's record on the task
+without knowledge, mixed directories left out, and the passes' commits.
+
+To reproduce the claims from the retained records alone:
+
+```sh
+gym runs highlights --rule beats-winner \
+  --no-jobs --no-traces \
+  --microcoder-dir bench/terminal-bench/microcoder-runs/coderos-4080
+```
+
+On 2026-09-26 this printed three claims (caveats shortened here):
+
+```text
+ 1. [beats-winner] [in-sample · knowledge-assisted · OpenRouter, billed cost] Microcoder · GPT-6 Luna passed embedding-drift-monitor in 8 of 9 graded runs. 8 of the 8 passes cost less than Fable 5.1 low's cheapest winning run ($0.74): from $0.0165 to $0.34, 1/45 to 1/2 of it. None finished faster than its fastest winning run (2m 19s).
+ 2. [beats-winner] [in-sample · knowledge-assisted · OpenRouter, billed cost] Microcoder · GPT-6 Luna passed fin-saccr-rwa in 3 of 8 graded runs. 3 of the 3 passes cost less than Fable 5.1 low's cheapest winning run ($1.22): from $0.0404 to $0.0518, 1/30 to 1/24 of it. 1 finished faster than its fastest winning run (3m 42s), in 2m 48s.
+ 3. [beats-winner] [in-sample · knowledge-assisted · the Codex login, list-price cost (1 run); OpenRouter, billed cost (8 runs)] Microcoder · GPT-6 Luna passed gsea-proteomics in 5 of 9 graded runs. 5 of the 5 passes cost less than Fable 5.1 low's cheapest winning run ($0.69): from $0.0491 to $0.0691, 1/14 to 1/10 of it. None finished faster than its fastest winning run (2m 52s).
+```
+
+Without `--microcoder-dir`, the command also reads this computer's own
+Microcoder runs.
 
 ## Read a Terminal-Bench 4.0 suite
 

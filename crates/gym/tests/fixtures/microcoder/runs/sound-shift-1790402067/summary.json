@@ -1,0 +1,37 @@
+{
+ "task": "sound-shift",
+ "model": "openai/gpt-6-luna",
+ "effort": "medium",
+ "kb": "on",
+ "outcome": {
+  "ending": {
+   "reason": "finished"
+  },
+  "steps": 3,
+  "seconds": 120.0,
+  "jev_usd": 0.002,
+  "embedding_usd": 0.0,
+  "knowledge": [
+   {
+    "id": "slip.general",
+    "digest": "sha256:bb",
+    "kept_steps": 3,
+    "expanded_steps": 1
+   }
+  ],
+  "knowledge_assisted": true,
+  "model_usd": 0.03
+ },
+ "reward": 1.0,
+ "verifier_output": "=== 11 passed in 1.0s ===",
+ "test_results": [
+  {
+   "command": "a.sh",
+   "exit": 0,
+   "output": "",
+   "seconds": 0.1,
+   "timed_out": false
+  }
+ ],
+ "knowledge_assisted": true
+}

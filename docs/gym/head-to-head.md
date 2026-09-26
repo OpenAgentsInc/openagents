@@ -41,6 +41,16 @@ a smaller committed bundle. Outcome, model, effort or Coder version, and
 attempt identity remain visible. This is a trace comparison, not a claim
 that different models, budgets, or harness settings were controlled.
 
+Microcoder runs are local attempts too (press `a` for all local agents).
+A Microcoder side replays its `events.jsonl`: each step's rationale and
+commands, Jev's judgments, retrieval, and acceptance tests, at the seconds
+each event recorded since the run started; the start is the run
+directory's stamp, and the length is the loop's own time. `w` in an open
+Microcoder run pairs it with Fable 5.1 low's cheapest winning run on the
+task. Microcoder's `ran` events carry no file paths the retained-file
+viewer can open, and Jev's learning judgments don't cover Microcoder runs
+yet.
+
 ## Learn from comparisons
 
 Press `l` in the picker to rank both collections with the same

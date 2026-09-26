@@ -380,6 +380,8 @@ fn fixture() -> (tempfile::TempDir, crate::runs::Sources) {
         traces: None,
         tasks: Vec::new(),
         index: None,
+        microcoder: Vec::new(),
+        knowledge: None,
     };
     (dir, sources)
 }

@@ -1,0 +1,688 @@
+{
+ "schema": "openagents.gym.microcoder-retained.v1",
+ "host": "coderos-4080",
+ "source": "~/.openagents/microcoder/runs on coderos-4080",
+ "copied_at": "2026-09-26T14:23:21+00:00",
+ "files": "summary.json and events.jsonl only; artifacts/ is not retained",
+ "commit_rule": "attributed, not recorded: the last commit to crates/microcoder on main at or before the run's start",
+ "runs": [
+  {
+   "name": "batched-eval-parity-1790396765",
+   "files": {
+    "events.jsonl": "sha256:ad99d43b73cfbb47e735d38487d83314d9787a41fcb4ef06064594c05ac6a954"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "batched-eval-parity-1790398269",
+   "files": {
+    "summary.json": "sha256:4e8b181052d826dbfbfc9f6d65a1915c6cee6f95bd59e2c0a197d605fc7dc019",
+    "events.jsonl": "sha256:e62043c2413492d1c44d42b15168fc55b1d0e38e4a1425ce096ec596325fede2"
+   },
+   "commit": "50288027e3"
+  },
+  {
+   "name": "batched-eval-parity-1790405023",
+   "files": {
+    "summary.json": "sha256:cbfc2297ff3dd08f6329408689738c4371a188d32f834d28b8739f53489e467b",
+    "events.jsonl": "sha256:f8f166dbdee88a8b3a71a05ad373f10d1cd59bab49d625cc53b5c5828d80ed78"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "batched-eval-parity-1790405850",
+   "files": {
+    "summary.json": "sha256:6ebc5ad5baa77ef2beeaaa8e69901bb0c8521a993d855bfbf1b85932adb2bbbf",
+    "events.jsonl": "sha256:00bdd34a6fe8edb7d20766727b5ad145690f5805feab3fc654d2cc1a838964df"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "coq-block-bound-1790396868",
+   "files": {
+    "events.jsonl": "sha256:08e709e69c45a3f3e4dc8a16c58641d2e3677b2f889c35a8df63b34bb0c4426c"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "coq-block-bound-1790398269",
+   "files": {
+    "summary.json": "sha256:933a784df3b50b4d24c7967cf3d30bcf6a4d674e84d3d8ec766952a2af99cd7d",
+    "events.jsonl": "sha256:bc5cbe40c28d1bcef40d320a1325c8aaaf35e34969f0b71d76189bc34b79dd9b"
+   },
+   "commit": "50288027e3"
+  },
+  {
+   "name": "coq-block-bound-1790405164",
+   "files": {
+    "summary.json": "sha256:ebd0c426c0df9f5049bdce52e24f811d78d86d9cca6ce138cf0d29eee9532a66",
+    "events.jsonl": "sha256:1cb88918f16938bc139530fa029f51ffb704e8014e07d0f6d85e7c5a426174f4"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "distributed-dedup-1790396889",
+   "files": {
+    "events.jsonl": "sha256:fee32aea2b825c508fde93b2300938559ef3e39d1361c681f42d590215e04a22"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "embedding-drift-monitor-1790386981",
+   "files": {
+    "summary.json": "sha256:06eb94001869a6c4c057fcfa7fc7608dc51f9c7a3ceb29bc32b3f85957702873",
+    "events.jsonl": "sha256:0ad2d2ca0bb7de05204dfb29dde923acb6b215a3bb1a5b8532250d86268972de"
+   }
+  },
+  {
+   "name": "embedding-drift-monitor-1790387237",
+   "files": {
+    "summary.json": "sha256:1bffe37efcdcba2052399a6b8f761d2bbfbcd41f211d16c9a76b85601f7dbd53",
+    "events.jsonl": "sha256:1ef63820907db6a83555b6d1f9e20124bb413b7d7bd856fea6926e824488abe8"
+   },
+   "commit": "24e6143205"
+  },
+  {
+   "name": "embedding-drift-monitor-1790387425",
+   "files": {
+    "events.jsonl": "sha256:3adca0208838fc46179e60de0be8f072682e8448f0fb9a47f2298c0de846fbda"
+   },
+   "commit": "24e6143205"
+  },
+  {
+   "name": "embedding-drift-monitor-1790387656",
+   "files": {
+    "summary.json": "sha256:202783af55fb7195b0ceeb222d7600a4e35e9981fe6215326c94841355a9f420",
+    "events.jsonl": "sha256:0e6be4b49ae6ed526f3a650e6e38284ea73cf88d51efcabce4a88c8d9b4eed3b"
+   },
+   "commit": "c4f427e70f"
+  },
+  {
+   "name": "embedding-drift-monitor-1790388034",
+   "files": {
+    "summary.json": "sha256:844c156ef167f61adceb2e14e4cc8ad9a56555dccf628d640d7cc5412d638322",
+    "events.jsonl": "sha256:16b3a043c970a0c6bfa2fee595d6ee31beb4a1b8d8681986a6ec0dbb72eb8540"
+   },
+   "commit": "211b5a7eff"
+  },
+  {
+   "name": "embedding-drift-monitor-1790388663",
+   "files": {
+    "summary.json": "sha256:b539ee0cb0966686939595e2c9ef637e00e101bbb447d00f6f3955454f21cb07",
+    "events.jsonl": "sha256:495a61f9bc41914dff025cd1786c121de96487f6024e8825b05d88208da9b245"
+   },
+   "commit": "e70d06b6f9"
+  },
+  {
+   "name": "embedding-drift-monitor-1790389501",
+   "files": {
+    "events.jsonl": "sha256:c35cceaffb8d15aae2fd35541949907708c3d2ad5cc1b97cb78e8610a18fefdc"
+   },
+   "commit": "f8f5bd3ab5"
+  },
+  {
+   "name": "embedding-drift-monitor-1790389665",
+   "files": {
+    "summary.json": "sha256:484747c469db9af4316689d2fc6fe2ae3339b31bde6bea643541d9e61cfe035c",
+    "events.jsonl": "sha256:99506e3debce4fb0dcf4c33127b172c4b730b83040a5c0e5f814dfdfa0e53e08"
+   },
+   "commit": "5b9579f9bd"
+  },
+  {
+   "name": "embedding-drift-monitor-1790390352",
+   "files": {
+    "events.jsonl": "sha256:74e7ff075fb9382239429b8384589068150b44a90708b19b866dae7370b09f95"
+   },
+   "commit": "6a06bdb694"
+  },
+  {
+   "name": "embedding-drift-monitor-1790390972",
+   "files": {
+    "events.jsonl": "sha256:e969d00147780a137c204ded65e2b70807c4d9e729299a4f7d8b56f5c8afd573"
+   },
+   "commit": "35b0cca5ae"
+  },
+  {
+   "name": "embedding-drift-monitor-1790392891",
+   "files": {
+    "events.jsonl": "sha256:d4dbdc59211ae779bf786f37aa06beada1378dc2e58d0bf75286baec0d4829e2"
+   },
+   "commit": "8b4328eee5"
+  },
+  {
+   "name": "embedding-drift-monitor-1790393240",
+   "files": {
+    "events.jsonl": "sha256:0fa7ed3527ef0e709e6d10b93b554722dca36a7b18bb1cb6ea74cd2fad3b7458"
+   },
+   "commit": "be4474c61e"
+  },
+  {
+   "name": "embedding-drift-monitor-1790393460",
+   "files": {
+    "events.jsonl": "sha256:474cabef189138e300192ce4c320d02927ce8bec8b3e4239cb8c62a852109763"
+   },
+   "commit": "57c7964f6a"
+  },
+  {
+   "name": "embedding-drift-monitor-1790393791",
+   "files": {
+    "summary.json": "sha256:d83f20b6789431acbf4eb7644a63a393cf5869f8e11379e26704132343457b57",
+    "events.jsonl": "sha256:04d8d4b8fdb0172007a969858b8fd2a1f0e514b5734da66d6de0aa1221212c32"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "embedding-drift-monitor-1790394263",
+   "files": {
+    "summary.json": "sha256:2b41b5708eb7e59354b6dadefee6252c926cf5089b239a6c4a087e6c5c197a5f",
+    "events.jsonl": "sha256:a51012a1a8d49ddb6100962f0677797adff886b325744315a88455b238b125f5"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "embedding-drift-monitor-1790394524",
+   "files": {
+    "summary.json": "sha256:a9395bac7a19ac2ff795a962312b530f3311a30522679a46cdf07b1122631c59",
+    "events.jsonl": "sha256:170ee75c367f78212a2ddc38e87b0b710d956a68f3ccba3057b5905976f8e9c7"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "embedding-drift-monitor-1790395671",
+   "files": {
+    "summary.json": "sha256:b8903b3719724de10fc51fcaf8f2edb5f51ebc2d35716d1e01ad8edc15bc95be",
+    "events.jsonl": "sha256:abb492dc4bbe9192e62aa8b146351e0c9fdce62a21765c66be3877e47ef9c95f"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "embedding-drift-monitor-1790396075",
+   "files": {
+    "summary.json": "sha256:07cb8336aebe73c94cbb608ad9d662f52f1e1c24c31de449bdc31f3f893e60e5",
+    "events.jsonl": "sha256:d0edb2cb4efaef91b890838ae4ee2fc5c2f86365c14e7807cbd52714452550a6"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "embedding-drift-monitor-1790396080",
+   "files": {
+    "summary.json": "sha256:bfcee0b8b1effb1215d8274272022232ed8e514dacac747938a6b488256baec3",
+    "events.jsonl": "sha256:f8451702119d5b7d5ba5f2a461a22b0354f7a5e5ca6000c74337aa72a83990a4"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "embedding-drift-monitor-1790402067",
+   "files": {
+    "summary.json": "sha256:8b1e96bb160ea166ca2a91446934723c5b2eb780e7df3b8e22942f5eefedd3e9",
+    "events.jsonl": "sha256:c6b6edd388ed45b001f00b94ebc01cc2d09785ecac8f3e494d624d592bef344d"
+   },
+   "commit": "3045d183dd"
+  },
+  {
+   "name": "embedding-drift-monitor-1790402348",
+   "files": {
+    "summary.json": "sha256:dfdd922662febd2570c3d46b13db210ae369faef0d86cb464e4633a284c1b11e",
+    "events.jsonl": "sha256:1dc21cd1dcea80256599053ca9262355646e2b5a238959135c5effa9c64bc5f9"
+   },
+   "commit": "3045d183dd"
+  },
+  {
+   "name": "embedding-drift-monitor-1790402555",
+   "files": {
+    "summary.json": "sha256:dd070784076de5b561335441eafff008b45cccc6911f52b8430ad4a22ab66d0c",
+    "events.jsonl": "sha256:7575c866337d1f2e076a26391fd342f7d983e753cd1ace26b6e8fcbe825dfef2"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "fin-saccr-rwa-1790396742",
+   "files": {
+    "events.jsonl": "sha256:5b799adcf927385e6be76006a6f89c92704d306dc08058eed6fd6480f872acfe"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "fin-saccr-rwa-1790398269",
+   "files": {
+    "summary.json": "sha256:0d94b3b7f846d470d87cf75d41146d1ed63ca644ac5153a987bdb2bb8fffadda",
+    "events.jsonl": "sha256:e2ee9a028f6f0d9ecb4da5851fa1c7961829f07dc6f184449dd11d86e694d4b8"
+   },
+   "commit": "50288027e3"
+  },
+  {
+   "name": "fin-saccr-rwa-1790398581",
+   "files": {
+    "summary.json": "sha256:061bb430ba253606cf44a24b6f0f81aac2d28023741af382c70068d9444e7a6a",
+    "events.jsonl": "sha256:9cb67d990b53c97b969332f88f333a32c66c08ff783add70373713af7ca8d0c4"
+   },
+   "commit": "50288027e3"
+  },
+  {
+   "name": "fin-saccr-rwa-1790402278",
+   "files": {
+    "summary.json": "sha256:37e5f81a5c1eabb76903cfd136e325d40c9d8abaf2cb6282eb0ab8240afdb668",
+    "events.jsonl": "sha256:f27cf975c77c6c232db2d4246eb541910cc1f9c7d94dbcafab54c9b8a5e54e94"
+   },
+   "commit": "3045d183dd"
+  },
+  {
+   "name": "fin-saccr-rwa-1790405023",
+   "files": {
+    "summary.json": "sha256:3626609493e4894adecc64d2ce61e9a966adecc8b7892d3c959a4688bc43f243",
+    "events.jsonl": "sha256:0d4358f363cf25f49bf8184cddee83107f71d27e3a7e5bd0f23af78cad470f35"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "fin-saccr-rwa-1790405377",
+   "files": {
+    "summary.json": "sha256:00bb12bae7f097f55821a4613021337b266b4d9595e5fec3a6d44b5098662829",
+    "events.jsonl": "sha256:ce71943da49530326138c9bc21dcd82a40a72fcb9776ec3eedafc4fbf121be6e"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "fin-saccr-rwa-1790405794",
+   "files": {
+    "summary.json": "sha256:de53ff9b388de297902b1745579bd6a3964c2ddf9f5e1314265f07cc91c6ff0e",
+    "events.jsonl": "sha256:bac25bbf9e88e8ea262c49be0089f8d3140cb2c9fdd6c58c54d3e0977feb5d51"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "fin-saccr-rwa-1790405797",
+   "files": {
+    "summary.json": "sha256:8319414624e5e31ff48e14d6e4c3544b9f8f71bb3dd63fa79ace147d02150ec0",
+    "events.jsonl": "sha256:156230ad70f3c0db8dd6e403c9a9b588156adb34e2cb6ce5875cd3de15fc2ef2"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "fin-saccr-rwa-1790406355",
+   "files": {
+    "summary.json": "sha256:156a117b13864f409525ddd9c6679928586bc719de04da033b0844c35e194f9d",
+    "events.jsonl": "sha256:45a72fb10da9948f7dce286c1afc0170583b691b60806d8926e76c8afb1c549d"
+   },
+   "commit": "7d3ccdb4bd",
+   "mixed": "two runs (4 and 5 in docs/terminal-bench/tb4-results.md) started in the same second and shared this directory"
+  },
+  {
+   "name": "fin-saccr-rwa-1790406697",
+   "files": {
+    "summary.json": "sha256:b2ae9e9045dcb51751883e2f4c67548ebf0ae6474e5dee900fefe8d2ff189a4a",
+    "events.jsonl": "sha256:5172f7dd819d9caa3fd2b709f84d32c66dc5d064664d83819a6be307926f3e4d"
+   },
+   "commit": "7d3ccdb4bd",
+   "mixed": "two runs (6 and 7 in docs/terminal-bench/tb4-results.md) started in the same second and shared this directory"
+  },
+  {
+   "name": "fin-saccr-rwa-1790408515164",
+   "files": {
+    "summary.json": "sha256:0dd5e00ff75ba8810ad94a5acb6e57661b70d16f963004b2262ba834353c42cc",
+    "events.jsonl": "sha256:34693d229782a3c8edc43e83360ab8e20a530e4e3f11fe3a84915acb797d8949"
+   },
+   "commit": "4c749622f2"
+  },
+  {
+   "name": "fin-saccr-rwa-1790408700546",
+   "files": {
+    "summary.json": "sha256:50c249fe9140876f57085a2015750d66d0a93abcc597ae3764a079c3730836cb",
+    "events.jsonl": "sha256:137d016063b50662c86b18b76f89f48a3c7fa246db4528367d3d443393b1b2ae"
+   },
+   "commit": "4c749622f2"
+  },
+  {
+   "name": "gsea-proteomics-1790387446",
+   "files": {
+    "events.jsonl": "sha256:7c5d9ad8a48ff2d4cd75a8863ac94f1d22763db0aecb5b7cbc2a7a3502ee0d49"
+   },
+   "commit": "24e6143205"
+  },
+  {
+   "name": "gsea-proteomics-1790387470",
+   "files": {
+    "events.jsonl": "sha256:7c5d9ad8a48ff2d4cd75a8863ac94f1d22763db0aecb5b7cbc2a7a3502ee0d49"
+   },
+   "commit": "24e6143205"
+  },
+  {
+   "name": "gsea-proteomics-1790387478",
+   "files": {
+    "events.jsonl": "sha256:c3e8aa8afb9d14f28e1767456c1c8722d506fb3ac2ea48f0242b82241f1219f0"
+   },
+   "commit": "24e6143205"
+  },
+  {
+   "name": "gsea-proteomics-1790387555",
+   "files": {
+    "events.jsonl": "sha256:c3e8aa8afb9d14f28e1767456c1c8722d506fb3ac2ea48f0242b82241f1219f0"
+   },
+   "commit": "24e6143205"
+  },
+  {
+   "name": "gsea-proteomics-1790394198",
+   "files": {
+    "events.jsonl": "sha256:147c73e35fe9df69019cf07065650839d6dba6b69442a4c62c43be7edd7b6f3d"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "gsea-proteomics-1790395844",
+   "files": {
+    "summary.json": "sha256:0065ac614b0336f17c1610bc846f665755bf665eb11e02e7919de4a9b2c95598",
+    "events.jsonl": "sha256:ebd5ce515864bf237afa58a559248f27b0cad28df6b3d980d33f1a4bf2d19dbc"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "gsea-proteomics-1790396068",
+   "files": {
+    "summary.json": "sha256:91a2a16fa0b87f5afed487451ab4f5a7bbde987197dc134958313a73f1d1f22a",
+    "events.jsonl": "sha256:3be1812c7aef3a7595241f08f59acb1fa1f35979d560871a4b738e390329d967"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "gsea-proteomics-1790402067",
+   "files": {
+    "summary.json": "sha256:2569f40d1f0cd596b1ff0307697111c79f08cad794ae50ef64fb5a57e714cd6c",
+    "events.jsonl": "sha256:4ebfb9715de8953530861fd0d8a06c06c7372402ce8017f27126dd3615502dd8"
+   },
+   "commit": "3045d183dd"
+  },
+  {
+   "name": "gsea-proteomics-1790402497",
+   "files": {
+    "events.jsonl": "sha256:34216e48e902ba6ae6bca90c9fb6df5ab9956e98bb019163b6d3e947caec954a"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "gsea-proteomics-1790402499",
+   "files": {
+    "summary.json": "sha256:3ecdae26dbd3dde6d82ad49f6bd8049b6f9917a8dee41fbc5c5e30e513fe80f4",
+    "events.jsonl": "sha256:7426a59ec0cdff165277d0530c82e2f9fabcf9dd09505ba70ac1e07d366bfe52"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "gsea-proteomics-1790402816",
+   "files": {
+    "summary.json": "sha256:52e7541269a6e18e8cc11ab9af0373e51f089e75677e5a0d9d5afa91aef76231",
+    "events.jsonl": "sha256:78179857986e2429f90b6d26412e95d029e3b28de4108ec24cf6e473bd70e6c5"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "gsea-proteomics-1790402818",
+   "files": {
+    "summary.json": "sha256:f9147f37cd49089622d07c1cc8077f256978ec9e1f7cf7310e88d220ea161e92",
+    "events.jsonl": "sha256:04951ec3865010c8ae95447aac6dbb2eef7f3d791271b9701fde5597338606b0"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "gsea-proteomics-1790405023",
+   "files": {
+    "summary.json": "sha256:2dc2e7e1ab1387b98201b23afba808052f6d0589c0e8d5b9295ed85b3450cfab",
+    "events.jsonl": "sha256:499ac50564eb1719ce6f442d3ad98b821f6d7d2c59636c100e8d68b95c20e041"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "gsea-proteomics-1790405201",
+   "files": {
+    "summary.json": "sha256:9b465d284e28976956616eb78c8aa6c2c814c91948b06fe02a0662513469e78d",
+    "events.jsonl": "sha256:e6ecef358fbc8b8db39b3f2021dfee75e283b10940bab439130893e5a6571f4e"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "gsea-proteomics-1790405204",
+   "files": {
+    "summary.json": "sha256:4f0048e0e39b2880324970ea40841e933604a083912e51504859c1b2af1d6e2f",
+    "events.jsonl": "sha256:d574835121e8fcb7d9237708809a311e2a88eba8fc4babb0976c5d59d5165684"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "gsea-proteomics-1790408515170",
+   "files": {
+    "summary.json": "sha256:8a737597acc92fbe88289d3553b28a800e1846bc82e218cf9dfd50ff7797fe34",
+    "events.jsonl": "sha256:56e9e2ff3305806e46f64a331badb6e1d5bdc06b9a687b9ff0f224140d60f355"
+   },
+   "commit": "4c749622f2"
+  },
+  {
+   "name": "gsea-proteomics-1790408685812",
+   "files": {
+    "summary.json": "sha256:d13ce1262527a44178221947cd7462e6a4cb26d73fd3a95d62f54d28553bf6ed",
+    "events.jsonl": "sha256:df96c0ba2b77ee1e68edaa1a0b8e29d585c9bcea00a90a9f7f47230b8e5dfd06"
+   },
+   "commit": "4c749622f2"
+  },
+  {
+   "name": "gsea-proteomics-1790430415859",
+   "files": {
+    "summary.json": "sha256:5807df31c3f704f709ee170f66efc0b0c2c9b968ab38db51857a9aa6ba21e41c",
+    "events.jsonl": "sha256:1be0a4a8faca900306885ed354e551281102adde3fc5c74e0b0271e59b754eb4"
+   },
+   "commit": "fce6f51897",
+   "commit_source": "attributed by hand: the run used the Codex-login change committed as fce6f51897 about 50 seconds after it started (docs/terminal-bench/tb4-results.md)"
+  },
+  {
+   "name": "hof-topology-interpenetration-1790397382",
+   "files": {
+    "events.jsonl": "sha256:52fd509a3058b62a0c6df5f8cf6c840df25c348ed100b4ef5b7afa8e37fcb663"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "hof-topology-interpenetration-1790400978",
+   "files": {
+    "summary.json": "sha256:1d4fc43745b653c8c9db3cf66fb533f9e34e277baef26947cb8307c307b897c2",
+    "events.jsonl": "sha256:f6aae7fe8ea9a819312e2fbbbe0a405f0741e8491fb5dc4847c93680bfa25288"
+   },
+   "commit": "3045d183dd"
+  },
+  {
+   "name": "hof-topology-interpenetration-1790407736285",
+   "files": {
+    "events.jsonl": "sha256:80bbb182dde7f3e82fd377f516a30c16b93a12be2dcb507c06c8a177d1a87d50"
+   },
+   "commit": "4c749622f2"
+  },
+  {
+   "name": "interleaved-vigenere-1790397336",
+   "files": {
+    "events.jsonl": "sha256:1ffb15552b0a50818371807eec6e26ac4ba5ede40e311a8fd3366bf35ae22d8d"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "interleaved-vigenere-1790398538",
+   "files": {
+    "summary.json": "sha256:723a4726cbbee540cc4fbc47b2ee1f6974cd8c261510ba87f39cb7950754aac0",
+    "events.jsonl": "sha256:6c7c800da9a98b81f33c378e3afb6552769f3332b10731ce0033d078622cfe76"
+   },
+   "commit": "50288027e3"
+  },
+  {
+   "name": "interleaved-vigenere-1790405809",
+   "files": {
+    "summary.json": "sha256:df9255876e18e08ae7e04821a2e9e7f7c8ff2fc464d15319fdc9c2ae1cc69374",
+    "events.jsonl": "sha256:36a19a7156c8d446c6d0b7fb10728ab891386cfbd37005dd4549cae8de7729cb"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "interleaved-vigenere-1790408602063",
+   "files": {
+    "summary.json": "sha256:6c470fe4353a9517147009549b70bd9af6777d5e7117943319e9eaf5ca0f5915",
+    "events.jsonl": "sha256:bc630551aa5a442d663c80047a62a23b073aa8a7e1892c22db369a61cfac8bd3"
+   },
+   "commit": "4c749622f2"
+  },
+  {
+   "name": "mp-checkpoint-consolidation-1790394245",
+   "files": {
+    "events.jsonl": "sha256:952131d62593a16b82b9df76b4f5db766a5162ae647a45839b7547ee73dbd08c"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "mp-checkpoint-consolidation-1790394263",
+   "files": {
+    "summary.json": "sha256:59e8d4b3623b3d3aa257ad4e31fff451357c215c10cbf6c1b7ec4fed28792a48",
+    "events.jsonl": "sha256:e54bfbc15b8eecd0ceb6abcb381d7abcd59828d88a72c98454ee5616fcb0a0ed"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "mp-checkpoint-consolidation-1790408542007",
+   "files": {
+    "summary.json": "sha256:44a2662283aa27564c2cfde829f7277257537379d5fdcc4fb5cde2db5ff4a741",
+    "events.jsonl": "sha256:443d5f368a375a4aaf2d7719ccda59e9e7b8d3624b75ca4bb85555f53486260e"
+   },
+   "commit": "4c749622f2"
+  },
+  {
+   "name": "production-planning-1790396753",
+   "files": {
+    "events.jsonl": "sha256:61207890f8acca559618a7aad20f1fd5a8a473efbb63e5bc4d670990dcd4b5a3"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "production-planning-1790398269",
+   "files": {
+    "summary.json": "sha256:ab33c8b4ec50620d834a57ac521d2f733516bef12b47a19c5d09f55a15cc72b0",
+    "events.jsonl": "sha256:afee63a1bf97747866cace81c826c05024259f78dc8d55232fbf5d86fc5f01f7"
+   },
+   "commit": "50288027e3"
+  },
+  {
+   "name": "production-planning-1790408027711",
+   "files": {
+    "summary.json": "sha256:ae70680e51e8014a2da614e908dedd6b662e6a924663625206fce1ea7e88e0d6",
+    "events.jsonl": "sha256:27ab4710cec7559d0d6029991a177a57d6fb4cee330b964eae394ebce96c37c7"
+   },
+   "commit": "4c749622f2"
+  },
+  {
+   "name": "risk-scorer-replay-1790394156",
+   "files": {
+    "events.jsonl": "sha256:24406ed6a33bcabef67a759f8f888c67f45e9039efa02346487815ea76f6d732"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "risk-scorer-replay-1790394263",
+   "files": {
+    "summary.json": "sha256:9c4915750dccd16d0c1ad2b7eeeeb3bda50cab983ea89541b7249913eba703a5",
+    "events.jsonl": "sha256:e391e752529651d15588ec317037e86473639e43cf02aa269d02333409b58098"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "risk-scorer-replay-1790394700",
+   "files": {
+    "summary.json": "sha256:304bc27190e21e59b17b5bd98d6eb7165dbf9d5218f056f9be5fb90762a8cb9c",
+    "events.jsonl": "sha256:d7aeb0fe79169ca40d67cbddceaaac7e6c6a9c7f1055ec068165dfd310f1b691"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "risk-scorer-replay-1790405023",
+   "files": {
+    "summary.json": "sha256:e74bdf879ba9d2fb579cf63aa57aaa394e1b9cedd5b4671e9d6d593e427c08dc",
+    "events.jsonl": "sha256:c6f7005d867018fb8829595ea4ab4e0017e4314587603090d5d66472d3310ec1"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "shadow-relay-1790394120",
+   "files": {
+    "events.jsonl": "sha256:7e5890d136fea5d60df35566825fb80dc2400f4857fd0a8bfa067808a8b13748"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "sound-change-cascade-1790387446",
+   "files": {
+    "events.jsonl": "sha256:c7db86833cd93f3ce35b79555f934d80583a79aa0db2c6a0177b7c3bcdc55e50"
+   },
+   "commit": "24e6143205"
+  },
+  {
+   "name": "sound-change-cascade-1790394195",
+   "files": {
+    "events.jsonl": "sha256:34c8fdf86d897875cc02e8d29c4d4a05771009acf482d6ea3ef5ea2b5694f065"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "sound-change-cascade-1790395251",
+   "files": {
+    "summary.json": "sha256:0d0e99535b25c0c88c1d1be2916f07e481ca97bda1772433f9dfba840cf9e2f3",
+    "events.jsonl": "sha256:cefadd447c13be35f5c67ee76b8f82c789a1f9ae6426716e591c0a93273152c9"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "sound-change-cascade-1790395393",
+   "files": {
+    "summary.json": "sha256:d000abc9341a8a61ea80e6d679c1ea78bbcf8fe757a931984805ec983856eed9",
+    "events.jsonl": "sha256:7637d5719aa2229ee44f46e1b1631a8d516fa0d7a9ae0a7ae7dfa05115db6459"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "sound-change-cascade-1790402067",
+   "files": {
+    "summary.json": "sha256:c7e104d81612c6c0cd8ef567478ba4045a9c6f08f3f61c87d24adda98ac29f22",
+    "events.jsonl": "sha256:a9c03472d3bb27e6d271988e698c2f45cf915b69f7db44a37bd08af4d4db503b"
+   },
+   "commit": "3045d183dd"
+  },
+  {
+   "name": "sound-change-cascade-1790402357",
+   "files": {
+    "summary.json": "sha256:14f40ea6b614f9ac5b31fd8cb7e121fd201fcf184a57ab9d66fff2fe900177dd",
+    "events.jsonl": "sha256:3fce0ec3c863ebf5a693b493a72bba53321b632fdf166f287dd40da1e89e6ee8"
+   },
+   "commit": "3045d183dd"
+  },
+  {
+   "name": "sound-change-cascade-1790405319",
+   "files": {
+    "summary.json": "sha256:ed56c48d47e067e70ec88e118eb12eaf902496fc9ce7c8a03a6bb1c781ac7ace",
+    "events.jsonl": "sha256:71c4214fe3cdddbc89ed9002de1845305f195a647fea033e93e49407fecbae4d"
+   },
+   "commit": "7d3ccdb4bd"
+  },
+  {
+   "name": "telecom-entity-resolution-1790397352",
+   "files": {
+    "events.jsonl": "sha256:6ac5362c4615fd09b9d5d6feaf315cd6ca697d7144593a7d557e706b8063ce50"
+   },
+   "commit": "a784eadef8"
+  },
+  {
+   "name": "telecom-entity-resolution-1790399102",
+   "files": {
+    "summary.json": "sha256:a8829f7ec819f2f92bda6a3da99a122ce097264aaca270155519c6effe7f5ae1",
+    "events.jsonl": "sha256:5bc0689fbadf8b3687bc539746836818c1afbdb1690852b86310df3a1ec30bb4"
+   },
+   "commit": "50288027e3"
+  },
+  {
+   "name": "telecom-entity-resolution-1790407889151",
+   "files": {
+    "events.jsonl": "sha256:b905ea0535aa85272ca031c4cfe8dc44d27da15b3146aa5a4cdcf29999e8e6a8"
+   },
+   "commit": "4c749622f2"
+  }
+ ]
+}

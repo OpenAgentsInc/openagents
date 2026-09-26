@@ -1043,6 +1043,7 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             "--no-jobs" => sources.jobs = None,
             "--no-traces" => sources.traces = None,
             "--no-tasks" => sources.tasks.clear(),
+            "--no-microcoder" => sources.microcoder.clear(),
             "--no-reference" => reference = false,
             "--help" | "-h" => {
                 writeln!(out, "{USAGE}").map_err(|e| e.to_string())?;
@@ -1456,6 +1457,7 @@ pub(crate) mod tests {
             "--traces-dir".to_owned(),
             dir.path().join("traces").display().to_string(),
             "--no-tasks".to_owned(),
+            "--no-microcoder".to_owned(),
             "--no-reference".to_owned(),
             "--learning-dir".to_owned(),
             state.path().join("learning").display().to_string(),

@@ -715,8 +715,15 @@ impl Pane {
                 };
                 Some((here - start).max(0))
             });
+            // A Microcoder run meets the reference its `beats-winner` claims
+            // name: Fable 5.1 low's cheapest winning run.
+            let opponent = if run.agent == crate::runs::Agent::Microcoder {
+                "best-low"
+            } else {
+                "best"
+            };
             if self
-                .open_replay_on(&run.task, Some(&run.id()), Some("best"))
+                .open_replay_on(&run.task, Some(&run.id()), Some(opponent))
                 .is_err()
             {
                 self.open_replay();

@@ -1,0 +1,7 @@
+{"event": "started", "task": "drift-check", "model": "openai/gpt-6-luna", "effort": "medium", "kb": "off", "limits": {"max_seconds": 1800}, "knowledge_entries": [{"id": "statistics.mmd", "version": 2, "digest": "sha256:aa"}, {"id": "slip.general", "version": 1, "digest": "sha256:bb"}]}
+{"event": "judged", "step": 1, "seconds": 0.7, "judgment": {"answers": [["done", 0.03], ["progress", 0.5], ["repeating", 0.1]], "usd": 0.0001, "milliseconds": 150}}
+{"event": "generated", "step": 1, "seconds": 2.0, "prompt_chars": 100, "generated": {"action": {"Ok": {"rationale": "Look around first.", "commands": ["ls"], "freeze_tests": true, "finished": false, "expand": [], "view": []}}, "model": "openai/gpt-6-luna", "prompt_tokens": 1000, "completion_tokens": 50, "usd": 0.001, "milliseconds": 1200}}
+{"event": "ran", "step": 1, "seconds": 2.1, "result": {"command": "ls", "exit": 0, "output": "a.py\n"}}
+{"event": "tested", "step": 1, "seconds": 3.0, "froze": true, "results": [{"command": "a.sh", "exit": 0, "output": "", "seconds": 0.1, "timed_out": false}]}
+{"event": "ended", "seconds": 349.4, "outcome": {"ending": {"reason": "finished"}, "steps": 3, "seconds": 349.4, "jev_usd": 0.008, "embedding_usd": null, "knowledge": [], "knowledge_assisted": false, "model_usd": 0.07}}
+{"event": "verified", "reward": 0.0}

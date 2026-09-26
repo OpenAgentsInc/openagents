@@ -808,7 +808,9 @@ pub fn fingerprint(run: &Run, context: &Context) -> String {
 /// Whether a run can be ranked: it has finished.
 #[must_use]
 pub fn rankable(run: &Run) -> bool {
-    run.outcome != Outcome::Running
+    // Microcoder's records aren't in the evidence state Jev reads yet, so
+    // a judgment of one would rest on its outcome alone.
+    run.outcome != Outcome::Running && run.agent != crate::runs::Agent::Microcoder
 }
 
 // ---------------------------------------------------------------------------

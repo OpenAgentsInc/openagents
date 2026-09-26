@@ -149,6 +149,24 @@ It reads Coder One's episode log and each executor's native stream, Harbor's
 Claude Code and Codex trajectories, and, for a trial in progress, the live
 copy of the episode log or the native output.
 
+The list also has [Microcoder](../coder/guides/microcoder.md) runs, from
+`~/.openagents/microcoder/runs/` and the retained records under
+`bench/terminal-bench/microcoder-runs/`. A Microcoder run's summary says how
+many steps and commands it took and ends with its labels: in-sample or
+out-of-sample, knowledge-assisted, provider, and cost basis. Its transcript
+comes from `events.jsonl`: each step's rationale and commands, Jev's
+judgments, the entries retrieval kept, and the acceptance tests. `gym runs
+show` prints the entries with their provenance and the retained digests;
+see [Read Microcoder runs](terminal-bench-cli.md#read-microcoder-runs).
+
+In an open run, `w` plays it head to head against the winner to beat on its
+task, already playing from the step in view. For Coder One and the other
+agents that is the cheapest passing public Fable 5.1 attempt; for a
+Microcoder run it is Fable 5.1 low's cheapest winning run, the reference
+its `beats-winner` claims name. A Microcoder side replays its
+`events.jsonl`, each event at its recorded seconds since the run started.
+When that Fable transcript isn't on this computer, `w` opens the picker.
+
 | Key | Runs pane action |
 | --- | --- |
 | Arrow keys, `j`, `k` | Move. |
@@ -255,8 +273,10 @@ Press `h` in the list for the **Highlights** view: the candidate claims
 and sample size. A claim that rests on one run shows `n=1` and draws dimmer.
 Under the list, the selected claim reads in full with its key, its sample
 size, how many runs it cites, and every caveat. Code computes the claims
-from the runs, Jev's stored answers, the leaderboard, and the marks when
-you press `h`; no model writes a number, and nothing posts anywhere.
+from the runs, Jev's stored answers, the leaderboard, the public Fable 5.1
+manifest, and the marks when you press `h`; no model writes a number, and
+nothing posts anywhere. A `beats-winner` claim about Microcoder runs starts
+with its labels in brackets, and `Enter` opens the passes it cites.
 
 Press `Enter` to open the cited runs: the list shows only the runs the claim
 cites, and the top rail names the claim. A claim that cites one run opens

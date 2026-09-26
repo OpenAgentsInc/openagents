@@ -1,0 +1,30 @@
+{
+ "task": "drift-check",
+ "model": "openai/gpt-6-luna",
+ "effort": "medium",
+ "kb": "off",
+ "outcome": {
+  "ending": {
+   "reason": "finished"
+  },
+  "steps": 3,
+  "seconds": 349.4,
+  "jev_usd": 0.008,
+  "embedding_usd": null,
+  "knowledge": [],
+  "knowledge_assisted": false,
+  "model_usd": 0.07
+ },
+ "reward": 0.0,
+ "verifier_output": "=== 11 passed in 1.0s ===",
+ "test_results": [
+  {
+   "command": "a.sh",
+   "exit": 0,
+   "output": "",
+   "seconds": 0.1,
+   "timed_out": false
+  }
+ ],
+ "knowledge_assisted": false
+}

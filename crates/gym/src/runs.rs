@@ -46,6 +46,14 @@ pub struct Sources {
     /// in [`Sources::standard`], parses every run; `gym-terminal` sets it
     /// to [`crate::index::default_dir`].
     pub index: Option<PathBuf>,
+    /// Directories of Microcoder run directories: this computer's
+    /// `~/.openagents/microcoder/runs`, then each retained host directory
+    /// under `bench/terminal-bench/microcoder-runs`. A run in an earlier
+    /// directory wins over a copy in a later one.
+    pub microcoder: Vec<PathBuf>,
+    /// The knowledge base whose provenance says whether a Microcoder run
+    /// is in-sample: the checkout's `knowledge/`.
+    pub knowledge: Option<PathBuf>,
 }
 
 impl Sources {
@@ -78,6 +86,8 @@ impl Sources {
             ),
             tasks,
             index: None,
+            microcoder: crate::runs_microcoder::standard_dirs(),
+            knowledge: Some(knowledge::default_dir()),
         }
     }
 }
@@ -96,14 +106,17 @@ pub enum Agent {
     Reference,
     /// Harbor's `nop` agent, which does nothing: a control.
     Control,
+    /// Microcoder, the simple Jev and model loop (`crates/microcoder`).
+    Microcoder,
     /// Anything else.
     Other,
 }
 
 impl Agent {
     /// Every agent, in the order the filter cycles through them.
-    pub const ALL: [Agent; 7] = [
+    pub const ALL: [Agent; 8] = [
         Agent::CoderOne,
+        Agent::Microcoder,
         Agent::ClaudeCode,
         Agent::Codex,
         Agent::CoderV05,
@@ -122,6 +135,7 @@ impl Agent {
             Agent::CoderV05 => "Coder v0.5",
             Agent::Reference => "Reference solution",
             Agent::Control => "No agent (control)",
+            Agent::Microcoder => "Microcoder",
             Agent::Other => "Other",
         }
     }
@@ -263,6 +277,9 @@ pub struct Run {
     pub cost_estimated: bool,
     /// Short facts about how it ended: a timeout, a crash, a limit.
     pub notes: Vec<String>,
+    /// A Microcoder run's labels, knowledge, and cost basis.
+    #[serde(default)]
+    pub microcoder: Option<Box<crate::runs_microcoder::Microcoder>>,
 }
 
 impl Run {
@@ -343,6 +360,8 @@ impl Catalog {
             "{:?} {:?} {:?}",
             sources.jobs, sources.traces, sources.tasks
         );
+        // Microcoder runs aren't kept in the index: they are few, and
+        // whether one is in-sample depends on the knowledge base as well.
         let index = crate::index::Index::open(sources.index.as_deref(), "runs", &scope);
         let mut catalog = Catalog {
             sources,
@@ -424,6 +443,36 @@ impl Catalog {
                         )),
                     }
                 }
+            }
+        }
+        // Microcoder runs: a finished run keeps what was read; the
+        // knowledge base is read only when a run needs reading.
+        let mut knowledge: Option<crate::runs_microcoder::Knowledge> = None;
+        for dir in self.sources.microcoder.clone() {
+            let manifest = crate::runs_microcoder::Manifest::read(&dir);
+            for run_dir in crate::runs_microcoder::run_dirs(&dir) {
+                let id = format!("{}/{}", crate::runs_microcoder::JOB, file_name(&run_dir));
+                if !seen.insert(id.clone()) {
+                    continue;
+                }
+                if let Some(run) = kept.remove(&id) {
+                    runs.push(run);
+                    continue;
+                }
+                let knowledge = knowledge.get_or_insert_with(|| {
+                    self.sources
+                        .knowledge
+                        .as_deref()
+                        .map(crate::runs_microcoder::Knowledge::read)
+                        .unwrap_or_default()
+                });
+                let mut run =
+                    crate::runs_microcoder::read(&run_dir, knowledge, manifest.as_ref(), now);
+                let (_, info) = self.task_info(None, &run.task);
+                run.ask = info.ask;
+                run.category = info.category;
+                run.expert_hours = info.expert_hours;
+                runs.push(run);
             }
         }
         runs.sort_by(|a, b| {
@@ -688,6 +737,7 @@ impl Catalog {
             cost_usd: None,
             cost_estimated: false,
             notes: Vec::new(),
+            microcoder: None,
             files,
         };
 
@@ -1229,7 +1279,7 @@ fn existing(path: PathBuf) -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
-fn modified_ms(path: &Path) -> Option<i64> {
+pub(crate) fn modified_ms(path: &Path) -> Option<i64> {
     crate::index::touch(path);
     let modified = std::fs::metadata(path).ok()?.modified().ok()?;
     let elapsed = modified.duration_since(UNIX_EPOCH).ok()?;
@@ -1423,6 +1473,7 @@ pub fn run_json(run: &Run, now: i64) -> Value {
         "elapsed_ms": run.elapsed_ms(now),
         "agent_ms": run.agent_ms,
         "dir": run.files.dir,
+        "microcoder": run.microcoder.as_deref().map(crate::runs_microcoder::json),
     })
 }
 
@@ -1444,10 +1495,15 @@ Usage:
   gym runs characterize RUN [--json] [--out DIR] | --all | diff A B
 
 RUN is a job name, job/trial, a trial name, or a piece of a job name that
-only one job has. --agent takes coder-one, claude-code, codex, or reference;
+only one job has. --agent takes coder-one, microcoder, claude-code, codex, or
+reference;
 --outcome takes passed, failed, running, or not-graded. --jobs-dir PATH and
 --traces-dir PATH read other directories; --no-jobs and --no-traces skip one,
-and --no-tasks skips reading the task definitions.
+and --no-tasks skips reading the task definitions. Microcoder runs come from
+~/.openagents/microcoder/runs and the retained host directories under
+bench/terminal-bench/microcoder-runs; --microcoder-dir PATH (repeatable)
+reads others instead, --no-microcoder skips them, and --knowledge-dir PATH
+names the knowledge base whose provenance says which runs are in-sample.
 
 --reason ID[=P] keeps the runs whose Jev judgment ID is at or above P, 0.5
 when P is left out; repeat it to require several. The IDs are the question
@@ -1518,6 +1574,7 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
         return crate::runs_fingerprint::command(args, out);
     }
     let mut sources = Sources::standard();
+    let mut microcoder_dirs_named = false;
     let mut marks_dir = crate::runs_marks::default_dir();
     let mut marked_only = false;
     let mut filter = Filter::default();
@@ -1641,6 +1698,19 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             "--no-jobs" => sources.jobs = None,
             "--no-traces" => sources.traces = None,
             "--no-tasks" => sources.tasks.clear(),
+            "--microcoder-dir" => {
+                if !microcoder_dirs_named {
+                    sources.microcoder.clear();
+                    microcoder_dirs_named = true;
+                }
+                sources.microcoder.push(PathBuf::from(value(index)?));
+                index += 1;
+            }
+            "--no-microcoder" => sources.microcoder.clear(),
+            "--knowledge-dir" => {
+                sources.knowledge = Some(PathBuf::from(value(index)?));
+                index += 1;
+            }
             "--help" | "-h" => {
                 writeln!(out, "{USAGE}").map_err(|e| e.to_string())?;
                 return Ok(0);
@@ -1769,6 +1839,9 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             let mut value = crate::runs_story::detail_json(&detail, now);
             value["learning"] = answer.map_or(Value::Null, |answer| answer.to_json(&rarity));
             value["marks"] = marks_json(&run.id());
+            if let Some(microcoder) = &run.microcoder {
+                value["microcoder"] = crate::runs_microcoder::json(microcoder);
+            }
             if run.outcome != Outcome::Running {
                 value["card"] = crate::runs_card_render::card_json(
                     &crate::runs_card::characterize(run, &crate::runs_card::Options::for_show()),
@@ -1794,6 +1867,13 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
         for line in &lines[..details] {
             write(out, line)?;
         }
+        let microcoder = crate::runs_microcoder::detail_lines(run);
+        if !microcoder.is_empty() {
+            for line in microcoder {
+                write(out, &line)?;
+            }
+            write(out, "")?;
+        }
         write(out, "Worth learning from")?;
         match answer {
             Some(answer) => {
@@ -1801,6 +1881,10 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
                     write(out, &format!("  {line}"))?;
                 }
             }
+            None if run.agent == Agent::Microcoder => write(
+                out,
+                "  `gym runs rank` doesn't ask Jev about Microcoder runs yet: its evidence state doesn't read their records.",
+            )?,
             None => write(
                 out,
                 "  Jev hasn't judged this run yet; `gym runs rank` asks.",
@@ -2041,6 +2125,8 @@ pub(crate) fn fixture_sources() -> (tempfile::TempDir, Sources) {
         traces: Some(dir.path().join("traces")),
         tasks: Vec::new(),
         index: None,
+        microcoder: Vec::new(),
+        knowledge: None,
     };
     (dir, sources)
 }
@@ -2179,6 +2265,7 @@ mod tests {
                 jobs.clone(),
                 "--traces-dir".to_owned(),
                 traces.clone(),
+                "--no-microcoder".to_owned(),
             ],
             &mut out,
         )
@@ -2200,6 +2287,7 @@ mod tests {
                 "--jobs-dir".to_owned(),
                 jobs.clone(),
                 "--no-traces".to_owned(),
+                "--no-microcoder".to_owned(),
             ],
             &mut out,
         )
@@ -2227,6 +2315,7 @@ mod tests {
                 jobs,
                 "--traces-dir".to_owned(),
                 traces,
+                "--no-microcoder".to_owned(),
             ],
             &mut out,
         )
@@ -2254,6 +2343,7 @@ mod tests {
             "--traces-dir".to_owned(),
             dir.path().join("traces").display().to_string(),
             "--no-tasks".to_owned(),
+            "--no-microcoder".to_owned(),
             "--no-reference".to_owned(),
             "--learning-dir".to_owned(),
             store.path().display().to_string(),
@@ -2319,6 +2409,7 @@ mod tests {
             "--traces-dir".to_owned(),
             dir.path().join("traces").display().to_string(),
             "--no-tasks".to_owned(),
+            "--no-microcoder".to_owned(),
             "--no-reference".to_owned(),
             "--learning-dir".to_owned(),
             store.path().display().to_string(),

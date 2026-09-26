@@ -899,6 +899,8 @@ mod tests {
             traces: None,
             tasks: Vec::new(),
             index: None,
+            microcoder: Vec::new(),
+            knowledge: None,
         };
         let pulse_dir = temp.path().join("pulse");
         let learning_dir = temp.path().join("learning");

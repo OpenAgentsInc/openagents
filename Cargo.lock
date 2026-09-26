@@ -2199,6 +2199,7 @@ dependencies = [
  "crossterm",
  "indexmap",
  "jev",
+ "knowledge",
  "ratatui",
  "serde",
  "serde_json",

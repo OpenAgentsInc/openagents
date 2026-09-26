@@ -15,6 +15,9 @@ tui = ["dep:ratatui", "dep:crossterm", "dep:coder-terminal", "dep:supervise"]
 # Coder One's episode log is an ATIF session log; its recovering reader
 # keeps a valid prefix of a killed episode.
 atif = { path = "../atif" }
+# Microcoder runs are in-sample by the knowledge base's provenance, read
+# with its own parser and task-name rule.
+knowledge = { path = "../knowledge" }
 indexmap = { version = "2", features = ["serde"] }
 jev = { path = "../jev" }
 serde = { version = "1", features = ["derive"] }

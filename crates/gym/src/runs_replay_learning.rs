@@ -59,6 +59,7 @@ fn run(source: &Source) -> Run {
         tests: None,
         cost_usd: trial.cost_usd,
         cost_estimated: false,
+        microcoder: None,
         notes: vec![format!(
             "Public Harbor trajectory: {}. Individual verifier results and agent-only duration are unavailable.",
             trial.source_url

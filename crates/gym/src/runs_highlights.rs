@@ -21,7 +21,14 @@
 //!                 runs of at least SHARED_MIN_AGENTS different agents
 //! surprise        a run Jev judged `surprise` at SURPRISE_AT or above,
 //!                 the SURPRISE_MOST strongest
+//! beats-winner    a Microcoder pass that cost less than Fable 5.1 low's
+//!                 cheapest winning run on the task, or finished faster
+//!                 than its fastest ([`crate::runs_beats_winner`])
 //! ```
+//!
+//! Microcoder runs make claims only through `beats-winner`, which prints
+//! the labels every public number about them carries: in-sample or
+//! out-of-sample, knowledge-assisted, provider, and cost basis.
 //!
 //! Each claim carries its run IDs, its numbers, its sample size, and
 //! caveats generated from the data: one run on an arm, costs from list
@@ -83,16 +90,18 @@ pub enum Rule {
     Leaderboard,
     SharedFailure,
     Surprise,
+    BeatsWinner,
 }
 
 impl Rule {
     /// Every rule, in the order `--rule` lists them.
-    pub const ALL: [Rule; 5] = [
+    pub const ALL: [Rule; 6] = [
         Rule::Cost,
         Rule::Time,
         Rule::Leaderboard,
         Rule::SharedFailure,
         Rule::Surprise,
+        Rule::BeatsWinner,
     ];
 
     /// The rule's word.
@@ -104,6 +113,7 @@ impl Rule {
             Rule::Leaderboard => "leaderboard",
             Rule::SharedFailure => "shared-failure",
             Rule::Surprise => "surprise",
+            Rule::BeatsWinner => "beats-winner",
         }
     }
 
@@ -135,7 +145,7 @@ pub struct Number {
 }
 
 impl Number {
-    fn new(label: &str, value: f64, text: String) -> Self {
+    pub(crate) fn new(label: &str, value: f64, text: String) -> Self {
         Number {
             label: label.to_owned(),
             value,
@@ -143,7 +153,7 @@ impl Number {
         }
     }
 
-    fn count(label: &str, value: usize) -> Self {
+    pub(crate) fn count(label: &str, value: usize) -> Self {
         Number::new(label, value as f64, value.to_string())
     }
 }
@@ -172,6 +182,9 @@ pub struct Highlight {
     /// rests on one run and halved again when a person marked a cited run
     /// bad.
     pub score: f64,
+    /// A rule's structured detail, such as `beats-winner`'s labels and
+    /// reference runs.
+    pub detail: Option<Value>,
 }
 
 impl Highlight {
@@ -190,6 +203,7 @@ impl Highlight {
             "caveats": self.caveats,
             "strength": round3(self.strength),
             "score": round3(self.score),
+            "detail": self.detail,
         })
     }
 
@@ -215,16 +229,21 @@ pub struct Inputs<'a> {
     pub answers: &'a HashMap<String, &'a Answer>,
     pub reference: Option<&'a Reference>,
     pub marks: &'a Marks,
+    /// The public Fable 5.1 replay manifest `beats-winner` reads.
+    pub fable: Option<&'a Value>,
 }
 
 /// Whether a run's agent is one a claim may be about: not the reference
-/// solution, the do-nothing control, or an unknown agent.
+/// solution, the do-nothing control, or an unknown agent. Microcoder's
+/// claims come only from `beats-winner`, which prints their labels.
 fn eligible(run: &Run) -> bool {
-    !matches!(run.agent, Agent::Reference | Agent::Control | Agent::Other)
-        && matches!(run.outcome, Outcome::Passed | Outcome::Failed)
+    !matches!(
+        run.agent,
+        Agent::Reference | Agent::Control | Agent::Other | Agent::Microcoder
+    ) && matches!(run.outcome, Outcome::Passed | Outcome::Failed)
 }
 
-fn key(rule: Rule, parts: &[&str]) -> String {
+pub(crate) fn key(rule: Rule, parts: &[&str]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(rule.word().as_bytes());
     for part in parts {
@@ -245,6 +264,7 @@ pub fn compute(inputs: &Inputs<'_>) -> Vec<Highlight> {
     claims.extend(leaderboard(inputs));
     claims.extend(shared_failures(inputs));
     claims.extend(surprises(inputs));
+    claims.extend(crate::runs_beats_winner::beats_winner(inputs));
     for claim in &mut claims {
         let marked_bad = claim
             .runs
@@ -530,6 +550,7 @@ fn arm_claim(
         // A difference of 32 times is as strong as one gets.
         strength: (ratio.log2() / 5.0).clamp(0.0, 1.0),
         score: 0.0,
+        detail: None,
     }
 }
 
@@ -566,7 +587,7 @@ impl Ledger {
 }
 
 /// A caveat for each cited run a person marked bad.
-fn mark_caveats(marks: &Marks, runs: &[String]) -> Vec<String> {
+pub(crate) fn mark_caveats(marks: &Marks, runs: &[String]) -> Vec<String> {
     runs.iter()
         .filter(|run| marks.verdict(run) == Some(Verdict::Bad))
         .map(|run| format!("A person marked {run} bad."))
@@ -685,6 +706,7 @@ fn leaderboard(inputs: &Inputs<'_>) -> Vec<Highlight> {
             caveats,
             strength: 1.0 - rate,
             score: 0.0,
+            detail: None,
         });
     }
     claims
@@ -803,6 +825,7 @@ fn shared_failures(inputs: &Inputs<'_>) -> Vec<Highlight> {
             caveats,
             strength: mean * (agents / 3.0).min(1.0),
             score: 0.0,
+            detail: None,
         });
     }
     claims
@@ -895,6 +918,7 @@ fn surprises(inputs: &Inputs<'_>) -> Vec<Highlight> {
             caveats,
             strength: p,
             score: 0.0,
+            detail: None,
         });
     }
     claims
@@ -917,6 +941,7 @@ pub fn highlights_json(claims: &[Highlight], shown: usize, runs: usize) -> Value
             "shared_min_agents": SHARED_MIN_AGENTS,
             "shared_min_runs": SHARED_MIN_RUNS,
             "reason_at": REASON_AT,
+            "beats_winner_reference": crate::runs_beats_winner::REFERENCE,
         },
         "by_rule": Rule::ALL.iter().map(|rule| (rule.word().to_owned(), json!(claims.iter().filter(|c| c.rule == *rule).count()))).collect::<serde_json::Map<String, Value>>(),
         "highlights": claims.iter().take(shown).map(Highlight::to_json).collect::<Vec<_>>(),
@@ -981,7 +1006,7 @@ pub const USAGE: &str = "\
 gym runs highlights: candidate claims worth sharing, with their evidence.
 
 Usage:
-  gym runs highlights [--rule RULE]... [--limit N] [--json]
+  gym runs highlights [--rule RULE]... [--limit N] [--json] [--fable PATH]
 
 Computes candidate claims from the runs with fixed rules; no model writes a
 number, and nothing posts anywhere. The rules:
@@ -995,6 +1020,12 @@ number, and nothing posts anywhere. The rules:
                   of at least 2 agents, 3 runs in all
   surprise        a run Jev judged `surprise` at 0.70 or above, the 8
                   strongest
+  beats-winner    a Microcoder pass that cost less than Fable 5.1 low's
+                  cheapest winning run on the same task, or finished
+                  faster than its fastest winning run; one claim per task,
+                  model, and labels, with the labels (in-sample or
+                  out-of-sample, knowledge-assisted, provider, cost
+                  basis) in the claim's text
 
 Each claim lists its runs, its numbers, its sample size, and caveats from
 the data. A claim that rests on one run is labeled n=1. The claims come
@@ -1003,8 +1034,11 @@ run a person marked bad counts half again. --rule keeps one rule's claims;
 repeat it for several. --limit N shows N claims (default 20).
 
 The source flags --jobs-dir, --traces-dir, --no-jobs, --no-traces,
---no-tasks, --learning-dir, --marks-dir, and --no-reference work as they do
-for `gym runs`. `coder-one ask --scope highlights --claim KEY` drafts short
+--no-tasks, --microcoder-dir, --no-microcoder, --knowledge-dir,
+--learning-dir, --marks-dir, and --no-reference work as they do for `gym
+runs`. --fable PATH reads another public Fable 5.1 replay manifest for
+beats-winner; the default is the replay cache's copy, else
+bench/terminal-bench/reference/fable-5.1-replays.json. `coder-one ask --scope highlights --claim KEY` drafts short
 text from chosen claims and refuses a draft whose numbers or citations
 don't check.";
 
@@ -1015,6 +1049,8 @@ don't check.";
 /// Returns the usage when the arguments don't parse.
 pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     let mut sources = Sources::standard();
+    let mut microcoder_dirs_named = false;
+    let mut fable_path: Option<PathBuf> = None;
     let mut learning_dir = learning::default_dir();
     let mut marks_dir = crate::runs_marks::default_dir();
     let mut reference = true;
@@ -1059,6 +1095,23 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             "--no-jobs" => sources.jobs = None,
             "--no-traces" => sources.traces = None,
             "--no-tasks" => sources.tasks.clear(),
+            "--microcoder-dir" => {
+                if !microcoder_dirs_named {
+                    sources.microcoder.clear();
+                    microcoder_dirs_named = true;
+                }
+                sources.microcoder.push(PathBuf::from(value(index)?));
+                index += 1;
+            }
+            "--no-microcoder" => sources.microcoder.clear(),
+            "--knowledge-dir" => {
+                sources.knowledge = Some(PathBuf::from(value(index)?));
+                index += 1;
+            }
+            "--fable" => {
+                fable_path = Some(PathBuf::from(value(index)?));
+                index += 1;
+            }
             "--no-reference" => reference = false,
             "--help" | "-h" => {
                 writeln!(out, "{USAGE}").map_err(|e| e.to_string())?;
@@ -1074,11 +1127,23 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     let store = learning::Store::open(learning_dir);
     let answers = learning::answers(&catalog, &store, &context);
     let marks = Marks::open(marks_dir);
+    let fable_owned = match &fable_path {
+        Some(path) => Some(
+            crate::runs::read_json(path)
+                .ok_or_else(|| format!("can't read the Fable 5.1 manifest {}", path.display()))?,
+        ),
+        None => None,
+    };
+    let fable: Option<&Value> = match &fable_owned {
+        Some(manifest) => Some(manifest),
+        None => crate::runs_beats_winner::default_manifest(),
+    };
     let mut claims = compute(&Inputs {
         runs: &catalog.runs,
         answers: &answers,
         reference: reference.as_ref(),
         marks: &marks,
+        fable,
     });
     if !rules.is_empty() {
         claims.retain(|claim| rules.contains(&claim.rule));
@@ -1149,6 +1214,7 @@ mod tests {
             }),
             cost_usd: cost,
             cost_estimated: false,
+            microcoder: None,
             notes: Vec::new(),
         }
     }
@@ -1261,6 +1327,7 @@ mod tests {
             answers: &map,
             reference: Some(&reference),
             marks,
+            fable: None,
         })
     }
 
@@ -1432,6 +1499,7 @@ mod tests {
             "--traces-dir",
             &sources.traces.unwrap().display().to_string(),
             "--no-tasks",
+            "--no-microcoder",
             "--learning-dir",
             &dir.path().join("learning").display().to_string(),
             "--marks-dir",

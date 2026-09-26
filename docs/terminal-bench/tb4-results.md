@@ -267,6 +267,20 @@ once they pass. Runs graded here use the task's own tests. Costs are
 what OpenRouter reported for Luna, plus Jev at $0.042 per million input
 tokens and the knowledge base's embeddings.
 
+To reproduce these claims from the Gym, run `gym runs highlights --rule
+beats-winner --no-jobs --no-traces --microcoder-dir
+bench/terminal-bench/microcoder-runs/coderos-4080` over the retained
+records (see
+[Beat the winner](../gym/terminal-bench-cli.md#beat-the-winner)). It prints
+one claim each for `embedding-drift-monitor`, `gsea-proteomics`, and
+`fin-saccr-rwa`, each labelled in-sample and knowledge-assisted, with its
+provider and cost basis. Its counts cover every retained graded run with
+those labels, so they differ from the tables below where these select
+runs: `gsea-proteomics` passed 5 of 9, and `fin-saccr-rwa` 3 of 8, because
+the directories of runs 4 and 5 and of runs 6 and 7 hold mixed records and
+are left out. The reference's cheapest `fin-saccr-rwa` win is $1.2246,
+which the Gym prints as $1.22.
+
 **`embedding-drift-monitor`: knowledge-assisted Luna runs passed 8 of 9.
 Every pass cost less than Fable 5.1 low's cheapest winning run, and two
 were faster than four of its five winning runs.** The knowledge base's MMD

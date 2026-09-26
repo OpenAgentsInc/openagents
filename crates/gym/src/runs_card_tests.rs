@@ -26,6 +26,8 @@ fn catalog_of(jobs: &[&str]) -> (tempfile::TempDir, Catalog) {
         traces: Some(dir.path().to_path_buf()),
         tasks: Vec::new(),
         index: None,
+        microcoder: Vec::new(),
+        knowledge: None,
     });
     (dir, catalog)
 }
@@ -432,6 +434,8 @@ fn a_trial_missing_its_records_gets_unknown_rows_not_guesses() {
         traces: Some(root.path().to_path_buf()),
         tasks: Vec::new(),
         index: None,
+        microcoder: Vec::new(),
+        knowledge: None,
     });
     let run = catalog.find("demo-task__abc").expect("the trial");
     let card = characterize(run, &Options::default());
@@ -511,6 +515,8 @@ fn the_card_reads_grades_and_host_executed_commands_in_their_shapes() {
         traces: Some(root.path().to_path_buf()),
         tasks: Vec::new(),
         index: None,
+        microcoder: Vec::new(),
+        knowledge: None,
     });
     let card = characterize(
         catalog.find("demo-task__abc").expect("the trial"),
@@ -533,6 +539,8 @@ fn the_card_shows_which_review_trigger_fired_or_that_none_did() {
             traces: Some(root.path().to_path_buf()),
             tasks: Vec::new(),
             index: None,
+            microcoder: Vec::new(),
+            knowledge: None,
         })
     };
     // No rule recorded: the review ran unconditionally.

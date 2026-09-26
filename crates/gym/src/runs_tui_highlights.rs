@@ -49,6 +49,7 @@ impl Pane {
             answers: &answers,
             reference: self.learning.reference.as_ref(),
             marks: &self.marking.marks,
+            fable: crate::runs_beats_winner::default_manifest(),
         });
         self.highlighting.cursor = 0;
         self.highlighting.scroll.set(0);
@@ -245,6 +246,7 @@ mod tests {
             ],
             strength: 0.5,
             score: 0.5,
+            detail: None,
         }
     }
 

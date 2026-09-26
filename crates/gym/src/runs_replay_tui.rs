@@ -375,7 +375,9 @@ impl Pane {
     /// description contains the given text, and starts the pair. On the
     /// right, `pass` picks the newest public attempt that passed and is on
     /// this computer; `best` picks the cheapest passing public attempt, the
-    /// winner to beat. Returns what couldn't be found.
+    /// winner to beat, and `best-low` the cheapest passing Fable 5.1 low
+    /// attempt, the reference `beats-winner` names. Returns what couldn't be
+    /// found.
     pub fn preselect(
         &mut self,
         task: &str,
@@ -392,15 +394,21 @@ impl Pane {
         for (side, wanted) in [left, right].into_iter().enumerate() {
             let Some(wanted) = wanted else { continue };
             let choices = self.choices(side);
-            let found = if wanted == "best" {
+            let found = if wanted == "best" || wanted == "best-low" {
                 // The winner to beat: the cheapest passing public attempt on
-                // this computer.
+                // this computer, at low effort for `best-low`.
                 choices
                     .iter()
                     .enumerate()
                     .filter_map(|(index, s)| match s {
                         Source::Public { trial, cache }
-                            if trial.reward == Some(1.0) && cache.join(&trial.file).is_file() =>
+                            if trial.reward == Some(1.0)
+                                && cache.join(&trial.file).is_file()
+                                && (wanted == "best"
+                                    || (trial.effort
+                                        == crate::runs_beats_winner::REFERENCE_EFFORT
+                                        && trial.model
+                                            == crate::runs_beats_winner::REFERENCE_MODEL)) =>
                         {
                             Some((index, trial.cost_usd.unwrap_or(f64::MAX), trial.id.clone()))
                         }
@@ -1605,6 +1613,68 @@ mod tests {
         p.key(Key::Back);
         assert!(!p.active());
         assert_eq!(p.key(Key::Back), None);
+    }
+
+    #[test]
+    fn a_microcoder_run_meets_the_cheapest_low_winner() {
+        use crate::runs_replay::PublicTrial;
+        use sha2::{Digest, Sha256};
+        let fixtures =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/microcoder");
+        let runs = crate::runs_microcoder::read_all(
+            &[fixtures.join("runs")],
+            &crate::runs_microcoder::Knowledge::read(&fixtures.join("knowledge")),
+            i64::MAX / 4,
+        );
+        let cache = tempfile::tempdir().unwrap();
+        let body = serde_json::to_vec(&serde_json::json!({"steps": [
+            {"step_id": 1, "timestamp": "2026-09-17T05:00:01Z", "source": "agent", "message": "Looking."}
+        ]}))
+        .unwrap();
+        let trial = |id: &str, effort: &str, cost: f64| {
+            std::fs::write(cache.path().join(format!("{id}.json")), &body).unwrap();
+            Source::Public {
+                trial: Box::new(PublicTrial {
+                    id: id.to_owned(),
+                    task: "drift-check".to_owned(),
+                    model: "Fable 5.1".to_owned(),
+                    agent: "Claude Code".to_owned(),
+                    agent_version: None,
+                    effort: effort.to_owned(),
+                    source_url: "https://example.com".to_owned(),
+                    file: format!("{id}.json"),
+                    sha256: Some(format!("{:x}", Sha256::digest(&body))),
+                    available: Some(true),
+                    started_at: Some("2026-09-17T05:00:00Z".to_owned()),
+                    finished_at: Some("2026-09-17T05:03:00Z".to_owned()),
+                    reward: Some(1.0),
+                    cost_usd: Some(cost),
+                }),
+                cache: cache.path().to_path_buf(),
+            }
+        };
+        let public = vec![
+            trial("aaaa", "max", 0.10),
+            trial("bbbb", "low", 0.90),
+            trial("cccc", "low", 0.74),
+        ];
+        let local = runs
+            .into_iter()
+            .map(|run| Source::Local(Box::new(run)))
+            .collect();
+        let mut p = Pane::from_sources(local, public, vec![], None);
+        p.preselect(
+            "drift-check",
+            Some("drift-check-1790393791"),
+            Some("best-low"),
+        )
+        .unwrap();
+        let (task, [left, right]) = p.selection();
+        assert_eq!(task.as_deref(), Some("drift-check"));
+        assert_eq!(left.as_deref(), Some("microcoder/drift-check-1790393791"));
+        // The cheapest low winner, not the cheaper max-effort one.
+        assert_eq!(right.as_deref(), Some("cccc"));
+        assert!(p.active(), "{:?}", p.errors);
     }
 
     #[test]

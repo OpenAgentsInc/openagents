@@ -1,0 +1,51 @@
+{
+ "task": "drift-check",
+ "model": "openai/gpt-6-luna",
+ "effort": "medium",
+ "kb": "on",
+ "outcome": {
+  "ending": {
+   "reason": "finished"
+  },
+  "steps": 3,
+  "seconds": 200.0,
+  "jev_usd": null,
+  "embedding_usd": 0.0,
+  "knowledge": [
+   {
+    "id": "statistics.mmd",
+    "digest": "sha256:aa",
+    "kept_steps": 3,
+    "expanded_steps": 1
+   }
+  ],
+  "knowledge_assisted": true,
+  "model_usd": 0.02
+ },
+ "reward": 0.0,
+ "verifier_output": "=== 11 passed in 1.0s ===",
+ "test_results": [
+  {
+   "command": "a.sh",
+   "exit": 0,
+   "output": "",
+   "seconds": 0.1,
+   "timed_out": false
+  }
+ ],
+ "knowledge_assisted": true,
+ "provider": "openrouter",
+ "cost_basis": "billed",
+ "commit": "0123456789",
+ "retrieval": {
+  "mode": "mixed",
+  "reason": "one embedding call failed",
+  "embedding_searches": 2,
+  "lexical_searches": 1
+ },
+ "cost_bases": {
+  "model": "billed",
+  "jev": "list_price",
+  "embeddings": "billed"
+ }
+}

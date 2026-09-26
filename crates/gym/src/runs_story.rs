@@ -91,6 +91,7 @@ impl Detail {
 pub fn load_transcript(run: &Run) -> Transcript {
     let files = &run.files;
     match run.agent {
+        Agent::Microcoder => crate::runs_microcoder::transcript(run),
         Agent::CoderOne => {
             let log = files
                 .episode
@@ -585,6 +586,32 @@ fn happened(detail: &Detail, now: i64) -> Option<Paragraph> {
                 "Harbor ran the task's reference solution, a control that shows the task can be solved."
                     .to_owned(),
             );
+        }
+        Agent::Microcoder => {
+            let count = |test: fn(&Kind) -> bool| {
+                transcript
+                    .blocks
+                    .iter()
+                    .filter(|block| test(&block.kind))
+                    .count()
+            };
+            let steps = count(
+                |kind| matches!(kind, Kind::Section { title, .. } if title.starts_with("Step ")),
+            );
+            let commands = count(|kind| matches!(kind, Kind::Command { .. }));
+            let checks = count(|kind| matches!(kind, Kind::Check { .. }));
+            let mut sentence = format!(
+                "{} took {} and ran {}, checking its acceptance tests {}",
+                run.agent_label(),
+                plural(steps, "step"),
+                plural(commands, "command"),
+                plural(checks, "time"),
+            );
+            if let Some(m) = &run.microcoder {
+                sentence.push_str(&format!("; {}", m.labels()));
+            }
+            sentence.push('.');
+            sentences.push(sentence);
         }
         _ => {
             if let Some(session) = transcript.sessions.first() {
@@ -1294,6 +1321,7 @@ pub(crate) mod tests {
             }),
             cost_usd: Some(2.92),
             cost_estimated: false,
+            microcoder: None,
             notes: Vec::new(),
         }
     }

@@ -1,0 +1,43 @@
+{
+ "task": "drift-check",
+ "model": "openai/gpt-6-luna",
+ "effort": "medium",
+ "kb": "on",
+ "outcome": {
+  "ending": {
+   "reason": "finished"
+  },
+  "steps": 3,
+  "seconds": 253.4,
+  "jev_usd": 0.007,
+  "embedding_usd": 0.0007,
+  "knowledge": [
+   {
+    "id": "statistics.mmd",
+    "digest": "sha256:aa",
+    "kept_steps": 3,
+    "expanded_steps": 1
+   },
+   {
+    "id": "slip.general",
+    "digest": "sha256:bb",
+    "kept_steps": 3,
+    "expanded_steps": 1
+   }
+  ],
+  "knowledge_assisted": true,
+  "model_usd": 0.04
+ },
+ "reward": 1.0,
+ "verifier_output": "=== 11 passed in 1.0s ===",
+ "test_results": [
+  {
+   "command": "a.sh",
+   "exit": 0,
+   "output": "",
+   "seconds": 0.1,
+   "timed_out": false
+  }
+ ],
+ "knowledge_assisted": true
+}
