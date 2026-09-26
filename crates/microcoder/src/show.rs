@@ -186,6 +186,26 @@ impl Observer for Terminal {
                     }
                 }
             }
+            Event::Reviewed { step, judgment } => {
+                let answers = if let Some(error) = &judgment.error {
+                    format!("no answers: {error}")
+                } else {
+                    judgment
+                        .answers
+                        .iter()
+                        .map(|(id, p)| format!("{id} {p:.2}"))
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                };
+                self.line(
+                    seconds,
+                    &format!(
+                        "{} {answers} · ${:.5}",
+                        self.paint("1;35", &format!("step {step} · jev test review")),
+                        judgment.usd
+                    ),
+                );
+            }
             Event::Tested {
                 step,
                 froze,

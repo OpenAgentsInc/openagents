@@ -16,11 +16,18 @@ pub const JEV_STATE_CHARS: usize = 16_000;
 /// The question set, embedded so its digest is the file's.
 pub const QUESTIONS: &str = include_str!("../questions.json");
 
+/// The questions Jev answers about the acceptance tests at the first
+/// freeze.
+pub const REVIEW: &str = include_str!("../review.json");
+
 /// One question in the set.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Question {
     pub id: String,
     pub text: String,
+    /// For a review question: what the model is told when Jev answers yes.
+    #[serde(default)]
+    pub send_back: Option<String>,
 }
 
 /// The question set.
@@ -38,6 +45,16 @@ pub struct QuestionSet {
 #[must_use]
 pub fn question_set() -> QuestionSet {
     serde_json::from_str(QUESTIONS).expect("questions.json is valid")
+}
+
+/// The embedded test-review set.
+///
+/// # Panics
+///
+/// When `review.json` isn't valid, which a test checks.
+#[must_use]
+pub fn review_set() -> QuestionSet {
+    serde_json::from_str(REVIEW).expect("review.json is valid")
 }
 
 /// Jev's answers for one step.
@@ -75,7 +92,11 @@ impl Judgment {
 
 /// Asks Jev about a state.
 pub trait Judge {
-    fn judge(&self, state: &Value) -> impl std::future::Future<Output = Judgment>;
+    fn judge(
+        &self,
+        set: &QuestionSet,
+        state: &Value,
+    ) -> impl std::future::Future<Output = Judgment>;
 }
 
 /// The model's next action.
@@ -145,22 +166,20 @@ pub trait Generate {
 /// Jev through `crates/jev`.
 pub struct JevJudge {
     pub client: jev::Client,
-    pub set: QuestionSet,
 }
 
 impl Judge for JevJudge {
-    async fn judge(&self, state: &Value) -> Judgment {
+    async fn judge(&self, set: &QuestionSet, state: &Value) -> Judgment {
         let started = Instant::now();
         let mut questions = jev::Questions::new();
-        for q in &self.set.questions {
+        for q in &set.questions {
             questions = questions.with(q.id.clone(), jev::Noul::new(q.text.clone()));
         }
         let request = jev::SystemOneRequest::new(state.clone(), questions);
         let milliseconds = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         match self.client.system_one(request).await {
             Ok(response) => Judgment {
-                answers: self
-                    .set
+                answers: set
                     .questions
                     .iter()
                     .filter_map(|q| {
@@ -247,6 +266,13 @@ mod tests {
         assert_eq!(set.id, "openagents.microcoder.judge.v1");
         let ids: Vec<&str> = set.questions.iter().map(|q| q.id.as_str()).collect();
         assert_eq!(ids, ["done", "progress", "repeating"]);
+    }
+
+    #[test]
+    fn every_review_question_says_what_it_sends_back() {
+        let set = review_set();
+        assert!(!set.questions.is_empty());
+        assert!(set.questions.iter().all(|q| q.send_back.is_some()));
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 use std::process::ExitCode;
 
-use microcoder::models::{JevJudge, OpenRouterGenerator, question_set};
+use microcoder::models::{JevJudge, OpenRouterGenerator, question_set, review_set};
 use microcoder::run::{Ending, Limits, Models, USER_PROMPT, run};
 use microcoder::show::{Both, Record, Terminal, clock};
 use microcoder::state::State;
@@ -144,9 +144,9 @@ async fn go(options: Options) -> Result<u8, String> {
         effort: options.effort.clone(),
     };
     let set = question_set();
+    let review = review_set();
     let judge = JevJudge {
         client: jev_client()?,
-        set: set.clone(),
     };
     let mut terminal = Terminal::new();
     let say = |text: &str| terminal_line(text);
@@ -182,6 +182,7 @@ async fn go(options: Options) -> Result<u8, String> {
         "event": "started", "task": task.name, "model": options.model, "effort": options.effort,
         "limits": options.limits, "network": network, "prompt": options.prompt,
         "questions": set.id, "questions_file": microcoder::models::QUESTIONS,
+        "review": review.id, "review_file": microcoder::models::REVIEW,
     }));
 
     let image = tbench::image(&task, &say).await?;
@@ -229,7 +230,7 @@ async fn go(options: Options) -> Result<u8, String> {
                 ..State::default()
             };
             let mut both = Both(&mut terminal, &mut record);
-            run(state, &options.prompt, &env, &Models { generator: &generator, judge: &judge, set: &set }, &options.limits, &mut both).await
+            run(state, &options.prompt, &env, &Models { generator: &generator, judge: &judge, set: &set, review: &review }, &options.limits, &mut both).await
         } => result,
         _ = tokio::signal::ctrl_c() => {
             println!("\nInterrupted; removing the container.");

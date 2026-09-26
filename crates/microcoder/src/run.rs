@@ -116,6 +116,11 @@ pub enum Event {
         step: usize,
         result: CommandResult,
     },
+    /// Jev reviewed the tests the model asked to freeze.
+    Reviewed {
+        step: usize,
+        judgment: Judgment,
+    },
     /// The acceptance tests ran; `froze` is true on the run that froze them.
     Tested {
         step: usize,
@@ -186,6 +191,8 @@ pub struct Models<'a, G: Generate, J: Judge> {
     pub generator: &'a G,
     pub judge: &'a J,
     pub set: &'a QuestionSet,
+    /// The questions Jev answers about the tests at the first freeze.
+    pub review: &'a QuestionSet,
 }
 
 /// Reads the files the model keeps in view: the first [`VIEW_FILES`]
@@ -209,6 +216,34 @@ async fn read_view<E: Env>(env: &E, paths: &[String]) -> Vec<(String, Option<Str
         files.push((path, contents));
     }
     files
+}
+
+/// The state Jev reads when it reviews the tests.
+fn review_state(state: &State) -> serde_json::Value {
+    let tests: Vec<serde_json::Value> = state
+        .tests
+        .iter()
+        .map(|t| json!({"name": t.name, "script": cut(&t.script, 3_000, 0)}))
+        .collect();
+    json!({
+        "task": cut(&state.task, 6_000, 0),
+        "tests": tests,
+    })
+}
+
+/// The send-back notes of the review questions Jev answered yes.
+fn review_notes(judgment: &Judgment, set: &QuestionSet) -> Vec<String> {
+    judgment
+        .answers
+        .iter()
+        .filter(|(_, p)| *p >= 0.5)
+        .filter_map(|(id, _)| {
+            set.questions
+                .iter()
+                .find(|q| &q.id == id)
+                .and_then(|q| q.send_back.clone())
+        })
+        .collect()
 }
 
 /// Reads the tests the model wrote under [`ACCEPT_DIR`].
@@ -276,7 +311,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             break Ending::SpendLimit;
         }
         step += 1;
-        let judgment = models.judge.judge(&jev_state(&state)).await;
+        let judgment = models.judge.judge(models.set, &jev_state(&state)).await;
         jev_usd += judgment.usd;
         let jev_text = judgment.render(models.set);
         observer.event(
@@ -397,14 +432,47 @@ or set finished to true if the task is complete."
                 ));
             } else {
                 let results = run_tests(env, &state.tests, deadline).await;
-                let passing: Vec<String> = results
-                    .iter()
-                    .filter(|r| r.ok())
-                    .map(|r| r.command.clone())
-                    .collect();
-                if !passing.is_empty() && !sent_back {
-                    // A test that passes on the unchanged code can't show
-                    // that a fix worked. Send the freeze back once.
+                // The first freeze is checked; the second is final.
+                let problems = if sent_back {
+                    Vec::new()
+                } else {
+                    let judgment = models
+                        .judge
+                        .judge(models.review, &review_state(&state))
+                        .await;
+                    jev_usd += judgment.usd;
+                    let mut problems = review_notes(&judgment, models.review);
+                    observer.event(
+                        started.elapsed().as_secs_f64(),
+                        &Event::Reviewed { step, judgment },
+                    );
+                    let passing: Vec<&str> = results
+                        .iter()
+                        .filter(|r| r.ok())
+                        .map(|r| r.command.as_str())
+                        .collect();
+                    if !passing.is_empty() {
+                        // A test that passes on the unchanged code can't
+                        // show that a fix worked.
+                        problems.insert(0, format!(
+                            "{} already pass on the unchanged code. The task says the code is broken, \
+so a test that passes now either checks something that isn't broken, or states the requirement the \
+way the broken code already behaves. Check each one against the task and against the standard \
+definition of what it tests. Rewrite it so it fails on the current code, or delete it if its \
+requirement truly holds already.",
+                            passing.join(", ")
+                        ));
+                    }
+                    problems
+                };
+                if problems.is_empty() {
+                    for (test, result) in state.tests.iter_mut().zip(&results) {
+                        test.passed_at_freeze = Some(result.ok());
+                    }
+                    state.test_results = results;
+                    state.frozen_at = Some(step);
+                    froze = true;
+                } else {
                     sent_back = true;
                     observer.event(
                         started.elapsed().as_secs_f64(),
@@ -414,23 +482,13 @@ or set finished to true if the task is complete."
                             results,
                         },
                     );
-                    state.notes.push(format!(
-                        "The tests weren't frozen: {} already pass on the unchanged code. The task \
-says the code is broken, so a test that passes now either checks something that isn't broken, or \
-states the requirement the way the broken code already behaves. Check each one against the task and \
-against the standard definition of what it tests. Rewrite it so it fails on the current code, or \
-delete it if its requirement truly holds already. Then set freeze_tests to true again; the second \
-freeze is final.",
-                        passing.join(", ")
-                    ));
+                    state.notes.push(
+                        "The tests weren't frozen. Fix the problems below, then set freeze_tests to \
+true again; the second freeze is final."
+                            .to_string(),
+                    );
+                    state.notes.extend(problems);
                     state.tests.clear();
-                } else {
-                    for (test, result) in state.tests.iter_mut().zip(&results) {
-                        test.passed_at_freeze = Some(result.ok());
-                    }
-                    state.test_results = results;
-                    state.frozen_at = Some(step);
-                    froze = true;
                 }
             }
         }

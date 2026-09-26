@@ -1,0 +1,11 @@
+{
+  "id": "openagents.microcoder.test_review.v1",
+  "note": "What Jev answers about the acceptance tests the first time the model asks to freeze them. State: the task and every test's script. A question answered yes with probability 0.5 or more sends the freeze back with its send_back note. Change the wording here, not in code; the file is digested into every run's record.",
+  "questions": [
+    {
+      "id": "known_answer",
+      "text": "The tests in `tests` were written for the task in `task` before any fix. Does the code the task covers compute a statistic, estimate, metric, probability, or score for which no test compares the output with a value known independently of the formula being tested, such as the value its output should average to over many samples drawn with fixed seeds from a case where the true value is known?",
+      "send_back": "A statistic, estimate, metric, probability, or score in this task isn't tested against a value known independently of the formula. A test that restates the formula, or checks an exact value you derived from it, passes whether the formula is right or wrong. For each such function, add a test that draws many samples with fixed seeds from a case where the true value is known, such as two samples from the same distribution, and checks that the function's output averages to that value within a tolerance small enough to fail a systematic bias."
+    }
+  ]
+}

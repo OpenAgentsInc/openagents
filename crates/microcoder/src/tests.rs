@@ -7,7 +7,9 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::env::Env;
-use crate::models::{Generate, Generated, Judge, Judgment, NextAction, question_set};
+use crate::models::{
+    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, question_set, review_set,
+};
 use crate::run::{Ending, Event, Limits, Models, Observer, run};
 use crate::state::{CommandResult, State};
 
@@ -44,12 +46,23 @@ impl Generate for Script {
     }
 }
 
-struct Jev;
+/// Answers `done` 0.3, and every test-review question `review`.
+struct Jev {
+    review: f64,
+}
 
 impl Judge for Jev {
-    async fn judge(&self, _state: &Value) -> Judgment {
+    async fn judge(&self, set: &QuestionSet, _state: &Value) -> Judgment {
+        let answers = if set.id == review_set().id {
+            set.questions
+                .iter()
+                .map(|q| (q.id.clone(), self.review))
+                .collect()
+        } else {
+            vec![("done".to_string(), 0.3)]
+        };
         Judgment {
-            answers: vec![("done".to_string(), 0.3)],
+            answers,
             usd: 0.001,
             milliseconds: 1,
             error: None,
@@ -133,15 +146,25 @@ fn state() -> State {
 }
 
 async fn go(script: &Script, limits: &Limits) -> (State, crate::run::Outcome, Vec<String>, Log) {
+    go_with(script, limits, &Jev { review: 0.1 }).await
+}
+
+async fn go_with(
+    script: &Script,
+    limits: &Limits,
+    jev: &Jev,
+) -> (State, crate::run::Outcome, Vec<String>, Log) {
     let env = Fake {
         ran: RefCell::new(Vec::new()),
     };
     let mut log = Log::default();
     let set = question_set();
+    let review = review_set();
     let models = Models {
         generator: script,
-        judge: &Jev,
+        judge: jev,
         set: &set,
+        review: &review,
     };
     let (state, outcome) = run(state(), "Solve this task.", &env, &models, limits, &mut log).await;
     let ran = env.ran.into_inner();
@@ -354,5 +377,29 @@ async fn a_freeze_with_tests_that_already_pass_is_sent_back_once() {
     assert_eq!(state.tests[0].passed_at_freeze, Some(true));
     assert_eq!(state.tests[1].passed_at_freeze, Some(false));
     let prompts = script.prompts.into_inner();
-    assert!(prompts[1].contains("The tests weren't frozen: a.sh already pass"));
+    assert!(prompts[1].contains("The tests weren't frozen."));
+    assert!(prompts[1].contains("a.sh already pass on the unchanged code"));
+}
+
+#[tokio::test]
+async fn a_review_question_answered_yes_sends_the_freeze_back() {
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["echo b only"])),
+        Ok(freeze("add a known-answer test", &["echo more"])),
+        Ok(act("fix", &["fix b"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let (state, outcome, _, log) = go_with(&script, &Limits::default(), &Jev { review: 0.9 }).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(state.frozen_at, Some(2));
+    let note = review_set().questions[0].send_back.clone().unwrap();
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[1].contains(&note));
+    // Only the first freeze is reviewed.
+    let reviews = log
+        .0
+        .iter()
+        .filter(|e| matches!(e, Event::Reviewed { .. }))
+        .count();
+    assert_eq!(reviews, 1);
 }
