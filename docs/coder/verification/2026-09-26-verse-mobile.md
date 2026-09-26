@@ -71,9 +71,15 @@ local send does not prove acknowledgment, persistence, or exactly-once delivery.
 
 ## Distribution
 
-Build 39 is prepared for an optimized archive from committed source. The final
-App Store Connect processing and internal TestFlight status will be recorded
-here and in the distribution receipt after upload succeeds.
+**Coder `0.5.0 (39)` is available to the existing Internal Testers group.**
+App Store Connect reports `VALID` and `IN_BETA_TESTING` for build
+`5838d5eb-ed69-4227-82b8-ab629ac21b2e`. Upload and signature verification succeeded.
+The optimized archive came from clean committed source
+[`d695c1dfc7`](https://github.com/OpenAgentsInc/openagents/commit/d695c1dfc708d2b8f592a4640ad0cee5b9844de5). The
+[distribution receipt](../../../bins/coder-ios/verification/2026-09-26-verse/testflight-build39.json)
+records source, Cargo lock, executable, compiler versions, Apple processing,
+and internal distribution. No App Store production or external beta review
+submission was made.
 
 ## Coverage limits
 

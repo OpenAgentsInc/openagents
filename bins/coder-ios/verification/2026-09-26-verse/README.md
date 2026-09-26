@@ -8,8 +8,9 @@ No model call, benchmark, real transcript publication, or relay join ran.
 The [receipt](receipt.json) records all six test durations, the simulator
 executable digest, and 93 source hashes. Those source files were unchanged
 between the final build and evidence retention. The final suite took 79.259
-seconds. This is test duration, not a game performance measurement. A release
-archive and TestFlight delivery need their own committed-source receipt.
+seconds. This is test duration, not a game performance measurement. The separate
+[distribution receipt](testflight-build39.json) confirms build 39 is valid and
+available in internal TestFlight from clean committed source.
 
 ## What passed
 

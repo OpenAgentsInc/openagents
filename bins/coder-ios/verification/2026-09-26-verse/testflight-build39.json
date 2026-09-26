@@ -1,0 +1,33 @@
+{
+  "schema": "coder.ios.testflight-release.v1",
+  "recorded_at": "2026-09-26T21:23:23.693885+00:00",
+  "app_store_connect_app": "6807250813",
+  "bundle": "com.openagents.coder",
+  "version": "0.5.0",
+  "build": "39",
+  "source_commit": "d695c1dfc708d2b8f592a4640ad0cee5b9844de5",
+  "source_status": "",
+  "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "cargo_lock_sha256": "85b34600a5adb2d2e75a1a6dcf678776d29d16acbfd2b5e99ce32aac8ee2abac",
+  "executable_sha256": "c0db58cb9575cfe7046f7539b119afdc491ab88110e2b44ac585d904a33d8b25",
+  "xcode": "Xcode 26.6\nBuild version 17F113",
+  "rust": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "archive_result": "succeeded",
+  "signature_verification": "codesign --verify --deep --strict: passed",
+  "upload_result": "succeeded",
+  "upload_finished_at": "2026-09-26T21:22:43Z",
+  "processing_state": "VALID",
+  "physical_device_acceptance": false,
+  "model_or_benchmark_runs": false,
+  "local_artifacts": "<worktree-parent>/target/coder-ios-build39",
+  "release_scope": "Internal TestFlight shared desktop/iOS Verse world and preserved read-only chat viewer; no App Store production submission.",
+  "app_store_build_id": "5838d5eb-ed69-4227-82b8-ab629ac21b2e",
+  "internal_build_state": "IN_BETA_TESTING",
+  "external_build_state": "READY_FOR_BETA_SUBMISSION",
+  "tester_group": {
+    "name": "Internal Testers",
+    "automatic_all_builds": true
+  },
+  "test_notes_saved": true,
+  "verified_at": "2026-09-26T21:25:55.325288+00:00"
+}

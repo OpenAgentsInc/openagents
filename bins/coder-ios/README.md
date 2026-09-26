@@ -8,10 +8,10 @@ renders Rust Native views, keeps separate device identities in Keychain, and
 forwards bounded UI events. It does not call models, execute tasks, submit chat
 messages, or grant approvals.
 
-**Available in internal TestFlight:** Coder `0.5.0 (38)`, built from
-[`2f84cf2627`](https://github.com/OpenAgentsInc/openagents/commit/2f84cf2627777f40639411f079c26a048039f792).
+**Available in internal TestFlight:** Coder `0.5.0 (39)`, built from
+[`d695c1dfc7`](https://github.com/OpenAgentsInc/openagents/commit/d695c1dfc708d2b8f592a4640ad0cee5b9844de5).
 [Connect your phone](../../docs/coder/guides/mobile-readonly.md) and review the
-[distribution receipt](verification/2026-09-26/testflight-build38.json).
+[distribution receipt](verification/2026-09-26-verse/testflight-build39.json).
 
 ## App identity and source boundary
 

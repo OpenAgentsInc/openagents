@@ -44,10 +44,12 @@ complete multi-operator market remain unfinished. The
 [implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
 maps every contract to its implemented parts and remaining work.
 
-Coder's read-only iOS chat viewer is available in internal TestFlight as
-**0.5.0 (38)**. [Pair your computer](docs/coder/guides/mobile-readonly.md) to
-browse saved Codex and Claude chats, read full paged transcripts, and follow
-updates with an encrypted device cache. [Release evidence](docs/coder/verification/2026-09-26-mobile-reader.md).
+Coder for iOS is available in internal TestFlight as **0.5.0 (39)**.
+Its [Verse tab](docs/verse/mobile.md) runs the shared desktop world with native
+Metal rendering, touch movement, and optional Nostr presence. The **Chats** tab
+preserves saved Codex and Claude transcripts, follow updates, and encrypted
+local caching. [Pair your computer](docs/coder/guides/mobile-readonly.md).
+[Release evidence](docs/coder/verification/2026-09-26-verse-mobile.md).
 
 ## Start here
 
