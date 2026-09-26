@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.coder.task-command.v1",
+  "command_id": "submit-range",
+  "task_id": "repository-range",
+  "expected_revision": null,
+  "action": {
+    "type": "submit",
+    "intent": {
+      "title": "Synthetic range repair",
+      "prompt": "Fix inclusive_span in lib.rs for the documented contract over all i64 inputs. Preserve the public signature.",
+      "workspace": {
+        "path": "/private/tmp/microcoder-repository-live-20260926-v1/range-workspace",
+        "source_revision": "d75b75f323925f264b2b697615e5b81cd9438cf4"
+      },
+      "configuration": {
+        "adapter": "microcoder-repository",
+        "model": "gpt-6-luna"
+      }
+    }
+  }
+}

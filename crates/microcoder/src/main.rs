@@ -15,7 +15,7 @@ use microcoder::{MODEL, STRONG_MODEL, tbench};
 const USAGE: &str = "usage: microcoder <terminal-bench-task> [options]
        microcoder kb <command> ... (microcoder kb --help lists the commands)
        microcoder xp <command> ... (microcoder xp --help lists the commands)
-       microcoder repository --grant FILE [--store DIRECTORY]
+       microcoder repository --grant FILE [--store DIRECTORY] [--detach]
 
 Runs Microcoder on a Terminal-Bench 4 task and streams every step: Jev's
 judgments, the model's rationale and commands, each command's output, and
@@ -767,15 +767,23 @@ async fn repository_cli(arguments: &[String]) -> u8 {
     use std::io::Read;
     if arguments == ["--help"] {
         println!(
-            "microcoder repository --grant FILE [--store DIRECTORY]\n\nRuns an explicitly admitted repository task through the common owner.\nThe profile requires acceptance=false, route=never, knowledge=off, and no hard dollar limit.\nUse coder task view, cancel, recover, and check for the retained task."
+            "microcoder repository --grant FILE [--store DIRECTORY] [--detach]\n\nRuns an explicitly admitted repository task through the common owner.\nThe profile requires acceptance=false, route=never, and off or explicitly frozen knowledge context, with no hard dollar limit.\n--detach starts a separate model host and returns a pending launch receipt.\nUse coder task view, cancel, recover, and check for the retained task."
         );
         return 0;
     }
     let result = async {
         let mut grant = None;
         let mut store = None;
+        let mut detach = false;
         let mut arguments = arguments.iter();
         while let Some(flag) = arguments.next() {
+            if flag == "--detach" {
+                if detach {
+                    return Err("give --detach only once".into());
+                }
+                detach = true;
+                continue;
+            }
             let value = arguments.next().ok_or("an option needs a value")?;
             match flag.as_str() {
                 "--grant" if grant.is_none() => grant = Some(std::path::PathBuf::from(value)),
@@ -796,10 +804,16 @@ async fn repository_cli(arguments: &[String]) -> u8 {
             .take(coder::task::MAX_COMMAND_BYTES as u64 + 1)
             .read_to_end(&mut bytes)
             .map_err(|error| error.to_string())?;
+        if detach {
+            return microcoder::repository::launch::start(&store, &bytes)
+                .map(|launched| serde_json::json!(launched));
+        }
         let judge = JevJudge {
             client: jev_client()?,
         };
-        microcoder::repository::execute(&store, &bytes, judge).await
+        microcoder::repository::execute(&store, &bytes, judge)
+            .await
+            .map(|task| serde_json::json!(task))
     }
     .await;
     match result {

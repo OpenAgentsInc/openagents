@@ -1,0 +1,89 @@
+{
+  "schema": "openagents.coder.task-execution-grant.v1",
+  "task_id": "repository-range",
+  "intent_digest": "sha256:3d4346f80c9ceb0191970c583aa94535f1683e4b98a5778fba053976f62021bb",
+  "expected_revision": 1,
+  "expected_source_snapshot": "6c8994617066e7da34f431b1f5cf0e05ab7444c7def2122ccd706ce327782aef",
+  "program": "/bin/bash",
+  "arguments": [],
+  "write_workspace": true,
+  "wall_seconds": 300,
+  "stream_bytes": 65536,
+  "memory_bytes": 1073741824,
+  "requirements": {
+    "schema": "openagents.coder.task-requirements.v2",
+    "version": 1,
+    "requirements": [
+      {
+        "id": "contract",
+        "statement": "Fix inclusive_span in lib.rs for the documented contract over all i64 inputs. Preserve the public signature.",
+        "checks": [
+          "independent-rust"
+        ]
+      }
+    ],
+    "plan": {
+      "schema": "openagents.verification.v1",
+      "input_digest": "{candidate_digest}",
+      "seconds": 50,
+      "allow_unrestricted_reads": true,
+      "allow_network": true,
+      "checks": [
+        {
+          "id": "independent-rust",
+          "manifest": "/private/tmp/microcoder-repository-live-20260926-v2/registry/capabilities/repository-check-range.json",
+          "manifest_digest": "c73f46cb15ae5e38f19690ff62d16e4562710e064b29f6137b0dd9469b32973b",
+          "arguments": [
+            "{candidate_digest}"
+          ],
+          "seconds": 45,
+          "output_bytes": 65536,
+          "acceptance": {
+            "kind": "suite",
+            "suite_digest": "sha256:969ae2cd4f70c799ae11121ad34be78aa268af6e2f9d3a0f80a88718de46636e",
+            "input_digest": "{candidate_digest}"
+          }
+        }
+      ]
+    },
+    "instruction_targets": [],
+    "source_exclusions": [
+      "repository-task-range"
+    ],
+    "task_sources": [
+      "repository-task-range"
+    ],
+    "check_lineage": [
+      {
+        "check": "independent-rust",
+        "sources": [
+          "public-integer-contract-range"
+        ]
+      }
+    ]
+  },
+  "adapter_configuration": {
+    "schema": "openagents.microcoder.repository-config.v1",
+    "provider": "codex",
+    "model": "gpt-6-luna",
+    "effort": "medium",
+    "generation_endpoint": "https://chatgpt.com/backend-api/codex",
+    "decision_endpoint": "https://api.typesafe.ai",
+    "decision_model": "jev-1.13.0",
+    "max_steps": 8,
+    "acceptance": false,
+    "route": "never",
+    "knowledge": "off",
+    "dollar_limit_micros": null,
+    "expected_controller_digest": "sha256:bd10c8c872231bdb73f20eb2b53e115c52102c583fd3114a66f68a81591d058e",
+    "container": {
+      "schema": "openagents.microcoder.container.v1",
+      "docker_program": "/Applications/Docker.app/Contents/Resources/bin/docker",
+      "docker_digest": "sha256:7b6cee6a040a59a2b21a2d322e238d85210ed4cd56ee076b24a1f38ea73deadd",
+      "socket": "/Users/christopherdavid/.docker/run/docker.sock",
+      "image": "sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f",
+      "uid": 501,
+      "gid": 20
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.coder.task-command.v1",
+  "command_id": "submit-ceil",
+  "task_id": "repository-ceil",
+  "expected_revision": null,
+  "action": {
+    "type": "submit",
+    "intent": {
+      "title": "Synthetic ceil repair",
+      "prompt": "Fix ceil_div in lib.rs for the documented contract over all u64 inputs. Preserve the public signature.",
+      "workspace": {
+        "path": "/private/tmp/microcoder-repository-live-20260926-v1/ceil-workspace",
+        "source_revision": "32ffd8026363156eb37c8bc18e1d457722f553fa"
+      },
+      "configuration": {
+        "adapter": "microcoder-repository",
+        "model": "gpt-6-luna"
+      }
+    }
+  }
+}

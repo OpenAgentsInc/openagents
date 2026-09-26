@@ -1,0 +1,81 @@
+{
+  "schema": "openagents.coder.task-execution-grant.v1",
+  "task_id": "repository-ceil",
+  "intent_digest": "sha256:f19bb575e13d7f8dc6ecad91d73fed49a46896dd35b027c01d23588e8f3f1028",
+  "expected_revision": 1,
+  "expected_source_snapshot": "4f8af4d4ae54cd518d96852fded73e0985a409e3448be1f413e4e4cb0eccebc3",
+  "program": "/bin/bash",
+  "arguments": [],
+  "write_workspace": true,
+  "wall_seconds": 300,
+  "stream_bytes": 65536,
+  "memory_bytes": 1073741824,
+  "requirements": {
+    "schema": "openagents.coder.task-requirements.v2",
+    "version": 1,
+    "requirements": [
+      {
+        "id": "contract",
+        "statement": "Fix ceil_div in lib.rs for the documented contract over all u64 inputs. Preserve the public signature.",
+        "checks": [
+          "independent-rust"
+        ]
+      }
+    ],
+    "plan": {
+      "schema": "openagents.verification.v1",
+      "input_digest": "{candidate_digest}",
+      "seconds": 50,
+      "allow_unrestricted_reads": true,
+      "allow_network": true,
+      "checks": [
+        {
+          "id": "independent-rust",
+          "manifest": "/private/tmp/microcoder-repository-live-20260926-v1/registry/capabilities/repository-check-ceil.json",
+          "manifest_digest": "1e1035cb80db625f0a83f7f5da1e44f4b190ce82efe5b8db9d73f63ca972184b",
+          "arguments": [
+            "{candidate_digest}"
+          ],
+          "seconds": 45,
+          "output_bytes": 65536,
+          "acceptance": {
+            "kind": "suite",
+            "suite_digest": "sha256:969ae2cd4f70c799ae11121ad34be78aa268af6e2f9d3a0f80a88718de46636e",
+            "input_digest": "{candidate_digest}"
+          }
+        }
+      ]
+    },
+    "instruction_targets": [],
+    "source_exclusions": [
+      "repository-task-ceil"
+    ],
+    "task_sources": [
+      "repository-task-ceil"
+    ],
+    "check_lineage": [
+      {
+        "check": "independent-rust",
+        "sources": [
+          "public-integer-contract-ceil"
+        ]
+      }
+    ]
+  },
+  "adapter_configuration": {
+    "schema": "openagents.microcoder.repository-config.v1",
+    "provider": "codex",
+    "model": "gpt-6-luna",
+    "effort": "medium",
+    "generation_endpoint": "https://chatgpt.com/backend-api/codex",
+    "decision_endpoint": "https://api.typesafe.ai",
+    "decision_model": "jev-latest",
+    "max_steps": 8,
+    "acceptance": false,
+    "route": "never",
+    "knowledge": "off",
+    "dollar_limit_micros": null,
+    "expected_controller_digest": "sha256:bd10c8c872231bdb73f20eb2b53e115c52102c583fd3114a66f68a81591d058e",
+    "container": null
+  }
+}

@@ -33,9 +33,13 @@ The foreground command is:
 microcoder repository --grant grant.json --store /absolute/private/task-store
 ```
 
-Keep that process alive or supervise it explicitly with the operating system.
-`coder task start` currently launches the bounded-command adapter; it does not
-launch a detached Microcoder model host. A separate client can inspect the run:
+Add `--detach` to start the same model host in a new operating-system session.
+The launcher retains the exact grant bytes and a private diagnostic file before
+spawning. Its response reports `admission: "pending"`; inspect the task and
+diagnostic path for the later admission or refusal. The detached host survives
+the launching client's exit. Without `--detach`, keep the foreground process
+alive or supervise it explicitly. `coder task start` remains the separate
+bounded-command entry point. A separate client can inspect the run:
 
 ```sh
 coder task show TASK_ID --store /absolute/private/task-store
@@ -108,7 +112,10 @@ source-excluded provenance. The existing loop receives those retained bytes;
 it does not query an ambient base or call an embedding service.
 The admitted model must equal the task's requested model. Generation uses the
 fixed Codex transport endpoint. The decision endpoint and model must equal the
-actual Jev client configuration before admission. Endpoints cannot contain URL
+actual Jev client configuration before admission. The returned decision model
+name must also match exactly. An alias such as `jev-latest` that resolves to a
+different returned name is refused; select and admit an explicit version when
+you need an exact identity. Endpoints cannot contain URL
 credentials, query strings, or fragments. Other benchmark providers remain
 available through the existing Terminal-Bench command; they are unsupported by
 this repository profile.
@@ -238,7 +245,7 @@ host's stdout cap. Retained candidate files use the common
 [artifact limits and exact-byte checks](task-owner.md#retained-candidate-artifacts).
 An omitted or incomplete record never becomes complete evidence.
 
-## Verification and remaining gates
+## Verification and current limits
 
 Offline fixtures exercise the unchanged loop with synthetic models and real
 local worktree boundaries, supervisor cancellation, ATIF reconstruction,
@@ -249,14 +256,16 @@ background writer. These tests do not establish real-model coding quality,
 paid-provider completion, Linux host behavior from a macOS run, or a
 Terminal-Bench result.
 
-This first slice leaves the following #9674 work explicit:
+[The retained acceptance record](../verification/2026-09-26-repository-adapter/README.md)
+preserves four fresh attempts, including two explicit model-identity refusals.
+The operator stopped further model and benchmark work before independent checks
+were run on the later candidates. One later loop reached its step limit; the
+other reported model completion. Neither is an independently verified pass.
+Issue #9674 remains open with that live acceptance gate unmeasured.
 
-- Detached model-host launch and recovery integration, without replay of
-  uncertain effects.
-- A fresh bounded live repository run with retained independent checks and
-  exact model/configuration evidence.
-- Hard bounds on model-response buffering, and additional provider adapters
-  with equivalent raw evidence and disclosure controls.
+Hard limits on model-response buffering and additional provider adapters remain
+unsupported capabilities. They require separate implementation and validation;
+this profile does not silently emulate them.
 
 The common task store supplies local authority and evidence. Remote Nostr
 admission, multi-device control, paid labor, and automatic candidate integration

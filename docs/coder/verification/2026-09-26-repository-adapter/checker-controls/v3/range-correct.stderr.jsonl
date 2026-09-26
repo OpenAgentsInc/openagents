@@ -1,0 +1,2 @@
+{"program":"/Users/christopherdavid/.rustup/toolchains/1.97.1-aarch64-apple-darwin/bin/rustc","ending":"Exited(Some(0))","elapsed_ms":88,"truncated":false,"stdout":"","stderr":""}
+{"program":"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpgyJy2B/suite","ending":"Exited(Some(0))","elapsed_ms":179,"truncated":false,"stdout":"\nrunning 1 test\ntest independent_inclusive_span_cases ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n","stderr":""}

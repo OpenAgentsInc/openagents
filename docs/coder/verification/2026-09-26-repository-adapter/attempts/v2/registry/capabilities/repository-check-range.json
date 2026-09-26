@@ -1,0 +1,74 @@
+{
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/repository-check-range",
+    "profile": "executor",
+    "summary": "a contract-test capability",
+    "input": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "output": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "effects": {
+      "reads": [
+        "workspace"
+      ],
+      "writes": [],
+      "network": [],
+      "process": true,
+      "delegates": false,
+      "spend": false
+    },
+    "minimum": {},
+    "support": {
+      "bounds": {},
+      "cancellation": "host_terminated",
+      "idempotency": "none",
+      "evidence": []
+    },
+    "binding_contract": {
+      "interface": "task.v1",
+      "transport": "subprocess",
+      "task": {
+        "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+        "size": 17,
+        "media_type": "application/schema+json"
+      },
+      "context": {
+        "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+        "size": 17,
+        "media_type": "application/schema+json"
+      },
+      "isolation": [
+        "directory"
+      ]
+    }
+  },
+  "binding": {
+    "name": "Independent synthetic Rust suite",
+    "detect": {
+      "binary": "/private/tmp/microcoder-repository-live-20260926-v2/repository-check-range",
+      "version": [
+        "/private/tmp/microcoder-repository-live-20260926-v2/repository-check-range",
+        "--version"
+      ]
+    },
+    "invoke": [
+      "/private/tmp/microcoder-repository-live-20260926-v2/repository-check-range"
+    ],
+    "invoke_writing": [],
+    "workspace_probe": null,
+    "refuses": [],
+    "sees_repository": true,
+    "concurrent_max": null,
+    "cost": "local",
+    "claims_enforced": [],
+    "claims_not_enforced": []
+  }
+}

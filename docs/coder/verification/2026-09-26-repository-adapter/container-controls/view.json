@@ -1,0 +1,2511 @@
+{
+  "schema": "openagents.coder.task-view.v1",
+  "task": {
+    "task_id": "fixture",
+    "revision": 4,
+    "intent": {
+      "title": "Repository fixture",
+      "prompt": "Write result.txt containing output.",
+      "workspace": {
+        "path": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpfQmbb6/checkout",
+        "source_revision": null
+      },
+      "configuration": {
+        "adapter": "microcoder-repository",
+        "model": "fixture-model"
+      }
+    },
+    "intent_digest": "sha256:e9ba3bb8847340a1cfdb9e4b7bb89ce4ee65ec00494173b8d035040f1b30d5e3",
+    "status": "finished",
+    "execution": "finished",
+    "checks": "not_run",
+    "cancellation_reason": null,
+    "run": {
+      "epoch": 1,
+      "admission": {
+        "grant": {
+          "schema": "openagents.coder.task-execution-grant.v1",
+          "task_id": "fixture",
+          "intent_digest": "sha256:e9ba3bb8847340a1cfdb9e4b7bb89ce4ee65ec00494173b8d035040f1b30d5e3",
+          "expected_revision": 1,
+          "expected_source_snapshot": null,
+          "program": "/bin/bash",
+          "arguments": [],
+          "write_workspace": true,
+          "wall_seconds": 60,
+          "stream_bytes": 4096,
+          "memory_bytes": 268435456,
+          "requirements": null,
+          "adapter_configuration": {
+            "schema": "openagents.microcoder.repository-config.v1",
+            "provider": "synthetic",
+            "model": "fixture-model",
+            "effort": "medium",
+            "generation_endpoint": "in-process",
+            "decision_endpoint": "in-process",
+            "decision_model": "fixture-judge",
+            "max_steps": 4,
+            "acceptance": false,
+            "route": "never",
+            "knowledge": "off",
+            "dollar_limit_micros": null,
+            "expected_controller_digest": null,
+            "container": {
+              "schema": "openagents.microcoder.container.v1",
+              "docker_program": "/Applications/Docker.app/Contents/Resources/bin/docker",
+              "docker_digest": "sha256:7b6cee6a040a59a2b21a2d322e238d85210ed4cd56ee076b24a1f38ea73deadd",
+              "socket": "/Users/christopherdavid/.docker/run/docker.sock",
+              "image": "sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f",
+              "uid": 501,
+              "gid": 20
+            }
+          }
+        },
+        "grant_digest": "sha256:e8a977fdc89347e4117ce4888207a7c772212cd3c2dc221830d379c17dbc06d4",
+        "grant_request": "{\"schema\":\"openagents.coder.task-execution-grant.v1\",\"task_id\":\"fixture\",\"intent_digest\":\"sha256:e9ba3bb8847340a1cfdb9e4b7bb89ce4ee65ec00494173b8d035040f1b30d5e3\",\"expected_revision\":1,\"expected_source_snapshot\":null,\"program\":\"/bin/bash\",\"arguments\":[],\"write_workspace\":true,\"wall_seconds\":60,\"stream_bytes\":4096,\"memory_bytes\":268435456,\"requirements\":null,\"adapter_configuration\":{\"schema\":\"openagents.microcoder.repository-config.v1\",\"provider\":\"synthetic\",\"model\":\"fixture-model\",\"effort\":\"medium\",\"generation_endpoint\":\"in-process\",\"decision_endpoint\":\"in-process\",\"decision_model\":\"fixture-judge\",\"max_steps\":4,\"acceptance\":false,\"route\":\"never\",\"knowledge\":\"off\",\"dollar_limit_micros\":null,\"expected_controller_digest\":null,\"container\":{\"schema\":\"openagents.microcoder.container.v1\",\"docker_program\":\"/Applications/Docker.app/Contents/Resources/bin/docker\",\"docker_digest\":\"sha256:7b6cee6a040a59a2b21a2d322e238d85210ed4cd56ee076b24a1f38ea73deadd\",\"socket\":\"/Users/christopherdavid/.docker/run/docker.sock\",\"image\":\"sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f\",\"uid\":501,\"gid\":20}}}",
+        "workspace": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpfQmbb6/checkout",
+        "source_revision": "725f9f02ae55fd071a343a3fb3ee8536c3065d7d",
+        "source_snapshot": "2dbda9d9911006488a0f06e34d0bf1eca35cadc69c473c573e997f33c111ee1c",
+        "program_digest": "sha256:35536aea9733aa345b61134a98d00232380898e55b2ea2a07c497011f7dfc7a3",
+        "adapter": "microcoder-repository",
+        "network": "container_network_none",
+        "read_scope": "workspace_host_reads_and_pinned_container_image",
+        "authority": "local_os_user",
+        "trace_file": "fixture.1.atif.jsonl",
+        "context": {
+          "schema": "openagents.coder.task-context.v2",
+          "task_revision": 1,
+          "prompt": "Write result.txt containing output.",
+          "instructions": [],
+          "suites": [],
+          "digest": "37c6082b4024e142cb062bd489d913f7af088a45f03062a9757ce262032b4ea1"
+        }
+      },
+      "effect_id": "fixture:1:command",
+      "result": {
+        "ending": "model_finished",
+        "exit_code": 0,
+        "stop_requested": false,
+        "group_clear": true,
+        "elapsed_ms": 1335,
+        "trace_digest": "sha256:4b31a93b16c4aba2b96d648d9fadc519dce6f6ffcec81cbc01a7ff78580d5e01",
+        "candidate_snapshot": "38b7bf58ba119330de7b9ec29b847f7847c559bd8c3a59aa3159df9042b34e59",
+        "artifact_file": "manifest-6a35efa339cc2864ca96d7520a75d8546f098323e38bc3738889114f22676b0e.json",
+        "artifact_digest": "sha256:6a35efa339cc2864ca96d7520a75d8546f098323e38bc3738889114f22676b0e",
+        "output_incomplete": false,
+        "cost_status": "unknown"
+      },
+      "process_id": null,
+      "recovery_reason": null,
+      "check_report": null
+    }
+  },
+  "evidence": {
+    "state": "sealed",
+    "trace_file": "fixture.1.atif.jsonl",
+    "digest": "sha256:4b31a93b16c4aba2b96d648d9fadc519dce6f6ffcec81cbc01a7ff78580d5e01",
+    "matches_result": true,
+    "faults": [],
+    "total_steps": 31,
+    "next": {
+      "schema": "openagents.coder.task-view.v1",
+      "task_id": "fixture",
+      "intent_digest": "sha256:e9ba3bb8847340a1cfdb9e4b7bb89ce4ee65ec00494173b8d035040f1b30d5e3",
+      "trace_file": "fixture.1.atif.jsonl",
+      "next_step": 31,
+      "prefix_digest": "sha256:0c177c810b045e8b3c4cad4b6feca6f16414d67e96b3d907fd44c38c51e5c1fd"
+    },
+    "more_available": false,
+    "steps": [
+      {
+        "step_id": 1,
+        "timestamp": "2026-09-26T18:57:54.063Z",
+        "source": "user",
+        "message": "Write result.txt containing output."
+      },
+      {
+        "step_id": 2,
+        "timestamp": "2026-09-26T18:57:54.067Z",
+        "source": "system",
+        "message": "Repository adapter admitted by the local operator.",
+        "extra": {
+          "admission": {
+            "grant": {
+              "schema": "openagents.coder.task-execution-grant.v1",
+              "task_id": "fixture",
+              "intent_digest": "sha256:e9ba3bb8847340a1cfdb9e4b7bb89ce4ee65ec00494173b8d035040f1b30d5e3",
+              "expected_revision": 1,
+              "expected_source_snapshot": null,
+              "program": "/bin/bash",
+              "arguments": [],
+              "write_workspace": true,
+              "wall_seconds": 60,
+              "stream_bytes": 4096,
+              "memory_bytes": 268435456,
+              "requirements": null,
+              "adapter_configuration": {
+                "schema": "openagents.microcoder.repository-config.v1",
+                "provider": "synthetic",
+                "model": "fixture-model",
+                "effort": "medium",
+                "generation_endpoint": "in-process",
+                "decision_endpoint": "in-process",
+                "decision_model": "fixture-judge",
+                "max_steps": 4,
+                "acceptance": false,
+                "route": "never",
+                "knowledge": "off",
+                "dollar_limit_micros": null,
+                "expected_controller_digest": null,
+                "container": {
+                  "schema": "openagents.microcoder.container.v1",
+                  "docker_program": "/Applications/Docker.app/Contents/Resources/bin/docker",
+                  "docker_digest": "sha256:7b6cee6a040a59a2b21a2d322e238d85210ed4cd56ee076b24a1f38ea73deadd",
+                  "socket": "/Users/christopherdavid/.docker/run/docker.sock",
+                  "image": "sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f",
+                  "uid": 501,
+                  "gid": 20
+                }
+              }
+            },
+            "grant_digest": "sha256:e8a977fdc89347e4117ce4888207a7c772212cd3c2dc221830d379c17dbc06d4",
+            "grant_request": "{\"schema\":\"openagents.coder.task-execution-grant.v1\",\"task_id\":\"fixture\",\"intent_digest\":\"sha256:e9ba3bb8847340a1cfdb9e4b7bb89ce4ee65ec00494173b8d035040f1b30d5e3\",\"expected_revision\":1,\"expected_source_snapshot\":null,\"program\":\"/bin/bash\",\"arguments\":[],\"write_workspace\":true,\"wall_seconds\":60,\"stream_bytes\":4096,\"memory_bytes\":268435456,\"requirements\":null,\"adapter_configuration\":{\"schema\":\"openagents.microcoder.repository-config.v1\",\"provider\":\"synthetic\",\"model\":\"fixture-model\",\"effort\":\"medium\",\"generation_endpoint\":\"in-process\",\"decision_endpoint\":\"in-process\",\"decision_model\":\"fixture-judge\",\"max_steps\":4,\"acceptance\":false,\"route\":\"never\",\"knowledge\":\"off\",\"dollar_limit_micros\":null,\"expected_controller_digest\":null,\"container\":{\"schema\":\"openagents.microcoder.container.v1\",\"docker_program\":\"/Applications/Docker.app/Contents/Resources/bin/docker\",\"docker_digest\":\"sha256:7b6cee6a040a59a2b21a2d322e238d85210ed4cd56ee076b24a1f38ea73deadd\",\"socket\":\"/Users/christopherdavid/.docker/run/docker.sock\",\"image\":\"sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f\",\"uid\":501,\"gid\":20}}}",
+            "workspace": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpfQmbb6/checkout",
+            "source_revision": "725f9f02ae55fd071a343a3fb3ee8536c3065d7d",
+            "source_snapshot": "2dbda9d9911006488a0f06e34d0bf1eca35cadc69c473c573e997f33c111ee1c",
+            "program_digest": "sha256:35536aea9733aa345b61134a98d00232380898e55b2ea2a07c497011f7dfc7a3",
+            "adapter": "microcoder-repository",
+            "network": "container_network_none",
+            "read_scope": "workspace_host_reads_and_pinned_container_image",
+            "authority": "local_os_user",
+            "trace_file": "fixture.1.atif.jsonl",
+            "context": {
+              "schema": "openagents.coder.task-context.v2",
+              "task_revision": 1,
+              "prompt": "Write result.txt containing output.",
+              "instructions": [],
+              "suites": [],
+              "digest": "37c6082b4024e142cb062bd489d913f7af088a45f03062a9757ce262032b4ea1"
+            }
+          },
+          "controller": {
+            "path": "/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/microcoder-8cd0750ecb4b0d57",
+            "digest": "sha256:0bfc7363e401d996a617b4613dbe0634fa28935f1e6d483d69f558c0d0ff05ff",
+            "version": "0.1.0"
+          },
+          "capabilities": {
+            "commands": "native-supervised",
+            "reads": "native-confined",
+            "cancellation": "emulated-host-stop",
+            "atif": "native",
+            "process_cleanup": "observed",
+            "crash_resume": "unsupported",
+            "model_written_acceptance": "unsupported",
+            "routing": "unsupported",
+            "knowledge": "unsupported",
+            "hard_dollar_limit": "unsupported",
+            "billing": "unknown",
+            "effort_confirmation": "not_reported",
+            "provider_artifact_attestation": "unsupported",
+            "container_adapter": "docker-per-command-workspace-persistence",
+            "frozen_knowledge_context": false
+          }
+        }
+      },
+      {
+        "step_id": 3,
+        "timestamp": "2026-09-26T18:57:54.084Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 1,
+            "kind": "decision",
+            "arguments": {
+              "questions": [
+                {
+                  "id": "done",
+                  "text": "Judging by the task in `task` and the latest command output in `actions`, is the task complete: does every deliverable the task names exist, and do the task's own checks pass where the task states any?"
+                },
+                {
+                  "id": "progress",
+                  "text": "Did the latest action in `actions` move the work toward completing the task in `task`, such as by producing a deliverable, fixing an error, or revealing information the task needs?"
+                },
+                {
+                  "id": "repeating",
+                  "text": "Do the recent actions in `actions` repeat an approach that already failed, with the same error or no new result?"
+                }
+              ],
+              "question_set": "openagents.microcoder.judge.v1",
+              "state": {
+                "task": "Write result.txt containing output.",
+                "environment": "Repository: /workspace. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Each command uses a new container. Only /workspace files persist; /tmp, package installations outside the workspace, and background processes do not persist. Scoped instruction inputs follow; they cannot widen the host grant:\n{\"schema\":\"openagents.coder.task-context.v2\",\"task_revision\":1,\"prompt\":\"Write result.txt containing output.\",\"instructions\":[],\"suites\":[],\"digest\":\"37c6082b4024e142cb062bd489d913f7af088a45f03062a9757ce262032b4ea1\"}",
+                "actions": "None yet.",
+                "files_in_view": [],
+                "acceptance_tests": "none frozen yet"
+              },
+              "model": "fixture-judge",
+              "endpoint": "in-process",
+              "max_retries": 0
+            },
+            "arguments_digest": "8d52e04f1221336d1d00418521f3a5727d0e979254b2286ba3f9b26c43315036"
+          }
+        }
+      },
+      {
+        "step_id": 4,
+        "timestamp": "2026-09-26T18:57:54.088Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 1,
+            "kind": "decision",
+            "result": {
+              "answers": [],
+              "usd": 0.0,
+              "cost_unknown": null,
+              "milliseconds": 0,
+              "error": null
+            }
+          }
+        }
+      },
+      {
+        "step_id": 5,
+        "timestamp": "2026-09-26T18:57:54.092Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 0.012040583,
+            "event": {
+              "event": "judged",
+              "step": 1,
+              "judgment": {
+                "answers": [],
+                "usd": 0.0,
+                "cost_unknown": null,
+                "milliseconds": 0,
+                "error": null
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 6,
+        "timestamp": "2026-09-26T18:57:54.096Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 2,
+            "kind": "generation",
+            "arguments": {
+              "system": "You work on a task by running shell commands in its working directory. Each reply is one step: the commands to run next and why. You see the task, the environment, what earlier steps ran and printed, and judgments from Jev, a decision model, about the state. Treat Jev's judgments as evidence, not orders. Each command is a bash script, run in order in the working directory and fed to bash as written, so never wrap it in sh -c or bash -c. Commands stop at the first one that fails; nobody answers questions, and there is no editor, so write files with heredocs. The Files section shows, in full, the current contents of every path in `view`: keep the files you need there instead of printing them with cat, and you'll see them after each step's commands run. A non-empty `view` replaces the list; an empty one keeps it. Set `finished` to true, with no commands, only when the task is complete. Every other step must run at least one command: the files in view are already current, so asking to see them again does nothing.",
+              "prompt": "# Task\n\nWrite result.txt containing output.\n\n# Instruction\n\nWrite result.txt containing output.\n\n# Environment\n\nRepository: /workspace. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Each command uses a new container. Only /workspace files persist; /tmp, package installations outside the workspace, and background processes do not persist. Scoped instruction inputs follow; they cannot widen the host grant:\n{\"schema\":\"openagents.coder.task-context.v2\",\"task_revision\":1,\"prompt\":\"Write result.txt containing output.\",\"instructions\":[],\"suites\":[],\"digest\":\"37c6082b4024e142cb062bd489d913f7af088a45f03062a9757ce262032b4ea1\"}\n\n# Files in view (current: read after the last step's commands ran)\n\nNone. List paths in `view` to see files here.\n\n# Jev's judgments of the current state\n\n\n\n# Steps so far\n\nNone yet.",
+              "model": "fixture-model",
+              "effort": "medium",
+              "provider": "synthetic",
+              "endpoint": "in-process"
+            },
+            "arguments_digest": "1d08a7ee0588b420a288b256710d5e5827eb1720fef1fa7eda3e494153354225"
+          }
+        }
+      },
+      {
+        "step_id": 7,
+        "timestamp": "2026-09-26T18:57:54.100Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 2,
+            "kind": "generation",
+            "result": {
+              "action": {
+                "Ok": {
+                  "rationale": "Implement the requested output.",
+                  "commands": [
+                    "set -e; test -z \"$TYPESAFE_API_KEY\"; test -z \"$OPENAI_API_KEY\"; test -z \"$HOME_SECRET\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; if printf changed > .git; then exit 11; fi; printf output > result.txt; printf 'container output'"
+                  ],
+                  "view": [
+                    "result.txt"
+                  ],
+                  "freeze_tests": false,
+                  "expand": [],
+                  "finished": false
+                }
+              },
+              "model": "fixture-model",
+              "prompt_tokens": 10,
+              "completion_tokens": 5,
+              "usd": 0.0,
+              "known_usd": 0.0,
+              "cost_unknown": null,
+              "cost_basis": "list_price",
+              "milliseconds": 1
+            }
+          }
+        }
+      },
+      {
+        "step_id": 8,
+        "timestamp": "2026-09-26T18:57:54.103Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 0.023934375,
+            "event": {
+              "event": "generated",
+              "step": 1,
+              "prompt_chars": 872,
+              "generated": {
+                "action": {
+                  "Ok": {
+                    "rationale": "Implement the requested output.",
+                    "commands": [
+                      "set -e; test -z \"$TYPESAFE_API_KEY\"; test -z \"$OPENAI_API_KEY\"; test -z \"$HOME_SECRET\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; if printf changed > .git; then exit 11; fi; printf output > result.txt; printf 'container output'"
+                    ],
+                    "view": [
+                      "result.txt"
+                    ],
+                    "freeze_tests": false,
+                    "expand": [],
+                    "finished": false
+                  }
+                },
+                "model": "fixture-model",
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "usd": 0.0,
+                "known_usd": 0.0,
+                "cost_unknown": null,
+                "cost_basis": "list_price",
+                "milliseconds": 1
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 9,
+        "timestamp": "2026-09-26T18:57:54.327Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 3,
+            "kind": "container_command",
+            "arguments": {
+              "script": "set -e; test -z \"$TYPESAFE_API_KEY\"; test -z \"$OPENAI_API_KEY\"; test -z \"$HOME_SECRET\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; if printf changed > .git; then exit 11; fi; printf output > result.txt; printf 'container output'",
+              "profile": {
+                "schema": "openagents.microcoder.container.v1",
+                "docker_program": "/Applications/Docker.app/Contents/Resources/bin/docker",
+                "docker_digest": "sha256:7b6cee6a040a59a2b21a2d322e238d85210ed4cd56ee076b24a1f38ea73deadd",
+                "socket": "/Users/christopherdavid/.docker/run/docker.sock",
+                "image": "sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f",
+                "uid": 501,
+                "gid": 20
+              },
+              "workspace": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpfQmbb6/checkout",
+              "container_workdir": "/workspace",
+              "network": "none",
+              "persistence": "workspace-only",
+              "pids_limit": 128,
+              "cpus": 1,
+              "memory_bytes": 268435456
+            },
+            "arguments_digest": "a311439fa04786debbac61b0e1cdecd3b1deeb347a2b4a7ea8e8132fe494a77f"
+          }
+        }
+      },
+      {
+        "step_id": 10,
+        "timestamp": "2026-09-26T18:57:54.546Z",
+        "source": "system",
+        "message": "Container control intent retained.",
+        "extra": {
+          "container_control": {
+            "effect": 3,
+            "phase": "create",
+            "arguments": [
+              {
+                "Unix": [
+                  99,
+                  114,
+                  101,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  110,
+                  97,
+                  109,
+                  101
+                ]
+              },
+              {
+                "Unix": [
+                  111,
+                  97,
+                  45,
+                  114,
+                  101,
+                  112,
+                  111,
+                  45,
+                  101,
+                  56,
+                  97,
+                  57,
+                  55,
+                  55,
+                  102,
+                  100,
+                  99,
+                  56,
+                  57,
+                  51,
+                  45,
+                  56,
+                  48,
+                  54,
+                  48,
+                  45,
+                  51
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  108,
+                  97,
+                  98,
+                  101,
+                  108
+                ]
+              },
+              {
+                "Unix": [
+                  99,
+                  111,
+                  109,
+                  46,
+                  111,
+                  112,
+                  101,
+                  110,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  115,
+                  46,
+                  116,
+                  97,
+                  115,
+                  107,
+                  45,
+                  101,
+                  102,
+                  102,
+                  101,
+                  99,
+                  116,
+                  61,
+                  102,
+                  105,
+                  120,
+                  116,
+                  117,
+                  114,
+                  101,
+                  58,
+                  115,
+                  104,
+                  97,
+                  50,
+                  53,
+                  54,
+                  58,
+                  101,
+                  56,
+                  97,
+                  57,
+                  55,
+                  55,
+                  102,
+                  100,
+                  99,
+                  56,
+                  57,
+                  51,
+                  52,
+                  55,
+                  101,
+                  52,
+                  49,
+                  49,
+                  55,
+                  99,
+                  101,
+                  52,
+                  56,
+                  56,
+                  56,
+                  50,
+                  48,
+                  55,
+                  97,
+                  55,
+                  99,
+                  55,
+                  55,
+                  50,
+                  50,
+                  49,
+                  50,
+                  99,
+                  100,
+                  51,
+                  99,
+                  50,
+                  100,
+                  99,
+                  50,
+                  50,
+                  49,
+                  56,
+                  51,
+                  48,
+                  100,
+                  51,
+                  55,
+                  57,
+                  99,
+                  49,
+                  55,
+                  100,
+                  98,
+                  99,
+                  48,
+                  54,
+                  100,
+                  52,
+                  58,
+                  51
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  112,
+                  117,
+                  108,
+                  108
+                ]
+              },
+              {
+                "Unix": [
+                  110,
+                  101,
+                  118,
+                  101,
+                  114
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  110,
+                  101,
+                  116,
+                  119,
+                  111,
+                  114,
+                  107
+                ]
+              },
+              {
+                "Unix": [
+                  110,
+                  111,
+                  110,
+                  101
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  114,
+                  101,
+                  97,
+                  100,
+                  45,
+                  111,
+                  110,
+                  108,
+                  121
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  99,
+                  97,
+                  112,
+                  45,
+                  100,
+                  114,
+                  111,
+                  112
+                ]
+              },
+              {
+                "Unix": [
+                  65,
+                  76,
+                  76
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  115,
+                  101,
+                  99,
+                  117,
+                  114,
+                  105,
+                  116,
+                  121,
+                  45,
+                  111,
+                  112,
+                  116
+                ]
+              },
+              {
+                "Unix": [
+                  110,
+                  111,
+                  45,
+                  110,
+                  101,
+                  119,
+                  45,
+                  112,
+                  114,
+                  105,
+                  118,
+                  105,
+                  108,
+                  101,
+                  103,
+                  101,
+                  115
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  112,
+                  105,
+                  100,
+                  115,
+                  45,
+                  108,
+                  105,
+                  109,
+                  105,
+                  116
+                ]
+              },
+              {
+                "Unix": [
+                  49,
+                  50,
+                  56
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  99,
+                  112,
+                  117,
+                  115
+                ]
+              },
+              {
+                "Unix": [
+                  49
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  109,
+                  101,
+                  109,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "Unix": [
+                  50,
+                  54,
+                  56,
+                  52,
+                  51,
+                  53,
+                  52,
+                  53,
+                  54
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  109,
+                  101,
+                  109,
+                  111,
+                  114,
+                  121,
+                  45,
+                  115,
+                  119,
+                  97,
+                  112
+                ]
+              },
+              {
+                "Unix": [
+                  50,
+                  54,
+                  56,
+                  52,
+                  51,
+                  53,
+                  52,
+                  53,
+                  54
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "Unix": [
+                  53,
+                  48,
+                  49,
+                  58,
+                  50,
+                  48
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  110,
+                  111,
+                  45,
+                  104,
+                  101,
+                  97,
+                  108,
+                  116,
+                  104,
+                  99,
+                  104,
+                  101,
+                  99,
+                  107
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  116,
+                  109,
+                  112,
+                  102,
+                  115
+                ]
+              },
+              {
+                "Unix": [
+                  47,
+                  116,
+                  109,
+                  112,
+                  58,
+                  114,
+                  119,
+                  44,
+                  110,
+                  111,
+                  115,
+                  117,
+                  105,
+                  100,
+                  44,
+                  110,
+                  111,
+                  100,
+                  101,
+                  118,
+                  44,
+                  115,
+                  105,
+                  122,
+                  101,
+                  61,
+                  54,
+                  55,
+                  49,
+                  48,
+                  56,
+                  56,
+                  54,
+                  52,
+                  44,
+                  109,
+                  111,
+                  100,
+                  101,
+                  61,
+                  49,
+                  55,
+                  55,
+                  55
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  119,
+                  111,
+                  114,
+                  107,
+                  100,
+                  105,
+                  114
+                ]
+              },
+              {
+                "Unix": [
+                  47,
+                  119,
+                  111,
+                  114,
+                  107,
+                  115,
+                  112,
+                  97,
+                  99,
+                  101
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121,
+                  112,
+                  111,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "Unix": [
+                  47,
+                  117,
+                  115,
+                  114,
+                  47,
+                  98,
+                  105,
+                  110,
+                  47,
+                  101,
+                  110,
+                  118
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  109,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              },
+              {
+                "Unix": [
+                  116,
+                  121,
+                  112,
+                  101,
+                  61,
+                  98,
+                  105,
+                  110,
+                  100,
+                  44,
+                  115,
+                  111,
+                  117,
+                  114,
+                  99,
+                  101,
+                  61,
+                  47,
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  47,
+                  118,
+                  97,
+                  114,
+                  47,
+                  102,
+                  111,
+                  108,
+                  100,
+                  101,
+                  114,
+                  115,
+                  47,
+                  118,
+                  50,
+                  47,
+                  48,
+                  108,
+                  115,
+                  53,
+                  110,
+                  102,
+                  49,
+                  106,
+                  53,
+                  48,
+                  57,
+                  100,
+                  98,
+                  54,
+                  57,
+                  102,
+                  107,
+                  55,
+                  51,
+                  107,
+                  55,
+                  109,
+                  115,
+                  52,
+                  48,
+                  48,
+                  48,
+                  48,
+                  103,
+                  110,
+                  47,
+                  84,
+                  47,
+                  46,
+                  116,
+                  109,
+                  112,
+                  102,
+                  81,
+                  109,
+                  98,
+                  98,
+                  54,
+                  47,
+                  99,
+                  104,
+                  101,
+                  99,
+                  107,
+                  111,
+                  117,
+                  116,
+                  44,
+                  116,
+                  97,
+                  114,
+                  103,
+                  101,
+                  116,
+                  61,
+                  47,
+                  119,
+                  111,
+                  114,
+                  107,
+                  115,
+                  112,
+                  97,
+                  99,
+                  101
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  109,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              },
+              {
+                "Unix": [
+                  116,
+                  121,
+                  112,
+                  101,
+                  61,
+                  98,
+                  105,
+                  110,
+                  100,
+                  44,
+                  115,
+                  111,
+                  117,
+                  114,
+                  99,
+                  101,
+                  61,
+                  47,
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  47,
+                  118,
+                  97,
+                  114,
+                  47,
+                  102,
+                  111,
+                  108,
+                  100,
+                  101,
+                  114,
+                  115,
+                  47,
+                  118,
+                  50,
+                  47,
+                  48,
+                  108,
+                  115,
+                  53,
+                  110,
+                  102,
+                  49,
+                  106,
+                  53,
+                  48,
+                  57,
+                  100,
+                  98,
+                  54,
+                  57,
+                  102,
+                  107,
+                  55,
+                  51,
+                  107,
+                  55,
+                  109,
+                  115,
+                  52,
+                  48,
+                  48,
+                  48,
+                  48,
+                  103,
+                  110,
+                  47,
+                  84,
+                  47,
+                  46,
+                  116,
+                  109,
+                  112,
+                  102,
+                  81,
+                  109,
+                  98,
+                  98,
+                  54,
+                  47,
+                  99,
+                  104,
+                  101,
+                  99,
+                  107,
+                  111,
+                  117,
+                  116,
+                  47,
+                  46,
+                  103,
+                  105,
+                  116,
+                  44,
+                  116,
+                  97,
+                  114,
+                  103,
+                  101,
+                  116,
+                  61,
+                  47,
+                  119,
+                  111,
+                  114,
+                  107,
+                  115,
+                  112,
+                  97,
+                  99,
+                  101,
+                  47,
+                  46,
+                  103,
+                  105,
+                  116,
+                  44,
+                  114,
+                  101,
+                  97,
+                  100,
+                  111,
+                  110,
+                  108,
+                  121
+                ]
+              },
+              {
+                "Unix": [
+                  115,
+                  104,
+                  97,
+                  50,
+                  53,
+                  54,
+                  58,
+                  98,
+                  49,
+                  98,
+                  51,
+                  99,
+                  57,
+                  99,
+                  48,
+                  100,
+                  57,
+                  50,
+                  49,
+                  100,
+                  55,
+                  102,
+                  97,
+                  48,
+                  97,
+                  54,
+                  100,
+                  49,
+                  102,
+                  57,
+                  101,
+                  99,
+                  55,
+                  101,
+                  52,
+                  101,
+                  97,
+                  98,
+                  56,
+                  55,
+                  102,
+                  56,
+                  99,
+                  56,
+                  101,
+                  99,
+                  57,
+                  55,
+                  54,
+                  52,
+                  52,
+                  99,
+                  51,
+                  100,
+                  55,
+                  57,
+                  49,
+                  52,
+                  53,
+                  48,
+                  102,
+                  49,
+                  51,
+                  49,
+                  100,
+                  101,
+                  99,
+                  56,
+                  49,
+                  51,
+                  102
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  105
+                ]
+              },
+              {
+                "Unix": [
+                  80,
+                  65,
+                  84,
+                  72,
+                  61,
+                  47,
+                  117,
+                  115,
+                  114,
+                  47,
+                  108,
+                  111,
+                  99,
+                  97,
+                  108,
+                  47,
+                  99,
+                  97,
+                  114,
+                  103,
+                  111,
+                  47,
+                  98,
+                  105,
+                  110,
+                  58,
+                  47,
+                  117,
+                  115,
+                  114,
+                  47,
+                  108,
+                  111,
+                  99,
+                  97,
+                  108,
+                  47,
+                  98,
+                  105,
+                  110,
+                  58,
+                  47,
+                  117,
+                  115,
+                  114,
+                  47,
+                  98,
+                  105,
+                  110,
+                  58,
+                  47,
+                  98,
+                  105,
+                  110
+                ]
+              },
+              {
+                "Unix": [
+                  82,
+                  85,
+                  83,
+                  84,
+                  85,
+                  80,
+                  95,
+                  72,
+                  79,
+                  77,
+                  69,
+                  61,
+                  47,
+                  117,
+                  115,
+                  114,
+                  47,
+                  108,
+                  111,
+                  99,
+                  97,
+                  108,
+                  47,
+                  114,
+                  117,
+                  115,
+                  116,
+                  117,
+                  112
+                ]
+              },
+              {
+                "Unix": [
+                  72,
+                  79,
+                  77,
+                  69,
+                  61,
+                  47,
+                  116,
+                  109,
+                  112
+                ]
+              },
+              {
+                "Unix": [
+                  84,
+                  77,
+                  80,
+                  68,
+                  73,
+                  82,
+                  61,
+                  47,
+                  116,
+                  109,
+                  112
+                ]
+              },
+              {
+                "Unix": [
+                  47,
+                  98,
+                  105,
+                  110,
+                  47,
+                  98,
+                  97,
+                  115,
+                  104
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  99
+                ]
+              },
+              {
+                "Unix": [
+                  115,
+                  101,
+                  116,
+                  32,
+                  45,
+                  101,
+                  59,
+                  32,
+                  116,
+                  101,
+                  115,
+                  116,
+                  32,
+                  45,
+                  122,
+                  32,
+                  34,
+                  36,
+                  84,
+                  89,
+                  80,
+                  69,
+                  83,
+                  65,
+                  70,
+                  69,
+                  95,
+                  65,
+                  80,
+                  73,
+                  95,
+                  75,
+                  69,
+                  89,
+                  34,
+                  59,
+                  32,
+                  116,
+                  101,
+                  115,
+                  116,
+                  32,
+                  45,
+                  122,
+                  32,
+                  34,
+                  36,
+                  79,
+                  80,
+                  69,
+                  78,
+                  65,
+                  73,
+                  95,
+                  65,
+                  80,
+                  73,
+                  95,
+                  75,
+                  69,
+                  89,
+                  34,
+                  59,
+                  32,
+                  116,
+                  101,
+                  115,
+                  116,
+                  32,
+                  45,
+                  122,
+                  32,
+                  34,
+                  36,
+                  72,
+                  79,
+                  77,
+                  69,
+                  95,
+                  83,
+                  69,
+                  67,
+                  82,
+                  69,
+                  84,
+                  34,
+                  59,
+                  32,
+                  116,
+                  101,
+                  115,
+                  116,
+                  32,
+                  33,
+                  32,
+                  45,
+                  101,
+                  32,
+                  47,
+                  118,
+                  97,
+                  114,
+                  47,
+                  114,
+                  117,
+                  110,
+                  47,
+                  100,
+                  111,
+                  99,
+                  107,
+                  101,
+                  114,
+                  46,
+                  115,
+                  111,
+                  99,
+                  107,
+                  59,
+                  32,
+                  105,
+                  102,
+                  32,
+                  112,
+                  114,
+                  105,
+                  110,
+                  116,
+                  102,
+                  32,
+                  100,
+                  101,
+                  110,
+                  105,
+                  101,
+                  100,
+                  32,
+                  62,
+                  32,
+                  47,
+                  111,
+                  117,
+                  116,
+                  115,
+                  105,
+                  100,
+                  101,
+                  45,
+                  119,
+                  114,
+                  105,
+                  116,
+                  101,
+                  59,
+                  32,
+                  116,
+                  104,
+                  101,
+                  110,
+                  32,
+                  101,
+                  120,
+                  105,
+                  116,
+                  32,
+                  49,
+                  48,
+                  59,
+                  32,
+                  102,
+                  105,
+                  59,
+                  32,
+                  105,
+                  102,
+                  32,
+                  112,
+                  114,
+                  105,
+                  110,
+                  116,
+                  102,
+                  32,
+                  99,
+                  104,
+                  97,
+                  110,
+                  103,
+                  101,
+                  100,
+                  32,
+                  62,
+                  32,
+                  46,
+                  103,
+                  105,
+                  116,
+                  59,
+                  32,
+                  116,
+                  104,
+                  101,
+                  110,
+                  32,
+                  101,
+                  120,
+                  105,
+                  116,
+                  32,
+                  49,
+                  49,
+                  59,
+                  32,
+                  102,
+                  105,
+                  59,
+                  32,
+                  112,
+                  114,
+                  105,
+                  110,
+                  116,
+                  102,
+                  32,
+                  111,
+                  117,
+                  116,
+                  112,
+                  117,
+                  116,
+                  32,
+                  62,
+                  32,
+                  114,
+                  101,
+                  115,
+                  117,
+                  108,
+                  116,
+                  46,
+                  116,
+                  120,
+                  116,
+                  59,
+                  32,
+                  112,
+                  114,
+                  105,
+                  110,
+                  116,
+                  102,
+                  32,
+                  39,
+                  99,
+                  111,
+                  110,
+                  116,
+                  97,
+                  105,
+                  110,
+                  101,
+                  114,
+                  32,
+                  111,
+                  117,
+                  116,
+                  112,
+                  117,
+                  116,
+                  39
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "step_id": 11,
+        "timestamp": "2026-09-26T18:57:54.604Z",
+        "source": "system",
+        "message": "Container control result retained.",
+        "extra": {
+          "container_control_result": {
+            "effect": 3,
+            "phase": "create",
+            "exit": 0,
+            "ending": "exit 0",
+            "stdout": "2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356\n",
+            "stderr": "",
+            "stdout_bytes": 65,
+            "stderr_bytes": 0,
+            "truncated": false
+          }
+        }
+      },
+      {
+        "step_id": 12,
+        "timestamp": "2026-09-26T18:57:54.616Z",
+        "source": "system",
+        "message": "Container start intent retained.",
+        "extra": {
+          "container_start": {
+            "effect": 3,
+            "container": "2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356"
+          }
+        }
+      },
+      {
+        "step_id": 13,
+        "timestamp": "2026-09-26T18:57:54.623Z",
+        "source": "system",
+        "message": "Container command started.",
+        "extra": {
+          "process": {
+            "effect": 3,
+            "client_pid": 8517,
+            "container": "2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356"
+          }
+        }
+      },
+      {
+        "step_id": 14,
+        "timestamp": "2026-09-26T18:57:54.741Z",
+        "source": "system",
+        "message": "container output",
+        "extra": {
+          "stream": {
+            "effect": 3,
+            "name": "stdout",
+            "offset": 0,
+            "bytes": [
+              99,
+              111,
+              110,
+              116,
+              97,
+              105,
+              110,
+              101,
+              114,
+              32,
+              111,
+              117,
+              116,
+              112,
+              117,
+              116
+            ],
+            "gaps": []
+          }
+        }
+      },
+      {
+        "step_id": 15,
+        "timestamp": "2026-09-26T18:57:54.835Z",
+        "source": "system",
+        "message": "Container command client stopped.",
+        "extra": {
+          "container_client_result": {
+            "effect": 3,
+            "container": "2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356",
+            "client_group_clear": true,
+            "exit": 0,
+            "stdout_remainder": [],
+            "stderr": "/bin/bash: line 1: /outside-write: Read-only file system\n/bin/bash: line 1: .git: Read-only file system\n",
+            "stdout_bytes": 16,
+            "stderr_bytes": 104
+          }
+        }
+      },
+      {
+        "step_id": 16,
+        "timestamp": "2026-09-26T18:57:55.060Z",
+        "source": "system",
+        "message": "Container control intent retained.",
+        "extra": {
+          "container_control": {
+            "effect": 3,
+            "phase": "inspect",
+            "arguments": [
+              {
+                "Unix": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  97,
+                  105,
+                  110,
+                  101,
+                  114
+                ]
+              },
+              {
+                "Unix": [
+                  105,
+                  110,
+                  115,
+                  112,
+                  101,
+                  99,
+                  116
+                ]
+              },
+              {
+                "Unix": [
+                  50,
+                  99,
+                  97,
+                  55,
+                  53,
+                  99,
+                  50,
+                  51,
+                  50,
+                  55,
+                  98,
+                  56,
+                  56,
+                  51,
+                  54,
+                  98,
+                  53,
+                  48,
+                  101,
+                  97,
+                  98,
+                  101,
+                  57,
+                  97,
+                  101,
+                  51,
+                  49,
+                  51,
+                  49,
+                  51,
+                  50,
+                  51,
+                  53,
+                  99,
+                  100,
+                  102,
+                  100,
+                  49,
+                  101,
+                  54,
+                  49,
+                  102,
+                  56,
+                  51,
+                  98,
+                  101,
+                  57,
+                  50,
+                  54,
+                  51,
+                  53,
+                  98,
+                  54,
+                  54,
+                  56,
+                  50,
+                  49,
+                  54,
+                  56,
+                  57,
+                  97,
+                  51,
+                  53,
+                  54
+                ]
+              },
+              {
+                "Unix": [
+                  45,
+                  45,
+                  102,
+                  111,
+                  114,
+                  109,
+                  97,
+                  116
+                ]
+              },
+              {
+                "Unix": [
+                  123,
+                  123,
+                  106,
+                  115,
+                  111,
+                  110,
+                  32,
+                  46,
+                  125,
+                  125
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "step_id": 17,
+        "timestamp": "2026-09-26T18:57:55.094Z",
+        "source": "system",
+        "message": "Container control result retained.",
+        "extra": {
+          "container_control_result": {
+            "effect": 3,
+            "phase": "inspect",
+            "exit": 0,
+            "ending": "exit 0",
+            "stdout": "{\"Id\":\"2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356\",\"Created\":\"2026-09-26T18:57:54.579093042Z\",\"Path\":\"/usr/bin/env\",\"Args\":[\"-i\",\"PATH=/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin\",\"RUSTUP_HOME=/usr/local/rustup\",\"HOME=/tmp\",\"TMPDIR=/tmp\",\"/bin/bash\",\"-c\",\"set -e; test -z \\\"$TYPESAFE_API_KEY\\\"; test -z \\\"$OPENAI_API_KEY\\\"; test -z \\\"$HOME_SECRET\\\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; if printf changed > .git; then exit 11; fi; printf output > result.txt; printf 'container output'\"],\"State\":{\"Status\":\"exited\",\"Running\":false,\"Paused\":false,\"Restarting\":false,\"OOMKilled\":false,\"Dead\":false,\"Pid\":0,\"ExitCode\":0,\"Error\":\"\",\"StartedAt\":\"2026-09-26T18:57:54.684239625Z\",\"FinishedAt\":\"2026-09-26T18:57:54.735455625Z\"},\"Image\":\"sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f\",\"ResolvConfPath\":\"/var/lib/docker/containers/2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356/resolv.conf\",\"HostnamePath\":\"/var/lib/docker/containers/2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356/hostname\",\"HostsPath\":\"/var/lib/docker/containers/2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356/hosts\",\"LogPath\":\"/var/lib/docker/containers/2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356/2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356-json.log\",\"Name\":\"/oa-repo-e8a977fdc893-8060-3\",\"RestartCount\":0,\"Driver\":\"overlayfs\",\"Platform\":\"linux\",\"MountLabel\":\"\",\"ProcessLabel\":\"\",\"AppArmorProfile\":\"\",\"ExecIDs\":null,\"HostConfig\":{\"Binds\":null,\"ContainerIDFile\":\"\",\"LogConfig\":{\"Type\":\"json-file\",\"Config\":{}},\"NetworkMode\":\"none\",\"PortBindings\":{},\"RestartPolicy\":{\"Name\":\"no\",\"MaximumRetryCount\":0},\"AutoRemove\":false,\"VolumeDriver\":\"\",\"VolumesFrom\":null,\"ConsoleSize\":[0,0],\"CapAdd\":null,\"CapDrop\":[\"ALL\"],\"CgroupnsMode\":\"private\",\"Dns\":null,\"DnsOptions\":[],\"DnsSearch\":[],\"ExtraHosts\":null,\"GroupAdd\":null,\"IpcMode\":\"private\",\"Cgroup\":\"\",\"Links\":null,\"OomScoreAdj\":0,\"PidMode\":\"\",\"Privileged\":false,\"PublishAllPorts\":false,\"ReadonlyRootfs\":true,\"SecurityOpt\":[\"no-new-privileges\"],\"Tmpfs\":{\"/tmp\":\"rw,nosuid,nodev,size=67108864,mode=1777\"},\"UTSMode\":\"\",\"UsernsMode\":\"\",\"ShmSize\":67108864,\"Runtime\":\"runc\",\"Isolation\":\"\",\"CpuShares\":0,\"Memory\":268435456,\"NanoCpus\":1000000000,\"CgroupParent\":\"\",\"BlkioWeight\":0,\"BlkioWeightDevice\":[],\"BlkioDeviceReadBps\":[],\"BlkioDeviceWriteBps\":[],\"BlkioDeviceReadIOps\":[],\"BlkioDeviceWriteIOps\":[],\"CpuPeriod\":0,\"CpuQuota\":0,\"CpuRealtimePeriod\":0,\"CpuRealtimeRuntime\":0,\"CpusetCpus\":\"\",\"CpusetMems\":\"\",\"Devices\":[],\"DeviceCgroupRules\":null,\"DeviceRequests\":null,\"MemoryReservation\":0,\"MemorySwap\":268435456,\"MemorySwappiness\":null,\"OomKillDisable\":null,\"PidsLimit\":128,\"Ulimits\":[],\"CpuCount\":0,\"CpuPercent\":0,\"IOMaximumIOps\":0,\"IOMaximumBandwidth\":0,\"Mounts\":[{\"Type\":\"bind\",\"Source\":\"/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpfQmbb6/checkout\",\"Target\":\"/workspace\"},{\"Type\":\"bind\",\"Source\":\"/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpfQmbb6/checkout/.git\",\"Target\":\"/workspace/.git\",\"ReadOnly\":true}],\"MaskedPaths\":[\"/proc/acpi\",\"/proc/asound\",\"/proc/interrupts\",\"/proc/kcore\",\"/proc/keys\",\"/proc/latency_stats\",\"/proc/sched_debug\",\"/proc/scsi\",\"/proc/timer_list\",\"/proc/timer_stats\",\"/sys/devices/virtual/powercap\",\"/sys/firmware\"],\"ReadonlyPaths\":[\"/proc/bus\",\"/proc/fs\",\"/proc/irq\",\"/proc/sys\",\"/proc/sysrq-trigger\"]},\"Storage\":{\"RootFS\":{\"Snapshot\":{\"Name\":\"overlayfs\"}}},\"Mounts\":[{\"Type\":\"bind\",\"Source\":\"/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpfQmbb6/checkout\",\"Destination\":\"/workspace\",\"Mode\":\"\",\"RW\":true,\"Propagation\":\"rprivate\"},{\"Type\":\"bind\",\"Source\":\"/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpfQmbb6/checkout/.git\",\"Destination\":\"/workspace/.git\",\"Mode\":\"\",\"RW\":false,\"Propagation\":\"rprivate\"}],\"Config\":{\"Hostname\":\"2ca75c2327b8\",\"Domainname\":\"\",\"User\":\"501:20\",\"AttachStdin\":false,\"AttachStdout\":true,\"AttachStderr\":true,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\",\"RUSTUP_HOME=/usr/local/rustup\",\"CARGO_HOME=/usr/local/cargo\",\"RUST_VERSION=1.97.1\"],\"Cmd\":[\"-i\",\"PATH=/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin\",\"RUSTUP_HOME=/usr/local/rustup\",\"HOME=/tmp\",\"TMPDIR=/tmp\",\"/bin/bash\",\"-c\",\"set -e; test -z \\\"$TYPESAFE_API_KEY\\\"; test -z \\\"$OPENAI_API_KEY\\\"; test -z \\\"$HOME_SECRET\\\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; if printf changed > .git; then exit 11; fi; printf output > result.txt; printf 'container output'\"],\"Healthcheck\":{\"Test\":[\"NONE\"]},\"Image\":\"sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f\",\"Volumes\":null,\"WorkingDir\":\"/workspace\",\"Entrypoint\":[\"/usr/bin/env\"],\"Labels\":{\"com.openagents.task-effect\":\"fixture:sha256:e8a977fdc89347e4117ce4888207a7c772212cd3c2dc221830d379c17dbc06d4:3\",\"org.opencontainers.image.source\":\"https://github.com/rust-lang/docker-rust\"},\"StopTimeout\":1},\"NetworkSettings\":{\"SandboxID\":\"\",\"SandboxKey\":\"\",\"Ports\":{},\"Networks\":{\"none\":{\"IPAMConfig\":null,\"Links\":null,\"Aliases\":null,\"DriverOpts\":null,\"GwPriority\":0,\"NetworkID\":\"1a3acd691610df3748ab5da593a51efde5c075784dacfa001492cb7b4dd51bec\",\"EndpointID\":\"\",\"Gateway\":\"\",\"IPAddress\":\"\",\"MacAddress\":\"\",\"IPPrefixLen\":0,\"IPv6Gateway\":\"\",\"GlobalIPv6Address\":\"\",\"GlobalIPv6PrefixLen\":0,\"DNSNames\":null}}},\"ImageManifestDescriptor\":{\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"digest\":\"sha256:a8b3be0cba14987d983042a971ef8cd5b4c28a09d7da2f123715aac9dac6e0a6\",\"size\":1936,\"annotations\":{\"com.docker.official-images.bashbrew.arch\":\"arm64v8\",\"org.opencontainers.image.base.digest\":\"sha256:d87865aef519d741e9e2257f33b45442680ab454ea3469804db0d90874f476cc\",\"org.opencontainers.image.base.name\":\"buildpack-deps:trixie\",\"org.opencontainers.image.created\":\"2026-08-05T03:57:54Z\",\"org.opencontainers.image.revision\":\"40acf7919e2e27dc706918e42758a6f1c21e806b\",\"org.opencontainers.image.source\":\"https://github.com/rust-lang/docker-rust.git#40acf7919e2e27dc706918e42758a6f1c21e806b:stable/trixie\",\"org.opencontainers.image.url\":\"https://hub.docker.com/_/rust\",\"org.opencontainers.image.version\":\"1-trixie\"},\"platform\":{\"architecture\":\"arm64\",\"os\":\"linux\",\"variant\":\"v8\"}}}\n",
+            "stderr": "",
+            "stdout_bytes": 6335,
+            "stderr_bytes": 0,
+            "truncated": false
+          }
+        }
+      },
+      {
+        "step_id": 18,
+        "timestamp": "2026-09-26T18:57:55.311Z",
+        "source": "system",
+        "message": "Container control intent retained.",
+        "extra": {
+          "container_control": {
+            "effect": 3,
+            "phase": "remove",
+            "arguments": [
+              {
+                "Unix": [
+                  114,
+                  109
+                ]
+              },
+              {
+                "Unix": [
+                  50,
+                  99,
+                  97,
+                  55,
+                  53,
+                  99,
+                  50,
+                  51,
+                  50,
+                  55,
+                  98,
+                  56,
+                  56,
+                  51,
+                  54,
+                  98,
+                  53,
+                  48,
+                  101,
+                  97,
+                  98,
+                  101,
+                  57,
+                  97,
+                  101,
+                  51,
+                  49,
+                  51,
+                  49,
+                  51,
+                  50,
+                  51,
+                  53,
+                  99,
+                  100,
+                  102,
+                  100,
+                  49,
+                  101,
+                  54,
+                  49,
+                  102,
+                  56,
+                  51,
+                  98,
+                  101,
+                  57,
+                  50,
+                  54,
+                  51,
+                  53,
+                  98,
+                  54,
+                  54,
+                  56,
+                  50,
+                  49,
+                  54,
+                  56,
+                  57,
+                  97,
+                  51,
+                  53,
+                  54
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "step_id": 19,
+        "timestamp": "2026-09-26T18:57:55.345Z",
+        "source": "system",
+        "message": "Container control result retained.",
+        "extra": {
+          "container_control_result": {
+            "effect": 3,
+            "phase": "remove",
+            "exit": 0,
+            "ending": "exit 0",
+            "stdout": "2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356\n",
+            "stderr": "",
+            "stdout_bytes": 65,
+            "stderr_bytes": 0,
+            "truncated": false
+          }
+        }
+      },
+      {
+        "step_id": 20,
+        "timestamp": "2026-09-26T18:57:55.350Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 3,
+            "kind": "container_command",
+            "result": {
+              "container": "2ca75c2327b8836b50eabe9ae31313235cdfd1e61f83be92635b66821689a356",
+              "exit": 0,
+              "timed_out": false,
+              "seconds": 0.21413525,
+              "container_removed": true,
+              "cleanup_known": true,
+              "output": "container output/bin/bash: line 1: /outside-write: Read-only file system\n/bin/bash: line 1: .git: Read-only file system\n"
+            }
+          }
+        }
+      },
+      {
+        "step_id": 21,
+        "timestamp": "2026-09-26T18:57:55.353Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 1.273201791,
+            "event": {
+              "event": "ran",
+              "step": 1,
+              "result": {
+                "command": "set -e; test -z \"$TYPESAFE_API_KEY\"; test -z \"$OPENAI_API_KEY\"; test -z \"$HOME_SECRET\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; if printf changed > .git; then exit 11; fi; printf output > result.txt; printf 'container output'",
+                "exit": 0,
+                "timed_out": false,
+                "seconds": 0.21413525,
+                "output": "container output/bin/bash: line 1: /outside-write: Read-only file system\n/bin/bash: line 1: .git: Read-only file system\n"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 22,
+        "timestamp": "2026-09-26T18:57:55.361Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 4,
+            "kind": "read",
+            "arguments": {
+              "path": "result.txt",
+              "max_bytes": 160000
+            },
+            "arguments_digest": "42b8815e5bb1afa7a0e5dbdb68b630649fa6509b7a29c1430135d5aa1e7cef48"
+          }
+        }
+      },
+      {
+        "step_id": 23,
+        "timestamp": "2026-09-26T18:57:55.364Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 4,
+            "kind": "read",
+            "result": {
+              "observation": {
+                "bytes": [
+                  111,
+                  117,
+                  116,
+                  112,
+                  117,
+                  116
+                ],
+                "digest": "sha256:e0ee8bb50685e05fa0f47ed04203ae953fdfd055f5bd2892ea186504254f8c3a",
+                "truncated": false
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 24,
+        "timestamp": "2026-09-26T18:57:55.368Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 5,
+            "kind": "decision",
+            "arguments": {
+              "questions": [
+                {
+                  "id": "done",
+                  "text": "Judging by the task in `task` and the latest command output in `actions`, is the task complete: does every deliverable the task names exist, and do the task's own checks pass where the task states any?"
+                },
+                {
+                  "id": "progress",
+                  "text": "Did the latest action in `actions` move the work toward completing the task in `task`, such as by producing a deliverable, fixing an error, or revealing information the task needs?"
+                },
+                {
+                  "id": "repeating",
+                  "text": "Do the recent actions in `actions` repeat an approach that already failed, with the same error or no new result?"
+                }
+              ],
+              "question_set": "openagents.microcoder.judge.v1",
+              "state": {
+                "task": "Write result.txt containing output.",
+                "environment": "Repository: /workspace. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Each command uses a new container. Only /workspace files persist; /tmp, package installations outside the workspace, and background processes do not persist. Scoped instruction inputs follow; they cannot widen the host grant:\n{\"schema\":\"openagents.coder.task-context.v2\",\"task_revision\":1,\"prompt\":\"Write result.txt containing output.\",\"instructions\":[],\"suites\":[],\"digest\":\"37c6082b4024e142cb062bd489d913f7af088a45f03062a9757ce262032b4ea1\"}",
+                "actions": "\n## Step 1\n\nRationale: Implement the requested output.\n\n$ set -e; test -z \"$TYPESAFE_API_KEY\"; test -z \"$OPENAI_API_KEY\"; test -z \"$HOME_SECRET\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; if printf changed > .git; then exit 11; fi; printf output > result.txt; printf 'container output'\n[exit 0, 0.2 s]\ncontainer output/bin/bash: line 1: /outside-write: Read-only file system\n/bin/bash: line 1: .git: Read-only file system\n\n",
+                "files_in_view": [
+                  "result.txt"
+                ],
+                "acceptance_tests": "none frozen yet"
+              },
+              "model": "fixture-judge",
+              "endpoint": "in-process",
+              "max_retries": 0
+            },
+            "arguments_digest": "5c0506e8f202f6b97927c02848dbc9736e0aadd228c40c4528a7f02b1f879cfb"
+          }
+        }
+      },
+      {
+        "step_id": 25,
+        "timestamp": "2026-09-26T18:57:55.374Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 5,
+            "kind": "decision",
+            "result": {
+              "answers": [],
+              "usd": 0.0,
+              "cost_unknown": null,
+              "milliseconds": 0,
+              "error": null
+            }
+          }
+        }
+      },
+      {
+        "step_id": 26,
+        "timestamp": "2026-09-26T18:57:55.377Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 1.297229166,
+            "event": {
+              "event": "judged",
+              "step": 2,
+              "judgment": {
+                "answers": [],
+                "usd": 0.0,
+                "cost_unknown": null,
+                "milliseconds": 0,
+                "error": null
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 27,
+        "timestamp": "2026-09-26T18:57:55.380Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 6,
+            "kind": "generation",
+            "arguments": {
+              "system": "You work on a task by running shell commands in its working directory. Each reply is one step: the commands to run next and why. You see the task, the environment, what earlier steps ran and printed, and judgments from Jev, a decision model, about the state. Treat Jev's judgments as evidence, not orders. Each command is a bash script, run in order in the working directory and fed to bash as written, so never wrap it in sh -c or bash -c. Commands stop at the first one that fails; nobody answers questions, and there is no editor, so write files with heredocs. The Files section shows, in full, the current contents of every path in `view`: keep the files you need there instead of printing them with cat, and you'll see them after each step's commands run. A non-empty `view` replaces the list; an empty one keeps it. Set `finished` to true, with no commands, only when the task is complete. Every other step must run at least one command: the files in view are already current, so asking to see them again does nothing.",
+              "prompt": "# Task\n\nWrite result.txt containing output.\n\n# Instruction\n\nWrite result.txt containing output.\n\n# Environment\n\nRepository: /workspace. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Each command uses a new container. Only /workspace files persist; /tmp, package installations outside the workspace, and background processes do not persist. Scoped instruction inputs follow; they cannot widen the host grant:\n{\"schema\":\"openagents.coder.task-context.v2\",\"task_revision\":1,\"prompt\":\"Write result.txt containing output.\",\"instructions\":[],\"suites\":[],\"digest\":\"37c6082b4024e142cb062bd489d913f7af088a45f03062a9757ce262032b4ea1\"}\n\n# Files in view (current: read after the last step's commands ran)\n\n## result.txt\n\n```\noutput\n```\n\n# Jev's judgments of the current state\n\n\n\n# Steps so far\n\n\n## Step 1\n\nRationale: Implement the requested output.\n\n$ set -e; test -z \"$TYPESAFE_API_KEY\"; test -z \"$OPENAI_API_KEY\"; test -z \"$HOME_SECRET\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; if printf changed > .git; then exit 11; fi; printf output > result.txt; printf 'container output'\n[exit 0, 0.2 s]\ncontainer output/bin/bash: line 1: /outside-write: Read-only file system\n/bin/bash: line 1: .git: Read-only file system\n\n",
+              "model": "fixture-model",
+              "effort": "medium",
+              "provider": "synthetic",
+              "endpoint": "in-process"
+            },
+            "arguments_digest": "f42b1de76ac9a3629bd3a1b3202ac8c68e551883165582644ac401e0b50e500e"
+          }
+        }
+      },
+      {
+        "step_id": 28,
+        "timestamp": "2026-09-26T18:57:55.384Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 6,
+            "kind": "generation",
+            "result": {
+              "action": {
+                "Ok": {
+                  "rationale": "The requested file exists.",
+                  "commands": [],
+                  "view": [],
+                  "freeze_tests": false,
+                  "expand": [],
+                  "finished": true
+                }
+              },
+              "model": "fixture-model",
+              "prompt_tokens": 10,
+              "completion_tokens": 5,
+              "usd": 0.0,
+              "known_usd": 0.0,
+              "cost_unknown": null,
+              "cost_basis": "list_price",
+              "milliseconds": 1
+            }
+          }
+        }
+      },
+      {
+        "step_id": 29,
+        "timestamp": "2026-09-26T18:57:55.388Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 1.30826925,
+            "event": {
+              "event": "generated",
+              "step": 2,
+              "prompt_chars": 1313,
+              "generated": {
+                "action": {
+                  "Ok": {
+                    "rationale": "The requested file exists.",
+                    "commands": [],
+                    "view": [],
+                    "freeze_tests": false,
+                    "expand": [],
+                    "finished": true
+                  }
+                },
+                "model": "fixture-model",
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "usd": 0.0,
+                "known_usd": 0.0,
+                "cost_unknown": null,
+                "cost_basis": "list_price",
+                "milliseconds": 1
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 30,
+        "timestamp": "2026-09-26T18:57:55.391Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 1.311197791,
+            "event": {
+              "event": "ended",
+              "outcome": {
+                "ending": {
+                  "reason": "finished"
+                },
+                "steps": 2,
+                "seconds": 1.311197791,
+                "model_usd": 0.0,
+                "jev_usd": 0.0,
+                "embedding_usd": 0.0,
+                "usd": 0.0,
+                "known_usd": 0.0,
+                "cost_unknown": [],
+                "embedding_searches": 0,
+                "lexical_searches": 0,
+                "lexical_reasons": [],
+                "knowledge": [],
+                "knowledge_assisted": false
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 31,
+        "timestamp": "2026-09-26T18:57:55.400Z",
+        "source": "system",
+        "message": "Repository adapter ended; independent checks are separate.",
+        "extra": {
+          "adapter_summary": {
+            "configuration": {
+              "schema": "openagents.microcoder.repository-config.v1",
+              "provider": "synthetic",
+              "model": "fixture-model",
+              "effort": "medium",
+              "generation_endpoint": "in-process",
+              "decision_endpoint": "in-process",
+              "decision_model": "fixture-judge",
+              "max_steps": 4,
+              "acceptance": false,
+              "route": "never",
+              "knowledge": "off",
+              "dollar_limit_micros": null,
+              "expected_controller_digest": null,
+              "container": {
+                "schema": "openagents.microcoder.container.v1",
+                "docker_program": "/Applications/Docker.app/Contents/Resources/bin/docker",
+                "docker_digest": "sha256:7b6cee6a040a59a2b21a2d322e238d85210ed4cd56ee076b24a1f38ea73deadd",
+                "socket": "/Users/christopherdavid/.docker/run/docker.sock",
+                "image": "sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f",
+                "uid": 501,
+                "gid": 20
+              }
+            },
+            "outcome": {
+              "ending": {
+                "reason": "finished"
+              },
+              "steps": 2,
+              "seconds": 1.311197791,
+              "model_usd": 0.0,
+              "jev_usd": 0.0,
+              "embedding_usd": 0.0,
+              "usd": 0.0,
+              "known_usd": 0.0,
+              "cost_unknown": [],
+              "embedding_searches": 0,
+              "lexical_searches": 0,
+              "lexical_reasons": [],
+              "knowledge": [],
+              "knowledge_assisted": false
+            },
+            "state": {
+              "environment": "Repository: /workspace. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Each command uses a new container. Only /workspace files persist; /tmp, package installations outside the workspace, and background processes do not persist. Scoped instruction inputs follow; they cannot widen the host grant:\n{\"schema\":\"openagents.coder.task-context.v2\",\"task_revision\":1,\"prompt\":\"Write result.txt containing output.\",\"instructions\":[],\"suites\":[],\"digest\":\"37c6082b4024e142cb062bd489d913f7af088a45f03062a9757ce262032b4ea1\"}",
+              "task": "Write result.txt containing output.",
+              "actions": [
+                {
+                  "step": 1,
+                  "rationale": "Implement the requested output.",
+                  "results": [
+                    {
+                      "command": "set -e; test -z \"$TYPESAFE_API_KEY\"; test -z \"$OPENAI_API_KEY\"; test -z \"$HOME_SECRET\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; if printf changed > .git; then exit 11; fi; printf output > result.txt; printf 'container output'",
+                      "exit": 0,
+                      "timed_out": false,
+                      "seconds": 0.21413525,
+                      "output": "container output/bin/bash: line 1: /outside-write: Read-only file system\n/bin/bash: line 1: .git: Read-only file system\n"
+                    }
+                  ],
+                  "skipped": []
+                },
+                {
+                  "step": 2,
+                  "rationale": "The requested file exists.",
+                  "results": [],
+                  "skipped": []
+                }
+              ],
+              "notes": [],
+              "files": [
+                [
+                  "result.txt",
+                  "output"
+                ]
+              ],
+              "tests": [],
+              "frozen_at": null,
+              "test_results": [],
+              "knowledge": [],
+              "expanded": [],
+              "dropped": [],
+              "oracle": []
+            },
+            "independent_checks": "not_run",
+            "billing": "unknown",
+            "automatic_crash_resume": false
+          },
+          "host_fault": null
+        }
+      }
+    ]
+  },
+  "artifacts": {
+    "schema": "openagents.coder.task-artifacts.v1",
+    "source_snapshot": "2dbda9d9911006488a0f06e34d0bf1eca35cadc69c473c573e997f33c111ee1c",
+    "candidate_snapshot": "38b7bf58ba119330de7b9ec29b847f7847c559bd8c3a59aa3159df9042b34e59",
+    "complete": true,
+    "omitted_changes": 0,
+    "changes": [
+      {
+        "change": "created",
+        "path": "result.txt"
+      }
+    ],
+    "entries": [
+      {
+        "path": "result.txt",
+        "state": "retained",
+        "digest": "sha256:e0ee8bb50685e05fa0f47ed04203ae953fdfd055f5bd2892ea186504254f8c3a",
+        "bytes": 6,
+        "link_target": null
+      }
+    ]
+  },
+  "artifact_error": null,
+  "artifact_faults": [],
+  "verification": "not_run",
+  "integration": "not_attempted",
+  "cost_usd": null,
+  "cost_status": "unknown"
+}

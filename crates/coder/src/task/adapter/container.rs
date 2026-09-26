@@ -47,6 +47,7 @@ impl Profile {
 
     fn executable(&self) -> Result<(), Error> {
         if self.docker_program.canonicalize()? != self.docker_program
+            || self.socket.canonicalize()? != self.socket
             || digest_bytes(&std::fs::read(&self.docker_program)?) != self.docker_digest
             || !std::fs::metadata(&self.socket)?.file_type().is_socket()
         {

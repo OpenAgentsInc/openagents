@@ -1,0 +1,600 @@
+{
+  "schema": "openagents.retained-file-inventory.v1",
+  "files": [
+    {
+      "file": "attempts/v1/trust.json",
+      "bytes": 763,
+      "sha256": "8535807aa964e969ce447fbe3314813f088bf368af7535efb03c53ede6848b27"
+    },
+    {
+      "file": "attempts/v1/range-grant.json",
+      "bytes": 2993,
+      "sha256": "e0a7a5c142305a2915e53f69d274975c4df2fe6836fb8006ec5a56ca36cebb36"
+    },
+    {
+      "file": "attempts/v1/range-observed.json",
+      "bytes": 8442,
+      "sha256": "29183ca9061c156b873b812f7ddcebc9dfa80d1193f58110e91ffb0a55440c8c"
+    },
+    {
+      "file": "attempts/v1/ceil-launch.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v1/range-detached-process.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v1/ceil-submission.json",
+      "bytes": 660,
+      "sha256": "60ab3d57c7090b82b4b449f24e63be0bcac2a27380ef0de408686da9841661d7"
+    },
+    {
+      "file": "attempts/v1/ceil-observed.json",
+      "bytes": 7540,
+      "sha256": "ed91178e152886f4a0f7a415a186ce19bb8659c491ce092fe0326743c1a2247d"
+    },
+    {
+      "file": "attempts/v1/ceil-grant.json",
+      "bytes": 2554,
+      "sha256": "5ac86b74117ce38b43613bb85c7ee3c9b2a487e9669b78deeac9958528d4c59b"
+    },
+    {
+      "file": "attempts/v1/range-launch.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v1/ceil-detached-process.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v1/range-checks.json",
+      "bytes": 8848,
+      "sha256": "9c6fb890f20b909b0a0b9ca3fe92db140e78ba5410ffd38e2ac41ec0c9b3ce37"
+    },
+    {
+      "file": "attempts/v1/ceil-checks.json",
+      "bytes": 7946,
+      "sha256": "8de2bb549fd7035901caeaf2f576de0bfa175a8c807082b7f5003b4e204e7666"
+    },
+    {
+      "file": "attempts/v1/range-checks.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v1/cases.json",
+      "bytes": 1397,
+      "sha256": "c3dae150a3e2da8f08b9e5e317567e4ab8d326ab4e6d48fa8784eeb483223c3a"
+    },
+    {
+      "file": "attempts/v1/range-launch.json",
+      "bytes": 309,
+      "sha256": "b427fd15a9ac8e358c07566e2b163444cf72b3cc768a3c1046fb95c5a1d7e088"
+    },
+    {
+      "file": "attempts/v1/ceil-launch.json",
+      "bytes": 306,
+      "sha256": "71247db9e9c420271239b63cf121c59e3aa71fb53b2dc248e25b83f77081f04f"
+    },
+    {
+      "file": "attempts/v1/setup-output.json",
+      "bytes": 1218,
+      "sha256": "e98a3fe9307c2b271760f82e1de64b7aa2cb5065e88b2d17340f973f471bbe6b"
+    },
+    {
+      "file": "attempts/v1/ceil-checks.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v1/range-submission.json",
+      "bytes": 670,
+      "sha256": "d97dce7eba5ffa77982bc2543a611d8477971b5c84a04eb73bb390ed4791fdb7"
+    },
+    {
+      "file": "attempts/v1/ceil-repo/lib.rs",
+      "bytes": 243,
+      "sha256": "a46d4771e742ff3a63d41135d5f08c89a59b78b05443272aa17dbe5e31e48bea"
+    },
+    {
+      "file": "attempts/v1/range-repo/lib.rs",
+      "bytes": 245,
+      "sha256": "3d0fc48b63842cf3d713a9a3d3b0bf8d3d76c8807bf483c4509189c4baf40527"
+    },
+    {
+      "file": "attempts/v1/range-workspace/lib.rs",
+      "bytes": 245,
+      "sha256": "3d0fc48b63842cf3d713a9a3d3b0bf8d3d76c8807bf483c4509189c4baf40527"
+    },
+    {
+      "file": "attempts/v1/range-tasks/manifest-0c3d49ea806b9d1ce64aa918789fa1e7fc1ee29b294484f9869912c6c37d83d6.json",
+      "bytes": 282,
+      "sha256": "0c3d49ea806b9d1ce64aa918789fa1e7fc1ee29b294484f9869912c6c37d83d6"
+    },
+    {
+      "file": "attempts/v1/range-tasks/tasks.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v1/range-tasks/repository-launch-repository-range-20959-1790449340899.jsonl",
+      "bytes": 8442,
+      "sha256": "29183ca9061c156b873b812f7ddcebc9dfa80d1193f58110e91ffb0a55440c8c"
+    },
+    {
+      "file": "attempts/v1/range-tasks/repository-range.1.atif.jsonl",
+      "bytes": 18600,
+      "sha256": "d7ec2fa2e0c95207312bb5b03e5409339e86257170d76eac1f807bf290972435"
+    },
+    {
+      "file": "attempts/v1/range-tasks/repository-launch-repository-range-20959-1790449340899.grant.json",
+      "bytes": 2993,
+      "sha256": "e0a7a5c142305a2915e53f69d274975c4df2fe6836fb8006ec5a56ca36cebb36"
+    },
+    {
+      "file": "attempts/v1/range-tasks/tasks.json",
+      "bytes": 18447,
+      "sha256": "2025e9e4fc35148f46ed40fef4ceb1d703cca7cd3fe847e4ac3a4dafc259c9e1"
+    },
+    {
+      "file": "attempts/v1/range-tasks/owner-repository-range.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v1/ceil-tasks/manifest-546e904ce6dfe2e5a8bc171a11d0d5621a9436c01ee611e47ba8555dd6a4927c.json",
+      "bytes": 282,
+      "sha256": "546e904ce6dfe2e5a8bc171a11d0d5621a9436c01ee611e47ba8555dd6a4927c"
+    },
+    {
+      "file": "attempts/v1/ceil-tasks/tasks.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v1/ceil-tasks/repository-ceil.1.atif.jsonl",
+      "bytes": 17151,
+      "sha256": "e019a29739779df6c21865a8e2ec013d1e29bb20a09e0f69fea98e01141eaa7d"
+    },
+    {
+      "file": "attempts/v1/ceil-tasks/owner-repository-ceil.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v1/ceil-tasks/repository-launch-repository-ceil-20955-1790449340674.jsonl",
+      "bytes": 7540,
+      "sha256": "ed91178e152886f4a0f7a415a186ce19bb8659c491ce092fe0326743c1a2247d"
+    },
+    {
+      "file": "attempts/v1/ceil-tasks/repository-launch-repository-ceil-20955-1790449340674.grant.json",
+      "bytes": 2554,
+      "sha256": "5ac86b74117ce38b43613bb85c7ee3c9b2a487e9669b78deeac9958528d4c59b"
+    },
+    {
+      "file": "attempts/v1/ceil-tasks/tasks.json",
+      "bytes": 16634,
+      "sha256": "769e1c8dccf0bb9507c813a3b5f78cf3c2c16b9caaf051ce3c65bc7e1e8e461b"
+    },
+    {
+      "file": "attempts/v1/registry/capabilities/repository-check-range.json",
+      "bytes": 2083,
+      "sha256": "46b56af7d2b64fdea5130d2f451bcb3c1b18f8dddaba5b900280cb2669b64c0f"
+    },
+    {
+      "file": "attempts/v1/registry/capabilities/repository-check-ceil.json",
+      "bytes": 2079,
+      "sha256": "1e1035cb80db625f0a83f7f5da1e44f4b190ce82efe5b8db9d73f63ca972184b"
+    },
+    {
+      "file": "attempts/v1/ceil-workspace/lib.rs",
+      "bytes": 243,
+      "sha256": "a46d4771e742ff3a63d41135d5f08c89a59b78b05443272aa17dbe5e31e48bea"
+    },
+    {
+      "file": "attempts/v2/trust.json",
+      "bytes": 763,
+      "sha256": "ef24374417825458ecf8cf2852cbaa17fad2d6214862aed312fc58cdfe1cabda"
+    },
+    {
+      "file": "attempts/v2/range-grant.json",
+      "bytes": 2993,
+      "sha256": "4b4decc7a7e89e932a8ff7970a725dbaa0f7f59c4ac89e11f3349c49d0dfeb70"
+    },
+    {
+      "file": "attempts/v2/range-observed.json",
+      "bytes": 7919,
+      "sha256": "9d6bd46851bd64346bc12cecc8da79a2db78dc5eddeaa93c45e4e75bd2677d19"
+    },
+    {
+      "file": "attempts/v2/ceil-launch.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v2/range-detached-process.txt",
+      "bytes": 23,
+      "sha256": "7af066d7469b70e01b9f7f34a4f25bce2dbc47e5ec398085e1fea2b3e5f5344c"
+    },
+    {
+      "file": "attempts/v2/ceil-submission.json",
+      "bytes": 660,
+      "sha256": "bff7e992cda47f4bb6a113dbee9c0071d0dc80d9b5f859276dc6af17f7156bed"
+    },
+    {
+      "file": "attempts/v2/range-stop-observed.json",
+      "bytes": 8435,
+      "sha256": "5574d59707b36d35c809a6134925038bc2a549be545fc8443663474c5534a084"
+    },
+    {
+      "file": "attempts/v2/ceil-observed.json",
+      "bytes": 7017,
+      "sha256": "a17dced646192e9d1adb9b51493e6276e4f62e3855613bdbc21a3630305026f0"
+    },
+    {
+      "file": "attempts/v2/ceil-grant.json",
+      "bytes": 2554,
+      "sha256": "e9f000cc8b4612c29d65faf2743ac904b929199e13bcfc9113a3755a482ea4d7"
+    },
+    {
+      "file": "attempts/v2/range-launch.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v2/ceil-detached-process.txt",
+      "bytes": 23,
+      "sha256": "9bf810274e96a81cd3c345f37157efe33161ab81f709537d8ae468ad5e2936f3"
+    },
+    {
+      "file": "attempts/v2/cases.json",
+      "bytes": 1397,
+      "sha256": "fa3eac79311e20bc869f22930ea110f632a545f897d905690216a6c9e44d8368"
+    },
+    {
+      "file": "attempts/v2/ceil-stop-observed.json",
+      "bytes": 7532,
+      "sha256": "2e5b68b6b064727466cba2426fa4bb4b1e7d45ef1976f16bc0f2e291fecdfadd"
+    },
+    {
+      "file": "attempts/v2/range-launch.json",
+      "bytes": 309,
+      "sha256": "7af3635e79899f3fb7917bbf2525a0dad2c549b92ad623f094e1b0e989800866"
+    },
+    {
+      "file": "attempts/v2/ceil-launch.json",
+      "bytes": 306,
+      "sha256": "f66e5f170daba3e5027baf1cac2d3a187958866ce489c67b38ae4a3eff921ffc"
+    },
+    {
+      "file": "attempts/v2/setup-output.json",
+      "bytes": 1218,
+      "sha256": "e25b62bd29c7df1fb4150ac757c9b36555c531a4102e93f92c2b56e2d0b37ff9"
+    },
+    {
+      "file": "attempts/v2/range-submission.json",
+      "bytes": 670,
+      "sha256": "b16380f7507ca6b2d296b42f52be52d2304f23ced62915e244cab5e180bef17d"
+    },
+    {
+      "file": "attempts/v2/ceil-repo/lib.rs",
+      "bytes": 243,
+      "sha256": "a46d4771e742ff3a63d41135d5f08c89a59b78b05443272aa17dbe5e31e48bea"
+    },
+    {
+      "file": "attempts/v2/range-repo/lib.rs",
+      "bytes": 245,
+      "sha256": "3d0fc48b63842cf3d713a9a3d3b0bf8d3d76c8807bf483c4509189c4baf40527"
+    },
+    {
+      "file": "attempts/v2/range-workspace/lib.rs",
+      "bytes": 1133,
+      "sha256": "cf5ffebe8825b3bbf1bf5e761b4100dc7b4eae31fff883831a0a26693d376f86"
+    },
+    {
+      "file": "attempts/v2/range-tasks/tasks.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v2/range-tasks/repository-launch-repository-range-23488-1790449399294.jsonl",
+      "bytes": 8435,
+      "sha256": "5574d59707b36d35c809a6134925038bc2a549be545fc8443663474c5534a084"
+    },
+    {
+      "file": "attempts/v2/range-tasks/repository-launch-repository-range-23488-1790449399294.grant.json",
+      "bytes": 2993,
+      "sha256": "4b4decc7a7e89e932a8ff7970a725dbaa0f7f59c4ac89e11f3349c49d0dfeb70"
+    },
+    {
+      "file": "attempts/v2/range-tasks/repository-range.1.atif.jsonl",
+      "bytes": 233385,
+      "sha256": "0dc59f4a1b45493155cae3a2bc5c2b2bdf11fd14153cecb69d9b83073aa206ea"
+    },
+    {
+      "file": "attempts/v2/range-tasks/artifact-84474a35550c828d6d3580ba28f944213550109ce4d0698767f670d4c5c90419.blob",
+      "bytes": 9970,
+      "sha256": "84474a35550c828d6d3580ba28f944213550109ce4d0698767f670d4c5c90419"
+    },
+    {
+      "file": "attempts/v2/range-tasks/manifest-14ebdd93f7241d43cd155ca364c5d48af8ab108581680fcfd694ac3cab3b64be.json",
+      "bytes": 857,
+      "sha256": "14ebdd93f7241d43cd155ca364c5d48af8ab108581680fcfd694ac3cab3b64be"
+    },
+    {
+      "file": "attempts/v2/range-tasks/artifact-cf5ffebe8825b3bbf1bf5e761b4100dc7b4eae31fff883831a0a26693d376f86.blob",
+      "bytes": 1133,
+      "sha256": "cf5ffebe8825b3bbf1bf5e761b4100dc7b4eae31fff883831a0a26693d376f86"
+    },
+    {
+      "file": "attempts/v2/range-tasks/tasks.json",
+      "bytes": 17443,
+      "sha256": "7a34d7da99185e04869b2dc7df301277206b9727e4e320b3712722a942168168"
+    },
+    {
+      "file": "attempts/v2/range-tasks/owner-repository-range.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v2/ceil-tasks/manifest-6c7504a71ff9d0786ad3540edd2c4a7217b0a509331e73613dbc841f21778fe3.json",
+      "bytes": 470,
+      "sha256": "6c7504a71ff9d0786ad3540edd2c4a7217b0a509331e73613dbc841f21778fe3"
+    },
+    {
+      "file": "attempts/v2/ceil-tasks/repository-launch-repository-ceil-23484-1790449399061.jsonl",
+      "bytes": 7532,
+      "sha256": "2e5b68b6b064727466cba2426fa4bb4b1e7d45ef1976f16bc0f2e291fecdfadd"
+    },
+    {
+      "file": "attempts/v2/ceil-tasks/tasks.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v2/ceil-tasks/repository-ceil.1.atif.jsonl",
+      "bytes": 307714,
+      "sha256": "dfec1b2748790e1210480932d282878858f95dad845cadbab0fee6cee49d6678"
+    },
+    {
+      "file": "attempts/v2/ceil-tasks/owner-repository-ceil.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "attempts/v2/ceil-tasks/artifact-c84c396521af05bd3f4b69812ad3aad320d1af5174ad76b41b0ecf79dbce1069.blob",
+      "bytes": 1001,
+      "sha256": "c84c396521af05bd3f4b69812ad3aad320d1af5174ad76b41b0ecf79dbce1069"
+    },
+    {
+      "file": "attempts/v2/ceil-tasks/repository-launch-repository-ceil-23484-1790449399061.grant.json",
+      "bytes": 2554,
+      "sha256": "e9f000cc8b4612c29d65faf2743ac904b929199e13bcfc9113a3755a482ea4d7"
+    },
+    {
+      "file": "attempts/v2/ceil-tasks/tasks.json",
+      "bytes": 15632,
+      "sha256": "d6f51104dafec82becc2d2d7bb5955f9b7f4437b2e2e6d0ff06c811adef7098e"
+    },
+    {
+      "file": "attempts/v2/registry/capabilities/repository-check-range.json",
+      "bytes": 2083,
+      "sha256": "c73f46cb15ae5e38f19690ff62d16e4562710e064b29f6137b0dd9469b32973b"
+    },
+    {
+      "file": "attempts/v2/registry/capabilities/repository-check-ceil.json",
+      "bytes": 2079,
+      "sha256": "1eaf1595b8354e18d717551cd09145822455e73ec9d77fa710fe0a71fd3d6155"
+    },
+    {
+      "file": "attempts/v2/ceil-workspace/lib.rs",
+      "bytes": 1001,
+      "sha256": "c84c396521af05bd3f4b69812ad3aad320d1af5174ad76b41b0ecf79dbce1069"
+    },
+    {
+      "file": "checker-controls/v1/ceil-correct.stderr.jsonl",
+      "bytes": 2427,
+      "sha256": "f4a028d84caf13092cafb7815d1243e3132e7d596cf0d02052b7a0c65aa77a5f"
+    },
+    {
+      "file": "checker-controls/v1/ceil-correct.report.json",
+      "bytes": 230,
+      "sha256": "0a1c95411aaba697ec9c3fe2030558d53ceb485da8cec9257c7f7a902f1c84ff"
+    },
+    {
+      "file": "checker-controls/v1/ceil-broken.report.json",
+      "bytes": 230,
+      "sha256": "8db38d0c0b5a9ec88b3e69b8de87dd843e978eaddeba8540e32e578f2d76bc62"
+    },
+    {
+      "file": "checker-controls/v1/ceil-broken.stderr.jsonl",
+      "bytes": 2427,
+      "sha256": "77ce9e5633faf455b10b9e0a1253741cc13bb9f736856fa10f1effec02088c69"
+    },
+    {
+      "file": "checker-controls/v1/ceil-broken/lib.rs",
+      "bytes": 243,
+      "sha256": "a46d4771e742ff3a63d41135d5f08c89a59b78b05443272aa17dbe5e31e48bea"
+    },
+    {
+      "file": "checker-controls/v1/ceil-correct/lib.rs",
+      "bytes": 155,
+      "sha256": "cf3e507ecb07bdddb691cf5220ca2bd217ef20590c8efe1a4082099c2e21998c"
+    },
+    {
+      "file": "checker-controls/v2/ceil-correct.stderr.jsonl",
+      "bytes": 4387,
+      "sha256": "d1214efb6a545ba505c8ae22862792b66653fc4e9a65238999c20a3d0e1b5450"
+    },
+    {
+      "file": "checker-controls/v2/ceil-correct.report.json",
+      "bytes": 230,
+      "sha256": "a616671c2ccc640219a6be729bdb9368f7c6a2299d3afbc3fe180fd3257598eb"
+    },
+    {
+      "file": "checker-controls/v2/ceil-broken.report.json",
+      "bytes": 230,
+      "sha256": "131b04fc7002e2b86ff9c0aff63314c39da24d49137b187db26c99b135f8a14e"
+    },
+    {
+      "file": "checker-controls/v2/ceil-broken.stderr.jsonl",
+      "bytes": 4387,
+      "sha256": "7c4746e64babbd1411eeb54948f7e9ccfe0b21088257d74436b532664f1dc372"
+    },
+    {
+      "file": "checker-controls/v2/ceil-broken/lib.rs",
+      "bytes": 243,
+      "sha256": "a46d4771e742ff3a63d41135d5f08c89a59b78b05443272aa17dbe5e31e48bea"
+    },
+    {
+      "file": "checker-controls/v2/ceil-correct/lib.rs",
+      "bytes": 155,
+      "sha256": "cf3e507ecb07bdddb691cf5220ca2bd217ef20590c8efe1a4082099c2e21998c"
+    },
+    {
+      "file": "checker-controls/v3/range-correct.report.json",
+      "bytes": 230,
+      "sha256": "0b3a5c6f1279b3f96721e04ac4f416b188903476410e349e7ad8bb7e798217ab"
+    },
+    {
+      "file": "checker-controls/v3/range-correct.stderr.jsonl",
+      "bytes": 509,
+      "sha256": "30f1b13ca993f7fa003d552ccb2af8836c09abda3ba03db1dce0e80520a4f9ea"
+    },
+    {
+      "file": "checker-controls/v3/controls.json",
+      "bytes": 1227,
+      "sha256": "a10f3af73a58d3df0438b5a300f02fa5ab6a24152ba66eca2556471f5c917024"
+    },
+    {
+      "file": "checker-controls/v3/ceil-correct.stderr.jsonl",
+      "bytes": 503,
+      "sha256": "daa8a325850674b376abc4fccc9c38fc6378b359cb3fbf1d03457bed5eaac44c"
+    },
+    {
+      "file": "checker-controls/v3/ceil-correct.report.json",
+      "bytes": 230,
+      "sha256": "0b6842728d37581904d91d30235c94c1335247ad6d7d26b611c7b23042ebb272"
+    },
+    {
+      "file": "checker-controls/v3/ceil-broken.report.json",
+      "bytes": 230,
+      "sha256": "d06bd17ba3df8985e03b15d2db99195d85ac219943d939fc088f7da03d4cfebb"
+    },
+    {
+      "file": "checker-controls/v3/range-broken.report.json",
+      "bytes": 230,
+      "sha256": "c72fe2b3facd443d254c6d307648102b3f8dcd9c63110985def2a38d401566a5"
+    },
+    {
+      "file": "checker-controls/v3/container-profile.json",
+      "bytes": 401,
+      "sha256": "b9c866ac8a0941f68ef6d91e9bd72f66418a86399ac5b339e50a4c7d050254ab"
+    },
+    {
+      "file": "checker-controls/v3/ceil-broken.stderr.jsonl",
+      "bytes": 815,
+      "sha256": "a5c948130e859f2380145b9d8978c9e6c38b66c400fca712f2e93a33126134cb"
+    },
+    {
+      "file": "checker-controls/v3/toolchain.json",
+      "bytes": 378,
+      "sha256": "8af33a830e81bd9b8b089169b44a1370f3b02f9b82c49518670a0f30beb98971"
+    },
+    {
+      "file": "checker-controls/v3/range-broken.stderr.jsonl",
+      "bytes": 877,
+      "sha256": "47189cc6e52b07f5ed4ceffc38a6376d2152808c7e46b0fc8904f90cde22b0c8"
+    },
+    {
+      "file": "checker-controls/v3/range-correct/lib.rs",
+      "bytes": 156,
+      "sha256": "4b4747141b49a2d7dc48899190917daf8546526a9e63baa68498ca91a33ae655"
+    },
+    {
+      "file": "checker-controls/v3/range-broken/lib.rs",
+      "bytes": 245,
+      "sha256": "3d0fc48b63842cf3d713a9a3d3b0bf8d3d76c8807bf483c4509189c4baf40527"
+    },
+    {
+      "file": "checker-controls/v3/ceil-broken/lib.rs",
+      "bytes": 243,
+      "sha256": "a46d4771e742ff3a63d41135d5f08c89a59b78b05443272aa17dbe5e31e48bea"
+    },
+    {
+      "file": "checker-controls/v3/ceil-correct/lib.rs",
+      "bytes": 155,
+      "sha256": "cf3e507ecb07bdddb691cf5220ca2bd217ef20590c8efe1a4082099c2e21998c"
+    },
+    {
+      "file": "container-controls/trace.atif.jsonl",
+      "bytes": 38288,
+      "sha256": "4b31a93b16c4aba2b96d648d9fadc519dce6f6ffcec81cbc01a7ff78580d5e01"
+    },
+    {
+      "file": "container-controls/task.json",
+      "bytes": 5202,
+      "sha256": "c4d2176bec48e54569ce7f7e78b3a9e921bd3fc675714c806092e938c6b2b69e"
+    },
+    {
+      "file": "container-controls/view.json",
+      "bytes": 84808,
+      "sha256": "eaff3f54d6f97c38b4e6fa270edb10196009a04caf76e5b83047240777275951"
+    },
+    {
+      "file": "container-controls/grant.json",
+      "bytes": 1118,
+      "sha256": "e8a977fdc89347e4117ce4888207a7c772212cd3c2dc221830d379c17dbc06d4"
+    },
+    {
+      "file": "verification/microcoder-container-final-controls.log",
+      "bytes": 901,
+      "sha256": "114bc411e098b5ddc9f287ab6e7612ece111cd682b34435fb03d9021213f8b2d"
+    },
+    {
+      "file": "verification/microcoder-repository-detached-tests.log",
+      "bytes": 2936,
+      "sha256": "ffa193fffec40c369b67a3b285a429b75b4893c11f2a0f559662df81dd07fb64"
+    },
+    {
+      "file": "verification/microcoder-detached-clippy.log",
+      "bytes": 1027,
+      "sha256": "ec4abc120dee6554ce36c940ad0e6925ab8ac6e4b4cfe1a4050f01d026ab88d7"
+    },
+    {
+      "file": "verification/repository-acceptance-final-build.log",
+      "bytes": 175,
+      "sha256": "d186e5803a149b4b0ffdf8d412150704f6cd1781ed1c2691780a5eacb13b47e6"
+    },
+    {
+      "file": "verification/repository-acceptance-sdk-build.log",
+      "bytes": 175,
+      "sha256": "3c71c797c59df650f0dec176c1e32322407bdc23f8a2a7aed8ebe4dea90436d9"
+    },
+    {
+      "file": "attempt-summary.json",
+      "bytes": 6946,
+      "sha256": "ea669ec8208692516cfb156467669ef750e9caef32eba176ed4bf6f88d519f1d"
+    },
+    {
+      "file": "verification/microcoder-repository-code-only-final.log",
+      "bytes": 2092,
+      "sha256": "a4f59786d970a9554759b23a90629d0c7f4c70f279db78bfbe9ebf14c51bddc0"
+    },
+    {
+      "file": "verification/microcoder-repository-code-only-clippy.log",
+      "bytes": 435,
+      "sha256": "a8691d03c60c5f5979e823da86598d0f11e7cdeeae933b2720dda33ba8d90498"
+    },
+    {
+      "file": "verification/repository-examples-code-only-clippy.log",
+      "bytes": 60,
+      "sha256": "9ae36bb22d8f0f810a77044760863f70b81405396a32cce477ec08eecd4e6d59"
+    }
+  ]
+}

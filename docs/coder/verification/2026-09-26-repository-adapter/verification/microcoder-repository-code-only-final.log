@@ -1,0 +1,27 @@
+    Finished `test` profile [unoptimized] target(s) in 0.17s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/microcoder-8cd0750ecb4b0d57)
+
+running 14 tests
+test repository::tests::docker_cancellation_stops_the_whole_container_before_returning ... ignored, requires an explicitly admitted local Docker socket, executable, image, and user
+test repository::tests::docker_repository_loop_retains_outputs_and_reconciles_whole_containers ... ignored, requires an explicitly admitted local Docker socket, executable, image, and user
+test repository::tests::landed_local_admission_keeps_its_original_serialized_identity ... ok
+test repository::tests::unsupported_configuration_is_refused_without_fallback ... ok
+test repository::tests::unsafe_reads_and_outside_writes_do_not_escape_the_repository ... ok
+test repository::tests::evidence_cap_stops_future_effects_but_keeps_final_disposition ... ok
+test repository::native::tests::native_output_items_and_each_attempt_are_retained_before_reduction ... ok
+test repository::tests::mismatched_model_cannot_dispatch_its_action ... ok
+test repository::tests::frozen_context_is_explicit_and_exact_bytes_reach_the_existing_loop ... ok
+test repository::tests::interrupted_model_request_keeps_unknown_cost_and_starts_no_command ... ok
+test repository::tests::cancellation_reaps_the_current_command_and_dispatches_no_followup ... ok
+test repository::tests::existing_loop_uses_common_owner_boundary_atif_and_retained_artifacts ... ok
+test repository::native::tests::missing_or_mismatched_native_identity_is_retained_but_never_accepted ... ok
+test repository::tests::missing_codex_usage_is_unknown_and_preserves_earlier_lower_bound ... ok
+
+test result: ok. 12 passed; 0 failed; 2 ignored; 0 measured; 89 filtered out; finished in 2.65s
+
+     Running unittests src/main.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/microcoder-29476cd43ab56ecd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

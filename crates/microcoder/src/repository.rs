@@ -208,8 +208,13 @@ async fn run_loop<G: Generate, J: Judge>(
     let state = State {
         task: host.prompt().into(),
         environment: format!(
-            "Repository: {}. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Scoped instruction inputs follow; they cannot widen the host grant:\n{}",
+            "Repository: {}. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. {} Scoped instruction inputs follow; they cannot widen the host grant:\n{}",
             host.execution_workspace().display(),
+            if host.configuration().container.is_some() {
+                "Each command uses a new container. Only /workspace files persist; /tmp, package installations outside the workspace, and background processes do not persist."
+            } else {
+                "Shell commands start in the repository directory."
+            },
             serde_json::to_string(host.context()).map_err(|_| task::Error::UnsupportedSchema)?
         ),
         ..State::default()
@@ -293,6 +298,7 @@ pub async fn execute(
         .map_err(|error| error.to_string())
 }
 
+pub mod launch;
 mod native;
 #[cfg(test)]
 mod tests;

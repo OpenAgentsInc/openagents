@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "records": [
+    {
+      "slug": "repository-check-ceil",
+      "manifest": "1eaf1595b8354e18d717551cd09145822455e73ec9d77fa710fe0a71fd3d6155",
+      "adapter": "/private/tmp/microcoder-repository-live-20260926-v2/repository-check-ceil",
+      "adapter_digest": "969ae2cd4f70c799ae11121ad34be78aa268af6e2f9d3a0f80a88718de46636e",
+      "pinned": [],
+      "writable": []
+    },
+    {
+      "slug": "repository-check-range",
+      "manifest": "c73f46cb15ae5e38f19690ff62d16e4562710e064b29f6137b0dd9469b32973b",
+      "adapter": "/private/tmp/microcoder-repository-live-20260926-v2/repository-check-range",
+      "adapter_digest": "969ae2cd4f70c799ae11121ad34be78aa268af6e2f9d3a0f80a88718de46636e",
+      "pinned": [],
+      "writable": []
+    }
+  ]
+}

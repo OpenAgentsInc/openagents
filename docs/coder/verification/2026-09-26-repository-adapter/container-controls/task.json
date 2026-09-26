@@ -1,0 +1,100 @@
+{
+  "task_id": "fixture",
+  "revision": 4,
+  "intent": {
+    "title": "Repository fixture",
+    "prompt": "Write result.txt containing output.",
+    "workspace": {
+      "path": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpfQmbb6/checkout",
+      "source_revision": null
+    },
+    "configuration": {
+      "adapter": "microcoder-repository",
+      "model": "fixture-model"
+    }
+  },
+  "intent_digest": "sha256:e9ba3bb8847340a1cfdb9e4b7bb89ce4ee65ec00494173b8d035040f1b30d5e3",
+  "status": "finished",
+  "execution": "finished",
+  "checks": "not_run",
+  "cancellation_reason": null,
+  "run": {
+    "epoch": 1,
+    "admission": {
+      "grant": {
+        "schema": "openagents.coder.task-execution-grant.v1",
+        "task_id": "fixture",
+        "intent_digest": "sha256:e9ba3bb8847340a1cfdb9e4b7bb89ce4ee65ec00494173b8d035040f1b30d5e3",
+        "expected_revision": 1,
+        "expected_source_snapshot": null,
+        "program": "/bin/bash",
+        "arguments": [],
+        "write_workspace": true,
+        "wall_seconds": 60,
+        "stream_bytes": 4096,
+        "memory_bytes": 268435456,
+        "requirements": null,
+        "adapter_configuration": {
+          "schema": "openagents.microcoder.repository-config.v1",
+          "provider": "synthetic",
+          "model": "fixture-model",
+          "effort": "medium",
+          "generation_endpoint": "in-process",
+          "decision_endpoint": "in-process",
+          "decision_model": "fixture-judge",
+          "max_steps": 4,
+          "acceptance": false,
+          "route": "never",
+          "knowledge": "off",
+          "dollar_limit_micros": null,
+          "expected_controller_digest": null,
+          "container": {
+            "schema": "openagents.microcoder.container.v1",
+            "docker_program": "/Applications/Docker.app/Contents/Resources/bin/docker",
+            "docker_digest": "sha256:7b6cee6a040a59a2b21a2d322e238d85210ed4cd56ee076b24a1f38ea73deadd",
+            "socket": "/Users/christopherdavid/.docker/run/docker.sock",
+            "image": "sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f",
+            "uid": 501,
+            "gid": 20
+          }
+        }
+      },
+      "grant_digest": "sha256:e8a977fdc89347e4117ce4888207a7c772212cd3c2dc221830d379c17dbc06d4",
+      "grant_request": "{\"schema\":\"openagents.coder.task-execution-grant.v1\",\"task_id\":\"fixture\",\"intent_digest\":\"sha256:e9ba3bb8847340a1cfdb9e4b7bb89ce4ee65ec00494173b8d035040f1b30d5e3\",\"expected_revision\":1,\"expected_source_snapshot\":null,\"program\":\"/bin/bash\",\"arguments\":[],\"write_workspace\":true,\"wall_seconds\":60,\"stream_bytes\":4096,\"memory_bytes\":268435456,\"requirements\":null,\"adapter_configuration\":{\"schema\":\"openagents.microcoder.repository-config.v1\",\"provider\":\"synthetic\",\"model\":\"fixture-model\",\"effort\":\"medium\",\"generation_endpoint\":\"in-process\",\"decision_endpoint\":\"in-process\",\"decision_model\":\"fixture-judge\",\"max_steps\":4,\"acceptance\":false,\"route\":\"never\",\"knowledge\":\"off\",\"dollar_limit_micros\":null,\"expected_controller_digest\":null,\"container\":{\"schema\":\"openagents.microcoder.container.v1\",\"docker_program\":\"/Applications/Docker.app/Contents/Resources/bin/docker\",\"docker_digest\":\"sha256:7b6cee6a040a59a2b21a2d322e238d85210ed4cd56ee076b24a1f38ea73deadd\",\"socket\":\"/Users/christopherdavid/.docker/run/docker.sock\",\"image\":\"sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f\",\"uid\":501,\"gid\":20}}}",
+      "workspace": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpfQmbb6/checkout",
+      "source_revision": "725f9f02ae55fd071a343a3fb3ee8536c3065d7d",
+      "source_snapshot": "2dbda9d9911006488a0f06e34d0bf1eca35cadc69c473c573e997f33c111ee1c",
+      "program_digest": "sha256:35536aea9733aa345b61134a98d00232380898e55b2ea2a07c497011f7dfc7a3",
+      "adapter": "microcoder-repository",
+      "network": "container_network_none",
+      "read_scope": "workspace_host_reads_and_pinned_container_image",
+      "authority": "local_os_user",
+      "trace_file": "fixture.1.atif.jsonl",
+      "context": {
+        "schema": "openagents.coder.task-context.v2",
+        "task_revision": 1,
+        "prompt": "Write result.txt containing output.",
+        "instructions": [],
+        "suites": [],
+        "digest": "37c6082b4024e142cb062bd489d913f7af088a45f03062a9757ce262032b4ea1"
+      }
+    },
+    "effect_id": "fixture:1:command",
+    "result": {
+      "ending": "model_finished",
+      "exit_code": 0,
+      "stop_requested": false,
+      "group_clear": true,
+      "elapsed_ms": 1335,
+      "trace_digest": "sha256:4b31a93b16c4aba2b96d648d9fadc519dce6f6ffcec81cbc01a7ff78580d5e01",
+      "candidate_snapshot": "38b7bf58ba119330de7b9ec29b847f7847c559bd8c3a59aa3159df9042b34e59",
+      "artifact_file": "manifest-6a35efa339cc2864ca96d7520a75d8546f098323e38bc3738889114f22676b0e.json",
+      "artifact_digest": "sha256:6a35efa339cc2864ca96d7520a75d8546f098323e38bc3738889114f22676b0e",
+      "output_incomplete": false,
+      "cost_status": "unknown"
+    },
+    "process_id": null,
+    "recovery_reason": null,
+    "check_report": null
+  }
+}

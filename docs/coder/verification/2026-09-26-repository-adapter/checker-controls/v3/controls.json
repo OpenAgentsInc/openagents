@@ -1,0 +1,34 @@
+[
+  {
+    "schema": "openagents.verification.v1",
+    "suite_digest": "sha256:969ae2cd4f70c799ae11121ad34be78aa268af6e2f9d3a0f80a88718de46636e",
+    "input_digest": "62f94422445910ccb466e2b0924d30aa34fcd69f53d660f27d574dfc4bdc1675",
+    "verdict": "failed",
+    "name": "ceil",
+    "control": "broken"
+  },
+  {
+    "schema": "openagents.verification.v1",
+    "suite_digest": "sha256:969ae2cd4f70c799ae11121ad34be78aa268af6e2f9d3a0f80a88718de46636e",
+    "input_digest": "19c9b314a6e9a0bdc5e629b2d71690615f479bbe1e547cc18e7490d6531970f7",
+    "verdict": "passed",
+    "name": "ceil",
+    "control": "correct"
+  },
+  {
+    "schema": "openagents.verification.v1",
+    "suite_digest": "sha256:969ae2cd4f70c799ae11121ad34be78aa268af6e2f9d3a0f80a88718de46636e",
+    "input_digest": "07c04e3a37d1e312738e0eaec28b19da08810eea4153a031eefa4a126f8b7844",
+    "verdict": "failed",
+    "name": "range",
+    "control": "broken"
+  },
+  {
+    "schema": "openagents.verification.v1",
+    "suite_digest": "sha256:969ae2cd4f70c799ae11121ad34be78aa268af6e2f9d3a0f80a88718de46636e",
+    "input_digest": "5111c3d2793fbd6b3fee62cfff94e5e9e0e0afbb8fc0e56b210b5ebade01e9cf",
+    "verdict": "passed",
+    "name": "range",
+    "control": "correct"
+  }
+]

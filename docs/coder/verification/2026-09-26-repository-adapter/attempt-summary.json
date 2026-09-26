@@ -1,0 +1,206 @@
+[
+  {
+    "version": "v1",
+    "task": "ceil",
+    "status": "finished",
+    "execution": "stopped",
+    "checks": "unavailable",
+    "result": {
+      "ending": "cancelled_or_host_refusal",
+      "exit_code": 1,
+      "stop_requested": true,
+      "group_clear": true,
+      "elapsed_ms": 333,
+      "trace_digest": "sha256:e019a29739779df6c21865a8e2ec013d1e29bb20a09e0f69fea98e01141eaa7d",
+      "candidate_snapshot": "4f8af4d4ae54cd518d96852fded73e0985a409e3448be1f413e4e4cb0eccebc3",
+      "artifact_file": "manifest-546e904ce6dfe2e5a8bc171a11d0d5621a9436c01ee611e47ba8555dd6a4927c.json",
+      "artifact_digest": "sha256:546e904ce6dfe2e5a8bc171a11d0d5621a9436c01ee611e47ba8555dd6a4927c",
+      "output_incomplete": false,
+      "cost_status": "unknown"
+    },
+    "outcome": {
+      "ending": {
+        "reason": "bad_replies",
+        "detail": "the task cannot make this transition"
+      },
+      "steps": 3,
+      "seconds": 0.317388875,
+      "model_usd": 0.0,
+      "jev_usd": null,
+      "embedding_usd": 0.0,
+      "usd": null,
+      "known_usd": 0.0,
+      "cost_unknown": [
+        "step 1 Jev: unaccepted provider model"
+      ],
+      "embedding_searches": 0,
+      "lexical_searches": 0,
+      "lexical_reasons": [],
+      "knowledge": [],
+      "knowledge_assisted": false
+    },
+    "calls": {
+      "decision": 1
+    },
+    "trace": "/private/tmp/microcoder-repository-live-20260926-v1/ceil-tasks/repository-ceil.1.atif.jsonl",
+    "check_report": {
+      "schema": "openagents.coder.task-checks.v1",
+      "requirements_digest": "64c2c76f53aa66bab06df133e71dbe6a6f1d7b67d5748be9494bf5f7d8e3fd2d",
+      "context_digest": "51b966dd10fcf5019764362b8e939f2844620ba2357c2e7a7c1494c0edc0f97b",
+      "candidate_snapshot": "4f8af4d4ae54cd518d96852fded73e0985a409e3448be1f413e4e4cb0eccebc3",
+      "verdict": "unavailable",
+      "evidence": null,
+      "reason": "the completed candidate is unavailable or changed"
+    },
+    "provider_billing": "unknown"
+  },
+  {
+    "version": "v1",
+    "task": "range",
+    "status": "finished",
+    "execution": "stopped",
+    "checks": "unavailable",
+    "result": {
+      "ending": "cancelled_or_host_refusal",
+      "exit_code": 1,
+      "stop_requested": true,
+      "group_clear": true,
+      "elapsed_ms": 292,
+      "trace_digest": "sha256:d7ec2fa2e0c95207312bb5b03e5409339e86257170d76eac1f807bf290972435",
+      "candidate_snapshot": "815cbb0f6f08f9fc0ad1158b471ae2bb857d2aa0d385775348021271ec260d6c",
+      "artifact_file": "manifest-0c3d49ea806b9d1ce64aa918789fa1e7fc1ee29b294484f9869912c6c37d83d6.json",
+      "artifact_digest": "sha256:0c3d49ea806b9d1ce64aa918789fa1e7fc1ee29b294484f9869912c6c37d83d6",
+      "output_incomplete": false,
+      "cost_status": "unknown"
+    },
+    "outcome": {
+      "ending": {
+        "reason": "bad_replies",
+        "detail": "the task cannot make this transition"
+      },
+      "steps": 3,
+      "seconds": 0.276532375,
+      "model_usd": 0.0,
+      "jev_usd": null,
+      "embedding_usd": 0.0,
+      "usd": null,
+      "known_usd": 0.0,
+      "cost_unknown": [
+        "step 1 Jev: unaccepted provider model"
+      ],
+      "embedding_searches": 0,
+      "lexical_searches": 0,
+      "lexical_reasons": [],
+      "knowledge": [],
+      "knowledge_assisted": false
+    },
+    "calls": {
+      "decision": 1
+    },
+    "trace": "/private/tmp/microcoder-repository-live-20260926-v1/range-tasks/repository-range.1.atif.jsonl",
+    "check_report": {
+      "schema": "openagents.coder.task-checks.v1",
+      "requirements_digest": "29be3d5ec7d94994a36acc31c0dc5213b1bfab9cbd6be2d9e69813c722844824",
+      "context_digest": "e0bfbb26c61ff55be6dd3ee86772facb122db3e189b8a471a2fec98ae966e015",
+      "candidate_snapshot": "815cbb0f6f08f9fc0ad1158b471ae2bb857d2aa0d385775348021271ec260d6c",
+      "verdict": "unavailable",
+      "evidence": null,
+      "reason": "the completed candidate is unavailable or changed"
+    },
+    "provider_billing": "unknown"
+  },
+  {
+    "version": "v2",
+    "task": "ceil",
+    "status": "finished",
+    "execution": "failed",
+    "checks": "not_run",
+    "result": {
+      "ending": "loop_incomplete",
+      "exit_code": 1,
+      "stop_requested": false,
+      "group_clear": true,
+      "elapsed_ms": 44964,
+      "trace_digest": "sha256:dfec1b2748790e1210480932d282878858f95dad845cadbab0fee6cee49d6678",
+      "candidate_snapshot": "6c31ae6eb28d2b1662d1a28de49285807e3f27c9ce2c55b04184f04e4e6799b5",
+      "artifact_file": "manifest-6c7504a71ff9d0786ad3540edd2c4a7217b0a509331e73613dbc841f21778fe3.json",
+      "artifact_digest": "sha256:6c7504a71ff9d0786ad3540edd2c4a7217b0a509331e73613dbc841f21778fe3",
+      "output_incomplete": false,
+      "cost_status": "unknown"
+    },
+    "outcome": {
+      "ending": {
+        "reason": "step_limit"
+      },
+      "steps": 8,
+      "seconds": 44.94498325,
+      "model_usd": 0.0025603,
+      "jev_usd": 0.0006360059999999999,
+      "embedding_usd": 0.0,
+      "usd": 0.0031963060000000003,
+      "known_usd": 0.0031963060000000003,
+      "cost_unknown": [],
+      "embedding_searches": 0,
+      "lexical_searches": 0,
+      "lexical_reasons": [],
+      "knowledge": [],
+      "knowledge_assisted": false
+    },
+    "calls": {
+      "codex_request": 8,
+      "command": 8,
+      "decision": 8,
+      "generation": 8,
+      "read": 8
+    },
+    "trace": "/private/tmp/microcoder-repository-live-20260926-v2/ceil-tasks/repository-ceil.1.atif.jsonl",
+    "provider_billing": "unknown"
+  },
+  {
+    "version": "v2",
+    "task": "range",
+    "status": "finished",
+    "execution": "finished",
+    "checks": "not_run",
+    "result": {
+      "ending": "model_finished",
+      "exit_code": 0,
+      "stop_requested": false,
+      "group_clear": true,
+      "elapsed_ms": 41506,
+      "trace_digest": "sha256:0dc59f4a1b45493155cae3a2bc5c2b2bdf11fd14153cecb69d9b83073aa206ea",
+      "candidate_snapshot": "47be810c8a5ad3ea2b8e97a8082e5cdb124503e79402e632d784d3e226627266",
+      "artifact_file": "manifest-14ebdd93f7241d43cd155ca364c5d48af8ab108581680fcfd694ac3cab3b64be.json",
+      "artifact_digest": "sha256:14ebdd93f7241d43cd155ca364c5d48af8ab108581680fcfd694ac3cab3b64be",
+      "output_incomplete": false,
+      "cost_status": "unknown"
+    },
+    "outcome": {
+      "ending": {
+        "reason": "finished"
+      },
+      "steps": 5,
+      "seconds": 41.15027125,
+      "model_usd": 0.0015195,
+      "jev_usd": 0.000313992,
+      "embedding_usd": 0.0,
+      "usd": 0.001833492,
+      "known_usd": 0.001833492,
+      "cost_unknown": [],
+      "embedding_searches": 0,
+      "lexical_searches": 0,
+      "lexical_reasons": [],
+      "knowledge": [],
+      "knowledge_assisted": false
+    },
+    "calls": {
+      "codex_request": 5,
+      "container_command": 4,
+      "decision": 5,
+      "generation": 5,
+      "read": 5
+    },
+    "trace": "/private/tmp/microcoder-repository-live-20260926-v2/range-tasks/repository-range.1.atif.jsonl",
+    "provider_billing": "unknown"
+  }
+]

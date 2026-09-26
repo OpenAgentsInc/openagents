@@ -15,6 +15,7 @@ atif = { path = "../atif" }
 coder = { path = "../coder" }
 futures-util = "0.3"
 jev = { path = "../jev" }
+libc = "0.2"
 knowledge = { path = "../knowledge" }
 microluna = { path = "../microluna" }
 nostr = { path = "../nostr" }

@@ -551,9 +551,12 @@ fn docker_grant(bytes: &[u8]) -> Vec<u8> {
             schema: "openagents.microcoder.container.v1".into(),
             docker_digest: nostr::contracts::digest_bytes(&std::fs::read(&program).unwrap()),
             docker_program: program,
-            socket: std::env::var_os("MICROCODER_REPOSITORY_DOCKER_SOCKET")
-                .expect("explicit Docker socket")
-                .into(),
+            socket: std::path::PathBuf::from(
+                std::env::var_os("MICROCODER_REPOSITORY_DOCKER_SOCKET")
+                    .expect("explicit Docker socket"),
+            )
+            .canonicalize()
+            .unwrap(),
             image: std::env::var("MICROCODER_REPOSITORY_DOCKER_IMAGE").expect("explicit image ID"),
             uid: std::env::var("MICROCODER_REPOSITORY_DOCKER_UID")
                 .unwrap()
@@ -575,7 +578,7 @@ async fn docker_repository_loop_retains_outputs_and_reconciles_whole_containers(
     let outside = root.path().join("outside");
     std::fs::write(&outside, "unchanged").unwrap();
     let generator = generator(
-        "test -z \"$TYPESAFE_API_KEY\" && test -z \"$OPENAI_API_KEY\" && test -z \"$HOME_SECRET\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; printf output > result.txt; printf 'container output'",
+        "set -e; test -z \"$TYPESAFE_API_KEY\"; test -z \"$OPENAI_API_KEY\"; test -z \"$HOME_SECRET\"; test ! -e /var/run/docker.sock; if printf denied > /outside-write; then exit 10; fi; if printf changed > .git; then exit 11; fi; printf output > result.txt; printf 'container output'",
     );
     let host = Host::admit(&store, &grant).await.unwrap();
     let result = run(host, &generator, &JudgeFixture).await.unwrap();

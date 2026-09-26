@@ -1,0 +1,16 @@
+   Compiling microcoder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/microcoder)
+    Finished `test` profile [unoptimized] target(s) in 2.41s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/microcoder-8cd0750ecb4b0d57)
+
+running 2 tests
+test repository::tests::docker_cancellation_stops_the_whole_container_before_returning ... ok
+test repository::tests::docker_repository_loop_retains_outputs_and_reconciles_whole_containers ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 101 filtered out; finished in 9.96s
+
+     Running unittests src/main.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/microcoder-29476cd43ab56ecd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

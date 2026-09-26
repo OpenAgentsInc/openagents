@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.repository-acceptance-setup.v1",
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "ceil",
+      "task_id": "repository-ceil",
+      "store": "/private/tmp/microcoder-repository-live-20260926-v2/ceil-tasks",
+      "workspace": "/private/tmp/microcoder-repository-live-20260926-v2/ceil-workspace",
+      "grant": "/private/tmp/microcoder-repository-live-20260926-v2/ceil-grant.json",
+      "checker": "/private/tmp/microcoder-repository-live-20260926-v2/repository-check-ceil",
+      "trust": "/private/tmp/microcoder-repository-live-20260926-v2/trust.json",
+      "controller": "/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/microcoder",
+      "model_calls_started": false
+    },
+    {
+      "name": "range",
+      "task_id": "repository-range",
+      "store": "/private/tmp/microcoder-repository-live-20260926-v2/range-tasks",
+      "workspace": "/private/tmp/microcoder-repository-live-20260926-v2/range-workspace",
+      "grant": "/private/tmp/microcoder-repository-live-20260926-v2/range-grant.json",
+      "checker": "/private/tmp/microcoder-repository-live-20260926-v2/repository-check-range",
+      "trust": "/private/tmp/microcoder-repository-live-20260926-v2/trust.json",
+      "controller": "/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/microcoder",
+      "model_calls_started": false
+    }
+  ]
+}
