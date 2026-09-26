@@ -171,23 +171,23 @@ enough buyers. The historical lesson for agent labor is to keep the buyer’s de
 acceptance criteria, provider costs, and actual payment visible together.
 
 ### Collective work needs more than a larger audience
-+
-+[200](200.md), [230](230.md), and [237](237.md) invoke group-forming
-+networks and Reed’s law as a strategic argument: agents could find useful
-+work, recruit collaborators, and compose contributions at machine speed.
-+This is a hypothesis about the value of possible collaboration, not a
-+measured growth law or proof that every additional participant improves quality.
-+
-+The concrete work in the archive supplies the conditions for that hypothesis:
-+discoverable components, usable context, capacity, task ownership, independent
-+checking, and payment for useful contributions. [249](249.md) and
-+[250](250.md) show how even a local fleet needs inspectable relationships and
-+honest state. [284](284.md) proposes roles and productive group activity;
-+[286](286.md) connects shared state and coordination to reusable protocols.
-+Network effects would come from contributions that remain useful to others,
-+not from counting agents, tokens, or speculative groups alone.
-+
-+### Open protocols answer concentration and continuity problems
+
+[200](200.md), [230](230.md), and [237](237.md) invoke group-forming
+networks and Reed’s law as a strategic argument: agents could find useful
+work, recruit collaborators, and compose contributions at machine speed.
+This is a hypothesis about the value of possible collaboration, not a
+measured growth law or proof that every additional participant improves quality.
+
+The concrete work in the archive supplies the conditions for that hypothesis:
+discoverable components, usable context, capacity, task ownership, independent
+checking, and payment for useful contributions. [249](249.md) and
+[250](250.md) show how even a local fleet needs inspectable relationships and
+honest state. [284](284.md) proposes roles and productive group activity;
+[286](286.md) connects shared state and coordination to reusable protocols.
+Network effects would come from contributions that remain useful to others,
+not from counting agents, tokens, or speculative groups alone.
+
+### Open protocols answer concentration and continuity problems
 
 Nostr begins as registry, login, and storage infrastructure in [066](066.md),
 [082](082.md), and [088](088.md), then supports the mobile/network story.
@@ -204,22 +204,22 @@ or loss of a central service? Open source, an open wire format, operational
 continuity, and permission to act are related but distinct requirements.
 
 ### Open contribution does not make all data public
-+
-+The archive explores several disclosure models. [046](046.md) tells users to
-+assume uploaded knowledge is public. [215](215.md) proposes opt-in sale of
-+redacted traces; [245](245.md) distinguishes data-sharing and private tiers;
-+[269](269.md) separates open infrastructure from Sarah’s private product.
-+Those are different arrangements, not one privacy policy carried through every
-+generation. Episode [285](285.md) even changes its intended open-core/private
-+split within the session before announcing the open-sourcing of Coder.
-+
-+The reusable lesson is to specify who owns an input, who may see it, and what
-+reuse or compensation has been agreed. Access to a trace is not automatic
-+permission to publish it, train on it, or pay its author under terms that
-+were never accepted. This is central to the proposed knowledge and labor
-+networks, not only to a future data marketplace.
-+
-+### Provider neutrality coexists with dependence on real providers
+
+The archive explores several disclosure models. [046](046.md) tells users to
+assume uploaded knowledge is public. [215](215.md) proposes opt-in sale of
+redacted traces; [245](245.md) distinguishes data-sharing and private tiers;
+[269](269.md) separates open infrastructure from Sarah’s private product.
+Those are different arrangements, not one privacy policy carried through every
+generation. Episode [285](285.md) even changes its intended open-core/private
+split within the session before announcing the open-sourcing of Coder.
+
+The reusable lesson is to specify who owns an input, who may see it, and what
+reuse or compensation has been agreed. Access to a trace is not automatic
+permission to publish it, train on it, or pay its author under terms that
+were never accepted. This is central to the proposed knowledge and labor
+networks, not only to a future data marketplace.
+
+### Provider neutrality coexists with dependence on real providers
 
 The series repeatedly studies, integrates, criticizes, replaces, and returns
 to outside models and harnesses: [104](104.md), [109](109.md), [185](185.md),
@@ -295,14 +295,14 @@ final oracle discussion remains a report of work and pending comparisons at
 recording time. It also reports that tuning Jev settings did not beat the
 existing settings, so that experiment made no promotion. Negative results
 belong in the learning record alongside the useful components.
-+
-+The closing clips introduce **Fire Loop**: expose parameters and decisions,
-+detect an unproductive run early, stop it, and return an explanation that helps
-+the next experiment. The recording reports one failing shadow run stopped;
-+it does not establish the proposed five-to-ten-second iteration target or a
-+new comparative coding win. This continues the early inspectability theme by
-+making the speed of finding and understanding failure an engineering objective.
-+Current outcomes belong in the
+
+The closing clips introduce **Fire Loop**: expose parameters and decisions,
+detect an unproductive run early, stop it, and return an explanation that helps
+the next experiment. The recording reports one failing shadow run stopped;
+it does not establish the proposed five-to-ten-second iteration target or a
+new comparative coding win. This continues the early inspectability theme by
+making the speed of finding and understanding failure an engineering objective.
+Current outcomes belong in the
 [Terminal-Bench results index](../terminal-bench/README.md), not in a timeless
 claim that the archive proves Coder is universally better.
 
