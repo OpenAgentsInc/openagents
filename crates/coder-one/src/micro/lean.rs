@@ -146,6 +146,10 @@ pub struct Lean {
     /// is judged on inputs it doesn't provide ([`FRESH_INPUTS`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub fresh_inputs: bool,
+    /// Ask the evaluation script to check every invariance the task
+    /// states and run every mode it names ([`STATED_INVARIANTS`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stated_invariants: bool,
     /// Keep candidate snapshots and the evaluator in the artifacts, prefer
     /// an earlier tie, and validate the submitted workspace again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -885,6 +889,13 @@ score the solution on those, not only on the provided sample. You can make them 
 you write from the task's description, with random inputs compared against a program the task \
 provides, or by holding back part of the provided data or one of its fields as the answer. A score \
 on the provided sample alone can't tell a general solution from one fitted to that sample.";
+
+/// Added to the score guidance with `stated_invariants`. On
+/// `batched-eval-parity`, an Ember run (issue #9665) passed the task's
+/// calibration and runtime checks but crashed in padded mode, which its
+/// score script never ran, although the task says padded and packed must
+/// match and results must not depend on batching or input order.
+pub const STATED_INVARIANTS: &str = "When the task says results must match or stay the same across settings, such as two modes, batch sizes, padding, input order, repeated runs, or a cache, make the script check each one: run the solution on the same input under every setting the task lists, compare the outputs exactly, and count each pair that differs as a failed check. Also run every mode and option value the task names at least once, and count a crash as a failed check. A mode the script never runs is a mode it can't score.";
 
 /// Added with `keep_best` until the score script exists: where to write it.
 #[must_use]
@@ -2987,6 +2998,10 @@ impl Micro {
                 if lean.fresh_inputs {
                     guidance.push(' ');
                     guidance.push_str(FRESH_INPUTS);
+                }
+                if lean.stated_invariants {
+                    guidance.push(' ');
+                    guidance.push_str(STATED_INVARIANTS);
                 }
             }
             if checking && lean.holdout {

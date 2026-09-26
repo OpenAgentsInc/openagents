@@ -1608,6 +1608,7 @@ fn lean_shape() -> lean::Lean {
         example_first: false,
         standard_forms: false,
         fresh_inputs: false,
+        stated_invariants: false,
         rationale: false,
         departures: Vec::new(),
         suspects: crate::departures::CommentMode::Keywords,
@@ -3589,4 +3590,22 @@ fn fresh_inputs_is_off_by_default_and_keeps_old_manifests_unchanged() {
     .unwrap();
     assert!(on.fresh_inputs);
     assert!(lean::FRESH_INPUTS.contains("not only on the provided sample"));
+}
+
+#[test]
+fn stated_invariants_is_off_by_default_and_keeps_old_manifests_unchanged() {
+    let off: lean::Lean =
+        serde_json::from_value(json!({ "sessions": 1, "source_chars": 1000 })).unwrap();
+    assert!(!off.stated_invariants);
+    assert!(
+        !serde_json::to_string(&off)
+            .unwrap()
+            .contains("stated_invariants")
+    );
+    let on: lean::Lean = serde_json::from_value(
+        json!({ "sessions": 1, "source_chars": 1000, "stated_invariants": true }),
+    )
+    .unwrap();
+    assert!(on.stated_invariants);
+    assert!(lean::STATED_INVARIANTS.contains("run every mode"));
 }
