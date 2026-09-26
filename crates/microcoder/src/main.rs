@@ -19,7 +19,7 @@ Fable 5.1 low's time and cost on the same task.
 Options:
   --model SLUG       the OpenRouter model (default openai/gpt-6-luna)
   --effort LEVEL     low, medium, or high (default medium)
-  --max-steps N      default 60
+  --max-steps N      default no limit
   --max-minutes N    default 60
   --max-usd N        model and Jev spend, default 1.00
   --command-seconds N  default 300
@@ -72,7 +72,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 let effort = value()?;
                 options.effort = (effort != "default").then_some(effort);
             }
-            "--max-steps" => options.limits.max_steps = number(value()?)? as usize,
+            "--max-steps" => options.limits.max_steps = Some(number(value()?)? as usize),
             "--max-minutes" => options.limits.max_seconds = (number(value()?)? * 60.0) as u64,
             "--max-usd" => options.limits.max_usd = number(value()?)?,
             "--command-seconds" => options.limits.command_seconds = number(value()?)? as u64,
@@ -148,11 +148,14 @@ async fn go(options: Options) -> Result<u8, String> {
     let mut terminal = Terminal::new();
     let say = |text: &str| terminal_line(text);
     println!(
-        "microcoder · {} · {} (effort {}) · up to {} steps, {} min, ${:.2} · network {network}",
+        "microcoder · {} · {} (effort {}) · {}, {} min, ${:.2} · network {network}",
         task.name,
         options.model,
         options.effort.as_deref().unwrap_or("default"),
-        options.limits.max_steps,
+        options
+            .limits
+            .max_steps
+            .map_or("no step limit".to_string(), |n| format!("up to {n} steps")),
         options.limits.max_seconds / 60,
         options.limits.max_usd
     );

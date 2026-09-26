@@ -31,7 +31,8 @@ editor, so write files with heredocs. The Files section shows, in full, the curr
 every path in `view`: keep the files you need there instead of printing them with cat, and \
 you'll see them after each step's commands run. A non-empty `view` replaces the list; an empty \
 one keeps it. Set `finished` to true, with no commands, \
-only when the task is complete.";
+only when the task is complete. Every other step must run at least one command: the \
+files in view are already current, so asking to see them again does nothing.";
 
 /// Files kept in view, at most.
 pub const VIEW_FILES: usize = 12;
@@ -45,7 +46,8 @@ pub const USER_PROMPT: &str = "Solve this task.";
 /// When the loop stops, besides a finished action.
 #[derive(Clone, Debug, Serialize)]
 pub struct Limits {
-    pub max_steps: usize,
+    /// Steps, at most; `None` means no step limit.
+    pub max_steps: Option<usize>,
     pub max_seconds: u64,
     /// Dollars of model and Jev spend.
     pub max_usd: f64,
@@ -53,16 +55,20 @@ pub struct Limits {
     pub command_seconds: u64,
     /// Replies in a row that don't match the format before the loop stops.
     pub max_bad_replies: usize,
+    /// Replies in a row that run nothing and change nothing before the
+    /// loop stops.
+    pub max_idle_replies: usize,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Limits {
-            max_steps: 60,
+            max_steps: None,
             max_seconds: 3_600,
             max_usd: 1.0,
             command_seconds: 300,
             max_bad_replies: 3,
+            max_idle_replies: 3,
         }
     }
 }
@@ -76,6 +82,8 @@ pub enum Ending {
     TimeLimit,
     SpendLimit,
     BadReplies(String),
+    /// Replies in a row ran no commands and asked for nothing new.
+    Idle,
 }
 
 /// What the loop reports as it runs.
@@ -120,7 +128,7 @@ pub struct Outcome {
 #[must_use]
 pub fn prompt(state: &State, user_prompt: &str, jev: &str) -> String {
     let mut out = format!(
-        "# Task\n\n{}\n\n# Instruction\n\n{user_prompt}\n\n# Environment\n\n{}\n\n# Files in view\n\n{}\n\n# Jev's judgments of the current state\n\n{jev}\n\n# Steps so far\n\n{}",
+        "# Task\n\n{}\n\n# Instruction\n\n{user_prompt}\n\n# Environment\n\n{}\n\n# Files in view (current: read after the last step's commands ran)\n\n{}\n\n# Jev's judgments of the current state\n\n{jev}\n\n# Steps so far\n\n{}",
         state.task,
         state.environment,
         state.render_files(),
@@ -188,9 +196,10 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut model_usd = 0.0;
     let mut jev_usd = 0.0;
     let mut bad = 0usize;
+    let mut idle = 0usize;
     let mut step = 0usize;
     let ending = loop {
-        if step >= limits.max_steps {
+        if limits.max_steps.is_some_and(|max| step >= max) {
             break Ending::StepLimit;
         }
         if started.elapsed() >= Duration::from_secs(limits.max_seconds) {
@@ -221,6 +230,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
         let action: NextAction = match generated.action {
             Ok(action) => {
                 bad = 0;
+                state.notes.clear();
                 action
             }
             Err(error) => {
@@ -244,6 +254,32 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             });
             break Ending::Finished;
         }
+        // A reply that runs nothing and asks for no new file wastes a step.
+        let in_view: Vec<&String> = state.files.iter().map(|(path, _)| path).collect();
+        let new_file = action
+            .view
+            .iter()
+            .any(|path| !in_view.contains(&&path.trim().to_string()));
+        if action.commands.is_empty() && !action.finished && !new_file {
+            idle += 1;
+            state.actions.push(Action {
+                step,
+                rationale: action.rationale,
+                results: Vec::new(),
+                skipped: Vec::new(),
+            });
+            if idle >= limits.max_idle_replies {
+                break Ending::Idle;
+            }
+            state.notes.push(format!(
+                "Step {step} ran no commands and asked for no file that wasn't already in view. \
+The Files in view section already holds the current contents of those files, read after the last \
+command ran; asking for them again shows nothing new. Run a command that moves the task forward, \
+or set finished to true if the task is complete."
+            ));
+            continue;
+        }
+        idle = 0;
         let mut results = Vec::new();
         let mut skipped = Vec::new();
         let mut failed = false;

@@ -175,7 +175,7 @@ async fn a_failing_command_skips_the_rest_and_reaches_the_next_state() {
 async fn the_step_limit_stops_the_loop() {
     let script = Script::new(Vec::new());
     let limits = Limits {
-        max_steps: 3,
+        max_steps: Some(3),
         ..Limits::default()
     };
     let (_, outcome, ran, _) = go(&script, &limits).await;
@@ -206,7 +206,7 @@ async fn replies_that_miss_the_format_are_noted_then_stop_the_loop() {
     ]);
     let (state, outcome, _, _) = go(&script, &Limits::default()).await;
     assert_eq!(outcome.ending, Ending::BadReplies("bad 3".to_string()));
-    assert!(state.notes[0].contains("Step 1's reply couldn't be used"));
+    assert!(state.notes[0].contains("Step 3's reply couldn't be used"));
     let prompts = script.prompts.into_inner();
     assert!(prompts[1].contains("# Notes from the host"));
 }
@@ -222,7 +222,11 @@ async fn files_in_view_appear_in_full_in_the_next_prompt() {
     let script = Script::new(vec![Ok(first), Ok(act("done", &[], true))]);
     let (state, _, _, _) = go(&script, &Limits::default()).await;
     let prompts = script.prompts.into_inner();
-    assert!(prompts[0].contains("# Files in view\n\nNone."));
+    assert!(
+        prompts[0].contains(
+            "# Files in view (current: read after the last step's commands ran)\n\nNone."
+        )
+    );
     assert!(prompts[1].contains("## a.py\n\n```\ncontents of a.py\n```"));
     assert!(prompts[1].contains("## missing.txt\n\n(no such file)"));
     // Duplicates are read once.
@@ -241,4 +245,22 @@ async fn an_empty_view_keeps_the_files_in_view() {
     go(&script, &Limits::default()).await;
     let prompts = script.prompts.into_inner();
     assert!(prompts[2].contains("## a.py"), "the file stays in view");
+}
+
+#[tokio::test]
+async fn replies_that_run_nothing_are_noted_then_stop_the_loop() {
+    let script = Script::new(vec![
+        Ok(act("look", &[], false)),
+        Ok(act("work", &["echo hi"], false)),
+        Ok(act("look", &[], false)),
+        Ok(act("look", &[], false)),
+        Ok(act("look", &[], false)),
+    ]);
+    let (_, outcome, ran, _) = go(&script, &Limits::default()).await;
+    assert_eq!(outcome.ending, Ending::Idle);
+    assert_eq!(ran, ["echo hi"]);
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[1].contains("Step 1 ran no commands"));
+    // A step that ran something clears the note.
+    assert!(!prompts[2].contains("ran no commands and asked"));
 }

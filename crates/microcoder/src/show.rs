@@ -193,6 +193,7 @@ impl Observer for Terminal {
                     Ending::TimeLimit => "the time limit".to_string(),
                     Ending::SpendLimit => "the spend limit".to_string(),
                     Ending::BadReplies(error) => format!("unusable replies ({error})"),
+                    Ending::Idle => "replies that ran nothing".to_string(),
                 };
                 self.line(
                     seconds,
