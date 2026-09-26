@@ -107,7 +107,7 @@ pub fn next_action_schema() -> Value {
             "view": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Paths of files to show in full in the next step's Files section. The host reads them fresh after the commands run. List every file you need to see or edit, and drop the ones you no longer need; don't cat them. At most 12."
+                "description": "Paths of files to show in full in the next step's Files section. The host reads them fresh after the commands run. A non-empty list replaces the files in view; an empty list keeps them. List every file you need to see or edit; don't cat them. At most 12."
             },
             "finished": {
                 "type": "boolean",

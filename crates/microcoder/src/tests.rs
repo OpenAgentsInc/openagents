@@ -228,3 +228,17 @@ async fn files_in_view_appear_in_full_in_the_next_prompt() {
     // Duplicates are read once.
     assert_eq!(state.files.len(), 2);
 }
+
+#[tokio::test]
+async fn an_empty_view_keeps_the_files_in_view() {
+    let mut first = act("read", &["ls"], false);
+    first.view = vec!["a.py".to_string()];
+    let script = Script::new(vec![
+        Ok(first),
+        Ok(act("run", &["echo hi"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    go(&script, &Limits::default()).await;
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[2].contains("## a.py"), "the file stays in view");
+}

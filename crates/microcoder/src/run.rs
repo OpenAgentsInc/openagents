@@ -28,8 +28,9 @@ about the state. Treat Jev's judgments as evidence, not orders. Each command is 
 run in order in the working directory and fed to bash as written, so never wrap it in sh -c or \
 bash -c. Commands stop at the first one that fails; nobody answers questions, and there is no \
 editor, so write files with heredocs. The Files section shows, in full, the current contents of \
-every path you list in `view`: keep the files you need there instead of printing them with cat, \
-and you'll see them after each step's commands run. Set `finished` to true, with no commands, \
+every path in `view`: keep the files you need there instead of printing them with cat, and \
+you'll see them after each step's commands run. A non-empty `view` replaces the list; an empty \
+one keeps it. Set `finished` to true, with no commands, \
 only when the task is complete.";
 
 /// Files kept in view, at most.
@@ -270,7 +271,13 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             results,
             skipped,
         });
-        state.files = read_view(env, &action.view).await;
+        // An empty list keeps the files already in view, read fresh.
+        let paths: Vec<String> = if action.view.is_empty() {
+            state.files.iter().map(|(path, _)| path.clone()).collect()
+        } else {
+            action.view.clone()
+        };
+        state.files = read_view(env, &paths).await;
         if action.finished && !failed {
             break Ending::Finished;
         }
