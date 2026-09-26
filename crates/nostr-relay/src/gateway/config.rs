@@ -81,6 +81,21 @@ impl Default for GatewayLimits {
     }
 }
 
+impl GatewayLimits {
+    /// The most stored events one `REQ` returns before its EOSE: the
+    /// smaller of `NOSTR_RELAY_MAX_LIMIT` and the history batch bound,
+    /// `(NOSTR_RELAY_SEND_QUEUE_CAPACITY - 1) / 2`, which keeps a batch's
+    /// handoff below half the per-connection send queue. With the
+    /// defaults (1,000 and 256) that is 127. NIP-11 advertises this as
+    /// `max_limit` and `default_limit`, because it is the cap a client
+    /// actually meets; a truncated answer ends with a NIP-67 `more` EOSE.
+    #[must_use]
+    pub fn history_limit(&self) -> usize {
+        self.max_limit
+            .min((self.send_queue_capacity.saturating_sub(1) / 2).max(1))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaConfig {
     pub root: PathBuf,

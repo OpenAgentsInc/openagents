@@ -1707,16 +1707,7 @@ async fn handle_req(
     let db = context.state.db.clone();
     let hub = context.state.hub.clone();
     let connection_id = context.connection_id;
-    let max_results = context.state.config.limits.max_limit.min(
-        (context
-            .state
-            .config
-            .limits
-            .send_queue_capacity
-            .saturating_sub(1)
-            / 2)
-        .max(1),
-    );
+    let max_results = context.state.config.limits.history_limit();
     context.query_tasks.spawn(async move {
         match db
             .history(

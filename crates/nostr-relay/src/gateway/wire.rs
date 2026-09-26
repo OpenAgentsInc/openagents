@@ -496,7 +496,7 @@ pub fn nip11_json_for_host(
         limitation: Nip11Limitation {
             max_message_length: config.limits.max_frame_bytes,
             max_subscriptions: config.limits.max_subscriptions,
-            max_limit: config.limits.max_limit,
+            max_limit: config.limits.history_limit(),
             max_subid_length: 64,
             max_event_tags: policy.max_tags,
             auth_required: config.auth_required,
@@ -504,7 +504,7 @@ pub fn nip11_json_for_host(
             created_at_upper_limit: policy.max_future_seconds,
             created_at_lower_limit: (policy.max_past_seconds > 0)
                 .then_some(policy.max_past_seconds),
-            default_limit: config.limits.max_limit,
+            default_limit: config.limits.history_limit(),
             max_not_before_delta: MAX_REMINDER_HORIZON_SECONDS,
             due_delivery_mode: "lazy",
         },
@@ -778,6 +778,9 @@ mod tests {
         config.limits.max_frame_bytes = 65_536;
         config.limits.max_subscriptions = 12;
         config.limits.max_limit = 250;
+        // A queue deep enough that the configured limit is the one a REQ
+        // meets; see nip11_max_limit_is_the_cap_a_req_meets.
+        config.limits.send_queue_capacity = 1_024;
         let policy = RelayPolicy {
             closed_membership: false,
             max_content_bytes: 1_024,
@@ -812,6 +815,37 @@ mod tests {
                 .expect_err(invalid["name"].as_str().unwrap());
             assert!(error.to_string().contains("NOSTR_RELAY_SUPPORTED_NIPS"));
         }
+    }
+
+    #[test]
+    fn nip11_max_limit_is_the_cap_a_req_meets() {
+        let mut config = GatewayConfig::new(
+            "host=/tmp dbname=test".to_owned(),
+            "127.0.0.1:0".parse::<SocketAddr>().unwrap(),
+        );
+        let policy = RelayPolicy {
+            closed_membership: false,
+            max_content_bytes: 1_024,
+            max_tags: 48,
+            max_future_seconds: 120,
+            max_past_seconds: 7_200,
+        };
+        let limitation = |config: &GatewayConfig| {
+            serde_json::from_str::<Value>(&nip11_json(config, &policy)).unwrap()["limitation"]
+                .clone()
+        };
+        // The defaults: NOSTR_RELAY_MAX_LIMIT=1000 but a 256-message send
+        // queue, so one REQ returns at most (256 - 1) / 2 = 127 events.
+        assert_eq!(config.limits.history_limit(), 127);
+        assert_eq!(limitation(&config)["max_limit"], 127);
+        assert_eq!(limitation(&config)["default_limit"], 127);
+        // A deeper queue lets the configured limit through.
+        config.limits.send_queue_capacity = 4_096;
+        assert_eq!(config.limits.history_limit(), 1_000);
+        assert_eq!(limitation(&config)["max_limit"], 1_000);
+        // A smaller configured limit is the cap whatever the queue.
+        config.limits.max_limit = 50;
+        assert_eq!(limitation(&config)["max_limit"], 50);
     }
 
     #[test]

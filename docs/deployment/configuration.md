@@ -115,7 +115,7 @@ has no certificate configuration.
 | `NOSTR_RELAY_MAX_FRAME_BYTES` | no | `131072` | Maximum WebSocket frame/message and gateway event size in bytes (1,024–16,777,216). Larger frames close the connection; larger publications are refused. The database admission policy has its own content bound. |
 | `NOSTR_RELAY_MAX_SUBSCRIPTIONS` | no | `32` | Maximum concurrent subscriptions per connection (1–1,024). Excess `REQ` is answered with `CLOSED`. |
 | `NOSTR_RELAY_MAX_FILTERS` | no | `16` | Maximum filters per `REQ` (1–256). |
-| `NOSTR_RELAY_MAX_LIMIT` | no | `1000` | Cap on any filter `limit` (1–100,000); also the default page size when a filter has no `limit`. |
+| `NOSTR_RELAY_MAX_LIMIT` | no | `1000` | Cap on any filter `limit` (1–100,000); also the default page size when a filter has no `limit`. One `REQ` returns at most the smaller of this and `(NOSTR_RELAY_SEND_QUEUE_CAPACITY - 1) / 2` stored events, split across its filters, so the defaults cap a `REQ` at **127** events. NIP-11 advertises that effective cap as `limitation.max_limit` and `default_limit`; a truncated answer ends with a NIP-67 `["EOSE", id, ["more"]]`, and a client pages with `until` to get the rest. |
 | `NOSTR_RELAY_MAX_QUERY_COST` | no | `100000` | Upper bound on estimated rows scanned per `REQ` (1–1,000,000,000); costlier queries are refused with `CLOSED`. |
 | `NOSTR_RELAY_RATE_EVENTS_PER_MIN_IP` | no | `120` | `EVENT` messages accepted per minute per client IP. |
 | `NOSTR_RELAY_RATE_EVENTS_PER_MIN_PUBKEY` | no | `60` | `EVENT` messages accepted per minute per author pubkey. |

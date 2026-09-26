@@ -35,6 +35,13 @@ History:
 | 2026-09-19 | `openagents-nostr-relay-00023-kax` | `9b5bb212f1` | First image from this repository; migrations 1-8 |
 | 2026-09-26 | `openagents-nostr-relay-00025-jes` | `c1bac69fdd` | Applied migrations 9 (`nip29_groups`) and 10 (`private_protocol_search`); adds NIP-67 and NIP-77 to NIP-11 |
 
+Not yet deployed: NIP-11 `limitation.max_limit` and `default_limit` now
+advertise the cap one `REQ` actually meets,
+`min(NOSTR_RELAY_MAX_LIMIT, (NOSTR_RELAY_SEND_QUEUE_CAPACITY - 1) / 2)`, which
+is 127 with the defaults; `00025-jes` still advertises 1000 while returning at
+most 127. The change touches no migration and no configuration, so the next
+deploy carries it as is.
+
 ## Accounts
 
 Use the automation service account for builds, reads, and logs:
