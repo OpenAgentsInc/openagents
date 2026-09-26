@@ -1,224 +1,223 @@
 # Glossary
 
-Terms this repository implements or specifies. A term appears here only if
-code or a document in this repository defines it.
+This glossary defines the terms used across OpenAgents: Coder and its research
+harnesses, decision models and services, measurement, evidence, programs,
+extensions, Nostr protocols, markets, and world interfaces. It also explains
+historical names that still appear in the retained transcripts.
 
-**Status** tells you what backs the term:
+Implementation status is checked against this repository as of **2026-09-26**.
+The linked owning contract or source file supplies the detailed rules.
 
-- **Implemented**: code in `crates/` defines it, and tests cover it.
-- **Partial**: code implements part of the contract; the entry names the
-  remaining boundary.
-- **Designed**: a document or a NIP in this repository specifies it, and no
-  code implements it yet.
-- **Retired**: the term names something from an earlier codebase that this
-  repository no longer contains. The entry says what replaced it.
+| Status | Meaning |
+| --- | --- |
+| **Implemented** | Code provides the specific behavior described. This does not imply deployment, universal compatibility, or demonstrated benefit on every workload. |
+| **Partial** | Code provides part of the contract; the definition identifies the important remaining boundary. |
+| **Designed** | A repository specification describes the intended behavior, but the complete named feature is not implemented. |
+| **Defined** | An analytical or architectural concept used in the repository. It is not itself a claim that a runtime feature shipped. |
+| **Historical** | A product name, implementation, or idea from the retained archive. Its presence here does not establish a current implementation in this workspace. |
+| **Retired** | A previous implementation is no longer in this repository; the entry identifies its replacement or disposition. |
 
-Terms defined only in other repositories are out of scope. Designs adapted
-from reference material enter this glossary when an OpenAgents specification
-defines them, as the [program and extension specification](extensions/README.md)
-does for plugins and packages.
+A model confidence, signed event, receipt, process exit, test verdict, accepted
+artifact, and confirmed payment establish different things. Each needs its own
+scope and evidence. A specification or passing parser fixture establishes less
+than an operating service.
 
-## The contract
+## Terms that are easy to confuse
 
-| Term | Status | Definition |
-| --- | --- | --- |
-| System One | Implemented | The request contract all three decision models answer: `POST /v1/systemone`. You send one state and a map of typed questions. You get one typed answer per question, with probabilities. The service generates no text. The schema identifier is `openagents.systemone.v1`. |
-| State | Implemented | The single document every question in a request reads. Questions do not see each other's answers. |
-| Question | Implemented | One typed request for a decision. A question is a `Noul`, a `Choice`, or a `Score`. |
-| `Noul` | Implemented | A question that asks whether a statement holds. The answer is a probability from 0 to 1. |
-| `Choice` | Implemented | A question that asks which of several named options applies. The answer names one option and carries a distribution over all of them. The caller supplies the options in the request. |
-| `Score` | Implemented | A question that asks which level applies on an ordered rubric. The answer carries a weighted position (`score`, `Σ i · p_i`), a legend, and a distribution; the categorical level an evaluator scores is the distribution's argmax, ties resolving to the last level listed, per [`decision-models/2026-09-20-score-contract.md`](decision-models/measurements/2026-09-20-score-contract.md). Serving a `Score` requires the levels to be ordered for the model, which [`decision-models/2026-09-19-score-ordinality.md`](decision-models/measurements/2026-09-19-score-ordinality.md) measures door by door. |
-| Door | Implemented | One endpoint that answers the contract. `crates/jev` is the client for every door; you select one by `base_url`. |
-| Door identity | Implemented | The fields that say which door produced a row: the door name and version, the adapter, the estimator, and the OS build. Before door identity existed, calibration records named only an OS build, which is identical across doors on one machine. |
-| Refusal code | Implemented | A typed reason a door declines to answer, returned in the response body. A refusal carrying a code is the door's own answer and stays in the denominator. A failure carrying no code is a harness failure and produces no row. |
-| `uncalibrated` | Implemented | The refusal a door returns when a caller requires probabilities for a family that has no admitted calibration map. |
+| Distinction | How this glossary uses it |
+| --- | --- |
+| Coder, Coder One, Microluna, Microcoder | Coder is the product/runtime; the others are configurable agent components or research harnesses with different execution and recording paths. |
+| Decision model, generator, executor | A decision model answers typed questions; a generator produces open-ended output; an executor performs admitted work. Selecting one does not automatically authorize the others. |
+| Program, plugin, skill, package | A program composes work; a Wasm plugin performs a bounded operation; a `SKILL.md` skill supplies guidance; a package distributes components. Voyager's skill is executable Lua. |
+| Definition, binding, grant | A definition describes an interface, a binding connects it to a host, and a grant supplies authority. Discovery and installation grant nothing. |
+| Trace, evidence, receipt, journal | A trace records execution; evidence supports an assessment; a receipt attributes a call or effect; a journal records durable lifecycle state. None guarantees all the others exist. |
+| Verification, integration, acceptance, settlement | Checking the result, adopting it, accepting contractual work, and confirming payment are separate decisions. |
+| Knowledge, method, component | Knowledge supplies cited guidance; a method registry supplies executable definition-based checks; a component is a reusable part of agent behavior. A source task is not independent evidence for its own contribution. |
+| Signature | A cryptographic signature authenticates an event; a semantic AI signature defines an operation's meaning. An artifact signature identifies a particular served/trained artifact under its own contract. |
 
-## The three implementations
+## Find a term
 
-| Term | Status | Definition |
-| --- | --- | --- |
-| Jev | Implemented | The hosted door, run by TypeSafe on closed weights. Metered per request. `crates/jev` is the Rust SDK. |
-| Kev | Implemented | The local door in `crates/kev`: a trained pointer head and LoRA adapter over a frozen open base. Four checkpoints exist — `kev-0.5b`, `kev-0.6b`, `kev-4b`, and `kev-8b`. |
-| Lev | Implemented | The on-device door in `crates/lev`, which answers the contract through Apple's `FoundationModels` framework. Apple's runtime returns no logits, so Lev estimates distributions instead of reading them. |
-| Packed sequence | Implemented | Kev's prefill layout. The state and every question occupy one sequence, so the state is encoded once for all questions in a request. |
-| Block-causal mask | Implemented | The attention mask that isolates questions in a packed sequence. Each question attends to the state and to itself, and not to other questions. |
-| Pointer readout | Implemented | Kev's answer mechanism. A trained head points at option tokens the caller supplied in this request, rather than selecting from classes fixed at training time. |
-| Delimiter hardening | Implemented | Training that makes Kev treat delimiter-like text inside a state as data. Lev cannot use this technique, because Apple's guardrails refuse delimiter-fenced state. |
-| Bridge | Implemented | The Swift helper in `swift/lev-bridge` that reaches `FoundationModels`. It speaks line-delimited JSON over stdin and stdout. Build it with `./scripts/build-lev-bridge.sh`. |
-
-## Estimating a distribution
-
-| Term | Status | Definition |
-| --- | --- | --- |
-| Estimator | Implemented | The method Lev uses to derive an answer when the runtime exposes no probabilities. |
-| L1 | Implemented | One greedy call. Returns a choice and no distribution. |
-| L2 | Implemented | `n` seeded samples, counted. Resolution is `1/n`, so eight draws answer in steps of 0.125. |
-| L3 | Implemented | A constrained certainty band the model reports alongside its answer. |
-| Raw signal | Implemented | What an estimator observes before calibration. The type is deliberately not named a probability, because a count of samples is not one. |
-| Seed block | Implemented | The range of seeds an L2 estimate draws. Block `b` draws `b * n` through `b * n + n`, so two blocks never share a seed. Running the same block again reproduces the same arithmetic and is not a fresh trial. For independent evidence, ask for a block you have not drawn. |
-| Certainty band | Implemented | A coarse confidence level the model reports. On the base model the band is constant. A trained band varies and separates correct answers from incorrect ones. |
-
-## Calibration
-
-| Term | Status | Definition |
-| --- | --- | --- |
-| Calibration map | Implemented | A fitted table that converts a raw signal into a probability. A map is fitted per family and per door. A map fitted against one door does not serve another. |
-| Band-conditioned map | Implemented | A calibration map fitted separately within each certainty band. On Lev this reduced log loss where a pooled map did not help. |
-| Admission gate | Implemented | The rule in `gym::calibrate::admit` that decides whether a map may be served. A map must reduce ECE by at least 10% on items it was not fitted on, must not increase log loss, and may increase Brier by no more than 10%. |
-| Confident error | Implemented | A wrong answer returned with high probability. Counting these separates a model that is wrong from a model that is wrong and certain. |
-| Calibration record | Implemented | The committed artifact holding a fitted map, its metrics, its verdict, and the door identity it was fitted against. The schema identifier is `openagents.gym.calibration_record.v1`. |
-
-## The Gym
-
-| Term | Status | Definition |
-| --- | --- | --- |
-| Gym | Implemented | The measurement and control plane in `crates/gym`. It stores results, judges comparisons, and refuses comparisons it cannot make. It reads and writes local files and depends on no service. |
-| Row | Implemented | One door's answer to one item, with everything needed to attribute it: door identity, suite digest, question digest, gate, estimator, perturbation, and latency. New rows use `openagents.gym.eval_row.v2`, which records the selected answer; historical `v1` rows remain readable without rewriting their receipts. |
-| Store | Implemented | The append-only result file. A row is appended as it is produced, so an interrupted run keeps what it measured. |
-| Receipt chain | Implemented | The hash chain over rows in a store. Each row seals the row before it, so an edited or reordered row is detectable. The store seals a row over the value it reads back as, because writing an `f64` exactly and parsing it approximately produces different digests. |
-| Chain fault | Implemented | What a chain verification reports when it fails: `Edited` if a row's content changed, `Resequenced` if the order changed. |
-| Suite | Implemented | A set of labelled items with a content digest. Changing an item changes the digest, so a changed suite is a different measurement rather than a moved number. |
-| Suite digest | Implemented | The hash over a suite's items. A comparison across two suite digests is refused. |
-| Partition | Implemented | Which third of a suite an item belongs to: `calibration` to fit on, `development` to iterate on, and `locked` to spend once. Every item of one state sits in one partition. |
-| Locked read | Implemented | A recorded spend of the locked partition. The schema identifier is `openagents.gym.locked_read.v1`. |
-| Question set | Implemented | The question text for a suite's families, digested separately from the items. Rewording a question changes the question digest and leaves the suite digest alone, which makes a reworded question a candidate rather than a different suite. |
-| Gate | Implemented | A rule that judges a comparison. Gates live in `crates/gym/gates/` and carry their thresholds, each threshold's basis, and a digest. |
-| Gate digest | Implemented | The hash over a gate. A verdict names the gate digest that produced it, so tightening a threshold produces a new rule rather than new history. |
-| Bound | Implemented | One threshold in a gate, with a record of where the number came from. |
-| Basis | Implemented | What a bound rests on: a measurement, a derivation, or a judgment. A bound whose basis is a pending measurement cannot pass. |
-| Verdict | Implemented | The three-valued result of judging a comparison: `failed`, `unverifiable`, or `passed`. A gate reports `unverifiable` when it has no floor for a metric, and `unverifiable` outranks `passed`. |
-| Noise floor | Implemented | The spread a metric shows when nothing changes. On `support-v2` the seed-block standard deviation of accuracy is 0.0197, so a two-door comparison needs 0.056 to clear two sigma. |
-| Headroom | Designed | The accuracy a partition leaves available. A partition scoring 0.975 at baseline has 0.025 of headroom, which is below the floor, so it cannot host a comparison whatever you test on it. |
-| Perturbation | Implemented | What varies between two runs of the same door on the same items: the estimator, the draw count, the seed block, the option order, and the question digest. Two runs at the same perturbation are a repeat, which the store refuses. |
-| Flip rate | Implemented | How often a door changes its answer when option order changes. A three-option `Choice` has six orders and fifteen distinct pairs, and a flip rate measured over one pair is a different statistic from one measured over all fifteen. |
-| Label source | Implemented | What evidence an item's label rests on. `outcome` means the label was read mechanically from what happened next. `author` means a person read the item and decided. A suite that mixes the two without recording which is which loses the distinction permanently. |
-| Comparison | Implemented | What two sets of rows may be read as: a door comparison when the items and question text match, a question-text comparison when the items match and the text differs, and nothing at all when the items differ. |
-| Regression check | Implemented | `gym regress` compares a door against its own previous run at the same perturbation and suite digest. It refuses the comparison when either has moved. |
+- [Agent infrastructure](#agent-infrastructure)
+- [The Coder product suite](#the-coder-product-suite)
+- [Coder and execution](#coder-and-execution)
+- [Traces and retained evidence](#traces-and-retained-evidence)
+- [Context and working state](#context-and-working-state)
+- [Capabilities and programs](#capabilities-and-programs)
+- [Plugins and skills](#plugins-and-skills)
+- [Extensions](#extensions)
+- [Shared knowledge](#shared-knowledge)
+- [Checks, components, and iteration](#checks-components-and-iteration)
+- [Coding benchmarks and comparisons](#coding-benchmarks-and-comparisons)
+- [The decision contract](#the-decision-contract)
+- [Decision models and runtimes](#decision-models-and-runtimes)
+- [Estimating a distribution](#estimating-a-distribution)
+- [Calibration and decision metrics](#calibration-and-decision-metrics)
+- [The Gym's decision evaluation](#the-gyms-decision-evaluation)
+- [Decision service, identity, and accounting](#decision-service-identity-and-accounting)
+- [Classification, jobs, and clients](#classification-jobs-and-clients)
+- [Tenant training and model admission](#tenant-training-and-model-admission)
+- [Skill-directory service](#skill-directory-service)
+- [AI programming and optimization](#ai-programming-and-optimization)
+- [Nostr and shared protocols](#nostr-and-shared-protocols)
+- [Network effects and contribution value](#network-effects-and-contribution-value)
+- [Agent labor and markets](#agent-labor-and-markets)
+- [Voyager](#voyager)
+- [Verse](#verse)
+- [Historical names and ideas](#historical-names-and-ideas)
+- [Maintaining the glossary](#maintaining-the-glossary)
 
 ## Agent infrastructure
 
-| Term | Status | Definition |
-| --- | --- | --- |
-| General agent infrastructure | Partial | The reusable decision, workflow, extension, evidence, authority, execution, coordination, and evaluation contracts. Coder is the first specialization; broader profile support requires concrete bindings and workload evidence. See [the architecture](agents/README.md). |
-| Domain profile | Designed | An assembly of existing schemas, sources, operations, programs, guidance, and evaluation plus host-owned bindings and policy for a class of work. It is not a new Nostr kind, EXT component kind, or grant. |
-| Resource | Designed | A host-scoped object or effect destination whose identity includes its authoritative system and tenant/account scope, such as a file, document, dataset, or service record. Shared NIP contracts require domain-specific version and effect semantics. |
-| External observation | Designed | A versioned capture under a pinned source adapter with declared immutable, conditional, or observational consistency. Captured bytes do not establish an atomic live snapshot. See [shared contracts](../nips/openagents/contracts.md#external-observations). |
-
-## Coder
+The [general agent architecture](agents/README.md) separates shared contracts, domain-specific behavior, and the host that enforces them.
 
 | Term | Status | Definition |
 | --- | --- | --- |
-| Coder | Implemented | OpenAgents' first agent specialization, for coding, in `crates/coder`. `classify` routes each turn through a decision model, and `generate` answers through an Open Responses door. |
-| Coder Terminal | Implemented | The terminal interface in `crates/coder-terminal`: the amber intensity ladder, the framed composer, and the shell they draw. |
-| Shell round | Implemented | One cycle of the shell loop. The model proposes a plan, the terminal runs the commands, and the outcomes return for the next judgment. |
-| Plan | Implemented | A reply that is one JSON object carrying the schema version, commands, and the reason for each, rather than prose. A reply is a plan only if it is one whole object under the supported version, so a reply that quotes one as an example is prose. |
-| Permit | Implemented | What the host permits one turn to do, built from the route and the operator's setting before the turn generates anything. A permit narrows and never widens, and a turn without one runs no commands whatever its reply asks for. See [`coder/shell-loop.md`](coder/runtime/shell-loop.md). |
-| Job | Implemented | One program run under one supervisor, in `crates/supervise`. The job owns its process group: a deadline or a cancelled caller terminates the group and reaps the direct child before the job reports, and stdout and stderr are held to their caps as they are read. Unix only. See [`coder/subprocesses.md`](coder/runtime/subprocesses.md). |
-| ATIF | Implemented | The Agent Trajectory Interchange Format, at version `ATIF-v1.7`, in `crates/atif`. A trajectory records a session as ordered steps so a tool can read it. `Call.extra` carries decision-model calls, which makes a System One call first-class in a trace. |
-| Trace | Implemented | One Coder session as an ATIF document, written to `~/.openagents/traces/` as the session runs. A session is one terminal invocation. Steps append and the document is rendered on read, so a session that is killed still reads back. `CODER_TRACE=off` turns recording off. See [`coder/traces.md`](coder/runtime/traces.md). |
-| Decision call | Implemented | A question put to a door, recorded in a trace as a `Call` carrying `openagents.decision-call.v1`: which door answered, the state and questions that went out, the typed answers, the digest of that state, and the route the host made of them. |
+| OpenAgents | Partial | The open-source agent infrastructure in this repository: typed decision services, Coder, measurement, execution, extensions, and Nostr protocols. The broader interoperable product and commercial network remain under development. |
+| General agent infrastructure | Partial | Shared identity, decision, workflow, evidence, authority, execution, coordination, and evaluation mechanisms. Coder is the coding specialization; another domain needs its own bindings and acceptance evidence. |
+| Domain profile | Designed | An assembly of sources, resource semantics, operations, guidance, policy, and evaluation for a class of work, such as coding or research. It is not a new event kind or an execution grant. |
+| Host | Defined | The process and operator-controlled configuration that own execution, credentials, admission, resource limits, and effects. A model or package proposes behavior within that boundary. |
+| Operation | Partial | An action with typed inputs and outputs, declared effects, limits, and an execution binding. Native actions exist; the unified extensible operation registry is a [target contract](extensions/architecture.md). |
+| Resource | Designed | An object or effect destination identified within its authoritative system and tenant/account scope, such as a repository file, document, dataset, or service record. Each domain defines its version and update semantics. |
+| External observation | Designed | A versioned capture from a pinned source adapter, with explicit consistency and completeness limits. Captured bytes do not establish an atomic live snapshot; see [shared contracts](../nips/openagents/contracts.md#external-observations). |
+| Effect | Partial | An operation’s consequence: reading, writing, disclosure/network access, subprocess creation, delegation, or spending. Local [program authority](coder/guides/program-authority.md) uses these categories; a granted category alone does not enforce isolation or a monetary ceiling. |
+| Integration | Defined | Authorized adoption of a result into its intended destination, with fresh base/state checks. Producing an artifact, verifying it, and integrating it are separate stages. |
+| Reconciliation | Partial | Determining what actually happened after interrupted or ambiguous execution before deciding whether work may resume or retry. Local [reconciliation rules](../crates/coder/src/reconcile.rs) exist; external systems must supply their own effect-confirmation guarantees. |
 
-### Proposed working state
+## The Coder product suite
 
-These terms belong to the [TypeSafe-native Coder design](coder/design/typesafe-agent-analysis.md).
-The existing transcript, ATIF trace, and project claim ledger do not yet
-implement this shared context system.
-
-| Term | Status | Definition |
-| --- | --- | --- |
-| Evidence item | Designed | An addressable observation or derived artifact with source, content version, scope, capture limits, and provenance. Summaries retain references to their sources. |
-| Evidence snapshot | Designed | An immutable set of evidence versions a task or decision reads. Shared snapshots permit reuse without assuming the working tree remains unchanged. |
-| Task frame | Designed | The current objective, binding constraints, acceptance references, attempted approaches, and unresolved questions, with observed instructions distinguished from inferred subgoals. |
-| Context request | Designed | A recipient-specific request for evidence under task, input-size, and disclosure constraints. |
-| Context manifest | Designed | The included evidence and representation versions, omissions, unresolved coverage, and selection identities used to build one model or delegate input. It does not attest a provider cache hit. |
-| Background view | Designed | An optional explanation or finding derived from a pinned evidence snapshot under its own resource allowance; it becomes stale when its relevant sources change. |
-
-## Voyager
+The [product-suite plan](coder/design/typesafe-product-suite.md) treats these as interfaces and execution locations around one task owner. Historical demonstrations do not establish current availability.
 
 | Term | Status | Definition |
 | --- | --- | --- |
-| Voyager | Implemented | The open-ended agent program after arXiv:2305.16291: an agent lives in an open-ended environment, proposes its own tasks, acts, verifies, and banks what worked as skills. `crates/voyager` runs bounded episodes: a curriculum declares or generates tasks, a bounded Lua interpreter runs them as code-as-action, a mechanical or `noul` critic checks each attempt, and passing programs land in a digested skill store. See [voyager](voyager/README.md). |
-| World manifest | Implemented | A `voyager.world/v1` document in `worlds/` naming a Minecraft version, seed, difficulty, gamerules, episode bounds, and optionally enrolled agents, deposits, an economy, and world effects. Its SHA-256 is the world's identity. |
-| `mc-bridge` | Implemented | The nightly-built helper in `mc-bridge/` that plays the game through azalea and speaks one JSON object per line on stdin and stdout. A supervised child process, never a dependency — the `swift/lev-bridge` precedent. |
-| Episode | Implemented | One bounded run of a world: server up, bot in, tasks attempted, every exchange and event in an ATIF trace under the run directory. `voyager evidence <run-dir>` renders one into `coverage.json`, `metrics.json`, and `evidence.md`. |
-| Curriculum | Implemented | What proposes the next task: the manifest's `curriculum.tasks` list first, then an Open Responses door the `generate` section names, behind a warm-up schedule; a world with no section runs the built-in starter tasks. |
-| Skill library | Implemented | Reusable behavior banked between episodes: digested, versioned Lua programs under `~/.openagents/voyager/skills/` (`VOYAGER_SKILL_DIR` overrides; the repository's `skills/` is the promoted half). Retrieval is a `choice` over the banked descriptions through the decision door, with `none` always admitted. Each program in it is a [Voyager skill](#plugins-and-skills), not a `SKILL.md` guide. |
-| Interpreter | Implemented | The bounded Lua engine a task's program runs in (`crates/voyager` `interpret`): the bridge's ops as script calls — `say`, `walk`, `explore`, `mine`, `mine_at`, `players`, `state`, `block_at`, `wait`, `feedback` — with every engine bound set. A program's source is the task's script, a banked skill, a retrieval, or the `act` door's proposal; a fault feeds back for repair across a four-round loop. |
-| Scenario | Implemented | Which ensemble arms a world runs: `quest` (the default) is the mining-economy and coding-quest chain with no combat; `war` adds the skirmish the manifest's `combat` section declares. The manifest's `scenario` field or `--scenario` on the command line picks one. |
-| Guild | Implemented | A named team in a multi-agent world. Every enrolled agent belongs to one; deposits may be owned by a guild and the ledger keeps balances per guild. |
-| Ensemble episode | Implemented | A world whose manifest lists `agents` runs one `mc-bridge` child per member in a single server, rather than the solo curriculum. |
-| Deposit | Implemented | A manifest-registered set of block positions worth credits when dug: an id, an optional owning guild (absent means contested), a required block kind, and a per-block award. |
-| Compute ledger | Implemented | `ledger.jsonl` in a run directory: append-only `award`/`reserve`/`settle`/`release`/`xp` events replayed into per-guild balances and a separate per-agent XP fold. Awards dedupe on `(deposit, pos)`; an unsettled hold stays reserved across a crash. |
-| Coding quest | Implemented | The arena's payoff chain: a ledger hold reserves compute, a solver patches a bounded fixture in an isolated tree, the referee verifies the patch artifact against protected cases, and an accepted patch runs a named world effect that a second agent reconciles with `block_at`. Execution, verification, and integration keep separate records under `quest/`. |
-| Quest XP | Implemented | Points a reconciled quest records in the ledger's `xp` fold — evidence of achievement, never spendable credits. |
-| Agent key | Implemented | A member's Nostr identity, derived as `sha256("voyager-agent-key:" + username)` — only pubkeys live in manifests; secrets are re-derived at run time. |
-| World effect | Implemented | A named console command in the manifest's `effects` map that a verified quest may run. A quest names an effect; it never supplies commands. |
-| Guild channel | Implemented | A closed NIP-29 group on the episode's supervised `nostr-relay`, one per guild: members write C7 `kind:9` chat as their enrolled keys, a nonmember write is refused `restricted:`, and reads are public. |
-| Decision door | Implemented | A `POST /v1/systemone` endpoint a world's `relay.decision_url` names — a local `kev-serve` or a live TypeSafe door. A `choice` answer orders admitted work; every call is recorded under `decisions/` with state, questions, model, raw response, and transport. |
-| Achievement label | Implemented | A NIP-32 `kind:1985` event the host's relay-management key signs after a reconciled quest — `openagents.voyager` / `quest-complete` targeting the member's pubkey — published to the episode relay and kept as `quest/label.json`. |
+| Coder suite | Partial | One coding product spanning terminal/headless operation, inspection, owned or managed workers, and proposed mobile, web, and computer-control views. Coder One, Microluna, and Microcoder are implementation and research components, not separate customer brands. |
+| Coder Cloud | Designed | Optional managed workers and synchronized access to the same tasks. Decision-service accounts and billing exist, but they do not establish a deployed Coder Cloud product. |
+| Coder Mobile and Coder Web | Designed | Thin clients intended to observe, steer, approve, and cancel host-owned tasks. Earlier mobile and web implementations are retained in the transcript history, not current clients in this workspace. |
+| CoderOS / Coder OS | Designed | The planned opinionated computer environment and admitted application/device controls around Coder. The historical Linux distribution is not retained as a current product here. |
+| Task owner | Designed | The principal whose authority establishes a task. Product-suite discussions also use “task owner” for the host that owns runtime state; [NIP-CTRL](../nips/openagents/NIP-CTRL.md#encoding-principals-and-limits) distinguishes the owner principal from its admitted controller. |
+| Task controller | Designed | The admitted host that serializes a durable task’s state and control requests under the owner’s authority. Remote views address this controller rather than starting independent copies of the conversation. Its controller generation fences stale authority; see [NIP-CTRL](../nips/openagents/NIP-CTRL.md#encoding-principals-and-limits). |
+| Trusted-device pairing | Designed | An explicitly authorized link between a client device and a task host, with bounded observation, steering, and cancellation rights. Approval and spending require separate authority. [NIP-CTRL](../nips/openagents/NIP-CTRL.md) specifies the control contract; runtime delivery remains pending. |
+| Execution transfer | Designed | Moving task execution to a newly admitted host with exact artifacts, reconciled effects, and fenced ownership. Reconnecting a client or copying a transcript is insufficient. |
+| Provider neutrality | Defined | Keeping product control and reusable contracts independent of one model or executor supplier. Supported adapters can be interchangeable without having equal behavior, quality, cost, or permissions. |
 
-## Verse
+## Coder and execution
 
 | Term | Status | Definition |
 | --- | --- | --- |
-| Verse | Partial | The OpenAgents desktop world, `crates/verse`: a walkable 3D city in the Coder terminal's amber, after the June 2026 Tassadar run board (episode 240) and on the Ruins of Atlantis engine family. Players share one world over [NIP-MV](../nips/openagents/NIP-MV.md) and see each other's avatars and agents; live OpenAgents state is not implemented. See [verse](verse/README.md). |
-| Amber ladder | Implemented | The four `coder_terminal::Intensity` steps over one amber hue, plus the near-black field. Verse draws every line in a ladder step and every solid face in the field color. |
-| Mouselook | Implemented | Holding the right mouse button: the character turns to face the camera, then turns with the mouse, and `A`/`D` strafe instead of turning. Left drag orbits the camera without turning the character. |
-| NIP-MV | Implemented | Shared 3D worlds over Nostr, specified in [NIP-MV](../nips/openagents/NIP-MV.md): ephemeral pose frames (`23300`) and gestures (`23301`), durable entity states (`33301`), and world definitions (`33300`). `crates/verse` implements frames, gestures, and states; it does not publish world definitions. |
-| Pose frame | Implemented | A `23300` event carrying the current position and quaternion of one publisher's entities. Relays forward it and do not store it. Receivers order frames by session and sequence and draw them slightly in the past. |
-| Entity state | Implemented | A `33301` event recording where one entity was last and whether its publisher is online. Relays keep the latest per entity, which is how a player resumes and how resting players stay visible. |
-| Scan | Implemented | The agent's look-around after a chase: a one-shot query for entity states in the cells around it, answered by glancing at the nearest players or agents found. |
-| Greeting | Implemented | Two agents within 7 m of each other turn, bow, and hop, and each sends a NIP-MV `greet` gesture addressed to the other. A received greeting is returned once; a pair greets at most once every 45 s. |
-| World chat | Implemented | Verse chat after Horse Isle 1: ALL, ADS, ZONE, NEAR, and HERE as NIP-C7 kind `9` lines scoped by NIP-MV tags, NIP-29 rooms, and NIP-17 private messages, in two windows with a method selector, `/` shortcuts, Horse Isle's limits, and speech bubbles. See [chat](verse/chat.md). |
-| Zone | Implemented | A named district of a Verse world, the scope of ZONE chat: the Plaza and the four Wards around it. |
-| Agent chat | Implemented | The AGENT channel: a private conversation with your own agent. Lines go to a text model through Coder's Open Responses door (the CODER door, or the OpenAgents bearer on the `free` lane), never to a relay, and replies stream into a bubble over the spade. |
-| NOSTR tab | Implemented | The world chat window's second tab: live, filtered public notes from `relay.damus.io` and `relay.primal.net`, with each poster shown as a local stand-in avatar around the pylon. Read-only. |
+| Coder | Implemented | OpenAgents' coding specialization and the `crates/coder` agent. Interactive and headless use share `coder::turn::run`, with typed routing, generation, and host-controlled execution. The broader product suite has additional planned surfaces. See [Coder](coder/README.md). |
+| Coder Terminal | Implemented | Coder's terminal interface. `crates/coder-terminal` supplies the shared design system and renderer; the `coder` binary supplies the conversation and runtime. See [terminal behavior](coder/runtime/terminal.md). |
+| Coder One | Implemented | The standalone agent and reusable controller in `crates/coder-one`: Jev judgments, evidence preparation, policy-selected executors, checks, and retained episodes. Its original issue-to-PR loop and experimental benchmark compositions coexist. See [the implementation](../crates/coder-one/src/lib.rs) and [tunable composition](coder/guides/coder-one-tunable.md). |
+| Microluna | Implemented | The small generative-session harness in `crates/microluna`, with five native tools, supervised commands, workspace boundaries, and ATIF recording. Its Codex-login transport reads credentials without refreshing them. Coder's delegate door still uses it. See [Microluna](coder/design/microluna.md) and [the delegate door](coder/runtime/delegate-door.md). |
+| Luna pivot | Defined | The development direction that moved Coder One toward small, short Luna executor sessions surrounded by typed decisions, explicit state, and checks. It is an architectural strategy to evaluate, not evidence of an automatic quality or cost advantage. See [the Luna pivot](coder/design/luna-pivot.md). |
+| Microcoder | Implemented | The newer loop in `crates/microcoder`: rebuild state, retrieve knowledge, ask Jev, make one structured OpenRouter generation, and execute its commands. Its CLI runs and grades local Terminal-Bench tasks. It does not replace every existing Coder or Microluna integration. See [Microcoder](coder/guides/microcoder.md). |
+| Headless mode | Implemented | `coder -p` runs one turn without the terminal UI, optionally streaming structured events and recording an explicitly named trace. It uses the same turn and permission decisions as interactive Coder. See [headless mode](coder/guides/headless.md). |
+| Delegate door | Implemented | The Coder response path that prepares a Jev-selected briefing and hands the turn to Microluna or an available CLI executor. Door selection is host logic, separate from a program's `delegate` step. See [the delegate door](coder/runtime/delegate-door.md). |
+| Issue flow | Implemented | Coder One's issue-specific path: resolve the requested issue, create an isolated clone, work under a selected policy, review and check the result, then prepare a draft PR when the host's conditions permit. See [issue turns](coder/runtime/delegate-door.md#a-turn-that-works-an-issue). |
+| Shell round | Implemented | One iteration of the ordinary Coder shell loop: validate a generated plan, run permitted commands, retain outcomes, and judge the next step. This is distinct from a Microluna session or Microcoder step. See [the shell loop](coder/runtime/shell-loop.md). |
+| Plan | Implemented | In Coder's ordinary shell loop, a complete JSON reply under the supported plan schema, containing commands and their reasons. Quoting plan-shaped text does not make a reply executable. See [the shell loop](coder/runtime/shell-loop.md). |
+| Permit | Implemented | The host's execution decision for one turn, derived before generation from the route and operator settings. It can narrow but cannot be widened by a model response. See [execution intent](coder/runtime/shell-loop.md#execution-intent). |
+| Execution boundary | Implemented | The `coder-boundary` filesystem write policy, enforced with `sandbox-exec` on macOS or `bwrap` on Linux. A write boundary does not, by itself, restrict network access or every filesystem read. See [boundary verification](coder/verification/2026-09-20-execution-boundary.md). |
+| Supervised job (job) | Implemented | One subprocess job in `crates/supervise`, with process-group ownership, deadline and cancellation handling, and bounded output capture. Job completion includes cleanup of the supervised child. See [subprocesses](coder/runtime/subprocesses.md). |
+| Policy manifest | Implemented | Coder One's digested `openagents.coder-one.policy.v1` configuration: component choices, executor settings, and protected constraints. Human labels do not identify a configuration; the policy digest does. See [the manifest contract](../crates/coder-one/src/policy.rs). |
+| Probe battery / Jev probes / Jevprobe | Implemented | Host-selected read-only operations that gather task and workspace evidence before execution; Jev can select useful outputs and files for the briefing. A probe observation is different from a capability-presence probe. See [evidence components](coder/guides/coder-one-components.md) and [the Jev-probe arms](terminal-bench/runbook.md). |
+| Briefing | Implemented | The bounded input Coder One builds from the task, selected observations, requirement coverage, and any handoff state for an executor. A useful briefing is measured by delivered evidence and task outcomes, not its length alone. See [evidence packing](coder/guides/coder-one-components.md). |
+| Requirement map | Implemented | Coder One's classification of instruction spans as deliverables, behaviors, constraints, checks, or context. It links later evidence to the task's words; extraction does not prove that every requirement was captured or satisfied. See [task components](coder/guides/coder-one-components.md). |
+| Requirements loop | Implemented | Coder One's Microluna controller that works through requirement groups in short sessions, rebuilds context, and chooses subsequent work from judgments and checks. It remains the terminal and issue-flow default. See [Microluna turns](coder/runtime/delegate-door.md#a-microluna-turn). |
+| Lean loop | Implemented | An alternative Microluna controller using short work sessions, a frozen evaluation script, retained candidates, and review. Policy settings determine its safeguards; it is not the issue-flow default. See [policy selection](coder/runtime/delegate-door.md#which-manifest-a-microluna-turn-runs). |
+| Keep-best | Implemented | Retain an earlier workspace when the configured score or check rule prefers it to a later candidate. “Best” means best under that rule, not independently correct; copy bounds and missing snapshots limit the safeguard. See [tunable composition](coder/guides/coder-one-tunable.md). |
+| Finish claim | Implemented | A model's typed request to end work. Host rules can reject or qualify it, but accepting the request does not itself establish task success. Microluna can explicitly record an unverified finish. See [Microluna's finish rule](../crates/microluna/src/finish.rs) and [Microcoder](coder/guides/microcoder.md). |
+| Files in view | Implemented | Microcoder's bounded set of selected file contents, reread after commands and included in the next freshly built prompt. This is current loop state, not a persistent shared evidence store. See [Microcoder state](../crates/microcoder/src/state.rs). |
+
+## Traces and retained evidence
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| ATIF | Implemented | Agent Trajectory Interchange Format, version `ATIF-v1.7`, implemented in `crates/atif`. It represents a session as ordered steps with calls, observations, and metrics; decision calls have structured metadata. See [traces](coder/runtime/traces.md). |
+| Trace / trajectory | Implemented | An ordered record of an agent session. Coder writes ATIF logs; native executor streams and Microcoder event logs have different formats and capture limits. A readable trace is not necessarily complete. See [Coder traces](coder/runtime/traces.md) and [Microcoder records](coder/guides/microcoder.md). |
+| Session | Implemented | A recorded interaction with a particular runtime or executor. A Coder trace session is one terminal/headless invocation; one Coder One episode can contain several executor sessions. Session IDs must retain their source meaning. See [trace sessions](coder/runtime/traces.md#a-session-is-one-terminal-invocation) and [run cards](gym/run-card.md). |
+| Decision call | Implemented | A recorded System One request: the state, questions, door identity, typed answers, and consuming route, carried as `openagents.decision-call.v1` metadata in ATIF. It records a judgment, not independent proof of its correctness. See [recorded steps](coder/runtime/traces.md#what-is-recorded). |
+| Component invocation | Implemented | One Coder One component execution, identified by component, implementation and input digests, parent invocation, evidence revision, timing, outcome, and cost. A start without an end leaves the result unknown. See [the episode bundle](coder/terminal-bench-contract.md#the-episode-bundle). |
+| Native stream | Implemented | The executor's original machine-readable event stream, retained alongside normalized episode records where available. Record and file caps can leave explicit gaps; normalization cannot recreate missing source events. See [executor control](coder/guides/coder-one-minitasks.md#the-capability-matrix). |
+| Retained evidence | Defined | Saved observations and artifacts sufficient to inspect a stated claim: inputs, commands, outputs, candidate bytes, checks, identities, and capture limits. A summary or digest alone cannot replace missing source content. See [retained files](gym/retained-files.md) and [the episode contract](coder/terminal-bench-contract.md). |
+| Complete trace | Implemented | For Coder's ATIF evidence reader, a log with a valid lifecycle, an end record, and no reader faults. The recovery reader can display an interrupted prefix; `read_whole` refuses it as complete evidence. See [trace recovery](coder/runtime/traces.md#steps-are-appended-the-document-is-rendered-on-read). |
+| Capture limit | Implemented | A bound applied while collecting output or records. Trace storage preserves what the collector retained, not bytes already discarded. Microcoder retains command-output heads and tails; Coder's shell also has an upstream capture cap. See [trace limits](coder/runtime/traces.md#nothing-in-the-trace-is-capped) and [Microcoder state](../crates/microcoder/src/state.rs). |
+| Repository source reference | Implemented | An observed path, line, file-content digest, excerpt digest, and coverage metadata attached to Coder's repository context. It identifies the bytes read, including uncommitted changes, without claiming an atomic cross-file snapshot. See [repository evidence](coder/runtime/repository-evidence.md). |
+| Candidate workspace | Implemented | The actual file state produced by an executor or selected by its controller. Checks and grades belong to that state; an earlier writer's report or later review cannot stand in for it without verified attribution. See [candidate attribution](terminal-bench/2026-09-25-truthful-checks-microluna.md). |
+| Retained file version | Implemented | A saved read, write request, patch, candidate snapshot, or final artifact export displayed by Gym. The viewer labels provenance and time limits: a write request does not prove success, and a final snapshot is not earlier historical state. See [retained files](gym/retained-files.md). |
+| Artifact verification | Implemented | Host-prepared checks against an inspected, pinned artifact, with output and unchanged-workspace evidence retained separately from the delegate's report. A passed verification workflow does not authorize integration. See [artifact verification](coder/guides/artifact-verification.md). |
+| Integration acceptance | Partial | The operator's decision to adopt a verified artifact, distinct from execution completion and checks. Existing project workflows retain these states separately; broader automated completion and presentation remain incomplete. See [project supervision](coder/guides/project-supervision.md) and [verification limits](coder/guides/artifact-verification.md#enforcement-and-limits). |
+
+## Context and working state
+
+These are target concepts in the [TypeSafe analysis](coder/design/typesafe-agent-analysis.md), [suite plan](coder/design/typesafe-product-suite.md), and [NIP-CTX](../nips/openagents/NIP-CTX.md). Existing traces and local claim ledgers do not constitute the complete shared context system.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Evidence item | Designed | An addressable observation or derived artifact with source, version, scope, capture limits, and provenance. Summaries retain references to their sources. |
+| Evidence snapshot | Designed | An immutable set of evidence versions read by a task or decision. Sharing it does not assume that the current working tree or external service remains unchanged. |
+| Evidence representation | Designed | A raw, abbreviated, summarized, or structured view of an evidence item, with its own identity and a path back to the source. A shorter representation retains the original capture’s completeness limits. |
+| Task frame | Designed | The current objective, binding constraints, acceptance references, attempted approaches, and unresolved questions. It distinguishes observed user instructions from inferred subgoals. |
+| Context request | Designed | A request for evidence tailored to one operation or recipient, under task, input-size, freshness, and disclosure constraints. |
+| Context manifest | Designed | The exact evidence and representation versions included in one input, plus omissions, unresolved coverage, and selection identities. It records what was supplied, not whether a provider cached it. |
+| Meta-attention | Designed | A separate selection process that decides which evidence and representation an operation needs. Its value depends on preserved constraints, sufficient evidence, and complete-task cost, not tokens removed alone. |
+| Retrieval recall and selection recall | Defined | Retrieval recall asks whether candidate search found the needed evidence; selection recall asks whether the later selector retained it. Ranking cannot recover evidence missing from the candidate set. |
+| History index | Designed | A scoped task/topic index with references from summaries to original records and bounded expansion. The plan makes no guarantee of logarithmic retrieval of semantically useful evidence. |
+| Recursive language model (RLM) approach | Designed | Keeping source material and typed intermediate values outside a single prompt, with bounded investigation and expansion. Generated context-processing code still needs host admission and resource limits. |
+| Background view | Designed | An optional explanation or finding derived from a pinned snapshot under a separate resource allowance. It becomes stale when relevant sources change. |
+| Mandatory instructions and optional guidance | Defined | Binding user, host, and scoped repository rules are resolved by precedence and scope. Relevance selection may choose optional guidance; it cannot discard applicable mandatory instructions. |
+| Cache-aware routing | Designed | Choosing reuse, trimming, rebuilding, or a model change using actual cached/uncached input observations and expected remaining work. Selection, summaries, expansion, failed detours, and cache rebuilding all contribute to the cost. |
 
 ## Capabilities and programs
 
+Sources: [program guide](programs.md), [runtime](../crates/coder/src/runtime.rs), [composition](../crates/coder/src/child.rs), and [capability trust](../crates/capability/src/trust.rs). Portable specifications can be ahead of local readers.
+
 | Term | Status | Definition |
 | --- | --- | --- |
-| Capability | Designed | A granted ability. A capability that no grant declares is offered to no run. |
-| Executor | Designed | The implementation that performs an agent session, whether the built-in runner or an external agent reached through an adapter. |
-| Delegation | Implemented | One bounded task handed to one executor and recorded as an ATIF `Call` named `delegate`, in `crates/coder` (`delegate.rs`). A fan-out runs them concurrently under a stated bound. A refusal the executor declares, a bound that expired, a non-zero exit, and a process that never spawned are four outcomes rather than one. See [`coder/delegate.md`](coder/runtime/delegate.md). |
-| Program | Partial | A reusable workflow of named steps with per-step bounds, specified by [NIP-PRG](../nips/openagents/NIP-PRG.md). It references host sources, question sets, and execution bindings rather than supplying arbitrary executable code. Coder runs six step kinds, including `program`, which nests a child program under narrowed bounds, and `module`, which runs a Wasm guest through `crates/plugin`. `coder` reads programs from `programs/` on disk and doesn't fetch them from a relay, and the `invoke` step kind isn't built. The target binding contract is explained in [Programs and decisions](extensions/programs.md). |
+| Capability | Partial | A portable description of operations, interfaces, required effects, and enforcement support. A host binding implements it; a separate grant authorizes use. Local manifests and probes exist, while the revised [NIP-CAP](../nips/openagents/NIP-CAP.md) runtime remains partial. |
+| Executor | Implemented | The built-in runner or approved external-agent binding that performs a bounded task. Its supported effects and limits determine admission; [delegation](coder/runtime/delegate.md) records its actual outcome. |
+| Program | Partial | A reusable host-interpreted workflow of named steps with separate sources, question sets, and bounds. The local runtime supports six step kinds and child composition; native `invoke` admission and fetching programs from relays remain unbuilt. |
 | Program selection | Implemented | The `openagents.program.v1` decision proposes which admissible workflow a request asks for, or `none`. Selection does not install a plugin or grant execution authority. See [the target entry path](extensions/programs.md#what-the-program-decision-decides). |
 | Step kind | Partial | What one step does: `query`, `check`, `decide`, `delegate`, `program`, `module`, or `invoke`. The runtime in `crates/coder/src/runtime.rs` runs the first six. It parses `invoke`, which the revised NIP-PRG adds for native and adapted operations, and refuses it as `not_admitted` because no host operation is admitted. Unsupported semantics refuse rather than being skipped. |
-| Bounds | Designed | The limits a program's step states and an executor promises to keep. A host refuses a step whose bounds it cannot enforce rather than running it unbounded. Under composition, bounds narrow and never widen. |
-| Module | Partial | A WebAssembly guest a program's `module` step runs through `plugin::invoke`, under the `pure` or `snapshot-read` profile and the step's bounds, which only narrow the host's ceilings. A `snapshot-read` step reads the workspace files its `read` scope names, and nothing without one. The runtime runs guest bytes that the step carries inline as `bytes_base64` and refuses a step without them. NIP-PRG names a module by a required content hash with sources as hints, so the place bytes come from cannot decide what runs; resolving a module by hash and fetching it from a source aren't built, and no program in `programs/` uses a `module` step yet. |
+| Bounds | Partial | Declared ceilings on work, time, resources, or access. The runtime checks supported enforcement before dispatch and narrows child limits; unsupported required bounds refuse instead of becoming prompt suggestions. |
+| Module | Partial | A Wasm guest invoked by a `module` step under `pure` or `snapshot-read` limits. Local bindings carry inline `bytes_base64`; Coder One’s [evidence-guest host](../crates/coder-one/src/guests.rs) verifies the declared byte pin, while the generic runtime lacks complete portable target/binding validation. Remote fetching remains unbuilt. |
 | Module announcement | Designed | An optional `30183` event saying where a module's bytes can be found and what it requires. A locator, not an authority: it cannot change what a program runs, because the program names a hash. |
 | Capability manifest | Implemented | A document that says how to drive an executor: transport, detection, bounds it enforces, bounds it ignores, whether it sees the repository, and who pays. Read from `capabilities/` today and published as Nostr `kind:30180` later. |
 | Capability probe | Implemented | Running a manifest's `detect` through `crates/capability` under a recorded approval that pins the manifest and executable identity. The probe is bounded; reading a registry does not execute it. |
 | Presence | Implemented | Capability status: **present**, **absent**, **present and unavailable**, **unprobed**, or **unknown**. A missing approval leaves a capability unprobed; a failed or incomplete probe cannot manufacture availability. |
 | Program registry | Implemented | The programs a host resolved, read from `programs/` in `crates/coder`'s `program` module. The read records the Nostr filter it would have sent beside the answer it got from disk. |
-| Run-state store | Partial | The standalone `coder::runstate` store records pinned run, step, and task-attempt identities with retained worktree/result references. Recovery marks unfinished records unknown and does not replay effects. Runtime integration and full reconciliation remain proposed. |
+| Run-state store | Partial | The append-only [local journal](../crates/coder/src/runstate.rs) for pinned run, step, and task-attempt identities, worktree/result references, and terminal outcomes. The [runtime](../crates/coder/src/runtime.rs) records into it when configured and consults recovery/reconciliation rules; this is not complete cross-process or NIP-RUN resume. |
 | Task source | Implemented | Where a `query` step's work comes from, named in the program by slug and resolved from `sources/` in `crates/coder`'s `source` module. A program names a source and never a command, so a machine decides what the lookup reads. `request`, the work the request carried, is built in. |
 | Selection | Implemented | What one `query` step looked up: the work that runs, the order it is in, what was dropped and why, and every path more than one selected item touches. A lookup answering with more than `max_results` truncates or refuses, as the step's `on_overflow` says, and the trace records which. |
-| `cannot_enforce` | Designed | The bounds an executor accepts and silently ignores. A host refuses a delegation whose requirements intersect this list, because an executor that drops a bound is more dangerous than one that refuses it. |
-| Operator policy | Designed | A signed document that says which capabilities an operator prefers, how wide a fan-out may go, and what to never use. Published as Nostr `kind:30181`. |
+| `cannot_enforce` | Implemented | A capability manifest’s explicit list of bounds its executor cannot enforce. Runtime admission refuses a required bound intersecting that list; the field reports a limitation rather than granting an exception. |
+| Operator policy | Designed | The portable signed NIP-CAP `30181` document stating capability preferences, concurrency limits, and exclusions. Existing local program grants and executor settings implement narrower host controls; they are not this complete portable policy runtime. |
+| Program grant | Implemented | Operator authorization for named program slugs and an effect ceiling. The [grant](coder/guides/program-authority.md) is separate from semantic program selection and from the ordinary shell permit. |
+| Child program | Implemented | A resolved `program` step whose dependencies, typed bindings, outcome propagation, and narrowing limits pass [composition admission](../crates/coder/src/child.rs). Children share the parent’s budget and deadline. |
+| Host binding | Partial | Local configuration connecting a portable definition to real paths, adapters, executors, or credentials. Current program and capability bindings exist; the full revised portable contract remains under migration. |
+| Local package lock | Implemented | The verified digests and dependency identities resolved by [`coder::package`](../crates/coder/src/package.rs). Resolution pins local bytes and records trust; it does not install, execute, approve a probe, or grant access. |
 
 ## Plugins and skills
 
-Both words have more than one meaning here. Unless a document says
-otherwise, *plugin* means a Wasm plugin and *skill* means a `SKILL.md`
-skill. Voyager documents are the exception: there, *skill* means a Voyager
-skill.
+Unless qualified, *plugin* means a Wasm guest and *skill* means a `SKILL.md` guide. Voyager uses *skill* for banked Lua code. Sources: [plugin contract and implementation status](extensions/plugins.md), [client packages](../plugins/README.md), and [Voyager](voyager/README.md).
 
 | Term | Status | Definition |
 | --- | --- | --- |
 | Wasm plugin | Partial | The default meaning of *plugin*: an OpenAgents WebAssembly guest that `crates/plugin` runs, with typed operations and bounded host imports. It can implement a program's `module` step or, once host roles exist, a supported host role; it is not an executor or a workflow. The host core and the `module` step are built; the manifest, host roles, authoring commands, packaging, and a catalog are specified in [Wasm plugins](extensions/plugins.md) and not built. |
-| Plugin host | Partial | `crates/plugin`, the trusted Rust boundary that runs a Wasm plugin. Each call gets a fresh Wasmtime instance under the `Pure` or `SnapshotRead` profile, with fuel, memory, output, read, and module-size limits, and a call that doesn't return a value fails with a typed `HostError`. `plugin::build_receipt` digests the PDK source and the guest bytes. Manifest admission, host roles, and invocation receipts remain designed. See [what is built](extensions/plugins.md#what-is-built). |
+| Plugin host | Partial | The trusted Rust boundary in `crates/plugin`, using a fresh Wasmtime instance per call with no ambient WASI. It enforces profiles, fuel, memory, read/output limits, and cancellation. Full plugin-manifest admission, automatic host roles, and invocation-receipt integration remain designed. |
 | Plugin packet | Implemented | The `openagents.plugin-packet.v1` request and response a host and a guest exchange, defined in `crates/plugin-pdk`, whose `guest` feature is the guest side of the ABI. `crates/plugin-outline` is a diagnostic guest built against it. |
 | Evidence guest | Partial | A `snapshot-read` Wasm plugin that code runs as a program step to gather evidence, never offered to a model as a tool. Three are built, `crates/plugin-repo-map`, `crates/plugin-code-search`, and `crates/plugin-test-report`, and `programs/evidence-guests.json` runs them. Coder One's probe stage runs that program when a manifest turns it on; each guest stays only if it helps on the measured evaluation set. See [Evidence guests](extensions/plugins.md#evidence-guests). |
 | Client plugin package | Implemented | A declarative package that teaches Claude Code or Codex to call the decision API: a client manifest (`.claude-plugin/plugin.json` or `.codex-plugin/plugin.json`), an `.mcp.json` that starts `oak-mcp`, and a `SKILL.md` skill. The packages live under [`plugins/`](../plugins/README.md), and `crates/discovery` serves their manifests. They run no Wasm and are not Wasm plugins. |
-| Extism plugin | Retired | A WebAssembly module run by Extism in the 2024 plugin marketplace, with a plugin registry and an agent store (episodes 48 to 107 in [`transcripts/`](transcripts/048.md)). That codebase is gone; the Wasm plugin and `crates/plugin` replace its runtime. The [roadmap's legacy map](roadmap.md#the-legacy-map) records its disposition. |
+| Extism plugin | Retired | A module run by Extism in the earlier plugin marketplace and agent store. That runtime is absent from this repository; the current Wasmtime guest host replaces its role. See the [legacy map](roadmap.md#the-legacy-map). |
 | `SKILL.md` skill | Implemented | The default meaning of *skill*: a Markdown guide in the Agent Skills format, with `name` and `description` frontmatter, that an agent reads before a task. It grants no authority and runs no code. Skills live in three places: [`.agents/skills/`](../.agents/skills/) holds the guides for agents working in this repository; [`plugins/skills/`](../plugins/skills/) and each client plugin package's `skills/` directory ship the decision API guide to clients; and the gateway's [skill directory](decision-models/service/skill-directory.md), `tenancy::skills`, publishes reviewed, versioned submissions. |
 | Voyager skill | Implemented | A digested, versioned Lua program that `crates/voyager` banks after a critic passes it, and retrieves for later tasks. It is code the bounded Lua interpreter runs, not a `SKILL.md` guide. See the [skill library](#voyager) and [Voyager](voyager/README.md#the-critic-and-the-skill-library). |
+| Pure profile | Implemented | The Wasm guest profile with no host imports or ambient filesystem, process, network, clock, or credential access. It transforms the supplied packet under host limits. |
+| SnapshotRead profile | Implemented | The guest profile allowing bounded listing and reading through invocation-scoped snapshot handles. Stale handles, traversal, and symlink access are refused. Retained partial bytes remain readable; the [derivative helper](../crates/plugin/src/snapshot.rs) refuses a false completeness claim. |
+| Plugin development kit (PDK) | Implemented | The shared packet types and optional guest-side ABI in [`crates/plugin-pdk`](../crates/plugin-pdk/), including allocation, handler exports, and typed host calls. |
+| Plugin build receipt | Implemented | A record binding guest bytes, the PDK source digest, and the guest profile. Checked-in evidence-guest receipts add build provenance. This is byte attribution, not remote attestation or proof of task benefit. |
+| Snapshot handle | Implemented | An opaque reference minted for one plugin invocation’s admitted snapshot objects. A guest cannot reuse it in another invocation or treat a path label as unrestricted file access. |
+| Fuel | Implemented | The Wasmtime instruction allowance charged to a guest, including its start function. Fuel is separate from wall-time, memory, output, and read limits. |
 
 ## Extensions
 
-The [program and extension specification](extensions/README.md) defines these
-target contracts. A design entry does not claim implementation.
+Sources: [extension architecture](extensions/architecture.md), [packages and distribution](extensions/packages.md), and [local package implementation](../crates/coder/src/package.rs). Discovery, installation, enablement, grants, invocation admission, and promotion are separate decisions.
 
 | Term | Status | Definition |
 | --- | --- | --- |
@@ -227,16 +226,284 @@ target contracts. A design entry does not claim implementation.
 | Decision function | Partial | A typed semantic input/question/output contract with a consuming policy, limits, and admitted model scope. Coder has existing decision sites and question sets; the unified extensible function registry remains proposed. |
 | Scoped skill | Designed | A [`SKILL.md` skill](#plugins-and-skills) activated for a bounded operation, task, or explicit session: digested guidance. It may reference supported hooks and narrow allowed operations; it cannot grant authority or remove mandatory instructions. |
 | Host role | Designed | An approved activation path for a plugin, such as evidence preparation or output processing. Installing a plugin does not activate its roles. |
-| Extension package | Designed | An immutable distribution bundle of components, schemas, documentation, dependencies, and evidence references. Its components retain separate execution and permission contracts. |
+| Extension package | Partial | A bundle of independently identified components, schemas, documentation, dependencies, and evidence. Local package resolution and locks exist; authenticated remote catalog import and the full installation/publication workflow remain designed. |
 | Package listing | Designed | Mutable catalog presentation, discovery state, and release pointers for a publisher-qualified package. It cannot rewrite a release's bytes. |
-| Package release | Designed | An immutable manifest and content closure identified by verified digests. A version label cannot be rebound to different content. |
+| Package release | Partial | Immutable release content identified by verified digests; a human version cannot be rebound to new bytes. NIP-EXT validators and local package checks exist, but a complete remote distribution workflow is not delivered. |
 | Installation lock | Designed | The exact verified component and dependency identities installed at one revision. Installation is separate from enablement, grants, and invocation admission. |
-| Run lock | Designed | The installation identities plus host bindings, policy, grants, schemas, question sets, and configuration pinned for an execution attempt. |
+| Run lock | Partial | The exact component/dependency identities and execution configuration held for an attempt. The local `HeldLock` API rejects replacement while marked active, but it is not wired into every runtime attempt. The full target lock also pins bindings, policies, grants, schemas, and question sets. |
+| Content closure | Designed | All transitive bytes and identities needed to realize a release or AI implementation, including prompts, examples, schemas, adapters, model targets, and configuration. Verifying only the outer manifest is insufficient. |
+| Enablement | Designed | Host policy allowing an installed component to appear in discovery or specified roles. It is separate from installation, grants, and admission of an actual invocation. |
+| Scoped hook | Designed | A supported host trigger bound to exact content, input/effect contracts, budget, lifetime, and cleanup rules. A skill cannot introduce arbitrary shell hooks or create permanent activation on its own. |
+| Revocation | Partial | Withdrawal of trust or eligibility for an identified component or authority. Local package checks and protocol validators exist; full distribution/revocation freshness handling remains designed. Revocation does not undo an already completed effect. |
+| Tombstone | Partial | A retained record that something was withdrawn or deleted, without pretending its former content is still available. Local stores and several proposed protocols use different tombstone schemas; refer to the owning contract. |
+
+## Shared knowledge
+
+These terms describe the implemented local library and Microcoder integration.
+They do not imply that every Coder surface shares the library or that its
+entries have demonstrated a network-wide improvement.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Knowledge base | Partial | The `crates/knowledge` library, local `knowledge/` entries, and Microcoder retrieval/contribution/sharing path. Curated package snapshots, private entries, and protected optimization studies remain designed. See [the knowledge-base design](coder/design/knowledge-base.md) and [guide](coder/guides/knowledge-base.md). |
+| Knowledge entry | Implemented | A versioned Markdown reference with ID, kind, summary, applicability, author, provenance, status, body, and file digest. It supplies evidence to consider, not execution authority. See [entry fields](coder/design/knowledge-base.md#entries). |
+| Knowledge kind | Implemented | An entry's category: `method` (definition), `edge-case` (problematic input/state), `slip` (recurring mistake), `environment` (environment behavior), or `tool` (correct usage). A method entry is reference text, distinct from an executable `methods/` contract. See [entry kinds](coder/design/knowledge-base.md#entries). |
+| Knowledge retrieval | Implemented | Search title, summary, tags, and applicability using lexical relevance and cached embeddings when available; Microcoder then asks Jev which candidates bear on the current state. An unavailable semantic answer cannot manufacture relevance. See [retrieval](coder/design/knowledge-base.md#retrieval). |
+| Knowledge expansion | Implemented | Include an entry's full body under bounded prompt limits, either on the model's `expand` request or through Microcoder's high-relevance rule. Seeing an entry does not prove that the executor used it correctly. See [expansion](coder/design/knowledge-base.md#expansion). |
+| Knowledge-assisted run | Implemented | A run whose prompts listed or expanded at least one knowledge entry, recorded with entry identities and digests. Report it separately from runs without the base, including source-task exposure. See [knowledge reporting](coder/design/knowledge-base.md#reporting). |
+| Harvest | Implemented | `microcoder kb harvest` proposes general entries from a completed run, lints them, and records source-run provenance. Proposals start as candidates; harvesting neither verifies their claims nor admits them. See [harvesting](coder/guides/knowledge-base.md#harvest-entries-from-a-run). |
+| Knowledge admission | Implemented | Make an entry eligible for default retrieval by recorded operator review or the implemented evidence rule. Admission is a reader's adoption decision, not proof of universal correctness or a permission grant. See [admission](coder/guides/knowledge-base.md#admit-withdraw-and-review-entries). |
+| Knowledge evidence | Implemented | Reports that compare recorded runs with and without an entry, grouped by task and model, excluding its declared source tasks. Current matching uses entry ID rather than an exact implementation lock; it is not automatically a controlled causal experiment. See [evidence logic](../crates/knowledge/src/evidence.rs). |
+| Knowledge candidate / withdrawal | Implemented | Candidate entries require explicit inclusion; withdrawn entries are excluded while their records remain. A candidate revision of an admitted entry waits separately until admission, preserving the usable version. See [contribution and review](coder/guides/knowledge-base.md). |
+| Knowledge provenance / source task | Implemented | The runs and independent references from which an entry or pattern was written. A task that taught an entry cannot count as evidence that the entry generalizes. See [knowledge evidence](coder/guides/knowledge-base.md#measure-entries) and [pattern provenance](coder/design/pattern-components.md). |
+| Knowledge trust | Implemented | The reader's `own`, `listed`, or `all` author policy for synced entries. Signatures identify publishers; they do not certify correctness, and unlisted authors' entries remain candidates at most. See [author trust](coder/guides/knowledge-base.md#choose-whose-entries-a-run-sees). |
+| Knowledge lint | Implemented | Validation for required references, completed fields, size limits, benchmark-task names, and long overlap with available test corpora. Its corpus coverage is bounded; passing lint does not prove an entry is correct or free of all task fitting. See [writing entries](coder/guides/knowledge-base.md#write-an-entry-by-hand). |
+
+## Checks, components, and iteration
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Determinism thesis | Defined | The working claim that code should own enforceable control, narrow typed judgments should resolve semantic uncertainty, and generation should do the open-ended work. Its proposed acceptance loop depends on checks being faithful and complete; freezing tests does not establish that premise. See [the thesis](coder/design/thesis.md) and [the updated networked plan](coder/design/networked-coder-plan.md). |
+| Completion signal | Defined | An observation a controller uses to stop, retry, select a candidate, or escalate. Its value depends on measured error against independently attributable outcomes; an exit code, own-test pass, or confident finish claim is not interchangeable with task success. See [truthful checks](terminal-bench/2026-09-25-candidate-review-validation.md). |
+| Coder One component | Implemented | A separately callable function with serializable input, output, named metrics, and an invocation record. Components can be exercised on fixtures before composing them into episodes. See [component runs](coder/guides/coder-one-components.md). |
+| Operation / judgment / session / controller | Defined | The tunable-system component categories: deterministic code, a typed model judgment, generative executor work, and code that schedules components. They separate responsibilities, not universal cost or latency guarantees. See [component vocabulary](optimization/coder-components.md#vocabulary). |
+| Recorded Jev mode | Implemented | Reuse retained answers keyed by state and question identities without a live request. Changed inputs miss the cache. This verifies replay and composition; it is not fresh evidence of model quality. See [isolated evaluation](optimization/coder-components.md#test-each-component-in-isolation). |
+| Mini-task | Implemented | A small local reproduction with its own grader, runnable with a scripted or real executor. It screens component behavior cheaply and is not itself a Terminal-Bench result. See [mini-tasks](coder/guides/coder-one-minitasks.md). |
+| Evaluation ladder | Partial | Progress from isolated components and retained replay to mini-tasks, individual benchmark trials, and repeated protected comparisons. These runners exist; a universal automatic promotion pipeline does not follow from the ladder. See [component evaluation](optimization/coder-components.md#test-each-component-in-isolation). |
+| Frozen acceptance tests | Implemented | Host-retained copies of model-written checks used to guide work. Freezing prevents silent rewriting of those copies, not incorrect or incomplete expectations; Microcoder records additions and disputed tests separately. See [Microcoder acceptance](coder/guides/microcoder.md#acceptance-tests-first) and [state](../crates/microcoder/src/state.rs). |
+| Red-first check / guard | Implemented | A check observed failing on the untouched candidate is red-first; an initially passing check is a guard. Neither label proves the check matches the task, and a guard can preserve a defect. See [check lineage](gym/run-card.md) and [the v7 counterexample](terminal-bench/2026-09-24-microluna-v7-embedding-definitive.md). |
+| Independent oracle | Partial | A public reference program, provided checker, or separately prepared check against which a candidate can be tested. Coder One's `checks.oracle` implementation is experimental; an AI-written oracle is not correct merely because another session wrote it. See [oracle measurement](terminal-bench/2026-09-25-oracle.md). |
+| Check scenario / diagnostic packet | Implemented | A bounded observation justified by a public requirement, with candidate identity, expected relation, result, and coverage limits. Failed scenarios retain evidence and unresolved hypotheses for repair. See [scenario checks](coder/guides/coder-one-checks.md). |
+| Requirement support | Implemented | Paired Jev judgments about supporting and contradicting evidence for one requirement and candidate revision. Both low or both high can remain unresolved; these are not complementary probabilities or independent execution evidence. See [support judgments](coder/guides/coder-one-support.md). |
+| Truthful checks | Partial | Work on completion signals measured against attributable submitted candidates and independent labels. Existing audits and experimental fail-or-unknown detectors do not establish a universally reliable completion gate. See [validation and negative results](terminal-bench/2026-09-25-candidate-review-validation.md). |
+| `checks.final` | Implemented | The original scenario-check result attributed to the final submitted candidate in truthful-checks comparisons. A declared comparator must stay fixed; intermediate or restored candidates require their own evidence mapping. See [attribution correction](terminal-bench/2026-09-25-truthful-checks-microluna.md). |
+| Shadow monitor | Implemented | A controller observer that records intervention proposals without acting on them. Its precision and stale-answer rate can be measured without claiming that it improved live task outcomes. See [the monitor](coder/guides/coder-one-components.md#watch-a-session-with-controlmonitor). |
+| Fire loop / strategy card | Implemented | A development watcher that compares Coder One's live behavior with task-specific winning strategies and can stop an unpromising run. Cards stay with the host judge, but their provenance makes these runs in-sample. See [the fire loop](coder/guides/fire-loop.md). |
+| Pattern component | Partial | A reusable evidence-gathering or checking pattern with a declared trigger, implementation, source tasks, and admission record in `patterns/`. The registry exists; candidate patterns require useful evidence beyond their source tasks before adoption. See [pattern components](coder/design/pattern-components.md). |
+| Method registry / method conformance | Implemented | `methods/` contains cited definitions, call adapters, executable properties, tolerances, and provenance. `verify.method_conformance` selects methods and executes their checks; implementation does not imply default policy admission or correct applicability to every function. See [method conformance](terminal-bench/2026-09-25-method-conformance.md). |
+
+## Coding benchmarks and comparisons
+
+The decision-model Gym rows and coding-agent attempts are different units.
+An evaluation term describes its declared population and protocol; it does
+not establish a win merely because the repository implements a calculator.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Gym | Implemented | `crates/gym` measures decision models and reads coding-agent evidence through CLI and terminal views. Its core stores are local; optional ranking, analysis, and acquisition use services. The separate harness runs Terminal-Bench attempts. See [the current Gym CLI](gym/terminal-bench-cli.md). |
+| CoderBench | Implemented | `crates/coderbench`, the whole-episode conformance harness. It drives Coder, reads ATIF, and checks task-defined paths, answers, exit status, and workspace observations. It is distinct from Harbor and the decision-item Gym. See [CoderBench](../crates/coderbench/README.md). |
+| Golden trace | Implemented | A retained CoderBench reference for the required decision/execution path and independently specified answers, not byte-for-byte prose matching. One selected golden is a conformance case, not a pass-rate estimate. See [goldens](../crates/coderbench/README.md#what-a-golden-is). |
+| Golden provenance | Implemented | The golden sidecar distinguishes `observed` (Coder drove the run), `staged` (real calls driven by something else), and `authored` (not executed). These establish different kinds of evidence. See [golden provenance](../crates/coderbench/README.md#provenance). |
+| Terminal-Bench / TB4 | Defined | The upstream containerized coding/task benchmark; TB4 means its 4.0 task collection. The early eight-task development panel includes a different pinned source selection. Always name task revision and population. See [the pinned harness](coder/terminal-bench.md) and [TB4 results](terminal-bench/tb4-results.md). |
+| Harbor / `tbench` | Implemented | Harbor manages benchmark environments and agent trials; `bench/terminal-bench` supplies the local pinned configuration, adapters, attempt records, and reports through `tbench`. Microcoder's direct Docker grader is a separate path. See [the runbook](coder/terminal-bench.md) and [Microcoder grading](../crates/microcoder/src/tbench.rs). |
+| Arm | Implemented | A named experimental agent configuration. Compare its materialized binary, policy, model, effort, tools, and bounds rather than trusting the label alone. Gym separates changed policy digests even when an arm name stays the same. See [the outcome matrix](../crates/gym/src/coder_matrix.rs). |
+| Trial / attempt | Implemented | One task execution under a recorded configuration and environment, followed by grading when possible. Preserve its identity, status, usage, and any replacement relationship, including attempts that fail before useful agent work. See [measurement conventions](terminal-bench/measurement.md). |
+| Benchmark episode | Implemented | The agent-side lifecycle within a trial, potentially containing several components, sessions, checks, and candidate selections. It is distinct from environment setup and the independent task verifier. See [the episode contract](coder/terminal-bench-contract.md). |
+| Official verifier / reward | Implemented | The task's own grading procedure and the reward it returns for the submitted artifact. No reward is unknown, not zero; a reward does not erase setup, quota, or wrong-artifact defects in the trial. See [measurement conventions](terminal-bench/measurement.md). |
+| Reference-solution control / no-op control | Implemented | Harness checks using the task's reference solution or an agent that does nothing. A failing reference control or passing no-op control requires investigation of the environment or grader before interpreting agent results. See [controls](coder/terminal-bench.md#run). |
+| Development set / held-out confirmation | Defined | Development evidence can guide implementation and selection. Confirmation evaluates a frozen candidate on protected tasks; using its results to tune consumes that separation. Repeating a known task does not make it unexposed. See [evaluation design](coder/design/coder-terminal-v05-algorithm-and-goldens.md#evaluate-implementations-without-freezing-todays-algorithm). |
+| Matched comparison / ablation | Defined | A comparison that keeps declared task, model, effort, tools, environment, and budget identities fixed while changing a specified component. Comparing different models or the cheapest selected runs does not isolate the controller's effect. See [matched measurements](terminal-bench/2026-09-23-matched-controller-targeted.md). |
+| Generalization | Defined | Useful behavior on tasks or families that did not supply the implementation's wording, rules, examples, or reusable knowledge. A new random seed on an exposed task tests repeatability, not transfer to an unseen family. See [the networked plan](coder/design/networked-coder-plan.md#what-would-disprove-this-plan). |
+| In-sample result / design-time fitting | Defined | A result on material that informed the policy, prompt, detector, or knowledge entry. Runtime access restrictions do not remove prior design exposure. Retain such runs as development evidence. See [pattern provenance](coder/design/pattern-components.md). |
+| Contamination check | Implemented | A Coder One audit for benchmark names, verifier facts, and lexical overlap, with recorded provenance and excluded evidence tasks. Passing this audit is not proof of generalization or absence of every form of fitting. See [lexical provenance](coder/design/pattern-components.md#lexical-provenance). |
+| Prediction seal | Implemented | In the retained confirmation studies, a digest-bound record of every candidate prediction committed before official outcomes are joined. Later rejudgments and analyses remain separate from the sealed result. See [the confirmation protocol](../bench/terminal-bench/experiments/2026-09-25-literal-confirmation/protocol.md). |
+| Cost provenance | Implemented | The source and meaning of a cost: provider-reported usage, a list-price estimate, verified billing, or unknown. Subscription list prices are not incremental cash bills, and missing charges cannot be replaced by zero. See [measurement and pricing](terminal-bench/measurement.md). |
+| Agent time / trial wall time | Implemented | Agent time covers the agent phase; trial wall time also includes the runner's surrounding phases. A timestamp span can be only a lower bound, and parallel durations cannot be added to obtain elapsed wall time. See [measurement conventions](terminal-bench/measurement.md). |
+| Cost per accepted outcome | Defined | Total counted cost divided by independently accepted outputs for the declared population. Count failed attempts and stated overhead; with no accepted outputs or incomplete charges, a finite complete cost-per-pass claim is unavailable. See [the networked plan's measurement rules](coder/design/networked-coder-plan.md). |
+| Outcome matrix | Implemented | Gym's task-by-policy table of graded trials, pass rates, intervals, costs, times, and a configured objective. Unknown inputs remain unavailable to objectives that need them. See [the matrix](../crates/gym/src/coder_matrix.rs). |
+| Pareto frontier / oracle portfolio | Implemented | The frontier marks configurations not dominated on success, cost, and time. An oracle portfolio chooses the best eligible configuration after seeing results; it is an upper bound for routing, not a deployed router. See [the matrix](../crates/gym/src/coder_matrix.rs). |
+| Objective `J` | Implemented | The matrix's configured sum of mean cost, priced agent time, and a failure penalty. Its weights express an accounting choice, not a universal utility function or measured fallback bill. See [objective parameters](../crates/gym/src/coder_matrix.rs). |
+| Failure precision / failure recall | Defined | Precision is correct failure detections divided by all failure calls; recall is detected failures divided by actual failures in the declared evaluation population. Abstentions do not establish passes; unknown coverage and denominators remain explicit. See [truthful-checks evaluation](terminal-bench/2026-09-25-candidate-review-validation.md). |
+| False accept / false alarm | Defined | A false accept calls unsuccessful work successful; a false alarm calls successful work failed. “Success” must name its label source: official grading and a separate public-specification audit can disagree. See [candidate-review validation](terminal-bench/2026-09-25-candidate-review-validation.md). |
+| Wilson interval / task-clustered uncertainty | Defined | Wilson intervals summarize uncertainty in observed binary proportions. Whole-task bootstrap comparisons preserve repeated attempts within each resampled task. Neither removes selection bias or proves unseen-task quality. See [the matrix](../crates/gym/src/coder_matrix.rs) and [paired uncertainty](terminal-bench/2026-09-25-truthful-checks-microluna.md). |
+| Run card | Implemented | A deterministic characterization of one retained trial: identities, phases, session anatomy, evidence provenance, check lineage, claims, reversals, and costs. Missing records stay unknown or not recorded. See [run cards](gym/run-card.md). |
+| Run analysis | Implemented | Gym's post-run account of grades, costs, timeline, check coverage, reversals, and anomalies. Arithmetic comes from retained records; optional Jev judgments map ambiguous acceptance/verifier test pairs and remain judgments. See [run analysis](gym/run-analysis.md). |
+| Strategy fingerprint | Implemented | A derived phase sequence and timing summary of a trajectory, using command/tool rules and optionally cached Jev classifications. Differences between winners and losers suggest hypotheses; they do not prove an intervention helps. See [strategy fingerprints](terminal-bench/2026-09-24-strategy-fingerprints.md). |
+| Learning order | Implemented | Gym's ranking of completed runs by cached Jev judgments about what merits inspection, including unusual failure patterns. It is a reading aid, not a verifier result or causal explanation. See [ranking runs](gym/terminal-bench-cli.md#rank-runs-by-whats-worth-learning-from). |
+| Head-to-head replay | Implemented | Two retained transcripts aligned on elapsed time, with playback, seeking, separate scrolling, and optional whole-run assessments. Recorded and estimated timestamps are labeled; replay does not rerun either agent or establish matched experimental conditions. See [head-to-head](gym/head-to-head.md). |
+
+## The decision contract
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| System One | Implemented | The typed decision contract at `POST /v1/systemone`: one state and a map of questions produce structured answers. Code chooses what those answers cause. The native schema is `openagents.systemone.v1`; a valid answer shape does not establish that its judgment is correct. See [the caller contract](decision-models/guides/caller.md). |
+| State | Implemented | The document a request's questions judge. It can carry text or structured application data. Each question asks about that state; one question's answer is not another question's input. See [the question types](../crates/jev/src/questions.rs). |
+| Question | Implemented | A named judgment with instructions, criteria, and one of three result types: `Noul`, `Choice`, or `Score`. Question wording is part of the measured instrument. See [questions](../crates/jev/src/questions.rs) and [question sets](../crates/gym/src/questions.rs). |
+| `Noul` | Implemented | A yes-or-no judgment represented by the probability that the condition holds, from 0 to 1. It does not carry a separate confidence field. See [the caller guide](decision-models/guides/caller.md). |
+| `Choice` | Implemented | A judgment among caller-supplied named options. Its answer carries a selected option, a probability distribution over the options, and confidence. See [the caller guide](decision-models/guides/caller.md). |
+| `Score` | Implemented | A judgment on an ordered rubric, with a weighted position, a legend, and a distribution. Evaluators retain the explicit selected level when supplied; otherwise they use the distribution's argmax, with ties resolved to the last level. A calibrated distribution must not silently replace the original selection. See [the Score contract](decision-models/measurements/2026-09-20-score-contract.md) and [selection semantics](../crates/gym/src/calibrate.rs). |
+| Confidence | Defined | A field whose meaning depends on the wire profile. The native System One guide describes distribution concentration. NIP-CJ specifies the selected option's probability for `Choice` and the largest level probability for `Score`. Neither meaning certifies calibration or authorizes an action; callers must pin the profile and measure their thresholds. See [the native contract](decision-models/api/decision-api.md) and [CJ typed decisions](../nips/openagents/NIP-CJ.md#typed-decision-jobs). |
+| Door | Implemented | A serving interface to a decision model. The client chooses an origin through `base_url` and a model through `model`; a gateway can expose tenant-specific door names bound to particular artifacts. See [clients](decision-models/guides/clients.md) and [the gateway](decision-models/service/gateway.md). |
+| Door identity | Implemented | The recorded model identity: door and version, relevant base or adapter identifiers, artifact content digest, and numerical execution settings when available. Estimator and seed configuration remain separate parts of a trial. A reported identity is not remote attestation. See [model identity](gym/model-identity.md). |
+| Model card | Implemented | A model's discovery record returned by `GET /v1/models`. It can report identity, supported behavior, execution settings, and configured admission bounds. A gateway exposes authorized registry bindings; listing a model does not prove current backend health or measured quality. See [gateway discovery](decision-models/service/gateway.md) and [classification discovery](decision-models/api/classification-http.md). |
+| Artifact signature | Implemented | A digest that identifies model content, distinct from a name, path, or base revision. For Kev, it covers the bytes actually loaded; execution settings are recorded separately. It identifies claimed content, not proof that a remote machine executed it. See [content identity](gym/model-identity.md). |
+| Refusal code | Implemented | A typed reason a service or door declines a request. In decision evaluation, a coded door refusal is a retained outcome; a transport failure with no evaluable answer can leave a missing row that coverage must expose. See [typed errors](decision-models/guides/clients.md) and [measured records](gym/measured-records.md). |
+| `uncalibrated` | Implemented | A refusal when a caller requires calibrated probabilities for a question family without a matching admitted map. A raw distribution is not silently promoted to a calibrated one. See [Lev calibration](lev/calibration.md). |
+
+
+## Decision models and runtimes
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Jev | Implemented | TypeSafe's hosted System One model and, in this repository, the Rust client integration in `crates/jev`. The SDK also calls compatible local and gateway doors; its presence does not mean Jev's hosted weights are in this repository. See [the SDK](../crates/jev/src/lib.rs). |
+| Kev | Implemented | The local Rust decision model in `crates/kev`, using an open base, a trained adapter, and a pointer head. Checkpoint files are acquired separately and identified by content; model quality is measured separately from the port's conformance. See [Kev](kev/README.md). |
+| Lev | Implemented | The decision door in `crates/lev` that uses Apple's on-device `FoundationModels` runtime through a Swift helper. Because the runtime exposes no logits, Lev estimates signals and requires matching calibration evidence where probabilities are required. See [Lev](lev/README.md). |
+| Laya | Implemented | The Rust ModernBERT/mmBERT decision model in `crates/laya`, with English, multilingual, and typed-decisions checkpoint variants, a marker-scoring head, and an act head. Requests select a configured variant explicitly; parity with a reference implementation is not proof of accuracy on a caller's workload. See [Laya](laya/README.md). |
+| Packed sequence | Implemented | Kev's layout that encodes the state once alongside several question branches in one prefill. See [Kev architecture](kev/README.md). |
+| Block-causal mask | Implemented | Kev's attention rule that lets each question attend to the state and its own branch while excluding the other question branches. Do not assume every System One model uses this architecture. See [Kev](kev/README.md). |
+| Pointer readout | Implemented | Kev's trained head selects among option tokens supplied with this request, rather than a fixed training-time class list. See [Kev](kev/README.md). |
+| Marker scoring | Implemented | Laya's decision head scores an inserted marker for each option and normalizes scores within a question. Its bidirectional encoder differs from Kev's question-isolating attention layout. See [Laya](laya/README.md). |
+| Act probability | Implemented | Laya's additional `rl_agent.act_probability` output from its act head. This output is not itself host authority to execute an action. See [Laya's wire mapping](laya/README.md). |
+| Delimiter hardening | Implemented | Kev's handling of delimiter-like state text as data, backed by training and conformance fixtures. It does not establish a general guarantee against prompt injection. See [Kev](kev/README.md). |
+| Lev bridge (bridge) | Implemented | The `swift/lev-bridge` helper that reaches Apple's `FoundationModels` framework and exchanges line-delimited JSON with Rust over stdin and stdout. Other helpers named bridges have their own protocols. See [Lev](lev/README.md). |
+| Model conformance | Defined | Agreement with a reference implementation on pinned inputs, outputs, and numerical tolerances. Conformance checks a port's behavior; task accuracy, calibration, resource bounds, and deployment readiness need their own evidence. See [Kev](kev/README.md) and [Laya](laya/README.md). |
+
+
+## Estimating a distribution
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Estimator | Implemented | A method for deriving a selected answer and an observable uncertainty signal when the model runtime exposes no probabilities. Lev provides the L1, L2, and L3 methods. See [the estimator](../crates/lev/src/estimator.rs). |
+| L1 | Implemented | Lev's single greedy draw, which returns a choice without a distribution. See [estimators](../crates/lev/src/estimator.rs). |
+| L2 | Implemented | Lev's count of choices across `n` seeded draws. Its raw frequency resolution is `1/n`; that frequency is not an established probability of correctness. See [estimators](../crates/lev/src/estimator.rs). |
+| L3 | Implemented | Lev's constrained self-reported certainty band alongside a selected answer. Whether the bands carry useful information depends on the checkpoint and measured workload. See [estimators](../crates/lev/src/estimator.rs). |
+| Raw signal | Implemented | The observable estimator output before a fitted calibration map: for example, sample frequency or a certainty band. The type keeps that observation distinct from a calibrated probability of correctness. See [calibration observations](../crates/gym/src/calibrate.rs). |
+| Seed block | Implemented | A non-overlapping range of L2 seeds. Block `b` with `n` draws uses the half-open range `[b*n, (b+1)*n)`. Reusing that block is not a fresh independent trial. See [seed construction](../crates/lev/src/estimator.rs). |
+| Certainty band | Implemented | A coarse confidence category the model supplies under constrained output. A varying or monotone band must be demonstrated for the particular model; it is not guaranteed by the output type. See [banded observations](../crates/gym/src/calibrate.rs). |
+
+
+## Calibration and decision metrics
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Calibration | Defined | Agreement between reported probabilities and observed correctness over a specified population. Calibration evidence is tied to the workload, question wording, model identity, and evaluation procedure. See [calibration](lev/calibration.md). |
+| Calibration map | Implemented | A fitted reliability table mapping a raw signal to the observed probability that the already-selected answer is correct. Serving checks its family and model identity. Redistributing the remaining probability mass is a display convention, not a newly fitted alternative prediction. See [the map contract](../crates/gym/src/calibrate.rs). |
+| Band-conditioned map | Implemented | Reliability tables fitted separately within reported certainty bands. Whether conditioning improves held-out metrics is an empirical question. See [calibration](../crates/gym/src/calibrate.rs). |
+| Calibration admission gate (admission gate) | Implemented | A digested Gym gate deciding whether a map's held-out evidence meets its declared accuracy, calibration, and other bounds. The rule is in `gym::gate`, not the removed `gym::calibrate::admit` function; thresholds belong to the named gate version. See [gates](gym/gate-digests.md). |
+| Confident error | Defined | An incorrect selected answer assigned a high probability under a stated threshold. Its count depends on the threshold, population, and denominator; it is not interchangeable with total error. See [calibration scores](../crates/gym/src/calibrate.rs). |
+| Calibration record | Implemented | The fitted map with its provenance, model identity, partition, estimator, metrics, and admission verdict. New records use `openagents.gym.calibration_record.v2`; historical v1 records remain readable, but incomplete identity cannot establish a new match. See [record versions](gym/model-identity.md) and [the owning schema](../crates/gym/src/calibrate.rs). |
+| Expected calibration error (ECE) | Defined | A binned summary of the difference between confidence and empirical correctness. Its meaning depends on binning and which selected-answer probabilities are scored. It is one calibration measure, not a stand-alone guarantee. See [score calculations](../crates/gym/src/calibrate.rs). |
+| Brier score | Defined | A squared-error score for reported probabilities against observed outcomes. Here, calibration evaluates the fixed selected answer's probability against whether that answer was correct. Lower is better for the same evaluation. See [score calculations](../crates/gym/src/calibrate.rs). |
+| Log loss | Defined | A probability score that penalizes low probability on the observed outcome, especially confident mistakes. The Gym's calibration calculation scores correctness of the fixed selected answer. Lower is better for the same evaluation. See [score calculations](../crates/gym/src/calibrate.rs). |
+| Selected answer | Implemented | The option or level actually returned by the model or estimator. Calibration preserves it even when rescaling moves the distribution's argmax. Rows retain this field so accuracy and probability metrics judge the same prediction. See [the selection contract](../crates/gym/src/calibrate.rs) and [row schema](../crates/gym/src/row.rs). |
+
+
+## The Gym's decision evaluation
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Evaluation row (row) | Implemented | One door's attributed answer or refusal for one evaluation item, with suite and question identity, model identity, estimator, perturbation, timing, and selection where applicable. New rows use `openagents.gym.eval_row.v3`; readers retain historical v1/v2 rows without rewriting them. See [the row schema](../crates/gym/src/row.rs). |
+| Result store (store) | Implemented | The append-only row file. Each completed observation is retained as it is produced; interruption leaves a partial run that coverage must identify. See [measured records](gym/measured-records.md). |
+| Receipt chain | Implemented | The ordered hash chain sealing rows in a result store. It checks internal integrity and order; a separately trusted commitment is needed to detect a rewritten chain or truncated claimed result. Neither mechanism proves that the recorded judgment is true. See [commitments](../crates/gym/src/commitment.rs). |
+| Chain fault | Implemented | A store verifier's explanation that row content was edited or receipt order was changed, including the `Edited` and `Resequenced` cases. See [store verification](../crates/gym/src/store.rs). |
+| Report commitment | Implemented | A self-digested record of a report's chain head, row count, declared selection, identities, and coverage, retained apart from the store. Verification checks the committed prefix; trust in the commitment's origin is a separate requirement. See [the commitment schema](../crates/gym/src/commitment.rs). |
+| Suite | Implemented | A frozen set of labeled items and associated provenance used to evaluate a decision door. Item content and grouping determine what a result can support. See [the suite contract](../crates/gym/src/suite.rs). |
+| Suite digest | Implemented | The content hash identifying the suite used for measurement. Changing the items creates a different suite; ordinary comparisons cannot silently join results across that change. See [measured records](gym/measured-records.md). |
+| Partition | Implemented | An item's assigned evaluation purpose: `calibration` for fitting, `development` for iteration, or `locked` for confirmation. These are not necessarily equal-sized thirds. Related items from one state stay together; tenant training adds a separate training partition. See [suite building](../crates/gym/src/build.rs) and [tenant training](decision-models/service/tenant-training.md). |
+| Locked read | Implemented | A recorded exposure of the locked partition, using `openagents.gym.locked_read.v1`. A second look does not create fresh confirmation evidence; candidate admission checks the exposure ledger. See [the ledger](gym/ledger.md) and [candidate admission](decision-models/service/candidate-admission.md). |
+| Question set | Implemented | The family-specific question wording, digested separately from suite items. Rewording creates a new measured instrument without pretending the item population changed. See [question sets](../crates/gym/src/questions.rs). |
+| Gate | Implemented | A versioned rule that evaluates measurements against stated bounds, evidence requirements, and uncertainty. Gates live in `crates/gym/gates/`; a changed rule produces a new digest. See [gate digests](gym/gate-digests.md). |
+| Gate digest | Implemented | The hash of a gate's typed semantic fields, excluding explanatory prose. A verdict names the rule it used; reviewed aliases can identify equivalent historical encodings without changing the rule. See [gate hashing](gym/gate-digests.md). |
+| Bound | Implemented | A threshold carried by a gate together with the basis for its value. A convenient number is not measurement evidence. See [gates](../crates/gym/src/gate.rs). |
+| Basis | Implemented | A bound's declared justification, such as measurement, derivation, or judgment. A required but pending measurement cannot support a passed gate. See [gates](../crates/gym/src/gate.rs). |
+| Verdict | Implemented | A comparison gate's `failed`, `unverifiable`, or `passed` result. Failed bounds take precedence; absent required evidence is unverifiable, not passed. Candidate admission has an additional `refused` ruling for violations of its frozen plan. See [gates](../crates/gym/src/gate.rs) and [admission rulings](../crates/tenancy/src/admission.rs). |
+| Coverage | Implemented | The comparison of an explicit expected item/door selection with recorded rows, including missing outcomes and distinct recorded identities. A verified chain alone does not prove complete coverage. See [measured records](gym/measured-records.md). |
+| Noise floor | Defined | The variation a metric exhibits under a declared repeat or perturbation procedure when the compared behavior has not meaningfully changed. A useful improvement must clear the relevant measured uncertainty; a floor from one workload or execution setup is not universal. See [regression](gym/regression.md). |
+| Headroom | Defined | The improvement a workload can still expose above a baseline, subject to label reliability, attainable accuracy, and measurement noise. A near-saturated partition may not support a useful comparison. The tenant-training headroom assessment is a separate implemented procedure. See [regression](gym/regression.md) and [training headroom](decision-models/service/tenant-training.md). |
+| Perturbation | Implemented | A recorded variation such as seed block, draw count, estimator, option order, or question wording. The store distinguishes trial identity from accidental duplication; repeated evidence is not automatically independent evidence. See [row identity](../crates/gym/src/row.rs) and [stores](../crates/gym/src/store.rs). |
+| Flip rate | Defined | How often a selected answer changes across a declared option-order comparison. The denominator must identify which permutations or pairs were tested; one pair and every pair are different measurements. See [option-order evaluation](../crates/gym/src/eval.rs). |
+| Label source | Implemented | An item's recorded label provenance and rule: for example, an observed outcome or a person's judgment. The source must make the evidence distinction visible; labels do not become ground truth merely by entering a suite. See [suite provenance](../crates/gym/src/suite.rs) and [record building](../crates/gym/src/build.rs). |
+| Comparison | Implemented | An admitted reading of two result sets under their pinned identities and instruments. Matching items and wording can compare doors; changed wording is a question comparison; incompatible suite content is refused. See [comparison admission](../crates/gym/src/store.rs). |
+| Regression check | Implemented | `gym regress` compares a door with an earlier run only when the pinned suite, questions, perturbation, and complete model identity meet its matching rules. A changed checkpoint calls for a candidate comparison, not a same-door regression claim. See [regression](gym/regression.md) and [model identity](gym/model-identity.md). |
+| Published snapshot | Implemented | A retained, content-identified Gym result snapshot for readers that do not have the original local store. Publication preserves provenance and stated coverage; it does not strengthen the underlying evidence. See [published snapshots](gym/published-snapshots.md). |
+
+
+## Decision service, identity, and accounting
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Gateway | Implemented | The HTTP admission path that authenticates a caller, checks its door binding and capacity, reserves budgets, verifies the backend's claimed model identity, forwards the call, and records settlement. Optional account, billing, and directory surfaces require configuration; code availability does not establish a public deployment. See [gateway](decision-models/service/gateway.md). |
+| Tenant | Implemented | The registry identity to which door reach and resource policy are bound. An account or workspace can refer to a tenant, but those identities have different roles. See [the tenancy manifest](../crates/tenancy/src/manifest.rs) and [workspace membership](decision-models/service/workspace-membership.md). |
+| Tenant registry | Implemented | The versioned, self-digested manifest of tenants, door bindings, artifact identities, and execution configuration. Updates archive prior revisions and reject a stale predecessor. See [registry](../crates/tenancy/src/registry.rs). |
+| Door binding | Implemented | A registry mapping from a tenant-visible door name to the admitted artifact and execution configuration it may reach, under stated policy. A friendly model name alone does not establish this binding. See [the manifest](../crates/tenancy/src/manifest.rs). |
+| Admission snapshot | Implemented | The copied registry decision pinned to a call when it is authorized. A later registry update cannot relabel that call's requested or served identity. See [gateway admission](decision-models/service/gateway.md). |
+| Bearer key | Implemented | An `oak_<id>.<secret>` credential bound to a tenant. The key book keeps the secret's digest, while issuance returns the secret once. Rotation and revocation change the credential without changing the tenant's identity. See [keys](../crates/tenancy/src/keys.rs). |
+| Key scope | Implemented | A restriction on the doors and actions a key can use. Effective authority is the intersection of its scope and the tenant's registry reach; a scope cannot grant access the tenant lacks. See [key scopes](../crates/tenancy/src/keys.rs). |
+| Account | Implemented | The persisted user identity that owns or joins workspaces and refers to one or more authenticated principals. It is distinct from the tenant's model-access binding. See [accounts and membership](decision-models/service/workspace-membership.md). |
+| Principal | Implemented | An authentication identity, such as a key reference or Nostr public key, bound to an account. A principal reference is not the secret used to authenticate it. See [membership](decision-models/service/workspace-membership.md). |
+| Workspace | Implemented | A personal or organization scope with an immutable identity and a fixed tenant binding. Membership roles determine account operations; inference still obeys the tenant registry and budgets. See [workspaces](decision-models/service/workspace-membership.md). |
+| Membership | Implemented | An account's active or revoked relationship to a workspace, with an owner, admin, or member role and an epoch. The gateway checks current membership; revocation leaves a tombstone. See [workspace membership](decision-models/service/workspace-membership.md). |
+| Account session | Implemented | A persisted `sess_<hex>` bearer session, stored by digest, that resolves an account or funded anonymous lane. Workspace membership is rechecked when the session acts; a session is not a permanent copy of its owner's authority. See [session storage](../crates/tenancy/src/sessions.rs) and [gateway](decision-models/service/gateway.md). |
+| Funded anonymous lane | Implemented | An optional account-service path that lets a bounded anonymous session make calls against operator-funded resources. It has explicit limits and is not unrestricted unauthenticated access. See [sessions](../crates/tenancy/src/sessions.rs) and [gateway](decision-models/service/gateway.md). |
+| Invitation | Implemented | An expiring, single-use workspace admission token whose stored form is digested. It grants the declared membership role on redemption; owner transfer is a separate operation. See [workspace invitations](decision-models/service/workspace-membership.md). |
+| Quota | Implemented | A resource allowance, such as questions or input bytes, enforced by a durable reservation ledger. Quota units are separate from currency and price. See [quota](../crates/tenancy/src/quota.rs). |
+| Reservation | Implemented | A budget hold persisted before dispatch and identified by a request/attempt pair. Settlement accounts for what happened; release requires undispatched work, while an unexplained interruption remains unknown. Quota and monetary holds have distinct accounting rules. See [quota](../crates/tenancy/src/quota.rs) and [monetary accounting](decision-models/service/monetary-accounting.md). |
+| Request and attempt | Implemented | A logical request identifier and a numbered execution attempt. Retrying the same pair with the same content must not create a second settlement; a new attempt is a separately attributable operation. Reusing a pair for changed content is a conflict. See [quota idempotency](../crates/tenancy/src/quota.rs) and [execution receipts](../crates/receipts/src/execution.rs). |
+| Execution receipt | Implemented | An `openagents.receipt.execution.v1` record of one attempt, with requested/served identities, registry context, outcome, timing, usage when known, and digests of input/output rather than their content. It is an attributable claim, not remote attestation or a guarantee that the wider service stores no payloads. See [the receipt schema](../crates/receipts/src/execution.rs). |
+| Attempt outcome | Implemented | The receipt vocabulary `answered`, `refused`, `unavailable`, `unattempted`, and `unknown`. A refusal is observed; unknown means the system cannot establish what happened; unattempted means the work was not dispatched. See [execution outcomes](../crates/receipts/src/execution.rs). |
+| Monetary ledger | Implemented | The durable balance, credit, hold, and settlement book in `tenancy::money`. It uses integer monetary units and pinned price terms, keeping unknown spend visible. It records money obligations and movements; a configured external payment provider is a separate concern. See [the ledger](decision-models/service/monetary-ledger.md). |
+| Price terms | Implemented | Versioned rates and accounting rules pinned to an attempt before dispatch, including the covered usage resources and currency. A later price change cannot reprice the attempt. See [monetary ledger](decision-models/service/monetary-ledger.md). |
+| Settlement | Implemented | The final accounting of an admitted attempt under its pinned policy. Missing or invalid post-dispatch usage can leave a monetary hold outstanding; unknown usage is not zero cost, and a timeout is not proof that nothing ran. See [monetary accounting](decision-models/service/monetary-accounting.md). |
+| Billing / service billing | Partial | Implemented plan, checkout, subscription, entitlement, invoice, and provider-event bookkeeping. The current provider is a sandbox that moves no real money; a live payment provider and commercial launch remain separate work. This is separate from settlement between agent-labor buyers and providers. See [billing](decision-models/service/billing.md). |
+| Plan and subscription | Implemented | A versioned operator-declared product plan and a workspace subscription pinned to the version it bought. That version determines entitlements; editing the catalog does not silently alter existing subscriptions. See [billing](decision-models/service/billing.md). |
+| Entitlement | Implemented | The subscribed workspace's permission to use doors covered by its pinned plan. With billing configured, this is checked alongside account membership, registry reach, and budgets. See [billing admission](decision-models/service/billing.md). |
+| Provider-event journal | Implemented | The deduplicated record of authenticated billing-provider events and their stable ledger effects. Replaying after a crash cannot apply the same credit twice; the current adapter is a sandbox. See [billing recovery](decision-models/service/billing.md). |
+| Usage dashboard | Implemented | The workspace-scoped read surface over account, usage, budget, and receipt records. Membership bounds what a viewer can read; totals preserve missing information rather than treating it as zero. See [usage dashboard](decision-models/service/usage-dashboard.md). |
+
+
+## Classification, jobs, and clients
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Classification envelope | Implemented | The `openagents.classify.v1` request at `POST /v1/classify`, which expresses inputs, labels or rubrics, modes, and caller policy over native System One decisions. The gateway schedules bounded per-input forwards; an HTTP batch does not imply model-level packing. See [classification HTTP](decision-models/api/classification-http.md). |
+| Classification policy | Implemented | The versioned rule for choosing and presenting classification results, including tie behavior, thresholds, no-match handling, and ranking. Caller policy is distinct from a model's probability distribution. See [classification HTTP](decision-models/api/classification-http.md). |
+| Uncertainty threshold | Implemented | An explicit caller-supplied cutoff such as `uncertain_below`, applied to the selected result's probability in classification. It marks uncertainty without silently changing the selected answer and is not the separate confidence field. See [classification HTTP](decision-models/api/classification-http.md). |
+| Review policy | Implemented | An opt-in, bounded secondary judgment over declared triggers and review doors. Each review has its own authorization, budgets, identity, and receipt; the original result remains attributable. A review policy alone does not establish that a second judgment improves quality. See [review policies](decision-models/service/review-policies.md). |
+| Fallback policy | Implemented | An explicit rule for trying a permitted secondary door after declared primary failures. It cannot widen tenant reach or silently share inputs with an undeclared model; every attempt remains visible. See [review and fallback](decision-models/service/review-policies.md). |
+| Durable classification job | Implemented | A persisted classification request accepted at `POST /v1/jobs`, processed outside the HTTP request, and read through status and paginated results. Completion means all items are terminal, not that all succeeded. Interrupted work with no established outcome remains unknown. See [durable jobs](decision-models/service/durable-jobs.md). |
+| Job cancellation | Implemented | A request to stop undispatched job work while allowing already-dispatched attempts to settle. It does not undo inference or erase its costs and outcomes. See [durable jobs](decision-models/service/durable-jobs.md). |
+| SDK | Implemented | The Rust `jev` client for native decisions, classification, jobs, models, and account reads. Python, Go, and JavaScript examples show direct HTTP integration; they are not shipped native SDK packages. See [the client matrix](decision-models/guides/clients.md). |
+| `oak` | Implemented | The decision API command-line client: native questions, bounded batch input, classification, and model listing. It uses credentials from a protected file or environment and retains typed refusal and retry behavior. It does not implement every SDK route. See [the caller guide](decision-models/guides/caller.md) and [clients](decision-models/guides/clients.md). |
+| Model Context Protocol (MCP) | Implemented | The tool-discovery and invocation protocol used by `oak-mcp` and `oak-mcp-http` to expose decision and documentation tools to agent clients. It is a client integration surface, separate from the underlying decision API and its admission rules. See [the MCP server](decision-models/guides/mcp-server.md). |
+| `oak-mcp` | Implemented | The MCP interface to decision and documentation tools, over stdio or the separate `oak-mcp-http` transport. Inference uses configured or per-call credentials and can consume resources; bundled documentation tools need neither credentials nor inference. See [MCP server](decision-models/guides/mcp-server.md). |
+| Retry policy | Implemented | A bounded client rule for which failures to retry and how long to wait, including `Retry-After`. Request and attempt identity make accounting explicit; retries must not be described as universally free or exactly-once execution. See [clients](decision-models/guides/clients.md) and [quota](../crates/tenancy/src/quota.rs). |
+| Discovery surface | Implemented | Public machine-readable documentation, agent and MCP cards, skill indexes, and plugin manifests, plus caller-authorized model discovery. Descriptions establish neither authentication nor permission to call inference. See [discovery](../crates/discovery/src/lib.rs) and [the gateway](decision-models/service/gateway.md). |
+| Documentation corpus | Implemented | The bundled, content-digested document set exposed through MCP documentation tools and `/v1/docs`. Stable IDs, content hashes, and bounded cursors identify exact bundled text; a linked `main` URL can change later. See [documentation tools](decision-models/guides/mcp-documentation.md). |
+| Playground | Implemented | The configured gateway demo surface, with real session-authorized inference, an explicitly labeled simulated lane, and bounded tool-backed chat. A simulation is not a measured live-model result. See [playground](decision-models/service/playground.md). |
+
+
+## Tenant training and model admission
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Tenant-training corpus | Implemented | A tenant-owned corpus with training, calibration, development, and locked partitions; item-level provenance and group boundaries support leakage checks. The operator's `tenant-train` workflow implements it; there is no training HTTP endpoint. See [tenant training](decision-models/service/tenant-training.md). |
+| Training headroom assessment | Implemented | The pretraining classification of baseline failures into causes such as state shape, ambiguous questions, uncertain labels, exact logic, or model-addressable error. A sealed assessment decides whether sufficient trainable error remains before a recipe may freeze. See [headroom](decision-models/service/tenant-training.md). |
+| Frozen training recipe | Implemented | The pinned corpus, code, base artifact, adapter shape, seeds, trial and compute bounds, metrics, and rejection/transfer rules declared before a training search. See [tenant training](decision-models/service/tenant-training.md). |
+| Training trial ledger | Implemented | The append-only record of kept, rejected, and failed training attempts under a frozen recipe. Recording only a winning candidate would discard the search history the budget and evidence depend on. See [tenant training](decision-models/service/tenant-training.md). |
+| Candidate seal | Implemented | The immutable binding from a training candidate to its winning trial, artifact bytes, recipe, code, and corpus provenance. Sealing does not activate a model or prove that it improves on the baseline. See [tenant training](decision-models/service/tenant-training.md). |
+| Candidate admission plan | Implemented | The frozen declaration of baseline/candidate identities, permitted changes, evaluation instruments, partitions, coverage, uncertainty, and deployment bounds, written before examining admission evidence. See [candidate admission](decision-models/service/candidate-admission.md). |
+| Candidate admission record | Implemented | The ruling obtained by replaying a frozen plan against verified Gym evidence and locked-read records. A serialized claim or checksum alone cannot authorize activation; native verification reconstructs the ruling. See [candidate admission](decision-models/service/candidate-admission.md) and [admission records](../crates/tenancy/src/admission.rs). |
+| Activation and rollback | Implemented | Registry transitions that serve an admitted candidate or return to a prior allowed binding, while checking the expected current revision. They are separate from training, sealing, and model discovery. See [candidate admission](decision-models/service/candidate-admission.md). |
+| Retention tombstone | Implemented | A retained marker that raw training content was removed while its permitted provenance and digests remain recorded. It preserves the distinction between unavailable bytes and a claim that no record ever existed. See [tenant training](decision-models/service/tenant-training.md). |
+| Confidential inference | Designed | A deferred research direction for protecting inputs from the serving operator. TLS, authentication, and content-digest receipts do not provide this guarantee, and no confidential runtime is implemented by this design. See [confidential inference](decision-models/service/confidential-inference.md). |
+| Image decisions | Designed | The deferred image-capable decision proposal, including a versioned image-state shape. Current text decision doors do not acquire image support merely because the proposal or schema name exists. See [image decisions](decision-models/service/image-decisions.md). |
+
+
+## Skill-directory service
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Skill directory | Implemented | The optional gateway service backed by `tenancy::skills` that publishes reviewed, versioned `SKILL.md` documents. It requires the account surface for submissions; public catalog reads expose published versions. Browsing or fetching a skill does not install it, execute it, or grant authority. See [the directory](decision-models/service/skill-directory.md). |
+| Skill submission | Implemented | An account-authored Markdown version with a content digest, license, publication consent, category, and tags. A name belongs to its first author; identical name/version/digest submissions deduplicate, while changed content requires a new version. See [submissions](decision-models/service/skill-directory.md#submissions). |
+| Skill review | Implemented | The recorded sequence of static validation, a typed decision-model review, and a `reasoning` stage that applies admission rules. Here, `reasoning` names deterministic synthesis of the recorded judgments, not another generative model call. Each stage records its policy, reviewer, outcome, and accounting; backend errors leave work under review rather than claiming rejection. See [the review pipeline](decision-models/service/skill-directory.md#the-review-pipeline) and [its implementation](../crates/gateway/src/skills.rs). |
+| Assessed skill quality | Implemented | The review model's recorded judgment under a pinned policy. The directory distinguishes this assessment from attached measurement evidence; without a pinned suite/report, the version is not presented as measured. Review and static credential screening do not prove a skill safe to execute. See [published records](decision-models/service/skill-directory.md#the-published-catalog). |
+| Skill moderation | Implemented | Audited operator actions through `skills-moderate`: takedown, reinstatement, admission after an appeal, and attachment of measured evidence. Authors can file appeals through the account-scoped surface; the operator's moderation actions are not public HTTP operations. See [author and operator views](decision-models/service/skill-directory.md#author-and-operator-views). |
+| Skill supersession and withdrawal | Implemented | Publishing a newer version marks earlier published versions as superseded without changing their pinned content or hiding them. Author withdrawal and operator takedown remove a version from public resolution while retaining its audit record. See [directory lifecycle](../crates/tenancy/src/skills.rs). |
+
 
 ## AI programming and optimization
 
-These designed contracts are defined in [NIP-OPT](../nips/openagents/NIP-OPT.md)
-and the [AI programming architecture](optimization/README.md).
+These portable target contracts come from [NIP-OPT](../nips/openagents/NIP-OPT.md), the [architecture](optimization/architecture.md), and [experiment lifecycle](optimization/experiments.md). Local experiments are not evidence that the full optimizer or promotion service exists.
 
 | Term | Status | Definition |
 | --- | --- | --- |
@@ -245,26 +512,248 @@ and the [AI programming architecture](optimization/README.md).
 | Inference strategy | Designed | A supported method for realizing AI behavior, potentially with multiple model or tool calls under host limits. |
 | Compilation | Designed | Producing a concrete implementation from semantic structure and selected configuration; it does not necessarily mean machine-code compilation or weight training. |
 | Optimization study | Designed | A frozen contract for bounded search, including task, baseline, allowed surfaces, data rights, partitions, objectives, protected evaluation, and budgets. |
-| Candidate | Designed | A proposed exact implementation and lock, with study and parent lineage. Selection does not imply confirmed quality or adoption. |
+| Candidate | Designed | In NIP-OPT, an exact proposed implementation and lock with study and parent lineage. Local benchmark studies also use the word for tested configurations; selection alone never establishes confirmed quality or adoption. |
 | Materialization record | Designed | Host-attributed evidence of the functional assets, model target, configuration, and bindings actually loaded for a trial. It is not remote attestation. |
-| Confirmation | Designed | Evaluation of a committed candidate under a protected, bounded allowance that records exposure and cannot be reset by renaming data. |
+| Confirmation | Designed | In NIP-OPT, evaluation of a committed candidate under a protected, bounded allowance with recorded exposure. Local frozen benchmark confirmation studies implement specific research protocols, not the entire OPT runtime. |
 | Promotion | Designed | Independent operator-policy adoption of an eligible exact implementation for a specified workload and model scope; separate from package publication and execution grants. |
 | DSPy integration | Designed | A bounded authoring/optimization bridge from semantic contracts to supported complete implementation artifacts. No DSPy runtime is required by the wire protocol. |
 | GEPA integration | Designed | An explicitly identified reflective search procedure using authorized feedback and the same candidate, measurement, and adoption contracts as other optimizers. |
+| Replaceable AI operation | Designed | An operation whose semantic purpose, input/output meaning, authority, and acceptance requirements remain stable while its prompt, model, retrieval, examples, or bounded call strategy can change through measured adoption. |
+| Protected constraint | Designed | A task, evidence, privacy, authority, or acceptance invariant that an optimizer is not allowed to change. A better score cannot waive it. |
+| Optimizer | Defined | A procedure that searches explicitly allowed implementation choices using an objective and authorized feedback. It proposes candidates; it does not grant authority or deploy a winner. |
+| Materialization | Designed | Resolving and loading the exact implementation closure that a trial will execute. A changed manifest without changed loaded behavior is not a new tested implementation. |
+| Objective | Defined | The frozen success and efficiency criteria used to compare candidates, including protected error directions and budget constraints. Module scores and whole-task outcomes can differ. |
+| Amortization | Defined | Accounting for whether repeated deployment savings repay the search, training, or compilation cost that produced a candidate. A cheaper individual call need not make the complete investment cheaper. |
 
-## Nostr
+## Nostr and shared protocols
+
+The [NIP index](../nips/README.md) separates pinned official Nostr specifications,
+pinned Block extensions, and OpenAgents drafts authored here. The OpenAgents
+lane contains 15 NIPs and their shared contract. Event kinds are draft
+assignments, not upstream registrations. Implementation status applies to the
+role described below; storing an event does not implement its application.
 
 | Term | Status | Definition |
 | --- | --- | --- |
-| Relay | Implemented | The Nostr relay in `crates/nostr-relay`: one binary and one Postgres database, serving `relay.openagents.com`. |
-| NIP-CJ | Partial | Agent jobs. Conversation, decision, and execution families carry requests, results, and feedback with NIP-44 payloads and NIP-42 socket authentication. Decision/execution contracts are domain-independent. Conversation transport is implemented; the other network families need implementation. See [NIP-CJ](../nips/openagents/NIP-CJ.md). |
-| NIP-PRG | Partial | Programs. Addressable `30182` events discover typed workflows with pinned dependencies and per-step bounds. The local runtime runs `program` composition and `module` steps on the plugin packet ABI; it doesn't yet run revised v1's native `invoke` step, and `coder` doesn't read programs from a relay. Unsupported semantics refuse the whole program. |
-| NIP-CAP | Partial | Capabilities. Addressable `30180` and `30181` events carry portable execution definitions and operator preferences. Revised v1 separates definitions, host bindings, and grants; the earlier local readers require migration. |
-| NIP-EXT | Designed | Extension distribution: releases, listings, descriptors, revocation checkpoints, and namespace migration. See [NIP-EXT](../nips/openagents/NIP-EXT.md). |
-| NIP-RUN | Designed | Encrypted durable records, evidence, controller fencing, recovery, and retention. See [NIP-RUN](../nips/openagents/NIP-RUN.md); the local run-state store alone does not implement it. |
-| NIP-CTX | Designed | Task frames, versioned evidence representations, context selection, and bounded history expansion. See [NIP-CTX](../nips/openagents/NIP-CTX.md). |
-| NIP-POL | Designed | Scoped instructions, exact action approvals, recipient policy, and attributable routing/cost records. Hosts enforce them. See [NIP-POL](../nips/openagents/NIP-POL.md). |
-| NIP-COORD | Designed | Shared task proposals, fenced resource claims, background plans, and revision-bound findings. See [NIP-COORD](../nips/openagents/NIP-COORD.md). |
-| NIP-EVAL | Designed | Workload evaluation suites, comparable reports, optimization confirmation, optional publication, and scoped promotion evidence. See [NIP-EVAL](../nips/openagents/NIP-EVAL.md). |
-| NIP-OPT | Designed | Semantic AI contracts, immutable implementations, studies, candidates, materialization, trials, accounting, and results. See [NIP-OPT](../nips/openagents/NIP-OPT.md). |
-| `nips/` | Implemented | Pinned copies of the official and Block NIPs. `nips/manifest.json` records the upstream commits. The `openagents/` lane is authored here and is not synced. |
+| Nostr | Implemented | A protocol for signed events exchanged through relays. The event's signature establishes its author and signed bytes; it does not establish that the content is true or that the author may act on another principal's resources. See [NIP-01](../nips/official/01.md) and [the protocol primitives](../crates/nostr/src/lib.rs). |
+| Relay | Implemented | A server that accepts, stores, filters, and forwards events under its configured policy. OpenAgents' relay is `crates/nostr-relay`. Relay admission is distinct from worker admission, execution authority, and payment. See [the relay crate](../crates/nostr-relay/src/lib.rs) and [the NIP index](../nips/README.md). |
+| NIP | Defined | A Nostr Implementation Possibility: a specification of protocol behavior. The repository retains official and Block copies under exact commits in [the manifest](../nips/manifest.json); OpenAgents drafts are maintained locally. A copied specification is not an implementation claim. See [the three lanes](../nips/README.md). |
+| Shared OpenAgents contracts | Partial | Common encoding, exact references, schemas, dependency locks, effects, bounds, evidence, outcomes, and the private artifact envelope used by the agent NIPs. [Pure validators](../crates/nostr/src/contracts/mod.rs) exist; validation alone does not provide storage, dispatch, authority, or a deployed private-envelope service. See [shared contracts](../nips/openagents/contracts.md). |
+| NIP-CAP | Partial | Portable capability definitions and operator preferences, discovered through `30180` and `30181`. Definitions, host bindings, grants, and presence are distinct. V1 [validators](../crates/nostr/src/cap.rs), [local capability readers and probes](../crates/capability/src/lib.rs), and service discovery exist; general binding admission and catalog use remain dependent on the host and supported profile. See [NIP-CAP](../nips/openagents/NIP-CAP.md). |
+| NIP-PRG | Partial | Bounded typed workflows, discovered through `30182`, with optional module announcements at `30183`. The [local runtime](../crates/coder/src/runtime.rs) runs query, check, decide, delegate, child-program, and Wasm-module steps. Generic `invoke` dispatch and remote program/module fetching remain unsupported. See [NIP-PRG](../nips/openagents/NIP-PRG.md). |
+| NIP-EXT | Partial | Signed package releases, mutable listings, revocations, checkpoints, and namespace migration. [Protocol validators and transition rules](../crates/nostr/src/ext.rs), [local package and lock resolution](../crates/coder/src/package.rs), and configured relay profiles exist. A complete remote catalog, installer, and activation lifecycle is not implied. See [NIP-EXT](../nips/openagents/NIP-EXT.md). |
+| NIP-CJ | Partial | Encrypted conversation, typed-decision, and execution jobs over three request/result/feedback families. Conversation transport and the [decision worker](../crates/gateway/src/relay_worker.rs) exist. The [execution store](../crates/coder/src/execution.rs) admits and retains claims and can dispatch pinned local programs, but the network worker lacks complete artifact resolution and dispatch. See [NIP-CJ](../nips/openagents/NIP-CJ.md). |
+| NIP-RUN | Partial | Encrypted durable run records (`3187`) and head hints (`30186`), with ordered evidence, recovery, and controller fencing. [Journal validators](../crates/nostr/src/run.rs), configured relay privacy, and execution-store foundations exist; a general distributed controller and fenced handoff are not established by those pieces. See [NIP-RUN](../nips/openagents/NIP-RUN.md). |
+| NIP-CTX | Designed | Task frames, source snapshots, evidence representations, recipient-specific context construction, and bounded history expansion. Shared shape validators and existing traces do not constitute the complete context lifecycle. See [NIP-CTX](../nips/openagents/NIP-CTX.md) and [context and working state](#context-and-working-state). |
+| NIP-POL | Designed | Attributable instruction resolution, disclosure policy, exact action approvals, routing choices, and cost observations. Hosts must enforce these decisions; signatures and model scores cannot grant operating-system access. See [NIP-POL](../nips/openagents/NIP-POL.md). |
+| NIP-COORD | Designed | Task proposals, dependencies, atomic resource claims, fencing, bounded background work, and findings offered for integration. Existing local project coordination does not implement this portable coordinator contract. See [NIP-COORD](../nips/openagents/NIP-COORD.md). |
+| NIP-EVAL | Partial | Workload-specific suites and reports that retain subjects, baselines, partitions, attempts, uncertainty, and limitations. The [knowledge evidence implementation](../crates/nostr/src/kb.rs) and [publication command](../crates/microcoder/src/kbnet.rs) implement a public `3189` subset; the general evaluation and promotion protocol remains broader. See [NIP-EVAL](../nips/openagents/NIP-EVAL.md). |
+| NIP-OPT | Designed | Semantic AI contracts and bounded optimization studies: exact implementations, protected partitions, candidates, materialization, trials, accounting, and adoption evidence. It does not mandate an optimizer or establish improvement by compilation. See [NIP-OPT](../nips/openagents/NIP-OPT.md) and [AI programming and optimization](#ai-programming-and-optimization). |
+| NIP-KB | Implemented | Signed public knowledge-entry versions (`3190`), current-version heads (`30190`), withdrawals (`3191`), and linked evaluation evidence. `microcoder kb publish`, `kb sync`, and `kb publish-evidence` implement sharing; each reader independently chooses trust. This does not implement a general labor market or guarantee that shared advice improves an agent. See [NIP-KB](../nips/openagents/NIP-KB.md) and [knowledge sharing](coder/guides/knowledge-base.md#share-entries-over-nostr). |
+| NIP-CTRL | Designed | Task-scoped pairing, observation, steering, cancellation, and bounded catch-up across clients. Uses existing CJ operations and private artifacts, with separate rights and current controller admission. Pairing grants neither wallet access nor action-approval authority. See [NIP-CTRL](../nips/openagents/NIP-CTRL.md). |
+| NIP-MKT | Designed | Negotiated service offerings and private RFQ, quote, order, status, dispute, and settlement records. Public offering versions use `3192`; current heads use `30192`. Defines a free rehearsal and fixed-price Lightning payment after acceptance. No commercial service or payment adapter is implemented by this draft. See [NIP-MKT](../nips/openagents/NIP-MKT.md). |
+| NIP-LAB | Designed | The `openagents.labor.v1` market profile: binds an agreed task to exact execution, deliverables, independent checks, bounded rework, dispute resolution, rights, and final acceptance. Uses MKT settlement and existing CJ/RUN identities; it allocates no new event kinds. See [NIP-LAB](../nips/openagents/NIP-LAB.md). |
+| NIP-MV | Partial | Shared 3D-world presence: pose frames (`23300`), gestures (`23301`), entity state (`33301`), and world definitions (`33300`). [Verse](../crates/verse/src/mv.rs) implements frames, gestures, and state; it does not publish world definitions or establish authoritative physics. This NIP is independent of the shared agent-artifact contracts. See [NIP-MV](../nips/openagents/NIP-MV.md). |
+
+### Wire identity and evidence
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Event | Implemented | A signed Nostr object containing its ID, author pubkey, timestamp, kind, tags, content, and signature. Its ID hashes the protocol's serialized signed fields. See [NIP-01](../nips/official/01.md#events-and-signatures). |
+| Event kind | Implemented | The integer that identifies an event's interpretation and storage class. A kind number is not proof of application support. See [NIP-01](../nips/official/01.md#kinds). |
+| Regular event | Implemented | An event expected to be stored rather than replaced by a newer event at the same address. Its exact event ID identifies its signed bytes; retention and deletion remain separate. See [NIP-01](../nips/official/01.md#kinds). |
+| Replaceable event | Implemented | An event for which a relay keeps the latest version by author and kind. An addressable event additionally uses its `d` tag. Older versions may be discarded, so a current pointer is unsuitable as an immutable execution pin. See [NIP-01](../nips/official/01.md#kinds) and [shared references](../nips/openagents/contracts.md#references-and-digests). |
+| Ephemeral event | Implemented | An event forwarded without an expectation of relay storage. CJ requests and live telemetry therefore need separate retained evidence for recovery. See [NIP-01](../nips/official/01.md#kinds) and [NIP-CJ](../nips/openagents/NIP-CJ.md). |
+| Event coordinate | Implemented | A mutable Nostr address such as `kind:pubkey:d`, used to locate the current addressable event. An exact event ID identifies one version instead. See [NIP-01 tags](../nips/official/01.md#tags). |
+| NIP-42 authentication | Implemented | A signed, connection-scoped response to a relay challenge. It establishes socket identity for relay policy, not permission to execute a job or spend funds. See [NIP-42](../nips/official/42.md) and [CJ admission](../nips/openagents/NIP-CJ.md). |
+| NIP-44 encryption | Implemented | The payload-encryption scheme used by CJ and private OpenAgents records. Encryption protects content under the recipient keys; public tags, timing, volume, and correlation still need disclosure consideration. See [NIP-44](../nips/official/44.md) and [RUN privacy](../nips/openagents/NIP-RUN.md#kinds-and-privacy). |
+| Relay acknowledgment (`OK`) | Implemented | A relay's response to an event submission. It does not prove worker acceptance, execution, commercial acceptance, or payment. See [NIP-01](../nips/official/01.md) and [CJ](../nips/openagents/NIP-CJ.md). |
+| End of stored events (`EOSE`) | Implemented | The end of the relay's stored-event response for a subscription. It does not prove global history completeness or that no later work exists. See [NIP-01](../nips/official/01.md) and [RUN replay](../nips/openagents/NIP-RUN.md#heads-replay-and-retention). |
+| Digest | Implemented | A hash identifying content under a stated encoding rule. Shared artifact references hash exact bytes; schema-defined object identities may use canonical JSON. Neither proves authorship or grants access. See [shared contracts](../nips/openagents/contracts.md) and [encoding code](../crates/nostr/src/contracts/json.rs). |
+| `ArtifactRef` | Implemented | A shared reference binding exact bytes by digest, size, media type, and schema when structured, with optional event provenance and location hints. Resolving bytes requires separate admission; a URL is a hint, not identity or permission. See [reference validators](../crates/nostr/src/contracts/body.rs) and [shared contracts](../nips/openagents/contracts.md). |
+| `EventRef` | Implemented | A reference to an exact signed event ID, author, and kind, optionally carrying a coordinate. Consumers verify the event; a matching coordinate or display name cannot substitute. See [shared contracts](../nips/openagents/contracts.md). |
+| `DefinitionRef` | Implemented | A publisher-qualified component identity together with its exact definition artifact and, when applicable, signed event provenance. A local provenance claim cannot impersonate a remote signature. See [shared contracts](../nips/openagents/contracts.md). |
+| Private artifact envelope | Partial | Kind `3188`, carrying a separately signed, NIP-44-encrypted artifact for one recipient under a random mailbox. [Pure parsing and access checks](../crates/nostr/src/contracts/body.rs) exist; the complete relay privacy/service role still needs integration. Receiving an envelope dispatches nothing. See [private artifact transport](../nips/openagents/contracts.md#private-artifact-envelope). |
+| Equivocation | Partial | Conflicting signed records under one identity: for example, different KB bytes for the same author, entry, and version, or different package manifests for one version label. Implemented KB/EXT validators reject known conflicts; timestamps must not choose a convenient winner. See [KB equivocation](../nips/openagents/NIP-KB.md#equivocation) and [EXT releases](../nips/openagents/NIP-EXT.md#release-and-package-manifest). |
+| Revocation and withdrawal | Partial | Monotone removal of eligibility for an exact release or knowledge version. A new listing or deleted event does not undo it. EXT/KB validation exists; stopping active work still requires host cancellation and reconciliation. See [EXT revocation](../nips/openagents/NIP-EXT.md#revocation-and-freshness) and [KB withdrawals](../nips/openagents/NIP-KB.md#withdrawals-3191). |
+| Protocol conformance role | Partial | The explicitly tested role a component supports, such as relay-envelope validation, client validation, controller, or settlement. OpenAgents uses named `supported_extensions`, not invented numeric NIPs; enabling a relay profile does not implement every host role. See [the OpenAgents index](../nips/openagents/README.md) and [relay advertisements](../crates/nostr-relay/src/gateway/wire.rs). |
+
+### Authority and coordination
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Grant | Partial | Independently established permission for a principal to use a binding within a scope, budget, and effect boundary. A definition, installation, probe result, or signed self-claim cannot create it. Local [program authority](../crates/coder/src/program_authority.rs) exists; the portable contracts cover more roles. See [NIP-CAP](../nips/openagents/NIP-CAP.md). |
+| Admission | Partial | The host's decision to accept one exact operation under current authority, pins, prerequisites, enforceable limits, and reservations. Existing gateway and execution admission are concrete implementations; portable admission is not a universal shared service. See [CJ](../nips/openagents/NIP-CJ.md) and [CAP](../nips/openagents/NIP-CAP.md). |
+| Effect envelope | Partial | The declared read, write, network, process, delegation, and spending effects an operation may require. Host grants can narrow it. Network access alone does not authorize sending a message or mutating a remote resource. See [shared effects](../nips/openagents/contracts.md#effects-requirements-and-enforcement). |
+| Owner attestation | Implemented | The Block NIP-OA owner's signature associating an agent with its owner. The agent remains the event author. It establishes provenance, not a universal operating-system, repository, or wallet grant. See [NIP-OA](../nips/block/NIP-OA.md). |
+| Agent relay access | Implemented | Block NIP-AA relay admission for an agent associated with a member owner. Relay membership and task execution authority remain distinct. See [NIP-AA](../nips/block/NIP-AA.md). |
+| Run controller | Partial | The authority that serializes one run's journal and admitted transitions. RUN validators and local stores exist; general transfer requires enforced fencing, not reconnecting a client or publishing a new head. See [NIP-RUN](../nips/openagents/NIP-RUN.md#controller-handoff-and-fencing). |
+| Resource claim | Designed | A coordinator's atomic grant of exact task resources and a shared reservation, with an epoch, increasing token, expiry, and expected revision. The portable COORD contract is broader than existing local worktree claims. See [NIP-COORD](../nips/openagents/NIP-COORD.md#claims-fencing-and-shared-state). |
+| Fencing | Partial | Enforcement that rejects dispatch from an obsolete controller generation or claim token. RUN implements protocol checks; distributed effect dispatchers must persist and enforce the fence before ownership can safely move. A signed handoff or elapsed lease alone is insufficient. See [RUN handoff](../nips/openagents/NIP-RUN.md#controller-handoff-and-fencing) and [COORD claims](../nips/openagents/NIP-COORD.md#claims-fencing-and-shared-state). |
+| Idempotency | Partial | Reusing an exact request/attempt identity retrieves its retained disposition without another dispatch; changed bytes under that identity conflict. Implemented decision and execution stores provide scoped contracts. This does not make unrelated providers or external effects globally exactly once. See [CJ](../nips/openagents/NIP-CJ.md) and [the execution store](../crates/coder/src/execution.rs). |
+| Unknown outcome | Implemented | An attempt whose effect or result cannot be established from retained evidence, such as a crash after dispatch. It remains explicit until reconciliation; absence of an answer is not proof that nothing happened. See [RUN](../nips/openagents/NIP-RUN.md#state-transitions) and [local recovery](../crates/coder/src/runstate.rs). |
+| Verification and integration | Partial | Verification assesses output against checks; integration decides whether and how to apply it to its destination. Both are separate from an operation completing. Shared receipt shapes and local checks exist; each domain needs an admitted integration contract. See [shared outcomes](../nips/openagents/contracts.md) and [COORD findings](../nips/openagents/NIP-COORD.md#findings-and-integration). |
+| Task-control grant | Designed | CTRL's permission for one named client to observe, steer, or cancel one task under one controller generation. Rights are independent; neither pairing nor all three rights confer POL approval or spending authority. See [NIP-CTRL](../nips/openagents/NIP-CTRL.md#rights-and-scope). |
+| Read state and live telemetry | Implemented | Block NIP-RS synchronizes a viewer's read position; NIP-AO carries ephemeral agent activity. Neither is a durable run journal, proof of cancellation, or task-control grant. See [NIP-RS](../nips/block/NIP-RS.md) and [NIP-AO](../nips/block/NIP-AO.md). |
+
+## Network effects and contribution value
+
+These terms state the project's hypotheses and measurement targets. They do not
+claim that adding participants necessarily increases quality or revenue.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Network effect | Defined | Improvement in what another participant can accomplish because contributors supply reusable methods, components, environments, or evidence. The Coder plan measures incremental out-of-sample verified passes per adopted contribution, with marginal cost, latency, and harmful regressions. Participant or package counts alone do not establish it. See [how the network compounds](coder/design/networked-coder-plan.md#how-the-network-compounds). |
+| Reusable improvement | Defined | An exact knowledge or component version with independent evidence that it helps new work. Its source task is provenance, excluded from its confirmation evidence; failed and neutral trials remain visible. Knowledge publication exists, but a network-wide improvement is a claim to earn. See [the network plan](coder/design/networked-coder-plan.md#how-the-network-compounds) and [KB evidence](../nips/openagents/NIP-KB.md#evidence-3189). |
+| Group-forming network | Defined | The proposed network in which agents discover useful work and form task-specific collaborations across operators. Value depends on useful combinations, task ownership, context, verification, and payment; possible groups alone supply none of those. See [the archive's analysis](transcripts/README.md#collective-work-needs-more-than-a-larger-audience), [episode 200](transcripts/200.md), and [episode 230](transcripts/230.md). |
+| Reed's law | Defined | The historical strategic argument that possible participant groups grow much faster than participant or pair counts. The episodes apply it to agent collaboration as a hypothesis, not a measured law of OpenAgents' quality, demand, or revenue. See [episode 230](transcripts/230.md#reeds-law-and-agent-networks) and [the transcript assessment](transcripts/README.md#collective-work-needs-more-than-a-larger-audience). |
+| Contributor compensation | Designed | Payment under a declared agreement for the contribution actually purchased: accepted labor, component reuse, or licensed data. Those claims need separate terms, attribution, and rights. Displaying a retrieved entry neither proves it caused a win nor automatically creates a royalty. See [the labor plan](agents/market-infrastructure.md#build-a-market-that-has-useful-work-on-day-one) and [the Coder plan](coder/design/networked-coder-plan.md#agent-labor-makes-the-network-useful-now). |
+
+## Agent labor and markets
+
+These are the contracts in [the labor-market plan](agents/market-infrastructure.md),
+[NIP-MKT](../nips/openagents/NIP-MKT.md), and
+[NIP-LAB](../nips/openagents/NIP-LAB.md). The negotiated market, labor worker,
+and settlement service remain designed. Existing relay support, wallet protocol
+parsers, and sandbox billing do not constitute a running commercial market.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Accepted outcome | Defined | Work accepted under an explicit deliverable and verification contract. The thesis treats this as the useful economic output to measure, rather than tokens or attempts. LAB makes commercial acceptance precise while keeping execution, checks, integration, and payment separate. See [episode 237](transcripts/237.md) and [LAB acceptance](../nips/openagents/NIP-LAB.md#final-acceptance-and-amounts-due). |
+| Agent labor | Designed | Bounded work performed for an agreed deliverable and acceptance contract, such as a patch, tests, review, document, or evaluation. Payment is for the accepted service; merely selling model calls does not define the deliverable. See [LAB scope](../nips/openagents/NIP-LAB.md#scope-and-commercial-limits). |
+| Buyer, provider, and worker | Designed | The buyer purchases the service; the provider signs its commercial commitment; the worker executes under the exact identity fixed in the terms. They can represent related operators, whose relationship must be disclosed. Wallet, relay, and agent-owner identities do not silently replace these roles. See [MKT roles](../nips/openagents/NIP-MKT.md#reuse-and-roles). |
+| Offering | Designed | An immutable signed description of a provider's supported capability and market/payment profiles. A mutable head advertises the current offering and availability. Price and capacity hints are neither a final quote nor a reservation. See [MKT discovery](../nips/openagents/NIP-MKT.md#kinds-and-discovery). |
+| Request for quote (RFQ) | Designed | A buyer's exact service request, referencing an offering and domain profile with a price ceiling and response deadline. It proposes work but does not start execution or authorize payment. See [MKT records](../nips/openagents/NIP-MKT.md#terms-and-records). |
+| Quote | Designed | A provider's immutable proposed terms for one RFQ, including exact identities, price, deadlines, and domain terms. A quote alone reserves no capacity and admits no work. See [MKT admission](../nips/openagents/NIP-MKT.md#negotiation-and-admission). |
+| Confirmed order | Designed | Bilateral agreement established by the quote, the buyer's order accepting its exact terms, and the provider's confirmed acknowledgment. Independent execution and wallet admission still apply. See [MKT admission](../nips/openagents/NIP-MKT.md#negotiation-and-admission). |
+| `OrderRef` | Designed | The complete reference to a confirmed MKT order and its exact signed agreement. LAB execution, submission, acceptance, and settlement must preserve that identity; an `order_id` asserted in prose is insufficient. See [MKT references](../nips/openagents/NIP-MKT.md#private-records-and-authenticated-references) and [LAB signers](../nips/openagents/NIP-LAB.md#encoding-references-and-signers). |
+| Labor execution linkage | Designed | A buyer-signed binding between a confirmed order and one exact CJ request, attempt, run, worker, and supplied context. The worker durably admits the linkage before dispatch under `openagents.labor-binding.v1`; a generic CJ worker is not automatically a LAB worker. See [LAB linkage](../nips/openagents/NIP-LAB.md#link-the-confirmed-order-to-execution). |
+| Submission and delivery receipt | Designed | The submission identifies the worker's exact required artifacts and run evidence. A buyer or resolver's delivery receipt records availability and observed receipt time. A URL, relay acknowledgment, or claimed test pass does not establish complete delivery. See [LAB delivery](../nips/openagents/NIP-LAB.md#delivery-and-independent-verification). |
+| Independent labor verification | Designed | A separately admitted reviewer checks the exact submission against criteria and a checker pinned before execution. The worker cannot alter its checker. Passing verification establishes the agreed checks, not buyer acceptance or every possible property of the output. See [LAB verification](../nips/openagents/NIP-LAB.md#delivery-and-independent-verification). |
+| Bounded rework | Designed | A limited replacement submission under unchanged requirements, source, price, worker, checker, aggregate bounds, and deadlines. Only explicitly admitted prior-review and delivery evidence may extend its context. A scope change requires a new order. See [LAB rework](../nips/openagents/NIP-LAB.md#buyer-review-and-bounded-rework). |
+| Labor acceptance | Designed | The signed final commercial decision under the agreed LAB policy: accepted for the full fixed price, rejected for zero, or unresolved with an unknown amount due. Buyer silence and a worker's success report cannot create acceptance; payment and integration remain separate. See [LAB acceptance](../nips/openagents/NIP-LAB.md#final-acceptance-and-amounts-due). |
+| Dispute resolver | Designed | The separately identified adjudicator accepted in the original labor terms. It assesses retained evidence under unchanged criteria, including buyer unavailability and cancellation after delivery. It is a trusted role, not a cryptographic oracle or collection guarantee. See [LAB disputes](../nips/openagents/NIP-LAB.md#disputes-cancellation-and-an-unavailable-buyer). |
+| Availability / Go Online | Designed | Provider willingness to accept new work within declared capacity and terms. Pausing availability blocks new intake; it does not erase confirmed orders, cancel active effects, release unknown reservations, or settle debts. See [LAB availability](../nips/openagents/NIP-LAB.md#availability-is-separate-from-existing-obligations). |
+| Free rehearsal (`free-v1`) | Designed | An MKT order with zero price and fee allowance, no payment instruction, and no wallet call. Its payment state is not required, rather than a claimed zero-value Bitcoin transfer. See [payment profiles](../nips/openagents/NIP-MKT.md#supported-payment-profiles). |
+| Fixed-price postacceptance settlement | Designed | MKT's initial paid profile: a fixed Bitcoin amount through a validated BOLT11 Lightning invoice after valid acceptance. The provider bears nonpayment risk; the profile provides no escrow, deposit, prorating, or atomic exchange. See [payment profiles](../nips/openagents/NIP-MKT.md#supported-payment-profiles). |
+| Payment obligation and attempt | Designed | An obligation identifies an amount owed for accepted labor or an agreed refund. Each wallet attempt has a durable identity, exact invoice, adapter, fee admission, and reservation. Replacement invoices cannot bypass a paid or unresolved obligation. See [MKT payment attempts](../nips/openagents/NIP-MKT.md#authorization-and-payment-attempts). |
+| Payment evidence | Designed | A signed observation backed by an admitted wallet response or lookup, binding the order, obligation, invoice hash, amount, fees, and adapter. Payer confirmation and payee acknowledgment remain separate observations; a timeout is unknown, not unpaid. See [MKT reconciliation](../nips/openagents/NIP-MKT.md#evidence-and-reconciliation). |
+| Labor refund | Designed | A separately agreed obligation and actual transfer, with payer/payee reversed and its own reservations and reconciliation. It preserves the original confirmed payment. A failed check or dispute does not automatically debit anyone. See [MKT reconciliation](../nips/openagents/NIP-MKT.md#evidence-and-reconciliation). |
+| Labor rights | Designed | Exact terms restricting input use, output use, publication, training, evaluation reuse, redistribution, recipients, and retention. Paying for work grants only the admitted license; sharing a trace or retaining it does not authorize training, public release, or resale. See [LAB rights](../nips/openagents/NIP-LAB.md#rights-disclosure-and-retained-proof). |
+| Provider reputation | Designed | A buyer's scoped assessment of a provider from attributable history and workload evidence, including failures, unknowns, and shared operators. No global score, key count, or payment total guarantees competence or independence. See [availability and trust](agents/market-infrastructure.md#availability-and-trust-that-survive-an-outage). |
+| Evaluator trust | Partial | A reader's choice of whose measurements it accepts for which workload. KB sharing implements author trust and attribution of signed evaluation evidence; a separate policy for admitting trusted evaluators remains designed. The wider market must retain exact evaluator, subject, method, and evidence identities. A self-published score is not independent certification. See [KB trust](../nips/openagents/NIP-KB.md#trust) and [EVAL publication](../nips/openagents/NIP-EVAL.md#publication-and-disclosure). |
+| Subsidized demand | Defined | Project-funded purchases that seed useful labor. Report them separately from external buyers, with buyer value, provider net earnings, and subsidy per accepted job. More transactions alone do not establish a sustainable market. See [initial demand](agents/market-infrastructure.md#build-a-market-that-has-useful-work-on-day-one). |
+| Royalties and data resale | Designed | Separate commercial arrangements for reusable components or data rights, distinct from the price of a labor order. MKT/LAB v1 defines no automatic royalty split or resale market, and retrieval alone incurs no retroactive fee. See [market scope](agents/market-infrastructure.md#build-a-market-that-has-useful-work-on-day-one) and [LAB rights](../nips/openagents/NIP-LAB.md#rights-disclosure-and-retained-proof). |
+
+### Related Nostr market and payment contracts
+
+These references explain what can be reused without equating their event formats
+with a running MKT/LAB service.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Nostr Wallet Connect (NWC) | Partial | NIP-47's encrypted client-to-wallet request/response protocol. [Wire parsing](../crates/nostr/src/domain/wallet_connect.rs) exists; a live MKT settlement adapter does not. A connection URI carries wallet authority and stays with the payment host. Its standard `pay_invoice` fields alone do not enforce MKT's fee ceiling. See [NIP-47](../nips/official/47.md) and [MKT authorization](../nips/openagents/NIP-MKT.md#authorization-and-payment-attempts). |
+| Zap receipt | Partial | A NIP-57 recipient-wallet claim associated with a Lightning invoice. It is supporting evidence, not independent proof of payment or sufficient MKT settlement evidence. The [wire parser](../crates/nostr/src/domain/zap.rs) does not pay or fully validate invoices. See [NIP-57](../nips/official/57.md#appendix-e-zap-receipt-event) and [MKT evidence](../nips/openagents/NIP-MKT.md#evidence-and-reconciliation). |
+| Cashu wallet and nutzap | Partial | NIP-60 retains encrypted Cashu wallet state; NIP-61 transfers recipient-locked Cashu proofs. Their mint, custody, redemption, and unit semantics differ from MKT's BOLT11 profile. The [wallet](../crates/nostr/src/domain/wallet.rs) and [nutzap](../crates/nostr/src/domain/nutzap.rs) parsers do not contact mints, validate their proof signatures, or move funds. See [NIP-60](../nips/official/60.md) and [NIP-61](../nips/official/61.md). |
+| Classified listing | Partial | NIP-99's signed addressable offer for goods, services, or work, with an inactive/draft form. [Parsing](../crates/nostr/src/domain/listing.rs) exists; an advertisement alone supplies no negotiated labor agreement, verification, or settlement. See [NIP-99](../nips/official/99.md). |
+| Trusted assertion | Partial | NIP-85's attributable score about a key, event, address, or external identifier, from a reader-selected service. [Validators](../crates/nostr/src/domain/assertion.rs) exist. The service's algorithm and viewpoint determine its claim; it is not global reputation, execution authority, or an EVAL report. See [NIP-85](../nips/official/85.md). |
+
+## Voyager
+
+Sources: [Voyager runtime and limits](voyager/README.md) and [Minecraft architecture](minecraft/architecture.md). The local arena demonstrates protocol and accounting mechanisms, not a production labor marketplace.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Voyager | Implemented | The open-ended agent program after arXiv:2305.16291: an agent lives in an open-ended environment, proposes its own tasks, acts, verifies, and banks what worked as skills. `crates/voyager` runs bounded episodes: a curriculum declares or generates tasks, a bounded Lua interpreter runs them as code-as-action, a mechanical or `noul` critic checks each attempt, and passing programs land in a digested skill store. See [voyager](voyager/README.md). |
+| World manifest | Implemented | A `voyager.world/v1` document in `worlds/` naming a Minecraft version, seed, difficulty, gamerules, episode bounds, and optionally enrolled agents, deposits, an economy, and world effects. Its SHA-256 is the world's identity. |
+| `mc-bridge` | Implemented | The nightly-built helper in `mc-bridge/` that plays the game through azalea and speaks one JSON object per line on stdin and stdout. A supervised child process, never a dependency — the `swift/lev-bridge` precedent. |
+| Episode | Implemented | In Voyager, one bounded world run: server start, bot entry, task attempts, and retained ATIF exchanges. Elsewhere, *episode* can mean a Coder One run or a numbered archive video; those are different record types. |
+| Curriculum | Implemented | What proposes the next task: the manifest's `curriculum.tasks` list first, then an Open Responses door the `generate` section names, behind a warm-up schedule; a world with no section runs the built-in starter tasks. |
+| Skill library | Implemented | Reusable behavior banked between episodes: digested, versioned Lua programs under `~/.openagents/voyager/skills/` (`VOYAGER_SKILL_DIR` overrides; the repository's `skills/` is the promoted half). Retrieval is a `choice` over the banked descriptions through the decision door, with `none` always admitted. Each program in it is a [Voyager skill](#plugins-and-skills), not a `SKILL.md` guide. |
+| Interpreter | Implemented | The bounded Lua engine a task's program runs in (`crates/voyager` `interpret`): the bridge's ops as script calls — `say`, `walk`, `explore`, `mine`, `mine_at`, `players`, `state`, `block_at`, `wait`, `feedback` — with every engine bound set. A program's source is the task's script, a banked skill, a retrieval, or the `act` door's proposal; a fault feeds back for repair across a four-round loop. |
+| Scenario | Implemented | Which ensemble arms a world runs: `quest` (the default) is the mining-economy and coding-quest chain with no combat; `war` adds the skirmish the manifest's `combat` section declares. The manifest's `scenario` field or `--scenario` on the command line picks one. |
+| Guild | Implemented | A named team in a multi-agent world. Every enrolled agent belongs to one; deposits may be owned by a guild and the ledger keeps balances per guild. |
+| Ensemble episode | Implemented | A world whose manifest lists `agents` runs one `mc-bridge` child per member in a single server, rather than the solo curriculum. |
+| Deposit | Implemented | A manifest-registered set of block positions worth credits when dug: an id, an optional owning guild (absent means contested), a required block kind, and a per-block award. |
+| Compute ledger | Implemented | The arena’s append-only `ledger.jsonl`, with deduplicated awards, reservations, settlements, releases, and separate XP. These are local game credits; an unsettled hold stays reserved after a crash and is not a Bitcoin payment. |
+| Coding quest | Implemented | A reserve-execute-verify-integrate chain: hold compute credits, produce a patch in an isolated fixture, verify the exact patch against protected cases, then reconcile a named world effect. The shipped solver is explicitly attributed as deterministic, not a demonstrated general coding agent. |
+| Quest XP | Implemented | Points a reconciled quest records in the ledger's `xp` fold — evidence of achievement, never spendable credits. |
+| Agent key | Implemented | The arena’s deterministic Nostr demo identity, derived from its enrolled username. This permits reproducible enrollment; it is not a production secret-custody design for outside operators. |
+| World effect | Implemented | A named console command in the manifest's `effects` map that a verified quest may run. A quest names an effect; it never supplies commands. |
+| Guild channel | Implemented | A closed NIP-29 group on the episode's supervised `nostr-relay`, one per guild: members write C7 `kind:9` chat as their enrolled keys, a nonmember write is refused `restricted:`, and reads are public. |
+| Decision door | Implemented | A `POST /v1/systemone` endpoint a world's `relay.decision_url` names — a local `kev-serve` or a live TypeSafe door. A `choice` answer orders admitted work; every call is recorded under `decisions/` with state, questions, model, raw response, and transport. |
+| Achievement label | Implemented | A NIP-32 `kind:1985` event the host's relay-management key signs after a reconciled quest — `openagents.voyager` / `quest-complete` targeting the member's pubkey — published to the episode relay and kept as `quest/label.json`. |
+| Critic | Implemented | Voyager’s task verifier: mechanical before/after checks where defined, or an attributed Noul judgment. A `ran` check establishes execution, not an independently verified domain outcome. |
+| Code-as-action | Implemented | Generating or selecting a Lua program that composes admitted bridge operations under interpreter bounds. Generated text does not bypass the host’s vocabulary or limits. |
+| Protected quest cases | Implemented | Referee-owned tests applied to the exact patch on a fresh fixture after execution. The solver cannot inspect these cases through its public fixture. |
+| CoderQuest | Designed | The coding-as-an-MMORPG reference design reviewed in [the source assessment](minecraft/delivery-and-sources.md#coderquest-source-review). The Minecraft profile and bounded Voyager arena carry selected ideas into this repository; they do not port a finished CoderQuest game. |
+
+## Verse
+
+Sources: [Verse](verse/README.md), [chat](verse/chat.md), and [NIP-MV](../nips/openagents/NIP-MV.md). Names in the world describe a rendering or communication surface unless an entry says otherwise.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Verse | Partial | The Rust desktop world in `crates/verse`: an amber 3D city with shared avatars, agents, and chat over Nostr. It succeeds the historical spatial-workroom idea; live OpenAgents run, Pylon, and payment state is not implemented. |
+| Amber ladder | Implemented | The four `coder_terminal::Intensity` steps over one amber hue, plus the near-black field. Verse draws every line in a ladder step and every solid face in the field color. |
+| Mouselook | Implemented | Holding the right mouse button: the character turns to face the camera, then turns with the mouse, and `A`/`D` strafe instead of turning. Left drag orbits the camera without turning the character. |
+| Pose frame | Implemented | A `23300` event carrying the current position and quaternion of one publisher's entities. Relays forward it and do not store it. Receivers order frames by session and sequence and draw them slightly in the past. |
+| Entity state | Implemented | A `33301` event recording where one entity was last and whether its publisher is online. Relays keep the latest per entity, which is how a player resumes and how resting players stay visible. |
+| Scan | Implemented | A bounded look-around query for nearby entity states after the visual agent finishes a chase. The behavior does not imply general autonomous planning. |
+| Greeting | Implemented | A rate-limited visual interaction between nearby agents, with a NIP-MV gesture and one bounded response. It is animation/interaction behavior rather than a labor negotiation. |
+| World chat | Implemented | Verse chat after Horse Isle 1: ALL, ADS, ZONE, NEAR, and HERE as NIP-C7 kind `9` lines scoped by NIP-MV tags, NIP-29 rooms, and NIP-17 private messages, in two windows with a method selector, `/` shortcuts, Horse Isle's limits, and speech bubbles. See [chat](verse/chat.md). |
+| Zone | Implemented | A named district of a Verse world, the scope of ZONE chat: the Plaza and the four Wards around it. |
+| Agent chat | Implemented | The AGENT channel: a private conversation with your own agent. Lines go to a text model through Coder's Open Responses door (the CODER door, or the OpenAgents bearer on the `free` lane), never to a relay, and replies stream into a bubble over the spade. |
+| NOSTR tab | Implemented | The world chat window's second tab: live, filtered public notes from `relay.damus.io` and `relay.primal.net`, with each poster shown as a local stand-in avatar around the pylon. Read-only. |
+
+## Historical names and ideas
+
+These entries explain the retained [video archive](transcripts/README.md)
+and [legacy map](roadmap.md#the-legacy-map). **Historical** means the named
+product, codebase, or proposal belongs to that record, not that its current
+implementation exists here. It makes no claim about another repository's
+present status. Current replacements and revived contracts appear in the
+sections above.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Faerie | Historical | The early GitHub coding agent that grew from reading issues to planning, editing, committing, and responding to tests. See [episodes 020–032](transcripts/020.md). |
+| AutoDev | Historical | The later coding-agent product direction combining repository context, artifacts, diffs, and an executable workspace. See [episode 103](transcripts/103.md). |
+| OpenPress | Historical | The open site-building project introduced around the WordPress disputes, using a Laravel application. See [episode 126](transcripts/126.md). |
+| Onyx | Historical | The mobile personal-agent direction connecting voice, tools, Bitcoin, and open networks. See [episode 139](transcripts/139.md). |
+| Commander | Historical | A fleet-control interface borrowing hotkeys, spatial controls, and status displays from strategy games. See [episode 170](transcripts/170.md). |
+| Tricoder | Historical | Phone control of desktop coding agents over Tailscale, with broader orchestration proposed. See [episode 191](transcripts/191.md). |
+| Autopilot and MechSuit | Historical | Earlier personal-agent and coding-harness product forms. Their useful agent-control ideas feed the Coder direction; their names do not identify a current Rust crate. See [episode 199](transcripts/199.md) and the [legacy map](roadmap.md#the-legacy-map). |
+| Probe | Historical | The early Rust coding-agent runtime introduced in [episode 218](transcripts/218.md). This product name differs from an evidence probe in Coder One or Jevprobe. |
+| Pylon and Nexus | Historical | Earlier provider-compute and network/control-plane concepts. Current local serving, relay, and worker code does not establish delivery of those complete products. See [the compute/network history](transcripts/README.md#historical-development). |
+| Psionic | Historical | The Rust inference and training stack introduced in [episode 216](transcripts/216.md). Its broader distributed-compute program is distinct from the current Kev, Lev, and Laya implementations. |
+| Tassadar | Historical | The training/construction program and worker–validator/run-board narrative in [episodes 236–240](transcripts/238.md). The current Verse reimplements part of the spatial presentation idea without carrying over a live training or payment network. |
+| Khala and Khala Code | Historical | Collective-intelligence orchestration and its coding product, including model adapters and proposed trace-derived reusable contributions. See [episode 242](transcripts/242.md) and [episode 245](transcripts/245.md). |
+| OpenAgents Desktop | Historical | The prior Codex-centered workroom with inspectable subagents, plans, and verification contracts. It is distinct from today's Coder terminal and Verse desktop world. See [episode 251](transcripts/251.md). |
+| ProductSpec | Historical | The Desktop contract tying product intent, accepted plans, criteria, and evidence-backed completion together. It informs current task/acceptance design but is not itself the implemented Coder task-frame schema. See [episode 251](transcripts/251.md). |
+| AssuranceSpec | Historical | The proposed independent verification obligations and evidence contract accompanying ProductSpec. A designed obligation was explicitly separate from executing its proof. See [episode 252](transcripts/252.md). |
+| Observer and QA Swarm | Historical | Automated observation and coordinated QA work proposed around AssuranceSpec. These names do not designate the current Gym benchmark grader or a delivered universal correctness judge. See [episode 252](transcripts/252.md). |
+| FastFollow | Historical | A standing research and gap-analysis contract intended to keep a product informed by changes elsewhere. It did not itself grant implementation authority. See [episode 255](transcripts/255.md). |
+| Sarah | Historical | The named voice-facing agent and later long-running product/operator narrative. See [episode 260](transcripts/260.md) and the [Coder suite plan](coder/design/typesafe-product-suite.md). |
+| Omega | Historical | The planned Zed-based editor direction described in a final Sarah script. It is not a current editor distribution in this workspace. See [episode 262](transcripts/262.md). |
+| Immortal | Historical | The resilience and independent market-participant direction in [episodes 266–267](transcripts/266.md). The current Nostr relay derives from the public `immortal-relay`; that does not implement the earlier full swap/market product. |
+| Agent Forge and GetAfter | Historical | The earlier source-hosting/GitHub-replacement direction, demonstrated in [episode 274](transcripts/274.md) and deferred in the [suite plan](coder/design/typesafe-product-suite.md). |
+| Bendcoder | Historical | The Bend/C/Jev coding prototype in [episode 285](transcripts/285.md). It motivates later design work; the session is not a controlled benchmark win or the current product implementation. |
+| Economy Kernel | Historical | The earlier accepted-work, accounting, verification, and payout architecture. Current quota, monetary, and arena ledgers implement specific local contracts, not the entire historical economy. See [the legacy map](roadmap.md#the-legacy-map). |
+| Five markets | Historical | Compute, data, labor, liquidity, and risk in [episode 213](transcripts/213.md). The current [market plan](agents/market-infrastructure.md) prioritizes agent labor; liquidity and swaps are not prerequisites. |
+
+## Maintaining the glossary
+
+- Define a term from a repository contract or retained source, and link that
+  source. Prefer an explicit scope over a claim that all implementations agree.
+- Check runtime claims against code when a guide is older than its implementation.
+  A validator, schema, fixture, or local prototype does not establish a complete
+  network service.
+- Keep overlapping meanings explicit: a trace is not a recovery journal; a
+  capability definition is not a grant; a completed process is not a verified
+  artifact or an accepted paid job.
+- Keep thresholds, price tables, leaderboard positions, and experimental scores
+  in their versioned specifications or result reports. The glossary explains
+  how to interpret those records.
+- Preserve important aliases and incoming section links. Check Markdown
+  rendering, links, and implementation labels after an update.
