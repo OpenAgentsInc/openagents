@@ -5,6 +5,15 @@ use coder::task::{Action, Command, RequestedConfiguration, Store, TaskIntent, Wo
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 
+/// The canonical system shell the owner admits: `/bin/bash`, or `/bin/sh`
+/// where there is no `/bin/bash`, as on NixOS.
+fn system_shell() -> std::path::PathBuf {
+    ["/bin/bash", "/bin/sh"]
+        .iter()
+        .find_map(|path| Path::new(path).canonicalize().ok())
+        .expect("a system shell")
+}
+
 pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
     let root = tempfile::tempdir().unwrap();
     let repo = root.path().join("repo");
@@ -24,7 +33,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
         ],
     ] {
         assert!(
-            std::process::Command::new("/usr/bin/git")
+            std::process::Command::new("git")
                 .args(args)
                 .current_dir(&repo)
                 .status()
@@ -33,7 +42,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
         );
     }
     assert!(
-        std::process::Command::new("/usr/bin/git")
+        std::process::Command::new("git")
             .args(["worktree", "add", "--detach", "-q"])
             .arg(&checkout)
             .current_dir(&repo)
@@ -71,7 +80,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
         intent_digest: task.intent_digest,
         expected_revision: 1,
         expected_source_snapshot: None,
-        program: Path::new("/bin/bash").canonicalize().unwrap(),
+        program: system_shell(),
         arguments: Vec::new(),
         write_workspace: true,
         wall_seconds: 8,
@@ -213,7 +222,10 @@ async fn existing_loop_uses_common_owner_boundary_atif_and_retained_artifacts() 
 async fn unsafe_reads_and_outside_writes_do_not_escape_the_repository() {
     use std::os::unix::fs::symlink;
     let (root, store, grant) = fixture();
-    let outside = root.path().join("outside");
+    // Outside the fixture's temporary directory: on Linux the boundary gives
+    // commands a private /tmp, where the write would succeed unseen.
+    let elsewhere = tempfile::tempdir_in("/var/tmp").unwrap();
+    let outside = elsewhere.path().join("outside");
     std::fs::write(&outside, "outside marker").unwrap();
     symlink(&outside, root.path().join("checkout/link")).unwrap();
     let host = Host::admit(&store, &grant).await.unwrap();

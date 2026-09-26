@@ -12,6 +12,15 @@ use supervise::{Input, Job, Limits};
 pub const GRANT_SCHEMA: &str = "openagents.coder.task-execution-grant.v1";
 const MAX_HOST_EVENTS: usize = 8192;
 
+/// The fixed, root-owned paths `git` is taken from, in order: where
+/// distributions install it, then NixOS's system profile. Like the
+/// boundary's `bwrap`, it is never searched for on `PATH`.
+pub const GIT_PATHS: [&str; 2] = ["/usr/bin/git", "/run/current-system/sw/bin/git"];
+
+/// The `PATH` owned commands run with: the system directories, then NixOS's
+/// root-owned system profile, which exists only there.
+pub const SYSTEM_PATH: &str = "/usr/bin:/bin:/run/current-system/sw/bin";
+
 /// Explicit local authority. This is supplied by the operator, never the model.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -479,10 +488,14 @@ fn refused(message: impl std::fmt::Display) -> Error {
 }
 
 pub(super) async fn git(workspace: &Path, arguments: &[&str]) -> Result<String, Error> {
-    let mut command = std::process::Command::new("/usr/bin/git");
+    let git = GIT_PATHS
+        .into_iter()
+        .find(|path| Path::new(path).is_file())
+        .unwrap_or(GIT_PATHS[0]);
+    let mut command = std::process::Command::new(git);
     command
         .env_clear()
-        .env("PATH", "/usr/bin:/bin")
+        .env("PATH", SYSTEM_PATH)
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .args(arguments)
@@ -631,7 +644,7 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
         command
             .current_dir(&workspace)
             .env_clear()
-            .env("PATH", "/usr/bin:/bin");
+            .env("PATH", SYSTEM_PATH);
         let live = {
             let mut dispatch = Store::open(&owner.dir)?;
             if dispatch.show(&task.task_id)?.status == Status::CancelRequested {

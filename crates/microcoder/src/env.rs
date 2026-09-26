@@ -50,6 +50,15 @@ pub struct Docker {
 /// The shell a script runs under: bash when there is one.
 const SHELL: &str = "if command -v bash >/dev/null 2>&1; then exec bash -s; else exec sh -s; fi";
 
+/// Sets the file-creation mask every command in a task container starts
+/// with. `docker exec` inherits the daemon's umask, which is 0000 on some
+/// hosts, such as coderos-4080, so files a command creates would be
+/// world-writable, and a task that checks permissions fails: sshd refuses
+/// a world-writable `/run/sshd` in Terminal-Bench 2.1's `git-multibranch`.
+/// Harbor's Beam environment sets `umask 022` the same way, and its Docker
+/// environment gets 022 from a stock daemon.
+pub const UMASK: &str = "umask 022";
+
 impl Env for Local {
     async fn run(&self, command: &str, deadline: Duration) -> CommandResult {
         let mut child = Command::new("sh");
@@ -87,7 +96,7 @@ impl Env for Docker {
             "sh",
             "-c",
             &format!(
-                "if command -v timeout >/dev/null 2>&1; then exec timeout -k 5 {seconds} sh -c '{SHELL}'; else {SHELL}; fi"
+                "{UMASK}; if command -v timeout >/dev/null 2>&1; then exec timeout -k 5 {seconds} sh -c '{SHELL}'; else {SHELL}; fi"
             ),
         ]);
         execute(child, command, deadline + Duration::from_secs(10)).await

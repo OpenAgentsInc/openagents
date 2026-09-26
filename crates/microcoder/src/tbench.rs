@@ -41,7 +41,7 @@ use std::time::Duration;
 use serde_json::{Map, Value, json};
 use tokio::process::Command;
 
-use crate::env::{Docker, Env};
+use crate::env::{Docker, Env, UMASK};
 
 /// The default Terminal-Bench 4 task folder.
 #[must_use]
@@ -907,7 +907,12 @@ pub async fn collect(task: &Task, name: &str, say: &dyn Fn(&str)) {
             args.extend(["-w".into(), workdir.clone()]);
         }
         let shell = if hook.service == MAIN { "bash" } else { "sh" };
-        args.extend([container, shell.into(), "-c".into(), hook.command.clone()]);
+        args.extend([
+            container,
+            shell.into(),
+            "-c".into(),
+            format!("{UMASK}; {}", hook.command),
+        ]);
         let (ok, output) =
             docker_with(&args, &[], Some(Duration::from_secs(hook.seconds.max(1)))).await;
         if !ok {
@@ -1053,9 +1058,9 @@ pub async fn solve(task: &Task, agent: &Docker, name: &str) -> Result<(), String
         "-u",
         "root",
         &agent.container,
-        "mkdir",
-        "-p",
-        "/solution",
+        "sh",
+        "-c",
+        &format!("{UMASK}; mkdir -p /solution"),
     ])
     .await;
     let (ok, output) = docker(&[
@@ -1090,12 +1095,7 @@ pub async fn solve(task: &Task, agent: &Docker, name: &str) -> Result<(), String
         agent.container.clone(),
         "bash".into(),
         "-c".into(),
-        // `docker exec` inherits the daemon's umask, which is 0000 on some
-        // hosts, such as coderos-4080. The leaderboard runs had the usual
-        // 022, and a solution that checks permissions fails under 0000:
-        // sshd refuses a world-writable `/run/sshd` in Terminal-Bench 2.1's
-        // `git-multibranch`.
-        format!("umask 022; (/solution/solve.sh) > {AGENT_LOGS}/oracle.txt 2>&1"),
+        format!("{UMASK}; (/solution/solve.sh) > {AGENT_LOGS}/oracle.txt 2>&1"),
     ]);
     let deadline = Duration::from_secs(task.agent_seconds.unwrap_or(7_200).min(7_200));
     let (ok, output) = docker_with(&args, &[], Some(deadline)).await;
@@ -1267,7 +1267,7 @@ async fn run_tests(
         container.to_string(),
         "bash".into(),
         "-c".into(),
-        format!("(/tests/test.sh) > {VERIFIER_LOGS}/test-stdout.txt 2>&1"),
+        format!("{UMASK}; (/tests/test.sh) > {VERIFIER_LOGS}/test-stdout.txt 2>&1"),
     ]);
     let (_, output) = docker_with(&args, &[], Some(Duration::from_secs(seconds.max(1)))).await;
     if output.starts_with("timed out after") {
@@ -1315,9 +1315,9 @@ pub async fn verify(task: &Task, agent: &Docker, name: &str, say: &dyn Fn(&str))
         "-u",
         "root",
         &agent.container,
-        "mkdir",
-        "-p",
-        "/tests",
+        "sh",
+        "-c",
+        &format!("{UMASK}; mkdir -p /tests"),
     ])
     .await;
     let (ok, output) = docker(&[
@@ -1427,7 +1427,16 @@ async fn verify_separately(task: &Task, name: &str, say: &dyn Fn(&str)) -> Verdi
             let parent = Path::new(target)
                 .parent()
                 .map_or("/".to_string(), |p| p.to_string_lossy().to_string());
-            let _ = docker(&["exec", "-u", "root", &container, "mkdir", "-p", &parent]).await;
+            let _ = docker(&[
+                "exec",
+                "-u",
+                "root",
+                &container,
+                "sh",
+                "-c",
+                &format!("{UMASK}; mkdir -p '{parent}'"),
+            ])
+            .await;
             let _ = docker(&[
                 "cp",
                 &local.to_string_lossy(),
@@ -1837,6 +1846,37 @@ cpus = 1
         assert!(task.compose);
         grade_fixture(&task, "bridge").await;
         grade_fixture(&task, "none").await;
+    }
+
+    /// Files the loop's commands, the reference solution, a collect
+    /// command, and the tests create are 644 and directories 755, even where
+    /// `docker exec` would hand them the daemon's umask of 0000.
+    #[tokio::test]
+    #[ignore = "needs Docker"]
+    async fn fixture_file_modes_follow_umask_022() {
+        let task = fixture("file-modes");
+        let say = |text: &str| println!("{text}");
+        let name = format!("microcoder-fixture-file-modes-{}", std::process::id());
+        let image = image(&task, &say).await;
+        let env = start(&task, &image, &name, "none", &say).await.unwrap();
+        // The loop's commands and acceptance tests both run through `Env::run`.
+        let made = env
+            .run(
+                "touch /app/loop.txt && mkdir /app/loop-dir && stat -c %a /app/loop.txt /app/loop-dir",
+                Duration::from_secs(30),
+            )
+            .await;
+        assert_eq!(
+            made.output.split_whitespace().collect::<Vec<_>>(),
+            ["644", "755"],
+            "{made:?}"
+        );
+        solve(&task, &env, &name).await.unwrap();
+        collect(&task, &name, &say).await;
+        let verdict = verify(&task, &env, &name, &say).await;
+        remove(&name).await;
+        assert_eq!(verdict.reward, Some(1.0), "{verdict:?}");
+        assert_eq!(leftovers(&name).await, "");
     }
 
     #[tokio::test]

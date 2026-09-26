@@ -141,8 +141,10 @@ run and does not append another line. Uninstall leaves exact task-store bytes
 unchanged.
 
 On coderos, the installed Coder lacks `task execute`, so the bundle health check
-refuses it. The machine also has no `/usr/bin/git`, which the current task
-owner expects. The retained Linux acceptance runs a clearly labeled shell
+refuses it. The machine also has no `/usr/bin/git`; the task owner now also
+takes `git` from NixOS's root-owned system profile,
+`/run/current-system/sw/bin/git`, as the boundary does `bwrap`, and adds that
+profile to the end of its commands' `PATH`. The retained Linux acceptance runs a clearly labeled shell
 service fixture through systemd, verifies the unit, starts it, confirms one
 invocation across duplicate starts while active, and stops/unlinks it. It
 proves service-manager wiring only, not a Rust task-owner result on Linux.

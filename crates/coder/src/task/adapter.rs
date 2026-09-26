@@ -533,7 +533,7 @@ impl Host {
         command
             .current_dir(self.workspace())
             .env_clear()
-            .env("PATH", "/usr/bin:/bin")
+            .env("PATH", owner::SYSTEM_PATH)
             .env("HOME", scratch)
             .env("TMPDIR", scratch)
             .env("TMP", scratch)

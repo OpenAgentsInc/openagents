@@ -10,7 +10,7 @@ On coderos-4080 on September 26, 2026, **83 of the 89 tasks grade 1** with
 their reference solutions under `microcoder --check-grading`. The other six
 fail because of upstream drift in packages, downloads, or live data, not
 because of Microcoder. The one Microcoder fault found, the host's `docker
-exec` umask, is fixed for the reference solution.
+exec` umask, is fixed for every command Microcoder runs in a task container.
 
 ## The rule: TB2.1 is fair game
 
@@ -87,11 +87,15 @@ and `caffe-cifar-10` 31.
 **The umask fault.** On coderos-4080 `docker exec` inherits dockerd's umask
 of 0000. `git-multibranch`'s reference solution creates `/run/sshd`
 world-writable, and sshd refuses to start. The leaderboard runs, which pass
-this task, had the usual umask 022, so Microcoder now runs the reference
-solution with `umask 022`. The
-loop's commands and the tests still inherit 0000. A task that checks
-permissions can fail in the loop for that reason; fix it outside a
-pre-registered study round, since it changes the loop's environment.
+this task, had the usual umask 022, so Microcoder first ran the reference
+solution with `umask 022`. It now starts every command it runs in a task
+container with `umask 022`: the loop's commands, the acceptance tests, the
+reference solution, collect commands, and the verifier's tests. Harbor's
+Beam environment sets `umask 022` the same way; its Docker environment sets
+none and gets 022 from a stock daemon. This changes the loop's environment,
+so it lands between study rounds. The ignored Docker test
+`fixture_file_modes_follow_umask_022` checks the modes with the
+`file-modes` fixture task.
 
 | Task | Result | Why |
 | --- | --- | --- |

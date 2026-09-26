@@ -132,7 +132,7 @@ fn killing_owner_retains_unknown_and_does_not_repeat_a_persisted_effect() {
     }
     let pid = launch["owner_process"].as_u64().unwrap().to_string();
     assert!(
-        Command::new("/bin/kill")
+        Command::new("kill")
             .args(["-KILL", &pid])
             .status()
             .unwrap()

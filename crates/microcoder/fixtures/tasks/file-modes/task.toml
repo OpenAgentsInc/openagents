@@ -1,0 +1,14 @@
+# A synthetic Microcoder fixture: files the loop, the reference solution, a
+# collect command, and the tests create get the modes umask 022 gives, even
+# where the Docker daemon's umask is 0000.
+schema_version = "1.0"
+
+[verifier]
+timeout_sec = 60.0
+
+[[verifier.collect]]
+command = "touch /app/collected.txt && mkdir -p /app/collected-dir"
+
+[environment]
+allow_internet = false
+build_timeout_sec = 300.0
