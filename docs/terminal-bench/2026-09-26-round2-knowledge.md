@@ -243,6 +243,17 @@ The knowledge-on snapshot for Round 2 will be incomplete until `kb sync`
 paginates (or fetches per kind) or the relays per-subscription event cap is
 raised. This is a relay/client limit, not a data-loss problem.
 
+**Fixed in the client (2026-09-26).** `kb sync` and every other `kb`/`xp`
+relay query now page with `until` until the relay's NIP-67 EOSE says
+`finish`, splitting a page stuck on one crowded second by kind, then by author,
+and warning (exit 1 for `kb sync`) if anything is still out of reach. A fresh
+sync into an empty cache from `wss://relay.openagents.com` now reports "208
+events; 104 entries accepted from 1 author" and caches all 16 kind-3189
+evidence reports on the relay. The cap itself is the relay's history batch
+bound, `min(NOSTR_RELAY_MAX_LIMIT, (NOSTR_RELAY_SEND_QUEUE_CAPACITY - 1) / 2)`
+= `min(1000, 127)` = 127 per `REQ` with the defaults; see
+`docs/deployment/configuration.md`.
+
 ## Files
 
 - New entries: `knowledge/*.md` (commit on `main`).

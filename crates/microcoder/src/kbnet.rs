@@ -26,13 +26,51 @@ use tokio_tungstenite::tungstenite::Message;
 /// How long one query or one publish waits for the relay.
 pub const WAIT: Duration = Duration::from_secs(20);
 
-/// Events one query asks for, at most.
+/// Events one page of a query asks for. A relay may send fewer: the
+/// OpenAgents relay caps one `REQ` at 127 by default, and
+/// [`Relay::query`] pages past whatever cap it meets.
 pub const LIMIT: usize = 1_000;
+
+/// Pages one filter may take before a query gives up and warns.
+const MAX_PAGES: usize = 10_000;
 
 /// An authenticated relay connection.
 pub struct Relay {
     socket: Socket,
     next: u32,
+    incomplete: usize,
+}
+
+/// What a relay's EOSE said about the stored events it matched (NIP-67).
+#[derive(Clone, Copy)]
+enum End {
+    /// It sent them all.
+    Finish,
+    /// It holds more it didn't send.
+    More,
+    /// It didn't say.
+    Unknown,
+}
+
+/// `filter` split into one filter per kind, or else one per author, for a
+/// page that can't advance by `until`; `None` when it names at most one
+/// of each.
+fn split(filter: &Value) -> Option<Vec<Value>> {
+    for field in ["kinds", "authors"] {
+        if let Some(values) = filter[field].as_array().filter(|v| v.len() > 1) {
+            return Some(
+                values
+                    .iter()
+                    .map(|value| {
+                        let mut part = filter.clone();
+                        part[field] = json!([value]);
+                        part
+                    })
+                    .collect(),
+            );
+        }
+    }
+    None
 }
 
 fn now() -> u64 {
@@ -55,7 +93,11 @@ impl Relay {
         let socket = connect(url, identity)
             .await
             .map_err(|e| format!("{url}: {e}"))?;
-        Ok(Relay { socket, next: 0 })
+        Ok(Relay {
+            socket,
+            next: 0,
+            incomplete: 0,
+        })
     }
 
     async fn frame(&mut self, deadline: tokio::time::Instant) -> Result<Value, String> {
@@ -79,13 +121,87 @@ impl Relay {
         }
     }
 
-    /// The stored events matching `filter`, up to the relay's end of
-    /// stored events.
+    /// Every stored event matching `filter`, however many pages the relay
+    /// splits them into. A relay caps one `REQ` below the filter's `limit`
+    /// (the OpenAgents relay at 127 by default), so this pages back with
+    /// `until` (NIP-01) and drops the events it has already seen. It stops
+    /// on a NIP-67 `finish` EOSE, on an empty page, or on a page with
+    /// nothing new. When a page can't advance, because more events than
+    /// one page share the oldest second, it asks again one kind at a
+    /// time, then one author at a time. What it still can't reach is
+    /// warned about on stderr, and [`Relay::incomplete`] counts it.
     ///
     /// # Errors
     ///
     /// When the relay closes the subscription or doesn't answer.
     pub async fn query(&mut self, filter: Value) -> Result<Vec<Event>, String> {
+        let mut seen = std::collections::HashSet::new();
+        let mut events = Vec::new();
+        let mut pending = vec![filter];
+        while let Some(filter) = pending.pop() {
+            let mut until = filter.get("until").and_then(Value::as_u64);
+            let mut done = false;
+            for _ in 0..MAX_PAGES {
+                let mut paged = filter.clone();
+                if let Some(until) = until {
+                    paged["until"] = json!(until);
+                }
+                let (page, end) = self.page(&paged).await?;
+                let oldest = page.iter().map(|e| e.created_at).min();
+                let mut fresh = 0;
+                for event in page {
+                    if seen.insert(event.id.clone()) {
+                        events.push(event);
+                        fresh += 1;
+                    }
+                }
+                match (end, oldest) {
+                    (End::Finish, _) | (End::Unknown, None) => {}
+                    // A relay without NIP-67: a page with nothing new is
+                    // the end, since it doesn't say whether it cut one.
+                    (End::Unknown, Some(_)) if fresh == 0 => {}
+                    (End::More, Some(_)) if fresh == 0 => {
+                        if let Some(parts) = split(&filter) {
+                            pending.extend(parts);
+                        } else {
+                            self.warn(&filter, "more of them share one second than one page holds");
+                        }
+                    }
+                    (End::More, None) => {
+                        self.warn(&filter, "it said there were more, then sent none")
+                    }
+                    (_, Some(oldest)) => {
+                        until = Some(oldest);
+                        continue;
+                    }
+                }
+                done = true;
+                break;
+            }
+            if !done {
+                self.warn(&filter, &format!("{MAX_PAGES} pages weren't enough"));
+            }
+        }
+        Ok(events)
+    }
+
+    fn warn(&mut self, filter: &Value, why: &str) {
+        self.incomplete += 1;
+        eprintln!(
+            "warning: the relay didn't return every event matching {filter}: {why}; this answer \
+is incomplete"
+        );
+    }
+
+    /// How many queries on this connection ended without every matching
+    /// event, each already warned about on stderr.
+    #[must_use]
+    pub fn incomplete(&self) -> usize {
+        self.incomplete
+    }
+
+    /// One `REQ`: the events up to its EOSE, and what that EOSE said.
+    async fn page(&mut self, filter: &Value) -> Result<(Vec<Event>, End), String> {
         self.next += 1;
         let id = format!("kb-{}-{}", std::process::id(), self.next);
         send(&mut self.socket, json!(["REQ", id, filter]))
@@ -93,7 +209,7 @@ impl Relay {
             .map_err(|e| e.to_string())?;
         let deadline = tokio::time::Instant::now() + WAIT;
         let mut events = Vec::new();
-        loop {
+        let end = loop {
             let frame = self.frame(deadline).await?;
             if frame[1].as_str() != Some(id.as_str()) {
                 continue;
@@ -104,7 +220,14 @@ impl Relay {
                         events.push(event);
                     }
                 }
-                "EOSE" => break,
+                "EOSE" => {
+                    let marker = frame[2].as_array().and_then(|m| m.first());
+                    break match marker.and_then(Value::as_str) {
+                        Some("finish") => End::Finish,
+                        Some("more") => End::More,
+                        _ => End::Unknown,
+                    };
+                }
                 "CLOSED" => {
                     return Err(format!(
                         "the relay closed the query: {}",
@@ -113,9 +236,9 @@ impl Relay {
                 }
                 _ => {}
             }
-        }
+        };
         let _ = send(&mut self.socket, json!(["CLOSE", id])).await;
-        Ok(events)
+        Ok((events, end))
     }
 
     /// Publishes `event` and waits for the relay to accept it. A duplicate
@@ -496,7 +619,15 @@ pub async fn sync(o: &Options, key: &Path, dir: &Path) -> Result<u8, String> {
 authors in the trust file) or --kb-trust all (as candidates).",
         dir.display()
     );
-    Ok(u8::from(!result.refused.is_empty()))
+    let incomplete = relay.incomplete();
+    if incomplete > 0 {
+        println!(
+            "incomplete: the relay didn't return everything for {incomplete} {}; see the \
+warnings above",
+            if incomplete == 1 { "query" } else { "queries" }
+        );
+    }
+    Ok(u8::from(!result.refused.is_empty() || incomplete > 0))
 }
 
 /// `kb publish-evidence`: for each published entry with paired runs, a
