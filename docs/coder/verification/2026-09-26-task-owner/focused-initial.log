@@ -1,0 +1,48 @@
+   Compiling nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+   Compiling microluna v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/microluna)
+   Compiling gym v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/gym)
+   Compiling plugin v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/plugin)
+   Compiling capability v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/capability)
+   Compiling coder-one v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-one)
+   Compiling coderbench v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coderbench)
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder)
+    Finished `test` profile [unoptimized] target(s) in 35.58s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/coder-2a682914cace884c)
+
+running 33 tests
+test task::tests::closed_commands_reject_duplicate_unknown_and_oversized_fields ... ok
+test task::artifact::tests::parent_links_leaf_links_hardlinks_and_path_escape_refuse ... ok
+test task::tests::identity_conflicts_span_tasks_actions_and_byte_encodings ... ok
+test task::tests::missing_stable_lock_refuses_repeatedly_without_recreating_it ... ok
+test task::tests::intent_receipts_and_cancellation_survive_reopening_without_execution ... ok
+test task::tests::every_materialized_fact_is_checked_against_the_retained_history ... ok
+test task::tests::opening_an_existing_public_directory_does_not_change_its_permissions ... ok
+test task::tests::failed_writes_never_acknowledge_and_reopen_resolves_retry_identity ... ok
+test task::tests::new_directory_components_are_private_and_reopenable ... ok
+test task::tests::replaced_lock_invalidates_a_live_store ... ok
+test task::tests::opener_that_beats_the_lock_creator_waits_for_initialization ... ok
+test task::tests::revisions_and_terminal_cancellation_fail_closed ... ok
+test task::tests::private_files_symlinks_and_hard_links_are_checked ... ok
+test task::tests::stale_pending_bytes_are_not_replayed_or_allowed_to_accumulate ... ok
+test task::tests::second_opener_waits_for_the_stable_lock_then_reads_committed_state ... ok
+test task::tests::retained_capacity_refuses_new_work_but_preserves_exact_retries ... ok
+test task::tests::visible_rename_requires_a_successful_reopen_barrier_before_retry_acknowledgement ... ok
+test task::owner::tests::grants_refuse_unknown_fields_and_unbounded_execution ... ok
+test task::owner::tests::legacy_inbox_reads_without_rewrite_and_migrates_on_first_mutation ... ok
+test task::owner::tests::changed_grant_and_source_are_refused_before_admission ... ok
+test task::owner::tests::declared_source_snapshot_mismatch_refuses_before_admission ... ok
+test task::owner::tests::read_boundary_and_source_pin_are_enforced ... ok
+test task::owner::tests::executes_once_with_retained_intent_trace_and_unknown_cost ... ok
+test task::owner::tests::cancellation_acknowledges_before_process_cleanup_and_keeps_original_receipt ... ok
+test task::owner::tests::scoped_context_and_corrections_survive_replay_without_relabeling_effects ... ok
+test task::owner::tests::a_live_owner_refuses_competitors_and_recovery_never_reexecutes ... ok
+test task::owner::tests::identical_candidate_manifests_are_reused_for_distinct_tasks ... ok
+test task::owner::tests::changed_candidate_or_missing_checker_is_retained_as_unavailable ... ok
+test task::tests::missing_document_is_never_recreated_in_an_initialized_store ... ok
+test task::owner::tests::independent_checks_reject_false_green_missing_and_stale_evidence ... ok
+test task::owner::tests::failure_at_every_effect_barrier_never_replays_uncertain_work ... ok
+test task::view::tests::missing_corrupt_changed_and_torn_evidence_remain_visible ... ok
+test task::view::tests::pages_two_thousand_full_steps_and_validates_a_reconnect_prefix ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 480 filtered out; finished in 18.20s
+

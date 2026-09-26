@@ -1,0 +1,220 @@
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder)
+   Compiling microcoder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/microcoder)
+    Finished `test` profile [unoptimized] target(s) in 6.24s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/knowledge-14f2c14d7c81c036)
+
+running 88 tests
+test evidence::tests::duplicate_json_fields_are_not_silently_accepted ... ok
+test evidence::tests::millisecond_run_names_retain_name_and_report_seconds ... ok
+test evidence::tests::configuration_identity_uses_canonical_json ... ok
+test evidence::tests::partial_call_charges_from_new_producer_survive_missing_component_total ... ok
+test evidence::tests::source_task_with_numeric_suffix_is_excluded_exactly ... ok
+test front::tests::a_repeated_key_is_refused ... ok
+test evidence::tests::aggregate_cost_overflow_never_becomes_a_comparable_total ... ok
+test front::tests::the_body_follows_the_closing_line ... ok
+test front::tests::every_form_an_entry_uses_parses ... ok
+test evidence::tests::prospective_declaration_is_not_a_verified_study ... ok
+test evidence::tests::unreadable_previous_report_refuses_replacement ... ok
+test harvest::tests::a_codex_harvest_is_one_strict_tool_call_priced_at_list_price ... ok
+test evidence::tests::missing_invalid_and_additional_required_costs_are_unknown ... ok
+test harvest::tests::a_failed_codex_harvest_reports_its_cost_as_unknown ... ok
+test harvest::tests::a_revision_keeps_the_current_body_and_adds_the_proposal ... ok
+test evidence::tests::changed_entry_digest_never_counts_for_the_current_version ... ok
+test evidence::tests::evidence_refusal_does_not_promote_a_waiting_version ... ok
+test evidence::tests::unknown_cost_cannot_look_like_a_cheaper_success ... ok
+test evidence::tests::failed_intake_and_original_corrupt_bytes_are_retained ... ok
+test harvest::tests::a_trajectory_reads_as_the_task_then_each_step ... ok
+test evidence::tests::unknown_outcomes_keep_spend_and_do_not_improve_a_pair ... ok
+test harvest::tests::a_contrast_pairs_the_failed_run_with_the_winning_trajectory ... ok
+test harvest::tests::the_record_holds_each_step_and_the_verdict ... ok
+test harvest::tests::an_unpriced_model_leaves_the_harvest_total_unknown ... ok
+test harvest::tests::a_lexical_near_duplicate_search_is_recorded ... ok
+test harvest::tests::a_revision_of_a_candidate_replaces_it_and_keeps_the_old_file ... ok
+test remote::tests::a_sync_refuses_a_tampered_event_and_a_document_the_lint_refuses ... ok
+test remote::tests::the_trust_file_and_author_keys_parse ... ok
+test harvest::tests::proposals_become_candidates_new_versions_or_refusals ... ok
+test evidence::tests::a_task_the_entry_was_written_from_never_counts ... ok
+test evidence::tests::historical_associations_never_authorize_admission ... ok
+test remote::tests::an_entry_file_becomes_a_verified_event ... ok
+test evidence::tests::review_never_changes_admission_from_historical_associations ... ok
+test evidence::tests::runs_are_read_from_their_summaries ... ok
+test snapshot::tests::only_curated_unique_entries_can_be_packaged ... ok
+test study::tests::frozen_plan_refuses_duplicate_and_cross_partition_groups ... ok
+test snapshot::tests::signed_snapshot_loads_exact_provenance_without_admission ... ok
+test private::tests::tampering_and_wrong_artifact_bytes_refuse ... ok
+test tests::a_bad_entry_says_what_is_wrong ... ok
+test study::tests::exact_numeric_source_and_unsupported_provider_refuse_confirmation ... ok
+test tests::a_directory_reports_misnamed_and_repeated_entries ... ok
+test tests::a_failed_embeddings_call_falls_back_to_words ... ok
+test tests::a_refused_embeddings_call_costs_nothing ... ok
+test evidence::tests::different_budgets_effort_environment_or_partition_never_pair ... ok
+test study::tests::source_tasks_never_enter_confirmation ... ok
+test tests::a_lexical_retriever_says_why_and_costs_nothing ... ok
+test private::tests::original_author_recipient_and_exact_markdown_survive_encrypted_delivery ... ok
+test private::tests::model_disclosure_is_exact_and_separate_from_decryption ... ok
+test tests::an_entry_parses_with_its_digest ... ok
+test remote::tests::the_cache_is_rechecked_when_it_loads ... ok
+test remote::tests::a_sync_follows_heads_skips_withdrawals_and_refuses_conflicts ... ok
+test tests::bm25_ranks_the_entry_that_names_the_term ... ok
+test snapshot::tests::signatures_files_paths_components_and_dependencies_are_not_advisory ... ok
+test tests::both_embedding_providers_key_the_cache_by_one_model_name ... ok
+test tests::cosine_of_a_zero_vector_is_zero ... ok
+test tests::an_openai_key_file_others_can_read_is_refused ... ok
+test remote::tests::trust_decides_which_remote_entries_show_and_as_what ... ok
+test tests::embeddings_lift_an_entry_that_shares_no_word_with_the_query ... ok
+test snapshot::tests::installed_bundle_is_private_immutable_and_reverified ... ok
+test tests::candidates_are_hidden_unless_asked_for ... ok
+test tests::entry_vectors_are_cached_on_disk_by_digest ... ok
+test write::tests::dates_are_utc ... ok
+test tests::the_mmd_entry_ranks_first_for_an_mmd_query_by_words_alone ... ok
+test write::tests::the_template_parses_and_the_lint_holds_it_back ... ok
+test write::tests::status_and_evidence_edits_keep_the_rest_of_the_file ... ok
+test write::tests::awkward_values_survive_a_render ... ok
+test tests::the_lint_refuses_a_task_name_a_quote_and_a_missing_citation ... ok
+test study::tests::freeze_is_exclusive_and_owner_is_unique ... ok
+test xp::tests::a_reader_counts_only_referees_it_trusts ... ok
+test xp::tests::a_rewritten_quest_version_counts_for_no_one ... ok
+test xp::tests::a_revoked_award_stops_counting_and_a_replacement_counts ... ok
+test transfer::tests::an_entry_that_isnt_synced_is_named ... ok
+test write::tests::archived_and_pending_versions_live_in_versions ... ok
+test write::tests::every_seed_entry_survives_a_render ... ok
+test xp::tests::an_accepted_award_credits_its_author_and_runner_once ... ok
+test xp::tests::a_second_live_award_for_one_key_counts_for_no_one ... ok
+test xp::tests::the_trust_file_reads_npubs_and_hex ... ok
+test xp::tests::awards_the_reader_cannot_verify_are_refused ... ok
+test study::tests::altered_start_and_result_metrics_refuse_before_continuation ... ok
+test study::tests::finished_receipt_binds_start_and_retained_bytes ... ok
+test evidence::tests::legacy_positive_report_is_readable_but_cannot_admit_and_is_archived ... ok
+test study::tests::interrupted_assignment_stays_unknown_and_is_not_replaced ... ok
+test transfer::tests::transfer_keeps_failed_intake_and_never_rereads_summary_identity ... ok
+test evidence::tests::the_report_has_the_nip_eval_shape ... ok
+test transfer::tests::a_synced_version_is_measured_by_its_exact_digest ... ok
+test tests::the_cli_adds_admits_measures_and_withdraws_an_entry ... ok
+test study::tests::tampered_plan_assignments_and_candidate_refuse ... ok
+test tests::the_seed_entries_parse_and_pass_the_lint_without_a_corpus ... ok
+
+test result: ok. 88 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/microcoder-3f55e5aaf91af350)
+
+running 99 tests
+test door::tests::the_completed_event_names_the_cost ... ok
+test gate::tests::decimals_and_paths_dont_split_a_sentence ... ok
+test gate::tests::statements_are_sentences_items_and_fenced_blocks ... ok
+test door::tests::a_reply_without_a_reported_cost_leaves_the_cost_unknown ... ok
+test door::tests::a_reported_cost_is_the_steps_billed_cost ... ok
+test models::codex_tests::a_next_action_call_becomes_the_action ... ok
+test models::codex_tests::a_reply_without_the_call_is_an_unusable_reply ... ok
+test models::tests::a_judgment_renders_each_answer_with_its_question ... ok
+test models::tests::the_conform_set_has_one_template ... ok
+test models::tests::the_dispute_set_has_one_template ... ok
+test models::tests::the_coverage_set_asks_one_question ... ok
+test models::tests::the_knowledge_set_asks_one_question_per_candidate ... ok
+test models::tests::the_question_set_parses_and_names_three_questions ... ok
+test models::tests::the_route_set_asks_whether_the_task_is_hard ... ok
+test models::tests::the_schema_requires_every_field ... ok
+test env::tests::the_models_commands_never_see_a_key ... ok
+test env::tests::a_local_command_reports_its_output_and_exit ... ok
+test kbnet::tests::a_crowded_second_is_asked_for_one_kind_at_a_time ... ok
+test kbinput::tests::explicit_snapshot_replaces_ambient_sources_and_retains_its_pin ... ok
+test env::tests::a_script_with_quotes_and_a_heredoc_runs_as_written ... ok
+test kbstudy::tests::argv_pins_codex_and_replaces_ambient_knowledge_only_in_subject ... ok
+test kbstudy::tests::report_keeps_unstarted_assignments_and_partitions_separate ... ok
+test kbinput::tests::private_loading_requires_every_actual_model_and_retains_no_plaintext ... ok
+test kbstudy::tests::provider_mismatch_cannot_count_as_a_frozen_configuration_success ... ok
+test kbstudy::tests::audit_preserves_lower_bound_when_provider_charge_is_unknown ... ok
+test show::tests::a_long_or_multi_line_command_prints_on_one_line ... ok
+test state::tests::long_output_keeps_its_head_and_tail ... ok
+test tbench::tests::a_separate_verifier_gets_the_artifacts_convention_folder ... ok
+test state::tests::older_actions_shrink_to_one_line_each ... ok
+test tbench::tests::a_verifier_environment_implies_separate_and_has_its_own_network ... ok
+test tbench::tests::fixture_compose_sidecar_reachable_by_name ... ignored, needs Docker
+test tbench::tests::fixture_separate_verifier_installs_packages_and_writes_reward_json ... ignored, needs Docker
+test tbench::tests::overlays_start_main_as_harbor_does ... ok
+test tbench::tests::an_unknown_task_names_close_matches ... ok
+test tbench::tests::task_toml_reads_like_harbors_task_config ... ok
+test tbench::tests::without_network_services_share_one_sealed_namespace ... ok
+test tests::a_failing_command_skips_the_rest_and_reaches_the_next_state ... ok
+test tests::a_failing_test_jev_judges_right_still_blocks_finish ... ok
+test tests::a_failing_test_jev_judges_wrong_is_dropped_at_finish ... ok
+test tests::a_finish_whose_code_contradicts_an_entry_is_sent_back_once ... ok
+test tests::a_hard_task_has_the_stronger_model_write_the_tests ... ok
+test tests::a_highly_relevant_slip_is_shown_in_full_unasked ... ok
+test tests::a_reply_that_only_expands_an_entry_is_not_idle ... ok
+test tests::a_test_stuck_failing_is_checked_without_a_finish ... ok
+test tests::adversarial_rounds_stop_at_their_count ... ok
+test tests::adversarial_rounds_stop_once_the_budget_share_is_spent ... ok
+test tests::an_easy_task_stays_on_the_default_model ... ok
+test tests::an_empty_view_keeps_the_files_in_view ... ok
+test tests::an_expanded_entry_shows_its_body_next_step_and_stays ... ok
+test tests::an_unchecked_statement_sends_a_green_finish_back_and_is_named_once ... ok
+test tests::an_unmeasured_numeric_target_sends_the_run_back_once ... ok
+test tests::an_unpriced_reply_leaves_the_cost_unknown_not_zero ... ok
+test tests::any_highly_relevant_entry_is_shown_in_full_unasked ... ok
+test kbnet::bundles::tests::local_cli_snapshot_and_private_delivery_roundtrip_without_models_or_relay ... ok
+test tests::code_that_follows_the_entries_finishes_at_once ... ok
+test tests::each_prompt_is_rebuilt_from_state_not_a_conversation ... ok
+test tests::files_in_view_appear_in_full_in_the_next_prompt ... ok
+test tests::finished_waits_for_the_frozen_tests_to_pass ... ok
+test tests::kept_entries_appear_in_the_prompt_and_the_system_text ... ok
+test tests::held_tests_go_back_while_the_models_reasoning_doubts_the_solution ... ok
+test tests::passing_tests_nudge_then_end_the_run ... ok
+test tests::repeated_refused_finishes_stop_the_loop ... ok
+test tests::passing_tests_dont_end_a_run_that_is_still_making_progress ... ok
+test tests::replies_that_run_nothing_are_noted_then_stop_the_loop ... ok
+test tests::replies_that_miss_the_format_are_noted_then_stop_the_loop ... ok
+test tests::the_credibility_check_asks_the_model_to_say_so_in_the_system_text ... ok
+test tests::the_loop_stops_when_the_model_finishes ... ok
+test tests::the_oracle_is_written_first_and_blocks_the_finish_until_it_passes ... ok
+test tests::the_record_lists_the_entries_used_with_their_digests ... ok
+test tests::the_retrieval_mode_names_embeddings_lexical_or_mixed ... ok
+test tests::the_spend_limit_stops_the_loop ... ok
+test tests::the_step_limit_stops_the_loop ... ok
+test tests::the_stronger_model_hands_over_after_its_step_budget ... ok
+test tbench::tests::rewards_read_like_harbors_verifier ... ok
+test tests::the_stronger_model_is_off_by_default ... ok
+test tests::uncovered_requirements_prompt_new_tests_that_a_later_freeze_adds ... ok
+test vertex::tests::list_prices_come_from_the_table ... ok
+test tests::with_the_knowledge_base_off_the_prompt_has_no_section ... ok
+test tests::with_the_gates_off_a_green_finish_ends_the_run_at_once ... ok
+test xpnet::tests::a_referee_refuses_self_evidence ... ok
+test xpnet::tests::the_ledger_needs_a_trusted_referee_and_a_relay ... ok
+test env::tests::a_local_command_past_its_deadline_is_stopped ... ok
+test kbnet::tests::publishing_needs_a_named_relay ... ok
+test xpnet::tests::historical_transfer_evidence_is_publishable_but_cannot_complete_a_quest ... ok
+test xpnet::tests::a_referee_publishes_awards_and_revokes_and_a_reader_derives_xp ... ok
+test xpnet::tests::transfer_evidence_is_refused_for_self_in_sample_and_other_bytes ... ok
+test repository::tests::unsupported_configuration_is_refused_without_fallback ... ok
+test repository::native::tests::native_output_items_and_each_attempt_are_retained_before_reduction ... ok
+test repository::tests::evidence_cap_stops_future_effects_but_keeps_final_disposition ... ok
+test repository::tests::mismatched_model_cannot_dispatch_its_action ... ok
+test kbnet::tests::evidence_is_published_for_a_published_entry_and_synced_back ... ok
+test repository::tests::interrupted_model_request_keeps_unknown_cost_and_starts_no_command ... ok
+test repository::tests::unsafe_reads_and_outside_writes_do_not_escape_the_repository ... ok
+test repository::tests::cancellation_reaps_the_current_command_and_dispatches_no_followup ... ok
+test repository::tests::existing_loop_uses_common_owner_boundary_atif_and_retained_artifacts ... ok
+test repository::native::tests::missing_or_mismatched_native_identity_is_retained_but_never_accepted ... ok
+test kbnet::tests::entries_publish_sync_and_retrieve_through_a_relay ... ok
+test repository::tests::missing_codex_usage_is_unknown_and_preserves_earlier_lower_bound ... ok
+test kbnet::tests::sync_pages_past_a_relay_that_caps_each_req ... ok
+
+test result: ok. 97 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 3.36s
+
+     Running unittests src/main.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/microcoder-b66dc2577686cad6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests knowledge
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests microcoder
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

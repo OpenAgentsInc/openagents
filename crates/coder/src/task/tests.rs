@@ -480,6 +480,7 @@ fn opener_that_beats_the_lock_creator_waits_for_initialization() {
             sequence: 0,
             tasks: BTreeMap::new(),
             commands: Vec::new(),
+            host_events: Vec::new(),
         },
         lock: creator_lock,
         healthy: true,

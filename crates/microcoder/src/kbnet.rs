@@ -284,7 +284,17 @@ pub async fn main(args: &[String]) -> u8 {
     let result = async {
         let command = args.first().ok_or(knowledge::cli::USAGE)?;
         let o = knowledge::cli::parse(&args[1..])?;
-        let key = default_key()?;
+        if matches!(
+            command.as_str(),
+            "snapshot-create"
+                | "snapshot-check"
+                | "private-seal"
+                | "private-show"
+                | "private-grant"
+        ) {
+            return bundles::run(command, &o);
+        }
+        let key = o.key_file.clone().map_or_else(default_key, Ok)?;
         match command.as_str() {
             "publish" => publish(&o, &key).await,
             "sync" => {
@@ -821,6 +831,7 @@ synced it from, or sync again",
     );
     Ok(u8::from(refused > 0))
 }
+mod bundles;
 
 #[cfg(test)]
 pub(crate) mod tests;

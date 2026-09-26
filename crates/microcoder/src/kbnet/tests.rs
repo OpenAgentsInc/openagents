@@ -319,7 +319,7 @@ async fn evidence_is_published_for_a_published_entry_and_synced_back() {
     let published = events.iter().find(|e| e.kind == kb::EVIDENCE_KIND).unwrap();
     let parsed = kb::parse_evidence(published).unwrap();
     let report: Value = serde_json::from_str(&parsed.report_bytes).unwrap();
-    assert_eq!(report["verdict"], "pass");
+    assert_eq!(report["verdict"], "inconclusive");
     assert_eq!(report["evaluator"], published.pubkey);
     assert!(
         evidence_dir

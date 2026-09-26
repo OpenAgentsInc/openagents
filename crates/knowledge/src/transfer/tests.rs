@@ -65,6 +65,7 @@ fn a_synced_version_is_measured_by_its_exact_digest() {
     assert_eq!(synced.event.id, event.id);
     assert_eq!(synced.document, DOCUMENT);
     let digest = synced.entry.digest.clone();
+    let other_digest = crate::digest(b"another version");
     assert_eq!(synced.hex_digest(), kb::parse_entry(&event).unwrap().digest);
 
     let id = "git.reflog-recovery";
@@ -75,7 +76,11 @@ fn a_synced_version_is_measured_by_its_exact_digest() {
         ("task-b-1790000003", 1.0, vec![(id, Some(digest.as_str()))]),
         ("task-b-1790000004", 0.0, vec![]),
         // Another version, or another author's entry with the same ID.
-        ("task-c-1790000005", 1.0, vec![(id, Some("sha256:00"))]),
+        (
+            "task-c-1790000005",
+            1.0,
+            vec![(id, Some(other_digest.as_str()))],
+        ),
         ("task-c-1790000006", 0.0, vec![]),
         // No digest recorded.
         ("task-d-1790000007", 1.0, vec![(id, None)]),
@@ -98,9 +103,15 @@ fn a_synced_version_is_measured_by_its_exact_digest() {
     assert_eq!(selection.runs.len(), 8);
     let tasks: Vec<&str> = measured.pairs.iter().map(|p| p.task.as_str()).collect();
     assert_eq!(tasks, ["task-a", "task-b"]);
-    assert_eq!(measured.excluded_tasks, ["in-sample"]);
+    assert_eq!(
+        measured.excluded_tasks,
+        ["in-sample", "in-sample-1790000000"]
+    );
     assert_eq!(measured.excluded_runs, (1, 1));
-    assert_eq!(measured.verdict, Verdict::Pass);
+    assert_eq!(measured.verdict, Verdict::Inconclusive);
+    assert_eq!(measured.intake_records, 10);
+    assert_eq!(measured.changed_entry_runs, 1);
+    assert_eq!(measured.unpinned_entry_runs, 1);
     assert!(left_out(&selection).contains("1 run showed another version"));
 
     let runner = RelaySigner::from_secret_hex(&format!("{:064x}", 8)).unwrap();
@@ -123,6 +134,38 @@ fn a_synced_version_is_measured_by_its_exact_digest() {
         path,
         PathBuf::from(format!("/e/remote/{}/{id}.v1.json", author.pubkey()))
     );
+}
+
+#[test]
+fn transfer_keeps_failed_intake_and_never_rereads_summary_identity() {
+    let author = RelaySigner::from_secret_hex(&format!("{:064x}", 7)).unwrap();
+    let remote_dir = scratch("retained-cache");
+    cache(&remote_dir, &author);
+    let found = synced(&remote_dir, author.pubkey(), &[]).unwrap();
+    let synced = &found[0];
+    let runs_dir = scratch("retained-runs");
+    run(
+        &runs_dir,
+        "task-1790000001",
+        1.0,
+        &[("git.reflog-recovery", Some(&synced.entry.digest))],
+    );
+    run(&runs_dir, "task-1790000002", 0.0, &[]);
+    let corrupt = runs_dir.join("task-1790000003");
+    std::fs::create_dir_all(&corrupt).unwrap();
+    std::fs::write(corrupt.join("summary.json"), b"{broken").unwrap();
+    std::fs::create_dir_all(runs_dir.join("task-1790000004")).unwrap();
+    let runs = scan(&runs_dir);
+    std::fs::write(runs_dir.join("task-1790000001/summary.json"), b"{replaced").unwrap();
+    let (measured, selection) = measure(synced, &runs, &runs_dir);
+    assert_eq!(measured.intake_records, 4);
+    assert_eq!(measured.intake_faults, 2);
+    assert_eq!(measured.unknown_membership, 2);
+    assert_eq!(measured.pairs[0].with.runs, 1);
+    assert_eq!(selection.intake.len(), 4);
+    let (_, artifacts) = report(synced, &measured, &selection, &Evaluator::local());
+    assert_eq!(artifacts[&crate::digest(b"{broken")], b"{broken");
+    assert!(artifacts.contains_key(runs[0].summary_digest.as_ref().unwrap()));
 }
 
 #[test]

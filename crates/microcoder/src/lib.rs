@@ -24,8 +24,11 @@
 pub mod door;
 pub mod env;
 pub mod gate;
+pub mod kbinput;
 pub mod kbnet;
+pub mod kbstudy;
 pub mod models;
+pub mod repository;
 pub mod run;
 pub mod show;
 pub mod state;

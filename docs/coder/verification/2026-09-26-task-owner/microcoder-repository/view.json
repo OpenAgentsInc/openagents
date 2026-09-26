@@ -1,0 +1,849 @@
+{
+  "schema": "openagents.coder.task-view.v1",
+  "task": {
+    "task_id": "fixture",
+    "revision": 4,
+    "intent": {
+      "title": "Repository fixture",
+      "prompt": "Write result.txt containing output.",
+      "workspace": {
+        "path": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpBhBa2b/checkout",
+        "source_revision": null
+      },
+      "configuration": {
+        "adapter": "microcoder-repository",
+        "model": "fixture-model"
+      }
+    },
+    "intent_digest": "sha256:7069e3189690d902f7ebbaa636901cb0b75e011f1f8d7be87c76bba3cb2411db",
+    "status": "finished",
+    "execution": "finished",
+    "checks": "not_run",
+    "cancellation_reason": null,
+    "run": {
+      "epoch": 1,
+      "admission": {
+        "grant": {
+          "schema": "openagents.coder.task-execution-grant.v1",
+          "task_id": "fixture",
+          "intent_digest": "sha256:7069e3189690d902f7ebbaa636901cb0b75e011f1f8d7be87c76bba3cb2411db",
+          "expected_revision": 1,
+          "expected_source_snapshot": null,
+          "program": "/bin/bash",
+          "arguments": [],
+          "write_workspace": true,
+          "wall_seconds": 8,
+          "stream_bytes": 4096,
+          "memory_bytes": 268435456,
+          "requirements": null,
+          "adapter_configuration": {
+            "schema": "openagents.microcoder.repository-config.v1",
+            "provider": "synthetic",
+            "model": "fixture-model",
+            "effort": "medium",
+            "generation_endpoint": "in-process",
+            "decision_endpoint": "in-process",
+            "decision_model": "fixture-judge",
+            "max_steps": 4,
+            "acceptance": false,
+            "route": "never",
+            "knowledge": "off",
+            "dollar_limit_micros": null,
+            "expected_controller_digest": null
+          }
+        },
+        "grant_digest": "sha256:afaaa1e652066b117111be57860775eb830e37357516ee09a2fb70f36bcf5eaf",
+        "grant_request": "{\"schema\":\"openagents.coder.task-execution-grant.v1\",\"task_id\":\"fixture\",\"intent_digest\":\"sha256:7069e3189690d902f7ebbaa636901cb0b75e011f1f8d7be87c76bba3cb2411db\",\"expected_revision\":1,\"expected_source_snapshot\":null,\"program\":\"/bin/bash\",\"arguments\":[],\"write_workspace\":true,\"wall_seconds\":8,\"stream_bytes\":4096,\"memory_bytes\":268435456,\"requirements\":null,\"adapter_configuration\":{\"schema\":\"openagents.microcoder.repository-config.v1\",\"provider\":\"synthetic\",\"model\":\"fixture-model\",\"effort\":\"medium\",\"generation_endpoint\":\"in-process\",\"decision_endpoint\":\"in-process\",\"decision_model\":\"fixture-judge\",\"max_steps\":4,\"acceptance\":false,\"route\":\"never\",\"knowledge\":\"off\",\"dollar_limit_micros\":null,\"expected_controller_digest\":null}}",
+        "workspace": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpBhBa2b/checkout",
+        "source_revision": "ff18eab328245ccdecdf722c905487f5824d90ab",
+        "source_snapshot": "9f00fab4eb9389629aba3a62e29df659f519382301398ee36936a7710e5aed9d",
+        "program_digest": "sha256:35536aea9733aa345b61134a98d00232380898e55b2ea2a07c497011f7dfc7a3",
+        "adapter": "microcoder-repository",
+        "network": "external_ip_denied_localhost_allowed",
+        "read_scope": "workspace_and_system",
+        "authority": "local_os_user",
+        "trace_file": "fixture.1.atif.jsonl",
+        "context": {
+          "schema": "openagents.coder.task-context.v1",
+          "task_revision": 1,
+          "prompt": "Write result.txt containing output.",
+          "instructions": [],
+          "suites": [],
+          "digest": "4c81267cc891bd36482ab37716568f394a2c590937b0ab1bb1be890a152415f2"
+        }
+      },
+      "effect_id": "fixture:1:command",
+      "result": {
+        "ending": "model_finished",
+        "exit_code": 0,
+        "stop_requested": false,
+        "group_clear": true,
+        "elapsed_ms": 639,
+        "trace_digest": "sha256:d30fe5a8749ea1360fc145676ab6cb86873406d26e11d47579d21d65cf121cbb",
+        "candidate_snapshot": "0ba9de7d9b4ebfce134f001dbea8b0eaf43d7ee32810a62cba3fbc4765acf485",
+        "artifact_file": "manifest-9d98ffe0fc37a744f9fc4563c3b74b64bb90c014985bbc4cf93f2f94e18a8512.json",
+        "artifact_digest": "sha256:9d98ffe0fc37a744f9fc4563c3b74b64bb90c014985bbc4cf93f2f94e18a8512",
+        "output_incomplete": false,
+        "cost_status": "unknown"
+      },
+      "process_id": null,
+      "recovery_reason": null,
+      "check_report": null
+    }
+  },
+  "evidence": {
+    "state": "sealed",
+    "trace_file": "fixture.1.atif.jsonl",
+    "digest": "sha256:d30fe5a8749ea1360fc145676ab6cb86873406d26e11d47579d21d65cf121cbb",
+    "matches_result": true,
+    "faults": [],
+    "total_steps": 23,
+    "next": {
+      "schema": "openagents.coder.task-view.v1",
+      "task_id": "fixture",
+      "intent_digest": "sha256:7069e3189690d902f7ebbaa636901cb0b75e011f1f8d7be87c76bba3cb2411db",
+      "trace_file": "fixture.1.atif.jsonl",
+      "next_step": 23,
+      "prefix_digest": "sha256:0b5d025cd429f1a120baa80e4bd305b0fe5523d7cae0da8bcd1a0cfd737dfa9e"
+    },
+    "more_available": false,
+    "steps": [
+      {
+        "step_id": 1,
+        "timestamp": "2026-09-26T18:20:25.141Z",
+        "source": "user",
+        "message": "Write result.txt containing output."
+      },
+      {
+        "step_id": 2,
+        "timestamp": "2026-09-26T18:20:25.147Z",
+        "source": "system",
+        "message": "Repository adapter admitted by the local operator.",
+        "extra": {
+          "admission": {
+            "grant": {
+              "schema": "openagents.coder.task-execution-grant.v1",
+              "task_id": "fixture",
+              "intent_digest": "sha256:7069e3189690d902f7ebbaa636901cb0b75e011f1f8d7be87c76bba3cb2411db",
+              "expected_revision": 1,
+              "expected_source_snapshot": null,
+              "program": "/bin/bash",
+              "arguments": [],
+              "write_workspace": true,
+              "wall_seconds": 8,
+              "stream_bytes": 4096,
+              "memory_bytes": 268435456,
+              "requirements": null,
+              "adapter_configuration": {
+                "schema": "openagents.microcoder.repository-config.v1",
+                "provider": "synthetic",
+                "model": "fixture-model",
+                "effort": "medium",
+                "generation_endpoint": "in-process",
+                "decision_endpoint": "in-process",
+                "decision_model": "fixture-judge",
+                "max_steps": 4,
+                "acceptance": false,
+                "route": "never",
+                "knowledge": "off",
+                "dollar_limit_micros": null,
+                "expected_controller_digest": null
+              }
+            },
+            "grant_digest": "sha256:afaaa1e652066b117111be57860775eb830e37357516ee09a2fb70f36bcf5eaf",
+            "grant_request": "{\"schema\":\"openagents.coder.task-execution-grant.v1\",\"task_id\":\"fixture\",\"intent_digest\":\"sha256:7069e3189690d902f7ebbaa636901cb0b75e011f1f8d7be87c76bba3cb2411db\",\"expected_revision\":1,\"expected_source_snapshot\":null,\"program\":\"/bin/bash\",\"arguments\":[],\"write_workspace\":true,\"wall_seconds\":8,\"stream_bytes\":4096,\"memory_bytes\":268435456,\"requirements\":null,\"adapter_configuration\":{\"schema\":\"openagents.microcoder.repository-config.v1\",\"provider\":\"synthetic\",\"model\":\"fixture-model\",\"effort\":\"medium\",\"generation_endpoint\":\"in-process\",\"decision_endpoint\":\"in-process\",\"decision_model\":\"fixture-judge\",\"max_steps\":4,\"acceptance\":false,\"route\":\"never\",\"knowledge\":\"off\",\"dollar_limit_micros\":null,\"expected_controller_digest\":null}}",
+            "workspace": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpBhBa2b/checkout",
+            "source_revision": "ff18eab328245ccdecdf722c905487f5824d90ab",
+            "source_snapshot": "9f00fab4eb9389629aba3a62e29df659f519382301398ee36936a7710e5aed9d",
+            "program_digest": "sha256:35536aea9733aa345b61134a98d00232380898e55b2ea2a07c497011f7dfc7a3",
+            "adapter": "microcoder-repository",
+            "network": "external_ip_denied_localhost_allowed",
+            "read_scope": "workspace_and_system",
+            "authority": "local_os_user",
+            "trace_file": "fixture.1.atif.jsonl",
+            "context": {
+              "schema": "openagents.coder.task-context.v1",
+              "task_revision": 1,
+              "prompt": "Write result.txt containing output.",
+              "instructions": [],
+              "suites": [],
+              "digest": "4c81267cc891bd36482ab37716568f394a2c590937b0ab1bb1be890a152415f2"
+            }
+          },
+          "controller": {
+            "path": "/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/microcoder-3f55e5aaf91af350",
+            "digest": "sha256:9ba5f3ed257abc06f67e44a6b40d110b0cba2f3de7ebb3e2fee929be2a518cac",
+            "version": "0.1.0"
+          },
+          "capabilities": {
+            "commands": "native-supervised",
+            "reads": "native-confined",
+            "cancellation": "emulated-host-stop",
+            "atif": "native",
+            "process_cleanup": "observed",
+            "crash_resume": "unsupported",
+            "model_written_acceptance": "unsupported",
+            "routing": "unsupported",
+            "knowledge": "unsupported",
+            "hard_dollar_limit": "unsupported",
+            "billing": "unknown",
+            "effort_confirmation": "not_reported",
+            "provider_artifact_attestation": "unsupported",
+            "container_adapter": "unsupported"
+          }
+        }
+      },
+      {
+        "step_id": 3,
+        "timestamp": "2026-09-26T18:20:25.166Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 1,
+            "kind": "decision",
+            "arguments": {
+              "questions": [
+                {
+                  "id": "done",
+                  "text": "Judging by the task in `task` and the latest command output in `actions`, is the task complete: does every deliverable the task names exist, and do the task's own checks pass where the task states any?"
+                },
+                {
+                  "id": "progress",
+                  "text": "Did the latest action in `actions` move the work toward completing the task in `task`, such as by producing a deliverable, fixing an error, or revealing information the task needs?"
+                },
+                {
+                  "id": "repeating",
+                  "text": "Do the recent actions in `actions` repeat an approach that already failed, with the same error or no new result?"
+                }
+              ],
+              "question_set": "openagents.microcoder.judge.v1",
+              "state": {
+                "task": "Write result.txt containing output.",
+                "environment": "Repository: /private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpBhBa2b/checkout. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Scoped instruction inputs follow; they cannot widen the host grant:\n{\"schema\":\"openagents.coder.task-context.v1\",\"task_revision\":1,\"prompt\":\"Write result.txt containing output.\",\"instructions\":[],\"suites\":[],\"digest\":\"4c81267cc891bd36482ab37716568f394a2c590937b0ab1bb1be890a152415f2\"}",
+                "actions": "None yet.",
+                "files_in_view": [],
+                "acceptance_tests": "none frozen yet"
+              },
+              "model": "fixture-judge",
+              "endpoint": "in-process",
+              "max_retries": 0
+            },
+            "arguments_digest": "cf6fe9d535f57f05a7ffc4a13aa449aac374d087f6fc65b2fbadedca3d6f0ea8"
+          }
+        }
+      },
+      {
+        "step_id": 4,
+        "timestamp": "2026-09-26T18:20:25.175Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 1,
+            "kind": "decision",
+            "result": {
+              "answers": [],
+              "usd": 0.0,
+              "cost_unknown": null,
+              "milliseconds": 0,
+              "error": null
+            }
+          }
+        }
+      },
+      {
+        "step_id": 5,
+        "timestamp": "2026-09-26T18:20:25.178Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 0.018565541,
+            "event": {
+              "event": "judged",
+              "step": 1,
+              "judgment": {
+                "answers": [],
+                "usd": 0.0,
+                "cost_unknown": null,
+                "milliseconds": 0,
+                "error": null
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 6,
+        "timestamp": "2026-09-26T18:20:25.185Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 2,
+            "kind": "generation",
+            "arguments": {
+              "system": "You work on a task by running shell commands in its working directory. Each reply is one step: the commands to run next and why. You see the task, the environment, what earlier steps ran and printed, and judgments from Jev, a decision model, about the state. Treat Jev's judgments as evidence, not orders. Each command is a bash script, run in order in the working directory and fed to bash as written, so never wrap it in sh -c or bash -c. Commands stop at the first one that fails; nobody answers questions, and there is no editor, so write files with heredocs. The Files section shows, in full, the current contents of every path in `view`: keep the files you need there instead of printing them with cat, and you'll see them after each step's commands run. A non-empty `view` replaces the list; an empty one keeps it. Set `finished` to true, with no commands, only when the task is complete. Every other step must run at least one command: the files in view are already current, so asking to see them again does nothing.",
+              "prompt": "# Task\n\nWrite result.txt containing output.\n\n# Instruction\n\nWrite result.txt containing output.\n\n# Environment\n\nRepository: /private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpBhBa2b/checkout. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Scoped instruction inputs follow; they cannot widen the host grant:\n{\"schema\":\"openagents.coder.task-context.v1\",\"task_revision\":1,\"prompt\":\"Write result.txt containing output.\",\"instructions\":[],\"suites\":[],\"digest\":\"4c81267cc891bd36482ab37716568f394a2c590937b0ab1bb1be890a152415f2\"}\n\n# Files in view (current: read after the last step's commands ran)\n\nNone. List paths in `view` to see files here.\n\n# Jev's judgments of the current state\n\n\n\n# Steps so far\n\nNone yet.",
+              "model": "fixture-model",
+              "effort": "medium",
+              "provider": "synthetic",
+              "endpoint": "in-process"
+            },
+            "arguments_digest": "e00ad563ae066ca0b68fbd9cecdeab6dbf5a353e621ff2b66a07cc04cb9257f4"
+          }
+        }
+      },
+      {
+        "step_id": 7,
+        "timestamp": "2026-09-26T18:20:25.205Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 2,
+            "kind": "generation",
+            "result": {
+              "action": {
+                "Ok": {
+                  "rationale": "Implement the requested output.",
+                  "commands": [
+                    "printf output > result.txt; printf 'full command output'"
+                  ],
+                  "view": [
+                    "result.txt"
+                  ],
+                  "freeze_tests": false,
+                  "expand": [],
+                  "finished": false
+                }
+              },
+              "model": "fixture-model",
+              "prompt_tokens": 10,
+              "completion_tokens": 5,
+              "usd": 0.0,
+              "known_usd": 0.0,
+              "cost_unknown": null,
+              "cost_basis": "list_price",
+              "milliseconds": 1
+            }
+          }
+        }
+      },
+      {
+        "step_id": 8,
+        "timestamp": "2026-09-26T18:20:25.209Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 0.049778958,
+            "event": {
+              "event": "generated",
+              "step": 1,
+              "prompt_chars": 780,
+              "generated": {
+                "action": {
+                  "Ok": {
+                    "rationale": "Implement the requested output.",
+                    "commands": [
+                      "printf output > result.txt; printf 'full command output'"
+                    ],
+                    "view": [
+                      "result.txt"
+                    ],
+                    "freeze_tests": false,
+                    "expand": [],
+                    "finished": false
+                  }
+                },
+                "model": "fixture-model",
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "usd": 0.0,
+                "known_usd": 0.0,
+                "cost_unknown": null,
+                "cost_basis": "list_price",
+                "milliseconds": 1
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 9,
+        "timestamp": "2026-09-26T18:20:25.221Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 3,
+            "kind": "command",
+            "arguments": {
+              "script": "printf output > result.txt; printf 'full command output'"
+            },
+            "arguments_digest": "21d2a2c577a6a8668415213a4557fd59889bef2f74902ddf1efc8302f930c911"
+          }
+        }
+      },
+      {
+        "step_id": 10,
+        "timestamp": "2026-09-26T18:20:25.261Z",
+        "source": "system",
+        "message": "Supervised command started.",
+        "extra": {
+          "process": {
+            "effect": 3,
+            "pid": 99592
+          }
+        }
+      },
+      {
+        "step_id": 11,
+        "timestamp": "2026-09-26T18:20:25.312Z",
+        "source": "system",
+        "message": "full command output",
+        "extra": {
+          "stream": {
+            "effect": 3,
+            "name": "stdout",
+            "offset": 0,
+            "bytes": [
+              102,
+              117,
+              108,
+              108,
+              32,
+              99,
+              111,
+              109,
+              109,
+              97,
+              110,
+              100,
+              32,
+              111,
+              117,
+              116,
+              112,
+              117,
+              116
+            ],
+            "gaps": []
+          }
+        }
+      },
+      {
+        "step_id": 12,
+        "timestamp": "2026-09-26T18:20:25.324Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 3,
+            "kind": "command",
+            "result": {
+              "ending": "exit 0",
+              "exit": 0,
+              "group_clear": true,
+              "requested_stop": false,
+              "stdout_tail": [],
+              "stdout_tail_offset": 19,
+              "stdout_bytes": 19,
+              "stderr": "",
+              "stderr_bytes": 0,
+              "stderr_truncated": false,
+              "seconds": 0.065040875,
+              "memory": "Some(Memory { max: 268435456, enforcement: Watch, exceeded: false, unenforced: None })"
+            }
+          }
+        }
+      },
+      {
+        "step_id": 13,
+        "timestamp": "2026-09-26T18:20:25.338Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 0.178619583,
+            "event": {
+              "event": "ran",
+              "step": 1,
+              "result": {
+                "command": "printf output > result.txt; printf 'full command output'",
+                "exit": 0,
+                "timed_out": false,
+                "seconds": 0.065040875,
+                "output": "full command output"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 14,
+        "timestamp": "2026-09-26T18:20:25.392Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 4,
+            "kind": "read",
+            "arguments": {
+              "path": "result.txt",
+              "max_bytes": 160000
+            },
+            "arguments_digest": "42b8815e5bb1afa7a0e5dbdb68b630649fa6509b7a29c1430135d5aa1e7cef48"
+          }
+        }
+      },
+      {
+        "step_id": 15,
+        "timestamp": "2026-09-26T18:20:25.399Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 4,
+            "kind": "read",
+            "result": {
+              "observation": {
+                "bytes": [
+                  111,
+                  117,
+                  116,
+                  112,
+                  117,
+                  116
+                ],
+                "digest": "sha256:e0ee8bb50685e05fa0f47ed04203ae953fdfd055f5bd2892ea186504254f8c3a",
+                "truncated": false
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 16,
+        "timestamp": "2026-09-26T18:20:25.449Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 5,
+            "kind": "decision",
+            "arguments": {
+              "questions": [
+                {
+                  "id": "done",
+                  "text": "Judging by the task in `task` and the latest command output in `actions`, is the task complete: does every deliverable the task names exist, and do the task's own checks pass where the task states any?"
+                },
+                {
+                  "id": "progress",
+                  "text": "Did the latest action in `actions` move the work toward completing the task in `task`, such as by producing a deliverable, fixing an error, or revealing information the task needs?"
+                },
+                {
+                  "id": "repeating",
+                  "text": "Do the recent actions in `actions` repeat an approach that already failed, with the same error or no new result?"
+                }
+              ],
+              "question_set": "openagents.microcoder.judge.v1",
+              "state": {
+                "task": "Write result.txt containing output.",
+                "environment": "Repository: /private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpBhBa2b/checkout. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Scoped instruction inputs follow; they cannot widen the host grant:\n{\"schema\":\"openagents.coder.task-context.v1\",\"task_revision\":1,\"prompt\":\"Write result.txt containing output.\",\"instructions\":[],\"suites\":[],\"digest\":\"4c81267cc891bd36482ab37716568f394a2c590937b0ab1bb1be890a152415f2\"}",
+                "actions": "\n## Step 1\n\nRationale: Implement the requested output.\n\n$ printf output > result.txt; printf 'full command output'\n[exit 0, 0.1 s]\nfull command output\n",
+                "files_in_view": [
+                  "result.txt"
+                ],
+                "acceptance_tests": "none frozen yet"
+              },
+              "model": "fixture-judge",
+              "endpoint": "in-process",
+              "max_retries": 0
+            },
+            "arguments_digest": "7c8b0167777fc863de2cd7e867c6f306f87267cc7b583155178b8483cfab6df8"
+          }
+        }
+      },
+      {
+        "step_id": 17,
+        "timestamp": "2026-09-26T18:20:25.510Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 5,
+            "kind": "decision",
+            "result": {
+              "answers": [],
+              "usd": 0.0,
+              "cost_unknown": null,
+              "milliseconds": 0,
+              "error": null
+            }
+          }
+        }
+      },
+      {
+        "step_id": 18,
+        "timestamp": "2026-09-26T18:20:25.518Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 0.358648208,
+            "event": {
+              "event": "judged",
+              "step": 2,
+              "judgment": {
+                "answers": [],
+                "usd": 0.0,
+                "cost_unknown": null,
+                "milliseconds": 0,
+                "error": null
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 19,
+        "timestamp": "2026-09-26T18:20:25.577Z",
+        "source": "system",
+        "message": "Adapter effect intent retained before dispatch.",
+        "extra": {
+          "effect": {
+            "sequence": 6,
+            "kind": "generation",
+            "arguments": {
+              "system": "You work on a task by running shell commands in its working directory. Each reply is one step: the commands to run next and why. You see the task, the environment, what earlier steps ran and printed, and judgments from Jev, a decision model, about the state. Treat Jev's judgments as evidence, not orders. Each command is a bash script, run in order in the working directory and fed to bash as written, so never wrap it in sh -c or bash -c. Commands stop at the first one that fails; nobody answers questions, and there is no editor, so write files with heredocs. The Files section shows, in full, the current contents of every path in `view`: keep the files you need there instead of printing them with cat, and you'll see them after each step's commands run. A non-empty `view` replaces the list; an empty one keeps it. Set `finished` to true, with no commands, only when the task is complete. Every other step must run at least one command: the files in view are already current, so asking to see them again does nothing.",
+              "prompt": "# Task\n\nWrite result.txt containing output.\n\n# Instruction\n\nWrite result.txt containing output.\n\n# Environment\n\nRepository: /private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpBhBa2b/checkout. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Scoped instruction inputs follow; they cannot widen the host grant:\n{\"schema\":\"openagents.coder.task-context.v1\",\"task_revision\":1,\"prompt\":\"Write result.txt containing output.\",\"instructions\":[],\"suites\":[],\"digest\":\"4c81267cc891bd36482ab37716568f394a2c590937b0ab1bb1be890a152415f2\"}\n\n# Files in view (current: read after the last step's commands ran)\n\n## result.txt\n\n```\noutput\n```\n\n# Jev's judgments of the current state\n\n\n\n# Steps so far\n\n\n## Step 1\n\nRationale: Implement the requested output.\n\n$ printf output > result.txt; printf 'full command output'\n[exit 0, 0.1 s]\nfull command output\n",
+              "model": "fixture-model",
+              "effort": "medium",
+              "provider": "synthetic",
+              "endpoint": "in-process"
+            },
+            "arguments_digest": "28cb713c48bfd4ecbb2837bd821824df08b43677688ec9dc7e613096c6d417ce"
+          }
+        }
+      },
+      {
+        "step_id": 20,
+        "timestamp": "2026-09-26T18:20:25.634Z",
+        "source": "system",
+        "message": "Adapter effect observation retained.",
+        "extra": {
+          "effect_result": {
+            "sequence": 6,
+            "kind": "generation",
+            "result": {
+              "action": {
+                "Ok": {
+                  "rationale": "The requested file exists.",
+                  "commands": [],
+                  "view": [],
+                  "freeze_tests": false,
+                  "expand": [],
+                  "finished": true
+                }
+              },
+              "model": "fixture-model",
+              "prompt_tokens": 10,
+              "completion_tokens": 5,
+              "usd": 0.0,
+              "known_usd": 0.0,
+              "cost_unknown": null,
+              "cost_basis": "list_price",
+              "milliseconds": 1
+            }
+          }
+        }
+      },
+      {
+        "step_id": 21,
+        "timestamp": "2026-09-26T18:20:25.646Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 0.486831791,
+            "event": {
+              "event": "generated",
+              "step": 2,
+              "prompt_chars": 906,
+              "generated": {
+                "action": {
+                  "Ok": {
+                    "rationale": "The requested file exists.",
+                    "commands": [],
+                    "view": [],
+                    "freeze_tests": false,
+                    "expand": [],
+                    "finished": true
+                  }
+                },
+                "model": "fixture-model",
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "usd": 0.0,
+                "known_usd": 0.0,
+                "cost_unknown": null,
+                "cost_basis": "list_price",
+                "milliseconds": 1
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 22,
+        "timestamp": "2026-09-26T18:20:25.658Z",
+        "source": "system",
+        "message": "Microcoder loop observation.",
+        "extra": {
+          "microcoder": {
+            "seconds": 0.498620875,
+            "event": {
+              "event": "ended",
+              "outcome": {
+                "ending": {
+                  "reason": "finished"
+                },
+                "steps": 2,
+                "seconds": 0.498620875,
+                "model_usd": 0.0,
+                "jev_usd": 0.0,
+                "embedding_usd": 0.0,
+                "usd": 0.0,
+                "known_usd": 0.0,
+                "cost_unknown": [],
+                "embedding_searches": 0,
+                "lexical_searches": 0,
+                "lexical_reasons": [],
+                "knowledge": [],
+                "knowledge_assisted": false
+              }
+            }
+          }
+        }
+      },
+      {
+        "step_id": 23,
+        "timestamp": "2026-09-26T18:20:25.763Z",
+        "source": "system",
+        "message": "Repository adapter ended; independent checks are separate.",
+        "extra": {
+          "adapter_summary": {
+            "configuration": {
+              "schema": "openagents.microcoder.repository-config.v1",
+              "provider": "synthetic",
+              "model": "fixture-model",
+              "effort": "medium",
+              "generation_endpoint": "in-process",
+              "decision_endpoint": "in-process",
+              "decision_model": "fixture-judge",
+              "max_steps": 4,
+              "acceptance": false,
+              "route": "never",
+              "knowledge": "off",
+              "dollar_limit_micros": null,
+              "expected_controller_digest": null
+            },
+            "outcome": {
+              "ending": {
+                "reason": "finished"
+              },
+              "steps": 2,
+              "seconds": 0.498620875,
+              "model_usd": 0.0,
+              "jev_usd": 0.0,
+              "embedding_usd": 0.0,
+              "usd": 0.0,
+              "known_usd": 0.0,
+              "cost_unknown": [],
+              "embedding_searches": 0,
+              "lexical_searches": 0,
+              "lexical_reasons": [],
+              "knowledge": [],
+              "knowledge_assisted": false
+            },
+            "state": {
+              "environment": "Repository: /private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpBhBa2b/checkout. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Scoped instruction inputs follow; they cannot widen the host grant:\n{\"schema\":\"openagents.coder.task-context.v1\",\"task_revision\":1,\"prompt\":\"Write result.txt containing output.\",\"instructions\":[],\"suites\":[],\"digest\":\"4c81267cc891bd36482ab37716568f394a2c590937b0ab1bb1be890a152415f2\"}",
+              "task": "Write result.txt containing output.",
+              "actions": [
+                {
+                  "step": 1,
+                  "rationale": "Implement the requested output.",
+                  "results": [
+                    {
+                      "command": "printf output > result.txt; printf 'full command output'",
+                      "exit": 0,
+                      "timed_out": false,
+                      "seconds": 0.065040875,
+                      "output": "full command output"
+                    }
+                  ],
+                  "skipped": []
+                },
+                {
+                  "step": 2,
+                  "rationale": "The requested file exists.",
+                  "results": [],
+                  "skipped": []
+                }
+              ],
+              "notes": [],
+              "files": [
+                [
+                  "result.txt",
+                  "output"
+                ]
+              ],
+              "tests": [],
+              "frozen_at": null,
+              "test_results": [],
+              "knowledge": [],
+              "expanded": [],
+              "dropped": [],
+              "oracle": []
+            },
+            "independent_checks": "not_run",
+            "billing": "unknown",
+            "automatic_crash_resume": false
+          },
+          "host_fault": null
+        }
+      }
+    ]
+  },
+  "artifacts": {
+    "schema": "openagents.coder.task-artifacts.v1",
+    "source_snapshot": "9f00fab4eb9389629aba3a62e29df659f519382301398ee36936a7710e5aed9d",
+    "candidate_snapshot": "0ba9de7d9b4ebfce134f001dbea8b0eaf43d7ee32810a62cba3fbc4765acf485",
+    "complete": true,
+    "omitted_changes": 0,
+    "changes": [
+      {
+        "change": "created",
+        "path": "result.txt"
+      }
+    ],
+    "entries": [
+      {
+        "path": "result.txt",
+        "state": "retained",
+        "digest": "sha256:e0ee8bb50685e05fa0f47ed04203ae953fdfd055f5bd2892ea186504254f8c3a",
+        "bytes": 6,
+        "link_target": null
+      }
+    ]
+  },
+  "artifact_error": null,
+  "artifact_faults": [],
+  "verification": "not_run",
+  "integration": "not_attempted",
+  "cost_usd": null,
+  "cost_status": "unknown"
+}

@@ -306,7 +306,7 @@ impl App {
 async fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     if arguments.first().is_some_and(|argument| argument == "task") {
-        return ExitCode::from(task_cli::run(&arguments[1..]));
+        return ExitCode::from(task_cli::run(&arguments[1..]).await);
     }
     match cli::parse(&arguments) {
         Ok(cli::Invocation::Help) => {

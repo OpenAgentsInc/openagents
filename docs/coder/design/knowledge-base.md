@@ -5,13 +5,21 @@ Status: specified 2026-09-25; findings from the first runs are in
 version, in Microcoder, shipped
 2026-09-25: `crates/knowledge`, 14 seed entries in `knowledge/`, and
 retrieval in Microcoder. The second version shipped the same day:
-contribution (`kb add` and `kb harvest`), admission by measurement and by
-review, knowledge-assisted reporting, and sharing over Nostr with
-[NIP-KB](../../../nips/openagents/NIP-KB.md). Curated snapshots, private
-entries, and studies are specified but not built; see
-[The second version](#the-second-version). Tracking issue:
-[#9670](https://github.com/OpenAgentsInc/openagents/issues/9670). The
-[guide](../guides/knowledge-base.md) covers every `kb` command.
+contribution (`kb add` and `kb harvest`), historical evidence reports and
+operator admission, knowledge-assisted reporting, and sharing over Nostr with
+[NIP-KB](../../../nips/openagents/NIP-KB.md). Local signed snapshots and encrypted private delivery are implemented in the
+[knowledge bundle workflow](../runtime/knowledge-bundles.md), tracked in
+[#9686](https://github.com/OpenAgentsInc/openagents/issues/9686). A
+[frozen comparison runner](../runtime/knowledge-studies.md) retains fixed paired
+assignments; it is narrower than the complete NIP-OPT wire contract and does
+not replace the separately [registered transfer study](../../terminal-bench/2026-09-26-out-of-sample-study.md).
+[#9670](https://github.com/OpenAgentsInc/openagents/issues/9670) records the
+original implementation and in-sample results. The
+[guide](../guides/knowledge-base.md) covers every `kb` command. The
+[evidence integrity correction](../runtime/knowledge-evidence.md) retains failed
+intake and unknown costs and prevents historical screening from authorizing
+admission or automatic demotion. Automatic entry admission from prospective
+studies remains unimplemented.
 
 This document specifies a knowledge base that every OpenAgents agent can
 search while it works, and that every run can add to. It explains what an
@@ -202,7 +210,7 @@ are shown only with `--kb candidates`, and marked as unreviewed.
 
 An entry is admitted by one of:
 
-- **Measured help.** A paired comparison on a task other than the ones the
+- **Measured help (requires the prospective study verifier).** A paired comparison on a task other than the ones the
   entry was written from: the same task, model, and seed budget, with and
   without the entry, where the version with the entry passes more often or
   passes at lower cost. The comparison is recorded as the entry's `evidence`,
@@ -212,10 +220,10 @@ An entry is admitted by one of:
   textbook definition, after reading it. The admission names the reviewer.
 
 Every run records which entries were retrieved, which were expanded, and the
-run's outcome. Over time that gives each entry a use count and a pass rate
-with and without it, which is what decides whether it stays. An entry that
-is shown often and never helps is demoted to `candidate`; one that is wrong is
-`withdrawn`, and its record stays.
+run's outcome. Historical use counts and pass rates can guide an operator, but do not establish
+whether an entry caused success or harm. Automatic promotion or demotion needs
+a verified prospective comparison. An operator can withdraw an entry found to
+be wrong, and its record stays.
 
 ## Reporting
 
@@ -312,12 +320,11 @@ Shipped 2026-09-25, in `crates/knowledge`, `crates/microcoder`, and
   than $0 when it can't be known. Each proposal is linted with the run's own task name
   added, and written as a `candidate` with the run's ID in
   `provenance.written_from`.
-- **Admission.** `kb evidence` measures every entry from the recorded runs
-  and writes a NIP-EVAL report per entry to
-  `~/.openagents/knowledge/evidence/`. `kb admit --reviewer NAME` and
-  `kb admit --evidence` record who or what admitted an entry in its
-  `evidence` list. `kb withdraw` marks an entry wrong, and `kb review` lists
-  the demotions for the operator to apply with `--apply`.
+- **Admission.** `kb evidence` writes historical NIP-EVAL screening reports.
+  `kb admit --reviewer NAME` records operator admission. The earlier automatic
+  evidence rule is disabled by the evidence integrity correction: historical
+  cohorts and self-declared study metadata cannot authorize admission or
+  demotion. `kb admit --evidence` refuses without modifying a waiting version.
 - **Reporting.** `summary.json` has `knowledge_assisted`, and the run's end
   lines say "knowledge-assisted".
 - **Sharing.** `kb publish`, `kb sync`, and `kb publish-evidence` speak
@@ -329,17 +336,19 @@ Shipped 2026-09-25, in `crates/knowledge`, `crates/microcoder`, and
 
 Choices this version made where the spec leaves one:
 
-- **Paired comparison.** Runs pair by task and model. A run is with an entry
-  when its prompts listed or showed it, and without it otherwise: the base
-  off, a run from before the base, or retrieval not keeping it. A paired
-  task is for the entry when the runs with it pass more often, or pass as
-  often (at least once) at under 90% of the cost per run, and against it
-  when they pass less often, or as often at over 110% of the cost.
-- **Admission rule.** At least 2 paired tasks for the entry and none against
-  it. Runs are matched by entry ID, not digest, because a status change
-  rewrites the file.
-- **Demotion.** An admitted entry is demoted when at least 5 out-of-sample
-  runs showed it, it has paired tasks, and none is for it.
+- **Historical screening.** Task/model associations remain visible. Complete
+  recorded configuration identities split groups further; unknown identities
+  remain unknown. Unknown outcomes prevent a favorable group conclusion, and
+  unknown costs prevent cost comparisons. The report retains failed intake,
+  source-task exclusions, changed entry digests, and descriptive uncertainty.
+- **Admission correction.** The earlier rule admitted after two favorable
+  task/model groups and no opposing group, using entry IDs across changed
+  digests. That rule could not establish a controlled entry effect. New reports
+  are inconclusive for admission; older report bytes and verdicts remain
+  retained, and legacy `pass` reports cannot authorize promotion. Operator
+  review remains available.
+- **Demotion correction.** Repeated historical exposure does not establish harm.
+  `kb review --apply` makes no automatic admission changes from this evidence.
 - **Near-duplicates.** A proposal revises an existing entry when it has the
   entry's ID or a cosine similarity of 0.9 or more with it. The model's
   `updates` hint counts only without embeddings; with it, a first real
@@ -354,13 +363,23 @@ Choices this version made where the spec leaves one:
 - **No default relay.** Publishing sends entries to other people, so the
   network commands need `--relay`.
 
-Not built yet:
+Additional implemented scope:
 
-- Curated snapshots as NIP-EXT packages, private entries in the `3188`
-  envelope, and NIP-OPT studies. NIP-KB specifies all three.
+- Immutable NIP-EXT guidance snapshots pin signed release, manifest, and exact
+  entry bytes. Loading a snapshot replaces ambient entries and treats entries
+  as candidates unless the operator explicitly adopts the snapshot.
+- Private entry files use encrypted kind-`3188` delivery with recipient and
+  model-disclosure checks. This is local bundle delivery, not relay blob
+  fetching or a full package installation and revocation service.
+- A fixed-candidate study runner freezes assignment and configuration pins,
+  reserves attempts before dispatch, and retains unknowns. It does not
+  implement all NIP-OPT roles or authorize automatic promotion.
+
+Remaining measurement work:
+
 - The measurement runs above. The first evidence, from 18 recorded runs on
-  2026-09-25, is inconclusive for every entry: no entry has 2 paired tasks
-  for it. `statistics.mmd-estimators` and `slip.comments-in-broken-code` now
+  2026-09-25, is inconclusive for every entry. Those historical pair counts cannot establish a prospective
+  effect, regardless of the number of favorable pairs. `statistics.mmd-estimators` and `slip.comments-in-broken-code` now
   list an `embedding-drift-monitor` run in `written_from`, so that task
   doesn't count for them.
 

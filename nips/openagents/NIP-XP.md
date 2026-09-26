@@ -158,6 +158,14 @@ is accepted when all of these hold:
    runs and, when `max_usd_per_run` is set, costs strictly less per run.
 6. The evidence was published inside the season.
 
+An `inconclusive` historical screening report does not satisfy rule 4.
+Publication or a runner's declaration that runs were prospective does not
+change that verdict. OpenAgents' current historical evidence producer always
+returns `inconclusive`; it cannot complete these quests. A separately verified
+prospective report can still satisfy the existing rule. In the v1 pair shape,
+`with.usd` is a complete comparable arm total, never a known lower bound;
+an unknown total is `null` and cannot satisfy the cost check.
+
 Both the referee, before signing, and every reader, before counting, run
 these checks from the signed events alone. Nothing in the rule depends on
 the referee's word except the choice to accept.

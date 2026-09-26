@@ -13,6 +13,14 @@ doesn't exist yet; nothing here moves money.
 
 `microcoder xp --help` prints the command list.
 
+The current `kb evidence` and `kb publish-evidence` commands produce historical
+screening reports with an `inconclusive` verdict. They cannot complete a
+`kb-transfer` quest, even when the observed runs look favorable. An award
+requires a separately verified prospective `pass` under its pinned rule.
+The [study infrastructure](../runtime/knowledge-studies.md) does not yet
+produce an automatically admissible or quest-completing report. Existing
+signed awards and reports remain readable under their original contracts.
+
 ## How a knowledge quest works
 
 1. A **referee** publishes a quest: for example, "beat Fable 5.1 low's
@@ -25,8 +33,9 @@ doesn't exist yet; nothing here moves money.
    `microcoder kb publish-evidence --author <author npub> <entry-id>`. The
    report measures the exact entry version the runs showed, by digest,
    cites the author's kind-`3190` event, and is signed by the runner's key.
-4. The referee checks the evidence against the quest's rule and, when it
-   passes, publishes an award that credits the author and the runner.
+4. When a verified prospective report is available, the referee checks it
+   against the quest's rule and publishes an award only if it passes.
+   Historical screening from step 3 is refused.
 5. Each **reader** derives XP from the awards of the referees it trusts,
    re-checking every award against the signed entry and evidence.
 

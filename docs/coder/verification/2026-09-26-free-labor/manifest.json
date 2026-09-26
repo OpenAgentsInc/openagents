@@ -1,0 +1,86 @@
+{
+  "schema": "openagents.synthetic-evidence-manifest.v1",
+  "synthetic": true,
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2752,
+      "sha256": "0727907cc8acc0a1315bbaaa711f585ea829e38d2b78041eec5e1f688075a44a"
+    },
+    {
+      "path": "buyer-check-tasks/buyer-check.1.atif.jsonl",
+      "bytes": 3395,
+      "sha256": "3e34489c9dbbec441478ae797506a8ebd69733a9d7fbf0e3e71e2f7842509f1c"
+    },
+    {
+      "path": "buyer-check-tasks/manifest-d1de3c6da8d6650cfd7f3521e4c37737292e67b96919c5b06070830339783b7d.json",
+      "bytes": 282,
+      "sha256": "d1de3c6da8d6650cfd7f3521e4c37737292e67b96919c5b06070830339783b7d"
+    },
+    {
+      "path": "buyer-check-tasks/tasks.json",
+      "bytes": 6894,
+      "sha256": "03f6be817869d5070c7c66e0d65c137ca2d3afbf692d96d0c91fd2ae48fc409f"
+    },
+    {
+      "path": "buyer-journal.json",
+      "bytes": 208750,
+      "sha256": "cd6d1e698fddf456f05eaae6f490bb93312c9a6e55d7af40bb8e90030d9d9ec1"
+    },
+    {
+      "path": "clippy.log",
+      "bytes": 187,
+      "sha256": "e01e97a8abb6e1f1ce756b8015588b298e4197aad7fa3d641f509a299db92e36"
+    },
+    {
+      "path": "interrupted-provider-journal.json",
+      "bytes": 49042,
+      "sha256": "96ec7bb43e880e03d4ddcada35b220771428035fef5b6d1d76f266beeacb6b80"
+    },
+    {
+      "path": "nostr-test.log",
+      "bytes": 1947,
+      "sha256": "77d3d57b3a61fab1faf0c2f2780c2703aa0290fd134a7c2aca27b3699a4e73aa"
+    },
+    {
+      "path": "provider-journal.json",
+      "bytes": 217785,
+      "sha256": "fd79c9def3a9db934bb11abc1e5ecb6ee81b03a12c73dcbd3e76f0fb6ea15fb8"
+    },
+    {
+      "path": "provider-tasks/artifact-5e0a6af76181b77032ef291474aab99538433cb86eb2b8ad88f3c0cfb2577a51.blob",
+      "bytes": 30,
+      "sha256": "5e0a6af76181b77032ef291474aab99538433cb86eb2b8ad88f3c0cfb2577a51"
+    },
+    {
+      "path": "provider-tasks/labor-request.1.atif.jsonl",
+      "bytes": 3425,
+      "sha256": "f9ec604399612e4b538495b0785b3ada6174ca81d11f128a6f82c089bc76e0a5"
+    },
+    {
+      "path": "provider-tasks/manifest-63c6803d2d6605036ac1d632a4711938c68b3dec7c4f1787164f969454a3fc85.json",
+      "bytes": 474,
+      "sha256": "63c6803d2d6605036ac1d632a4711938c68b3dec7c4f1787164f969454a3fc85"
+    },
+    {
+      "path": "provider-tasks/tasks.json",
+      "bytes": 6958,
+      "sha256": "c31217b22d70a1333fedab5da2d620db65b96a61b886b1201bd8ca116c3fd37a"
+    },
+    {
+      "path": "receipt.json",
+      "bytes": 689,
+      "sha256": "9e3fadb8dc9b73e2c82a894a92cfc4d5ce90461d6b1ba41b28a6e25d1392201c"
+    },
+    {
+      "path": "relay-events.json",
+      "bytes": 31424,
+      "sha256": "03fa60c82804c27699bc62b36dddc7536ca047ba9ec515caf6e4efa699d74e5e"
+    },
+    {
+      "path": "tests.log",
+      "bytes": 1652,
+      "sha256": "30d18921ce37c1c6e6b44c04060edcfd92da2b38f31bccdfc625546f7eae8ea6"
+    }
+  ]
+}

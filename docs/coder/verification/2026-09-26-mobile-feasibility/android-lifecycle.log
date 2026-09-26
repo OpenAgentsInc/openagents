@@ -1,0 +1,22 @@
+09-26 08:58:37.954  3838  3855 I RustStdoutStderr: coder-mobile-probe: {"event":"keystore_probe","synthetic":true,"bytes_equal":true,"deleted":true,"passed":true,"hardware_backing":"not_checked","locked_device_test":"not_run"}
+09-26 08:58:37.958  3838  3855 I RustStdoutStderr: coder-mobile-probe: lifecycle Start
+09-26 08:58:38.747  3838  3855 I RustStdoutStderr: coder-mobile-probe: lifecycle InitWindow
+09-26 08:58:38.747  3838  3855 I RustStdoutStderr: coder-mobile-probe: lifecycle WindowResized
+09-26 08:58:38.750  3838  3855 I RustStdoutStderr: coder-mobile-probe: lifecycle RedrawNeeded
+09-26 08:58:38.801  3838  3855 I RustStdoutStderr: coder-mobile-probe: lifecycle GainedFocus
+09-26 09:01:46.639  4085  4116 I RustStdoutStderr: coder-mobile-probe: {"event":"keystore_probe","synthetic":true,"bytes_equal":true,"deleted":true,"passed":true,"hardware_backing":"not_checked","locked_device_test":"not_run"}
+09-26 09:01:46.643  4085  4116 I RustStdoutStderr: coder-mobile-probe: lifecycle start
+09-26 09:01:46.649  4085  4116 I RustStdoutStderr: coder-mobile-probe: lifecycle resume
+09-26 09:01:47.360  4085  4116 I RustStdoutStderr: coder-mobile-probe: lifecycle window_or_input_event
+09-26 09:03:20.424  4407  4426 I RustStdoutStderr: coder-mobile-probe: {"event":"keystore_probe","synthetic":true,"bytes_equal":true,"deleted":true,"passed":true,"hardware_backing":"not_checked","locked_device_test":"not_run"}
+09-26 09:03:20.427  4407  4426 I RustStdoutStderr: coder-mobile-probe: lifecycle start
+09-26 09:03:20.431  4407  4426 I RustStdoutStderr: coder-mobile-probe: lifecycle resume
+09-26 09:03:21.158  4407  4426 I RustStdoutStderr: coder-mobile-probe: lifecycle window_or_input_event
+09-26 09:08:16.316  4690  4708 I RustStdoutStderr: coder-mobile-probe: {"event":"keystore_probe","synthetic":true,"bytes_equal":true,"deleted":true,"passed":true,"hardware_backing":"not_checked","locked_device_test":"not_run"}
+09-26 09:08:16.316  4690  4708 I RustStdoutStderr: coder-mobile-probe: lifecycle start
+09-26 09:08:16.316  4690  4708 I RustStdoutStderr: coder-mobile-probe: lifecycle resume
+09-26 09:08:16.632  4690  4708 I RustStdoutStderr: coder-mobile-probe: lifecycle window_or_input_event
+09-26 09:08:18.926  4755  4772 I RustStdoutStderr: coder-mobile-probe: {"event":"keystore_probe","synthetic":true,"bytes_equal":true,"deleted":true,"passed":true,"hardware_backing":"not_checked","locked_device_test":"not_run"}
+09-26 09:08:18.928  4755  4772 I RustStdoutStderr: coder-mobile-probe: lifecycle start
+09-26 09:08:18.931  4755  4772 I RustStdoutStderr: coder-mobile-probe: lifecycle resume
+09-26 09:08:19.258  4755  4772 I RustStdoutStderr: coder-mobile-probe: lifecycle window_or_input_event

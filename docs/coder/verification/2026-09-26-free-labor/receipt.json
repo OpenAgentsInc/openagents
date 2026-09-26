@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.free-labor-acceptance-fixture.v1",
+  "synthetic_source": true,
+  "independent_operators": false,
+  "production_relay": false,
+  "encrypted_events": 10,
+  "provider_elapsed_ms": 47,
+  "buyer_checker_elapsed_ms": 60,
+  "inference_calls": 0,
+  "all_in_cost_usd": null,
+  "cost_reason": "host CPU, storage, and energy are unmetered",
+  "free_order_price_msat": 0,
+  "payment": "not_applicable",
+  "acceptance_event": "ef6ed9ad15dca3ccb23c8260940747aedd424e03119fee909218be759eafced5",
+  "source": "one synthetic Rust file",
+  "result": "accepted",
+  "duplicate_execution": "same retained run",
+  "restart": "both roles reconstructed acceptance after relay shutdown"
+}

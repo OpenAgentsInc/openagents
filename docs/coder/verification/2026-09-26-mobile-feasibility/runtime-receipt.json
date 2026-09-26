@@ -1,0 +1,102 @@
+{
+  "schema": "openagents.mobile-feasibility.v1",
+  "date": "2026-09-26",
+  "synthetic": true,
+  "physical_device": {
+    "ios": {
+      "result": "not_run",
+      "reason": "Signed app installation refused because the paired iPhone is locked.",
+      "error": "kAMDMobileImageMounterDeviceLocked"
+    },
+    "android": {
+      "result": "not_run",
+      "reason": "No physical Android device is attached."
+    }
+  },
+  "host": {
+    "fixture_tests_passed": 2,
+    "atif_steps": 2000,
+    "full_text_bytes": 561166,
+    "browser_unicode_field": "passed",
+    "browser_expanded_transcript_first_last_end_marker": "passed",
+    "browser_test_method": "Codex in-app browser accessibility, synthetic input only"
+  },
+  "ios_simulator": {
+    "model": "iPhone 17 Pro",
+    "os": "iOS 26.5",
+    "native_view": "visually_verified",
+    "keychain_add_read_equal_delete_absent": "passed",
+    "background_foreground_restart": "passed",
+    "physical_ime_composition": "not_run",
+    "automated_unicode_input": "inconclusive; native simulator key injection produced different text and clipboard forwarding timed out",
+    "voiceover": "not_run",
+    "draft_persistence": "not_implemented",
+    "reconnect_transport": "not_implemented"
+  },
+  "android_emulator": {
+    "abi": "arm64-v8a",
+    "api": 35,
+    "native_list_views": {
+      "first": {
+        "node_count": 13,
+        "step_0000": true,
+        "step_1999": false,
+        "end_marker": false,
+        "native_input": true,
+        "maximum_node_text_chars": 241
+      },
+      "last": {
+        "node_count": 13,
+        "step_0000": false,
+        "step_1999": true,
+        "end_marker": true,
+        "native_input": true,
+        "maximum_node_text_chars": 241
+      }
+    },
+    "keystore_aes_gcm_encrypt_decrypt_delete": "passed",
+    "hardware_backing": "not_checked",
+    "restart": "passed; new Activity reconstructs fixture",
+    "physical_ime_composition": "not_run",
+    "talkback": "not_run",
+    "draft_persistence": "not_implemented",
+    "reconnect_transport": "not_implemented",
+    "reviewed_binary_recheck": {
+      "installed": true,
+      "step_1999": true,
+      "end_marker": true,
+      "cold_start_ms": 734,
+      "note": "Single observation after replacing deprecated JNI calls; not a performance benchmark."
+    }
+  },
+  "negative_findings": [
+    {
+      "id": "android-native-surface",
+      "result": "Initial shell launched but displayed a black surface.",
+      "correction": "Return surface and input queue to standard Android View handling."
+    },
+    {
+      "id": "android-giant-accessibility-node",
+      "result": "Single TextView accessibility output stopped at fixture step0386.",
+      "correction": "Use native virtualized ListView rows; first and last view receipts show step0000 and step1999 plus end marker."
+    },
+    {
+      "id": "ios-simulator-keychain-entitlement",
+      "result": "Initial ad-hoc simulator bundle returned -34018 for Keychain calls.",
+      "correction": "Embed synthetic simulator application and Keychain entitlements in the Mach-O simulator section."
+    },
+    {
+      "id": "ios-objc-return-encoding",
+      "result": "After Keychain entitlement repair, debug Objective-C validation rejected an NSData bytes return declared as a byte pointer.",
+      "correction": "Use the declared void-pointer ABI and cast after the call."
+    }
+  ],
+  "release_gates_not_satisfied": [
+    "Physical-device IME composition, dictation, external keyboard, VoiceOver and TalkBack",
+    "Locked-device and invalidated-key credential behavior",
+    "Durable drafts, actual authenticated reconnect and revoked access",
+    "iOS accessible paging and large-text/safe-area layout beyond this fixed fixture",
+    "Desktop native AppKit/Linux renderer integration",
+    "Production code signing, notices and distribution"
+  ]
+}

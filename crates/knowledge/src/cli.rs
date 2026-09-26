@@ -54,11 +54,11 @@ Admitting entries:
   admit <id> --reviewer NAME
                     admit an entry after reading it; the admission names you
   admit <id> --evidence
-                    admit an entry only if its recorded report passes the rule
+                    require a verified prospective study; historical reports refuse
   withdraw <id> [--reason TEXT]
                     mark an entry wrong; it's never shown, and its file stays
-  review [--apply]  list admitted entries shown often that never help, and
-                    candidates the rule would admit; --apply demotes the first
+  review [--apply]  inspect admission status; historical screening makes no
+                    automatic admission or demotion changes
 
 Sharing entries (microcoder only):
   publish --relay URL [ids]      sign and publish entries (NIP-KB)
@@ -69,6 +69,14 @@ Sharing entries (microcoder only):
   publish-evidence --relay URL --author KEY [ids]
                                  publish evidence for another author's synced
                                  entries, citing each exact version (NIP-XP)
+  snapshot-create [ids] --package SLUG --snapshot-version LABEL --license TEXT
+                    --output FILE: write an immutable signed EXT guidance bundle
+  snapshot-check FILE  verify a complete inert snapshot without loading models
+  private-seal ID --recipient KEY --retain-until UNIX --output FILE
+                    encrypt exact entry bytes and their 3188 declaration
+  private-show FILE  decrypt an explicitly selected bundle for local inspection
+  private-grant FILE --model-recipient LABEL... --output FILE
+                    authorize exact model recipients for this private artifact
 
 Options:
   --dir DIR         the knowledge directory (default OPENAGENTS_KNOWLEDGE, or
@@ -119,6 +127,14 @@ pub struct Options {
     pub remote: Option<PathBuf>,
     pub relay: Option<String>,
     pub authors: Vec<String>,
+    pub output: Option<PathBuf>,
+    pub package: Option<String>,
+    pub snapshot_version: Option<String>,
+    pub license: Option<String>,
+    pub recipient: Option<String>,
+    pub retain_until: Option<u64>,
+    pub model_recipients: Vec<String>,
+    pub key_file: Option<PathBuf>,
     /// Words that aren't options, in order.
     pub words: Vec<String>,
 }
@@ -211,6 +227,20 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
             "--trust" => o.trust = Some(value()?),
             "--remote" => o.remote = Some(PathBuf::from(value()?)),
             "--relay" => o.relay = Some(value()?),
+            "--output" => o.output = Some(PathBuf::from(value()?)),
+            "--package" => o.package = Some(value()?),
+            "--snapshot-version" => o.snapshot_version = Some(value()?),
+            "--license" => o.license = Some(value()?),
+            "--recipient" => o.recipient = Some(value()?),
+            "--retain-until" => {
+                o.retain_until = Some(
+                    value()?
+                        .parse()
+                        .map_err(|_| "--retain-until needs Unix seconds")?,
+                )
+            }
+            "--model-recipient" => o.model_recipients.push(value()?),
+            "--key-file" => o.key_file = Some(PathBuf::from(value()?)),
             "-h" | "--help" => return Err(USAGE.to_string()),
             flag if flag.starts_with("--") => {
                 return Err(format!("unknown option {flag}\n\n{USAGE}"));
@@ -249,7 +279,8 @@ async fn run(args: &[String]) -> Result<u8, String> {
         "admit" => admit(&o),
         "withdraw" => withdraw(&o),
         "review" => review(&o),
-        "publish" | "sync" | "publish-evidence" => Err(format!(
+        "publish" | "sync" | "publish-evidence" | "snapshot-create" | "snapshot-check"
+        | "private-seal" | "private-show" | "private-grant" => Err(format!(
             "kb {command} runs from microcoder: microcoder kb {command} ..."
         )),
         "-h" | "--help" => Err(USAGE.to_string()),
@@ -572,7 +603,7 @@ fn measure(o: &Options) -> Result<u8, String> {
     let runs = evidence::scan(&o.runs()?);
     let dir = o.evidence_dir()?;
     println!(
-        "{} runs with a summary in {}",
+        "{} intake records (including incomplete and unreadable attempts) in {}",
         runs.len(),
         o.runs()?.display()
     );
@@ -683,6 +714,21 @@ fn measure_synced(o: &Options) -> Result<u8, String> {
 fn admit(o: &Options) -> Result<u8, String> {
     let id = one_id(o, "admit")?;
     let (mut path, mut text, mut entry) = read_entry(&o.dir, id)?;
+    // Check evidence before promoting a waiting version or archiving the head.
+    // A refusal must leave the admitted version and the candidate untouched.
+    match (&o.reviewer, o.by_evidence) {
+        (Some(_), false) => {}
+        (None, true) => {
+            let waiting = pending(&o.dir, id, entry.version);
+            let target = waiting.as_ref().map_or(&entry, |(_, next)| next);
+            let report = evidence::report_path(&o.evidence_dir()?, id, target.version);
+            if let Err(reason) = evidence::recorded_for_admission(&report, target) {
+                eprintln!("not admitted: {reason}");
+                return Ok(1);
+            }
+        }
+        _ => return Err("kb admit needs either --reviewer NAME or --evidence".to_string()),
+    }
     if let Some((waiting, next)) = pending(&o.dir, id, entry.version) {
         archive(&o.dir, id)?;
         std::fs::rename(&waiting, &path).map_err(|e| format!("can't promote {id}: {e}"))?;
@@ -696,7 +742,7 @@ fn admit(o: &Options) -> Result<u8, String> {
         (Some(name), false) => format!("admitted {} by review: {name}", today()),
         (None, true) => {
             let report = evidence::report_path(&o.evidence_dir()?, id, entry.version);
-            let (verdict, digest) = evidence::recorded(&report)?;
+            let (verdict, digest) = evidence::recorded_for_admission(&report, &entry)?;
             if verdict != Verdict::Pass {
                 eprintln!(
                     "not admitted: the recorded evidence for {id} v{} is {}. The rule: {}",
@@ -743,11 +789,9 @@ fn review(o: &Options) -> Result<u8, String> {
     let entries = selected(o)?;
     let proposals = evidence::review(&entries, &runs);
     println!(
-        "{} entries against {} runs. An admitted entry shown in {} or more runs, out of \
-sample, with paired tasks and none favoring it, is demoted to candidate.",
+        "{} entries against {} intake records. Historical screening does not authorize automatic admission or demotion.",
         entries.len(),
-        runs.len(),
-        evidence::DEMOTE_MIN_RUNS
+        runs.len()
     );
     if proposals.is_empty() {
         println!("nothing to change");

@@ -1,21 +1,12 @@
-//! Admission by measurement: which entries help, measured from the runs
-//! Microcoder has already recorded.
+//! Historical screening of retained Microcoder runs.
 //!
-//! Every run's `summary.json` lists the entries its prompts showed. For one
-//! entry, a run is *with* the entry when the entry is in that list, and
-//! *without* it otherwise: a run with the knowledge base off, a run from
-//! before the base existed, or a run where retrieval didn't keep it. Runs
-//! are paired by task and model. A task the entry was written from (its
-//! `provenance.written_from`) never counts.
+//! Screening does not establish a causal effect or authorize admission. Intake
+//! retains incomplete and corrupt attempts, unknown costs, exact entry pins,
+//! and comparison identities. A prospective declaration remains unverified until
+//! a study runner verifies its frozen protocol and complete assignment ledger.
 //!
-//! A paired task *favors* the entry when the runs with it pass more often,
-//! or pass as often (and at least once) at under 90% of the cost per run.
-//! It *opposes* the entry when they pass less often, or as often at over
-//! 110% of the cost. The admission rule is [`RULE`].
-//!
-//! [`report`] records the result in the NIP-EVAL report shape
-//! (`nips/openagents/NIP-EVAL.md`), with the entry as the subject and the
-//! runs without it as the baseline.
+//! Reports preserve observed differences without presenting them as promotion
+//! evidence. Operator review remains a separate admission path.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -25,45 +16,22 @@ use serde_json::{Value, json};
 
 use crate::{Entry, digest};
 
-/// Paired tasks that must favor an entry, with none opposing, for
-/// `kb admit --evidence`.
+/// Historical screening threshold, retained for interpreting earlier reports.
+/// It is not an admission rule.
 pub const MIN_FAVORING: usize = 2;
 
-/// Runs with an entry, out of sample, before `kb review` can call it shown
-/// often.
+/// Historical exposure threshold retained for interpreting earlier reports.
+/// It does not authorize automatic demotion.
 pub const DEMOTE_MIN_RUNS: usize = 5;
 
-/// The admission rule, as reports and the CLI state it.
-pub const RULE: &str = "Admit an entry when at least 2 paired tasks favor it and none opposes it. \
-A paired task is one task and model with runs both with and without the entry, on a task the \
-entry wasn't written from. It favors the entry when the runs with it pass more often, or pass \
-as often (at least once) at under 90% of the cost per run; it opposes the entry when they pass \
-less often, or as often at over 110% of the cost.";
+/// The admission boundary stated by reports and the CLI.
+pub const RULE: &str = "Historical screening never authorizes admission or automatic demotion. \
+A prospective comparison requires independently verified pre-run protocol and assignments, \
+complete intake, exact entry and configuration identities, and uncertainty supporting its \
+declared acceptance rule. The historical reader does not verify prospective studies.";
 
-/// One recorded run.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct Run {
-    /// The run directory's name, such as `some-task-1790393791`.
-    pub name: String,
-    pub task: String,
-    pub model: String,
-    /// The task's own verifier reward; `None` when grading failed.
-    pub reward: Option<f64>,
-    /// Model, Jev, and embedding dollars.
-    pub usd: f64,
-    /// Entry IDs the prompts listed or showed in full.
-    pub used: Vec<String>,
-    /// Unix seconds the run started, from the directory's name.
-    pub started: u64,
-}
-
-impl Run {
-    /// Whether the verifier gave the full reward.
-    #[must_use]
-    pub fn passed(&self) -> bool {
-        self.reward.is_some_and(|r| r >= 1.0)
-    }
-}
+mod intake;
+pub use intake::{Cost, EntryPin, Identity, IntakeStatus, Run, StudyKind, read_run, scan};
 
 /// `~/.openagents/microcoder/runs`.
 #[must_use]
@@ -89,88 +57,42 @@ pub fn task_of(run: &str) -> String {
     }
 }
 
-/// Reads one run's `summary.json`.
-///
-/// # Errors
-///
-/// No summary, or one without a task.
-pub fn read_run(dir: &Path) -> Result<Run, String> {
-    let path = dir.join("summary.json");
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| format!("can't read {}: {e}", path.display()))?;
-    let value: Value =
-        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    let name = dir
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let task = value["task"]
-        .as_str()
-        .ok_or(format!("{} names no task", path.display()))?
-        .to_string();
-    let outcome = &value["outcome"];
-    let usd = ["model_usd", "jev_usd", "embedding_usd"]
-        .iter()
-        .filter_map(|k| outcome[k].as_f64())
-        .sum();
-    let used = outcome["knowledge"]
-        .as_array()
-        .map(|list| {
-            list.iter()
-                .filter_map(|u| u["id"].as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    let started = name
-        .rsplit_once('-')
-        .and_then(|(_, stamp)| stamp.parse().ok())
-        .unwrap_or(0);
-    Ok(Run {
-        name,
-        task,
-        model: value["model"].as_str().unwrap_or("unknown").to_string(),
-        reward: value["reward"].as_f64(),
-        usd,
-        used,
-        started,
-    })
-}
-
-/// Every run under `dir` with a summary, in name order. Runs still going,
-/// which have no summary yet, are skipped.
-#[must_use]
-pub fn scan(dir: &Path) -> Vec<Run> {
-    let Ok(listing) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut dirs: Vec<PathBuf> = listing
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.join("summary.json").is_file())
-        .collect();
-    dirs.sort();
-    dirs.iter().filter_map(|d| read_run(d).ok()).collect()
-}
-
 /// One arm of a paired task.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Arm {
     /// Runs with a known reward.
     pub runs: usize,
     pub passes: usize,
-    /// Dollars, summed over those runs.
-    pub usd: f64,
+    /// Known component costs across all attempts, including unknown outcomes.
+    pub known_lower_bound_usd: f64,
+    /// Fully known costs of attempts whose outcomes are also known.
+    pub complete_cost_usd: f64,
+    pub cost_known_runs: usize,
+    pub cost_unknown_runs: usize,
+    pub cost_overflow: bool,
     /// Runs whose grading failed.
     pub unknown: usize,
 }
 
 impl Arm {
     fn add(&mut self, run: &Run) {
+        self.known_lower_bound_usd =
+            (self.known_lower_bound_usd + run.cost.known_lower_bound_usd).min(f64::MAX);
         if run.reward.is_none() {
             self.unknown += 1;
             return;
         }
         self.runs += 1;
-        self.usd += run.usd;
+        if let Some(usd) = run.cost.total_usd {
+            self.complete_cost_usd += usd;
+            self.cost_known_runs += 1;
+            if !self.complete_cost_usd.is_finite() {
+                self.complete_cost_usd = f64::MAX;
+                self.cost_overflow = true;
+            }
+        } else {
+            self.cost_unknown_runs += 1;
+        }
         if run.passed() {
             self.passes += 1;
         }
@@ -188,12 +110,24 @@ impl Arm {
 
     /// Dollars per run.
     #[must_use]
-    pub fn usd_per_run(&self) -> f64 {
+    pub fn usd_per_run(&self) -> Option<f64> {
+        (self.runs > 0 && self.unknown == 0 && self.cost_unknown_runs == 0 && !self.cost_overflow)
+            .then(|| self.complete_cost_usd / self.runs as f64)
+    }
+
+    /// Wilson interval for the recorded pass fraction; not causal uncertainty.
+    #[must_use]
+    pub fn rate_interval(&self) -> Option<(f64, f64)> {
         if self.runs == 0 {
-            0.0
-        } else {
-            self.usd / self.runs as f64
+            return None;
         }
+        let n = self.runs as f64;
+        let p = self.rate();
+        let z2 = 1.96_f64.powi(2);
+        let denominator = 1.0 + z2 / n;
+        let center = (p + z2 / (2.0 * n)) / denominator;
+        let half = 1.96 * (p * (1.0 - p) / n + z2 / (4.0 * n * n)).sqrt() / denominator;
+        Some(((center - half).max(0.0), (center + half).min(1.0)))
     }
 }
 
@@ -204,6 +138,7 @@ pub enum Side {
     Favors,
     Opposes,
     Even,
+    Inconclusive,
 }
 
 /// One task and model with runs both with and without the entry.
@@ -211,6 +146,8 @@ pub enum Side {
 pub struct Pair {
     pub task: String,
     pub model: String,
+    /// None means historical task/model grouping, not configuration equivalence.
+    pub comparison_digest: Option<String>,
     pub with: Arm,
     pub without: Arm,
     pub side: Side,
@@ -233,6 +170,16 @@ pub enum Verdict {
 pub struct Measured {
     pub id: String,
     pub version: u32,
+    pub entry_digest: String,
+    pub intake_records: usize,
+    pub intake_faults: usize,
+    pub unknown_membership: usize,
+    pub changed_entry_runs: usize,
+    pub unpinned_entry_runs: usize,
+    pub noncomparable_runs: usize,
+    pub prospective_unverified_runs: usize,
+    /// This reader does not verify a pre-run study seal or assignment ledger.
+    pub promotion_eligible: bool,
     /// Tasks the entry was written from, which never count.
     pub excluded_tasks: Vec<String>,
     /// Runs with the entry on tasks it wasn't written from.
@@ -246,22 +193,24 @@ pub struct Measured {
 }
 
 fn side(with: &Arm, without: &Arm) -> Side {
-    if with.runs == 0 || without.runs == 0 {
-        return Side::Even;
+    if with.runs == 0 || without.runs == 0 || with.unknown > 0 || without.unknown > 0 {
+        return Side::Inconclusive;
     }
     let (a, b) = (with.rate(), without.rate());
     if a > b {
-        Side::Favors
-    } else if a < b {
-        Side::Opposes
-    } else if with.passes == 0 {
-        Side::Even
-    } else if with.usd_per_run() < 0.9 * without.usd_per_run() {
-        Side::Favors
-    } else if with.usd_per_run() > 1.1 * without.usd_per_run() {
-        Side::Opposes
-    } else {
-        Side::Even
+        return Side::Favors;
+    }
+    if a < b {
+        return Side::Opposes;
+    }
+    if with.passes == 0 {
+        return Side::Even;
+    }
+    match (with.usd_per_run(), without.usd_per_run()) {
+        (Some(a), Some(b)) if a < 0.9 * b => Side::Favors,
+        (Some(a), Some(b)) if a > 1.1 * b => Side::Opposes,
+        (Some(_), Some(_)) => Side::Even,
+        _ => Side::Inconclusive,
     }
 }
 
@@ -272,12 +221,19 @@ pub fn measure(entry: &Entry, runs: &[Run]) -> Measured {
         .written_from
         .iter()
         .filter(|w| w.as_str() != "reference")
-        .map(|w| task_of(w))
+        .flat_map(|w| [w.clone(), task_of(w)])
         .collect();
-    let mut arms: BTreeMap<(String, String), (Arm, Arm)> = BTreeMap::new();
+    let mut arms: BTreeMap<(String, String, Option<String>), (Arm, Arm)> = BTreeMap::new();
+    let mut unknown_membership = 0;
+    let mut changed_entry_runs = 0;
+    let mut unpinned_entry_runs = 0;
     let mut runs_with = 0;
     let mut excluded_runs = (0, 0);
     for run in runs {
+        if !run.knowledge_complete {
+            unknown_membership += 1;
+            continue;
+        }
         let with = run.used.contains(&entry.id);
         if excluded.contains(&run.task) {
             if with {
@@ -287,8 +243,31 @@ pub fn measure(entry: &Entry, runs: &[Run]) -> Measured {
             }
             continue;
         }
+        if with {
+            let pins: Vec<_> = run
+                .knowledge
+                .iter()
+                .filter(|pin| pin.id == entry.id)
+                .collect();
+            if pins.iter().any(|pin| {
+                pin.digest
+                    .as_ref()
+                    .is_some_and(|digest| digest != &entry.digest)
+                    || pin.version.is_some_and(|version| version != entry.version)
+            }) {
+                changed_entry_runs += 1;
+                continue;
+            }
+            if pins.iter().any(|pin| pin.digest.is_none()) {
+                unpinned_entry_runs += 1;
+            }
+        }
         let arm = arms
-            .entry((run.task.clone(), run.model.clone()))
+            .entry((
+                run.task.clone(),
+                run.model.clone(),
+                run.identity.comparison_digest.clone(),
+            ))
             .or_default();
         if with {
             runs_with += 1;
@@ -299,27 +278,44 @@ pub fn measure(entry: &Entry, runs: &[Run]) -> Measured {
     }
     let pairs: Vec<Pair> = arms
         .into_iter()
-        .filter(|(_, (with, without))| with.runs > 0 && without.runs > 0)
-        .map(|((task, model), (with, without))| Pair {
+        .filter(|(_, (with, without))| {
+            with.runs + with.unknown > 0 && without.runs + without.unknown > 0
+        })
+        .map(|((task, model, comparison_digest), (with, without))| Pair {
             side: side(&with, &without),
             task,
             model,
+            comparison_digest,
             with,
             without,
         })
         .collect();
     let favoring = pairs.iter().filter(|p| p.side == Side::Favors).count();
     let opposing = pairs.iter().filter(|p| p.side == Side::Opposes).count();
-    let verdict = if favoring >= MIN_FAVORING && opposing == 0 {
-        Verdict::Pass
-    } else if opposing > 0 && favoring == 0 {
-        Verdict::Fail
-    } else {
-        Verdict::Inconclusive
-    };
+    // Observed associations are retained, but neither promotion nor rejection
+    // follows from a historical cohort that was not assigned prospectively.
+    let verdict = Verdict::Inconclusive;
     Measured {
         id: entry.id.clone(),
         version: entry.version,
+        entry_digest: entry.digest.clone(),
+        intake_records: runs.len(),
+        intake_faults: runs
+            .iter()
+            .filter(|run| run.intake != IntakeStatus::Complete)
+            .count(),
+        unknown_membership,
+        changed_entry_runs,
+        unpinned_entry_runs,
+        noncomparable_runs: runs
+            .iter()
+            .filter(|run| run.identity.comparison_digest.is_none())
+            .count(),
+        prospective_unverified_runs: runs
+            .iter()
+            .filter(|run| run.identity.study_kind == StudyKind::ProspectiveUnverified)
+            .count(),
+        promotion_eligible: false,
         excluded_tasks: excluded.into_iter().collect(),
         runs_with,
         excluded_runs,
@@ -428,36 +424,73 @@ pub fn report_about(
     };
     let subject = arm(&mut artifacts, "entry shown");
     let baseline = arm(&mut artifacts, "entry not shown");
-    let paired: BTreeSet<(&str, &str)> = measured
+    let paired: BTreeSet<(&str, &str, Option<&str>)> = measured
         .pairs
         .iter()
-        .map(|p| (p.task.as_str(), p.model.as_str()))
+        .map(|p| {
+            (
+                p.task.as_str(),
+                p.model.as_str(),
+                p.comparison_digest.as_deref(),
+            )
+        })
         .collect();
-    let in_pair = |run: &&Run| paired.contains(&(run.task.as_str(), run.model.as_str()));
+    let in_pair = |run: &&Run| {
+        paired.contains(&(
+            run.task.as_str(),
+            run.model.as_str(),
+            run.identity.comparison_digest.as_deref(),
+        ))
+    };
     let mut entries = Vec::new();
-    let mut attempts: BTreeMap<(&str, &str), usize> = BTreeMap::new();
-    for run in runs.iter().filter(in_pair) {
-        let arm = if run.used.contains(&measured.id) {
-            "subject"
+    for run in runs {
+        let mut retained = serde_json::to_value(run).unwrap_or(Value::Null);
+        if let Some(bytes) = &run.summary_bytes {
+            let key = digest(bytes);
+            artifacts.insert(key.clone(), bytes.clone());
+            retained["summary_artifact"] = json!({
+                "digest": key, "size": bytes.len(), "media_type": "application/octet-stream",
+            });
+        }
+        retained["partition"] = json!(if measured.excluded_tasks.contains(&run.task) {
+            "source_excluded"
+        } else if !run.knowledge_complete {
+            "unassigned"
+        } else if run.knowledge.iter().any(|pin| pin.id == measured.id
+            && (pin
+                .digest
+                .as_ref()
+                .is_some_and(|digest| digest != &measured.entry_digest)
+                || pin
+                    .version
+                    .is_some_and(|version| version != measured.version)))
+        {
+            "different_entry_version"
+        } else if in_pair(&run) {
+            "paired_screening"
         } else {
-            "baseline"
+            "unpaired"
+        });
+        retained["arm"] = if run.knowledge_complete {
+            json!(if run.used.contains(&measured.id) {
+                "subject"
+            } else {
+                "baseline"
+            })
+        } else {
+            Value::Null
         };
-        let attempt = attempts.entry((arm, run.task.as_str())).or_default();
-        *attempt += 1;
-        entries.push(json!({
-            "arm": arm, "case": run.task, "attempt": *attempt,
-            "outcome": if run.reward.is_some() { "completed" } else { "unknown" },
-            "receipts": [], "artifacts": [],
-            "meta": {"run": run.name, "model": run.model, "reward": run.reward, "usd": run.usd},
-        }));
+        entries.push(retained);
     }
     let partition = put(
         &mut artifacts,
         "openagents.eval-partition.v1",
         &json!({
             "development": [],
-            "held_out": measured.pairs.iter().map(|p| &p.task).collect::<BTreeSet<_>>(),
+            "held_out": [],
+            "observational": measured.pairs.iter().map(|p| &p.task).collect::<BTreeSet<_>>(),
             "excluded": measured.excluded_tasks,
+            "note": "A task absent from written_from is not automatically a held-out task.",
         }),
     );
     let mut metric = |id: &str, unit: &str, direction: &str, operation: &str| {
@@ -467,13 +500,24 @@ pub fn report_about(
             &json!({"operation": operation}),
         );
         json!({"id": id, "unit": unit, "direction": direction,
-               "population": "paired tasks' runs with a known reward",
+               "population": "historical screening groups; unknown outcomes and costs retained separately",
                "aggregation": {"id": format!("{ns}:kb/{}", id.replace('_', "-")), "artifact": artifact},
                "missing": "report_separately"})
     };
     let metrics = json!([
         metric("pass_rate", "fraction", "higher", "passes divided by runs"),
-        metric("usd_per_run", "usd", "lower", "dollars divided by runs"),
+        metric(
+            "usd_per_run",
+            "usd",
+            "lower",
+            "complete component costs divided by runs; null if any outcome or cost is unknown"
+        ),
+        metric(
+            "known_lower_bound_usd",
+            "usd",
+            "lower",
+            "sum of known components including attempts with unknown outcomes; not comparable total cost"
+        ),
         metric(
             "favoring_tasks",
             "tasks",
@@ -518,7 +562,10 @@ pub fn report_about(
             let arm = pick(p);
             sum.runs += arm.runs;
             sum.passes += arm.passes;
-            sum.usd += arm.usd;
+            sum.known_lower_bound_usd += arm.known_lower_bound_usd;
+            sum.complete_cost_usd += arm.complete_cost_usd;
+            sum.cost_known_runs += arm.cost_known_runs;
+            sum.cost_unknown_runs += arm.cost_unknown_runs;
             sum.unknown += arm.unknown;
             sum
         })
@@ -529,10 +576,11 @@ pub fn report_about(
                "completed": arm.runs, "refused": 0, "failed": 0, "cancelled": 0,
                "unknown": arm.unknown, "excluded": excluded})
     };
-    let measurement = |arm: &str, metric: &str, value: f64, denominator: usize, unknown: usize| {
-        json!({"arm": arm, "metric": metric, "value": value, "denominator": denominator,
+    let measurement =
+        |arm: &str, metric: &str, value: Option<f64>, denominator: usize, unknown: usize| {
+            json!({"arm": arm, "metric": metric, "value": value, "denominator": denominator,
                "unknown_count": unknown, "uncertainty": null, "evidence": []})
-    };
+        };
     let pairs = measured.pairs.len();
     let limitations = put(
         &mut artifacts,
@@ -540,7 +588,10 @@ pub fn report_about(
         &json!([
             "Runs are observed, not assigned: a run is with the entry when retrieval kept it, so the two arms can differ in more than the entry.",
             "Entries shown in the same runs share the credit; this doesn't isolate one entry's effect.",
-            "Few runs per task; no confidence interval is claimed.",
+            "Wilson intervals describe recorded pass fractions, not a causal entry effect or correction for selection bias.",
+            "No historical cohort or self-declared prospective metadata authorizes admission or automatic demotion.",
+            "Missing entry or configuration pins do not establish equivalence; changed entry versions are excluded from this version's groups.",
+            "The intake artifact retains every attempted read, including unassigned and corrupt records; grouped metrics do not erase that denominator.",
         ]),
     );
     let started = runs
@@ -555,6 +606,23 @@ pub fn report_about(
         .map(|r| r.started)
         .max()
         .unwrap_or(0);
+    let pair_records: Vec<Value> = measured
+        .pairs
+        .iter()
+        .map(|pair| {
+            let mut value = json!(pair);
+            // NIP-XP v1 reads this total. Preserve its name without turning a
+            // lower bound or incomplete arm into a comparable cost.
+            value["with"]["usd"] =
+                json!(pair.with.usd_per_run().map(|_| pair.with.complete_cost_usd));
+            value["without"]["usd"] = json!(
+                pair.without
+                    .usd_per_run()
+                    .map(|_| pair.without.complete_cost_usd)
+            );
+            value
+        })
+        .collect();
     let report = json!({
         "v": "openagents.eval-report.v1",
         "requires": [],
@@ -565,24 +633,40 @@ pub fn report_about(
         "evaluator": evaluator.id,
         "started_at": started,
         "ended_at": ended,
-        "runs": put(&mut artifacts, "openagents.kb-runs.v1", &json!(entries)),
+        "runs": put(&mut artifacts, "openagents.kb-intake.v2", &json!(entries)),
         "coverage": {
             "subject": coverage(&with, measured.excluded_runs.0),
             "baseline": coverage(&without, measured.excluded_runs.1),
         },
         "measurements": [
-            measurement("subject", "pass_rate", with.rate(), with.runs, with.unknown),
-            measurement("baseline", "pass_rate", without.rate(), without.runs, without.unknown),
-            measurement("subject", "usd_per_run", with.usd_per_run(), with.runs, with.unknown),
-            measurement("baseline", "usd_per_run", without.usd_per_run(), without.runs, without.unknown),
-            measurement("comparison", "favoring_tasks", measured.favoring as f64, pairs, 0),
-            measurement("comparison", "opposing_tasks", measured.opposing as f64, pairs, 0),
+            measurement("subject", "pass_rate", (with.runs > 0).then(|| with.rate()), with.runs, with.unknown),
+            measurement("baseline", "pass_rate", (without.runs > 0).then(|| without.rate()), without.runs, without.unknown),
+            measurement("subject", "usd_per_run", with.usd_per_run(), with.runs, with.cost_unknown_runs + with.unknown),
+            measurement("subject", "known_lower_bound_usd", Some(with.known_lower_bound_usd), with.runs + with.unknown, with.cost_unknown_runs + with.unknown),
+            measurement("baseline", "usd_per_run", without.usd_per_run(), without.runs, without.cost_unknown_runs + without.unknown),
+            measurement("baseline", "known_lower_bound_usd", Some(without.known_lower_bound_usd), without.runs + without.unknown, without.cost_unknown_runs + without.unknown),
+            measurement("comparison", "favoring_tasks", Some(measured.favoring as f64), pairs, 0),
+            measurement("comparison", "opposing_tasks", Some(measured.opposing as f64), pairs, 0),
         ],
         "verdict": measured.verdict,
         "limitations": limitations,
         "meta": {"kb": {
-            "entry": measured.id, "version": measured.version,
-            "runs_with": measured.runs_with, "pairs": measured.pairs, "rule": RULE,
+            "entry": measured.id, "version": measured.version, "entry_digest": measured.entry_digest,
+            "evidence_revision": 2, "kind": "historical_screening", "promotion_eligible": false,
+            "denominators": {
+                "intake_records": measured.intake_records,
+                "intake_faults": measured.intake_faults,
+                "unknown_membership": measured.unknown_membership,
+                "changed_entry_runs": measured.changed_entry_runs,
+                "unpinned_entry_runs": measured.unpinned_entry_runs,
+                "noncomparable_runs": measured.noncomparable_runs,
+                "prospective_unverified_runs": measured.prospective_unverified_runs,
+            },
+            "pass_rate_uncertainty": {
+                "method": "Wilson 95% marginal intervals; descriptive only",
+                "subject": with.rate_interval(), "baseline": without.rate_interval(),
+            },
+            "runs_with": measured.runs_with, "pairs": pair_records, "rule": RULE,
         }},
     });
     (report, artifacts)
@@ -609,6 +693,18 @@ pub fn write(path: &Path, report: &Value, artifacts: &Artifacts) -> Result<Strin
         std::fs::write(store.join(name), bytes).map_err(|e| format!("can't write: {e}"))?;
     }
     let text = serde_json::to_string_pretty(report).map_err(|e| e.to_string())?;
+    match std::fs::read(path) {
+        Ok(previous) => {
+            let archive = dir.join("history");
+            std::fs::create_dir_all(&archive)
+                .map_err(|e| format!("can't create report history: {e}"))?;
+            let name = format!("{}.json", digest(&previous).trim_start_matches("sha256:"));
+            std::fs::write(archive.join(name), previous)
+                .map_err(|e| format!("can't retain previous report: {e}"))?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("can't read previous report for retention: {error}")),
+    }
     std::fs::write(path, &text).map_err(|e| format!("can't write {}: {e}", path.display()))?;
     Ok(text)
 }
@@ -681,36 +777,25 @@ pub struct Proposal {
     pub reason: String,
 }
 
-/// Demotes admitted entries shown often that never help, and names
-/// candidates the rule would admit.
-///
-/// An admitted entry is shown often when at least [`DEMOTE_MIN_RUNS`] runs
-/// had it, out of sample, and it never helps when it has at least one
-/// paired task and none favors it.
+/// Historical screening can inform an operator, but cannot automatically
+/// admit or demote an entry. Prospective admission needs a verified study.
 #[must_use]
-pub fn review(entries: &[Entry], runs: &[Run]) -> Vec<Proposal> {
-    let mut out = Vec::new();
-    for entry in entries {
-        let m = measure(entry, runs);
-        match entry.status {
-            crate::Status::Admitted
-                if m.runs_with >= DEMOTE_MIN_RUNS && !m.pairs.is_empty() && m.favoring == 0 =>
-            {
-                out.push(Proposal {
-                    id: entry.id.clone(),
-                    action: "demote",
-                    reason: format!("shown in {}; {}", count(m.runs_with, "run"), tally(&m)),
-                });
-            }
-            crate::Status::Candidate if m.verdict == Verdict::Pass => out.push(Proposal {
-                id: entry.id.clone(),
-                action: "admit",
-                reason: tally(&m),
-            }),
-            _ => {}
-        }
-    }
-    out
+pub fn review(_entries: &[Entry], _runs: &[Run]) -> Vec<Proposal> {
+    Vec::new()
+}
+
+/// Reads a report without allowing its historical verdict to authorize admission.
+///
+/// # Errors
+///
+/// A historical report or a self-declared prospective report is not a verified
+/// study. The historical reader has no prospective study verifier.
+pub fn recorded_for_admission(path: &Path, entry: &Entry) -> Result<(Verdict, String), String> {
+    let _ = recorded(path)?;
+    Err(format!(
+        "evidence for {} v{} cannot authorize admission: a verified prospective study is required; use operator review for historical evidence",
+        entry.id, entry.version
+    ))
 }
 
 #[cfg(test)]

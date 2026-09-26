@@ -669,6 +669,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-labor"
+version = "0.1.0"
+dependencies = [
+ "coder",
+ "coder-boundary",
+ "futures-util",
+ "libc",
+ "nostr",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
+name = "coder-mobile-probe"
+version = "0.1.0"
+dependencies = [
+ "android-activity",
+ "atif",
+ "jni",
+ "objc2 0.5.2",
+ "objc2-foundation 0.2.2",
+ "serde_json",
+]
+
+[[package]]
 name = "coder-one"
 version = "0.1.0"
 dependencies = [
@@ -2809,6 +2838,7 @@ dependencies = [
  "microluna",
  "nostr",
  "openrouter",
+ "secp256k1",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3104,6 +3134,7 @@ dependencies = [
 name = "microcoder"
 version = "0.1.0"
 dependencies = [
+ "atif",
  "coder",
  "futures-util",
  "jev",
@@ -3114,6 +3145,8 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "supervise",
+ "tempfile",
  "tokio",
  "tokio-tungstenite",
  "toml",

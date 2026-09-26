@@ -1110,6 +1110,36 @@ pub fn open_request(
     now: u64,
     window: Window,
 ) -> Result<Opened, Error> {
+    open_request_profile(event, worker, secret, now, window, false)
+}
+
+/// Decode an execute request requiring the NIP-LAB binding feature.
+///
+/// This decoder grants no execution authority. Its caller must authenticate and
+/// durably admit the exact order and signed LAB linkage before dispatch. Generic
+/// workers keep using [`open_request`], which refuses this required feature.
+pub fn open_labor_request(
+    event: &Event,
+    worker: &str,
+    secret: &SecretKey,
+    now: u64,
+    window: Window,
+) -> Result<Opened, Error> {
+    let opened = open_request_profile(event, worker, secret, now, window, true)?;
+    if !matches!(opened.body, Body::Execute(_)) {
+        return Err(malformed("labor intake requires an execute event"));
+    }
+    Ok(opened)
+}
+
+fn open_request_profile(
+    event: &Event,
+    worker: &str,
+    secret: &SecretKey,
+    now: u64,
+    window: Window,
+    labor: bool,
+) -> Result<Opened, Error> {
     if event.kind != REQUEST_KIND {
         return Err(Error::UnexpectedKind { kind: event.kind });
     }
@@ -1130,7 +1160,7 @@ pub fn open_request(
     check_credentials(&payload)?;
     let kind = payload.get("type").and_then(Value::as_str).unwrap_or("");
     let body = match kind {
-        "execute" => Body::Execute(Box::new(parse_execute(event, &payload)?)),
+        "execute" => Body::Execute(Box::new(parse_execute(event, &payload, labor)?)),
         "status" | "replay" | "cancel" => parse_control(event, &payload, kind)?,
         _ => {
             return Err(Error::Malformed {
@@ -1510,7 +1540,7 @@ fn root_envelope(execute: &Execute, controller: &str, now: u64) -> Result<Value,
     Ok(envelope)
 }
 
-fn parse_execute(event: &Event, payload: &Value) -> Result<Execute, Error> {
+fn parse_execute(event: &Event, payload: &Value, labor: bool) -> Result<Execute, Error> {
     let map = object(payload, "execute")?;
     require_keys(
         map,
@@ -1552,7 +1582,16 @@ fn parse_execute(event: &Event, payload: &Value) -> Result<Execute, Error> {
             "meta",
         ],
     )?;
-    parse_requires(map.get("requires").ok_or_else(|| malformed("requires"))?)?;
+    let requires = map.get("requires").ok_or_else(|| malformed("requires"))?;
+    if labor {
+        if requires != &json!(["openagents.labor-binding.v1"]) {
+            return Err(Error::UnsupportedFeature {
+                detail: "labor requires".into(),
+            });
+        }
+    } else {
+        parse_requires(requires)?;
+    }
     let deadline = map
         .get("deadline")
         .and_then(Value::as_u64)
@@ -1911,6 +1950,34 @@ mod tests {
             "deadline": DEADLINE,
             "retain_until": RETAIN
         })
+    }
+
+    #[test]
+    fn labor_requires_explicit_decoder_and_keeps_signed_fingerprint() {
+        let caller = keys(1);
+        let worker = keys(2);
+        let mut payload = body();
+        payload["requires"] = json!(["openagents.labor-binding.v1"]);
+        let event = request(&caller, &worker, &payload, 17);
+        assert!(
+            open_request(&event, &worker.pubkey, &worker.secret, NOW, Window::DEFAULT).is_err()
+        );
+        let opened =
+            open_labor_request(&event, &worker.pubkey, &worker.secret, NOW, Window::DEFAULT)
+                .unwrap();
+        let Body::Execute(execute) = opened.body else {
+            panic!("expected execute")
+        };
+        assert_eq!(execute.fingerprint, digest_value(&payload).unwrap());
+        assert_eq!(execute.payload, payload);
+        for required in [json!([]), json!(["openagents.labor-binding.v1", "unknown"])] {
+            payload["requires"] = required;
+            let event = request(&caller, &worker, &payload, 18);
+            assert!(
+                open_labor_request(&event, &worker.pubkey, &worker.secret, NOW, Window::DEFAULT)
+                    .is_err()
+            );
+        }
     }
 
     fn pins_of(payload: &Value) -> BTreeMap<String, Vec<u8>> {

@@ -235,6 +235,21 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// Whether these retained bytes match the exact file observation. A later
+    /// filesystem read alone cannot establish this identity.
+    #[must_use]
+    pub fn matches_file(&self, path: &Path, bytes: &[u8]) -> bool {
+        matches!(self.entries.get(path), Some(Entry::File { length, digest, .. })
+            if *length == bytes.len() as u64 && *digest == <[u8; 32]>::from(Sha256::digest(bytes)))
+    }
+
+    /// Whether this retained link target matches the exact observation.
+    #[must_use]
+    pub fn matches_link(&self, path: &Path, target: &Path) -> bool {
+        matches!(self.entries.get(path), Some(Entry::Link { target: observed, .. })
+            if observed == target.as_os_str())
+    }
+
     /// Observes a tree, bounded by [`Limits::default`].
     pub fn observe(root: &Path) -> Snapshot {
         Self::observe_within(root, Limits::default())

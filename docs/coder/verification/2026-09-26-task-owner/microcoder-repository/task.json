@@ -1,0 +1,91 @@
+{
+  "task_id": "fixture",
+  "revision": 4,
+  "intent": {
+    "title": "Repository fixture",
+    "prompt": "Write result.txt containing output.",
+    "workspace": {
+      "path": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpBhBa2b/checkout",
+      "source_revision": null
+    },
+    "configuration": {
+      "adapter": "microcoder-repository",
+      "model": "fixture-model"
+    }
+  },
+  "intent_digest": "sha256:7069e3189690d902f7ebbaa636901cb0b75e011f1f8d7be87c76bba3cb2411db",
+  "status": "finished",
+  "execution": "finished",
+  "checks": "not_run",
+  "cancellation_reason": null,
+  "run": {
+    "epoch": 1,
+    "admission": {
+      "grant": {
+        "schema": "openagents.coder.task-execution-grant.v1",
+        "task_id": "fixture",
+        "intent_digest": "sha256:7069e3189690d902f7ebbaa636901cb0b75e011f1f8d7be87c76bba3cb2411db",
+        "expected_revision": 1,
+        "expected_source_snapshot": null,
+        "program": "/bin/bash",
+        "arguments": [],
+        "write_workspace": true,
+        "wall_seconds": 8,
+        "stream_bytes": 4096,
+        "memory_bytes": 268435456,
+        "requirements": null,
+        "adapter_configuration": {
+          "schema": "openagents.microcoder.repository-config.v1",
+          "provider": "synthetic",
+          "model": "fixture-model",
+          "effort": "medium",
+          "generation_endpoint": "in-process",
+          "decision_endpoint": "in-process",
+          "decision_model": "fixture-judge",
+          "max_steps": 4,
+          "acceptance": false,
+          "route": "never",
+          "knowledge": "off",
+          "dollar_limit_micros": null,
+          "expected_controller_digest": null
+        }
+      },
+      "grant_digest": "sha256:afaaa1e652066b117111be57860775eb830e37357516ee09a2fb70f36bcf5eaf",
+      "grant_request": "{\"schema\":\"openagents.coder.task-execution-grant.v1\",\"task_id\":\"fixture\",\"intent_digest\":\"sha256:7069e3189690d902f7ebbaa636901cb0b75e011f1f8d7be87c76bba3cb2411db\",\"expected_revision\":1,\"expected_source_snapshot\":null,\"program\":\"/bin/bash\",\"arguments\":[],\"write_workspace\":true,\"wall_seconds\":8,\"stream_bytes\":4096,\"memory_bytes\":268435456,\"requirements\":null,\"adapter_configuration\":{\"schema\":\"openagents.microcoder.repository-config.v1\",\"provider\":\"synthetic\",\"model\":\"fixture-model\",\"effort\":\"medium\",\"generation_endpoint\":\"in-process\",\"decision_endpoint\":\"in-process\",\"decision_model\":\"fixture-judge\",\"max_steps\":4,\"acceptance\":false,\"route\":\"never\",\"knowledge\":\"off\",\"dollar_limit_micros\":null,\"expected_controller_digest\":null}}",
+      "workspace": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpBhBa2b/checkout",
+      "source_revision": "ff18eab328245ccdecdf722c905487f5824d90ab",
+      "source_snapshot": "9f00fab4eb9389629aba3a62e29df659f519382301398ee36936a7710e5aed9d",
+      "program_digest": "sha256:35536aea9733aa345b61134a98d00232380898e55b2ea2a07c497011f7dfc7a3",
+      "adapter": "microcoder-repository",
+      "network": "external_ip_denied_localhost_allowed",
+      "read_scope": "workspace_and_system",
+      "authority": "local_os_user",
+      "trace_file": "fixture.1.atif.jsonl",
+      "context": {
+        "schema": "openagents.coder.task-context.v1",
+        "task_revision": 1,
+        "prompt": "Write result.txt containing output.",
+        "instructions": [],
+        "suites": [],
+        "digest": "4c81267cc891bd36482ab37716568f394a2c590937b0ab1bb1be890a152415f2"
+      }
+    },
+    "effect_id": "fixture:1:command",
+    "result": {
+      "ending": "model_finished",
+      "exit_code": 0,
+      "stop_requested": false,
+      "group_clear": true,
+      "elapsed_ms": 639,
+      "trace_digest": "sha256:d30fe5a8749ea1360fc145676ab6cb86873406d26e11d47579d21d65cf121cbb",
+      "candidate_snapshot": "0ba9de7d9b4ebfce134f001dbea8b0eaf43d7ee32810a62cba3fbc4765acf485",
+      "artifact_file": "manifest-9d98ffe0fc37a744f9fc4563c3b74b64bb90c014985bbc4cf93f2f94e18a8512.json",
+      "artifact_digest": "sha256:9d98ffe0fc37a744f9fc4563c3b74b64bb90c014985bbc4cf93f2f94e18a8512",
+      "output_incomplete": false,
+      "cost_status": "unknown"
+    },
+    "process_id": null,
+    "recovery_reason": null,
+    "check_report": null
+  }
+}

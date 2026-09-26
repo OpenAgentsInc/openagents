@@ -1,0 +1,23 @@
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder)
+    Finished `test` profile [unoptimized] target(s) in 8.66s
+     Running tests/task_inbox.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/task_inbox-9e8593e849cb21fb)
+
+running 7 tests
+test malformed_and_misdirected_input_never_initializes_a_store ... ok
+test persisted_files_are_private ... ok
+test corruption_is_preserved_and_never_replaced_by_an_empty_store ... ok
+test concurrent_cancellations_require_one_current_revision ... ok
+test conflicting_retries_and_stale_cancels_do_not_change_state ... ok
+test a_request_and_cancel_survive_restart_and_retries_keep_the_original_receipts ... ok
+test simultaneous_processes_return_one_submission_receipt ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.44s
+
+     Running tests/task_owner.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/task_owner-a8f8597dba42977e)
+
+running 2 tests
+test detached_owner_finishes_after_the_starting_client_exits ... ok
+test killing_owner_retains_unknown_and_does_not_repeat_a_persisted_effect ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.35s
+

@@ -29,7 +29,7 @@ offer bounded coding work and receive Bitcoin for accepted results. The
 [Coder network plan](docs/coder/design/networked-coder-plan.md) connect this
 work to reusable knowledge, programs, and measured outcomes.
 
-The [OpenAgents protocol index](nips/openagents/README.md) contains 22 authored
+The [OpenAgents protocol index](nips/openagents/README.md) contains 23 authored
 NIPs plus shared contracts. Encrypted artifacts, free market negotiation, and
 labor-term validation now have Rust components. Durable fulfillment, buyer
 acceptance, and settlement remain unfinished. The
@@ -41,8 +41,10 @@ maps every contract to its implemented parts and remaining work.
 | Goal | Guide |
 | --- | --- |
 | Run the coding agent | [Install Coder](docs/coder/guides/install.md), [headless mode](docs/coder/guides/headless.md) |
-| Track suite implementation and next work | [Migration status and issue map](docs/coder/migration-status.md), [durable local task inbox](docs/coder/guides/tasks.md) |
+| Track suite implementation and next work | [Migration status and issue map](docs/coder/migration-status.md), [local task commands](docs/coder/guides/tasks.md), [execution owner and evidence](docs/coder/runtime/task-owner.md) |
 | Try the experimental knowledge-assisted loop | [Microcoder](docs/coder/guides/microcoder.md), [shared knowledge base](docs/coder/guides/knowledge-base.md) |
+| Inspect exact knowledge inputs and comparisons | [Private and immutable bundles](docs/coder/runtime/knowledge-bundles.md), [evidence integrity](docs/coder/runtime/knowledge-evidence.md), [frozen study bookkeeping](docs/coder/runtime/knowledge-studies.md) |
+| Review mobile platform feasibility | [Rust native prototype and measured limits](docs/coder/design/rust-mobile-feasibility.md) |
 | Compare saved agent transcripts | [Gym head-to-head replay](docs/gym/head-to-head.md) |
 | Inspect benchmark results | [Terminal-Bench status and evidence](docs/terminal-bench/README.md) |
 | Run a benchmark or controlled experiment | [Harness runbook](docs/terminal-bench/runbook.md), [experiment template](docs/terminal-bench/targeted-experiment-template.md) |
@@ -335,7 +337,7 @@ Current implementation status, September 26, 2026:
 | Private relay data | Author-only NIP-78 app state, author/recipient visibility for encrypted artifacts, and exclusion of private content from search. | Hosts still authorize the actions described by those artifacts. |
 | Block read-state snapshots | Configured, authenticated HTTP snapshots from the writer database, with signature/digest checks, replay protection, and refusal of incomplete cuts. | Client merge behavior and cross-subscription synchronization remain separate work. See [Block support](docs/protocol/block-nips.md). |
 | Other Block helpers | Persona adoption checks, thread-batch parsing and bounds, and federated-identity policy checks with a required external verifier. | Complete launchers, thread query service, JWT/JWKS integration, push delivery, and managed-agent lifecycle remain unfinished. |
-| Agent markets and labor | Authenticated free negotiation, exact terms and order identities, replay/equivocation checks, and labor-policy validation. | Durable reservations, execution linkage, delivery, independent checks, acceptance, disputes, and settlement are not yet a working market. |
+| Agent markets and labor | [Free labor host](docs/coder/runtime/free-labor.md): authenticated agreement, explicit bounded execution, retained delivery, separate buyer checks and acceptance, duplicate/restart recovery. | The local synthetic acceptance uses distinct keys under one operator. Paid settlement, resolver execution, nonzero rework, discovery, and production service remain unsupported. |
 | x402 Lightning | Offline BOLT11 signature, amount, payee, expiry, request-binding, and preimage validation for HTTP/MCP and the explicitly selected native Nostr profile. | Wallet authority, durable proof consumption, execution recovery, and live payment interoperability remain unfinished. |
 
 **Relay configuration changed:** incomplete NIP-PL push configuration now

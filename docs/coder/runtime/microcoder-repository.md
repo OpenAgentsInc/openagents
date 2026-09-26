@@ -1,0 +1,207 @@
+# Microcoder repository adapter
+
+`microcoder repository` runs the existing Microcoder loop against an explicitly
+admitted local repository through the [common task owner](task-owner.md). It
+uses the same task journal, execution lease, cancellation requests, boundary,
+ATIF transcript, retained candidate artifacts, and reconstructed views as the
+bounded-command host. It does not introduce a second task journal or a second
+agent algorithm. [Issue #9674](https://github.com/OpenAgentsInc/openagents/issues/9674)
+tracks the remaining adapter gates.
+
+This first profile is opt-in and uses the operator's Codex login for generation
+and the configured Jev client for judgments. Model-written acceptance tests,
+routing to a stronger model, knowledge retrieval, and the loop's experimental
+completion gates are disabled. Independent verification remains a separate
+`coder task check` operation under requirements pinned before execution.
+Neither a model's `finished` action nor a successful shell command supplies that
+verification.
+
+## Supported entry points
+
+The library entry points are
+[`coder::task::adapter::Host`](../../../crates/coder/src/task/adapter.rs) and
+[`microcoder::repository`](../../../crates/microcoder/src/repository.rs).
+The host owns admission, effects, and evidence. Microcoder supplies the existing
+`run::run` algorithm through a repository `Env` and recorded generator, judge,
+and observer adapters. A synthetic in-process provider exists for offline
+fixtures; the command-line entry point requires the Codex provider.
+
+The foreground command is:
+
+```sh
+microcoder repository --grant grant.json --store /absolute/private/task-store
+```
+
+Keep that process alive or supervise it explicitly with the operating system.
+`coder task start` currently launches the bounded-command adapter; it does not
+launch a detached Microcoder model host. A separate client can inspect the run:
+
+```sh
+coder task show TASK_ID --store /absolute/private/task-store
+coder task view TASK_ID --store /absolute/private/task-store --limit 100
+```
+
+Use the [task command format](../guides/tasks.md) to request cancellation or a
+correction at the current revision. On owner loss, `coder task recover` records
+unknown execution and does not replay an effect. Closing an observing client
+has no effect on the foreground host; losing the host itself does.
+
+## Prepare the request and grant
+
+1. Create an isolated Git worktree for writable execution. Its common Git
+   directory and the private task store must be outside the writable tree.
+   A read-only grant can use a normal checkout.
+2. Submit an inert task with requested adapter `microcoder-repository` and an
+   exact model identifier, such as `gpt-6-luna`. Include the actual user prompt
+   and canonical workspace path. A supplied source revision must be a full
+   commit ID.
+3. Read the accepted task's `intent_digest` and current `revision` with
+   `coder task show`. Create a separate operator grant using those values.
+4. Run the foreground entry point. A repeated grant cannot restart a finished
+   or unresolved attempt. Use a new task and a new explicit grant for new work.
+
+The following is a grant template, not an executable grant. Replace the task,
+intent, revision, program path, and decision configuration with the exact local
+values. `program` must be the canonical system `/bin/bash` or `/bin/sh` path;
+`arguments` must be empty. The host supplies each admitted command as one script
+argument without interpolating it into another command string.
+
+```json
+{
+  "schema": "openagents.coder.task-execution-grant.v1",
+  "task_id": "TASK_ID",
+  "intent_digest": "sha256:REPLACE_WITH_ACCEPTED_INTENT_DIGEST",
+  "expected_revision": 1,
+  "expected_source_snapshot": null,
+  "program": "/bin/bash",
+  "arguments": [],
+  "write_workspace": true,
+  "wall_seconds": 600,
+  "stream_bytes": 65536,
+  "memory_bytes": 536870912,
+  "requirements": null,
+  "adapter_configuration": {
+    "schema": "openagents.microcoder.repository-config.v1",
+    "provider": "codex",
+    "model": "gpt-6-luna",
+    "effort": "medium",
+    "generation_endpoint": "https://chatgpt.com/backend-api/codex",
+    "decision_endpoint": "https://REPLACE_WITH_CONFIGURED_DECISION_ORIGIN",
+    "decision_model": "REPLACE_WITH_CONFIGURED_DECISION_MODEL",
+    "max_steps": 16,
+    "acceptance": false,
+    "route": "never",
+    "knowledge": "off",
+    "dollar_limit_micros": null,
+    "expected_controller_digest": null
+  }
+}
+```
+
+The closed configuration rejects unknown fields and unsupported combinations.
+The admitted model must equal the task's requested model. Generation uses the
+fixed Codex transport endpoint. The decision endpoint and model must equal the
+actual Jev client configuration before admission. Endpoints cannot contain URL
+credentials, query strings, or fragments. Other benchmark providers remain
+available through the existing Terminal-Bench command; they are unsupported by
+this repository profile.
+
+The host records the controller executable's canonical path and SHA-256 digest
+in the admission transcript. Set `expected_controller_digest` to its exact
+`sha256:` value to require that executable before admission. This is a local
+identity check, not remote attestation. The requested effort is retained;
+provider confirmation of the effective effort and immutable model artifact
+identity is unavailable.
+
+`expected_source_snapshot`, when supplied, pins uncommitted source as well as
+tracked content. The host always records a complete observed source snapshot
+and rechecks it before the epoch's first effect. It also captures the user
+prompt and root and declared scoped instruction files through the common
+context builder. Repository context cannot widen the grant. Local OS-user
+access remains the trust boundary; an external writer is not globally fenced.
+
+## Effects, credentials, and cancellation
+
+The host records an epoch effect intent in the task journal before execution.
+Within that epoch, each model request, read, command, and result receives a
+sequence number and a fsynced ATIF record. Failure to retain an intent prevents
+its dispatch. Failure to retain a later observation stops further effects and
+leaves explicit incomplete or unknown evidence.
+
+Credentials stay in the controller. Shell children receive a cleared
+environment, an explicit system `PATH`, and private scratch for `HOME` and
+`TMPDIR`. Filesystem writes are restricted to the granted worktree and scratch;
+the task store and common Git directory stay protected. The existing boundary
+also permits its documented system read paths. On macOS its offline policy
+blocks external IP traffic but permits localhost; on Linux it uses an isolated
+network namespace. This profile does not claim those policies are identical.
+Controller model calls use the explicitly admitted endpoints.
+
+The owner checks cancellation before dispatch and while awaiting commands and
+model calls. A command's supervisor result records process-group cleanup.
+Cancelling an in-flight remote model request stops local waiting; it cannot
+prove that remote inference stopped or that no charge occurred. Those costs
+remain unknown. Corrections preserve old evidence and stop reuse of the previous
+context; a replacement run needs a new admission.
+
+File reads use descriptor-relative confinement and refuse traversal, symlinks,
+and hard-linked regular files. Missing files, denied reads, read errors, and
+truncation are distinct retained observations. A read error after dispatch
+marks observation incomplete and stops further effects.
+
+## Evidence and cost
+
+The trace retains full bounded command observations separately from the loop's
+short prompt projection. It retains exact generated request inputs, each Codex
+attempt's parsed native output items and token usage before action reduction,
+and the successful Jev response body. Failed or interrupted calls explicitly
+label unavailable response bodies or partial items. HTTP authentication headers
+and credential files are not recorded. Parsed native items are not a recording
+of every original network frame.
+
+The repository Jev wrapper disables SDK retries, so an unrecorded retry cannot
+turn a possibly charged failure into a known final cost. Codex retries retain
+each attempt separately. A successful Codex reply with no usable token counts
+has unknown cost, preserving any known lower bound and earlier uncertainty.
+Missing or mismatched served model identity refuses the generated action after
+retaining the response. Synthetic fixture calls can explicitly cost zero.
+
+The final task result reports billing as unknown. Individual calls can carry
+list-price estimates, measured tokens, known subtotals, and unknown reasons;
+these are not a hard dollar budget or a provider invoice. A non-null
+`dollar_limit_micros` is refused. Wall time and step limits remain enforceable
+host controls.
+
+Ordinary evidence is limited to 48 MiB with at most 8 MiB per serialized step.
+The final disposition has reserved space so a retention refusal can still be
+sealed within the common reader's 64 MiB limit. Model outputs are materialized
+by their existing transports before the evidence cap is applied; this is not a
+hard bound on controller memory. The grant's `memory_bytes` applies to
+supervised shell processes. Commands retain bounded streams and stop at the
+host's stdout cap. Retained candidate files use the common
+[artifact limits and exact-byte checks](task-owner.md#retained-candidate-artifacts).
+An omitted or incomplete record never becomes complete evidence.
+
+## Verification and remaining gates
+
+Offline fixtures exercise the unchanged loop with synthetic models and real
+local worktree boundaries, supervisor cancellation, ATIF reconstruction,
+retained output retrieval, unsafe-path refusal, evidence limits, unknown model
+cost, and native identity refusal. These tests do not establish real-model
+coding quality, paid-provider completion, Linux device behavior from a macOS
+run, or a Terminal-Bench result.
+
+This first slice leaves the following #9674 work explicit:
+
+- An admitted isolated-container adapter with pinned image, mounts, networking,
+  lifecycle, and observed descendant cleanup.
+- Detached model-host launch and recovery integration, without replay of
+  uncertain effects.
+- A fresh bounded live repository run with retained independent checks and
+  exact model/configuration evidence.
+- Hard bounds on model-response buffering, and additional provider adapters
+  with equivalent raw evidence and disclosure controls.
+
+The common task store supplies local authority and evidence. Remote Nostr
+admission, multi-device control, paid labor, and automatic candidate integration
+remain separate suite gates.

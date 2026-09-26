@@ -18,7 +18,13 @@ pub const COMMAND_SCHEMA: &str = "openagents.coder.task-command.v1";
 /// The local receipt format this implementation returns.
 pub const RECEIPT_SCHEMA: &str = "openagents.coder.task-receipt.v1";
 /// The persisted inbox format.
-pub const STORE_SCHEMA: &str = "openagents.coder.task-store.v1";
+pub const STORE_SCHEMA: &str = "openagents.coder.task-store.v2";
+
+pub mod adapter;
+pub mod artifact;
+pub mod checks;
+pub mod owner;
+pub mod view;
 /// The largest command, including JSON whitespace, in bytes.
 pub const MAX_COMMAND_BYTES: usize = 64 * 1024;
 /// The largest persisted inbox document, in bytes.
@@ -60,12 +66,13 @@ pub struct TaskIntent {
     pub configuration: RequestedConfiguration,
 }
 
-/// The only two transitions this inbox can perform.
+/// User requests accepted by the durable inbox.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
     Submit { intent: TaskIntent },
     Cancel { reason: String },
+    Correct { prompt: String, reason: String },
 }
 
 /// A command identity is global to this store, not scoped to a task or action.
@@ -85,20 +92,34 @@ pub struct Command {
 pub enum Status {
     Queued,
     Cancelled,
+    Running,
+    CancelRequested,
+    Finished,
+    Unknown,
 }
 
-/// This inbox never starts an executor.
+/// Observed execution state, independent of verification.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Execution {
     NotStarted,
+    Running,
+    Finished,
+    Failed,
+    Stopped,
+    Unknown,
 }
 
-/// This inbox never runs a check.
+/// Independent check state, separate from execution and integration.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Checks {
     NotRun,
+    Running,
+    Passed,
+    Failed,
+    Unavailable,
+    Disputed,
 }
 
 /// The current materialized task. Its intent is immutable after submission.
@@ -113,6 +134,36 @@ pub struct Task {
     pub execution: Execution,
     pub checks: Checks,
     pub cancellation_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub corrections: Vec<Correction>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run: Option<owner::Run>,
+}
+
+/// A retained replacement instruction. Earlier instructions and effects remain visible.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Correction {
+    pub revision: u64,
+    pub prompt: String,
+    pub reason: String,
+}
+
+impl Task {
+    /// Current user instructions; this does not change a running grant.
+    pub fn effective_prompt(&self) -> &str {
+        self.corrections
+            .last()
+            .map_or(&self.intent.prompt, |item| &item.prompt)
+    }
+
+    fn context_superseded(&self) -> bool {
+        self.run.as_ref().is_some_and(|run| {
+            self.corrections
+                .last()
+                .is_some_and(|item| item.revision > run.admission.context.task_revision)
+        })
+    }
 }
 
 /// The original result of an accepted command, returned again on exact retry.
@@ -144,6 +195,8 @@ struct Document {
     sequence: u64,
     tasks: BTreeMap<String, Task>,
     commands: Vec<Accepted>,
+    #[serde(default)]
+    host_events: Vec<owner::Record>,
 }
 
 /// A closed refusal classification. Messages do not echo command contents.
@@ -250,6 +303,16 @@ pub fn parse_command(bytes: &[u8]) -> Result<Command, Error> {
                 ));
             }
             validate_intent(intent)?;
+        }
+        Action::Correct { prompt, reason } => {
+            if command.expected_revision.is_none()
+                || !text(prompt, 32 * 1024, true)
+                || !text(reason, 2048, true)
+            {
+                return Err(Error::InvalidCommand(
+                    "correction requires a revision, prompt, and reason",
+                ));
+            }
         }
         Action::Cancel { reason } => {
             if command.expected_revision.is_none() || !text(reason, 2048, true) {
@@ -396,6 +459,7 @@ impl Store {
                             sequence: 0,
                             tasks: BTreeMap::new(),
                             commands: Vec::new(),
+                            host_events: Vec::new(),
                         },
                         true,
                     );
@@ -452,6 +516,7 @@ impl Store {
             return Err(Error::LimitExceeded);
         }
         let mut next = self.document.clone();
+        next.schema = STORE_SCHEMA.into();
         next.sequence += 1;
         let receipt = transition(
             &command,
@@ -571,18 +636,44 @@ fn transition(
                     execution: Execution::NotStarted,
                     checks: Checks::NotRun,
                     cancellation_reason: None,
+                    corrections: Vec::new(),
+                    run: None,
                 },
             );
+        }
+        Action::Correct { prompt, reason } => {
+            let task = tasks.get_mut(&command.task_id).ok_or(Error::NotFound)?;
+            if command.expected_revision != Some(task.revision) {
+                return Err(Error::RevisionMismatch);
+            }
+            task.revision += 1;
+            task.corrections.push(Correction {
+                revision: task.revision,
+                prompt: prompt.clone(),
+                reason: reason.clone(),
+            });
+            if task.run.is_some() {
+                // A correction never rewrites completed evidence or authorizes a replacement effect.
+                if task.checks != Checks::Running {
+                    task.checks = Checks::Disputed;
+                }
+                if task.status == Status::Running {
+                    task.status = Status::CancelRequested;
+                    task.cancellation_reason =
+                        Some("instructions corrected; current context superseded".into());
+                }
+            }
         }
         Action::Cancel { reason } => {
             let task = tasks.get_mut(&command.task_id).ok_or(Error::NotFound)?;
             if command.expected_revision != Some(task.revision) {
                 return Err(Error::RevisionMismatch);
             }
-            if task.status != Status::Queued {
-                return Err(Error::InvalidTransition);
-            }
-            task.status = Status::Cancelled;
+            task.status = match task.status {
+                Status::Queued => Status::Cancelled,
+                Status::Running => Status::CancelRequested,
+                _ => return Err(Error::InvalidTransition),
+            };
             task.revision += 1;
             task.cancellation_reason = Some(reason.clone());
         }
@@ -596,8 +687,8 @@ fn transition(
         sequence,
         revision: task.revision,
         status: task.status,
-        execution: Execution::NotStarted,
-        checks: Checks::NotRun,
+        execution: task.execution,
+        checks: task.checks,
     })
 }
 
@@ -616,20 +707,44 @@ fn read_document(path: &Path) -> Result<Document, Error> {
         .map_err(|_| Error::Corrupt("the task document is not strict JSON"))?;
     let document: Document = serde_json::from_value(value)
         .map_err(|_| Error::Corrupt("the task document does not match the closed store schema"))?;
-    if document.schema != STORE_SCHEMA {
+    if document.schema != STORE_SCHEMA && document.schema != "openagents.coder.task-store.v1" {
         return Err(Error::UnsupportedSchema);
     }
-    if document.tasks.len() > MAX_TASKS || document.commands.len() > MAX_COMMANDS {
+    if document.tasks.len() > MAX_TASKS
+        || document.commands.len() > MAX_COMMANDS
+        || document.host_events.len() > 8192
+    {
         return Err(Error::LimitExceeded);
     }
-    if document.sequence != document.commands.len() as u64 {
+    if document.schema == "openagents.coder.task-store.v1" && !document.host_events.is_empty() {
+        return Err(Error::Corrupt(
+            "a legacy inbox cannot contain execution events",
+        ));
+    }
+    if document.sequence != (document.commands.len() + document.host_events.len()) as u64 {
         return Err(Error::Corrupt(
             "the task document sequence does not match its command history",
         ));
     }
     let mut tasks = BTreeMap::new();
     let mut identities = BTreeSet::new();
-    for (index, accepted) in document.commands.iter().enumerate() {
+    let mut host_events = document.host_events.iter().peekable();
+    let mut commands = document.commands.iter().peekable();
+    for sequence in 1..=document.sequence {
+        if host_events
+            .peek()
+            .is_some_and(|record| record.sequence == sequence)
+        {
+            let record = host_events.next().expect("peeked record");
+            owner::transition(record, &mut tasks)?;
+            continue;
+        }
+        let accepted = commands
+            .next()
+            .ok_or(Error::Corrupt("the task journal has a sequence gap"))?;
+        if accepted.receipt.sequence != sequence {
+            return Err(Error::Corrupt("the task journal is out of order"));
+        }
         let command = parse_command(accepted.request.as_bytes())
             .map_err(|_| Error::Corrupt("the retained task command is invalid"))?;
         if !identities.insert(command.command_id.clone()) {
@@ -640,7 +755,7 @@ fn read_document(path: &Path) -> Result<Document, Error> {
         let expected = transition(
             &command,
             &digest_bytes(accepted.request.as_bytes()),
-            index as u64 + 1,
+            sequence,
             &mut tasks,
         )
         .map_err(|_| Error::Corrupt("the task command history contains an invalid transition"))?;
@@ -649,6 +764,9 @@ fn read_document(path: &Path) -> Result<Document, Error> {
                 "the task receipt does not match its command and transition",
             ));
         }
+    }
+    if commands.next().is_some() || host_events.next().is_some() {
+        return Err(Error::Corrupt("the task journal has extra records"));
     }
     if tasks != document.tasks {
         return Err(Error::Corrupt(

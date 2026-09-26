@@ -187,18 +187,36 @@ microcoder kb evidence
 microcoder kb evidence statistics.mmd-estimators --attach
 ```
 
-For one entry, a run is *with* the entry when its prompts showed it, and
-*without* it otherwise. Runs are paired by task and model, and a task the
-entry was written from never counts. A paired task is *for* the entry when
-the runs with it pass more often, or pass as often (at least once) at under
-90% of the cost per run. It's *against* the entry when they pass less often,
-or as often at over 110% of the cost.
+`kb evidence` performs **historical screening**. Retrieval decided which entries
+runs saw, so a difference between those runs does not isolate an entry's effect.
+The report's verdict is `inconclusive` for admission, even when its descriptive
+counts favor an entry. A declared prospective assignment in a summary is not a
+verified pre-run study.
+
+Every run directory remains in intake, including a missing, malformed, or
+unreadable summary. Original summary bytes are content-addressed artifacts.
+Absent or invalid model, Jev, embedding, or declared additional costs are
+unknown. Reports separate the known cost lower bound from a comparable total;
+an unknown outcome or cost prevents a cost-per-run comparison.
+
+A shown entry's digest must match the current entry's exact bytes. A different
+digest or explicit version is excluded from that version's groups; a missing
+pin remains visibly unpinned. Source tasks in `written_from` never count.
+Recorded complete configuration identities split groups by harness, model,
+effort, budget, environment, workload, context, partition, and source group.
+Legacy task/model matches remain labeled observations with incomplete identity.
+They do not become held-out data merely because they are absent from
+`written_from`.
 
 Each entry gets a report in the NIP-EVAL shape in
-`~/.openagents/knowledge/evidence/<id>.v<N>.json`, with the artifacts it
-references in `artifacts/`. `--attach` also adds a `measured` line to the
-entry's `evidence` list. Pass `--runs DIR` or `--evidence-dir DIR` to read or
-write elsewhere.
+`~/.openagents/knowledge/evidence/<id>.v<N>.json`, with its artifacts in
+`artifacts/`. Replacing a report retains the previous exact bytes in
+`history/<digest>.json`. `--attach` adds a `measured` line to the entry's
+`evidence` list; this changes its file digest and does not relabel earlier runs.
+Pass `--runs DIR` or `--evidence-dir DIR` to read or write elsewhere.
+
+See the [evidence intake contract](../runtime/knowledge-evidence.md) for the
+identity fields, denominators, and limitations.
 
 ### Measure another author's synced entry
 
@@ -223,42 +241,31 @@ your own entries. Reports go to
 
 ## Admit, withdraw, and review entries
 
-An entry is shown by default only once it's admitted. Admit it in one of two
-ways:
+An entry is shown by default only once it is admitted. After reviewing it,
+record the reviewer's name:
 
-- After you've read it:
+```sh
+microcoder kb admit numerics.kahan-summation --reviewer "Your Name"
+```
 
-  ```sh
-  microcoder kb admit numerics.kahan-summation --reviewer "Your Name"
-  ```
+`kb admit <id> --evidence` refuses historical reports, including retained legacy
+reports with a `pass` verdict. Automatic admission requires the prospective
+study verifier. The [frozen comparison runner](../runtime/knowledge-studies.md)
+retains a prospective cohort but does not authorize automatic admission.
+A refusal leaves the current entry and any waiting candidate version unchanged.
+An accepted operator review can promote the waiting version and records who
+admitted it and when.
 
-- When its recorded evidence passes the rule: at least 2 paired tasks for it
-  and none against it. Run `kb evidence` first.
-
-  ```sh
-  microcoder kb admit <id> --evidence
-  ```
-
-Either way, the entry's `evidence` list records who or what admitted it, and
-when. If a newer version waits in `versions/`, `kb admit` promotes it first.
-
-Mark a wrong entry as withdrawn. It's never shown again, and its file stays
+Mark a wrong entry as withdrawn. It is never shown again, and its file stays
 so earlier runs can be explained:
 
 ```sh
 microcoder kb withdraw <id> --reason "the formula has the wrong sign"
 ```
 
-List admitted entries shown often that never help, and candidates the rule
-would admit:
-
-```sh
-microcoder kb review
-microcoder kb review --apply    # demote the listed entries to candidate
-```
-
-An admitted entry is demoted when at least 5 runs showed it, out of sample,
-it has paired tasks, and none is for it.
+`kb review` and `kb review --apply` do not automatically demote or admit entries
+from historical correlations. Use the screening report to inform an explicit
+operator review; it does not establish that an entry caused success or harm.
 
 ## Run with or without the base
 
@@ -394,3 +401,16 @@ people outside OpenAgents: pick a quest from the
 [quest board](../../terminal-bench/quest-board.md), find the missing detail,
 publish it under your key, and let other operators' runs decide whether it
 counts.
+
+## Freeze snapshots and deliver private entries
+
+The [knowledge bundle guide](../runtime/knowledge-bundles.md) covers signed,
+immutable NIP-EXT snapshots and encrypted kind-`3188` delivery. A snapshot
+replaces ambient knowledge rather than silently combining it with the local
+base. Private inputs require explicit permission for their model recipients;
+the run retains the exact input manifest.
+
+Use the [frozen study runner](../runtime/knowledge-studies.md) for a separately
+reviewed fixed snapshot comparison. Its task, executable, provider, cost basis,
+configuration, and assignment pins are established before dispatch. This
+infrastructure does not replace an already registered experimental protocol.

@@ -371,6 +371,12 @@ impl fmt::Display for FaultKind {
 /// the file holds no session record and so is not a session log.
 pub fn read(path: &Path) -> io::Result<Recording> {
     let bytes = fs::read(path)?;
+    read_bytes(path, &bytes)
+}
+
+/// Parse an already captured log snapshot. The caller can bound input and use
+/// the same bytes for hashing and parsing without reopening a changing file.
+pub fn read_bytes(path: &Path, bytes: &[u8]) -> io::Result<Recording> {
     let mut opened: Option<(u64, Session)> = None;
     let mut steps: Vec<Step> = Vec::new();
     let mut closed: Option<(u64, String)> = None;

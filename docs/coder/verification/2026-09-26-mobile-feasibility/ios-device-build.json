@@ -1,0 +1,37 @@
+{
+  "schema": "openagents.mobile-probe-build.v1",
+  "platform": "ios-device",
+  "result": "built",
+  "error": null,
+  "device_validation": "not_run",
+  "synthetic": true,
+  "product": "/private/tmp/coder-mobile-probe/ios-device-final/CoderProbe.app",
+  "commands": [
+    {
+      "command": [
+        "cargo",
+        "rustc",
+        "--locked",
+        "-p",
+        "coder-mobile-probe",
+        "--bin",
+        "coder-mobile-probe",
+        "--target",
+        "aarch64-apple-ios"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.988,
+      "log": "command-1.log"
+    }
+  ],
+  "source_sha256": {
+    "crates/coder-mobile-probe/src/android.rs": "c29c6169784b9ecfd8a7e78e22fae9ef19c21c00902515fb13b4072472422f57",
+    "crates/coder-mobile-probe/src/android_keystore.rs": "3798583d53ab4eb86269a0908e4673ecb3f5706f196d18d8db40eb284a588941",
+    "crates/coder-mobile-probe/src/ios.rs": "68229eeec9cfe1a7a4b9dd442248f4d49fa6260c9f318ecaa8e1dbccf1a5ec57",
+    "crates/coder-mobile-probe/src/ios_keychain.rs": "9ba8e44b43298a4862f10388c6764b18b325b5368afda756f4b42fb47a701d35",
+    "crates/coder-mobile-probe/src/lib.rs": "f957087a1c858d6cb14a82ac58f4e538b2a2276b82395778ed4b7da6e32dc236",
+    "crates/coder-mobile-probe/src/main.rs": "c74a1e10ade0cf42fcb45b661437b99962385e430508bbe840b4f91ac9a11434",
+    "crates/coder-mobile-probe/Cargo.toml": "625a726a8f5ff37f597511bc596429d5842dc342cec9258026f23f03dc7f41c5",
+    "scripts/mobile-probe.py": "26bb91847e89c21fcdc3a53b4e48db1cd1c2029a71de90c9cd346b6e3648e631"
+  }
+}

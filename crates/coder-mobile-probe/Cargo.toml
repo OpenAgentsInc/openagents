@@ -1,0 +1,25 @@
+[package]
+name = "coder-mobile-probe"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "A synthetic, read-only probe of Rust native task views."
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+atif = { path = "../atif" }
+serde_json = "1"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "=0.5.2"
+objc2-foundation = { version = "=0.2.2", features = ["NSString", "NSGeometry"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+android-activity = { version = "=0.6.1", features = ["native-activity"] }
+jni = "=0.22.4"
+
+[lints]
+workspace = true

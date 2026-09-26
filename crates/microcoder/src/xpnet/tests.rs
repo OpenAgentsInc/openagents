@@ -351,7 +351,7 @@ async fn transfer(name: &str) -> Transfer {
         // In sample: written from this task.
         ("in-sample-1790000006", 1.0, shown),
         ("in-sample-1790000007", 0.0, &[][..]),
-        // Another version: counted in neither arm.
+        // Invalid digest: retained as unpinned and counted in neither arm.
         ("fix-git-1790000008", 0.0, other),
     ] {
         run_record(&runs, run, reward, used);
@@ -373,7 +373,7 @@ async fn transfer(name: &str) -> Transfer {
 }
 
 #[tokio::test]
-async fn a_runner_completes_a_quest_with_another_authors_synced_entry() {
+async fn historical_transfer_evidence_is_publishable_but_cannot_complete_a_quest() {
     let t = transfer("xp-transfer").await;
     let author = npub(&t.author);
     assert_eq!(
@@ -394,8 +394,10 @@ async fn a_runner_completes_a_quest_with_another_authors_synced_entry() {
         kb::qualified_id(&t.author, "git.reflog-recovery")
     );
     let report: Value = serde_json::from_str(&parsed.report_bytes).unwrap();
-    assert_eq!(report["verdict"], "pass");
-    assert_eq!(report["meta"]["kb"]["other_version_runs"], 1);
+    assert_eq!(report["verdict"], "inconclusive");
+    assert_eq!(report["meta"]["kb"]["promotion_eligible"], false);
+    assert_eq!(report["meta"]["kb"]["other_version_runs"], 0);
+    assert_eq!(report["meta"]["kb"]["unpinned_runs"], 1);
     let tasks: Vec<&str> = report["meta"]["kb"]["pairs"]
         .as_array()
         .unwrap()
@@ -404,16 +406,16 @@ async fn a_runner_completes_a_quest_with_another_authors_synced_entry() {
         .collect();
     assert_eq!(tasks, ["fix-git", "other-task"]);
 
-    // The referee's quest on fix-git accepts it.
+    // Publishing attributable historical evidence does not establish transfer.
     t.publish_quest("quest.json", "tb4.fix-git.beat-reference", "fix-git")
         .await;
     assert_eq!(
         t.award("tb4.fix-git.beat-reference@1", &evidence.id).await,
-        0
+        1
     );
-    assert_eq!(count(&t.store, xp::AWARD_KIND), 1);
+    assert_eq!(count(&t.store, xp::AWARD_KIND), 0);
 
-    // The ledger credits the author and the runner.
+    // The ledger credits neither party without accepted evidence.
     let referee = remote::own_pubkey(&t.referee_key).unwrap();
     let trust = XpTrust {
         referees: BTreeSet::from([referee]),
@@ -426,8 +428,8 @@ async fn a_runner_completes_a_quest_with_another_authors_synced_entry() {
         0
     );
     let derived = derive_from(&t.store, &trust);
-    assert_eq!(derived.totals.get(&t.author), Some(&6));
-    assert_eq!(derived.totals.get(&t.runner), Some(&4));
+    assert_eq!(derived.totals.get(&t.author), None);
+    assert_eq!(derived.totals.get(&t.runner), None);
     assert!(derived.refused.is_empty(), "{:?}", derived.refused);
 }
 
@@ -471,8 +473,8 @@ async fn transfer_evidence_is_refused_for_self_in_sample_and_other_bytes() {
         1
     );
 
-    // The runner's evidence is accepted on fix-git, but not on the task the
-    // entry was written from.
+    // The runner's evidence also cannot count on the task the entry was
+    // written from.
     let author = npub(&t.author);
     assert_eq!(
         crate::kbnet::publish_evidence(&t.runner_evidence(&t.url, &author), &t.runner_key)
@@ -524,7 +526,7 @@ async fn transfer_evidence_is_refused_for_self_in_sample_and_other_bytes() {
         1
     );
     assert_eq!(count(&t.store, xp::AWARD_KIND), 0);
-    assert_eq!(t.award("tb4.fix-git.beat-reference@1", &evidence).await, 0);
+    assert_eq!(t.award("tb4.fix-git.beat-reference@1", &evidence).await, 1);
 }
 
 fn derive_from(store: &Store, trust: &XpTrust) -> Ledger {

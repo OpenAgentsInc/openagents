@@ -1,15 +1,16 @@
-# Durable local task inbox
+# Durable local tasks
 
 `coder task` records requests on local disk so you can inspect or cancel them
 after the submitting process exits. It is the first implementation slice of
 the [suite migration](../migration-status.md), tracked by
 [#9672](https://github.com/OpenAgentsInc/openagents/issues/9672).
 
-**This is a queue, not a task runner.** Submitting a request runs no agent,
-shell command, network request, or paid operation. The existing terminal and
-`coder -p` still run conversations through their existing shared turn path;
-they do not consume this inbox. Durable execution ownership is
-[#9673](https://github.com/OpenAgentsInc/openagents/issues/9673).
+Submission runs no agent, shell command, network request, or paid operation.
+An explicit execution grant can run the `bounded-command` adapter through a
+detached owner. See [task ownership and evidence](../runtime/task-owner.md) for
+`start`, `execute`, `recover`, and paged `view` reads, admission requirements,
+cancellation, and recovery limits. The terminal and `coder -p` retain their
+existing shared turn; they do not automatically consume the inbox.
 
 ## Try the synthetic fixture
 
@@ -52,11 +53,10 @@ The workspace path, optional source revision, and requested configuration
 are **inert intent**. Queue admission does not validate that a repository
 exists, the requested adapter is installed, a model is supported, the source
 is current, or the caller has permission or budget to execute it. Those
-checks belong to the future execution admission. A stored request cannot
+checks belong to execution admission. A stored request cannot
 grant authority to itself.
 
-Tasks retain separate queue and execution status. A queued or cancelled
-request has not started execution and has not been checked. It has no
+Tasks retain separate queue and execution status. A request cancelled before admission has not started execution and has not been checked. It has no
 successful result, verified acceptance, integration result, token cost, or
 trace to report. Do not interpret missing cost as zero-cost completed work.
 
@@ -71,10 +71,11 @@ describes that command's original transition; use `show` for the task's
 current state.
 
 Read `show` before making a new cancellation and copy its revision into
-`expected_revision`. Cancellation requires a queued task and its current
+`expected_revision`. Cancellation requires a queued or running task and its current
 revision. A new command with a stale revision refuses; retrying the exact
 successful cancellation still returns its original receipt. Cancellation
-does not signal an executor or assert that a process has stopped.
+of running work records a request that the owner observes. It does not assert
+that a process has stopped; inspect the supervisor result.
 
 The CLI checks that the file's action matches the selected subcommand before
 opening the store. A cancel command passed to `submit` never cancels a task.
@@ -121,8 +122,9 @@ and owner-side admission. A future transport must map those identities
 explicitly. Exact-byte local retry behavior is deliberately stated apart
 from NIP-SESS canonical JSON fingerprints.
 
-The next gate adds durable ownership and conservative effect recovery
-before dispatch. Then the host can integrate Microcoder and the existing
-turn machinery, reconstruct ATIF-backed views, and add independent checks.
+The [local owner](../runtime/task-owner.md) now retains execution admission,
+effects, ATIF views, artifacts, corrections, and independent checks. The
+[Microcoder repository adapter](../runtime/microcoder-repository.md) runs its
+existing loop through that host with an explicit foreground model grant.
 The [migration tracker](../migration-status.md) separates each gate from
 mobile, desktop, CoderOS, and labor delivery.

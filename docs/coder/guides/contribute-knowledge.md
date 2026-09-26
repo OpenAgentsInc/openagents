@@ -137,7 +137,7 @@ else's runs show it helped:
    microcoder kb sync --relay wss://relay.openagents.com --author <npub>
    ```
 
-2. The runner runs the quest's task with the base on and off, the same
+2. For exploratory screening, the runner runs the quest's task with the base on and off, the same
    number of times, with the same model and caps:
 
    ```sh
@@ -166,15 +166,24 @@ else's runs show it helped:
    doesn't hold the synced version, when the author withdrew it, and when
    `--author` is the runner's own key.
 
-5. The runner sends the evidence event ID to the referee, who checks it
-   against the quest's rule with `microcoder xp award` and, when it passes,
-   publishes the award. The referee can also find the evidence on the relay
-   from the entry's event ID.
+5. Keep the evidence event ID for review. The current historical reader
+   always reports `inconclusive`, so `microcoder xp award` refuses this
+   report. Equal run counts and matching flags do not prove prospective
+   assignment, complete outcomes, or a causal benefit. Quest acceptance
+   needs a separately verified prospective report under its pinned rule;
+   the current reader does not produce one. The
+   [study guide](../runtime/knowledge-studies.md) describes the available
+   fixed-study infrastructure and its remaining limits.
 
 Runs that showed a different version of the entry, or another author's
 entry with the same ID, count in neither arm. If the author publishes a new
 version while you're running, sync again and run again: evidence is about
 one exact version.
+
+Reports retain excluded versions, missing pins, and failed intake in their
+denominators and evidence artifacts. An unknown required cost stays unknown;
+the known lower bound cannot satisfy a quest's cost bar. Publishing evidence
+preserves an attributable observation and does not award XP.
 
 ## How XP is awarded
 

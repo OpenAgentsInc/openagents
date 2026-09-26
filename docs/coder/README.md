@@ -31,9 +31,22 @@ bring that work into Verse as quests and XP. The
 [showcase](beat-fable-showcase.md) is its public write-up: where Microcoder
 beats Fable 5.1 low, with the Gym's labels, and how to join.
 
-The [local task inbox](guides/tasks.md) records, inspects, and cancels queued
-requests across process restarts. It is the first task-contract slice;
-execution ownership and cross-device control remain in the tracker.
+The [local task commands](guides/tasks.md) retain requests across process
+restarts. The [execution owner](runtime/task-owner.md) adds explicit bounded
+commands, detached execution, conservative recovery, paged ATIF evidence,
+retained candidate artifacts, and independently checked completion. This local
+OS-user path does not establish cross-device control. The
+[repository Microcoder adapter](runtime/microcoder-repository.md) defines its
+separately admitted model support. The [free labor host](runtime/free-labor.md)
+uses the same execution boundary for a recoverable buyer/provider order.
+
+The [Rust mobile feasibility decision](design/rust-mobile-feasibility.md)
+selects shared evidence state with native text controls and Rust-rendered HTML,
+based on simulator, emulator, and browser observations. Device release gates
+remain explicit. [Knowledge bundles](runtime/knowledge-bundles.md),
+[evidence integrity](runtime/knowledge-evidence.md), and
+[prospective study bookkeeping](runtime/knowledge-studies.md) distinguish
+permissioned reusable inputs from measured improvements.
 
 The [teardown integration plan](design/teardown-nostr-integration.md) brings
 81 archived research documents into that direction. It links the complete

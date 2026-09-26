@@ -205,9 +205,12 @@ uses, and marks which are implemented and which are only specified.
   the exit codes. `coder task` is the opt-in durable local inbox in
   `coder::task`: submit, inspect, list, and cancel queued requests with
   exact-byte command retries and private atomic storage. It runs no agent
-  and grants no execution authority; durable task ownership remains a
-  separate migration step. Read `docs/coder/guides/tasks.md` before changing
-  its schema, persistence, or command semantics, and use
+  and grants no execution authority. `task::owner` admits explicit bounded
+  commands through the shared supervisor and filesystem boundary, records
+  uncertain effects without replaying them, and binds paged ATIF views,
+  retained artifacts, corrections, and independent checks to one task.
+  Read `docs/coder/runtime/task-owner.md` and `docs/coder/guides/tasks.md`
+  before changing its schema, persistence, or command semantics, and use
   `docs/coder/migration-status.md` for suite implementation status.
   Every conversation records itself to
   `~/.openagents/traces/` as it runs; `docs/coder/runtime/traces.md` covers the
@@ -259,6 +262,15 @@ uses, and marks which are implemented and which are only specified.
   adapter's canonical path and contents in a store outside any checkout.
   Probes run bounded through `supervise`, and a probe that cannot answer
   cleanly is `unknown`, never `present`.
+- `crates/coder-labor` — the free-only labor host: pinned buyer/provider
+  agreement, separately granted bounded execution, retained delivery and buyer
+  verification, explicit acceptance, and conservative restart recovery. Read
+  `docs/coder/runtime/free-labor.md`; paid settlement, resolver execution, and
+  nonzero rework are unsupported.
+- `crates/coder-mobile-probe` — the Rust-first platform feasibility prototype:
+  shared synthetic task evidence, native iOS/Android controls, and Rust-rendered
+  HTML. Read `docs/coder/design/rust-mobile-feasibility.md`. Simulator and
+  emulator observations do not establish physical-device release acceptance.
 - `crates/coder-boundary` — a filesystem write boundary (`sandbox-exec` on
   macOS, `bwrap` on Linux) and independent
   Unix workspace snapshots. Unsupported enforcement is refused; incomplete

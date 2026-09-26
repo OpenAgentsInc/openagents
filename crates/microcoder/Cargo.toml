@@ -11,6 +11,7 @@ name = "microcoder"
 path = "src/main.rs"
 
 [dependencies]
+atif = { path = "../atif" }
 coder = { path = "../coder" }
 futures-util = "0.3"
 jev = { path = "../jev" }
@@ -22,10 +23,12 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.9"
+supervise = { path = "../supervise" }
 tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "signal"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
+tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "signal", "test-util", "net"] }
 
 [lints]

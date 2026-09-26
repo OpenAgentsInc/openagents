@@ -1,0 +1,12 @@
+{"event":"launch","at_ms":1790431117870,"synthetic":true}
+{"event":"keychain_probe","synthetic":true,"initial_delete_status":-34018,"add_status":-34018,"read_status":-34018,"bytes_equal":false,"delete_status":-34018,"read_after_delete_status":-34018,"passed":false,"locked_device_test":"not_run","at_ms":1790431117872}
+{"event":"active","at_ms":1790431117956,"synthetic":true}
+{"event":"launch","at_ms":1790431306055,"synthetic":true}
+{"event":"launch","at_ms":1790431362575,"synthetic":true}
+{"event":"launch","at_ms":1790431399956,"synthetic":true}
+{"event":"keychain_probe","synthetic":true,"initial_delete_status":0,"add_status":0,"read_status":0,"bytes_equal":true,"delete_status":0,"read_after_delete_status":-25300,"passed":true,"locked_device_test":"not_run","at_ms":1790431399962}
+{"event":"active","at_ms":1790431400031,"synthetic":true}
+{"event":"background","at_ms":1790431658015,"synthetic":true}
+{"event":"launch","at_ms":1790431659515,"synthetic":true}
+{"event":"keychain_probe","synthetic":true,"initial_delete_status":-25300,"add_status":0,"read_status":0,"bytes_equal":true,"delete_status":0,"read_after_delete_status":-25300,"passed":true,"locked_device_test":"not_run","at_ms":1790431659519}
+{"event":"active","at_ms":1790431659591,"synthetic":true}

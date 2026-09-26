@@ -15,6 +15,7 @@ use microcoder::{MODEL, STRONG_MODEL, tbench};
 const USAGE: &str = "usage: microcoder <terminal-bench-task> [options]
        microcoder kb <command> ... (microcoder kb --help lists the commands)
        microcoder xp <command> ... (microcoder xp --help lists the commands)
+       microcoder repository --grant FILE [--store DIRECTORY]
 
 Runs Microcoder on a Terminal-Bench 4 task and streams every step: Jev's
 judgments, the model's rationale and commands, each command's output, and
@@ -73,6 +74,13 @@ Options:
                      task's statement and files alone; those that fail on the
                      untouched workspace are frozen with the model's tests
   --oracle-steps N   steps the oracle session may take (default 8)
+  --kb-snapshot FILE  use only a verified immutable EXT bundle (--kb candidates)
+  --kb-private FILE   use only a private 3188 bundle (--kb candidates)
+  --kb-private-grant FILE  exact model-disclosure permission; embeddings disabled
+  --kb-key-file FILE  existing private recipient key (default knowledge-key)
+  --kb-cache FILE     separate embedding cache for this run
+  --run-dir PATH     create a new exact output directory; existing paths refuse
+  --container-name NAME  assign an explicit container identity for retained studies
   --keep             leave the container running afterward
   --check-grading    run the task's reference solution instead of the loop,
                      then grade it: a check that grading works, at no model cost
@@ -87,8 +95,10 @@ Exit codes: 0 the tests passed, 1 they didn't, 2 the run couldn't start.";
 
 struct Options {
     task: String,
+    run_dir: Option<std::path::PathBuf>,
+    container_name: Option<String>,
     model: String,
-    /// `codex` or `openrouter`.
+    /// `codex`, `openrouter`, `door`, or `vertex`.
     provider: String,
     strong_model: String,
     effort: Option<String>,
@@ -102,13 +112,19 @@ struct Options {
     kb: String,
     /// Which synced entries the base includes.
     kb_trust: knowledge::remote::TrustConfig,
-    /// Rank knowledge entries by words alone.
+    kb_snapshot: Option<std::path::PathBuf>,
+    kb_private: Option<std::path::PathBuf>,
+    kb_private_grant: Option<std::path::PathBuf>,
+    kb_key_file: Option<std::path::PathBuf>,
+    kb_cache: Option<std::path::PathBuf>,
     kb_lexical: bool,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
     let mut options = Options {
         task: String::new(),
+        run_dir: None,
+        container_name: None,
         model: MODEL.to_string(),
         provider: "codex".to_string(),
         strong_model: STRONG_MODEL.to_string(),
@@ -119,6 +135,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
         keep: false,
         check_grading: false,
         kb: "on".to_string(),
+        kb_snapshot: None,
+        kb_private: None,
+        kb_private_grant: None,
+        kb_key_file: None,
+        kb_cache: None,
         kb_lexical: false,
         kb_trust: match knowledge::remote::trust_file() {
             Some(path) => knowledge::remote::TrustConfig::read(&path)?,
@@ -133,6 +154,19 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 .map_err(|_| format!("{arg} wants a number, not {text}"))
         };
         match arg.as_str() {
+            "--run-dir" => options.run_dir = Some(value()?.into()),
+            "--container-name" => {
+                let name = value()?;
+                if name.is_empty()
+                    || name.len() > 200
+                    || !name
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+                {
+                    return Err("--container-name requires a bounded alphanumeric name".into());
+                }
+                options.container_name = Some(name);
+            }
             "--model" => options.model = value()?,
             "--provider" => {
                 options.provider = value()?;
@@ -174,6 +208,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     ));
                 }
             }
+            "--kb-snapshot" => options.kb_snapshot = Some(value()?.into()),
+            "--kb-private" => options.kb_private = Some(value()?.into()),
+            "--kb-private-grant" => options.kb_private_grant = Some(value()?.into()),
+            "--kb-key-file" => options.kb_key_file = Some(value()?.into()),
+            "--kb-cache" => options.kb_cache = Some(value()?.into()),
             "--kb-lexical" => options.kb_lexical = true,
             "--kb-trust" => {
                 let mode = value()?;
@@ -223,8 +262,26 @@ fn jev_client() -> Result<jev::Client, String> {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args
+        .first()
+        .is_some_and(|argument| argument == "repository")
+    {
+        return ExitCode::from(repository_cli(&args[1..]).await);
+    }
     if args.first().is_some_and(|a| a == "kb") {
-        let network = ["publish", "sync", "publish-evidence"];
+        if args.get(1).is_some_and(|a| a == "study") {
+            return ExitCode::from(microcoder::kbstudy::main(&args[2..]).await);
+        }
+        let network = [
+            "publish",
+            "sync",
+            "publish-evidence",
+            "snapshot-create",
+            "snapshot-check",
+            "private-seal",
+            "private-show",
+            "private-grant",
+        ];
         if args.get(1).is_some_and(|c| network.contains(&c.as_str())) {
             return ExitCode::from(microcoder::kbnet::main(&args[1..]).await);
         }
@@ -255,82 +312,139 @@ async fn go(options: Options) -> Result<u8, String> {
         .network
         .clone()
         .unwrap_or_else(|| task.agent_network.docker().to_string());
-    let make = |model: &str| -> Result<AnyGenerator, String> {
+    let make = |model: &str| -> Result<(AnyGenerator, String), String> {
         if options.provider == "openrouter" {
             let slug = if model.contains('/') {
                 model.to_string()
             } else {
                 format!("openai/{model}")
             };
-            return Ok(AnyGenerator::OpenRouter(OpenRouterGenerator {
-                client: openrouter::Client::new(
-                    openrouter::Config::from_env().map_err(|e| e.to_string())?,
-                )
-                .map_err(|e| e.to_string())?,
-                model: slug,
-                effort: options.effort.clone(),
-            }));
+            let config = openrouter::Config::from_env().map_err(|e| e.to_string())?;
+            let recipient = format!("openrouter:{}#{slug}", config.base_url);
+            return Ok((
+                AnyGenerator::OpenRouter(OpenRouterGenerator {
+                    client: openrouter::Client::new(config).map_err(|e| e.to_string())?,
+                    model: slug,
+                    effort: options.effort.clone(),
+                }),
+                recipient,
+            ));
         }
         if options.provider == "vertex" {
-            return Ok(AnyGenerator::Vertex(
-                microcoder::vertex::VertexGenerator::from_env(model, options.effort.clone())?,
-            ));
+            let generator =
+                microcoder::vertex::VertexGenerator::from_env(model, options.effort.clone())?;
+            let recipient = format!("vertex:{}#{}", generator.base_url, generator.model);
+            return Ok((AnyGenerator::Vertex(generator), recipient));
         }
         if options.provider == "door" {
             let session = format!("microcoder-{}-{}", options.task, std::process::id());
-            return Ok(AnyGenerator::Door(microcoder::door::DoorGenerator::new(
-                microcoder::door::DoorTransport::from_env()?,
-                model,
-                options.effort.clone(),
-                &session,
-            )));
+            if options.kb_private.is_some() {
+                return Err("private knowledge delivery through the door provider requires an exact endpoint binding and is not supported by this profile".into());
+            }
+            return Ok((
+                AnyGenerator::Door(microcoder::door::DoorGenerator::new(
+                    microcoder::door::DoorTransport::from_env()?,
+                    model,
+                    options.effort.clone(),
+                    &session,
+                )),
+                format!("door:unused-for-public-knowledge#{model}"),
+            ));
         }
         let login = microluna::codex::Login::default_path()
             .ok_or("no Codex login: can't find ~/.codex/auth.json; run `codex login`")?;
         let session = format!("microcoder-{}-{}", options.task, std::process::id());
         let transport = microluna::codex::CodexTransport::new(login, &session)
             .map_err(|e| format!("the Codex login can't be used: {e}; run `codex login`"))?;
-        Ok(AnyGenerator::Codex(CodexGenerator {
-            transport,
-            model: model.rsplit('/').next().unwrap_or(model).to_string(),
-            effort: options.effort.clone(),
-            cache_key: session,
-        }))
+        let actual_model = model.rsplit('/').next().unwrap_or(model).to_string();
+        let recipient = format!("codex:{}#{actual_model}", microluna::codex::BASE_URL);
+        Ok((
+            AnyGenerator::Codex(CodexGenerator {
+                transport,
+                model: actual_model,
+                effort: options.effort.clone(),
+                cache_key: session,
+            }),
+            recipient,
+        ))
     };
-    let generator = make(&options.model)?;
-    let strong = make(&options.strong_model)?;
+    let (generator, generation_recipient) = make(&options.model)?;
+    let (strong, strong_recipient) = make(&options.strong_model)?;
     let set = question_set();
     let route = route_set();
     let judge = JevJudge {
         client: jev_client()?,
     };
+    let mut recipients = std::collections::BTreeSet::from([
+        generation_recipient,
+        format!(
+            "typesafe:{}#{}",
+            judge.client.base_url(),
+            judge.client.default_model()
+        ),
+    ]);
+    if !matches!(options.limits.route, Route::Never) {
+        recipients.insert(strong_recipient);
+    }
+    let mut pinned = microcoder::kbinput::load(
+        options.kb_snapshot.as_deref(),
+        options.kb_private.as_deref(),
+        options.kb_private_grant.as_deref(),
+        options.kb_key_file.as_deref(),
+        &recipients,
+        &options.kb,
+    )?;
+    let private_input = pinned.as_ref().is_some_and(|input| input.private);
+    let knowledge_source = pinned.as_ref().map(|input| input.provenance.clone());
+    let retained_knowledge = pinned.as_ref().map(|input| input.retained.clone());
     let mut loaded = knowledge::remote::Loaded::default();
     let retriever = if options.kb == "off" {
         None
     } else {
-        let dir = knowledge::default_dir();
-        let own = knowledge::remote::key_file().and_then(|p| knowledge::remote::own_pubkey(&p));
-        let (base, found) = knowledge::remote::load(
-            &dir,
-            knowledge::remote::default_dir().as_deref(),
-            &options.kb_trust,
-            own.as_deref(),
-            options.kb == "candidates",
-        )?;
-        loaded = found;
-        let embedder = if options.kb_lexical {
-            Err("--kb-lexical was given".to_string())
+        let base = if let Some(input) = pinned.take() {
+            input.base
         } else {
-            knowledge::search::Embedder::from_env()
-                .map_err(|error| format!("no embeddings key ({error})"))
+            let dir = knowledge::default_dir();
+            let own = knowledge::remote::key_file().and_then(|p| knowledge::remote::own_pubkey(&p));
+            let (base, found) = knowledge::remote::load(
+                &dir,
+                knowledge::remote::default_dir().as_deref(),
+                &options.kb_trust,
+                own.as_deref(),
+                options.kb == "candidates",
+            )?;
+            loaded = found;
+            base
         };
-        Some(match embedder {
-            Ok(embedder) => {
-                knowledge::search::Retriever::new(base, embedder, knowledge::default_cache())
+        Some(if private_input || options.kb_lexical {
+            knowledge::search::Retriever::lexical(
+                base,
+                if private_input {
+                    "private input: embedding disclosure is disabled"
+                } else {
+                    "lexical retrieval was explicitly requested"
+                },
+            )
+        } else {
+            match knowledge::search::Embedder::from_env() {
+                Ok(embedder) => knowledge::search::Retriever::new(
+                    base,
+                    embedder,
+                    options.kb_cache.clone().or_else(knowledge::default_cache),
+                ),
+                Err(error) => knowledge::search::Retriever::lexical(base, &error),
             }
-            Err(why) => knowledge::search::Retriever::lexical(base, &why),
         })
     };
+    let retrieval_mode = match &retriever {
+        None => "off",
+        Some(retriever) if retriever.embedder().is_none() => "lexical",
+        Some(_) => "hybrid-with-lexical-fallback",
+    };
+    let decision = serde_json::json!({
+        "base_url": judge.client.base_url(),
+        "model": judge.client.default_model(),
+    });
     let mut terminal = Terminal::new();
     let say = |text: &str| terminal_line(text);
     println!(
@@ -359,7 +473,13 @@ async fn go(options: Options) -> Result<u8, String> {
             } else {
                 "admitted"
             },
-            knowledge::default_dir().display(),
+            options
+                .kb_snapshot
+                .as_ref()
+                .or(options.kb_private.as_ref())
+                .cloned()
+                .unwrap_or_else(knowledge::default_dir)
+                .display(),
             if loaded.remote.is_empty() {
                 String::new()
             } else {
@@ -401,21 +521,46 @@ async fn go(options: Options) -> Result<u8, String> {
     let mut stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis());
-    let runs = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-        .join(".openagents/microcoder/runs");
-    std::fs::create_dir_all(&runs).map_err(|e| format!("can't make {}: {e}", runs.display()))?;
-    let run_dir = loop {
-        let dir = runs.join(format!("{}-{stamp}", task.name));
-        match std::fs::create_dir(&dir) {
-            Ok(()) => break dir,
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => stamp += 1,
-            Err(e) => return Err(format!("can't make {}: {e}", dir.display())),
+    let run_dir = if let Some(dir) = &options.run_dir {
+        if let Some(parent) = dir.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("can't make run parent: {e}"))?;
+        }
+        std::fs::create_dir(dir)
+            .map_err(|e| format!("can't create new run {}: {e}", dir.display()))?;
+        dir.clone()
+    } else {
+        let runs = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+            .join(".openagents/microcoder/runs");
+        std::fs::create_dir_all(&runs)
+            .map_err(|e| format!("can't make {}: {e}", runs.display()))?;
+        loop {
+            let dir = runs.join(format!("{}-{stamp}", task.name));
+            match std::fs::create_dir(&dir) {
+                Ok(()) => break dir,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => stamp += 1,
+                Err(e) => return Err(format!("can't make {}: {e}", dir.display())),
+            }
         }
     };
+    if private_input {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700))
+                .map_err(|e| e.to_string())?;
+        }
+        #[cfg(not(unix))]
+        {
+            return Err("private run retention requires a supported private filesystem".into());
+        }
+    }
+    if let Some(retained) = &retained_knowledge {
+        knowledge::snapshot::write_new(&run_dir.join("knowledge-input.json"), retained)?;
+    }
     let mut record = Record::create(&run_dir.join("events.jsonl"))
         .map_err(|e| format!("can't write the record: {e}"))?;
     record.write(&serde_json::json!({
-        "event": "started", "task": task.name, "model": options.model, "effort": options.effort,
+        "event": "started", "task": task.name, "model": options.model, "provider": options.provider, "effort": options.effort,
         "limits": options.limits, "network": network, "prompt": options.prompt,
         "questions": set.id, "questions_file": microcoder::models::QUESTIONS,
         "route": route.id, "route_file": microcoder::models::ROUTE,
@@ -427,6 +572,8 @@ async fn go(options: Options) -> Result<u8, String> {
         "target_file": microcoder::models::TARGET,
         "strong_model": options.strong_model, "route_when": options.limits.route,
         "kb": options.kb, "kb_trust": options.kb_trust.mode.to_string(),
+        "knowledge_source": knowledge_source,
+        "retrieval_mode": retrieval_mode, "decision": decision,
         "knowledge_file": microcoder::models::KNOWLEDGE,
         "knowledge_entries": retriever.as_ref().map(|r| r.base.entries.iter()
             .map(|e| serde_json::json!({"id": e.id, "version": e.version, "digest": e.digest, "author": e.author}))
@@ -434,7 +581,10 @@ async fn go(options: Options) -> Result<u8, String> {
     }));
 
     let image = tbench::image(&task, &say).await;
-    let name = format!("microcoder-{}-{}", task.name, std::process::id());
+    let name = options
+        .container_name
+        .clone()
+        .unwrap_or_else(|| format!("microcoder-{}-{}", task.name, std::process::id()));
     let env = tbench::start(&task, &image, &name, &network, &say).await?;
     say(&format!(
         "container {} is up; commands run in {}",
@@ -564,6 +714,8 @@ async fn go(options: Options) -> Result<u8, String> {
         "oracle_checks": end_state.oracle.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
         "test_results": end_state.test_results, "dropped_tests": end_state.dropped,
         "kb": options.kb, "kb_trust": options.kb_trust.mode.to_string(),
+        "knowledge_source": knowledge_source,
+        "retrieval_mode": retrieval_mode, "decision": decision,
         "knowledge_assisted": outcome.knowledge_assisted,
         // How the model was reached and how its cost was reached: the Codex
         // login reports tokens, priced at list price; OpenRouter bills.
@@ -608,6 +760,57 @@ fn reward_text(verdict: &tbench::Verdict) -> String {
         (Some(reward), _) => format!("{reward}"),
         (None, Some(reason)) => format!("unknown ({reason})"),
         (None, None) => "unknown".to_string(),
+    }
+}
+
+async fn repository_cli(arguments: &[String]) -> u8 {
+    use std::io::Read;
+    if arguments == ["--help"] {
+        println!(
+            "microcoder repository --grant FILE [--store DIRECTORY]\n\nRuns an explicitly admitted repository task through the common owner.\nThe profile requires acceptance=false, route=never, knowledge=off, and no hard dollar limit.\nUse coder task view, cancel, recover, and check for the retained task."
+        );
+        return 0;
+    }
+    let result = async {
+        let mut grant = None;
+        let mut store = None;
+        let mut arguments = arguments.iter();
+        while let Some(flag) = arguments.next() {
+            let value = arguments.next().ok_or("an option needs a value")?;
+            match flag.as_str() {
+                "--grant" if grant.is_none() => grant = Some(std::path::PathBuf::from(value)),
+                "--store" if store.is_none() => store = Some(std::path::PathBuf::from(value)),
+                _ => return Err("unknown or repeated repository option".into()),
+            }
+        }
+        let path = grant.ok_or("repository requires --grant")?;
+        let store = store
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .map(|home| std::path::PathBuf::from(home).join(".openagents/tasks"))
+            })
+            .ok_or("no task store path")?;
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .map_err(|error| error.to_string())?
+            .take(coder::task::MAX_COMMAND_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        let judge = JevJudge {
+            client: jev_client()?,
+        };
+        microcoder::repository::execute(&store, &bytes, judge).await
+    }
+    .await;
+    match result {
+        Ok(task) => {
+            println!("{}", serde_json::json!(task));
+            0
+        }
+        Err(error) => {
+            eprintln!("{}", serde_json::json!({"error":error}));
+            2
+        }
     }
 }
 

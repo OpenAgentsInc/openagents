@@ -94,29 +94,22 @@ pub fn synced(remote: &Path, author: &str, ids: &[String]) -> Result<Vec<Synced>
     Ok(out)
 }
 
-/// The entries a run's summary says it showed: each ID with its digest,
-/// `None` when the summary records no digest. `None` when the summary
-/// can't be read.
+/// The retained intake's entry pins. This never rereads a mutable summary.
 #[must_use]
-pub fn shown(runs_dir: &Path, run: &Run) -> Option<BTreeMap<String, Option<String>>> {
-    let path = runs_dir.join(&run.name).join("summary.json");
-    let text = std::fs::read_to_string(path).ok()?;
-    let value: Value = serde_json::from_str(&text).ok()?;
-    let list = value["outcome"]["knowledge"].as_array().cloned();
-    Some(
-        list.unwrap_or_default()
+pub fn shown(_runs_dir: &Path, run: &Run) -> Option<BTreeMap<String, Option<String>>> {
+    run.knowledge_complete.then(|| {
+        run.knowledge
             .iter()
-            .filter_map(|u| {
-                let id = u["id"].as_str()?.to_string();
-                Some((id, u["digest"].as_str().map(str::to_string)))
-            })
-            .collect(),
-    )
+            .map(|pin| (pin.id.clone(), pin.digest.clone()))
+            .collect()
+    })
 }
 
 /// The runs that count for one entry version.
 #[derive(Clone, Debug, Default)]
 pub struct Selection {
+    /// Every intake, including the records excluded from either arm.
+    pub intake: Vec<Run>,
     /// Runs that showed exactly this version, and runs that didn't show its
     /// ID at all.
     pub runs: Vec<Run>,
@@ -132,7 +125,10 @@ pub struct Selection {
 /// `runs_dir`.
 #[must_use]
 pub fn select(entry: &Entry, runs: &[Run], runs_dir: &Path) -> Selection {
-    let mut selection = Selection::default();
+    let mut selection = Selection {
+        intake: runs.to_vec(),
+        ..Selection::default()
+    };
     for run in runs {
         if !run.used.contains(&entry.id) {
             selection.runs.push(run.clone());
@@ -153,7 +149,16 @@ pub fn select(entry: &Entry, runs: &[Run], runs_dir: &Path) -> Selection {
 #[must_use]
 pub fn measure(synced: &Synced, runs: &[Run], runs_dir: &Path) -> (Measured, Selection) {
     let selection = select(&synced.entry, runs, runs_dir);
-    (evidence::measure(&synced.entry, &selection.runs), selection)
+    let mut measured = evidence::measure(&synced.entry, &selection.runs);
+    let intake = evidence::measure(&synced.entry, runs);
+    measured.intake_records = intake.intake_records;
+    measured.intake_faults = intake.intake_faults;
+    measured.unknown_membership = intake.unknown_membership;
+    measured.changed_entry_runs = intake.changed_entry_runs;
+    measured.unpinned_entry_runs = intake.unpinned_entry_runs;
+    measured.noncomparable_runs = intake.noncomparable_runs;
+    measured.prospective_unverified_runs = intake.prospective_unverified_runs;
+    (measured, selection)
 }
 
 /// The NIP-EVAL report on `synced` by `evaluator`, citing the author's
@@ -172,7 +177,7 @@ pub fn report(
         measured,
         &synced.document,
         &synced.author,
-        &selection.runs,
+        &selection.intake,
         evaluator,
         Some(synced.event_ref()),
     );

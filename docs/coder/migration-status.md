@@ -7,9 +7,12 @@ what exists publicly, what is being built, what comes next, and what evidence
 permits each part to close. Its starting revision is
 [`21a67d1bd3`](https://github.com/OpenAgentsInc/openagents/commit/21a67d1bd317d5648d9f09ae53e082100dbfd4f8).
 
-**The first implementation is a durable local task inbox** under
-[#9672](https://github.com/OpenAgentsInc/openagents/issues/9672): submit, list,
-inspect, and cancel queued work. It records requests; it does not execute them.
+**Shipped foundations now include** explicit durable execution, reconstructed
+evidence, knowledge integrity, private knowledge inputs, Rust mobile feasibility,
+and a recoverable free labor order. Protected checks and local Microcoder
+admission are implemented; their remaining issue acceptance is still in progress. The original inbox
+[#9672](https://github.com/OpenAgentsInc/openagents/issues/9672) remains the inert
+submission boundary; execution requires a separate grant.
 This is the foundation for moving between terminal, headless, phone, desktop, and
 CoderOS without creating a separate agent for each interface. Microcoder's
 execution strategy, shared knowledge, and agent labor remain important
@@ -43,16 +46,29 @@ not automatically running in another agent.
 | Order | Work | Status and ownership | Exit condition |
 | --- | --- | --- | --- |
 | 1 | [Durable local inbox, #9672](https://github.com/OpenAgentsInc/openagents/issues/9672): M0 fixtures, M2a/M3a | **Shipped foundation.** The implementation and [acceptance evidence](verification/2026-09-26-task-inbox.md) complete this bounded slice. | Opt-in `coder task` submission/list/inspection and queued-task cancellation; versioned closed commands, exact-byte retry identity, expected revisions, private atomic storage, and real CLI tests. No execution, Nostr control, or running-task interruption. |
-| 2 | [Durable execution owner, #9673](https://github.com/OpenAgentsInc/openagents/issues/9673), then [Microcoder adapter, #9674](https://github.com/OpenAgentsInc/openagents/issues/9674): M3/M4 | **Next; unassigned.** Depends on the inbox and remaining M2 contract. | First exercise a bounded executor fixture through the owner and shared supervisor/boundary, including uncertain-effect recovery. Then admit the Microcoder adapter. |
-| 3 | [Evidence and views, #9675](https://github.com/OpenAgentsInc/openagents/issues/9675): M5 | **Next; unassigned.** Depends on stable journal identities and event semantics. | A new reader reconstructs task state and pages complete retained evidence without the writer's memory. Missing, truncated, or inaccessible evidence stays visible. |
-| 4 | [Independent completion and context, #9676](https://github.com/OpenAgentsInc/openagents/issues/9676): M6 | **Next; unassigned.** Depends on executor and evidence integration. | The exact candidate has a versioned requirement/check record; a model's finish, changed tests, or an exit code cannot create verified success. |
-| Parallel | [Knowledge evidence integrity, #9677](https://github.com/OpenAgentsInc/openagents/issues/9677): M6a, following closed [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670) | **Partial; no new implementation claim here.** Existing retrieval, contribution, and relay sharing are shipped. | Complete attempt intake, exact entry/configuration identities, unknown cost accounting, source-separated confirmation, and uncertainty before stronger admission claims. |
-| Parallel | [Mobile feasibility, #9678](https://github.com/OpenAgentsInc/openagents/issues/9678): M1; [free labor, #9679](https://github.com/OpenAgentsInc/openagents/issues/9679): M18; generic host packaging fixtures: M11/M12 | **Queued; unassigned.** These can begin before the full task runtime finishes. | Narrow public prototypes and explicit findings that inform shared contracts; no device, OS, or market release claim from prototypes. |
+| 2 | [Durable execution owner, #9673](https://github.com/OpenAgentsInc/openagents/issues/9673), then [Microcoder adapter, #9674](https://github.com/OpenAgentsInc/openagents/issues/9674): M3/M4 | **In progress; this implementation task owns #9673/#9674.** The bounded-command owner passes its acceptance. The local Microcoder adapter uses the same host; container and remaining model-host acceptance continue under #9674. | Owner/view acceptance: 38 focused task cases and nine process/CLI cases pass. Finish the explicitly scoped Microcoder acceptance without blocking unrelated issues. |
+| 3 | [Evidence and views, #9675](https://github.com/OpenAgentsInc/openagents/issues/9675): M5 | **Shipped foundation.** Paged ATIF reads, retained artifacts, explicit gaps, and reconnect fixtures pass targeted acceptance. | A new reader reconstructs task state and pages complete retained evidence without the writer's memory. Missing, truncated, or inaccessible evidence stays visible. |
+| 4 | [Independent completion and context, #9676](https://github.com/OpenAgentsInc/openagents/issues/9676): M6 | **In progress; this implementation task owns #9676.** Frozen coverage, scoped context, corrections, and protected independent checks are under review. | The exact candidate has a versioned requirement/check record; a model's finish, changed tests, or an exit code cannot create verified success. |
+| Parallel | [Knowledge evidence integrity, #9677](https://github.com/OpenAgentsInc/openagents/issues/9677): M6a, following closed [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670) | **Shipped foundation.** Complete intake and honest cost/comparison semantics pass targeted tests and strict Clippy. Existing retrieval, contribution, and relay sharing remain shipped. | Complete attempt intake, exact entry/configuration identities, unknown cost accounting, source-separated confirmation, and uncertainty before stronger admission claims. |
+| Parallel | [Mobile feasibility, #9678](https://github.com/OpenAgentsInc/openagents/issues/9678): M1; [free labor, #9679](https://github.com/OpenAgentsInc/openagents/issues/9679): M18; generic host packaging fixtures: M11/M12 | **Shipped bounded slices.** Mobile feasibility has simulator/emulator evidence; free labor has a retained authenticated relay/process round trip. Host packaging is now claimed in #9690. | Narrow public prototypes and explicit findings that inform shared contracts; no device, OS, or market release claim from prototypes. |
 
 The inbox's [usage guide](guides/tasks.md), [source](../../crates/coder/src/task.rs),
 and [verification record](verification/2026-09-26-task-inbox.md) define exactly
-what landed. This implementation task claims no follow-on issue; #9673 is
-the next execution step, not work already running in the background.
+what originally landed. Follow-on claims are recorded on #9673–#9679. The
+[owner contract](runtime/task-owner.md), [knowledge evidence contract](runtime/knowledge-evidence.md),
+and [mobile feasibility decision](design/rust-mobile-feasibility.md) document
+current implementation limits. Each issue ships after its relevant acceptance checks pass. Full workspace
+verification is release-only and never blocks independent issues. A focused
+test does not establish unrelated migration acceptance gates.
+
+[Private knowledge and immutable EXT snapshots, #9686](https://github.com/OpenAgentsInc/openagents/issues/9686)
+are implemented and pass targeted verification. Exact encrypted source artifacts,
+explicit recipient/model disclosure grants, and inert snapshot loading remain
+separate from proof of improved results. The [fixed-study helper](runtime/knowledge-studies.md)
+provides prospective bookkeeping, not a launched or completed benchmark study.
+A separate contributor owns [#9680–#9685](https://github.com/OpenAgentsInc/openagents/issues/9680),
+including the preregistered transfer study and related model/provider work.
+Their Gym, publication, and XP changes remain intact. This task does not launch a competing cohort or claim that work complete.
 
 This order does not require another expensive benchmark campaign before
 task durability can improve. Use deterministic fixtures and fake executors
@@ -64,7 +80,7 @@ separately scoped, frozen studies.
 
 | Area | Implemented basis | What remains for this migration |
 | --- | --- | --- |
-| Local task requests | [Durable inbox](guides/tasks.md), [store and command contract](../../crates/coder/src/task.rs), and [acceptance](verification/2026-09-26-task-inbox.md). | Execution admission, owner lifecycle, effect recovery, and remote control; current conversations do not consume the inbox. |
+| Local task requests | [Durable inbox](guides/tasks.md), [store and command contract](../../crates/coder/src/task.rs), and [acceptance](verification/2026-09-26-task-inbox.md). | Local execution admission, owner lifecycle, and evidence recovery are delivered. Remote control is tracked in #9691; current conversations do not consume the inbox. |
 | One terminal/headless execution path | [Shared turn](../../crates/coder/src/turn.rs), host permits, [headless guide](guides/headless.md), and [delegate door](runtime/delegate-door.md). | A durable interactive owner that survives client exit, reconciles effects after failure, and accepts typed control from multiple clients. |
 | Execution and workspaces | [Subprocess supervision](runtime/subprocesses.md), [execution boundary](verification/2026-09-20-execution-boundary.md), and [worktree lifecycle](verification/2026-09-20-worktree-lifecycle.md). | Apply these guarantees to every selected task adapter; add resource leases and truthful support reporting where they are absent. |
 | Existing durable records | [Program run state](../../crates/coder/src/runstate.rs), reconciliation, and [project supervision](guides/project-supervision.md). | Reuse the established separation of execution, verification, acceptance, and integration. These are not already a complete cross-client SESS owner. |
@@ -94,18 +110,18 @@ queue says otherwise, ownership is unassigned.
 | Package | Status and dependencies | Work and acceptance required |
 | --- | --- | --- |
 | **M0 — Public migration fixtures** | **Partial; #9672 supplies inbox fixtures.** Source review and dispositions exist; full suite scenarios remain incomplete. | Turn the assessment's behaviors into fresh public fixtures: task admission, duplicate commands, disconnected views, revoked control, failed checks, and uncertain effects. Record provenance and the owner of each acceptance scenario. Keep private code, prompts, endpoints, credentials, and customer history out of fixtures. |
-| **M1 — Mobile and rendering feasibility** | **Queued, [#9678](https://github.com/OpenAgentsInc/openagents/issues/9678).** Can proceed alongside M2. | Build a minimal shared Rust task-view fixture for iOS and Android; evaluate desktop and Rust web presentation. Retain actual input/IME, secure storage, lifecycle, accessibility, and long-trace results. Resolve any required platform-language exception explicitly; the existing Swift exception covers only Lev. A simulator or host build does not prove device acceptance. |
+| **M1 — Mobile and rendering feasibility** | **Feasibility delivered, [#9678](https://github.com/OpenAgentsInc/openagents/issues/9678).** Can proceed alongside M2. | Build a minimal shared Rust task-view fixture for iOS and Android; evaluate desktop and Rust web presentation. Retain actual input/IME, secure storage, lifecycle, accessibility, and long-trace results. Resolve any required platform-language exception explicitly; the existing Swift exception covers only Lev. A simulator or host build does not prove device acceptance. |
 | **M2 — Runtime contract** | **Partial, local inbox subset M2a shipped in [#9672](https://github.com/OpenAgentsInc/openagents/issues/9672); the owner-facing remainder is in [#9673](https://github.com/OpenAgentsInc/openagents/issues/9673)'s scope.** M0 supplies public fixtures. | Define exact task/input/workspace/configuration identity, typed command dispositions, ownership epochs, grants, budgets, artifacts, and adapter capabilities. Separate queue/steer/interrupt, elicitation/approval, and completion/verification/integration. Test duplicate identity with changed inputs and unsupported effective configuration. The first store does not finish every contract in this row. |
 
 ### Phase 1: one durable local task
 
 | Package | Status and dependencies | Work and acceptance required |
 | --- | --- | --- |
-| **M3 — Durable owner** | **Partial, inbox subset M3a shipped in #9672; owner next in [#9673](https://github.com/OpenAgentsInc/openagents/issues/9673).** Depends on M2. | Persist accepted commands before acknowledgment; fence one owner; journal intent before effects; retain queue and cancellation dispositions. Add real dispatch, process reconciliation, and fault injection around journal, dispatch, result, and acknowledgment boundaries. Unknown effects cannot be silently rerun or marked successful. |
-| **M4 — Microcoder host adapter** | **Next, [#9674](https://github.com/OpenAgentsInc/openagents/issues/9674).** M2, M3. | Admit ordinary repository tasks through the shared task contract. Replace direct effect paths with the common read/write boundary, supervisor, output caps, cancellation, accounting, and trace sink. Check local and container paths independently, including descendant processes, oversized reads, symlink escape, timeout, and partial output. |
-| **M5 — Evidence and views** | **Next, [#9675](https://github.com/OpenAgentsInc/openagents/issues/9675).** M3. | Bind original trace events, exact artifacts, decisions, requested/effective settings, usage, and outcomes to the task. Implement stable reduction, bounded paging, explicit gaps, and ATIF/Gym joins. A reader starting with no old process state reconstructs the same result and sees missing costs or evidence as unknown. |
-| **M6 — Acceptance and context** | **Next, [#9676](https://github.com/OpenAgentsInc/openagents/issues/9676).** M4, M5. | Retain versioned requirements, checks, their authority, test additions/removals/disputes, scoped instructions, source captures, and recipient-specific context. Independent checks bind the exact candidate and base. A false-green candidate, a withdrawn test, or Jev's judgment cannot become verified success by itself. |
-| **M6a — Knowledge evidence integrity** | **Partial; [#9677](https://github.com/OpenAgentsInc/openagents/issues/9677) is unclaimed.** Current knowledge/Gym code; follows closed #9670. | Keep unreadable summaries, failed attempts, missing costs, exact entry digests, exposure, and full configuration identity in reports. Distinguish retrospective screening from prospective randomized or paired studies. Exclude development provenance, report uncertainty, and prevent omissions from improving admission results. |
+| **M3 — Durable owner** | **Local owner delivered in [#9673](https://github.com/OpenAgentsInc/openagents/issues/9673).** Depends on M2. | Persist accepted commands before acknowledgment; fence one owner; journal intent before effects; retain queue and cancellation dispositions. Add real dispatch, process reconciliation, and fault injection around journal, dispatch, result, and acknowledgment boundaries. Unknown effects cannot be silently rerun or marked successful. |
+| **M4 — Microcoder host adapter** | **In progress, [#9674](https://github.com/OpenAgentsInc/openagents/issues/9674).** M2, M3. | Admit ordinary repository tasks through the shared task contract. Replace direct effect paths with the common read/write boundary, supervisor, output caps, cancellation, accounting, and trace sink. Check local and container paths independently, including descendant processes, oversized reads, symlink escape, timeout, and partial output. |
+| **M5 — Evidence and views** | **Local evidence reader delivered, [#9675](https://github.com/OpenAgentsInc/openagents/issues/9675).** M3. | Bind original trace events, exact artifacts, decisions, requested/effective settings, usage, and outcomes to the task. Implement stable reduction, bounded paging, explicit gaps, and ATIF/Gym joins. A reader starting with no old process state reconstructs the same result and sees missing costs or evidence as unknown. |
+| **M6 — Acceptance and context** | **In progress, [#9676](https://github.com/OpenAgentsInc/openagents/issues/9676).** M4, M5. | Retain versioned requirements, checks, their authority, test additions/removals/disputes, scoped instructions, source captures, and recipient-specific context. Independent checks bind the exact candidate and base. A false-green candidate, a withdrawn test, or Jev's judgment cannot become verified success by itself. |
+| **M6a — Knowledge evidence integrity** | **Delivered, [#9677](https://github.com/OpenAgentsInc/openagents/issues/9677).** Current knowledge/Gym code; follows closed #9670. | Keep unreadable summaries, failed attempts, missing costs, exact entry digests, exposure, and full configuration identity in reports. Distinguish retrospective screening from prospective randomized or paired studies. Exclude development provenance, report uncertainty, and prevent omissions from improving admission results. |
 
 Phase 1 ends when terminal and headless use one admitted task owner with a
 real executor and retained independent checks. A working task-management
@@ -124,7 +140,7 @@ command or append-only journal is an intermediate result, not that gate.
 
 | Package | Status and dependencies | Work and acceptance required |
 | --- | --- | --- |
-| **M11 — Portable Coder host** | **Queued.** M3, M5, and an accepted executor. | Add install/doctor/service/upgrade/uninstall, resource admission, portable grants, and rollback. Start generic packaging/probe fixtures early. Accept clean Linux and macOS hosts separately. Existing executors can unlock this package; Microcoder activation additionally requires M4/M6. |
+| **M11 — Portable Coder host** | **In progress, [#9690](https://github.com/OpenAgentsInc/openagents/issues/9690).** M3, M5, and an accepted executor. | Add install/doctor/service/upgrade/uninstall, resource admission, portable grants, and rollback. Start generic packaging/probe fixtures early. Accept clean Linux and macOS hosts separately. Existing executors can unlock this package; Microcoder activation additionally requires M4/M6. |
 | **M12 — CoderOS profile** | **Queued.** M11. | Build a generic reproducible Linux profile with pinned packages, task services, visible device grants, staged updates, and recovery. Verify clean install, missing hardware, disk pressure, interrupted upgrade, incompatible state, and rollback. Keep the custom compositor optional. |
 | **M13 — Desktop and web clients** | **Queued.** M1, M5, M7. | Deliver thin native desktop and Rust-rendered web observation, then scoped control. Reuse task views and Markdown semantics; test input/accessibility per renderer. Closing or reloading the client preserves the task; every surface shows the same outcome and artifact identities. |
 | **M14 — Device adapters** | **Queued.** M11; M12 for OS integration. | Admit browser, screen capture, input, recording, and connected devices individually. Separate observation, transmission, recording, speaking, and actuation. Test stale observations, changed targets, revoked rights, unsupported hosts, human override, and failed teardown; no all-platform capability claim from one implementation. |
@@ -140,7 +156,7 @@ complete marketplace. Platform releases still require their own acceptance.
 | --- | --- | --- |
 | **M16 — Evidence components and packages** | **Partial foundations; queued migration.** M5, M6. | Extend the public ABI with selected context/syntax evidence tools, exact schemas, scoped skill lifecycles, compatible package authoring, inert installation, provenance, and rollback. Compare enabled components against the same workload without them; keep unmeasured components optional. |
 | **M17 — Task automation** | **Partial scheduler foundations; queued integration.** M3, M6. | Connect WORK/AUTO to existing project and scheduler code. Persist occurrence IDs, task claims, aggregate budgets, skip/coalesce/cancel decisions, and restart reconciliation. Test missed, duplicate, overlapping, and conflicting triggers without duplicate work or silent budget expansion. |
-| **M18 — Agent-labor fulfillment** | **Partial protocol foundations; high-priority queued [#9679](https://github.com/OpenAgentsInc/openagents/issues/9679).** Design starts with M2; execution can use M15 or an admitted existing worker. | First persist a free buyer/provider agreement, admit its exact LAB source/artifact graph, link one bounded CJ execution, retain delivery/checks, and resolve acceptance/rework/dispute. Test restart and repeated messages. Add actual authorized settlement only after free fulfillment works. Neither a quote nor a passing run is payment or buyer acceptance. |
+| **M18 — Agent-labor fulfillment** | **Free bounded host delivered; remaining market roles explicit in [#9679](https://github.com/OpenAgentsInc/openagents/issues/9679).** Design starts with M2; execution can use M15 or an admitted existing worker. | First persist a free buyer/provider agreement, admit its exact LAB source/artifact graph, link one bounded CJ execution, retain delivery/checks, and resolve acceptance/rework/dispute. Test restart and repeated messages. Add actual authorized settlement only after free fulfillment works. Neither a quote nor a passing run is payment or buyer acceptance. |
 | **M19 — Measured network contributions** | **Queued.** M6, M6a, M16. | A second operator consumes an exact permissioned KB/EXT contribution on unseen work, records all outcomes and costs, and can withdraw it. Freeze comparison and source separation before confirmation. Report negative/inconclusive results; publishing a signed entry does not prove a positive network effect. |
 | **M20 — Managed hosting** | **Queued.** M7, M11, M15. | Add optional hosted owners/workers and account binding with per-tenant isolation, capacity/SLO/cost evidence, export, backup/restore, and continuity after host loss. A clean local installation must remain useful without this service. |
 
@@ -185,7 +201,11 @@ executor does not require new M15 infrastructure.
 **G0 passed for the local inbox on September 26, 2026.** The
 [acceptance record](verification/2026-09-26-task-inbox.md) names the source
 hashes, 26 focused tests, seven-command CLI proof, and manual verification
-coverage. G1–G6 remain incomplete.
+coverage. The [owner/view acceptance](verification/2026-09-26-task-owner.md)
+now covers local continuity and explicit independent checks. The
+[free labor rehearsal](verification/2026-09-26-free-labor/README.md) covers G4
+with distinct identities under one operator. Full model-context G1 and the
+cross-device, host-release, transfer, and paid-service gates remain incomplete.
 
 | Gate | Required demonstration | What it does not establish |
 | --- | --- | --- |
@@ -271,8 +291,10 @@ verification, acceptance, and integration need separate meanings.
 A bounded executor fixture must prove that lifecycle before
 [#9674](https://github.com/OpenAgentsInc/openagents/issues/9674) adds the full
 Microcoder adapter. The evidence/view and independent-check issues then
-complete G1. Keep the current terminal/headless path available until this
-opt-in path passes its stated acceptance.
+complete G1. The current terminal/headless path remains available alongside the opt-in
+owner and repository adapter. #9691 now owns the next scoped Nostr control
+slice; #9690 owns portable-host packaging. Both proceed independently of
+Claude's registered study and recent issues.
 
 ## Protocol implementation boundaries
 
