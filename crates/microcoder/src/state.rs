@@ -67,6 +67,19 @@ pub struct State {
     /// Entry IDs whose bodies the model asked to see; kept until it asks for
     /// others.
     pub expanded: Vec<String>,
+    /// Frozen tests Jev judged wrong when the model said it was finished.
+    pub dropped: Vec<Dropped>,
+}
+
+/// A frozen test dropped as wrong.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct Dropped {
+    pub test: Test,
+    pub step: usize,
+    /// Jev's probability that no correct solution could pass it.
+    pub wrong: f64,
+    /// The model's reason for saying the task was finished.
+    pub rationale: String,
 }
 
 /// A knowledge-base entry shown in the prompt, and Jev's relevance answer.
@@ -169,8 +182,16 @@ accepts `finished` only when all of them pass."
         };
         let mut out = format!(
             "Frozen at step {step}. The host runs its own copies after every step, so editing \
-{dir} changes nothing. `finished` is accepted only when every test passes.\n"
+{dir} changes nothing. `finished` is accepted only when every test passes. If you're sure a \
+failing test is itself wrong, so that no correct solution could pass it, say why in the rationale \
+and set `finished` to true: Jev checks each failing test and drops one it agrees is wrong.\n"
         );
+        for dropped in &self.dropped {
+            out.push_str(&format!(
+                "\n## {}: dropped at step {} (Jev: {:.2} that it's wrong)\n",
+                dropped.test.name, dropped.step, dropped.wrong
+            ));
+        }
         for (test, result) in self.tests.iter().zip(&self.test_results) {
             let before = match test.passed_at_freeze {
                 Some(true) => " (it already passed when frozen)",

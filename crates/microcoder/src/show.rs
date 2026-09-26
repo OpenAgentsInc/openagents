@@ -221,6 +221,38 @@ impl Observer for Terminal {
                     ),
                 );
             }
+            Event::Disputed {
+                step,
+                judgment,
+                dropped,
+            } => {
+                let answers = if let Some(error) = &judgment.error {
+                    format!("no answers: {error}")
+                } else {
+                    judgment
+                        .answers
+                        .iter()
+                        .map(|(id, p)| format!("{id} {p:.2}"))
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                };
+                let verdict = if dropped.is_empty() {
+                    "no test dropped".to_string()
+                } else {
+                    format!("dropped as wrong: {}", dropped.join(", "))
+                };
+                self.line(
+                    seconds,
+                    &format!(
+                        "{} {answers} · ${:.5} · {verdict}",
+                        self.paint(
+                            "1;35",
+                            &format!("step {step} · jev checks the failing tests")
+                        ),
+                        judgment.usd
+                    ),
+                );
+            }
             Event::Tested {
                 step,
                 froze,

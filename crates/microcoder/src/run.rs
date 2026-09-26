@@ -25,9 +25,10 @@ use serde_json::json;
 
 use crate::env::Env;
 use crate::models::{
-    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, knowledge_set, relevance_set,
+    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, dispute_set, knowledge_set,
+    relevance_set,
 };
-use crate::state::{Action, CommandResult, Kept, State, Test, cut};
+use crate::state::{Action, CommandResult, Dropped, Kept, State, Test, cut};
 
 /// What every generation is told, before the prompt.
 pub const SYSTEM: &str = "You work on a task by running shell commands in its working \
@@ -185,6 +186,13 @@ pub enum Event {
     Retrieved {
         step: usize,
         retrieval: Retrieval,
+    },
+    /// Jev judged the frozen tests that still failed when the model said it
+    /// was finished; `dropped` names the ones it judged wrong.
+    Disputed {
+        step: usize,
+        judgment: Judgment,
+        dropped: Vec<String>,
     },
     /// The acceptance tests ran; `froze` is true on the run that froze them.
     Tested {
@@ -507,6 +515,60 @@ async fn read_view<E: Env>(env: &E, paths: &[String]) -> Vec<(String, Option<Str
         files.push((path, contents));
     }
     files
+}
+
+/// Jev's probability at which a failing frozen test is dropped as wrong.
+pub const WRONG: f64 = 0.7;
+
+/// Asks Jev whether each failing frozen test is itself wrong, and drops
+/// the ones it judges wrong at [`WRONG`] or more.
+async fn dispute<J: Judge>(
+    judge: &J,
+    state: &mut State,
+    step: usize,
+    rationale: &str,
+) -> (Judgment, Vec<String>) {
+    let failing: Vec<usize> = (0..state.tests.len())
+        .filter(|&n| !state.test_results[n].ok())
+        .collect();
+    let set = relevance_set(&dispute_set(), failing.len());
+    let mut jev_state = json!({
+        "task": cut(&state.task, 6_000, 0),
+        "rationale": cut(rationale, 2_000, 0),
+    });
+    for (k, &n) in failing.iter().enumerate() {
+        jev_state[format!("entry_{}", k + 1)] = json!({
+            "name": state.tests[n].name,
+            "script": cut(&state.tests[n].script, 4_000, 0),
+            "output": cut(&state.test_results[n].output, 1_000, 1_500),
+        });
+    }
+    let judgment = judge.judge(&set, &jev_state).await;
+    let mut wrong: Vec<(usize, f64)> = failing
+        .iter()
+        .enumerate()
+        .filter_map(|(k, &n)| {
+            let id = format!("entry_{}", k + 1);
+            let p = judgment.answers.iter().find(|(q, _)| *q == id)?.1;
+            (p >= WRONG).then_some((n, p))
+        })
+        .collect();
+    // Remove from the back so earlier indexes stay valid.
+    wrong.sort_by_key(|w| std::cmp::Reverse(w.0));
+    let mut names = Vec::new();
+    for (n, p) in wrong {
+        let test = state.tests.remove(n);
+        state.test_results.remove(n);
+        names.push(test.name.clone());
+        state.dropped.push(Dropped {
+            test,
+            step,
+            wrong: p,
+            rationale: rationale.to_string(),
+        });
+    }
+    names.reverse();
+    (judgment, names)
 }
 
 /// Reads the tests the model wrote under [`ACCEPT_DIR`].
@@ -832,6 +894,23 @@ or set finished to true if the task is complete."
             );
         }
         if action.finished && !failed {
+            if state.frozen_at.is_some() && state.test_results.iter().any(|r| !r.ok()) {
+                let rationale = state
+                    .actions
+                    .last()
+                    .map(|a| a.rationale.clone())
+                    .unwrap_or_default();
+                let (judgment, dropped) = dispute(models.judge, &mut state, step, &rationale).await;
+                jev_usd += judgment.usd;
+                observer.event(
+                    started.elapsed().as_secs_f64(),
+                    &Event::Disputed {
+                        step,
+                        judgment,
+                        dropped,
+                    },
+                );
+            }
             let failing = state.test_results.iter().filter(|r| !r.ok()).count();
             if state.frozen_at.is_some() && failing == 0 {
                 break Ending::Finished;

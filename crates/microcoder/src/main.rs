@@ -253,6 +253,7 @@ async fn go(options: Options) -> Result<u8, String> {
         "limits": options.limits, "network": network, "prompt": options.prompt,
         "questions": set.id, "questions_file": microcoder::models::QUESTIONS,
         "route": route.id, "route_file": microcoder::models::ROUTE,
+        "dispute_file": microcoder::models::DISPUTE,
         "strong_model": options.strong_model, "route_when": options.limits.route,
         "kb": options.kb, "knowledge_file": microcoder::models::KNOWLEDGE,
         "knowledge_entries": retriever.as_ref().map(|r| r.base.entries.iter()
@@ -363,7 +364,7 @@ async fn go(options: Options) -> Result<u8, String> {
         "outcome": outcome, "reward": verdict.reward, "verifier_output": verdict.output,
         "container": name, "image": image,
         "acceptance_tests": end_state.tests, "frozen_at": end_state.frozen_at,
-        "test_results": end_state.test_results,
+        "test_results": end_state.test_results, "dropped_tests": end_state.dropped,
         "kb": options.kb,
     });
     let _ = std::fs::write(

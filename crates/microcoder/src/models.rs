@@ -24,6 +24,10 @@ pub const ROUTE: &str = include_str!("../route.json");
 /// `{entry}` where the candidate's key goes.
 pub const KNOWLEDGE: &str = include_str!("../knowledge.json");
 
+/// The question Jev answers about each frozen test that still fails when
+/// the model says the task is finished.
+pub const DISPUTE: &str = include_str!("../dispute.json");
+
 /// One question in the set.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Question {
@@ -66,6 +70,17 @@ pub fn route_set() -> QuestionSet {
 #[must_use]
 pub fn knowledge_set() -> QuestionSet {
     serde_json::from_str(KNOWLEDGE).expect("knowledge.json is valid")
+}
+
+/// The embedded dispute set: one question template, repeated per failing
+/// test by [`relevance_set`].
+///
+/// # Panics
+///
+/// When `dispute.json` isn't valid, which a test checks.
+#[must_use]
+pub fn dispute_set() -> QuestionSet {
+    serde_json::from_str(DISPUTE).expect("dispute.json is valid")
 }
 
 /// The relevance question asked once for each of `count` candidates: the
@@ -309,6 +324,13 @@ mod tests {
         let set = route_set();
         assert_eq!(set.questions.len(), 1);
         assert_eq!(set.questions[0].id, "hard");
+    }
+
+    #[test]
+    fn the_dispute_set_has_one_template() {
+        let set = relevance_set(&dispute_set(), 2);
+        assert_eq!(set.questions.len(), 2);
+        assert!(set.questions[1].text.contains("`entry_2`"));
     }
 
     #[test]

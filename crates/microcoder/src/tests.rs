@@ -11,8 +11,8 @@ use knowledge::search::Retriever;
 use knowledge::{Base, Entry};
 
 use crate::models::{
-    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, knowledge_set, question_set,
-    route_set,
+    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, dispute_set, knowledge_set,
+    question_set, route_set,
 };
 use crate::run::{Ending, Event, Limits, Models, Observer, run};
 use crate::state::{CommandResult, State};
@@ -54,6 +54,8 @@ impl Generate for Script {
 /// with its entry's relevance in `relevance`, or 0.1.
 struct Jev {
     hard: f64,
+    /// Every dispute answer.
+    wrong: f64,
     relevance: Vec<(&'static str, f64)>,
     /// The id of every question set asked.
     asked: RefCell<Vec<String>>,
@@ -62,6 +64,7 @@ struct Jev {
 fn jev(hard: f64) -> Jev {
     Jev {
         hard,
+        wrong: 0.1,
         relevance: Vec::new(),
         asked: RefCell::new(Vec::new()),
     }
@@ -72,6 +75,11 @@ impl Judge for Jev {
         self.asked.borrow_mut().push(set.id.clone());
         let answers = if set.id == route_set().id {
             vec![("hard".to_string(), self.hard)]
+        } else if set.id == dispute_set().id {
+            set.questions
+                .iter()
+                .map(|q| (q.id.clone(), self.wrong))
+                .collect()
         } else if set.id == knowledge_set().id {
             set.questions
                 .iter()
@@ -611,4 +619,48 @@ async fn a_reply_that_only_expands_an_entry_is_not_idle() {
     let (_, outcome, _, _) = go_kb(&script, &plain(), &jev(0.1), None, Some(&kb)).await;
     assert_eq!(outcome.ending, Ending::Finished);
     assert!(!script.prompts.into_inner()[1].contains("ran no commands"));
+}
+
+#[tokio::test]
+async fn a_failing_test_jev_judges_wrong_is_dropped_at_finish() {
+    // b.sh fails until `fix b` runs; the model never runs it and says the
+    // test is wrong.
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
+        Ok(act("b.sh compares lists of different lengths", &[], true)),
+    ]);
+    let jev = Jev {
+        wrong: 0.9,
+        ..jev(0.1)
+    };
+    let (state, outcome, _, log) = go_with(&script, &Limits::default(), &jev, None).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(state.dropped.len(), 1);
+    assert_eq!(state.dropped[0].test.name, "b.sh");
+    assert_eq!(state.tests.len(), 1);
+    assert!(log.0.iter().any(|e| matches!(
+        e,
+        Event::Disputed { dropped, .. } if dropped == &["b.sh".to_string()]
+    )));
+}
+
+#[tokio::test]
+async fn a_failing_test_jev_judges_right_still_blocks_finish() {
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
+        Ok(act("done", &[], true)),
+    ]);
+    let limits = Limits {
+        max_steps: Some(3),
+        ..Limits::default()
+    };
+    let (state, outcome, _, log) = go_with(&script, &limits, &jev(0.1), None).await;
+    assert_eq!(outcome.ending, Ending::StepLimit);
+    assert!(state.dropped.is_empty());
+    assert!(log.0.iter().any(|e| matches!(
+        e,
+        Event::Disputed { dropped, .. } if dropped.is_empty()
+    )));
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[2].contains("1 acceptance tests fail"));
 }

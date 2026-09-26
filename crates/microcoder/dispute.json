@@ -1,0 +1,10 @@
+{
+  "id": "openagents.microcoder.dispute.v1",
+  "note": "What Jev answers about each frozen acceptance test that still fails when the model says the task is finished, one question per failing test, in one request. The host replaces {entry} with the key that holds the test (entry_1, entry_2, and so on). A test answered yes with probability 0.7 or more is dropped, and the drop is recorded. Change the wording here, not in code; the file is digested into every run's record.",
+  "questions": [
+    {
+      "id": "wrong",
+      "text": "The acceptance test in `{entry}` was written for the task in `task` before the fix, and it still fails. The model says the task is finished, for the reason in `rationale`. Judging by the test's script, its output, and the task, is the test itself wrong, so that no correct solution could pass it: for example, it contradicts itself, compares lists of different lengths, or expects something the task or the standard definition of what it checks rules out?"
+    }
+  ]
+}
