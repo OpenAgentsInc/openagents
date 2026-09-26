@@ -28,12 +28,12 @@ pub mod show;
 pub mod state;
 pub mod tbench;
 
-/// The default model.
-pub const MODEL: &str = "openai/gpt-6-luna";
+/// The default model, reached through the operator's Codex login.
+pub const MODEL: &str = "gpt-6-luna";
 
 /// The stronger model that writes the acceptance tests when Jev judges a
 /// task hard.
-pub const STRONG_MODEL: &str = "openai/gpt-6-sol";
+pub const STRONG_MODEL: &str = "gpt-6-sol";
 
 #[cfg(test)]
 mod tests;

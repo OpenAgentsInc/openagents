@@ -283,6 +283,116 @@ impl Judge for JevJudge {
     }
 }
 
+/// Generation through the operator's logged-in Codex session, with
+/// Microluna's transport: one request per step, and the action is the
+/// arguments of a call to the one declared tool, `next_action`.
+pub struct CodexGenerator<T: microluna::Transport = microluna::codex::CodexTransport> {
+    pub transport: T,
+    /// The Codex model slug, such as `gpt-6-luna`.
+    pub model: String,
+    /// `low`, `medium`, or `high`, or `None` for the model's default.
+    pub effort: Option<String>,
+    /// The prompt-cache key; steps of one run share it.
+    pub cache_key: String,
+}
+
+/// The one tool a Codex step declares: its parameters are the action.
+#[must_use]
+pub fn next_action_tool() -> Value {
+    json!({
+        "type": "function",
+        "name": "next_action",
+        "description": "Give the next step: the commands to run and why, the files to keep in view, and whether the task is finished.",
+        "parameters": next_action_schema(),
+        "strict": true,
+    })
+}
+
+impl<T: microluna::Transport> Generate for CodexGenerator<T> {
+    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        let request = microluna::Request {
+            model: self.model.clone(),
+            instructions: format!("{system} Reply by calling next_action exactly once."),
+            input: vec![json!({
+                "type": "message",
+                "role": "user",
+                "content": [{ "type": "input_text", "text": prompt }],
+            })],
+            tools: vec![next_action_tool()],
+            effort: self.effort.clone(),
+            cache_key: self.cache_key.clone(),
+            parallel_tools: false,
+        };
+        let started = Instant::now();
+        let mut attempt = 0u32;
+        let reply = loop {
+            match self.transport.respond(&request).await {
+                Ok(reply) => break Ok(reply),
+                Err(error) if error.transient() && attempt < 3 => {
+                    attempt += 1;
+                    tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(attempt))).await;
+                }
+                Err(error) => break Err(error.to_string()),
+            }
+        };
+        let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        match reply {
+            Ok(reply) => {
+                let usd = microluna::price::cost(&self.model, reply.usage).unwrap_or(0.0);
+                let action = reply
+                    .calls()
+                    .into_iter()
+                    .find(|call| call.name == "next_action")
+                    .ok_or_else(|| {
+                        format!(
+                            "the reply called no next_action tool; it said: {}",
+                            reply.text().chars().take(300).collect::<String>()
+                        )
+                    })
+                    .and_then(|call| {
+                        serde_json::from_str::<NextAction>(&call.arguments)
+                            .map_err(|e| format!("next_action's arguments didn't parse: {e}"))
+                    });
+                Generated {
+                    action,
+                    model: if reply.model.is_empty() {
+                        self.model.clone()
+                    } else {
+                        reply.model.clone()
+                    },
+                    prompt_tokens: reply.usage.input,
+                    completion_tokens: reply.usage.output,
+                    usd,
+                    milliseconds,
+                }
+            }
+            Err(error) => Generated {
+                action: Err(error),
+                model: self.model.clone(),
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                usd: 0.0,
+                milliseconds,
+            },
+        }
+    }
+}
+
+/// Either generator, chosen at run time.
+pub enum AnyGenerator {
+    Codex(CodexGenerator),
+    OpenRouter(OpenRouterGenerator),
+}
+
+impl Generate for AnyGenerator {
+    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        match self {
+            AnyGenerator::Codex(g) => g.generate(system, prompt).await,
+            AnyGenerator::OpenRouter(g) => g.generate(system, prompt).await,
+        }
+    }
+}
+
 /// Generation through `crates/openrouter`.
 pub struct OpenRouterGenerator {
     pub client: openrouter::Client,
@@ -413,5 +523,69 @@ mod tests {
             ])
         );
         assert_eq!(schema["additionalProperties"], false);
+    }
+}
+
+#[cfg(test)]
+mod codex_tests {
+    use super::*;
+    use microluna::fake::FakeTransport;
+
+    fn call(arguments: &str) -> microluna::Reply {
+        microluna::Reply {
+            id: None,
+            model: "gpt-6-luna".to_string(),
+            items: vec![json!({
+                "type": "function_call", "call_id": "c1", "name": "next_action",
+                "arguments": arguments,
+            })],
+            usage: microluna::TokenUsage {
+                input: 1_000,
+                output: 100,
+                ..Default::default()
+            },
+        }
+    }
+
+    fn generator(replies: Vec<microluna::Reply>) -> CodexGenerator<FakeTransport> {
+        CodexGenerator {
+            transport: FakeTransport::new(replies),
+            model: "gpt-6-luna".to_string(),
+            effort: Some("medium".to_string()),
+            cache_key: "run".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_next_action_call_becomes_the_action() {
+        let g = generator(vec![call(
+            r#"{"rationale":"look","commands":["ls"],"view":[],"expand":[],"freeze_tests":false,"finished":false}"#,
+        )]);
+        let out = g.generate("system", "prompt").await;
+        let action = out.action.unwrap();
+        assert_eq!(action.commands, ["ls"]);
+        assert_eq!((out.prompt_tokens, out.completion_tokens), (1_000, 100));
+        assert!(out.usd > 0.0, "Luna has a list price");
+        let sent = g.transport.requests();
+        assert_eq!(sent[0].tools[0]["name"], "next_action");
+        assert_eq!(sent[0].tools[0]["parameters"], next_action_schema());
+        assert!(
+            sent[0]
+                .instructions
+                .ends_with("Reply by calling next_action exactly once.")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reply_without_the_call_is_an_unusable_reply() {
+        let mut reply = call("{}");
+        reply.items =
+            vec![json!({"type": "message", "content": [{"type": "output_text", "text": "hello"}]})];
+        let out = generator(vec![reply]).generate("s", "p").await;
+        assert!(
+            out.action
+                .unwrap_err()
+                .contains("called no next_action tool")
+        );
     }
 }

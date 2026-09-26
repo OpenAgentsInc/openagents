@@ -3,7 +3,7 @@ name = "microcoder"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Microcoder: the simple coding loop. Jev judges the state, one OpenRouter call returns the next shell commands, the host runs them."
+description = "Microcoder: the simple coding loop. Jev judges the state, one model call returns the next shell commands, the host runs them."
 publish.workspace = true
 
 [[bin]]
@@ -15,6 +15,7 @@ coder = { path = "../coder" }
 futures-util = "0.3"
 jev = { path = "../jev" }
 knowledge = { path = "../knowledge" }
+microluna = { path = "../microluna" }
 nostr = { path = "../nostr" }
 openrouter = { path = "../openrouter" }
 serde = { version = "1", features = ["derive"] }

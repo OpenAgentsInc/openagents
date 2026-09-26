@@ -3,7 +3,9 @@
 
 use std::process::ExitCode;
 
-use microcoder::models::{JevJudge, OpenRouterGenerator, question_set, route_set};
+use microcoder::models::{
+    AnyGenerator, CodexGenerator, JevJudge, OpenRouterGenerator, question_set, route_set,
+};
 use microcoder::run::{Ending, Limits, Models, Route, USER_PROMPT, run};
 use microcoder::show::{Both, Record, Terminal, clock};
 use microcoder::state::State;
@@ -18,10 +20,12 @@ the cost. Then it runs the task's own tests and prints the reward beside
 Fable 5.1 low's time and cost on the same task.
 
 Options:
-  --model SLUG       the OpenRouter model (default openai/gpt-6-luna)
+  --model SLUG       the model (default gpt-6-luna)
+  --provider NAME    codex (the operator's Codex login, the default) or
+                     openrouter (OPENROUTER_API_KEY)
   --effort LEVEL     low, medium, or high (default medium)
-  --strong-model SLUG  the OpenRouter model that writes the acceptance tests on
-                     a task Jev judges hard (default openai/gpt-6-sol)
+  --strong-model SLUG  the model that writes the acceptance tests on
+                     a task Jev judges hard (default gpt-6-sol)
   --route WHEN       when the stronger model writes the tests: auto (when Jev
                      judges the task hard), always, or never (default never)
   --max-steps N      default no limit
@@ -44,8 +48,10 @@ Options:
   --check-grading    run the task's reference solution instead of the loop,
                      then grade it: a check that grading works, at no model cost
 
-Keys: OPENROUTER_API_KEY or ~/.openagents/openrouter.json, and
-TYPESAFE_API_KEY or ~/.openagents/jev.json. Tasks come from
+The model is reached through the Codex login in ~/.codex/auth.json (run
+`codex login`), or with --provider openrouter through OPENROUTER_API_KEY or
+~/.openagents/openrouter.json. Jev needs TYPESAFE_API_KEY or
+~/.openagents/jev.json. Tasks come from
 MICROCODER_TASKS or ~/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks.
 
 Exit codes: 0 the tests passed, 1 they didn't, 2 the run couldn't start.";
@@ -53,6 +59,8 @@ Exit codes: 0 the tests passed, 1 they didn't, 2 the run couldn't start.";
 struct Options {
     task: String,
     model: String,
+    /// `codex` or `openrouter`.
+    provider: String,
     strong_model: String,
     effort: Option<String>,
     limits: Limits,
@@ -71,6 +79,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
     let mut options = Options {
         task: String::new(),
         model: MODEL.to_string(),
+        provider: "codex".to_string(),
         strong_model: STRONG_MODEL.to_string(),
         effort: Some("medium".to_string()),
         limits: Limits::default(),
@@ -93,6 +102,15 @@ fn parse(args: &[String]) -> Result<Options, String> {
         };
         match arg.as_str() {
             "--model" => options.model = value()?,
+            "--provider" => {
+                options.provider = value()?;
+                if options.provider != "codex" && options.provider != "openrouter" {
+                    return Err(format!(
+                        "--provider wants codex or openrouter, not {}",
+                        options.provider
+                    ));
+                }
+            }
             "--strong-model" => options.strong_model = value()?,
             "--route" => {
                 options.limits.route = match value()?.as_str() {
@@ -193,18 +211,36 @@ async fn go(options: Options) -> Result<u8, String> {
         .network
         .clone()
         .unwrap_or_else(|| if task.internet { "bridge" } else { "none" }.to_string());
-    let openrouter = openrouter::Config::from_env().map_err(|e| e.to_string())?;
-    let generator = OpenRouterGenerator {
-        client: openrouter::Client::new(openrouter).map_err(|e| e.to_string())?,
-        model: options.model.clone(),
-        effort: options.effort.clone(),
+    let make = |model: &str| -> Result<AnyGenerator, String> {
+        if options.provider == "openrouter" {
+            let slug = if model.contains('/') {
+                model.to_string()
+            } else {
+                format!("openai/{model}")
+            };
+            return Ok(AnyGenerator::OpenRouter(OpenRouterGenerator {
+                client: openrouter::Client::new(
+                    openrouter::Config::from_env().map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?,
+                model: slug,
+                effort: options.effort.clone(),
+            }));
+        }
+        let login = microluna::codex::Login::default_path()
+            .ok_or("no Codex login: can't find ~/.codex/auth.json; run `codex login`")?;
+        let session = format!("microcoder-{}-{}", options.task, std::process::id());
+        let transport = microluna::codex::CodexTransport::new(login, &session)
+            .map_err(|e| format!("the Codex login can't be used: {e}; run `codex login`"))?;
+        Ok(AnyGenerator::Codex(CodexGenerator {
+            transport,
+            model: model.rsplit('/').next().unwrap_or(model).to_string(),
+            effort: options.effort.clone(),
+            cache_key: session,
+        }))
     };
-    let strong = OpenRouterGenerator {
-        client: openrouter::Client::new(openrouter::Config::from_env().map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?,
-        model: options.strong_model.clone(),
-        effort: options.effort.clone(),
-    };
+    let generator = make(&options.model)?;
+    let strong = make(&options.strong_model)?;
     let set = question_set();
     let route = route_set();
     let judge = JevJudge {

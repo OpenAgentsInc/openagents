@@ -3106,6 +3106,7 @@ dependencies = [
  "futures-util",
  "jev",
  "knowledge",
+ "microluna",
  "nostr",
  "openrouter",
  "serde",
