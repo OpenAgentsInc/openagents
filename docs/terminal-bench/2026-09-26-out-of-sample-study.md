@@ -171,3 +171,12 @@ The knowledge added for each round is recorded next to this file: Round 2 in [20
 **2026-09-26, Round 2 procedure notes.** The Round 2 screen runs 8 runs at a time, not the 4 the procedure named. Each run has its own containers and caps, so this changes wall time, not what a run sees. The report tool (`bench/terminal-bench/studies/2026-09-26-out-of-sample/`) takes Fable 5.1 low's fastest winning times from the replays file. That file disagrees with this page's table for five tasks (`atrx-vep-crispr` 9.0 min, `freecad-spring-clip` 14.6, `intrastat-meldung` 6.7, `retro-console-soc` 23.5, `wdm-design` 104.2), because this table was built from a parse that dropped some timestamps. Time wins use the replays values. Cost bars are unchanged. `freecad-platform-drawing` can't be graded: its verifier image no longer builds upstream (`pip` `uninstall-distutils-installed-package`), so it's reported as ungradeable, not as a failure. Confirmation runs are queued automatically by `confirm.py`.
 
 **2026-09-26, dev set extended to Terminal-Bench 2.1.** TB2.1's 89 tasks have no names in common with TB4 ([dev set](tb21-dev-set.md)), so loop and configuration tuning may use them as well as the 14 excluded TB4 tasks. The rule already allowed them as a knowledge source. Also, a harness fault that isn't task-specific: on coderos-4080, commands run through `docker exec` got umask `0000`. The fix lands between rounds, and Round 3 records it.
+
+**2026-09-26, Round 3 declared before any Round 3 held-out run.** Round 2 found 0 of 24 held-out passes, and 15 of those runs ended at the 60-step limit well inside their time and money caps. On the Terminal-Bench 2.1 dev set, an interim sweep (docs/terminal-bench/2026-09-26-tb21-sweep.md, 20 of 45 runs) had Luna at 200 steps passing 5 of 7 against 3 of 7 at 60 steps. GPT-6 Sol passed 3 of 6 at about 2.3× the cost. Round 3 changes only these things:
+
+- Microcoder `ea9c973576` (binary `microcoder-study-r3`), which adds umask `022` for every container command (`79f97b89ee`).
+- `--max-steps 200 --max-usd 2.00`. Time caps are the pre-registered ones with a floor of 90 minutes, still at most 120.
+- Knowledge snapshot: 154 entries (Rounds 1–3 knowledge; [Round 3 record](2026-09-26-round3-knowledge.md)), relay cache digest `68c1d4e456dd2de6adfc16be271f7b3b4f39e40601b7436dfccbb8f5fdcabf03`.
+- Still GPT-6 Luna at medium effort through OpenRouter (billed), `--kb candidates`, with no loop gates.
+
+Same held-out tasks (25) and Fable-fails pool (23), same win rules, and confirmation runs queued automatically.
