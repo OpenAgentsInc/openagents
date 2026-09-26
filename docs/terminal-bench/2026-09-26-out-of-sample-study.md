@@ -158,3 +158,12 @@ The knowledge added for each round is recorded next to this file: Round 2 in [20
 **2026-09-26, during Round 1.** The Gym's ingestion (#9681) found a Microcoder run on `react-lead-form` made on the owner's Mac the night before this pre-registration (`react-lead-form-1790398585`, 2026-09-25). It passed all 11 tests in 7:06 for $0.110 (model $0.093, Jev $0.017, embeddings $0.001, billed through OpenRouter). The only entries shown were general seed entries, none written from this task. That contradicts criterion 1 for this task: Microcoder *had* run on it once. Nothing was changed because of that run, and no entry was written from it. So the task stays in the held-out pool, its Round 1 screen run is the prospective test, and the earlier run is reported separately as a **retrospective** out-of-sample pass. It is the first recorded one.
 
 **2026-09-26, during Round 1.** While debugging a grading fault, the study operator read a few lines of model reasoning from the `ks-solver-cpp` screen run. By the rules above, `ks-solver-cpp` is **burned**: its results are reported as in-sample from now on.
+
+**2026-09-26, Round 2 declared before any Round 2 held-out run.** Round 1 is closed as partial. See the results file: its harness couldn't run Compose tasks or grade some separate verifiers, and the Codex limit cut it short. Round 2 screens every held-out task that isn't burned (25; `ks-solver-cpp` is burned) and all 23 Fable-fails tasks again, with this configuration:
+
+- Microcoder `e799ac020d` (binary `microcoder-study-r2`), which adds Compose tasks and separate verifiers like Harbor (#9688), complete relay sync (#9689), and honest cost fields (#9682).
+- GPT-6 Luna at medium effort through **OpenRouter** (`--provider openrouter --model openai/gpt-6-luna`). The cost basis is `billed`. This change of route from the Codex login is declared here. The model and effort are unchanged.
+- `--kb candidates`, entries synced only from `wss://relay.openagents.com`: 104 entries, the 58 from Round 1 plus 46 [Round 2 entries](2026-09-26-round2-knowledge.md) from excluded tasks and Terminal-Bench 2.1 only. The relay cache digest is `797cbd4242f921ec029a2b0ee0d6aa02ba8c65cf328e82a980d76b1822e445f0`.
+- Retrieval uses embeddings, which work again through OpenRouter.
+- No loop changes. Loop mechanisms still being developed on excluded tasks go to a later round.
+- Same caps and same win rules.
