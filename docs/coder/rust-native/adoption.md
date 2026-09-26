@@ -18,6 +18,9 @@ wgpu scene between desktop and the iOS app. Rust Native owns the generic
 surface/viewport/lifecycle contract; Verse retains geometry, controls, and
 networking, and `coder-ui` retains the palette. See [its verification
 record](../verification/2026-09-26-verse-mobile.md).
+The [world-home delivery](../verification/2026-09-26-world-pairing.md) adds an
+in-world computer, QR/paste pairing, and anchored reader panels. The framework
+keeps only the generic surface contract; Coder owns this interaction.
 
 This plan reviews public source at `6958741c4a72` and the accompanying Rust
 Native foundation. It uses the separate Coder checkout only as design

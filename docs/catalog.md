@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 441 documents plus itself as of September 26, 2026.
+This catalog lists 450 documents plus itself as of September 26, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -178,6 +178,7 @@ files are included below.
 | [coder/verification/2026-09-26-knowledge/README.md](coder/verification/2026-09-26-knowledge/README.md) | Evidence index | Knowledge integrity and permissioned input verification |
 | [coder/verification/2026-09-26-mobile-reader.md](coder/verification/2026-09-26-mobile-reader.md) | Retained evidence / audit | Coder iOS reader verification — September 26, 2026 |
 | [coder/verification/2026-09-26-verse-mobile.md](coder/verification/2026-09-26-verse-mobile.md) | Verification | Shared Verse desktop/iOS delivery |
+| [coder/verification/2026-09-26-world-pairing.md](coder/verification/2026-09-26-world-pairing.md) | Verification | Verse home and QR pairing delivery |
 | [coder/verification/2026-09-26-portable-host/README.md](coder/verification/2026-09-26-portable-host/README.md) | Evidence index | Portable host packaging evidence |
 | [coder/verification/2026-09-26-repository-adapter/README.md](coder/verification/2026-09-26-repository-adapter/README.md) | Evidence index | Repository adapter acceptance, 2026-09-26 |
 | [coder/verification/2026-09-26-task-inbox.md](coder/verification/2026-09-26-task-inbox.md) | Retained evidence / audit | Durable local task inbox verification |
@@ -466,6 +467,12 @@ files are included below.
 
 | Document | Role | Topic |
 | --- | --- | --- |
+| [terminal-bench/2026-09-26-config-sweep.md](terminal-bench/2026-09-26-config-sweep.md) | Retained evidence / assessment | Microcoder configuration sweep for Round 3 |
+| [terminal-bench/2026-09-26-kb-154-check.md](terminal-bench/2026-09-26-kb-154-check.md) | Retained evidence / assessment | Did the Round 3 knowledge entries hurt Microcoder? Check blocked by Jev credit |
+| [terminal-bench/2026-09-26-round2-loop.md](terminal-bench/2026-09-26-round2-loop.md) | Retained evidence / assessment | Round 2 loop work: ending a green run, and models to run it on |
+| [terminal-bench/2026-09-26-tb21-oos-study.md](terminal-bench/2026-09-26-tb21-oos-study.md) | Retained evidence / assessment | Terminal-Bench 2.1 out-of-sample study, knowledge off (pre-registration) |
+| [terminal-bench/2026-09-26-tb21-sweep.md](terminal-bench/2026-09-26-tb21-sweep.md) | Retained evidence / assessment | Terminal-Bench 2.1 configuration sweep: step cap and model |
+| [terminal-bench/tb21-dev-set.md](terminal-bench/tb21-dev-set.md) | Retained evidence / assessment | Terminal-Bench 2.1 development set |
 | [terminal-bench/2026-09-22-luna-jevprobe-upgrade.md](terminal-bench/2026-09-22-luna-jevprobe-upgrade.md) | Dated report / protocol | Coder One upgrade: give Luna evidence for every requirement |
 | [terminal-bench/2026-09-22-pack-study.md](terminal-bench/2026-09-22-pack-study.md) | Dated report / protocol | The first study: evidence.pack parameters |
 | [terminal-bench/2026-09-22-routing.md](terminal-bench/2026-09-22-routing.md) | Dated report / protocol | Route each task: outcome matrix and first router |

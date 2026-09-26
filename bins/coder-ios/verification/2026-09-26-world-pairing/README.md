@@ -75,3 +75,10 @@ Images: [opening world](world.png), [computer and catalog](computer.png),
 [pairing and camera fallback](pairing.png), and [expanded transcript](transcript.png).
 The native receipt records which images are settled independent captures and
 which come from XCTest attachments.
+
+## TestFlight distribution
+
+Coder **0.5.0 (40)** is processed and available to **Internal Testers**.
+The [release receipt](testflight-build40.json) records the clean source commit,
+archive identity, signature verification, successful upload, and Apple's
+`VALID` / `IN_BETA_TESTING` state. No physical camera acceptance is implied.

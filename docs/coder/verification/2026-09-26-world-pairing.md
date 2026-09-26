@@ -87,3 +87,15 @@ terminal for connection status. An already-open page can remain visible after
 its local file is removed; the host still enforces single-device use and expiry.
 The computer must stay awake and the connector must keep running for fresh
 history. A relay connection cannot prove that a disconnected cache is current.
+
+## Distribution
+
+Coder **0.5.0 (40)** is valid and available to the internal TestFlight group.
+The signed archive was built from clean commit
+[`e85bfce6b4`](https://github.com/OpenAgentsInc/openagents/commit/e85bfce6b490d9b48c6a430758830bc00c316248),
+which is pushed to `main`. All 103 native verification paths match the release
+source, including the separately recorded test-only screenshot additions.
+The [distribution receipt](../../../bins/coder-ios/verification/2026-09-26-world-pairing/testflight-build40.json)
+pins the source, Cargo lock, executable, toolchain, Apple build identity, and
+confirmed internal testing state. This is an internal TestFlight release;
+physical-device acceptance and production App Store submission remain separate.

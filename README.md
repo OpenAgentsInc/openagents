@@ -44,12 +44,12 @@ complete multi-operator market remain unfinished. The
 [implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
 maps every contract to its implemented parts and remaining work.
 
-Coder for iOS is available in internal TestFlight as **0.5.0 (39)**.
-Its [Verse tab](docs/verse/mobile.md) runs the shared desktop world with native
-Metal rendering, touch movement, and optional Nostr presence. The **Chats** tab
-preserves saved Codex and Claude transcripts, follow updates, and encrypted
-local caching. [Pair your computer](docs/coder/guides/mobile-readonly.md).
-[Release evidence](docs/coder/verification/2026-09-26-verse-mobile.md).
+Coder for iOS is available in internal TestFlight as **0.5.0 (40)**.
+[Verse is the home screen](docs/verse/mobile.md): walk to the computer in the
+shared 3D world to pair by QR code or paste a pairing string. The computer opens
+saved Codex and Claude transcripts with follow updates and encrypted local
+caching. [Pair your computer](docs/coder/guides/mobile-readonly.md).
+[Release evidence](docs/coder/verification/2026-09-26-world-pairing.md).
 
 ## Start here
 
@@ -62,7 +62,7 @@ local caching. [Pair your computer](docs/coder/guides/mobile-readonly.md).
 | Install a bounded task host | [Verified bundles, one-shot services, and rollback](docs/coder/runtime/portable-host.md), [platform acceptance and limits](docs/coder/verification/2026-09-26-portable-host/README.md) |
 | Try the experimental knowledge-assisted loop | [Microcoder](docs/coder/guides/microcoder.md), [shared knowledge base](docs/coder/guides/knowledge-base.md) |
 | Inspect exact knowledge inputs and comparisons | [Private and immutable bundles](docs/coder/runtime/knowledge-bundles.md), [evidence integrity](docs/coder/runtime/knowledge-evidence.md), [frozen study bookkeeping](docs/coder/runtime/knowledge-studies.md) |
-| Read computer chats on iPhone | [Pair the Coder iOS reader](docs/coder/guides/mobile-readonly.md), [build and TestFlight setup](bins/coder-ios/README.md), [verification](docs/coder/verification/2026-09-26-mobile-reader.md) |
+| Read computer chats on iPhone | [Pair the Coder iOS reader](docs/coder/guides/mobile-readonly.md), [build and TestFlight setup](bins/coder-ios/README.md), [verification](docs/coder/verification/2026-09-26-world-pairing.md) |
 | Review mobile platform feasibility | [Rust native prototype and measured limits](docs/coder/design/rust-mobile-feasibility.md) |
 | Build shared terminal, web, and native UI | [Rust Native](crates/rust-native/README.md), [framework contract](crates/rust-native/docs/spec.md), [Coder architecture](docs/coder/rust-native/architecture.md), [build order](docs/coder/rust-native/build-order.md), [adoption map](docs/coder/rust-native/adoption.md) |
 | Compare saved agent transcripts | [Gym head-to-head replay](docs/gym/head-to-head.md) |

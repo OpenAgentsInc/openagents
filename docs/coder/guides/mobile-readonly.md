@@ -6,10 +6,11 @@ keep it open to receive appended records. The original harness continues to
 own the conversation. This app cannot send a prompt, run a tool, approve an
 operation, or resume an agent.
 
-The first delivery uses the existing **Coder** iOS app identity and Xcode
-setup. [Native build instructions](../../../bins/coder-ios/README.md) and the
-[verification record](../verification/2026-09-26-mobile-reader.md) describe the
-build and the checks actually performed.
+The reader uses the existing **Coder** iOS app identity and Xcode setup.
+[Native build instructions](../../../bins/coder-ios/README.md), the
+[world and pairing verification](../verification/2026-09-26-world-pairing.md),
+and the [original reader checks](../verification/2026-09-26-mobile-reader.md)
+describe the build and the checks actually performed.
 
 ## Connect the phone
 
@@ -30,7 +31,7 @@ build and the checks actually performed.
    Point the phone at the QR code on the physical computer. If the camera
    is unavailable, choose **Paste code** and paste the complete `coder-pair:`
    string instead. Neither path requires copying the phone's public key.
-4. Once paired, open **Chats** at the world computer and select a conversation.
+4. Once paired, the chat list opens at the world computer. Select a conversation.
    The foreground reader loads history in bounded pages and checks for new
    records every five seconds. Close the panel to return to walking.
 
