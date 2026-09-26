@@ -5,7 +5,8 @@
 //! (<https://github.com/OpenRouterTeam/typescript-sdk>, Apache-2.0) that
 //! this needs: the chat request, the `json_schema` response format
 //! (`ChatFormatJsonSchemaConfig` and `ChatJsonSchemaConfig` there), the
-//! result's usage and cost, and the SDK's error classes. Streaming, tools,
+//! result's usage and cost, provider routing's `require_parameters`, the
+//! `response-healing` plugin, and the SDK's error classes. Streaming, tools,
 //! and every other endpoint are left out.
 //!
 //! ```no_run
@@ -197,6 +198,20 @@ struct UsageRequest {
     include: bool,
 }
 
+/// One OpenRouter plugin (the spec's `ResponseHealingPlugin` and kin).
+#[derive(Clone, Debug, Serialize, PartialEq)]
+struct Plugin {
+    id: String,
+}
+
+/// OpenRouter's provider routing preferences.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+struct ProviderPreferences {
+    /// Route only to providers that support every parameter sent, such as
+    /// `response_format`.
+    require_parameters: bool,
+}
+
 /// One chat completions request, not streamed.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct ChatRequest {
@@ -212,6 +227,14 @@ pub struct ChatRequest {
     pub reasoning: Option<Reasoning>,
     stream: bool,
     usage: UsageRequest,
+    /// Provider routing: set by [`Client::structured`] so the request goes
+    /// only to providers that honor every parameter it sends.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<ProviderPreferences>,
+    /// Plugins: set by [`Client::structured`] to OpenRouter's
+    /// `response-healing`, which repairs a reply that misses the schema.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    plugins: Vec<Plugin>,
 }
 
 impl ChatRequest {
@@ -228,6 +251,8 @@ impl ChatRequest {
             reasoning: None,
             stream: false,
             usage: UsageRequest { include: true },
+            provider: None,
+            plugins: Vec::new(),
         }
     }
 
@@ -333,7 +358,13 @@ pub enum Error {
     /// The response wasn't a chat completion, or had no reply text.
     Decode { detail: String, excerpt: String },
     /// The reply text doesn't match the requested shape.
-    Schema { detail: String, excerpt: String },
+    /// The reply text doesn't match the requested shape. The call still
+    /// cost what `usage` says.
+    Schema {
+        detail: String,
+        excerpt: String,
+        usage: Usage,
+    },
 }
 
 /// The error classes of OpenRouter's SDK, by status.
@@ -413,7 +444,9 @@ impl fmt::Display for Error {
                     "OpenRouter's response couldn't be read: {detail}: {excerpt}"
                 )
             }
-            Error::Schema { detail, excerpt } => {
+            Error::Schema {
+                detail, excerpt, ..
+            } => {
                 write!(
                     f,
                     "the reply doesn't match the requested shape: {detail}: {excerpt}"
@@ -590,6 +623,15 @@ impl Client {
         name: &str,
         schema: Value,
     ) -> Result<Structured<T>, Error> {
+        // Three layers, from OpenRouter's API: a strict schema, routing only
+        // to providers that support every parameter sent, and the
+        // response-healing plugin for a reply that still misses the schema.
+        request.provider = Some(ProviderPreferences {
+            require_parameters: true,
+        });
+        request.plugins = vec![Plugin {
+            id: "response-healing".to_string(),
+        }];
         request.response_format = Some(ResponseFormat {
             kind: "json_schema".to_string(),
             json_schema: JsonSchema {
@@ -615,11 +657,28 @@ impl Client {
                 excerpt: String::new(),
             });
         }
-        let value =
-            serde_json::from_str::<T>(strip_fence(&raw)).map_err(|error| Error::Schema {
-                detail: error.to_string(),
-                excerpt: excerpt(&raw, 400),
-            })?;
+        // The first complete JSON value is the reply; a model that adds
+        // stray characters after it still answered.
+        let first = serde_json::Deserializer::from_str(strip_fence(&raw))
+            .into_iter::<T>()
+            .next();
+        let value = match first {
+            Some(Ok(value)) => value,
+            Some(Err(error)) => {
+                return Err(Error::Schema {
+                    detail: error.to_string(),
+                    excerpt: excerpt(&raw, 400),
+                    usage: response.usage,
+                });
+            }
+            None => {
+                return Err(Error::Schema {
+                    detail: "the reply holds no JSON value".to_string(),
+                    excerpt: excerpt(&raw, 400),
+                    usage: response.usage,
+                });
+            }
+        };
         Ok(Structured {
             value,
             raw,

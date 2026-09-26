@@ -116,6 +116,8 @@ async fn a_structured_reply_parses_with_its_usage_and_cost() {
     );
     assert!(request.contains("\"json_schema\""));
     assert!(request.contains("\"strict\":true"));
+    assert!(request.contains("\"require_parameters\":true"));
+    assert!(request.contains("\"plugins\":[{\"id\":\"response-healing\"}]"));
 }
 
 #[tokio::test]
@@ -223,4 +225,35 @@ async fn a_provider_error_inside_a_200_is_an_error() {
         ),
         "{error}"
     );
+}
+
+#[tokio::test]
+async fn stray_characters_after_the_object_are_ignored() {
+    let (url, _) = serve(vec![(
+        200,
+        vec![],
+        completion("{\"rationale\":\"ok\",\"commands\":[\"ls\"]}\u{0AC2}\u{0AB2}"),
+    )])
+    .await;
+    let request = ChatRequest::new("m", vec![Message::user("go")]);
+    let reply = client(&url)
+        .structured::<Next>(request, "next_action", schema())
+        .await
+        .unwrap();
+    assert_eq!(reply.value.commands, ["ls"]);
+    assert!(reply.raw.ends_with('\u{0AB2}'));
+}
+
+#[tokio::test]
+async fn a_schema_error_still_reports_what_the_call_cost() {
+    let (url, _) = serve(vec![(200, vec![], completion("I found the defects."))]).await;
+    let request = ChatRequest::new("m", vec![Message::user("go")]);
+    let error = client(&url)
+        .structured::<Next>(request, "next_action", schema())
+        .await
+        .unwrap_err();
+    match error {
+        Error::Schema { usage, .. } => assert_eq!(usage.cost, Some(0.00042)),
+        other => panic!("{other:?}"),
+    }
 }

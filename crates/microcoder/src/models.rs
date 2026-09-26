@@ -203,14 +203,21 @@ impl Generate for OpenRouterGenerator {
                 usd: reply.usage.cost.unwrap_or(0.0),
                 milliseconds: reply.milliseconds,
             },
-            Err(error) => Generated {
-                action: Err(error.to_string()),
-                model: self.model.clone(),
-                prompt_tokens: 0,
-                completion_tokens: 0,
-                usd: 0.0,
-                milliseconds: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-            },
+            Err(error) => {
+                // A reply that misses the format still cost what it cost.
+                let usage = match &error {
+                    openrouter::Error::Schema { usage, .. } => usage.clone(),
+                    _ => openrouter::Usage::default(),
+                };
+                Generated {
+                    action: Err(error.to_string()),
+                    model: self.model.clone(),
+                    prompt_tokens: usage.prompt_tokens,
+                    completion_tokens: usage.completion_tokens,
+                    usd: usage.cost.unwrap_or(0.0),
+                    milliseconds: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                }
+            }
         }
     }
 }
