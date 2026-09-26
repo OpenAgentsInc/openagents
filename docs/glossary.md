@@ -30,6 +30,7 @@ than an operating service.
 | Decision model, generator, executor | A decision model answers typed questions; a generator produces open-ended output; an executor performs admitted work. Selecting one does not automatically authorize the others. |
 | Program, plugin, skill, package | A program composes work; a Wasm plugin performs a bounded operation; a `SKILL.md` skill supplies guidance; a package distributes components. Voyager's skill is executable Lua. |
 | Definition, binding, grant | A definition describes an interface, a binding connects it to a host, and a grant supplies authority. Discovery and installation grant nothing. |
+| UI intent, activation, execution authority | An activation identifies a current control; the validated view supplies its typed application intent. The application must separately check authority before causing an effect. |
 | Trace, evidence, receipt, journal | A trace records execution; evidence supports an assessment; a receipt attributes a call or effect; a journal records durable lifecycle state. None guarantees all the others exist. |
 | Verification, integration, acceptance, settlement | Checking the result, adopting it, accepting contractual work, and confirming payment are separate decisions. |
 | Knowledge, method, component | Knowledge supplies cited guidance; a method registry supplies executable definition-based checks; a component is a reusable part of agent behavior. A source task is not independent evidence for its own contribution. |
@@ -39,6 +40,7 @@ than an operating service.
 
 - [Agent infrastructure](#agent-infrastructure)
 - [The Coder product suite](#the-coder-product-suite)
+- [Shared UI and Rust Native](#shared-ui-and-rust-native)
 - [Coder and execution](#coder-and-execution)
 - [Traces and retained evidence](#traces-and-retained-evidence)
 - [Context and working state](#context-and-working-state)
@@ -100,12 +102,31 @@ The [product-suite plan](coder/design/typesafe-product-suite.md) treats these as
 | Execution transfer | Designed | Moving task execution to a newly admitted host with exact artifacts, reconciled effects, and fenced ownership. Reconnecting a client or copying a transcript is insufficient. |
 | Provider neutrality | Defined | Keeping product control and reusable contracts independent of one model or executor supplier. Supported adapters can be interchangeable without having equal behavior, quality, cost, or permissions. |
 
+## Shared UI and Rust Native
+
+The [Rust Native index](../crates/rust-native/README.md) owns this experimental
+core's scope. Its [styling contract](../crates/rust-native/docs/styling.md) and
+[adoption plan](../crates/rust-native/docs/adoption.md) distinguish implemented
+data contracts from future renderer and product integrations.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Rust Native | Partial | The experimental Rust UI foundation in `crates/rust-native`. It implements bounded serializable views, typed activation, ordered styles, and the shared amber theme. Native and web adapters, a mounting runtime, and complete Coder client migration remain planned. It is not a Rust port of React Native or an implemented SwiftUI renderer. |
+| Semantic view tree | Implemented | A versioned `View<I>` containing keyed `Node<I>` values with stack, text, and button meaning. Validation bounds the tree and checks its structure and identity. It does not mount widgets, authenticate a remote publisher, or prove platform support. See [the view contract](../crates/rust-native/src/view.rs). |
+| Typed UI intent | Implemented | An application-defined value `I` carried by an interactive node. A valid activation selects the intent from the current validated view rather than accepting a replacement intent from a callback. Resolving the value does not execute it or grant task, filesystem, relay, or spending authority. |
+| View activation | Implemented | An `Activation` naming a view instance, revision, and node. The validated view refuses stale identities, non-button targets, and disabled buttons before returning a typed intent. The application remains responsible for current domain authorization. |
+| `StyleSheet` | Implemented | A validated registry of named `StylePatch` values with deterministic, caller-ordered composition. Later explicit leaf properties replace earlier ones. Names are not CSS selectors; registry ordering does not control precedence. See [styles](../crates/rust-native/src/style.rs). |
+| Style patch | Implemented | A typed appearance update whose leaf properties use `Patch::Unset`, `Set`, or `Reset`. `Unset` preserves earlier declarations; `Reset` clears one until resolution uses explicitly supplied defaults. There is no implicit parent inheritance. Style cannot authorize an interaction. |
+| Semantic spacing token | Implemented | A `Space` value (`None`, `Xs`, `Sm`, `Md`, or `Lg`) identifying a spacing role. It is not a number of cells, native logical units, or CSS pixels. Per-platform mappings remain planned. |
+| Native adapter | Designed | A renderer that maps validated semantic views to native controls and owns mounting, input, focus, text composition, accessibility, and disposal. The proposed Apple path targets SwiftUI. The existing [UIKit probe](../crates/coder-mobile-probe/src/ios.rs) is a separate feasibility implementation, not a delivered Rust Native adapter. |
+| `Intensity` | Implemented | The shared four-step amber foreground vocabulary in [`rust_native::theme`](../crates/rust-native/src/theme.rs): `Quarter`, `Half`, `ThreeQuarters`, and `Full`. `coder_terminal::Intensity` re-exports the same type; the existing colors, class names, digits, and near-black constants are preserved. Terminal capability mapping stays in `coder-terminal::Ladder`. |
+
 ## Coder and execution
 
 | Term | Status | Definition |
 | --- | --- | --- |
 | Coder | Implemented | OpenAgents' coding specialization and the `crates/coder` agent. Interactive and headless use share `coder::turn::run`, with typed routing, generation, and host-controlled execution. The broader product suite has additional planned surfaces. See [Coder](coder/README.md). |
-| Coder Terminal | Implemented | Coder's terminal interface. `crates/coder-terminal` supplies the shared design system and renderer; the `coder` binary supplies the conversation and runtime. See [terminal behavior](coder/runtime/terminal.md). |
+| Coder Terminal | Implemented | Coder's terminal interface. `crates/coder-terminal` supplies the terminal design system and renderer and re-exports the shared Rust Native amber palette; the `coder` binary supplies the conversation and runtime. Shared palette ownership does not mean the terminal has migrated to semantic view rendering. See [terminal behavior](coder/runtime/terminal.md). |
 | Coder One | Implemented | The standalone agent and reusable controller in `crates/coder-one`: Jev judgments, evidence preparation, policy-selected executors, checks, and retained episodes. Its original issue-to-PR loop and experimental benchmark compositions coexist. See [the implementation](../crates/coder-one/src/lib.rs) and [tunable composition](coder/guides/coder-one-tunable.md). |
 | Microluna | Implemented | The small generative-session harness in `crates/microluna`, with five native tools, supervised commands, workspace boundaries, and ATIF recording. Its Codex-login transport reads credentials without refreshing them. Coder's delegate door still uses it. See [Microluna](coder/design/microluna.md) and [the delegate door](coder/runtime/delegate-door.md). |
 | Luna pivot | Defined | The development direction that moved Coder One toward small, short Luna executor sessions surrounded by typed decisions, explicit state, and checks. It is an architectural strategy to evaluate, not evidence of an automatic quality or cost advantage. See [the Luna pivot](coder/design/luna-pivot.md). |
@@ -749,7 +770,7 @@ Sources: [Verse](verse/README.md), [chat](verse/chat.md), and [NIP-MV](../nips/o
 | Term | Status | Definition |
 | --- | --- | --- |
 | Verse | Partial | The Rust desktop world in `crates/verse`: an amber 3D city with shared avatars, agents, and chat over Nostr. It succeeds the historical spatial-workroom idea; live OpenAgents run, Pylon, and payment state is not implemented. |
-| Amber ladder | Implemented | The four `coder_terminal::Intensity` steps over one amber hue, plus the near-black field. Verse draws every line in a ladder step and every solid face in the field color. |
+| Amber ladder | Implemented | The four shared `rust_native::theme::Intensity` steps over one amber hue, plus the near-black field, re-exported through the unchanged `coder_terminal` API. Verse still draws lines and faces through that vocabulary. Palette provenance does not turn Verse into a native widget renderer. See [shared UI terms](#shared-ui-and-rust-native). |
 | Mouselook | Implemented | Holding the right mouse button: the character turns to face the camera, then turns with the mouse, and `A`/`D` strafe instead of turning. Left drag orbits the camera without turning the character. |
 | Pose frame | Implemented | A `23300` event carrying the current position and quaternion of one publisher's entities. Relays forward it and do not store it. Receivers order frames by session and sequence and draw them slightly in the past. |
 | Entity state | Implemented | A `33301` event recording where one entity was last and whether its publisher is online. Relays keep the latest per entity, which is how a player resumes and how resting players stay visible. |

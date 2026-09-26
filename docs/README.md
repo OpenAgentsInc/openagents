@@ -10,6 +10,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Goal | Start here |
 | --- | --- |
 | Use or develop Coder | [Coder](coder/README.md), [installation](coder/guides/install.md), [task commands](coder/guides/tasks.md) |
+| Build shared terminal, native, and web interfaces | [Rust Native](../crates/rust-native/README.md), [styling](../crates/rust-native/docs/styling.md), [adoption plan](../crates/rust-native/docs/adoption.md) |
 | Follow suite delivery and ownership | [Migration tracker](coder/migration-status.md), [master roadmap](roadmap.md) |
 | Understand the coding and network thesis | [Coder design index](coder/design/README.md), [networked Coder](coder/design/networked-coder-plan.md) |
 | Observe and control a task over Nostr | [Scoped control host and client](coder/runtime/nostr-task-control.md) |
@@ -32,6 +33,12 @@ describe intended behavior, including work that is not implemented. Dated
 measurements retain a particular configuration and result; they do not certify
 today's default. A NIP specifies a contract, while its implementation coverage
 report identifies the roles that code actually supports.
+
+Rust Native's experimental core implements bounded semantic views, typed UI
+intents, deterministic style composition, and the shared amber palette. Native
+and web adapters remain planned. The existing UIKit mobile probe is separate
+from the proposed SwiftUI adapter; neither the shared core nor its code tests
+establish a delivered cross-platform client.
 
 The master roadmap owns cross-project priorities. The migration tracker owns
 suite packages and issue claims. Each domain index links its current runtime

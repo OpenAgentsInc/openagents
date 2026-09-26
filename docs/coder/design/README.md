@@ -23,6 +23,16 @@ The [program and extension specification](../../extensions/README.md) applies
 these plans to workflow selection, Wasm plugins, scoped skills, progressive
 discovery, and package distribution.
 
+The [Rust Native foundation](../../../crates/rust-native/README.md) supplies
+the initial shared UI vocabulary, typed current-view intents, deterministic
+styles, and theme. The terminal already adopts its theme through compatibility
+exports; native renderers remain planned. Read its
+[specification](../../../crates/rust-native/docs/spec.md),
+[build order](../../../crates/rust-native/docs/build-order.md), and
+[adoption map](../../../crates/rust-native/docs/adoption.md) for incremental
+SwiftUI, Android, terminal, and web integration under
+[#9693](https://github.com/OpenAgentsInc/openagents/issues/9693).
+
 | Document | Topic |
 | --- | --- |
 | [2026-09-21-project-roadmap-snapshot](2026-09-21-project-roadmap-snapshot.md) | Decision Router and Coder project snapshot |
@@ -52,6 +62,7 @@ discovery, and package distribution.
 | [typesafe-agent-roadmap](typesafe-agent-roadmap.md) | Roadmap for a TypeSafe-native Coder |
 | [typesafe-product-suite](typesafe-product-suite.md) | Complete TypeSafe proposal applied to Coder's interfaces, execution locations, context, tools, and measured delivery |
 | [Rust mobile feasibility](rust-mobile-feasibility.md) | Public simulator/emulator and rendering prototypes, platform-language choices, and device-release limits |
+| [Rust Native adoption](../../../crates/rust-native/docs/adoption.md) | Public file-by-file migration, native component mapping, compatibility boundaries, and platform-specific completion checks |
 | [Teardown Nostr integration](teardown-nostr-integration.md) | Archived design adaptation, protocol gaps, and host/client implementation sequencing |
 | [x402 Lightning integration](x402-lightning-nostr-integration.md) | Nostr discovery and policy around Lightning purchase bindings, retries, and retained evidence |
 

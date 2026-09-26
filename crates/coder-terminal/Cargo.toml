@@ -7,6 +7,7 @@ description = "The Coder terminal: one amber ladder, a framed composer, and the 
 publish.workspace = true
 
 [dependencies]
+rust-native = { path = "../rust-native" }
 crossterm = "0.29"
 pulldown-cmark = { version = "0.13.4", default-features = false }
 ratatui = "0.30"

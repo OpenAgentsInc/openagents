@@ -1,6 +1,7 @@
 # Document catalog
 
-A complete path inventory of Markdown documents outside `docs/transcripts/`.
+A complete path inventory of Markdown documents under `docs/`, excluding
+`docs/transcripts/`.
 Roles identify how to read a document; they are not implementation or deployment
 status. Dated reports and designs can describe work that is partial, superseded,
 negative, or deferred. Use their scope statements and linked current guides.
@@ -11,6 +12,14 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 
 This catalog lists 433 documents plus itself as of September 26, 2026.
 It retains historical and evidence paths rather than copying their content.
+
+Crate-owned documentation sits outside this inventory and its count. The
+[Rust Native index](../crates/rust-native/README.md) owns the experimental UI
+core's contract and implementation status, with separate
+[styling](../crates/rust-native/docs/styling.md),
+[reference review](../crates/rust-native/docs/references.md), and
+[adoption](../crates/rust-native/docs/adoption.md) documents. Native renderers
+and the broader client migration remain planned.
 
 ## Top-level navigation and reference
 

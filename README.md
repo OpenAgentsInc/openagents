@@ -13,8 +13,11 @@ evidence.
 
 The repository also contains decision-model implementations and services,
 Rust SDKs and CLIs, a Nostr relay, public protocol specifications, and
-Voyager's Minecraft agent. Product code is Rust, with a Swift bridge for
-Apple's on-device model. Python and shell handle training, benchmark
+Voyager's Minecraft agent. [Rust Native](crates/rust-native/README.md) supplies
+the experimental shared UI foundation: typed views, styles, and the amber theme
+already used through the terminal's compatibility exports. Native adapters,
+including a thin SwiftUI adapter for iOS, are planned. Product code is Rust,
+with an existing Swift bridge for Apple's on-device model. Python and shell handle training, benchmark
 acquisition, and infrastructure.
 
 The [general agent architecture](docs/agents/README.md) and
@@ -49,6 +52,7 @@ maps every contract to its implemented parts and remaining work.
 | Try the experimental knowledge-assisted loop | [Microcoder](docs/coder/guides/microcoder.md), [shared knowledge base](docs/coder/guides/knowledge-base.md) |
 | Inspect exact knowledge inputs and comparisons | [Private and immutable bundles](docs/coder/runtime/knowledge-bundles.md), [evidence integrity](docs/coder/runtime/knowledge-evidence.md), [frozen study bookkeeping](docs/coder/runtime/knowledge-studies.md) |
 | Review mobile platform feasibility | [Rust native prototype and measured limits](docs/coder/design/rust-mobile-feasibility.md) |
+| Build shared terminal, web, and native UI | [Rust Native](crates/rust-native/README.md), [specification](crates/rust-native/docs/spec.md), [build order](crates/rust-native/docs/build-order.md), [adoption map](crates/rust-native/docs/adoption.md) |
 | Compare saved agent transcripts | [Gym head-to-head replay](docs/gym/head-to-head.md) |
 | Inspect benchmark results | [Terminal-Bench status and evidence](docs/terminal-bench/README.md) |
 | Run a benchmark or controlled experiment | [Harness runbook](docs/terminal-bench/runbook.md), [experiment template](docs/terminal-bench/targeted-experiment-template.md) |
@@ -304,7 +308,8 @@ controller components; a policy's presence in code is not a measured result.
 | [microluna](crates/microluna/) | Short model sessions with five native tools, host-enforced execution, and ATIF traces; used by Coder One and Coder's delegate path. |
 | [microcoder](crates/microcoder/), [knowledge](crates/knowledge/) | Experimental Jev-guided coding loop, knowledge retrieval and expansion, entry admission, and NIP-KB publication and synchronization. |
 | [coder-project](crates/coder-project/), [coder-scheduler](crates/coder-scheduler/) | Supervised project programs, deterministic task admission, durable scheduling records, and simulations. |
-| [coder-terminal](crates/coder-terminal/) | Shared terminal design system, composer, frames, and rendering. |
+| [rust-native](crates/rust-native/README.md) | Experimental semantic views, typed intents, style composition, and shared amber theme; native adapters remain planned. |
+| [coder-terminal](crates/coder-terminal/) | Terminal design system, composer, frames, and rendering; re-exports Rust Native's theme for existing consumers. |
 | [coder-boundary](crates/coder-boundary/), [supervise](crates/supervise/) | Filesystem enforcement, workspace snapshots, process-group cleanup, deadlines, and output bounds. |
 | [atif](crates/atif/), [receipts](crates/receipts/) | Append-only agent trajectories and versioned execution receipts. |
 | [capability](crates/capability/) | Capability manifests, host-owned trust, and bounded probes. |

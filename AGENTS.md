@@ -1,9 +1,14 @@
 # OpenAgents agent contract
 
-Product code in this workspace is Rust. Do not add TypeScript. The product
-exception is `swift/lev-bridge`, the helper that reaches Apple's
+Product code in this workspace is Rust. Do not add TypeScript. The existing
+product exception is `swift/lev-bridge`, the helper that reaches Apple's
 `FoundationModels` framework, which has no Rust binding; it is built by a
-repo script and supervised as a child process. Retained Python training and
+repo script and supervised as a child process. Rust Native's planned iOS
+adapter may also use thin SwiftUI glue for native controls, mounting, and
+callbacks, as explicitly requested for that surface. Keep its application state,
+domain logic, permissions, and transport in Rust; this foundation adds no SwiftUI
+source yet. Read `crates/rust-native/docs/spec.md` before adding that boundary.
+Retained Python training and
 acceptance tooling and shell orchestration are infrastructure exceptions,
 not permission to add another product implementation language.
 
@@ -179,10 +184,19 @@ uses, and marks which are implemented and which are only specified.
   numbers live in `docs/laya/`; golden fixtures in
   `crates/laya/fixtures/`; weights stay in `~/work/laya-artifacts/` out
   of git.
+- `crates/rust-native` — the experimental shared UI foundation: validated
+  serializable semantic views, typed application intents, deterministic style
+  composition, and the shared amber theme. Current primitives are `Stack`,
+  `Text`, and `Button`; native renderers and text input are planned. It owns no
+  task execution, network transport, credentials, or platform objects. Read
+  `crates/rust-native/docs/` before extending a shared UI contract. Put reusable
+  component semantics here and keep platform implementations in adapters.
 - `crates/coder-terminal` — the Coder terminal: the amber intensity ladder,
   the framed composer, and the shell they draw. It also holds the terminal
-  design system every other terminal here depends on — `Intensity`,
-  `Ladder`, `frame`, and `rail`. Extend it rather than copying it. The
+  design system every other terminal here depends on — the re-exported
+  `rust_native::theme::Intensity`, `Ladder`, `frame`, and `rail`. Extend these
+  terminal facilities rather than copying them; shared platform-independent
+  UI contracts belong in Rust Native. The
   rebuild plan lives in `docs/coder/`.
 - `crates/coder` — the agent: `classify` routes each turn through Jev,
   `generate` answers through an Open Responses door, and the `coder`

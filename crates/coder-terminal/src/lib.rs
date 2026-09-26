@@ -1,8 +1,9 @@
 //! The Coder terminal: one amber, four intensities, and the composer.
 //!
-//! The crate is built around a small, renderer-agnostic core:
+//! The crate builds on Rust Native's shared theme and owns terminal facilities:
 //!
-//! - [`Intensity`] is a four-step brightness scale over a single amber hue.
+//! - [`Intensity`] re-exports Rust Native's four-step brightness scale over a
+//!   single amber hue.
 //!   Tone — faintest to brightest — carries every distinction the UI needs;
 //!   hue does not vary.
 //! - [`Ladder`] maps an [`Intensity`] to a concrete color for the terminal at
