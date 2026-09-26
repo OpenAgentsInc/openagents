@@ -151,6 +151,8 @@ and are copied into the retained set the Gym reads (#9681). The study record
 and results go in `2026-09-26-out-of-sample-study-results.md`, next to this
 file. The summary goes in [tb4-results.md](tb4-results.md).
 
+The knowledge added for each round is recorded next to this file: Round 2 in [2026-09-26-round2-knowledge.md](2026-09-26-round2-knowledge.md) (sources, entries added and rejected, cost, and the relay-sync note).
+
 ## Amendments
 
 **2026-09-26, during Round 1.** The Gym's ingestion (#9681) found a Microcoder run on `react-lead-form` made on the owner's Mac the night before this pre-registration (`react-lead-form-1790398585`, 2026-09-25). It passed all 11 tests in 7:06 for $0.110 (model $0.093, Jev $0.017, embeddings $0.001, billed through OpenRouter). The only entries shown were general seed entries, none written from this task. That contradicts criterion 1 for this task: Microcoder *had* run on it once. Nothing was changed because of that run, and no entry was written from it. So the task stays in the held-out pool, its Round 1 screen run is the prospective test, and the earlier run is reported separately as a **retrospective** out-of-sample pass. It is the first recorded one.
