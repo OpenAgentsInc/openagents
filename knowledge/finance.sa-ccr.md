@@ -1,6 +1,6 @@
 ---
 id: finance.sa-ccr
-version: 7
+version: 9
 kind: method
 title: The Basel standardised approach to counterparty credit risk (SA-CCR)
 summary: >-
@@ -93,8 +93,15 @@ Add-ons by asset class, with supervisory factor SF:
   (BB), 1.6% (B), 6.0% (CCC); ρ = 50%. Credit indices: 0.38% investment
   grade, 1.06% speculative; ρ = 80%. Equity: single names SF 32%, ρ 50%;
   indices SF 20%, ρ 80%.
-- **Commodity**: electricity SF 40%, other commodities 18%, ρ = 40% within
-  a hedging set.
+- **Commodity**: four hedging sets: energy, metals, agricultural, and
+  other. Crude oil and gold, for example, are in different hedging sets.
+  Within a hedging set, AddOn_k = SF_k × Σ effective notionals per
+  commodity type, combined with ρ = 40% as for credit and equity; the
+  hedging sets' add-ons then simply add. SF: electricity 40%, every other
+  commodity 18%.
+- **Supervisory volatility** for option deltas: interest rate 50%, FX
+  15%, credit single name 100%, credit index 80%, equity single name
+  120%, equity index 75%, electricity 150%, other commodities 70%.
 
 Risk-weighted assets are EAD times the counterparty's risk weight, summed.
 
