@@ -9,6 +9,7 @@ use crate::harvest::{self, AnyProposer, CodexProposer, OpenRouterProposer, Propo
 use crate::lint::{Corpus, default_corpora, lint};
 use crate::remote::{self, Trust, TrustConfig};
 use crate::search::{Embedder, Retriever};
+use crate::transfer;
 use crate::{
     Base, Entry, Kind, Status, archive, default_cache, default_dir, pending, set_evidence,
     set_status, template, today,
@@ -46,6 +47,10 @@ Admitting entries:
                     without it, never on a task it was written from; write a
                     NIP-EVAL report per entry, and with --attach add a line to
                     the entry's evidence
+  evidence --author KEY [ids]
+                    the same for another author's synced entries: runs that
+                    showed each one's exact version (by digest) against runs
+                    that didn't show it
   admit <id> --reviewer NAME
                     admit an entry after reading it; the admission names you
   admit <id> --evidence
@@ -61,6 +66,9 @@ Sharing entries (microcoder only):
                                  fetch, check, and cache other authors' entries
   publish-evidence --relay URL [ids]
                                  publish evidence reports for published entries
+  publish-evidence --relay URL --author KEY [ids]
+                                 publish evidence for another author's synced
+                                 entries, citing each exact version (NIP-XP)
 
 Options:
   --dir DIR         the knowledge directory (default OPENAGENTS_KNOWLEDGE, or
@@ -558,6 +566,9 @@ fn verdict_word(verdict: Verdict) -> &'static str {
 }
 
 fn measure(o: &Options) -> Result<u8, String> {
+    if !o.authors.is_empty() {
+        return measure_synced(o);
+    }
     let runs = evidence::scan(&o.runs()?);
     let dir = o.evidence_dir()?;
     println!(
@@ -608,6 +619,64 @@ fn measure(o: &Options) -> Result<u8, String> {
         }
     }
     println!("reports in {}", dir.display());
+    Ok(0)
+}
+
+/// `kb evidence --author KEY [ids]`: measures that author's synced entry
+/// versions, each by its exact digest, and writes a report per version
+/// under the evidence directory's `remote/<author>/`.
+fn measure_synced(o: &Options) -> Result<u8, String> {
+    if o.attach {
+        return Err(
+            "--attach edits a local entry file; another author's entry isn't yours to edit"
+                .to_string(),
+        );
+    }
+    let remote_dir = o
+        .remote
+        .clone()
+        .or_else(remote::default_dir)
+        .ok_or("no synced entries directory: pass --remote")?;
+    let runs_dir = o.runs()?;
+    let runs = evidence::scan(&runs_dir);
+    let dir = o.evidence_dir()?;
+    println!(
+        "{} runs with a summary in {}",
+        runs.len(),
+        runs_dir.display()
+    );
+    println!("rule: {}", evidence::RULE);
+    for author in &o.authors {
+        let author = remote::parse_author(author)
+            .ok_or(format!("{author} isn't an npub or a hex public key"))?;
+        for synced in transfer::synced(&remote_dir, &author, &o.words)? {
+            let entry = &synced.entry;
+            let (measured, selection) = transfer::measure(&synced, &runs, &runs_dir);
+            let (report, artifacts) =
+                transfer::report(&synced, &measured, &selection, &Evaluator::local());
+            evidence::write(&transfer::report_path(&dir, &synced), &report, &artifacts)?;
+            println!(
+                "{} v{} by {} ({}): {} with it; {}: {}{}{}",
+                entry.id,
+                entry.version,
+                remote::npub(&author),
+                entry.short_digest(),
+                crate::evidence::count(measured.runs_with, "run"),
+                crate::evidence::tally(&measured),
+                verdict_word(measured.verdict),
+                if measured.excluded_tasks.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " (not counting {}, which it was written from)",
+                        measured.excluded_tasks.join(", ")
+                    )
+                },
+                transfer::left_out(&selection)
+            );
+        }
+    }
+    println!("reports in {}", dir.join("remote").display());
     Ok(0)
 }
 

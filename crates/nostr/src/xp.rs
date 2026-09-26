@@ -700,7 +700,8 @@ pub fn bind_evidence(
 /// The `kb-transfer` rule. The completion is accepted when all hold:
 ///
 /// 1. `entry` is a valid `3190` and `evidence` a valid `3189` whose subject
-///    is exactly that entry event.
+///    is exactly that entry event: its EventRef, the entry's qualified ID
+///    in its author's namespace, and the digest and size of its document.
 /// 2. The evidence's signer (the runner) isn't the entry's author.
 /// 3. The quest's task isn't one the entry was written from.
 /// 4. The report's verdict is `pass`, and its paired tasks include the
@@ -731,6 +732,19 @@ pub fn check_transfer(
         .ok_or_else(|| malformed("subject.event"))?;
     if subject.id != entry.id || subject.pubkey != entry.pubkey {
         return Err(mismatch("the evidence is about another entry"));
+    }
+    if published.subject.id != kb::qualified_id(&entry.pubkey, &version.id) {
+        return Err(mismatch(
+            "the report's subject isn't the entry's qualified ID in its author's namespace",
+        ));
+    }
+    let artifact = &published.subject.artifact;
+    if artifact.digest.trim_start_matches("sha256:") != version.digest
+        || artifact.size != version.document.len() as u64
+    {
+        return Err(mismatch(
+            "the report measured other document bytes than the entry version it cites",
+        ));
     }
     let refuse = |why: String| Err(ContractError::new(RefusalCode::NotAdmitted, why));
     if evidence.pubkey == entry.pubkey {

@@ -16,6 +16,7 @@ use knowledge::cli::Options;
 use knowledge::evidence::{self, Evaluator};
 use knowledge::lint::{Corpus, default_corpora};
 use knowledge::remote::{self, npub};
+use knowledge::transfer;
 use knowledge::{Base, Entry, Status};
 use nostr::domain::Event;
 use nostr::kb;
@@ -227,20 +228,23 @@ fn entries(o: &Options) -> Result<Vec<(Entry, String)>, String> {
         .collect()
 }
 
-/// This author's entry versions, withdrawals, and heads on the relay.
+/// One author's entry versions, withdrawals, and heads on the relay.
 struct Mine {
     versions: Vec<(kb::EntryVersion, Event)>,
     withdrawn: Vec<String>,
     heads: Vec<(String, String)>,
 }
 
-async fn mine(relay: &mut Relay, me: &str, ids: &[String]) -> Result<Mine, String> {
+/// The entry versions, withdrawals, and heads `author` signed for `ids`.
+/// Events another key signed are never counted.
+async fn mine(relay: &mut Relay, author: &str, ids: &[String]) -> Result<Mine, String> {
     let events = relay
         .query(json!({
             "kinds": [kb::ENTRY_KIND, kb::WITHDRAWAL_KIND, kb::HEAD_KIND],
-            "authors": [me], "#d": ids, "limit": LIMIT,
+            "authors": [author], "#d": ids, "limit": LIMIT,
         }))
         .await?;
+    let events: Vec<Event> = events.into_iter().filter(|e| e.pubkey == author).collect();
     let mut found = Mine {
         versions: Vec::new(),
         withdrawn: Vec::new(),
@@ -498,12 +502,16 @@ authors in the trust file) or --kb-trust all (as candidates).",
 /// `kb publish-evidence`: for each published entry with paired runs, a
 /// NIP-EVAL report signed by this key, as a `3189` citing the entry's
 /// `3190`. The report is also kept under the evidence directory's
-/// `published/`.
+/// `published/`. With `--author`, the entries are that author's synced
+/// ones: see [`publish_transfer`].
 ///
 /// # Errors
 ///
 /// A bad usage, key, or relay.
 pub async fn publish_evidence(o: &Options, key: &Path) -> Result<u8, String> {
+    if !o.authors.is_empty() {
+        return publish_transfer(o, key).await;
+    }
     let url = relay_url(o)?;
     let identity = load_key(key, "signing as")?;
     let me = identity.pubkey().to_string();
@@ -563,6 +571,116 @@ pub async fn publish_evidence(o: &Options, key: &Path) -> Result<u8, String> {
             Err(error) => {
                 refused += 1;
                 println!("{id}: {error}");
+            }
+        }
+    }
+    println!(
+        "{} published, {refused} refused",
+        evidence::count(published, "evidence report")
+    );
+    Ok(u8::from(refused > 0))
+}
+
+/// `kb publish-evidence --author KEY [ids]`: evidence about another
+/// author's synced entries, the runner's half of a NIP-XP `kb-transfer`
+/// completion. Each cached version is measured by its exact digest, and
+/// its report cites the author's `3190` on the relay that carries that
+/// digest; a version the relay doesn't have, or has withdrawn, is refused.
+/// The report is signed by this key, which must not be the author's.
+///
+/// # Errors
+///
+/// A bad usage, key, author, or relay, or an entry that isn't synced.
+pub async fn publish_transfer(o: &Options, key: &Path) -> Result<u8, String> {
+    let url = relay_url(o)?;
+    let [author] = o.authors.as_slice() else {
+        return Err("name one author with --author KEY".to_string());
+    };
+    let author = remote::parse_author(author)
+        .ok_or(format!("{author} isn't an npub or a hex public key"))?;
+    let remote_dir = o
+        .remote
+        .clone()
+        .or_else(remote::default_dir)
+        .ok_or("no synced entries directory: pass --remote")?;
+    let identity = load_key(key, "signing as")?;
+    let me = identity.pubkey().to_string();
+    if author == me {
+        return Err(format!(
+            "{} is your own key: evidence you sign about your own entry earns no XP under \
+NIP-XP. Publish it without --author, from --dir",
+            npub(&author)
+        ));
+    }
+    let chosen = transfer::synced(&remote_dir, &author, &o.words)?;
+    let ids: Vec<String> = chosen.iter().map(|s| s.entry.id.clone()).collect();
+    let runs_dir = o.runs()?;
+    let runs = evidence::scan(&runs_dir);
+    let store = o.evidence_dir()?.join("published");
+    let mut relay = Relay::open(url, &identity).await?;
+    println!("connected to {url}; {} runs recorded", runs.len());
+    let found = mine(&mut relay, &author, &ids).await?;
+    let evaluator = Evaluator {
+        id: me.clone(),
+        namespace: me.clone(),
+    };
+    let (mut published, mut refused) = (0, 0);
+    for synced in &chosen {
+        let entry = &synced.entry;
+        let label = format!("{} v{} by {}", entry.id, entry.version, npub(&author));
+        let Some((_, event)) = found
+            .versions
+            .iter()
+            .find(|(v, _)| v.id == entry.id && v.digest == synced.hex_digest())
+        else {
+            refused += 1;
+            println!(
+                "{label}: this relay has no version with digest {}; publish to the relay you \
+synced it from, or sync again",
+                entry.short_digest()
+            );
+            continue;
+        };
+        if found.withdrawn.contains(&event.id) {
+            refused += 1;
+            println!("{label}: its author withdrew this version, so there's nothing to cite");
+            continue;
+        }
+        let (measured, selection) = transfer::measure(synced, &runs, &runs_dir);
+        if measured.pairs.is_empty() {
+            println!(
+                "{label}: no paired tasks yet, so there's nothing to publish{}",
+                transfer::left_out(&selection)
+            );
+            continue;
+        }
+        let cited = transfer::Synced {
+            event: event.clone(),
+            ..synced.clone()
+        };
+        let (report, artifacts) = transfer::report(&cited, &measured, &selection, &evaluator);
+        let report_text = serde_json::to_string(&report).map_err(|e| e.to_string())?;
+        let parts = kb::evidence(&report_text, std::slice::from_ref(&event.id))
+            .map_err(|e| e.to_string())?;
+        let signed = sign(&identity, parts);
+        match relay.publish(&signed).await {
+            Ok(()) => {
+                published += 1;
+                let path = store.join(format!("{}.json", signed.id));
+                evidence::write(&path, &report, &artifacts)?;
+                std::fs::write(&path, &report_text).map_err(|e| e.to_string())?;
+                println!(
+                    "{label}: evidence {} published, citing entry {}; {}: {}{}",
+                    signed.id,
+                    short(&event.id),
+                    evidence::tally(&measured),
+                    report["verdict"].as_str().unwrap_or("unknown"),
+                    transfer::left_out(&selection)
+                );
+            }
+            Err(error) => {
+                refused += 1;
+                println!("{label}: {error}");
             }
         }
     }

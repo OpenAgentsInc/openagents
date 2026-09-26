@@ -368,7 +368,8 @@ fn put(artifacts: &mut Artifacts, schema: &str, value: &Value) -> Value {
 
 /// The NIP-EVAL report for `measured`, the entry file `document`, and the
 /// artifacts it references. `event` is the entry's `3190` EventRef, when
-/// it's published.
+/// it's published. The entry is the evaluator's own: its qualified ID uses
+/// the evaluator's namespace.
 #[must_use]
 pub fn report(
     measured: &Measured,
@@ -377,10 +378,32 @@ pub fn report(
     evaluator: &Evaluator,
     event: Option<Value>,
 ) -> (Value, Artifacts) {
+    report_about(
+        measured,
+        document,
+        &evaluator.namespace,
+        runs,
+        evaluator,
+        event,
+    )
+}
+
+/// [`report`] for an entry in the namespace `author`, which may be another
+/// author's: the entry's qualified ID is `<author>:kb/<slug>`, and every
+/// other ID stays in the evaluator's namespace.
+#[must_use]
+pub fn report_about(
+    measured: &Measured,
+    document: &str,
+    author: &str,
+    runs: &[Run],
+    evaluator: &Evaluator,
+    event: Option<Value>,
+) -> (Value, Artifacts) {
     let mut artifacts = Artifacts::new();
     let ns = &evaluator.namespace;
     let mut definition = json!({
-        "id": nostr::kb::qualified_id(ns, &measured.id),
+        "id": nostr::kb::qualified_id(author, &measured.id),
         "artifact": nostr::kb::document_artifact(document),
     });
     if let Some(event) = event {

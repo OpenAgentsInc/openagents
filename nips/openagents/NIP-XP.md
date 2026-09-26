@@ -143,7 +143,10 @@ A completion names one `3190` entry event and one `3189` evidence event. It
 is accepted when all of these hold:
 
 1. The entry is a valid NIP-KB `3190`, and the evidence is a valid NIP-KB
-   evidence `3189` whose report subject is exactly that entry event.
+   evidence `3189` whose report subject is exactly that entry event: its
+   `event` names it, its `id` is the entry's qualified ID in the author's
+   namespace, and its `artifact` has the digest and size of the entry's
+   `document`.
 2. The evidence's signer (the runner) isn't the entry's signer (the author).
 3. The quest's `task` isn't a task the entry was written from: none of the
    entry document's `provenance.written_from` runs is a run of that task.
@@ -397,7 +400,9 @@ Clients cover, with fixtures: a tampered quest (signature), a quest whose
 tags disagree with its body, an unknown rule or uniqueness policy, an award
 signed by someone other than the quest's referee, an award whose XP differs
 from its quest, self-evidence, in-sample evidence, a report that doesn't
-pass or doesn't pair on the task, evidence outside the season, a revoked
+pass or doesn't pair on the task, evidence outside the season, a report
+that cites the entry event but measured other document bytes or names the
+entry outside its author's namespace, a revoked
 award and its replacement, two live awards for one key, a rewritten quest
 version, an award whose evidence is unavailable, and a revocation signed by
 someone other than the award's referee. `crates/nostr/src/xp/tests.rs`,

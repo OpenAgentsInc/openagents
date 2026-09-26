@@ -25,6 +25,7 @@ pub mod harvest;
 pub mod lint;
 pub mod remote;
 pub mod search;
+pub mod transfer;
 mod write;
 pub mod xp;
 

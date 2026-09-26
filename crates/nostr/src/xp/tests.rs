@@ -62,7 +62,7 @@ fn report(runner: &str, entry: &Event, task: &str, passes: u64, usd: f64, verdic
         "requires": [],
         "evaluator": runner,
         "subject": {"definition": {
-            "id": kb::qualified_id(runner, "git.reflog-recovery"),
+            "id": kb::qualified_id(&entry.pubkey, "git.reflog-recovery"),
             "artifact": kb::document_artifact(DOCUMENT),
             "event": {"id": entry.id, "pubkey": entry.pubkey, "kind": kb::ENTRY_KIND},
         }},
@@ -299,6 +299,29 @@ fn the_rule_refuses_completions_that_do_not_qualify() {
     );
     assert_eq!(
         code(check_transfer(&quest, &other, &w.evidence, &[]).map(|_| ())),
+        RefusalCode::IdentityMismatch
+    );
+    // A report that cites the entry event but measured other bytes, or
+    // names the entry in the runner's namespace instead of its author's.
+    let text = report(w.runner.pubkey(), &w.entry, "fix-git", 2, 0.3, "pass");
+    let mut value: Value = serde_json::from_str(&text).unwrap();
+    value["subject"]["definition"]["artifact"] =
+        kb::document_artifact(&DOCUMENT.replace("Body.", "Other body."));
+    assert_eq!(
+        code(check(
+            &signed_evidence(&w.runner, &w.entry, &value.to_string()),
+            &[]
+        )),
+        RefusalCode::IdentityMismatch
+    );
+    let mut value: Value = serde_json::from_str(&text).unwrap();
+    value["subject"]["definition"]["id"] =
+        json!(kb::qualified_id(w.runner.pubkey(), "git.reflog-recovery"));
+    assert_eq!(
+        code(check(
+            &signed_evidence(&w.runner, &w.entry, &value.to_string()),
+            &[]
+        )),
         RefusalCode::IdentityMismatch
     );
     // The builder refuses what the rule refuses.

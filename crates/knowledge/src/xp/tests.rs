@@ -46,7 +46,7 @@ fn evidence(runner: &RelaySigner, entry: &Event, text: &str) -> Event {
         "v": "openagents.eval-report.v1", "requires": [],
         "evaluator": runner.pubkey(),
         "subject": {"definition": {
-            "id": kb::qualified_id(runner.pubkey(), "git.reflog-recovery"),
+            "id": kb::qualified_id(&entry.pubkey, "git.reflog-recovery"),
             "artifact": kb::document_artifact(text),
             "event": {"id": entry.id, "pubkey": entry.pubkey, "kind": kb::ENTRY_KIND},
         }},
