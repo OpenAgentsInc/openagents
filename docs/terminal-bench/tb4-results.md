@@ -433,6 +433,16 @@ statistics. The rest depends on which scale the expression file given to
 GSEA should use; matching the grader's reference further would fit
 entries to one grader, so the work stopped there.
 
+**Not counted:** on 2026-09-26 the OpenRouter account ran out of credit
+($511.20 used), and runs in progress on `production-planning`,
+`mp-checkpoint-consolidation`, and `interleaved-vigenere` ended with HTTP
+402; runs on `hof-topology-interpenetration` and
+`telecom-entity-resolution` were stopped. None of them is a result.
+Before that, knowledge-assisted runs from the relay failed
+`risk-scorer-replay`, `coq-block-bound`, `sound-change-cascade`, and
+`interleaved-vigenere` at the 45-minute limit, and `batched-eval-parity`
+twice.
+
 Run records are under `~/.openagents/microcoder/runs/`.
 
 ## Refresh the snapshot
