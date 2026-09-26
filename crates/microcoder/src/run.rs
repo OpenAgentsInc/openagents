@@ -25,8 +25,8 @@ use serde_json::json;
 
 use crate::env::Env;
 use crate::models::{
-    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, dispute_set, knowledge_set,
-    relevance_set,
+    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, conform_set, dispute_set,
+    knowledge_set, relevance_set,
 };
 use crate::state::{Action, CommandResult, Dropped, Kept, State, Test, cut};
 
@@ -206,6 +206,13 @@ pub enum Event {
         step: usize,
         judgment: Judgment,
         dropped: Vec<String>,
+    },
+    /// Jev compared the finished code with the highly relevant knowledge
+    /// entries; `flagged` names the ones it judged the code contradicts.
+    Conformed {
+        step: usize,
+        judgment: Judgment,
+        flagged: Vec<String>,
     },
     /// The acceptance tests ran; `froze` is true on the run that froze them.
     Tested {
@@ -534,6 +541,116 @@ async fn read_view<E: Env>(env: &E, paths: &[String]) -> Vec<(String, Option<Str
     files
 }
 
+/// Jev's probability at which the finished code contradicts an entry.
+pub const CONTRADICTS: f64 = 0.7;
+
+/// Characters of code excerpts Jev reads for the conformance check.
+const EXCERPT_CHARS: usize = 10_000;
+
+/// The words that name an entry's subject: its ID's last part and its tags.
+fn entry_words(entry: &knowledge::Entry) -> Vec<String> {
+    let last = entry.id.rsplit('.').next().unwrap_or(&entry.id);
+    let mut words: Vec<String> = last
+        .split(['-', '_'])
+        .chain(entry.tags.iter().map(String::as_str))
+        .map(str::to_lowercase)
+        .filter(|w| w.len() >= 3)
+        .collect();
+    words.sort();
+    words.dedup();
+    words
+}
+
+/// Lines of the files in view within 25 lines of a line that names one of
+/// `words`, with each file's path and line numbers, within [`EXCERPT_CHARS`].
+fn excerpts(files: &[(String, Option<String>)], words: &[String]) -> String {
+    let mut out = String::new();
+    for (path, contents) in files {
+        let Some(text) = contents else { continue };
+        let lines: Vec<&str> = text.lines().collect();
+        let mut keep = vec![false; lines.len()];
+        for (n, line) in lines.iter().enumerate() {
+            let lower = line.to_lowercase();
+            if words.iter().any(|w| lower.contains(w.as_str())) {
+                let from = n.saturating_sub(25);
+                let to = (n + 25).min(lines.len().saturating_sub(1));
+                keep[from..=to].iter_mut().for_each(|k| *k = true);
+            }
+        }
+        if !keep.contains(&true) {
+            continue;
+        }
+        out.push_str(&format!("## {path}\n"));
+        let mut last = None;
+        for (n, line) in lines.iter().enumerate() {
+            if keep[n] {
+                if last.is_some_and(|l: usize| l + 1 != n) {
+                    out.push_str("...\n");
+                }
+                out.push_str(&format!("{:>4}  {line}\n", n + 1));
+                last = Some(n);
+            }
+        }
+    }
+    cut(&out, EXCERPT_CHARS, 0)
+}
+
+/// Asks Jev whether the finished code contradicts any highly relevant
+/// method or edge-case entry not checked yet, and returns the IDs it
+/// judged contradicted at [`CONTRADICTS`] or more.
+async fn conform<J: Judge>(
+    judge: &J,
+    base: &knowledge::Base,
+    state: &State,
+    checked: &mut Vec<String>,
+) -> Option<(Judgment, Vec<String>)> {
+    let entries: Vec<&knowledge::Entry> = state
+        .knowledge
+        .iter()
+        .filter(|k| {
+            k.relevance >= KB_AUTO_EXPAND
+                && (k.kind == "method" || k.kind == "edge-case")
+                && !checked.contains(&k.id)
+        })
+        .filter_map(|k| base.get(&k.id))
+        .collect();
+    if entries.is_empty() {
+        return None;
+    }
+    let mut words: Vec<String> = entries.iter().flat_map(|e| entry_words(e)).collect();
+    words.sort();
+    words.dedup();
+    let code = excerpts(&state.files, &words);
+    if code.is_empty() {
+        return None;
+    }
+    let set = relevance_set(&conform_set(), entries.len());
+    let mut jev_state = json!({ "task": cut(&state.task, 4_000, 0), "code": code });
+    for (n, entry) in entries.iter().enumerate() {
+        jev_state[format!("entry_{}", n + 1)] = json!({
+            "id": entry.id,
+            "title": entry.title,
+            "summary": entry.summary,
+            "body": cut(&entry.body, 3_000, 0),
+        });
+        checked.push(entry.id.clone());
+    }
+    let judgment = judge.judge(&set, &jev_state).await;
+    let flagged = entries
+        .iter()
+        .enumerate()
+        .filter(|(n, _)| {
+            let id = format!("entry_{}", n + 1);
+            judgment
+                .answers
+                .iter()
+                .any(|(q, p)| *q == id && *p >= CONTRADICTS)
+        })
+        .map(|(_, e)| e.id.clone())
+        .collect();
+    Some((judgment, flagged))
+}
+
 /// Jev's probability at which a failing frozen test is dropped as wrong.
 pub const WRONG: f64 = 0.7;
 
@@ -680,6 +797,8 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut refused = 0usize;
     // Steps in a row that ended with every frozen test passing.
     let mut green = 0usize;
+    // Knowledge entries the finished code was already checked against.
+    let mut checked: Vec<String> = Vec::new();
     let mut step = 0usize;
     let ending = loop {
         if limits.max_steps.is_some_and(|max| step >= max) {
@@ -930,6 +1049,32 @@ passing.",
             }
         }
         if action.finished && !failed {
+            if let Some(retriever) = models.knowledge
+                && let Some((judgment, flagged)) =
+                    conform(models.judge, &retriever.base, &state, &mut checked).await
+            {
+                jev_usd += judgment.usd;
+                observer.event(
+                    started.elapsed().as_secs_f64(),
+                    &Event::Conformed {
+                        step,
+                        judgment,
+                        flagged: flagged.clone(),
+                    },
+                );
+                if !flagged.is_empty() {
+                    state.notes.push(format!(
+                        "Step {step} said the task is finished, but Jev judged that the code \
+contradicts these knowledge entries: {}. Read each entry in the Knowledge base section and check \
+the code against it. If the entry applies, fix the code; a comment in the code that calls the \
+current choice deliberate isn't evidence, since the task says the code is broken. Then finish \
+again. Each entry is checked once.",
+                        flagged.join(", ")
+                    ));
+                    green = 0;
+                    continue;
+                }
+            }
             if state.frozen_at.is_some() && state.test_results.iter().any(|r| !r.ok()) {
                 let rationale = state
                     .actions

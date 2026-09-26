@@ -1,0 +1,10 @@
+{
+  "id": "openagents.microcoder.conform.v1",
+  "note": "What Jev answers when the model says the task is finished: one question per highly relevant method or edge-case entry, each asked once per run. The host replaces {entry} with the key that holds the entry (entry_1, entry_2, and so on); `code` holds excerpts of the files in view around the entry's names. An entry answered yes with probability 0.7 or more sends the finish back with a note naming it. Change the wording here, not in code; the file is digested into every run's record.",
+  "questions": [
+    {
+      "id": "contradicts",
+      "text": "The task in `task` says its original code is broken, and `code` holds excerpts of that code after the model's changes. Does the code contradict the knowledge entry in `{entry}`: does it use a variant, formula, or behavior the entry says is wrong for this purpose, even where a comment in the code says the choice is deliberate?"
+    }
+  ]
+}

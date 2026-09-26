@@ -221,6 +221,38 @@ impl Observer for Terminal {
                     ),
                 );
             }
+            Event::Conformed {
+                step,
+                judgment,
+                flagged,
+            } => {
+                let answers = judgment.error.clone().unwrap_or_else(|| {
+                    judgment
+                        .answers
+                        .iter()
+                        .map(|(id, p)| format!("{id} {p:.2}"))
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                });
+                let verdict = if flagged.is_empty() {
+                    "no contradiction".to_string()
+                } else {
+                    format!("sent back: the code contradicts {}", flagged.join(", "))
+                };
+                self.line(
+                    seconds,
+                    &format!(
+                        "{} {answers} · ${:.5} · {verdict}",
+                        self.paint(
+                            "1;35",
+                            &format!(
+                                "step {step} · jev checks the code against the knowledge base"
+                            )
+                        ),
+                        judgment.usd
+                    ),
+                );
+            }
             Event::Disputed {
                 step,
                 judgment,

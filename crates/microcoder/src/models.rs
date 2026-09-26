@@ -28,6 +28,10 @@ pub const KNOWLEDGE: &str = include_str!("../knowledge.json");
 /// the model says the task is finished.
 pub const DISPUTE: &str = include_str!("../dispute.json");
 
+/// The question Jev answers about the finished code and each highly
+/// relevant knowledge entry.
+pub const CONFORM: &str = include_str!("../conform.json");
+
 /// One question in the set.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Question {
@@ -81,6 +85,17 @@ pub fn knowledge_set() -> QuestionSet {
 #[must_use]
 pub fn dispute_set() -> QuestionSet {
     serde_json::from_str(DISPUTE).expect("dispute.json is valid")
+}
+
+/// The embedded conformance set: one question template, repeated per entry
+/// by [`relevance_set`].
+///
+/// # Panics
+///
+/// When `conform.json` isn't valid, which a test checks.
+#[must_use]
+pub fn conform_set() -> QuestionSet {
+    serde_json::from_str(CONFORM).expect("conform.json is valid")
 }
 
 /// The relevance question asked once for each of `count` candidates: the
@@ -324,6 +339,12 @@ mod tests {
         let set = route_set();
         assert_eq!(set.questions.len(), 1);
         assert_eq!(set.questions[0].id, "hard");
+    }
+
+    #[test]
+    fn the_conform_set_has_one_template() {
+        let set = relevance_set(&conform_set(), 2);
+        assert!(set.questions[0].text.contains("`entry_1`"));
     }
 
     #[test]

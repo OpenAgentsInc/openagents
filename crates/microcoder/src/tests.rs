@@ -11,8 +11,8 @@ use knowledge::search::Retriever;
 use knowledge::{Base, Entry};
 
 use crate::models::{
-    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, dispute_set, knowledge_set,
-    question_set, route_set,
+    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, conform_set, dispute_set,
+    knowledge_set, question_set, route_set,
 };
 use crate::run::{Ending, Event, Limits, Models, Observer, run};
 use crate::state::{CommandResult, State};
@@ -56,6 +56,8 @@ struct Jev {
     hard: f64,
     /// Every dispute answer.
     wrong: f64,
+    /// Every conformance answer.
+    contradicts: f64,
     relevance: Vec<(&'static str, f64)>,
     /// The id of every question set asked.
     asked: RefCell<Vec<String>>,
@@ -65,6 +67,7 @@ fn jev(hard: f64) -> Jev {
     Jev {
         hard,
         wrong: 0.1,
+        contradicts: 0.1,
         relevance: Vec::new(),
         asked: RefCell::new(Vec::new()),
     }
@@ -75,6 +78,11 @@ impl Judge for Jev {
         self.asked.borrow_mut().push(set.id.clone());
         let answers = if set.id == route_set().id {
             vec![("hard".to_string(), self.hard)]
+        } else if set.id == conform_set().id {
+            set.questions
+                .iter()
+                .map(|q| (q.id.clone(), self.contradicts))
+                .collect()
         } else if set.id == dispute_set().id {
             set.questions
                 .iter()
@@ -719,4 +727,51 @@ async fn passing_tests_nudge_then_end_the_run() {
     let prompts = script.prompts.into_inner();
     assert!(!prompts[2].contains("Every acceptance test has passed"));
     assert!(prompts[3].contains("Every acceptance test has passed for 3 steps in a row"));
+}
+
+#[tokio::test]
+async fn a_finish_whose_code_contradicts_an_entry_is_sent_back_once() {
+    let mut write = freeze("write tests", &["fix b"]);
+    write.view = vec!["thing.py".to_string()];
+    let script = Script::new(vec![
+        Ok(write),
+        Ok(act("done", &[], true)),
+        Ok(act("done", &[], true)),
+    ]);
+    let kb = base();
+    let jev = Jev {
+        contradicts: 0.9,
+        ..relevant(&[("stats.thing", 0.9)])
+    };
+    let (_, outcome, _, log) = go_kb(&script, &Limits::default(), &jev, None, Some(&kb)).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(outcome.steps, 3);
+    let conformed: Vec<&Vec<String>> = log
+        .0
+        .iter()
+        .filter_map(|e| match e {
+            Event::Conformed { flagged, .. } => Some(flagged),
+            _ => None,
+        })
+        .collect();
+    // Checked once; the second finish is accepted.
+    assert_eq!(conformed, [&vec!["stats.thing".to_string()]]);
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[2].contains("contradicts these knowledge entries: stats.thing"));
+}
+
+#[tokio::test]
+async fn code_that_follows_the_entries_finishes_at_once() {
+    let mut write = freeze("write tests", &["fix b"]);
+    write.view = vec!["thing.py".to_string()];
+    let script = Script::new(vec![Ok(write), Ok(act("done", &[], true))]);
+    let kb = base();
+    let jev = relevant(&[("stats.thing", 0.9)]);
+    let (_, outcome, _, log) = go_kb(&script, &Limits::default(), &jev, None, Some(&kb)).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(outcome.steps, 2);
+    assert!(log.0.iter().any(|e| matches!(
+        e,
+        Event::Conformed { flagged, .. } if flagged.is_empty()
+    )));
 }
