@@ -63,7 +63,7 @@ The related code work uses targeted package tests and Clippy; full workspace
 verification is reserved for releases and is not a documentation gate. This
 pass checks local file links and changed heading anchors, indexes, Markdown
 diff hygiene, and unchanged transcript paths. The completed inventory check
-resolved 4,926 relative file links and 515 local heading links across the non-transcript corpus; the
+resolved 4,931 relative file links and 515 local heading links across the non-transcript corpus; the
 only unresolved file reference was the literal prompt example below. Raw
 retained logs keep their original whitespace and bytes. The exact captured Claude prompt
 contains an illustrative `file.md` link; it remains literal source material,

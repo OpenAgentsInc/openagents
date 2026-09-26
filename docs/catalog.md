@@ -9,7 +9,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 432 documents plus itself as of September 26, 2026.
+This catalog lists 433 documents plus itself as of September 26, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 ## Top-level navigation and reference
@@ -167,7 +167,6 @@ It retains historical and evidence paths rather than copying their content.
 | [coder/verification/2026-09-26-task-inbox.md](coder/verification/2026-09-26-task-inbox.md) | Retained evidence / audit | Durable local task inbox verification |
 | [coder/verification/2026-09-26-task-owner.md](coder/verification/2026-09-26-task-owner.md) | Retained evidence / audit | Local task ownership and evidence verification |
 | [coder/verification/gates.md](coder/verification/gates.md) | Retained evidence / audit | Verification gates and what they cost |
-
 | [coder/verification/2026-09-26-task-control/README.md](coder/verification/2026-09-26-task-control/README.md) | Evidence index | Scoped task control: code verification |
 
 ## decision-models
@@ -535,6 +534,7 @@ It retains historical and evidence paths rather than copying their content.
 | [terminal-bench/tb4-leaderboard.md](terminal-bench/tb4-leaderboard.md) | Reference | Terminal-Bench 4.0 leaderboard reference, 2026-09-23 |
 | [terminal-bench/tb4-results.md](terminal-bench/tb4-results.md) | Reference | Terminal-Bench 4.0 results |
 | [terminal-bench/winning-runs-analysis.md](terminal-bench/winning-runs-analysis.md) | Reference | Why the two winning Coder One runs were cheap and fast |
+| [terminal-bench/2026-09-26-round3-knowledge.md](terminal-bench/2026-09-26-round3-knowledge.md) | Dated report / protocol | Round 3 knowledge: what was added, and from where |
 
 ## verse
 

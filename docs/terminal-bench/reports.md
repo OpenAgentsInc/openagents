@@ -92,3 +92,7 @@ into one pass-rate denominator.
 | 2026-09-22 | [Route each task: outcome matrix and first router](2026-09-22-routing.md) |
 | 2026-09-22 | [The first study: `evidence.pack` parameters](2026-09-22-pack-study.md) |
 | 2026-09-22 | [Coder One upgrade: give Luna evidence for every requirement](2026-09-22-luna-jevprobe-upgrade.md) |
+
+## Subsequent study material
+
+- [Round 3 knowledge: what was added, and from where](2026-09-26-round3-knowledge.md): separately maintained Round 3 study inputs; inclusion here does not change their study status.
