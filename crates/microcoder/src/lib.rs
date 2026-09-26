@@ -30,6 +30,7 @@ pub mod run;
 pub mod show;
 pub mod state;
 pub mod tbench;
+pub mod vertex;
 pub mod xpnet;
 
 /// The default model, reached through the operator's Codex login.

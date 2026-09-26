@@ -428,6 +428,8 @@ pub enum AnyGenerator {
     OpenRouter(OpenRouterGenerator),
     /// The OpenAgents door (`--provider door`), such as for Gemini.
     Door(crate::door::DoorGenerator),
+    /// Vertex AI's OpenAI-compatible endpoint (`--provider vertex`).
+    Vertex(crate::vertex::VertexGenerator),
 }
 
 impl Generate for AnyGenerator {
@@ -436,6 +438,7 @@ impl Generate for AnyGenerator {
             AnyGenerator::Codex(g) => g.generate(system, prompt).await,
             AnyGenerator::OpenRouter(g) => g.generate(system, prompt).await,
             AnyGenerator::Door(g) => g.generate(system, prompt).await,
+            AnyGenerator::Vertex(g) => g.generate(system, prompt).await,
         }
     }
 }

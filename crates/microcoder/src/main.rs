@@ -27,7 +27,10 @@ Options:
                      openrouter (OPENROUTER_API_KEY), or door (the OpenAgents
                      door at openagents.com/v1/responses on OPENAGENTS_API_KEY
                      or ~/.openagents/bearer; name a gateway model such as
-                     --model google/gemini-3.8-flash)
+                     --model google/gemini-3.8-flash), or vertex (Vertex AI's
+                     OpenAI-compatible endpoint on the token in
+                     ~/.openagents/vertex-token; name a model such as
+                     --model qwen/qwen3-coder-480b-a35b-instruct-maas)
   --effort LEVEL     low, medium, or high (default medium)
   --strong-model SLUG  the model that writes the acceptance tests on
                      a task Jev judges hard (default gpt-6-sol)
@@ -133,9 +136,9 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--model" => options.model = value()?,
             "--provider" => {
                 options.provider = value()?;
-                if !["codex", "openrouter", "door"].contains(&options.provider.as_str()) {
+                if !["codex", "openrouter", "door", "vertex"].contains(&options.provider.as_str()) {
                     return Err(format!(
-                        "--provider wants codex, openrouter, or door, not {}",
+                        "--provider wants codex, openrouter, door, or vertex, not {}",
                         options.provider
                     ));
                 }
@@ -267,6 +270,11 @@ async fn go(options: Options) -> Result<u8, String> {
                 model: slug,
                 effort: options.effort.clone(),
             }));
+        }
+        if options.provider == "vertex" {
+            return Ok(AnyGenerator::Vertex(
+                microcoder::vertex::VertexGenerator::from_env(model, options.effort.clone())?,
+            ));
         }
         if options.provider == "door" {
             let session = format!("microcoder-{}-{}", options.task, std::process::id());
@@ -512,7 +520,7 @@ async fn go(options: Options) -> Result<u8, String> {
             outcome.cost_unknown.len()
         ),
     };
-    let basis = if options.provider == "codex" {
+    let basis = if options.provider == "codex" || options.provider == "vertex" {
         Basis::ListPrice
     } else {
         Basis::Billed
