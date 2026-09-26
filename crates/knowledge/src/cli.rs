@@ -31,6 +31,10 @@ Writing entries:
                     (a directory, or a name under ~/.openagents/microcoder/runs);
                     they're written as candidates, and a near-duplicate of an
                     existing entry becomes its next version
+  harvest-trace <trajectory.json> --task NAME [--model SLUG]
+                    the same from another agent's winning ATIF trajectory: what
+                    it knew or did that a cheaper agent would miss; NAME is the
+                    task it solved, which no entry may name
 
 Admitting entries:
   evidence [ids] [--attach]
@@ -80,6 +84,8 @@ pub struct Options {
     pub title: Option<String>,
     pub author: Option<String>,
     pub model: Option<String>,
+    /// For `harvest-trace`: the task the trajectory solved.
+    pub task: Option<String>,
     pub runs: Option<PathBuf>,
     pub evidence_dir: Option<PathBuf>,
     pub attach: bool,
@@ -171,6 +177,7 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
                 o.authors.push(text);
             }
             "--model" => o.model = Some(value()?),
+            "--task" => o.task = Some(value()?),
             "--runs" => o.runs = Some(PathBuf::from(value()?)),
             "--evidence-dir" => o.evidence_dir = Some(PathBuf::from(value()?)),
             "--attach" => o.attach = true,
@@ -213,6 +220,7 @@ async fn run(args: &[String]) -> Result<u8, String> {
         "lint" => lint_all(&o),
         "add" => add(&o),
         "harvest" => harvest_run(&o).await,
+        "harvest-trace" => harvest_trace(&o).await,
         "evidence" => measure(&o),
         "admit" => admit(&o),
         "withdraw" => withdraw(&o),
@@ -382,6 +390,16 @@ applies_when, tags, citations, and body, then run kb lint.",
     Ok(0)
 }
 
+async fn harvest_trace(o: &Options) -> Result<u8, String> {
+    let path = PathBuf::from(one_id(o, "harvest-trace")?);
+    let task = o
+        .task
+        .clone()
+        .ok_or("kb harvest-trace needs --task NAME: the task the trajectory solved")?;
+    let record = harvest::trace_record(&path, &task)?;
+    harvest_and_report(o, record, &path).await
+}
+
 async fn harvest_run(o: &Options) -> Result<u8, String> {
     let run = one_id(o, "harvest")?;
     let mut run_dir = PathBuf::from(run);
@@ -391,6 +409,15 @@ async fn harvest_run(o: &Options) -> Result<u8, String> {
     if !run_dir.is_dir() {
         return Err(format!("no run {run}: pass a run directory or its name"));
     }
+    let record = harvest::record(&run_dir)?;
+    harvest_and_report(o, record, &run_dir).await
+}
+
+async fn harvest_and_report(
+    o: &Options,
+    record: harvest::Record,
+    run_dir: &Path,
+) -> Result<u8, String> {
     let model = o
         .model
         .clone()
@@ -409,7 +436,7 @@ async fn harvest_run(o: &Options) -> Result<u8, String> {
     };
     println!("reading {} with {model}", run_dir.display());
     let result =
-        harvest::harvest(&run_dir, &o.dir, &proposer, retriever.as_ref(), &corpus(o)).await?;
+        harvest::harvest_record(record, &o.dir, &proposer, retriever.as_ref(), &corpus(o)).await?;
     if result.proposals.is_empty() {
         println!("the model proposed no entries");
     }

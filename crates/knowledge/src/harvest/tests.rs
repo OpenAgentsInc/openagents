@@ -278,3 +278,37 @@ async fn a_revision_of_a_candidate_replaces_it_and_keeps_the_old_file() {
         matches!(&result.proposals[1].1, Written::Refused(why) if why.contains("unknown kind"))
     );
 }
+
+#[test]
+fn a_trajectory_reads_as_the_task_then_each_step() {
+    let dir = scratch("trace");
+    let path = dir.join("trace.json");
+    let doc = json!({
+        "schema_version": "ATIF-v1.7",
+        "agent": {"model_name": "strong-model"},
+        "steps": [
+            {"source": "user", "message": "Fit the rules to the pairs."},
+            {"source": "agent", "message": "Read the engine first.",
+             "tool_calls": [{"function_name": "Bash", "arguments": {"command": "cat engine.py"}}],
+             "observation": {"results": [{"content": "def apply(rule): ..."}]}},
+            {"source": "agent", "message": [{"type": "text", "text": "Now score candidates."}]}
+        ]
+    });
+    std::fs::write(&path, doc.to_string()).unwrap();
+    let record = trace_record(&path, "some-task").unwrap();
+    assert!(record.trace);
+    assert_eq!(
+        (record.run.as_str(), record.task.as_str()),
+        ("some-task", "some-task")
+    );
+    assert!(
+        record
+            .text
+            .starts_with("A winning trajectory by strong-model, 3 steps.")
+    );
+    assert!(record.text.contains("Fit the rules to the pairs."));
+    assert!(record.text.contains("[Bash] cat engine.py"));
+    assert!(record.text.contains("→ def apply(rule): ..."));
+    assert!(record.text.contains("Now score candidates."));
+    assert!(prompt(&record, &Base { entries: vec![] }).contains("# The trajectory"));
+}
