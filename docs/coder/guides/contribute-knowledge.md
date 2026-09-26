@@ -145,15 +145,36 @@ else's runs show it helped:
    microcoder <task> --kb off --max-usd <bar>
    ```
 
-3. The runner measures the entry and publishes a NIP-EVAL report signed
-   with their own key: the runs that showed the entry against the runs that
-   didn't, on tasks the entry wasn't written from.
+3. The runner checks the measurement locally. This reads the runs recorded
+   under `~/.openagents/microcoder/runs` and pairs the runs that showed the
+   entry's exact synced version (matched by digest) against the runs that
+   didn't show it, on tasks the entry wasn't written from:
 
-**Known gap:** `kb evidence` and `kb publish-evidence` measure and cite
-only entries in your own local directory, signed by your own key, so a
-runner can't yet publish evidence about another author's entry. Issue
-[#9687](https://github.com/OpenAgentsInc/openagents/issues/9687) tracks
-the fix. Until it lands, no quest can be completed.
+   ```sh
+   microcoder kb evidence --author <npub> <entry-id>
+   ```
+
+4. The runner publishes the measurement as a NIP-EVAL report signed with
+   their own key. It cites the author's exact kind-`3190` event:
+
+   ```sh
+   microcoder kb publish-evidence --relay wss://relay.openagents.com \
+     --author <npub> <entry-id>
+   ```
+
+   The command prints the evidence event's ID. It refuses when the relay
+   doesn't hold the synced version, when the author withdrew it, and when
+   `--author` is the runner's own key.
+
+5. The runner sends the evidence event ID to the referee, who checks it
+   against the quest's rule with `microcoder xp award` and, when it passes,
+   publishes the award. The referee can also find the evidence on the relay
+   from the entry's event ID.
+
+Runs that showed a different version of the entry, or another author's
+entry with the same ID, count in neither arm. If the author publishes a new
+version while you're running, sync again and run again: evidence is about
+one exact version.
 
 ## How XP is awarded
 
@@ -161,6 +182,8 @@ Quests and XP follow [NIP-XP](../../../nips/openagents/NIP-XP.md), and the
 [XP guide](xp.md) covers the referee's commands. The OpenAgents referee
 awards a quest's `kb-transfer` completion when all of these hold:
 
+- The report is about the exact entry version it cites: the author's
+  event, named by the author's qualified ID and the digest of its document.
 - The runner isn't the author.
 - The quest's task isn't in the entry's `written_from`.
 - The report's verdict is `pass`, and it pairs runs on the quest's task.

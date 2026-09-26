@@ -240,10 +240,6 @@ def cmd_board(args):
         "already beats in-sample (`embedding-drift-monitor`, `gsea-proteomics`,",
         "`fin-saccr-rwa`) have no quest.",
         "",
-        "Until [#9687](https://github.com/OpenAgentsInc/openagents/issues/9687)",
-        "lands, a runner can't publish evidence about another author's entry, so",
-        "no quest can be completed yet.",
-        "",
     ]
     if referee:
         lines += [

@@ -21,22 +21,22 @@ doesn't exist yet; nothing here moves money.
 2. An **author** writes and publishes a knowledge entry with
    `microcoder kb publish`.
 3. A **runner**, someone other than the author, runs paired Microcoder runs
-   with and without the entry and publishes the evidence with
-   `microcoder kb publish-evidence`. Today that command cites only entries
-   signed by the runner's own key, so it can't yet publish evidence about
-   another author's entry; issue
-   [#9687](https://github.com/OpenAgentsInc/openagents/issues/9687) tracks
-   the fix.
+   with and without the entry, and publishes the evidence with
+   `microcoder kb publish-evidence --author <author npub> <entry-id>`. The
+   report measures the exact entry version the runs showed, by digest,
+   cites the author's kind-`3190` event, and is signed by the runner's key.
 4. The referee checks the evidence against the quest's rule and, when it
    passes, publishes an award that credits the author and the runner.
 5. Each **reader** derives XP from the awards of the referees it trusts,
    re-checking every award against the signed entry and evidence.
 
 The rule, `kb-transfer`, accepts a completion only when all of these hold:
-the runner isn't the author; the entry wasn't written from the quest's
-task; the report's verdict is `pass`; the report pairs runs on the quest's
-task; and on that task the with-entry runs pass at the quest's pass rate
-and cost less per run than the quest's bar. The first accepted completion
+the report's subject is the entry event it cites, named by the author's
+qualified ID and the exact digest of its document; the runner isn't the
+author; the entry wasn't written from the quest's task; the report's verdict
+is `pass`; the report pairs runs on the quest's task; and on that task the
+with-entry runs pass at the quest's pass rate and cost less per run than
+the quest's bar. The first accepted completion
 of a quest version earns its award, once.
 
 ## The OpenAgents referee
@@ -121,7 +121,9 @@ were.
 ## Award a completion
 
 When a runner has published evidence for an entry, award the quest version
-by naming it and the evidence event:
+by naming it and the evidence event. `kb publish-evidence` prints the
+evidence event's full ID; the runner sends it to you, or you find it on the
+relay with a `#e` filter on the entry's event ID.
 
 ```sh
 microcoder xp award --relay wss://relay.openagents.com \

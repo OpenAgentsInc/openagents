@@ -200,6 +200,27 @@ references in `artifacts/`. `--attach` also adds a `measured` line to the
 entry's `evidence` list. Pass `--runs DIR` or `--evidence-dir DIR` to read or
 write elsewhere.
 
+### Measure another author's synced entry
+
+To measure entries you synced from another author, name the author:
+
+```sh
+microcoder kb evidence --author npub1...
+microcoder kb evidence --author npub1... git.reflog-recovery
+```
+
+This measures the version in your sync cache
+(`~/.openagents/knowledge/remote/<author>/`, or `--remote DIR`), by its exact
+digest. A run is *with* the entry when its `summary.json` records that ID
+with that digest, and *without* it when the run didn't show the ID at all. A
+run that showed the ID with another digest showed another version, or
+another author's entry with the same ID, so it counts in neither arm; so
+does a run that recorded the ID without a digest. The output says how many
+runs were left out. Tasks the entry was written from never count, as for
+your own entries. Reports go to
+`~/.openagents/knowledge/evidence/remote/<author hex>/<id>.v<N>.json`, and
+`--attach` is refused, because the entry file isn't yours to edit.
+
 ## Admit, withdraw, and review entries
 
 An entry is shown by default only once it's admitted. Admit it in one of two
@@ -345,13 +366,26 @@ kind-`3189` report signed by your key and citing the entry's kind-`3190`
 event. An entry whose current file isn't published is skipped; publish it
 first. Readers weigh evidence by who published it.
 
+To publish evidence about another author's synced entry, name the author:
+
+```sh
+microcoder kb publish-evidence --relay wss://relay.openagents.com \
+  --author npub1... git.reflog-recovery
+```
+
+Each synced version is measured as `kb evidence --author` measures it, by
+its exact digest. The report cites the author's kind-`3190` event that the
+relay holds with that digest, names the entry by the author's qualified ID,
+and is signed by your key. The command refuses a version the relay doesn't
+hold with that digest (publish to the relay you synced from, or sync again),
+a version its author withdrew, and your own key as `--author`. It prints
+each evidence event's full ID, which is what a referee needs.
+
 Evidence you publish about someone else's entry can complete a quest: a
 referee can accept it and award XP to the entry's author and to you, the
-runner. The [XP guide](xp.md) covers quests, awards, and the ledger. Today
-`kb evidence` and `kb publish-evidence` read only entries in your local
-directory signed by your key, so evidence about another author's synced
-entry isn't possible yet; issue
-[#9687](https://github.com/OpenAgentsInc/openagents/issues/9687) tracks it.
+runner. The [XP guide](xp.md) covers quests, awards, and the ledger, and the
+[contributor guide](contribute-knowledge.md) walks through a quest end to
+end.
 
 ## Contribute to the shared base
 

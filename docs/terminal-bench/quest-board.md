@@ -16,10 +16,6 @@ other tasks open when the study closes. The three tasks Microcoder
 already beats in-sample (`embedding-drift-monitor`, `gsea-proteomics`,
 `fin-saccr-rwa`) have no quest.
 
-Until [#9687](https://github.com/OpenAgentsInc/openagents/issues/9687)
-lands, a runner can't publish evidence about another author's entry, so
-no quest can be completed yet.
-
 Referee: `npub1v59z5gklyzc4v7c8klhqd8nuffl426d3s7zyluu5suxyyjn4khrsrusf6k`.
 Season `tb4-s1`: 2026-09-26 to 2026-12-25 UTC. Award:
 10 XP per quest version, 6 to the entry's author and
