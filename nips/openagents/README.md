@@ -17,6 +17,15 @@ claims of a deployed market or synchronized Coder clients. The
 explains the gaps and reuse across all three NIP lanes. Episodes 213–215,
 266–267, and 275–281 are design inputs, not wire contracts.
 
+[NIP-X402](NIP-X402.md) adds a **Designed** draft for Lightning-paid
+operations before execution. It preserves upstream x402 `http:1` and `mcp:1`
+bindings and defines an opt-in `nostr:openagents:1` extension, which is not an
+upstream profile. It leaves MKT/LAB payment after acceptance unchanged. The
+[integration assessment](../../docs/coder/design/x402-lightning-nostr-integration.md)
+separates wallet transport through NWC, social zaps, and the distinct L402
+protocol from this payment contract. No payment adapter is implemented by
+the draft.
+
 LAB keeps its name because OpenAgents already published a different
 [NIP-LBR v1 contract](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/nips/LBR.md)
 over NIP-90 kinds `5934`/`6934`/`7000`. The current `openagents.labor.v1`
@@ -180,6 +189,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-CTRL](NIP-CTRL.md) | Client pairing, task-scoped control rights, revocation, acknowledged commands, and bounded catch-up. | Shared `3188`; registered CAP operations over CJ execution. |
 | [NIP-MKT](NIP-MKT.md) | Immutable offerings, private negotiation, accepted orders, cancellation, and attributable Bitcoin settlement. | `3192`, `30192`; private records on shared `3188`. |
 | [NIP-LAB](NIP-LAB.md) | Agent-labor terms, execution linkage, deliverables, verification, acceptance, rework, disputes, and rights. | Shared `3188`; MKT agreements and CJ/RUN execution. |
+| [NIP-X402](NIP-X402.md) | Designed Lightning-paid operations: standard HTTP/MCP bindings, an opt-in native Nostr binding, spending admission, private evidence, and recovery. | No new kinds; CAP discovery and shared `3188` native records with POL/CJ/RUN admission. |
 | [NIP-SESS](NIP-SESS.md) | Engine capability, persistent sessions, durable input queues, steering, interactions, and native history/imports. | Shared `3188`; CAP/CJ operations and RUN records. |
 | [NIP-WS](NIP-WS.md) | Workspace resources, exact document versions, conditional changes, worktrees, checkpoints, and bounded projections. | Shared `3188`; CAP/CJ operations and RUN records. |
 | [NIP-WORK](NIP-WORK.md) | Tracked objectives, planning relations, assignments, revision admission, disposition, source imports, and attention. | Shared `3188`; CAP/CJ operations and WS projections. |

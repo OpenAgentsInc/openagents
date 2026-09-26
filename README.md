@@ -387,6 +387,13 @@ media, with governed preferences and component updates in existing contracts.
 The [coverage ledger](docs/protocol/2026-09-26-teardown-coverage.md) links every
 source and separates specifications from implementation work.
 
+The [x402 Lightning integration plan](docs/coder/design/x402-lightning-nostr-integration.md)
+and draft [NIP-X402](nips/openagents/NIP-X402.md) specify paid operations with
+Nostr discovery and private evidence, standard HTTP/MCP compatibility, and an
+opt-in native Nostr profile. Wallet, settlement, and recovery implementations
+remain pending. Upfront tool purchases are separate from labor payment after
+acceptance; zaps are not substituted for x402 proofs.
+
 The implemented Coder relay path carries signed, NIP-44-encrypted NIP-CJ
 jobs between the terminal and a worker. NIP-42 authenticates relay
 connections. The relay transports ephemeral job events; the worker holds

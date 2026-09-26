@@ -71,6 +71,13 @@ Executor/adapter contracts may include `remote`, an object with optional
 verified connection hints, not grants or permission to disclose tenant-only
 models. Host bindings pin and verify the actual serving identity before use.
 
+[NIP-X402](NIP-X402.md) defines the required feature `oa-x402-v1` for an
+adapter binding's `x402` payment descriptor. Only a definition that names that
+feature in `requires` may include the additional field. Unsupported readers
+refuse it. The descriptor advertises paid-operation support; it does not grant
+wallet authority or change ordinary CJ message bodies. Its native purchase
+control uses private artifacts before separately admitted execution.
+
 A host need not support every profile. A plugin profile cannot acquire the
 effects of an executor. An MCP listing cannot create a binding. Decision
 services use explicit native/adapter bindings with recipient and spend policy;

@@ -317,7 +317,7 @@ profile defines read ACLs, retention, fanout, and COUNT/search behavior.
 
 Kind `3188` is a regular immutable declaration of one scoped artifact for
 one recipient. CTX, POL, COORD, EVAL, OPT, KB, CTRL, MKT, LAB, SESS, WS,
-WORK, AUTO, ENV, LIVE, and private EXT records use it when
+WORK, AUTO, ENV, LIVE, X402, and private EXT records use it when
 a separately signed artifact is needed outside a RUN controller's journal.
 It does not dispatch work. A control or market consumer separately validates
 and admits the operation; receiving an artifact alone grants no effect. The event has
@@ -374,7 +374,7 @@ before public interoperation.
 `schemas/` holds JSON Schema 2020-12 documents for these bodies. The Rust
 validators in `crates/nostr` (`contracts`) implement supported shared shapes;
 this does not imply coverage of every body described by a draft NIP. In
-particular, the new CTRL, MKT, LAB, SESS, WS, WORK, AUTO, ENV, and LIVE
+particular, the new CTRL, MKT, LAB, SESS, WS, WORK, AUTO, ENV, LIVE, and X402
 bodies and the POL preference/EXT import and component-set additions still
 need schema fixtures and role-specific validators. A schema that requires a vocabulary those validators
 do not implement is refused before execution. The schemas do not grant

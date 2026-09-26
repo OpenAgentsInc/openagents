@@ -60,6 +60,7 @@ name and its distinct wire identity.
 | KB | Immutable entries, heads, withdrawals, reader trust, and out-of-source evidence. | Preserve existing publish/sync validation; complete private entries and curated packages with provenance and rights checks. |
 | CTRL | Task-scoped device grants, pairing, revocation, command admission, and bounded history views. | Independent rights, stale frames, replay, lost acknowledgments, handoff, and redacted catch-up cannot leak evidence or duplicate effects. |
 | MKT | Offerings, private negotiation, mutually accepted orders, cancellation, and settlement evidence. | Exact terms survive restart and relay replacement; wallet authority stays separate; ambiguous payment remains unknown and cannot trigger a duplicate charge. |
+| X402 | Strict x402 v2 Lightning validation, transport-aware binding, required CAP feature, admitted wallets, durable proof consumption and purchase recovery. | Upstream HTTP/MCP vectors, explicit native-profile refusal/support, fee enforcement, atomic consumption/intent, response-loss recovery, private evidence, and unchanged MKT/LAB settlement. See the [integration plan](../coder/design/x402-lightning-nostr-integration.md). |
 | LAB | Execution linkage, deliverable identity, verification, acceptance, rework, disputes, and data rights. | Two independent operators complete a no-spend job, then separately verified payment; a passing test alone neither accepts a contract nor settles an invoice. |
 | SESS | Engine feature matrix, persistent sessions, exact configuration, durable input queue, interactions, terminal causes, and native history/imports. | Native/emulated/unsupported remain visible; queue promotion waits for quiescence; imported history grants no execution; reconnect never repeats an unknown effect. |
 | WS | Resource/document versions, conditional mutations, worktrees/checkpoints, finite projection cuts/pages/deltas, and command visibility. | Stale edits conflict; cross-store failures retain reconciliation; every client can distinguish stale, partial, inaccessible, and current views. |
@@ -96,6 +97,14 @@ The [proposed issues](../optimization/proposed-issues.md) separate this work
 into independently reviewable acceptance slices. Broader strategy/composition
 search follows proven materialization and measurement. Online adaptation and
 weight training require their own scoped design and authority.
+
+The [x402 Lightning integration plan](../coder/design/x402-lightning-nostr-integration.md)
+adds a separate paid-operation path: standard HTTP first, MCP next, then the
+explicit native Nostr profile. Reuse private artifacts and admission rather
+than allocating payment event kinds. Do not change the current MKT/LAB
+postacceptance contract to accommodate an upfront API charge. Real wallet
+spending and a production launch require their own admitted pilot after the
+validator, budget, replay, and recovery evidence exists.
 
 ## Conformance across Nostr lanes
 

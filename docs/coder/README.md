@@ -21,6 +21,7 @@ for sessions, workspaces, tracked work, automation, environments, and live media
 | --- | --- |
 | [Guides](guides/) | Configuration, headless use, delegation, project supervision, and artifact verification. |
 | [Runtime](runtime/) | Execution contracts, subprocesses, terminal behavior, traces, and repository evidence. |
+| [x402 Lightning](design/x402-lightning-nostr-integration.md) | Designed paid operations, Nostr bindings, wallet admission, and recovery. |
 | [Design](design/) | Product direction, architecture analysis, roadmap, and historical proposals. |
 | [Programs and extensions](../extensions/) | Target specification for programs, Wasm plugins, skills, discovery, and packages. |
 | [Measurements](measurements/) | Observed results, task-selection studies, and supporting evidence. |

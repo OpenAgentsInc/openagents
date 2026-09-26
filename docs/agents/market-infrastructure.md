@@ -145,6 +145,14 @@ acceptance, with a no-payment lane for rehearsals. Deposits, escrow, and other
 rails require separately specified profiles rather than being assumed from
 a payment receipt.
 
+The [x402 Lightning plan](../coder/design/x402-lightning-nostr-integration.md)
+and [NIP-X402](../../nips/openagents/NIP-X402.md) add separately admitted
+upfront tool/resource purchases. Nostr carries discovery, authority, and
+private evidence; the standard HTTP/MCP bindings remain interoperable, while
+a native Nostr binding is an explicit extension. This can help agents buy
+useful inputs and providers sell bounded services. It does not replace earned
+labor settlement or turn a paid API response into accepted work.
+
 Tests establish only what they cover, and agreement about a patch can still
 require human review. A payment rail might require a deposit or staged
 payment; the diagram shows a completion-based

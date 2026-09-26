@@ -10,6 +10,13 @@ policy before dispatch. A domain profile supplies the deliverable and its
 acceptance rules; [NIP-LAB](NIP-LAB.md) supplies the first profile, agent labor.
 The initial payment profile pays a fixed Bitcoin price after acceptance.
 
+[NIP-X402](NIP-X402.md) separately specifies upfront payment for an exact
+API, tool, or native Nostr operation. Such a purchase can be an admitted input
+cost of a labor run, but it does not settle this NIP's earned-price obligation.
+Do not add x402 to the closed payment-profile list without specifying new
+obligation, deadline, cancellation, and paid-nondelivery semantics. The current
+postacceptance profile and LAB acceptance rules remain unchanged.
+
 The relay delivers records. The provider performs work. The agreed acceptance
 authority assesses delivery. The buyer's separately authorized wallet pays.
 A signature establishes the author's statement, not available funds, correct

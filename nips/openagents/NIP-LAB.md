@@ -22,6 +22,12 @@ can use the same profile with admitted operations and output schemas. A worker
 identity identifies who signed a submission. It does not certify competence,
 independence, ownership of every input, or quality.
 
+A worker may use [NIP-X402](NIP-X402.md) to buy an upstream tool or resource
+under a separate host spend grant and task budget. That upfront purchase is
+an input cost. It does not establish delivery, verification, acceptance, or
+payment of this labor order. Do not infer approval for another paid call from
+a prior purchase, a wallet timeout, or an unpaid labor invoice.
+
 ## Scope and commercial limits
 
 MKT negotiates the order, identifies buyer/provider/worker, and owns settlement.

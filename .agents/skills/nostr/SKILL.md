@@ -73,6 +73,8 @@ Read the spec before the code. The files you need most often:
   private records, and separately admitted fixed-price Lightning settlement.
 - `nips/openagents/NIP-LAB.md` — bounded agent labor, exact execution linkage,
   deliverables, independent checks, rework, disputes, acceptance, and rights.
+- `nips/openagents/NIP-X402.md` — Designed Lightning-paid operations before
+  execution, standard x402 HTTP/MCP bindings, and an opt-in native Nostr profile.
 - `nips/openagents/NIP-SESS.md` — engine sessions, actual adapter support,
   queues, turn control, pending interactions, and retained native history.
 - `nips/openagents/NIP-WS.md` — workspace/resource identity, conditional edits,
@@ -99,7 +101,7 @@ Read the spec before the code. The files you need most often:
 - `docs/protocol/block-nips.md` — what the relay does with each Block NIP,
   including what it deliberately doesn't advertise.
 
-The OpenAgents lane contains 21 NIPs plus the shared contracts. SESS, WS,
+The OpenAgents lane contains 22 NIPs plus the shared contracts. X402, SESS, WS,
 WORK, AUTO, ENV, and LIVE are **Designed** drafts, as are POL's learned
 preference lifecycle and EXT's import/component-set assessment additions.
 They allocate no new event kinds: private artifacts use `3188`, remote host
@@ -109,6 +111,15 @@ MKT/LAB and CTRL also remain designed host roles; existing event helpers do
 not establish a running labor service, settlement adapter, or client-control
 system. Check the [glossary](../../../docs/glossary.md#nostr-and-shared-protocols)
 for the narrower implemented and partial roles.
+
+Read the [x402 integration assessment](../../../docs/coder/design/x402-lightning-nostr-integration.md)
+before adding a payment adapter. NIP-X402 preserves upstream `http:1` and
+`mcp:1`; `nostr:openagents:1` is an opt-in OpenAgents extension that requires
+explicit facilitator support. It pays before execution; MKT/LAB pays after
+acceptance. NWC is wallet transport, not purchase authority. Zap invoices hash
+the zap request, while x402 invoices hash the bound operation; do not reuse
+one invoice as both. L402/LSAT is a distinct macaroon-based protocol. These
+paths have no implemented OpenAgents payment adapter.
 
 Read the [teardown integration plan](../../../docs/coder/design/teardown-nostr-integration.md)
 and [file-by-file archive coverage](../../../docs/protocol/2026-09-26-teardown-coverage.md)

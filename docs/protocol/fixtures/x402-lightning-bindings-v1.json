@@ -1,0 +1,94 @@
+{
+  "v": "openagents.x402-binding-vectors.v1",
+  "upstream_revision": "4fcf836cc393174130e1358577ce5d37356da1c3",
+  "scope": "Digest examples only: ASCII strings, arrays, and objects. Native requestDigest is synthetic; no signed request, BOLT11 invoice, payment, authority, or full RFC8785 conformance is asserted. Changed-provider example tests domain input only and is not a valid buyer/provider record.",
+  "vectors": [
+    {
+      "name": "upstream-http-article-a",
+      "binding": {
+        "domain": "x402:exact:lnbtc:bolt11:http:1",
+        "method": "GET",
+        "url": "https://api.example.com/article/A",
+        "bodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "headers": []
+      },
+      "canonical_utf8": "{\"bodyHash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"domain\":\"x402:exact:lnbtc:bolt11:http:1\",\"headers\":[],\"method\":\"GET\",\"url\":\"https://api.example.com/article/A\"}",
+      "sha256": "0d6623f775e025501fa7f0a30b54da25aad62b6ccfe35c85da38016711e6c018"
+    },
+    {
+      "name": "upstream-http-article-b",
+      "binding": {
+        "domain": "x402:exact:lnbtc:bolt11:http:1",
+        "method": "GET",
+        "url": "https://api.example.com/article/B",
+        "bodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "headers": []
+      },
+      "canonical_utf8": "{\"bodyHash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"domain\":\"x402:exact:lnbtc:bolt11:http:1\",\"headers\":[],\"method\":\"GET\",\"url\":\"https://api.example.com/article/B\"}",
+      "sha256": "4a99860f75eed1ea8178a5db488e044173bc570c8a6210f2c8590cdf8622d509"
+    },
+    {
+      "name": "upstream-mcp-article-a",
+      "binding": {
+        "domain": "x402:exact:lnbtc:bolt11:mcp:1",
+        "server": "https://api.example.com/mcp",
+        "method": "tools/call",
+        "name": "get_article",
+        "arguments": {
+          "article": "A"
+        },
+        "metadata": []
+      },
+      "canonical_utf8": "{\"arguments\":{\"article\":\"A\"},\"domain\":\"x402:exact:lnbtc:bolt11:mcp:1\",\"metadata\":[],\"method\":\"tools/call\",\"name\":\"get_article\",\"server\":\"https://api.example.com/mcp\"}",
+      "sha256": "03941bfedc6af8a09b2f459fe83470284a76a8c75801caa9e1487a9276a693f4"
+    },
+    {
+      "name": "openagents-native-request-a",
+      "binding": {
+        "domain": "x402:exact:lnbtc:bolt11:nostr:openagents:1",
+        "buyer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "provider": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "purchase": "1111111111111111111111111111111111111111111111111111111111111111",
+        "requestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "canonical_utf8": "{\"buyer\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"domain\":\"x402:exact:lnbtc:bolt11:nostr:openagents:1\",\"provider\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"purchase\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"requestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+      "sha256": "5d794880a13d78d7d866ae30be47889f22843cf21d00868c3deb783ce5888bf1"
+    },
+    {
+      "name": "openagents-native-changed-purchase",
+      "binding": {
+        "domain": "x402:exact:lnbtc:bolt11:nostr:openagents:1",
+        "buyer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "provider": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "purchase": "2222222222222222222222222222222222222222222222222222222222222222",
+        "requestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "canonical_utf8": "{\"buyer\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"domain\":\"x402:exact:lnbtc:bolt11:nostr:openagents:1\",\"provider\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"purchase\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"requestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+      "sha256": "a9d0bc90f3488a7b0c537bf3536e3283a454bc03794041b9711b65b2ec10137f"
+    },
+    {
+      "name": "openagents-native-changed-requestDigest",
+      "binding": {
+        "domain": "x402:exact:lnbtc:bolt11:nostr:openagents:1",
+        "buyer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "provider": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "purchase": "1111111111111111111111111111111111111111111111111111111111111111",
+        "requestDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "canonical_utf8": "{\"buyer\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"domain\":\"x402:exact:lnbtc:bolt11:nostr:openagents:1\",\"provider\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"purchase\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"requestDigest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}",
+      "sha256": "91b3e11046216affca78a1cc222d353b91ded6c7681a6b40ae2a19a318cc26c8"
+    },
+    {
+      "name": "openagents-native-changed-provider",
+      "binding": {
+        "domain": "x402:exact:lnbtc:bolt11:nostr:openagents:1",
+        "buyer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "provider": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "purchase": "1111111111111111111111111111111111111111111111111111111111111111",
+        "requestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "canonical_utf8": "{\"buyer\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"domain\":\"x402:exact:lnbtc:bolt11:nostr:openagents:1\",\"provider\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"purchase\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"requestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+      "sha256": "1d12e9bf5c2aafd3270220889f46094aff6e58175ae52159926fa44f5531d322"
+    }
+  ]
+}
