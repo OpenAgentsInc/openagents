@@ -101,7 +101,54 @@ What happens to each proposal:
   proposal never hides an admitted entry. Otherwise the new version replaces
   the file, and the old one moves to `versions/`.
 
+- A revision keeps the current entry's body and summary whole and adds the
+  proposal under an "Added in version N" heading: the model sees only the
+  existing entries' titles, so it can't rewrite a body it hasn't read.
+- A proposed tag that equals a task's name, such as a domain name, is split
+  into its words.
+
 Read every harvested entry before you admit it.
+
+## Harvest entries from other agents' winning runs
+
+Public runs by stronger agents, such as the Fable 5.1 trajectories under
+`~/.openagents/terminal-bench/public-replays/`, carry what a cheaper agent
+lacks. Two commands read an ATIF trajectory:
+
+```sh
+# What the winner knew or did that a cheaper agent would miss.
+microcoder kb harvest-trace <trajectory.json> --task <task>
+
+# A failed Microcoder run beside a winning trajectory on the same task:
+# the decisions that explain the failure.
+microcoder kb harvest-contrast <run> <trajectory.json> --task <task>
+```
+
+`--task` names the task the trajectory solved; no entry may name it, and it
+goes into each entry's `written_from`, so that task never counts as
+evidence for the entry. The rest works as `kb harvest` does.
+
+Of the two, the contrast finds the decisive detail more often. A trajectory
+read on its own yields sound, broad method entries; a contrast points at the
+one choice the failed run got wrong, such as which scale an analysis step
+used. Entries from a task's own winning runs are in-sample for that task:
+report runs that use them as knowledge-assisted.
+
+## Run on the shared base alone
+
+To run with only the entries a relay holds, sync them, then point the local
+entry directory at an empty one:
+
+```sh
+scripts/kb-relay.sh &                         # a local relay on port 7490
+microcoder kb publish --relay ws://127.0.0.1:7490
+microcoder kb sync --relay ws://127.0.0.1:7490 --author <npub>
+mkdir -p ~/.openagents/knowledge/empty-local
+OPENAGENTS_KNOWLEDGE=~/.openagents/knowledge/empty-local \
+  microcoder <task> --kb candidates
+```
+
+`kb search` with the same variable shows "0 local entries and N synced".
 
 ## Measure entries
 
