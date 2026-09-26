@@ -1,0 +1,61 @@
+{
+  "schema": "openagents.control-code-verification.v1",
+  "created_at": "2026-09-26T19:28:39.773894+00:00",
+  "base_commit": "c7fd9433ae067d36660097cf16e35b17c35720d3",
+  "source_state": "uncommitted source files pinned below",
+  "issue": 9691,
+  "checks": {
+    "control_tests_passed": 16,
+    "labor_regression_tests_passed": 12,
+    "strict_clippy": "passed",
+    "client_only_strict_clippy": "passed",
+    "full_release_gate": "not_run"
+  },
+  "scope": {
+    "synthetic_only": true,
+    "actual_authenticated_websocket_fixture": true,
+    "separate_process_reopen": true,
+    "paid_model_calls": 0,
+    "cost_usd": null,
+    "cost_status": "unknown",
+    "production_relay_acceptance": false,
+    "physical_mobile_acceptance": false
+  },
+  "source_files": {
+    "Cargo.lock": "sha256:abcb8b77253cad113914257d91904598effb40fc3f1bf5345fe3f9250f0ae9ff",
+    "crates/coder/src/relay/artifacts.rs": "sha256:c59b572db8c43d70f0469b0af12e843cc9ad57fc7eaaf80406618f2521008c93",
+    "crates/coder-control/Cargo.toml": "sha256:3a5f73ebf8659e0c53269940f0fcddab4a1943b0340110c9b2104e02945de6df",
+    "crates/coder-control/src/client/text.rs": "sha256:cfd04f6f6e000fbe185ef98aaf92cdb9b9d97a8e4db9a7fb226a152f9b86ed2c",
+    "crates/coder-control/src/client.rs": "sha256:ba79c0a7e16babbabc596ed38334826921bf416f85f329f8354a109f9fa6a93e",
+    "crates/coder-control/src/host/retained.rs": "sha256:58ceba7e5c377e077c20e38a848a22a9e44ede0c7c8f18b4c18c0d767370878e",
+    "crates/coder-control/src/host/setup.rs": "sha256:2a6fa70a6a16cca8e262307dc828bbbb2dc935a2ccf923f6051121e85b3cb7b1",
+    "crates/coder-control/src/host.rs": "sha256:01b3dea604650ea3e4206bb414f610a505c2b9b91d993b2f6f9e778b5abafdbd",
+    "crates/coder-control/src/lib.rs": "sha256:733cb7cfc2d34544c5fc33dfd64a6b35c07065ca9cc5d7ffbca0dd702e152162",
+    "crates/coder-control/src/main.rs": "sha256:180605cf88c1ab47d915b21a55b9555ff5045e2719977c5a6687106e1bfa5b6d",
+    "crates/coder-control/src/store.rs": "sha256:94289acc52ddfa507f55dd4ace373f5b65b15ff34d06ae8fa9a6350a1bd45a09",
+    "crates/coder-control/src/tests/mod.rs": "sha256:60eaa25f2386c3f32ceb0bc0639cd22d7543b93e50b7fff961d87172625b76cb",
+    "crates/coder-control/src/tests/relay.rs": "sha256:b752ade862ad8e9e29a29f98d0a4d0e3ae21ea17c25bd95d2a7ef96c8799004b",
+    "crates/coder-control/src/tests/roundtrip.rs": "sha256:08269994061e4d888816f7c10ae97672ef0484d7e47db7dd80a3d3466232050e",
+    "crates/coder-control/src/transport.rs": "sha256:829d4b687e1503dbb7c5046f1df6eb594f9ae22d1bcf217764e1d017f438a9b2",
+    "crates/coder-control/src/view.rs": "sha256:339bd9e32be2affe6fae9da406d5596e45f2118600fd97b7dca3024797d1928f",
+    "crates/coder-labor/src/transport.rs": "sha256:b36d9e9457c7fc011e6d19d7f782d7756e6fe169e7a7984b635e4488d9541306",
+    "crates/nostr/src/control/tests.rs": "sha256:93beed9ab68029f176e900eca9ab08e63176b4a1ca53d977a16234a1e9992553",
+    "crates/nostr/src/control.rs": "sha256:b071daf8b99d2e05ed9235a44fd41d40eb45f776c149d57412447548279c0eff",
+    "crates/nostr-transport/Cargo.toml": "sha256:29dd0533df9594e2fffbbdfb202f9b7d3395711b16d6713e8e71db822d77cd2d",
+    "crates/nostr-transport/src/artifacts.rs": "sha256:36866087e570b08bbfbaf806e35d8bb6b6d9578595d3d303f81f43a1c7da60a6",
+    "crates/nostr-transport/src/lib.rs": "sha256:d4513df86a74e65eb530efee57202cd72db52bcf3fd748c1bab8c178ccc54a56",
+    "crates/coder/Cargo.toml": "sha256:1dcf550778addab233199931ad1bfa4941a8f6e4dff883d11a185f9ad9b0b066",
+    "crates/nostr/src/lib.rs": "sha256:f0ed8ed8bbb19e9a1519d58c66779f260d4b13faa33f0f97f6f18b812d1d8b0a"
+  },
+  "retained_files": {
+    "README.md": "sha256:f41c6c7e77ccf00a5a44cd61d5dfbb65aed2778fdb6c3338ff39b0f91c0ddc79",
+    "client-only.log": "sha256:8a0006abc0eea58f4ae5fc142f4c3061e217fb3436673b86e446032e370d82fb",
+    "clippy.log": "sha256:362f091a00e0962aee541f8bbbe0e70ec5b4fec256ba2da40b30dd335fda3ee4",
+    "control-labor-regression.log": "sha256:c468646ca6c500ce7f2dac1b4c1a29e78d99299a6ad4bf63b94b296327e81665",
+    "control-tests.log": "sha256:d30c5dc1a227adfa9ebe867c9e0f93e5d94325993363c0a4baf71c5865434467",
+    "initial-loopback/receipt.json": "sha256:5bc5e77fc423c7f3a7663c02f35de07225de4e093aeb0e280dc9185c1f8cf99e",
+    "initial-loopback/signed-events.json": "sha256:97311b504c44b5c1952a988559607131d63ff3d55c25c3ed8cd505db0199bf04",
+    "initial-loopback/task.atif.jsonl": "sha256:0b03219acae75a4e61780dbd434a91cbed969868dd68b0b730344eedd60c0b3d"
+  },
+  "initial_loopback": "Earlier, separately retained fixture; not attributed to the final source hashes."
+}

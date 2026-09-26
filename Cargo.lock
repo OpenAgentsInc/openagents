@@ -643,6 +643,7 @@ dependencies = [
  "libc",
  "microluna",
  "nostr",
+ "nostr-transport",
  "plugin",
  "ratatui",
  "receipts",
@@ -667,6 +668,23 @@ dependencies = [
  "sha2 0.10.9",
  "supervise",
  "tempfile",
+]
+
+[[package]]
+name = "coder-control"
+version = "0.1.0"
+dependencies = [
+ "coder",
+ "futures-util",
+ "libc",
+ "nostr",
+ "nostr-transport",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
@@ -3420,6 +3438,18 @@ dependencies = [
  "sha2 0.11.0",
  "tokio",
  "tokio-postgres",
+ "tokio-tungstenite",
+]
+
+[[package]]
+name = "nostr-transport"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "nostr",
+ "secp256k1",
+ "serde_json",
+ "tokio",
  "tokio-tungstenite",
 ]
 

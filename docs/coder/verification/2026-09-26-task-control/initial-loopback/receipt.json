@@ -1,0 +1,99 @@
+{
+  "schema": "openagents.control-loopback-proof.v1",
+  "transport": "actual-authenticated-websocket-test-relay",
+  "principals": 2,
+  "paid_model_calls": 0,
+  "task_execution": "stopped",
+  "task_verification": "not_run",
+  "cost_usd": null,
+  "cost_status": "unknown",
+  "process_group_clear": true,
+  "late_write_absent": true,
+  "correction_recorded": true,
+  "finite_cut_survived_restart": true,
+  "signed_event_count": 43,
+  "first": {
+    "authority": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+    "captured_at": 1800000001,
+    "coverage": "partial",
+    "items": [
+      {
+        "artifact": {
+          "digest": "sha256:d95d830534aa3fb783220affb0efcc919e90dc1aa32244a293aa1d1786e01e38",
+          "media_type": "application/json",
+          "schema": "openagents.task-projection.v1",
+          "size": 464
+        },
+        "kind": "projection",
+        "provenance": {
+          "digest": "sha256:2199f2bea5c93378961ab026b8fadefd6d5d725588be45a66966a96c142b241a",
+          "media_type": "application/json",
+          "schema": "openagents.evidence.v1",
+          "size": 764
+        }
+      }
+    ],
+    "next": "e9b872f3e190595f081e735d291e9b81f02ad7d2248f311ddd579fe627350310",
+    "policy": {
+      "digest": "sha256:e946c5e5a4d605269976694a065cf0a2eb60f06d0c3416408f44abcd20056f26",
+      "media_type": "application/json",
+      "schema": "openagents.control-disclosure.v1",
+      "size": 168
+    },
+    "request": {
+      "digest": "sha256:838f5dfcc3467ad5bca828c7664132be20c51cbd1edb525ce3e625fa1dcb46d1",
+      "media_type": "application/json",
+      "schema": "openagents.task-read.v1",
+      "size": 549
+    },
+    "requires": [],
+    "scope": {
+      "controller": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+      "generation": 0,
+      "task": "fda58f699357138c5b60927a8ed4e441ae18d9c52dd830e8cea0dbd81cbd4681"
+    },
+    "v": "openagents.task-view.v1"
+  },
+  "next": {
+    "authority": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+    "captured_at": 1800000001,
+    "coverage": "partial",
+    "items": [
+      {
+        "artifact": {
+          "digest": "sha256:a457f98dbe74c5660d1a5b81dc4e2c2f5c37faea5071dbfdc21d40dafdcd8fef",
+          "media_type": "application/json",
+          "schema": "openagents.task-projection.v1",
+          "size": 467
+        },
+        "kind": "projection",
+        "provenance": {
+          "digest": "sha256:71c7c51d46c51f0702789d460224665a36b6db8c60deb8ae23980a4389b8c87d",
+          "media_type": "application/json",
+          "schema": "openagents.evidence.v1",
+          "size": 764
+        }
+      }
+    ],
+    "next": "b6371582d93c8d4fe6bbb5612c07050ab11d3e52aa0c44e67ef6402909dc0f63",
+    "policy": {
+      "digest": "sha256:e946c5e5a4d605269976694a065cf0a2eb60f06d0c3416408f44abcd20056f26",
+      "media_type": "application/json",
+      "schema": "openagents.control-disclosure.v1",
+      "size": 168
+    },
+    "request": {
+      "digest": "sha256:33d93d0e94d39e9b5cafed14fc09615892c9fb7ca1c070eb1c7b88a45cb8af1f",
+      "media_type": "application/json",
+      "schema": "openagents.task-read.v1",
+      "size": 611
+    },
+    "requires": [],
+    "scope": {
+      "controller": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+      "generation": 0,
+      "task": "fda58f699357138c5b60927a8ed4e441ae18d9c52dd830e8cea0dbd81cbd4681"
+    },
+    "v": "openagents.task-view.v1"
+  }
+}

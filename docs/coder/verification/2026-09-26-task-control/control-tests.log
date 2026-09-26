@@ -1,0 +1,31 @@
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder)
+   Compiling coder-control v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-control)
+    Finished `test` profile [unoptimized] target(s) in 5.11s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/coder_control-9d5a6ba79c0b8925)
+
+running 16 tests
+test tests::roundtrip::process_reopen_child ... ok
+test tests::text_carrier_keeps_exact_original_signatures_and_refuses_substitution ... ok
+test tests::setup_changes_and_stale_scope_refuse_without_state_disclosure ... ok
+test tests::text_fetch_preflight_does_not_freeze_command_authority ... ok
+test tests::reopen_refuses_grant_body_corruption_against_original_signature ... ok
+test tests::pairing_consumption_rights_and_expiry_are_current_host_decisions ... ok
+test tests::retained_intent_does_not_dispatch_after_its_cj_deadline ... ok
+test tests::current_grant_can_retrieve_original_command_result_after_command_expiry ... ok
+test tests::cancel_only_does_not_admit_read_or_steer_and_revocation_survives_restart ... ok
+test tests::unsupported_reads_do_not_poison_capacity_or_disclose_a_partial_view ... ok
+test tests::poisoned_final_reply_never_escapes_from_the_same_host ... ok
+test tests::uncertain_command_reconciles_original_local_id_after_restart ... ok
+test tests::command_conflicts_and_substituted_envelopes_do_not_mutate_tasks ... ok
+test tests::scoped_observation_correction_cancellation_and_restart ... ok
+test host::retention_tests::pending_text_retry_at_source_bound_retains_no_new_events ... ok
+test tests::roundtrip::authenticated_relay_controls_real_task_and_replays_original_cut_after_restart ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.98s
+
+     Running unittests src/main.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/coder_control-348c84c0da8f51a2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

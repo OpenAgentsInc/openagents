@@ -15,6 +15,7 @@ pub mod block_lane;
 pub mod cap;
 pub mod channel_window;
 pub mod contracts;
+pub mod control;
 pub mod decision;
 pub mod domain;
 pub mod execution;

@@ -262,6 +262,13 @@ uses, and marks which are implemented and which are only specified.
   adapter's canonical path and contents in a store outside any checkout.
   Probes run bounded through `supervise`, and a probe that cannot answer
   cleanly is `unknown`, never `present`.
+- `crates/coder-control` — scoped Nostr access to the durable local task owner:
+  owner-installed task mappings, independent observe/steer/cancel grants, exact
+  encrypted input artifacts, retained command dispositions, and finite evidence
+  views. The default `host` feature owns the private store; the client-only
+  build has no dependency on Coder execution. Read
+  `docs/coder/runtime/nostr-task-control.md` before changing authority, expiry,
+  replay, or disclosure. Pairing cannot start execution or authorize spending.
 - `crates/coder-labor` — the free-only labor host: pinned buyer/provider
   agreement, separately granted bounded execution, retained delivery and buyer
   verification, explicit acceptance, and conservative restart recovery. Read
@@ -315,6 +322,10 @@ uses, and marks which are implemented and which are only specified.
   (events, filters, signatures, NIP-19/NIP-44, replacement and deletion,
   Block NIP validators). No storage, no network, no third-party Nostr
   crate.
+- `crates/nostr-transport` — bounded authenticated WebSocket transport and exact
+  private-artifact delivery. It shares NIP-42 connection handling between
+  callers without depending on the Coder executor. Callers still establish
+  relay, recipient, operation, and disclosure authority; delivery is not a grant.
 - `crates/nostr-relay` — the relay: one binary and one Postgres database,
   extracted from the public CC0 `immortal-relay`. Serves
   `relay.openagents.com`. Deploy assets live in `deploy/` and `Dockerfile`;

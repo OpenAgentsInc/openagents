@@ -1,0 +1,30 @@
+    Checking gimli v0.33.0
+    Checking nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+    Checking tokio-rustls v0.26.5
+    Checking tungstenite v0.30.0
+    Checking proptest v1.11.0
+    Checking hyper-rustls v0.27.9
+    Checking reqwest v0.12.28
+    Checking tokio-tungstenite v0.30.0
+    Checking microluna v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/microluna)
+    Checking openrouter v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/openrouter)
+    Checking jev v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/jev)
+    Checking cranelift-codegen v0.135.2
+    Checking wasmtime-environ v48.0.2
+    Checking addr2line v0.26.1
+    Checking nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr-transport)
+    Checking capability v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/capability)
+    Checking knowledge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/knowledge)
+    Checking wasmtime-internal-cache v48.0.2
+    Checking wasmtime-internal-fiber v48.0.2
+    Checking cranelift-native v0.135.2
+    Checking cranelift-frontend v0.135.2
+    Checking wasmtime-internal-unwinder v48.0.2
+    Checking wasmtime-internal-cranelift v48.0.2
+    Checking wasmtime v48.0.2
+    Checking plugin v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/plugin)
+    Checking coder-one v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-one)
+    Checking coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder)
+    Checking coder-control v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-control)
+    Checking coder-labor v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-labor)
+    Finished `dev` profile [unoptimized] target(s) in 27.56s

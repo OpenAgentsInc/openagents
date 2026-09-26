@@ -1,0 +1,4 @@
+    Checking nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+    Checking nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr-transport)
+    Checking coder-control v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-control)
+    Finished `dev` profile [unoptimized] target(s) in 2.93s
