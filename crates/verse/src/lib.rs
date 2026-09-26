@@ -23,6 +23,7 @@ pub mod mv;
 pub mod net;
 pub mod palette;
 pub mod render;
+pub mod replay;
 pub mod session;
 pub mod ui;
 pub mod world;

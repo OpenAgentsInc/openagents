@@ -12,6 +12,9 @@ coder = { path = "../coder" }
 coder-one = { path = "../coder-one" }
 coder-terminal = { path = "../coder-terminal" }
 glam = "0.30.10"
+# Replays read retained Microcoder runs and Fable 5.1 trajectories with the
+# Gym's own readers, so a replay and `gym runs` agree on every number.
+gym = { path = "../gym" }
 knowledge = { path = "../knowledge" }
 nostr = { path = "../nostr" }
 png = "0.18.1"

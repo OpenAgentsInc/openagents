@@ -21,6 +21,16 @@ pub const SPAWN: Vec3 = Vec3::new(0.0, 0.0, -10.0);
 pub const PYLON: Vec3 = Vec3::new(0.0, 0.0, 14.0);
 /// Where the quest board stands, facing the plaza.
 pub const QUEST_BOARD: Vec3 = Vec3::new(-22.0, 0.0, 0.0);
+/// The plaza's center, where a replay's agents start and finish.
+pub const PLAZA: Vec3 = Vec3::new(0.0, 0.0, -2.0);
+/// The workbench, where an agent's model steps and commands run.
+pub const WORKBENCH: Vec3 = Vec3::new(18.0, 0.0, 0.0);
+/// The oracle, a door where an agent asks Jev a typed question.
+pub const ORACLE: Vec3 = Vec3::new(30.0, 0.0, 28.0);
+/// The library, where an agent retrieves and reads knowledge entries.
+pub const LIBRARY: Vec3 = Vec3::new(-30.0, 0.0, 28.0);
+/// The proving ground, where acceptance tests and the verifier check work.
+pub const PROVING_GROUND: Vec3 = Vec3::new(0.0, 0.0, 44.0);
 /// Distance of the horizon ridge, in meters.
 pub const HORIZON: f32 = 900.0;
 
@@ -44,6 +54,10 @@ pub fn build() -> World {
     city(&mut world);
     pylon(&mut world);
     quest_board(&mut world);
+    workbench(&mut world);
+    oracle(&mut world);
+    library(&mut world);
+    proving_ground(&mut world.mesh);
     horizon(&mut world.mesh);
     world
 }
@@ -186,6 +200,177 @@ fn quest_board(world: &mut World) {
     });
 }
 
+/// The workbench: a line-drawn table with a lamp, where a replay's model
+/// steps and commands happen.
+fn workbench(world: &mut World) {
+    let mesh = &mut world.mesh;
+    let at = |x: f32, y: f32, z: f32| WORKBENCH + Vec3::new(x, y, z);
+    let (hx, hz, top) = (1.8, 0.8, 1.0);
+    mesh.cube(
+        Mat4::from_translation(at(0.0, top, 0.0))
+            * Mat4::from_scale(Vec3::new(2.0 * hx, 0.12, 2.0 * hz)),
+        Intensity::ThreeQuarters,
+    );
+    for (x, z) in [(-hx, -hz), (hx, -hz), (hx, hz), (-hx, hz)] {
+        let (x, z) = (x * 0.9, z * 0.8);
+        mesh.line(at(x, 0.0, z), at(x, top - 0.06, z), Intensity::Half);
+    }
+    // A lamp arm over the bench, and a small block on it.
+    mesh.line(
+        at(hx - 0.3, top, hz - 0.2),
+        at(hx - 0.3, top + 1.4, hz - 0.2),
+        Intensity::Half,
+    );
+    mesh.line(
+        at(hx - 0.3, top + 1.4, hz - 0.2),
+        at(0.4, top + 1.7, 0.0),
+        Intensity::Half,
+    );
+    mesh.cube(
+        Mat4::from_translation(at(-0.6, top + 0.26, 0.0))
+            * Mat4::from_scale(Vec3::new(0.7, 0.4, 0.5)),
+        Intensity::Full,
+    );
+    mesh.ring(WORKBENCH, 3.0, 40, Intensity::Half);
+    world.blockers.push(Footprint {
+        min: [WORKBENCH.x - hx, WORKBENCH.z - hz],
+        max: [WORKBENCH.x + hx, WORKBENCH.z + hz],
+    });
+}
+
+/// The oracle: a door facing the plaza, with a diamond over its lintel.
+/// Which door an agent visits would show which decision door it chose;
+/// today every replayed question goes to Jev.
+fn oracle(world: &mut World) {
+    let mesh = &mut world.mesh;
+    let facing = (PLAZA - ORACLE).with_y(0.0).normalize();
+    let side = facing.cross(Vec3::Y);
+    let at = |s: f32, y: f32| ORACLE + side * s + Vec3::Y * y;
+    let (outer, inner, high) = (1.6, 1.1, 4.6);
+    mesh.polyline_loop(
+        &[
+            at(-outer, 0.0),
+            at(-outer, high),
+            at(outer, high),
+            at(outer, 0.0),
+        ],
+        Intensity::Full,
+    );
+    mesh.polyline_loop(
+        &[
+            at(-inner, 0.0),
+            at(-inner, high - 0.5),
+            at(inner, high - 0.5),
+            at(inner, 0.0),
+        ],
+        Intensity::Half,
+    );
+    mesh.quad([
+        at(-inner, 0.0),
+        at(-inner, high - 0.5),
+        at(inner, high - 0.5),
+        at(inner, 0.0),
+    ]);
+    let top = high + 1.0;
+    mesh.polyline_loop(
+        &[
+            at(0.0, top - 0.6),
+            at(0.5, top),
+            at(0.0, top + 0.6),
+            at(-0.5, top),
+        ],
+        Intensity::Full,
+    );
+    mesh.line(at(0.0, high), at(0.0, top - 0.6), Intensity::Half);
+    mesh.ring(ORACLE + facing * 3.0, 2.2, 40, Intensity::Half);
+    for s in [-outer, outer] {
+        let p = ORACLE + side * s;
+        world.blockers.push(Footprint {
+            min: [p.x - 0.25, p.z - 0.25],
+            max: [p.x + 0.25, p.z + 0.25],
+        });
+    }
+}
+
+/// The library: a low hall whose face toward the spawn side (-Z) is rows
+/// of shelves.
+fn library(world: &mut World) {
+    let mesh = &mut world.mesh;
+    let facing = Vec3::NEG_Z;
+    let side = facing.cross(Vec3::Y);
+    let (w, d, h) = (9.0, 3.0, 4.2);
+    let yaw = side.z.atan2(side.x);
+    mesh.cube(
+        Mat4::from_translation(LIBRARY + Vec3::Y * (h / 2.0))
+            * Mat4::from_rotation_y(-yaw)
+            * Mat4::from_scale(Vec3::new(w, h, d)),
+        Intensity::ThreeQuarters,
+    );
+    let face = |s: f32, y: f32| LIBRARY + facing * (d / 2.0 + 0.02) + side * s + Vec3::Y * y;
+    for y in [1.0, 2.0, 3.0] {
+        mesh.line(
+            face(-w / 2.0 + 0.3, y),
+            face(w / 2.0 - 0.3, y),
+            Intensity::Half,
+        );
+    }
+    // Book spines on each shelf, of uneven heights.
+    for (row, y) in [0.1f32, 1.1, 2.1].iter().enumerate() {
+        let mut s = -w / 2.0 + 0.5;
+        let mut i = row;
+        while s < w / 2.0 - 0.5 {
+            let tall = 0.5 + ((i * 7) % 5) as f32 * 0.08;
+            mesh.line(face(s, *y), face(s, y + tall), Intensity::Quarter);
+            s += 0.35 + ((i * 3) % 4) as f32 * 0.05;
+            i += 1;
+        }
+    }
+    let roof = [-1.0, 1.0].map(|f: f32| {
+        [-1.0, 1.0]
+            .map(|g: f32| LIBRARY + facing * (f * d / 2.0) + side * (g * w / 2.0) + Vec3::Y * h)
+    });
+    mesh.polyline_loop(
+        &[roof[0][0], roof[0][1], roof[1][1], roof[1][0]],
+        Intensity::Full,
+    );
+    mesh.ring(LIBRARY + facing * 4.0, 2.2, 40, Intensity::Half);
+    let corners: Vec<Vec3> = roof.iter().flatten().copied().collect();
+    let (min_x, max_x) = corners
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.x), b.max(p.x)));
+    let (min_z, max_z) = corners
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.z), b.max(p.z)));
+    world.blockers.push(Footprint {
+        min: [min_x, min_z],
+        max: [max_x, max_z],
+    });
+}
+
+/// The proving ground: an open ring of posts where work is checked.
+fn proving_ground(mesh: &mut Mesh) {
+    let c = PROVING_GROUND;
+    mesh.ring(c, 7.0, 72, Intensity::Half);
+    mesh.ring(c, 4.5, 56, Intensity::ThreeQuarters);
+    mesh.ring(c + Vec3::Y * 1.6, 7.0, 72, Intensity::Quarter);
+    for i in 0..8 {
+        let a = i as f32 / 8.0 * std::f32::consts::TAU;
+        let p = c + Vec3::new(a.cos() * 7.0, 0.0, a.sin() * 7.0);
+        mesh.line(p, p + Vec3::Y * 1.6, Intensity::Full);
+    }
+    // A target mark in the middle.
+    mesh.line(
+        c + Vec3::new(-1.0, 0.02, 0.0),
+        c + Vec3::new(1.0, 0.02, 0.0),
+        Intensity::Full,
+    );
+    mesh.line(
+        c + Vec3::new(0.0, 0.02, -1.0),
+        c + Vec3::new(0.0, 0.02, 1.0),
+        Intensity::Full,
+    );
+}
+
 fn horizon(mesh: &mut Mesh) {
     let mut rng = Rng::new(SEED.rotate_left(17));
     let segments = 180;
@@ -258,6 +443,30 @@ mod tests {
             QUEST_BOARD.z,
             1.0
         )));
+    }
+
+    #[test]
+    fn the_replay_landmarks_stand_clear_of_the_city() {
+        let world = build();
+        let city = build_city_only();
+        for place in [WORKBENCH, ORACLE, LIBRARY, PROVING_GROUND, PLAZA] {
+            for block in &city {
+                assert!(!block.contains(place.x, place.z, 8.0), "{place} {block:?}");
+            }
+        }
+        for block in &world.blockers {
+            assert!(
+                !block.contains(PLAZA.x, PLAZA.z, 2.0),
+                "the plaza stays open"
+            );
+            assert!(!block.contains(SPAWN.x, SPAWN.z, 2.0));
+        }
+    }
+
+    fn build_city_only() -> Vec<Footprint> {
+        let mut world = World::default();
+        city(&mut world);
+        world.blockers
     }
 
     #[test]

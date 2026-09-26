@@ -140,6 +140,13 @@ pub struct Frame<'a> {
     pub board: Option<Vec<(String, Intensity)>>,
     /// Rows the board is scrolled down by.
     pub board_scroll: usize,
+    /// A running replay's lines at the top right: each side's time, cost,
+    /// place, and result, and the labels.
+    pub replay: Vec<(String, Intensity)>,
+    /// The replay list's lines, while it is open.
+    pub picker: Option<Vec<(String, Intensity)>>,
+    /// Rows the replay list is scrolled down by.
+    pub picker_scroll: usize,
 }
 
 /// The `/` shortcuts, with what each does, for the suggestion list.
@@ -444,13 +451,78 @@ pub fn build(atlas: &Atlas, f: &Frame<'_>) -> (UiBatch, Layout) {
         }
     }
     xp_strip(&mut ui, atlas, f, m);
+    let replay_bottom = replay_strip(&mut ui, atlas, f, m);
+    let top = m + (f.xp.len() as f32 + 0.5) * atlas.line + 12.0 * s;
     if let Some(lines) = &f.board {
-        let top = m + (f.xp.len() as f32 + 0.5) * atlas.line + 12.0 * s;
-        let (panel, max) = board(&mut ui, atlas, f, lines, top, panel_y - 6.0 * s);
+        let heading = Heading {
+            title: "QUEST BOARD · NIP-XP quests on the relay · read-only",
+            close: "B or Esc closes",
+            scroll: f.board_scroll,
+        };
+        let (panel, max) = board(&mut ui, atlas, f, &heading, lines, top, panel_y - 6.0 * s);
         layout.panels.push(panel);
         layout.board = Some((panel, max));
     }
+    if let Some(lines) = &f.picker {
+        let heading = Heading {
+            title: "RUN REPLAYS · retained Microcoder runs that beat Fable 5.1 low",
+            close: "R or Esc closes",
+            scroll: f.picker_scroll,
+        };
+        let top = top.max(replay_bottom + 6.0 * s);
+        let (panel, _) = board(&mut ui, atlas, f, &heading, lines, top, panel_y - 6.0 * s);
+        layout.panels.push(panel);
+    }
     (ui, layout)
+}
+
+/// A running replay's lines, top right. Returns the strip's bottom edge.
+fn replay_strip(ui: &mut UiBatch, atlas: &Atlas, f: &Frame<'_>, m: f32) -> f32 {
+    if f.replay.is_empty() {
+        return m;
+    }
+    let s = f.scale;
+    let pad = 6.0 * s;
+    let limit = (f.size[0] * 0.5).max(atlas.advance * 30.0);
+    let mut rows: Vec<(String, Intensity)> = Vec::new();
+    for (text, step) in &f.replay {
+        for row in atlas.wrap(text, limit) {
+            rows.push((row, *step));
+        }
+    }
+    let width = rows
+        .iter()
+        .map(|(t, _)| atlas.measure(t))
+        .fold(0.0, f32::max);
+    let h = rows.len() as f32 * atlas.line + 2.0 * pad;
+    let x = f.size[0] - m - width - 2.0 * pad;
+    ui.rect(atlas, x, m, width + 2.0 * pad, h, field(1.0));
+    ui.frame(
+        atlas,
+        x,
+        m,
+        width + 2.0 * pad,
+        h,
+        1.0,
+        amber(Intensity::Quarter, 1.0),
+    );
+    for (i, (text, step)) in rows.iter().enumerate() {
+        ui.text(
+            atlas,
+            x + pad,
+            m + pad + i as f32 * atlas.line,
+            text,
+            amber(*step, 1.0),
+        );
+    }
+    m + h
+}
+
+/// A panel's heading, the key that closes it, and how far it is scrolled.
+struct Heading<'a> {
+    title: &'a str,
+    close: &'a str,
+    scroll: usize,
 }
 
 /// XP, level, titles, and the board key, top left.
@@ -477,13 +549,14 @@ fn xp_strip(ui: &mut UiBatch, atlas: &Atlas, f: &Frame<'_>, m: f32) {
     }
 }
 
-/// The quest board panel, centered between the XP strip and the chat
-/// windows, scrolled down by `f.board_scroll` rows. Returns its rectangle
-/// and the furthest it can scroll.
+/// A read-only panel, such as the quest board, centered between the XP
+/// strip and the chat windows and scrolled down by `heading.scroll` rows.
+/// Returns its rectangle and the furthest it can scroll.
 fn board(
     ui: &mut UiBatch,
     atlas: &Atlas,
     f: &Frame<'_>,
+    heading: &Heading<'_>,
     lines: &[(String, Intensity)],
     top: f32,
     bottom: f32,
@@ -506,7 +579,7 @@ fn board(
         // One row goes to the scroll position.
         let shown = fit - 1;
         max = rows.len() - shown;
-        let from = f.board_scroll.min(max);
+        let from = heading.scroll.min(max);
         let total = rows.len();
         rows = rows.into_iter().skip(from).take(shown).collect();
         rows.push((
@@ -539,10 +612,10 @@ fn board(
         atlas,
         r.x + pad,
         heading_y,
-        "QUEST BOARD · NIP-XP quests on the relay · read-only",
+        heading.title,
         amber(Intensity::Full, 1.0),
     );
-    let close = "B or Esc closes";
+    let close = heading.close;
     ui.text(
         atlas,
         r.x + r.w - pad - atlas.measure(close),
@@ -860,6 +933,9 @@ mod tests {
             xp: vec![("XP 6 · level 1".into(), Intensity::Full)],
             board: None,
             board_scroll: 0,
+            replay: Vec::new(),
+            picker: None,
+            picker_scroll: 0,
         }
     }
 
@@ -941,5 +1017,27 @@ mod tests {
         open.board_scroll = max + 50;
         let (scrolled, _) = build(&atlas, &open);
         assert!(!scrolled.vertices.is_empty());
+    }
+
+    #[test]
+    fn a_replay_shows_top_right_and_its_list_is_a_panel() {
+        let atlas = Atlas::new(14.0);
+        let log = Log::default();
+        let nostr = VecDeque::new();
+        let input = Input::default();
+        let (plain, plain_layout) = build(&atlas, &frame(&log, &nostr, &input));
+        let mut f = frame(&log, &nostr, &input);
+        f.replay = vec![("REPLAY · task · 10× · playing".into(), Intensity::Full)];
+        let (drawn, layout) = build(&atlas, &f);
+        assert!(drawn.vertices.len() > plain.vertices.len());
+        assert_eq!(
+            layout.panels.len(),
+            plain_layout.panels.len(),
+            "the strip takes no clicks"
+        );
+        f.picker = Some(vec![("> a run".into(), Intensity::Full); 3]);
+        let (_, layout) = build(&atlas, &f);
+        assert_eq!(layout.panels.len(), plain_layout.panels.len() + 1);
+        assert!(layout.board.is_none(), "the list is not the quest board");
     }
 }

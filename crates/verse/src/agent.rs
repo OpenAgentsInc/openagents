@@ -271,6 +271,25 @@ impl Agent {
         }
     }
 
+    /// An agent at rest at `pos`, heading `yaw`, with no player: a replay's
+    /// ghost.
+    #[must_use]
+    pub fn at(pos: Vec3, yaw: f32) -> Self {
+        Self {
+            pos,
+            vel: Vec3::ZERO,
+            yaw,
+            time: 0.0,
+            playing: None,
+            chased: 0.0,
+            owed_look: false,
+            scan_wanted: false,
+            scanning: false,
+            idle_wait: IDLE_WAIT.0,
+            rng: 0x5eed_9057,
+        }
+    }
+
     /// The emote playing now, if any.
     #[must_use]
     pub fn emote(&self) -> Option<Emote> {
@@ -360,10 +379,7 @@ impl Agent {
     pub fn update(&mut self, player: &PlayerController, dt: f32) {
         self.time += dt;
         let goal = target(player, self.time);
-        let damping = 2.0 * STIFFNESS.sqrt() * DAMPING;
-        let accel = (goal - self.pos) * STIFFNESS - self.vel * damping;
-        self.vel += accel * dt;
-        self.pos += self.vel * dt;
+        self.spring(goal, dt);
 
         // Turn toward the player's heading, lazily.
         let delta = crate::controller::wrap(player.yaw - self.yaw);
@@ -372,13 +388,45 @@ impl Agent {
         self.emotes(player, goal, dt);
     }
 
-    fn emotes(&mut self, player: &PlayerController, goal: Vec3, dt: f32) {
+    /// Advances the agent by `dt` seconds toward `goal`, a point a replay
+    /// moves between places, on the same spring and with the same drift
+    /// and bob as when it follows the player. It turns to face where it is
+    /// going, and plays no idle emotes.
+    pub fn visit(&mut self, goal: Vec3, dt: f32) {
+        self.time += dt;
+        let goal = goal + wander(self.time);
+        self.spring(goal, dt);
+        let ahead = (goal - self.pos).with_y(0.0);
+        if ahead.length() > 0.6 {
+            let delta = crate::controller::wrap(ahead.x.atan2(ahead.z) - self.yaw);
+            self.yaw = crate::controller::wrap(self.yaw + delta * (1.0 - 0.02f32.powf(dt)));
+        }
+        self.advance_emote(dt);
+    }
+
+    /// One full spin: what an agent does when its replayed run passes.
+    pub fn celebrate(&mut self) {
+        self.play(Emote::Spin);
+    }
+
+    fn spring(&mut self, goal: Vec3, dt: f32) {
+        let damping = 2.0 * STIFFNESS.sqrt() * DAMPING;
+        let accel = (goal - self.pos) * STIFFNESS - self.vel * damping;
+        self.vel += accel * dt;
+        self.pos += self.vel * dt;
+    }
+
+    fn advance_emote(&mut self, dt: f32) {
         if let Some(playing) = &mut self.playing {
             playing.elapsed += dt;
             if playing.elapsed >= playing.emote.duration() {
                 self.playing = None;
             }
         }
+    }
+
+    fn emotes(&mut self, player: &PlayerController, goal: Vec3, dt: f32) {
+        self.advance_emote(dt);
 
         if player.speed > CHASE_SPEED {
             self.chased += dt;
@@ -443,7 +491,14 @@ impl Agent {
     /// The agent's geometry for this frame: the spade and its ground ring.
     #[must_use]
     pub fn mesh(&self) -> Mesh {
-        let mut mesh = spade(self.transform(), Intensity::Full);
+        self.mesh_at(Intensity::Full)
+    }
+
+    /// The agent's geometry with its front edge at `bright`. A replay's
+    /// ghost is one step down the ladder from the player's agent.
+    #[must_use]
+    pub fn mesh_at(&self, bright: Intensity) -> Mesh {
+        let mut mesh = spade(self.transform(), bright);
         let ground = Vec3::new(self.pos.x, 0.02, self.pos.z);
         let pulse = 0.28 + (self.time * 1.9).sin() * 0.03;
         mesh.ring(ground, pulse, 24, Intensity::Quarter);
@@ -456,12 +511,16 @@ impl Agent {
 fn target(player: &PlayerController, t: f32) -> Vec3 {
     let fwd = player.forward();
     let right = fwd.cross(Vec3::Y);
-    let wander = Vec3::new(
+    player.pos + right * OFFSET.x - fwd * OFFSET.y + Vec3::Y * HOVER + wander(t)
+}
+
+/// The slow drift of the point the agent chases at time `t`.
+fn wander(t: f32) -> Vec3 {
+    Vec3::new(
         (t * 0.37).sin() * 0.35 + (t * 0.83).sin() * 0.12,
         (t * 0.53).sin() * 0.15,
         (t * 0.29).cos() * 0.30,
-    );
-    player.pos + right * OFFSET.x - fwd * OFFSET.y + Vec3::Y * HOVER + wander
+    )
 }
 
 /// The spade's outline in the unit plane: tip up, stem down, centered on
@@ -599,6 +658,33 @@ mod tests {
         }
         assert_eq!(scans, 1, "one scan per catch-up");
         assert!(seen, "the agent looks around once it catches up");
+    }
+
+    #[test]
+    fn a_visiting_agent_flies_to_its_goal_and_faces_it() {
+        let mut agent = Agent::at(Vec3::new(0.0, HOVER, 0.0), 0.0);
+        let goal = Vec3::new(20.0, HOVER, 0.0);
+        for _ in 0..(60 * 6) {
+            agent.visit(goal, 1.0 / 60.0);
+        }
+        assert!(agent.pos.distance(goal) < 0.8, "at {:?}", agent.pos);
+        assert_eq!(agent.emote(), None, "no idle emotes on a visit");
+        let mut agent = Agent::at(Vec3::new(0.0, HOVER, 0.0), 0.0);
+        for _ in 0..20 {
+            agent.visit(goal, 1.0 / 60.0);
+        }
+        assert!(agent.yaw > 0.3, "turns toward +X, yaw {}", agent.yaw);
+    }
+
+    #[test]
+    fn the_ghost_is_one_step_down_the_ladder() {
+        let agent = Agent::at(Vec3::ZERO, 0.0);
+        let full = palette::amber(Intensity::Full);
+        let three = palette::amber(Intensity::ThreeQuarters);
+        assert!(agent.mesh().lines.iter().any(|v| v.color == full));
+        let ghost = agent.mesh_at(Intensity::ThreeQuarters);
+        assert!(!ghost.lines.iter().any(|v| v.color == full));
+        assert!(ghost.lines.iter().any(|v| v.color == three));
     }
 
     #[test]

@@ -22,6 +22,7 @@ use crate::controller::{InputState, PlayerController};
 use crate::feed::Feed;
 use crate::hud;
 use crate::render::{self, Renderer, View};
+use crate::replay::{self, Place, Replay};
 use crate::session::{self, Session, Status};
 use crate::ui::Atlas;
 use crate::world::{self, World};
@@ -40,6 +41,8 @@ pub struct Options {
     pub xp_keys: Vec<String>,
     /// More referees (npub or hex) to trust, beyond the trust file.
     pub xp_referees: Vec<String>,
+    /// A Microcoder run to replay on launch: its directory or Gym run ID.
+    pub replay: Option<String>,
 }
 
 impl Default for Options {
@@ -50,6 +53,7 @@ impl Default for Options {
             xp_relay: None,
             xp_keys: Vec::new(),
             xp_referees: Vec::new(),
+            replay: None,
         }
     }
 }
@@ -81,6 +85,10 @@ pub struct CaptureXp {
     pub referees: Vec<String>,
     /// Whether the quest board is open.
     pub board: bool,
+    /// A Microcoder run to show replaying: its directory or Gym run ID.
+    pub replay: Option<String>,
+    /// Seconds into the replay to show; the middle when `None`.
+    pub at: Option<f64>,
 }
 
 /// Renders the spawn view through `camera` to a PNG, without a window.
@@ -99,7 +107,32 @@ pub fn capture(
     let player = PlayerController::new(world::SPAWN, 0.0);
     let view = view(&camera, &player, width as f32 / height as f32);
     let mut dynamic = avatar::mesh(&player, &Gait::default());
-    dynamic.extend(&Agent::new(&player).mesh());
+    let shown = match &shot.replay {
+        Some(arg) => {
+            let run = replay::find(arg)?;
+            let mut r = Replay::load(&run, Place::Plaza.stand(false))?;
+            if let Err(why) = &r.ghost {
+                eprintln!("verse: no ghost: {why}");
+            }
+            let at = shot
+                .at
+                .map_or(r.clock.duration_ms as f64 / 2.0, |s| s * 1000.0);
+            r.clock.seek(at);
+            r.clock.playing = false;
+            r.settle();
+            let [mine, ghost] = r.carrots();
+            let (agent, ghost) = (Agent::at(mine, 0.0), Agent::at(ghost, 0.0));
+            dynamic.extend(&agent.mesh());
+            if r.ghost.is_ok() {
+                dynamic.extend(&ghost.mesh_at(coder_terminal::Intensity::ThreeQuarters));
+            }
+            Some((r, agent, ghost))
+        }
+        None => {
+            dynamic.extend(&Agent::new(&player).mesh());
+            None
+        }
+    };
     let atlas = Atlas::new(14.0);
     let board = shot.relay.as_ref().map(|relay| {
         let mut board = xp::Board::start(relay, &shot.referees, None);
@@ -112,6 +145,13 @@ pub fn capture(
     frame.board = shot
         .board
         .then(|| xp::board_lines(board.as_ref(), unix_now()));
+    if let Some((r, agent, ghost)) = &shown {
+        frame.replay = r.hud_lines();
+        let mut overheads = landmark_overheads(player.pos);
+        overheads.extend(replay_overheads(r, agent, ghost));
+        overheads.push(frame.overheads[0].clone());
+        frame.overheads = Box::leak(overheads.into_boxed_slice());
+    }
     let (ui, _) = hud::build(&atlas, &frame);
     render::capture(
         path,
@@ -242,7 +282,59 @@ fn sample_hud<'a>(view: &View, size: [f32; 2], player: &PlayerController) -> hud
         xp: Vec::new(),
         board: None,
         board_scroll: 0,
+        replay: Vec::new(),
+        picker: None,
+        picker_scroll: 0,
     }
+}
+
+/// Name tags over the replay landmarks within 80 m of `from`.
+fn landmark_overheads(from: Vec3) -> Vec<hud::Overhead> {
+    use coder_terminal::Intensity;
+    Place::LANDMARKS
+        .iter()
+        .filter(|p| p.position().distance(from) <= 80.0)
+        .map(|p| hud::Overhead {
+            feet: p.position(),
+            // Above the spades' own tags when they visit.
+            lift: match p {
+                Place::Oracle => 7.4,
+                Place::Library => 6.0,
+                _ => 4.4,
+            },
+            name: Some(p.name().to_uppercase()),
+            name_step: Intensity::Half,
+            bubble: None,
+        })
+        .collect()
+}
+
+/// Who each replayed spade is and where it is: over the player's agent
+/// and over the ghost.
+fn replay_overheads(r: &Replay, agent: &Agent, ghost: &Agent) -> Vec<hud::Overhead> {
+    use coder_terminal::Intensity;
+    let (mine, theirs) = r.places();
+    let mut out = vec![hud::Overhead {
+        feet: agent.pos,
+        lift: 0.6,
+        name: Some(format!("Microcoder · {}", mine.name())),
+        name_step: Intensity::Full,
+        bubble: None,
+    }];
+    if let Some(theirs) = theirs {
+        out.push(hud::Overhead {
+            feet: ghost.pos,
+            lift: 0.6,
+            name: Some(format!(
+                "{} · {}",
+                gym::runs_beats_winner::REFERENCE,
+                theirs.name()
+            )),
+            name_step: Intensity::ThreeQuarters,
+            bubble: None,
+        });
+    }
+    out
 }
 
 fn unix_now() -> u64 {
@@ -324,6 +416,70 @@ struct App {
     board_open: bool,
     board_scroll: usize,
     my_keys: Vec<String>,
+    /// The replay playing, if any.
+    replay: Option<Replay>,
+    /// The replay's ghost: Fable's cheapest winning run on the task.
+    ghost: Agent,
+    /// Whether each side's finish has been marked.
+    finished: [bool; 2],
+    /// The replay list, while it is open.
+    picker: Option<Picker>,
+    /// The retained runs the list offers, read when it first opens.
+    choices: Option<Vec<replay::Choice>>,
+}
+
+/// The replay list: the retained `beats-winner` runs and which is chosen.
+struct Picker {
+    choices: Vec<replay::Choice>,
+    selected: usize,
+    /// Why the last choice didn't start.
+    notice: Option<String>,
+}
+
+impl Picker {
+    fn lines(&self) -> Vec<(String, coder_terminal::Intensity)> {
+        use coder_terminal::Intensity;
+        let mut out = Vec::new();
+        if self.choices.is_empty() {
+            out.push((
+                "No retained Microcoder pass beats Fable 5.1 low's cheapest or fastest winning run."
+                    .to_owned(),
+                Intensity::Half,
+            ));
+        }
+        for (i, c) in self.choices.iter().enumerate() {
+            let chosen = i == self.selected;
+            out.push((
+                format!("{} {}", if chosen { ">" } else { " " }, c.line),
+                if chosen {
+                    Intensity::Full
+                } else {
+                    Intensity::ThreeQuarters
+                },
+            ));
+            out.push((
+                format!("    [{}]", c.labels),
+                if chosen {
+                    Intensity::Half
+                } else {
+                    Intensity::Quarter
+                },
+            ));
+        }
+        out.push((
+            "Each run: its cost and time, then Fable 5.1 low's cheapest winning run's. Up and Down choose; Enter plays.".to_owned(),
+            Intensity::Quarter,
+        ));
+        if let Some(notice) = &self.notice {
+            out.push((notice.clone(), Intensity::Full));
+        }
+        out
+    }
+
+    /// Rows to scroll so the chosen run stays in view: two rows a run.
+    fn scroll(&self) -> usize {
+        (self.selected * 2).saturating_sub(6)
+    }
 }
 
 impl App {
@@ -370,10 +526,22 @@ impl App {
             )
         });
         let my_keys = xp::my_keys(session.as_ref().map(Session::pubkey), &options.xp_keys);
+        let agent = Agent::new(&player);
+        let replay = match &options.replay {
+            Some(arg) => {
+                let run = replay::find(arg)?;
+                let r = Replay::load(&run, agent.pos)?;
+                if let Err(why) = &r.ghost {
+                    eprintln!("verse: no ghost: {why}");
+                }
+                Some(r)
+            }
+            None => None,
+        };
         Ok(Self {
             window: None,
             renderer: None,
-            agent: Agent::new(&player),
+            agent,
             world,
             player,
             camera: FollowCamera::default(),
@@ -407,7 +575,97 @@ impl App {
             board_open: false,
             board_scroll: 0,
             my_keys,
+            replay,
+            ghost: Agent::at(Place::Plaza.stand(true), 0.0),
+            finished: [false; 2],
+            picker: None,
+            choices: None,
         })
+    }
+
+    /// Opens the replay list, reading the retained runs the first time.
+    fn open_picker(&mut self) {
+        self.board_open = false;
+        let choices = self
+            .choices
+            .get_or_insert_with(replay::beats_winner_runs)
+            .clone();
+        self.picker = Some(Picker {
+            choices,
+            selected: 0,
+            notice: None,
+        });
+    }
+
+    /// Handles a key press while the replay list is open. Returns true
+    /// when the list took it.
+    fn picker_key(&mut self, code: KeyCode) -> bool {
+        let Some(picker) = &mut self.picker else {
+            return false;
+        };
+        let last = picker.choices.len().saturating_sub(1);
+        match code {
+            KeyCode::ArrowUp | KeyCode::KeyW => picker.selected = picker.selected.saturating_sub(1),
+            KeyCode::ArrowDown | KeyCode::KeyS => picker.selected = (picker.selected + 1).min(last),
+            KeyCode::PageUp => picker.selected = picker.selected.saturating_sub(5),
+            KeyCode::PageDown => picker.selected = (picker.selected + 5).min(last),
+            KeyCode::Enter | KeyCode::NumpadEnter => {
+                let Some(choice) = picker.choices.get(picker.selected) else {
+                    return true;
+                };
+                match Replay::load(&choice.run, self.agent.pos) {
+                    Ok(r) => self.start_replay(r),
+                    Err(e) => {
+                        if let Some(p) = &mut self.picker {
+                            p.notice = Some(format!("Can't replay it: {e}"));
+                        }
+                    }
+                }
+            }
+            KeyCode::Escape | KeyCode::KeyR => self.picker = None,
+            _ => return false,
+        }
+        true
+    }
+
+    fn start_replay(&mut self, r: Replay) {
+        self.ghost = Agent::at(Place::Plaza.stand(true), 0.0);
+        self.finished = [false; 2];
+        self.replay = Some(r);
+        self.picker = None;
+    }
+
+    /// Advances the replay and flies both spades toward their places, or
+    /// lets the agent follow the player when nothing is replaying.
+    fn step_agents(&mut self, dt: f32) {
+        let Some(r) = &mut self.replay else {
+            self.agent.update(&self.player, dt);
+            return;
+        };
+        r.tick(dt);
+        let [mine, ghost] = r.carrots();
+        self.agent.visit(mine, dt);
+        self.ghost.visit(ghost, dt);
+        let t = r.clock.elapsed_ms;
+        let passed = |track: &replay::Track| track.result.starts_with("passed");
+        if !self.finished[0] && r.mine.done(t) {
+            self.finished[0] = true;
+            if passed(&r.mine) {
+                self.agent.celebrate();
+            }
+        }
+        if let Ok(g) = &r.ghost
+            && !self.finished[1]
+            && g.done(t)
+        {
+            self.finished[1] = true;
+            if passed(g) {
+                self.ghost.celebrate();
+            }
+        }
+        if t < 1.0 {
+            self.finished = [false; 2];
+        }
     }
 
     /// Records the player as offline on the relay before quitting.
@@ -711,7 +969,33 @@ impl App {
     }
 
     fn key(&mut self, code: KeyCode, pressed: bool, event_loop: &ActiveEventLoop) {
+        if pressed && self.picker_key(code) {
+            return;
+        }
+        let replaying = self.replay.is_some();
         match code {
+            KeyCode::KeyR if pressed => self.open_picker(),
+            KeyCode::Digit1 | KeyCode::Digit2 | KeyCode::Digit3 if pressed && replaying => {
+                let speed = match code {
+                    KeyCode::Digit1 => replay::SPEEDS[0],
+                    KeyCode::Digit2 => replay::SPEEDS[1],
+                    _ => replay::SPEEDS[2],
+                };
+                if let Some(r) = &mut self.replay {
+                    r.clock.set_speed(speed);
+                }
+            }
+            KeyCode::KeyP if pressed && replaying => {
+                if let Some(r) = &mut self.replay {
+                    r.clock.toggle();
+                }
+            }
+            KeyCode::Home if pressed && replaying => {
+                if let Some(r) = &mut self.replay {
+                    r.clock.seek(0.0);
+                    r.clock.playing = true;
+                }
+            }
             KeyCode::KeyT if pressed => {
                 self.method = Channel::Agent;
                 self.open_chat("");
@@ -737,6 +1021,7 @@ impl App {
             KeyCode::PageDown if pressed && self.board_open => self.scroll_board(8),
             KeyCode::PageUp if pressed && self.board_open => self.scroll_board(-8),
             KeyCode::Escape if pressed && self.board_open => self.board_open = false,
+            KeyCode::Escape if pressed && replaying => self.replay = None,
             KeyCode::Escape if pressed => self.quit(event_loop),
             _ => {}
         }
@@ -800,7 +1085,7 @@ impl App {
         }
         self.gait
             .advance(self.player.speed, self.player.airborne(), dt);
-        self.agent.update(&self.player, dt);
+        self.step_agents(dt);
 
         // The look-around is the agent assessing what is near: it asks the
         // relay for entity states around it, then glances at what it found.
@@ -812,6 +1097,9 @@ impl App {
         }
         let mut dynamic = avatar::mesh(&self.player, &self.gait);
         dynamic.extend(&self.agent.mesh());
+        if self.replay.as_ref().is_some_and(|r| r.ghost.is_ok()) {
+            dynamic.extend(&self.ghost.mesh_at(coder_terminal::Intensity::ThreeQuarters));
+        }
         if let Some(session) = &mut self.session {
             session.tick(now, &self.player, &self.agent);
             if let Some(found) = session.scan_result(now, &self.agent) {
@@ -907,6 +1195,13 @@ impl App {
                             .board_open
                             .then(|| xp::board_lines(self.xp.as_ref(), unix_now())),
                         board_scroll: self.board_scroll,
+                        replay: self
+                            .replay
+                            .as_ref()
+                            .map(Replay::hud_lines)
+                            .unwrap_or_default(),
+                        picker: self.picker.as_ref().map(Picker::lines),
+                        picker_scroll: self.picker.as_ref().map_or(0, Picker::scroll),
                     },
                 );
                 self.layout = layout;
@@ -979,6 +1274,10 @@ impl App {
                         .map(|b| b.text.clone()),
                 });
             }
+        }
+        out.extend(landmark_overheads(self.player.pos));
+        if let Some(r) = &self.replay {
+            out.extend(replay_overheads(r, &self.agent, &self.ghost));
         }
         let board = world::QUEST_BOARD;
         if board.distance(self.player.pos) <= 80.0 {
@@ -1105,5 +1404,41 @@ impl ApplicationHandler for App {
         if let Some(window) = &self.window {
             window.request_redraw();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_replay_list_marks_the_chosen_run_and_keeps_it_in_view() {
+        let run = replay::find("microcoder/embedding-drift-monitor-1790393791").unwrap();
+        let choice = |n: usize| replay::Choice {
+            run: run.clone(),
+            line: format!("run {n} · $0.02 vs $0.74 · 2m vs 2m 19s"),
+            labels: "in-sample · knowledge-assisted · OpenRouter · billed cost".into(),
+        };
+        let mut picker = Picker {
+            choices: (0..12).map(choice).collect(),
+            selected: 5,
+            notice: None,
+        };
+        let lines = picker.lines();
+        let chosen: Vec<&str> = lines
+            .iter()
+            .map(|(t, _)| t.as_str())
+            .filter(|t| t.starts_with('>'))
+            .collect();
+        assert_eq!(chosen, ["> run 5 · $0.02 vs $0.74 · 2m vs 2m 19s"]);
+        assert!(
+            lines.iter().any(|(t, _)| t.contains("[in-sample")),
+            "labels print"
+        );
+        assert_eq!(picker.scroll(), 4);
+        picker.selected = 0;
+        assert_eq!(picker.scroll(), 0);
+        picker.choices.clear();
+        assert!(picker.lines()[0].0.starts_with("No retained"));
     }
 }

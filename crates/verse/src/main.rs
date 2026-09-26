@@ -8,13 +8,18 @@
 //! trusts a referee beyond `~/.openagents/knowledge/xp-trust.json`, and
 //! `--xp-key <npub>` counts another of your keys' XP as yours.
 //!
+//! `--replay <run directory or Gym run ID>` replays a Microcoder run as the
+//! agent's visits beside a ghost of Fable 5.1 low's cheapest winning run;
+//! `R` in the world lists the retained runs that beat it.
+//!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
 //!
 //! `verse --capture <file.png>` renders the spawn view to a PNG without a
 //! window; `--orbit <degrees>`, `--pitch <degrees>`, `--distance <meters>`,
 //! and `--size <width>x<height>` adjust the shot. `--board` opens the quest
-//! board in the shot, reading `--xp-relay` when given.
+//! board in the shot, reading `--xp-relay` when given. With `--replay`, the
+//! shot shows the replay `--at <seconds>` in, or halfway through.
 
 use std::process::ExitCode;
 
@@ -34,6 +39,8 @@ fn main() -> ExitCode {
                 keys: options.xp_keys.clone(),
                 referees: options.xp_referees.clone(),
                 board: shot.board,
+                replay: options.replay.clone(),
+                at: shot.at,
             };
             verse::app::capture(&shot.path, shot.width, shot.height, shot.camera, &xp)
         }
@@ -82,6 +89,7 @@ struct Shot {
     height: u32,
     camera: FollowCamera,
     board: bool,
+    at: Option<f64>,
 }
 
 fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Options), String> {
@@ -93,6 +101,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
         options.xp_relay = Some(relay);
     }
     let mut board = false;
+    let mut at = None;
     let mut shot: Option<Shot> = None;
     let mut camera = FollowCamera::default();
     let (mut width, mut height) = (1600, 1000);
@@ -111,6 +120,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
                     height,
                     camera,
                     board,
+                    at,
                 });
             }
             "--orbit" => camera.yaw_offset = degrees(value()?)?,
@@ -136,6 +146,14 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--xp-key" => options.xp_keys.push(value()?),
             "--xp-referee" => options.xp_referees.push(value()?),
             "--board" => board = true,
+            "--replay" => options.replay = Some(value()?),
+            "--at" => {
+                let v = value()?;
+                at = Some(
+                    v.parse::<f64>()
+                        .map_err(|_| format!("--at takes seconds, got {v}"))?,
+                );
+            }
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -144,6 +162,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
         height,
         camera,
         board,
+        at,
         ..s
     });
     Ok((shot, options))
