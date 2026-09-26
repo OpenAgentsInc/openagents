@@ -27,10 +27,14 @@ impl Propose for FakeModel {
         "fake/model"
     }
 
-    async fn propose(&self, system: &str, prompt: &str) -> Result<(Proposals, f64), String> {
+    fn provider(&self) -> &str {
+        "fake"
+    }
+
+    async fn propose(&self, system: &str, prompt: &str) -> Result<(Proposals, Cost), String> {
         assert!(system.contains("Never name the task"));
         *self.prompt.borrow_mut() = prompt.to_string();
-        Ok((self.reply.clone(), 0.002))
+        Ok((self.reply.clone(), Cost::known(0.002, Basis::ListPrice)))
     }
 }
 
@@ -42,7 +46,10 @@ impl Embed for Words {
         "words"
     }
 
-    async fn embed(&self, inputs: Vec<String>) -> Result<(Vec<Vec<f32>>, f64), String> {
+    async fn embed(
+        &self,
+        inputs: Vec<String>,
+    ) -> Result<(Vec<Vec<f32>>, Option<f64>), crate::search::EmbedError> {
         let vectors = inputs
             .iter()
             .map(|t| {
@@ -53,7 +60,7 @@ impl Embed for Words {
                 ]
             })
             .collect();
-        Ok((vectors, 0.0001))
+        Ok((vectors, Some(0.0001)))
     }
 }
 
@@ -233,7 +240,7 @@ async fn proposals_become_candidates_new_versions_or_refusals() {
     let current =
         Entry::parse(&std::fs::read_to_string(dir.join("stats.estimators.md")).unwrap()).unwrap();
     assert_eq!(current.status, Status::Admitted);
-    assert!(result.usd > 0.002);
+    assert!(result.usd().unwrap() > 0.002);
 }
 
 #[tokio::test]
@@ -349,4 +356,123 @@ fn a_revision_keeps_the_current_body_and_adds_the_proposal() {
     );
     assert!(body.starts_with("## Details\n\nThe whole formula."));
     assert!(body.contains("Recompute it.\n\n## Added in version 3\n\n### Details\n\nPuts use"));
+}
+
+fn codex(reply: microluna::Reply) -> CodexProposer<microluna::fake::FakeTransport> {
+    CodexProposer {
+        transport: microluna::fake::FakeTransport::new(vec![reply]),
+        model: "gpt-6-luna".to_string(),
+        effort: None,
+    }
+}
+
+fn entries_call(arguments: &str) -> microluna::Reply {
+    microluna::Reply {
+        id: None,
+        model: "gpt-6-luna".to_string(),
+        items: vec![json!({
+            "type": "function_call", "call_id": "c1", "name": TOOL, "arguments": arguments,
+        })],
+        usage: microluna::TokenUsage {
+            input: 10_000,
+            output: 2_000,
+            ..Default::default()
+        },
+    }
+}
+
+#[tokio::test]
+async fn a_codex_harvest_is_one_strict_tool_call_priced_at_list_price() {
+    let p = proposal(
+        "slip.trusting-comments",
+        "Trusting comments",
+        "Read the code.",
+        "",
+    );
+    let arguments = json!({"entries": [{
+        "id": p.id, "kind": p.kind, "title": p.title, "summary": p.summary, "tags": p.tags,
+        "applies_when": p.applies_when, "body": p.body, "cites": p.cites, "updates": p.updates,
+    }]})
+    .to_string();
+    let proposer = codex(entries_call(&arguments));
+    let (proposals, cost) = proposer.propose(SYSTEM, "the record").await.unwrap();
+    assert_eq!(proposals.entries, vec![p]);
+    assert_eq!(cost.basis, Basis::ListPrice);
+    // 10k input at $0.10/M and 2k output at $0.50/M.
+    assert!((cost.usd.unwrap() - 0.002).abs() < 1e-12);
+    let sent = proposer.transport.requests();
+    assert_eq!(sent[0].model, "gpt-6-luna");
+    assert_eq!(sent[0].tools[0]["name"], TOOL);
+    assert_eq!(sent[0].tools[0]["strict"], true);
+    assert_eq!(sent[0].tools[0]["parameters"], schema());
+    assert_eq!(proposer.provider(), "codex");
+}
+
+#[tokio::test]
+async fn a_failed_codex_harvest_reports_its_cost_as_unknown() {
+    let proposer = CodexProposer {
+        transport: microluna::fake::FakeTransport::new(Vec::new()),
+        model: "gpt-6-luna".to_string(),
+        effort: None,
+    };
+    proposer
+        .transport
+        .then_fail(microluna::TransportError::Failed(
+            "server_error".to_string(),
+        ));
+    let error = proposer.propose(SYSTEM, "the record").await.unwrap_err();
+    assert!(error.contains("the call cost unknown"), "{error}");
+}
+
+#[tokio::test]
+async fn an_unpriced_model_leaves_the_harvest_total_unknown() {
+    let dir = knowledge("unpriced");
+    let mut proposer = codex(entries_call(r#"{"entries": []}"#));
+    proposer.model = "gpt-9-mystery".to_string();
+    let result = harvest(
+        &run_dir("unpriced"),
+        &dir,
+        &proposer,
+        None::<&Retriever<Words>>,
+        &Corpus::default(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.usd(), None);
+    assert_eq!(result.known_usd(), 0.0);
+    assert!(
+        result
+            .model_cost
+            .unknown
+            .as_deref()
+            .unwrap()
+            .contains("no known list price")
+    );
+}
+
+#[tokio::test]
+async fn a_lexical_near_duplicate_search_is_recorded() {
+    let dir = knowledge("lexical");
+    let lexical = Retriever::<Words>::lexical(
+        Base {
+            entries: Base::read(&dir).0,
+        },
+        "no key",
+    );
+    let model = FakeModel {
+        reply: Proposals {
+            entries: vec![proposal("slip.new-one", "A new slip", "Details.", "")],
+        },
+        prompt: RefCell::new(String::new()),
+    };
+    let result = harvest(
+        &run_dir("lexical"),
+        &dir,
+        &model,
+        Some(&lexical),
+        &Corpus::default(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.lexical, vec!["no key".to_string()]);
 }

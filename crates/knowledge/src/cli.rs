@@ -5,10 +5,10 @@
 use std::path::{Path, PathBuf};
 
 use crate::evidence::{self, Evaluator, Verdict};
-use crate::harvest::{self, OpenRouterProposer, Written};
+use crate::harvest::{self, AnyProposer, CodexProposer, OpenRouterProposer, Propose, Written};
 use crate::lint::{Corpus, default_corpora, lint};
 use crate::remote::{self, Trust, TrustConfig};
-use crate::search::{OpenRouterEmbedder, Retriever};
+use crate::search::{Embedder, Retriever};
 use crate::{
     Base, Entry, Kind, Status, archive, default_cache, default_dir, pending, set_evidence,
     set_status, template, today,
@@ -73,8 +73,16 @@ Options:
   --corpus DIR      a directory of benchmark tasks the lint checks against; it
                     can repeat (default Terminal-Bench 4 under ~/.openagents)
   --lexical         search by words alone, without embeddings
-  --runs DIR        run records (default ~/.openagents/microcoder/runs)
-  --evidence-dir DIR  evidence reports (default ~/.openagents/knowledge/evidence)";
+  --provider NAME   the harvests' model: codex (the operator's Codex login in
+                    ~/.codex/auth.json, the default; the cost is a list-price
+                    estimate) or openrouter (OPENROUTER_API_KEY; billed cost)
+  --model SLUG      the harvests' model (default gpt-6-luna)
+  --runs DIR       run records (default ~/.openagents/microcoder/runs)
+  --evidence-dir DIR  evidence reports (default ~/.openagents/knowledge/evidence)
+
+Embeddings use OpenAI's text-embedding-3-small directly when OPENAI_API_KEY or
+~/.openagents/openai.json (mode 600) holds a key, else through OpenRouter; without
+either, search and the harvests' near-duplicate check rank by words and say so.";
 
 /// Every option `kb` takes.
 #[derive(Debug, Default)]
@@ -88,6 +96,8 @@ pub struct Options {
     pub title: Option<String>,
     pub author: Option<String>,
     pub model: Option<String>,
+    /// For the harvests: `codex` (the default) or `openrouter`.
+    pub provider: Option<String>,
     /// For `harvest-trace`: the task the trajectory solved.
     pub task: Option<String>,
     pub runs: Option<PathBuf>,
@@ -181,6 +191,7 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
                 o.authors.push(text);
             }
             "--model" => o.model = Some(value()?),
+            "--provider" => o.provider = Some(value()?),
             "--task" => o.task = Some(value()?),
             "--runs" => o.runs = Some(PathBuf::from(value()?)),
             "--evidence-dir" => o.evidence_dir = Some(PathBuf::from(value()?)),
@@ -263,7 +274,7 @@ async fn search(o: &Options) -> Result<u8, String> {
     let retriever = if o.lexical {
         Retriever::lexical(base, "--lexical was given")
     } else {
-        match OpenRouterEmbedder::from_env() {
+        match Embedder::from_env() {
             Ok(embedder) => Retriever::new(base, embedder, default_cache()),
             Err(error) => Retriever::lexical(base, &error),
         }
@@ -272,8 +283,13 @@ async fn search(o: &Options) -> Result<u8, String> {
     match &search.lexical_only {
         Some(why) => println!("ranked by words alone: {why}"),
         None => println!(
-            "ranked by words and embeddings (${:.8} for embeddings)",
-            search.usd
+            "ranked by words and embeddings from {} ({} for embeddings)",
+            retriever
+                .embedder()
+                .map_or("?".to_string(), |e| e.provider.to_string()),
+            search
+                .usd
+                .map_or("cost unknown".to_string(), |usd| format!("${usd:.8}"))
         ),
     }
     for (rank, hit) in search.hits.iter().enumerate() {
@@ -443,21 +459,45 @@ async fn harvest_and_report(
         .model
         .clone()
         .unwrap_or_else(|| harvest::MODEL.to_string());
-    let proposer = OpenRouterProposer::from_env(&model)?;
+    let proposer = match o.provider.as_deref().unwrap_or("codex") {
+        "codex" => AnyProposer::Codex(CodexProposer::from_login(&model)?),
+        "openrouter" => AnyProposer::OpenRouter(OpenRouterProposer::from_env(&model)?),
+        other => return Err(format!("--provider wants codex or openrouter, not {other}")),
+    };
     let (entries, _) = Base::read(&o.dir);
     let base = Base { entries };
-    let retriever = match OpenRouterEmbedder::from_env() {
-        Ok(embedder) => Some(Retriever::new(base, embedder, default_cache())),
+    let embedder = if o.lexical {
+        Err("--lexical was given".to_string())
+    } else {
+        Embedder::from_env()
+    };
+    let retriever = match embedder {
+        Ok(embedder) => {
+            println!(
+                "near-duplicates by embeddings from {} ({} cost)",
+                embedder.provider,
+                embedder.basis()
+            );
+            Some(Retriever::new(base, embedder, default_cache()))
+        }
         Err(error) => {
             println!(
-                "no embeddings ({error}); near-duplicates are found only by ID and the model's `updates`"
+                "retrieval: lexical ({error}); near-duplicates are found only by ID and the model's `updates`"
             );
             None
         }
     };
-    println!("reading {} with {model}", run_dir.display());
+    println!(
+        "reading {} with {} through {}",
+        run_dir.display(),
+        proposer.model(),
+        proposer.provider()
+    );
     let result =
         harvest::harvest_record(record, &o.dir, &proposer, retriever.as_ref(), &corpus(o)).await?;
+    for why in &result.lexical {
+        println!("retrieval: a near-duplicate search fell back to words alone: {why}");
+    }
     if result.proposals.is_empty() {
         println!("the model proposed no entries");
     }
@@ -479,7 +519,17 @@ kb admit {id} promotes it",
             Written::Refused(why) => println!("- {id}: not written: {why}"),
         }
     }
-    println!("${:.5} for the model and embeddings", result.usd);
+    println!(
+        "model {} · embeddings {}",
+        result.model_cost.describe(),
+        result
+            .embedding_usd
+            .map_or("unknown".to_string(), |usd| format!("${usd:.6}"))
+    );
+    match result.usd() {
+        Some(usd) => println!("${usd:.5} in all"),
+        None => println!("cost unknown in all; at least ${:.5}", result.known_usd()),
+    }
     Ok(0)
 }
 

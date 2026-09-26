@@ -138,10 +138,13 @@ while next_action isn't finished:
    are embedded once and cached by the entry's digest. The query is embedded
    each step, and the top 20 entries by cosine similarity are candidates. A
    lexical score (BM25 over the same fields) is combined with it, so an exact
-   name like "MMD" or "PSI" always counts. Embeddings come through
-   `crates/openrouter`'s embeddings call; the default model is
-   `openai/text-embedding-3-small`. Without a key or network, retrieval falls
-   back to the lexical score alone.
+   name like "MMD" or "PSI" always counts. The model is OpenAI's
+   `text-embedding-3-small`, called on OpenAI's API when an OpenAI key is
+   set up and otherwise through OpenRouter; both give that model's vectors,
+   so the cache keys them by the one name `openai/text-embedding-3-small`.
+   Without a key or network, or after a failed call, retrieval falls back to
+   the lexical score alone, and the run's `summary.json` records the mode
+   (`embeddings`, `lexical`, or `mixed`) and why.
 3. **Relevance.** Jev answers one Noul question per candidate: "Does the
    knowledge entry in `entry` bear on the current state in `state`: would
    someone doing this task need to know it?" Entries at or above 0.5 are kept,
@@ -258,7 +261,9 @@ Scope, in Microcoder:
 
 - `crates/knowledge`: entry parsing and validation, the lint, BM25, cosine
   search over cached embeddings, and the `kb` subcommands. It depends on
-  `crates/openrouter` for embeddings and on nothing that runs the loop.
+  `crates/openrouter` for the embeddings HTTP call (pointed at OpenAI's API
+  or OpenRouter), on `crates/microluna` for the Codex transport the harvests
+  use, and on nothing that runs the loop.
 - `crates/openrouter`: an `embeddings` call.
 - `knowledge/`: a small seed set of admitted reference entries, general and
   cited, covering methods and slips relevant to the Terminal-Bench categories
@@ -301,8 +306,10 @@ Shipped 2026-09-25, in `crates/knowledge`, `crates/microcoder`, and
 - **Contribution.** `kb add` writes a candidate entry from `--kind` and
   `--title`, with template text the lint refuses until it's replaced.
   `kb harvest` reads a run's `summary.json` and `events.jsonl`, bounded to
-  60,000 characters, and makes one structured OpenRouter call that proposes
-  at most three entries. Each proposal is linted with the run's own task name
+  60,000 characters, and makes one structured model call (the Codex login
+  by default, or OpenRouter) that proposes at most three entries. Its cost
+  is reported with its basis, list price or billed, and as unknown rather
+  than $0 when it can't be known. Each proposal is linted with the run's own task name
   added, and written as a `candidate` with the run's ID in
   `provenance.written_from`.
 - **Admission.** `kb evidence` measures every entry from the recorded runs

@@ -96,10 +96,10 @@ impl Observer for Terminal {
                 self.line(
                     seconds,
                     &format!(
-                        "{} {answers} · {:.1} s · ${:.5}",
+                        "{} {answers} · {:.1} s · {}",
                         self.paint("1;33", &format!("step {step} · jev")),
                         judgment.milliseconds as f64 / 1000.0,
-                        judgment.usd
+                        dollars(judgment.usd, 5)
                     ),
                 );
             }
@@ -110,11 +110,11 @@ impl Observer for Terminal {
             } => {
                 let head = self.paint("1;34", &format!("step {step} · {}", generated.model));
                 let meta = format!(
-                    "prompt {prompt_chars} chars · {} in, {} out · {:.1} s · ${:.5}",
+                    "prompt {prompt_chars} chars · {} in, {} out · {:.1} s · {}",
                     generated.prompt_tokens,
                     generated.completion_tokens,
                     generated.milliseconds as f64 / 1000.0,
-                    generated.usd
+                    dollars(generated.usd, 5)
                 );
                 match &generated.action {
                     Ok(action) => {
@@ -200,9 +200,9 @@ impl Observer for Terminal {
                 self.line(
                     seconds,
                     &format!(
-                        "{} {answers} · ${:.5} · {}",
+                        "{} {answers} · {} · {}",
                         self.paint("1;35", "jev task check"),
-                        judgment.usd,
+                        dollars(judgment.usd, 5),
                         if *strong {
                             "the stronger model writes the acceptance tests"
                         } else {
@@ -242,9 +242,9 @@ impl Observer for Terminal {
                 self.line(
                     seconds,
                     &format!(
-                        "{} {answers} · ${:.5} · {verdict}",
+                        "{} {answers} · {} · {verdict}",
                         self.paint("1;35", &format!("step {step} · jev checks test coverage")),
-                        judgment.usd
+                        dollars(judgment.usd, 5)
                     ),
                 );
             }
@@ -269,14 +269,14 @@ impl Observer for Terminal {
                 self.line(
                     seconds,
                     &format!(
-                        "{} {answers} · ${:.5} · {verdict}",
+                        "{} {answers} · {} · {verdict}",
                         self.paint(
                             "1;35",
                             &format!(
                                 "step {step} · jev checks the code against the knowledge base"
                             )
                         ),
-                        judgment.usd
+                        dollars(judgment.usd, 5)
                     ),
                 );
             }
@@ -303,12 +303,12 @@ impl Observer for Terminal {
                 self.line(
                     seconds,
                     &format!(
-                        "{} {answers} · ${:.5} · {verdict}",
+                        "{} {answers} · {} · {verdict}",
                         self.paint(
                             "1;35",
                             &format!("step {step} · jev checks the failing tests")
                         ),
-                        judgment.usd
+                        dollars(judgment.usd, 5)
                     ),
                 );
             }
@@ -353,20 +353,29 @@ impl Observer for Terminal {
                         "every acceptance test passing for several steps in a row".to_string()
                     }
                 };
-                let embeddings = if outcome.embedding_usd > 0.0 {
-                    format!(" · embeddings ${:.6}", outcome.embedding_usd)
+                let embeddings = if outcome.embedding_usd != Some(0.0) {
+                    format!(" · embeddings {}", dollars(outcome.embedding_usd, 6))
                 } else {
                     String::new()
+                };
+                let unknown = if outcome.cost_unknown.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " · {} calls of unknown cost, at least ${:.4} known",
+                        outcome.cost_unknown.len(),
+                        outcome.known_usd
+                    )
                 };
                 self.line(
                     seconds,
                     &self.paint(
                         "1;36",
                         &format!(
-                            "loop ended: {why} · {} steps · model ${:.4} · jev ${:.5}{embeddings}{}",
+                            "loop ended: {why} · {} steps · model {} · jev {}{embeddings}{unknown}{}",
                             outcome.steps,
-                            outcome.model_usd,
-                            outcome.jev_usd,
+                            dollars(outcome.model_usd, 4),
+                            dollars(outcome.jev_usd, 5),
                             if outcome.knowledge_assisted {
                                 " · knowledge-assisted"
                             } else {
@@ -419,11 +428,21 @@ pub fn retrieval_line(retrieval: &Retrieval) -> String {
                 .join(", ")
         ));
     }
-    parts.push(format!(
-        "${:.5}",
-        retrieval.jev_usd + retrieval.embedding_usd
+    parts.push(dollars(
+        retrieval
+            .jev_usd
+            .zip(retrieval.embedding_usd)
+            .map(|(j, e)| j + e),
+        5,
     ));
     parts.join(" · ")
+}
+
+/// Dollars to `places` decimals, or `cost unknown`: an unknown cost is
+/// never shown as $0.
+#[must_use]
+pub fn dollars(usd: Option<f64>, places: usize) -> String {
+    usd.map_or("cost unknown".to_string(), |usd| format!("${usd:.places$}"))
 }
 
 /// Appends every event to a JSON Lines file.

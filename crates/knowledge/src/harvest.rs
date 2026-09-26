@@ -1,6 +1,7 @@
 //! `kb harvest`: proposing entries from a finished run.
 //!
-//! One structured OpenRouter call reads a bounded record of the run (each
+//! One structured model call — through the operator's Codex login by
+//! default ([`CodexProposer`]), or OpenRouter — reads a bounded record of the run (each
 //! step's rationale, commands, and output, the acceptance tests, and the
 //! verifier's verdict) and proposes general entries: what went wrong, what
 //! fixed it, and what would have saved steps. Each proposal is checked
@@ -11,6 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
+use microluna::price::Basis;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -158,17 +160,146 @@ pub fn schema() -> Value {
     })
 }
 
+/// What one call cost.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Cost {
+    /// Dollars, or `None` when the cost is unknown.
+    pub usd: Option<f64>,
+    /// The known part: `usd` when that's known, else a lower bound.
+    pub known_usd: f64,
+    /// Why `usd` is unknown, when it is.
+    pub unknown: Option<String>,
+    /// How the figure was reached.
+    pub basis: Basis,
+}
+
+impl Cost {
+    /// A known cost.
+    #[must_use]
+    pub fn known(usd: f64, basis: Basis) -> Self {
+        Cost {
+            usd: Some(usd),
+            known_usd: usd,
+            unknown: None,
+            basis,
+        }
+    }
+
+    /// The cost as one line: dollars, or unknown with the known part and
+    /// why.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match (&self.usd, &self.unknown) {
+            (Some(usd), _) => format!("${usd:.5} ({})", self.basis),
+            (None, why) => format!(
+                "unknown (at least ${:.5}, {}): {}",
+                self.known_usd,
+                self.basis,
+                why.as_deref().unwrap_or("no reason recorded")
+            ),
+        }
+    }
+}
+
 /// Proposes entries: one model call.
 pub trait Propose {
     /// The model's name, for the entries' author.
     fn model(&self) -> &str;
 
-    /// The proposals and the call's cost in dollars.
+    /// The provider that answers: `codex` or `openrouter`.
+    fn provider(&self) -> &str;
+
+    /// The proposals and what the call cost. A failed call's error says
+    /// what it cost too.
     fn propose(
         &self,
         system: &str,
         prompt: &str,
-    ) -> impl std::future::Future<Output = Result<(Proposals, f64), String>>;
+    ) -> impl std::future::Future<Output = Result<(Proposals, Cost), String>>;
+}
+
+/// Proposals through the operator's Codex login, with Microluna's
+/// transport: one request declares one strict tool, `knowledge_entries`,
+/// whose parameters are [`schema`], and the proposals are its arguments.
+/// The cost is the model's list price for the reported tokens.
+pub struct CodexProposer<T: microluna::Transport = microluna::codex::CodexTransport> {
+    pub transport: T,
+    /// The Codex model slug, such as `gpt-6-luna`.
+    pub model: String,
+    /// `low`, `medium`, or `high`, or `None` for the model's default.
+    pub effort: Option<String>,
+}
+
+/// The one tool a Codex harvest declares.
+pub const TOOL: &str = "knowledge_entries";
+
+impl CodexProposer {
+    /// A proposer on the Codex login in `$CODEX_HOME/auth.json` or
+    /// `~/.codex/auth.json`. A provider prefix on `model`, such as
+    /// `openai/`, is dropped.
+    ///
+    /// # Errors
+    ///
+    /// No login, or one that can't be used now.
+    pub fn from_login(model: &str) -> Result<Self, String> {
+        let login = microluna::codex::Login::default_path()
+            .ok_or("no Codex login: can't find ~/.codex/auth.json; run `codex login`")?;
+        let session = format!("kb-harvest-{}", std::process::id());
+        let transport = microluna::codex::CodexTransport::new(login, &session)
+            .map_err(|e| format!("the Codex login can't be used: {e}; run `codex login`"))?;
+        Ok(CodexProposer {
+            transport,
+            model: model.rsplit('/').next().unwrap_or(model).to_string(),
+            effort: None,
+        })
+    }
+}
+
+impl<T: microluna::Transport> Propose for CodexProposer<T> {
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    fn provider(&self) -> &str {
+        "codex"
+    }
+
+    async fn propose(&self, system: &str, prompt: &str) -> Result<(Proposals, Cost), String> {
+        let request = microluna::Request {
+            model: self.model.clone(),
+            instructions: format!("{system}\n\nReply by calling {TOOL} exactly once."),
+            input: vec![json!({
+                "type": "message",
+                "role": "user",
+                "content": [{ "type": "input_text", "text": prompt }],
+            })],
+            tools: vec![json!({
+                "type": "function",
+                "name": TOOL,
+                "description": "Give the proposed knowledge-base entries, or an empty list.",
+                "parameters": schema(),
+                "strict": true,
+            })],
+            effort: self.effort.clone(),
+            cache_key: format!("kb-harvest-{}", std::process::id()),
+            parallel_tools: false,
+        };
+        let called = microluna::oneshot::call(&self.transport, &request, TOOL).await;
+        let cost = Cost {
+            usd: called.usd,
+            known_usd: called.known_usd,
+            unknown: called.cost_unknown,
+            basis: called.basis,
+        };
+        let proposals = called.arguments.and_then(|arguments| {
+            serde_json::from_str::<Proposals>(&arguments)
+                .map_err(|e| format!("{TOOL}'s arguments didn't parse: {e}"))
+        });
+        match proposals {
+            Ok(proposals) => Ok((proposals, cost)),
+            Err(error) => Err(format!("{error} (the call cost {})", cost.describe())),
+        }
+    }
 }
 
 /// Proposals through `crates/openrouter`.
@@ -198,7 +329,11 @@ impl Propose for OpenRouterProposer {
         &self.model
     }
 
-    async fn propose(&self, system: &str, prompt: &str) -> Result<(Proposals, f64), String> {
+    fn provider(&self) -> &str {
+        "openrouter"
+    }
+
+    async fn propose(&self, system: &str, prompt: &str) -> Result<(Proposals, Cost), String> {
         let request = openrouter::ChatRequest::new(
             &self.model,
             vec![
@@ -210,8 +345,57 @@ impl Propose for OpenRouterProposer {
             .client
             .structured::<Proposals>(request, "knowledge_entries", schema())
             .await
-            .map_err(|e| e.to_string())?;
-        Ok((reply.value, reply.usage.cost.unwrap_or(0.0)))
+            .map_err(|e| {
+                // A reply that misses the shape still cost what it cost; any
+                // other failure's cost isn't reported.
+                let cost = match &e {
+                    openrouter::Error::Schema { usage, .. } => usage.cost.map_or_else(
+                        || "unknown: OpenRouter reported no cost".to_string(),
+                        |usd| format!("${usd:.5} (billed)"),
+                    ),
+                    _ => "unknown".to_string(),
+                };
+                format!("{e} (the call cost {cost})")
+            })?;
+        let cost = match reply.usage.cost {
+            Some(usd) => Cost::known(usd, Basis::Billed),
+            None => Cost {
+                usd: None,
+                known_usd: 0.0,
+                unknown: Some("OpenRouter reported no cost for the call".to_string()),
+                basis: Basis::Billed,
+            },
+        };
+        Ok((reply.value, cost))
+    }
+}
+
+/// Either proposer, chosen at run time.
+pub enum AnyProposer {
+    Codex(CodexProposer),
+    OpenRouter(OpenRouterProposer),
+}
+
+impl Propose for AnyProposer {
+    fn model(&self) -> &str {
+        match self {
+            AnyProposer::Codex(p) => p.model(),
+            AnyProposer::OpenRouter(p) => p.model(),
+        }
+    }
+
+    fn provider(&self) -> &str {
+        match self {
+            AnyProposer::Codex(p) => p.provider(),
+            AnyProposer::OpenRouter(p) => p.provider(),
+        }
+    }
+
+    async fn propose(&self, system: &str, prompt: &str) -> Result<(Proposals, Cost), String> {
+        match self {
+            AnyProposer::Codex(p) => p.propose(system, prompt).await,
+            AnyProposer::OpenRouter(p) => p.propose(system, prompt).await,
+        }
     }
 }
 
@@ -558,8 +742,29 @@ pub enum Written {
 pub struct Harvest {
     /// Each proposal's ID and what became of it.
     pub proposals: Vec<(String, Written)>,
-    /// Dollars the model and embeddings cost.
-    pub usd: f64,
+    /// What the model call cost.
+    pub model_cost: Cost,
+    /// Dollars the near-duplicate searches' embeddings cost, or `None` when
+    /// that's unknown.
+    pub embedding_usd: Option<f64>,
+    /// Why a near-duplicate search ranked by words alone, when one did: its
+    /// proposal was then matched only by ID and the model's `updates`.
+    pub lexical: Vec<String>,
+}
+
+impl Harvest {
+    /// Dollars in all, or `None` when any part is unknown.
+    #[must_use]
+    pub fn usd(&self) -> Option<f64> {
+        Some(self.model_cost.usd? + self.embedding_usd?)
+    }
+
+    /// The known part of the cost: the total when it's known, else a lower
+    /// bound.
+    #[must_use]
+    pub fn known_usd(&self) -> f64 {
+        self.model_cost.known_usd + self.embedding_usd.unwrap_or(0.0)
+    }
 }
 
 /// The existing entry a proposal revises: the one with its ID, else the
@@ -571,18 +776,24 @@ async fn original<E: Embed>(
     candidate: &Entry,
     base: &Base,
     retriever: Option<&Retriever<E>>,
-    usd: &mut f64,
+    usd: &mut Option<f64>,
+    lexical: &mut Vec<String>,
 ) -> Option<(String, Option<f64>)> {
     let id = proposal.id.trim();
     if base.get(id).is_some() {
         return Some((id.to_string(), None));
     }
+    let named = proposal.updates.trim();
+    let by_name = || base.get(named).map(|_| (named.to_string(), None));
     let Some(retriever) = retriever else {
-        let named = proposal.updates.trim();
-        return base.get(named).map(|_| (named.to_string(), None));
+        return by_name();
     };
     let search = retriever.search(&candidate.search_text(), 1).await;
-    *usd += search.usd;
+    *usd = usd.zip(search.usd).map(|(a, b)| a + b);
+    if let Some(why) = search.lexical_only {
+        lexical.push(why);
+        return by_name();
+    }
     let hit = search.hits.first()?;
     let similarity = hit.semantic?;
     (similarity >= DUPLICATE).then(|| (hit.id.clone(), Some(similarity)))
@@ -627,7 +838,9 @@ pub async fn harvest_record<P: Propose, E: Embed>(
     } else {
         SYSTEM
     };
-    let (proposals, mut usd) = proposer.propose(system, &prompt(&record, &base)).await?;
+    let (proposals, model_cost) = proposer.propose(system, &prompt(&record, &base)).await?;
+    let mut embedding_usd = Some(0.0);
+    let mut lexical = Vec::new();
     let mut corpus = corpus.clone();
     if !record.task.is_empty() && !corpus.names.contains(&record.task) {
         corpus.names.push(record.task.clone());
@@ -678,7 +891,15 @@ pub async fn harvest_record<P: Propose, E: Embed>(
             body: proposal.body.trim().to_string(),
             digest: String::new(),
         };
-        let revises = original(proposal, &entry, &base, retriever, &mut usd).await;
+        let revises = original(
+            proposal,
+            &entry,
+            &base,
+            retriever,
+            &mut embedding_usd,
+            &mut lexical,
+        )
+        .await;
         let current = revises.as_ref().and_then(|(id, _)| base.get(id)).cloned();
         if let Some(current) = &current {
             entry.id = current.id.clone();
@@ -738,7 +959,9 @@ pub async fn harvest_record<P: Propose, E: Embed>(
     }
     Ok(Harvest {
         proposals: out,
-        usd,
+        model_cost,
+        embedding_usd,
+        lexical,
     })
 }
 

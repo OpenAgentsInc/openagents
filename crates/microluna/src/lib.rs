@@ -17,6 +17,8 @@
 //! - [`finish`] holds a `done` finish until the score and a baseline
 //!   command ran after the last edit.
 //! - [`price`] turns usage into dollars at Luna's list prices.
+//! - [`oneshot`] asks for one structured value as one tool call, for
+//!   callers outside a session such as Microcoder and `kb harvest`.
 //!
 //! `docs/coder/design/microluna.md` records why Microluna calls the
 //! endpoint directly instead of driving `codex app-server`, and what it
@@ -25,6 +27,7 @@
 pub mod codex;
 pub mod fake;
 pub mod finish;
+pub mod oneshot;
 pub mod openrouter;
 pub mod patch;
 pub mod price;

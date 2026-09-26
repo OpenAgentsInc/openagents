@@ -3,11 +3,12 @@
 
 use std::process::ExitCode;
 
+use microcoder::models::Basis;
 use microcoder::models::{
     AnyGenerator, CodexGenerator, JevJudge, OpenRouterGenerator, question_set, route_set,
 };
 use microcoder::run::{Ending, Limits, Models, Route, USER_PROMPT, run};
-use microcoder::show::{Both, Record, Terminal, clock};
+use microcoder::show::{Both, Record, Terminal, clock, dollars};
 use microcoder::state::State;
 use microcoder::{MODEL, STRONG_MODEL, tbench};
 
@@ -45,6 +46,8 @@ Options:
                      own (your key's only), listed (also the authors in
                      ~/.openagents/knowledge/trust.json), or all (everyone else's
                      as candidates) (default the trust file's mode, else own)
+  --kb-lexical       rank knowledge entries by words alone, without embeddings;
+                     summary.json records the retrieval mode either way
   --keep             leave the container running afterward
   --check-grading    run the task's reference solution instead of the loop,
                      then grade it: a check that grading works, at no model cost
@@ -74,6 +77,8 @@ struct Options {
     kb: String,
     /// Which synced entries the base includes.
     kb_trust: knowledge::remote::TrustConfig,
+    /// Rank knowledge entries by words alone.
+    kb_lexical: bool,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -89,6 +94,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         keep: false,
         check_grading: false,
         kb: "on".to_string(),
+        kb_lexical: false,
         kb_trust: match knowledge::remote::trust_file() {
             Some(path) => knowledge::remote::TrustConfig::read(&path)?,
             None => knowledge::remote::TrustConfig::default(),
@@ -143,6 +149,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     ));
                 }
             }
+            "--kb-lexical" => options.kb_lexical = true,
             "--kb-trust" => {
                 let mode = value()?;
                 options.kb_trust.mode = knowledge::remote::Trust::parse(&mode)
@@ -264,11 +271,17 @@ async fn go(options: Options) -> Result<u8, String> {
             options.kb == "candidates",
         )?;
         loaded = found;
-        Some(match knowledge::search::OpenRouterEmbedder::from_env() {
+        let embedder = if options.kb_lexical {
+            Err("--kb-lexical was given".to_string())
+        } else {
+            knowledge::search::Embedder::from_env()
+                .map_err(|error| format!("no embeddings key ({error})"))
+        };
+        Some(match embedder {
             Ok(embedder) => {
                 knowledge::search::Retriever::new(base, embedder, knowledge::default_cache())
             }
-            Err(error) => knowledge::search::Retriever::lexical(base, &error),
+            Err(why) => knowledge::search::Retriever::lexical(base, &why),
         })
     };
     let mut terminal = Terminal::new();
@@ -313,6 +326,16 @@ async fn go(options: Options) -> Result<u8, String> {
         );
         for problem in &loaded.problems {
             println!("knowledge base: skipped a synced entry that didn't verify: {problem}");
+        }
+        match (retriever.embedder(), retriever.lexical_reason()) {
+            (Some(embedder), _) => println!(
+                "knowledge base: ranked by words and embeddings from {} ({})",
+                embedder.provider, embedder.model
+            ),
+            (None, why) => println!(
+                "knowledge base: ranked by words alone: {}",
+                why.unwrap_or("no embedder")
+            ),
         }
     } else {
         println!("knowledge base: off");
@@ -426,18 +449,30 @@ async fn go(options: Options) -> Result<u8, String> {
         .join("\n");
     println!("{}", indent_block(&tail));
     let passed = verdict.reward.is_some_and(|r| r >= 1.0);
-    let total = outcome.model_usd + outcome.jev_usd + outcome.embedding_usd;
+    let total = match outcome.usd {
+        Some(usd) => format!("${usd:.4}"),
+        None => format!(
+            "cost unknown, at least ${:.4} ({} calls unpriced)",
+            outcome.known_usd,
+            outcome.cost_unknown.len()
+        ),
+    };
+    let basis = if options.provider == "codex" {
+        Basis::ListPrice
+    } else {
+        Basis::Billed
+    };
     println!(
-        "\n{} · reward {} · {} steps · {} · ${total:.4} (model ${:.4}, Jev ${:.5}, embeddings ${:.6}) · ended by {}{}",
+        "\n{} · reward {} · {} steps · {} · {total} (model {} {basis}, Jev {}, embeddings {}) · ended by {}{}",
         task.name,
         verdict
             .reward
             .map_or("unknown".to_string(), |r| format!("{r}")),
         outcome.steps,
         clock(outcome.seconds),
-        outcome.model_usd,
-        outcome.jev_usd,
-        outcome.embedding_usd,
+        dollars(outcome.model_usd, 4),
+        dollars(outcome.jev_usd, 5),
+        dollars(outcome.embedding_usd, 6),
         match &outcome.ending {
             Ending::Finished => "the model finishing".to_string(),
             other => format!("{other:?}"),
@@ -465,6 +500,28 @@ async fn go(options: Options) -> Result<u8, String> {
         "test_results": end_state.test_results, "dropped_tests": end_state.dropped,
         "kb": options.kb, "kb_trust": options.kb_trust.mode.to_string(),
         "knowledge_assisted": outcome.knowledge_assisted,
+        // How the model was reached and how its cost was reached: the Codex
+        // login reports tokens, priced at list price; OpenRouter bills.
+        // Jev is always its published rate times reported tokens.
+        "provider": options.provider,
+        "cost_basis": basis,
+        "cost_bases": {
+            "model": basis,
+            "jev": Basis::ListPrice,
+            "embeddings": retriever.as_ref().and_then(|r| r.embedder()).map(|e| e.basis()),
+        },
+        "retrieval": microcoder::run::retrieval_summary(
+            retriever.is_some(),
+            retriever.as_ref().and_then(|r| r.embedder()).map(|e| {
+                (
+                    if e.provider == knowledge::search::EmbeddingProvider::Openai { "openai" } else { "openrouter" },
+                    e.model.as_str(),
+                    e.basis(),
+                )
+            }),
+            retriever.as_ref().and_then(|r| r.lexical_reason()),
+            &outcome,
+        ),
     });
     let _ = std::fs::write(
         run_dir.join("summary.json"),

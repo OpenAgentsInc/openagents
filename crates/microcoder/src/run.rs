@@ -248,8 +248,12 @@ pub struct Retrieval {
     pub kept: Vec<Kept>,
     /// The entries whose bodies the prompt shows: each ID and digest.
     pub expanded: Vec<(String, String)>,
-    pub jev_usd: f64,
-    pub embedding_usd: f64,
+    /// Dollars of the relevance judgment, or `None` when unknown.
+    pub jev_usd: Option<f64>,
+    /// Why `jev_usd` is unknown, when it is.
+    pub jev_cost_unknown: Option<String>,
+    /// Dollars of the search's embeddings, or `None` when unknown.
+    pub embedding_usd: Option<f64>,
     /// Why Jev gave no answers, when it didn't.
     pub error: Option<String>,
 }
@@ -270,16 +274,128 @@ pub trait Observer {
     fn event(&mut self, seconds: f64, event: &Event);
 }
 
+/// Dollars of one kind, summed: the known part, and each call whose cost
+/// is unknown.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Spend {
+    pub known: f64,
+    pub unknown: Vec<String>,
+}
+
+impl Spend {
+    /// Adds one call: `usd` when known, else `known` as its lower bound and
+    /// `why` under the label `at`.
+    pub fn add(&mut self, usd: Option<f64>, known: f64, why: Option<&str>, at: &str) {
+        match usd {
+            Some(usd) => self.known += usd,
+            None => {
+                self.known += known;
+                self.unknown
+                    .push(format!("{at}: {}", why.unwrap_or("no reason recorded")));
+            }
+        }
+    }
+
+    /// Adds a Jev judgment made at `step` (0 before the first step).
+    pub fn judged(&mut self, judgment: &Judgment, step: usize) {
+        self.add(
+            judgment.usd,
+            0.0,
+            judgment.cost_unknown.as_deref(),
+            &format!("step {step} Jev"),
+        );
+    }
+
+    /// The sum, or `None` when any call's cost is unknown.
+    #[must_use]
+    pub fn total(&self) -> Option<f64> {
+        self.unknown.is_empty().then_some(self.known)
+    }
+}
+
+/// How knowledge searches were ranked.
+#[derive(Clone, Debug, Default)]
+struct Searches {
+    embeddings: usize,
+    lexical: usize,
+    reasons: Vec<String>,
+}
+
+impl Searches {
+    fn count(&mut self, lexical_only: Option<&str>) {
+        match lexical_only {
+            None => self.embeddings += 1,
+            Some(why) => {
+                self.lexical += 1;
+                if !self.reasons.iter().any(|r| r == why) {
+                    self.reasons.push(why.to_string());
+                }
+            }
+        }
+    }
+}
+
+/// How a run's knowledge searches were ranked, for `summary.json`:
+/// `off`; `embeddings` when every search used them; `lexical` with the
+/// reason when none did; or `mixed` with the reasons the others fell back.
+/// `embedder` names the provider, model, and cost basis when there is one,
+/// and `lexical_reason` says why there isn't.
+#[must_use]
+pub fn retrieval_summary(
+    kb: bool,
+    embedder: Option<(&str, &str, &str)>,
+    lexical_reason: Option<&str>,
+    outcome: &Outcome,
+) -> serde_json::Value {
+    if !kb {
+        return json!({"mode": "off"});
+    }
+    let (mode, reason) = match embedder {
+        None => ("lexical", lexical_reason.map(str::to_string)),
+        Some(_) if outcome.lexical_searches == 0 => ("embeddings", None),
+        Some(_) if outcome.embedding_searches == 0 => {
+            ("lexical", Some(outcome.lexical_reasons.join("; ")))
+        }
+        Some(_) => ("mixed", Some(outcome.lexical_reasons.join("; "))),
+    };
+    json!({
+        "mode": mode,
+        "reason": reason,
+        "embedding_provider": embedder.map(|e| e.0),
+        "embedding_model": embedder.map(|e| e.1),
+        "embedding_cost_basis": embedder.map(|e| e.2),
+        "embedding_searches": outcome.embedding_searches,
+        "lexical_searches": outcome.lexical_searches,
+    })
+}
+
 /// The run's totals.
 #[derive(Clone, Debug, Serialize)]
 pub struct Outcome {
     pub ending: Ending,
     pub steps: usize,
     pub seconds: f64,
-    pub model_usd: f64,
-    pub jev_usd: f64,
-    /// Dollars of knowledge-base embeddings.
-    pub embedding_usd: f64,
+    /// Dollars of model calls, or `None` when any call's cost is unknown.
+    pub model_usd: Option<f64>,
+    /// Dollars of Jev, or `None` when any call's cost is unknown.
+    pub jev_usd: Option<f64>,
+    /// Dollars of knowledge-base embeddings, or `None` when any call's cost
+    /// is unknown.
+    pub embedding_usd: Option<f64>,
+    /// Dollars in all, or `None` when any part is unknown. Never a
+    /// stand-in zero.
+    pub usd: Option<f64>,
+    /// The known dollars: `usd` when that's known, else a lower bound. The
+    /// spend limit counts this.
+    pub known_usd: f64,
+    /// Each call whose cost is unknown, and why.
+    pub cost_unknown: Vec<String>,
+    /// Knowledge searches ranked with embeddings.
+    pub embedding_searches: usize,
+    /// Knowledge searches ranked by words alone.
+    pub lexical_searches: usize,
+    /// Why searches were ranked by words alone, each reason once.
+    pub lexical_reasons: Vec<String>,
     /// The knowledge-base entries the prompts listed or showed in full.
     pub knowledge: Vec<Used>,
     /// Whether any prompt listed or showed an entry. A result that used the
@@ -414,6 +530,7 @@ async fn retrieve<J: Judge>(retriever: &Retriever, judge: &J, state: &State) -> 
         candidates: search.hits.clone(),
         lexical_only: search.lexical_only,
         embedding_usd: search.usd,
+        jev_usd: Some(0.0),
         ..Retrieval::default()
     };
     if candidates.is_empty() {
@@ -432,6 +549,7 @@ async fn retrieve<J: Judge>(retriever: &Retriever, judge: &J, state: &State) -> 
     }
     let judgment = judge.judge(&set, &jev_state).await;
     retrieval.jev_usd = judgment.usd;
+    retrieval.jev_cost_unknown = judgment.cost_unknown.clone();
     retrieval.error = judgment.error.clone();
     let mut kept: Vec<Kept> = candidates
         .iter()
@@ -788,7 +906,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     observer: &mut O,
 ) -> (State, Outcome) {
     let started = Instant::now();
-    let mut jev_usd = 0.0;
+    let mut jev = Spend::default();
     // Whether the stronger model writes the acceptance tests.
     let strong_tests = match (models.strong, limits.acceptance, limits.route) {
         (None, _, _) | (_, false, _) | (_, _, Route::Never) => false,
@@ -804,7 +922,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
                     }),
                 )
                 .await;
-            jev_usd += judgment.usd;
+            jev.judged(&judgment, 0);
             let hard = judgment
                 .answers
                 .iter()
@@ -820,8 +938,9 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
         }
     };
     let mut strong_used = 0usize;
-    let mut model_usd = 0.0;
-    let mut embedding_usd = 0.0;
+    let mut model = Spend::default();
+    let mut embedding = Spend::default();
+    let mut searches = Searches::default();
     let mut used: Vec<Used> = Vec::new();
     // Retrievals by query digest, so an unchanged state isn't searched again.
     let mut retrieved: HashMap<String, Retrieval> = HashMap::new();
@@ -853,7 +972,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
         if started.elapsed() >= Duration::from_secs(limits.max_seconds) {
             break Ending::TimeLimit;
         }
-        if model_usd + jev_usd + embedding_usd >= limits.max_usd {
+        if model.known + jev.known + embedding.known >= limits.max_usd {
             break Ending::SpendLimit;
         }
         step += 1;
@@ -863,8 +982,8 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             let mut retrieval = match retrieved.get(&key) {
                 Some(earlier) => Retrieval {
                     cached: true,
-                    jev_usd: 0.0,
-                    embedding_usd: 0.0,
+                    jev_usd: Some(0.0),
+                    embedding_usd: Some(0.0),
                     ..earlier.clone()
                 },
                 None => {
@@ -873,8 +992,21 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
                     fresh
                 }
             };
-            jev_usd += retrieval.jev_usd;
-            embedding_usd += retrieval.embedding_usd;
+            jev.add(
+                retrieval.jev_usd,
+                0.0,
+                retrieval.jev_cost_unknown.as_deref(),
+                &format!("step {step} knowledge relevance"),
+            );
+            embedding.add(
+                retrieval.embedding_usd,
+                0.0,
+                retrieval.lexical_only.as_deref(),
+                &format!("step {step} embeddings"),
+            );
+            if !retrieval.cached {
+                searches.count(retrieval.lexical_only.as_deref());
+            }
             state.knowledge = retrieval.kept.clone();
             let bodies = shown_bodies(&state);
             retrieval.expanded = bodies
@@ -895,7 +1027,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             );
         }
         let judgment = models.judge.judge(models.set, &jev_state(&state)).await;
-        jev_usd += judgment.usd;
+        jev.judged(&judgment, step);
         // Jev's answer to whether the last step made progress.
         let last_progress = judgment
             .answers
@@ -926,7 +1058,12 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             _ => models.generator,
         };
         let generated = generator.generate(&system, &text).await;
-        model_usd += generated.usd;
+        model.add(
+            generated.usd,
+            generated.known_usd,
+            generated.cost_unknown.as_deref(),
+            &format!("step {step} model"),
+        );
         observer.event(
             started.elapsed().as_secs_f64(),
             &Event::Generated {
@@ -1135,7 +1272,7 @@ frozen tests can't be changed."
                     .unwrap_or_default();
                 let (judgment, dropped) =
                     dispute(models.judge, &mut state, step, &rationale, Some(&stuck)).await;
-                jev_usd += judgment.usd;
+                jev.judged(&judgment, step);
                 if !dropped.is_empty() {
                     state.notes.push(format!(
                         "Jev judged these frozen tests wrong after they failed {STUCK} steps in a \
@@ -1160,7 +1297,7 @@ row, so they were dropped: {}.",
             covered_at = state.tests.len();
             let (judgment, uncovered) = coverage(models.judge, &state).await;
             uncovered_open = uncovered;
-            jev_usd += judgment.usd;
+            jev.judged(&judgment, step);
             observer.event(
                 started.elapsed().as_secs_f64(),
                 &Event::Covered {
@@ -1202,7 +1339,7 @@ after {} steps in a row with every test passing.",
                 && let Some((judgment, flagged)) =
                     conform(models.judge, &retriever.base, &state, &mut checked).await
             {
-                jev_usd += judgment.usd;
+                jev.judged(&judgment, step);
                 observer.event(
                     started.elapsed().as_secs_f64(),
                     &Event::Conformed {
@@ -1232,7 +1369,7 @@ again. Each entry is checked once.",
                     .unwrap_or_default();
                 let (judgment, dropped) =
                     dispute(models.judge, &mut state, step, &rationale, None).await;
-                jev_usd += judgment.usd;
+                jev.judged(&judgment, step);
                 observer.event(
                     started.elapsed().as_secs_f64(),
                     &Event::Disputed {
@@ -1267,9 +1404,19 @@ The task isn't finished until they pass; see the Acceptance tests section."
         ending,
         steps: step,
         seconds: started.elapsed().as_secs_f64(),
-        model_usd,
-        jev_usd,
-        embedding_usd,
+        model_usd: model.total(),
+        jev_usd: jev.total(),
+        embedding_usd: embedding.total(),
+        known_usd: model.known + jev.known + embedding.known,
+        usd: model
+            .total()
+            .zip(jev.total())
+            .zip(embedding.total())
+            .map(|((m, j), e)| m + j + e),
+        cost_unknown: [model.unknown, jev.unknown, embedding.unknown].concat(),
+        embedding_searches: searches.embeddings,
+        lexical_searches: searches.lexical,
+        lexical_reasons: searches.reasons,
         knowledge_assisted: !used.is_empty(),
         knowledge: used,
     };

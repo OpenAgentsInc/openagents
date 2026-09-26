@@ -13,11 +13,18 @@ base exists and how retrieval works inside Microcoder's loop, and
 - Entries live in `knowledge/` at the repository root, one Markdown file per
   entry. Set `OPENAGENTS_KNOWLEDGE` or pass `--dir DIR` to use another
   directory.
-- Embeddings and the `kb harvest` commands still call OpenRouter and need
-  `OPENROUTER_API_KEY`, or `api_key` in `~/.openagents/openrouter.json`,
-  with credit on the account. Microcoder itself moved to the Codex login on
-  2026-09-26; moving the harvest commands there too is open work.
-  Without one, search ranks by words alone.
+- The `kb harvest` commands call the model through the operator's Codex
+  login in `~/.codex/auth.json` (run `codex login`), as Microcoder does.
+  `--provider openrouter` uses OpenRouter instead, with `OPENROUTER_API_KEY`
+  or `~/.openagents/openrouter.json`.
+- Embeddings call OpenAI's `text-embedding-3-small` directly when
+  `OPENAI_API_KEY` or `~/.openagents/openai.json` holds a key, and otherwise
+  go through OpenRouter. Put the key in the file as `{"api_key": "..."}`
+  with mode 600; a file others can read is refused. Both providers serve
+  the same model, and the cache in `~/.openagents/knowledge/embeddings.json`
+  is keyed by the model name `openai/text-embedding-3-small` and each
+  entry's digest, so vectors cached through OpenRouter stay valid. Without
+  a key, or when a call fails, search ranks by words alone and says why.
 - The lint checks entries against the installed Terminal-Bench 4 tasks under
   `~/.openagents/terminal-bench/`. Pass `--corpus DIR`, which can repeat, to
   check other task directories.
@@ -83,11 +90,29 @@ microcoder kb harvest ~/.openagents/microcoder/runs/<run> --model openai/gpt-6-s
 ```
 
 The run is a directory, or a name under `~/.openagents/microcoder/runs/`.
-One structured OpenRouter call, `openai/gpt-6-luna` by default, reads each
+One model call, `gpt-6-luna` on the Codex login by default, reads each
 step's rationale, commands, and output, the acceptance tests, and the
 verifier's verdict. It proposes at most three entries: what went wrong, what
-fixed it, and what would have saved steps. A harvest costs about $0.001 with
-the default model.
+fixed it, and what would have saved steps. On the Codex login the request
+declares one strict tool, `knowledge_entries`, whose arguments are the
+proposals, and it goes through the same `microluna::oneshot` call as
+Microcoder's steps. A harvest costs about $0.002 with the default model.
+
+The last lines report the cost and how it was reached: the model's cost at
+list price from the reported tokens (`list_price`) on the Codex login, or
+what OpenRouter billed (`billed`) with `--provider openrouter`, and the
+embeddings' cost. A cost that isn't known, such as an unpriced model or a
+call that failed after it was sent, is printed as unknown with the known
+lower bound, never as $0. The output also says whether the near-duplicate
+check used embeddings or fell back to words, and why.
+
+`--dir` sets where candidates are written. To try a harvest without
+touching `knowledge/`, copy it and pass the copy:
+
+```sh
+cp -r knowledge /tmp/kb-try
+microcoder kb harvest-contrast <run> <trajectory.json> --task <task> --dir /tmp/kb-try
+```
 
 What happens to each proposal:
 

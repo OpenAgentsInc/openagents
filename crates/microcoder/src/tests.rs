@@ -20,6 +20,8 @@ use crate::state::{CommandResult, State};
 struct Script {
     replies: RefCell<VecDeque<Result<NextAction, String>>>,
     prompts: RefCell<Vec<String>>,
+    /// Each reply's cost; `None` is an unpriced reply.
+    usd: Option<f64>,
 }
 
 impl Script {
@@ -27,6 +29,7 @@ impl Script {
         Script {
             replies: RefCell::new(replies.into()),
             prompts: RefCell::new(Vec::new()),
+            usd: Some(0.01),
         }
     }
 }
@@ -44,7 +47,10 @@ impl Generate for Script {
             model: "fake".to_string(),
             prompt_tokens: 10,
             completion_tokens: 5,
-            usd: 0.01,
+            usd: self.usd,
+            known_usd: self.usd.unwrap_or(0.0),
+            cost_unknown: self.usd.is_none().then(|| "fake has no price".to_string()),
+            cost_basis: crate::models::Basis::ListPrice,
             milliseconds: 1,
         }
     }
@@ -118,7 +124,8 @@ impl Judge for Jev {
         };
         Judgment {
             answers,
-            usd: 0.001,
+            usd: Some(0.001),
+            cost_unknown: None,
             milliseconds: 1,
             error: None,
         }
@@ -259,9 +266,62 @@ async fn the_loop_stops_when_the_model_finishes() {
     assert_eq!(outcome.steps, 2);
     assert_eq!(ran, ["ls"]);
     assert_eq!(state.actions.len(), 2);
-    assert!((outcome.model_usd - 0.02).abs() < 1e-9);
-    assert!((outcome.jev_usd - 0.002).abs() < 1e-9);
+    assert!((outcome.model_usd.unwrap() - 0.02).abs() < 1e-9);
+    assert!((outcome.jev_usd.unwrap() - 0.002).abs() < 1e-9);
+    assert!((outcome.usd.unwrap() - 0.022).abs() < 1e-9);
+    assert!(outcome.cost_unknown.is_empty());
     assert!(matches!(log.0.last(), Some(Event::Ended { .. })));
+}
+
+#[tokio::test]
+async fn an_unpriced_reply_leaves_the_cost_unknown_not_zero() {
+    let mut script = Script::new(vec![
+        Ok(act("look", &["ls"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    script.usd = None;
+    let (_, outcome, _, _) = go(&script, &plain()).await;
+    assert_eq!(outcome.model_usd, None);
+    assert_eq!(outcome.usd, None);
+    // Jev's part is still known, and counts toward the lower bound.
+    assert!((outcome.known_usd - 0.002).abs() < 1e-9);
+    assert_eq!(outcome.cost_unknown.len(), 2);
+    assert!(outcome.cost_unknown[0].starts_with("step 1 model: fake has no price"));
+    let record = serde_json::to_value(&outcome).unwrap();
+    assert!(record["model_usd"].is_null());
+    assert!(record["usd"].is_null());
+}
+
+#[tokio::test]
+async fn the_retrieval_mode_names_embeddings_lexical_or_mixed() {
+    use crate::run::retrieval_summary;
+    let script = Script::new(vec![Ok(act("done", &[], true))]);
+    let mut outcome = go(&script, &plain()).await.1;
+    assert_eq!(
+        retrieval_summary(false, None, None, &outcome)["mode"],
+        "off"
+    );
+    let lexical = retrieval_summary(true, None, Some("no key"), &outcome);
+    assert_eq!(
+        (lexical["mode"].as_str(), lexical["reason"].as_str()),
+        (Some("lexical"), Some("no key"))
+    );
+    let embedder = Some(("openai", "openai/text-embedding-3-small", "list_price"));
+    outcome.embedding_searches = 3;
+    let all = retrieval_summary(true, embedder, None, &outcome);
+    assert_eq!(all["mode"], "embeddings");
+    assert_eq!(all["embedding_provider"], "openai");
+    assert!(all["reason"].is_null());
+    outcome.lexical_searches = 1;
+    outcome.lexical_reasons = vec!["the embeddings call failed: 402".to_string()];
+    let mixed = retrieval_summary(true, embedder, None, &outcome);
+    assert_eq!(mixed["mode"], "mixed");
+    assert_eq!(mixed["reason"], "the embeddings call failed: 402");
+    outcome.embedding_searches = 0;
+    assert_eq!(
+        retrieval_summary(true, embedder, None, &outcome)["mode"],
+        "lexical"
+    );
 }
 
 #[tokio::test]
@@ -634,7 +694,7 @@ async fn the_record_lists_the_entries_used_with_their_digests() {
     );
     // Jev's relevance cost is in the run's Jev total: two state judgments
     // and one relevance judgment.
-    assert!((outcome.jev_usd - 0.003).abs() < 1e-9);
+    assert!((outcome.jev_usd.unwrap() - 0.003).abs() < 1e-9);
     let record = serde_json::to_value(&outcome).unwrap();
     assert_eq!(record["knowledge"][0]["id"], "stats.thing");
 }

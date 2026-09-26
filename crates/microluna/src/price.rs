@@ -18,6 +18,34 @@ pub struct Rates {
     pub output: f64,
 }
 
+/// How a dollar figure was reached.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Basis {
+    /// Estimated from reported tokens at list prices: the provider
+    /// reported no cost.
+    ListPrice,
+    /// The cost the provider reported it billed.
+    Billed,
+}
+
+impl Basis {
+    /// `list_price` or `billed`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Basis::ListPrice => "list_price",
+            Basis::Billed => "billed",
+        }
+    }
+}
+
+impl std::fmt::Display for Basis {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// What a cost figure says about itself.
 pub const COST_NOTE: &str = "A list-price estimate from reported token usage: the \
 provider reports no cost. Rates are OpenAI's standard short-context list prices, \

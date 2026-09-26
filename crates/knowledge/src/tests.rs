@@ -161,11 +161,14 @@ impl Embed for Fake {
         "fake"
     }
 
-    async fn embed(&self, inputs: Vec<String>) -> Result<(Vec<Vec<f32>>, f64), String> {
+    async fn embed(
+        &self,
+        inputs: Vec<String>,
+    ) -> Result<(Vec<Vec<f32>>, Option<f64>), crate::search::EmbedError> {
         self.calls.set(self.calls.get() + 1);
         self.inputs.set(self.inputs.get() + inputs.len());
         if self.fail {
-            return Err("no network".to_string());
+            return Err("no network".into());
         }
         let vectors = inputs
             .iter()
@@ -177,7 +180,7 @@ impl Embed for Fake {
                     .collect()
             })
             .collect();
-        Ok((vectors, 0.001))
+        Ok((vectors, Some(0.001)))
     }
 }
 
@@ -191,7 +194,7 @@ async fn embeddings_lift_an_entry_that_shares_no_word_with_the_query() {
     assert_eq!(with.hits[0].id, "shell.heredoc");
     assert!(with.lexical_only.is_none());
     assert!(with.hits[0].semantic.is_some());
-    assert!((with.usd - 0.001).abs() < 1e-12);
+    assert!((with.usd.unwrap() - 0.001).abs() < 1e-12);
     let without = lexical.search("a bash shell script", 3).await;
     assert_eq!(without.lexical_only.as_deref(), Some("test"));
     assert!(without.hits.iter().all(|h| h.semantic.is_none()));
@@ -214,7 +217,7 @@ async fn entry_vectors_are_cached_on_disk_by_digest() {
     // The same query again costs nothing.
     let again = second.search("bins", 3).await;
     assert_eq!(fake.calls.get(), 1);
-    assert_eq!(again.usd, 0.0);
+    assert_eq!(again.usd, Some(0.0));
 }
 
 fn second_embedder(retriever: &Retriever<Fake>) -> &Fake {
@@ -227,11 +230,101 @@ async fn a_failed_embeddings_call_falls_back_to_words() {
     let search = retriever.search("mmd", 2).await;
     assert_eq!(search.hits.len(), 2);
     assert_eq!(search.hits[0].id, "stats.mmd");
+    // Whether the failed call was billed isn't known, so it isn't $0.
+    assert_eq!(search.usd, None);
     assert!(
         search
             .lexical_only
             .unwrap()
             .contains("the embeddings call failed: no network")
+    );
+    // Later searches don't call again, and say why they're by words.
+    let again = retriever.search("kernel", 2).await;
+    assert_eq!(retriever.embedder().unwrap().calls.get(), 1);
+    assert_eq!(again.usd, Some(0.0));
+    assert!(
+        again
+            .lexical_only
+            .unwrap()
+            .contains("off for this process after a failed call: no network")
+    );
+}
+
+/// Refuses every call with an error status, as a provider out of credit
+/// does.
+struct Refuses;
+
+impl Embed for Refuses {
+    fn model(&self) -> &str {
+        "refuses"
+    }
+
+    async fn embed(
+        &self,
+        _inputs: Vec<String>,
+    ) -> Result<(Vec<Vec<f32>>, Option<f64>), crate::search::EmbedError> {
+        Err(crate::search::EmbedError {
+            message: "HTTP 429: no credits remaining".to_string(),
+            refused: true,
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_refused_embeddings_call_costs_nothing() {
+    let retriever = Retriever::new(base(), Refuses, None);
+    let search = retriever.search("mmd", 2).await;
+    assert_eq!(search.usd, Some(0.0));
+    assert!(
+        search
+            .lexical_only
+            .unwrap()
+            .contains("no credits remaining")
+    );
+}
+
+#[tokio::test]
+async fn a_lexical_retriever_says_why_and_costs_nothing() {
+    let retriever = Retriever::<Fake>::lexical(base(), "no key");
+    assert_eq!(retriever.lexical_reason(), Some("no key"));
+    let search = retriever.search("mmd", 2).await;
+    assert_eq!(search.usd, Some(0.0));
+    let with = Retriever::new(base(), Fake::new(false), None);
+    assert_eq!(with.lexical_reason(), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_openai_key_file_others_can_read_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+    let file = scratch("openai-key").join("openai.json");
+    std::fs::write(&file, r#"{"api_key": "sk-test"}"#).unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let refused = crate::search::key_from_file(&file).unwrap_err();
+    assert!(refused.contains("chmod 600"));
+    assert!(!refused.contains("sk-test"));
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(crate::search::key_from_file(&file).unwrap(), "sk-test");
+}
+
+#[test]
+fn both_embedding_providers_key_the_cache_by_one_model_name() {
+    // The cache is keyed by model name. OpenAI's vectors for
+    // text-embedding-3-small are cached under OpenRouter's slug for the same
+    // model, so vectors cached through OpenRouter stay valid.
+    let embedder = |provider| crate::search::Embedder {
+        client: openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new("k")))
+            .unwrap(),
+        provider,
+        model: openrouter::EMBEDDING_MODEL.to_string(),
+    };
+    let openai = embedder(crate::search::EmbeddingProvider::Openai);
+    let openrouter = embedder(crate::search::EmbeddingProvider::Openrouter);
+    assert_eq!(openai.model(), "openai/text-embedding-3-small");
+    assert_eq!(openai.model(), openrouter.model());
+    assert_eq!(
+        (openai.basis(), openrouter.basis()),
+        ("list_price", "billed")
     );
 }
 

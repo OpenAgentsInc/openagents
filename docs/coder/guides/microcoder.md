@@ -16,8 +16,10 @@ while next_action isn't finished:
 ```
 
 The code is `crates/microcoder`. It depends on `crates/jev`,
-`crates/knowledge`, `crates/microluna` (for its Codex transport), and
-`crates/openrouter` (kept for `--provider openrouter` and for embeddings).
+`crates/knowledge`, `crates/microluna` (for its Codex transport and
+`microluna::oneshot`, the one-tool-call request that `kb harvest` shares),
+and `crates/openrouter` (kept for `--provider openrouter`, and as the HTTP
+client for embeddings on OpenAI's API or OpenRouter).
 
 ## Run a Terminal-Bench 4 task
 
@@ -35,15 +37,44 @@ and the acceptance test results.
 
 The model is reached through the Codex login in `~/.codex/auth.json`: run
 `codex login` first. Jev needs `TYPESAFE_API_KEY` or
-`~/.openagents/jev.json`. Knowledge-base embeddings use `OPENROUTER_API_KEY`
-or `~/.openagents/openrouter.json` when it works; without it, search ranks
-entries by words alone. No key enters the container: commands run through
-`docker exec`, and the model and Jev are called from the host.
+`~/.openagents/jev.json`. Knowledge-base embeddings call OpenAI's
+`text-embedding-3-small` directly when `OPENAI_API_KEY` or
+`~/.openagents/openai.json` (`{"api_key": "..."}`, mode 600; a file others
+can read is refused) holds a key, and otherwise go through OpenRouter
+(`OPENROUTER_API_KEY` or `~/.openagents/openrouter.json`). Both serve the
+same model, so the vectors cached in `~/.openagents/knowledge/embeddings.json`
+stay valid. Without a key, or with `--kb-lexical`, search ranks entries by
+words alone; after one failed embeddings call, the rest of the run does too
+rather than retrying every step. Either way `summary.json` says so. No key
+enters the container: commands run through `docker exec`, and the model and
+Jev are called from the host.
 
 Each run writes `~/.openagents/microcoder/runs/<task>-<time>/`:
 `events.jsonl` (every event as it happened), `summary.json` (the outcome,
 reward, grader output, entries used, and frozen tests), and `artifacts/`
 (the task's output paths, saved before grading).
+
+### Cost and retrieval in `summary.json`
+
+- `provider`: `codex` or `openrouter`.
+- `cost_basis`: how the model cost was reached. `list_price` on the Codex
+  login, which reports tokens and no dollars: the tokens are priced at
+  OpenAI's list rates (`crates/microluna/src/price.rs`). `billed` on
+  OpenRouter, which reports what it charged. `cost_bases` gives the basis
+  of the model, Jev (always its published rate times reported tokens), and
+  embeddings.
+- `outcome.model_usd`, `outcome.jev_usd`, `outcome.embedding_usd`, and
+  `outcome.usd` are `null` when any call's cost is unknown, never `0`: an
+  unpriced model, a provider that reported no cost, or a call that failed
+  after it was sent and may have consumed tokens. `outcome.cost_unknown`
+  lists each such call and why, and `outcome.known_usd` is the known part,
+  a lower bound, which the spend limit counts. A request refused with an
+  error status cost nothing.
+- `retrieval.mode`: `embeddings` when every knowledge search used them,
+  `lexical` with `retrieval.reason` when none did (no key, `--kb-lexical`,
+  or a failed call), `mixed` when some fell back, or `off` with `--kb off`.
+  It also names the embedding provider and model and counts the searches
+  of each kind.
 
 Exit codes: 0 when the task's tests pass, 1 when they don't, 2 when the run
 couldn't start. `--check-grading` runs the task's reference solution
@@ -63,7 +94,8 @@ instead of the loop, which checks that grading works at no model cost.
    tool, `next_action`, whose parameters are `rationale`, `commands`,
    `view`, `expand`, `freeze_tests`, and `finished`; the model's call to it
    is the action. The cost shown is Luna's list price for the reported
-   tokens, since the subscription doesn't bill per call.
+   tokens, since the subscription doesn't bill per call; a call whose cost
+   isn't known shows "cost unknown", not $0.
 4. **Run.** Each command is a bash script fed to the container's shell,
    in order, with a deadline, stopping at the first failure.
 5. **Files in view.** The host reads the files the model lists in `view`
@@ -96,7 +128,7 @@ shows the results, with each failing test's numbered script and output.
 | --- | --- | --- |
 | `--max-steps N` | no limit | Steps. |
 | `--max-minutes N` | 60 | Wall-clock time. |
-| `--max-usd N` | 1.00 | Model, Jev, and embedding spend together. |
+| `--max-usd N` | 1.00 | Model, Jev, and embedding spend together (the known part). |
 | `--command-seconds N` | 300 | One command. |
 | `--test-seconds N` | 60 | One acceptance test. |
 
@@ -110,6 +142,7 @@ run, and so do three replies in a row that don't match the schema.
 - `--provider codex|openrouter`: how the model is reached. `codex`, the
   operator's Codex login, is the default; `openrouter` is the earlier path.
 - `--kb on|off|candidates`: the knowledge base, on by default.
+  `--kb-lexical` ranks its entries by words alone.
 - `--route never|auto|always` and `--strong-model SLUG`: whether a
   stronger model (`gpt-6-sol` by default) writes the acceptance
   tests. Off by default; the code stays for later measurement.

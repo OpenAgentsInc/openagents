@@ -1,7 +1,10 @@
 //! The two model calls a step makes: Jev judges the state, and one
-//! OpenRouter call returns the next action.
+//! model call (the Codex login by default, or OpenRouter) returns the next
+//! action.
 
 use std::time::Instant;
+
+pub use microluna::price::Basis;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -134,10 +137,25 @@ pub fn relevance_set(template: &QuestionSet, count: usize) -> QuestionSet {
 pub struct Judgment {
     /// Each question's id, its text, and the probability of yes.
     pub answers: Vec<(String, f64)>,
-    pub usd: f64,
+    /// Dollars at Jev's published rate, or `None` when unknown: the call
+    /// failed, or reported no input tokens.
+    pub usd: Option<f64>,
+    /// Why `usd` is unknown, when it is.
+    pub cost_unknown: Option<String>,
     pub milliseconds: u64,
     /// Why there are no answers, when there are none.
     pub error: Option<String>,
+}
+
+impl Judgment {
+    /// A judgment that asked nothing and cost nothing.
+    #[must_use]
+    pub fn free() -> Self {
+        Judgment {
+            usd: Some(0.0),
+            ..Judgment::default()
+        }
+    }
 }
 
 impl Judgment {
@@ -234,7 +252,16 @@ pub struct Generated {
     pub model: String,
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
-    pub usd: f64,
+    /// Dollars, or `None` when the cost is unknown: an unpriced model, a
+    /// provider that reported no cost, or a failed attempt that may have
+    /// consumed tokens. Never a stand-in zero.
+    pub usd: Option<f64>,
+    /// The known part: `usd` when that's known, else a lower bound.
+    pub known_usd: f64,
+    /// Why `usd` is unknown, when it is.
+    pub cost_unknown: Option<String>,
+    /// `list_price` (estimated from tokens) or `billed` (the provider's).
+    pub cost_basis: Basis,
     pub milliseconds: u64,
 }
 
@@ -269,13 +296,24 @@ impl Judge for JevJudge {
                             .map(|answer| (q.id.clone(), answer.noul))
                     })
                     .collect(),
-                usd: response.usage.input_tokens.unwrap_or(0) as f64 * JEV_USD_PER_MILLION
-                    / 1_000_000.0,
+                usd: response
+                    .usage
+                    .input_tokens
+                    .map(|tokens| tokens as f64 * JEV_USD_PER_MILLION / 1_000_000.0),
+                cost_unknown: response
+                    .usage
+                    .input_tokens
+                    .is_none()
+                    .then(|| "Jev reported no input tokens".to_string()),
                 milliseconds: milliseconds(),
                 error: None,
             },
             Err(error) => Judgment {
                 error: Some(error.to_string()),
+                usd: None,
+                cost_unknown: Some(format!(
+                    "the Jev call failed, so whether it was billed is unknown ({error})"
+                )),
                 milliseconds: milliseconds(),
                 ..Judgment::default()
             },
@@ -323,57 +361,20 @@ impl<T: microluna::Transport> Generate for CodexGenerator<T> {
             cache_key: self.cache_key.clone(),
             parallel_tools: false,
         };
-        let started = Instant::now();
-        let mut attempt = 0u32;
-        let reply = loop {
-            match self.transport.respond(&request).await {
-                Ok(reply) => break Ok(reply),
-                Err(error) if error.transient() && attempt < 3 => {
-                    attempt += 1;
-                    tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(attempt))).await;
-                }
-                Err(error) => break Err(error.to_string()),
-            }
-        };
-        let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        match reply {
-            Ok(reply) => {
-                let usd = microluna::price::cost(&self.model, reply.usage).unwrap_or(0.0);
-                let action = reply
-                    .calls()
-                    .into_iter()
-                    .find(|call| call.name == "next_action")
-                    .ok_or_else(|| {
-                        format!(
-                            "the reply called no next_action tool; it said: {}",
-                            reply.text().chars().take(300).collect::<String>()
-                        )
-                    })
-                    .and_then(|call| {
-                        serde_json::from_str::<NextAction>(&call.arguments)
-                            .map_err(|e| format!("next_action's arguments didn't parse: {e}"))
-                    });
-                Generated {
-                    action,
-                    model: if reply.model.is_empty() {
-                        self.model.clone()
-                    } else {
-                        reply.model.clone()
-                    },
-                    prompt_tokens: reply.usage.input,
-                    completion_tokens: reply.usage.output,
-                    usd,
-                    milliseconds,
-                }
-            }
-            Err(error) => Generated {
-                action: Err(error),
-                model: self.model.clone(),
-                prompt_tokens: 0,
-                completion_tokens: 0,
-                usd: 0.0,
-                milliseconds,
-            },
+        let called = microluna::oneshot::call(&self.transport, &request, "next_action").await;
+        Generated {
+            action: called.arguments.and_then(|arguments| {
+                serde_json::from_str::<NextAction>(&arguments)
+                    .map_err(|e| format!("next_action's arguments didn't parse: {e}"))
+            }),
+            model: called.model,
+            prompt_tokens: called.usage.input,
+            completion_tokens: called.usage.output,
+            usd: called.usd,
+            known_usd: called.known_usd,
+            cost_unknown: called.cost_unknown,
+            cost_basis: called.basis,
+            milliseconds: called.milliseconds,
         }
     }
 }
@@ -424,21 +425,49 @@ impl Generate for OpenRouterGenerator {
                 model: reply.model,
                 prompt_tokens: reply.usage.prompt_tokens,
                 completion_tokens: reply.usage.completion_tokens,
-                usd: reply.usage.cost.unwrap_or(0.0),
+                usd: reply.usage.cost,
+                known_usd: reply.usage.cost.unwrap_or(0.0),
+                cost_unknown: reply
+                    .usage
+                    .cost
+                    .is_none()
+                    .then(|| "OpenRouter reported no cost for the reply".to_string()),
+                cost_basis: Basis::Billed,
                 milliseconds: reply.milliseconds,
             },
             Err(error) => {
-                // A reply that misses the format still cost what it cost.
-                let usage = match &error {
-                    openrouter::Error::Schema { usage, .. } => usage.clone(),
-                    _ => openrouter::Usage::default(),
+                // A reply that misses the format still cost what it cost. A
+                // refused request (an error status) cost nothing; a broken
+                // connection or a timeout may have cost something unreported.
+                let (usage, cost, unknown) = match &error {
+                    openrouter::Error::Schema { usage, .. } => (
+                        usage.clone(),
+                        usage.cost,
+                        usage
+                            .cost
+                            .is_none()
+                            .then(|| "OpenRouter reported no cost for the reply".to_string()),
+                    ),
+                    openrouter::Error::Connection(_)
+                    | openrouter::Error::Timeout
+                    | openrouter::Error::Decode { .. } => (
+                        openrouter::Usage::default(),
+                        None,
+                        Some(format!(
+                            "the call failed after it was sent and may have been billed ({error})"
+                        )),
+                    ),
+                    _ => (openrouter::Usage::default(), Some(0.0), None),
                 };
                 Generated {
                     action: Err(error.to_string()),
                     model: self.model.clone(),
                     prompt_tokens: usage.prompt_tokens,
                     completion_tokens: usage.completion_tokens,
-                    usd: usage.cost.unwrap_or(0.0),
+                    usd: cost,
+                    known_usd: cost.unwrap_or(0.0),
+                    cost_unknown: unknown,
+                    cost_basis: Basis::Billed,
                     milliseconds: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 }
             }
@@ -565,7 +594,8 @@ mod codex_tests {
         let action = out.action.unwrap();
         assert_eq!(action.commands, ["ls"]);
         assert_eq!((out.prompt_tokens, out.completion_tokens), (1_000, 100));
-        assert!(out.usd > 0.0, "Luna has a list price");
+        assert!(out.usd.unwrap() > 0.0, "Luna has a list price");
+        assert_eq!(out.cost_basis, Basis::ListPrice);
         let sent = g.transport.requests();
         assert_eq!(sent[0].tools[0]["name"], "next_action");
         assert_eq!(sent[0].tools[0]["parameters"], next_action_schema());

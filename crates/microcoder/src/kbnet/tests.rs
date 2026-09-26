@@ -197,7 +197,7 @@ async fn entries_publish_sync_and_retrieve_through_a_relay() {
     assert_eq!(loaded.remote.get(&me), Some(&admitted));
     assert_eq!(base.get("shell.heredoc-quoting").unwrap().version, 2);
     assert!(base.entries.iter().all(|e| e.author == remote::npub(&me)));
-    let retriever = Retriever::<knowledge::search::OpenRouterEmbedder>::lexical(base, "test");
+    let retriever = Retriever::<knowledge::search::Embedder>::lexical(base, "test");
     let search = retriever
         .search("mmd kernel two-sample estimator rbf", 3)
         .await;

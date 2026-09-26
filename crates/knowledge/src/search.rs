@@ -6,6 +6,11 @@
 //! averaged: BM25 by dividing by the best entry's score, and cosine
 //! similarity by its range. When there's no embedder, or the embeddings
 //! call fails, the ranking is BM25 alone, and the result says why.
+//!
+//! [`Embedder`] reaches `text-embedding-3-small` on OpenAI's API when an
+//! OpenAI key is set up (`OPENAI_API_KEY` or `~/.openagents/openai.json`),
+//! and otherwise through OpenRouter. Both give that model's vectors, so they
+//! share the cache under the one model name.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -89,53 +94,229 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f64 {
     }
 }
 
+/// Why an embeddings call failed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EmbedError {
+    pub message: String,
+    /// Whether the provider refused the request with an error status, so
+    /// it did no work and cost nothing. Any other failure, such as a broken
+    /// connection, may have been billed.
+    pub refused: bool,
+}
+
+impl From<String> for EmbedError {
+    fn from(message: String) -> Self {
+        EmbedError {
+            message,
+            refused: false,
+        }
+    }
+}
+
+impl From<&str> for EmbedError {
+    fn from(message: &str) -> Self {
+        EmbedError::from(message.to_string())
+    }
+}
+
+impl std::fmt::Display for EmbedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
 /// Turns text into vectors.
 pub trait Embed {
     /// The model's name, which keys the cache.
     fn model(&self) -> &str;
 
-    /// One vector per input, in order, and the call's cost in dollars.
+    /// One vector per input, in order, and the call's cost in dollars, or
+    /// `None` when the cost is unknown.
     fn embed(
         &self,
         inputs: Vec<String>,
-    ) -> impl std::future::Future<Output = Result<(Vec<Vec<f32>>, f64), String>>;
+    ) -> impl std::future::Future<Output = Result<(Vec<Vec<f32>>, Option<f64>), EmbedError>>;
 }
 
-/// Embeddings through `crates/openrouter`.
-pub struct OpenRouterEmbedder {
-    pub client: openrouter::Client,
-    pub model: String,
+/// OpenAI's API, for embeddings without OpenRouter.
+pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+
+/// The environment variable that holds an OpenAI API key.
+pub const OPENAI_KEY_VAR: &str = "OPENAI_API_KEY";
+
+/// `text-embedding-3-small`'s list price in dollars per million input
+/// tokens, from OpenAI's pricing page (retrieved 2026-09-26).
+pub const EMBEDDING_USD_PER_MILLION: f64 = 0.02;
+
+/// `~/.openagents/openai.json`, which holds `{"api_key": "..."}` and must
+/// be readable by its owner only.
+#[must_use]
+pub fn openai_key_file() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/openai.json"))
 }
 
-impl OpenRouterEmbedder {
-    /// An embedder with the key from `OPENROUTER_API_KEY` or
-    /// `~/.openagents/openrouter.json`, and the default model.
-    ///
-    /// # Errors
-    ///
-    /// No key, or the HTTP client can't start.
-    pub fn from_env() -> Result<Self, String> {
-        let config = openrouter::Config::from_env().map_err(|e| e.to_string())?;
-        Ok(OpenRouterEmbedder {
-            client: openrouter::Client::new(config).map_err(|e| e.to_string())?,
-            model: openrouter::EMBEDDING_MODEL.to_string(),
+/// Where embeddings come from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EmbeddingProvider {
+    /// OpenAI's API directly, with an OpenAI key.
+    Openai,
+    /// OpenRouter, which forwards the same model to OpenAI.
+    Openrouter,
+}
+
+impl std::fmt::Display for EmbeddingProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            EmbeddingProvider::Openai => "openai",
+            EmbeddingProvider::Openrouter => "openrouter",
         })
     }
 }
 
-impl Embed for OpenRouterEmbedder {
+/// Embeddings through an OpenAI-compatible endpoint: OpenAI's own API, or
+/// OpenRouter. Both serve OpenAI's `text-embedding-3-small`, so the vectors
+/// are the same model's and share one cache, keyed by the OpenRouter slug
+/// [`openrouter::EMBEDDING_MODEL`].
+pub struct Embedder {
+    pub client: openrouter::Client,
+    pub provider: EmbeddingProvider,
+    /// The model's name as the cache keys it.
+    pub model: String,
+}
+
+/// An OpenAI key from `OPENAI_API_KEY`, or else from `api_key` in
+/// `~/.openagents/openai.json`, which is refused when its group or others
+/// can read it.
+fn openai_key() -> Result<String, String> {
+    if let Ok(key) = std::env::var(OPENAI_KEY_VAR)
+        && !key.trim().is_empty()
+    {
+        return Ok(key);
+    }
+    let path = openai_key_file().ok_or("no HOME to find ~/.openagents/openai.json in")?;
+    key_from_file(&path)
+}
+
+/// `api_key` from a JSON key file readable by its owner only.
+///
+/// # Errors
+///
+/// No file, a file others can read, or no key in it.
+pub fn key_from_file(path: &std::path::Path) -> Result<String, String> {
+    let text = std::fs::read_to_string(path).map_err(|_| {
+        format!(
+            "no OpenAI key: set {OPENAI_KEY_VAR} or put api_key in {}",
+            path.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(path)
+            .map_err(|e| e.to_string())?
+            .permissions()
+            .mode();
+        if mode & 0o077 != 0 {
+            return Err(format!(
+                "{} is readable by others (mode {:o}); chmod 600 it",
+                path.display(),
+                mode & 0o777
+            ));
+        }
+    }
+    serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v["api_key"].as_str().map(str::to_string))
+        .filter(|k| !k.trim().is_empty())
+        .ok_or(format!("{} has no api_key", path.display()))
+}
+
+impl Embedder {
+    /// An embedder on OpenAI's API, with the key from `OPENAI_API_KEY` or
+    /// `~/.openagents/openai.json`.
+    ///
+    /// # Errors
+    ///
+    /// No key, a key file others can read, or the HTTP client can't start.
+    pub fn openai() -> Result<Self, String> {
+        let mut config = openrouter::Config::new(openrouter::ApiKey::new(&openai_key()?))
+            .base_url(OPENAI_BASE_URL);
+        config.title = None;
+        Ok(Embedder {
+            client: openrouter::Client::new(config).map_err(|e| e.to_string())?,
+            provider: EmbeddingProvider::Openai,
+            model: openrouter::EMBEDDING_MODEL.to_string(),
+        })
+    }
+
+    /// An embedder on OpenRouter, with the key from `OPENROUTER_API_KEY` or
+    /// `~/.openagents/openrouter.json`.
+    ///
+    /// # Errors
+    ///
+    /// No key, or the HTTP client can't start.
+    pub fn openrouter() -> Result<Self, String> {
+        let config = openrouter::Config::from_env().map_err(|e| e.to_string())?;
+        Ok(Embedder {
+            client: openrouter::Client::new(config).map_err(|e| e.to_string())?,
+            provider: EmbeddingProvider::Openrouter,
+            model: openrouter::EMBEDDING_MODEL.to_string(),
+        })
+    }
+
+    /// OpenAI's API when an OpenAI key is set up, else OpenRouter.
+    ///
+    /// # Errors
+    ///
+    /// Neither has a key; the message gives both reasons.
+    pub fn from_env() -> Result<Self, String> {
+        Embedder::openai().or_else(|openai| {
+            Embedder::openrouter().map_err(|openrouter| format!("{openai}; {openrouter}"))
+        })
+    }
+
+    /// How this embedder's costs are reached: OpenAI reports tokens, which
+    /// are priced at list price; OpenRouter reports what it billed.
+    #[must_use]
+    pub fn basis(&self) -> &'static str {
+        match self.provider {
+            EmbeddingProvider::Openai => "list_price",
+            EmbeddingProvider::Openrouter => "billed",
+        }
+    }
+}
+
+impl Embed for Embedder {
     fn model(&self) -> &str {
         &self.model
     }
 
-    async fn embed(&self, inputs: Vec<String>) -> Result<(Vec<Vec<f32>>, f64), String> {
-        let request = openrouter::EmbeddingRequest::new(&self.model, inputs);
+    async fn embed(&self, inputs: Vec<String>) -> Result<(Vec<Vec<f32>>, Option<f64>), EmbedError> {
+        let wire = match self.provider {
+            EmbeddingProvider::Openai => self.model.rsplit('/').next().unwrap_or(&self.model),
+            EmbeddingProvider::Openrouter => &self.model,
+        };
+        let request = openrouter::EmbeddingRequest::new(wire, inputs);
         let reply = self
             .client
             .embeddings(&request)
             .await
-            .map_err(|e| e.to_string())?;
-        Ok((reply.vectors, reply.usage.cost.unwrap_or(0.0)))
+            .map_err(|e| EmbedError {
+                refused: matches!(e, openrouter::Error::Api { .. } | openrouter::Error::NoKey),
+                message: match self.provider {
+                    // The client is OpenRouter's, which names itself in errors.
+                    EmbeddingProvider::Openai => e.to_string().replace("OpenRouter", "OpenAI"),
+                    EmbeddingProvider::Openrouter => e.to_string(),
+                },
+            })?;
+        let tokens = reply.usage.prompt_tokens.max(reply.usage.total_tokens);
+        let list = (tokens > 0).then(|| tokens as f64 * EMBEDDING_USD_PER_MILLION / 1_000_000.0);
+        let usd = match self.provider {
+            EmbeddingProvider::Openai => list,
+            EmbeddingProvider::Openrouter => reply.usage.cost.or(list),
+        };
+        Ok((reply.vectors, usd))
     }
 }
 
@@ -156,8 +337,10 @@ pub struct Hit {
 pub struct Search {
     /// The best entries first.
     pub hits: Vec<Hit>,
-    /// Dollars the embeddings cost.
-    pub usd: f64,
+    /// Dollars the embeddings cost, or `None` when that's unknown: the
+    /// provider reported neither a cost nor tokens, or the call failed after
+    /// it was sent. A search that called nothing costs `Some(0.0)`.
+    pub usd: Option<f64>,
     /// Why the ranking is lexical only, when it is.
     pub lexical_only: Option<String>,
 }
@@ -166,7 +349,7 @@ pub struct Search {
 type Cache = HashMap<String, HashMap<String, Vec<f32>>>;
 
 /// A base, an optional embedder, and the entry embeddings cached on disk.
-pub struct Retriever<E: Embed = OpenRouterEmbedder> {
+pub struct Retriever<E: Embed = Embedder> {
     pub base: Base,
     embedder: Option<E>,
     /// Why there's no embedder, when there isn't one.
@@ -175,6 +358,9 @@ pub struct Retriever<E: Embed = OpenRouterEmbedder> {
     cache: Mutex<Cache>,
     /// Query vectors by the query's digest, for this process only.
     queries: Mutex<HashMap<String, Vec<f32>>>,
+    /// The first failed embeddings call's error. After one, searches rank
+    /// by words alone and say why, instead of paying for retries each time.
+    failed: Mutex<Option<String>>,
 }
 
 impl<E: Embed> Retriever<E> {
@@ -188,6 +374,7 @@ impl<E: Embed> Retriever<E> {
             cache_path: None,
             cache: Mutex::new(Cache::new()),
             queries: Mutex::new(HashMap::new()),
+            failed: Mutex::new(None),
         }
     }
 
@@ -207,6 +394,7 @@ impl<E: Embed> Retriever<E> {
             cache_path,
             cache: Mutex::new(cache),
             queries: Mutex::new(HashMap::new()),
+            failed: Mutex::new(None),
         }
     }
 
@@ -214,6 +402,12 @@ impl<E: Embed> Retriever<E> {
     #[must_use]
     pub fn embedder(&self) -> Option<&E> {
         self.embedder.as_ref()
+    }
+
+    /// Why every search is lexical, when there's no embedder.
+    #[must_use]
+    pub fn lexical_reason(&self) -> Option<&str> {
+        self.embedder.is_none().then_some(self.missing.as_str())
     }
 
     /// The `limit` best entries for `query`.
@@ -225,15 +419,30 @@ impl<E: Embed> Retriever<E> {
             .iter()
             .map(|s| if best > 0.0 { s / best } else { 0.0 })
             .collect();
-        let (semantic, usd, lexical_only) = match &self.embedder {
-            None => (None, 0.0, Some(self.missing.clone())),
-            Some(embedder) => match self.similarities(embedder, query).await {
+        let failed = self.failed.lock().ok().and_then(|f| f.clone());
+        let (semantic, usd, lexical_only) = match (&self.embedder, failed) {
+            (None, _) => (None, Some(0.0), Some(self.missing.clone())),
+            (Some(_), Some(error)) => (
+                None,
+                Some(0.0),
+                Some(format!(
+                    "embeddings are off for this process after a failed call: {error}"
+                )),
+            ),
+            (Some(embedder), None) => match self.similarities(embedder, query).await {
                 Ok((similarities, usd)) => (Some(similarities), usd, None),
-                Err(error) => (
-                    None,
-                    0.0,
-                    Some(format!("the embeddings call failed: {error}")),
-                ),
+                // A refused request cost nothing; whether any other failed
+                // call was billed isn't known.
+                Err(error) => {
+                    if let Ok(mut failed) = self.failed.lock() {
+                        *failed = Some(error.message.clone());
+                    }
+                    (
+                        None,
+                        error.refused.then_some(0.0),
+                        Some(format!("the embeddings call failed: {error}")),
+                    )
+                }
             },
         };
         let scaled: Option<Vec<f64>> = semantic.as_ref().map(|s| {
@@ -273,7 +482,11 @@ impl<E: Embed> Retriever<E> {
 
     /// Each entry's cosine similarity to `query`, embedding the query and
     /// any entry not yet cached in one call.
-    async fn similarities(&self, embedder: &E, query: &str) -> Result<(Vec<f64>, f64), String> {
+    async fn similarities(
+        &self,
+        embedder: &E,
+        query: &str,
+    ) -> Result<(Vec<f64>, Option<f64>), EmbedError> {
         let model = embedder.model().to_string();
         let query: String = query.chars().take(QUERY_CHARS).collect();
         let query_key = digest(query.as_bytes());
@@ -296,7 +509,7 @@ impl<E: Embed> Retriever<E> {
         if cached_query.is_none() {
             inputs.push(query.clone());
         }
-        let mut usd = 0.0;
+        let mut usd = Some(0.0);
         let mut query_vector = cached_query;
         if !inputs.is_empty() {
             let (mut vectors, cost) = embedder.embed(inputs).await?;
