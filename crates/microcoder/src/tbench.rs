@@ -1090,7 +1090,12 @@ pub async fn solve(task: &Task, agent: &Docker, name: &str) -> Result<(), String
         agent.container.clone(),
         "bash".into(),
         "-c".into(),
-        format!("(/solution/solve.sh) > {AGENT_LOGS}/oracle.txt 2>&1"),
+        // `docker exec` inherits the daemon's umask, which is 0000 on some
+        // hosts, such as coderos-4080. The leaderboard runs had the usual
+        // 022, and a solution that checks permissions fails under 0000:
+        // sshd refuses a world-writable `/run/sshd` in Terminal-Bench 2.1's
+        // `git-multibranch`.
+        format!("umask 022; (/solution/solve.sh) > {AGENT_LOGS}/oracle.txt 2>&1"),
     ]);
     let deadline = Duration::from_secs(task.agent_seconds.unwrap_or(7_200).min(7_200));
     let (ok, output) = docker_with(&args, &[], Some(deadline)).await;

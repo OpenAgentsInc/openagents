@@ -80,6 +80,10 @@ Exit codes: 0 when the task's tests pass, 1 when they don't, 2 when the run
 couldn't start. `--check-grading` runs the task's reference solution
 instead of the loop, which checks that grading works at no model cost.
 
+To run a Terminal-Bench 2.1 task, the development set that stays clear of
+TB4, set `MICROCODER_TASKS` to its folder. See
+[the Terminal-Bench 2.1 development set](../../terminal-bench/tb21-dev-set.md).
+
 ### How a task's environment and grading run
 
 Microcoder runs a task the way Harbor does, since Harbor graded the Fable
@@ -97,7 +101,9 @@ Microcoder runs a task the way Harbor does, since Harbor graded the Fable
   so its services start beside `main` and are reachable by service name.
   The loop's commands and the reference solution run in `main` as
   `[agent].user`, in `[environment].workdir` or the image's working
-  directory.
+  directory. The reference solution runs with umask 022, the usual default;
+  `docker exec` otherwise inherits the Docker daemon's umask,
+  which is 0000 on some hosts.
 - **Images.** The agent's image is a kept `tbench-warm/<task>:environment-…`
   image, the task's `docker_image`, or `microcoder-env/<task>`, built by
   Compose from `environment/`. Builds have the network, retry once, and

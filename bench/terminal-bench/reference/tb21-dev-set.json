@@ -1,0 +1,2425 @@
+{
+ "schema": "openagents.tbench.tb21-dev-set.v1",
+ "dataset_ref": "terminal-bench/terminal-bench-2-1",
+ "tasks_dir": "~/.openagents/terminal-bench/upstream/terminal-bench-2.1/tasks",
+ "reference_source": "bench/terminal-bench/reference/tb21-leaderboard.json (fetched 2026-09-23T18:54:20+00:00)",
+ "reference_rows": {
+  "fable_5_xhigh": "Claude Code, Fable 5, xhigh (leaderboard rank 6)",
+  "luna_max": "Codex, GPT-5.6 Luna, max (rank 14)",
+  "astra_high": "Codex, GPT-6 Astra, high (rank 1; no per-task cost published)"
+ },
+ "usd_per_trial_note": "The source job's per-task cost divided by its trial count.",
+ "tasks": {
+  "adaptive-rejection-sampler": {
+   "category": "scientific-computing",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.609,
+    "mean_agent_sec": 584.2
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.711,
+    "mean_agent_sec": 396.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 619.1
+   },
+   "all_rows_pass_rate": 0.791
+  },
+  "bn-fit-modify": {
+   "category": "scientific-computing",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.311,
+    "mean_agent_sec": 155.0
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.105,
+    "mean_agent_sec": 86.4
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 206.6
+   },
+   "all_rows_pass_rate": 0.991
+  },
+  "break-filter-js-from-html": {
+   "category": "security",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.412,
+    "mean_agent_sec": 148.1
+   },
+   "luna_max": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 0.517,
+    "mean_agent_sec": 532.5
+   },
+   "astra_high": {
+    "successes": 1,
+    "trials": 5,
+    "errors": 4,
+    "usd_per_trial": null,
+    "mean_agent_sec": 57.5
+   },
+   "all_rows_pass_rate": 0.773
+  },
+  "build-cython-ext": {
+   "category": "debugging",
+   "difficulty": "medium",
+   "check_grading": "fail",
+   "why": "Upstream drift: `pip install -e .` now resolves `planarity` 1.0.0, which breaks pyknotid's `test_reconstructed_space_curve` (`KeyError: 'pos'`).",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 1.114,
+    "mean_agent_sec": 555.2
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.521,
+    "mean_agent_sec": 285.9
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 383.1
+   },
+   "all_rows_pass_rate": 0.882
+  },
+  "build-pmars": {
+   "category": "software-engineering",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.284,
+    "mean_agent_sec": 147.7
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.287,
+    "mean_agent_sec": 123.1
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 105.1
+   },
+   "all_rows_pass_rate": 0.991
+  },
+  "build-pov-ray": {
+   "category": "software-engineering",
+   "difficulty": "medium",
+   "check_grading": "fail",
+   "why": "Upstream drift: www.povray.org returns 403 for the POV-Ray 2.2 source download. Failed twice.",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.817,
+    "mean_agent_sec": 400.2
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.252,
+    "mean_agent_sec": 132.6
+   },
+   "astra_high": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 192.7
+   },
+   "all_rows_pass_rate": 0.7
+  },
+  "caffe-cifar-10": {
+   "category": "machine-learning",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.179,
+    "mean_agent_sec": 1459.7
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.971,
+    "mean_agent_sec": 1102.7
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 724.1
+   },
+   "all_rows_pass_rate": 0.845
+  },
+  "cancel-async-tasks": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.267,
+    "mean_agent_sec": 137.9
+   },
+   "luna_max": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.058,
+    "mean_agent_sec": 52.2
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 94.1
+   },
+   "all_rows_pass_rate": 0.682
+  },
+  "chess-best-move": {
+   "category": "games",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.168,
+    "mean_agent_sec": 139.4
+   },
+   "luna_max": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.124,
+    "mean_agent_sec": 79.7
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 76.7
+   },
+   "all_rows_pass_rate": 0.718
+  },
+  "circuit-fibsqrt": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.036,
+    "mean_agent_sec": 438.0
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.397,
+    "mean_agent_sec": 342.0
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 263.4
+   },
+   "all_rows_pass_rate": 0.864
+  },
+  "cobol-modernization": {
+   "category": "software-engineering",
+   "difficulty": "easy",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 4,
+    "usd_per_trial": 0.491,
+    "mean_agent_sec": 888.2
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.263,
+    "mean_agent_sec": 196.9
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 441.8
+   },
+   "all_rows_pass_rate": 0.964
+  },
+  "code-from-image": {
+   "category": "software-engineering",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.045,
+    "mean_agent_sec": 18.3
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.034,
+    "mean_agent_sec": 18.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 27.7
+   },
+   "all_rows_pass_rate": 0.955
+  },
+  "compile-compcert": {
+   "category": "system-administration",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 3,
+    "usd_per_trial": 0.456,
+    "mean_agent_sec": 2331.6
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 2.615,
+    "mean_agent_sec": 1741.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 776.5
+   },
+   "all_rows_pass_rate": 0.673
+  },
+  "configure-git-webserver": {
+   "category": "system-administration",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.187,
+    "mean_agent_sec": 106.6
+   },
+   "luna_max": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.307,
+    "mean_agent_sec": 188.5
+   },
+   "astra_high": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 194.8
+   },
+   "all_rows_pass_rate": 0.364
+  },
+  "constraints-scheduling": {
+   "category": "personal-assistant",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.175,
+    "mean_agent_sec": 57.3
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.04,
+    "mean_agent_sec": 31.4
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 93.3
+   },
+   "all_rows_pass_rate": 0.982
+  },
+  "count-dataset-tokens": {
+   "category": "model-training",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.142,
+    "mean_agent_sec": 78.8
+   },
+   "luna_max": {
+    "successes": 1,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.107,
+    "mean_agent_sec": 104.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 94.2
+   },
+   "all_rows_pass_rate": 0.927
+  },
+  "crack-7z-hash": {
+   "category": "security",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.424,
+    "mean_agent_sec": 415.2
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.863,
+    "mean_agent_sec": 567.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 151.7
+   },
+   "all_rows_pass_rate": 0.955
+  },
+  "custom-memory-heap-crash": {
+   "category": "debugging",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.69,
+    "mean_agent_sec": 261.5
+   },
+   "luna_max": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.268,
+    "mean_agent_sec": 131.8
+   },
+   "astra_high": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 175.5
+   },
+   "all_rows_pass_rate": 0.718
+  },
+  "db-wal-recovery": {
+   "category": "file-operations",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 0.725,
+    "mean_agent_sec": 567.6
+   },
+   "luna_max": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 0.625,
+    "mean_agent_sec": 445.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 79.6
+   },
+   "all_rows_pass_rate": 0.509
+  },
+  "distribution-search": {
+   "category": "machine-learning",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.393,
+    "mean_agent_sec": 154.5
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.061,
+    "mean_agent_sec": 47.1
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 82.0
+   },
+   "all_rows_pass_rate": 0.964
+  },
+  "dna-assembly": {
+   "category": "scientific-computing",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 3.505,
+    "mean_agent_sec": 1100.5
+   },
+   "luna_max": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.591,
+    "mean_agent_sec": 394.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 307.5
+   },
+   "all_rows_pass_rate": 0.627
+  },
+  "dna-insert": {
+   "category": "scientific-computing",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.845,
+    "mean_agent_sec": 285.3
+   },
+   "luna_max": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.188,
+    "mean_agent_sec": 131.2
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 153.1
+   },
+   "all_rows_pass_rate": 0.3
+  },
+  "extract-elf": {
+   "category": "file-operations",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 1,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.092,
+    "mean_agent_sec": 428.2
+   },
+   "luna_max": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.265,
+    "mean_agent_sec": 162.2
+   },
+   "astra_high": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 259.1
+   },
+   "all_rows_pass_rate": 0.4
+  },
+  "extract-moves-from-video": {
+   "category": "file-operations",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 1,
+    "trials": 5,
+    "errors": 4,
+    "usd_per_trial": 3.934,
+    "mean_agent_sec": 1791.6
+   },
+   "luna_max": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 3,
+    "usd_per_trial": 2.794,
+    "mean_agent_sec": 1606.5
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 756.9
+   },
+   "all_rows_pass_rate": 0.327
+  },
+  "feal-differential-cryptanalysis": {
+   "category": "mathematics",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.667,
+    "mean_agent_sec": 242.8
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.151,
+    "mean_agent_sec": 167.9
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 148.1
+   },
+   "all_rows_pass_rate": 1.0
+  },
+  "feal-linear-cryptanalysis": {
+   "category": "mathematics",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.492,
+    "mean_agent_sec": 486.8
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.566,
+    "mean_agent_sec": 432.6
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 275.5
+   },
+   "all_rows_pass_rate": 0.864
+  },
+  "filter-js-from-html": {
+   "category": "security",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 2.535,
+    "mean_agent_sec": 852.4
+   },
+   "luna_max": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.527,
+    "mean_agent_sec": 381.0
+   },
+   "astra_high": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 591.2
+   },
+   "all_rows_pass_rate": 0.027
+  },
+  "financial-document-processor": {
+   "category": "data-processing",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.58,
+    "mean_agent_sec": 138.3
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.283,
+    "mean_agent_sec": 81.0
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 139.9
+   },
+   "all_rows_pass_rate": 0.873
+  },
+  "fix-code-vulnerability": {
+   "category": "security",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.162,
+    "mean_agent_sec": 74.8
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.096,
+    "mean_agent_sec": 43.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 137.2
+   },
+   "all_rows_pass_rate": 1.0
+  },
+  "fix-git": {
+   "category": "software-engineering",
+   "difficulty": "easy",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.145,
+    "mean_agent_sec": 63.8
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.092,
+    "mean_agent_sec": 112.2
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 73.2
+   },
+   "all_rows_pass_rate": 1.0
+  },
+  "fix-ocaml-gc": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.31,
+    "mean_agent_sec": 877.9
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 2.325,
+    "mean_agent_sec": 1192.2
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 651.5
+   },
+   "all_rows_pass_rate": 0.982
+  },
+  "gcode-to-text": {
+   "category": "file-operations",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.347,
+    "mean_agent_sec": 142.2
+   },
+   "luna_max": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.987,
+    "mean_agent_sec": 466.1
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 77.9
+   },
+   "all_rows_pass_rate": 0.491
+  },
+  "git-leak-recovery": {
+   "category": "software-engineering",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.156,
+    "mean_agent_sec": 60.6
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.053,
+    "mean_agent_sec": 38.0
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 138.0
+   },
+   "all_rows_pass_rate": 0.982
+  },
+  "git-multibranch": {
+   "category": "system-administration",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "why": "Failed first under the host's `docker exec` umask of 0000: sshd refused a world-writable `/run/sshd`. Passes with the oracle's umask 022 fix. `solve.sh` still exits nonzero at its last line because `tmux` isn't in the image.",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.348,
+    "mean_agent_sec": 161.7
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.189,
+    "mean_agent_sec": 130.6
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 228.3
+   },
+   "all_rows_pass_rate": 0.973
+  },
+  "gpt2-codegolf": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.149,
+    "mean_agent_sec": 434.1
+   },
+   "luna_max": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 4,
+    "usd_per_trial": 1.528,
+    "mean_agent_sec": 867.6
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 583.1
+   },
+   "all_rows_pass_rate": 0.545
+  },
+  "headless-terminal": {
+   "category": "software-engineering",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.441,
+    "mean_agent_sec": 217.1
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.338,
+    "mean_agent_sec": 230.1
+   },
+   "astra_high": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 222.5
+   },
+   "all_rows_pass_rate": 0.755
+  },
+  "hf-model-inference": {
+   "category": "data-science",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.152,
+    "mean_agent_sec": 88.3
+   },
+   "luna_max": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.101,
+    "mean_agent_sec": 140.2
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 191.0
+   },
+   "all_rows_pass_rate": 0.845
+  },
+  "install-windows-3.11": {
+   "category": "system-administration",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 3.329,
+    "mean_agent_sec": 1719.1
+   },
+   "luna_max": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.666,
+    "mean_agent_sec": 810.7
+   },
+   "astra_high": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 662.8
+   },
+   "all_rows_pass_rate": 0.4
+  },
+  "kv-store-grpc": {
+   "category": "software-engineering",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.127,
+    "mean_agent_sec": 63.7
+   },
+   "luna_max": {
+    "successes": 1,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.071,
+    "mean_agent_sec": 59.7
+   },
+   "astra_high": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 117.3
+   },
+   "all_rows_pass_rate": 0.755
+  },
+  "large-scale-text-editing": {
+   "category": "file-operations",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.208,
+    "mean_agent_sec": 126.2
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.121,
+    "mean_agent_sec": 226.2
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 119.8
+   },
+   "all_rows_pass_rate": 0.964
+  },
+  "largest-eigenval": {
+   "category": "mathematics",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "why": "Failed once on its two `test_speedup` timing tests while the host was loaded; passed on a rerun. Timing-sensitive.",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.813,
+    "mean_agent_sec": 350.6
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.776,
+    "mean_agent_sec": 482.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 215.7
+   },
+   "all_rows_pass_rate": 0.909
+  },
+  "llm-inference-batching-scheduler": {
+   "category": "machine-learning",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.434,
+    "mean_agent_sec": 518.8
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.369,
+    "mean_agent_sec": 271.0
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 242.0
+   },
+   "all_rows_pass_rate": 0.936
+  },
+  "log-summary-date-ranges": {
+   "category": "data-processing",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.097,
+    "mean_agent_sec": 43.3
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.046,
+    "mean_agent_sec": 32.4
+   },
+   "astra_high": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 56.7
+   },
+   "all_rows_pass_rate": 0.936
+  },
+  "mailman": {
+   "category": "system-administration",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.084,
+    "mean_agent_sec": 468.1
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.665,
+    "mean_agent_sec": 248.1
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 329.3
+   },
+   "all_rows_pass_rate": 0.836
+  },
+  "make-doom-for-mips": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 5,
+    "usd_per_trial": 0.0,
+    "mean_agent_sec": 900.0
+   },
+   "luna_max": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 2,
+    "usd_per_trial": 2.954,
+    "mean_agent_sec": 730.5
+   },
+   "astra_high": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": null,
+    "mean_agent_sec": 780.7
+   },
+   "all_rows_pass_rate": 0.027
+  },
+  "make-mips-interpreter": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 2.951,
+    "mean_agent_sec": 1026.9
+   },
+   "luna_max": {
+    "successes": 1,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.474,
+    "mean_agent_sec": 447.3
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 633.7
+   },
+   "all_rows_pass_rate": 0.673
+  },
+  "mcmc-sampling-stan": {
+   "category": "data-science",
+   "difficulty": "hard",
+   "check_grading": "fail",
+   "why": "Upstream drift: CRAN's `RcppParallel` 6.2.1 needs `cmake`, which the image lacks, so `StanHeaders` and `rstan` don't install. Failed twice.",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.351,
+    "mean_agent_sec": 515.3
+   },
+   "luna_max": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.856,
+    "mean_agent_sec": 759.6
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 521.2
+   },
+   "all_rows_pass_rate": 0.918
+  },
+  "merge-diff-arc-agi-task": {
+   "category": "debugging",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.261,
+    "mean_agent_sec": 125.2
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.136,
+    "mean_agent_sec": 100.1
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 88.3
+   },
+   "all_rows_pass_rate": 0.955
+  },
+  "model-extraction-relu-logits": {
+   "category": "mathematics",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.88,
+    "mean_agent_sec": 325.3
+   },
+   "luna_max": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.27,
+    "mean_agent_sec": 227.5
+   },
+   "astra_high": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 3,
+    "usd_per_trial": null,
+    "mean_agent_sec": 193.0
+   },
+   "all_rows_pass_rate": 0.409
+  },
+  "modernize-scientific-stack": {
+   "category": "scientific-computing",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.118,
+    "mean_agent_sec": 47.6
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.038,
+    "mean_agent_sec": 43.7
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 59.8
+   },
+   "all_rows_pass_rate": 1.0
+  },
+  "mteb-leaderboard": {
+   "category": "data-science",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.621,
+    "mean_agent_sec": 709.6
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.613,
+    "mean_agent_sec": 352.5
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 199.8
+   },
+   "all_rows_pass_rate": 0.836
+  },
+  "mteb-retrieve": {
+   "category": "data-science",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.19,
+    "mean_agent_sec": 129.3
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.091,
+    "mean_agent_sec": 148.7
+   },
+   "astra_high": {
+    "successes": 1,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 71.8
+   },
+   "all_rows_pass_rate": 0.555
+  },
+  "multi-source-data-merger": {
+   "category": "data-processing",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.165,
+    "mean_agent_sec": 63.7
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.066,
+    "mean_agent_sec": 52.7
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 125.7
+   },
+   "all_rows_pass_rate": 0.991
+  },
+  "nginx-request-logging": {
+   "category": "system-administration",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.154,
+    "mean_agent_sec": 89.5
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.063,
+    "mean_agent_sec": 46.7
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 116.4
+   },
+   "all_rows_pass_rate": 1.0
+  },
+  "openssl-selfsigned-cert": {
+   "category": "security",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.159,
+    "mean_agent_sec": 68.2
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.057,
+    "mean_agent_sec": 42.3
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 112.1
+   },
+   "all_rows_pass_rate": 0.945
+  },
+  "overfull-hbox": {
+   "category": "debugging",
+   "difficulty": "easy",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 0.337,
+    "mean_agent_sec": 304.5
+   },
+   "luna_max": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.319,
+    "mean_agent_sec": 184.9
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 171.8
+   },
+   "all_rows_pass_rate": 0.8
+  },
+  "password-recovery": {
+   "category": "security",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.694,
+    "mean_agent_sec": 221.8
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.112,
+    "mean_agent_sec": 59.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 66.3
+   },
+   "all_rows_pass_rate": 0.955
+  },
+  "path-tracing": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 3,
+    "usd_per_trial": 1.379,
+    "mean_agent_sec": 1613.7
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.432,
+    "mean_agent_sec": 734.2
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 146.7
+   },
+   "all_rows_pass_rate": 0.791
+  },
+  "path-tracing-reverse": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 3.747,
+    "mean_agent_sec": 1317.4
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.673,
+    "mean_agent_sec": 562.7
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 152.9
+   },
+   "all_rows_pass_rate": 0.718
+  },
+  "polyglot-c-py": {
+   "category": "software-engineering",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.244,
+    "mean_agent_sec": 118.0
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.115,
+    "mean_agent_sec": 93.9
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 131.8
+   },
+   "all_rows_pass_rate": 0.991
+  },
+  "polyglot-rust-c": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.446,
+    "mean_agent_sec": 187.2
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.16,
+    "mean_agent_sec": 126.7
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 141.2
+   },
+   "all_rows_pass_rate": 0.882
+  },
+  "portfolio-optimization": {
+   "category": "optimization",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.474,
+    "mean_agent_sec": 223.3
+   },
+   "luna_max": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.103,
+    "mean_agent_sec": 170.0
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 211.0
+   },
+   "all_rows_pass_rate": 0.964
+  },
+  "protein-assembly": {
+   "category": "scientific-computing",
+   "difficulty": "hard",
+   "check_grading": "fail",
+   "why": "The reference solution queries live RCSB, PubChem, and FPbase data, and dnachisel raised `NoSolutionError` both times. Likely live-data drift.",
+   "fable_5_xhigh": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.944,
+    "mean_agent_sec": 664.7
+   },
+   "luna_max": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.805,
+    "mean_agent_sec": 356.7
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 411.9
+   },
+   "all_rows_pass_rate": 0.455
+  },
+  "prove-plus-comm": {
+   "category": "software-engineering",
+   "difficulty": "easy",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.075,
+    "mean_agent_sec": 39.6
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.039,
+    "mean_agent_sec": 27.3
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 43.0
+   },
+   "all_rows_pass_rate": 0.991
+  },
+  "pypi-server": {
+   "category": "software-engineering",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.147,
+    "mean_agent_sec": 84.6
+   },
+   "luna_max": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.089,
+    "mean_agent_sec": 76.2
+   },
+   "astra_high": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 149.2
+   },
+   "all_rows_pass_rate": 0.745
+  },
+  "pytorch-model-cli": {
+   "category": "model-training",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.335,
+    "mean_agent_sec": 161.6
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.212,
+    "mean_agent_sec": 157.3
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 198.7
+   },
+   "all_rows_pass_rate": 0.845
+  },
+  "pytorch-model-recovery": {
+   "category": "model-training",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 0.191,
+    "mean_agent_sec": 356.9
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.174,
+    "mean_agent_sec": 142.0
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 205.9
+   },
+   "all_rows_pass_rate": 0.918
+  },
+  "qemu-alpine-ssh": {
+   "category": "system-administration",
+   "difficulty": "medium",
+   "check_grading": "fail",
+   "why": "Same bullseye-security 404 as `qemu-startup` in the verifier. Failed twice.",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.66,
+    "mean_agent_sec": 550.1
+   },
+   "luna_max": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 0.445,
+    "mean_agent_sec": 495.4
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 214.2
+   },
+   "all_rows_pass_rate": 0.727
+  },
+  "qemu-startup": {
+   "category": "system-administration",
+   "difficulty": "medium",
+   "check_grading": "fail",
+   "why": "The verifier's `apt-get install curl` gets 404 from Debian's bullseye-security pool (the index lists `curl` 7.74.0-1.3+deb11u16, the file is gone), so the tests can't install `uv`. Failed twice.",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.959,
+    "mean_agent_sec": 421.5
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.495,
+    "mean_agent_sec": 457.7
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 193.2
+   },
+   "all_rows_pass_rate": 0.836
+  },
+  "query-optimize": {
+   "category": "data-science",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 2,
+    "usd_per_trial": 0.161,
+    "mean_agent_sec": 640.7
+   },
+   "luna_max": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 0.271,
+    "mean_agent_sec": 267.0
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 330.4
+   },
+   "all_rows_pass_rate": 0.664
+  },
+  "raman-fitting": {
+   "category": "scientific-computing",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.343,
+    "mean_agent_sec": 153.2
+   },
+   "luna_max": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.804,
+    "mean_agent_sec": 654.3
+   },
+   "astra_high": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 151.2
+   },
+   "all_rows_pass_rate": 0.309
+  },
+  "regex-chess": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 2.915,
+    "mean_agent_sec": 2032.5
+   },
+   "luna_max": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.857,
+    "mean_agent_sec": 1135.1
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 421.2
+   },
+   "all_rows_pass_rate": 0.664
+  },
+  "regex-log": {
+   "category": "data-processing",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.342,
+    "mean_agent_sec": 137.8
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.105,
+    "mean_agent_sec": 82.1
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 88.6
+   },
+   "all_rows_pass_rate": 0.891
+  },
+  "reshard-c4-data": {
+   "category": "data-science",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.724,
+    "mean_agent_sec": 379.0
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.336,
+    "mean_agent_sec": 246.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 461.9
+   },
+   "all_rows_pass_rate": 0.991
+  },
+  "rstan-to-pystan": {
+   "category": "data-science",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.423,
+    "mean_agent_sec": 531.5
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.406,
+    "mean_agent_sec": 351.8
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 423.0
+   },
+   "all_rows_pass_rate": 0.945
+  },
+  "sam-cell-seg": {
+   "category": "data-science",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 3.098,
+    "mean_agent_sec": 1647.9
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.37,
+    "mean_agent_sec": 277.4
+   },
+   "astra_high": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 516.9
+   },
+   "all_rows_pass_rate": 0.873
+  },
+  "sanitize-git-repo": {
+   "category": "security",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.62,
+    "mean_agent_sec": 186.3
+   },
+   "luna_max": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.439,
+    "mean_agent_sec": 304.9
+   },
+   "astra_high": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 559.6
+   },
+   "all_rows_pass_rate": 0.455
+  },
+  "schemelike-metacircular-eval": {
+   "category": "software-engineering",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 2.309,
+    "mean_agent_sec": 1392.9
+   },
+   "luna_max": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.783,
+    "mean_agent_sec": 757.4
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 1044.2
+   },
+   "all_rows_pass_rate": 0.8
+  },
+  "sparql-university": {
+   "category": "data-querying",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.375,
+    "mean_agent_sec": 139.5
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.082,
+    "mean_agent_sec": 55.9
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 96.8
+   },
+   "all_rows_pass_rate": 0.973
+  },
+  "sqlite-db-truncate": {
+   "category": "debugging",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.181,
+    "mean_agent_sec": 74.2
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.062,
+    "mean_agent_sec": 51.1
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 80.1
+   },
+   "all_rows_pass_rate": 0.991
+  },
+  "sqlite-with-gcov": {
+   "category": "system-administration",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.405,
+    "mean_agent_sec": 167.8
+   },
+   "luna_max": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.175,
+    "mean_agent_sec": 126.2
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 96.9
+   },
+   "all_rows_pass_rate": 0.945
+  },
+  "torch-pipeline-parallelism": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.717,
+    "mean_agent_sec": 364.4
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.357,
+    "mean_agent_sec": 270.6
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 335.5
+   },
+   "all_rows_pass_rate": 0.645
+  },
+  "torch-tensor-parallelism": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.382,
+    "mean_agent_sec": 186.8
+   },
+   "luna_max": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.127,
+    "mean_agent_sec": 120.9
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 165.1
+   },
+   "all_rows_pass_rate": 0.855
+  },
+  "train-fasttext": {
+   "category": "model-training",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 1,
+    "usd_per_trial": 0.664,
+    "mean_agent_sec": 2365.4
+   },
+   "luna_max": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 3,
+    "usd_per_trial": 1.931,
+    "mean_agent_sec": 3561.5
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 921.8
+   },
+   "all_rows_pass_rate": 0.318
+  },
+  "tune-mjcf": {
+   "category": "scientific-computing",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.562,
+    "mean_agent_sec": 356.8
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.201,
+    "mean_agent_sec": 322.5
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 173.1
+   },
+   "all_rows_pass_rate": 0.927
+  },
+  "video-processing": {
+   "category": "video-processing",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 4,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.274,
+    "mean_agent_sec": 478.8
+   },
+   "luna_max": {
+    "successes": 1,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.812,
+    "mean_agent_sec": 439.8
+   },
+   "astra_high": {
+    "successes": 2,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 539.8
+   },
+   "all_rows_pass_rate": 0.327
+  },
+  "vulnerable-secret": {
+   "category": "security",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.299,
+    "mean_agent_sec": 97.1
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.05,
+    "mean_agent_sec": 44.1
+   },
+   "astra_high": {
+    "successes": 1,
+    "trials": 5,
+    "errors": 4,
+    "usd_per_trial": null,
+    "mean_agent_sec": 26.4
+   },
+   "all_rows_pass_rate": 0.773
+  },
+  "winning-avg-corewars": {
+   "category": "software-engineering",
+   "difficulty": "medium",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 0,
+    "trials": 5,
+    "errors": 5,
+    "usd_per_trial": 0.0,
+    "mean_agent_sec": 3600.0
+   },
+   "luna_max": {
+    "successes": 3,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 1.13,
+    "mean_agent_sec": 384.6
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 186.8
+   },
+   "all_rows_pass_rate": 0.745
+  },
+  "write-compressor": {
+   "category": "software-engineering",
+   "difficulty": "hard",
+   "check_grading": "pass",
+   "fable_5_xhigh": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 2.124,
+    "mean_agent_sec": 751.0
+   },
+   "luna_max": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": 0.288,
+    "mean_agent_sec": 200.0
+   },
+   "astra_high": {
+    "successes": 5,
+    "trials": 5,
+    "errors": 0,
+    "usd_per_trial": null,
+    "mean_agent_sec": 69.9
+   },
+   "all_rows_pass_rate": 0.818
+  }
+ }
+}
