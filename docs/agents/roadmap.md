@@ -15,9 +15,14 @@ host enforcement or domain readiness.
 The [agent labor plan](market-infrastructure.md) is a high-priority track
 alongside Coder's quality work. These local planning IDs are not GitHub issues.
 
+[NIP-MKT](../../nips/openagents/NIP-MKT.md) and
+[NIP-LAB](../../nips/openagents/NIP-LAB.md) now define the first draft contracts.
+Their existence completes the initial specification slice, not the parser,
+host, payment, or interoperability work below.
+
 | ID | Work | Completion evidence |
 | --- | --- | --- |
-| `LABOR-1` | Pin the historical market sources and define the minimum labor profile: offering, private quote, accepted order, deliverable, rework, cancellation, and acceptance terms. Reconcile it with CAP/CJ/COORD/RUN/POL/EVAL. | Schemas and fixtures bind task/base, parties, exact terms, bounds, and outcome identities; no event-kind or authority conflict. |
+| `LABOR-1` | Implement strict MKT/LAB schemas, cross-record validators, and the minimum order state machine. Review any later historical import separately; the new draft does not claim historical wire compatibility. | Fixtures bind task/base, parties, exact terms, bounds, and outcome identities; no event-kind or authority conflict. |
 | `LABOR-2` | Ship client intake and a bounded provider process with Go online/Pause controls, isolated job execution, retained patches/tests/traces, and acceptance review. | Two independent operators complete real repository jobs in a no-spend rehearsal; a compatible non-Coder executor can participate. |
 | `LABOR-3` | Demonstrate restart, relay replacement, duplicate dispatch protection, cancellation, and uncertain-result reconciliation. | Two relay operators, worker crashes, late replies, stale bases, and unavailable buyers produce correct terminal or unknown states without repeated effects. |
 | `LABOR-4` | Add an explicit Bitcoin payment adapter and agreed refund/dispute behavior. Keep worker compensation distinct from component royalties and licensed data. | A real outside operator receives payment for an accepted buyer job; confirmation, duplicate payment, timeout, and recovery cases retain exact receipts and liabilities. Test the rail before live use. |

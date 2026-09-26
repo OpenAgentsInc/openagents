@@ -27,6 +27,12 @@ offer bounded coding work and receive Bitcoin for accepted results. The
 [Coder network plan](docs/coder/design/networked-coder-plan.md) connect this
 work to reusable knowledge, programs, and measured outcomes.
 
+The [OpenAgents protocol index](nips/openagents/README.md) includes new draft
+contracts for scoped client control, negotiated markets, and agent labor.
+The [coverage review](docs/protocol/2026-09-26-openagents-gap-review.md)
+explains their relationship to the official and Block NIPs. The specifications
+precede runtime implementation; they do not announce a working labor market.
+
 ## Start here
 
 | Goal | Guide |

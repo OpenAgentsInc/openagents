@@ -36,6 +36,11 @@ examples.
 | COORD | Claims, fences, background plans, findings, trial identity, and shared accounting. | Retransmissions deduplicate; independent trials do not; confirmation access serializes across workers. |
 | EVAL | Workload suites, exact attempts, comparisons, uncertainty, public/private reports, and scoped admission. | Protected graders/labels, explicit missing outcomes, independent confirmation, and whole-task claims. |
 | OPT | Signatures, implementations, study/data/search plans, candidates, materialization, trials, cost, and results. | The actual loaded candidate is measured; frozen meaning and data rights survive search; adoption remains separate. |
+| KB | Immutable entries, heads, withdrawals, reader trust, and out-of-source evidence. | Preserve existing publish/sync validation; complete private entries and curated packages with provenance and rights checks. |
+| CTRL | Task-scoped device grants, pairing, revocation, command admission, and bounded history views. | Independent rights, stale frames, replay, lost acknowledgments, handoff, and redacted catch-up cannot leak evidence or duplicate effects. |
+| MKT | Offerings, private negotiation, mutually accepted orders, cancellation, and settlement evidence. | Exact terms survive restart and relay replacement; wallet authority stays separate; ambiguous payment remains unknown and cannot trigger a duplicate charge. |
+| LAB | Execution linkage, deliverable identity, verification, acceptance, rework, disputes, and data rights. | Two independent operators complete a no-spend job, then separately verified payment; a passing test alone neither accepts a contract nor settles an invoice. |
+| MV | World definitions, entity state, ephemeral poses/gestures, and scoped chat. | Preserve the standalone world's fixtures; this role does not imply physical-control or coding-task authority. |
 
 ## Delivery order
 
@@ -44,6 +49,13 @@ candidate execution, evaluation isolation, durable accounting, and operator
 adoption as one inspectable loop. Then demonstrate the same identities and
 privacy guarantees over relay transport. Network conformance must not require
 a particular optimizer or model vendor.
+
+The [2026-09-26 coverage review](2026-09-26-openagents-gap-review.md) records
+the CTRL/MKT/LAB additions and reuse across official and Block NIPs. Their
+initial implementation can proceed alongside coding-quality work. Begin with
+local durable state and a no-spend order/control flow; prove privacy and
+recovery over relays before payment or cross-device conformance claims.
+No new NIP is implemented merely by adding its document to the index.
 
 The [proposed issues](../optimization/proposed-issues.md) separate this work
 into independently reviewable acceptance slices. Broader strategy/composition

@@ -105,6 +105,8 @@ An approval request has `v: "openagents.approval-request.v1"`, `request`,
 
 Remote decisions require an exact signed private envelope authored by the
 named approver. Local UI decisions require a durable host-authenticated record.
+[NIP-CTRL](NIP-CTRL.md) pairing or task-control rights do not appoint an
+approver; the host separately establishes authority for the exact POL action.
 The host must already recognize that approver for this request and scope;
 neither artifact can nominate an authoritative stranger. Decision expiry cannot
 exceed request expiry. Bind requester, task revision, recipient, and all action

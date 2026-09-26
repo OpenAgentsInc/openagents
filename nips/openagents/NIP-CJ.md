@@ -155,6 +155,13 @@ The body contains `v: "openagents.execution.v1"`, `requires`, `type: "execute"`,
 `request`, `attempt`, `run`, `target`, `lock`, `input`, `context`,
 `requirements`, `bounds`, `deadline`, `retain_until`, and optional `parent`.
 
+[NIP-LAB](NIP-LAB.md) defines the required feature
+`openagents.labor-binding.v1` for a commercially bound execution. A worker
+that does not implement that feature refuses it as `unsupported_feature`.
+A LAB worker validates and durably binds the separately authenticated order
+linkage before dispatch. The marker grants no authority and does not add a
+new job family, executable prompt convention, or implicit order field.
+
 | Field | Meaning |
 | --- | --- |
 | `request` | Random logical request ID stable across retries. |
@@ -244,6 +251,10 @@ to an accepted execute event. `replay` additionally contains `after_seq` (null
 for the root) and `max_records`; `cancel` contains a bounded reason.
 Require the original caller or an independently authorized control principal;
 knowledge of run ID or mailbox is not authority.
+
+[NIP-CTRL](NIP-CTRL.md) defines one such independently admitted client role.
+Its task rights do not transfer the original caller's execution or spending
+authority. Apply its current grant and revision checks before control admission.
 
 Controls never create new execution. The worker answers with `26920`, `e`
 bound to the control event, type `status_result`, `replay_result`, or

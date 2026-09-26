@@ -50,13 +50,16 @@ The [relay import plan](../coder/design/relay-backend-plan.md) deliberately
 left Immortal's negotiated-market modules, provider daemon, swap client,
 compatibility facade, and market migrations outside the original import.
 The current OpenAgents NIP directory contains the agent contracts, including
-CAP, CJ, RUN, EVAL, OPT, and KB; it has no NIP-MKT or MKT-SWP specification.
-The transcript's statement that Immortal spoke NIP-MKT cannot be applied to
-the current `nostr-relay` binary.
+CAP, CJ, RUN, EVAL, OPT, and KB. The new [NIP-MKT](../../nips/openagents/NIP-MKT.md)
+defines negotiation and payment evidence, and [NIP-LAB](../../nips/openagents/NIP-LAB.md)
+defines the labor profile. They are newly authored v1 drafts, not a port of
+the historical wire format. MKT-SWP is outside this plan. Neither the
+transcript's historical deployment nor these drafts establish market support
+in the current `nostr-relay` binary.
 
 | Existing foundation | Reuse | Remaining market work |
 | --- | --- | --- |
-| `crates/nostr` and `crates/nostr-relay` | Signed events, authentication, encryption primitives, storage, subscriptions, and bounded transport. | Pin the market source specification, reconcile kind allocations and privacy rules, and add role-specific conformance fixtures. Official marketplace event support is not negotiated-market support. |
+| `crates/nostr` and `crates/nostr-relay` | Signed events, authentication, encryption primitives, storage, subscriptions, and bounded transport. | Implement the MKT/LAB drafts with strict parsers and role-specific privacy/recovery fixtures. The [allocation review](../protocol/2026-09-26-openagents-gap-review.md) found no listed collision; recheck before public interoperation. Official marketplace support is not negotiated-market support. |
 | CAP and EXT contracts; local capability and package readers | Discover interfaces and identify exact implementations. | Provider offerings must also describe commercial terms, capacity, expiry, and supported market profiles. |
 | CJ jobs, host boundaries, and subprocess supervision | Reuse the working conversation/delegate path and execution admission records. | Complete durable execution artifact resolution and dispatch, bind an accepted order to one execution identity, and reconcile failures. The generic execution worker is not yet a complete market worker. |
 | Gym, EVAL, OPT, ATIF traces, and KB sharing | Retain outcomes, compare implementations, and publish attributable evidence. | Bind evidence to the agreed deliverable and independent evaluator; report provider reliability by task family and version. |
@@ -135,8 +138,12 @@ cancellation, and close. The owning profile supplies the details. A compute
 lease, a licensed dataset, a human review, and a verified patch have different
 delivery and payment rules. Use CJ for work execution, CAP for capability and
 host binding, CTX/POL for disclosure and authority, COORD/RUN for coordination
-and recovery, and EVAL for measured results. Keep the future market contract
-focused on the negotiation that these contracts do not already define.
+and recovery, and EVAL for measured results. MKT supplies the missing
+negotiation and settlement records; LAB binds them to exact work and
+acceptance. Their initial payment profile is fixed-price Lightning after
+acceptance, with a no-payment lane for rehearsals. Deposits, escrow, and other
+rails require separately specified profiles rather than being assumed from
+a payment receipt.
 
 Tests establish only what they cover, and agreement about a patch can still
 require human review. A payment rail might require a deposit or staged
@@ -239,10 +246,12 @@ of those economics.
 The [general roadmap](roadmap.md) tracks these as proposed work, not filed
 issues or completed implementations.
 
-1. **Inventory and pin the source.** Locate the public Immortal market
-   specification and code revisions, record licenses and dependencies, and
-   map their contracts onto the current agent NIPs. Resolve event-kind and
-   private-envelope conflicts before importing them.
+1. **Implement the reviewed contracts.** The MKT/LAB drafts and
+   [cross-lane review](../protocol/2026-09-26-openagents-gap-review.md) now define
+   the initial source of truth. Add schemas, parser and cross-record fixtures,
+   then host transitions. If importing a historical component later, first
+   pin its public revision, review its license, and specify compatibility;
+   historical source reuse is not a dependency of this new implementation.
 2. **Implement a no-spend labor order.** A client and two independently
    configured provider processes negotiate a bounded issue-to-patch job.
    Add strict schema, identity, quote-expiry, capacity, cancellation, and

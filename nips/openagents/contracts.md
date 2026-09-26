@@ -1,7 +1,7 @@
 # Shared OpenAgents protocol contracts
 
 `draft` `optional` — normative for CAP, PRG, EXT, RUN, CJ, CTX, POL, COORD,
-EVAL, and OPT v1.
+EVAL, OPT, KB, CTRL, MKT, and LAB v1.
 
 The uppercase requirement words express conformance requirements. A reader
 MUST validate the complete required contract before any effect. Signatures
@@ -44,7 +44,10 @@ feature, semantic field, enum, step, bound, or import MUST refuse as
 MAY be ignored but MUST NOT change execution. Optional display metadata is
 not a place to hide an instruction or a required restriction. New execution
 semantics need a new version or a specified feature ID; adding a field alone
-does not define its interpretation. The initial feature list is empty.
+does not define its interpretation. Unless a profile explicitly defines a
+required feature, the initial feature list is empty. For example, LAB defines
+`openagents.labor-binding.v1` for its CJ execution requests; an older or generic
+worker must refuse it rather than execute without the required order binding.
 
 Unqualified slugs match `^[a-z0-9][a-z0-9_-]{0,63}$`. Qualified component IDs
 are `<publisher-pubkey>:<package-slug>/<component-slug>`, using a 64-character
@@ -313,9 +316,11 @@ profile defines read ACLs, retention, fanout, and COUNT/search behavior.
 ### Private artifact envelope
 
 Kind `3188` is a regular immutable declaration of one scoped artifact for
-one recipient. CTX, POL, COORD, EVAL, and OPT use it when a separately signed
-artifact is needed outside a RUN controller's journal. It does not dispatch
-work. The event has exactly one `p` recipient, one `h` random 64-hex mailbox,
+one recipient. CTX, POL, COORD, EVAL, OPT, KB, CTRL, MKT, and LAB use it when
+a separately signed artifact is needed outside a RUN controller's journal.
+It does not dispatch work. A control or market consumer separately validates
+and admits the operation; receiving an artifact alone grants no effect. The event has
+exactly one `p` recipient, one `h` random 64-hex mailbox,
 and `t: oa:artifact:v1`. Mailboxes are generated per admitted sharing scope
 and recipient, never derived from a source path, plaintext digest, or task name.
 
@@ -341,8 +346,11 @@ all reads, ID lookups, COUNT, and live fanout to the authenticated author or
 exact recipient, and excludes these events from search. Apply visibility before
 limits/counting. Do not log plaintext or ciphertext bodies. NIP-42 authentication
 does not substitute for event-signature verification. Envelope validation does
-not validate encrypted artifact semantics. Plaintext must fit both the common
-bound and NIP-44's smaller payload bound; use an ArtifactRef when it does not.
+not validate encrypted artifact semantics. Plaintext must fit the common body
+bound and the admitted encryption and transport limits, including envelope
+overhead. Apply the smallest limit; use a separately admitted artifact reference
+when inline content does not fit. NIP-44's extended length format does not
+override a host or profile's smaller bound.
 
 Consumers resolve references only under fetch/disclosure authority, verify
 content and retained provenance, and report unavailable/deleted bytes explicitly.
@@ -363,7 +371,9 @@ before public interoperation.
 ## Machine-readable schemas
 
 `schemas/` holds JSON Schema 2020-12 documents for these bodies. The Rust
-validators in `crates/nostr` (`contracts`) are the conformance
-implementation. A schema that requires a vocabulary those validators do not
-implement is refused before execution. The schemas do not grant authority
-and they are not fetched from the network while a document is checked.
+validators in `crates/nostr` (`contracts`) implement supported shared shapes;
+this does not imply coverage of every body described by a draft NIP. In
+particular, the new CTRL, MKT, and LAB bodies still need schema fixtures and
+role-specific validators. A schema that requires a vocabulary those validators
+do not implement is refused before execution. The schemas do not grant
+authority and they are not fetched from the network while a document is checked.

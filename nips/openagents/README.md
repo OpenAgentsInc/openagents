@@ -8,9 +8,14 @@ improve their behavior through measured, bounded optimization.
 The [agent labor integration plan](../../docs/agents/market-infrastructure.md)
 is the next market application: agents negotiate bounded work and earn Bitcoin
 for accepted results. The existing contracts supply capability, execution,
-evidence, and authority. Commercial negotiation and external payment still need
-their own reviewed profile and implementation; NIP-MKT is not yet part of this
-directory. Episodes 213–215 and 266–267 are design inputs, not wire contracts.
+evidence, and authority. [NIP-MKT](NIP-MKT.md) now specifies negotiated
+offerings, orders, and payment evidence; [NIP-LAB](NIP-LAB.md) specifies
+bounded agent labor and acceptance. [NIP-CTRL](NIP-CTRL.md) adds scoped task
+control from another client. These are drafts awaiting implementation, not
+claims of a deployed market or synchronized Coder clients. The
+[coverage review](../../docs/protocol/2026-09-26-openagents-gap-review.md)
+explains the gaps and reuse across all three NIP lanes. Episodes 213–215,
+266–267, and 275–281 are design inputs, not wire contracts.
 
 ## Why this exists
 
@@ -117,6 +122,12 @@ cannot admit a different domain merely because it uses the same model.
    EVAL records workload comparisons and scoped admission evidence. Operator
    policy adopts an immutable eligible version for subsequent work.
 
+CTRL connects additional clients to the same task owner with separate
+observation, steering, and cancellation rights. MKT and LAB connect buyers
+and providers through accepted commercial terms and exact deliverables.
+Neither a paired client nor an accepted order bypasses POL, host admission,
+independent verification, or separately authorized wallet actions.
+
 For example, an evidence-selection operation may compare a typed relevance
 model with a joint retrieval strategy. Both must preserve required context,
 source attribution, and disclosure constraints. Evaluate complete task quality
@@ -142,6 +153,9 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-EVAL](NIP-EVAL.md) | Workload evaluation, comparisons, and scoped promotion evidence. | Shared `3188`; public declaration `3189`. |
 | [NIP-OPT](NIP-OPT.md) | AI signatures, implementations, studies, data partitions, candidates, materialization, trials, and results. | Shared `3188`; EXT/EVAL declarations and CJ/RUN execution. |
 | [NIP-KB](NIP-KB.md) | Shared knowledge entries: immutable versions, current-version heads, withdrawals, and evidence as EVAL publications. Trust is per reader. | `3190`, `30190`, `3191`; evidence on EVAL `3189`. |
+| [NIP-CTRL](NIP-CTRL.md) | Client pairing, task-scoped control rights, revocation, acknowledged commands, and bounded catch-up. | Shared `3188`; registered CAP operations over CJ execution. |
+| [NIP-MKT](NIP-MKT.md) | Immutable offerings, private negotiation, accepted orders, cancellation, and attributable Bitcoin settlement. | `3192`, `30192`; private records on shared `3188`. |
+| [NIP-LAB](NIP-LAB.md) | Agent-labor terms, execution linkage, deliverables, verification, acceptance, rework, disputes, and rights. | Shared `3188`; MKT agreements and CJ/RUN execution. |
 | [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Standalone: it depends on no other contract here. | `23300`, `23301`, `33300`, `33301`. |
 
 Discovery heads are mutable. Exact signed records and artifact digests pin
@@ -154,3 +168,10 @@ extensions belong in NIP-11 `supported_extensions`, not numeric
 `supported_nips`. Advertise only tested, configured roles. A relay forwarding
 an envelope cannot claim to execute programs, isolate an evaluator, enforce
 spending, or establish semantic correctness.
+
+MKT and LAB define a new OpenAgents profile, not compatibility with the
+historical Immortal market stack. Swaps, escrow, credit, and a general royalty
+market are not implied. CTRL reuses current task contracts rather than
+treating Block read-state sync or live telemetry as durable task control.
+The [implementation plan](../../docs/protocol/implementation-plan.md) tracks
+the role-specific validators, host work, and fixtures still required.

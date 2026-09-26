@@ -43,6 +43,10 @@ Current implementation references: [delegate execution](../runtime/delegate-door
 Each Coder invocation currently owns its trace session; saved traces do not
 provide cross-process task resume. An ephemeral relay conversation also does
 not provide durable cross-device control. These are gaps to build and test.
+[NIP-CTRL](../../../nips/openagents/NIP-CTRL.md) now defines the device-control
+contract; [NIP-MKT](../../../nips/openagents/NIP-MKT.md) and
+[NIP-LAB](../../../nips/openagents/NIP-LAB.md) define negotiated labor.
+All three are drafts awaiting runtime implementation.
 
 ### What episodes 275–281 add
 

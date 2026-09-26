@@ -1,4 +1,4 @@
-# NIP Sources
+# NIP sources
 
 This directory holds our copies of the Nostr protocol specifications
 (NIPs). These copies are the source of truth for the Rust implementation
@@ -17,7 +17,11 @@ manifest does not track them.
 
 The [OpenAgents protocol index](openagents/README.md) covers the revised v1
 capability/program contracts, extension distribution, durable runs, and three
-job families. The [implementation plan](../docs/protocol/implementation-plan.md)
+job families. It also includes draft scoped task control (CTRL), negotiated
+markets (MKT), and agent labor (LAB). The
+[cross-lane review](../docs/protocol/2026-09-26-openagents-gap-review.md)
+explains why these contracts are needed and which official and Block
+primitives they reuse. The [implementation plan](../docs/protocol/implementation-plan.md)
 tracks remaining work across all lanes. A draft revision changes the target;
 it does not make an existing reader conformant.
 
