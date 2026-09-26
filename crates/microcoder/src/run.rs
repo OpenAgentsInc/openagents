@@ -137,7 +137,8 @@ impl Default for Limits {
             max_idle_replies: 3,
             acceptance: true,
             max_refused_finishes: 3,
-            route: Route::Auto,
+            // Off by default; --route auto or always turns it on.
+            route: Route::Never,
             strong_steps: 8,
         }
     }

@@ -23,7 +23,7 @@ Options:
   --strong-model SLUG  the OpenRouter model that writes the acceptance tests on
                      a task Jev judges hard (default openai/gpt-6-sol)
   --route WHEN       when the stronger model writes the tests: auto (when Jev
-                     judges the task hard), always, or never (default auto)
+                     judges the task hard), always, or never (default never)
   --max-steps N      default no limit
   --max-minutes N    default 60
   --max-usd N        model and Jev spend, default 1.00
@@ -206,11 +206,15 @@ async fn go(options: Options) -> Result<u8, String> {
     let mut terminal = Terminal::new();
     let say = |text: &str| terminal_line(text);
     println!(
-        "microcoder · {} · {} (effort {}), tests by {} when needed · {}, {} min, ${:.2} · network {network}",
+        "microcoder · {} · {} (effort {}){} · {}, {} min, ${:.2} · network {network}",
         task.name,
         options.model,
         options.effort.as_deref().unwrap_or("default"),
-        options.strong_model,
+        match options.limits.route {
+            Route::Never => String::new(),
+            Route::Auto => format!(", tests by {} on a hard task", options.strong_model),
+            Route::Always => format!(", tests by {}", options.strong_model),
+        },
         options
             .limits
             .max_steps

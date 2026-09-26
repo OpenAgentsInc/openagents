@@ -420,8 +420,7 @@ async fn a_hard_task_has_the_stronger_model_write_the_tests() {
         Ok(act("look", &["ls"], false)),
         Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
     ]);
-    let (state, outcome, _, log) =
-        go_with(&luna, &Limits::default(), &jev(0.8), Some(&strong)).await;
+    let (state, outcome, _, log) = go_with(&luna, &routed(), &jev(0.8), Some(&strong)).await;
     assert_eq!(outcome.ending, Ending::Finished);
     assert_eq!(state.frozen_at, Some(2));
     // The stronger model wrote the tests; the default model did the rest.
@@ -442,7 +441,7 @@ async fn an_easy_task_stays_on_the_default_model() {
         Ok(act("done", &[], true)),
     ]);
     let strong = Script::new(Vec::new());
-    let (_, outcome, _, _) = go_with(&luna, &Limits::default(), &jev(0.2), Some(&strong)).await;
+    let (_, outcome, _, _) = go_with(&luna, &routed(), &jev(0.2), Some(&strong)).await;
     assert_eq!(outcome.ending, Ending::Finished);
     assert!(strong.prompts.into_inner().is_empty());
 }
@@ -454,7 +453,7 @@ async fn the_stronger_model_hands_over_after_its_step_budget() {
     let limits = Limits {
         strong_steps: 2,
         max_steps: Some(4),
-        ..Limits::default()
+        ..routed()
     };
     let _ = go_with(&luna, &limits, &jev(0.9), Some(&strong)).await;
     assert_eq!(strong.prompts.into_inner().len(), 2);
@@ -663,4 +662,28 @@ async fn a_failing_test_jev_judges_right_still_blocks_finish() {
     )));
     let prompts = script.prompts.into_inner();
     assert!(prompts[2].contains("1 acceptance tests fail"));
+}
+
+/// Limits with the stronger model writing the tests on a hard task.
+fn routed() -> Limits {
+    Limits {
+        route: crate::run::Route::Auto,
+        ..Limits::default()
+    }
+}
+
+#[tokio::test]
+async fn the_stronger_model_is_off_by_default() {
+    let luna = Script::new(vec![
+        Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
+        Ok(act("fix", &["fix b"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let strong = Script::new(Vec::new());
+    let jev = jev(0.9);
+    let (_, outcome, _, _) = go_with(&luna, &Limits::default(), &jev, Some(&strong)).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert!(strong.prompts.into_inner().is_empty());
+    // Jev isn't asked whether the task is hard.
+    assert!(!jev.asked.borrow().contains(&route_set().id));
 }
