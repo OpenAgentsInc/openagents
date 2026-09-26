@@ -3101,12 +3101,16 @@ dependencies = [
 name = "microcoder"
 version = "0.1.0"
 dependencies = [
+ "coder",
+ "futures-util",
  "jev",
  "knowledge",
+ "nostr",
  "openrouter",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

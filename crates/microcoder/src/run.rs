@@ -267,6 +267,9 @@ pub struct Outcome {
     pub embedding_usd: f64,
     /// The knowledge-base entries the prompts listed or showed in full.
     pub knowledge: Vec<Used>,
+    /// Whether any prompt listed or showed an entry. A result that used the
+    /// knowledge base is reported apart from runs without it.
+    pub knowledge_assisted: bool,
 }
 
 /// Builds one step's prompt from the state, the user prompt, and Jev's
@@ -972,6 +975,7 @@ The task isn't finished until they pass; see the Acceptance tests section."
         model_usd,
         jev_usd,
         embedding_usd,
+        knowledge_assisted: !used.is_empty(),
         knowledge: used,
     };
     observer.event(

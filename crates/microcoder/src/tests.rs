@@ -570,6 +570,7 @@ async fn with_the_knowledge_base_off_the_prompt_has_no_section() {
     }
     assert!(!log.0.iter().any(|e| matches!(e, Event::Retrieved { .. })));
     assert!(outcome.knowledge.is_empty());
+    assert!(!outcome.knowledge_assisted);
     assert!(!jev.asked.into_inner().contains(&knowledge_set().id));
 }
 
@@ -582,6 +583,7 @@ async fn the_record_lists_the_entries_used_with_their_digests() {
     let jev = relevant(&[("stats.thing", 0.7)]);
     let (_, outcome, _, log) = go_kb(&script, &plain(), &jev, None, Some(&kb)).await;
     let used = &outcome.knowledge;
+    assert!(outcome.knowledge_assisted);
     assert_eq!(used.len(), 1);
     assert_eq!(used[0].id, "stats.thing");
     assert_eq!(used[0].digest, kb.base.get("stats.thing").unwrap().digest);

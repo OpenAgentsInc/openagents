@@ -10,7 +10,7 @@ use microcoder::state::State;
 use microcoder::{MODEL, STRONG_MODEL, tbench};
 
 const USAGE: &str = "usage: microcoder <terminal-bench-task> [options]
-       microcoder kb search|show|lint ... (microcoder kb --help for more)
+       microcoder kb <command> ... (microcoder kb --help lists the commands)
 
 Runs Microcoder on a Terminal-Bench 4 task and streams every step: Jev's
 judgments, the model's rationale and commands, each command's output, and
@@ -36,6 +36,10 @@ Options:
                      freezes first, and that must pass before it can finish
   --kb MODE          the shared knowledge base: on (admitted entries), off, or
                      candidates (unreviewed entries too) (default on)
+  --kb-trust MODE    which synced entries from other authors the base includes:
+                     own (your key's only), listed (also the authors in
+                     ~/.openagents/knowledge/trust.json), or all (everyone else's
+                     as candidates) (default the trust file's mode, else own)
   --keep             leave the container running afterward
   --check-grading    run the task's reference solution instead of the loop,
                      then grade it: a check that grading works, at no model cost
@@ -59,6 +63,8 @@ struct Options {
     check_grading: bool,
     /// `on`, `off`, or `candidates`.
     kb: String,
+    /// Which synced entries the base includes.
+    kb_trust: knowledge::remote::TrustConfig,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -73,6 +79,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
         keep: false,
         check_grading: false,
         kb: "on".to_string(),
+        kb_trust: match knowledge::remote::trust_file() {
+            Some(path) => knowledge::remote::TrustConfig::read(&path)?,
+            None => knowledge::remote::TrustConfig::default(),
+        },
     };
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -114,6 +124,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     ));
                 }
             }
+            "--kb-trust" => {
+                let mode = value()?;
+                options.kb_trust.mode = knowledge::remote::Trust::parse(&mode)
+                    .ok_or(format!("--kb-trust wants own, listed, or all, not {mode}"))?;
+            }
             "--keep" => options.keep = true,
             "--no-acceptance" => options.limits.acceptance = false,
             "--check-grading" => options.check_grading = true,
@@ -150,6 +165,10 @@ fn jev_client() -> Result<jev::Client, String> {
 async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|a| a == "kb") {
+        let network = ["publish", "sync", "publish-evidence"];
+        if args.get(1).is_some_and(|c| network.contains(&c.as_str())) {
+            return ExitCode::from(microcoder::kbnet::main(&args[1..]).await);
+        }
         return ExitCode::from(knowledge::cli::main(&args[1..]).await);
     }
     let options = match parse(&args) {
@@ -191,11 +210,20 @@ async fn go(options: Options) -> Result<u8, String> {
     let judge = JevJudge {
         client: jev_client()?,
     };
+    let mut loaded = knowledge::remote::Loaded::default();
     let retriever = if options.kb == "off" {
         None
     } else {
         let dir = knowledge::default_dir();
-        let base = knowledge::Base::load(&dir, options.kb == "candidates")?;
+        let own = knowledge::remote::key_file().and_then(|p| knowledge::remote::own_pubkey(&p));
+        let (base, found) = knowledge::remote::load(
+            &dir,
+            knowledge::remote::default_dir().as_deref(),
+            &options.kb_trust,
+            own.as_deref(),
+            options.kb == "candidates",
+        )?;
+        loaded = found;
         Some(match knowledge::search::OpenRouterEmbedder::from_env() {
             Ok(embedder) => {
                 knowledge::search::Retriever::new(base, embedder, knowledge::default_cache())
@@ -224,15 +252,28 @@ async fn go(options: Options) -> Result<u8, String> {
     );
     if let Some(retriever) = &retriever {
         println!(
-            "knowledge base: {} entries ({}) from {}",
+            "knowledge base: {} entries ({}) from {}{}",
             retriever.base.entries.len(),
             if options.kb == "candidates" {
                 "admitted and candidate"
             } else {
                 "admitted"
             },
-            knowledge::default_dir().display()
+            knowledge::default_dir().display(),
+            if loaded.remote.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", {} of them synced from {} other authors (trust {})",
+                    loaded.remote.values().sum::<usize>(),
+                    loaded.remote.len(),
+                    options.kb_trust.mode
+                )
+            }
         );
+        for problem in &loaded.problems {
+            println!("knowledge base: skipped a synced entry that didn't verify: {problem}");
+        }
     } else {
         println!("knowledge base: off");
     }
@@ -259,9 +300,10 @@ async fn go(options: Options) -> Result<u8, String> {
         "route": route.id, "route_file": microcoder::models::ROUTE,
         "dispute_file": microcoder::models::DISPUTE,
         "strong_model": options.strong_model, "route_when": options.limits.route,
-        "kb": options.kb, "knowledge_file": microcoder::models::KNOWLEDGE,
+        "kb": options.kb, "kb_trust": options.kb_trust.mode.to_string(),
+        "knowledge_file": microcoder::models::KNOWLEDGE,
         "knowledge_entries": retriever.as_ref().map(|r| r.base.entries.iter()
-            .map(|e| serde_json::json!({"id": e.id, "version": e.version, "digest": e.digest}))
+            .map(|e| serde_json::json!({"id": e.id, "version": e.version, "digest": e.digest, "author": e.author}))
             .collect::<Vec<_>>()),
     }));
 
@@ -342,7 +384,7 @@ async fn go(options: Options) -> Result<u8, String> {
     let passed = verdict.reward.is_some_and(|r| r >= 1.0);
     let total = outcome.model_usd + outcome.jev_usd + outcome.embedding_usd;
     println!(
-        "\n{} · reward {} · {} steps · {} · ${total:.4} (model ${:.4}, Jev ${:.5}, embeddings ${:.6}) · ended by {}",
+        "\n{} · reward {} · {} steps · {} · ${total:.4} (model ${:.4}, Jev ${:.5}, embeddings ${:.6}) · ended by {}{}",
         task.name,
         verdict
             .reward
@@ -355,6 +397,14 @@ async fn go(options: Options) -> Result<u8, String> {
         match &outcome.ending {
             Ending::Finished => "the model finishing".to_string(),
             other => format!("{other:?}"),
+        },
+        if outcome.knowledge_assisted {
+            format!(
+                " · knowledge-assisted ({} entries)",
+                outcome.knowledge.len()
+            )
+        } else {
+            String::new()
         }
     );
     if let Some((fable_passed, runs, seconds, cost)) = tbench::fable(&task.name) {
@@ -369,7 +419,8 @@ async fn go(options: Options) -> Result<u8, String> {
         "container": name, "image": image,
         "acceptance_tests": end_state.tests, "frozen_at": end_state.frozen_at,
         "test_results": end_state.test_results, "dropped_tests": end_state.dropped,
-        "kb": options.kb,
+        "kb": options.kb, "kb_trust": options.kb_trust.mode.to_string(),
+        "knowledge_assisted": outcome.knowledge_assisted,
     });
     let _ = std::fs::write(
         run_dir.join("summary.json"),

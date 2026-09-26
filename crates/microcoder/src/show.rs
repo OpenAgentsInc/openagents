@@ -304,8 +304,15 @@ impl Observer for Terminal {
                     &self.paint(
                         "1;36",
                         &format!(
-                            "loop ended: {why} · {} steps · model ${:.4} · jev ${:.5}{embeddings}",
-                            outcome.steps, outcome.model_usd, outcome.jev_usd
+                            "loop ended: {why} · {} steps · model ${:.4} · jev ${:.5}{embeddings}{}",
+                            outcome.steps,
+                            outcome.model_usd,
+                            outcome.jev_usd,
+                            if outcome.knowledge_assisted {
+                                " · knowledge-assisted"
+                            } else {
+                                ""
+                            }
                         ),
                     ),
                 );

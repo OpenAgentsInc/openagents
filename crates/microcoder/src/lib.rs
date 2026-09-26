@@ -17,9 +17,11 @@
 //!
 //! With the knowledge base on (`crates/knowledge`, issue #9670), each step's
 //! state also holds the entries Jev judges relevant, and the model can ask
-//! for an entry's full body with `expand`.
+//! for an entry's full body with `expand`. [`kbnet`] publishes entries to
+//! a Nostr relay and syncs other authors' entries from one (NIP-KB).
 
 pub mod env;
+pub mod kbnet;
 pub mod models;
 pub mod run;
 pub mod show;
