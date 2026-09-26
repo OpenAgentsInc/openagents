@@ -151,7 +151,7 @@ and are copied into the retained set the Gym reads (#9681). The study record
 and results go in `2026-09-26-out-of-sample-study-results.md`, next to this
 file. The summary goes in [tb4-results.md](tb4-results.md).
 
-The knowledge added for each round is recorded next to this file: Round 2 in [2026-09-26-round2-knowledge.md](2026-09-26-round2-knowledge.md) (sources, entries added and rejected, cost, and the relay-sync note).
+The knowledge added for each round is recorded next to this file: Round 2 in [2026-09-26-round2-knowledge.md](2026-09-26-round2-knowledge.md) (sources, entries added and rejected, cost, and the relay-sync note). Round 3 in [2026-09-26-round3-knowledge.md](2026-09-26-round3-knowledge.md) (50 more entries, 154 on the relay).
 
 ## Amendments
 
