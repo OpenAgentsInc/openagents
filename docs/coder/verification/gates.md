@@ -1,15 +1,21 @@
 # Verification gates and what they cost
 
-One gate exists: `./scripts/verify-rust.sh`, a manual, recorded run of
-phases that a contributor machine executes. There are no git hooks and
-no GitHub workflows — nothing runs automatically. `AGENTS.md` names the
-script the manual gate, and each run leaves a `run.json` plus one log
-per phase under `.coder/verification/<run-id>/`.
+`./scripts/verify-rust.sh` runs targeted development checks by default. The full
+workspace matrix requires `--release` and is reserved for full releases. It
+must never hold ordinary issue work, integration, commits, or pushes, and
+independent issues continue while release checks run. Direct focused Cargo
+checks are valid; choose coverage for the changed behavior.
 
-This page records what each phase does, the commit that introduced it,
-and what the phase costs in practice. Durations come from the recorded
-runs on this machine; incremental runs are seconds, cold builds are
-minutes.
+There are no git hooks or GitHub workflows. Every recorded script invocation
+leaves a `run.json` and phase logs under `.coder/verification/<run-id>/`.
+A scoped record is labeled `partial` to describe its coverage, not to require
+more checks before day-to-day work can ship. See the current
+[verification policy](../../verification.md).
+
+The measurements below are historical; they explain how full runs accumulated
+cost. One September 26 standard full run took 1003.7 seconds, about 17 minutes.
+The current development default runs only changed-package formatting, Clippy,
+and tests. It does not include PostgreSQL or duplicate the feature matrix.
 
 ## The gate itself
 

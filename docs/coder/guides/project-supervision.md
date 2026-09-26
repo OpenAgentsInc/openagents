@@ -106,8 +106,9 @@ monetary guarantee when the adapter cannot enforce it.
 Separate implementation, focused checks, integration checks, and measurement.
 Delegates use isolated target directories and bounded focused checks. Completed
 patches wait as artifacts, not as paid sessions occupying executor capacity.
-The integration worker runs the repository's required manual gate on the
-combined revision. Record the revision, toolchain, features, relevant environment,
+The integration worker runs targeted checks on the combined revision and its
+relevant consumers. Full workspace verification is release-only and must not
+block ordinary integration or independent issues. Record the revision, toolchain, features, relevant environment,
 command, and result; do not repeat an unchanged check without a reason, and do
 not reuse evidence after its inputs change.
 
@@ -234,7 +235,7 @@ For writing work, inspect the exact retained scratch artifact:
 The inspector requires a clean committed patch, the correct seed tree, and only
 owned paths. It does not run the artifact's hooks, tests, or build scripts and
 never declares code correctness. Review the patch, run appropriate bounded
-checks, integrate accepted changes through the manual gate, and retain the
+checks, integrate accepted changes after targeted verification, and retain the
 evidence. A text marker alone is insufficient.
 
 For an approved host checker, use the separate

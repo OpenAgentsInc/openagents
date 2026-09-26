@@ -333,9 +333,12 @@ them deliberately or request a corrected result. Integrate one task at a time.
 Recheck changes whose base is now stale, run focused checks on the combined
 tree, and resolve collisions before publishing.
 
-Run `./scripts/verify-rust.sh` with the integration checkout's separate target
-directory. Preserve its output and report skipped or failed coverage accurately.
-After the required checks, commit the integrated changes and push within the
+Run focused checks on the changed packages and relevant consumers, using the
+integration checkout's separate target directory. `./scripts/verify-rust.sh`
+defaults to that development scope; reserve `--release` for a full release.
+Never hold ordinary integration or independent issues for the full matrix.
+Preserve the executed commands and report their coverage accurately.
+After the targeted checks, commit the integrated changes and push within the
 user's existing authorization. Fetch the destination branch first; handle
 concurrent changes without force-pushing or discarding another agent's work.
 

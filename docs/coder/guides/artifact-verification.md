@@ -112,7 +112,8 @@ The verifier snapshots the candidate before and after execution. Missing
 snapshots or truncated output are unverifiable; failed commands and changed
 candidate contents cannot pass. The artifact is inspected again after checks.
 Evidence records output digests, elapsed command time, and typed verdicts. Review
-coverage and run the repository's required manual gate before integrating.
+coverage and run relevant targeted checks before integrating. Reserve the
+full workspace matrix for full releases; it does not block ordinary issues.
 Publish changes and accept the scheduler result separately.
 
 ## Enforcement and limits

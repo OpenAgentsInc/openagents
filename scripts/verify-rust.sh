@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Run the local Rust gate.
+# Run targeted development checks, or explicitly select release verification.
 #
-# A bare run is the full gate. Scope it for iteration — never to claim a
-# full pass:
+# A bare run checks changed packages only (formatting, Clippy, and tests).
+# The full workspace gate is release-only: --release. It must never block
+# daily issue development, integration, commits, or pushes.
+#
+#   --release        opt in to the full release gate
 #
 #   --phases a,b     run only these slugs (--list prints them)
 #   --crates a,b     narrow cargo phases to these packages
@@ -19,9 +22,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ALL_SLUGS="preflight gate-tooling artifacts delegation backup fmt clippy clippy-features tests tests-features deps postgres metal-clippy metal-tests soak"
-CARGO_SCOPED="clippy clippy-features tests tests-features"
+CARGO_SCOPED="fmt clippy clippy-features tests tests-features"
 features='kev/serve,lev/serve,gym/tui,jev/blocking,oak/mcp-http'
 
+release=0
+workspace_changed=0
 postgres=1
 metal=0
 soak=0
@@ -39,10 +44,14 @@ UNCOVERED=""
 
 usage() {
   cat <<'EOF' >&2
-Usage: verify-rust.sh [--list] [--print]
+Usage: verify-rust.sh [--release] [--list] [--print]
        [--phases a,b] [--crates a,b | --changed[=REF]]
        [--keep-going] [--no-retry] [--record-dir DIR | --no-record]
        [--skip-postgres] [--with-metal] [--with-soak]
+
+Default: changed-package formatting, Clippy, and tests.
+Full workspace and infrastructure coverage requires --release.
+A release gate is never a prerequisite for day-to-day issue work or pushes.
 EOF
   exit "${1:-64}"
 }
@@ -69,6 +78,7 @@ EOF
 
 while (( $# )); do
   case "$1" in
+    --release) release=1 ;;
     --skip-postgres) postgres=0 ;;
     --with-metal) metal=1 ;;
     --with-soak) soak=1 ;;
@@ -90,6 +100,15 @@ while (( $# )); do
   esac
   shift
 done
+
+# Keep ordinary issue work targeted. Explicit phases may add relevant coverage,
+# but a bare invocation must not launch the release matrix.
+if (( ! release )); then
+  [[ -n $WANTED ]] || WANTED="preflight fmt clippy tests"
+  if (( ! CRATES_SET )) && [[ -z $CHANGED ]]; then
+    CHANGED="origin/main"
+  fi
+fi
 
 for slug in $WANTED; do
   case " $ALL_SLUGS " in
@@ -126,7 +145,13 @@ if [[ -n $CHANGED ]]; then
   UNCOVERED=$(python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["uncovered"]))' <<<"$scope_json")
   CRATES_SET=1
   if (( WORKSPACE_SCOPE )); then
-    echo "Changed paths touch workspace-wide files; cargo phases cover the whole workspace."
+    workspace_changed=1
+    if (( release )); then
+      echo "Release scope: workspace-wide files changed; cargo phases cover the workspace."
+    else
+      WORKSPACE_SCOPE=0
+      echo "Workspace configuration changed; development checks remain scoped. Select affected consumers with --crates; defer the full matrix to --release."
+    fi
   fi
 fi
 
@@ -292,10 +317,12 @@ if (( record )) && (( ! print_only )); then
   fi
   requested=$(WANTED="$WANTED" CRATE_LABEL="$crate_label" \
     WORKSPACE_SCOPE=$WORKSPACE_SCOPE CHANGED="$CHANGED" UNCOVERED="$UNCOVERED" \
-    KEEP_GOING=$keep_going RETRY=$retry POSTGRES=$postgres METAL=$metal SOAK=$soak \
+    RELEASE=$release WORKSPACE_CHANGED=$workspace_changed KEEP_GOING=$keep_going RETRY=$retry POSTGRES=$postgres METAL=$metal SOAK=$soak \
     python3 -c '
 import json, os
 print(json.dumps({
+    "mode": "release" if int(os.environ.get("RELEASE", "0")) else "development",
+    "workspace_files_changed": bool(int(os.environ.get("WORKSPACE_CHANGED", "0"))),
     "phases": os.environ.get("WANTED") or "all",
     "crates": os.environ.get("CRATE_LABEL"),
     "workspace_scope": bool(int(os.environ.get("WORKSPACE_SCOPE", "0"))),
@@ -313,7 +340,11 @@ print(json.dumps({
   echo "Gate run: $RUN_ID ($record_dir/$RUN_ID/run.json)"
 fi
 
-echo 'Gate: Rust 1.97.1, rustfmt style edition 2024.'
+if (( release )); then
+  echo 'Release gate: Rust 1.97.1, rustfmt style edition 2024.'
+else
+  echo 'Development checks: targeted coverage; the full release gate is not required for issue work or pushes.'
+fi
 
 # The preflight is cheap and always runs when its phase is selected:
 # environmental prerequisites fail here, not inside a twenty-minute test.
@@ -350,7 +381,7 @@ run_phase delegation "Delegation evidence checks" \
   python3 -B -m unittest discover -s scripts/tests -p 'test_check_coder_delegation_run.py'
 run_phase backup "Backup collection tests" \
   python3 -B -m unittest discover -s scripts/tests -p 'test_backup_media.py'
-run_phase fmt "Workspace formatting" cargo fmt --all --check
+run_phase fmt "Selected-package formatting" cargo fmt "${scope[@]+"${scope[@]}"}" --check
 run_phase clippy "Default workspace Clippy" \
   cargo clippy --locked "${scope[@]+"${scope[@]}"}" --all-targets -- -D warnings
 run_phase clippy-features "Feature workspace Clippy" \
@@ -409,7 +440,7 @@ fi
 # A run that skipped anything the full gate covers is partial evidence:
 # the record, not a bare "passed", is what the tree earned.
 if [[ -n $WANTED || $postgres -eq 0 || $metal -eq 0 || $soak -eq 0 ]] \
-  || { (( CRATES_SET )) && [[ -z $CRATES ]] && (( ! WORKSPACE_SCOPE )); }; then
+  || (( CRATES_SET )); then
   RESULT=partial
 else
   RESULT=passed

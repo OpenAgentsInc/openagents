@@ -390,11 +390,15 @@ For further design and operation:
 
 ## Verify and contribute
 
-For Rust behavior changes, use the pinned toolchain and manual gate:
+For daily Rust work, run targeted checks on the pinned toolchain:
 
 ```sh
-./scripts/verify-rust.sh
+./scripts/verify-rust.sh --crates coder
 ```
+
+A bare invocation selects changed packages. The full matrix is release-only:
+`./scripts/verify-rust.sh --release`. It never blocks ordinary issue work,
+commits, or pushes. Direct focused Cargo checks are also valid.
 
 Read [verification.md](docs/verification.md) for scope, feature coverage,
 external prerequisites, and optional checks. Documentation-only changes
@@ -409,7 +413,7 @@ workspace tests and strict Clippy, dependency checks, and live PostgreSQL
 acceptance, including snapshots, privacy, restart, backup/restore, and actual
 Coder/worker processes. Gym's feature suite passes 595 tests, with one ignored.
 
-Required coverage comes from a full run plus scoped recoveries: the original
+That historical protocol record combines a full run with scoped recoveries: the original
 full run remains marked failed, and the successful scoped runs remain marked
 partial. The records retain the earlier failures, exact code revisions, and
 fixes for host-dependent Gym metadata and webhook test synchronization. Metal,

@@ -13,29 +13,43 @@ and any relevant formatting. A documentation path update does not justify
 workspace-wide Clippy, tests, compiler compatibility checks, or PostgreSQL
 acceptance. Unrelated test failures do not block a documentation-only push.
 
-## Run the Rust gate
+## Development checks and release verification
 
-For Rust behavior changes, run the manual gate from a contributor machine or
-non-GitHub infrastructure:
-
-```sh
-./scripts/verify-rust.sh
-```
-
-A bare run is the full Rust gate. The documentation-only guidance above is an
-explicit exception; a full gate is not a prerequisite for every push. While
-iterating on Rust changes, scope the run instead of paying full-workspace cost
-for every check:
+Day-to-day issue work uses targeted checks on the pinned toolchain. Check the
+changed behavior and the relevant consumers, then commit and push. A full
+workspace run is not required for ordinary development, integration, issue
+closure, or a push. Never stop independent issues to wait for release checks.
+Fix a relevant failure; record an unrelated failure separately and keep moving.
 
 ```sh
-./scripts/verify-rust.sh --list                    # phase slugs
-./scripts/verify-rust.sh --print                   # the resolved plan, unrun
-./scripts/verify-rust.sh --phases fmt,clippy,tests # selected phases only
-./scripts/verify-rust.sh --crates coder,gym        # cargo phases on these packages
-./scripts/verify-rust.sh --changed                 # packages changed since origin/main
-./scripts/verify-rust.sh --changed=HEAD~5          # or against an explicit ref
-./scripts/verify-rust.sh --keep-going              # record every phase, not just to first failure
+./scripts/verify-rust.sh                         # changed-package fmt, Clippy, tests
+./scripts/verify-rust.sh --crates coder,gym       # explicitly affected packages
+./scripts/verify-rust.sh --phases tests --crates coder
+cargo test -p coder task::                       # focused regression checks are valid
+./scripts/verify-rust.sh --print                 # inspect the plan without running it
 ```
+
+The default comparison is `origin/main`, including uncommitted changes. Use
+`--changed=REF` to choose another base. Changes to a lockfile or workspace
+configuration do **not** silently expand development checks to every package.
+Select affected consumers with `--crates` and record any coverage deferred to
+release. Select feature, PostgreSQL, or infrastructure phases only when relevant
+to the change. Documentation-only work needs link and artifact checks instead.
+
+Before a full release, explicitly request the full manual matrix:
+
+```sh
+./scripts/verify-rust.sh --release
+```
+
+This opt-in runs the standard workspace, feature, dependency, and PostgreSQL
+checks. It is release preparation, never a prerequisite for taking the next
+issue. Nothing runs automatically: there are no verification git hooks or
+GitHub workflows. Use `--list` to see phases, `--keep-going` to collect independent
+failures, and `--with-metal` or `--with-soak` for optional coverage. A previous
+standard full run took 1003.7 seconds (about 17 minutes); actual time depends on
+cache warmth, changed dependencies, and machine load. Targeted checks avoid
+paying that cost for every issue.
 
 The cancellation fixtures require a current Python runtime. On macOS,
 Apple's system Python 3.9 fails their known-good runner; Python 3.13 passes
@@ -48,15 +62,13 @@ python3 --version
 
 This selects the test runtime without changing the system interpreter.
 
-`--changed` maps `crates/<name>/` paths to packages, maps the data
+`--changed` maps `crates/<name>/` paths to packages and maps the data
 directories `coder` loads (`programs/`, `questions/`, `capabilities/`,
-`sources/`) to it, and escalates to the whole workspace when
-workspace-wide files (`Cargo.toml`, `Cargo.lock`, the toolchain pins) moved.
-A change that touches no crates scopes the cargo phases out entirely and
-records that honestly. Feature flags narrow the same way: scoped runs enable
-only the features of selected packages. A scoped or skipped run reports
-`partial`, never `passed` — the record is the evidence, and it says exactly
-what it covered.
+`sources/`) to it. In release mode only, workspace-wide files expand that
+scope to the workspace. Feature flags narrow to selected packages. A change
+with no affected crates scopes the Cargo phases out. Scoped runs record
+`partial` coverage; that label does not mean their selected checks failed or
+that development must wait for a full run.
 
 Every run writes `.coder/verification/<run-id>/run.json` (override with
 `--record-dir`, disable with `--no-record`): run ID, start and end UTC,
@@ -93,7 +105,7 @@ decision documented in [the dependency policy](dependencies.md).
 
 ## Feature and infrastructure coverage
 
-The gate checks formatting, strict Clippy, and tests for both default features
+The release gate checks formatting, strict Clippy, and tests for both default features
 and `kev/serve,lev/serve,gym/tui,jev/blocking`. It then checks dependency
 policy and disposable PostgreSQL acceptance. It stops
 on the first failed command; later commands have not run when that happens.
@@ -196,7 +208,7 @@ Metal F32 conformance passed for all four retained variants, but the full
 unchanged 10-second client deadline. bf16 remains unmeasured. This is a partial
 matrix, not a successful full gate; #9426 stays open.
 
-## Progress during the manual gate
+## Progress during verification
 
 Each manual-gate phase prints its name when it starts, an elapsed-time heartbeat
 at least every 30 seconds while its command runs, and its elapsed time and exit

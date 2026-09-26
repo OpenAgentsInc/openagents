@@ -13,11 +13,20 @@ reorganizations. Comment edits and documentation path updates do not require
 workspace-wide tests; if an embedded document's loading path changes, check only
 the affected consumer.
 
-For Rust behavior changes, use the pinned toolchain and
-`./scripts/verify-rust.sh` for the manual gate. Read `docs/verification.md`
-for verification scope, minimum compiler versions, feature coverage, and
-external prerequisites. Use a separate Cargo target directory per worktree.
-Keep workspace formatting changes separate from behavior changes.
+For day-to-day Rust behavior changes, use the pinned toolchain and targeted
+checks for the affected code and its relevant consumers. A bare
+`./scripts/verify-rust.sh` runs changed-package formatting, Clippy, and tests;
+use `--crates` or `--phases` to choose the needed coverage. Direct focused
+Cargo commands are also valid. Record what ran and any remaining limitations.
+
+The full workspace gate (`./scripts/verify-rust.sh --release`) is for full
+releases only. Never require it before ordinary issue development, integration,
+commits, pushes, or closing an issue whose own acceptance checks pass. Never
+hold independent issue work while it runs. Fix failures relevant to a change;
+record unrelated failures separately and continue the other work. Documentation
+changes remain exempt from Rust checks. Read `docs/verification.md` for scope
+and prerequisites. Use a separate Cargo target directory per worktree, and keep
+workspace formatting changes separate from behavior changes.
 
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
