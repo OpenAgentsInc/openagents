@@ -1,0 +1,391 @@
+{
+  "schema": "openagents.nip-verification-files.v1",
+  "note": "Digests of local original receipts and phase logs; phase-log contents are not distributed in this directory. Digests identify files, not independent attestation.",
+  "files": [
+    {
+      "run_id": "20260926T082103Z-d5bd6b",
+      "role": "receipt",
+      "local_path": ".coder/verification/20260926T082103Z-d5bd6b/run.json",
+      "bytes": 3266,
+      "sha256": "b7dbeef8fc28ca1da5081c6506b0495ad8ee83772d8a87a7447e3935dcac0759"
+    },
+    {
+      "run_id": "20260926T082103Z-d5bd6b",
+      "role": "preflight",
+      "local_path": ".coder/verification/20260926T082103Z-d5bd6b/preflight.log",
+      "bytes": 122,
+      "sha256": "ea3d5a26a3046466485a8091238578cffc982bcd8e195eb4ceca02cd6abfe3e2"
+    },
+    {
+      "run_id": "20260926T082103Z-d5bd6b",
+      "role": "fmt",
+      "local_path": ".coder/verification/20260926T082103Z-d5bd6b/fmt.log",
+      "bytes": 54,
+      "sha256": "4e59f87e16086a0eed2c8ae10741dabd015bf779de5fa546d9deed8642b080d7"
+    },
+    {
+      "run_id": "20260926T082103Z-d5bd6b",
+      "role": "clippy",
+      "local_path": ".coder/verification/20260926T082103Z-d5bd6b/clippy.log",
+      "bytes": 1121,
+      "sha256": "dfbec8b5069207f61c5819b9a55b47e0e235eba3bebebbcf87a3160cbe30c859"
+    },
+    {
+      "run_id": "20260926T082103Z-d5bd6b",
+      "role": "tests",
+      "local_path": ".coder/verification/20260926T082103Z-d5bd6b/tests.log",
+      "bytes": 38679,
+      "sha256": "c230a6d517871cb51dafd5e71f5422c9cd2cd7821944c22f5563996972e7a3ba"
+    },
+    {
+      "run_id": "20260926T082103Z-d5bd6b",
+      "role": "postgres",
+      "local_path": ".coder/verification/20260926T082103Z-d5bd6b/postgres.log",
+      "bytes": 1801,
+      "sha256": "13fd067fb2edb7cb499a08cec5563c8f6cd2402a4986220bf999a23cfaec8396"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "receipt",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/run.json",
+      "bytes": 5624,
+      "sha256": "a98538876e2a4789f9f91b7093718834de404221b4d593b3467a4b427def1955"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "preflight",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/preflight.log",
+      "bytes": 122,
+      "sha256": "bbf3257ff8f718d3dee983355990de0799aeea03ab443d882627f95c323a17da"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "gate-tooling",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/gate-tooling.log",
+      "bytes": 259,
+      "sha256": "8dab53895b03c722158b9475732561b40789597917f263f398e3bc57bb0f59ac"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "artifacts",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/artifacts.log",
+      "bytes": 167,
+      "sha256": "5e7a9d7f565572c3a0265ebf6ab39ea00c74da3084b52541eaace040e3d7ff21"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "delegation",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/delegation.log",
+      "bytes": 181,
+      "sha256": "92e46934515eb347916df9ce9e06329922c3a7f012a3ed14e2093c07f76e720c"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "backup",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/backup.log",
+      "bytes": 158,
+      "sha256": "2a7fd08c436782270419cc881d03c860c4f99dfecafe7f303dd8b6e29059a80b"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "fmt",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/fmt.log",
+      "bytes": 54,
+      "sha256": "4e59f87e16086a0eed2c8ae10741dabd015bf779de5fa546d9deed8642b080d7"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "clippy",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/clippy.log",
+      "bytes": 17100,
+      "sha256": "3bcb08e27ac906eacd092a6d2c784a8094a962c72f386c0618696950da71e5f9"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "clippy-features",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/clippy-features.log",
+      "bytes": 2654,
+      "sha256": "ad889a6ab403c99f7059e7936a88a9b86f4c8c1120af114bb87b19a564a8ec87"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "tests",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/tests.log",
+      "bytes": 14754,
+      "sha256": "4582b461599dfa7445f92d57554e3dca87f47f1a1ee7a57904a43f1174bc8b87"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "tests-features",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/tests-features.log",
+      "bytes": 1138,
+      "sha256": "721c1e821ec81602e71143c332f2499b61d4c3d31ee00a924f1eb5897a49af62"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "deps",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/deps.log",
+      "bytes": 345236,
+      "sha256": "a89e78fc2874d60fad2db8881b05118b30a3a566afcca4a3faca93d12daec764"
+    },
+    {
+      "run_id": "20260926T082255Z-04d92c",
+      "role": "postgres",
+      "local_path": ".coder/verification/20260926T082255Z-04d92c/postgres.log",
+      "bytes": 14254,
+      "sha256": "5aa87627cb59ca7280436d766a167c7cd9f49190423fe00147b5e271fca730d6"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "receipt",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/run.json",
+      "bytes": 5627,
+      "sha256": "a8e1744fefb00df495ff6bff8e732582927c08ec3ca7bace7c2ef49e30b39563"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "preflight",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/preflight.log",
+      "bytes": 123,
+      "sha256": "bfbd050574ad722ad28d717ed26ec4bc9de0b186eea242e861b3f66dc8374c92"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "gate-tooling",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/gate-tooling.log",
+      "bytes": 259,
+      "sha256": "a9fbc9b81f917fa8e2b48e403035cbe9f024178672ab0955808e0eca9c409de9"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "artifacts",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/artifacts.log",
+      "bytes": 167,
+      "sha256": "3584e7e869939a0b6bd27414beeca5d6e69002a665400f756d16953d97f18baa"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "delegation",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/delegation.log",
+      "bytes": 181,
+      "sha256": "e32535d86a70a9b22f84ec02e33714e09821579462464ceffc12cf06c4c236df"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "backup",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/backup.log",
+      "bytes": 158,
+      "sha256": "73ebb987c128fc740ee7d25122bae7751f92ee6f55a93c0c302b0e4f3717ce5d"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "fmt",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/fmt.log",
+      "bytes": 54,
+      "sha256": "4e59f87e16086a0eed2c8ae10741dabd015bf779de5fa546d9deed8642b080d7"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "clippy",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/clippy.log",
+      "bytes": 19093,
+      "sha256": "b4bbc9b638298db4cb23a8dc29ea0b1cdb1dd182d3cd89879062024059e3c608"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "clippy-features",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/clippy-features.log",
+      "bytes": 2186,
+      "sha256": "e93afc911090c930ecac1a83ca85cff951f08ba9c38b8f0981fc5e214a41166c"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "tests",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/tests.log",
+      "bytes": 397649,
+      "sha256": "5480202bcbc58a986fab7ffe3b4173d0cc7381c286c10f990d765aeebec4a46d"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "tests-features",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/tests-features.log",
+      "bytes": 403258,
+      "sha256": "6e6758a3fe779020186df7f489d3c1916bbc8af7c84fc1cc62aeaba6e2d2c3db"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "deps",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/deps.log",
+      "bytes": 345236,
+      "sha256": "c25f30a9fcdade3aa99901b7cd3408a7a4e4f99b2cf663ccef205f76453a6e4d"
+    },
+    {
+      "run_id": "20260926T083004Z-767c46",
+      "role": "postgres",
+      "local_path": ".coder/verification/20260926T083004Z-767c46/postgres.log",
+      "bytes": 12131,
+      "sha256": "500685d7d8944c7ba8717d260c05c8e68d350e96ba15ba2b9d62b56ff61a27b1"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "receipt",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/run.json",
+      "bytes": 5623,
+      "sha256": "340a7d4e06819671cd80987742441fddd82712e4086479299c9523238eb1844b"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "preflight",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/preflight.log",
+      "bytes": 122,
+      "sha256": "2834cde676bbb5af43d8b1579b4df331ca7954c2f32002c803898e24053705e9"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "gate-tooling",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/gate-tooling.log",
+      "bytes": 259,
+      "sha256": "efa8bd6ca807e48f13ba7e6e858eb1bd2e01a823bc1a663e0d7be6e79de63b0e"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "artifacts",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/artifacts.log",
+      "bytes": 167,
+      "sha256": "580080b2da6bae7694bd4ab355229e9741d5e381d929d9f83b7e931553734022"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "delegation",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/delegation.log",
+      "bytes": 181,
+      "sha256": "576fd5ef50d07ee4d2b3696e5c7e8c453adac3bfde4d0856ff032b6b9c11a22a"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "backup",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/backup.log",
+      "bytes": 158,
+      "sha256": "a992623a0225c2b91aaa804d2786134d398d012981bb8694a38fb4b2b4cad465"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "fmt",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/fmt.log",
+      "bytes": 54,
+      "sha256": "a113e2e76df99b6d12837a97fdf8a6afd7981a649f378de6be4d0b22402b0c16"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "clippy",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/clippy.log",
+      "bytes": 1336,
+      "sha256": "a1f80a60f75c699e4ef52f03d349aeed915f996399357c896ff59f3beaaebd49"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "clippy-features",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/clippy-features.log",
+      "bytes": 1336,
+      "sha256": "cbeda981ba7b2b584c03bc86343d55dd9a865e7b091522d3ef8d68448d58becb"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "tests",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/tests.log",
+      "bytes": 572109,
+      "sha256": "2c7fae82873cecf63926bc408a0518e2e50f1f8764179bde1620060bd8928376"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "tests-features",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/tests-features.log",
+      "bytes": 332373,
+      "sha256": "08e3a57f8f527305ae38ada57f47340cc2b25f251e2eafc3294c092f31b8b878"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "deps",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/deps.log",
+      "bytes": 345236,
+      "sha256": "7765721604b8639f2537d88d4bb887131406a4957f44061d7afe6139d8cf3ec0"
+    },
+    {
+      "run_id": "20260926T084618Z-f66e86",
+      "role": "postgres",
+      "local_path": ".coder/verification/20260926T084618Z-f66e86/postgres.log",
+      "bytes": 4986,
+      "sha256": "565bca000192e7af0282ece41c226743b639872439c054aadd526d799f42842f"
+    },
+    {
+      "run_id": "20260926T090017Z-a500a2",
+      "role": "receipt",
+      "local_path": ".coder/verification/20260926T090017Z-a500a2/run.json",
+      "bytes": 2945,
+      "sha256": "49ffb0ac69329c5ba794cfc2dc6f0b96f05da1c51b77c24ac7d0eeaf28446827"
+    },
+    {
+      "run_id": "20260926T090017Z-a500a2",
+      "role": "preflight",
+      "local_path": ".coder/verification/20260926T090017Z-a500a2/preflight.log",
+      "bytes": 122,
+      "sha256": "2834cde676bbb5af43d8b1579b4df331ca7954c2f32002c803898e24053705e9"
+    },
+    {
+      "run_id": "20260926T090017Z-a500a2",
+      "role": "fmt",
+      "local_path": ".coder/verification/20260926T090017Z-a500a2/fmt.log",
+      "bytes": 54,
+      "sha256": "4e59f87e16086a0eed2c8ae10741dabd015bf779de5fa546d9deed8642b080d7"
+    },
+    {
+      "run_id": "20260926T090017Z-a500a2",
+      "role": "clippy",
+      "local_path": ".coder/verification/20260926T090017Z-a500a2/clippy.log",
+      "bytes": 3044,
+      "sha256": "c9a70fcfddfc43aa076a820ac7b814f1551dd3a49a9dfbba9a3616f2a13fefea"
+    },
+    {
+      "run_id": "20260926T090017Z-a500a2",
+      "role": "tests",
+      "local_path": ".coder/verification/20260926T090017Z-a500a2/tests.log",
+      "bytes": 22043,
+      "sha256": "c539c57f790f2c8a4fe08ad9fda213fc633bb63d9f19706ff98a8eba9b693507"
+    },
+    {
+      "run_id": "20260926T090118Z-3dabdc",
+      "role": "receipt",
+      "local_path": ".coder/verification/20260926T090118Z-3dabdc/run.json",
+      "bytes": 3086,
+      "sha256": "293f238d2e10d3bd360986f06fe92a165bef7490d8d36cc24f010fe4792e6f75"
+    },
+    {
+      "run_id": "20260926T090118Z-3dabdc",
+      "role": "preflight",
+      "local_path": ".coder/verification/20260926T090118Z-3dabdc/preflight.log",
+      "bytes": 122,
+      "sha256": "bbf3257ff8f718d3dee983355990de0799aeea03ab443d882627f95c323a17da"
+    },
+    {
+      "run_id": "20260926T090118Z-3dabdc",
+      "role": "fmt",
+      "local_path": ".coder/verification/20260926T090118Z-3dabdc/fmt.log",
+      "bytes": 54,
+      "sha256": "4e59f87e16086a0eed2c8ae10741dabd015bf779de5fa546d9deed8642b080d7"
+    },
+    {
+      "run_id": "20260926T090118Z-3dabdc",
+      "role": "clippy-features",
+      "local_path": ".coder/verification/20260926T090118Z-3dabdc/clippy-features.log",
+      "bytes": 688,
+      "sha256": "ecd4704a9e0390735748bcbc7b1f886369327374807e39843180bad1e290bdbe"
+    },
+    {
+      "run_id": "20260926T090118Z-3dabdc",
+      "role": "tests-features",
+      "local_path": ".coder/verification/20260926T090118Z-3dabdc/tests-features.log",
+      "bytes": 585277,
+      "sha256": "44fb03fb162b5a648e9f0acdc62767a1570933155e46e90a8a7e26152b34efbf"
+    }
+  ]
+}

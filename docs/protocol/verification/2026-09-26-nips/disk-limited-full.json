@@ -1,0 +1,231 @@
+{
+  "schema": "openagents.gate-run.v1",
+  "run_id": "20260926T082255Z-04d92c",
+  "started_utc": "2026-09-26T08:22:55Z",
+  "finished_utc": "2026-09-26T08:28:00Z",
+  "elapsed_s": 305.8,
+  "tree": {
+    "head": "84a78528d212a88052bc2e4696cbda667d15357a",
+    "dirty": true,
+    "diff_digest": "447fe7ec510bcf4678f8b8841f58054799e14c31db505e3edbaef5f37ea0bbdd"
+  },
+  "requested": {
+    "phases": "all",
+    "crates": "all",
+    "workspace_scope": false,
+    "changed_ref": null,
+    "uncovered": "",
+    "keep_going": true,
+    "retry": true,
+    "postgres": true,
+    "metal": false,
+    "soak": false
+  },
+  "phases": [
+    {
+      "slug": "preflight",
+      "name": "Environment preflight",
+      "command": [
+        "environment preflight"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.0,
+      "log": ".coder/verification/20260926T082255Z-04d92c/preflight.log"
+    },
+    {
+      "slug": "gate-tooling",
+      "name": "Gate tooling tests",
+      "command": [
+        "bash",
+        "-c",
+        "python3 -B -m unittest discover -s scripts/tests -p \"test_gate_*.py\" \\\n    && python3 -B -m unittest discover -s scripts -p \"test_verification_phase.py\""
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.7,
+      "log": ".coder/verification/20260926T082255Z-04d92c/gate-tooling.log"
+    },
+    {
+      "slug": "artifacts",
+      "name": "Artifact acquisition tests",
+      "command": [
+        "python3",
+        "scripts/test_fetch_kev_artifacts.py"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.2,
+      "log": ".coder/verification/20260926T082255Z-04d92c/artifacts.log"
+    },
+    {
+      "slug": "delegation",
+      "name": "Delegation evidence checks",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_check_coder_delegation_run.py"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.7,
+      "log": ".coder/verification/20260926T082255Z-04d92c/delegation.log"
+    },
+    {
+      "slug": "backup",
+      "name": "Backup collection tests",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_backup_media.py"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 1.5,
+      "log": ".coder/verification/20260926T082255Z-04d92c/backup.log"
+    },
+    {
+      "slug": "fmt",
+      "name": "Workspace formatting",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 2.7,
+      "log": ".coder/verification/20260926T082255Z-04d92c/fmt.log"
+    },
+    {
+      "slug": "clippy",
+      "name": "Default workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 52.5,
+      "log": ".coder/verification/20260926T082255Z-04d92c/clippy.log"
+    },
+    {
+      "slug": "clippy-features",
+      "name": "Feature workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--all-targets",
+        "--features",
+        "kev/serve,lev/serve,gym/tui,jev/blocking,oak/mcp-http",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 31.3,
+      "log": ".coder/verification/20260926T082255Z-04d92c/clippy-features.log"
+    },
+    {
+      "slug": "tests",
+      "name": "Default workspace tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--",
+        "--nocapture"
+      ],
+      "status": "failed",
+      "attempts": 1,
+      "exit": 101,
+      "elapsed_s": 51.3,
+      "log": ".coder/verification/20260926T082255Z-04d92c/tests.log"
+    },
+    {
+      "slug": "tests-features",
+      "name": "Feature workspace tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--features",
+        "kev/serve,lev/serve,gym/tui,jev/blocking,oak/mcp-http",
+        "--",
+        "--nocapture"
+      ],
+      "status": "failed",
+      "attempts": 1,
+      "exit": 101,
+      "elapsed_s": 13.4,
+      "log": ".coder/verification/20260926T082255Z-04d92c/tests-features.log"
+    },
+    {
+      "slug": "deps",
+      "name": "Dependency policy",
+      "command": [
+        "./scripts/check-dependencies.sh"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 1.6,
+      "log": ".coder/verification/20260926T082255Z-04d92c/deps.log"
+    },
+    {
+      "slug": "postgres",
+      "name": "PostgreSQL acceptance",
+      "command": [
+        "./scripts/test-postgres.sh"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 148.7,
+      "log": ".coder/verification/20260926T082255Z-04d92c/postgres.log"
+    }
+  ],
+  "skipped": [
+    {
+      "slug": "metal-clippy",
+      "reason": "Metal checks need --with-metal on a supported Apple host"
+    },
+    {
+      "slug": "metal-tests",
+      "reason": "Metal checks need --with-metal on a supported Apple host"
+    },
+    {
+      "slug": "soak",
+      "reason": "long-running relay soak; use --with-soak"
+    }
+  ],
+  "result": "failed"
+}

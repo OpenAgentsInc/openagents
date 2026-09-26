@@ -1,0 +1,150 @@
+{
+  "schema": "openagents.gate-run.v1",
+  "run_id": "20260926T082103Z-d5bd6b",
+  "started_utc": "2026-09-26T08:21:03Z",
+  "finished_utc": "2026-09-26T08:21:40Z",
+  "elapsed_s": 37.0,
+  "tree": {
+    "head": "84a78528d212a88052bc2e4696cbda667d15357a",
+    "dirty": true,
+    "diff_digest": "5465af4af556bb04550ec5e2624e52abedebed57dbb0c35ee94f3451c36cf27d"
+  },
+  "requested": {
+    "phases": "preflight fmt clippy tests postgres",
+    "crates": "nostr nostr-relay",
+    "workspace_scope": false,
+    "changed_ref": null,
+    "uncovered": "",
+    "keep_going": true,
+    "retry": true,
+    "postgres": true,
+    "metal": false,
+    "soak": false
+  },
+  "phases": [
+    {
+      "slug": "preflight",
+      "name": "Environment preflight",
+      "command": [
+        "environment preflight"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.0,
+      "log": ".coder/verification/20260926T082103Z-d5bd6b/preflight.log"
+    },
+    {
+      "slug": "fmt",
+      "name": "Workspace formatting",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 2.7,
+      "log": ".coder/verification/20260926T082103Z-d5bd6b/fmt.log"
+    },
+    {
+      "slug": "clippy",
+      "name": "Default workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "nostr",
+        "-p",
+        "nostr-relay",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "failed",
+      "attempts": 1,
+      "exit": 101,
+      "elapsed_s": 5.6,
+      "log": ".coder/verification/20260926T082103Z-d5bd6b/clippy.log"
+    },
+    {
+      "slug": "tests",
+      "name": "Default workspace tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "nostr",
+        "-p",
+        "nostr-relay",
+        "--",
+        "--nocapture"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 21.0,
+      "log": ".coder/verification/20260926T082103Z-d5bd6b/tests.log"
+    },
+    {
+      "slug": "postgres",
+      "name": "PostgreSQL acceptance",
+      "command": [
+        "./scripts/test-postgres.sh"
+      ],
+      "status": "failed",
+      "attempts": 1,
+      "exit": 101,
+      "elapsed_s": 6.5,
+      "log": ".coder/verification/20260926T082103Z-d5bd6b/postgres.log"
+    }
+  ],
+  "skipped": [
+    {
+      "slug": "gate-tooling",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "artifacts",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "delegation",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "backup",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "clippy-features",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "tests-features",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "deps",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-clippy",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-tests",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "soak",
+      "reason": "not in --phases"
+    }
+  ],
+  "result": "failed"
+}

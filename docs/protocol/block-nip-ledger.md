@@ -18,10 +18,11 @@ test checks the manifest, exact file set, and source anchors.
 Updating inventory does not turn FI, PMA, or expanded AP/CW/PL/RS roles into
 complete implementations.
 
-The current pure `nostr` suite passes 276 tests and strict all-target Clippy.
-The new RS HTTP/Postgres integration test passes independently against a fresh
-writer database. Other new live relay changes remain pending the current
-manual gate; this ledger does not infer their result from unit tests.
+The pure `nostr` suite passes 290 tests. Strict all-target Clippy and the live
+PostgreSQL acceptance suite cover the new relay behavior. RS acceptance uses
+actual HTTP and a fresh writer database, including restart and retained
+expiration. The [verification record](verification/2026-09-26-nips/README.md)
+names the tested code and distinguishes pure, integration, and omitted checks.
 
 ## Retained checks from the earlier 15-specification pin
 

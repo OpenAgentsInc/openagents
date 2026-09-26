@@ -40,8 +40,8 @@ not establish the state of a production deployment.
 | Official A3 | [`payment_target.rs`](../../crates/nostr/src/domain/payment_target.rs) parses typed targets and produces escaped, inert URIs; event admission checks the kind's syntax. | No network-specific address validation, invoice creation, wallet authority, or payment. |
 | Private event visibility | [Stored queries](../../crates/nostr-relay/src/store/statements.rs), [gateway delivery](../../crates/nostr-relay/src/gateway/server.rs), and [migration 0010](../../migrations/0010_private_protocol_search.sql) apply owner/recipient boundaries and remove private content from the search index. NIP-78 owner state, private `3188` artifacts, PMA refusal, and mailbox/group separation have explicit paths. | Existing disclosure cannot be undone. History, COUNT, ID lookup, search, live delivery, import/restore, and revocation require the corresponding integration evidence; one query test cannot stand in for all paths. |
 | Block AP | [`agent_persona.rs`](../../crates/nostr/src/agent_persona.rs) handles typed persona fields, portable aliases, catalog redaction, foreign adoption, preserved local commands, source digests, and session-restart decisions. | No agent launcher, team-projection consumer, or persona UI. A published command grants no execution authority. |
-| Block CW | [`thread_window.rs`](../../crates/nostr/src/thread_window.rs) checks whole batches, request-bound signed `39007` records, and shared sticky budgets. Client-written `39007` is refused. | The [HTTP query path](../../crates/nostr-relay/src/gateway/query.rs) refuses unsupported thread modes. Thread SQL, auxiliary reconstruction, fresh access checks, and live window delivery remain unimplemented. |
-| Block RS | [`read_state_snapshot.rs`](../../crates/nostr/src/read_state_snapshot.rs) validates raw requests, descriptors, signed events, coordinate uniqueness, digests, and byte/count bounds. The [store](../../crates/nostr-relay/src/store/mod.rs) and [HTTP query path](../../crates/nostr-relay/src/gateway/query.rs) add a configured writer-database snapshot with Host binding and replay-checked NIP-98 authorization. | The snapshot path needs its live acceptance results. It does not by itself establish the separate cross-process, cross-subscription WebSocket EOSE barrier or a synchronized Coder view. |
+| Block CW | [`thread_window.rs`](../../crates/nostr/src/thread_window.rs) checks whole batches, request-bound signed `39007` records, and shared sticky budgets. Client-written `39007` is refused. The channel path rechecks access after reading rows. | The [HTTP query path](../../crates/nostr-relay/src/gateway/query.rs) refuses unsupported thread modes. Thread SQL, auxiliary reconstruction, thread-batch access refresh, and live thread-window delivery remain unimplemented. |
+| Block RS | [`read_state_snapshot.rs`](../../crates/nostr/src/read_state_snapshot.rs) validates raw requests, descriptors, signed events, coordinate uniqueness, digests, and byte/count bounds. The [store](../../crates/nostr-relay/src/store/mod.rs) and [HTTP query path](../../crates/nostr-relay/src/gateway/query.rs) add a configured writer-database snapshot with Host binding and replay-checked NIP-98 authorization. | Live HTTP/PostgreSQL snapshot acceptance passed, including restart and retained expiration. This does not establish the separate cross-process, cross-subscription WebSocket EOSE barrier or a synchronized Coder view. |
 | Block FI | [`federated_identity.rs`](../../crates/nostr/src/federated_identity.rs) bounds compact tokens and checks configured community/issuer, token class, asymmetric algorithm allowlists, audience, time, key, session deadline, and issuer-partitioned deny state. | A mandatory verifier supplies cryptographic evidence. No concrete JWT implementation, JWKS lifecycle, session disconnects, or HTTP/NIP-42 integration is supplied; FI remains unadvertised. |
 | Block PL | [`push_lease.rs`](../../crates/nostr/src/push_lease.rs) excludes `39007` from push kinds. [Gateway configuration](../../crates/nostr-relay/src/gateway/config.rs) rejects the incomplete delivery configuration. | Transactional lease authority, durable delivery jobs, current-membership checks, and the public gateway protocol remain required before re-enabling delivery. |
 | Block PMA | [`validate_block_ingest`](../../crates/nostr/src/domain/block.rs) refuses reserved kind `30179`; stored visibility and search also exclude it. | No PMA privacy/CAS/migration/recovery service is implemented. Rejection is the supported behavior. |
@@ -127,9 +127,10 @@ amounts, currency, payee, description-hash request binding, invoice lifetime,
 and the SHA-256 preimage proof. Its invoice feature interpretation cites the
 reviewed BOLT commit in [the decoder](../../crates/nostr/src/x402/invoice.rs).
 
-HTTP binding preserves exact URI/query order and raw body bytes; MCP binding
-preserves absent, empty, and null parameters. Native Nostr support requires an
-explicit profile selection. Untrusted JSON must pass strict parsing before
+HTTP binding preserves exact URI/query order and raw body bytes. MCP binding
+distinguishes absent, empty, and null selected metadata values; missing
+arguments normalize to `{}`, and null arguments are refused. Native Nostr
+support requires an explicit profile selection. Untrusted JSON must pass strict parsing before
 canonicalization, including duplicate-member rejection. A consumed-proof key
 includes the network and payment hash. The returned retention value is an
 upstream minimum, not permission to discard a native purchase with a longer
@@ -141,6 +142,11 @@ and enforceable fees, response recovery, and actual transport interoperability.
 No feature advertisement or production payment path was added.
 
 ## Verification and remaining release gates
+
+The [retained verification record](verification/2026-09-26-nips/README.md)
+binds results to the tested code, distinguishes the full run from scoped
+recoveries, and retains the earlier failures and their corrections. Source
+inventory counts and passing tests remain narrower than whole-NIP conformance.
 
 The relevant pure fixtures live with the [market validator](../../crates/nostr/src/market_contracts/tests.rs),
 [LAB validator](../../crates/nostr/src/market_contracts/labor/tests.rs),

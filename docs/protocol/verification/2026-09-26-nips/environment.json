@@ -1,0 +1,17 @@
+{
+  "toolchain": "1.97.1",
+  "target_dir": "/tmp/openagents-nip-sync-target",
+  "test_python": "/opt/homebrew/opt/python@3.13/libexec/bin/python3",
+  "notes": [
+    "Symbol and incremental settings reduce build-cache disk consumption; debug assertions were not disabled.",
+    "Gate receipts retain original local log paths. Phase logs are not included in these receipt files.",
+    "The initial full attempt exhausted disk; later runs used a cleared task-local build cache.",
+    "The final check coverage composes the full run with a default gateway recovery and a full-workspace feature recovery after a test-only webhook synchronization fix. Original failed and partial statuses are preserved."
+  ],
+  "gate_overrides": {
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "CARGO_PROFILE_TEST_DEBUG": "0",
+    "CARGO_INCREMENTAL": "0"
+  },
+  "host": "Darwin 25.4.0 arm64"
+}

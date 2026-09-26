@@ -13,9 +13,10 @@ coverage, not every behavior in a NIP or every newly synced recommendation.
 The [September 26 assessment](2026-09-26-upstream-nip-sync.md) and
 [official implementation review](2026-09-26-upstream-nip-sync-official.md)
 record the source changes and original gaps. This ledger records the subsequent
-implementation. Current pure-crate verification passes 276 tests and strict
-all-target Clippy. The new relay privacy and concurrent management fixtures are
-implemented; their live verification is pending the current manual gate.
+implementation. The pure `nostr` suite passes 290 tests. Strict all-target
+Clippy and live PostgreSQL acceptance cover the new relay privacy, concurrent
+management, snapshot, and restart fixtures. The [verification record](verification/2026-09-26-nips/README.md)
+binds those results to a code revision and records the limits of the full gate.
 
 | Current-source change | Implemented role | Boundary |
 | --- | --- | --- |
@@ -444,8 +445,9 @@ The pure replacement fixture remains
 The new `current_private_gateway_contract` in
 [`gateway_postgres.rs`](../../crates/nostr-relay/tests/gateway_postgres.rs)
 checks cross-process history, live delivery, counts, and search for authors,
-other readers, and unauthenticated readers. Live execution is pending the
-current manual gate. NIP-RS provides a separately configured complete
+other readers, and unauthenticated readers. Live PostgreSQL acceptance passed;
+see the [verification record](verification/2026-09-26-nips/README.md).
+NIP-RS provides a separately configured complete
 own-author `30078` cut; that Block extension is not a NIP-78 merge engine.
 
 NIP-88 is `configured-and-proven`. Kind `1068` is a poll.
@@ -1033,7 +1035,7 @@ the banned entry, or a ban mutation removes the allowed entry, and posts the
 selected entry in the same transaction. The
 [`store_postgres.rs`](../../crates/nostr-relay/tests/store_postgres.rs) fixture
 races opposing mutations from two connections and requires exactly one final
-list entry. Its current live verification is pending the manual gate. This
+list entry. That race passed in live PostgreSQL acceptance. This
 change does not turn unsigned calls into administrative authority.
 
 NIP-A3's [`domain/payment_target.rs`](../../crates/nostr/src/domain/payment_target.rs)
