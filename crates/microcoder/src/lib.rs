@@ -14,6 +14,10 @@
 //! `crates/openrouter`, GPT-6 Luna by default. [`env`] is where commands run.
 //! [`tbench`] runs the loop on a Terminal-Bench 4 task, and [`show`] streams a
 //! run to the terminal. Issues #9666 to #9669 hold the design.
+//!
+//! With the knowledge base on (`crates/knowledge`, issue #9670), each step's
+//! state also holds the entries Jev judges relevant, and the model can ask
+//! for an entry's full body with `expand`.
 
 pub mod env;
 pub mod models;

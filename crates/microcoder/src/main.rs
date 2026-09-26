@@ -10,6 +10,7 @@ use microcoder::state::State;
 use microcoder::{MODEL, STRONG_MODEL, tbench};
 
 const USAGE: &str = "usage: microcoder <terminal-bench-task> [options]
+       microcoder kb search|show|lint ... (microcoder kb --help for more)
 
 Runs Microcoder on a Terminal-Bench 4 task and streams every step: Jev's
 judgments, the model's rationale and commands, each command's output, and
@@ -33,6 +34,8 @@ Options:
   --prompt TEXT      the instruction to the model (default \"Solve this task.\")
   --no-acceptance    skip the acceptance tests the model otherwise writes and
                      freezes first, and that must pass before it can finish
+  --kb MODE          the shared knowledge base: on (admitted entries), off, or
+                     candidates (unreviewed entries too) (default on)
   --keep             leave the container running afterward
   --check-grading    run the task's reference solution instead of the loop,
                      then grade it: a check that grading works, at no model cost
@@ -54,6 +57,8 @@ struct Options {
     prompt: String,
     keep: bool,
     check_grading: bool,
+    /// `on`, `off`, or `candidates`.
+    kb: String,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -67,6 +72,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         prompt: USER_PROMPT.to_string(),
         keep: false,
         check_grading: false,
+        kb: "on".to_string(),
     };
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -99,6 +105,15 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--test-seconds" => options.limits.test_seconds = number(value()?)? as u64,
             "--network" => options.network = Some(value()?),
             "--prompt" => options.prompt = value()?,
+            "--kb" => {
+                options.kb = value()?;
+                if !["on", "off", "candidates"].contains(&options.kb.as_str()) {
+                    return Err(format!(
+                        "--kb wants on, off, or candidates, not {}",
+                        options.kb
+                    ));
+                }
+            }
             "--keep" => options.keep = true,
             "--no-acceptance" => options.limits.acceptance = false,
             "--check-grading" => options.check_grading = true,
@@ -176,6 +191,18 @@ async fn go(options: Options) -> Result<u8, String> {
     let judge = JevJudge {
         client: jev_client()?,
     };
+    let retriever = if options.kb == "off" {
+        None
+    } else {
+        let dir = knowledge::default_dir();
+        let base = knowledge::Base::load(&dir, options.kb == "candidates")?;
+        Some(match knowledge::search::OpenRouterEmbedder::from_env() {
+            Ok(embedder) => {
+                knowledge::search::Retriever::new(base, embedder, knowledge::default_cache())
+            }
+            Err(error) => knowledge::search::Retriever::lexical(base, &error),
+        })
+    };
     let mut terminal = Terminal::new();
     let say = |text: &str| terminal_line(text);
     println!(
@@ -191,6 +218,20 @@ async fn go(options: Options) -> Result<u8, String> {
         options.limits.max_seconds / 60,
         options.limits.max_usd
     );
+    if let Some(retriever) = &retriever {
+        println!(
+            "knowledge base: {} entries ({}) from {}",
+            retriever.base.entries.len(),
+            if options.kb == "candidates" {
+                "admitted and candidate"
+            } else {
+                "admitted"
+            },
+            knowledge::default_dir().display()
+        );
+    } else {
+        println!("knowledge base: off");
+    }
     if let Some((passed, runs, seconds, cost)) = tbench::fable(&task.name) {
         println!(
             "Fable 5.1 low on this task: {passed} of {runs} passed, median {} and ${cost:.2} a pass",
@@ -213,6 +254,10 @@ async fn go(options: Options) -> Result<u8, String> {
         "questions": set.id, "questions_file": microcoder::models::QUESTIONS,
         "route": route.id, "route_file": microcoder::models::ROUTE,
         "strong_model": options.strong_model, "route_when": options.limits.route,
+        "kb": options.kb, "knowledge_file": microcoder::models::KNOWLEDGE,
+        "knowledge_entries": retriever.as_ref().map(|r| r.base.entries.iter()
+            .map(|e| serde_json::json!({"id": e.id, "version": e.version, "digest": e.digest}))
+            .collect::<Vec<_>>()),
     }));
 
     let image = tbench::image(&task, &say).await?;
@@ -260,7 +305,7 @@ async fn go(options: Options) -> Result<u8, String> {
                 ..State::default()
             };
             let mut both = Both(&mut terminal, &mut record);
-            run(state, &options.prompt, &env, &Models { generator: &generator, judge: &judge, set: &set, route: &route, strong: Some(&strong) }, &options.limits, &mut both).await
+            run(state, &options.prompt, &env, &Models { generator: &generator, judge: &judge, set: &set, route: &route, strong: Some(&strong), knowledge: retriever.as_ref() }, &options.limits, &mut both).await
         } => result,
         _ = tokio::signal::ctrl_c() => {
             println!("\nInterrupted; removing the container.");
@@ -290,9 +335,9 @@ async fn go(options: Options) -> Result<u8, String> {
         .join("\n");
     println!("{}", indent_block(&tail));
     let passed = verdict.reward.is_some_and(|r| r >= 1.0);
-    let total = outcome.model_usd + outcome.jev_usd;
+    let total = outcome.model_usd + outcome.jev_usd + outcome.embedding_usd;
     println!(
-        "\n{} · reward {} · {} steps · {} · ${total:.4} (model ${:.4}, Jev ${:.5}) · ended by {}",
+        "\n{} · reward {} · {} steps · {} · ${total:.4} (model ${:.4}, Jev ${:.5}, embeddings ${:.6}) · ended by {}",
         task.name,
         verdict
             .reward
@@ -301,6 +346,7 @@ async fn go(options: Options) -> Result<u8, String> {
         clock(outcome.seconds),
         outcome.model_usd,
         outcome.jev_usd,
+        outcome.embedding_usd,
         match &outcome.ending {
             Ending::Finished => "the model finishing".to_string(),
             other => format!("{other:?}"),
@@ -318,6 +364,7 @@ async fn go(options: Options) -> Result<u8, String> {
         "container": name, "image": image,
         "acceptance_tests": end_state.tests, "frozen_at": end_state.frozen_at,
         "test_results": end_state.test_results,
+        "kb": options.kb,
     });
     let _ = std::fs::write(
         run_dir.join("summary.json"),

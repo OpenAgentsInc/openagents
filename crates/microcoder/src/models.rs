@@ -20,6 +20,10 @@ pub const QUESTIONS: &str = include_str!("../questions.json");
 /// writes the acceptance tests.
 pub const ROUTE: &str = include_str!("../route.json");
 
+/// The question Jev answers about each knowledge-base candidate, with
+/// `{entry}` where the candidate's key goes.
+pub const KNOWLEDGE: &str = include_str!("../knowledge.json");
+
 /// One question in the set.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Question {
@@ -52,6 +56,33 @@ pub fn question_set() -> QuestionSet {
 #[must_use]
 pub fn route_set() -> QuestionSet {
     serde_json::from_str(ROUTE).expect("route.json is valid")
+}
+
+/// The embedded knowledge relevance set.
+///
+/// # Panics
+///
+/// When `knowledge.json` isn't valid, which a test checks.
+#[must_use]
+pub fn knowledge_set() -> QuestionSet {
+    serde_json::from_str(KNOWLEDGE).expect("knowledge.json is valid")
+}
+
+/// The relevance question asked once for each of `count` candidates: the
+/// question with id `entry_N` asks about the entry under the state's
+/// `entry_N` key.
+#[must_use]
+pub fn relevance_set(template: &QuestionSet, count: usize) -> QuestionSet {
+    let text = template.questions.first().map_or("", |q| q.text.as_str());
+    QuestionSet {
+        id: template.id.clone(),
+        questions: (1..=count)
+            .map(|n| Question {
+                id: format!("entry_{n}"),
+                text: text.replace("{entry}", &format!("entry_{n}")),
+            })
+            .collect(),
+    }
 }
 
 /// Jev's answers for one step.
@@ -107,6 +138,9 @@ pub struct NextAction {
     /// Freeze the acceptance tests written so far.
     #[serde(default)]
     pub freeze_tests: bool,
+    /// Knowledge-base entries whose full bodies to show in the next step.
+    #[serde(default)]
+    pub expand: Vec<String>,
     pub finished: bool,
 }
 
@@ -134,12 +168,17 @@ pub fn next_action_schema() -> Value {
                 "type": "boolean",
                 "description": "True once the acceptance tests are written, to freeze them after this step's commands run. They freeze once; later values are ignored."
             },
+            "expand": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "IDs of Knowledge base entries whose full bodies to show in the next step's Knowledge base section. A non-empty list replaces the bodies shown; an empty list keeps the current ones. At most 3 are shown."
+            },
             "finished": {
                 "type": "boolean",
                 "description": "True only when the task is complete and nothing is left to run. With acceptance tests on, the host accepts it only when every frozen test passes."
             }
         },
-        "required": ["rationale", "commands", "view", "freeze_tests", "finished"],
+        "required": ["rationale", "commands", "view", "freeze_tests", "expand", "finished"],
         "additionalProperties": false
     })
 }
@@ -273,6 +312,19 @@ mod tests {
     }
 
     #[test]
+    fn the_knowledge_set_asks_one_question_per_candidate() {
+        let set = relevance_set(&knowledge_set(), 3);
+        assert_eq!(set.id, "openagents.microcoder.knowledge.v1");
+        let ids: Vec<&str> = set.questions.iter().map(|q| q.id.as_str()).collect();
+        assert_eq!(ids, ["entry_1", "entry_2", "entry_3"]);
+        assert!(
+            set.questions[2]
+                .text
+                .contains("the knowledge entry in `entry_3`")
+        );
+    }
+
+    #[test]
     fn a_judgment_renders_each_answer_with_its_question() {
         let set = question_set();
         let judgment = Judgment {
@@ -289,7 +341,14 @@ mod tests {
         let schema = next_action_schema();
         assert_eq!(
             schema["required"],
-            json!(["rationale", "commands", "view", "freeze_tests", "finished"])
+            json!([
+                "rationale",
+                "commands",
+                "view",
+                "freeze_tests",
+                "expand",
+                "finished"
+            ])
         );
         assert_eq!(schema["additionalProperties"], false);
     }

@@ -61,6 +61,26 @@ pub struct State {
     /// The latest run of every test, in order; each result's `command` is
     /// the test's name.
     pub test_results: Vec<CommandResult>,
+    /// The knowledge-base entries Jev judged relevant this step, most
+    /// relevant first.
+    pub knowledge: Vec<Kept>,
+    /// Entry IDs whose bodies the model asked to see; kept until it asks for
+    /// others.
+    pub expanded: Vec<String>,
+}
+
+/// A knowledge-base entry shown in the prompt, and Jev's relevance answer.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct Kept {
+    pub id: String,
+    pub kind: String,
+    pub title: String,
+    pub summary: String,
+    pub author: String,
+    pub status: String,
+    pub digest: String,
+    /// The probability Jev gave that the entry bears on the state.
+    pub relevance: f64,
 }
 
 /// One frozen acceptance test: a bash script that exits 0 only when its

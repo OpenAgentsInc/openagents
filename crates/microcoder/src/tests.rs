@@ -7,8 +7,12 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::env::Env;
+use knowledge::search::Retriever;
+use knowledge::{Base, Entry};
+
 use crate::models::{
-    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, question_set, route_set,
+    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, knowledge_set, question_set,
+    route_set,
 };
 use crate::run::{Ending, Event, Limits, Models, Observer, run};
 use crate::state::{CommandResult, State};
@@ -46,15 +50,41 @@ impl Generate for Script {
     }
 }
 
-/// Answers `done` 0.3, and `hard` with `hard`.
+/// Answers `done` 0.3, `hard` with `hard`, and each knowledge candidate
+/// with its entry's relevance in `relevance`, or 0.1.
 struct Jev {
     hard: f64,
+    relevance: Vec<(&'static str, f64)>,
+    /// The id of every question set asked.
+    asked: RefCell<Vec<String>>,
+}
+
+fn jev(hard: f64) -> Jev {
+    Jev {
+        hard,
+        relevance: Vec::new(),
+        asked: RefCell::new(Vec::new()),
+    }
 }
 
 impl Judge for Jev {
-    async fn judge(&self, set: &QuestionSet, _state: &Value) -> Judgment {
+    async fn judge(&self, set: &QuestionSet, state: &Value) -> Judgment {
+        self.asked.borrow_mut().push(set.id.clone());
         let answers = if set.id == route_set().id {
             vec![("hard".to_string(), self.hard)]
+        } else if set.id == knowledge_set().id {
+            set.questions
+                .iter()
+                .map(|q| {
+                    let id = state[&q.id]["id"].as_str().unwrap_or_default();
+                    let p = self
+                        .relevance
+                        .iter()
+                        .find(|(entry, _)| *entry == id)
+                        .map_or(0.1, |(_, p)| *p);
+                    (q.id.clone(), p)
+                })
+                .collect()
         } else {
             vec![("done".to_string(), 0.3)]
         };
@@ -122,6 +152,7 @@ fn act(rationale: &str, commands: &[&str], finished: bool) -> NextAction {
         commands: commands.iter().map(|c| (*c).to_string()).collect(),
         view: Vec::new(),
         freeze_tests: false,
+        expand: Vec::new(),
         finished,
     }
 }
@@ -143,7 +174,7 @@ fn state() -> State {
 }
 
 async fn go(script: &Script, limits: &Limits) -> (State, crate::run::Outcome, Vec<String>, Log) {
-    go_with(script, limits, &Jev { hard: 0.1 }, None).await
+    go_with(script, limits, &jev(0.1), None).await
 }
 
 async fn go_with(
@@ -151,6 +182,16 @@ async fn go_with(
     limits: &Limits,
     jev: &Jev,
     strong: Option<&Script>,
+) -> (State, crate::run::Outcome, Vec<String>, Log) {
+    go_kb(script, limits, jev, strong, None).await
+}
+
+async fn go_kb(
+    script: &Script,
+    limits: &Limits,
+    jev: &Jev,
+    strong: Option<&Script>,
+    knowledge: Option<&Retriever>,
 ) -> (State, crate::run::Outcome, Vec<String>, Log) {
     let env = Fake {
         ran: RefCell::new(Vec::new()),
@@ -164,6 +205,7 @@ async fn go_with(
         set: &set,
         route: &route,
         strong,
+        knowledge,
     };
     let (state, outcome) = run(state(), "Solve this task.", &env, &models, limits, &mut log).await;
     let ran = env.ran.into_inner();
@@ -371,7 +413,7 @@ async fn a_hard_task_has_the_stronger_model_write_the_tests() {
         Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
     ]);
     let (state, outcome, _, log) =
-        go_with(&luna, &Limits::default(), &Jev { hard: 0.8 }, Some(&strong)).await;
+        go_with(&luna, &Limits::default(), &jev(0.8), Some(&strong)).await;
     assert_eq!(outcome.ending, Ending::Finished);
     assert_eq!(state.frozen_at, Some(2));
     // The stronger model wrote the tests; the default model did the rest.
@@ -392,8 +434,7 @@ async fn an_easy_task_stays_on_the_default_model() {
         Ok(act("done", &[], true)),
     ]);
     let strong = Script::new(Vec::new());
-    let (_, outcome, _, _) =
-        go_with(&luna, &Limits::default(), &Jev { hard: 0.2 }, Some(&strong)).await;
+    let (_, outcome, _, _) = go_with(&luna, &Limits::default(), &jev(0.2), Some(&strong)).await;
     assert_eq!(outcome.ending, Ending::Finished);
     assert!(strong.prompts.into_inner().is_empty());
 }
@@ -407,6 +448,167 @@ async fn the_stronger_model_hands_over_after_its_step_budget() {
         max_steps: Some(4),
         ..Limits::default()
     };
-    let _ = go_with(&luna, &limits, &Jev { hard: 0.9 }, Some(&strong)).await;
+    let _ = go_with(&luna, &limits, &jev(0.9), Some(&strong)).await;
     assert_eq!(strong.prompts.into_inner().len(), 2);
+}
+
+fn entry(id: &str, kind: &str, summary: &str) -> Entry {
+    Entry::parse(&format!(
+        "---\nid: {id}\nversion: 1\nkind: {kind}\ntitle: Title of {id}\nsummary: {summary}\n\
+applies_when: Always.\nstatus: admitted\nauthor: openagents\nprovenance:\n  cites: [A Book]\n---\n\n\
+The body of {id}.\n"
+    ))
+    .unwrap()
+}
+
+/// A base of three entries, searched by words alone.
+fn base() -> Retriever {
+    Retriever::lexical(
+        Base {
+            entries: vec![
+                entry("stats.thing", "method", "How to make the thing correctly."),
+                entry("slip.trap", "slip", "A common mistake when making things."),
+                entry("shell.other", "tool", "Unrelated shell advice."),
+            ],
+        },
+        "no key in tests",
+    )
+}
+
+fn relevant(pairs: &[(&'static str, f64)]) -> Jev {
+    Jev {
+        relevance: pairs.to_vec(),
+        ..jev(0.1)
+    }
+}
+
+#[tokio::test]
+async fn kept_entries_appear_in_the_prompt_and_the_system_text() {
+    let script = Script::new(vec![Ok(act("done", &[], true))]);
+    let kb = base();
+    let jev = relevant(&[("stats.thing", 0.9), ("slip.trap", 0.6)]);
+    let (state, _, _, log) = go_kb(&script, &plain(), &jev, None, Some(&kb)).await;
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[0].contains("# Knowledge base"));
+    assert!(prompts[0].contains(
+        "- stats.thing (method, relevance 0.90; by openagents, admitted): Title of stats.thing. \
+How to make the thing correctly."
+    ));
+    assert!(prompts[0].contains("- slip.trap (slip, relevance 0.60"));
+    assert!(!prompts[0].contains("shell.other"), "0.1 is below the bar");
+    // A slip under 0.8 isn't shown in full without being asked for.
+    assert!(!prompts[0].contains("The body of"));
+    assert_eq!(state.knowledge.len(), 2);
+    // Jev judged the candidates, then the state.
+    assert_eq!(
+        jev.asked.into_inner(),
+        [knowledge_set().id, question_set().id]
+    );
+    let Some(Event::Retrieved { retrieval, .. }) =
+        log.0.iter().find(|e| matches!(e, Event::Retrieved { .. }))
+    else {
+        panic!("no retrieval event");
+    };
+    assert_eq!(retrieval.candidates.len(), 3);
+    assert_eq!(retrieval.lexical_only.as_deref(), Some("no key in tests"));
+    assert_eq!(retrieval.kept[0].id, "stats.thing");
+}
+
+#[tokio::test]
+async fn an_expanded_entry_shows_its_body_next_step_and_stays() {
+    let mut first = act("read the entry", &["ls"], false);
+    first.expand = vec!["stats.thing".to_string(), "no.such".to_string()];
+    let script = Script::new(vec![
+        Ok(first),
+        Ok(act("work", &["echo hi"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let kb = base();
+    let jev = relevant(&[("stats.thing", 0.9)]);
+    go_kb(&script, &plain(), &jev, None, Some(&kb)).await;
+    let prompts = script.prompts.into_inner();
+    assert!(!prompts[0].contains("The body of stats.thing"));
+    assert!(prompts[1].contains("## stats.thing (in full): Title of stats.thing"));
+    assert!(prompts[1].contains("The body of stats.thing."));
+    assert!(
+        prompts[1].contains("Step 1 asked to expand no.such, but the knowledge base has no entry")
+    );
+    assert!(
+        prompts[2].contains("The body of stats.thing."),
+        "an empty expand keeps it"
+    );
+}
+
+#[tokio::test]
+async fn a_highly_relevant_slip_is_shown_in_full_unasked() {
+    let script = Script::new(vec![Ok(act("done", &[], true))]);
+    let kb = base();
+    let jev = relevant(&[("slip.trap", 0.85)]);
+    go_kb(&script, &plain(), &jev, None, Some(&kb)).await;
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[0].contains("## slip.trap (in full)"));
+    assert!(prompts[0].contains("The body of slip.trap."));
+}
+
+#[tokio::test]
+async fn with_the_knowledge_base_off_the_prompt_has_no_section() {
+    let script = Script::new(vec![
+        Ok(act("look", &["ls"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let jev = relevant(&[("stats.thing", 0.9)]);
+    let (_, outcome, _, log) = go_kb(&script, &plain(), &jev, None, None).await;
+    for prompt in script.prompts.into_inner() {
+        assert!(!prompt.contains("# Knowledge base"));
+    }
+    assert!(!log.0.iter().any(|e| matches!(e, Event::Retrieved { .. })));
+    assert!(outcome.knowledge.is_empty());
+    assert!(!jev.asked.into_inner().contains(&knowledge_set().id));
+}
+
+#[tokio::test]
+async fn the_record_lists_the_entries_used_with_their_digests() {
+    let mut first = act("read", &["ls"], false);
+    first.expand = vec!["stats.thing".to_string()];
+    let script = Script::new(vec![Ok(first), Ok(act("done", &[], true))]);
+    let kb = base();
+    let jev = relevant(&[("stats.thing", 0.9)]);
+    let (_, outcome, _, log) = go_kb(&script, &plain(), &jev, None, Some(&kb)).await;
+    let used = &outcome.knowledge;
+    assert_eq!(used.len(), 1);
+    assert_eq!(used[0].id, "stats.thing");
+    assert_eq!(used[0].digest, kb.base.get("stats.thing").unwrap().digest);
+    assert_eq!((used[0].kept_steps, used[0].expanded_steps), (2, 1));
+    // The query didn't change, so the second step reused the first's
+    // retrieval and asked Jev about candidates once.
+    let retrievals: Vec<bool> = log
+        .0
+        .iter()
+        .filter_map(|e| match e {
+            Event::Retrieved { retrieval, .. } => Some(retrieval.cached),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(retrievals, [false, true]);
+    let asked = jev.asked.into_inner();
+    assert_eq!(
+        asked.iter().filter(|id| **id == knowledge_set().id).count(),
+        1
+    );
+    // Jev's relevance cost is in the run's Jev total: two state judgments
+    // and one relevance judgment.
+    assert!((outcome.jev_usd - 0.003).abs() < 1e-9);
+    let record = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(record["knowledge"][0]["id"], "stats.thing");
+}
+
+#[tokio::test]
+async fn a_reply_that_only_expands_an_entry_is_not_idle() {
+    let mut first = act("read the entry", &[], false);
+    first.expand = vec!["stats.thing".to_string()];
+    let script = Script::new(vec![Ok(first), Ok(act("done", &[], true))]);
+    let kb = base();
+    let (_, outcome, _, _) = go_kb(&script, &plain(), &jev(0.1), None, Some(&kb)).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert!(!script.prompts.into_inner()[1].contains("ran no commands"));
 }

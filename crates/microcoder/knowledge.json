@@ -1,0 +1,10 @@
+{
+  "id": "openagents.microcoder.knowledge.v1",
+  "note": "What Jev answers about each knowledge-base entry retrieval found for a step, one question per candidate, in one request. The host replaces {entry} with the key that holds the candidate (entry_1, entry_2, and so on). Entries answered yes with probability 0.5 or more are shown, at most 8; a slip at 0.8 or more is shown in full. Change the wording here, not in code; the file is digested into every run's record.",
+  "questions": [
+    {
+      "id": "relevant",
+      "text": "Does the knowledge entry in `{entry}` bear on the current state in `state`: would someone doing this task need to know it?"
+    }
+  ]
+}

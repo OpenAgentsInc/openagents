@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{IsTerminal, Write};
 use std::path::Path;
 
-use crate::run::{Ending, Event, Observer};
+use crate::run::{Ending, Event, Observer, Retrieval};
 
 /// `mm:ss`.
 #[must_use]
@@ -211,6 +211,16 @@ impl Observer for Terminal {
                     ),
                 );
             }
+            Event::Retrieved { step, retrieval } => {
+                self.line(
+                    seconds,
+                    &format!(
+                        "{} {}",
+                        self.paint("1;36", &format!("step {step} · kb")),
+                        retrieval_line(retrieval)
+                    ),
+                );
+            }
             Event::Tested {
                 step,
                 froze,
@@ -249,12 +259,17 @@ impl Observer for Terminal {
                         "finished replies refused while acceptance tests failed".to_string()
                     }
                 };
+                let embeddings = if outcome.embedding_usd > 0.0 {
+                    format!(" · embeddings ${:.6}", outcome.embedding_usd)
+                } else {
+                    String::new()
+                };
                 self.line(
                     seconds,
                     &self.paint(
                         "1;36",
                         &format!(
-                            "loop ended: {why} · {} steps · model ${:.4} · jev ${:.5}",
+                            "loop ended: {why} · {} steps · model ${:.4} · jev ${:.5}{embeddings}",
                             outcome.steps, outcome.model_usd, outcome.jev_usd
                         ),
                     ),
@@ -262,6 +277,52 @@ impl Observer for Terminal {
             }
         }
     }
+}
+
+/// A retrieval on one line: how many candidates, the entries kept with
+/// Jev's relevance, the bodies shown, and the cost.
+#[must_use]
+pub fn retrieval_line(retrieval: &Retrieval) -> String {
+    let mut parts = vec![format!(
+        "{} candidates{}",
+        retrieval.candidates.len(),
+        match (&retrieval.lexical_only, retrieval.cached) {
+            (_, true) => " (unchanged query, reused)",
+            (Some(_), false) => " by words alone",
+            (None, false) => " by words and embeddings",
+        }
+    )];
+    if let Some(error) = &retrieval.error {
+        parts.push(format!("no Jev answers: {error}"));
+    } else if retrieval.kept.is_empty() {
+        parts.push("none kept".to_string());
+    } else {
+        parts.push(format!(
+            "kept {}",
+            retrieval
+                .kept
+                .iter()
+                .map(|k| format!("{} {:.2}", k.id, k.relevance))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if !retrieval.expanded.is_empty() {
+        parts.push(format!(
+            "in full: {}",
+            retrieval
+                .expanded
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    parts.push(format!(
+        "${:.5}",
+        retrieval.jev_usd + retrieval.embedding_usd
+    ));
+    parts.join(" · ")
 }
 
 /// Appends every event to a JSON Lines file.
