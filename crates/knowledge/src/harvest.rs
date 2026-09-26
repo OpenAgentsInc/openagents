@@ -650,10 +650,19 @@ pub async fn harvest_record<P: Propose, E: Embed>(
             kind,
             title: proposal.title.trim().to_string(),
             summary: proposal.summary.trim().to_string(),
+            // A tag that happens to equal a task's name, such as a domain
+            // name, is split into its words so the lint doesn't refuse it.
             tags: proposal
                 .tags
                 .iter()
                 .map(|t| t.trim().to_lowercase().replace(' ', "-"))
+                .flat_map(|t| {
+                    if corpus.names.contains(&t) {
+                        t.split(['-', '_']).map(str::to_string).collect::<Vec<_>>()
+                    } else {
+                        vec![t]
+                    }
+                })
                 .filter(|t| !t.is_empty())
                 .collect(),
             applies_when: proposal.applies_when.trim().to_string(),

@@ -1,6 +1,6 @@
 ---
 id: method.black-box-compatibility-cloning
-version: 3
+version: 2
 kind: method
 title: Clone black-box behavior with structured probes and differential tests
 summary: >-
@@ -9,20 +9,17 @@ summary: >-
   ordinary source implementation against a reference. Use this when examples
   or stale documentation do not fully specify the contract; probes are
   evidence, not a substitute for testing generalization.
-tags: [black-box, differential-testing, reverse-engineering, scoring]
+tags: [black-box-testing, differential-testing, compatibility, reverse-engineering]
 applies_when: >-
-  A command-line oracle is available during development but must not be called
-  or bundled in the final implementation, especially when its behavior
-  includes piecewise logic or hidden interactions.
+  A component must be reimplemented from observable behavior and a reference
+  executable or service is available during investigation but must not be a
+  runtime dependency.
 status: candidate
 author: microcoder kb harvest (openai/gpt-6-luna)
 provenance:
   written_from:
     - risk-scorer-replay
-    - risk-scorer-replay-1790394263
   cites:
-    - William M. McKeeman, “Differential Testing for Software,” Digital Technical Journal, vol. 10, no. 1 (1998), section “Differential Testing”
-    - GNU Binutils, objdump documentation, “objdump options”
     - McKeeman, William M., “Differential Testing,” section “Differential Testing,” 1998.
     - Free Software Foundation, GNU Binutils, “objdump,” sections “objdump” and “Overview.”
 evidence: []
@@ -48,13 +45,3 @@ for case in cases:
 ```
 
 Include explicit cases on both sides of each discovered threshold, absent and malformed fields, and combinations of factors. Finally, search the production source for reference-executable invocations and run the same regression corpus with the reference unavailable.
-
-## Added in version 3
-
-### Details
-
-Treat the oracle as an executable specification, not merely a source of sample outputs. First identify input parsing, routing boundaries, constants, branches, and defaults using permitted inspection tools and controlled one-variable probes. A few matching rows do not identify a general scoring function: plausible smooth approximations can still fail on feature combinations, caps, buckets, and missing values.
-
-Implement the inferred behavior as ordinary source code. Then compare it directly with the oracle across randomized inputs and deliberately targeted boundary cases: blank and malformed fields, values around caps and thresholds, every route boundary, and combinations of categorical and numeric features. Keep the oracle out of the runtime path and do not embed executable payloads. Differential testing is specifically useful for exposing behavioral differences between an implementation and a reference; executable disassembly can help expose branches and constants when source is unavailable.
-
-Sources: William M. McKeeman, “Differential Testing for Software,” *Digital Technical Journal*, vol. 10, no. 1 (1998), section “Differential Testing”; GNU Binutils, *objdump* documentation, “objdump options” (`-d`/`--disassemble`).

@@ -1,26 +1,24 @@
 ---
 id: phonology.intermediate-symbols-for-rule-ordering
-version: 2
+version: 1
 kind: method
-title: Use temporary symbols to preserve environments across ordered rules
+title: Use temporary symbols to preserve intermediate rule contexts
 summary: >-
   When an early change must alter a segment's identity without letting later
   rules treat it as its final surface value, stage the change through a
   temporary symbol. This helps encode feeding, bleeding, and delayed changes
   in sequential rule engines.
-tags: [phonology, rule-ordering, intermediate-representations]
+tags: [phonology, rule-ordering, intermediate-representations, implementation]
 applies_when: >-
-  A sound change depends on a segment’s earlier identity or context, but
-  another ordered change would otherwise make that environment
-  indistinguishable.
+  A sequential rewrite engine applies later context tests to the output of
+  earlier rules, and an early change would otherwise alter the environment
+  needed to analyze a later process.
 status: candidate
 author: microcoder kb harvest (openai/gpt-6-luna)
 provenance:
   written_from:
     - sound-change-cascade
-    - sound-change-cascade-1790402357
   cites:
-    - David Odden, *Introducing Phonology*, chapter 7, “Rules and Derivations”
     - Noam Chomsky and Morris Halle, The Sound Pattern of English, Chapter 8, “The Evaluation of Phonological Rules”
 evidence: []
 ---
@@ -45,17 +43,3 @@ assert all(not any(mark in output for mark in temporary_symbols)
 ```
 
 Also test a minimal pair of inputs where the relevant later rule's context is present in one intermediate form but absent in the other; confirm the temporary-symbol staging preserves the intended distinction.
-
-## Added in version 2
-
-### Details
-
-Sequential rewriting can destroy evidence needed by a later rule. If a later change must distinguish a segment that has already merged with another, or must act on a segment whose context will be altered, use a temporary symbol to preserve that distinction through the required stage. Apply the conditioned rule while the marker is still available, then map the marker to its intended surface segment. Keep temporary symbols out of final outputs.
-
-Choose markers outside the input and target inventories where possible, and ensure no unrelated rule matches them. This is an implementation technique for preserving intermediate representations in ordered phonological rules; see David Odden, *Introducing Phonology*, chapter 7, “Rules and Derivations.”
-
-### How to check
-
-- Identify the exact environment that must survive and the earlier rule that would destroy it.
-- Trace a positive and a negative example through the marker, conditioned rule, and final conversion stages.
-- Test that markers do not leak into outputs or trigger unintended rules, and re-run the full corpus after changing the order.

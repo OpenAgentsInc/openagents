@@ -1,6 +1,6 @@
 ---
 id: method.as-of-event-replay
-version: 2
+version: 1
 kind: method
 title: Replay event histories with explicit ordering and cutoffs
 summary: >-
@@ -8,19 +8,16 @@ summary: >-
   as-of rules instead of deriving final state from the latest row or current
   scorer output. Test cutoff boundaries, ties, and reversible transitions
   independently.
-tags: [event-replay, timestamps, ordering, state-machine]
+tags: [event-replay, timestamps, state-machines, as-of]
 applies_when: >-
-  Building an event-derived decision or lock state from histories that have
-  per-request as-of timestamps, equal-time events, and state transitions such
-  as freeze and reopen.
+  Code folds timestamped events into decisions, locks, overrides, or other
+  state that must reflect a specified point in time.
 status: candidate
 author: microcoder kb harvest (openai/gpt-6-luna)
 provenance:
   written_from:
     - risk-scorer-replay-1790394263
   cites:
-    - "P. Newman, G. Klyne, and C. M. R. G. Schepers, RFC 3339, “Date and Time on the Internet: Timestamps,” §5.1"
-    - Martin Fowler, “Event Sourcing,” section “Application”
     - Martin Fowler, “Event Sourcing,” “How It Works.”
 evidence: []
 ---
@@ -44,15 +41,3 @@ def replay(events, cutoff, apply, initial):
             state = apply(state, event)
     return state
 ```
-
-## Added in version 2
-
-### Details
-
-Parse timestamps with their offsets and compare instants after normalizing to a common time basis; do not compare differently offset timestamp strings lexically. Apply the contract’s cutoff precisely: when events at the as-of instant are included, use `event_time >= as_of`, not a strict comparison that silently drops an event at equality. Preserve the event that established the effective state as the decision source when the output contract requires lineage.
-
-Replay eligible events in the ordering specified by the operational contract. A dashboard’s display order or the input CSV’s incidental row order is not a replay rule. For equal timestamps, use the documented semantic tie-breaker; if none is stated, investigate the intended behavior rather than assuming row order. Treat lock and reopen as state transitions: a freeze need not be terminal if later valid events can reopen the entity. Retain audit-only events when required without letting them alter decision or lock state.
-
-How to check: test events just before, exactly at, and just after the cutoff, including timestamps with equivalent instants expressed using different offsets. Permute input rows while preserving event fields and verify deterministic state and lineage. Include same-time transition pairs and a freeze followed by a reopen.
-
-Sources: P. Newman, G. Klyne, and C. M. R. G. Schepers, RFC 3339, “Date and Time on the Internet: Timestamps,” §5.1 (ordering timestamps); Martin Fowler, “Event Sourcing,” section “Application.”
