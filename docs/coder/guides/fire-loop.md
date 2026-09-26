@@ -337,3 +337,10 @@ Fable 5.1 low passes the task in a median of 17 minutes for $4.55.
 On `risk-scorer-replay` the same arm finished at 9 min 50 s, because
 Luna declared done and its own check passed, so the extra time went
 unused. `microluna-v19-xlong` gives the loop 120 minutes and $0.60.
+
+Two 120-minute `microluna-v19-xlong` runs on `sound-change-cascade` were
+stopped by hand at about 64 minutes, with their own checks at 532 and
+623 of 780 training pairs, behind the 60-minute run's pace; neither was
+graded. Their reports are in their trial folders under `fire/report.md`.
+The fire loop and the Microluna arms stop here: Coder's harness work
+moves to Microcoder, the simple Jev and OpenRouter loop in #9666.
