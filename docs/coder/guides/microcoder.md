@@ -1,9 +1,10 @@
 # Microcoder
 
-Microcoder is Coder's simple loop, run on OpenRouter. It replaced Microluna
-on 2026-09-25 (issue [#9666](https://github.com/OpenAgentsInc/openagents/issues/9666)).
-Each step, Jev judges the state, one OpenRouter call returns the next
-commands, and the host runs them:
+Microcoder is Coder's simple loop. It replaced Microluna on 2026-09-25
+(issue [#9666](https://github.com/OpenAgentsInc/openagents/issues/9666)).
+Each step, Jev judges the state, one call to GPT-6 Luna returns the next
+commands, and the host runs them. Since 2026-09-26 the call goes through
+the operator's logged-in Codex subscription, not OpenRouter:
 
 ```text
 while next_action isn't finished:
@@ -15,8 +16,8 @@ while next_action isn't finished:
 ```
 
 The code is `crates/microcoder`. It depends on `crates/jev`,
-`crates/openrouter`, and `crates/knowledge`, and nothing else in the
-repository.
+`crates/knowledge`, `crates/microluna` (for its Codex transport), and
+`crates/openrouter` (kept for `--provider openrouter` and for embeddings).
 
 ## Run a Terminal-Bench 4 task
 
@@ -32,10 +33,12 @@ on the same task. Every step streams to the terminal: Jev's answers, the
 knowledge-base entries kept, the model's reason, each command's first lines,
 and the acceptance test results.
 
-Keys come from `OPENROUTER_API_KEY` or `~/.openagents/openrouter.json`,
-and `TYPESAFE_API_KEY` or `~/.openagents/jev.json`. No key enters the
-container: commands run through `docker exec`, and the model and Jev are
-called from the host.
+The model is reached through the Codex login in `~/.codex/auth.json`: run
+`codex login` first. Jev needs `TYPESAFE_API_KEY` or
+`~/.openagents/jev.json`. Knowledge-base embeddings use `OPENROUTER_API_KEY`
+or `~/.openagents/openrouter.json` when it works; without it, search ranks
+entries by words alone. No key enters the container: commands run through
+`docker exec`, and the model and Jev are called from the host.
 
 Each run writes `~/.openagents/microcoder/runs/<task>-<time>/`:
 `events.jsonl` (every event as it happened), `summary.json` (the outcome,
@@ -56,9 +59,11 @@ instead of the loop, which checks that grading works at no model cost.
    (whether the task is done, whether the last step made progress, and
    whether the steps repeat a failed approach). Its answers go into the
    prompt as evidence.
-3. **Generate.** One OpenRouter call returns an object with `rationale`,
-   `commands`, `view`, `expand`, `freeze_tests`, and `finished`, under a
-   strict JSON schema.
+3. **Generate.** One Codex Responses request declares one strict native
+   tool, `next_action`, whose parameters are `rationale`, `commands`,
+   `view`, `expand`, `freeze_tests`, and `finished`; the model's call to it
+   is the action. The cost shown is Luna's list price for the reported
+   tokens, since the subscription doesn't bill per call.
 4. **Run.** Each command is a bash script fed to the container's shell,
    in order, with a deadline, stopping at the first failure.
 5. **Files in view.** The host reads the files the model lists in `view`
@@ -101,10 +106,12 @@ run, and so do three replies in a row that don't match the schema.
 ## Other options
 
 - `--model SLUG` and `--effort low|medium|high`: the generating model,
-  `openai/gpt-6-luna` at medium effort by default.
+  `gpt-6-luna` at medium effort by default.
+- `--provider codex|openrouter`: how the model is reached. `codex`, the
+  operator's Codex login, is the default; `openrouter` is the earlier path.
 - `--kb on|off|candidates`: the knowledge base, on by default.
 - `--route never|auto|always` and `--strong-model SLUG`: whether a
-  stronger model (`openai/gpt-6-sol` by default) writes the acceptance
+  stronger model (`gpt-6-sol` by default) writes the acceptance
   tests. Off by default; the code stays for later measurement.
 - `--network NAME`: the container's Docker network. `bridge` by default,
   and `none` for a task whose `task.toml` sets `allow_internet = false`.

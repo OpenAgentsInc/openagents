@@ -13,8 +13,10 @@ base exists and how retrieval works inside Microcoder's loop, and
 - Entries live in `knowledge/` at the repository root, one Markdown file per
   entry. Set `OPENAGENTS_KNOWLEDGE` or pass `--dir DIR` to use another
   directory.
-- Embeddings and `kb harvest` need an OpenRouter key:
-  `OPENROUTER_API_KEY`, or `api_key` in `~/.openagents/openrouter.json`.
+- Embeddings and the `kb harvest` commands still call OpenRouter and need
+  `OPENROUTER_API_KEY`, or `api_key` in `~/.openagents/openrouter.json`,
+  with credit on the account. Microcoder itself moved to the Codex login on
+  2026-09-26; moving the harvest commands there too is open work.
   Without one, search ranks by words alone.
 - The lint checks entries against the installed Terminal-Bench 4 tasks under
   `~/.openagents/terminal-bench/`. Pass `--corpus DIR`, which can repeat, to
