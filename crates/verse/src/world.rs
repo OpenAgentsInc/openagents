@@ -23,6 +23,12 @@ pub const COMPUTER: Vec3 = Vec3::new(0.0, 0.0, -5.0);
 pub const COMPUTER_SCREEN: Vec3 = Vec3::new(0.0, 2.4, -5.16);
 /// Maximum ground-plane distance at which the computer can be opened.
 pub const COMPUTER_RANGE: f32 = 3.0;
+/// Center of the Gym's walkable hall, east of the plaza.
+pub const GYM_CENTER: Vec3 = Vec3::new(48.0, 0.0, 0.0);
+/// The west doorway faces the plaza and has six meters of clear width.
+pub const GYM_ENTRANCE: Vec3 = Vec3::new(36.0, 0.0, 0.0);
+/// Center of the main bulletin board, facing the hall's entrance.
+pub const GYM_BOARD: Vec3 = Vec3::new(58.8, 2.8, 0.0);
 /// Where the pylon stands.
 pub const PYLON: Vec3 = Vec3::new(0.0, 0.0, 14.0);
 /// Where the quest board stands, facing the plaza.
@@ -59,6 +65,7 @@ pub fn build() -> World {
     ground(&mut world.mesh);
     city(&mut world);
     computer(&mut world);
+    gym(&mut world);
     pylon(&mut world);
     quest_board(&mut world);
     workbench(&mut world);
@@ -162,6 +169,149 @@ fn computer(world: &mut World) {
         min: [c.x - 1.8, c.z - 0.8],
         max: [c.x + 1.8, c.z + 0.8],
     });
+}
+
+fn gym(world: &mut World) {
+    // Low solid walls keep the third-person camera usable. Upper posts and
+    // beams define a hall without an opaque roof hiding the player.
+    for (min, max) in [
+        ([36.0, -9.0], [60.0, -8.5]),
+        ([36.0, 8.5], [60.0, 9.0]),
+        ([59.5, -8.5], [60.0, 8.5]),
+        ([36.0, -8.5], [36.5, -3.0]),
+        ([36.0, 3.0], [36.5, 8.5]),
+    ] {
+        let center = Vec3::new((min[0] + max[0]) / 2.0, 0.6, (min[1] + max[1]) / 2.0);
+        world.mesh.cube(
+            Mat4::from_translation(center)
+                * Mat4::from_scale(Vec3::new(max[0] - min[0], 1.2, max[1] - min[1])),
+            Intensity::Half,
+        );
+        world.blockers.push(Footprint { min, max });
+    }
+    let mesh = &mut world.mesh;
+    for (x, z) in [
+        (36.25, -8.75),
+        (36.25, -3.25),
+        (36.25, 3.25),
+        (36.25, 8.75),
+        (59.75, -8.75),
+        (59.75, 8.75),
+    ] {
+        mesh.cube(
+            Mat4::from_translation(Vec3::new(x, 3.0, z))
+                * Mat4::from_scale(Vec3::new(0.35, 6.0, 0.35)),
+            Intensity::ThreeQuarters,
+        );
+    }
+    for y in [1.25, 6.0] {
+        mesh.polyline_loop(
+            &[
+                Vec3::new(36.25, y, -8.75),
+                Vec3::new(59.75, y, -8.75),
+                Vec3::new(59.75, y, 8.75),
+                Vec3::new(36.25, y, 8.75),
+            ],
+            Intensity::ThreeQuarters,
+        );
+    }
+    // Threshold stripes mark the physical entrance without blocking it.
+    for x in [35.0, 35.5, 36.0] {
+        mesh.line(
+            Vec3::new(x, 0.025, -2.8),
+            Vec3::new(x, 0.025, 2.8),
+            Intensity::Full,
+        );
+    }
+    gym_sign(mesh);
+    gym_boards(mesh);
+}
+
+fn gym_sign(mesh: &mut Mesh) {
+    let sign = |u: f32, v: f32, depth: f32| Vec3::new(35.9 + depth, 6.4 + v * 1.8, u);
+    // Extruded line strokes spell GYM on the west face. They are geometry,
+    // independent of the desktop glyph atlas and the mobile native fonts.
+    let letters: [(&[(f32, f32)], f32); 3] = [
+        (
+            &[
+                (1.0, 1.0),
+                (0.0, 1.0),
+                (0.0, 0.0),
+                (1.0, 0.0),
+                (1.0, 0.5),
+                (0.5, 0.5),
+            ],
+            -3.8,
+        ),
+        (
+            &[(0.0, 1.0), (0.5, 0.5), (1.0, 1.0), (0.5, 0.5), (0.5, 0.0)],
+            -1.0,
+        ),
+        (
+            &[(0.0, 0.0), (0.0, 1.0), (0.5, 0.4), (1.0, 1.0), (1.0, 0.0)],
+            1.8,
+        ),
+    ];
+    for (stroke, offset) in letters {
+        for pair in stroke.windows(2) {
+            for depth in [0.0, 0.18] {
+                mesh.line(
+                    sign(offset + pair[0].0 * 2.0, pair[0].1, depth),
+                    sign(offset + pair[1].0 * 2.0, pair[1].1, depth),
+                    Intensity::Full,
+                );
+            }
+        }
+        for &(u, v) in stroke {
+            mesh.line(
+                sign(offset + u * 2.0, v, 0.0),
+                sign(offset + u * 2.0, v, 0.18),
+                Intensity::Half,
+            );
+        }
+    }
+}
+
+fn gym_boards(mesh: &mut Mesh) {
+    let at = |u: f32, v: f32| GYM_BOARD + Vec3::new(0.0, v, u);
+    let panel = |mesh: &mut Mesh, center: f32, half_width: f32| {
+        let corners = [
+            at(center - half_width, -1.55),
+            at(center + half_width, -1.55),
+            at(center + half_width, 1.55),
+            at(center - half_width, 1.55),
+        ];
+        mesh.quad(corners);
+        mesh.polyline_loop(&corners, Intensity::Full);
+        mesh.line(
+            at(center - half_width, 1.0),
+            at(center + half_width, 1.0),
+            Intensity::Half,
+        );
+    };
+    // A central bulletin and two plot panels. Empty rows and axes denote
+    // surfaces awaiting admitted data; they do not depict invented results.
+    panel(mesh, 0.0, 2.5);
+    for v in [-0.8, -0.2, 0.4] {
+        mesh.line(at(-2.15, v), at(2.15, v), Intensity::Quarter);
+    }
+    for center in [-5.7, 5.7] {
+        panel(mesh, center, 2.3);
+        mesh.line(
+            at(center - 1.85, -1.1),
+            at(center + 1.8, -1.1),
+            Intensity::Half,
+        );
+        mesh.line(
+            at(center - 1.85, -1.1),
+            at(center - 1.85, 0.65),
+            Intensity::Half,
+        );
+        for i in 1..=4 {
+            let u = center - 1.85 + i as f32 * 0.8;
+            mesh.line(at(u, -1.15), at(u, -1.05), Intensity::Quarter);
+        }
+    }
 }
 
 fn ground(mesh: &mut Mesh) {
@@ -529,6 +679,55 @@ mod tests {
         let b = build();
         assert_eq!(a.blockers, b.blockers);
         assert_eq!(a.mesh.lines, b.mesh.lines);
+    }
+
+    #[test]
+    fn gym_hall_and_door_are_clear_and_signage_is_world_geometry() {
+        let world = build();
+        for point in [GYM_CENTER, GYM_ENTRANCE, Vec3::new(54.0, 0.0, 0.0)] {
+            assert!(
+                !world.blockers.iter().any(|wall| wall.contains(
+                    point.x,
+                    point.z,
+                    crate::controller::RADIUS
+                )),
+                "{point:?}"
+            );
+        }
+        assert!(
+            world
+                .blockers
+                .iter()
+                .any(|wall| wall.contains(36.25, 6.0, 0.0))
+        );
+        assert!(
+            world
+                .blockers
+                .iter()
+                .any(|wall| wall.contains(48.0, 8.75, 0.0))
+        );
+        let sign_vertices = world
+            .mesh
+            .lines
+            .iter()
+            .filter(|vertex| {
+                (35.89..36.09).contains(&vertex.pos[0])
+                    && (6.39..8.21).contains(&vertex.pos[1])
+                    && vertex.pos[2].abs() < 4.0
+            })
+            .count();
+        assert!(sign_vertices > 60, "the GYM sign has three extruded glyphs");
+        let boards = world
+            .mesh
+            .faces
+            .iter()
+            .filter(|vertex| {
+                (vertex.pos[0] - GYM_BOARD.x).abs() < 0.001
+                    && vertex.pos[2].abs() < 8.1
+                    && vertex.pos[1] > 1.2
+            })
+            .count();
+        assert!(boards >= 18, "three physical board faces remain present");
     }
 
     #[test]

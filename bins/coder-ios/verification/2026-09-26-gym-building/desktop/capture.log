@@ -1,0 +1,27 @@
+   Compiling serde_json v1.0.151
+   Compiling nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+   Compiling reqwest v0.12.28
+   Compiling atif v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/atif)
+   Compiling fxprof-processed-profile v0.8.1
+   Compiling wit-parser v0.254.0
+   Compiling microluna v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/microluna)
+   Compiling jev v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/jev)
+   Compiling openrouter v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/openrouter)
+   Compiling wasmtime v48.0.2
+   Compiling rust-native v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/rust-native)
+   Compiling coder-ui v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-ui)
+   Compiling coder-history v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-history)
+   Compiling coder-terminal v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-terminal)
+   Compiling receipts v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/receipts)
+   Compiling nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr-transport)
+   Compiling knowledge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/knowledge)
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-connect)
+   Compiling capability v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/capability)
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/gym-bridge)
+   Compiling gym v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/gym)
+   Compiling plugin v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/plugin)
+   Compiling coder-one v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-one)
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/verse)
+    Finished `dev` profile [unoptimized] target(s) in 28.23s
+     Running `../target-verse/debug/examples/gym_capture /tmp/verse-gym-capture`

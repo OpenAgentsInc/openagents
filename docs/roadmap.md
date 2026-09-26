@@ -85,6 +85,16 @@ result, platform release, or full verification matrix before independent work
 can proceed. [Development verification](verification.md) is targeted; the full
 manual matrix is release-only.
 
+### Spatial run observation
+
+The [Verse Gym building](verse/gym.md), tracked in
+[#9700](https://github.com/OpenAgentsInc/openagents/issues/9700), shares desktop
+and iOS geometry, entry-scoped private observations, recorded charts, and
+explicitly confirmed host recipes. Microcoder and Terminal-Bench come first.
+This is a run-control surface over operator-selected sources, not a new training
+algorithm or a claim that file activity proves process liveness. Broader training
+services and cross-operator orchestration remain separate roadmap work.
+
 ### Shared native interfaces
 
 [Rust Native](../crates/rust-native/README.md), tracked in

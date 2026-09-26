@@ -32,6 +32,23 @@ pub struct Computer {
     pub distance: f32,
 }
 
+/// Spatial state for the Gym. Occupancy alone grants no execution authority.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Gym {
+    /// The player's feet are inside the hall and below its upper structure.
+    pub inside: bool,
+    /// Inside and within six ground-plane meters of the central board.
+    pub near: bool,
+    /// The board anchor projects into the viewport, without an occlusion test.
+    pub visible: bool,
+    /// Horizontal normalized anchor from the viewport's left edge.
+    pub screen_x: f32,
+    /// Vertical normalized anchor from the viewport's top edge.
+    pub screen_y: f32,
+    /// Ground-plane distance to the central board, in meters.
+    pub distance: f32,
+}
+
 /// Camera intent, independent of a mouse, touchscreen, or gamepad.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Action {
@@ -171,6 +188,36 @@ impl WorldRuntime {
         result
     }
 
+    /// Reports occupancy and the central Gym board's normalized projection.
+    /// Hosts gate Gym reads on `inside` and their own active-surface state.
+    #[must_use]
+    pub fn gym(&self, aspect: f32) -> Gym {
+        let position = self.player.pos;
+        let inside = (36.5..59.5).contains(&position.x)
+            && (-8.5..8.5).contains(&position.z)
+            && (0.0..=4.5).contains(&position.y);
+        let offset = position - world::GYM_BOARD;
+        let distance = offset.x.hypot(offset.z);
+        let clip = self.view(aspect).view_proj * world::GYM_BOARD.extend(1.0);
+        let mut result = Gym {
+            inside,
+            near: inside && distance <= 6.0,
+            visible: false,
+            screen_x: 0.5,
+            screen_y: 0.5,
+            distance,
+        };
+        if aspect.is_finite() && aspect > 0.0 && clip.is_finite() && clip.w > 0.0 {
+            let ndc = clip.truncate() / clip.w;
+            result.screen_x = (ndc.x * 0.5 + 0.5).clamp(0.0, 1.0);
+            result.screen_y = (0.5 - ndc.y * 0.5).clamp(0.0, 1.0);
+            result.visible = (-1.0..=1.0).contains(&ndc.x)
+                && (-1.0..=1.0).contains(&ndc.y)
+                && (0.0..=1.0).contains(&ndc.z);
+        }
+        result
+    }
+
     /// Local player and follower geometry. Services append remote entities.
     #[must_use]
     pub fn dynamic_mesh(&self) -> Mesh {
@@ -200,6 +247,72 @@ impl WorldRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gym_entry_requires_the_real_doorway_and_excludes_walls_and_roof() {
+        let mut runtime = WorldRuntime::new();
+        runtime
+            .set_spawn(Vec3::new(33.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
+            .unwrap();
+        assert!(!runtime.gym(1.0).inside);
+        for _ in 0..220 {
+            runtime.tick(
+                &InputState {
+                    forward: true,
+                    ..InputState::default()
+                },
+                1.0 / 60.0,
+            );
+        }
+        let board = runtime.gym(1.0);
+        assert!(board.inside && board.near && board.visible);
+        assert!((board.screen_x - 0.5).abs() < 0.001);
+        assert!(runtime.player.pos.x > 55.0);
+        for _ in 0..360 {
+            runtime.tick(
+                &InputState {
+                    backward: true,
+                    ..InputState::default()
+                },
+                1.0 / 60.0,
+            );
+        }
+        assert!(!runtime.gym(1.0).inside);
+        runtime
+            .set_spawn(Vec3::new(33.0, 0.0, 6.0), std::f32::consts::FRAC_PI_2)
+            .unwrap();
+        for _ in 0..120 {
+            runtime.tick(
+                &InputState {
+                    forward: true,
+                    ..InputState::default()
+                },
+                1.0 / 60.0,
+            );
+        }
+        assert!(runtime.player.pos.x < 36.0);
+        assert!(!runtime.gym(1.0).inside);
+        for position in [
+            Vec3::new(36.49, 0.0, 0.0),
+            Vec3::new(59.5, 0.0, 0.0),
+            Vec3::new(48.0, 0.0, -8.51),
+            Vec3::new(48.0, 0.0, 8.5),
+            Vec3::new(58.0, 4.51, 0.0),
+            Vec3::new(58.0, 6.0, 0.0),
+        ] {
+            runtime
+                .set_spawn(position, std::f32::consts::FRAC_PI_2)
+                .unwrap();
+            assert!(!runtime.gym(1.0).inside, "{position:?}");
+            assert!(!runtime.gym(1.0).near);
+        }
+        runtime
+            .set_spawn(Vec3::new(54.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
+            .unwrap();
+        assert!(runtime.gym(1.0).inside && runtime.gym(1.0).near);
+        assert!(!runtime.gym(0.0).visible);
+        assert!(!runtime.gym(f32::NAN).visible);
+    }
 
     #[test]
     fn the_computer_is_visible_then_reachable_without_walking_through_it() {

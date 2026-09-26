@@ -18,6 +18,8 @@ struct VerseScreen: View {
 
     private var active: Bool { phase == .active }
     private var computerOpen: Bool { bridge.packet?.computer_open == true }
+    private var gymOpen: Bool { bridge.packet?.gym_open == true }
+    private var panelOpen: Bool { computerOpen || gymOpen }
 
     var body: some View {
         GeometryReader { geometry in
@@ -46,8 +48,10 @@ struct VerseScreen: View {
                             Text(packet.position.map { String(format: "%.2f", $0) }.joined(separator: ", "))
                                 .accessibilityIdentifier("verse-position")
                         }.font(.caption2.monospacedDigit())
+                        Text(packet.gym_active ? "Gym listening" : "Gym idle")
+                            .font(.caption2).accessibilityIdentifier("gym-interest")
                     }
-                    if !computerOpen {
+                    if !panelOpen {
                         Text("Walk to the computer to connect your chats.").font(.caption)
                         Text("Drag left to move · drag right to look").font(.caption2)
                         HStack {
@@ -63,8 +67,8 @@ struct VerseScreen: View {
                                 .labelStyle(.iconOnly)
                         }
                     }
-                }.padding(16).allowsHitTesting(!computerOpen)
-                if let computer = bridge.packet?.computer, computer.visible || computerOpen {
+                }.padding(16).allowsHitTesting(!panelOpen)
+                if let computer = bridge.packet?.computer, !gymOpen, computer.visible || computerOpen {
                     let anchor = CGPoint(x: clamped(computer.screen_x, 0, 1) * geometry.size.width,
                                          y: clamped(computer.screen_y, 0, 1) * geometry.size.height)
                     if computerOpen {
@@ -83,11 +87,28 @@ struct VerseScreen: View {
                                   y: clamped(anchor.y - 28, 70, geometry.size.height - 160))
                     }
                 }
+                if let gym = bridge.packet?.gym, !computerOpen, gymOpen || (gym.inside && gym.visible) {
+                    let anchor = CGPoint(x: clamped(gym.screen_x, 0, 1) * geometry.size.width,
+                                         y: clamped(gym.screen_y, 0, 1) * geometry.size.height)
+                    if gymOpen {
+                        gymPanel(anchor: anchor, size: geometry.size)
+                    } else {
+                        Button { bridge.send(["action": "interact_gym"]) } label: {
+                            Label(gym.near ? "Open Gym board" : "Gym board", systemImage: "chart.xyaxis.line")
+                                .padding(.horizontal, 12).padding(.vertical, 9)
+                                .background(.ultraThinMaterial, in: Capsule())
+                        }
+                        .disabled(!gym.near || !active)
+                        .accessibilityIdentifier("gym-interact")
+                        .position(x: clamped(anchor.x, 106, geometry.size.width - 106),
+                                  y: clamped(anchor.y - 28, 70, geometry.size.height - 160))
+                    }
+                }
             }
             .background(Color(red: 0.025, green: 0.02, blue: 0))
         }
         .onChange(of: active) { _, enabled in if !enabled { sprint = false } }
-        .onChange(of: computerOpen) { _, open in if open { sprint = false } }
+        .onChange(of: panelOpen) { _, open in if open { sprint = false } }
     }
 
     private func anchoredPanel(anchor: CGPoint, size: CGSize) -> some View {
@@ -114,13 +135,29 @@ struct VerseScreen: View {
         }
     }
 
+    private func gymPanel(anchor: CGPoint, size: CGSize) -> some View {
+        let width = min(size.width - 24, 540)
+        let height = max(180, size.height - 110)
+        let left = clamped(anchor.x - width / 2, 12, size.width - width - 12)
+        let top = 76.0
+        return ZStack(alignment: .topLeading) {
+            Path { path in
+                path.move(to: anchor)
+                path.addLine(to: CGPoint(x: clamped(anchor.x, left + 20, left + width - 20), y: top))
+            }.stroke(.tint.opacity(0.8), lineWidth: 2).allowsHitTesting(false)
+            GymPanel(bridge: bridge) { bridge.send(["action": "close_gym"]) }
+                .frame(width: width, height: height)
+                .position(x: left + width / 2, y: top + height / 2)
+        }
+    }
+
     private func mount(resource: String, label: String) -> AnyView {
         guard resource == "verse.world" else {
             return AnyView(Text("This world surface is unavailable."))
         }
         return AnyView(VerseSurface(bridge: bridge, active: active, label: label)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .allowsHitTesting(!computerOpen))
+            .allowsHitTesting(!panelOpen))
     }
 
     private func clamped(_ value: Double, _ lower: Double, _ upper: Double) -> Double {

@@ -45,6 +45,8 @@ pub struct Options {
     pub xp_referees: Vec<String>,
     /// A Microcoder run to replay on launch: its directory or Gym run ID.
     pub replay: Option<String>,
+    /// Signed Gym connection JSON, read only after entering the Gym.
+    pub gym_connection: Option<std::path::PathBuf>,
 }
 
 impl Default for Options {
@@ -56,6 +58,7 @@ impl Default for Options {
             xp_keys: Vec::new(),
             xp_referees: Vec::new(),
             replay: None,
+            gym_connection: None,
         }
     }
 }
@@ -424,6 +427,17 @@ struct App {
     picker: Option<Picker>,
     /// The retained runs the list offers, read when it first opens.
     choices: Option<Vec<replay::Choice>>,
+    gym: Option<crate::gym::Board>,
+    gym_view: Option<crate::gym::BoardView>,
+    gym_identity_attempted: bool,
+    gym_profile: String,
+    gym_connection: Option<std::path::PathBuf>,
+    gym_connection_attempted: bool,
+    gym_open: bool,
+    gym_recipes: bool,
+    gym_selected: usize,
+    gym_scroll: usize,
+    gym_notice: Option<String>,
 }
 
 /// The replay list: the retained `beats-winner` runs and which is chosen.
@@ -580,7 +594,179 @@ impl App {
             finished: [false; 2],
             picker: None,
             choices: None,
+            gym: None,
+            gym_view: None,
+            gym_identity_attempted: false,
+            gym_profile: options.profile.clone(),
+            gym_connection: options.gym_connection.clone(),
+            gym_connection_attempted: false,
+            gym_open: false,
+            gym_recipes: false,
+            gym_selected: 0,
+            gym_scroll: 0,
+            gym_notice: None,
         })
+    }
+
+    /// The spatial and lifecycle gate owns all Gym reads. Merely starting Verse
+    /// does not read a connection file, open a Gym socket, or list local runs.
+    fn update_gym(&mut self, active: bool) {
+        let inside = active && self.runtime.gym(1.0).inside;
+        if !inside {
+            if let Some(board) = &mut self.gym {
+                board.set_active(false);
+            }
+            self.gym_open = false;
+            return;
+        }
+        if self.gym.is_none() && !self.gym_identity_attempted {
+            self.gym_identity_attempted = true;
+            match crate::identity::load_or_create(&crate::identity::home(), &self.gym_profile) {
+                Ok(identity) => self.gym = Some(crate::gym::Board::new(identity.secret, false)),
+                Err(error) => {
+                    self.gym_notice = Some(error);
+                    return;
+                }
+            }
+        }
+        let Some(board) = self.gym.as_mut() else {
+            return;
+        };
+        if !self.gym_connection_attempted {
+            self.gym_connection_attempted = true;
+            let result = self.gym_connection.as_ref().map_or(Ok(()), |path| {
+                read_gym_connection(path).and_then(|code| board.configure(&code))
+            });
+            if let Err(error) = result {
+                self.gym_notice = Some(error);
+                // A failed configured read is retried only by an explicit key.
+                board.set_active(false);
+                return;
+            }
+        }
+        board.set_active(true);
+        board.poll();
+        if self
+            .gym_view
+            .as_ref()
+            .is_none_or(|v| v.revision != board.revision())
+        {
+            let mut view = board.view();
+            prioritize_gym_runs(&mut view);
+            let count = if self.gym_recipes {
+                view.recipes.len()
+            } else {
+                view.runs.len()
+            };
+            self.gym_selected = self.gym_selected.min(count.saturating_sub(1));
+            self.gym_view = Some(view);
+        }
+    }
+
+    fn gym_key(&mut self, code: KeyCode, pressed: bool) -> bool {
+        if code == KeyCode::KeyG && pressed && self.runtime.gym(1.0).inside {
+            self.gym_open = !self.gym_open;
+            self.chat.open = false;
+            self.board_open = false;
+            self.picker = None;
+            self.keys = Keys::default();
+            self.capture(false);
+            return true;
+        }
+        if !self.gym_open {
+            return false;
+        }
+        if !pressed {
+            return true;
+        }
+        if code == KeyCode::F5 {
+            self.gym_identity_attempted = false;
+            self.gym_connection_attempted = false;
+            self.gym_notice = None;
+            return true;
+        }
+        match code {
+            KeyCode::PageUp => {
+                self.gym_scroll = self.gym_scroll.saturating_sub(8);
+                return true;
+            }
+            KeyCode::PageDown => {
+                self.gym_scroll = self.gym_scroll.saturating_add(8).min(512);
+                return true;
+            }
+            _ => {}
+        }
+        let Some(board) = &mut self.gym else {
+            if code == KeyCode::Escape {
+                self.gym_open = false;
+            }
+            return true;
+        };
+        let mut view = board.view();
+        prioritize_gym_runs(&mut view);
+        let count = if self.gym_recipes {
+            view.recipes.len()
+        } else {
+            view.runs.len()
+        };
+        let result = match code {
+            KeyCode::Escape => {
+                self.gym_open = false;
+                board.close_detail();
+                Ok(())
+            }
+            KeyCode::Tab => {
+                self.gym_recipes = !self.gym_recipes;
+                self.gym_selected = 0;
+                self.gym_scroll = 0;
+                board.close_detail();
+                Ok(())
+            }
+            KeyCode::ArrowUp => {
+                self.gym_selected = self.gym_selected.saturating_sub(1);
+                self.gym_scroll = 0;
+                board.close_detail();
+                Ok(())
+            }
+            KeyCode::ArrowDown => {
+                self.gym_selected = self
+                    .gym_selected
+                    .saturating_add(1)
+                    .min(count.saturating_sub(1));
+                self.gym_scroll = 0;
+                board.close_detail();
+                Ok(())
+            }
+            KeyCode::Backspace => {
+                self.gym_scroll = 0;
+                board.close_detail();
+                Ok(())
+            }
+            KeyCode::KeyY => board.retry_launch(),
+            KeyCode::Enter | KeyCode::NumpadEnter => {
+                self.gym_scroll = 0;
+                if self.gym_recipes {
+                    if view.selected_recipe.is_some() {
+                        board.confirm_launch()
+                    } else if let Some(recipe) = view.recipes.get(self.gym_selected) {
+                        board.select_recipe(&recipe.id)
+                    } else {
+                        Ok(())
+                    }
+                } else if let Some(run) = view.runs.get(self.gym_selected) {
+                    board.select_run(&run.id)
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Ok(()),
+        };
+        if let Err(error) = result {
+            self.gym_notice = Some(error);
+        } else {
+            self.gym_notice = None;
+        }
+        true
     }
 
     /// Opens the replay list, reading the retained runs the first time.
@@ -669,6 +855,7 @@ impl App {
 
     /// Records the player as offline on the relay before quitting.
     fn quit(&mut self, event_loop: &ActiveEventLoop) {
+        self.update_gym(false);
         if let Some(session) = &mut self.session {
             session.leave(&self.runtime.player, &self.runtime.agent);
         }
@@ -968,6 +1155,9 @@ impl App {
     }
 
     fn key(&mut self, code: KeyCode, pressed: bool, event_loop: &ActiveEventLoop) {
+        if self.gym_key(code, pressed) {
+            return;
+        }
         if pressed && self.picker_key(code) {
             return;
         }
@@ -1034,6 +1224,9 @@ impl App {
     }
 
     fn button(&mut self, button: MouseButton, pressed: bool) {
+        if self.gym_open {
+            return;
+        }
         match button {
             MouseButton::Left if pressed && !self.keys.left_button && self.click() => return,
             MouseButton::Left => self.keys.left_button = pressed,
@@ -1062,6 +1255,9 @@ impl App {
     }
 
     fn mouse(&mut self, dx: f32, dy: f32) {
+        if self.gym_open {
+            return;
+        }
         if self.keys.right_button {
             let _ = self.runtime.apply(Action::Look { dx, dy });
         } else if self.keys.left_button {
@@ -1089,6 +1285,7 @@ impl App {
         let dt =
             self.runtime
                 .tick_with_mode(&input, dt, self.keys.left_button, self.replay.is_none());
+        self.update_gym(true);
         self.step_agents(dt);
 
         // The look-around is the agent assessing what is near: it asks the
@@ -1186,7 +1383,7 @@ impl App {
                     Some(feed) => (&feed.lines, feed.title()),
                     None => (&empty, "offline: start Verse with a relay".to_owned()),
                 };
-                let (ui, layout) = hud::build(
+                let (mut ui, mut layout) = hud::build(
                     atlas,
                     &hud::Frame {
                         size,
@@ -1217,6 +1414,22 @@ impl App {
                         picker_scroll: self.picker.as_ref().map_or(0, Picker::scroll),
                     },
                 );
+                if self.gym_open && self.runtime.gym(size[0] / size[1].max(1.0)).inside {
+                    let panel = hud::gym_panel(
+                        &mut ui,
+                        atlas,
+                        size,
+                        self.scale,
+                        &hud::GymPanel {
+                            view: self.gym_view.as_ref(),
+                            recipes: self.gym_recipes,
+                            selected: self.gym_selected,
+                            scroll: self.gym_scroll,
+                            notice: self.gym_notice.as_deref(),
+                        },
+                    );
+                    layout.panels.push(panel);
+                }
                 self.layout = layout;
                 ui
             }
@@ -1291,6 +1504,18 @@ impl App {
             }
         }
         out.extend(landmark_overheads(self.runtime.player.pos));
+        let gym = self.runtime.gym(1.0);
+        out.push(hud::Overhead {
+            feet: crate::world::GYM_ENTRANCE,
+            lift: 8.6,
+            name: Some(if gym.inside {
+                "GYM · G opens the board".into()
+            } else {
+                "GYM · enter through the west door".into()
+            }),
+            name_step: Intensity::ThreeQuarters,
+            bubble: None,
+        });
         if let Some(r) = &self.replay {
             out.extend(replay_overheads(r, &self.runtime.agent, &self.ghost));
         }
@@ -1381,6 +1606,7 @@ impl ApplicationHandler for App {
     }
 
     fn suspended(&mut self, _: &ActiveEventLoop) {
+        self.update_gym(false);
         self.keys = Keys::default();
         self.capture(false);
         if let Some(mount) = &mut self.mount {
@@ -1428,7 +1654,12 @@ impl ApplicationHandler for App {
                     MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
                 };
                 let [x, y] = self.cursor;
-                if self.board_open && self.layout.board.is_some_and(|(r, _)| r.contains(x, y)) {
+                if self.gym_open {
+                    self.gym_scroll = (self.gym_scroll as i64 - (lines * 3.0).round() as i64)
+                        .clamp(0, 512) as usize;
+                } else if self.board_open
+                    && self.layout.board.is_some_and(|(r, _)| r.contains(x, y))
+                {
                     self.scroll_board((-lines * 3.0).round() as i32);
                 } else {
                     let _ = self.runtime.apply(Action::Zoom { lines });
@@ -1436,6 +1667,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Focused(focused) => {
                 if !focused {
+                    self.update_gym(false);
                     self.keys = Keys::default();
                     self.capture(false);
                 }
@@ -1481,9 +1713,95 @@ impl ApplicationHandler for App {
     }
 }
 
+/// Keep the desktop row order and its keyboard selection in agreement.
+fn prioritize_gym_runs(view: &mut crate::gym::BoardView) {
+    view.runs.sort_by_key(|run| match run.category {
+        gym_bridge::Category::Agent => 0,
+        gym_bridge::Category::Evaluation => 1,
+        gym_bridge::Category::Training => 2,
+    });
+}
+
+/// Read an operator-selected connection only after entering the Gym.
+fn read_gym_connection(path: &std::path::Path) -> Result<String, String> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+    const CAP: usize = 64 * 1024;
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|_| "The Gym connection file could not be opened.".to_owned())?;
+    let metadata = file
+        .metadata()
+        .map_err(|_| "The Gym connection file could not be inspected.".to_owned())?;
+    if !metadata.is_file() || metadata.len() > CAP as u64 {
+        return Err("The Gym connection must be a regular file of at most 64 KiB.".into());
+    }
+    let mut bytes = Vec::new();
+    file.take((CAP + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "The Gym connection file could not be read.".to_owned())?;
+    if bytes.len() > CAP {
+        return Err("The Gym connection exceeds 64 KiB.".into());
+    }
+    String::from_utf8(bytes).map_err(|_| "The Gym connection file must contain UTF-8 text.".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gym_prioritizes_agent_and_evaluation_rows_without_reordering_each_group() {
+        let secret = secp256k1::SecretKey::from_byte_array([7; 32]).unwrap();
+        let mut board = crate::gym::Board::new(secret, true);
+        board.set_active(true);
+        let mut view = board.view();
+        let mut run = view.runs[0].clone();
+        view.runs.clear();
+        for (id, category) in [
+            ("training", gym_bridge::Category::Training),
+            ("first", gym_bridge::Category::Agent),
+            ("evaluation", gym_bridge::Category::Evaluation),
+            ("second", gym_bridge::Category::Agent),
+        ] {
+            run.id = id.into();
+            run.category = category;
+            view.runs.push(run.clone());
+        }
+        prioritize_gym_runs(&mut view);
+        assert_eq!(
+            view.runs.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            ["first", "second", "evaluation", "training"]
+        );
+    }
+
+    #[test]
+    fn gym_connection_files_are_bounded_regular_utf8_and_do_not_follow_links() {
+        use std::os::unix::fs::symlink;
+        let dir = std::env::temp_dir().join(format!(
+            "verse-gym-file-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        let file = dir.join("connection");
+        std::fs::write(&file, b"synthetic code").unwrap();
+        assert_eq!(read_gym_connection(&file).unwrap(), "synthetic code");
+        let link = dir.join("link");
+        symlink(&file, &link).unwrap();
+        assert!(read_gym_connection(&link).is_err());
+        assert!(read_gym_connection(&dir).is_err());
+        std::fs::write(&file, [255]).unwrap();
+        assert!(read_gym_connection(&file).is_err());
+        std::fs::write(&file, vec![b'x'; 64 * 1024 + 1]).unwrap();
+        assert!(read_gym_connection(&file).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn the_replay_list_marks_the_chosen_run_and_keeps_it_in_view() {

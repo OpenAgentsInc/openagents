@@ -8,7 +8,7 @@ publish.workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:winit", "model-host", "xp-host", "replay-host", "capture"]
+desktop = ["dep:winit", "dep:libc", "model-host", "xp-host", "replay-host", "capture"]
 model-host = ["dep:coder", "dep:coder-one"]
 xp-host = ["dep:knowledge"]
 replay-host = ["dep:gym", "dep:knowledge"]
@@ -24,7 +24,9 @@ glam = "0.30.10"
 # Replays read retained Microcoder runs and Fable 5.1 trajectories with the
 # Gym's own readers, so a replay and `gym runs` agree on every number.
 gym = { path = "../gym", optional = true }
+gym-bridge = { path = "../gym-bridge", default-features = false }
 knowledge = { path = "../knowledge", optional = true }
+libc = { version = "0.2", optional = true }
 nostr = { path = "../nostr" }
 png = { version = "0.18.1", optional = true }
 pollster = "0.4"

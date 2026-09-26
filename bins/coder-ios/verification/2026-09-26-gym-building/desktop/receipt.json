@@ -1,0 +1,71 @@
+{
+  "purpose": "Offline GPU and code-only desktop verification; synthetic board, no benchmark, model, or production relay calls.",
+  "checks": [
+    {
+      "command": "cargo test -p verse --all-targets",
+      "result": "passed",
+      "counts": {
+        "library": 132,
+        "binary": 1,
+        "chat_relay": 3,
+        "xp_relay": 1
+      },
+      "scope": "Before the final stable category-order test and consumed-review refinement."
+    },
+    {
+      "command": "cargo test -p verse gym",
+      "result": "passed",
+      "counts": {
+        "library": 15,
+        "binary": 1
+      },
+      "scope": "Final shared Gym, world/projection, desktop priority, connection-file and HUD regressions, including the review-consumption refinement."
+    },
+    {
+      "command": "cargo clippy -p verse --all-targets -- -D warnings",
+      "result": "passed"
+    },
+    {
+      "command": "cargo run -p verse --example gym_capture -- /tmp/verse-gym-capture",
+      "result": "passed",
+      "scope": "Actual GPU renders of shared exterior/interior geometry and synthetic desktop board; this is not desktop keyboard/mouse interaction evidence."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "gym-exterior.png",
+      "bytes": 132355,
+      "sha256": "0163111ab6af215f4e9ec3d8261b97c7f3655e146ab476e78867547f9fe06121"
+    },
+    {
+      "path": "gym-interior.png",
+      "bytes": 45920,
+      "sha256": "f03ff888f50589345c1c94bc5d39e111e5e36884bd25c6a970050cdd35e66953"
+    },
+    {
+      "path": "gym-board.png",
+      "bytes": 96582,
+      "sha256": "a55b733517226f02cd9160bc9e25b765a2fb1a52c973cff9acecb7382504b3eb"
+    },
+    {
+      "path": "all-targets-tests.log",
+      "bytes": 11148,
+      "sha256": "3520870ffe1f9c6242480cd738a041e2840c6e91fe66a64e931935aaeb5a0d1e"
+    },
+    {
+      "path": "final-focused-tests.log",
+      "bytes": 2315,
+      "sha256": "3b73dfd03071550b9f27ad85b8bc4107ef62b1e8ea2ffb4044d8a7c9bdce40f6"
+    },
+    {
+      "path": "clippy.log",
+      "bytes": 175,
+      "sha256": "92f8323690e25963f683411aa1119638914edc6e41721457af606913a3dc0116"
+    },
+    {
+      "path": "capture.log",
+      "bytes": 2753,
+      "sha256": "04b10afad87374ecde1adae243f44766b88ea26c75199a65f866bc02c46441d9"
+    }
+  ]
+}

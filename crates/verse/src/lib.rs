@@ -18,6 +18,7 @@ pub mod chat;
 pub mod controller;
 pub mod crowd;
 pub mod feed;
+pub mod gym;
 pub mod hud;
 pub mod identity;
 pub mod mesh;

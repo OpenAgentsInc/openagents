@@ -6,13 +6,18 @@ surfaces under the existing Coder app identity. Rust owns
 pairing, protocol verification, synchronization, encrypted reader cache, world
 state, movement, rendering, and application projection. The thin SwiftUI host
 renders Rust Native views, keeps separate device identities in Keychain, and
-forwards bounded UI events. It does not call models, execute tasks, submit chat
-messages, or grant approvals.
+forwards bounded UI events. The [Gym building](../../docs/verse/gym.md)
+observes separately granted host records and requests configured run recipes
+after explicit confirmation. The phone itself runs no model or benchmark;
+the chat reader remains read-only.
 
 **Available in internal TestFlight:** Coder `0.5.0 (40)`, built from
 [`e85bfce6b4`](https://github.com/OpenAgentsInc/openagents/commit/e85bfce6b490d9b48c6a430758830bc00c316248).
 [Connect your phone](../../docs/coder/guides/mobile-readonly.md) and review the
 [distribution receipt](verification/2026-09-26-world-pairing/testflight-build40.json).
+
+The new Gym source targets build `41`; the availability statement above changes
+only after App Store Connect confirms distribution.
 
 ## App identity and source boundary
 
@@ -23,7 +28,7 @@ The user-authorized app metadata and icon preserve the existing Xcode setup:
 | Project, scheme, target, product | `Coder` |
 | Bundle identifier | `com.openagents.coder` |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `0.5.0` / `40` |
+| Marketing version and build | `0.5.0` / `41` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Swift language setting | `5.10` |
 | App Store Connect app | `6807250813` |

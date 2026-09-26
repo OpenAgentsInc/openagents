@@ -1,0 +1,179 @@
+   Compiling cfg-if v1.0.5
+   Compiling once_cell v1.21.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling bitflags v2.13.2
+   Compiling typenum v1.20.1
+   Compiling smallvec v1.16.1
+   Compiling log v0.4.34
+   Compiling libc v0.2.189
+   Compiling zerocopy v0.8.57
+   Compiling thiserror v2.0.20
+   Compiling objc2 v0.6.4
+   Compiling zeroize v1.9.0
+   Compiling objc2-encode v4.1.0
+   Compiling ring v0.17.14
+   Compiling const-oid v0.10.2
+   Compiling libm v0.2.16
+   Compiling zerofrom v0.1.8
+   Compiling bytemuck v1.25.2
+   Compiling getrandom v0.3.4
+   Compiling rand_core v0.10.1
+   Compiling yoke v0.8.3
+   Compiling rustls-pki-types v1.15.1
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling untrusted v0.9.0
+   Compiling getrandom v0.4.3
+   Compiling num-traits v0.2.19
+   Compiling bytes v1.12.1
+   Compiling utf8_iter v1.0.4
+   Compiling icu_properties_data v2.3.0
+   Compiling zerovec v0.11.8
+   Compiling zerotrie v0.2.5
+   Compiling icu_normalizer_data v2.3.0
+   Compiling serde v1.0.229
+   Compiling bit-vec v0.9.1
+   Compiling equivalent v1.0.2
+   Compiling hashbrown v0.17.1
+   Compiling foldhash v0.2.0
+   Compiling subtle v2.6.1
+   Compiling unicode-width v0.2.0
+   Compiling pin-project-lite v0.2.17
+   Compiling hybrid-array v0.4.15
+   Compiling parking_lot_core v0.9.12
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling hashbrown v0.16.1
+   Compiling icu_locale_core v2.3.0
+   Compiling icu_collections v2.3.0
+   Compiling codespan-reporting v0.13.1
+   Compiling httparse v1.10.1
+   Compiling errno v0.3.14
+   Compiling getrandom v0.2.17
+   Compiling cpufeatures v0.3.1
+   Compiling signal-hook-registry v1.4.8
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling indexmap v2.14.2
+   Compiling mio v1.2.3
+   Compiling socket2 v0.6.5
+   Compiling bit-set v0.9.1
+   Compiling naga v29.0.4
+   Compiling secp256k1-sys v0.11.0
+   Compiling icu_provider v2.3.1
+   Compiling chacha20 v0.10.2
+   Compiling digest v0.11.3
+   Compiling raw-window-handle v0.6.2
+   Compiling scopeguard v1.2.0
+   Compiling rustc-hash v1.1.0
+   Compiling arrayvec v0.7.8
+   Compiling hexf-parse v0.2.1
+   Compiling lock_api v0.4.14
+   Compiling wgpu-types v29.0.4
+   Compiling sha2 v0.11.0
+   Compiling sha1 v0.11.0
+   Compiling tokio v1.53.1
+   Compiling http v1.5.0
+   Compiling webpki-roots v1.0.9
+   Compiling rand_core v0.9.5
+   Compiling objc2-core-foundation v0.3.2
+   Compiling block2 v0.6.2
+   Compiling futures-task v0.3.34
+   Compiling rand v0.10.2
+   Compiling slab v0.4.12
+   Compiling futures-sink v0.3.34
+   Compiling futures-core v0.3.34
+   Compiling data-encoding v2.11.1
+   Compiling wgpu-hal v29.0.4
+   Compiling futures-util v0.3.34
+   Compiling webpki-roots v0.26.11
+   Compiling ryu-js v1.0.3
+   Compiling percent-encoding v2.3.2
+   Compiling icu_properties v2.3.0
+   Compiling profiling v1.0.18
+   Compiling form_urlencoded v1.2.2
+   Compiling font-types v0.12.5
+   Compiling objc2-foundation v0.3.2
+   Compiling base64 v0.22.1
+   Compiling wgpu-core v29.0.4
+   Compiling icu_normalizer v2.3.0
+   Compiling qrcodegen v1.8.0
+   Compiling rustix v1.1.5
+   Compiling read-fonts v0.41.0
+   Compiling coder-history v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-history)
+   Compiling wgpu v29.0.4
+   Compiling parking_lot v0.12.5
+   Compiling rust-native v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/rust-native)
+   Compiling rustls v0.23.45
+   Compiling idna_adapter v1.2.2
+   Compiling static_assertions v1.1.0
+   Compiling zeno v0.3.3
+   Compiling yazi v0.2.1
+   Compiling idna v1.1.0
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling coder-ui v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-ui)
+   Compiling rand_chacha v0.9.0
+   Compiling url v2.5.8
+   Compiling rand v0.9.5
+   Compiling glam v0.30.10
+   Compiling pollster v0.4.0
+   Compiling fastrand v2.5.0
+   Compiling objc2-metal v0.3.2
+   Compiling rustls-webpki v0.103.15
+   Compiling secp256k1 v0.31.1
+   Compiling tempfile v3.27.0
+   Compiling nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+   Compiling objc2-quartz-core v0.3.2
+   Compiling raw-window-metal v1.1.0
+   Compiling tokio-rustls v0.26.5
+   Compiling tungstenite v0.30.0
+   Compiling skrifa v0.44.0
+   Compiling tokio-tungstenite v0.30.0
+   Compiling wgpu-naga-bridge v29.0.4
+   Compiling swash v0.2.10
+   Compiling wgpu-core-deps-apple v29.0.4
+   Compiling nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr-transport)
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-connect)
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/gym-bridge)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/verse)
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-mobile)
+    Finished `test` profile [unoptimized] target(s) in 10.38s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target-native/debug/deps/coder_mobile-0c69b58786d5b63e)
+
+running 17 tests
+test verse_app::tests::bad_and_excess_touches_do_not_poison_camera_or_keep_moving ... ok
+test verse_app::tests::invalid_relay_cannot_replace_a_previous_choice ... ok
+test verse_app::tests::computer_requires_approach_and_releases_held_input ... ok
+test verse_app::tests::touches_move_shared_player_and_pause_cancels_motion ... ok
+test verse_app::tests::gym_requires_deliberate_recipe_selection_and_keeps_receipt_after_leaving ... FAILED
+test verse_app::tests::gym_fixture_loads_only_after_walking_inside_and_pauses_on_exit ... ok
+test cache::tests::encrypted_cache_survives_restart_and_refuses_wrong_key_and_swapped_entries ... ok
+test render::tests::one_readable_row_per_record_keeps_every_raw_fragment_available ... ok
+test tests::ffi_rejects_unknown_operations_without_executing_anything ... ok
+test tests::native_projection_opens_a_cached_chat_and_refuses_stale_actions ... ok
+test tests::invalid_pairing_input_preserves_cached_chats_and_does_not_echo_the_code ... ok
+test tests::catalog_is_persisted_in_pages_and_source_gaps_are_visible ... ok
+test render::tests::an_evicted_middle_page_reports_the_internal_history_gap ... ok
+test tests::paused_follow_pins_the_visible_page_across_new_pages ... ok
+test tests::unchanged_catalog_refresh_keeps_all_cached_pages_visible ... ok
+test tests::large_message_is_readable_across_source_pages_without_a_one_kib_cut ... ok
+test connection_tests::app_redeems_qr_invitation_pages_refreshes_restores_and_erases_revoked_history ... ok
+
+failures:
+
+---- verse_app::tests::gym_requires_deliberate_recipe_selection_and_keeps_receipt_after_leaving stdout ----
+
+thread 'verse_app::tests::gym_requires_deliberate_recipe_selection_and_keeps_receipt_after_leaving' (95813848) panicked at crates/coder-mobile/src/verse_app.rs:736:9:
+assertion `left == right` failed
+  left: "rejected"
+ right: "accepted"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    verse_app::tests::gym_requires_deliberate_recipe_selection_and_keeps_receipt_after_leaving
+
+test result: FAILED. 16 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.07s
+
+error: test failed, to rerun pass `-p coder-mobile --lib`

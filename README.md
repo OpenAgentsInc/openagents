@@ -73,7 +73,7 @@ caching. [Pair your computer](docs/coder/guides/mobile-readonly.md).
 | Operate the Nostr relay | [Local relay runbook](docs/deployment/runbook-local-dev.md), [production (Cloud Run) runbook](docs/deployment/runbook-cloud-run.md), [configuration](docs/deployment/configuration.md) |
 | Review protocol support and gaps | [NIP implementation coverage](docs/protocol/2026-09-26-nip-implementation-coverage.md), [implementation plan](docs/protocol/implementation-plan.md) |
 | Operate a Minecraft agent | [Voyager](docs/voyager/README.md), [watch an episode](docs/minecraft/voyager-runbook.md) |
-| Walk the Verse world on desktop or iPhone | [Verse](docs/verse/README.md), [mobile controls and shared architecture](docs/verse/mobile.md) |
+| Walk the Verse world on desktop or iPhone | [Verse](docs/verse/README.md), [mobile controls](docs/verse/mobile.md), [Gym building and run boards](docs/verse/gym.md) |
 
 ## Run Coder
 
@@ -336,6 +336,7 @@ controller components; a policy's presence in code is not a measured result.
 | [plugin-repo-map](crates/plugin-repo-map/), [plugin-code-search](crates/plugin-code-search/), [plugin-test-report](crates/plugin-test-report/) | Evidence guests that [`programs/evidence-guests.json`](programs/evidence-guests.json) runs; built by `scripts/build-plugin-guests.sh`. |
 | [nostr](crates/nostr/), [nostr-relay](crates/nostr-relay/) | Protocol verification and the self-hostable PostgreSQL-backed relay. |
 | [voyager](crates/voyager/) | Minecraft curriculum, bounded programs, critics, skill retention, and traces through the separate [nightly Rust bridge](mc-bridge/). |
+| [gym-bridge](crates/gym-bridge/README.md) | Private Gym observation and explicit recipe launches over Nostr; portable client plus a separately enabled local host. |
 | [verse](crates/verse/) | The shared desktop/iOS Verse world: an amber line city, player controller, following agent, native GPU surfaces, and multiplayer over Nostr with [NIP-MV](nips/openagents/NIP-MV.md). |
 
 The host owns permissions, deadlines, budgets, and execution boundaries.

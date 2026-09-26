@@ -1,0 +1,199 @@
+{
+  "schema": "coder.ios.synthetic-verification.v1",
+  "completed_at": "2026-09-26T22:36:58.187989+00:00",
+  "source_base_commit": "3c0018dfa142012bce40a086978904280a5ab904",
+  "source_state": "Uncommitted implementation identified by retained source snapshots. The full-suite snapshot was taken during the nine-test command after native compilation. The final snapshot was taken after the final simulator build and at the start of the focused two-test command. The release archive independently pins committed source.",
+  "app": {
+    "bundle": "com.openagents.coder",
+    "version": "0.5.0",
+    "build": "41",
+    "simulator_executable_sha256": "9260b71c0017e136b1820c19615e1a497c53a4efc06418562fa7498c776c790e"
+  },
+  "runtime": {
+    "kind": "simulator",
+    "device": "iPhone 17 Pro",
+    "os": "iOS 26.5",
+    "xcode": "26.6 (17F113)",
+    "rust": "1.97.1"
+  },
+  "full_suite": {
+    "command": "CARGO_TARGET_DIR=<worktree-parent>/target-native CODER_IOS_OUTPUT=<worktree-parent>/target/coder-ios-build41 ./scripts/build-coder-mobile.sh sim-test",
+    "result_bundle": "<worktree-parent>/target/coder-ios-build41/TestResults-20260926T222726Z-8342.xcresult",
+    "passed": 9,
+    "failed": 0,
+    "duration_seconds": 171.435,
+    "log": "native-full-suite.log",
+    "source": "native-full-suite-source.json",
+    "cases": [
+      {
+        "suite": "GymUITests",
+        "name": "testInteriorBoardShowsChartsAndStopsWhenPlayerLeaves",
+        "duration_seconds": 26.461
+      },
+      {
+        "suite": "GymUITests",
+        "name": "testRecipeReviewRequiresExplicitConfirmationAndPreviewRefusesExecution",
+        "duration_seconds": 15.646
+      },
+      {
+        "suite": "ReaderUITests",
+        "name": "testFollowCanPauseAndResume",
+        "duration_seconds": 17.737
+      },
+      {
+        "suite": "ReaderUITests",
+        "name": "testNativeChatSelectionAndExactSource",
+        "duration_seconds": 15.696
+      },
+      {
+        "suite": "ReaderUITests",
+        "name": "testPageSelectionPinsUntilLatestIsRequested",
+        "duration_seconds": 19.252
+      },
+      {
+        "suite": "ReaderUITests",
+        "name": "testSyntheticDeviceIdentitySurvivesRelaunch",
+        "duration_seconds": 24.299
+      },
+      {
+        "suite": "VerseUITests",
+        "name": "testComputerAndBackgroundResumeWithoutBreakingChats",
+        "duration_seconds": 22.502
+      },
+      {
+        "suite": "VerseUITests",
+        "name": "testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback",
+        "duration_seconds": 19.795
+      },
+      {
+        "suite": "VerseUITests",
+        "name": "testMetalWorldRendersAndTouchMovementChangesPosition",
+        "duration_seconds": 10.045
+      }
+    ]
+  },
+  "final_gym_suite": {
+    "command": "xcodebuild -project bins/coder-ios/host/Coder.xcodeproj -scheme Coder -configuration Release -destination platform=iOS\\ Simulator,id=745E63BD-631C-4651-B993-F1E2AAB3791E -derivedDataPath <worktree-parent>/target/coder-ios-build41/DerivedData CODER_RUST_LIBRARY_DIR=<worktree-parent>/target-native/aarch64-apple-ios-sim/debug CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= -resultBundlePath <worktree-parent>/target/coder-ios-build41/GymFinal.xcresult -parallel-testing-enabled NO -only-testing:CoderUITests/GymUITests test",
+    "result_bundle": "<worktree-parent>/target/coder-ios-build41/GymFinal.xcresult",
+    "passed": 2,
+    "failed": 0,
+    "duration_seconds": 42.766,
+    "log": "native-gym-final-tests.log",
+    "source": "native-final-source.json",
+    "cases": [
+      {
+        "suite": "GymUITests",
+        "name": "testInteriorBoardShowsChartsAndStopsWhenPlayerLeaves",
+        "duration_seconds": 26.884
+      },
+      {
+        "suite": "GymUITests",
+        "name": "testRecipeReviewRequiresExplicitConfirmationAndPreviewRefusesExecution",
+        "duration_seconds": 15.882
+      }
+    ],
+    "changes_since_full_suite": [
+      "Board consumes a selected recipe after the first submission or synthetic refusal; a second launch requires a fresh explicit review.",
+      "Native assertion checks that the confirmation button disappears after the synthetic refusal.",
+      "Native chart marks use the application amber tint instead of the platform default blue.",
+      "Separate host/desktop implementation and test edits are identified by the two source snapshots; these modules are excluded from the mobile build."
+    ]
+  },
+  "checks": {
+    "mobile_rust": {
+      "passed": 17,
+      "failed": 0,
+      "log": "mobile-rust-tests.log"
+    },
+    "mobile_strict_clippy": {
+      "passed": true,
+      "log": "mobile-clippy.log"
+    },
+    "swift_device_typecheck": {
+      "passed": true,
+      "log": "swift-device-typecheck.log",
+      "scope": "Before final chart tint change; final simulator compilation covers that change. Device archive compilation is a separate release check."
+    }
+  },
+  "fixture": {
+    "mode": "--synthetic --gym-preview",
+    "spawn": "Two meters outside the real Gym doorway, facing its interior.",
+    "lazy_interest": "Actual native touch movement enters the building before synthetic rows appear. Background and walking out disable interest and clear the native board projection.",
+    "rows": [
+      "Synthetic Microcoder experiment: running,24/40,cost unavailable.",
+      "Synthetic Terminal-Bench evaluation: completed,8/8,$0.12 fixture value."
+    ],
+    "charts": "Recorded checks line and points, with exact values available through a native disclosure.",
+    "launch": "Selecting a recipe does not launch it. Explicit confirmation returns a retained synthetic refusal and consumes the selection.",
+    "model_calls": false,
+    "benchmark_runs": false,
+    "training_runs": false,
+    "native_live_gym_connection": false,
+    "real_transcripts": false,
+    "physical_device_tested": false
+  },
+  "earlier_attempts": [
+    {
+      "log": "mobile-initial-tests.log",
+      "result": "16 passed,1 failed: the initial test incorrectly expected synthetic launch acceptance. The fixture deliberately refuses process execution. Corrected the assertion and test name to require rejection and no host receipt; retained the failed log."
+    }
+  ],
+  "visual_review": {
+    "files": [
+      "native-runs.png",
+      "native-chart.png",
+      "native-preview-refusal.png",
+      "native-recipe-review.png",
+      "native-outside.png"
+    ],
+    "result": "Run list, values, review controls, unknown-cost label, and synthetic refusal are readable. Final chart marks are amber.",
+    "capture_limit": "Some XCTest screenshots omit unchanged compositor layers, including the header/status bar and the last exact-value label; those elements are checked through native accessibility assertions. The run-list and recipe-review captures include their headers. This is not a physical display or camera validation."
+  },
+  "limits": [
+    "No physical iPhone, thermal, battery, VoiceOver navigation, or broad device-matrix claim.",
+    "The native fixture does not authenticate to a live Gym host or start a real recipe. Separate Rust host/relay evidence has its own scope.",
+    "Connection grants persist in device-only Keychain. Pending launch identity is retained across entry/background/reentry in memory, not durably restored after process death. Cold restart never retries automatically.",
+    "A completed record does not establish benchmark success. Unknown costs remain unavailable; no enforced dollar cap is claimed."
+  ],
+  "post_snapshot_changes": {
+    "excluded_mobile_modules": {
+      "crates/gym-bridge/src/host.rs": {
+        "tested_sha256": "380e64175228a0458a3d956d20b6f154cc16cfb62648c14b90679aedc8ea1c71",
+        "current_sha256": "cde150c27e1f13abd740dc955bbeaaa83f8ecfa55a4d1608eacfff8d5bbdca0e"
+      },
+      "crates/gym-bridge/src/main.rs": {
+        "tested_sha256": "890ee3bffbae8aba3e72ec41424eef6f6708566104a26eb331606a298b782028",
+        "current_sha256": "b1359b2c9884800eea05eb1567db9dbc02f684e1fad66c02e70916c81357e128"
+      },
+      "crates/gym-bridge/src/sources.rs": {
+        "tested_sha256": "af88bbf01124f1a3446b31a8e6983f92e6d15bf68376a998a9f117030971af07",
+        "current_sha256": "8c0bb150a306f7ef4303e75471c556fcde74f8f2427d2d0a751aa87cd8e92d35"
+      },
+      "crates/gym-bridge/src/tests.rs": {
+        "tested_sha256": "4518d53e9cf630ab9b42bbdec55ce52d548c45d6398e270a68e87b53b669f798",
+        "current_sha256": "bfb5c22a36e94eb72fe444e621be759d7d2e61f9ded6464fc471b19bf2ccc19b"
+      },
+      "crates/verse/src/app.rs": {
+        "tested_sha256": "918e287901ab05b34997c0a0e9748bf3a1eff7f9506d0a78f53e938be89fc41c",
+        "current_sha256": "c54c31902190bb1fe735c478f4f131895753c905924ae93e3cb7472dc40c71b0"
+      }
+    },
+    "explanation": "Only host-gated gym-bridge modules/tests and desktop-gated verse::app changed during the final native test. Mobile source and portable Board inputs remained unchanged."
+  },
+  "artifact_sha256": {
+    "mobile-clippy.log": "52c8a17bba9781e15a28fa53637e41694c3b11e5ae51eb40733c319bba9b249f",
+    "mobile-initial-tests.log": "59398cfd76b8c4431b68cd8b0b2dc1e81250b380d8891467b1d3649c61720728",
+    "mobile-rust-tests.log": "6b6907b873b3c12a339029ae0bacb713931ca262bfff12016b135cf1eb38c301",
+    "native-chart.png": "5728f12edafa37cf1cf56e1e738f5d8869c7e261a54d03f29276e408b0f17dd0",
+    "native-final-build.log": "b6c23d3e94dcb2ca32bfccf8a4d07e3c3ad39a3cec97d8831cffc94837ba6cc2",
+    "native-final-source.json": "bd5e8aaeb3b72fc0351c32d8682ebf4e4156ab9fd8d83774ff06e9e3c07795e1",
+    "native-full-suite-source.json": "74905d5bf3394c94b80abb581dc357ce801655f087bc55d4d17f62fd1b9a4570",
+    "native-full-suite.log": "cedebb620403aa96b737aae25b16a9f7e94d7eb18bc4f4bae98fcd1ecd658e4f",
+    "native-gym-final-tests.log": "e47dde007a289a4e0cdc13cea2b0e73715aad4aece6951b2bc428171b4746c62",
+    "native-outside.png": "ee02ba2a343dbd8a55bab7111c0c61d90e183a182b02e684e8cf61959932046e",
+    "native-preview-refusal.png": "b98422bde3a06d02665b1beff8df9d78d0a51e877fad9982ec3cb53463e3a4c5",
+    "native-recipe-review.png": "bc375ac7efbfdcb1f4b7bf8732bb26788d28c6577bdea45614e09a7ca7c5009b",
+    "native-runs.png": "2b0298348febfbfa51cc4686846fd4dcc2d4312ac4540202c8930b03e0c79945",
+    "swift-device-typecheck.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

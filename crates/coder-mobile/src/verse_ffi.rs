@@ -14,7 +14,7 @@ pub struct VerseHandle {
 }
 
 fn failure() -> CoderMobileBuffer {
-    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"computer":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":5.0},"computer_open":false,"view":null}"#.to_vec())
+    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"computer":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":5.0},"computer_open":false,"gym":{"inside":false,"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":60.0},"gym_open":false,"gym_revision":0,"gym_active":false,"view":null}"#.to_vec())
 }
 
 /// Returns the initial Rust-owned surface projection. Release the result with
@@ -39,7 +39,7 @@ pub unsafe extern "C" fn coder_verse_create(
     bytes: *const u8,
     len: usize,
 ) -> *mut VerseHandle {
-    if layer.is_null() || bytes.is_null() || len == 0 || len > 16 * 1024 {
+    if layer.is_null() || bytes.is_null() || len == 0 || len > 96 * 1024 {
         return ptr::null_mut();
     }
     CREATE_ERROR.with(|error| *error.borrow_mut() = None);
@@ -99,7 +99,7 @@ pub unsafe extern "C" fn coder_verse_call(
     bytes: *const u8,
     len: usize,
 ) -> CoderMobileBuffer {
-    if handle.is_null() || bytes.is_null() || len == 0 || len > 4096 {
+    if handle.is_null() || bytes.is_null() || len == 0 || len > 96 * 1024 {
         return failure();
     }
     catch_unwind(AssertUnwindSafe(|| {
@@ -108,15 +108,38 @@ pub unsafe extern "C" fn coder_verse_call(
                 Ok(request) => request,
                 Err(_) => return failure(),
             };
+        if len > 4096 && !matches!(&request, Request::GymConfigure { .. }) {
+            return failure();
+        }
         let handle = unsafe { &mut *handle };
-        let clear_error = !matches!(&request, Request::Frame { .. } | Request::Snapshot);
+        let include_gym = matches!(
+            &request,
+            Request::GymView
+                | Request::InteractGym
+                | Request::GymConfigure { .. }
+                | Request::GymSelectRun { .. }
+                | Request::GymSelectRecipe { .. }
+                | Request::GymLaunch
+                | Request::GymRetry
+                | Request::GymCloseDetail
+        );
+        let clear_error = !matches!(
+            &request,
+            Request::Frame { .. } | Request::Snapshot | Request::GymView
+        );
         match handle.call(request) {
             Err(error) => handle.scene.error = Some(error),
             Ok(()) if clear_error => handle.scene.error = None,
             Ok(()) => {}
         }
-        match serde_json::to_vec(&handle.scene.packet()) {
-            Ok(bytes) if bytes.len() <= 64 * 1024 => buffer(bytes),
+        let mut packet = handle.scene.packet();
+        if include_gym {
+            packet.gym_board = handle.scene.gym_view();
+        }
+        match serde_json::to_vec(&packet) {
+            Ok(bytes) if bytes.len() <= if include_gym { 1024 * 1024 } else { 64 * 1024 } => {
+                buffer(bytes)
+            }
             _ => failure(),
         }
     }))

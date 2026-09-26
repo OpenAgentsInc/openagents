@@ -14,8 +14,9 @@ left. A quest board on the plaza lists live
 [NIP-XP](../../nips/openagents/NIP-XP.md) quests, and the HUD shows your XP,
 level, and titles. `R` replays a retained Microcoder run as the agent's
 visits to the workbench, oracle, library, and proving ground, beside a
-ghost of Fable 5.1 low's cheapest winning run. Other live OpenAgents state
-(Pylons, live runs, sats) is not implemented.
+ghost of Fable 5.1 low's cheapest winning run. The [Gym building](gym.md) observes host-selected Microcoder and Terminal-Bench
+records while the player is inside and supports explicitly confirmed recipes.
+Live Pylon and payment state is not implemented.
 
 The [Coder iOS Verse home](mobile.md) shares the world simulation and renderer
 through Rust Native's generic native-surface contract. Mobile touch controls,
@@ -36,6 +37,13 @@ To play alone without a relay, add `-- --offline`.
 A 1440×900 window titled **Verse** opens with the character on a plaza,
 facing a pylon, with the city around the plaza. The player's agent, a
 floating 3D spade, hovers behind the character's right shoulder.
+
+## Gym building
+
+Walk east and enter the building marked **GYM**. Press `G` on desktop, or
+approach the boards and tap **Use Gym board** on iOS. Updates start only while
+the player is inside and the surface is active. See [Gym setup](gym.md) for
+source grants, recorded charts, and bounded launch recipes.
 
 ## Multiplayer
 

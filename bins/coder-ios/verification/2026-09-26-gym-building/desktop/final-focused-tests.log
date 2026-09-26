@@ -1,0 +1,42 @@
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/verse)
+    Finished `test` profile [unoptimized] target(s) in 2.86s
+     Running unittests src/lib.rs (../target-verse/debug/deps/verse-8eee0109039e3a8a)
+
+running 15 tests
+test hud::gym::tests::tall_charts_can_scroll_even_when_the_number_of_rows_is_small ... ok
+test replay::tests::portable_presentation_matches_the_existing_gym_units ... ok
+test hud::gym::tests::missing_measurements_and_unenforced_spend_are_not_free_or_bounded ... ok
+test gym::tests::leaving_during_launch_keeps_identity_and_marks_the_outcome_unknown ... ok
+test gym::tests::entry_loads_but_exit_and_background_stop_observation ... ok
+test gym::tests::starting_requires_a_current_reviewed_recipe_and_explicit_confirmation ... ok
+test gym::tests::stale_and_changed_recipes_cannot_be_confirmed ... ok
+test app::tests::gym_prioritizes_agent_and_evaluation_rows_without_reordering_each_group ... ok
+test gym::tests::a_previous_visit_cannot_update_the_new_board ... ok
+test app::tests::gym_connection_files_are_bounded_regular_utf8_and_do_not_follow_links ... ok
+test gym::tests::unknown_cost_and_metric_denominators_survive_projection ... ok
+test gym::tests::confirmation_and_reconciliation_queue_one_identical_logical_request ... ok
+test world::tests::gym_hall_and_door_are_clear_and_signage_is_world_geometry ... ok
+test runtime::tests::gym_entry_requires_the_real_doorway_and_excludes_walls_and_roof ... ok
+test replay::tests::a_retained_win_replays_through_the_gym_reader ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 118 filtered out; finished in 0.06s
+
+     Running unittests src/main.rs (../target-verse/debug/deps/verse-ecc108371ab78b54)
+
+running 1 test
+test tests::a_gym_connection_path_is_inert_until_world_entry ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/relay.rs (../target-verse/debug/deps/relay-c8fbc6227613c2df)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/xp_relay.rs (../target-verse/debug/deps/xp_relay-045c37855f634784)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

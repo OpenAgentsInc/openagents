@@ -11,6 +11,8 @@
 //! `--replay <run directory or Gym run ID>` replays a Microcoder run as the
 //! agent's visits beside a ghost of Fable 5.1 low's cheapest winning run;
 //! `R` in the world lists the retained runs that beat it.
+//! `--gym-connection <file>` supplies a signed Gym host connection. The file
+//! is read only after entering the Gym; `G` opens its board while inside.
 //!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
@@ -147,6 +149,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--xp-referee" => options.xp_referees.push(value()?),
             "--board" => board = true,
             "--replay" => options.replay = Some(value()?),
+            "--gym-connection" => options.gym_connection = Some(value()?.into()),
             "--at" => {
                 let v = value()?;
                 at = Some(
@@ -166,4 +169,24 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
         ..s
     });
     Ok((shot, options))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn a_gym_connection_path_is_inert_until_world_entry() {
+        let (shot, options) = parse(
+            ["--offline", "--gym-connection", "/nonexistent/gym.code"]
+                .map(str::to_owned)
+                .into_iter(),
+        )
+        .unwrap();
+        assert!(shot.is_none());
+        assert!(options.relay.is_none());
+        assert_eq!(
+            options.gym_connection.as_deref(),
+            Some(std::path::Path::new("/nonexistent/gym.code"))
+        );
+    }
 }

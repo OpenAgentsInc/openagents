@@ -2319,6 +2319,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "gym-bridge"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "coder-connect",
+ "futures-util",
+ "gym",
+ "libc",
+ "nostr",
+ "nostr-transport",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "supervise",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6499,7 +6519,9 @@ dependencies = [
  "futures-util",
  "glam",
  "gym",
+ "gym-bridge",
  "knowledge",
+ "libc",
  "nostr",
  "png",
  "pollster",

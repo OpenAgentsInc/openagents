@@ -22,7 +22,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Understand Nostr support | [Protocol index](protocol/README.md), [coverage](protocol/2026-09-26-nip-implementation-coverage.md), [specifications](../nips/README.md) |
 | Operate the relay | [Deployment](deployment/README.md) |
 | Build general agents and optimization | [Agent architecture](agents/README.md), [optimization](optimization/README.md) |
-| Explore world interfaces | [Voyager](voyager/README.md), [Minecraft](minecraft/README.md), [Verse](verse/README.md) |
+| Explore world interfaces | [Voyager](voyager/README.md), [Minecraft](minecraft/README.md), [Verse](verse/README.md), [Gym building](verse/gym.md) |
 | Verify a change | [Targeted development and release verification](verification.md) |
 | Understand earlier decisions | [Historical surveys](history/README.md), [audits](audits/README.md), [transcript archive](transcripts/README.md) |
 

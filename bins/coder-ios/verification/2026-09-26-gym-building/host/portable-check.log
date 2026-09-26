@@ -1,0 +1,22 @@
+   Compiling serde_json v1.0.151
+    Checking once_cell v1.21.4
+    Checking smallvec v1.16.1
+    Checking tokio v1.53.1
+    Checking futures-core v0.3.34
+    Checking percent-encoding v2.3.2
+    Checking futures-util v0.3.34
+    Checking form_urlencoded v1.2.2
+    Checking rustls v0.23.45
+    Checking icu_normalizer v2.3.0
+    Checking idna_adapter v1.2.2
+    Checking idna v1.1.0
+    Checking url v2.5.8
+    Checking nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+    Checking coder-history v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-history)
+    Checking tungstenite v0.30.0
+    Checking tokio-rustls v0.26.5
+    Checking tokio-tungstenite v0.30.0
+    Checking nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr-transport)
+    Checking coder-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-connect)
+    Checking gym-bridge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/gym-bridge)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.38s

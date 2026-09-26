@@ -1,0 +1,30 @@
+{
+  "checks": {
+    "tests": {
+      "command": "CARGO_TARGET_DIR=../target-connect cargo test --locked -p gym-bridge",
+      "library_passed": 13,
+      "cli_passed": 2,
+      "result": "passed",
+      "log": "tests.log"
+    },
+    "clippy": {
+      "command": "cargo clippy --locked -p gym-bridge --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.log"
+    },
+    "portable": {
+      "command": "cargo check --locked -p gym-bridge --no-default-features",
+      "result": "passed",
+      "log": "portable-check.log"
+    }
+  },
+  "scope": "Synthetic fixtures, authenticated loopback relay, and harmless local executable. No model, training, benchmark, or production relay run.",
+  "source": "source.json",
+  "artifacts": {
+    "clippy.log": "741675dccb0262247c4f5e6e2eda12defb167ec13002b32fa3aa9f7da1cc22cf",
+    "initial-tests.log": "5ce989cb5793ec9e6d684e055c35811fca9c24069290f49fd7d966684c7749e4",
+    "portable-check.log": "3b3474d724434c491b85214bc6a5e116936888593941da19bf57910750fcf4ee",
+    "source.json": "be612e782c00faab7cd61f18bc89941882e73ef31abd69e890bef42570324a9e",
+    "tests.log": "06671965d829fd5e3c51b928a713b4f7fa030644540d1314c903452fefb70226"
+  }
+}

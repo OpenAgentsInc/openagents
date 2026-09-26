@@ -84,6 +84,11 @@ uses, and marks which are implemented and which are only specified.
   and the terminal that reads them. It scores whatever answers
   `POST /v1/systemone` and knows nothing else about the door. Read
   `docs/gym/` before changing a schema or a gate.
+- `crates/gym-bridge` — the separately granted Verse Gym connection: a portable
+  encrypted Nostr client and an optional local observation/recipe host. Source
+  directories and executable revisions are admitted explicitly; entry starts
+  observation, and launches require confirmation. Read `docs/verse/gym.md` and
+  the crate README before changing its authority, source readers, or retry rules.
 - `crates/tenancy` — the tenant-to-artifact registry: a versioned,
   self-digested manifest binding a tenant identity to the door names it may
   reach, each bound to an artifact digest and its execution configuration.

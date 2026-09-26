@@ -1,0 +1,16 @@
+{
+  "source_sha256": {
+    "crates/gym-bridge/Cargo.toml": "6a7b481894d52407669690605e9ba707b82ebb8c8a301553738657d4fb9b32fa",
+    "crates/gym-bridge/README.md": "2f2f49b7181a9ec37438476b4795feff8a2df5c330ee33fc61007efb467ec795",
+    "crates/gym-bridge/src/client.rs": "9c9af72dbde299b03aae7c01020e0cfc6edc45f49def06979a0c330f25356238",
+    "crates/gym-bridge/src/confined.rs": "21baa8ea99fad579479d81b981523adbed241c47c88aeab1699c7adb7d09cd02",
+    "crates/gym-bridge/src/host.rs": "9c6ba1fa0902b1d4c5fa9ab0cbe956391b6f64f5428462db0fd7be1caf237215",
+    "crates/gym-bridge/src/lib.rs": "b9dc7134817a29570c1b863ab706af9a820e7918aa2f82b7a2a4eb47799bb865",
+    "crates/gym-bridge/src/main.rs": "8be50bdcf43a1607d1fd3eae9455377c402044398faf74d5d5f602ab243cf25a",
+    "crates/gym-bridge/src/protocol.rs": "2ac2ff3283d08c9f85279a6bc5673e0692e14990a838a656c515df72b10340a2",
+    "crates/gym-bridge/src/sources.rs": "4078589d119749a45240029d0c2cabaf3235f32e5bb8b96f9660e6b11df4597c",
+    "crates/gym-bridge/src/store.rs": "5292ae7539590e40332e74616f9c364903fbcba7822376f84cf72bd820233c89",
+    "crates/gym-bridge/src/tests.rs": "0cbce28a36c030d9289df76d42fea47faac26279a69a58ef9bbcf2cc24d8d99d",
+    "crates/gym-bridge/src/transport.rs": "b59f1cbdc4a9610462e8882f0c33e26e993245925a8bd26c4f17d4ee4e2347c3"
+  }
+}

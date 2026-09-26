@@ -20,6 +20,10 @@ Walk closer and tap **Use computer** to open its controls inside the world.
   Codex and Claude viewer. Selecting a transcript expands its reading area;
   **All chats** returns to the smaller computer panel. Close the panel to
   continue walking.
+- Walk east to the **GYM** building. Enter, approach the boards, and tap
+  **Use Gym board** to inspect Microcoder and Terminal-Bench runs.
+  [Gym setup and controls](gym.md) cover its separate host grant, recorded
+  charts, and explicitly confirmed run recipes. Leaving pauses Gym updates.
 - Follow the [pairing guide](../coder/guides/mobile-readonly.md). The computer
   command displays an expiring QR invitation and stays running to serve chats;
   the phone also accepts its complete pairing string. Camera permission is
@@ -75,12 +79,15 @@ Desktop chat, public-feed panels, XP/quest inspection, and the local Microcoder
 versus Fable replay picker remain desktop UI features. The portable replay
 clock/track/landmark types remain shared, but this mobile delivery has no replay
 artifact importer, XP trust configuration, or world-chat composer. The follower
-moves and emotes without a model. Mobile Verse does not start a model or a
-benchmark, and the chat reader remains read-only.
+moves and emotes without a model. Walking through Verse does not start a model or a benchmark. The Gym can
+request an explicitly confirmed, host-configured recipe through its separate
+execution grant; the chat reader remains read-only.
 
 The `desktop` feature is enabled by default for the Verse executable. The iOS
 application depends on `verse` with default features disabled: no desktop
-harnesses, Gym, knowledge store, or window event loop enter that target. Native
+harnesses, local Gym result store, knowledge store, or window event loop enter
+that target. The portable `gym-bridge` client observes a separately configured
+host; its filesystem readers and execution host are feature-gated out of iOS. Native
 text and controls remain SwiftUI controls; the desktop glyph atlas is not used
 as the phone's text renderer.
 
@@ -89,6 +96,7 @@ as the phone's text renderer.
 See [the native app build guide](../../bins/coder-ios/README.md),
 [the Verse verification record](../coder/verification/2026-09-26-verse-mobile.md),
 [QR pairing verification](../coder/verification/2026-09-26-world-pairing.md),
+[Gym verification](../coder/verification/2026-09-26-verse-gym.md),
 and [issue #9698](https://github.com/OpenAgentsInc/openagents/issues/9698), and
 [Verse-first pairing #9699](https://github.com/OpenAgentsInc/openagents/issues/9699).
 Simulator rendering and lifecycle evidence are separate from physical-device

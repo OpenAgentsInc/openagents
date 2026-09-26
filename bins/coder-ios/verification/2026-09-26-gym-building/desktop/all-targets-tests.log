@@ -1,0 +1,187 @@
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/verse)
+    Finished `test` profile [unoptimized] target(s) in 3.92s
+     Running unittests src/lib.rs (../target-verse/debug/deps/verse-7deaed69b22d5327)
+
+running 132 tests
+test avatar::tests::a_standing_gait_does_not_swing ... ok
+test agent::tests::the_agent_lags_then_catches_up ... ok
+test agent::tests::a_scanning_agent_does_not_greet ... ok
+test agent::tests::the_look_around_goes_left_then_right ... ok
+test agent::tests::the_agent_starts_beside_the_player ... ok
+test agent::tests::a_greeting_faces_the_other_agent_and_bows ... ok
+test agent::tests::every_emote_starts_and_ends_at_rest ... ok
+test agent::tests::a_visiting_agent_flies_to_its_goal_and_faces_it ... ok
+test agent::tests::a_short_step_earns_no_look_around ... ok
+test brain::tests::the_instructions_name_the_player_and_the_scene ... ok
+test camera::tests::the_camera_starts_behind_and_above ... ok
+test camera::tests::pitch_is_clamped ... ok
+test camera::tests::settle_swings_back_behind ... ok
+test agent::tests::the_look_around_faces_what_the_scan_found ... ok
+test camera::tests::mouselook_takes_the_orbit_angle ... ok
+test camera::tests::the_eye_never_sinks_below_the_ground ... ok
+test agent::tests::catching_up_after_a_run_earns_a_look_around ... ok
+test camera::tests::zoom_is_bounded ... ok
+test avatar::tests::the_avatar_stands_on_its_feet ... ok
+test controller::tests::a_jump_leaves_and_returns_to_the_ground ... ok
+test chat::tests::long_broadcasts_and_shouting_are_refused ... ok
+test chat::tests::lines_land_in_their_windows ... ok
+test controller::tests::a_turns_without_mouselook_and_strafes_with_it ... ok
+test agent::tests::the_ghost_is_one_step_down_the_ladder ... ok
+test chat::tests::ads_wait_a_minute_and_all_draws_on_a_budget ... ok
+test controller::tests::s_backpedals_slower_and_wins_over_w ... ok
+test controller::tests::a_footprint_stops_the_character ... ok
+test chat::tests::bang_commands_mute_and_unmute ... ok
+test controller::tests::w_runs_forward_along_positive_z ... ok
+test chat::tests::an_unknown_shortcut_is_a_private_message ... ok
+test controller::tests::the_world_edge_holds ... ok
+test chat::tests::shortcuts_pick_the_channel_for_one_line ... ok
+test controller::tests::wrap_keeps_angles_in_range ... ok
+test agent::tests::the_spade_is_its_size_and_amber ... ok
+test crowd::tests::my_own_events_are_ignored ... ok
+test feed::tests::relay_names_shorten ... ok
+test feed::tests::visitors_stand_apart_on_the_ring ... ok
+test chat::tests::scope_follows_distance_and_zone ... ok
+test hud::gym::tests::missing_measurements_and_unenforced_spend_are_not_free_or_bounded ... ok
+test hud::gym::tests::tall_charts_can_scroll_even_when_the_number_of_rows_is_small ... ok
+test crowd::tests::a_publisher_cannot_flood_the_crowd ... ok
+test hud::tests::a_point_ahead_projects_to_the_screen_center ... ok
+test crowd::tests::frames_interpolate_in_the_past ... ok
+test crowd::tests::an_offline_entity_rests_at_its_state ... ok
+test app::tests::gym_connection_files_are_bounded_regular_utf8_and_do_not_follow_links ... ok
+test agent::tests::an_idle_agent_plays_every_idle_emote ... ok
+test crowd::tests::stale_and_reordered_frames_are_dropped ... ok
+test identity::tests::a_bad_profile_name_is_refused ... ok
+test feed::tests::notes_are_tidied_for_a_chat_line ... ok
+test mesh::tests::a_cube_has_twelve_edges_and_twelve_triangles ... ok
+test mesh::tests::cube_edges_are_unit_length ... ok
+test gym::tests::entry_loads_but_exit_and_background_stop_observation ... ok
+test gym::tests::leaving_during_launch_keeps_identity_and_marks_the_outcome_unknown ... ok
+test gym::tests::stale_and_changed_recipes_cannot_be_confirmed ... ok
+test gym::tests::a_previous_visit_cannot_update_the_new_board ... ok
+test gym::tests::starting_requires_a_current_reviewed_recipe_and_explicit_confirmation ... ok
+test mv::tests::cells_follow_the_floor ... ok
+test identity::tests::the_key_file_is_private ... ok
+test gym::tests::unknown_cost_and_metric_denominators_survive_projection ... ok
+test net::tests::a_req_carries_every_filter ... ok
+test gym::tests::confirmation_and_reconciliation_queue_one_identical_logical_request ... ok
+test mv::tests::a_tampered_frame_is_refused ... ok
+test mv::tests::a_gesture_round_trips ... ok
+test identity::tests::a_profile_is_created_once_then_reused ... ok
+test mv::tests::another_world_is_refused ... ok
+test mv::tests::a_state_round_trips_with_its_address ... ok
+test palette::tests::full_amber_is_the_terminal_amber ... ok
+test net::tests::relay_messages_parse ... ok
+test mv::tests::a_frame_round_trips ... ok
+test net::tests::cancellation_interrupts_an_unfinished_websocket_handshake ... ok
+test palette::tests::the_ladder_stays_ordered_in_linear_light ... ok
+test net::tests::relay_parsing_and_queues_are_bounded ... ok
+test render::tests::scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits ... ok
+test render::tests::renderer_options_and_extents_are_bounded_before_gpu_work ... ok
+test replay::tests::a_visit_spans_from_the_previous_event_to_its_own ... ok
+test replay::tests::fable_tool_calls_are_the_workbench_and_tests_the_proving_ground ... ok
+test replay::tests::each_microcoder_event_visits_its_place ... ok
+test crowd::tests::publisher_session_tracking_is_bounded_even_for_unrendered_entities ... ok
+test replay::tests::a_side_that_starts_late_waits_on_the_plaza ... ok
+test replay::tests::places_are_apart_and_the_ghost_stands_beside_the_agent ... ok
+test replay::tests::the_clock_plays_at_1_10_and_60_times ... ok
+test replay::tests::portable_presentation_matches_the_existing_gym_units ... ok
+test replay::tests::the_agents_travel_at_a_bounded_speed_and_arrive ... ok
+test mv::tests::bad_numbers_are_refused ... ok
+test net::tests::authentication_ack_restores_live_and_unfinished_one_shot_subscriptions ... ok
+test runtime::tests::bad_input_and_resume_gaps_cannot_poison_the_simulation ... ok
+test net::tests::offline_queue_keeps_ordinary_events_and_replaces_only_replaceable_addresses ... ok
+test mv::tests::gesture_version_duration_and_coordinates_are_checked ... ok
+test session::tests::a_greeting_is_returned_from_a_little_farther ... ok
+test session::tests::greetings_go_to_the_nearest_agent_in_range_once_per_cooldown ... ok
+test runtime::tests::external_agent_motion_is_not_advanced_as_a_follower ... ok
+test mv::tests::world_chat_round_trips_with_its_scope ... ok
+test session::tests::published_poses_name_the_avatar_and_its_agent ... ok
+test runtime::tests::the_computer_is_visible_then_reachable_without_walking_through_it ... ok
+test session::tests::socket_open_is_not_authenticated_and_reconnect_resets_pose_identity ... ok
+test render::tests::dynamic_buffers_grow_to_hold_the_full_bounded_crowd ... ok
+test session::tests::random_spawns_land_on_the_plaza_and_clear ... ok
+test session::tests::nonblocking_spawn_only_accepts_the_injected_players_signature ... ok
+test runtime::tests::gym_entry_requires_the_real_doorway_and_excludes_walls_and_roof ... ok
+test session::tests::profiles_require_signatures_and_room_labels_require_pinned_authority ... ok
+test runtime::tests::semantic_input_advances_the_same_world_deterministically ... ok
+test render::tests::over_capacity_frames_fail_instead_of_silently_clipping ... ok
+test world::tests::every_color_is_on_the_amber_ladder ... ok
+test world::tests::faces_are_near_black ... ok
+test world::tests::the_city_has_buildings ... ok
+test world::tests::gym_hall_and_door_are_clear_and_signage_is_world_geometry ... ok
+test world::tests::the_computer_has_one_solid_footprint_and_clear_approach ... ok
+test world::tests::the_quest_board_stands_on_the_open_plaza ... ok
+test world::tests::the_city_is_the_same_every_launch ... ok
+test world::tests::the_spawn_is_clear ... ok
+test world::tests::the_replay_landmarks_stand_clear_of_the_city ... ok
+test xp::tests::offline_the_hud_says_so ... ok
+test session::tests::stopped_link_cannot_echo_a_chat_as_success_and_history_identity_is_bounded ... ok
+test xp::tests::the_level_curve_is_100_n_to_the_1_5 ... ok
+test xp::tests::missing_names_the_events_trusted_awards_point_at ... ok
+test xp::tests::untrusted_referees_quests_show_but_their_awards_count_for_nothing ... ok
+test xp::tests::a_counted_award_credits_xp_titles_and_its_quest_row ... ok
+test app::tests::the_replay_list_marks_the_chosen_run_and_keeps_it_in_view ... ok
+test xp::tests::the_hud_shows_xp_level_titles_and_the_board ... ok
+test xp::tests::labels_need_the_awards_referee_and_a_counted_award ... ok
+test hud::tests::pills_tabs_and_the_bar_are_clickable ... ok
+test hud::tests::long_lines_wrap_within_the_window ... ok
+test hud::tests::a_slash_lists_the_shortcuts ... ok
+test hud::tests::the_open_board_is_a_clickable_panel ... ok
+test hud::tests::a_replay_shows_top_right_and_its_list_is_a_panel ... ok
+test ui::tests::the_font_rasterizes_printable_ascii ... ok
+test ui::tests::text_is_monospaced ... ok
+test ui::tests::wrapping_breaks_at_spaces_and_splits_long_words ... ok
+test replay::tests::a_retained_win_replays_through_the_gym_reader ... ok
+test replay::tests::the_ghost_is_fables_cheapest_winning_run_when_its_transcript_is_here ... ok
+test xp::tests::dropping_a_quiet_board_cancels_its_relay_worker ... ok
+test replay::tests::the_list_is_the_retained_passes_that_beat_fable ... ok
+
+test result: ok. 132 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.53s
+
+     Running unittests src/main.rs (../target-verse/debug/deps/verse-018dccc6808f4ce4)
+
+running 1 test
+test tests::a_gym_connection_path_is_inert_until_world_entry ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/relay.rs (../target-verse/debug/deps/relay-9dad0e2f01b596a2)
+
+running 3 tests
+test players_chat_in_the_world_in_rooms_and_privately ... ok
+test two_players_see_each_other ... ok
+test two_agents_that_meet_greet_each_other ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/xp_relay.rs (../target-verse/debug/deps/xp_relay-b85a6026b4c90a61)
+
+running 1 test
+test the_board_derives_xp_from_a_live_relay ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/ask_agent.rs (../target-verse/debug/examples/ask_agent-b76a3d13c34e62a4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/gym_capture.rs (../target-verse/debug/examples/gym_capture-29d92e1340b04a3d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/nostr_feed.rs (../target-verse/debug/examples/nostr_feed-c9b9f1724e82f18a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/xp_seed.rs (../target-verse/debug/examples/xp_seed-c7b047e4122817b8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

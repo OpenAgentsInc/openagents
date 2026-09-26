@@ -22,6 +22,10 @@ pub(crate) struct Config {
     pub scale: f32,
     #[serde(default)]
     pub synthetic: bool,
+    #[serde(default)]
+    pub gym_code: Option<String>,
+    #[serde(default)]
+    pub synthetic_gym: bool,
 }
 
 #[derive(Deserialize)]
@@ -58,6 +62,21 @@ pub(crate) enum Request {
     Disconnect,
     InteractComputer,
     CloseComputer,
+    InteractGym,
+    CloseGym,
+    GymView,
+    GymConfigure {
+        code: String,
+    },
+    GymSelectRun {
+        id: String,
+    },
+    GymSelectRecipe {
+        id: String,
+    },
+    GymLaunch,
+    GymRetry,
+    GymCloseDetail,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -78,6 +97,12 @@ pub(crate) struct Packet {
     position: [f32; 3],
     computer: Computer,
     computer_open: bool,
+    gym: Gym,
+    gym_open: bool,
+    gym_revision: u64,
+    gym_active: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gym_board: Option<verse::gym::BoardView>,
     view: View<()>,
 }
 
@@ -95,6 +120,30 @@ struct Computer {
 impl From<verse::runtime::Computer> for Computer {
     fn from(value: verse::runtime::Computer) -> Self {
         Self {
+            near: value.near,
+            visible: value.visible,
+            screen_x: value.screen_x,
+            screen_y: value.screen_y,
+            distance: value.distance,
+        }
+    }
+}
+
+/// The Gym's interior membership and native board anchor come from the shared world.
+#[derive(Serialize)]
+struct Gym {
+    inside: bool,
+    near: bool,
+    visible: bool,
+    screen_x: f32,
+    screen_y: f32,
+    distance: f32,
+}
+
+impl From<verse::runtime::Gym> for Gym {
+    fn from(value: verse::runtime::Gym) -> Self {
+        Self {
+            inside: value.inside,
             near: value.near,
             visible: value.visible,
             screen_x: value.screen_x,
@@ -152,6 +201,18 @@ fn packet(
             distance: 5.0,
         },
         computer_open: false,
+        gym: Gym {
+            inside: false,
+            near: false,
+            visible: false,
+            screen_x: 0.5,
+            screen_y: 0.5,
+            distance: 60.0,
+        },
+        gym_open: false,
+        gym_revision: 0,
+        gym_active: false,
+        gym_board: None,
         view,
     }
 }
@@ -174,6 +235,9 @@ pub(crate) struct Scene {
     jump: bool,
     sprint: bool,
     computer_open: bool,
+    gym_open: bool,
+    gym_configuration_error: Option<String>,
+    pub gym_board: verse::gym::Board,
     pub frames: u64,
     pub error: Option<String>,
 }
@@ -191,8 +255,24 @@ impl Scene {
             viewport,
         )
         .map_err(|e| e.to_string())?;
+        let mut gym_board = verse::gym::Board::new(secret, config.synthetic);
+        let initial_gym_error = config
+            .gym_code
+            .as_deref()
+            .and_then(|code| gym_board.configure(code).err());
+        if config.synthetic_gym && !config.synthetic {
+            return Err("The Gym preview requires synthetic mode".into());
+        }
+        let mut world = WorldRuntime::new();
+        if config.synthetic_gym {
+            // This explicit fixture starts outside the entrance. The real touch
+            // path must cross the boundary before the board loads its rows.
+            let mut outside = verse::world::GYM_ENTRANCE;
+            outside.x -= 2.0;
+            world.set_spawn(outside, std::f32::consts::FRAC_PI_2)?;
+        }
         Ok(Self {
-            world: WorldRuntime::new(),
+            world,
             lifecycle,
             session: None,
             secret,
@@ -203,6 +283,9 @@ impl Scene {
             jump: false,
             sprint: false,
             computer_open: false,
+            gym_open: false,
+            gym_configuration_error: initial_gym_error,
+            gym_board,
             frames: 0,
             error: None,
         })
@@ -220,6 +303,7 @@ impl Scene {
         } else if self.session.is_none() && self.relay.is_some() {
             self.start_session()?;
         }
+        self.sync_gym_interest();
         Ok(())
     }
 
@@ -250,6 +334,7 @@ impl Scene {
         session.set_publish_intervals(verse::session::PublishIntervals::mobile())?;
         session.begin_spawn(Duration::from_millis(1500));
         self.spawn_pending = true;
+        self.gym_board.set_active(false);
         self.session = Some(session);
         Ok(())
     }
@@ -264,7 +349,7 @@ impl Scene {
             self.touches.remove(&id);
             return Ok(());
         }
-        if !self.lifecycle.active() || self.computer_open {
+        if !self.lifecycle.active() || self.panel_open() {
             return Ok(());
         }
         if !x.is_finite() || !y.is_finite() || x.abs() > 32768.0 || y.abs() > 32768.0 {
@@ -315,7 +400,7 @@ impl Scene {
     }
 
     fn input(&mut self) -> InputState {
-        if self.computer_open {
+        if self.panel_open() {
             return InputState::default();
         }
         let mut input = InputState {
@@ -344,6 +429,7 @@ impl Scene {
             return Ok(None);
         };
         if self.spawn_pending {
+            self.gym_board.set_active(false);
             if let Some(session) = &mut self.session {
                 if let Some(spawn) =
                     session.poll_spawn(&self.world.world.blockers, verse::world::HALF)
@@ -362,6 +448,11 @@ impl Scene {
         if !self.computer().near {
             self.computer_open = false;
         }
+        if !self.gym().inside {
+            self.gym_open = false;
+        }
+        self.sync_gym_interest();
+        self.gym_board.poll();
         let now = Instant::now();
         if let Some(session) = &mut self.session {
             session.tick(now, &self.world.player, &self.world.agent);
@@ -387,17 +478,17 @@ impl Scene {
             Request::Active { active } => self.activate(active),
             Request::Pointer { id, phase, x, y } => self.pointer(id, phase, x, y),
             Request::Jump => {
-                if self.lifecycle.active() && !self.computer_open {
+                if self.lifecycle.active() && !self.panel_open() {
                     self.jump = true;
                 }
                 Ok(())
             }
             Request::Sprint { enabled } => {
-                self.sprint = self.lifecycle.active() && !self.computer_open && enabled;
+                self.sprint = self.lifecycle.active() && !self.panel_open() && enabled;
                 Ok(())
             }
             Request::Zoom { delta } => {
-                if self.computer_open {
+                if self.panel_open() {
                     Ok(())
                 } else {
                     self.world.apply(Action::Zoom { lines: delta })
@@ -414,6 +505,7 @@ impl Scene {
                     return Err("Walk up to the computer to open it".into());
                 }
                 self.computer_open = true;
+                self.gym_open = false;
                 self.touches.clear();
                 self.jump = false;
                 self.sprint = false;
@@ -421,6 +513,50 @@ impl Scene {
             }
             Request::CloseComputer => {
                 self.computer_open = false;
+                Ok(())
+            }
+            Request::InteractGym => {
+                let gym = self.gym();
+                if !self.lifecycle.active() || !gym.inside || !gym.near || !gym.visible {
+                    return Err("Walk inside the Gym and approach its board to open it".into());
+                }
+                self.gym_open = true;
+                self.computer_open = false;
+                self.touches.clear();
+                self.jump = false;
+                self.sprint = false;
+                Ok(())
+            }
+            Request::CloseGym => {
+                self.gym_open = false;
+                Ok(())
+            }
+            Request::GymConfigure { code } => {
+                self.require_gym_panel()?;
+                self.gym_board.configure(&code)?;
+                self.gym_configuration_error = None;
+                Ok(())
+            }
+            Request::GymView => Ok(()),
+            Request::GymSelectRun { id } => {
+                self.require_gym_panel()?;
+                self.gym_board.select_run(&id)
+            }
+            Request::GymSelectRecipe { id } => {
+                self.require_gym_panel()?;
+                self.gym_board.select_recipe(&id)
+            }
+            Request::GymLaunch => {
+                self.require_gym_panel()?;
+                self.gym_board.confirm_launch()
+            }
+            Request::GymRetry => {
+                self.require_gym_panel()?;
+                self.gym_board.retry_launch()
+            }
+            Request::GymCloseDetail => {
+                self.require_gym_panel()?;
+                self.gym_board.close_detail();
                 Ok(())
             }
             Request::Snapshot => Ok(()),
@@ -453,7 +589,44 @@ impl Scene {
         );
         packet.computer = self.computer().into();
         packet.computer_open = self.computer_open;
+        packet.gym = self.gym().into();
+        packet.gym_open = self.gym_open;
+        packet.gym_revision = self.gym_board.revision();
+        packet.gym_active = self.lifecycle.active() && !self.spawn_pending && self.gym().inside;
         packet
+    }
+
+    pub fn gym_view(&self) -> Option<verse::gym::BoardView> {
+        self.require_gym_panel().ok().map(|()| {
+            let mut view = self.gym_board.view();
+            if view.error.is_none() {
+                view.error = self.gym_configuration_error.clone();
+            }
+            view
+        })
+    }
+
+    fn panel_open(&self) -> bool {
+        self.computer_open || self.gym_open
+    }
+
+    fn require_gym_panel(&self) -> Result<(), String> {
+        if self.lifecycle.active() && !self.spawn_pending && self.gym_open && self.gym().inside {
+            Ok(())
+        } else {
+            Err("Open the Gym board while inside to use its controls".into())
+        }
+    }
+
+    fn sync_gym_interest(&mut self) {
+        self.gym_board
+            .set_active(self.lifecycle.active() && !self.spawn_pending && self.gym().inside);
+    }
+
+    fn gym(&self) -> verse::runtime::Gym {
+        let viewport = self.lifecycle.viewport();
+        self.world
+            .gym(viewport.width() as f32 / viewport.height().max(1) as f32)
     }
 
     fn computer(&self) -> verse::runtime::Computer {
@@ -477,9 +650,109 @@ mod tests {
             height: 1200,
             scale: 2.0,
             synthetic: true,
+            gym_code: None,
+            synthetic_gym: false,
         })
         .unwrap()
     }
+    fn gym_scene() -> Scene {
+        Scene::new(Config {
+            secret_hex: "11".repeat(32),
+            width: 800,
+            height: 1200,
+            scale: 2.0,
+            synthetic: true,
+            gym_code: None,
+            synthetic_gym: true,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn gym_fixture_loads_only_after_walking_inside_and_pauses_on_exit() {
+        let mut scene = gym_scene();
+        scene.activate(true).unwrap();
+        scene.update(1.0).unwrap();
+        assert!(!scene.gym().inside);
+        assert!(!scene.gym_board.view().active);
+        assert!(scene.gym_board.view().runs.is_empty());
+        assert!(scene.action(Request::GymLaunch).is_err());
+        scene.pointer(1, PointerPhase::Down, 100.0, 300.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 100.0, 200.0).unwrap();
+        for frame in 1..=160 {
+            scene.update(1.0 + frame as f64 / 30.0).unwrap();
+        }
+        assert!(scene.gym().inside);
+        assert!(scene.gym().near);
+        assert!(scene.gym_board.view().active);
+        assert!(!scene.gym_board.view().runs.is_empty());
+        assert!(
+            scene.gym_view().is_none(),
+            "details require explicit board interaction"
+        );
+        scene.action(Request::InteractGym).unwrap();
+        assert!(scene.gym_view().is_some());
+        assert!(scene.touches.is_empty());
+        let frame = serde_json::to_value(scene.packet()).unwrap();
+        assert!(
+            frame.get("gym_board").is_none(),
+            "frame packets omit the run catalog"
+        );
+        scene.activate(false).unwrap();
+        assert!(!scene.gym_board.view().active);
+        assert!(scene.gym_view().is_none());
+        assert!(scene.action(Request::GymLaunch).is_err());
+        scene.activate(true).unwrap();
+        scene.world.set_spawn(verse::world::SPAWN, 0.0).unwrap();
+        scene.update(9.0).unwrap();
+        assert!(!scene.gym_board.view().active);
+        assert!(!scene.gym_open);
+    }
+
+    #[test]
+    fn gym_requires_deliberate_selection_and_retains_the_preview_refusal_after_leaving() {
+        let mut scene = gym_scene();
+        scene.activate(true).unwrap();
+        let mut near = verse::world::GYM_BOARD;
+        near.x -= 3.0;
+        near.y = 0.0;
+        scene
+            .world
+            .set_spawn(near, std::f32::consts::FRAC_PI_2)
+            .unwrap();
+        scene.update(1.0).unwrap();
+        let recipe = scene.gym_board.view().recipes[0].id.clone();
+        assert!(
+            scene
+                .action(Request::GymSelectRecipe { id: recipe.clone() })
+                .is_err()
+        );
+        scene.action(Request::InteractGym).unwrap();
+        assert!(scene.action(Request::GymLaunch).is_err());
+        scene
+            .action(Request::GymSelectRecipe { id: recipe })
+            .unwrap();
+        scene.action(Request::GymLaunch).unwrap();
+        let refused = scene.gym_board.view().launch.unwrap();
+        assert_eq!(refused.phase, "rejected");
+        assert!(refused.receipt.is_none());
+        assert!(
+            refused
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("No training or evaluation was started")
+        );
+        scene.action(Request::CloseGym).unwrap();
+        scene.world.set_spawn(verse::world::SPAWN, 0.0).unwrap();
+        scene.update(1.03).unwrap();
+        assert_eq!(
+            scene.gym_board.view().launch.unwrap().request_id,
+            refused.request_id
+        );
+        assert!(scene.gym_view().is_none());
+    }
+
     #[test]
     fn invalid_relay_cannot_replace_a_previous_choice() {
         let mut scene = scene();

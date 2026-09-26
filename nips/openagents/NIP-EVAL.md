@@ -198,3 +198,130 @@ through locators, redaction identity changes, and unauthorized promotion.
 Advertise `nip-eval-v1` only for the tested publication/client validation role.
 A relay cannot certify task quality, statistical validity, or calibration by
 storing a signed result.
+
+## Private Gym boards and admitted recipe control
+
+This optional bounded profile serves live and recent Gym projections to an
+explicitly paired client. It uses signed, encrypted private artifacts (`3188`)
+for grants, requests, and replies; it allocates no new event kind. A board is
+an observation, not an `openagents.eval-report.v1` or a public `3189`
+publication. It cannot establish an independent pass, promote an implementation,
+or authorize training through possession of an evaluation report.
+
+Unlike general CAP/CJ execution, this profile supports only operator-installed,
+fixed local recipes under its own separately admitted grant. It does not claim
+CJ worker compatibility, arbitrary operation dispatch, or a RUN journal. Hosts
+needing those broader contracts use the existing CAP/CJ/RUN profiles. An existing
+SESS history-observation or CTRL task grant MUST NOT be widened into this grant.
+
+### Pairing and authority
+
+An operator selects exact local source roots and optional executable recipes,
+then signs an `openagents.gym-grant.v1` body with `host`, `client`, `relay`,
+`grant`, `observe`, `sources_digest`, `recipes`, `issued_at`, and `expires_at`.
+`v` is required and all objects have closed shapes. `observe` is true;
+`recipes` MAY be empty and only the listed exact revisions can launch. Client
+and host keys MUST differ. `sources_digest` binds canonical local source records,
+including the root's device and inode, without publishing paths in the grant.
+Every grant expires within 30 days and is durably revocable by its host.
+
+The public `openagents.gym-connection.v1` body contains `v`, `host`, `client`,
+`relay`, `grant`, `expires_at`, and the original signed encrypted grant event
+as `authorization`. Its paste representation is `gym-connect:` followed by
+base64url without padding of canonical JSON. The authenticated transfer of this
+code pins the host; the client verifies every repeated field against the opened
+grant and proves its own key by signing each request. No private key is included.
+Production relay URLs require exact credential-free `wss`; explicit fixture
+policy MAY admit `ws` to numeric loopback addresses only.
+
+Each recipe has `id`, `title`, `revision`, `budget`, and `detail`. A revision is
+a Digest over its full local configuration, executable digest, and admitted
+working-directory identity. The reference host configures a canonical executable,
+fixed arguments, fixed working directory, wall deadline, maximum starts, and
+allowlisted environment variable names. Clients cannot amend these values.
+Environment values remain private host inputs. A top-level executable pin does
+not establish immutable transitive scripts, dependencies, models, or environment
+contents; those require a separately pinned experimental closure.
+
+Budget is `{wall_ms, max_starts, spend_limit_usd, spend_enforced}`. The reference
+host admits 1–86,400,000 wall milliseconds and 1–32 starts per granted recipe.
+It requires null `spend_limit_usd` and false `spend_enforced`; it MUST NOT claim
+an enforced dollar ceiling from a nominal provider budget. Grant possession is
+explicit authorization for these local commands and their possible spend,
+subject to current revocation, launch allowance, and host admission.
+
+### Requests and bounded observations
+
+`openagents.gym-request.v1` has `v`, `request`, `grant`, `authorization`,
+`issued_at`, `expires_at`, and `query`. The first three identity references are
+random common IDs or an exact original authorization event ID as appropriate.
+A request is valid for at most 60 seconds and no longer than its grant.
+The envelope's signer, recipient, issue time, retention time, and random `h`
+mailbox MUST bind the body; mailbox equals `request`. Signature and NIP-42 relay
+authentication are separate checks.
+
+Supported queries are closed objects:
+
+- `{kind: "snapshot"}` requests a current finite board.
+- `{kind: "launch", request_id, recipe_id, revision}` requests the exact granted
+  recipe. `request_id` is the durable logical launch identity, independent of
+  a fresh transport request and its expiration.
+
+`openagents.gym-reply.v1` has `v`, `request`, `request_event`, `grant`,
+`issued_at`, `expires_at`, and `response`. The reply signs the exact original
+request event ID, logical transport request, grant, and recipient. Its expiration
+MUST NOT exceed the request. Response is `{kind, value}` where kind is `snapshot`,
+`launch`, or `refused`; the last value is a stable refusal code. Replies with
+incorrect routing, signatures, schema, size, or request correlation refuse.
+A relay ACK proves transport acceptance only. Clients subscribe before publishing.
+
+A snapshot has `observed_at`, `runs`, `recipes`, and `notices`. Runs contain
+`id`, `title`, `category`, `status`, `completed`, `total`, `cost_usd`,
+`elapsed_ms`, `metrics`, `source`, and `provenance`. Categories are `evaluation`,
+`agent`, and `training`. Status is `queued`, `running`, `completed`, `failed`,
+`cancelled`, `unknown`, or `stale`. Completion is not benchmark success.
+Nullable measurements MUST remain null when unavailable. A source-observed
+running file does not prove live process ownership. Training-summary sources
+are operator declarations, not independently verified model-training receipts.
+
+Metrics are `{name, unit, points}`, with points `{step, value}`. Points MUST
+have finite values and strictly increasing recorded steps. Missing costs MUST
+NOT become zero, and a partial tail MUST NOT be represented as a complete cost
+history. The reference Microcoder adapter requires all cost components to be
+explicitly known and no unknown charges before returning a known total.
+
+Maximums are 128 KiB canonical application JSON, 64 runs, 16 recipes, four metrics
+per run, 64 points per metric, and 16 notices. Text is bounded and excludes
+control characters. The reference host bounds source enumeration to 512 entries
+and 8 MiB read per board, one MiB per JSON file, and the last 64 KiB/256 events
+per Microcoder tail. A partial scan carries an explicit notice. Source roots and
+all descendant reads are confined through directory descriptors without following
+symlinks. Replaced roots refuse instead of silently admitting new data.
+
+### Dispatch, retries, and recovery
+
+A launch receipt has `request_id`, `run_id`, `recipe_id`, `revision`, `status`,
+`submitted_at`, nullable `finished_at`, and nullable `exit_code`. A host MUST
+serialize grant validation, current revocation, recipe-pin checks, bounds,
+allowance consumption, and durable launch intent before dispatch. Request expiry
+is checked again after potentially slow source or executable reads.
+
+An exact `(grant, request_id)` retry returns the retained work identity and its
+current receipt without dispatching again. Different recipe semantics under
+that identity refuse as conflict. A timeout or invalid reply can occur after
+dispatch; clients preserve the launch ID and show delivery as unknown. Only a
+verified signed refusal confirms rejection. A new launch ID is new work.
+
+The reference host runs one active or unresolved launch at a time, owns one
+foreground service lock, and supervises each command under its declared deadline
+with bounded output. Read/revoke transactions use a separate short lock.
+On restart, unfinished launch intents become unknown; they are never silently
+rerun. Unknown work blocks further dispatch pending operator investigation.
+This is durable deduplication, not exactly-once effects or automatic reconciliation.
+
+Revocation denies future reads and dispatches. It does not cancel an already
+admitted child or revoke previously disclosed ciphertext. Output stays in the
+private host store, outside ordinary board replies. No source scan, recipe
+execution, or publication occurs merely because a client starts, enters a scene,
+subscribes to Verse presence, or reconnects. The Verse Gym client activates its
+finite reads only inside the Gym and stops them on exit or suspension.

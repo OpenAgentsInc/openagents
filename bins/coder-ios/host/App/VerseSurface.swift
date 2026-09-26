@@ -86,11 +86,14 @@ final class VerseMetalView: UIView {
         if handle == nil, !creationFailed {
             do {
                 let secret = try DeviceIdentity.loadOrCreateVerse(synthetic: bridge.synthetic)
-                let config = try JSONSerialization.data(withJSONObject: [
+                var configuration: [String: Any] = [
                     "secret_hex": secret.map { String(format: "%02x", $0) }.joined(),
                     "width": width, "height": height, "scale": Double(scale),
                     "synthetic": bridge.synthetic,
-                ])
+                    "synthetic_gym": bridge.synthetic && ProcessInfo.processInfo.arguments.contains("--gym-preview"),
+                ]
+                if let code = bridge.storedGymCode() { configuration["gym_code"] = code }
+                let config = try JSONSerialization.data(withJSONObject: configuration)
                 handle = config.withUnsafeBytes {
                     coder_verse_create(Unmanaged.passUnretained(metal).toOpaque(),
                                        $0.bindMemory(to: UInt8.self).baseAddress, $0.count)
@@ -136,15 +139,17 @@ final class VerseMetalView: UIView {
 
     func frame(_ link: CADisplayLink) {
         guard running, window != nil else { return }
-        autoreleasepool { send(["action": "frame", "timestamp": link.timestamp], forcePublish: false) }
+        _ = autoreleasepool { send(["action": "frame", "timestamp": link.timestamp], forcePublish: false) }
     }
 
-    func send(_ request: [String: Any], forcePublish: Bool, deferred: Bool = false) {
-        guard let handle else { return }
+    @discardableResult
+    func send(_ request: [String: Any], forcePublish: Bool, deferred: Bool = false) -> Result<VersePacket, Error>? {
+        guard let handle else { return nil }
         let result: Result<VersePacket, Error>
         do {
             let input = try JSONSerialization.data(withJSONObject: request)
-            guard input.count <= 4_096 else { throw ReaderError.message("World input exceeds its bound.") }
+            let limit = request["action"] as? String == "gym_configure" ? 96 * 1024 : 4_096
+            guard input.count <= limit else { throw ReaderError.message("World input exceeds its bound.") }
             let output = input.withUnsafeBytes {
                 coder_verse_call(handle, $0.bindMemory(to: UInt8.self).baseAddress, $0.count)
             }
@@ -156,6 +161,7 @@ final class VerseMetalView: UIView {
                 self.bridge.receive(result, from: self, force: forcePublish)
             }
         } else { bridge.receive(result, from: self, force: forcePublish) }
+        return result
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {

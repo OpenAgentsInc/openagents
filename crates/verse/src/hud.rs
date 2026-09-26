@@ -12,6 +12,9 @@
 //! and titles sit at the top left, and `B` opens the quest board panel
 //! above the chat windows (`crate::xp` writes their lines).
 
+mod gym;
+pub use gym::{GymPanel, gym_panel};
+
 use std::collections::VecDeque;
 
 use coder_ui::theme::Intensity;

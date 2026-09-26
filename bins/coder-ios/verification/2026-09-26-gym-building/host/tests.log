@@ -1,0 +1,35 @@
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/gym-bridge)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.11s
+     Running unittests src/lib.rs (../target-connect/debug/deps/gym_bridge-c39e33942bb7ac87)
+
+running 13 tests
+test tests::dishonest_metric_and_monetary_limits_refuse ... ok
+test tests::live_series_are_bounded_ordered_and_do_not_convert_missing_cost ... ok
+test tests::directory_symlinks_cannot_disclose_other_sources ... ok
+test tests::terminal_bench_reads_normalized_attempts_and_retained_episode_without_inventing_cost ... ok
+test tests::paired_connection_is_device_bound_signed_and_expiring ... ok
+test tests::expiry_during_admission_leaves_no_dispatch_intent ... ok
+test tests::fifo_replacement_refuses_without_waiting_for_writer ... ok
+test tests::microcoder_cost_unknowns_and_incomplete_records_never_become_zero_or_complete ... ok
+test tests::changed_executable_and_ungranted_recipe_refuse_before_dispatch ... ok
+test tests::revocation_and_root_replacement_refuse_current_observation ... ok
+test tests::actual_authenticated_socket_snapshot_launch_and_revoke ... ok
+test tests::dropped_host_retains_unknown_intent_and_never_replays_after_restart ... ok
+test tests::exact_launch_retry_runs_once_changed_semantics_refuses_and_reopen_retains_result ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.63s
+
+     Running unittests src/main.rs (../target-connect/debug/deps/gym_bridge-f3df4ee0bafaa41a)
+
+running 2 tests
+test tests::repeated_or_unknown_cli_options_refuse ... ok
+test tests::second_service_cannot_recover_an_active_hosts_store ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests gym_bridge
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

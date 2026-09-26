@@ -13,9 +13,23 @@ struct VersePacket: Decodable {
     let view: NativeView?
     let computer: VerseComputer
     let computer_open: Bool
+    let gym: VerseGym
+    let gym_open: Bool
+    let gym_active: Bool
+    let gym_revision: UInt64
+    let gym_board: GymBoardView?
 }
 
 struct VerseComputer: Decodable {
+    let near: Bool
+    let visible: Bool
+    let screen_x: Double
+    let screen_y: Double
+    let distance: Double
+}
+
+struct VerseGym: Decodable {
+    let inside: Bool
     let near: Bool
     let visible: Bool
     let screen_x: Double
@@ -27,9 +41,12 @@ struct VerseComputer: Decodable {
 final class VerseBridge: ObservableObject {
     @Published private(set) var packet: VersePacket?
     @Published private(set) var nativeError: String?
+    @Published private(set) var gymBoard: GymBoardView?
+    @Published private(set) var gymStorageError: String?
     let synthetic: Bool
     private weak var canvas: VerseMetalView?
     private var lastPublished: CFTimeInterval = 0
+    private var gymRequestedRevision: UInt64?
 
     init(synthetic: Bool) {
         self.synthetic = synthetic
@@ -52,6 +69,24 @@ final class VerseBridge: ObservableObject {
 
     func retry() { canvas?.recreate() }
 
+    func storedGymCode() -> String? {
+        do { return try GymConnection.load(synthetic: synthetic) }
+        catch { gymStorageError = error.localizedDescription; return nil }
+    }
+
+    func configureGym(_ code: String) -> Bool {
+        guard code.utf8.count <= 65_536 else {
+            nativeError = "The Gym connection exceeds its size limit."
+            return false
+        }
+        guard let result = canvas?.send(["action": "gym_configure", "code": code], forcePublish: true),
+              case let .success(packet) = result, packet.error == nil,
+              packet.gym_board?.configured == true else { return false }
+        do { try GymConnection.save(code, synthetic: synthetic); gymStorageError = nil }
+        catch { gymStorageError = error.localizedDescription }
+        return true
+    }
+
     func receive(_ result: Result<VersePacket, Error>, from source: VerseMetalView, force: Bool) {
         guard canvas === source else { return }
         switch result {
@@ -61,6 +96,23 @@ final class VerseBridge: ObservableObject {
             lastPublished = now
             self.packet = packet
             nativeError = nil
+            if !packet.gym_active || !packet.gym.inside {
+                gymBoard = nil
+                gymRequestedRevision = nil
+            } else if let board = packet.gym_board {
+                gymBoard = board
+                gymRequestedRevision = board.revision
+            }
+            if packet.gym_active, packet.gym_open, packet.gym.inside,
+               gymBoard?.revision != packet.gym_revision,
+               gymRequestedRevision != packet.gym_revision {
+                gymRequestedRevision = packet.gym_revision
+                DispatchQueue.main.async { [weak self, weak source] in
+                    guard let self, let source, self.canvas === source,
+                          self.packet?.gym_active == true, self.packet?.gym_open == true else { return }
+                    source.send(["action": "gym_view"], forcePublish: true)
+                }
+            }
         case let .failure(error): nativeError = error.localizedDescription
         }
     }
@@ -74,7 +126,9 @@ final class VerseBridge: ObservableObject {
         guard packet.schema == "coder.verse.v1",
               packet.position.count == 3, packet.position.allSatisfy(\.isFinite),
               packet.computer.screen_x.isFinite, packet.computer.screen_y.isFinite,
-              packet.computer.distance.isFinite else {
+              packet.computer.distance.isFinite,
+              packet.gym.screen_x.isFinite, packet.gym.screen_y.isFinite, packet.gym.distance.isFinite,
+              packet.gym_board?.valid ?? true else {
             throw ReaderError.message("This app does not support the returned world view.")
         }
         guard let view = packet.view else {
