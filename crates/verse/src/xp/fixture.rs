@@ -51,7 +51,7 @@ pub fn report(runner: &str, entry: &Event, text: &str) -> String {
         "v": "openagents.eval-report.v1", "requires": [],
         "evaluator": runner,
         "subject": {"definition": {
-            "id": kb::qualified_id(runner, "git.reflog-recovery"),
+            "id": kb::qualified_id(&entry.pubkey, "git.reflog-recovery"),
             "artifact": kb::document_artifact(text),
             "event": {"id": entry.id, "pubkey": entry.pubkey, "kind": kb::ENTRY_KIND},
         }},
