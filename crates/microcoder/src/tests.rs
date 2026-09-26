@@ -303,28 +303,28 @@ async fn finished_waits_for_the_frozen_tests_to_pass() {
     let script = Script::new(vec![
         Ok(act("done already", &[], true)),
         Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
+        Ok(freeze("keep them", &["echo a holds already"])),
         Ok(act("done", &[], true)),
         Ok(act("fix", &["fix b"], false)),
         Ok(act("done", &[], true)),
     ]);
     let (state, outcome, ran, log) = go(&script, &Limits::default()).await;
     assert_eq!(outcome.ending, Ending::Finished);
-    assert_eq!(outcome.steps, 5);
-    assert_eq!(state.frozen_at, Some(2));
-    // The host ran b at the freeze and after the fix.
-    assert_eq!(ran.iter().filter(|c| *c == "check b").count(), 2);
+    assert_eq!(outcome.steps, 6);
+    assert_eq!(state.frozen_at, Some(3));
+    // The host ran b at the sent-back freeze, the final one, and after the fix.
+    assert_eq!(ran.iter().filter(|c| *c == "check b").count(), 3);
     let prompts = script.prompts.into_inner();
     assert!(prompts[0].contains("None frozen yet"));
     assert!(prompts[1].contains("no acceptance tests are frozen"));
-    assert!(prompts[2].contains("## b.sh: FAIL"));
-    assert!(prompts[3].contains("1 acceptance tests fail"));
+    assert!(prompts[3].contains("## b.sh: FAIL"));
+    assert!(prompts[4].contains("1 acceptance tests fail"));
     let tested = log
         .0
         .iter()
         .filter(|e| matches!(e, Event::Tested { .. }))
         .count();
-    assert!(tested >= 2);
-    let _ = state;
+    assert_eq!(tested, 3);
 }
 
 #[tokio::test]
@@ -336,4 +336,23 @@ async fn repeated_refused_finishes_stop_the_loop() {
     ]);
     let (_, outcome, _, _) = go(&script, &Limits::default()).await;
     assert_eq!(outcome.ending, Ending::Unaccepted);
+}
+
+#[tokio::test]
+async fn a_freeze_with_tests_that_already_pass_is_sent_back_once() {
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
+        Ok(freeze("again", &["echo same tests"])),
+        Ok(act("fix", &["fix b"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let (state, outcome, _, _) = go(&script, &Limits::default()).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    // a.sh passes on the unchanged code: the first freeze is sent back and
+    // the second is final.
+    assert_eq!(state.frozen_at, Some(2));
+    assert_eq!(state.tests[0].passed_at_freeze, Some(true));
+    assert_eq!(state.tests[1].passed_at_freeze, Some(false));
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[1].contains("The tests weren't frozen: a.sh already pass"));
 }

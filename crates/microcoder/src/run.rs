@@ -261,6 +261,9 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut bad = 0usize;
     let mut idle = 0usize;
     let mut refused = 0usize;
+    // Whether a freeze was already sent back for tests that passed before
+    // any fix.
+    let mut sent_back = false;
     let mut step = 0usize;
     let ending = loop {
         if limits.max_steps.is_some_and(|max| step >= max) {
@@ -393,17 +396,48 @@ or set finished to true if the task is complete."
                     "Step {step} asked to freeze the acceptance tests, but {ACCEPT_DIR} holds no .sh file."
                 ));
             } else {
-                state.frozen_at = Some(step);
-                froze = true;
+                let results = run_tests(env, &state.tests, deadline).await;
+                let passing: Vec<String> = results
+                    .iter()
+                    .filter(|r| r.ok())
+                    .map(|r| r.command.clone())
+                    .collect();
+                if !passing.is_empty() && !sent_back {
+                    // A test that passes on the unchanged code can't show
+                    // that a fix worked. Send the freeze back once.
+                    sent_back = true;
+                    observer.event(
+                        started.elapsed().as_secs_f64(),
+                        &Event::Tested {
+                            step,
+                            froze: false,
+                            results,
+                        },
+                    );
+                    state.notes.push(format!(
+                        "The tests weren't frozen: {} already pass on the unchanged code. The task \
+says the code is broken, so a test that passes now either checks something that isn't broken, or \
+states the requirement the way the broken code already behaves. Check each one against the task and \
+against the standard definition of what it tests. Rewrite it so it fails on the current code, or \
+delete it if its requirement truly holds already. Then set freeze_tests to true again; the second \
+freeze is final.",
+                        passing.join(", ")
+                    ));
+                    state.tests.clear();
+                } else {
+                    for (test, result) in state.tests.iter_mut().zip(&results) {
+                        test.passed_at_freeze = Some(result.ok());
+                    }
+                    state.test_results = results;
+                    state.frozen_at = Some(step);
+                    froze = true;
+                }
             }
         }
         let ran_something = !state.actions.last().is_none_or(|a| a.results.is_empty());
         if state.frozen_at.is_some() && (froze || ran_something) {
-            state.test_results = run_tests(env, &state.tests, deadline).await;
-            if froze {
-                for (test, result) in state.tests.iter_mut().zip(&state.test_results) {
-                    test.passed_at_freeze = Some(result.ok());
-                }
+            if !froze {
+                state.test_results = run_tests(env, &state.tests, deadline).await;
             }
             observer.event(
                 started.elapsed().as_secs_f64(),
