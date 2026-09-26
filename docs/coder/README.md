@@ -37,7 +37,8 @@ commands, detached execution, conservative recovery, paged ATIF evidence,
 retained candidate artifacts, and independently checked completion. This local
 OS-user path does not establish cross-device control. The
 [repository Microcoder adapter](runtime/microcoder-repository.md) defines its
-separately admitted model support. The [free labor host](runtime/free-labor.md)
+separately admitted model support. [Frozen context](runtime/frozen-task-context.md)
+pins exact knowledge and independent-check source lineage before execution. The [free labor host](runtime/free-labor.md)
 uses the same execution boundary for a recoverable buyer/provider order.
 The [portable host helper](runtime/portable-host.md) installs digest-pinned
 bundles, retains rollback, and generates one-shot services for explicit task

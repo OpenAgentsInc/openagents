@@ -7,8 +7,14 @@ use crate::{
 use coder_boundary::Snapshot;
 use serde_json::{Value, json};
 
-pub const REQUIREMENTS_SCHEMA: &str = "openagents.coder.task-requirements.v1";
+pub const REQUIREMENTS_SCHEMA: &str = "openagents.coder.task-requirements.v2";
+const LEGACY_REQUIREMENTS_SCHEMA: &str = "openagents.coder.task-requirements.v1";
+const CONTEXT_SCHEMA: &str = "openagents.coder.task-context.v2";
+const LEGACY_CONTEXT_SCHEMA: &str = "openagents.coder.task-context.v1";
 pub const CANDIDATE: &str = "{candidate_digest}";
+
+mod lineage;
+pub use lineage::{CheckLineage, FrozenKnowledge, KnowledgeInput, Lineage};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -29,6 +35,12 @@ pub struct Requirements {
     /// File or directory scopes whose ancestor instructions must be captured.
     pub instruction_targets: Vec<PathBuf>,
     pub source_exclusions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub task_sources: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub check_lineage: Vec<CheckLineage>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub knowledge: Vec<KnowledgeInput>,
 }
 
 impl Requirements {
@@ -37,7 +49,7 @@ impl Requirements {
             .map_err(|_| Error::InvalidCommand("invalid protected verification plan"))?;
         plan.validate()
             .map_err(|_| Error::InvalidCommand("invalid protected verification bounds"))?;
-        if self.schema != REQUIREMENTS_SCHEMA
+        if !matches!(self.schema.as_str(), REQUIREMENTS_SCHEMA | LEGACY_REQUIREMENTS_SCHEMA)
             || self.version == 0
             || self.requirements.is_empty()
             || self.requirements.len() > 64
@@ -87,6 +99,16 @@ impl Requirements {
             {
                 return Err(Error::UnsafePath);
             }
+        }
+        if self.schema == REQUIREMENTS_SCHEMA {
+            lineage::validate(self, &plan)?;
+        } else if !self.task_sources.is_empty()
+            || !self.check_lineage.is_empty()
+            || !self.knowledge.is_empty()
+        {
+            return Err(Error::InvalidCommand(
+                "legacy requirements cannot claim new provenance fields",
+            ));
         }
         Ok(plan)
     }
@@ -179,25 +201,49 @@ pub struct Context {
     pub prompt: String,
     pub instructions: Vec<ContextFile>,
     pub suites: Vec<ProtectedSuite>,
+    #[serde(default, skip_serializing_if = "Lineage::is_empty")]
+    pub lineage: Lineage,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub knowledge: Vec<FrozenKnowledge>,
     pub digest: String,
 }
 
 impl Context {
     fn expected_digest(&self) -> String {
+        if self.schema == LEGACY_CONTEXT_SCHEMA {
+            return atif::digest(
+                &json!({"schema":self.schema,"task_revision":self.task_revision,"prompt":self.prompt,"instructions":self.instructions,"suites":self.suites}),
+            );
+        }
         atif::digest(
-            &json!({"schema":self.schema,"task_revision":self.task_revision,"prompt":self.prompt,"instructions":self.instructions,"suites":self.suites}),
+            &json!({"schema":self.schema,"task_revision":self.task_revision,"prompt":self.prompt,"instructions":self.instructions,"suites":self.suites,"lineage":self.lineage,"knowledge":self.knowledge}),
         )
     }
 
-    pub(super) fn valid(&self, task: &Task) -> bool {
-        self.schema == "openagents.coder.task-context.v1"
+    pub(super) fn valid(&self, task: &Task, requirements: Option<&Requirements>) -> bool {
+        matches!(self.schema.as_str(), CONTEXT_SCHEMA | LEGACY_CONTEXT_SCHEMA)
             && self.task_revision == task.revision
             && self.prompt == task.effective_prompt()
             && self.digest == self.expected_digest()
+            && self.provenance_matches(requirements, Some(&task.task_id))
             && self
                 .instructions
                 .iter()
                 .all(|input| input.digest == digest_bytes(input.text.as_bytes()))
+    }
+
+    fn provenance_matches(
+        &self,
+        requirements: Option<&Requirements>,
+        task_id: Option<&str>,
+    ) -> bool {
+        if self.schema == LEGACY_CONTEXT_SCHEMA {
+            self.lineage.is_empty()
+                && self.knowledge.is_empty()
+                && requirements.is_none_or(|r| r.schema == LEGACY_REQUIREMENTS_SCHEMA)
+        } else {
+            lineage::matches(self, requirements, task_id)
+        }
     }
 
     pub(super) fn capture(
@@ -205,6 +251,11 @@ impl Context {
         workspace: &Path,
         requirements: Option<&Requirements>,
     ) -> Result<Self, Error> {
+        if requirements.is_some_and(|r| r.schema != REQUIREMENTS_SCHEMA) {
+            return Err(Error::InvalidCommand(
+                "new execution requires v2 requirements with explicit source lineage",
+            ));
+        }
         let suites = requirements
             .map(|requirements| requirements.protected_suites(workspace))
             .transpose()?
@@ -253,12 +304,15 @@ impl Context {
                 .cmp(&b.scope.components().count())
                 .then(a.path.cmp(&b.path))
         });
+        let (lineage, knowledge) = lineage::capture(requirements, workspace, &task.task_id)?;
         let mut context = Self {
-            schema: "openagents.coder.task-context.v1".into(),
+            schema: CONTEXT_SCHEMA.into(),
             task_revision: task.revision,
             prompt: task.effective_prompt().into(),
             instructions,
             suites,
+            lineage,
+            knowledge,
             digest: String::new(),
         };
         context.digest = context.expected_digest();
@@ -296,6 +350,10 @@ pub(super) async fn execute(task: &Task, trust: &Trust) -> Result<Report, Error>
         evidence: None,
         reason: None,
     };
+    if requirements.schema != REQUIREMENTS_SCHEMA {
+        report.reason = Some("legacy requirements have no frozen source lineage; start a new task with v2 requirements".into());
+        return Ok(report);
+    }
     let Some(candidate) = result.candidate_snapshot.as_ref() else {
         report.reason = Some("the candidate snapshot is incomplete or unavailable".into());
         return Ok(report);
@@ -391,6 +449,7 @@ impl Report {
             || self.requirements_digest != requirements.digest()
             || self.context_digest != context.digest
             || self.candidate_snapshot.as_deref() != candidate
+            || !context.provenance_matches(Some(requirements), None)
         {
             return Err(Error::InvalidTransition);
         }

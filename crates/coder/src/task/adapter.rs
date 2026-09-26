@@ -11,6 +11,8 @@ use coder_boundary::{Boundary, Snapshot};
 use serde_json::{Value, json};
 use supervise::{Input, Job, Limits};
 
+pub mod container;
+
 pub const NAME: &str = "microcoder-repository";
 pub const CONFIG_SCHEMA: &str = "openagents.microcoder.repository-config.v1";
 const TRACE_LIMIT: usize = 48 * 1024 * 1024;
@@ -34,6 +36,8 @@ pub struct Configuration {
     pub dollar_limit_micros: Option<u64>,
     #[serde(default)]
     pub expected_controller_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<container::Profile>,
 }
 
 impl Configuration {
@@ -49,7 +53,7 @@ impl Configuration {
             || !(1..=128).contains(&self.max_steps)
             || self.acceptance
             || self.route != "never"
-            || self.knowledge != "off"
+            || !matches!(self.knowledge.as_str(), "off" | "frozen-context")
             || self.dollar_limit_micros.is_some()
             || self
                 .expected_controller_digest
@@ -63,6 +67,9 @@ impl Configuration {
             return Err(Error::InvalidCommand(
                 "unsupported repository adapter configuration",
             ));
+        }
+        if let Some(container) = &self.container {
+            container.validate()?;
         }
         for endpoint in [&self.generation_endpoint, &self.decision_endpoint] {
             if self.provider == "synthetic" {
@@ -98,7 +105,9 @@ impl Configuration {
             "model_written_acceptance":"unsupported", "routing":"unsupported",
             "knowledge":"unsupported", "hard_dollar_limit":"unsupported",
             "billing":"unknown", "effort_confirmation":"not_reported",
-            "provider_artifact_attestation":"unsupported", "container_adapter":"unsupported"
+            "provider_artifact_attestation":"unsupported",
+            "container_adapter": if self.container.is_some() { "docker-per-command-workspace-persistence" } else { "not_requested" },
+            "frozen_knowledge_context":self.knowledge == "frozen-context"
         })
     }
 }
@@ -141,6 +150,15 @@ impl Host {
                 "repository admission requires an explicit adapter configuration",
             ))?;
         configuration.validate()?;
+        let has_knowledge = grant
+            .requirements
+            .as_ref()
+            .is_some_and(|requirements| !requirements.knowledge.is_empty());
+        if (configuration.knowledge == "frozen-context") != has_knowledge {
+            return Err(Error::InvalidCommand(
+                "frozen knowledge context differs from the execution grant",
+            ));
+        }
         if !grant.arguments.is_empty() {
             return Err(Error::InvalidCommand(
                 "repository admission supplies no fixed command arguments",
@@ -225,6 +243,9 @@ impl Host {
             .offline()
             .build()
             .map_err(|_| Error::InvalidCommand("the repository boundary cannot be enforced"))?;
+        if let Some(container) = &configuration.container {
+            container.admit(&workspace, &owner.dir).await?;
+        }
         let context = checks::Context::capture(&task, &workspace, grant.requirements.as_ref())?;
         let controller = std::env::current_exe()?.canonicalize()?;
         let controller_digest = digest_bytes(&std::fs::read(&controller)?);
@@ -247,8 +268,18 @@ impl Host {
             source_snapshot: before.digest(),
             program_digest: digest_bytes(&std::fs::read(&program)?),
             adapter: NAME.into(),
-            network: owner::network_policy().into(),
-            read_scope: "workspace_and_system".into(),
+            network: if configuration.container.is_some() {
+                "container_network_none"
+            } else {
+                owner::network_policy()
+            }
+            .into(),
+            read_scope: if configuration.container.is_some() {
+                "workspace_host_reads_and_pinned_container_image"
+            } else {
+                "workspace_and_system"
+            }
+            .into(),
             authority: "local_os_user".into(),
             trace_file: format!("{}.1.atif.jsonl", task.task_id),
             context,
@@ -323,6 +354,14 @@ impl Host {
     pub fn workspace(&self) -> &Path {
         &self.admission.workspace
     }
+    pub fn execution_workspace(&self) -> &Path {
+        if self.configuration().container.is_some() {
+            Path::new("/workspace")
+        } else {
+            self.workspace()
+        }
+    }
+
     pub fn wall_seconds(&self) -> u64 {
         self.admission.grant.wall_seconds
     }
@@ -472,6 +511,10 @@ impl Host {
         script: &str,
         deadline: Duration,
     ) -> Result<CommandObservation, Error> {
+        if let Some(profile) = &self.configuration().container {
+            return container::command(self, profile, script, deadline).await;
+        }
+
         if script.len() > MAX_COMMAND_BYTES || script.contains('\0') {
             return Err(Error::LimitExceeded);
         }

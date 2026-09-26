@@ -1,0 +1,21 @@
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder)
+   Compiling coder-labor v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-labor)
+    Finished `test` profile [unoptimized] target(s) in 4.54s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/debug/deps/coder_labor-4a3bf438c8cc7409)
+
+running 12 tests
+test tests::missing_closure_changed_pin_and_unrelated_reader_refuse ... ok
+test tests::both_roles_confirm_the_exact_order_without_creating_execution ... ok
+test tests::worker_requires_durable_linkage_and_generic_workers_reject_labor_feature ... ok
+test tests::buyer_acceptance_remains_separate_from_successful_verification_and_payment ... ok
+test tests::changed_attachment_bytes_and_zero_bound_rework_are_retained_refusals ... ok
+test tests::missing_journal_or_lock_never_recreates_agreement_history ... ok
+test tests::replaced_lock_refuses_mutation_and_overflow_keeps_original_blobs ... ok
+test tests::unknown_execution_cannot_be_delivered_and_dispute_blocks_acceptance ... ok
+test tests::durable_store_replays_both_roles_and_retains_duplicates ... ok
+test tests::late_or_failed_or_unknown_checks_cannot_be_buyer_accepted ... ok
+test tests::encrypted_relay_auth_reconnect_recipient_and_persisted_order ... ok
+test tests::roundtrip::bounded_coding_order_runs_separate_buyer_check_and_accepts_over_relay ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.91s
+

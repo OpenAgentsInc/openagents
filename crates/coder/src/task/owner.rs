@@ -202,13 +202,24 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
                     }
                     _ => true,
                 }
-                || !matches!(
-                    admission.network.as_str(),
-                    "external_ip_denied_localhost_allowed" | "network_namespace_isolated"
-                )
-                || admission.read_scope != "workspace_and_system"
+                || if admission
+                    .grant
+                    .adapter_configuration
+                    .as_ref()
+                    .is_some_and(|config| config.container.is_some())
+                {
+                    admission.network != "container_network_none"
+                        || admission.read_scope != "workspace_host_reads_and_pinned_container_image"
+                } else {
+                    !matches!(
+                        admission.network.as_str(),
+                        "external_ip_denied_localhost_allowed" | "network_namespace_isolated"
+                    ) || admission.read_scope != "workspace_and_system"
+                }
                 || admission.authority != "local_os_user"
-                || !admission.context.valid(task)
+                || !admission
+                    .context
+                    .valid(task, admission.grant.requirements.as_ref())
                 || admission.trace_file != format!("{}.1.atif.jsonl", task.task_id)
                 || !hex_digest(&admission.source_snapshot)
                 || !hex_digest(&admission.program_digest)

@@ -13,6 +13,7 @@ coder-boundary = { path = "../coder-boundary" }
 coder-one = { path = "../coder-one" }
 coder-terminal = { path = "../coder-terminal" }
 jev = { path = "../jev" }
+knowledge = { path = "../knowledge" }
 microluna = { path = "../microluna" }
 crossterm = { version = "0.29", features = ["event-stream"] }
 futures-util = "0.3"

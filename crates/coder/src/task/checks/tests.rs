@@ -1,6 +1,6 @@
 use super::*;
 
-fn fixture() -> (
+pub(super) fn fixture() -> (
     tempfile::TempDir,
     tempfile::TempDir,
     Requirements,
@@ -38,13 +38,21 @@ fn fixture() -> (
         plan: json!({"schema":verification::SCHEMA,"input_digest":CANDIDATE,"seconds":5,"allow_unrestricted_reads":true,"allow_network":true,"checks":[{"id":"content","manifest":manifest,"manifest_digest":entry.digest,"arguments":[CANDIDATE],"seconds":3,"output_bytes":4096,"acceptance":{"kind":"suite","suite_digest":suite_digest,"input_digest":CANDIDATE}}]}),
         instruction_targets: vec![],
         source_exclusions: vec!["task-source".into()],
+        task_sources: vec!["fixture-target".into()],
+        check_lineage: vec![CheckLineage {
+            check: "content".into(),
+            sources: vec!["independent-fixture".into()],
+        }],
+        knowledge: Vec::new(),
     };
     let mut context = Context {
-        schema: "openagents.coder.task-context.v1".into(),
+        schema: CONTEXT_SCHEMA.into(),
         task_revision: 1,
         prompt: "Validate output.".into(),
         instructions: vec![],
         suites: requirements.protected_suites(workspace.path()).unwrap(),
+        lineage: Lineage::from_requirements(Some(&requirements)),
+        knowledge: Vec::new(),
         digest: String::new(),
     };
     context.digest = context.expected_digest();
@@ -62,6 +70,36 @@ fn fixture() -> (
         ),
     };
     (host, workspace, requirements, context, report)
+}
+
+#[test]
+fn legacy_requirements_and_context_keep_their_original_report_identity() {
+    let (_host, _workspace, mut requirements, mut context, mut report) = fixture();
+    requirements.schema = LEGACY_REQUIREMENTS_SCHEMA.into();
+    requirements.task_sources.clear();
+    requirements.check_lineage.clear();
+    context.schema = LEGACY_CONTEXT_SCHEMA.into();
+    context.lineage = Lineage::default();
+    context.digest = context.expected_digest();
+    let encoded = serde_json::to_value(&requirements).unwrap();
+    assert!(encoded.get("task_sources").is_none());
+    assert!(encoded.get("check_lineage").is_none());
+    assert!(encoded.get("knowledge").is_none());
+    let requirements: Requirements = serde_json::from_value(encoded.clone()).unwrap();
+    assert_eq!(requirements.digest(), atif::digest(&encoded));
+    let encoded = serde_json::to_value(&context).unwrap();
+    assert!(encoded.get("lineage").is_none());
+    assert!(encoded.get("knowledge").is_none());
+    let context: Context = serde_json::from_value(encoded).unwrap();
+    report.requirements_digest = requirements.digest();
+    report.context_digest = context.digest.clone();
+    report
+        .validate(
+            &requirements,
+            &context,
+            report.candidate_snapshot.as_deref(),
+        )
+        .unwrap();
 }
 #[test]
 fn frozen_suite_arguments_are_data_not_candidate_owned_code() {

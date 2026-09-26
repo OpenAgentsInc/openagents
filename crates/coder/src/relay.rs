@@ -45,6 +45,9 @@
 //! both made an absent worker cost the whole long wait and then report a
 //! failure that could not say whether anyone had been listening.
 
+/// Authenticated, bounded reads and publication of exact private artifacts.
+pub mod artifacts;
+
 use std::collections::HashSet;
 use std::env;
 use std::fs;

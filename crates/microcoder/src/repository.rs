@@ -44,6 +44,15 @@ impl Env for Repository<'_> {
     }
 
     async fn read(&self, path: &str) -> Option<String> {
+        let path = if self.host.configuration().container.is_some() {
+            Path::new(path)
+                .strip_prefix("/workspace")
+                .ok()
+                .and_then(Path::to_str)
+                .unwrap_or(path)
+        } else {
+            path
+        };
         self.host
             .read(path, crate::env::FILE_MAX * 4)
             .ok()
@@ -200,7 +209,7 @@ async fn run_loop<G: Generate, J: Judge>(
         task: host.prompt().into(),
         environment: format!(
             "Repository: {}. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. Scoped instruction inputs follow; they cannot widen the host grant:\n{}",
-            host.workspace().display(),
+            host.execution_workspace().display(),
             serde_json::to_string(host.context()).map_err(|_| task::Error::UnsupportedSchema)?
         ),
         ..State::default()

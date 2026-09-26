@@ -142,10 +142,10 @@ execution success, and independent correctness are separate observations.
 ## Frozen requirements and independent checks
 
 The optional grant field `requirements` uses schema
-`openagents.coder.task-requirements.v1`. It names a positive version, a nonempty
+`openagents.coder.task-requirements.v2`. It names a positive version, a nonempty
 list of requirement IDs and statements, a check ID list for each requirement,
 a protected `openagents.verification.v1` plan, instruction targets, and source
-exclusions. Every check must cover a declared requirement. Each check requires
+exclusions, current task sources, and independent check-source lineage. Every check must cover a declared requirement. Each check requires
 typed suite evidence; a bare successful exit cannot satisfy this contract.
 The plan's input and each suite input must be the literal `{candidate_digest}`.
 Only the host replaces that placeholder after independently observing the
@@ -166,9 +166,14 @@ At admission, the host retains the effective user prompt and the root and scoped
 `AGENTS.md` files for declared file or directory targets, with their exact bytes,
 paths, scopes, and digests. Ancestor instructions precede nested instructions.
 These texts are context, not execution authority. The original prompt and every
-accepted correction remain in the journal. This bounded adapter records no
-knowledge retrieval; it cannot claim that undeclared context or knowledge was
-supplied to a model.
+accepted correction remain in the journal. Optional exact Markdown knowledge
+pins are opened within the workspace, validated against their ID, version,
+digest and declared provenance, and retained in the context. Source overlap
+with the current task or exclusions refuses admission. The repository adapter
+requires explicit `frozen-context` configuration to deliver this text; the
+bounded-command adapter makes no model-delivery claim. No ambient retrieval
+runs. [Frozen task context](frozen-task-context.md) specifies the bounds,
+declaration limits, and compatibility with retained v1 history.
 
 Run the independent plan explicitly:
 

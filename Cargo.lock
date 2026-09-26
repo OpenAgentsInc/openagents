@@ -639,6 +639,7 @@ dependencies = [
  "futures-util",
  "indexmap",
  "jev",
+ "knowledge",
  "libc",
  "microluna",
  "nostr",

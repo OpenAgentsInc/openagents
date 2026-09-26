@@ -10,8 +10,9 @@ tracks the remaining adapter gates.
 
 This first profile is opt-in and uses the operator's Codex login for generation
 and the configured Jev client for judgments. Model-written acceptance tests,
-routing to a stronger model, knowledge retrieval, and the loop's experimental
-completion gates are disabled. Independent verification remains a separate
+routing to a stronger model, dynamic knowledge retrieval, and the loop's
+experimental completion gates are disabled. An explicit `frozen-context` grant
+can include exact knowledge documents and their declared source lineage. Independent verification remains a separate
 `coder task check` operation under requirements pinned before execution.
 Neither a model's `finished` action nor a successful shell command supplies that
 verification.
@@ -99,6 +100,12 @@ argument without interpolating it into another command string.
 ```
 
 The closed configuration rejects unknown fields and unsupported combinations.
+`knowledge` can be `off` or `frozen-context`. The former requires an empty
+requirements knowledge inventory; the latter requires a nonempty inventory.
+The host validates exact document ID, version, digest, path, and declared
+sources before retaining the text in Context. It rejects current-task and
+source-excluded provenance. The existing loop receives those retained bytes;
+it does not query an ambient base or call an embedding service.
 The admitted model must equal the task's requested model. Generation uses the
 fixed Codex transport endpoint. The decision endpoint and model must equal the
 actual Jev client configuration before admission. Endpoints cannot contain URL
@@ -119,6 +126,55 @@ and rechecks it before the epoch's first effect. It also captures the user
 prompt and root and declared scoped instruction files through the common
 context builder. Repository context cannot widen the grant. Local OS-user
 access remains the trust boundary; an external writer is not globally fenced.
+
+## Isolated container commands
+
+An optional closed `container` field in `adapter_configuration` selects a local
+Docker boundary. An omitted or null field keeps local command execution.
+
+```json
+{
+  "schema": "openagents.microcoder.container.v1",
+  "docker_program": "/canonical/path/to/docker",
+  "docker_digest": "sha256:REPLACE_WITH_EXECUTABLE_DIGEST",
+  "socket": "/absolute/path/to/docker.sock",
+  "image": "sha256:REPLACE_WITH_LOCAL_IMAGE_ID",
+  "uid": 501,
+  "gid": 20
+}
+```
+
+Replace the template values with the exact admitted executable, Unix socket,
+image ID, and non-root container user. The host requires the image to exist
+locally and never pulls it. It refuses image-declared implicit volumes. The
+controller rechecks its Docker executable digest before each control operation.
+Docker clients run through `supervise` with an empty environment and an explicit
+local socket and configuration directory; container workloads receive no host
+credentials or Docker socket.
+
+Each command gets a new container with the source mounted at `/workspace` and
+that working directory selected. The source's Git metadata pointer is mounted
+read-only. The root filesystem is read-only; `/tmp` is a bounded private tmpfs.
+The container uses network `none`, no Linux capabilities, no new privileges,
+one CPU, 128 PIDs, and the grant's memory limit without additional swap. Its
+program is the pinned image's `/bin/bash`; the host retains the exact image and
+script. The environment contains explicit tool paths, `HOME` and `TMPDIR`, and
+the conventional read-only Rust toolchain path. The image must provide the
+required tools.
+
+Only workspace files persist between commands. Shell state, package installs
+outside that tree, and background services do not persist. Model file reads
+map `/workspace` back through the same confined host reader. The final candidate
+uses the existing source snapshot and retained-artifact machinery.
+
+The host records creation, start, inspection, kill when needed, and removal in
+the existing ATIF trace. It verifies the exact image and ownership label before
+cleanup. Stopping the Docker CLI alone is never sufficient: the host inspects
+and, if necessary, kills the whole container before removing it. A lost creation
+reply is reconciled against the retained name and ownership label; it is never
+silently retried as a new container. Unavailable cleanup leaves execution
+unknown and prevents another effect. Host loss still requires explicit recovery
+and inspection; it does not prove that a container disappeared.
 
 ## Effects, credentials, and cancellation
 
@@ -187,14 +243,14 @@ An omitted or incomplete record never becomes complete evidence.
 Offline fixtures exercise the unchanged loop with synthetic models and real
 local worktree boundaries, supervisor cancellation, ATIF reconstruction,
 retained output retrieval, unsafe-path refusal, evidence limits, unknown model
-cost, and native identity refusal. These tests do not establish real-model
-coding quality, paid-provider completion, Linux device behavior from a macOS
-run, or a Terminal-Bench result.
+cost, and native identity refusal. Real Docker fixtures additionally check the pinned local image, isolated
+command output, whole-container cleanup, and cancellation of a delayed
+background writer. These tests do not establish real-model coding quality,
+paid-provider completion, Linux host behavior from a macOS run, or a
+Terminal-Bench result.
 
 This first slice leaves the following #9674 work explicit:
 
-- An admitted isolated-container adapter with pinned image, mounts, networking,
-  lifecycle, and observed descendant cleanup.
 - Detached model-host launch and recovery integration, without replay of
   uncertain effects.
 - A fresh bounded live repository run with retained independent checks and

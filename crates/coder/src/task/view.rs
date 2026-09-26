@@ -289,6 +289,8 @@ mod tests {
                         prompt: String::new(),
                         instructions: Vec::new(),
                         suites: Vec::new(),
+                        lineage: checks::Lineage::default(),
+                        knowledge: Vec::new(),
                         digest: String::new(),
                     },
                 },

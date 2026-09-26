@@ -1,0 +1,41 @@
+{
+  "schema": "openagents.synthetic-evidence-manifest.v1",
+  "synthetic": true,
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 1835,
+      "sha256": "2a49e2f956a8c424b532dc2243b8f57c7f66741b6872126c46c5c066de16e574"
+    },
+    {
+      "path": "artifact-transport.log",
+      "bytes": 1574,
+      "sha256": "ea393503696872f7a6085dcf39ece7fe9aeba9cdfa03cf37aebe367baabf6faf"
+    },
+    {
+      "path": "clippy.log",
+      "bytes": 302,
+      "sha256": "65b84efb5d38d2efd01f039f04a8ed0a83ddbd3ca9a2e60fa037714f808a6052"
+    },
+    {
+      "path": "container-controls.log",
+      "bytes": 1017,
+      "sha256": "c8b914d9dfafba03704ec4e27734f68a35d669921f8f8114c724c2aec96892c5"
+    },
+    {
+      "path": "legacy-admission.log",
+      "bytes": 1516,
+      "sha256": "9136fd63f67a42f2e8f5867dee17c40a5559b65883bf54021361d501b860b3c3"
+    },
+    {
+      "path": "model-context.log",
+      "bytes": 1412,
+      "sha256": "1d767a9d1137909873e8f71a9b7e512695db0239ec0d1e3ed2c53fdc7b17e080"
+    },
+    {
+      "path": "task-tests.log",
+      "bytes": 4722,
+      "sha256": "7992884ab70d275fda2d3aaf86b92d4d1ce3f7ae283d31692f25fdd9b9392bda"
+    }
+  ]
+}

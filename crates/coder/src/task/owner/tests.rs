@@ -82,6 +82,41 @@ fn fixture() -> (tempfile::TempDir, tempfile::TempDir, Grant) {
 }
 
 #[tokio::test]
+async fn landed_v1_context_admission_replays_without_inventing_lineage() {
+    let (root, _workspace, grant) = fixture();
+    let directory = root.path().join("store");
+    let queued = Store::open(&directory).unwrap().show("task-one").unwrap();
+    let finished = execute(&directory, &serde_json::to_vec(&grant).unwrap())
+        .await
+        .unwrap();
+    let mut admission = finished.run.unwrap().admission;
+    admission.context.schema = "openagents.coder.task-context.v1".into();
+    admission.context.digest = atif::digest(&json!({
+        "schema":admission.context.schema,"task_revision":admission.context.task_revision,
+        "prompt":admission.context.prompt,"instructions":admission.context.instructions,
+        "suites":admission.context.suites,
+    }));
+    let record = Record {
+        sequence: 1,
+        task_id: queued.task_id.clone(),
+        epoch: 1,
+        event: Event::Admitted {
+            admission: Box::new(admission),
+        },
+    };
+    let bytes = serde_json::to_vec(&record).unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains("\"lineage\""));
+    let recorded: Record = serde_json::from_slice(&bytes).unwrap();
+    let mut tasks = BTreeMap::from([(queued.task_id.clone(), queued)]);
+    transition(&recorded, &mut tasks).unwrap();
+    let context = &tasks["task-one"].run.as_ref().unwrap().admission.context;
+    assert_eq!(context.schema, "openagents.coder.task-context.v1");
+    assert!(context.knowledge.is_empty());
+    assert!(context.lineage.checks.is_empty());
+    assert_eq!(serde_json::to_vec(&recorded).unwrap(), bytes);
+}
+
+#[tokio::test]
 async fn executes_once_with_retained_intent_trace_and_unknown_cost() {
     let (root, _workspace, grant) = fixture();
     let dir = root.path().join("store");
@@ -340,6 +375,12 @@ fn requirements(host: &Path, command: &str) -> checks::Requirements {
         plan: json!({"schema":"openagents.verification.v1","input_digest":checks::CANDIDATE,"seconds":5,"allow_unrestricted_reads":true,"allow_network":true,"checks":[{"id":"content","manifest":manifest,"manifest_digest":entry.digest,"arguments":[checks::CANDIDATE],"seconds":3,"output_bytes":4096,"acceptance":{"kind":"suite","suite_digest":suite_digest,"input_digest":checks::CANDIDATE}}]}),
         instruction_targets: vec![PathBuf::from("nested/result.txt")],
         source_exclusions: vec!["benchmark-official-outcomes".into()],
+        task_sources: vec!["fixture-request".into()],
+        check_lineage: vec![checks::CheckLineage {
+            check: "content".into(),
+            sources: vec!["operator-fixture-specification".into()],
+        }],
+        knowledge: Vec::new(),
     }
 }
 
