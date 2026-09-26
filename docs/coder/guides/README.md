@@ -25,3 +25,4 @@ Configure Coder, run work, and verify retained artifacts.
 | [project-supervision](project-supervision.md) | Capacity-aware project supervision |
 | [tracker-intake](tracker-intake.md) | Scoped tracker intake |
 | [worker-executor](worker-executor.md) | Running `coder-worker` on a local executor |
+| [xp](xp.md) | Publish quests, award accepted knowledge completions, and read the XP ledger with `microcoder xp` |

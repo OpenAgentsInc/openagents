@@ -67,6 +67,8 @@ Read the spec before the code. The files you need most often:
 - `nips/openagents/NIP-EVAL.md` — attributable workload evaluation and promotion evidence.
 - `nips/openagents/NIP-OPT.md` — semantic AI contracts, immutable implementations,
   bounded studies, actual candidate execution, and optimization evidence.
+- `nips/openagents/NIP-XP.md` — quests, referee awards of accepted outcomes,
+  revocations, and per-reader XP ledgers; `crates/nostr` (`xp`) checks them.
 - `nips/openagents/NIP-KB.md` — shared knowledge entries, heads, withdrawals,
   and evidence; `crates/nostr` (`kb`) checks them.
 - `nips/openagents/NIP-CTRL.md` — task-scoped client pairing, observation,

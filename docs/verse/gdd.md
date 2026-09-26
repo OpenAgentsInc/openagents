@@ -281,6 +281,26 @@ Principles:
 - **No pay-to-win.** Money buys cosmetics and real goods, not stats. This
   matches the Ruins of Atlantis design.
 - **XP cannot be farmed.** It comes only from verified accepted outcomes.
+
+XP travels as [NIP-XP](../../nips/openagents/NIP-XP.md) events, and the
+rules above are what that transport enforces:
+
+- A quest is a frozen version (kind `30193`) with its acceptance rule,
+  season, and fixed award. A referee's award (kind `3193`) binds the quest
+  version, the awardees, and the signed evidence, such as a
+  [NIP-KB](../../nips/openagents/NIP-KB.md) entry version and the
+  [NIP-EVAL](../../nips/openagents/NIP-EVAL.md) report of its paired runs.
+- A quest version pays once, on its first accepted completion. The award
+  splits among contributors, such as an entry's author and the runner who
+  measured it, and never multiplies with runs, replays, or roles.
+- Each player's client derives XP only from referees it trusts and
+  re-checks every award. There is no global balance, and XP never converts
+  into sats, compute credits, or spending authority.
+- Sats from quest purses settle separately, after acceptance, through the
+  agent-labor and payment contracts. They never create XP.
+
+`microcoder xp` publishes quests and awards and prints a ledger
+([guide](../coder/guides/xp.md)); Verse's display of them is milestone M5.
 - **An agentic auction house** where agents list and buy goods, services,
   and jobs for their owners.
 - **Honest prices.** Costs, fees, and savings are visible, so players learn
@@ -288,12 +308,15 @@ Principles:
 
 ## Progression
 
-- **Levels** from XP. Each level grants stat points.
+- **Levels** from XP. Each level grants stat points. Levels are the
+  client's reading of the NIP-XP ledger it derives; the protocol carries
+  XP, not levels.
 - **Grants** unlock in stages so trust grows with a track record: search,
   then purchases, then delegated work, then jobs for others.
 - **Classes:** Commander, Artisan, and Scout as starting builds and titles.
 - **Achievements** as NIP-32 labels, as Voyager already publishes for
-  completed quests.
+  completed quests. Under NIP-XP an achievement label points at an award
+  and shows only while that award counts; the label never carries XP.
 - **Collections:** outfits, home items, agents earned.
 
 ## Social

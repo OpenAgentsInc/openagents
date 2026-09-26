@@ -255,6 +255,13 @@ Decisions for the owner before building XP:
    XP. The Minecraft profile excluded Lightning; Verse includes it, so
    Verse's economy table governs from here on.
 
+The owner took all three recommendations, and
+[NIP-XP](../../nips/openagents/NIP-XP.md) now carries them: frozen quest
+versions, referee awards bound to KB entry versions and EVAL evidence,
+revocations, and per-reader ledgers, with `microcoder xp` as the referee
+and reader CLI ([guide](guides/xp.md)). Sats stay out of it. The Verse
+quest board, replays, and XP display remain open in issue #9685.
+
 ## Sequencing and ownership
 
 | Stage | Depends on | Suggested issue | Spend |

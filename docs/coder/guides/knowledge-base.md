@@ -319,3 +319,7 @@ For each published entry with paired runs, this publishes a NIP-EVAL
 kind-`3189` report signed by your key and citing the entry's kind-`3190`
 event. An entry whose current file isn't published is skipped; publish it
 first. Readers weigh evidence by who published it.
+
+Evidence you publish about someone else's entry can complete a quest: a
+referee can accept it and award XP to the entry's author and to you, the
+runner. The [XP guide](xp.md) covers quests, awards, and the ledger.
