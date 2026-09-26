@@ -159,7 +159,7 @@ that independently invents the state shown in the world.
 | [Episode 116](../transcripts/116.md) | Guilds, reputation, agents as characters, collective learning, and paid compute as an earlier product vision |
 | [Episode 189](../transcripts/189.md) | The distinction between a gamified agent interface and an actual game |
 | [Episode 240](../transcripts/240.md) | Walkable visualization of live work; the transcript itself distinguishes demonstrated visualization from untested multiplayer |
-| [Episode 253 notes](../transcripts/253-notes.md) | Accepted outcomes, inspection, anti-vanity metrics, and the danger of a second source of truth |
+| [Historical episode 253 notes](https://github.com/OpenAgentsInc/openagents/blob/7503ccc6c7a115dac8eb80840b9e10834a888f32/docs/transcripts/253-notes.md) | Accepted outcomes, inspection, anti-vanity metrics, and the danger of a second source of truth |
 | [Episode 284](../transcripts/284.md) | Coding progression, resource expenditure, and reusable infrastructure |
 | [Episode 286](../transcripts/286.md) | General agent contracts, better context and coordination, and measured optimization beyond one model interface |
 

@@ -244,7 +244,7 @@ experiment" and recommends harvesting its GLTF skinning and animation code.
 
 ### 8. Disciplined multiplayer (July 2026)
 
-- **[`253-notes.md`](../transcripts/253-notes.md), "Designing for
+- **[Historical `253-notes.md`](https://github.com/OpenAgentsInc/openagents/blob/7503ccc6c7a115dac8eb80840b9e10834a888f32/docs/transcripts/253-notes.md), "Designing for
   Multiplayer":**
   - "We are building the MVP, so naturally it is time to plan the MMO."
   - "ProductSpec tells us what game we are playing. The criteria are the
@@ -450,5 +450,5 @@ Repository: `https://github.com/OpenAgentsInc/ruinsofatlantis`, local clone at
 | [231](../transcripts/231.md), [238](../transcripts/238.md) | EverQuest guild forum origin, raid World Firsts |
 | [237](../transcripts/237.md), [240](../transcripts/240.md), [241](../transcripts/241.md), [243](../transcripts/243.md) | three-effect, the Verse, Khala in 3D |
 | [246](../transcripts/246.md), [249](../transcripts/249.md), [255](../transcripts/255.md) | Multiply gamers, RTS-feel Desktop, WoW noob/endgame |
-| [253-notes](../transcripts/253-notes.md) | Designing for Multiplayer: quests, tavern |
+| [Historical 253 notes](https://github.com/OpenAgentsInc/openagents/blob/7503ccc6c7a115dac8eb80840b9e10834a888f32/docs/transcripts/253-notes.md) | Designing for Multiplayer: quests, tavern |
 | [279](../transcripts/279.md), [283](../transcripts/283.md), [284](../transcripts/284.md), [288](../transcripts/288.md) | Vanguard raids, Coder plays WoW, coding agents as an MMORPG, WoW beside Coder OS |
