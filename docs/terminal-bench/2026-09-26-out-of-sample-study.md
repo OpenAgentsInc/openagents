@@ -180,3 +180,5 @@ The knowledge added for each round is recorded next to this file: Round 2 in [20
 - Still GPT-6 Luna at medium effort through OpenRouter (billed), `--kb candidates`, with no loop gates.
 
 Same held-out tasks (25) and Fable-fails pool (23), same win rules, and confirmation runs queued automatically.
+
+**2026-09-26, Round 3 restarted on the Codex login.** The first Round 3 attempt used OpenRouter, which ran out of credit mid-round (HTTP 402). Several Compose tasks also couldn't start their verifier because Docker's predefined address pools ran out at 8 runs at a time alongside the dev sweeps. Those runs are kept in `r3-aborted-openrouter` as provider or harness faults, and none counts as a result. Round 3 was restarted from scratch with the same binary, snapshot, and flags, except that it uses `--provider codex` (GPT-6 Luna through the Codex login, cost basis `list_price`) and runs 5 at a time.
