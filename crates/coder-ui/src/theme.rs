@@ -1,4 +1,4 @@
-//! The existing OpenAgents amber theme, shared without a renderer dependency.
+//! Coder's amber theme, shared by its application surfaces.
 //!
 //! The terminal speaks in one hue: amber over a near-black field. Every
 //! distinction the interface draws — prompt against draft, status rail

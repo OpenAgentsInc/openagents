@@ -4,29 +4,30 @@ Status: implementation plan, September 26, 2026. Rust Native becomes the shared
 UI direction immediately, through incremental adoption. Existing agents, task
 hosts, terminals, and client work keep shipping while adapters mature.
 
-The [specification](spec.md) defines ownership. The [adoption map](adoption.md)
-names the existing files. The [suite tracker](../../../docs/coder/migration-status.md)
+The [specification](architecture.md) defines ownership. The [adoption map](adoption.md)
+names the existing files. The [suite tracker](../migration-status.md)
 remains the application-level issue map; this document supplies the UI work
 within it, rather than another competing product roadmap.
 
 ## First foundation: delivered in #9693
 
 The initial crate contains validated semantic views, typed button intents,
-style declarations and composition, and the existing amber theme. Its data-only
-example describes a task status screen. `coder-terminal` imports and re-exports
-the shared theme, preserving its existing public API and rendering behavior.
+style declarations and composition. The initial #9693 change also moved the
+existing amber theme into that crate. #9697 corrects that dependency boundary:
+`coder-ui` owns Coder theme values; `coder-terminal` re-exports them; Rust Native
+uses generic RGBA colors and a product-neutral settings example.
 
-This is real shared ownership of the palette, not a complete migration of
+This shares application palette ownership without completing migration of
 screens. No native renderer, SwiftUI shell, input reconciliation, virtualized
 list, or remote client is delivered by this issue.
 
 | Initial acceptance item | Evidence |
 | --- | --- |
-| Core is independent of platform and domain runtimes. | [Crate manifest](../Cargo.toml), [module surface](../src/lib.rs). |
-| Views are bounded, serializable, and reject stale or invalid interactions. | [View implementation](../src/view.rs), [focused tests](../src/view/tests.rs). |
-| Style composition has deterministic leaf precedence and explicit reset. | [Style implementation and tests](../src/style.rs). |
-| Existing palette values and terminal imports remain compatible. | [Shared theme](../src/theme.rs), [terminal compatibility exports](../../coder-terminal/src/intensity.rs), terminal unit tests. |
-| Native claims and migration order are explicit. | [Specification](spec.md), [adoption](adoption.md), [styling](styling.md), [source review](references.md). |
+| Core is independent of platform and domain runtimes. | [Crate manifest](../../../crates/rust-native/Cargo.toml), [module surface](../../../crates/rust-native/src/lib.rs). |
+| Views are bounded, serializable, and reject stale or invalid interactions. | [View implementation](../../../crates/rust-native/src/view.rs), [focused tests](../../../crates/rust-native/src/view/tests.rs). |
+| Style composition has deterministic leaf precedence and explicit reset. | [Style implementation and tests](../../../crates/rust-native/src/style.rs). |
+| Existing palette values and terminal imports remain compatible. | [Shared theme](../../../crates/coder-ui/src/theme.rs), [terminal compatibility exports](../../../crates/coder-terminal/src/intensity.rs), terminal unit tests. |
+| Native claims and migration order are explicit. | [Specification](architecture.md), [adoption](adoption.md), [styling](styling-design.md), [source review](references.md). |
 
 ## Sequence and completion criteria
 
@@ -37,7 +38,7 @@ remain explicitly pending.
 
 | Phase | Build | Complete when | Dependencies |
 | --- | --- | --- | --- |
-| RN0: foundation | Core tree, validation, activation, stylesheet, shared theme, and migration docs. | Core and first-consumer tests pass; existing terminal imports remain valid. | Delivered by #9693. |
+| RN0: foundation | Core tree, validation, activation, generic stylesheet, and migration docs; application theme outside the framework. | Core and first-consumer tests pass; existing terminal imports remain valid. | Initial contract in #9693; product separation in #9697. |
 | RN1: first shared screen | A read-only task/status projection from the mobile probe's synthetic ATIF fixture; terminal and escaped HTML adapters for the initial vocabulary. A static fixture catalog records inputs and views. | Both adapters consume the same validated tree; unknown cost and unrun checks remain distinct; text stays literal; terminal keyboard activation resolves the expected intent; unsupported properties are reported. Static HTML remains explicitly inert pending RN3 DOM events. | RN0. No service credentials or agent runs. |
 | RN2: application adoption | A Gym replay status/control pane and shared transcript document contract. Keep replay timing and evidence interpretation in Gym. | One pane uses the projection without changing replay, search, full-text access, recorded/estimated labels, or `l` analysis behavior. Parsing and wrapping retain existing Markdown semantics. | RN1; inspect and preserve the current Gym model. |
 | RN3: native adapter boundary | Versioned mount/event ABI, applied-revision acknowledgments, thin SwiftUI adapter, and Android native widget adapter for the initial screen. Add Rust/Wasm web interactions where needed. | Each claimed platform preserves native control identity, disposes callbacks, rejects stale mounts, exposes accessible labels, and routes bounded events. A supported-platform matrix states what was actually checked. | RN1. Android and Apple work can proceed independently. |
@@ -47,7 +48,7 @@ remain explicitly pending.
 
 ```mermaid
 flowchart TD
-    Foundation["RN0: core and shared theme"]
+    Foundation["RN0: generic core and application theme boundary"]
     First["RN1: one shared status screen"]
     Replay["RN2: Gym pane and document model"]
     Native["RN3: SwiftUI, Android, web adapters"]
@@ -73,7 +74,8 @@ generator preemptively.
 
 ## Switch current work over now
 
-Use `rust_native::theme` for new platform-independent palette consumers.
+Use `coder_ui::theme` for Coder palette consumers. Applications outside Coder
+supply their own colors and defaults; they do not depend on `coder-ui`.
 Existing terminal imports remain supported. Put new shared component meaning
 and typed style properties in Rust Native; keep Ratatui cells, color detection,
 terminal key handling, and rendering caches in `coder-terminal`.
@@ -124,7 +126,10 @@ as proof of accessibility, IME, app lifecycle, or transport reconnection. The
 full workspace gate is release-only, and this plan does not authorize new
 benchmark or platform acceptance campaigns that the user has stopped.
 
-## Foundation verification
+## Historical foundation verification
+
+These are the retained #9693 checks before the #9697 palette separation and
+list additions; they are not a verification claim for the later edits.
 
 The September 26, 2026 foundation was checked with the pinned Rust 1.97.1
 toolchain and a separate target directory for the implementation worktree:

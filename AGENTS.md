@@ -3,11 +3,10 @@
 Product code in this workspace is Rust. Do not add TypeScript. The existing
 product exception is `swift/lev-bridge`, the helper that reaches Apple's
 `FoundationModels` framework, which has no Rust binding; it is built by a
-repo script and supervised as a child process. Rust Native's planned iOS
-adapter may also use thin SwiftUI glue for native controls, mounting, and
+repo script and supervised as a child process. Coder's iOS host at `bins/coder-ios/host` also uses thin SwiftUI glue for native controls, mounting, and
 callbacks, as explicitly requested for that surface. Keep its application state,
-domain logic, permissions, and transport in Rust; this foundation adds no SwiftUI
-source yet. Read `crates/rust-native/docs/spec.md` before adding that boundary.
+domain logic, permissions, and transport in Rust; the implemented observer keeps these in `coder-mobile` and `coder-connect`. Read `crates/rust-native/docs/spec.md` and `docs/coder/rust-native/architecture.md`
+before adding that boundary.
 Retained Python training and
 acceptance tooling and shell orchestration are infrastructure exceptions,
 not permission to add another product implementation language.
@@ -186,15 +185,29 @@ uses, and marks which are implemented and which are only specified.
   of git.
 - `crates/rust-native` — the experimental shared UI foundation: validated
   serializable semantic views, typed application intents, deterministic style
-  composition, and the shared amber theme. Current primitives are `Stack`,
-  `Text`, and `Button`; native renderers and text input are planned. It owns no
+  composition, and generic colors. Current primitives include `Stack`, `List`,
+  `Text`, and `Button`; native adapters remain separate. The core has no
+  product palette or application dependency. It owns no
   task execution, network transport, credentials, or platform objects. Read
   `crates/rust-native/docs/` before extending a shared UI contract. Put reusable
   component semantics here and keep platform implementations in adapters.
+- `crates/coder-ui` — Coder application presentation values. It owns the amber
+  intensity palette and backgrounds; `coder-terminal` preserves its public
+  imports through re-exports. Keep Coder components and product defaults here,
+  never in the reusable `rust-native` framework.
+- `crates/coder-history` — read-only retained Codex and Claude history adapters;
+  explicit roots, bounded raw record pages, and source-bound cursors. The host
+  feature opens files; portable DTOs and projection helpers serve mobile.
+- `crates/coder-connect` — explicitly paired retained-history observation over
+  NIP-42 and encrypted private Nostr artifacts. This cannot control an engine.
+  Read its README and the NIP-SESS observer profile before changing authority.
+- `crates/coder-mobile` — Rust-owned iOS reader state, encrypted cache, paging,
+  synchronization, and C ABI. SwiftUI mounts generic Rust Native views and owns
+  native controls and Keychain. Read `docs/coder/guides/mobile-readonly.md`.
 - `crates/coder-terminal` — the Coder terminal: the amber intensity ladder,
   the framed composer, and the shell they draw. It also holds the terminal
   design system every other terminal here depends on — the re-exported
-  `rust_native::theme::Intensity`, `Ladder`, `frame`, and `rail`. Extend these
+  `coder_ui::theme::Intensity`, `Ladder`, `frame`, and `rail`. Extend these
   terminal facilities rather than copying them; shared platform-independent
   UI contracts belong in Rust Native. The
   rebuild plan lives in `docs/coder/`.

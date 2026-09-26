@@ -10,13 +10,28 @@ use tokio::{
     time::{Instant, timeout_at},
 };
 use tokio_tungstenite::{
-    MaybeTlsStream, WebSocketStream, connect_async_with_config,
+    Connector, MaybeTlsStream, WebSocketStream, connect_async_tls_with_config,
     tungstenite::{Message, protocol::WebSocketConfig},
 };
 
 pub mod artifacts;
 pub type Result<T> = std::result::Result<T, String>;
 const MAX_BYTES: usize = 1024 * 1024;
+
+fn tls_connector() -> Result<Connector> {
+    // Select this socket's provider explicitly. Cargo feature unification can
+    // otherwise enable both providers and make Rustls's automatic choice panic.
+    // Do not change another library's process-wide cryptography configuration.
+    let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|_| "relay TLS protocol configuration is unavailable")?
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    Ok(Connector::Rustls(std::sync::Arc::new(config)))
+}
 
 /// One connection has a fixed deadline and frame budget, including authentication.
 /// Reconnecting does not implicitly resend any request or enlarge an operation.
@@ -36,7 +51,7 @@ impl Connection {
             .max_frame_size(Some(MAX_BYTES));
         let (socket, _) = timeout_at(
             deadline,
-            connect_async_with_config(url, Some(config), false),
+            connect_async_tls_with_config(url, Some(config), false, Some(tls_connector()?)),
         )
         .await
         .map_err(|_| "relay connection deadline exceeded")?
@@ -124,5 +139,16 @@ impl Connection {
             .await
             .map_err(|_| "relay close deadline exceeded")?
             .map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn socket_tls_provider_does_not_depend_on_a_process_default() {
+        assert!(matches!(
+            super::tls_connector(),
+            Ok(tokio_tungstenite::Connector::Rustls(_))
+        ));
     }
 }

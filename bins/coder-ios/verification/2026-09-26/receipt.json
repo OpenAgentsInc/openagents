@@ -1,0 +1,101 @@
+{
+  "schema": "coder.ios.synthetic-verification.v1",
+  "completed_at": "2026-09-26T20:38:04Z",
+  "source_base_commit": "b85a741c281b661c168d4c82837d3b82dbe02b6a",
+  "source_state": "Uncommitted implementation, identified by the source hashes below. The distribution archive must separately pin its committed source.",
+  "app": {
+    "bundle": "com.openagents.coder",
+    "version": "0.5.0",
+    "build": "38"
+  },
+  "runtime": {
+    "kind": "simulator",
+    "device": "iPhone 17 Pro",
+    "os": "iOS 26.5",
+    "xcode": "26.6 (17F113)",
+    "rust": "1.97.1"
+  },
+  "command": "CARGO_TARGET_DIR=<worktree-parent>/target-native scripts/build-coder-mobile.sh sim-test",
+  "tests": {
+    "passed": 4,
+    "failed": 0,
+    "duration_seconds": 49.004,
+    "names": [
+      "testFollowCanPauseAndResume",
+      "testNativeChatSelectionAndExactSource",
+      "testPageSelectionPinsUntilLatestIsRequested",
+      "testSyntheticDeviceIdentitySurvivesRelaunch"
+    ]
+  },
+  "result_bundle": "<worktree-parent>/target/coder-ios/TestResults-20260926T203711Z-93356.xcresult",
+  "fixture": {
+    "records": 32,
+    "pages": 2,
+    "real_conversations": false,
+    "model_calls": false,
+    "benchmark_runs": false,
+    "network_pairing": false
+  },
+  "source_sha256": {
+    "Cargo.lock": "4c79d186f2a406ce74b9fb5deff2d70cbd203d2679058a050d9ff14fafc3090b",
+    "bins/coder-ios/host/App/CoderApp.swift": "c77955c01bb282b993f0fc9694476cfe317029d724afae4ee1fac3a8f6e3a280",
+    "bins/coder-ios/host/App/CoderMobile.h": "3d73ac839383f66a3580e7eb2391648c1b6c1770ce9d1903dfb7cc354d0a731b",
+    "bins/coder-ios/host/App/DeviceIdentity.swift": "d9ff30bebd43fd8689180c1938ab7bbb80875e39a46c555f3bb845f249707e80",
+    "bins/coder-ios/host/App/Info.plist": "77d6b6bd9fc5656b0742f7c32c9fcebd31926c573e8c1ae06ea9023ce1f4530f",
+    "bins/coder-ios/host/App/MobileBridge.swift": "7377518a14777123699431b20491b16f15d52fdc7b1e12a359e6e8fcc5ead51f",
+    "bins/coder-ios/host/App/NativeView.swift": "c1290938bb8b4ea08b81afe3d07530c97d78404d4906990b849366e0026bac48",
+    "bins/coder-ios/host/App/PrivacyInfo.xcprivacy": "ccb7cfd93011871edd2cc1399da5fcb73ef763c2da5b4aa5d17ba0b6a4702589",
+    "bins/coder-ios/host/UITests/ReaderUITests.swift": "f97b0ee562110d9684cc87789719463e7bde4a0f2524f99d73f5fe2a958ce7f1",
+    "bins/coder-ios/host/project.yml": "7ef6341a0457a5fc757c15c9de8212c3e75ff3ae02d593f6c86689869db75436",
+    "crates/coder-connect/Cargo.toml": "0eb9fb7bf609edda6d2a2f6386f608ce946f5a9f9d2ff4e554fd7fcd506cb586",
+    "crates/coder-connect/src/client.rs": "7c49958ca1831b1d6ed886884762073b0d5b6539a29e462d5dfa7e634d9af7b8",
+    "crates/coder-connect/src/host.rs": "c6d7bde5476af5a5bbae76b3ab3729bc727d4239c62132b7d3367d65a3ad9a2b",
+    "crates/coder-connect/src/lib.rs": "f0275a9bba00c96f29d1366cb788233d8e4222b2ccc53dba98a6e50f51f4e475",
+    "crates/coder-connect/src/main.rs": "a7914b9bbea8052ee9e1168027b7d161f9c71fcb611396872492498de4fcea68",
+    "crates/coder-connect/src/protocol.rs": "4b9eb6fc06e5ea4eca912c7524449a0e672ed0f818a1567939acafda67e94346",
+    "crates/coder-connect/src/store.rs": "c0d5875caf65b6571bd2bb6012e22575008b1dacd5186e287362655c4e34fc1e",
+    "crates/coder-connect/src/tests/mod.rs": "4a20a9deb500dcfdf9c622f75f11a8e414102e2c3677c699bb03c0700093bee8",
+    "crates/coder-connect/src/transport.rs": "431ee67757f65c17fc6e0a7b8110d389fc0ec5cf678e73b5a10e5f2801d96317",
+    "crates/coder-history/Cargo.toml": "4fb0f4295421e7eff319b5ec406f613c4a82ee9f4df53f1588b9165f88e33acd",
+    "crates/coder-history/src/host.rs": "d326466ab6ef8934c354fa1b5efaf01b9c4ee1a2e311a34b710f64e4fcd443f8",
+    "crates/coder-history/src/host/catalog.rs": "d2932af7c1cdafab8c500d6714866ba0216a500235af5a065af129b35ebbcf01",
+    "crates/coder-history/src/host/confined.rs": "cb6c8aac87345418f4fccc704ee3ae54f241450220111171c59ca35c76ebdbe3",
+    "crates/coder-history/src/host/tests.rs": "6da6d6163923b375867e4fc6cc9213c14fc71350d64ef4a50b89e403edc1d0a9",
+    "crates/coder-history/src/host/transcript.rs": "80999014e02b51682c4c6812e61a0b8ab20b36183eb27f52142cd50e9a3f715d",
+    "crates/coder-history/src/lib.rs": "7cb22bcc2cc92a02a376f5626e67cca20b69b1be7bbbb5414427972975f60133",
+    "crates/coder-history/src/project.rs": "b105632d1a5f001a1bbe6ad24aaa24c84bb355a572564fadf3888e0e049d42a9",
+    "crates/coder-mobile/Cargo.toml": "007d2583d30977ae6cf5227e1ab3a65288ea7beeaede7c9d39b117ec1cfc0fd2",
+    "crates/coder-mobile/src/app.rs": "c328113c39d548c479675ff43ba6ddbae3a2a58d9170b743c71ef30c56b5b5fe",
+    "crates/coder-mobile/src/cache.rs": "8e28413daeb5a8538dd5d96923f5e446ce7e2720df1b7dcf77b771a4dbe8402c",
+    "crates/coder-mobile/src/connection_tests.rs": "3dc35838c7771a7a4f28634fdf3f590dd5fa2c1237d8bcb21f5a02e00151d1b8",
+    "crates/coder-mobile/src/ffi.rs": "82de340949166c0649ca4c192221984f4b30f082be8795950aec24d13a39e706",
+    "crates/coder-mobile/src/lib.rs": "552e492a5ffd1eec5c2b0d77fc5137c242c0751dcc54a3fc58068d69a3ca5f9b",
+    "crates/coder-mobile/src/render.rs": "06fb705b6ff2c2b407755d000339509d93ccd1d977390a617244f5019f4b7cb5",
+    "crates/coder-mobile/src/tests.rs": "04a37f6df122eefae4342bc67d9572bf1530223a1c0ab72af3d0d5ee989e0714",
+    "crates/coder-ui/Cargo.toml": "d213c0bfc7a924b3de9bc36a7599e4449ffa4521ea1f79d2d3af54dd9b5c808e",
+    "crates/coder-ui/src/lib.rs": "758399dd82d362f21423baaa6a4cb5a568d3aba3864337f7c1ef5bfb980bf272",
+    "crates/coder-ui/src/theme.rs": "d8ec2fabf2b69bf8a20717aa3266d03c817a63ea0f1ef1ff9d81a054443d53c9",
+    "crates/nostr-transport/Cargo.toml": "a5ff0f94a172c5a271d2632249bc4590d9648a693fe7cccb25fa018bdd30509d",
+    "crates/nostr-transport/src/artifacts.rs": "36866087e570b08bbfbaf806e35d8bb6b6d9578595d3d303f81f43a1c7da60a6",
+    "crates/nostr-transport/src/lib.rs": "1f657c28161b865617342aef8c0524eafe20d2becfac29d639387aaba8d1284b",
+    "crates/rust-native/Cargo.toml": "d5f59cba1a1e51a0d1eb720a08ae86f9561d5a0538b2e01bd54c4780713e6601",
+    "crates/rust-native/src/lib.rs": "ade04bcd192bf91c1ad0024ed97f0d273b1f0dfbb154281ba03d5b13170e597e",
+    "crates/rust-native/src/style.rs": "2a9279c3cf83e42b81b6ec90e97bd77182e0be0d13e042e62e59d348885c7b37",
+    "crates/rust-native/src/view.rs": "14ae24dbdeebb4ca7b6d7ae6f71dda86ad3b3e652d09eef4a20165a01d932b75",
+    "crates/rust-native/src/view/tests.rs": "3b66d5b5be3813ed5cbaf1c8e6d46d19fd2de9d7a507f1c2b80475d2a881a5be",
+    "scripts/build-coder-mobile.sh": "4a7cd3cf868296fee79c0526352138ffb7649c67a4423b80e9134a4c5af5b30b"
+  },
+  "artifacts_sha256": {
+    "attachments.json": "4299ddadf5a4f39723804cbe55b623d0199b52b4bf0c3f56e6043c87406821a3",
+    "simulator-tests.log": "419d72f4cdcc2dd23e572d34d2b3b8275e191a609a403ec9b825a07518609625",
+    "synthetic-source.png": "4a397a0abeb187d450e7d01487ab37a0fce442094c409e85414277bda7a4f29c",
+    "synthetic-timeline.png": "0e2447567a2e392c53babcfc2a015a12234d47a116b8f18016b0ac3780233b04"
+  },
+  "not_established": [
+    "Physical iPhone operation and locked-device protection",
+    "VoiceOver or all input methods",
+    "Real phone-to-host pairing and reconnect",
+    "Complete CommonMark block rendering",
+    "App Store processing or TestFlight delivery"
+  ]
+}

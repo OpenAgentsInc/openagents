@@ -1,0 +1,26 @@
+   Compiling rustls v0.23.45
+   Compiling tokio-rustls v0.26.5
+   Compiling tungstenite v0.30.0
+   Compiling tokio-tungstenite v0.30.0
+   Compiling nostr-transport v0.1.0 ($WORKTREE/crates/nostr-transport)
+   Compiling coder-connect v0.1.0 ($WORKTREE/crates/coder-connect)
+    Finished `test` profile [unoptimized] target(s) in 2.27s
+     Running unittests src/lib.rs ($TARGET/debug/deps/coder_connect-2fe1262781b66fe8)
+
+running 1 test
+test tests::production_relay_reads_only_generated_history ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 1.38s
+
+     Running unittests src/main.rs ($TARGET/debug/deps/coder_connect-3f2b067da52ecede)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs ($TARGET/debug/deps/cli-a86cc3c3b6c1a378)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

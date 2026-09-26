@@ -2,7 +2,8 @@
 
 OpenAgents builds agent infrastructure: typed decisions, bounded execution,
 programs, permissions, traces, and evaluation. **Coder** is the coding product,
-with terminal and headless interfaces implemented today. The
+with terminal and headless interfaces and an iOS reader for saved Codex and
+Claude Code chats. The
 [suite plan](docs/coder/design/typesafe-product-suite.md) extends the same runtime
 to mobile, web, cloud execution, and computer control. **Coder One** supplies
 the configurable agent components used
@@ -14,10 +15,11 @@ evidence.
 The repository also contains decision-model implementations and services,
 Rust SDKs and CLIs, a Nostr relay, public protocol specifications, and
 Voyager's Minecraft agent. [Rust Native](crates/rust-native/README.md) supplies
-the experimental shared UI foundation: typed views, styles, and the amber theme
-already used through the terminal's compatibility exports. Native adapters,
-including a thin SwiftUI adapter for iOS, are planned. Product code is Rust,
-with an existing Swift bridge for Apple's on-device model. Python and shell handle training, benchmark
+the experimental shared UI foundation: typed views and generic styles. Coder's
+application palette lives separately in `coder-ui`, used through the terminal's
+compatibility exports. The iOS reader renders Rust Native lists and transcripts
+through thin SwiftUI controls. Product state and transport are Rust; native
+glue also includes the Swift bridge for Apple's on-device model. Python and shell handle training, benchmark
 acquisition, and infrastructure.
 
 The [general agent architecture](docs/agents/README.md) and
@@ -51,8 +53,9 @@ maps every contract to its implemented parts and remaining work.
 | Install a bounded task host | [Verified bundles, one-shot services, and rollback](docs/coder/runtime/portable-host.md), [platform acceptance and limits](docs/coder/verification/2026-09-26-portable-host/README.md) |
 | Try the experimental knowledge-assisted loop | [Microcoder](docs/coder/guides/microcoder.md), [shared knowledge base](docs/coder/guides/knowledge-base.md) |
 | Inspect exact knowledge inputs and comparisons | [Private and immutable bundles](docs/coder/runtime/knowledge-bundles.md), [evidence integrity](docs/coder/runtime/knowledge-evidence.md), [frozen study bookkeeping](docs/coder/runtime/knowledge-studies.md) |
+| Read computer chats on iPhone | [Pair the Coder iOS reader](docs/coder/guides/mobile-readonly.md), [build and TestFlight setup](bins/coder-ios/README.md), [verification](docs/coder/verification/2026-09-26-mobile-reader.md) |
 | Review mobile platform feasibility | [Rust native prototype and measured limits](docs/coder/design/rust-mobile-feasibility.md) |
-| Build shared terminal, web, and native UI | [Rust Native](crates/rust-native/README.md), [specification](crates/rust-native/docs/spec.md), [build order](crates/rust-native/docs/build-order.md), [adoption map](crates/rust-native/docs/adoption.md) |
+| Build shared terminal, web, and native UI | [Rust Native](crates/rust-native/README.md), [framework contract](crates/rust-native/docs/spec.md), [Coder architecture](docs/coder/rust-native/architecture.md), [build order](docs/coder/rust-native/build-order.md), [adoption map](docs/coder/rust-native/adoption.md) |
 | Compare saved agent transcripts | [Gym head-to-head replay](docs/gym/head-to-head.md) |
 | Inspect benchmark results | [Terminal-Bench status and evidence](docs/terminal-bench/README.md) |
 | Run a benchmark or controlled experiment | [Harness runbook](docs/terminal-bench/runbook.md), [experiment template](docs/terminal-bench/targeted-experiment-template.md) |
@@ -308,8 +311,9 @@ controller components; a policy's presence in code is not a measured result.
 | [microluna](crates/microluna/) | Short model sessions with five native tools, host-enforced execution, and ATIF traces; used by Coder One and Coder's delegate path. |
 | [microcoder](crates/microcoder/), [knowledge](crates/knowledge/) | Experimental Jev-guided coding loop, knowledge retrieval and expansion, entry admission, and NIP-KB publication and synchronization. |
 | [coder-project](crates/coder-project/), [coder-scheduler](crates/coder-scheduler/) | Supervised project programs, deterministic task admission, durable scheduling records, and simulations. |
-| [rust-native](crates/rust-native/README.md) | Experimental semantic views, typed intents, style composition, and shared amber theme; native adapters remain planned. |
-| [coder-terminal](crates/coder-terminal/) | Terminal design system, composer, frames, and rendering; re-exports Rust Native's theme for existing consumers. |
+| [rust-native](crates/rust-native/README.md) | Experimental semantic views, typed intents, generic style composition; application palettes and native adapters are separate. |
+| [coder-ui](crates/coder-ui/src/lib.rs) | Coder application palette and presentation values; separate from the reusable UI framework. |
+| [coder-terminal](crates/coder-terminal/) | Terminal design system, composer, frames, and rendering; re-exports Coder's `coder-ui` theme for existing consumers. |
 | [coder-boundary](crates/coder-boundary/), [supervise](crates/supervise/) | Filesystem enforcement, workspace snapshots, process-group cleanup, deadlines, and output bounds. |
 | [atif](crates/atif/), [receipts](crates/receipts/) | Append-only agent trajectories and versioned execution receipts. |
 | [capability](crates/capability/) | Capability manifests, host-owned trust, and bounded probes. |

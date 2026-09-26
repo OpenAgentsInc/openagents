@@ -1,33 +1,27 @@
 # Rust Native
 
-Rust Native is OpenAgents' experimental Rust foundation for shared UI
-components, typed interactions, and styles. Applications describe what a screen
-means; platform adapters render it with terminal facilities, semantic web
-elements, or native controls. The planned iOS adapter uses SwiftUI.
+Rust Native is an experimental reusable Rust UI foundation. Applications
+produce bounded semantic views with typed intents and generic styles. Platform
+adapters render those views with native controls, terminal facilities, or web
+elements. Applications retain their state, effects, permissions, and palettes.
 
-This crate lives in the OpenAgents workspace. It has no stable API, standalone
-release, JavaScript runtime, or native renderer yet. It depends on `serde` and
-`serde_json`, with no network, executor, or platform framework dependency.
+The crate implements data contracts and validation. It does not yet include a
+native renderer, mounting runtime, text editor, or stable API. It depends only
+on `serde` and `serde_json`; it has no application, network, or executor
+dependency. Its manifest and Apache-2.0 license are self-contained so the
+library can be reused outside its containing workspace. No package release is
+implied, and publication is disabled while the API is experimental.
 
-## What works now
+## Current contract
 
-| Area | Implemented foundation |
+| Area | Implemented |
 | --- | --- |
-| Views | Serializable `View<I>` and keyed `Node<I>` trees with `Stack`, `Text`, and `Button`. Validation checks identities, labels, schema, and resource limits. |
-| Interactions | An `Activation` names a surface instance, revision, and node. Only a current enabled button resolves to the application's typed intent. The application still checks authority and performs effects. |
-| Styles | Named `StyleSheet` declarations, ordered composition of canonical leaf properties, and explicit `Unset`, `Set`, and `Reset`. Resolved values are semantic tokens. |
-| Theme | The existing four amber intensities and background colors, moved from the public terminal code without changing their values. |
-| Adoption | `coder-terminal` re-exports the same `Intensity` type and backgrounds. Existing terminal consumers, including Verse's palette, receive the shared definitions through that compatibility path. |
+| Views | Serializable `View<I>` and keyed `Node<I>` trees with stacks, bounded lists, text, and buttons. Validation checks schema, identities, labels, and resource limits. |
+| Intents | An `Activation` names a surface instance, revision, and node. Only a current enabled button resolves to the application's stored typed intent. Resolving an intent neither authenticates a caller nor performs an effect. |
+| Styles | Named declarations with ordered leaf-property composition and explicit `Unset`, `Set`, and `Reset`. Colors are generic sRGB RGBA values; spacing and text properties use typed values. |
+| Examples | A product-neutral [settings view](examples/settings.rs) emits JSON only. |
 
-Stateful application hosts, renderer implementations, native text input,
-accessibility mappings, virtualization, and a shared Markdown document model
-are planned. A valid tree does not demonstrate native rendering or grant
-permission to execute a task.
-
-## Describe a screen
-
-Applications supply their own closed serializable intent enum. For example,
-this creates an inert button view:
+Applications supply their own closed serializable intent type:
 
 ```rust
 use rust_native::{Element, Node, View};
@@ -36,55 +30,36 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 enum Intent {
-    InspectTask { task: String },
+    OpenPreferences,
 }
 
-let screen = View::new("task-panel:mount-1", 1, Node {
-    key: "inspect".into(),
+let screen = View::new("settings:mount-1", 1, Node {
+    key: "preferences".into(),
     style: Style::default(),
     element: Element::Button {
-        label: "Inspect task".into(),
+        label: "Open preferences".into(),
         enabled: true,
-        intent: Intent::InspectTask { task: "task-1".into() },
+        intent: Intent::OpenPreferences,
     },
 }).validate()?;
 let bytes = screen.to_json()?;
+# Ok::<(), rust_native::ViewError>(())
 ```
 
-The [task status example](examples/task_status.rs) adds styles and a vertical
-stack. It emits data only and never starts an agent or contacts a service.
-The [view contract](docs/spec.md#view-and-interaction-contract) explains
-revision lifetimes and the difference between resolving an intent and
-authorizing an action.
-
-## Design and migration
-
-Start with the [documentation index](docs/README.md):
-
-- [Specification](docs/spec.md): ownership, views, adapters, native input,
-  effects, and trust boundaries.
-- [Build order](docs/build-order.md): the smallest useful migrations and their
-  completion criteria.
-- [Existing-code adoption map](docs/adoption.md): specific files and consumers.
-- [Stylesheet design](docs/styling.md): StyleX lessons and Rust semantics.
-- [Source review](docs/references.md): Effect Native and React Native findings
-  and pinned sources.
-
-[Issue #9693](https://github.com/OpenAgentsInc/openagents/issues/9693) tracks
-this foundation. The broader [suite tracker](../../docs/coder/migration-status.md)
-and [master roadmap](../../docs/roadmap.md) track the applications it will serve.
+Read the [view and adapter contract](docs/spec.md) and
+[style semantics](docs/styling.md). These distinguish implemented validation
+from the renderer and lifecycle behavior an adapter must supply.
 
 ## Development checks
 
-Use the repository's pinned toolchain and a Cargo target directory dedicated
-to your worktree:
+Use a compatible pinned Rust toolchain and an isolated Cargo target directory:
 
 ```sh
-cargo test -p rust-native -p coder-terminal --lib
-cargo clippy -p rust-native -p coder-terminal --all-targets -- -D warnings
-cargo fmt -p rust-native -p coder-terminal --check
+cargo test -p rust-native --lib
+cargo clippy -p rust-native --all-targets -- -D warnings
+cargo fmt -p rust-native --check
 ```
 
-These checks cover the core and its first consumer. They do not claim a native
-application works. Platform acceptance belongs to the adapter that adds that
-behavior; the full workspace gate remains release-only.
+Core tests and serialized examples do not establish platform rendering,
+accessibility, text composition, or lifecycle support. Verify each adapter's
+supported subset separately when implementing it.

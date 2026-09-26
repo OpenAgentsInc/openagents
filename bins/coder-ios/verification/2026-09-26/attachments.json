@@ -1,0 +1,44 @@
+[
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "5C80D34D-0F2E-4463-BF0D-111A40402E94.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Synthetic native follow control_0_D8BEA420-9C3E-45B5-A1A7-B3C499BF7AAF.png",
+        "timestamp": 1790455046.495
+      }
+    ],
+    "testIdentifier": "ReaderUITests/testFollowCanPauseAndResume()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ReaderUITests/testFollowCanPauseAndResume"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "C0B1221E-E2B4-4C28-A9ED-53656032BFA2.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Synthetic native transcript and source_0_3E642F68-5EC1-4322-970B-B5A352634B59.png",
+        "timestamp": 1790455054.706
+      }
+    ],
+    "testIdentifier": "ReaderUITests/testNativeChatSelectionAndExactSource()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ReaderUITests/testNativeChatSelectionAndExactSource"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "6A530584-922B-42D4-91D1-1C94CEDBD656.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Synthetic earlier-page navigation_0_173DC90C-D0BB-4E8A-8EF8-689C314148F8.png",
+        "timestamp": 1790455069.928
+      }
+    ],
+    "testIdentifier": "ReaderUITests/testPageSelectionPinsUntilLatestIsRequested()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ReaderUITests/testPageSelectionPinsUntilLatestIsRequested"
+  }
+]

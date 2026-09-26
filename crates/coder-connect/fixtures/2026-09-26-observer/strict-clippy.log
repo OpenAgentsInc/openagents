@@ -1,0 +1,13 @@
+    Checking ring v0.17.14
+    Checking rust-native v0.1.0 ($WORKTREE/crates/rust-native)
+    Checking coder-history v0.1.0 ($WORKTREE/crates/coder-history)
+    Checking coder-ui v0.1.0 ($WORKTREE/crates/coder-ui)
+    Checking rustls-webpki v0.103.15
+    Checking rustls v0.23.45
+    Checking tokio-rustls v0.26.5
+    Checking tungstenite v0.30.0
+    Checking tokio-tungstenite v0.30.0
+    Checking nostr-transport v0.1.0 ($WORKTREE/crates/nostr-transport)
+    Checking coder-connect v0.1.0 ($WORKTREE/crates/coder-connect)
+    Checking coder-mobile v0.1.0 ($WORKTREE/crates/coder-mobile)
+    Finished `dev` profile [unoptimized] target(s) in 2.23s

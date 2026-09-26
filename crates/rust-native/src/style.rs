@@ -3,7 +3,6 @@
 //! This is not CSS or a StyleX compiler. Shorthands expand to leaf properties
 //! before composition. Reset explicitly restores a supplied renderer default.
 
-use crate::theme::Intensity;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -19,13 +18,25 @@ pub enum Space {
     Lg,
 }
 
-/// Named backgrounds from the application theme, or the host's native surface.
+/// A device-independent sRGB color. Applications supply palettes and defaults.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Surface {
-    Native,
-    Canvas,
-    Selected,
+#[serde(deny_unknown_fields)]
+pub struct Color {
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+    pub alpha: u8,
+}
+
+impl Color {
+    pub const fn rgb(red: u8, green: u8, blue: u8) -> Self {
+        Self {
+            red,
+            green,
+            blue,
+            alpha: 255,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -79,8 +90,8 @@ impl<T: Copy> Patch<T> {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Style {
-    pub foreground: Option<Intensity>,
-    pub background: Option<Surface>,
+    pub foreground: Option<Color>,
+    pub background: Option<Color>,
     pub padding_top: Option<Space>,
     pub padding_end: Option<Space>,
     pub padding_bottom: Option<Space>,
@@ -95,8 +106,8 @@ pub struct Style {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StylePatch {
-    pub foreground: Patch<Intensity>,
-    pub background: Patch<Surface>,
+    pub foreground: Patch<Color>,
+    pub background: Patch<Color>,
     pub padding_top: Patch<Space>,
     pub padding_end: Patch<Space>,
     pub padding_bottom: Patch<Space>,
@@ -212,7 +223,7 @@ mod tests {
     #[test]
     fn explicit_leaf_order_and_reset_survive_composition() {
         let base = StylePatch::padding(Space::Md).then(StylePatch {
-            foreground: Patch::Set(Intensity::Full),
+            foreground: Patch::Set(Color::rgb(240, 240, 240)),
             ..StylePatch::default()
         });
         let edge = StylePatch {
@@ -223,10 +234,10 @@ mod tests {
         let layered = base.then(edge).then(StylePatch::default());
         assert_eq!(layered.foreground, Patch::Reset);
         let result = layered.resolve(Style {
-            foreground: Some(Intensity::Half),
+            foreground: Some(Color::rgb(90, 90, 90)),
             ..Style::default()
         });
-        assert_eq!(result.foreground, Some(Intensity::Half));
+        assert_eq!(result.foreground, Some(Color::rgb(90, 90, 90)));
         assert_eq!(result.padding_start, Some(Space::Xs));
         assert_eq!(result.padding_end, Some(Space::Md));
         assert_eq!(

@@ -1,0 +1,101 @@
+   Compiling coder-connect v0.1.0 ($WORKTREE/crates/coder-connect)
+    Finished `test` profile [unoptimized] target(s) in 0.76s
+     Running unittests src/lib.rs ($TARGET/debug/deps/coder_connect-0bcc8cb323fabe90)
+
+running 13 tests
+test tests::production_relay_reads_only_generated_history ... ignored, requires an explicitly selected production relay and synthetic publication
+test tests::connection_pins_identity_scope_and_expiry_without_disclosing_paths ... ok
+test tests::active_store_lock_refuses_concurrent_administration_without_losing_revocation ... ok
+test tests::strict_destinations_schemas_and_private_store_permissions ... ok
+test tests::failed_atomic_reply_save_returns_no_reply_and_reopen_reconciles_retained_state ... ok
+test tests::cancelled_exchange_discards_socket_before_the_next_observation ... ok
+test tests::changed_root_and_unadmitted_source_refuse ... ok
+test tests::signed_corrupt_base64_or_offsets_are_refused_by_client ... ok
+test tests::catalog_page_cursor_and_exact_request_correlation ... ok
+test tests::durable_revocation_blocks_cached_retries_and_source_revocation_ends_grant ... ok
+test tests::request_expiry_rechecked_after_read_and_rate_is_durable ... ok
+test tests::authenticated_encrypted_relay_roundtrip_uses_synthetic_data_only ... ok
+test tests::signed_transcript_record_regrouping_and_false_cursors_are_refused ... ok
+
+test result: ok. 12 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running unittests src/main.rs ($TARGET/debug/deps/coder_connect-ad25b8841014d139)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs ($TARGET/debug/deps/cli-c2981f31fdb85d9c)
+
+running 1 test
+test local_pair_and_revoke_cli_retain_only_public_connection_output ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running unittests src/lib.rs ($TARGET/debug/deps/coder_history-be1e6fd297dec342)
+
+running 14 tests
+test project::tests::local_full_projection_preserves_unicode_and_tool_text_beyond_preview ... ok
+test host::tests::malformed_index_and_missing_or_empty_sources_are_explicit ... ok
+test host::tests::request_and_response_bounds_are_enforced ... ok
+test host::tests::claude_projects_and_subagents_are_separate_read_only_sources ... ok
+test host::tests::unconfigured_harness_trees_and_credentials_are_never_cataloged ... ok
+test host::tests::moving_to_archive_retains_chat_identity_but_requires_a_new_source_cursor ... ok
+test host::tests::incomplete_tail_is_retained_and_completed_once_after_append ... ok
+test host::tests::catalog_discovers_archive_titles_missing_sources_and_new_chats ... ok
+test host::tests::symlink_sources_and_directories_cannot_escape_selected_roots ... ok
+test host::tests::catalog_cursor_ignores_titles_but_refuses_changed_membership ... ok
+test host::tests::rewritten_prefix_truncation_replacement_and_forged_cursor_refuse ... ok
+test host::tests::many_short_and_invalid_utf8_records_keep_contiguous_bounded_pages ... ok
+test host::tests::every_raw_byte_and_unknown_record_survives_small_pages ... ok
+test host::tests::oversized_records_are_chunked_in_full_not_discarded ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src/lib.rs ($TARGET/debug/deps/coder_mobile-a3ba0743295fee29)
+
+running 10 tests
+test cache::tests::encrypted_cache_survives_restart_and_refuses_wrong_key_and_swapped_entries ... ok
+test render::tests::one_readable_row_per_record_keeps_every_raw_fragment_available ... ok
+test tests::ffi_rejects_unknown_operations_without_executing_anything ... ok
+test tests::native_projection_opens_a_cached_chat_and_refuses_stale_actions ... ok
+test tests::catalog_is_persisted_in_pages_and_source_gaps_are_visible ... ok
+test render::tests::an_evicted_middle_page_reports_the_internal_history_gap ... ok
+test tests::paused_follow_pins_the_visible_page_across_new_pages ... ok
+test tests::unchanged_catalog_refresh_keeps_all_cached_pages_visible ... ok
+test tests::large_message_is_readable_across_source_pages_without_a_one_kib_cut ... ok
+test connection_tests::app_pairs_pages_refreshes_restores_and_erases_revoked_history ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.98s
+
+     Running unittests src/lib.rs ($TARGET/debug/deps/nostr_transport-b9fcff9bc6934396)
+
+running 1 test
+test tests::socket_tls_provider_does_not_depend_on_a_process_default ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests coder_connect
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests coder_history
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests coder_mobile
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests nostr_transport
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

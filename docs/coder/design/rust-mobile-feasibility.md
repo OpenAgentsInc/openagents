@@ -7,7 +7,7 @@ Tracking: [#9678](https://github.com/OpenAgentsInc/openagents/issues/9678),
 [migration design](coder-suite-migration.md#mobile-desktop-and-web).
 
 **Current implementation direction:** [Rust Native](../../../crates/rust-native/README.md)
-and its [adoption plan](../../../crates/rust-native/docs/adoption.md), tracked in
+and its [adoption plan](../rust-native/adoption.md), tracked in
 [#9693](https://github.com/OpenAgentsInc/openagents/issues/9693), add the shared
 semantic/style/theme foundation and plan progressive native adapters. The
 Apple target uses a thin SwiftUI bridge with Rust state and domain logic.

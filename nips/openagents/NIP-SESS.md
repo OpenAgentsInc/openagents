@@ -3,7 +3,9 @@
 `draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
 are normative. This profile gives clients a common session contract while
 retaining the exact semantics and evidence of each admitted engine adapter.
-It adds no event kinds and claims no current Coder implementation.
+It adds no event kinds. The read-only observer profile below has a bounded
+implementation in `crates/coder-connect`; that does not implement managed
+session opening, execution, or turn control.
 
 A session is a durable conversation lineage, not a process, connection, task,
 account, or RUN controller. One engine process can serve several sessions;
@@ -353,6 +355,136 @@ Connection health, restored history, projection catch-up, engine readiness,
 and active execution are separate facts. An idle replay heuristic cannot mark
 history complete. Unknown item variants remain inspectable private evidence
 or explicit loss; they cannot disappear from a claimed complete transcript.
+
+## Read-only observation of retained foreign history
+
+`openagents.history-observer.v1` is an optional, separately admitted profile
+for reading local retained engine-history projections. It is not an engine
+session admission, a CTRL task scope, or a WS synchronized projection. It
+cannot create, resume, submit, steer, approve, interrupt, archive, or delete
+engine work. In particular, a CTRL grant for one task MUST NOT authorize
+enumerating unrelated retained chats.
+
+This profile is a narrow exception to the CJ invocation requirement above:
+finite read requests and their replies travel as original signed private
+`3188` artifacts. No operation executes engine work, no new kind is allocated,
+and no generic CAP/CJ execution support is advertised. A host that needs
+mutation or managed-session semantics uses separately admitted contracts.
+
+### Local pairing and source authority
+
+The client creates its own key in its local protected store and supplies only
+its public key to the operator. Local owner admission creates a distinct host
+key and a grant binding that client to explicitly selected source roots. The
+host stores canonical roots and their filesystem identity privately. A display
+label, relay membership, possession of a connection code, or guessed file
+identifier is not source admission. A host MUST NOT discover additional roots
+from an incoming read. Changing a root, recipient, relay, or disclosure scope
+requires a new grant.
+
+A grant is `openagents.history-observer-grant.v1` with `requires: []`, `grant`
+(common ID), `host`, `client` (distinct pubkeys), `relay` (the exact admitted
+URL), `sources` (1–2 `{id, label, kind}` objects), `issued_at`, and `expires_at`.
+Source IDs use common IDs; labels are inert strings of 1–128 bytes; the initial
+kinds are `codex` and `claude`, each occurring at most once. Expiry is later
+than issuance and at most 30 days later. The local operator's explicit pairing
+action is the source-disclosure authorization, not a claim about the original
+engine's owner or controller. The original host-signed grant is encrypted to
+the client and retained before the connection code is returned.
+
+The public connection code is `openagents.history-observer-connection.v1`
+with `requires: []`, `host`, `client`, `relay`, `grant`, `sources`, `expires_at`,
+and `authorization` (the exact encrypted grant event). It contains no key,
+credential, source path, or transcript. Its source list describes admitted
+collections, not all source-file IDs. The operator transfers this code through
+an independently trusted channel. The client pins its host and exact grant,
+decrypts the original event with its own key, and requires all duplicated
+fields to agree. A valid self-signed code from another host cannot replace a
+previously trusted connection without explicit local pairing.
+
+Production uses `wss` with certificate validation and no URL credentials or
+fragment. Plain `ws` is permitted only for an explicitly enabled loopback
+test profile, never enabled by a field supplied by the remote code. Neither
+client nor host follows remote artifact locators, redirects, or source paths.
+
+### Bounded request and reply
+
+A request is `openagents.history-observer-request.v1` with `requires: []`,
+`request` (common ID), `grant` (grant ID), `authorization` (exact original grant
+event ID), `issued_at`, `expires_at`, and `query`. Its encrypted recipient is
+the pinned host and original signer is the granted client. Query is exactly
+`{kind: "catalog", request: CatalogRequest}` or
+`{kind: "page", request: TranscriptRequest}` under the versioned reader DTO
+contract in `crates/coder-history`. Catalog requests have a bounded cursor and
+limit; transcript requests name only an opaque reader-issued `source_id`,
+cursor, and byte limit. Requests carry no host path or executable content.
+
+The host verifies signature, recipient, schema, current grant, original grant
+event identity, selected source roots, and request freshness before reading.
+Request expiry is within the grant and at most 60 seconds after issue. The
+envelope issue/retention fields agree with request issue/expiry; its opaque
+`h` mailbox equals the request ID. The host checks actual root identity at each
+read. Replacement or loss requires an explicit refusal, not an automatic bind
+to a new directory. Per grant, allow at most 240 newly admitted reads per
+60-second window. An exact request retry is not another newly admitted read.
+
+A reply is `openagents.history-observer-reply.v1` with `requires: []`,
+`request`, `request_event` (exact original event ID), `grant`, `issued_at`,
+`expires_at`, and `result`. Result is exactly one of
+`{status: "ok", observation}` or `{status: "refused", code}`. Observation is
+`{kind: "catalog", page: CatalogPage}` or
+`{kind: "page", page: TranscriptPage}` under the reader DTO contract. The
+variant must match the query. The original signer is the pinned host, encrypted
+recipient the granted client, and mailbox the request ID. Expiry is no later
+than the request expiry. No response can substitute for another request even
+when the source, query, or visible text happens to match.
+
+Only bounded inline JSON is supported. Observer bodies are at most 128 KiB;
+catalogs have at most 32 entries and transcript pages at most 32 KiB of raw
+source bytes within the reader's 112 KiB encoded-page bound. Exact private
+envelope and NIP-44 bounds also apply. Oversize, unsupported, partial,
+unavailable, and changed-source cases cannot be silently labeled complete.
+Stable refusal codes are `revoked`, `expired`, `source_changed`, `unavailable`,
+`rate_limited`, `malformed`, `forbidden`, `unsupported`, `bounds`, and
+`conflict`. Local transport errors are distinct from signed refusal replies.
+
+The host retains the exact request-event binding and signed reply through its
+request lifetime. Equal request IDs with different event bytes conflict;
+identical retries return retained bytes only while the grant is current.
+Expired requests cannot trigger a new read. A reconnect may renew a finite
+subscription and resend the original signed request while it remains fresh.
+Polling with a new request ID makes a new bounded observation; it does not
+claim a continuous or atomic WS cut. Clients retain each source's reader
+cursor and show capture time, explicit losses, and disconnected/cache state.
+Host reply issue time is not the engine's record timestamp. A client that only
+retains receipt time MUST label it as received or checked, not source capture.
+Clients MUST validate raw byte bounds, record IDs and offsets, newline
+completion, and next-record cursors before merging transcript chunks into a
+cache. A valid host signature does not make an inconsistent reader page valid.
+
+### Expiry, revocation, and disclosure limits
+
+The operator can durably revoke the whole grant or any admitted source. Either
+action ends the existing grant: partial source changes require a new grant.
+Persist the terminal revocation before acknowledging it. Keep its tombstone
+through at least grant expiry plus the maximum request window, and never
+reactivate that grant ID. Each subsequent read, including a cached retry,
+checks current local authority. Failure to read the grant store refuses.
+
+Signed grant verification offline establishes identity and its declared
+lifetime only. It cannot establish that the host has not revoked access.
+Expiry or an authenticated revocation refusal stops further disclosure and
+marks cached content according to the client's retention policy. Revocation
+cannot erase bytes previously disclosed or recall an already admitted reply
+in flight. Relay `OK`, EOSE, silence, or successful decryption never proves
+that the source history is complete, current, or actively executing.
+
+Required observer fixtures cover wrong host/client/signature, stale responses,
+request mismatch, read after expiry/revocation, changed roots/cursors, bounded
+paging, rate limits, strict relay destinations, concurrent local administration,
+atomic failure/reopen, exact retries, and NIP-42 authenticated encrypted relay
+exchange. A transport fixture publishes synthetic content only and is not
+evidence that a production relay retains or enforces these artifacts.
 
 ## Conformance
 

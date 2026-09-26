@@ -1,8 +1,10 @@
 # Adopting Rust Native in Coder
 
 Status: adoption plan, September 26, 2026. The first production change moves
-the existing public palette into Rust Native and preserves the terminal's
-exports. The initial semantic vocabulary is `Stack`, `Text`, and `Button`.
+the existing public palette into the application crate `coder-ui` and preserves
+the terminal's exports. Rust Native remains reusable, with no Coder dependency
+or palette. Its semantic vocabulary includes `Stack`, `List`, `Text`, and
+`Button`.
 Native renderers, text editing, transcript virtualization, and a complete
 Coder screen remain subsequent work.
 
@@ -20,17 +22,17 @@ that have a real second consumer.
 
 | Public source | Existing contract | Adoption decision |
 | --- | --- | --- |
-| [Terminal intensity](../../coder-terminal/src/intensity.rs) | Four ordered amber intensities, two background colors, stable CSS class names, and snapshot digits. | Move the definitions to `rust_native::theme`; preserve their values, ordering, and terminal import paths. |
-| [Terminal ladder](../../coder-terminal/src/ladder.rs) | RGB, indexed color, `NO_COLOR`, and caller-selected dim/bold fallback. | Keep in the terminal adapter. These are terminal capabilities, not universal style semantics. |
-| [Hairline drawing](../../coder-terminal/src/hairline.rs) | Ratatui frames and labels placed in rules, with narrow-area behavior. | Keep its public API and drawing rules. A native group need not imitate a terminal cell border. |
-| [Markdown](../../coder-terminal/src/markdown.rs) | A parsed block tree, inline marks, rendered lines, width-dependent wrapping, and literal raw HTML. | Later extract parsing and semantic blocks from Ratatui styles and cell layout. Keep current entry points during that change. |
-| [Editor](../../coder-terminal/src/editor.rs), [keys](../../coder-terminal/src/keys.rs), and [composer](../../coder-terminal/src/composer.rs) | A byte-offset, grapheme-aware draft/caret model; terminal key bindings; framed display. | Preserve the terminal implementation. Its current editor is not a complete mobile selection/composition contract. |
-| [Decision evidence](../../coder-terminal/src/decision.rs) and [progress](../../coder-terminal/src/progress.rs) | Explicit unknown, unavailable, simulated, measured, verification, and execution states with readable detail. | Preserve these distinctions in future semantic projections. Do not replace them with generic success/error badges. |
-| [Scrollback](../../coder-terminal/src/scrollback.rs) and [event lanes](../../coder-terminal/src/events.rs) | Bounded display retention and width caches; separate reliable outcomes from bursty text. | Keep transport, scheduling, and retention policy outside the component tree. Make display truncation visible and retain a route to original evidence. |
-| [Mobile fixture](../../coder-mobile-probe/src/lib.rs) | One synthetic ATIF source with text, HTML, Unicode, and full-transcript exports. | Use as the first follow-on semantic consumer before attaching remote authority. |
-| [iOS probe](../../coder-mobile-probe/src/ios.rs) and [Android probe](../../coder-mobile-probe/src/android.rs) | Actual UIKit controls through Rust Objective-C calls and Android framework widgets through Rust JNI. | Reference working platform boundaries. Neither is a SwiftUI or Compose renderer. |
-| [Gym transcript](../../gym/src/runs_transcript.rs) | Recorded sources become typed transcript blocks with full content, timestamps, and optional costs. | Keep ingestion and source interpretation in Gym. Project those blocks into shared components without importing Gym into the UI core. |
-| [Gym replay](../../gym/src/runs_replay.rs), [replay terminal](../../gym/src/runs_replay_tui.rs), and [run terminal](../../gym/src/runs_tui.rs) | One replay clock, recorded versus estimated timing, expandable transcript rows, navigation, and details. | Migrate presentation a pane at a time; preserve the replay model, timestamp interpretation, and existing controls. |
+| [Terminal intensity](../../../crates/coder-terminal/src/intensity.rs) | Four ordered amber intensities, two background colors, stable CSS class names, and snapshot digits. | Move the definitions to `coder_ui::theme`; preserve their values, ordering, and terminal import paths. |
+| [Terminal ladder](../../../crates/coder-terminal/src/ladder.rs) | RGB, indexed color, `NO_COLOR`, and caller-selected dim/bold fallback. | Keep in the terminal adapter. These are terminal capabilities, not universal style semantics. |
+| [Hairline drawing](../../../crates/coder-terminal/src/hairline.rs) | Ratatui frames and labels placed in rules, with narrow-area behavior. | Keep its public API and drawing rules. A native group need not imitate a terminal cell border. |
+| [Markdown](../../../crates/coder-terminal/src/markdown.rs) | A parsed block tree, inline marks, rendered lines, width-dependent wrapping, and literal raw HTML. | Later extract parsing and semantic blocks from Ratatui styles and cell layout. Keep current entry points during that change. |
+| [Editor](../../../crates/coder-terminal/src/editor.rs), [keys](../../../crates/coder-terminal/src/keys.rs), and [composer](../../../crates/coder-terminal/src/composer.rs) | A byte-offset, grapheme-aware draft/caret model; terminal key bindings; framed display. | Preserve the terminal implementation. Its current editor is not a complete mobile selection/composition contract. |
+| [Decision evidence](../../../crates/coder-terminal/src/decision.rs) and [progress](../../../crates/coder-terminal/src/progress.rs) | Explicit unknown, unavailable, simulated, measured, verification, and execution states with readable detail. | Preserve these distinctions in future semantic projections. Do not replace them with generic success/error badges. |
+| [Scrollback](../../../crates/coder-terminal/src/scrollback.rs) and [event lanes](../../../crates/coder-terminal/src/events.rs) | Bounded display retention and width caches; separate reliable outcomes from bursty text. | Keep transport, scheduling, and retention policy outside the component tree. Make display truncation visible and retain a route to original evidence. |
+| [Mobile fixture](../../../crates/coder-mobile-probe/src/lib.rs) | One synthetic ATIF source with text, HTML, Unicode, and full-transcript exports. | Use as the first follow-on semantic consumer before attaching remote authority. |
+| [iOS probe](../../../crates/coder-mobile-probe/src/ios.rs) and [Android probe](../../../crates/coder-mobile-probe/src/android.rs) | Actual UIKit controls through Rust Objective-C calls and Android framework widgets through Rust JNI. | Reference working platform boundaries. Neither is a SwiftUI or Compose renderer. |
+| [Gym transcript](../../../crates/gym/src/runs_transcript.rs) | Recorded sources become typed transcript blocks with full content, timestamps, and optional costs. | Keep ingestion and source interpretation in Gym. Project those blocks into shared components without importing Gym into the UI core. |
+| [Gym replay](../../../crates/gym/src/runs_replay.rs), [replay terminal](../../../crates/gym/src/runs_replay_tui.rs), and [run terminal](../../../crates/gym/src/runs_tui.rs) | One replay clock, recorded versus estimated timing, expandable transcript rows, navigation, and details. | Migrate presentation a pane at a time; preserve the replay model, timestamp interpretation, and existing controls. |
 
 The private reference's centralized `coder-ui-core` demonstrates useful
 separation among component meaning, action identity, renderer bindings, and a
@@ -42,8 +44,9 @@ around this repository's public task, evidence, and authorization contracts.
 
 ## Keep the dependency direction explicit
 
-Rust Native owns the reusable semantic vocabulary, style resolution, theme,
-and view-instance validation. It must not depend on `coder`, `gym`, a relay,
+Rust Native owns reusable semantic vocabulary, generic style resolution,
+and view-instance validation. `coder-ui` owns Coder palettes and application
+components; the framework has no product defaults. It must not depend on `coder`, `gym`, a relay,
 an executor, a wallet, or a clock. Adapters own platform objects and rendering.
 Applications own their typed intents and decide whether an intent may become
 an effect.
@@ -52,7 +55,7 @@ an effect.
 flowchart TD
     Evidence["ATIF, task views, Gym blocks, verified CTRL replies"]
     Application["Application projection and typed intents"]
-    Native["Rust Native view, style, theme, instance and revision"]
+    Native["Rust Native view, generic style, instance and revision"]
     Terminal["Terminal adapter: Ratatui, cells, existing ladder"]
     Apple["Apple adapter: planned SwiftUI bridge"]
     Android["Android adapter: native framework controls"]
@@ -77,7 +80,7 @@ publication, steering, or cancellation. In particular, a view revision is not a 
 or a verified evidence cursor. Keep all three identities distinct.
 
 Remote task clients continue to use the client-only
-[`coder-control` configuration and verification](../../coder-control/src/client.rs).
+[`coder-control` configuration and verification](../../../crates/coder-control/src/client.rs).
 Its authorized view reaches the application projection only after signature,
 recipient, grant, artifact, and scope checks. Rendering does not fetch a link,
 publish an event, or interpret transcript text as instructions. Keys, secure
@@ -92,8 +95,8 @@ static HTML belongs in RN1, and native adapters can proceed alongside RN2.
 
 | Target | Public files to change | Concrete change and compatibility boundary |
 | --- | --- | --- |
-| 1 | `crates/rust-native/src/{lib,theme,style,view}.rs`, `crates/rust-native/Cargo.toml`, root manifests | Add the pure Rust foundation: shared theme, typed per-property styles with ordered composition, and validated serializable `View<I>`, `Node<I>`, and `Element<I>`. Start with stack, text, and button semantics only. Keep the default dependency surface free of a renderer or application. |
-| 2 | `crates/coder-terminal/src/intensity.rs`, `crates/coder-terminal/src/lib.rs`, `crates/coder-terminal/Cargo.toml` | Replace palette ownership with compatibility reexports. Preserve `coder_terminal::{Intensity, NEAR_BLACK, NEAR_BLACK_TINT}` and every existing color/class/digit. Keep `Ladder` and Ratatui APIs local. Existing Gym and Verse callers should not need source changes. |
+| 1 | `crates/rust-native/src/{lib,style,view}.rs`, `crates/rust-native/Cargo.toml`, root manifests | Add the reusable Rust foundation: generic colors, typed per-property styles with ordered composition, and validated serializable `View<I>`, `Node<I>`, and `Element<I>`. Start with stack, text, and button semantics only. Keep the default dependency surface free of a renderer or application. |
+| 2 | `crates/coder-terminal/src/intensity.rs`, `crates/coder-terminal/src/lib.rs`, `crates/coder-terminal/Cargo.toml` | Keep palette ownership in `coder-ui` with terminal compatibility reexports. Preserve `coder_terminal::{Intensity, NEAR_BLACK, NEAR_BLACK_TINT}` and every existing color/class/digit. Keep `Ladder` and Ratatui APIs local. Existing Gym and Verse callers should not need source changes. |
 | 3 | New `crates/rust-native/tests/` fixture coverage and catalog example; `crates/coder-mobile-probe/src/lib.rs` | Build a small synthetic status section from stack/text/button nodes. Check source text, ordering, labels, explicit unknown values, disabled states, and activation identity. Preserve existing fixture exports; label this an example rather than task control. |
 | 4 | New `crates/coder-terminal/src/native.rs`; `crates/coder-terminal/src/lib.rs`; a focused terminal example | Implement the first renderer adapter for the initial subset. Use existing `Ladder`, `frame`, and wrapping. Map focus and activation to current node identities. Unsupported semantics must produce an explicit refusal or documented faithful fallback. |
 | 5 | `crates/coder-terminal/src/markdown.rs`; proposed `crates/rust-native/src/text.rs` or a dedicated pure text crate | Separate parse/semantic data from `Marks::style`, terminal wrapping, and rendered lines. Preserve the old Markdown facade. Add fixtures for nested lists, tables, links, raw HTML, fenced code, Unicode, and exact source recovery before switching a consumer. Do not perform this extraction just to add a dependency. |
@@ -103,10 +106,10 @@ static HTML belongs in RN1, and native adapters can proceed alongside RN2.
 | 9 | A dedicated Coder client presentation layer over `coder-control`; native app entry points | Connect verified task pages to the same projection. Add an exact persisted outbox and explicit stale, revoked, expired, disconnected, and delivery-unknown states before enabling correction/cancel controls. A disabled control must carry its reason. This is a client milestone, not a generic UI-core feature. |
 | 10 | Web adapter in RN1/RN3 and, separately, `crates/gateway/src/dashboard.rs` or `playground.rs` | Begin with inert semantic HTML in RN1, then interactive DOM support in RN3. Reuse semantic components where the product contract matches. Preserve existing HTTP authentication, escaping, and disclosures. Gateway account views are a later consumer; do not force all service pages or server logic through the first Coder transcript migration. |
 
-Do not add a second generic palette to mobile or the web. Conversely, do not
+Do not duplicate the Coder application palette in mobile or web code. Conversely, do not
 make application code depend on a terminal crate just to obtain colors. The
 compatibility reexport allows current Verse code to keep its existing imports
-while later choosing the neutral theme path on its own schedule. Verse's
+while later choosing the application theme path on its own schedule. Verse's
 world renderer remains a specialized renderer; adopting theme provenance does
 not turn it into a native widget surface.
 
@@ -167,7 +170,7 @@ joined emoji, accented characters, selection replacement, and undo in the
 future acceptance corpus.
 
 **Long transcripts.** The retained
-[mobile feasibility result](../../../docs/coder/design/rust-mobile-feasibility.md)
+[mobile feasibility result](../design/rust-mobile-feasibility.md)
 shows why one enormous native text view is insufficient: the initial Android
 accessibility output stopped before the end of the 2,000-step fixture.
 Virtualization must preserve logical event identity, reading position, and
@@ -217,7 +220,7 @@ platform runtime work separately authorized and separately reported. Preserve
 the existing renderer until its replacement passes the slice's checks; the
 release matrix must not block an independent palette or semantic-core change.
 
-The first adoption is complete when the palette has one neutral owner and
+The first adoption is complete when the palette has one application owner and
 existing terminal behavior remains compatible. The next useful outcome is one
 readable synthetic status surface rendered from the initial semantic subset.
 A shared Coder transcript, native editing, and cross-device task control each

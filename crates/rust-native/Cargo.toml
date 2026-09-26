@@ -1,14 +1,22 @@
 [package]
 name = "rust-native"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-publish.workspace = true
-description = "Experimental shared semantic views, typed intents, styles, and native-renderer contracts."
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+publish = false
+license = "Apache-2.0"
+readme = "README.md"
+description = "Experimental reusable semantic views, typed intents, styles, and native-renderer contracts."
+include = ["src/**", "examples/**", "docs/**", "README.md", "LICENSE"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"

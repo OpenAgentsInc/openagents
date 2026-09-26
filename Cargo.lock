@@ -671,6 +671,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-connect"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "coder-history",
+ "futures-util",
+ "libc",
+ "nostr",
+ "nostr-transport",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "url",
+]
+
+[[package]]
 name = "coder-control"
 version = "0.1.0"
 dependencies = [
@@ -688,6 +707,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-history"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+]
+
+[[package]]
 name = "coder-labor"
 version = "0.1.0"
 dependencies = [
@@ -696,6 +726,25 @@ dependencies = [
  "futures-util",
  "libc",
  "nostr",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
+name = "coder-mobile"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "coder-connect",
+ "coder-history",
+ "coder-ui",
+ "futures-util",
+ "nostr",
+ "rust-native",
  "secp256k1",
  "serde",
  "serde_json",
@@ -770,13 +819,21 @@ dependencies = [
 name = "coder-terminal"
 version = "0.1.0"
 dependencies = [
+ "coder-ui",
  "crossterm",
  "pulldown-cmark",
  "ratatui",
- "rust-native",
  "tokio",
  "unicode-segmentation",
  "unicode-width",
+]
+
+[[package]]
+name = "coder-ui"
+version = "0.1.0"
+dependencies = [
+ "rust-native",
+ "serde",
 ]
 
 [[package]]
@@ -3448,10 +3505,12 @@ version = "0.1.0"
 dependencies = [
  "futures-util",
  "nostr",
+ "rustls",
  "secp256k1",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]

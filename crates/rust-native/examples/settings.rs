@@ -1,17 +1,17 @@
-//! A data-only screen example. It performs no task, network, or model action.
+//! A data-only settings screen. It emits a view without performing effects.
 use rust_native::style::{Space, Style, StylePatch, StyleSheet};
 use rust_native::{Axis, Element, Node, TextRole, View};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 enum Intent {
-    InspectTask { task: String },
+    OpenPreferences,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let styles = StyleSheet::new([("panel".into(), StylePatch::padding(Space::Sm))])?;
     let view = View::new(
-        "task-status:example-mount",
+        "settings:example-mount",
         1,
         Node {
             key: "panel".into(),
@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         key: "status".into(),
                         style: Style::default(),
                         element: Element::Text {
-                            value: "Execution: stopped. Checks: not run. Cost: unknown.".into(),
+                            value: "Preferences are ready to edit.".into(),
                             role: TextRole::Status,
                         },
                     },
@@ -31,11 +31,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         key: "inspect".into(),
                         style: Style::default(),
                         element: Element::Button {
-                            label: "Inspect task".into(),
+                            label: "Open preferences".into(),
                             enabled: true,
-                            intent: Intent::InspectTask {
-                                task: "example-task".into(),
-                            },
+                            intent: Intent::OpenPreferences,
                         },
                     },
                 ],

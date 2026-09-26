@@ -221,3 +221,91 @@ fn json_nesting_bound_includes_intents_but_not_quoted_brackets() {
         validated.view()
     );
 }
+
+#[test]
+fn list_rows_keep_identity_and_nested_button_activation() {
+    let mut source = sample();
+    let Element::Stack { children, .. } = source.root.element else {
+        unreachable!()
+    };
+    source.root.element = Element::List {
+        label: "Recorded messages".into(),
+        children,
+    };
+    let validated = source.validate().unwrap();
+    let decoded = View::<Intent>::from_json(&validated.to_json().unwrap()).unwrap();
+    let event = Activation {
+        instance: "task-panel:mount-1".into(),
+        revision: 4,
+        node: "inspect".into(),
+    };
+    assert_eq!(decoded.activate(&event), validated.activate(&event));
+    assert!(
+        decoded
+            .activate(&Activation {
+                node: "root".into(),
+                ..event
+            })
+            .is_err()
+    );
+}
+
+#[test]
+fn list_labels_keys_and_window_bounds_are_checked() {
+    let mut source = sample();
+    source.root.element = Element::List {
+        label: " ".into(),
+        children: Vec::new(),
+    };
+    assert!(matches!(source.validate(), Err(ViewError::MissingLabel)));
+
+    let mut source = sample();
+    let row = Node {
+        key: "row".into(),
+        style: Style::default(),
+        element: Element::Text {
+            value: "literal".into(),
+            role: TextRole::Markdown,
+        },
+    };
+    source.root.element = Element::List {
+        label: "Timeline".into(),
+        children: vec![row.clone(), row.clone()],
+    };
+    assert!(matches!(
+        source.validate(),
+        Err(ViewError::DuplicateNode(_))
+    ));
+    let mut source = sample();
+    source.root.element = Element::List {
+        label: "Timeline".into(),
+        children: (0..MAX_NODES)
+            .map(|index| Node {
+                key: format!("row-{index}"),
+                ..row.clone()
+            })
+            .collect(),
+    };
+    assert!(matches!(source.validate(), Err(ViewError::NodeLimit)));
+}
+
+#[test]
+fn markdown_preserves_source_and_old_schema_is_not_reinterpreted() {
+    let mut source = sample();
+    source.root.element = Element::Text {
+        value: "# 日本語\n\n[link](https://example.invalid)\n<script>literal</script>".into(),
+        role: TextRole::Markdown,
+    };
+    let validated = source.validate().unwrap();
+    let bytes = validated.to_json().unwrap();
+    assert_eq!(
+        View::<Intent>::from_json(&bytes).unwrap().view(),
+        validated.view()
+    );
+    let mut old = serde_json::to_value(validated.view()).unwrap();
+    old["schema"] = "rust-native.view.v0".into();
+    assert!(matches!(
+        View::<Intent>::from_json(&serde_json::to_vec(&old).unwrap()),
+        Err(ViewError::Schema)
+    ));
+}

@@ -10,16 +10,14 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 433 documents plus itself as of September 26, 2026.
+This catalog lists 441 documents plus itself as of September 26, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
-[Rust Native index](../crates/rust-native/README.md) owns the experimental UI
-core's contract and implementation status, with separate
-[styling](../crates/rust-native/docs/styling.md),
-[reference review](../crates/rust-native/docs/references.md), and
-[adoption](../crates/rust-native/docs/adoption.md) documents. Native renderers
-and the broader client migration remain planned.
+[framework index](../crates/rust-native/README.md) owns the generic UI contract.
+The [Coder adoption index](coder/rust-native/README.md) owns the application
+architecture, source reviews, styling direction, and migration plan; those
+files are included below.
 
 ## Top-level navigation and reference
 
@@ -118,6 +116,7 @@ and the broader client migration remain planned.
 | [coder/guides/install.md](coder/guides/install.md) | Guide / contract | Installing Coder |
 | [coder/guides/knowledge-base.md](coder/guides/knowledge-base.md) | Guide / contract | Use the shared knowledge base |
 | [coder/guides/microcoder.md](coder/guides/microcoder.md) | Guide / contract | Microcoder |
+| [coder/guides/mobile-readonly.md](coder/guides/mobile-readonly.md) | Guide / contract | Read saved Codex and Claude chats on iPhone |
 | [coder/guides/program-authority.md](coder/guides/program-authority.md) | Guide / contract | Program authority |
 | [coder/guides/project-supervision.md](coder/guides/project-supervision.md) | Guide / contract | Capacity-aware project supervision |
 | [coder/guides/tasks.md](coder/guides/tasks.md) | Guide / contract | Durable local tasks |
@@ -161,6 +160,12 @@ and the broader client migration remain planned.
 | [coder/terminal-bench-contract.md](coder/terminal-bench-contract.md) | Reference | The v0.5 headless episode contract |
 | [coder/terminal-bench.md](coder/terminal-bench.md) | Reference | Terminal-Bench comparisons |
 | [coder/thoughts-on-a-typesafe-coding-agent/README.md](coder/thoughts-on-a-typesafe-coding-agent/README.md) | Index | Source and verification notes |
+| [coder/rust-native/README.md](coder/rust-native/README.md) | Index | Rust Native adoption in Coder |
+| [coder/rust-native/adoption.md](coder/rust-native/adoption.md) | Design / assessment | Adopting Rust Native in Coder |
+| [coder/rust-native/architecture.md](coder/rust-native/architecture.md) | Design / assessment | Coder shared UI architecture |
+| [coder/rust-native/build-order.md](coder/rust-native/build-order.md) | Design / assessment | Rust Native build order |
+| [coder/rust-native/references.md](coder/rust-native/references.md) | Design / assessment | Reference architecture review |
+| [coder/rust-native/styling-design.md](coder/rust-native/styling-design.md) | Design / assessment | Coder styling design with Rust Native |
 | [coder/verification/2026-09-20-devin-runbook.md](coder/verification/2026-09-20-devin-runbook.md) | Retained evidence / audit | Workstation validation of the Devin delegation runbook |
 | [coder/verification/2026-09-20-execution-boundary.md](coder/verification/2026-09-20-execution-boundary.md) | Retained evidence / audit | Execution boundary and workspace snapshots |
 | [coder/verification/2026-09-20-terminal-lifecycle.md](coder/verification/2026-09-20-terminal-lifecycle.md) | Retained evidence / audit | Terminal lifecycle smoke test, 2026-09-20 |
@@ -171,6 +176,7 @@ and the broader client migration remain planned.
 | [coder/verification/2026-09-26-free-labor/README.md](coder/verification/2026-09-26-free-labor/README.md) | Evidence index | Free labor acceptance evidence |
 | [coder/verification/2026-09-26-frozen-context/README.md](coder/verification/2026-09-26-frozen-context/README.md) | Evidence index | Frozen context and shared transport acceptance |
 | [coder/verification/2026-09-26-knowledge/README.md](coder/verification/2026-09-26-knowledge/README.md) | Evidence index | Knowledge integrity and permissioned input verification |
+| [coder/verification/2026-09-26-mobile-reader.md](coder/verification/2026-09-26-mobile-reader.md) | Retained evidence / audit | Coder iOS reader verification — September 26, 2026 |
 | [coder/verification/2026-09-26-portable-host/README.md](coder/verification/2026-09-26-portable-host/README.md) | Evidence index | Portable host packaging evidence |
 | [coder/verification/2026-09-26-repository-adapter/README.md](coder/verification/2026-09-26-repository-adapter/README.md) | Evidence index | Repository adapter acceptance, 2026-09-26 |
 | [coder/verification/2026-09-26-task-inbox.md](coder/verification/2026-09-26-task-inbox.md) | Retained evidence / audit | Durable local task inbox verification |

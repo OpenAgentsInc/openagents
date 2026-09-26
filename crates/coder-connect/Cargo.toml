@@ -1,0 +1,36 @@
+[package]
+name = "coder-connect"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Explicitly paired read-only encrypted access to retained coding history."
+
+[features]
+default = ["host"]
+host = ["coder-history/host", "dep:libc"]
+
+[[bin]]
+name = "coder-connect"
+required-features = ["host"]
+
+[dependencies]
+coder-history = { path = "../coder-history", default-features = false }
+nostr = { path = "../nostr" }
+nostr-transport = { path = "../nostr-transport" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "sync"] }
+url = "2"
+base64 = "0.22"
+libc = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+tokio = { version = "1", features = ["net", "sync"] }
+
+[lints]
+workspace = true

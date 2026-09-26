@@ -148,4 +148,4 @@ existing product and keeping platform qualification separate from source work.
 [rn-styles]: https://github.com/facebook/react-native/blob/d7ff82ebe4ed5155b955fd60b31e02bbc76a3c66/packages/react-native/Libraries/StyleSheet/StyleSheetExports.js
 [rn-yoga]: https://github.com/facebook/react-native/blob/d7ff82ebe4ed5155b955fd60b31e02bbc76a3c66/packages/react-native/ReactCommon/react/renderer/components/view/YogaStylableProps.h
 [rn-view]: https://github.com/facebook/react-native/blob/d7ff82ebe4ed5155b955fd60b31e02bbc76a3c66/packages/react-native/ReactCommon/react/renderer/components/view/BaseViewProps.h
-[mobile-feasibility]: ../../../docs/coder/design/rust-mobile-feasibility.md
+[mobile-feasibility]: ../design/rust-mobile-feasibility.md

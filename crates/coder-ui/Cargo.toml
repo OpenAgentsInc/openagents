@@ -1,0 +1,14 @@
+[package]
+name = "coder-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Coder application presentation and theme values."
+
+[dependencies]
+rust-native = { path = "../rust-native" }
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true
