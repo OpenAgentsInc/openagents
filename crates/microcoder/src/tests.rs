@@ -775,3 +775,31 @@ async fn code_that_follows_the_entries_finishes_at_once() {
         Event::Conformed { flagged, .. } if flagged.is_empty()
     )));
 }
+
+#[tokio::test]
+async fn a_test_stuck_failing_is_checked_without_a_finish() {
+    // b.sh fails until `fix b`, which never runs; the model keeps working.
+    let script = Script::new(vec![Ok(freeze(
+        "write tests",
+        &["cat > /tmp/acceptance/a.sh"],
+    ))]);
+    let jev = Jev {
+        wrong: 0.9,
+        ..jev(0.1)
+    };
+    let limits = Limits {
+        max_steps: Some(14),
+        ..Limits::default()
+    };
+    let (state, _, _, log) = go_with(&script, &limits, &jev, None).await;
+    assert_eq!(state.dropped.len(), 1);
+    assert_eq!(state.dropped[0].test.name, "b.sh");
+    // Frozen at step 1, failing from step 1; checked at its tenth failing step.
+    assert_eq!(state.dropped[0].step, 10);
+    let disputes = log
+        .0
+        .iter()
+        .filter(|e| matches!(e, Event::Disputed { .. }))
+        .count();
+    assert_eq!(disputes, 1);
+}

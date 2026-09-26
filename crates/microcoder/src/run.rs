@@ -651,6 +651,10 @@ async fn conform<J: Judge>(
     Some((judgment, flagged))
 }
 
+/// Steps in a row a frozen test fails before Jev checks whether it's wrong,
+/// without waiting for the model to say it's finished.
+pub const STUCK: usize = 10;
+
 /// Jev's probability at which a failing frozen test is dropped as wrong.
 pub const WRONG: f64 = 0.7;
 
@@ -661,9 +665,11 @@ async fn dispute<J: Judge>(
     state: &mut State,
     step: usize,
     rationale: &str,
+    only: Option<&[String]>,
 ) -> (Judgment, Vec<String>) {
     let failing: Vec<usize> = (0..state.tests.len())
         .filter(|&n| !state.test_results[n].ok())
+        .filter(|&n| only.is_none_or(|names| names.contains(&state.tests[n].name)))
         .collect();
     let set = relevance_set(&dispute_set(), failing.len());
     let mut jev_state = json!({
@@ -797,6 +803,10 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut refused = 0usize;
     // Steps in a row that ended with every frozen test passing.
     let mut green = 0usize;
+    // Steps in a row each frozen test has failed, and the tests Jev already
+    // checked for being stuck.
+    let mut failing_for: std::collections::HashMap<String, usize> = Default::default();
+    let mut checked_stuck: Vec<String> = Vec::new();
     // Knowledge entries the finished code was already checked against.
     let mut checked: Vec<String> = Vec::new();
     let mut step = 0usize;
@@ -1031,6 +1041,45 @@ or set finished to true if the task is complete."
                 },
             );
         }
+        if state.frozen_at.is_some() {
+            for (test, result) in state.tests.iter().zip(&state.test_results) {
+                let streak = failing_for.entry(test.name.clone()).or_default();
+                *streak = if result.ok() { 0 } else { *streak + 1 };
+            }
+            let stuck: Vec<String> = state
+                .tests
+                .iter()
+                .filter(|t| failing_for.get(&t.name).copied().unwrap_or(0) >= STUCK)
+                .filter(|t| !checked_stuck.contains(&t.name))
+                .map(|t| t.name.clone())
+                .collect();
+            if !stuck.is_empty() && !action.finished {
+                checked_stuck.extend(stuck.iter().cloned());
+                let rationale = state
+                    .actions
+                    .last()
+                    .map(|a| a.rationale.clone())
+                    .unwrap_or_default();
+                let (judgment, dropped) =
+                    dispute(models.judge, &mut state, step, &rationale, Some(&stuck)).await;
+                jev_usd += judgment.usd;
+                if !dropped.is_empty() {
+                    state.notes.push(format!(
+                        "Jev judged these frozen tests wrong after they failed {STUCK} steps in a \
+row, so they were dropped: {}.",
+                        dropped.join(", ")
+                    ));
+                }
+                observer.event(
+                    started.elapsed().as_secs_f64(),
+                    &Event::Disputed {
+                        step,
+                        judgment,
+                        dropped,
+                    },
+                );
+            }
+        }
         let all_pass =
             state.frozen_at.is_some() && state.test_results.iter().all(CommandResult::ok);
         green = if all_pass { green + 1 } else { 0 };
@@ -1081,7 +1130,8 @@ again. Each entry is checked once.",
                     .last()
                     .map(|a| a.rationale.clone())
                     .unwrap_or_default();
-                let (judgment, dropped) = dispute(models.judge, &mut state, step, &rationale).await;
+                let (judgment, dropped) =
+                    dispute(models.judge, &mut state, step, &rationale, None).await;
                 jev_usd += judgment.usd;
                 observer.event(
                     started.elapsed().as_secs_f64(),
