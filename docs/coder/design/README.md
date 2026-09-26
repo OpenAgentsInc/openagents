@@ -31,6 +31,7 @@ discovery, and package distribution.
 | [luna-pivot](luna-pivot.md) | The Luna pivot: Jev structure around GPT-6 Luna, and the Microluna harness (superseded by Microcoder for the harness) |
 | [microluna](microluna.md) | Microluna: calling Luna directly on a logged-in Codex session, and what to keep from Codex |
 | [microluna-v18](microluna-v18.md) | Microluna v18: the executed briefing built from what worked in the v13 trials, and the run-characterization card that admits each change |
+| [networked-coder-plan](networked-coder-plan.md) | A measured plan for the best coding agent: truthful checks, economical routing, and a network of reusable, evaluated components |
 | [prompt-audit](prompt-audit.md) | Every Coder One and Microluna prompt line judged against the determinism thesis, what changed, and whether Fable 5.1's trajectories record a system prompt |
 | [rebuild-plan](rebuild-plan.md) | Coder agent and terminal rebuild plan |
 | [relay-backend-plan](relay-backend-plan.md) | Relay backend plan: coder on `relay.openagents.com` |
