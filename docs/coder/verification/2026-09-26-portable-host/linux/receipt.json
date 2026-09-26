@@ -1,0 +1,26 @@
+{
+  "schema": "openagents.coder.systemd-fixture.v1",
+  "platform": "linux-systemd",
+  "fixture_only": true,
+  "rust_task_owner_executed": false,
+  "systemd_verify": "passed",
+  "service_start": "passed",
+  "duplicate_start": "one process invocation while active",
+  "service_state": [
+    "Type=oneshot",
+    "Restart=no",
+    "Result=success",
+    "ExecMainStatus=0"
+  ],
+  "install": {
+    "binary_sha256": "003b2749ebf8edec1e81b68b46aad3acfd6bd26f700103e491d50ecb9816d398",
+    "result": "activated"
+  },
+  "existing_coder": "refused: durable task execute is unavailable",
+  "usr_bin_git": false,
+  "cleanup": "unique service stopped and unlinked; manager reloaded",
+  "model_calls": 0,
+  "production_services_changed": false,
+  "all_in_cost_usd": null,
+  "unit": "openagents-host-fixture-1bc48b204c2749a297ee8b4fef97d01c.service"
+}

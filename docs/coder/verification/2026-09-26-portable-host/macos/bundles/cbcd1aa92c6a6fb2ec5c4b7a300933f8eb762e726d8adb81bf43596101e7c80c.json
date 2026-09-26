@@ -1,0 +1,14 @@
+{
+  "binary_sha256": "cbcd1aa92c6a6fb2ec5c4b7a300933f8eb762e726d8adb81bf43596101e7c80c",
+  "health": {
+    "tasks": "task execute advertised",
+    "version": "coder 0.1.0 (OpenAgentsInc/openagents e3baa038a8 dirty)"
+  },
+  "platform": "darwin",
+  "read_state_schemas": [
+    "openagents.coder.task-store.v2"
+  ],
+  "schema": "openagents.coder.host-bundle.v1",
+  "source_revision": "fbcaf2bcf8ae65f1c444d5cf8bf0790cc70911fc",
+  "uncommitted_source": true
+}

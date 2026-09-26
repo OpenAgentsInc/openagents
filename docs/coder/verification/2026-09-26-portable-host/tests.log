@@ -1,0 +1,14 @@
+test_bad_digest_health_schema_and_disk_leave_active_unchanged (__main__.Packaging) ... ok
+test_changed_binary_or_provenance_refuse (__main__.Packaging) ... ok
+test_fifo_refuses_without_waiting_for_a_writer (__main__.Packaging) ... ok
+test_health_reaps_group_after_parent_exits (__main__.Packaging) ... ok
+test_install_upgrade_duplicate_rollback_preserves_data (__main__.Packaging) ... ok
+test_interrupted_staging_never_changes_activation (__main__.Packaging) ... ok
+test_service_pins_binary_grant_and_disables_restart (__main__.Packaging) ... ok
+test_symlinks_missing_state_and_busy_lock_refuse (__main__.Packaging) ... ok
+test_uninstall_preserves_task_bytes_and_immutable_bundles (__main__.Packaging) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 3.958s
+
+OK

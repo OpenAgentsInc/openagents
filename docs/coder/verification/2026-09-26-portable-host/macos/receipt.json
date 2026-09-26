@@ -1,0 +1,71 @@
+{
+  "schema": "openagents.coder.host-runtime-fixture.v1",
+  "platform": "macos-launchd",
+  "synthetic": true,
+  "production_service": false,
+  "source_revision": "fbcaf2bcf8ae65f1c444d5cf8bf0790cc70911fc",
+  "install": {
+    "binary_sha256": "6054a1140e956dc36d2cf39c8564742e4d3bae2a485d93145afad7985b068c40",
+    "result": "activated"
+  },
+  "upgrade": {
+    "binary_sha256": "cbcd1aa92c6a6fb2ec5c4b7a300933f8eb762e726d8adb81bf43596101e7c80c",
+    "result": "activated"
+  },
+  "rollback": {
+    "binary_sha256": "6054a1140e956dc36d2cf39c8564742e4d3bae2a485d93145afad7985b068c40",
+    "result": "activated"
+  },
+  "doctor": {
+    "automatic_restart": false,
+    "binary": "/private/tmp/coder-host-runtime-9690-evidence/bundle/versions/6054a1140e956dc36d2cf39c8564742e4d3bae2a485d93145afad7985b068c40/coder",
+    "bundle": {
+      "binary_sha256": "6054a1140e956dc36d2cf39c8564742e4d3bae2a485d93145afad7985b068c40",
+      "health": {
+        "tasks": "task execute advertised",
+        "version": "coder 0.1.0 (OpenAgentsInc/openagents e3baa038a8 dirty)"
+      },
+      "platform": "darwin",
+      "read_state_schemas": [
+        "openagents.coder.task-store.v2"
+      ],
+      "schema": "openagents.coder.host-bundle.v1",
+      "source_revision": "fbcaf2bcf8ae65f1c444d5cf8bf0790cc70911fc",
+      "uncommitted_source": true
+    },
+    "execution": "requires a separate grant",
+    "health": {
+      "tasks": "task execute advertised",
+      "version": "coder 0.1.0 (OpenAgentsInc/openagents e3baa038a8 dirty)"
+    },
+    "result": "available",
+    "task_store": "/tmp/coder-host-runtime-9690-evidence/tasks"
+  },
+  "services": [
+    {
+      "task": "service-upgrade",
+      "binary_sha256": "cbcd1aa92c6a6fb2ec5c4b7a300933f8eb762e726d8adb81bf43596101e7c80c",
+      "execution": "finished",
+      "process_elapsed_ms": 285,
+      "service_restart": "same grant refused; no duplicate effect",
+      "launchd_template": "org.openagents.host-fixture.f269a108c26641918873132291bfea2f.plist"
+    },
+    {
+      "task": "service-rollback",
+      "binary_sha256": "6054a1140e956dc36d2cf39c8564742e4d3bae2a485d93145afad7985b068c40",
+      "execution": "finished",
+      "process_elapsed_ms": 317,
+      "service_restart": "same grant refused; no duplicate effect",
+      "launchd_template": "org.openagents.host-fixture.df403031c7d74600b9de28c5f1960929.plist"
+    }
+  ],
+  "uninstall": {
+    "result": "deactivated",
+    "service_action": "unload separately; existing rendered services remain pinned",
+    "task_data": "preserved"
+  },
+  "task_data_unchanged": true,
+  "cleanup": "both uniquely named launchd services booted out",
+  "model_calls": 0,
+  "all_in_cost_usd": null
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=Explicit bounded Coder task
+
+[Service]
+Type=oneshot
+ExecStart="/tmp/coder-host-9690.nOL5qx/evidence-final/fixture-bundle/versions/003b2749ebf8edec1e81b68b46aad3acfd6bd26f700103e491d50ecb9816d398/coder" "task" "execute" "--grant" "/tmp/coder-host-9690.nOL5qx/evidence-final/fixture-bundle/grants/880f8a605688087894b1a1b351c1a16f56a4cc72a93b8769d1970f64d9da5fb6.json" "--store" "/tmp/coder-host-9690.nOL5qx/evidence-final/fixture-tasks"
+Restart=no
+RemainAfterExit=yes
+KillMode=control-group
+TimeoutStopSec=10
+TimeoutStartSec=40
+UMask=0077
+NoNewPrivileges=yes
+Environment=PATH=/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AbandonProcessGroup</key>
+	<false/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/usr/bin:/bin</string>
+	</dict>
+	<key>ExitTimeOut</key>
+	<integer>10</integer>
+	<key>KeepAlive</key>
+	<false/>
+	<key>Label</key>
+	<string>org.openagents.host-fixture.df403031c7d74600b9de28c5f1960929</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/private/tmp/coder-host-runtime-9690-evidence/bundle/versions/6054a1140e956dc36d2cf39c8564742e4d3bae2a485d93145afad7985b068c40/coder</string>
+		<string>task</string>
+		<string>execute</string>
+		<string>--grant</string>
+		<string>/private/tmp/coder-host-runtime-9690-evidence/bundle/grants/bc3a981eb1bc9cd94a620c6952a066c77a9b6efc25bf6de29383cb17668913e8.json</string>
+		<string>--store</string>
+		<string>/tmp/coder-host-runtime-9690-evidence/tasks</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/private/tmp/coder-host-runtime-9690-evidence/bundle/logs/org.openagents.host-fixture.df403031c7d74600b9de28c5f1960929.err</string>
+	<key>StandardOutPath</key>
+	<string>/private/tmp/coder-host-runtime-9690-evidence/bundle/logs/org.openagents.host-fixture.df403031c7d74600b9de28c5f1960929.out</string>
+	<key>Umask</key>
+	<integer>63</integer>
+</dict>
+</plist>

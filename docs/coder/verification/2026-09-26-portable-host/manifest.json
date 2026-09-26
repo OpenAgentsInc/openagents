@@ -1,0 +1,116 @@
+{
+  "schema": "openagents.synthetic-evidence-manifest.v1",
+  "synthetic": true,
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2882,
+      "sha256": "b6f34c876892b7cb3ddb6e4114f13ca35305130aedc1179c248c699888a2ed97"
+    },
+    {
+      "path": "linux/openagents-host-fixture-1bc48b204c2749a297ee8b4fef97d01c.service",
+      "bytes": 642,
+      "sha256": "72e5938f90497fde8d7bac56761886b1f695d3bf8c040b1a211e564d7b58a0fc"
+    },
+    {
+      "path": "linux/receipt.json",
+      "bytes": 836,
+      "sha256": "adfe314c2c55144cd0866c87e71e4b1f6718ae46273b24653fb60f26afe5aa88"
+    },
+    {
+      "path": "linux-runtime.log",
+      "bytes": 91,
+      "sha256": "7ae82791fb133c76fb5e9cf30e8628d80e2d55a747b9e06cd27ecb3e107a2074"
+    },
+    {
+      "path": "macos/active.json",
+      "bytes": 646,
+      "sha256": "47a0885bc2639608235bc6c64093830d371f00df630ab7e3778af9b3a61ade3b"
+    },
+    {
+      "path": "macos/bundles/6054a1140e956dc36d2cf39c8564742e4d3bae2a485d93145afad7985b068c40.json",
+      "bytes": 456,
+      "sha256": "3ec8cc766357ba5ff93517f391fde4d5905f1cdbb585a830cade84c993a0d825"
+    },
+    {
+      "path": "macos/bundles/cbcd1aa92c6a6fb2ec5c4b7a300933f8eb762e726d8adb81bf43596101e7c80c.json",
+      "bytes": 456,
+      "sha256": "79c06332b0309758bd812b7dc00c30608f67428382cbd3c1186fab22976b4e92"
+    },
+    {
+      "path": "macos/org.openagents.host-fixture.df403031c7d74600b9de28c5f1960929.plist",
+      "bytes": 1489,
+      "sha256": "44740f770f7968d30ea20997b2a433dd2775130455ee950f4824e7dd3e21c18b"
+    },
+    {
+      "path": "macos/org.openagents.host-fixture.f269a108c26641918873132291bfea2f.plist",
+      "bytes": 1489,
+      "sha256": "292d3ac0db14b22f006ff3d5bbeb30863296bebecf18c59786a147b21b7a1c43"
+    },
+    {
+      "path": "macos/receipt.json",
+      "bytes": 2670,
+      "sha256": "e308dd7d6054f16158294afce7d177cdd4671df9ba719531e1f6f0b0b1e313bb"
+    },
+    {
+      "path": "macos/service-logs/org.openagents.host-fixture.df403031c7d74600b9de28c5f1960929.err",
+      "bytes": 89,
+      "sha256": "b721cba09d3dd792158958f5219ae703ef4fd589b3624c69b116d829307a6cc7"
+    },
+    {
+      "path": "macos/service-logs/org.openagents.host-fixture.df403031c7d74600b9de28c5f1960929.out",
+      "bytes": 2974,
+      "sha256": "5152ed297a593763717c5a3275182d613389267eb0d6397ad8dad17f3b6f65ae"
+    },
+    {
+      "path": "macos/service-logs/org.openagents.host-fixture.f269a108c26641918873132291bfea2f.err",
+      "bytes": 89,
+      "sha256": "b721cba09d3dd792158958f5219ae703ef4fd589b3624c69b116d829307a6cc7"
+    },
+    {
+      "path": "macos/service-logs/org.openagents.host-fixture.f269a108c26641918873132291bfea2f.out",
+      "bytes": 2967,
+      "sha256": "d26d64ce1b40e0fea1b9519be42ee8091d67f9977e81dbe881e430e537ee4231"
+    },
+    {
+      "path": "macos/tasks/artifact-2c8b08da5ce60398e1f19af0e5dccc744df274b826abe585eaba68c525434806.blob",
+      "bytes": 4,
+      "sha256": "2c8b08da5ce60398e1f19af0e5dccc744df274b826abe585eaba68c525434806"
+    },
+    {
+      "path": "macos/tasks/manifest-7341fa078ce30b60ff5f35f0544edd434600c2284a9c7887a8ac181810e89b1b.json",
+      "bytes": 494,
+      "sha256": "7341fa078ce30b60ff5f35f0544edd434600c2284a9c7887a8ac181810e89b1b"
+    },
+    {
+      "path": "macos/tasks/manifest-c813bc55ffeb2a8b160ba48b21c8b8c53f14adbbd69fa952dc88fd9fc20cecf2.json",
+      "bytes": 492,
+      "sha256": "c813bc55ffeb2a8b160ba48b21c8b8c53f14adbbd69fa952dc88fd9fc20cecf2"
+    },
+    {
+      "path": "macos/tasks/service-rollback.1.atif.jsonl",
+      "bytes": 3287,
+      "sha256": "6e9346fe543e37ac25e1205fe40c44b7d317660defb2f2e38fbb50d7849aac55"
+    },
+    {
+      "path": "macos/tasks/service-upgrade.1.atif.jsonl",
+      "bytes": 3280,
+      "sha256": "ad9d46b6c923118ef37281899e488148addec9edd75e83f0d2b63c3d40c668f9"
+    },
+    {
+      "path": "macos/tasks/tasks.json",
+      "bytes": 13215,
+      "sha256": "1efdb6caa57040979523bb59f95c8d559529449d7e4f63c667be5097cc8671ad"
+    },
+    {
+      "path": "macos-runtime.log",
+      "bytes": 86,
+      "sha256": "26a2b4dc17d21af80a7021ec51aebf75cb07b0957cb15d3ffd38a78c68a7adb7"
+    },
+    {
+      "path": "tests.log",
+      "bytes": 807,
+      "sha256": "931f3f8792ac903ddd0e29e1250ef893e30d6738b8d7636f3d162b62693942e2"
+    }
+  ]
+}

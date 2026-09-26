@@ -39,6 +39,10 @@ OS-user path does not establish cross-device control. The
 [repository Microcoder adapter](runtime/microcoder-repository.md) defines its
 separately admitted model support. The [free labor host](runtime/free-labor.md)
 uses the same execution boundary for a recoverable buyer/provider order.
+The [portable host helper](runtime/portable-host.md) installs digest-pinned
+bundles, retains rollback, and generates one-shot services for explicit task
+grants. Its acceptance includes real macOS tasks and Linux service wiring;
+clean-host and CoderOS release acceptance remain separate work.
 
 The [Rust mobile feasibility decision](design/rust-mobile-feasibility.md)
 selects shared evidence state with native text controls and Rust-rendered HTML,

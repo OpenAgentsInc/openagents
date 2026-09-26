@@ -1,0 +1,23 @@
+{
+  "active": null,
+  "history": [
+    {
+      "binary_sha256": "6054a1140e956dc36d2cf39c8564742e4d3bae2a485d93145afad7985b068c40",
+      "operation": "install"
+    },
+    {
+      "binary_sha256": "cbcd1aa92c6a6fb2ec5c4b7a300933f8eb762e726d8adb81bf43596101e7c80c",
+      "operation": "install"
+    },
+    {
+      "binary_sha256": "6054a1140e956dc36d2cf39c8564742e4d3bae2a485d93145afad7985b068c40",
+      "operation": "rollback"
+    },
+    {
+      "operation": "uninstall",
+      "task_data": "preserved"
+    }
+  ],
+  "previous": "6054a1140e956dc36d2cf39c8564742e4d3bae2a485d93145afad7985b068c40",
+  "schema": "openagents.coder.host-install.v1"
+}
