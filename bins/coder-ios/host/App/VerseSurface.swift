@@ -125,8 +125,11 @@ final class VerseMetalView: UIView {
     private func updateActivity() {
         let active = wantedActive && window != nil && handle != nil
         guard active != running else { return }
-        if !active { cancelPointers() }
         running = active
+        if !active {
+            stopMotion()
+            cancelPointers()
+        }
         send(["action": "active", "active": active], forcePublish: true, deferred: true)
         if active, displayLink == nil {
             let link = CADisplayLink(target: displayTarget, selector: #selector(VerseDisplayTarget.frame(_:)))
@@ -139,7 +142,10 @@ final class VerseMetalView: UIView {
 
     func frame(_ link: CADisplayLink) {
         guard running, window != nil else { return }
-        _ = autoreleasepool { send(["action": "frame", "timestamp": link.timestamp], forcePublish: false) }
+        autoreleasepool {
+            pollMotion(now: CACurrentMediaTime())
+            send(["action": "frame", "timestamp": link.timestamp], forcePublish: false)
+        }
     }
 
     @discardableResult
@@ -155,6 +161,9 @@ final class VerseMetalView: UIView {
             }
             result = .success(try VerseBridge.decode(output))
         } catch { result = .failure(error) }
+        if case let .success(packet) = result {
+            syncMotion(packet)
+        }
         if deferred {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
@@ -162,6 +171,39 @@ final class VerseMetalView: UIView {
             }
         } else { bridge.receive(result, from: self, force: forcePublish) }
         return result
+    }
+
+    private func syncMotion(_ packet: VersePacket) {
+        do {
+            let changed = try bridge.motionDriver.setNeeded(running && window != nil && packet.motion_needed,
+                                                             now: CACurrentMediaTime())
+            if changed {
+                send(["action": "reset_motion"], forcePublish: false, deferred: true)
+            }
+        } catch { failMotion(error) }
+    }
+
+    private func pollMotion(now: TimeInterval) {
+        do {
+            if let sample = try bridge.motionDriver.poll(now: now) {
+                let result = send(["action": "device_motion", "quaternion": sample.quaternion,
+                                   "timestamp": sample.timestamp], forcePublish: false)
+                // A packet can retain an unrelated world error. Rust refuses
+                // invalid camera input; native sensor failures have their own
+                // availability, freshness, and decoder path.
+                if case let .failure(error) = result { failMotion(error) }
+            }
+        } catch { failMotion(error) }
+    }
+
+    private func stopMotion() {
+        _ = try? bridge.motionDriver.setNeeded(false, now: CACurrentMediaTime())
+    }
+
+    private func failMotion(_ error: Error) {
+        stopMotion()
+        send(["action": "camera_mode", "mode": "touch"], forcePublish: true, deferred: true)
+        DispatchQueue.main.async { [weak self] in self?.bridge.reportMotionFailure(error) }
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -219,6 +261,8 @@ final class VerseMetalView: UIView {
     private func releaseSurface() {
         displayLink?.invalidate()
         displayLink = nil
+        running = false
+        stopMotion()
         cancelPointers()
         if let handle {
             send(["action": "active", "active": false], forcePublish: false, deferred: true)

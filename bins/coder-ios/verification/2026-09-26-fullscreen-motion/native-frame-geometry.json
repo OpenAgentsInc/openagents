@@ -1,0 +1,27 @@
+{
+  "jump" : [
+    16,
+    804,
+    42.666666666666664,
+    20.333333333333371
+  ],
+  "scope" : "Actual simulator Metal UIView frame and native controls; no physical device claim.",
+  "status_bar" : [
+    0,
+    0,
+    402,
+    54
+  ],
+  "surface" : [
+    0,
+    0,
+    402,
+    874
+  ],
+  "window" : [
+    0,
+    0,
+    402,
+    874
+  ]
+}

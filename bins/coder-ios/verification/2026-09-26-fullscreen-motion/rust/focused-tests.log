@@ -1,0 +1,128 @@
+   Compiling unicode-ident v1.0.26
+   Compiling zerocopy v0.8.57
+   Compiling once_cell v1.21.4
+   Compiling cfg_aliases v0.2.2
+   Compiling smallvec v1.16.1
+   Compiling objc2 v0.6.4
+   Compiling objc2-encode v4.1.0
+   Compiling libm v0.2.16
+   Compiling autocfg v1.5.1
+   Compiling serde_json v1.0.151
+   Compiling bit-vec v0.9.1
+   Compiling unicode-width v0.2.0
+   Compiling parking_lot_core v0.9.12
+   Compiling foldhash v0.2.0
+   Compiling indexmap v2.14.2
+   Compiling hexf-parse v0.2.1
+   Compiling rustc-hash v1.1.0
+   Compiling arrayvec v0.7.8
+   Compiling proc-macro2 v1.0.107
+   Compiling naga v29.0.4
+   Compiling rustls v0.23.45
+   Compiling hashbrown v0.16.1
+   Compiling scopeguard v1.2.0
+   Compiling raw-window-handle v0.6.2
+   Compiling codespan-reporting v0.13.1
+   Compiling bit-set v0.9.1
+   Compiling wgpu-hal v29.0.4
+   Compiling lock_api v0.4.14
+   Compiling futures-core v0.3.34
+   Compiling profiling v1.0.18
+   Compiling num-traits v0.2.19
+   Compiling percent-encoding v2.3.2
+   Compiling quote v1.0.47
+   Compiling wgpu-core v29.0.4
+   Compiling litrs v1.0.0
+   Compiling wgpu v29.0.4
+   Compiling form_urlencoded v1.2.2
+   Compiling syn v3.0.6
+   Compiling syn v2.0.119
+   Compiling qrcodegen v1.8.0
+   Compiling static_assertions v1.1.0
+   Compiling yazi v0.2.1
+   Compiling zeno v0.3.3
+   Compiling glam v0.30.10
+   Compiling document-features v0.2.12
+   Compiling pollster v0.4.0
+   Compiling parking_lot v0.12.5
+   Compiling tempfile v3.27.0
+   Compiling objc2-core-foundation v0.3.2
+   Compiling block2 v0.6.2
+   Compiling objc2-foundation v0.3.2
+   Compiling zerocopy-derive v0.8.57
+   Compiling synstructure v0.14.0
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling thiserror-impl v2.0.20
+   Compiling bytemuck_derive v1.12.1
+   Compiling serde_derive v1.0.229
+   Compiling tokio-macros v2.7.2
+   Compiling futures-macro v0.3.34
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.3
+   Compiling tokio v1.53.1
+   Compiling objc2-metal v0.3.2
+   Compiling futures-util v0.3.34
+   Compiling zerofrom v0.1.8
+   Compiling bytemuck v1.25.2
+   Compiling thiserror v2.0.20
+   Compiling yoke v0.8.3
+   Compiling serde v1.0.229
+   Compiling wgpu-types v29.0.4
+   Compiling font-types v0.12.5
+   Compiling tungstenite v0.30.0
+   Compiling read-fonts v0.41.0
+   Compiling zerovec v0.11.8
+   Compiling zerotrie v0.2.5
+   Compiling objc2-quartz-core v0.3.2
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling rand_chacha v0.9.0
+   Compiling coder-history v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-history)
+   Compiling rust-native v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/rust-native)
+   Compiling rand v0.9.5
+   Compiling raw-window-metal v1.1.0
+   Compiling secp256k1 v0.31.1
+   Compiling coder-ui v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-ui)
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling icu_locale_core v2.3.0
+   Compiling nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+   Compiling tokio-rustls v0.26.5
+   Compiling tokio-tungstenite v0.30.0
+   Compiling icu_provider v2.3.1
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling skrifa v0.44.0
+   Compiling wgpu-naga-bridge v29.0.4
+   Compiling swash v0.2.10
+   Compiling wgpu-core-deps-apple v29.0.4
+   Compiling nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr-transport)
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-connect)
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/gym-bridge)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/verse)
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-mobile)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.71s
+     Running unittests src/lib.rs (../target-connect/debug/deps/coder_mobile-4fbdb840f5e92c97)
+
+running 13 tests
+test verse_app::tests::motion_mapping_has_portrait_axes_without_screen_roll ... ok
+test verse_app::tests::motion_lifecycle_resets_and_ignores_samples_while_inactive_or_in_panels ... ok
+test verse_app::tests::motion_pitch_is_clamped_and_vertical_phone_rebaselines_without_jump ... ok
+test verse_app::tests::bad_and_excess_touches_do_not_poison_camera_or_keep_moving ... ok
+test verse_app::tests::enabling_motion_preserves_view_and_wraps_yaw_across_pi ... ok
+test verse_app::tests::motion_left_hold_moves_while_phone_turns_and_right_touch_is_ignored ... ok
+test verse_app::tests::touches_move_shared_player_and_pause_cancels_motion ... ok
+test verse_app::tests::invalid_and_stale_motion_do_not_poison_the_baseline ... ok
+test verse_app::tests::computer_requires_approach_and_releases_held_input ... ok
+test verse_app::tests::gym_requires_deliberate_selection_and_retains_the_preview_refusal_after_leaving ... ok
+test verse_app::tests::invalid_relay_cannot_replace_a_previous_choice ... ok
+test verse_app::tests::wire_motion_requests_are_closed_and_default_is_touch ... ok
+test verse_app::tests::gym_fixture_loads_only_after_walking_inside_and_pauses_on_exit ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.01s
+

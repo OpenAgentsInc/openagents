@@ -18,6 +18,10 @@ struct VersePacket: Decodable {
     let gym_active: Bool
     let gym_revision: UInt64
     let gym_board: GymBoardView?
+    let camera_mode: String
+    let camera_yaw: Double
+    let camera_pitch: Double
+    let motion_needed: Bool
 }
 
 struct VerseComputer: Decodable {
@@ -43,6 +47,12 @@ final class VerseBridge: ObservableObject {
     @Published private(set) var nativeError: String?
     @Published private(set) var gymBoard: GymBoardView?
     @Published private(set) var gymStorageError: String?
+    @Published private(set) var motionError: String?
+    let motionAvailable: Bool
+    let motionSynthetic: Bool
+    let motionDriver: DeviceMotionDriver
+    private let motionPreview: PreviewDeviceMotionSource?
+    private var previewTurns = 0
     let synthetic: Bool
     private weak var canvas: VerseMetalView?
     private var lastPublished: CFTimeInterval = 0
@@ -50,6 +60,13 @@ final class VerseBridge: ObservableObject {
 
     init(synthetic: Bool) {
         self.synthetic = synthetic
+        motionSynthetic = synthetic && ProcessInfo.processInfo.arguments.contains("--motion-preview")
+        let preview = motionSynthetic ? PreviewDeviceMotionSource() : nil
+        motionPreview = preview
+        let source: DeviceMotionSource
+        if let preview { source = preview } else { source = CoreMotionSource() }
+        motionDriver = DeviceMotionDriver(source: source)
+        motionAvailable = motionDriver.available
         do { packet = try Self.decode(coder_verse_blueprint()) }
         catch { nativeError = error.localizedDescription }
     }
@@ -68,6 +85,31 @@ final class VerseBridge: ObservableObject {
     }
 
     func retry() { canvas?.recreate() }
+
+    func toggleCameraMode() {
+        if packet?.camera_mode == "motion" {
+            send(["action": "camera_mode", "mode": "touch"])
+            motionError = nil
+        } else if motionAvailable {
+            motionError = nil
+            send(["action": "camera_mode", "mode": "motion"])
+        } else {
+            motionError = DeviceMotionFailure.unavailable.localizedDescription
+        }
+    }
+
+    func recenterMotion() { send(["action": "reset_motion"]) }
+
+    func previewMotion() {
+        guard motionSynthetic, packet?.camera_mode == "motion" else { return }
+        previewTurns += 1
+        let angle = Double(previewTurns) * 0.25
+        let c = sqrt(0.5) * cos(angle / 2)
+        let s = sqrt(0.5) * sin(angle / 2)
+        motionPreview?.setQuaternion([-c, s, s, c])
+    }
+
+    func reportMotionFailure(_ error: Error) { motionError = error.localizedDescription }
 
     func storedGymCode() -> String? {
         do { return try GymConnection.load(synthetic: synthetic) }
@@ -128,6 +170,8 @@ final class VerseBridge: ObservableObject {
               packet.computer.screen_x.isFinite, packet.computer.screen_y.isFinite,
               packet.computer.distance.isFinite,
               packet.gym.screen_x.isFinite, packet.gym.screen_y.isFinite, packet.gym.distance.isFinite,
+              ["touch", "motion"].contains(packet.camera_mode),
+              packet.camera_yaw.isFinite, packet.camera_pitch.isFinite,
               packet.gym_board?.valid ?? true else {
             throw ReaderError.message("This app does not support the returned world view.")
         }

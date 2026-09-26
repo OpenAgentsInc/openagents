@@ -43,6 +43,14 @@ pub(crate) enum Request {
     Active {
         active: bool,
     },
+    CameraMode {
+        mode: CameraMode,
+    },
+    DeviceMotion {
+        quaternion: [f32; 4],
+        timestamp: f64,
+    },
+    ResetMotion,
     Pointer {
         id: u64,
         phase: PointerPhase,
@@ -79,6 +87,14 @@ pub(crate) enum Request {
     GymCloseDetail,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CameraMode {
+    #[default]
+    Touch,
+    Motion,
+}
+
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PointerPhase {
@@ -95,6 +111,10 @@ pub(crate) struct Packet {
     pub error: Option<String>,
     frames_presented: u64,
     position: [f32; 3],
+    camera_mode: CameraMode,
+    camera_yaw: f32,
+    camera_pitch: f32,
+    motion_needed: bool,
     computer: Computer,
     computer_open: bool,
     gym: Gym,
@@ -193,6 +213,10 @@ fn packet(
         error,
         frames_presented: frames,
         position,
+        camera_mode: CameraMode::Touch,
+        camera_yaw: 0.0,
+        camera_pitch: verse::camera::FollowCamera::default().pitch,
+        motion_needed: false,
         computer: Computer {
             near: false,
             visible: false,
@@ -223,6 +247,53 @@ struct Touch {
     movement: bool,
 }
 
+#[derive(Default)]
+struct Motion {
+    baseline: Option<MotionBaseline>,
+    last_sample: Option<f64>,
+}
+
+struct MotionBaseline {
+    sensor: [f32; 2],
+    camera: [f32; 2],
+}
+
+/// Core Motion uses portrait device axes (+X right, +Y top, +Z out of the
+/// screen) and a gravity-aligned reference (+Z up). Its attitude maps the
+/// reference into device coordinates. Inverse-rotate the phone-back direction
+/// into that reference, then retain heading and downward pitch only. Screen
+/// roll cannot tilt the horizon. This also treats q and -q identically.
+enum MotionOrientation {
+    Angles([f32; 2]),
+    Vertical,
+}
+
+fn motion_angles(quaternion: [f32; 4]) -> Option<MotionOrientation> {
+    if quaternion.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    let norm: f32 = quaternion.iter().map(|v| v * v).sum();
+    if !(0.25..=4.0).contains(&norm) {
+        return None;
+    }
+    let [x, y, z, w] = quaternion.map(|v| v / norm.sqrt());
+    let forward = [
+        2.0 * (w * y - x * z),
+        -2.0 * (y * z + w * x),
+        2.0 * (x * x + y * y) - 1.0,
+    ];
+    let horizontal = forward[0].hypot(forward[1]);
+    // A phone pointing almost vertically has no stable heading. Keep the view
+    // unchanged and establish a new baseline when a stable heading returns.
+    if horizontal < 0.05 {
+        return Some(MotionOrientation::Vertical);
+    }
+    Some(MotionOrientation::Angles([
+        forward[0].atan2(forward[1]),
+        (-forward[2]).atan2(horizontal),
+    ]))
+}
+
 pub(crate) struct Scene {
     pub world: WorldRuntime,
     pub lifecycle: SurfaceLifecycle,
@@ -231,6 +302,9 @@ pub(crate) struct Scene {
     relay: Option<String>,
     synthetic: bool,
     spawn_pending: bool,
+    camera_mode: CameraMode,
+    motion: Motion,
+    frame_timestamp: Option<f64>,
     touches: BTreeMap<u64, Touch>,
     jump: bool,
     sprint: bool,
@@ -279,6 +353,9 @@ impl Scene {
             relay: None,
             synthetic: config.synthetic,
             spawn_pending: false,
+            camera_mode: CameraMode::Touch,
+            motion: Motion::default(),
+            frame_timestamp: None,
             touches: BTreeMap::new(),
             jump: false,
             sprint: false,
@@ -292,9 +369,14 @@ impl Scene {
     }
 
     pub fn activate(&mut self, active: bool) -> Result<(), String> {
+        let changed = self.lifecycle.active() != active;
         self.lifecycle
             .set_active(active)
             .map_err(|e| e.to_string())?;
+        if changed {
+            self.reset_motion();
+            self.frame_timestamp = None;
+        }
         if !active {
             self.touches.clear();
             self.jump = false;
@@ -334,6 +416,7 @@ impl Scene {
         session.set_publish_intervals(verse::session::PublishIntervals::mobile())?;
         session.begin_spawn(Duration::from_millis(1500));
         self.spawn_pending = true;
+        self.reset_motion();
         self.gym_board.set_active(false);
         self.session = Some(session);
         Ok(())
@@ -368,6 +451,9 @@ impl Scene {
                     return Ok(());
                 }
                 let movement = x < size[0] * 0.5;
+                if !movement && self.camera_mode == CameraMode::Motion {
+                    return Ok(());
+                }
                 if self.touches.values().any(|p| p.movement == movement) {
                     return Ok(());
                 }
@@ -385,7 +471,7 @@ impl Scene {
             }
             PointerPhase::Move => {
                 if let Some(touch) = self.touches.get_mut(&id) {
-                    if !touch.movement {
+                    if !touch.movement && self.camera_mode == CameraMode::Touch {
                         self.world.apply(Action::Look {
                             dx: (x - touch.latest[0]).clamp(-500.0, 500.0),
                             dy: (y - touch.latest[1]).clamp(-500.0, 500.0),
@@ -411,12 +497,15 @@ impl Scene {
         if let Some(touch) = self.touches.values().find(|p| p.movement) {
             let x = touch.latest[0] - touch.origin[0];
             let y = touch.latest[1] - touch.origin[1];
-            input.forward = y < -12.0;
+            input.forward = match self.camera_mode {
+                CameraMode::Touch => y < -12.0,
+                CameraMode::Motion => y <= 12.0,
+            };
             input.backward = y > 12.0;
             input.strafe_left = x < -12.0;
             input.strafe_right = x > 12.0;
         }
-        input.mouse_look = self.touches.values().any(|p| !p.movement);
+        input.mouse_look = self.motion_needed() || self.touches.values().any(|p| !p.movement);
         input
     }
 
@@ -428,6 +517,7 @@ impl Scene {
         else {
             return Ok(None);
         };
+        self.frame_timestamp = Some(timestamp);
         if self.spawn_pending {
             self.gym_board.set_active(false);
             if let Some(session) = &mut self.session {
@@ -436,20 +526,26 @@ impl Scene {
                 {
                     self.world.set_spawn(spawn.pos, spawn.yaw)?;
                     self.spawn_pending = false;
+                    self.reset_motion();
                 } else {
                     return Ok(Some(0.0));
                 }
             } else {
                 self.spawn_pending = false;
+                self.reset_motion();
             }
         }
         let input = self.input();
         self.world.tick(&input, dt);
+        let panel_was_open = self.panel_open();
         if !self.computer().near {
             self.computer_open = false;
         }
         if !self.gym().inside {
             self.gym_open = false;
+        }
+        if panel_was_open != self.panel_open() {
+            self.reset_motion();
         }
         self.sync_gym_interest();
         self.gym_board.poll();
@@ -476,6 +572,25 @@ impl Scene {
     pub fn action(&mut self, request: Request) -> Result<(), String> {
         match request {
             Request::Active { active } => self.activate(active),
+            Request::CameraMode { mode } => {
+                if self.camera_mode != mode {
+                    self.camera_mode = mode;
+                    self.touches.retain(|_, touch| touch.movement);
+                    self.reset_motion();
+                }
+                Ok(())
+            }
+            Request::DeviceMotion {
+                quaternion,
+                timestamp,
+            } => {
+                self.device_motion(quaternion, timestamp);
+                Ok(())
+            }
+            Request::ResetMotion => {
+                self.reset_motion();
+                Ok(())
+            }
             Request::Pointer { id, phase, x, y } => self.pointer(id, phase, x, y),
             Request::Jump => {
                 if self.lifecycle.active() && !self.panel_open() {
@@ -504,6 +619,7 @@ impl Scene {
                 if !self.lifecycle.active() || !computer.near || !computer.visible {
                     return Err("Walk up to the computer to open it".into());
                 }
+                self.reset_motion();
                 self.computer_open = true;
                 self.gym_open = false;
                 self.touches.clear();
@@ -512,6 +628,7 @@ impl Scene {
                 Ok(())
             }
             Request::CloseComputer => {
+                self.reset_motion();
                 self.computer_open = false;
                 Ok(())
             }
@@ -520,6 +637,7 @@ impl Scene {
                 if !self.lifecycle.active() || !gym.inside || !gym.near || !gym.visible {
                     return Err("Walk inside the Gym and approach its board to open it".into());
                 }
+                self.reset_motion();
                 self.gym_open = true;
                 self.computer_open = false;
                 self.touches.clear();
@@ -528,6 +646,7 @@ impl Scene {
                 Ok(())
             }
             Request::CloseGym => {
+                self.reset_motion();
                 self.gym_open = false;
                 Ok(())
             }
@@ -587,6 +706,11 @@ impl Scene {
             self.frames,
             self.world.player.pos.to_array(),
         );
+        packet.camera_mode = self.camera_mode;
+        packet.camera_yaw =
+            verse::controller::wrap(self.world.player.yaw + self.world.camera.yaw_offset);
+        packet.camera_pitch = self.world.camera.pitch;
+        packet.motion_needed = self.motion_needed();
         packet.computer = self.computer().into();
         packet.computer_open = self.computer_open;
         packet.gym = self.gym().into();
@@ -604,6 +728,72 @@ impl Scene {
             }
             view
         })
+    }
+
+    fn motion_needed(&self) -> bool {
+        self.lifecycle.active()
+            && self.camera_mode == CameraMode::Motion
+            && !self.panel_open()
+            && !self.spawn_pending
+    }
+
+    fn reset_motion(&mut self) {
+        self.motion.baseline = None;
+        // Keep the high-water mark across sensor restarts. An old native sample
+        // must not become the baseline after a panel closes or the app resumes.
+        if let Some(frame) = self.frame_timestamp {
+            self.motion.last_sample = Some(self.motion.last_sample.unwrap_or(frame).max(frame));
+        }
+    }
+
+    fn device_motion(&mut self, quaternion: [f32; 4], timestamp: f64) {
+        if !self.motion_needed()
+            || !timestamp.is_finite()
+            || !(0.0..=1e12).contains(&timestamp)
+            || self
+                .motion
+                .last_sample
+                .is_some_and(|last| timestamp <= last)
+            || self
+                .frame_timestamp
+                .is_some_and(|frame| (timestamp - frame).abs() > 0.25)
+        {
+            return;
+        }
+        let sensor = match motion_angles(quaternion) {
+            Some(MotionOrientation::Angles(sensor)) => sensor,
+            Some(MotionOrientation::Vertical) => {
+                self.motion.baseline = None;
+                return;
+            }
+            None => return,
+        };
+        if self
+            .motion
+            .last_sample
+            .is_some_and(|last| timestamp - last > 1.0)
+        {
+            self.motion.baseline = None;
+        }
+        self.motion.last_sample = Some(timestamp);
+        let Some(baseline) = &self.motion.baseline else {
+            let yaw = verse::controller::wrap(self.world.player.yaw + self.world.camera.yaw_offset);
+            self.motion.baseline = Some(MotionBaseline {
+                sensor,
+                camera: [yaw, self.world.camera.pitch],
+            });
+            // Taking over the orbit preserves the view and makes left movement
+            // follow the direction the camera faces from the first sample.
+            self.world.player.yaw = yaw;
+            self.world.camera.yaw_offset = 0.0;
+            return;
+        };
+        self.world.player.yaw = verse::controller::wrap(
+            baseline.camera[0] + verse::controller::wrap(sensor[0] - baseline.sensor[0]),
+        );
+        self.world.camera.yaw_offset = 0.0;
+        self.world.camera.pitch = (baseline.camera[1] + sensor[1] - baseline.sensor[1])
+            .clamp(verse::camera::MIN_PITCH, verse::camera::MAX_PITCH);
     }
 
     fn panel_open(&self) -> bool {
@@ -859,5 +1049,234 @@ mod tests {
         assert!(!scene.input().forward);
         assert!(scene.connect("wss://example.test".into()).is_err());
         scene.packet().view.validate().unwrap();
+    }
+
+    fn product(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+        let [x, y, z, w] = a;
+        let [u, v, t, s] = b;
+        [
+            w * u + x * s + y * t - z * v,
+            w * v - x * t + y * s + z * u,
+            w * t + x * v - y * u + z * s,
+            w * s - x * u - y * v - z * t,
+        ]
+    }
+
+    /// Raw portrait reference-to-device attitude: upright points through the
+    /// back of the phone along reference +Y, with reference +Z toward its top.
+    fn attitude(yaw: f32, down_pitch: f32, screen_roll: f32) -> [f32; 4] {
+        let x = (down_pitch - std::f32::consts::FRAC_PI_2) * 0.5;
+        let z = yaw * 0.5;
+        let r = screen_roll * 0.5;
+        product(
+            [0.0, 0.0, r.sin(), r.cos()],
+            product([x.sin(), 0.0, 0.0, x.cos()], [0.0, 0.0, z.sin(), z.cos()]),
+        )
+    }
+
+    fn close(a: f32, b: f32) {
+        assert!((a - b).abs() < 0.0001, "{a} != {b}");
+    }
+
+    fn motion_scene() -> Scene {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        scene.update(1.0).unwrap();
+        scene
+            .action(Request::CameraMode {
+                mode: CameraMode::Motion,
+            })
+            .unwrap();
+        scene
+    }
+
+    #[test]
+    fn motion_mapping_has_portrait_axes_without_screen_roll() {
+        for (yaw, pitch) in [(0.0, 0.0), (0.7, 0.3), (-0.9, -0.4)] {
+            for roll in [0.0, 0.8, -2.4] {
+                let q = attitude(yaw, pitch, roll);
+                for q in [q, q.map(|v| -v)] {
+                    let MotionOrientation::Angles(angles) = motion_angles(q).unwrap() else {
+                        panic!("a portrait attitude must have a heading");
+                    };
+                    close(angles[0], yaw);
+                    close(angles[1], pitch);
+                }
+            }
+        }
+        assert!(motion_angles([0.0; 4]).is_none());
+        assert!(motion_angles([f32::NAN; 4]).is_none());
+        assert!(motion_angles([f32::MAX; 4]).is_none());
+    }
+
+    #[test]
+    fn enabling_motion_preserves_view_and_wraps_yaw_across_pi() {
+        let mut scene = motion_scene();
+        scene.world.player.yaw = 0.4;
+        scene.world.camera.yaw_offset = 0.2;
+        let pitch = scene.world.camera.pitch;
+        scene.device_motion(attitude(3.1, 0.1, 0.0), 1.01);
+        close(scene.world.player.yaw, 0.6);
+        close(scene.world.camera.yaw_offset, 0.0);
+        close(scene.world.camera.pitch, pitch);
+        scene.device_motion(attitude(-3.1, 0.3, 0.8), 1.02);
+        close(scene.world.player.yaw, 0.6 + std::f32::consts::TAU - 6.2);
+        close(scene.world.camera.pitch, pitch + 0.2);
+        let orientation = (scene.world.player.yaw, scene.world.camera.pitch);
+        scene.device_motion(attitude(-3.1, 0.3, 0.8).map(|v| -v), 1.03);
+        close(scene.world.player.yaw, orientation.0);
+        close(scene.world.camera.pitch, orientation.1);
+        let packet = serde_json::to_value(scene.packet()).unwrap();
+        assert_eq!(packet["camera_mode"], "motion");
+        assert_eq!(packet["motion_needed"], true);
+        assert!(packet["camera_yaw"].as_f64().unwrap().is_finite());
+        assert!(packet["camera_pitch"].as_f64().unwrap().is_finite());
+    }
+
+    #[test]
+    fn motion_left_hold_moves_while_phone_turns_and_right_touch_is_ignored() {
+        let mut scene = motion_scene();
+        scene.device_motion(attitude(0.0, 0.0, 0.0), 1.01);
+        scene.pointer(1, PointerPhase::Down, 100.0, 300.0).unwrap();
+        assert!(scene.input().forward);
+        scene.pointer(2, PointerPhase::Down, 300.0, 300.0).unwrap();
+        scene.pointer(2, PointerPhase::Move, 390.0, 390.0).unwrap();
+        assert_eq!(scene.touches.len(), 1);
+        close(scene.world.player.yaw, 0.0);
+        let start = scene.world.player.pos;
+        scene.device_motion(attitude(std::f32::consts::FRAC_PI_2, 0.0, 0.0), 1.02);
+        for frame in 1..=10 {
+            scene.update(1.0 + f64::from(frame) / 30.0).unwrap();
+        }
+        assert!(scene.world.player.pos.x > start.x + 1.0);
+        close(scene.world.player.pos.z, start.z);
+        scene.pointer(1, PointerPhase::Move, 130.0, 350.0).unwrap();
+        let input = scene.input();
+        assert!(input.backward && input.strafe_right && !input.forward);
+        scene.pointer(1, PointerPhase::Up, 130.0, 350.0).unwrap();
+        assert!(!scene.input().forward && !scene.input().backward);
+        scene
+            .action(Request::CameraMode {
+                mode: CameraMode::Touch,
+            })
+            .unwrap();
+        scene.pointer(3, PointerPhase::Down, 100.0, 300.0).unwrap();
+        assert!(
+            !scene.input().forward,
+            "touch mode still requires joystick drag"
+        );
+        scene.pointer(3, PointerPhase::Move, 100.0, 270.0).unwrap();
+        assert!(scene.input().forward);
+        scene.pointer(4, PointerPhase::Down, 300.0, 300.0).unwrap();
+        scene.pointer(4, PointerPhase::Move, 320.0, 300.0).unwrap();
+        close(scene.world.player.yaw, std::f32::consts::FRAC_PI_2 - 0.08);
+    }
+
+    #[test]
+    fn invalid_and_stale_motion_do_not_poison_the_baseline() {
+        let mut scene = motion_scene();
+        scene.device_motion(attitude(0.0, 0.0, 0.0), 1.01);
+        let q = attitude(0.5, 0.4, 0.0);
+        for timestamp in [f64::NAN, f64::INFINITY, -1.0, 0.9, 1.01, 2.0] {
+            scene.device_motion(q, timestamp);
+        }
+        for invalid in [[0.0; 4], [f32::INFINITY; 4], [f32::NAN; 4]] {
+            scene.device_motion(invalid, 1.2);
+        }
+        assert_eq!(scene.motion.last_sample, Some(1.01));
+        close(scene.world.player.yaw, 0.0);
+        scene.device_motion(q, 1.02);
+        close(scene.world.player.yaw, 0.5);
+        scene.update(2.5).unwrap();
+        scene.device_motion(attitude(-1.0, -0.3, 0.0), 2.51);
+        close(scene.world.player.yaw, 0.5);
+        scene.device_motion(attitude(-0.9, -0.3, 0.0), 2.52);
+        close(scene.world.player.yaw, 0.6);
+    }
+
+    #[test]
+    fn motion_pitch_is_clamped_and_vertical_phone_rebaselines_without_jump() {
+        let mut scene = motion_scene();
+        scene.device_motion(attitude(0.0, -1.0, 0.0), 1.01);
+        scene.device_motion(attitude(0.0, 1.4, 0.0), 1.02);
+        close(scene.world.camera.pitch, verse::camera::MAX_PITCH);
+        scene.action(Request::ResetMotion).unwrap();
+        scene.device_motion(attitude(0.0, 1.0, 0.0), 1.03);
+        scene.device_motion(attitude(0.0, -1.4, 0.0), 1.04);
+        close(scene.world.camera.pitch, verse::camera::MIN_PITCH);
+        scene.device_motion(attitude(0.8, 0.0, 0.0), 1.05);
+        let previous = (scene.world.player.yaw, scene.world.camera.pitch);
+        scene.device_motion([0.0, 0.0, 0.0, 1.0], 1.06);
+        assert!(scene.motion.baseline.is_none());
+        scene.device_motion(attitude(-2.0, 0.0, 0.0), 1.07);
+        close(scene.world.player.yaw, previous.0);
+        close(scene.world.camera.pitch, previous.1);
+    }
+
+    #[test]
+    fn motion_lifecycle_resets_and_ignores_samples_while_inactive_or_in_panels() {
+        let mut scene = motion_scene();
+        scene.device_motion(attitude(0.0, 0.0, 0.0), 1.01);
+        scene.device_motion(attitude(0.4, 0.0, 0.0), 1.02);
+        scene.activate(false).unwrap();
+        assert!(!scene.packet().motion_needed);
+        scene.device_motion(attitude(1.4, 0.0, 0.0), 1.03);
+        close(scene.world.player.yaw, 0.4);
+        scene.activate(true).unwrap();
+        scene.update(2.0).unwrap();
+        scene.device_motion(attitude(1.4, 0.0, 0.0), 2.01);
+        close(scene.world.player.yaw, 0.4);
+        scene.device_motion(attitude(1.5, 0.0, 0.0), 2.02);
+        close(scene.world.player.yaw, 0.5);
+        for computer in [true, false] {
+            scene.reset_motion();
+            scene.computer_open = computer;
+            scene.gym_open = !computer;
+            assert!(!scene.packet().motion_needed);
+            scene.device_motion(attitude(-1.0, 0.0, 0.0), 2.03);
+            close(scene.world.player.yaw, 0.5);
+            scene
+                .action(if computer {
+                    Request::CloseComputer
+                } else {
+                    Request::CloseGym
+                })
+                .unwrap();
+            scene.device_motion(attitude(-1.0, 0.0, 0.0), if computer { 2.04 } else { 2.05 });
+            close(scene.world.player.yaw, 0.5);
+        }
+        scene.spawn_pending = true;
+        scene.reset_motion();
+        assert!(!scene.packet().motion_needed);
+        scene.device_motion(attitude(0.0, 0.0, 0.0), 2.06);
+        scene.update(2.1).unwrap(); // No session: finish the pending spawn.
+        assert!(scene.packet().motion_needed);
+        scene.device_motion(attitude(0.0, 0.0, 0.0), 2.11);
+        close(scene.world.player.yaw, 0.5);
+    }
+
+    #[test]
+    fn wire_motion_requests_are_closed_and_default_is_touch() {
+        assert_eq!(
+            serde_json::to_value(scene().packet()).unwrap()["camera_mode"],
+            "touch"
+        );
+        let request: Request =
+            serde_json::from_str(r#"{"action":"camera_mode","mode":"motion"}"#).unwrap();
+        assert!(matches!(
+            request,
+            Request::CameraMode {
+                mode: CameraMode::Motion
+            }
+        ));
+        assert!(
+            serde_json::from_str::<Request>(r#"{"action":"camera_mode","mode":"gyro"}"#).is_err()
+        );
+        assert!(
+            serde_json::from_str::<Request>(
+                r#"{"action":"device_motion","quaternion":[0,0,0,1],"timestamp":1,"extra":true}"#
+            )
+            .is_err()
+        );
     }
 }

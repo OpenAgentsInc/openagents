@@ -1,0 +1,39 @@
+{
+  "schema": "openagents.code-verification.v1",
+  "issue": 9701,
+  "captured_at": "2026-09-26T22:58:24.437573+00:00",
+  "base_commit": "a347ed42a88da27d45ac5b2374465ec57f31b7fd",
+  "scope": "Rust-owned mobile camera mode, orientation, movement, lifecycle, and native request boundary",
+  "sources": {
+    "crates/coder-mobile/src/verse_app.rs": "0d6ba50871bd0bbe4f4415ad4df70cb755eacd68950515ccbc0c30266287dc22",
+    "crates/coder-mobile/src/verse_ffi.rs": "f532088d88f26fa70f7368322ed4d3be65b39e31e6a653ce472479e6813b3067"
+  },
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "target_directory": "../target-connect",
+  "checks": [
+    {
+      "command": "cargo +1.97.1 test --locked -p coder-mobile verse_app::tests --lib",
+      "status": "passed",
+      "passed": 13,
+      "failed": 0,
+      "log": "focused-tests.log"
+    },
+    {
+      "command": "cargo +1.97.1 test --locked -p coder-mobile --lib",
+      "status": "passed",
+      "passed": 24,
+      "failed": 0,
+      "log": "full-tests.log"
+    },
+    {
+      "command": "cargo +1.97.1 clippy --locked -p coder-mobile --all-targets -- -D warnings",
+      "status": "passed",
+      "log": "clippy.log"
+    }
+  ],
+  "synthetic_only": true,
+  "limitations": [
+    "The quaternion tests verify the declared Core Motion reference-to-device mapping. Physical phone sensor direction, noise, and drift were not measured.",
+    "Native simulator and archive verification are recorded separately. No model, benchmark, or private chat run was started."
+  ]
+}

@@ -20,6 +20,11 @@ Walk east into the [Gym](../../docs/verse/gym.md) for Microcoder and
 Terminal-Bench boards. Its observations and run recipes require a separate
 host grant. Leaving or backgrounding pauses Gym updates.
 
+The source for build `42` adds a full-screen world behind the system clock and
+optional phone-motion look. See [mobile controls](../../docs/verse/mobile.md) and
+[verification](../../docs/coder/verification/2026-09-26-fullscreen-motion.md).
+Availability above still names the last confirmed TestFlight release.
+
 ## App identity and source boundary
 
 The user-authorized app metadata and icon preserve the existing Xcode setup:
@@ -29,7 +34,7 @@ The user-authorized app metadata and icon preserve the existing Xcode setup:
 | Project, scheme, target, product | `Coder` |
 | Bundle identifier | `com.openagents.coder` |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `0.5.0` / `41` |
+| Marketing version and build | `0.5.0` / `42` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Swift language setting | `5.10` |
 | App Store Connect app | `6807250813` |

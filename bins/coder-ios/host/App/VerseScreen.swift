@@ -20,106 +20,153 @@ struct VerseScreen: View {
     private var computerOpen: Bool { bridge.packet?.computer_open == true }
     private var gymOpen: Bool { bridge.packet?.gym_open == true }
     private var panelOpen: Bool { computerOpen || gymOpen }
+    private var motionLook: Bool { bridge.packet?.camera_mode == "motion" }
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .topLeading) {
-                if let packet = bridge.packet, let view = packet.view {
-                    NativeRenderer(node: view.root, revision: view.revision,
-                                   followTarget: nil, followChanged: nil, surface: mount) { _ in }
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Coder").font(.headline)
-                        Spacer()
-                        Text(bridge.packet?.status ?? "Opening world").font(.caption)
-                            .accessibilityIdentifier("verse-status")
-                    }
-                    if let error = bridge.nativeError ?? bridge.packet?.error {
-                        Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("verse-error")
-                        Button("Retry world renderer") { bridge.retry() }
-                    }
-                    Spacer()
-                    if synthetic, let packet = bridge.packet {
-                        HStack {
-                            Text("Frames \(packet.frames_presented)").accessibilityIdentifier("verse-frames")
-                            Spacer()
-                            Text(packet.position.map { String(format: "%.2f", $0) }.joined(separator: ", "))
-                                .accessibilityIdentifier("verse-position")
-                        }.font(.caption2.monospacedDigit())
-                        Text(packet.gym_active ? "Gym listening" : "Gym idle")
-                            .font(.caption2).accessibilityIdentifier("gym-interest")
-                    }
-                    if !panelOpen {
-                        Text("Walk to the computer to connect your chats.").font(.caption)
-                        Text("Drag left to move · drag right to look").font(.caption2)
-                        HStack {
-                            Button("Jump") { bridge.send(["action": "jump"]) }.accessibilityIdentifier("verse-jump")
-                            Toggle("Sprint", isOn: $sprint).fixedSize()
-                                .onChange(of: sprint) { _, enabled in
-                                    if active { bridge.send(["action": "sprint", "enabled": enabled]) }
-                                }
-                            Spacer()
-                            Button("Zoom in", systemImage: "plus.magnifyingglass") { bridge.send(["action": "zoom", "delta": 1]) }
-                                .labelStyle(.iconOnly)
-                            Button("Zoom out", systemImage: "minus.magnifyingglass") { bridge.send(["action": "zoom", "delta": -1]) }
-                                .labelStyle(.iconOnly)
-                        }
-                    }
-                }.padding(16).allowsHitTesting(!panelOpen)
-                if let computer = bridge.packet?.computer, !gymOpen, computer.visible || computerOpen {
-                    let anchor = CGPoint(x: clamped(computer.screen_x, 0, 1) * geometry.size.width,
-                                         y: clamped(computer.screen_y, 0, 1) * geometry.size.height)
-                    if computerOpen {
-                        anchoredPanel(anchor: anchor, size: geometry.size)
-                    } else {
-                        Button {
-                            bridge.send(["action": "interact_computer"])
-                        } label: {
-                            Label(computer.near ? "Use computer" : "Computer", systemImage: "desktopcomputer")
-                                .padding(.horizontal, 12).padding(.vertical, 9)
-                                .background(.ultraThinMaterial, in: Capsule())
-                        }
-                        .disabled(!computer.near || !active)
-                        .accessibilityIdentifier("computer-interact")
-                        .position(x: clamped(anchor.x, 94, geometry.size.width - 94),
-                                  y: clamped(anchor.y - 28, 70, geometry.size.height - 160))
-                    }
-                }
-                if let gym = bridge.packet?.gym, !computerOpen, gymOpen || (gym.inside && gym.visible) {
-                    let anchor = CGPoint(x: clamped(gym.screen_x, 0, 1) * geometry.size.width,
-                                         y: clamped(gym.screen_y, 0, 1) * geometry.size.height)
-                    if gymOpen {
-                        gymPanel(anchor: anchor, size: geometry.size)
-                    } else {
-                        Button { bridge.send(["action": "interact_gym"]) } label: {
-                            Label(gym.near ? "Open Gym board" : "Gym board", systemImage: "chart.xyaxis.line")
-                                .padding(.horizontal, 12).padding(.vertical, 9)
-                                .background(.ultraThinMaterial, in: Capsule())
-                        }
-                        .disabled(!gym.near || !active)
-                        .accessibilityIdentifier("gym-interact")
-                        .position(x: clamped(anchor.x, 106, geometry.size.width - 106),
-                                  y: clamped(anchor.y - 28, 70, geometry.size.height - 160))
-                    }
-                }
+        GeometryReader { safeGeometry in
+            // Capture the window's safe areas before extending the actual Metal
+            // surface. World projection coordinates use the full canvas size.
+            let safe = safeGeometry.safeAreaInsets
+            GeometryReader { geometry in
+                canvas(size: geometry.size, safe: safe)
             }
-            .background(Color(red: 0.025, green: 0.02, blue: 0))
+            .ignoresSafeArea()
         }
         .onChange(of: active) { _, enabled in if !enabled { sprint = false } }
         .onChange(of: panelOpen) { _, open in if open { sprint = false } }
     }
 
-    private func anchoredPanel(anchor: CGPoint, size: CGSize) -> some View {
-        let width = min(size.width - 24, 540)
-        let minimum = min(340, max(160, size.height - 100))
-        let maximum = max(minimum, min(560, size.height * 0.62))
+    private func canvas(size: CGSize, safe: EdgeInsets) -> some View {
+        ZStack(alignment: .topLeading) {
+            if let packet = bridge.packet, let view = packet.view {
+                NativeRenderer(node: view.root, revision: view.revision,
+                               followTarget: nil, followChanged: nil, surface: mount) { _ in }
+                    .frame(width: size.width, height: size.height)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Coder").font(.headline)
+                    Spacer()
+                    Text(bridge.packet?.status ?? "Opening world").font(.caption)
+                        .accessibilityIdentifier("verse-status")
+                }
+                if let error = bridge.nativeError ?? bridge.packet?.error {
+                    Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("verse-error")
+                    Button("Retry world renderer") { bridge.retry() }
+                }
+                Spacer()
+                if synthetic, let packet = bridge.packet {
+                    HStack {
+                        Text("Frames \(packet.frames_presented)").accessibilityIdentifier("verse-frames")
+                        Spacer()
+                        Text(packet.position.map { String(format: "%.2f", $0) }.joined(separator: ", "))
+                            .accessibilityIdentifier("verse-position")
+                    }.font(.caption2.monospacedDigit())
+                    Text(packet.gym_active ? "Gym listening" : "Gym idle")
+                        .font(.caption2).accessibilityIdentifier("gym-interest")
+                    Text(String(format: "%.5f, %.5f", packet.camera_yaw, packet.camera_pitch))
+                        .font(.caption2.monospacedDigit()).accessibilityIdentifier("verse-camera")
+                    Text(packet.motion_needed ? "Motion active" : "Motion idle")
+                        .font(.caption2).accessibilityIdentifier("verse-motion-needed")
+                    if bridge.motionSynthetic && !panelOpen {
+                        Button("Inject motion sample") { bridge.previewMotion() }
+                            .accessibilityIdentifier("verse-motion-sample")
+                    }
+                }
+                if !panelOpen {
+                    Text("Walk to the computer to connect your chats.").font(.caption)
+                    Text(motionLook ? "Hold left to move · turn your phone to look" : "Drag left to move · drag right to look").font(.caption2)
+                    HStack {
+                        Button {
+                            bridge.toggleCameraMode()
+                        } label: {
+                            Label(motionLook ? "Motion look" : "Touch look", systemImage: motionLook ? "gyroscope" : "hand.draw")
+                        }
+                        .disabled(!active || (!bridge.motionAvailable && !motionLook))
+                        .accessibilityIdentifier("verse-camera-mode")
+                        .accessibilityHint("Switches between dragging and phone orientation for camera control.")
+                        Spacer()
+                        if motionLook {
+                            Button("Recenter") { bridge.recenterMotion() }
+                                .disabled(!active).accessibilityIdentifier("verse-motion-recenter")
+                        }
+                    }
+                    if let error = bridge.motionError {
+                        Text(error).font(.caption).accessibilityIdentifier("verse-motion-error")
+                    } else if !bridge.motionAvailable {
+                        Text("Motion look is unavailable on this device.").font(.caption2)
+                            .accessibilityIdentifier("verse-motion-unavailable")
+                    }
+                    HStack {
+                        Button("Jump") { bridge.send(["action": "jump"]) }.accessibilityIdentifier("verse-jump")
+                        Toggle("Sprint", isOn: $sprint).fixedSize()
+                            .onChange(of: sprint) { _, enabled in
+                                if active { bridge.send(["action": "sprint", "enabled": enabled]) }
+                            }
+                        Spacer()
+                        Button("Zoom in", systemImage: "plus.magnifyingglass") { bridge.send(["action": "zoom", "delta": 1]) }
+                            .labelStyle(.iconOnly)
+                        Button("Zoom out", systemImage: "minus.magnifyingglass") { bridge.send(["action": "zoom", "delta": -1]) }
+                            .labelStyle(.iconOnly)
+                    }
+                }
+            }
+            .padding(.top, safe.top + 12)
+            .padding(.bottom, safe.bottom + 12)
+            .padding(.leading, safe.leading + 16)
+            .padding(.trailing, safe.trailing + 16)
+            .allowsHitTesting(!panelOpen)
+            if let computer = bridge.packet?.computer, !gymOpen, computer.visible || computerOpen {
+                let anchor = CGPoint(x: clamped(computer.screen_x, 0, 1) * size.width,
+                                     y: clamped(computer.screen_y, 0, 1) * size.height)
+                if computerOpen {
+                    anchoredPanel(anchor: anchor, size: size, safe: safe)
+                } else {
+                    Button {
+                        bridge.send(["action": "interact_computer"])
+                    } label: {
+                        Label(computer.near ? "Use computer" : "Computer", systemImage: "desktopcomputer")
+                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    .disabled(!computer.near || !active)
+                    .accessibilityIdentifier("computer-interact")
+                    .position(x: clamped(anchor.x, safe.leading + 94, size.width - safe.trailing - 94),
+                              y: clamped(anchor.y - 28, safe.top + 70, size.height - safe.bottom - 160))
+                }
+            }
+            if let gym = bridge.packet?.gym, !computerOpen, gymOpen || (gym.inside && gym.visible) {
+                let anchor = CGPoint(x: clamped(gym.screen_x, 0, 1) * size.width,
+                                     y: clamped(gym.screen_y, 0, 1) * size.height)
+                if gymOpen {
+                    gymPanel(anchor: anchor, size: size, safe: safe)
+                } else {
+                    Button { bridge.send(["action": "interact_gym"]) } label: {
+                        Label(gym.near ? "Open Gym board" : "Gym board", systemImage: "chart.xyaxis.line")
+                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    .disabled(!gym.near || !active)
+                    .accessibilityIdentifier("gym-interact")
+                    .position(x: clamped(anchor.x, safe.leading + 106, size.width - safe.trailing - 106),
+                              y: clamped(anchor.y - 28, safe.top + 70, size.height - safe.bottom - 160))
+                }
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .background(Color(red: 0.025, green: 0.02, blue: 0))
+    }
+
+    private func anchoredPanel(anchor: CGPoint, size: CGSize, safe: EdgeInsets) -> some View {
+        let bounds = panelBounds(size: size, safe: safe)
+        let width = min(bounds.width, 540)
+        let minimum = min(340, bounds.height)
+        let maximum = max(minimum, min(560, bounds.height * 0.75))
         let reading = reader.packet?.reading == true && !pairing
-        let height = reading ? max(minimum, size.height - 100) : clamped(size.height - anchor.y - 44, minimum, maximum)
-        let left = clamped(anchor.x - width / 2, 12, size.width - width - 12)
+        let height = reading ? bounds.height : clamped(bounds.maxY - anchor.y - 30, minimum, maximum)
+        let left = clamped(anchor.x - width / 2, bounds.minX, bounds.maxX - width)
         let below = anchor.y + 30
-        let top = reading ? 72 : clamped(below, 72, size.height - height - 16)
+        let top = reading ? bounds.minY : clamped(below, bounds.minY, bounds.maxY - height)
         return ZStack(alignment: .topLeading) {
             Path { path in
                 path.move(to: anchor)
@@ -135,11 +182,12 @@ struct VerseScreen: View {
         }
     }
 
-    private func gymPanel(anchor: CGPoint, size: CGSize) -> some View {
-        let width = min(size.width - 24, 540)
-        let height = max(180, size.height - 110)
-        let left = clamped(anchor.x - width / 2, 12, size.width - width - 12)
-        let top = 76.0
+    private func gymPanel(anchor: CGPoint, size: CGSize, safe: EdgeInsets) -> some View {
+        let bounds = panelBounds(size: size, safe: safe)
+        let width = min(bounds.width, 540)
+        let height = bounds.height
+        let left = clamped(anchor.x - width / 2, bounds.minX, bounds.maxX - width)
+        let top = bounds.minY
         return ZStack(alignment: .topLeading) {
             Path { path in
                 path.move(to: anchor)
@@ -149,6 +197,13 @@ struct VerseScreen: View {
                 .frame(width: width, height: height)
                 .position(x: left + width / 2, y: top + height / 2)
         }
+    }
+
+    private func panelBounds(size: CGSize, safe: EdgeInsets) -> CGRect {
+        let top = safe.top + 64
+        return CGRect(x: safe.leading + 12, y: top,
+                      width: max(1, size.width - safe.leading - safe.trailing - 24),
+                      height: max(80, size.height - top - safe.bottom - 16))
     }
 
     private func mount(resource: String, label: String) -> AnyView {

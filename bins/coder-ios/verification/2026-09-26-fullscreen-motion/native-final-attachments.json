@@ -1,0 +1,56 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "A53C6A13-FCA1-4A22-BC8E-2763FF7D8FE0.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Full canvas behind system clock and home indicator_0_D9C2EAEF-771D-4E7D-AE03-A4A8D5111870.png",
+        "timestamp" : 1790463600.964
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "811A1E1E-8459-4C0F-BD22-BE6ED0EE9092.json",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Fullscreen Metal frame geometry_0_37338674-F620-4B18-9D5C-C4F6B5E3104C.json",
+        "timestamp" : 1790463600.904
+      }
+    ],
+    "testIdentifier" : "FullscreenMotionUITests/testMetalCanvasCoversTheWindowBehindTheSystemStatusBar()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/FullscreenMotionUITests/testMetalCanvasCoversTheWindowBehindTheSystemStatusBar"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "C32F3647-A652-43DD-BC1E-CD13422FD0E2.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Motion camera with full canvas and safe controls_0_425DC5B7-CB0A-48C6-AA07-741D8F6557B2.png",
+        "timestamp" : 1790463616.632
+      }
+    ],
+    "testIdentifier" : "FullscreenMotionUITests/testTouchAndInjectedMotionModesPreserveLeftMovement()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/FullscreenMotionUITests/testTouchAndInjectedMotionModesPreserveLeftMovement"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "6F12BB5D-A3E8-4864-8294-563F292C034A.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Motion unavailable with working touch camera_0_3404E81D-3113-40AC-A8BE-3C573AAFABE9.png",
+        "timestamp" : 1790463631.433
+      }
+    ],
+    "testIdentifier" : "FullscreenMotionUITests/testUnavailableMotionClearlyKeepsTouchControls()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/FullscreenMotionUITests/testUnavailableMotionClearlyKeepsTouchControls"
+  }
+]

@@ -33,6 +33,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan the invitation displayed on your computer to connect its saved chats.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Use the phone's orientation to look around the world when you turn on motion look.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UILaunchScreen</key>

@@ -1,0 +1,59 @@
+{
+  "schema": "coder.ios.motion-adapter-verification.v1",
+  "completed_at": "2026-09-26T22:57:14.641348+00:00",
+  "source_base_commit": "a347ed42a88da27d45ac5b2374465ec57f31b7fd",
+  "source_state": "Uncommitted implementation identified by hashes below; the release archive independently pins committed source.",
+  "checks": [
+    {
+      "command": "swiftc -parse-as-library bins/coder-ios/host/App/DeviceMotion.swift bins/coder-ios/host/Tests/DeviceMotionChecks.swift -o /tmp/coder-motion-checks && /tmp/coder-motion-checks",
+      "exit_code": 0,
+      "log": "checks.log",
+      "scope": [
+        "No polling while inactive",
+        "One start per active interval",
+        "Explicit baseline invalidation on start and stop",
+        "Reject cached pre-start and duplicate timestamps",
+        "At most 30 deliveries per second",
+        "Stop and resume without reusing old samples",
+        "Refuse unavailable, silent, and invalid sensor data",
+        "Explicit synthetic upright portrait sample"
+      ],
+      "hardware_used": false
+    },
+    {
+      "command": "xcrun swiftc -parse-as-library -typecheck -target arm64-apple-ios17.0 -sdk <iPhoneOS26.5.sdk> -import-objc-header bins/coder-ios/host/App/CoderMobile.h bins/coder-ios/host/App/*.swift",
+      "exit_code": 0,
+      "log": "ios-typecheck.log",
+      "scope": "All current Swift app sources typecheck for iOS 17 using the installed iOS 26.5 SDK; native runtime verification is retained separately."
+    }
+  ],
+  "platform_contract": {
+    "payload": "Raw Core Motion CMQuaternion [x,y,z,w], with no camera conversion in Swift.",
+    "reference_frame": "xArbitraryZVertical; no magnetic or true-north dependency.",
+    "time": "Hardware timestamp is seconds since boot. Adapter start and poll use CACurrentMediaTime; CADisplayLink.timestamp is reserved for Rust frame timing.",
+    "lifecycle": "Every decoded Rust packet drives sensor interest before UI publication throttling. Native inactivity and detach stop acquisition immediately.",
+    "failure": "Unavailable, invalid, or absent sensor updates return to touch mode with a notice. Unrelated retained world errors are not classified as sensor failures.",
+    "fixture": "--synthetic --motion-preview is required. The fixture has an upright raw portrait quaternion and does not claim physical sensor availability."
+  },
+  "limits": [
+    "No physical iPhone direction, drift, latency, permission, battery, or thermal validation.",
+    "Physical orientation conversion is implemented and tested in Rust; these native checks cover lifetime and bounded pass-through.",
+    "No network, model, benchmark, or real Gym execution."
+  ],
+  "references": [
+    "https://developer.apple.com/documentation/coremotion/cmmotionmanager",
+    "https://developer.apple.com/documentation/coremotion/getting-processed-device-motion-data",
+    "https://developer.apple.com/documentation/bundleresources/information-property-list/nsmotionusagedescription"
+  ],
+  "source_sha256": {
+    "bins/coder-ios/host/App/DeviceMotion.swift": "7c97d344af5a8fe05b8e7319f37790ee3deff368dbf6e54426f4d32a87dff1ce",
+    "bins/coder-ios/host/App/VerseBridge.swift": "5445185f46567f859c77af593bd0710763f85250acb1f1febd76fda8fcad2399",
+    "bins/coder-ios/host/App/VerseSurface.swift": "99b60232868f2cf80a8df3fe13fb38bc613066c8e494a023ddae553813b47e61",
+    "bins/coder-ios/host/App/Info.plist": "7f775fdede7e2c06892cf14b7f24a1571d7dfd361f854cacdf654799a51bd4a4",
+    "bins/coder-ios/host/Tests/DeviceMotionChecks.swift": "eac3f22b53e1ecf52349a42a1761ec49a5f5ed7ce84ca65897a2b76330a85fab"
+  },
+  "artifact_sha256": {
+    "checks.log": "ebd9a20559efe2fc985b6cc736182c9ec4a41f7217eec98d3f64351f8975ee52",
+    "ios-typecheck.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

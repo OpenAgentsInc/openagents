@@ -1,0 +1,70 @@
+    Checking smallvec v1.16.1
+    Checking objc2-encode v4.1.0
+   Compiling syn v2.0.119
+    Checking libm v0.2.16
+   Compiling bytemuck_derive v1.12.1
+    Checking foldhash v0.2.0
+    Checking bit-vec v0.9.1
+    Checking unicode-width v0.2.0
+    Checking indexmap v2.14.2
+    Checking raw-window-handle v0.6.2
+    Checking arrayvec v0.7.8
+    Checking scopeguard v1.2.0
+    Checking hexf-parse v0.2.1
+    Checking rustc-hash v1.1.0
+    Checking unicode-ident v1.0.26
+    Checking profiling v1.0.18
+    Checking coder-history v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-history)
+    Checking qrcodegen v1.8.0
+    Checking hashbrown v0.16.1
+    Checking lock_api v0.4.14
+    Checking rust-native v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/rust-native)
+    Checking yazi v0.2.1
+    Checking parking_lot_core v0.9.12
+    Checking icu_normalizer v2.3.0
+    Checking static_assertions v1.1.0
+    Checking objc2 v0.6.4
+    Checking bit-set v0.9.1
+    Checking codespan-reporting v0.13.1
+    Checking zeno v0.3.3
+    Checking glam v0.30.10
+    Checking pollster v0.4.0
+    Checking tempfile v3.27.0
+    Checking parking_lot v0.12.5
+    Checking idna_adapter v1.2.2
+    Checking idna v1.1.0
+    Checking num-traits v0.2.19
+    Checking bytemuck v1.25.2
+    Checking coder-ui v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-ui)
+    Checking url v2.5.8
+    Checking objc2-core-foundation v0.3.2
+    Checking block2 v0.6.2
+    Checking wgpu-types v29.0.4
+    Checking font-types v0.12.5
+    Checking read-fonts v0.41.0
+    Checking objc2-foundation v0.3.2
+   Compiling zerocopy-derive v0.8.57
+    Checking zerocopy v0.8.57
+    Checking objc2-metal v0.3.2
+    Checking skrifa v0.44.0
+    Checking objc2-quartz-core v0.3.2
+    Checking raw-window-metal v1.1.0
+    Checking ppv-lite86 v0.2.21
+    Checking half v2.7.1
+    Checking rand_chacha v0.9.0
+    Checking naga v29.0.4
+    Checking rand v0.9.5
+    Checking secp256k1 v0.31.1
+    Checking nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+    Checking swash v0.2.10
+    Checking wgpu-naga-bridge v29.0.4
+    Checking wgpu-hal v29.0.4
+    Checking wgpu-core-deps-apple v29.0.4
+    Checking wgpu-core v29.0.4
+    Checking nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr-transport)
+    Checking coder-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-connect)
+    Checking wgpu v29.0.4
+    Checking gym-bridge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/gym-bridge)
+    Checking verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/verse)
+    Checking coder-mobile v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-mobile)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.94s

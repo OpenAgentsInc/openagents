@@ -9,12 +9,20 @@ implementation belongs to the reusable `rust-native` crate.
 
 ## Walk the world
 
-The world is the home screen. It starts offline and requires no chat pairing
+The world fills the entire display behind the system clock and home indicator.
+Controls stay inside the safe area over the canvas. It starts offline and requires no chat pairing
 or model account. A computer sits directly ahead of the starting position.
 Walk closer and tap **Use computer** to open its controls inside the world.
 
-- Drag on the left half of the world to move. Releasing stops movement.
-- Drag on the right half to turn and look up or down.
+- In **Touch look**, drag on the left half to move and on the right half to
+  turn and look up or down. Releasing the left side stops movement.
+- Switch to **Motion look** to look around by turning your phone. Hold the left
+  half to walk forward; move that touch to adjust direction. **Recenter** uses
+  your current phone position as the new reference without changing the view.
+  Switch back to **Touch look** whenever you prefer finger controls.
+- Motion look pauses while the app is in the background or an in-world panel
+  is open. It starts from a fresh reference when you return. If motion is
+  unavailable, use touch look.
 - Tap **Jump**, toggle **Sprint**, or use the zoom buttons.
 - Use the world computer to pair by QR code and open **Chats**, the read-only
   Codex and Claude viewer. Selecting a transcript expands its reading area;
@@ -97,6 +105,7 @@ See [the native app build guide](../../bins/coder-ios/README.md),
 [the Verse verification record](../coder/verification/2026-09-26-verse-mobile.md),
 [QR pairing verification](../coder/verification/2026-09-26-world-pairing.md),
 [Gym verification](../coder/verification/2026-09-26-verse-gym.md),
+[full-screen and motion verification](../coder/verification/2026-09-26-fullscreen-motion.md),
 and [issue #9698](https://github.com/OpenAgentsInc/openagents/issues/9698), and
 [Verse-first pairing #9699](https://github.com/OpenAgentsInc/openagents/issues/9699).
 Simulator rendering and lifecycle evidence are separate from physical-device

@@ -14,7 +14,7 @@ pub struct VerseHandle {
 }
 
 fn failure() -> CoderMobileBuffer {
-    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"computer":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":5.0},"computer_open":false,"gym":{"inside":false,"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":60.0},"gym_open":false,"gym_revision":0,"gym_active":false,"view":null}"#.to_vec())
+    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"camera_mode":"touch","camera_yaw":0.0,"camera_pitch":0.28,"motion_needed":false,"computer":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":5.0},"computer_open":false,"gym":{"inside":false,"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":60.0},"gym_open":false,"gym_revision":0,"gym_active":false,"view":null}"#.to_vec())
 }
 
 /// Returns the initial Rust-owned surface projection. Release the result with
@@ -125,7 +125,10 @@ pub unsafe extern "C" fn coder_verse_call(
         );
         let clear_error = !matches!(
             &request,
-            Request::Frame { .. } | Request::Snapshot | Request::GymView
+            Request::Frame { .. }
+                | Request::DeviceMotion { .. }
+                | Request::Snapshot
+                | Request::GymView
         );
         match handle.call(request) {
             Err(error) => handle.scene.error = Some(error),
@@ -176,11 +179,16 @@ impl VerseHandle {
             } => {
                 let viewport = rust_native::surface::Viewport::new(width, height, scale)
                     .map_err(|e| e.to_string())?;
+                let changed = self.scene.lifecycle.viewport() != viewport;
                 self.renderer.resize(width, height)?;
                 self.scene
                     .lifecycle
                     .resize(viewport)
-                    .map_err(|e| e.to_string())
+                    .map_err(|e| e.to_string())?;
+                if changed {
+                    self.scene.action(Request::ResetMotion)?;
+                }
+                Ok(())
             }
             request => self.scene.action(request),
         }

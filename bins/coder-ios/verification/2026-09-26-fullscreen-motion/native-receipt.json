@@ -1,0 +1,77 @@
+{
+  "schema": "openagents.native-verification.v1",
+  "recorded_at": "2026-09-26T23:02:08.686633+00:00",
+  "issue": 9701,
+  "build": 42,
+  "scope": "Synthetic simulator UI integration with actual Metal frames; no models, benchmarks, real history, relay pairing, or physical sensor use.",
+  "full_suite": {
+    "command": "CARGO_TARGET_DIR=../target-native CODER_IOS_OUTPUT=../target/coder-ios-build42 ./scripts/build-coder-mobile.sh sim-test",
+    "result_bundle": "../target/coder-ios-build42/TestResults-20260926T225526Z-85209.xcresult",
+    "result": "Passed",
+    "passed": 12,
+    "failed": 0,
+    "duration_seconds": 219.41499996185303,
+    "source_snapshot": "native-before-build-source.json",
+    "limitation": "Five source files changed after the first build started. This run covers the unchanged full-screen UI and existing Gym/reader/world regressions; final motion acceptance uses the rebuilt final-source pass below. The first executable was replaced by the final build before its digest was recorded."
+  },
+  "final_pass": {
+    "build_command": "CARGO_TARGET_DIR=../target-native CODER_IOS_OUTPUT=../target/coder-ios-build42 ./scripts/build-coder-mobile.sh sim-build",
+    "test_command": "xcodebuild -project bins/coder-ios/host/Coder.xcodeproj -scheme Coder -configuration Release -destination platform=iOS Simulator,id=745E63BD-631C-4651-B993-F1E2AAB3791E -derivedDataPath ../target/coder-ios-build42/DerivedData CODER_RUST_LIBRARY_DIR=/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target-native/aarch64-apple-ios-sim/debug CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= -resultBundlePath ../target/coder-ios-build42/FinalFullscreenMotion.xcresult -parallel-testing-enabled NO -only-testing:CoderUITests/FullscreenMotionUITests test",
+    "environment": "Build script and final xcodebuild use a cleared environment with only compiler/tool paths and required host settings.",
+    "result_bundle": "../target/coder-ios-build42/FinalFullscreenMotion.xcresult",
+    "result": "Passed",
+    "passed": 3,
+    "failed": 0,
+    "duration_seconds": 37.943000078201294,
+    "test_duration_seconds": 35.208,
+    "source_snapshot": "native-final-source.json",
+    "verified_source_inputs": 1107,
+    "source_hashes_unchanged_after_test": true,
+    "executable_sha256": "b8598a74189c2f5417c42f4c74e7e1d657626632cd85be975457392b8eaa7835"
+  },
+  "changed_inputs_between_passes": [
+    "bins/coder-ios/host/App/DeviceMotion.swift",
+    "bins/coder-ios/host/App/VerseBridge.swift",
+    "bins/coder-ios/host/App/VerseSurface.swift",
+    "crates/coder-mobile/src/verse_app.rs",
+    "crates/coder-mobile/src/verse_ffi.rs"
+  ],
+  "verified_behavior": [
+    "The Metal view frame matches all four full-window edges, including the visible system status bar.",
+    "Movement controls remain above the home-indicator safe area; panel anchors use full-canvas projection coordinates.",
+    "Touch drag changes yaw; motion mode accepts a synthetic native quaternion and ignores right-side drag.",
+    "Stationary left hold moves in motion mode; recenter and background/resume preserve usable controls.",
+    "Switching back to touch resumes right-side camera drag.",
+    "Without the explicit fixture on the simulator, motion is unavailable and touch continues working."
+  ],
+  "visual_review": {
+    "native-fullscreen.png": "Building geometry extends behind the system clock and across the full window. Native controls sit within safe-area margins.",
+    "native-motion.png": "Rendered world and Motion look/Recenter controls are visible after injected quaternion and left hold. The simulator compositor omits some unchanged clock/Sprint glyphs in this capture; test queries and actions remain successful.",
+    "native-motion-unavailable.png": "Touch camera remains usable while the unsupported motion mode is disabled."
+  },
+  "limits": [
+    "Simulator quaternion injection proves adapter-to-Rust integration, not physical Core Motion accuracy or user permission behavior.",
+    "The full 12-case suite preceded the final five-file motion refinements; the final three-case suite rebuilt and verified the frozen source.",
+    "No App Store archive or physical-device result is claimed by this receipt."
+  ],
+  "attachment_names": {
+    "A53C6A13-FCA1-4A22-BC8E-2763FF7D8FE0.png": "native-fullscreen.png",
+    "811A1E1E-8459-4C0F-BD22-BE6ED0EE9092.json": "native-frame-geometry.json",
+    "C32F3647-A652-43DD-BC1E-CD13422FD0E2.png": "native-motion.png",
+    "6F12BB5D-A3E8-4864-8294-563F292C034A.png": "native-motion-unavailable.png"
+  },
+  "artifacts_sha256": {
+    "native-before-build-source.json": "4d1f8ba1a9ae162961a8be3e6e5e20f284dab9394a172fd30505ceba52761346",
+    "native-final-attachments.json": "cd5cfba85a950c53488d647981e5ccb8c938277016a3cbf4151169806049215a",
+    "native-final-build.log.gz": "32982bef1ee972a8c41af88658544283bc6f745406ee9aae159e11acd714db08",
+    "native-final-source.json": "31d852b29d366be52ae702923f16d5f6913a0c31c8f93bbf102c1dd20d4281c6",
+    "native-final-summary.json": "e141a2c2396630155f7a48bff1fd7c47dc925530806dfbdc64247c6d36259361",
+    "native-final-tests.log.gz": "c71de00e00ff608ed84152280abcadd7d137d6dc891c974a1302ed99e63e550c",
+    "native-frame-geometry.json": "ff98546062cdda287b68600f7c5f62750810583b3671de4dec7f71de22436b1a",
+    "native-full-suite-summary.json": "bb033b9543a814efbc40e9a2e5f56f445e30f0614d5df162ffab469601b73cc5",
+    "native-full-suite.log.gz": "3992044c694c9702e165c516e8161372b851e9fbc903b5bc4005b76c80a7cea1",
+    "native-fullscreen.png": "3266c6c7a3162c665a21c00da042d8f620c05ac02f198a8c6a8790a5ad468d57",
+    "native-motion-unavailable.png": "9e9adaa3cc02e410118ea13ee3503478308b9589941e7e96944fbb2485feea53",
+    "native-motion.png": "fb6c5c31996434d10b8cbe49b22cc66719633f38f5b636b91a3bddf63869e3a1"
+  }
+}
