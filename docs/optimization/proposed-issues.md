@@ -157,6 +157,12 @@ presenting a selected candidate as a verified winner.
 
 **Scope:** CTX and semantic implementations for evidence preparation.
 
+This item optimizes a working host feature. The first deterministic context
+manifests, source expansion, and history retrieval in the
+[Coder suite plan](../coder/design/typesafe-product-suite.md) do not depend on
+OPT-03–08. They need their own authority checks and retained evaluation; this
+item adds automated search, protected confirmation, and adoption.
+
 Compare deterministic retrieval, typed per-item judgments, joint selection,
 and bounded expansion under a common evidence contract. Include state-update
 proposals, summaries, and history representations where supported.
@@ -171,6 +177,11 @@ has an explicit fallback/refusal. Token reduction alone cannot pass adoption.
 ## OPT-10: Optimize operation selection, routing, and inference strategies
 
 **Scope:** CAP, PRG, EXT, POL; selectors and model-backed operations.
+
+Its optimization dependencies do not block initial lazy tool discovery,
+scoped guidance, cache accounting, model routing, or background views. Build
+and measure those host facilities first. Search may then vary their admitted
+policies without changing permissions, disclosure, or result semantics.
 
 Search descriptor rendering, optional guidance, shortlisting, model choice,
 escalation, batching, and supported generation/inference strategies. Preserve

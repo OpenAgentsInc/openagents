@@ -1,8 +1,11 @@
 # OpenAgents
 
 OpenAgents builds agent infrastructure: typed decisions, bounded execution,
-programs, permissions, traces, and evaluation. **Coder** is the terminal
-coding agent. **Coder One** supplies the configurable agent components used
+programs, permissions, traces, and evaluation. **Coder** is the coding product,
+with terminal and headless interfaces implemented today. The
+[suite plan](docs/coder/design/typesafe-product-suite.md) extends the same runtime
+to mobile, web, cloud execution, and computer control. **Coder One** supplies
+the configurable agent components used
 in Terminal-Bench experiments and Coder's delegate execution. **Gym** measures
 results and lets you inspect and replay the evidence.
 

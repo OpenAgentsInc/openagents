@@ -18,6 +18,12 @@ high-priority parallel track: let independent operators earn Bitcoin for
 bounded coding jobs. It does not wait for every model or component to reach
 the top of a benchmark.
 
+The [TypeSafe product-suite plan](typesafe-product-suite.md) applies every part
+of the source proposal, including all appendices, and the product intent in
+episodes 275–281. Coder spans terminal, headless, mobile, web, cloud execution,
+and computer control through one task runtime. Only some of those surfaces
+exist in this workspace today; that plan identifies the gaps and release tests.
+
 ## The claim to earn
 
 Coder can become the best coding agent by combining reliable execution,
@@ -154,6 +160,40 @@ does the irreducibly generative work. The [TypeSafe architecture](typesafe-agent
 allows a semantic operation's implementation to change without changing its
 meaning or its protected host constraints.
 
+## Apply the complete TypeSafe design
+
+The small action loop is the execution core, not the limit of the design.
+Native control of task state, context, tools, and scheduling lets Coder offer
+more than a different prompt wrapped around a model. Build the following host
+features alongside the quality work, starting with deterministic baselines:
+
+- **Explicit context:** source captures, recipient-specific manifests,
+  original/short/long representations, mandatory instructions, and expansion.
+  Choose cache reuse, context reconstruction, or a model switch from observed
+  whole-task economics, including return-to-strong-model costs.
+- **Reusable state:** hierarchical history and typed intermediate values,
+  with freshness, source references, correction retention, and recovery.
+  Cheaper per-message ranking alone does not solve growing history.
+- **Progressive operations:** retrieve eligible descriptors, then exact
+  schemas and manuals. Measure structural search, outlines, indexes, and
+  output compression. Preserve scoped rules and unload expired skill hooks.
+- **Useful concurrency:** share admitted reads, isolate independent writes,
+  reserve build and disk resources, and deduplicate only exact reusable work.
+  Measure preparation, queueing, and integration, not just child execution.
+- **Background understanding:** source-linked progress, explanations,
+  relevance views, reviews, and proposed evals under separate budgets and
+  freshness rules. They cannot silently alter the task or protected tests.
+- **Product continuity:** one task identity, owner, budget, trace lineage,
+  and outcome across interfaces. Trusted-device control, hosted sync, labor hiring, and publishing
+  each need their own explicit authority.
+
+The [complete coverage map](typesafe-agent-protocol-addendum.md) assigns the
+source insights to contracts; the [suite delivery plan](typesafe-product-suite.md)
+assigns implementation slices and acceptance tests. Host features do not wait
+for DSPy/GEPA or NIP-OPT search. The optimizer later compares replaceable
+policies over working, measured features. Keep unknowns and negative results;
+do not mistake more judgments, tools, or background activity for an improvement.
+
 ## How the network compounds
 
 ```mermaid
@@ -251,7 +291,10 @@ are draft contracts. Their existence is not evidence that every path is live.
 
 ## Delivery order and gates
 
-The table orders the coding-quality work. Build the agent-labor track
+The table orders the coding-quality work. Build explicit task/context state,
+lazy discovery, and suite continuity through the linked TS-1–TS-5 milestones
+alongside it; stage 6 optimizes their policies rather than introducing their
+first host implementation. Build the agent-labor track
 alongside it, starting with a bounded issue-to-patch order, runnable provider,
 client acceptance, and a payment adapter. It uses the same retained evidence
 and host boundaries without waiting for stages 4–6. Its first milestone is

@@ -1,7 +1,16 @@
 # Coder documentation
 
-Coder routes turns through typed decisions, generates responses, and runs
-approved work through a shared terminal and headless runtime.
+Coder is a coding product across interfaces and execution locations. Today,
+it routes turns through typed decisions, generates responses, and runs
+approved work through a shared terminal and headless runtime. Mobile, web,
+managed cloud execution, and Coder OS are part of the intended suite; their
+historical demonstrations are not current implementations in this workspace.
+
+The [TypeSafe product-suite plan](design/typesafe-product-suite.md) maps the
+complete source proposal and episodes 275–281 to runtime work, current gaps,
+and release tests. The [networked Coder plan](design/networked-coder-plan.md)
+connects that product to measured coding quality, reusable knowledge, and the
+high-priority [agent labor track](../agents/market-infrastructure.md).
 
 | Directory | Contents |
 | --- | --- |
@@ -16,8 +25,8 @@ approved work through a shared terminal and headless runtime.
 
 Start with the [headless guide](guides/headless.md) to run a turn or the
 [Devin delegation runbook](guides/devin-delegation-runbook.md) to assign work.
-The [rebuild plan](design/rebuild-plan.md) describes the implementation and
-links to the proposed delivery roadmap.
+The [rebuild plan](design/rebuild-plan.md) describes the target architecture
+and links to the proposed delivery roadmap.
 
 The [Terminal-Bench task comparison](measurements/2026-09-22-terminal-bench-chat-fit.md)
 locates the CoderBench golden and ranks upstream tasks against recent work.

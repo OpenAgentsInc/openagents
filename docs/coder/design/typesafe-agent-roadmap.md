@@ -10,6 +10,13 @@ The [single proposed-issues document](../../optimization/proposed-issues.md)
 is the unfiled integration backlog. Its local IDs identify work, not promises
 of implementation or authorization for paid experiments.
 
+The [product-suite delivery plan](typesafe-product-suite.md) connects every
+source opportunity, including the appendices, to Coder's terminal, headless,
+mobile, web, cloud, and computer-control surfaces. It gives the current
+implementation limits and concrete cross-device release tests. Treat those
+surfaces as views of one task runtime, with agent labor progressing alongside
+the core. Terminal-first is delivery order, not a product boundary.
+
 ## Delivery strategy
 
 Deliver a complete useful workflow around attributable evidence. Define each
@@ -21,6 +28,12 @@ Protect authority, mandatory instructions, disclosure, reservations, effect
 confirmation, and independent acceptance in code. Permit measured variation
 of model-specific wording, examples, parameters, routing, and bounded internal
 decomposition. More model calls do not establish a better agent.
+
+Separate host delivery from policy optimization. Start explicit context,
+progressive tools, scoped instructions, history, and background views with
+simple implementations and retained evaluations. Their first useful versions
+do not depend on DSPy/GEPA, the complete OPT stack, or a benchmark win. The
+later search/adoption gates govern automatic improvement of those policies.
 
 ## Phase 0: establish a reliable consumer baseline
 
