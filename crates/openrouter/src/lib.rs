@@ -6,8 +6,8 @@
 //! this needs: the chat request, the `json_schema` response format
 //! (`ChatFormatJsonSchemaConfig` and `ChatJsonSchemaConfig` there), the
 //! result's usage and cost, provider routing's `require_parameters`, the
-//! `response-healing` plugin, and the SDK's error classes. Streaming, tools,
-//! and every other endpoint are left out.
+//! `response-healing` plugin, the SDK's error classes, and the embeddings
+//! call. Streaming, tools, and every other endpoint are left out.
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), openrouter::Error> {
@@ -325,6 +325,58 @@ pub struct ChatResponse {
     pub usage: Usage,
 }
 
+/// The embedding model used when none is named.
+pub const EMBEDDING_MODEL: &str = "openai/text-embedding-3-small";
+
+/// One embeddings request: every input is embedded with `model`.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct EmbeddingRequest {
+    pub model: String,
+    pub input: Vec<String>,
+}
+
+impl EmbeddingRequest {
+    /// A request to embed `input` with `model`.
+    #[must_use]
+    pub fn new(model: &str, input: Vec<String>) -> Self {
+        EmbeddingRequest {
+            model: model.to_string(),
+            input,
+        }
+    }
+}
+
+/// One vector in an embeddings response.
+#[derive(Clone, Debug, Deserialize)]
+struct EmbeddingItem {
+    #[serde(default)]
+    index: usize,
+    embedding: Vec<f32>,
+}
+
+/// An embeddings response.
+#[derive(Clone, Debug, Deserialize)]
+struct EmbeddingResponse {
+    #[serde(default)]
+    model: String,
+    #[serde(default)]
+    data: Vec<EmbeddingItem>,
+    #[serde(default)]
+    usage: Usage,
+}
+
+/// The vectors for an embeddings request, one per input in input order,
+/// and what the call cost.
+#[derive(Clone, Debug)]
+pub struct Embeddings {
+    pub vectors: Vec<Vec<f32>>,
+    /// The model OpenRouter used.
+    pub model: String,
+    pub usage: Usage,
+    /// Milliseconds the call took, retries included.
+    pub milliseconds: u64,
+}
+
 /// A structured reply: the parsed value and what the call cost.
 #[derive(Clone, Debug)]
 pub struct Structured<T> {
@@ -355,9 +407,9 @@ pub enum Error {
     Connection(String),
     /// An attempt ran past its time limit.
     Timeout,
-    /// The response wasn't a chat completion, or had no reply text.
+    /// The response wasn't a chat completion or an embeddings result, or had
+    /// no reply text.
     Decode { detail: String, excerpt: String },
-    /// The reply text doesn't match the requested shape.
     /// The reply text doesn't match the requested shape. The call still
     /// cost what `usage` says.
     Schema {
@@ -504,9 +556,53 @@ impl Client {
     ///
     /// The last attempt's [`Error`].
     pub async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse, Error> {
+        self.post("chat/completions", request).await
+    }
+
+    /// Embeds each of `request`'s inputs, with the same retries as
+    /// [`Client::chat`]. The vectors come back in input order.
+    ///
+    /// # Errors
+    ///
+    /// [`Client::chat`]'s errors, and [`Error::Decode`] when the response
+    /// doesn't hold one vector per input.
+    pub async fn embeddings(&self, request: &EmbeddingRequest) -> Result<Embeddings, Error> {
+        let started = std::time::Instant::now();
+        let mut response: EmbeddingResponse = self.post("embeddings", request).await?;
+        let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        response.data.sort_by_key(|item| item.index);
+        if response.data.len() != request.input.len() {
+            return Err(Error::Decode {
+                detail: format!(
+                    "{} vectors for {} inputs",
+                    response.data.len(),
+                    request.input.len()
+                ),
+                excerpt: String::new(),
+            });
+        }
+        Ok(Embeddings {
+            vectors: response
+                .data
+                .into_iter()
+                .map(|item| item.embedding)
+                .collect(),
+            model: response.model,
+            usage: response.usage,
+            milliseconds,
+        })
+    }
+
+    /// Posts `body` to `path` under the base URL, with retries, and reads
+    /// the response as a `T`.
+    async fn post<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, Error> {
         let mut attempt = 0;
         loop {
-            match self.attempt(request).await {
+            match self.attempt(path, body).await {
                 Ok(response) => return Ok(response),
                 Err((error, wait)) => {
                     let retryable = match &error {
@@ -525,15 +621,16 @@ impl Client {
         }
     }
 
-    async fn attempt(
+    async fn attempt<B: Serialize, T: DeserializeOwned>(
         &self,
-        request: &ChatRequest,
-    ) -> Result<ChatResponse, (Error, Option<Duration>)> {
+        path: &str,
+        body: &B,
+    ) -> Result<T, (Error, Option<Duration>)> {
         let mut builder = self
             .http
-            .post(format!("{}/chat/completions", self.config.base_url))
+            .post(format!("{}/{path}", self.config.base_url))
             .bearer_auth(self.config.api_key.expose())
-            .json(request);
+            .json(body);
         if let Some(referer) = &self.config.referer {
             builder = builder.header("HTTP-Referer", referer);
         }

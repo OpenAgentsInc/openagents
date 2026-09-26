@@ -2,7 +2,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use openrouter::{ApiErrorKind, ApiKey, ChatRequest, Client, Config, Error, Message};
+use openrouter::{
+    ApiErrorKind, ApiKey, ChatRequest, Client, Config, EmbeddingRequest, Error, Message,
+};
 use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -256,4 +258,53 @@ async fn a_schema_error_still_reports_what_the_call_cost() {
         Error::Schema { usage, .. } => assert_eq!(usage.cost, Some(0.00042)),
         other => panic!("{other:?}"),
     }
+}
+
+#[tokio::test]
+async fn embeddings_come_back_in_input_order_with_their_cost() {
+    // The server lists the vectors out of order; the client sorts them.
+    let body = serde_json::json!({
+        "object": "list",
+        "model": "openai/text-embedding-3-small",
+        "data": [
+            {"object": "embedding", "index": 1, "embedding": [0.0, 1.0]},
+            {"object": "embedding", "index": 0, "embedding": [1.0, 0.0]}
+        ],
+        "usage": {"prompt_tokens": 7, "total_tokens": 7, "cost": 0.00000014}
+    })
+    .to_string();
+    let (url, seen) = serve(vec![
+        (
+            503,
+            vec![("retry-after", "0")],
+            r#"{"error":{"message":"busy"}}"#.to_string(),
+        ),
+        (200, vec![], body),
+    ])
+    .await;
+    let request = EmbeddingRequest::new(
+        openrouter::EMBEDDING_MODEL,
+        vec!["first".to_string(), "second".to_string()],
+    );
+    let reply = client(&url).embeddings(&request).await.unwrap();
+    assert_eq!(reply.vectors, [vec![1.0, 0.0], vec![0.0, 1.0]]);
+    assert_eq!(reply.usage.cost, Some(0.00000014));
+    assert_eq!(reply.usage.prompt_tokens, 7);
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 2, "the 503 was retried");
+    assert!(seen[1].starts_with("POST /embeddings"));
+    assert!(seen[1].contains(r#""input":["first","second"]"#));
+    assert!(seen[1].contains(r#""model":"openai/text-embedding-3-small""#));
+}
+
+#[tokio::test]
+async fn embeddings_with_a_missing_vector_are_a_decode_error() {
+    let body = serde_json::json!({
+        "data": [{"index": 0, "embedding": [1.0]}]
+    })
+    .to_string();
+    let (url, _) = serve(vec![(200, vec![], body)]).await;
+    let request = EmbeddingRequest::new("m", vec!["a".to_string(), "b".to_string()]);
+    let error = client(&url).embeddings(&request).await.unwrap_err();
+    assert!(matches!(error, Error::Decode { .. }), "{error}");
 }
