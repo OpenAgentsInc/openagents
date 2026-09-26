@@ -190,6 +190,32 @@ shows the results, with each failing test's numbered script and output.
 
 `--no-acceptance` turns all of this off.
 
+## Before a green run ends
+
+A frozen suite written by the model misses requirements the task's grader
+checks, so a run can end green, by the model finishing or by the tests
+holding, with most of its budget left. The checks below
+(`crates/microcoder/src/gate.rs`) run before such a run may end. Each is
+off by default and has its own flag, so a study can pin what it
+measured; `summary.json` records them under `gates`, and each check is a
+`gated` event.
+
+| Flag | What happens before a green run ends |
+| --- | --- |
+| `--gate-requirements` | Code quotes the task's statements (its sentences, list items, and fenced blocks). Jev judges, per statement, whether no frozen test checks it (`requirements.json`, 0.6). The statements it names go back to the model to test, each named once, at most twice a run. |
+| `--gate-target` | Jev judges whether the task states a numeric target that no test measures (`target.json`); if so, the run goes back once to measure it and improve toward it, keeping a change only when every other test still passes. |
+| `--gate-credible` | The model is told to say, when it finishes, whether the solution is credible. Jev judges whether its last four rationales doubt the solution (`credible.json`); at `--doubt-threshold` (0.9) or more, the run goes back, at most twice. |
+| `--adversarial N` | Up to N times, while under `--budget-fraction` (0.5) of the time and spend limits, the run goes back to write at least three tests that try to break the solution on stated requirements. |
+| `--oracle` | Before the loop, a separate session (`--oracle-steps`, 8) sees only the task and the environment and writes checks under `/tmp/oracle/` from the task's statement and provided files, before any solution exists. Checks that already pass on the untouched workspace are dropped; the rest are frozen with the model's tests as `oracle-*.sh`, so a failing one blocks the finish like any frozen test, and Jev's dispute can drop one it judges wrong. |
+
+`cargo run -p microcoder --example gate_replay -- RUN_DIR...` asks the
+Jev-backed checks about the end states of retained runs, with no model
+call. Measured on four development tasks with GPT-6 Luna, all of them
+together passed 0 of 8 against the baseline's 0 of 8 at 3.0 times the cost,
+so none is on for Round 2; the
+[Round 2 loop report](../../terminal-bench/2026-09-26-round2-loop.md) has
+what each check did.
+
 ## Limits
 
 | Option | Default | What it bounds |
@@ -207,8 +233,33 @@ run, and so do three replies in a row that don't match the schema.
 
 - `--model SLUG` and `--effort low|medium|high`: the generating model,
   `gpt-6-luna` at medium effort by default.
-- `--provider codex|openrouter`: how the model is reached. `codex`, the
-  operator's Codex login, is the default; `openrouter` is the earlier path.
+- `--provider codex|openrouter|door`: how the model is reached. `codex`,
+  the operator's Codex login, is the default; `openrouter` is the earlier
+  path. `door` is the OpenAgents door, `https://openagents.com/v1/responses`
+  (`OPENAGENTS_DOOR_URL` overrides it), on the bearer in
+  `OPENAGENTS_API_KEY` or `~/.openagents/bearer`; name a gateway model,
+  such as `--model google/gemini-3.8-flash`. It sends the same request and
+  tool as the Codex path. The door reports each call's cost as
+  `cost_microusd`, so the model's `cost_basis` is `billed`; for Gemini 3.8
+  Flash that figure equals $0.75 per million input and $3.75 per million
+  output tokens. A reply without a reported cost leaves the cost unknown.
+- `--provider vertex`: Vertex AI's OpenAI-compatible endpoint at location
+  `global` (`VERTEX_BASE_URL` overrides it), for the open models Google
+  serves as managed APIs, such as `--model openai/gpt-oss-120b-maas` or
+  `--model qwen/qwen3-coder-480b-a35b-instruct-maas`. The action comes
+  back as JSON under a strict `json_schema` response format, since
+  gpt-oss-120b refuses forced tool calls. The bearer is an OAuth access
+  token read before every call from `VERTEX_TOKEN_FILE` or
+  `~/.openagents/vertex-token` (mode 600), which the operator keeps fresh.
+  Vertex reports no cost, so the model's `cost_basis` is `list_price`: the
+  tokens at the rates in `crates/microcoder/src/vertex.rs`, taken from
+  Google's [Vertex AI pricing page](https://cloud.google.com/vertex-ai/generative-ai/pricing)
+  on 2026-09-26. Per million input and output tokens: gpt-oss-120b $0.09
+  and $0.36, Qwen3-Coder-480B-A35B-Instruct $0.22 and $1.80,
+  Kimi-K2-Thinking $0.60 and $2.50, GLM-5 $1.00 and $3.20, and
+  DeepSeek-V3.2 $0.56 and $1.68. Cached input is priced as uncached, so a
+  cost can only be overstated. A model without a price leaves the cost
+  unknown.
 - `--kb on|off|candidates`: the knowledge base, on by default.
   `--kb-lexical` ranks its entries by words alone.
 - `--route never|auto|always` and `--strong-model SLUG`: whether a

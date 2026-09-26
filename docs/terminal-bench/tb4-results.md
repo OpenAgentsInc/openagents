@@ -462,6 +462,15 @@ twice.
 
 Run records are under `~/.openagents/microcoder/runs/`.
 
+**Round 2 loop work (2026-09-26): no gain from ending checks.** Checks that
+send a green run back before it ends (requirement coverage, credibility,
+a numeric target, adversarial tests, and a blind oracle, each behind its
+own flag) passed 0 of 8 against the baseline's 0 of 8 on four development
+tasks with GPT-6 Luna, at 3.0 times the cost. Gemini 3.8 Flash and Vertex
+open models, tried during the Codex outage, passed nothing. The
+recommended Round 2 configuration is the Round 1 loop. See
+[Round 2 loop work](2026-09-26-round2-loop.md).
+
 ## Refresh the snapshot
 
 From `bench/terminal-bench` on the execution host:
