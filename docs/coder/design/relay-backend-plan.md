@@ -1,5 +1,11 @@
 # Relay backend plan: coder on `relay.openagents.com`
 
+Follow-on, 2026-09-26: the [agent labor integration plan](../../agents/market-infrastructure.md)
+brings market coordination back into the active roadmap. The exclusions below
+record the original relay extraction; they do not defer agent labor today.
+The current repository still needs a reviewed market specification, provider
+order lifecycle, and payment integration before it can advertise that support.
+
 Status: proposal. This document supersedes the HTTP-service direction in
 [`service-spec.md`](service-spec.md) — the backend is now our own Nostr
 relay, not a private HTTP service.

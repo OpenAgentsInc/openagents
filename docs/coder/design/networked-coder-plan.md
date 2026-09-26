@@ -12,6 +12,12 @@ design discussions in [episode 286](../../transcripts/286.md),
 [episode 288](../../transcripts/288.md). Those transcripts express product
 intent; their benchmark remarks are not substitutes for retained run records.
 
+Update: [episodes 213–215, 266, and 267](../../agents/market-infrastructure.md)
+add agent labor and market infrastructure to this plan. Agent labor is a
+high-priority parallel track: let independent operators earn Bitcoin for
+bounded coding jobs. It does not wait for every model or component to reach
+the top of a benchmark.
+
 ## The claim to earn
 
 Coder can become the best coding agent by combining reliable execution,
@@ -196,6 +202,38 @@ out-of-sample verified passes per adopted contribution**, with full marginal
 cost, latency, and harmful-regression rates. If that number does not rise as
 contributors and entries grow, the flywheel is not working.
 
+## Agent labor makes the network useful now
+
+The network needs buyers as well as contributors. Coder should be able to
+hire another operator's agent for a bounded repair, regression test, review,
+or investigation, and let its own operator offer that labor through a
+controlled **Go online** mode. Buyers specify deliverables and acceptance
+terms; providers quote price and capacity, return artifacts and evidence,
+and receive the agreed Bitcoin payment. The
+[agent labor plan](../../agents/market-infrastructure.md) defines the roles,
+missing implementation, recovery tests, and delivery order.
+
+This gives the knowledge network a source of useful experience. Accepted
+jobs can produce reusable components and licensed data when their owners
+permit it; better components can then improve later jobs. Pay the worker,
+data owner, and component author under separate agreements. A recorded use
+does not prove an entry caused a win or grant permission to share the trace.
+
+Start with real Coder work and named buyers. Episodes 213 and 214 describe
+GPUtopia's excess supply and subsidized demand; avoid repeating that result
+by treating provider signups as success. Measure repeat buyers, accepted jobs,
+provider net earnings, full buyer cost, and project subsidy. A successful
+labor market must deliver work the buyer values and earnings the provider
+can sustain. Providers can use any compatible executor that meets the
+contract, so the first market does not depend on Luna winning every task.
+
+Carry over the infrastructure principle from episodes 266 and 267: separate
+client, relay, provider, evaluator, and payment authority. Run the same client
+against independently operated providers and relays; retain accepted terms
+and reconcile uncertain work after outages. The relay delivers records;
+the buyer checks the agreed result. The existing relay and gateway billing
+do not yet implement this commercial lifecycle.
+
 ## Protocol responsibilities and present limits
 
 All documents under [`nips/openagents/`](../../../nips/openagents/README.md)
@@ -213,6 +251,13 @@ are draft contracts. Their existence is not evidence that every path is live.
 
 ## Delivery order and gates
 
+The table orders the coding-quality work. Build the agent-labor track
+alongside it, starting with a bounded issue-to-patch order, runnable provider,
+client acceptance, and a payment adapter. It uses the same retained evidence
+and host boundaries without waiting for stages 4–6. Its first milestone is
+a real buyer accepting an outside operator's result and that operator
+receiving the agreed payment, with recovery and receipts demonstrated.
+
 | Stage | Build and measure | Gate to advance |
 | --- | --- | --- |
 | 1. Make evidence comparable | Pin task images, graders, model targets, budgets, start/end clocks, component digests, and retained ATIF traces. Reconcile unknown cost and setup failures. Run a small mixed task panel with cheap and frontier baselines. | Every attempt, including failure and timeout, has a replayable record and an honest outcome; official and local runner differences are explicit. |
@@ -220,7 +265,7 @@ are draft contracts. Their existence is not evidence that every path is live.
 | 3. Prove an economical task loop | Compare Microcoder with KB off/on and with one controller change at a time on a predeclared unseen family. Include stronger-model escalation for tasks Luna cannot solve. Measure total cost per pass and wall time. | Quality is no worse than a declared baseline within uncertainty; at least one task family shows a repeatable cost or time gain. Keep a simple fallback policy for the remainder. |
 | 4. Prove knowledge transfer | Correct `written_from` provenance, evaluate admitted entries and candidate snapshots across new tasks and independent operators, and publish negative NIP-EVAL reports. Add private entries and curated pins after the local comparisons work. | At least two distinct out-of-source task families show a reproducible positive contribution without a material regression elsewhere. Current #9670 admission counts alone are too small for a global claim. |
 | 5. Package the useful parts | Materialize digest-pinned knowledge snapshots, program steps, Wasm plugins, and semantic AI implementations with local grants, conformance fixtures, revocation, and rollback. Use progressive discovery. | A second client can install, inspect, run, evaluate, and remove the same version without changing its authority or result semantics. |
-| 6. Optimize and scale | Run NIP-OPT studies over context selection, Jev question sets, routing, check selection, and program choice; confirm on protected partitions. Add COORD/RUN only when parallel work yields a measured gain. | A pinned policy improves whole-task results on independent cohorts and survives model/provider updates. Maintain a human-controlled adoption and rollback path. |
+| 6. Optimize and scale | Run NIP-OPT studies over context selection, Jev question sets, routing, check selection, and program choice; confirm on protected partitions. Add parallel optimization cohorts only when they yield a measured gain. Labor orders already require durable claims and recovery through COORD/RUN, including with one remote worker. | A pinned policy improves whole-task results on independent cohorts and survives model/provider updates. Maintain a human-controlled adoption and rollback path. |
 
 Use the four-tier fixture → retained replay → mini-task → pinned cohort ladder
 from the [component design](../../optimization/coder-components.md). Run cheap

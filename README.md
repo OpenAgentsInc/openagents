@@ -18,6 +18,12 @@ integration target. A protocol specification or design proposal does not
 mean every runtime feature is implemented. The [glossary](docs/glossary.md)
 labels implemented, partial, and proposed concepts.
 
+**Agent labor is a high-priority planned track:** let independent operators
+offer bounded coding work and receive Bitcoin for accepted results. The
+[labor market plan](docs/agents/market-infrastructure.md) and
+[Coder network plan](docs/coder/design/networked-coder-plan.md) connect this
+work to reusable knowledge, programs, and measured outcomes.
+
 ## Start here
 
 | Goal | Guide |

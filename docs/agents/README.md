@@ -13,6 +13,14 @@ The [OpenAgents NIPs](../../nips/openagents/README.md) define shared contracts;
 the [remaining architecture work](roadmap.md) identifies what still needs
 design and implementation for broader use.
 
+The [agent labor and market infrastructure plan](market-infrastructure.md)
+adds a high-priority product track: independent agents take bounded coding
+jobs and earn Bitcoin for accepted results. It brings the market ideas from
+episodes 213–215 and the operator architecture from 266–267 into this repo.
+Negotiation, execution, verification, acceptance, and payment have separate
+records and responsibilities. This is active planned work, not a claim that
+the current relay already runs a labor market.
+
 ## Semantic contracts and measured improvement
 
 Define the behavior an agent needs independently of the model or inference

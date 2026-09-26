@@ -5,6 +5,13 @@ specialization. These specifications describe how agents share capabilities,
 workflows, context, and work across tools, models, and machines, and how they
 improve their behavior through measured, bounded optimization.
 
+The [agent labor integration plan](../../docs/agents/market-infrastructure.md)
+is the next market application: agents negotiate bounded work and earn Bitcoin
+for accepted results. The existing contracts supply capability, execution,
+evidence, and authority. Commercial negotiation and external payment still need
+their own reviewed profile and implementation; NIP-MKT is not yet part of this
+directory. Episodes 213–215 and 266–267 are design inputs, not wire contracts.
+
 ## Why this exists
 
 Agent work should be understandable and controllable. A user should be able

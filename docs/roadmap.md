@@ -8,6 +8,15 @@ holds today, and proposes one ordered plan that folds the legacy threads into
 the current direction. Episode numbers are cited as "ep N". The transcripts are
 machine-generated, so quotes are approximate.
 
+Update, 2026-09-26: **agent labor is a high-priority track alongside Coder's
+core**, following the operator's direction and a fresh reading of episodes
+213–215 and 266–267. The [labor and market infrastructure plan](agents/market-infrastructure.md)
+replaces the blanket decision to park all five markets. It prioritizes paid,
+bounded coding work and independently operated providers. Compute and data
+support that work when useful; swaps, liquidity, and financial risk markets
+are not prerequisites. The [networked Coder plan](coder/design/networked-coder-plan.md)
+connects labor to shared knowledge, programs, and measured improvement.
+
 ## The vision this plan serves
 
 Episode 288 states it:
@@ -85,8 +94,9 @@ Every thread the archive opened, its state, and where it goes in this plan.
 | Pre-reset Coder evidence plugins (code search, git facts, repo maps, session search) | removed in `dabc08102f` | Deleted; the model never called them | **Revive as program steps** in phase 3, called by code, not offered to the model. |
 | Skills: monetized agent skills, the skills NIP, `tenancy::skills`, `.agents/skills/` | 199, 211, 212, 214 | A free, reviewed skill directory exists; "scoped skills" are designed but not connected | **Connect** in phase 3; payment follows phase 4's mechanism. |
 | Client plugins for Claude Code and Codex, and MCP servers (`oak-mcp`) | 165, 255 | Implemented for the decision API | **Kept** as adapters; a discovered MCP server grants nothing. |
-| Nostr: NIP-90 jobs, Nexus, NIP-28 and NIP-29, the Immortal relay, NIP-MKT, NIP-CJ, NIP-OPT, NIP-PRG, NIP-CAP, NIP-EXT | 200, 203, 209, 263, 266, 267, 287 | `relay.openagents.com` runs; NIP-CJ conversation jobs work; registries are files, not yet relay events | **Kept.** Publish the registries in phase 3; NIP-OPT in phase 4. NIP-90 stays deprecated. |
-| Bitcoin payments: Spark, then LDK, MoneyDevKit, L402, the Economy Kernel, the five markets | 201, 207, 212 to 216, 227, 230, 235 | No payment code in this repository; `tenancy::billing` bills callers, not contributors | **Phase 4**, scoped to paying contributors for accepted outcomes. The five markets stay parked. |
+| Nostr: NIP-90 jobs, Nexus, NIP-28 and NIP-29, the Immortal relay, NIP-MKT, NIP-CJ, NIP-OPT, NIP-PRG, NIP-CAP, NIP-EXT | 200, 203, 209, 263, 266, 267, 287 | Relay and CJ conversation/delegate paths exist; KB publish/sync exists; the negotiated-market stack was excluded from the relay import | **Active.** Reuse agent contracts and add the labor market profile. Review the historical NIP-MKT source before adopting it; keep new execution on the current CJ contract. |
+| Agent labor: idle agents doing paid coding work | 213 to 215, 266, 267 | Task intake, bounded delegation, supervision, and verification exist; no complete commercial order and payout path | **High priority now**, alongside the Coder core. Ship bounded jobs, provider availability, acceptance, recovery, and Bitcoin payouts. |
+| Bitcoin payments: Spark, then LDK, MoneyDevKit, L402, the Economy Kernel, the five markets | 201, 207, 212 to 216, 227, 230, 235 | Local monetary accounting and sandbox billing exist; no Bitcoin labor payout or contributor royalty implementation | **Labor payments now; component royalties in phase 4.** Reuse one payment adapter with distinct agreements and receipts for labor, licensed data, and component reuse. |
 | Compute: GPUtopia, Pylon, Psionic, Tassadar, Apple Silicon, the Foundation Models bridge | 201 to 238, 275 | Lev (Apple on-device model) is built; Pylon and Psionic are outside this repository | **Phase 5**, except System One on local models, which phase 2 can use through Lev. |
 | Verification and receipts: Economy Kernel, product promises, AssuranceSpec, Observer, ATIF traces, the Gym | 230, 234, 237, 252, 259, 272, 288 | ATIF, receipts, the Gym, the issue-flow evaluation set, truthful checks (#9584) | **The spine of every phase.** |
 | Forum, Moltbook, Shout, agent social network | 209, 212, 230, 231, 235, 275 | Not in this repository | **Parked** (phase 5). |
@@ -95,8 +105,36 @@ Every thread the archive opened, its state, and where it goes in this plan.
 
 ## The plan
 
-Each phase has exit criteria. A phase starts only when the one before it meets
-its exit criteria, except for work marked as preparation.
+Each phase has exit criteria. The core phases proceed in order; the agent
+labor track below runs alongside them. Its limited deliverables and explicit
+acceptance do not require Coder to solve every benchmark task first.
+
+### Agent labor: high priority now
+
+1. Take actual repository jobs with a named buyer, exact base, deliverable,
+   budget, deadline, and acceptance/rework terms. Support repair, regression
+   tests, review, and investigation.
+2. Ship a client and provider process. **Go online** offers only the scopes,
+   executors, slots, and resource limits the operator selects; **Pause** stops
+   new orders and accounts for accepted work. Isolate buyer work from the
+   provider's private files, credentials, and payment authority.
+3. Bind signed offers, quotes, and orders to retained execution, artifacts,
+   verification, and buyer acceptance. Prove cancellation, restart, duplicate
+   handling, and relay/provider outages with a no-spend rehearsal.
+4. Add Bitcoin payment for accepted work under the agreed terms. Test the
+   payment adapter's confirmations, unknown states, refunds, and recovery
+   before using it for real payouts. Worker compensation does not wait for
+   a complete royalty or data marketplace.
+5. Count real demand: repeat buyers, accepted jobs, provider net earnings,
+   total cost, and sponsored spend. Publish or sell a run's lessons only
+   under its owner's consent and license; source tasks cannot validate their
+   own contributions.
+
+**Exit:** an outside operator completes a real buyer's coding job, the buyer
+accepts the result, and the operator receives the agreed Bitcoin payment.
+The history survives a restart, and the same client works across independent
+providers and relays. The [implementation stages](agents/roadmap.md#priority-agent-labor)
+identify the missing pieces.
 
 ### Phase 0: an honest ledger (now, days)
 
@@ -185,7 +223,9 @@ host, by digest, from the relay.
 
 ### Phase 4: pay the contributors (after phase 3)
 
-This is where the oldest promise gets delivered, once, and narrowly.
+This extends labor payments to authors of reused components and addresses
+the older revenue-share promises. The first paid labor jobs do not wait for
+this phase.
 
 1. **One payment mechanism**: a receipt shows which published programs,
    modules, and skills an accepted outcome used; a Lightning payout pays their
@@ -201,22 +241,25 @@ This is where the oldest promise gets delivered, once, and narrowly.
 
 **Exit:** a month of payouts to outside authors, each traceable to receipts.
 
-### Phase 5: the parked markets (only on demand)
+### Phase 5: other markets and products (only on demand)
 
-Compute (Pylon, Psionic, Tassadar), the five markets, NIP-MKT swaps, the
-Agent Forge, the forum, and the games return only when a phase 2 to 4 product
-creates demand for them, stated in an issue with the measurement that shows
-it. Each one gets its own pre-registered test, the same as a Coder policy.
+The broad compute platform (Pylon, Psionic, Tassadar), liquidity and financial
+risk markets, the Agent Forge, the forum, and the games need their own demand
+and evidence. Agent labor is already active above; small compute, evaluation,
+storage, or licensed-data services may support it without waiting for a broad
+platform. Swap infrastructure is outside the current labor plan. Each added
+service needs an issue and a predeclared test of its value to buyers.
 
 ## What not to do
 
 - Don't start a new product name or brand. The product is Coder, the lab is
   OpenAgents.
 - Don't reopen the language or runtime.
-- Don't build a marketplace, a market, or a payout before something calls
-  what it sells.
-- Don't route to or escalate toward stronger models as the plan; the Luna
-  pivot holds until its evidence says otherwise, and each gap is logged.
+- Ground the labor market in useful buyer jobs; distinguish funded trials
+  from repeat outside demand before recruiting supply at scale.
+- Measure model routing and escalation against whole-task outcomes. Keep
+  Luna's quality and cost claims testable while allowing labor providers to
+  use any admitted executor that satisfies their agreed delivery contract.
 - Don't announce a result before its pre-registered test says so.
 
 ## Sources

@@ -10,6 +10,24 @@ Protocol schemas use v1. Implement only supported roles and advertise them
 after conformance is demonstrated. A declared interface does not establish
 host enforcement or domain readiness.
 
+## Priority: agent labor
+
+The [agent labor plan](market-infrastructure.md) is a high-priority track
+alongside Coder's quality work. These local planning IDs are not GitHub issues.
+
+| ID | Work | Completion evidence |
+| --- | --- | --- |
+| `LABOR-1` | Pin the historical market sources and define the minimum labor profile: offering, private quote, accepted order, deliverable, rework, cancellation, and acceptance terms. Reconcile it with CAP/CJ/COORD/RUN/POL/EVAL. | Schemas and fixtures bind task/base, parties, exact terms, bounds, and outcome identities; no event-kind or authority conflict. |
+| `LABOR-2` | Ship client intake and a bounded provider process with Go online/Pause controls, isolated job execution, retained patches/tests/traces, and acceptance review. | Two independent operators complete real repository jobs in a no-spend rehearsal; a compatible non-Coder executor can participate. |
+| `LABOR-3` | Demonstrate restart, relay replacement, duplicate dispatch protection, cancellation, and uncertain-result reconciliation. | Two relay operators, worker crashes, late replies, stale bases, and unavailable buyers produce correct terminal or unknown states without repeated effects. |
+| `LABOR-4` | Add an explicit Bitcoin payment adapter and agreed refund/dispute behavior. Keep worker compensation distinct from component royalties and licensed data. | A real outside operator receives payment for an accepted buyer job; confirmation, duplicate payment, timeout, and recovery cases retain exact receipts and liabilities. Test the rail before live use. |
+| `LABOR-5` | Measure demand and provider economics, with sponsored work labeled. Connect consented outcomes to KB/EXT/OPT improvement. | Report repeat buyers, accepted jobs, total buyer cost, provider net earnings, subsidies, independent operators, and gains on tasks outside contribution sources. |
+
+Compute and data services can support this labor market when demand exists.
+Swap infrastructure, liquidity markets, and financial risk products are not
+prerequisites. The general contract work below proceeds where these actual
+consumers need it.
+
 ## Required architecture
 
 | Area | Contract | Required implementation |
@@ -37,8 +55,9 @@ host enforcement or domain readiness.
 | `EVAL-1` — with each profile | Gym/domain evaluator: add matched non-code task suites, adverse outcomes, and human-escalation accounting. | Report evidence quality, accepted output, wrong destinations, confirmed effects, refusals, unknowns, latency, and full cost. No transfer of coding calibration without new evidence. |
 | `CONTROL-1` — before physical control | Specialized host/profile design: establish timing, units, interlocks, confirmation, and an independent stop mechanism for a concrete device. | Demonstrate required behavior under missed deadlines, disconnects, stale observations, and failed commands. Generic deadlines, approval signatures, and actuator descriptions alone do not establish physical-control suitability. |
 
-The first implementation milestone is `GEN-1` through `GEN-3` plus `EVAL-1`
-for research. `FX-1` can validate external mutation semantics with a mock
+The research-profile milestone is `GEN-1` through `GEN-3` plus `EVAL-1`;
+it does not block `LABOR-1` through `LABOR-5`. `FX-1` can validate external
+mutation semantics with a mock
 service before enabling any real account changes. The remaining designs should
 be driven by a concrete profile and a consumer, not by adding unused event kinds.
 
