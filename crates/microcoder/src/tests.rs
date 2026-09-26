@@ -60,6 +60,8 @@ struct Jev {
     contradicts: f64,
     /// Every coverage answer.
     uncovered: f64,
+    /// The answer to `progress` each step, when set.
+    progress: Option<f64>,
     relevance: Vec<(&'static str, f64)>,
     /// The id of every question set asked.
     asked: RefCell<Vec<String>>,
@@ -71,6 +73,7 @@ fn jev(hard: f64) -> Jev {
         wrong: 0.1,
         contradicts: 0.1,
         uncovered: 0.1,
+        progress: None,
         relevance: Vec::new(),
         asked: RefCell::new(Vec::new()),
     }
@@ -107,7 +110,11 @@ impl Judge for Jev {
                 })
                 .collect()
         } else {
-            vec![("done".to_string(), 0.3)]
+            let mut answers = vec![("done".to_string(), 0.3)];
+            if let Some(p) = self.progress {
+                answers.push(("progress".to_string(), p));
+            }
+            answers
         };
         Judgment {
             answers,
@@ -844,4 +851,21 @@ async fn uncovered_requirements_prompt_new_tests_that_a_later_freeze_adds() {
         .filter(|e| matches!(e, Event::Covered { .. }))
         .count();
     assert_eq!(covered, 2);
+}
+
+#[tokio::test]
+async fn passing_tests_dont_end_a_run_that_is_still_making_progress() {
+    let script = Script::new(vec![Ok(freeze("write tests", &["fix b"]))]);
+    let jev = Jev {
+        progress: Some(0.9),
+        ..jev(0.1)
+    };
+    let limits = Limits {
+        max_steps: Some(30),
+        ..Limits::default()
+    };
+    let (_, outcome, _, _) = go_with(&script, &limits, &jev, None).await;
+    // Not at 6 passing steps; only at three times that.
+    assert_eq!(outcome.ending, Ending::TestsHeld);
+    assert_eq!(outcome.steps, 18);
 }

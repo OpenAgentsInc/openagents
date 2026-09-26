@@ -167,8 +167,9 @@ pub enum Ending {
     /// The model kept saying it was finished while acceptance tests failed
     /// or before any were frozen.
     Unaccepted,
-    /// Every frozen test passed for [`Limits::green_stop`] steps in a row
-    /// and the model still didn't finish.
+    /// Every frozen test passed for [`Limits::green_stop`] steps in a row,
+    /// Jev judged the last step made no progress, and the model still didn't
+    /// finish; or the tests held three times that long.
     TestsHeld,
 }
 
@@ -836,6 +837,8 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut green = 0usize;
     // The number of frozen tests when Jev last judged their coverage.
     let mut covered_at = 0usize;
+    // Whether Jev's latest coverage answer found an unchecked requirement.
+    let mut uncovered_open = false;
     // Steps in a row each frozen test has failed, and the tests Jev already
     // checked for being stuck.
     let mut failing_for: std::collections::HashMap<String, usize> = Default::default();
@@ -893,6 +896,12 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
         }
         let judgment = models.judge.judge(models.set, &jev_state(&state)).await;
         jev_usd += judgment.usd;
+        // Jev's answer to whether the last step made progress.
+        let last_progress = judgment
+            .answers
+            .iter()
+            .find(|(id, _)| id == "progress")
+            .map(|(_, p)| *p);
         let jev_text = judgment.render(models.set);
         observer.event(
             started.elapsed().as_secs_f64(),
@@ -1150,6 +1159,7 @@ row, so they were dropped: {}.",
         if all_pass && covered_at != state.tests.len() {
             covered_at = state.tests.len();
             let (judgment, uncovered) = coverage(models.judge, &state).await;
+            uncovered_open = uncovered;
             jev_usd += judgment.usd;
             observer.event(
                 started.elapsed().as_secs_f64(),
@@ -1171,10 +1181,13 @@ and fix what they find before finishing."
             }
         }
         if all_pass && !action.finished {
-            if green >= limits.green_stop {
+            // End only a run that has also stopped making progress, or one
+            // that has held far past the limit.
+            let stalled = last_progress.is_none_or(|p| p < 0.5);
+            if green >= limits.green_stop && (stalled || green >= 3 * limits.green_stop) {
                 break Ending::TestsHeld;
             }
-            if green >= limits.green_nudge {
+            if green >= limits.green_nudge && !uncovered_open {
                 state.notes.push(format!(
                     "Every acceptance test has passed for {green} steps in a row. Set finished to \
 true now, unless you can name a specific requirement of the task that no test covers; then \
