@@ -46,7 +46,7 @@ not automatically running in another agent.
 | 2 | [Durable execution owner, #9673](https://github.com/OpenAgentsInc/openagents/issues/9673), then [Microcoder adapter, #9674](https://github.com/OpenAgentsInc/openagents/issues/9674): M3/M4 | **Next; unassigned.** Depends on the inbox and remaining M2 contract. | First exercise a bounded executor fixture through the owner and shared supervisor/boundary, including uncertain-effect recovery. Then admit the Microcoder adapter. |
 | 3 | [Evidence and views, #9675](https://github.com/OpenAgentsInc/openagents/issues/9675): M5 | **Next; unassigned.** Depends on stable journal identities and event semantics. | A new reader reconstructs task state and pages complete retained evidence without the writer's memory. Missing, truncated, or inaccessible evidence stays visible. |
 | 4 | [Independent completion and context, #9676](https://github.com/OpenAgentsInc/openagents/issues/9676): M6 | **Next; unassigned.** Depends on executor and evidence integration. | The exact candidate has a versioned requirement/check record; a model's finish, changed tests, or an exit code cannot create verified success. |
-| Parallel | [Knowledge evidence integrity, #9677](https://github.com/OpenAgentsInc/openagents/issues/9677): M6a, supporting [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670) | **Partial; no new implementation claim here.** Existing retrieval, contribution, and relay sharing are shipped. | Complete attempt intake, exact entry/configuration identities, unknown cost accounting, source-separated confirmation, and uncertainty before stronger admission claims. |
+| Parallel | [Knowledge evidence integrity, #9677](https://github.com/OpenAgentsInc/openagents/issues/9677): M6a, following closed [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670) | **Partial; no new implementation claim here.** Existing retrieval, contribution, and relay sharing are shipped. | Complete attempt intake, exact entry/configuration identities, unknown cost accounting, source-separated confirmation, and uncertainty before stronger admission claims. |
 | Parallel | [Mobile feasibility, #9678](https://github.com/OpenAgentsInc/openagents/issues/9678): M1; [free labor, #9679](https://github.com/OpenAgentsInc/openagents/issues/9679): M18; generic host packaging fixtures: M11/M12 | **Queued; unassigned.** These can begin before the full task runtime finishes. | Narrow public prototypes and explicit findings that inform shared contracts; no device, OS, or market release claim from prototypes. |
 
 The inbox's [usage guide](guides/tasks.md), [source](../../crates/coder/src/task.rs),
@@ -70,15 +70,16 @@ separately scoped, frozen studies.
 | Existing durable records | [Program run state](../../crates/coder/src/runstate.rs), reconciliation, and [project supervision](guides/project-supervision.md). | Reuse the established separation of execution, verification, acceptance, and integration. These are not already a complete cross-client SESS owner. |
 | Traces and evaluation | [ATIF traces](runtime/traces.md), [Gym](../gym/), and [Terminal-Bench results](../terminal-bench/README.md). | Shared task identities, complete artifact closure, replayable views, cost completeness, and fault/recovery evidence. A trace is evidence of recorded events, not permission to replay effects. |
 | Microcoder | [Current guide](guides/microcoder.md), [source](../../crates/microcoder/), and closed [#9666](https://github.com/OpenAgentsInc/openagents/issues/9666)–[#9669](https://github.com/OpenAgentsInc/openagents/issues/9669). | General repository admission, shared enforcement and cancellation, durable checkpoints, task-view integration, and independent completion. Keep existing benchmark execution distinct from this product integration. |
-| Knowledge | [Knowledge guide](guides/knowledge-base.md), [design](design/knowledge-base.md), [source](../../crates/knowledge/), and open [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670). | Exact prospective evidence, private entries, curated packages, OPT studies, and independently demonstrated transfer. Do not rebuild already shipped retrieval, harvesting, publication, or withdrawal. |
+| Knowledge | [Knowledge guide](guides/knowledge-base.md), [design](design/knowledge-base.md), [source](../../crates/knowledge/), and closed [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670). | Exact prospective evidence (M6a, #9677); private entries, curated packages, and OPT studies (M16); independently demonstrated transfer (M19). Do not rebuild already shipped retrieval, harvesting, publication, or withdrawal. |
 | Extensions | [Wasm host and evidence guests](../extensions/plugins.md), local programs, and capability trust. | Complete package distribution, compatibility, host activation, rollback, and measured adoption. Installation must remain inert. |
 | Nostr | [Protocol coverage audit](../protocol/2026-09-26-nip-implementation-coverage.md), relay, contract validators, private artifacts, and existing CJ/KB transports. | Persistent application services for sessions, device control, workspace views, environments, automation, and labor. Pure validation and relay acceptance do not establish those services. |
 | Accounts and optional hosting | [Gateway and tenancy](../decision-models/service/gateway.md). | Bind hosted task owners and workers to their own authorization, isolation, export, and recovery contracts. Local use must not depend on a hosted account. |
 
 The migration does not reopen the completed Microcoder implementation issues
-or treat an older design's missing-feature list as current fact. For #9670,
-the issue's successive updates distinguish shipped sharing from remaining
-evidence. The reported same-task knowledge improvements remain in-sample;
+or treat an older design's missing-feature list as current fact. #9670 closed
+with retrieval, contribution, and sharing shipped; its
+[closing comment](https://github.com/OpenAgentsInc/openagents/issues/9670#issuecomment-5846779833)
+maps the remainder to M6a, M16, and M19. The reported same-task knowledge improvements remain in-sample;
 they do not establish the unseen-work contribution gate in M19.
 
 ## Complete work-package ledger
@@ -94,7 +95,7 @@ queue says otherwise, ownership is unassigned.
 | --- | --- | --- |
 | **M0 — Public migration fixtures** | **Partial; #9672 supplies inbox fixtures.** Source review and dispositions exist; full suite scenarios remain incomplete. | Turn the assessment's behaviors into fresh public fixtures: task admission, duplicate commands, disconnected views, revoked control, failed checks, and uncertain effects. Record provenance and the owner of each acceptance scenario. Keep private code, prompts, endpoints, credentials, and customer history out of fixtures. |
 | **M1 — Mobile and rendering feasibility** | **Queued, [#9678](https://github.com/OpenAgentsInc/openagents/issues/9678).** Can proceed alongside M2. | Build a minimal shared Rust task-view fixture for iOS and Android; evaluate desktop and Rust web presentation. Retain actual input/IME, secure storage, lifecycle, accessibility, and long-trace results. Resolve any required platform-language exception explicitly; the existing Swift exception covers only Lev. A simulator or host build does not prove device acceptance. |
-| **M2 — Runtime contract** | **Partial, local inbox subset M2a shipped in [#9672](https://github.com/OpenAgentsInc/openagents/issues/9672).** M0 supplies public fixtures. | Define exact task/input/workspace/configuration identity, typed command dispositions, ownership epochs, grants, budgets, artifacts, and adapter capabilities. Separate queue/steer/interrupt, elicitation/approval, and completion/verification/integration. Test duplicate identity with changed inputs and unsupported effective configuration. The first store does not finish every contract in this row. |
+| **M2 — Runtime contract** | **Partial, local inbox subset M2a shipped in [#9672](https://github.com/OpenAgentsInc/openagents/issues/9672); the owner-facing remainder is in [#9673](https://github.com/OpenAgentsInc/openagents/issues/9673)'s scope.** M0 supplies public fixtures. | Define exact task/input/workspace/configuration identity, typed command dispositions, ownership epochs, grants, budgets, artifacts, and adapter capabilities. Separate queue/steer/interrupt, elicitation/approval, and completion/verification/integration. Test duplicate identity with changed inputs and unsupported effective configuration. The first store does not finish every contract in this row. |
 
 ### Phase 1: one durable local task
 
@@ -104,7 +105,7 @@ queue says otherwise, ownership is unassigned.
 | **M4 — Microcoder host adapter** | **Next, [#9674](https://github.com/OpenAgentsInc/openagents/issues/9674).** M2, M3. | Admit ordinary repository tasks through the shared task contract. Replace direct effect paths with the common read/write boundary, supervisor, output caps, cancellation, accounting, and trace sink. Check local and container paths independently, including descendant processes, oversized reads, symlink escape, timeout, and partial output. |
 | **M5 — Evidence and views** | **Next, [#9675](https://github.com/OpenAgentsInc/openagents/issues/9675).** M3. | Bind original trace events, exact artifacts, decisions, requested/effective settings, usage, and outcomes to the task. Implement stable reduction, bounded paging, explicit gaps, and ATIF/Gym joins. A reader starting with no old process state reconstructs the same result and sees missing costs or evidence as unknown. |
 | **M6 — Acceptance and context** | **Next, [#9676](https://github.com/OpenAgentsInc/openagents/issues/9676).** M4, M5. | Retain versioned requirements, checks, their authority, test additions/removals/disputes, scoped instructions, source captures, and recipient-specific context. Independent checks bind the exact candidate and base. A false-green candidate, a withdrawn test, or Jev's judgment cannot become verified success by itself. |
-| **M6a — Knowledge evidence integrity** | **Partial; [#9677](https://github.com/OpenAgentsInc/openagents/issues/9677) is unclaimed.** Current knowledge/Gym code; coordinate with #9670. | Keep unreadable summaries, failed attempts, missing costs, exact entry digests, exposure, and full configuration identity in reports. Distinguish retrospective screening from prospective randomized or paired studies. Exclude development provenance, report uncertainty, and prevent omissions from improving admission results. |
+| **M6a — Knowledge evidence integrity** | **Partial; [#9677](https://github.com/OpenAgentsInc/openagents/issues/9677) is unclaimed.** Current knowledge/Gym code; follows closed #9670. | Keep unreadable summaries, failed attempts, missing costs, exact entry digests, exposure, and full configuration identity in reports. Distinguish retrospective screening from prospective randomized or paired studies. Exclude development provenance, report uncertainty, and prevent omissions from improving admission results. |
 
 Phase 1 ends when terminal and headless use one admitted task owner with a
 real executor and retained independent checks. A working task-management
@@ -206,10 +207,11 @@ they are not missing or implicitly assigned. An issue is useful when it can name
 reviewable result, owned paths, concrete tests, and a closure condition. Avoid
 creating one enormous “port Coder” issue whose state hides unfinished apps.
 
-The existing [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670)
-continues to track shared knowledge. Link its evidence-integrity and package
-follow-ups rather than creating a second retrieval implementation. An issue
-being open does not imply every original requirement is still missing.
+[#9670](https://github.com/OpenAgentsInc/openagents/issues/9670) delivered
+shared knowledge retrieval, contribution, and Nostr sharing and is closed.
+Knowledge follow-ups belong to #9677 (M6a), M16, and M19; do not create a
+second retrieval implementation. An issue being open does not imply every
+original requirement is still missing.
 
 For every new implementation slice:
 
