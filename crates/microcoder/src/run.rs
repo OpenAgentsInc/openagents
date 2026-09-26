@@ -24,10 +24,19 @@ use crate::state::{Action, CommandResult, State, cut};
 pub const SYSTEM: &str = "You work on a task by running shell commands in its working \
 directory. Each reply is one step: the commands to run next and why. You see the task, the \
 environment, what earlier steps ran and printed, and judgments from Jev, a decision model, \
-about the state. Treat Jev's judgments as evidence, not orders. Commands run in order with sh -c \
-and stop at the first one that fails; nobody answers questions, and there is no editor. Write \
-files with shell redirection or heredocs. Set `finished` to true, with no commands, only when \
-the task is complete.";
+about the state. Treat Jev's judgments as evidence, not orders. Each command is a bash script, \
+run in order in the working directory and fed to bash as written, so never wrap it in sh -c or \
+bash -c. Commands stop at the first one that fails; nobody answers questions, and there is no \
+editor, so write files with heredocs. The Files section shows, in full, the current contents of \
+every path you list in `view`: keep the files you need there instead of printing them with cat, \
+and you'll see them after each step's commands run. Set `finished` to true, with no commands, \
+only when the task is complete.";
+
+/// Files kept in view, at most.
+pub const VIEW_FILES: usize = 12;
+
+/// Characters of all files in view together, at most.
+pub const VIEW_CHARS: usize = 120_000;
 
 /// The default user prompt.
 pub const USER_PROMPT: &str = "Solve this task.";
@@ -110,9 +119,10 @@ pub struct Outcome {
 #[must_use]
 pub fn prompt(state: &State, user_prompt: &str, jev: &str) -> String {
     let mut out = format!(
-        "# Task\n\n{}\n\n# Instruction\n\n{user_prompt}\n\n# Environment\n\n{}\n\n# Jev's judgments of the current state\n\n{jev}\n\n# Steps so far\n\n{}",
+        "# Task\n\n{}\n\n# Instruction\n\n{user_prompt}\n\n# Environment\n\n{}\n\n# Files in view\n\n{}\n\n# Jev's judgments of the current state\n\n{jev}\n\n# Steps so far\n\n{}",
         state.task,
         state.environment,
+        state.render_files(),
         state.render_actions()
     );
     if !state.notes.is_empty() {
@@ -130,6 +140,7 @@ fn jev_state(state: &State) -> serde_json::Value {
         "task": cut(&state.task, 6_000, 0),
         "environment": cut(&state.environment, 1_500, 0),
         "actions": cut(&state.render_actions(), 4_000, crate::models::JEV_STATE_CHARS - 4_000),
+        "files_in_view": state.files.iter().map(|(path, _)| path.clone()).collect::<Vec<_>>(),
     })
 }
 
@@ -138,6 +149,29 @@ pub struct Models<'a, G: Generate, J: Judge> {
     pub generator: &'a G,
     pub judge: &'a J,
     pub set: &'a QuestionSet,
+}
+
+/// Reads the files the model keeps in view: the first [`VIEW_FILES`]
+/// distinct paths, within [`VIEW_CHARS`] together.
+async fn read_view<E: Env>(env: &E, paths: &[String]) -> Vec<(String, Option<String>)> {
+    let mut seen = Vec::new();
+    let mut files = Vec::new();
+    let mut total = 0usize;
+    for path in paths {
+        let path = path.trim().to_string();
+        if path.is_empty() || seen.contains(&path) || seen.len() >= VIEW_FILES {
+            continue;
+        }
+        seen.push(path.clone());
+        let contents = env.read(&path).await.map(|text| {
+            let room = VIEW_CHARS.saturating_sub(total);
+            let kept = cut(&text, room, 0);
+            total += kept.chars().count();
+            kept
+        });
+        files.push((path, contents));
+    }
+    files
 }
 
 /// Runs the loop until the model finishes or a limit stops it.
@@ -236,6 +270,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             results,
             skipped,
         });
+        state.files = read_view(env, &action.view).await;
         if action.finished && !failed {
             break Ending::Finished;
         }

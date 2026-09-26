@@ -83,6 +83,9 @@ pub trait Judge {
 pub struct NextAction {
     pub rationale: String,
     pub commands: Vec<String>,
+    /// Files to show in full in the next step's prompt.
+    #[serde(default)]
+    pub view: Vec<String>,
     pub finished: bool,
 }
 
@@ -99,14 +102,19 @@ pub fn next_action_schema() -> Value {
             "commands": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Shell commands to run in order, each with sh -c in the working directory. Empty when finished."
+                "description": "Bash scripts to run in order in the working directory, each written as is: never wrapped in sh -c or bash -c. Empty when finished."
+            },
+            "view": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Paths of files to show in full in the next step's Files section. The host reads them fresh after the commands run. List every file you need to see or edit, and drop the ones you no longer need; don't cat them. At most 12."
             },
             "finished": {
                 "type": "boolean",
                 "description": "True only when the task is complete and nothing is left to run."
             }
         },
-        "required": ["rationale", "commands", "finished"],
+        "required": ["rationale", "commands", "view", "finished"],
         "additionalProperties": false
     })
 }
@@ -251,7 +259,7 @@ mod tests {
         let schema = next_action_schema();
         assert_eq!(
             schema["required"],
-            json!(["rationale", "commands", "finished"])
+            json!(["rationale", "commands", "view", "finished"])
         );
         assert_eq!(schema["additionalProperties"], false);
     }

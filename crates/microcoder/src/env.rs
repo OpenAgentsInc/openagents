@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
 use crate::state::{CommandResult, OUTPUT_HEAD, OUTPUT_TAIL, cut};
@@ -13,14 +13,23 @@ use crate::state::{CommandResult, OUTPUT_HEAD, OUTPUT_TAIL, cut};
 /// Bytes of a command's output read, at most. The rest is drained unread.
 pub const READ_MAX: usize = 1024 * 1024;
 
+/// Characters of one file a [`Env::read`] returns, at most.
+pub const FILE_MAX: usize = 40_000;
+
 /// A place commands run.
 pub trait Env {
-    /// Runs `command` with `sh -c`, stopping it at `deadline`.
+    /// Runs `command` as a bash script (sh when there's no bash), fed on
+    /// standard input so it needs no quoting, stopping it at `deadline`.
     fn run(
         &self,
         command: &str,
         deadline: Duration,
     ) -> impl std::future::Future<Output = CommandResult>;
+
+    /// A file's contents, up to [`FILE_MAX`] characters, or `None` when
+    /// there's no such file. A relative path is from the working
+    /// directory.
+    fn read(&self, path: &str) -> impl std::future::Future<Output = Option<String>>;
 }
 
 /// A local working directory.
@@ -36,10 +45,13 @@ pub struct Docker {
     pub workdir: String,
 }
 
+/// The shell a script runs under: bash when there is one.
+const SHELL: &str = "if command -v bash >/dev/null 2>&1; then exec bash -s; else exec sh -s; fi";
+
 impl Env for Local {
     async fn run(&self, command: &str, deadline: Duration) -> CommandResult {
         let mut child = Command::new("sh");
-        child.arg("-c").arg(command).current_dir(&self.dir);
+        child.arg("-c").arg(SHELL).current_dir(&self.dir);
         // The model's commands never see a key.
         for (name, _) in std::env::vars() {
             if name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET") {
@@ -48,34 +60,60 @@ impl Env for Local {
         }
         execute(child, command, deadline).await
     }
+
+    async fn read(&self, path: &str) -> Option<String> {
+        let text = std::fs::read(self.dir.join(path)).ok()?;
+        Some(cut(&String::from_utf8_lossy(&text), FILE_MAX, 0))
+    }
 }
 
 impl Env for Docker {
     async fn run(&self, command: &str, deadline: Duration) -> CommandResult {
-        // `timeout` inside the container ends the command itself; killing
+        // `timeout` inside the container ends the script itself; killing
         // `docker exec` alone would leave it running.
         let seconds = deadline.as_secs().max(1);
         let mut child = Command::new("docker");
         child.args([
             "exec",
+            "-i",
             "-w",
             &self.workdir,
             &self.container,
             "sh",
             "-c",
             &format!(
-                "if command -v timeout >/dev/null 2>&1; then exec timeout -k 5 {seconds} sh -c \"$0\"; else exec sh -c \"$0\"; fi"
+                "if command -v timeout >/dev/null 2>&1; then exec timeout -k 5 {seconds} sh -c '{SHELL}'; else {SHELL}; fi"
             ),
-            command,
         ]);
         execute(child, command, deadline + Duration::from_secs(10)).await
+    }
+
+    async fn read(&self, path: &str) -> Option<String> {
+        let output = Command::new("docker")
+            .args([
+                "exec",
+                "-w",
+                &self.workdir,
+                &self.container,
+                "cat",
+                "--",
+                path,
+            ])
+            .stdin(Stdio::null())
+            .output()
+            .await
+            .ok()?;
+        output
+            .status
+            .success()
+            .then(|| cut(&String::from_utf8_lossy(&output.stdout), FILE_MAX, 0))
     }
 }
 
 async fn execute(mut child: Command, command: &str, deadline: Duration) -> CommandResult {
     let started = Instant::now();
     child
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
@@ -91,10 +129,18 @@ async fn execute(mut child: Command, command: &str, deadline: Duration) -> Comma
             };
         }
     };
+    let stdin = process.stdin.take();
+    let script = format!("{command}\n");
+    let feed = async move {
+        if let Some(mut stdin) = stdin {
+            let _ = stdin.write_all(script.as_bytes()).await;
+            let _ = stdin.shutdown().await;
+        }
+    };
     let stdout = process.stdout.take();
     let stderr = process.stderr.take();
     let read = async {
-        let (out, err) = tokio::join!(read_capped(stdout), read_capped(stderr));
+        let ((), out, err) = tokio::join!(feed, read_capped(stdout), read_capped(stderr));
         let status = process.wait().await.ok();
         (out, err, status)
     };
@@ -108,7 +154,7 @@ async fn execute(mut child: Command, command: &str, deadline: Duration) -> Comma
                 text.push_str(&err);
             }
             let exit = status.and_then(|s| s.code());
-            // `timeout` exits 124 when it ends the command.
+            // `timeout` exits 124 when it ends the script.
             let timed_out = exit == Some(124);
             (text, exit, timed_out)
         }
@@ -163,6 +209,23 @@ mod tests {
         let failed = env.run("exit 3", Duration::from_secs(5)).await;
         assert_eq!(failed.exit, Some(3));
         assert!(!failed.ok());
+    }
+
+    #[tokio::test]
+    async fn a_script_with_quotes_and_a_heredoc_runs_as_written() {
+        let dir = std::env::temp_dir().join(format!("microcoder-env-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let env = Local { dir: dir.clone() };
+        let script = "cat > note.py <<'PY'\nprint(\"it's here\")\nPY\npython3 note.py";
+        let result = env.run(script, Duration::from_secs(10)).await;
+        assert!(result.ok(), "{}", result.output);
+        assert!(result.output.contains("it's here"));
+        assert_eq!(
+            env.read("note.py").await.as_deref(),
+            Some("print(\"it's here\")\n")
+        );
+        assert_eq!(env.read("missing.txt").await, None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

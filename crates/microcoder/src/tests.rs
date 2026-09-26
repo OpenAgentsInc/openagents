@@ -63,6 +63,10 @@ struct Fake {
 }
 
 impl Env for Fake {
+    async fn read(&self, path: &str) -> Option<String> {
+        (!path.starts_with("missing")).then(|| format!("contents of {path}"))
+    }
+
     async fn run(&self, command: &str, _deadline: Duration) -> CommandResult {
         self.ran.borrow_mut().push(command.to_string());
         let fails = command.starts_with("fail");
@@ -89,6 +93,7 @@ fn act(rationale: &str, commands: &[&str], finished: bool) -> NextAction {
     NextAction {
         rationale: rationale.to_string(),
         commands: commands.iter().map(|c| (*c).to_string()).collect(),
+        view: Vec::new(),
         finished,
     }
 }
@@ -204,4 +209,22 @@ async fn replies_that_miss_the_format_are_noted_then_stop_the_loop() {
     assert!(state.notes[0].contains("Step 1's reply couldn't be used"));
     let prompts = script.prompts.into_inner();
     assert!(prompts[1].contains("# Notes from the host"));
+}
+
+#[tokio::test]
+async fn files_in_view_appear_in_full_in_the_next_prompt() {
+    let mut first = act("read", &["ls"], false);
+    first.view = vec![
+        "a.py".to_string(),
+        "missing.txt".to_string(),
+        "a.py".to_string(),
+    ];
+    let script = Script::new(vec![Ok(first), Ok(act("done", &[], true))]);
+    let (state, _, _, _) = go(&script, &Limits::default()).await;
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[0].contains("# Files in view\n\nNone."));
+    assert!(prompts[1].contains("## a.py\n\n```\ncontents of a.py\n```"));
+    assert!(prompts[1].contains("## missing.txt\n\n(no such file)"));
+    // Duplicates are read once.
+    assert_eq!(state.files.len(), 2);
 }

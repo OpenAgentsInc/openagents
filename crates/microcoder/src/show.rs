@@ -123,6 +123,12 @@ impl Observer for Terminal {
                             "        {}",
                             self.paint("1;97", &format!("why: {}", action.rationale))
                         );
+                        if !action.view.is_empty() {
+                            println!(
+                                "        {}",
+                                self.paint("36", &format!("view: {}", action.view.join(", ")))
+                            );
+                        }
                         if action.finished {
                             println!("        {}", self.paint("1;32", "finished"));
                         }

@@ -51,6 +51,9 @@ pub struct State {
     pub actions: Vec<Action>,
     /// Notes from the host, such as a reply that didn't match the format.
     pub notes: Vec<String>,
+    /// The files the model keeps in view, read after its last action:
+    /// each path and its contents, or `None` when there's no such file.
+    pub files: Vec<(String, Option<String>)>,
 }
 
 /// The first `head` and last `tail` characters of `text`, with a line that
@@ -75,6 +78,22 @@ fn one_line(text: &str, max: usize) -> String {
 }
 
 impl State {
+    /// The files in view as the prompt shows them.
+    #[must_use]
+    pub fn render_files(&self) -> String {
+        if self.files.is_empty() {
+            return "None. List paths in `view` to see files here.".to_string();
+        }
+        self.files
+            .iter()
+            .map(|(path, contents)| match contents {
+                Some(text) => format!("## {path}\n\n```\n{}\n```", text.trim_end()),
+                None => format!("## {path}\n\n(no such file)"),
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
     /// The actions as the prompt shows them: the last [`RECENT`] in full,
     /// earlier ones one line each.
     #[must_use]

@@ -233,6 +233,13 @@ async fn go(options: Options) -> Result<u8, String> {
     };
     let (_, outcome) = outcome;
 
+    let saved = tbench::save_artifacts(&task, &env, &run_dir.join("artifacts")).await;
+    say(&format!(
+        "saved {} of {} output paths to {}",
+        saved.len(),
+        task.artifacts.len(),
+        run_dir.join("artifacts").display()
+    ));
     let verdict = tbench::verify(&task, &env, &network, &say).await;
     let tail: String = verdict
         .output

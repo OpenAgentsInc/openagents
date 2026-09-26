@@ -245,6 +245,30 @@ pub async fn start(
     }
 }
 
+/// Copies the task's artifacts out of the agent's container into `dir`, so
+/// a run can be graded again later. Returns the paths copied.
+pub async fn save_artifacts(task: &Task, agent: &Docker, dir: &Path) -> Vec<String> {
+    let _ = std::fs::create_dir_all(dir);
+    let mut saved = Vec::new();
+    for path in &task.artifacts {
+        let target = path.trim_end_matches('/');
+        let local = dir.join(target.trim_start_matches('/'));
+        if let Some(parent) = local.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let (ok, _) = docker(&[
+            "cp",
+            &format!("{}:{target}", agent.container),
+            &local.to_string_lossy(),
+        ])
+        .await;
+        if ok {
+            saved.push(target.to_string());
+        }
+    }
+    saved
+}
+
 /// Removes a container, ignoring one that's already gone.
 pub async fn remove(name: &str) {
     let _ = docker(&["rm", "-f", name]).await;
