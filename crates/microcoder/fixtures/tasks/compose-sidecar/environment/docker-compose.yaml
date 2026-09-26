@@ -1,0 +1,12 @@
+services:
+  db:
+    image: python:3.13-slim
+    command: ["sh", "-c", "mkdir -p /srv && printf pong-42 > /srv/ping && cd /srv && exec python -m http.server 8080"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/ping')"]
+      interval: 1s
+      retries: 30
+  main:
+    depends_on:
+      db:
+        condition: service_healthy

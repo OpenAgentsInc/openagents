@@ -43,6 +43,8 @@ pub struct Local {
 pub struct Docker {
     pub container: String,
     pub workdir: String,
+    /// The user commands run as; `None` is the image's user.
+    pub user: Option<String>,
 }
 
 /// The shell a script runs under: bash when there is one.
@@ -73,8 +75,11 @@ impl Env for Docker {
         // `docker exec` alone would leave it running.
         let seconds = deadline.as_secs().max(1);
         let mut child = Command::new("docker");
+        child.arg("exec");
+        if let Some(user) = &self.user {
+            child.args(["-u", user]);
+        }
         child.args([
-            "exec",
             "-i",
             "-w",
             &self.workdir,
@@ -89,16 +94,13 @@ impl Env for Docker {
     }
 
     async fn read(&self, path: &str) -> Option<String> {
-        let output = Command::new("docker")
-            .args([
-                "exec",
-                "-w",
-                &self.workdir,
-                &self.container,
-                "cat",
-                "--",
-                path,
-            ])
+        let mut command = Command::new("docker");
+        command.arg("exec");
+        if let Some(user) = &self.user {
+            command.args(["-u", user]);
+        }
+        let output = command
+            .args(["-w", &self.workdir, &self.container, "cat", "--", path])
             .stdin(Stdio::null())
             .output()
             .await

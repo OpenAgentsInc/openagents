@@ -29,7 +29,7 @@ microcoder embedding-drift-monitor
 
 The command finds the task under
 `~/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/`,
-starts its container, runs the loop, grades the result with the task's own
+starts its environment, runs the loop, grades the result with the task's own
 tests, and prints the reward beside Fable 5.1 low's median time and cost
 on the same task. Every step streams to the terminal: Jev's answers, the
 knowledge-base entries kept, the model's reason, each command's first lines,
@@ -79,6 +79,74 @@ reward, grader output, entries used, and frozen tests), and `artifacts/`
 Exit codes: 0 when the task's tests pass, 1 when they don't, 2 when the run
 couldn't start. `--check-grading` runs the task's reference solution
 instead of the loop, which checks that grading works at no model cost.
+
+### How a task's environment and grading run
+
+Microcoder runs a task the way Harbor does, since Harbor graded the Fable
+5.1 reference runs (issue
+[#9688](https://github.com/OpenAgentsInc/openagents/issues/9688)). Harbor
+0.22's Docker environment is the spec: `harbor/environments/docker/` and
+`harbor/trial/trial.py` in the `bench/terminal-bench` virtual environment.
+
+- **Compose.** Every task runs as a Docker Compose project named after the
+  run (`microcoder-<task>-<pid>`). Its `main` service is the agent's
+  container: the task's image, started with `sh -c "sleep infinity"` so
+  the image's own entrypoint still runs, with `[environment].env` set and
+  `/logs/verifier`, `/logs/agent`, and `/logs/artifacts` bind-mounted from
+  the host. A task's `environment/docker-compose.yaml` is layered on top,
+  so its services start beside `main` and are reachable by service name.
+  The loop's commands and the reference solution run in `main` as
+  `[agent].user`, in `[environment].workdir` or the image's working
+  directory.
+- **Images.** The agent's image is a kept `tbench-warm/<task>:environment-…`
+  image, the task's `docker_image`, or `microcoder-env/<task>`, built by
+  Compose from `environment/`. Builds have the network, retry once, and
+  stop at `build_timeout_sec`.
+- **Network.** `[agent].network_mode`, else `[environment]`'s
+  `network_mode` or older `allow_internet`, sets the agent's network;
+  `--network` overrides it. Without network access, a task without a
+  Compose file runs `main` with no network. A task with one puts `main` and
+  each service that doesn't choose its own network in one shared network
+  namespace on an internal network with no route out, as Harbor's egress
+  sidecar does: services reach each other on `localhost` and by name, and
+  nothing reaches the internet. An `allowlist` policy runs with the network
+  on, because Microcoder can't enforce a list.
+- **Separate verifier.** When `[verifier]` sets `environment_mode =
+  "separate"` or has an `environment`, the tests run in a second project,
+  `<run>-verify`, built from `tests/` (or a kept
+  `tbench-warm/<task>:tests-…` image). Its network is
+  `[verifier].network_mode`, else its own environment's: a
+  `[verifier.environment]` defaults to public, and without one the
+  verifier copies `[environment]`. Before it starts, the task's
+  `[[verifier.collect]]` commands run in the agent's services, and then
+  each artifact path (and `/logs/artifacts`) is copied from its service
+  into the verifier at the same path.
+- **Tests.** The tests run as `(/tests/test.sh) >
+  /logs/verifier/test-stdout.txt 2>&1`, as `[verifier].user` (or the
+  image's user), with `[verifier].env`, and stop at
+  `[verifier].timeout_sec` (600 seconds when unset).
+- **Reward.** Microcoder reads `/logs/verifier/reward.json` when it exists,
+  or else `reward.txt`, as Harbor does. From JSON, the reward is the
+  `reward` key, or the only key. An empty or unparsable file, a JSON file
+  with several keys and no `reward`, no file at all, or tests that ran past
+  their time limit leave the reward unknown, never 0. `summary.json`
+  records the reason in `reward_unknown_because`, and everything the file
+  held in `rewards`, and the terminal prints the reason.
+- **Teardown.** The run removes both projects' containers, networks, and
+  volumes (`docker compose down --volumes --remove-orphans`), unless
+  `--keep` leaves the agent's running.
+
+Not modeled yet: CPU and memory limits, artifact `exclude` patterns, a
+verifier network policy that differs from the agent's in a shared
+verifier, and multi-step tasks, which are refused.
+
+Two synthetic tasks under `crates/microcoder/fixtures/tasks/` check this
+end to end: `compose-sidecar` (a sidecar reached by name, with and without
+the network) and `separate-verifier` (a verifier image that installs a
+package at build time, a collect command, and `reward.json`). Run them with
+`cargo test -p microcoder -- --ignored fixture`, or run one with
+`MICROCODER_TASKS=crates/microcoder/fixtures/tasks microcoder
+compose-sidecar --check-grading`.
 
 ## What a step does
 
@@ -146,8 +214,9 @@ run, and so do three replies in a row that don't match the schema.
 - `--route never|auto|always` and `--strong-model SLUG`: whether a
   stronger model (`gpt-6-sol` by default) writes the acceptance
   tests. Off by default; the code stays for later measurement.
-- `--network NAME`: the container's Docker network. `bridge` by default,
-  and `none` for a task whose `task.toml` sets `allow_internet = false`.
+- `--network NAME`: the agent's network. `bridge` (network on) by default,
+  and `none` for a task whose `task.toml` gives the agent no network; see
+  [How a task's environment and grading run](#how-a-tasks-environment-and-grading-run).
 - `--prompt TEXT`, `--keep`, and `--check-grading`.
 
 ## Results

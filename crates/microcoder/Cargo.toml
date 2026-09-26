@@ -20,6 +20,7 @@ nostr = { path = "../nostr" }
 openrouter = { path = "../openrouter" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.9"
 tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "signal"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 

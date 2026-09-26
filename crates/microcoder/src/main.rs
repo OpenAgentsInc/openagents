@@ -221,7 +221,7 @@ async fn go(options: Options) -> Result<u8, String> {
     let network = options
         .network
         .clone()
-        .unwrap_or_else(|| if task.internet { "bridge" } else { "none" }.to_string());
+        .unwrap_or_else(|| task.agent_network.docker().to_string());
     let make = |model: &str| -> Result<AnyGenerator, String> {
         if options.provider == "openrouter" {
             let slug = if model.contains('/') {
@@ -374,27 +374,28 @@ async fn go(options: Options) -> Result<u8, String> {
             .collect::<Vec<_>>()),
     }));
 
-    let image = tbench::image(&task, &say).await?;
+    let image = tbench::image(&task, &say).await;
     let name = format!("microcoder-{}-{}", task.name, std::process::id());
-    let env = tbench::start(&image, &name, &network, &task.workdir).await?;
+    let env = tbench::start(&task, &image, &name, &network, &say).await?;
     say(&format!(
-        "container {name} is up; commands run in {}",
-        task.workdir
+        "container {} is up; commands run in {}",
+        env.container, env.workdir
     ));
 
     if options.check_grading {
         say("running the task's reference solution");
-        let solved = tbench::solve(&task, &env).await;
+        let solved = tbench::solve(&task, &env, &name).await;
         if let Err(error) = &solved {
             say(error);
         }
-        let verdict = tbench::verify(&task, &env, &network, &say).await;
+        if task.separate {
+            tbench::collect(&task, &name, &say).await;
+        }
+        let verdict = tbench::verify(&task, &env, &name, &say).await;
         println!(
             "grading check: reference solution {} · reward {}",
             if solved.is_ok() { "ran" } else { "failed" },
-            verdict
-                .reward
-                .map_or("unknown".to_string(), |r| format!("{r}"))
+            reward_text(&verdict)
         );
         if verdict.reward.is_none_or(|r| r < 1.0) {
             println!("{}", indent_block(&verdict.output));
@@ -429,14 +430,17 @@ async fn go(options: Options) -> Result<u8, String> {
     };
     let (end_state, outcome) = outcome;
 
-    let saved = tbench::save_artifacts(&task, &env, &run_dir.join("artifacts")).await;
+    if task.separate {
+        tbench::collect(&task, &name, &say).await;
+    }
+    let saved = tbench::save_artifacts(&task, &name, &run_dir.join("artifacts")).await;
     say(&format!(
         "saved {} of {} output paths to {}",
         saved.len(),
         task.artifacts.len(),
         run_dir.join("artifacts").display()
     ));
-    let verdict = tbench::verify(&task, &env, &network, &say).await;
+    let verdict = tbench::verify(&task, &env, &name, &say).await;
     let tail: String = verdict
         .output
         .lines()
@@ -465,9 +469,7 @@ async fn go(options: Options) -> Result<u8, String> {
     println!(
         "\n{} · reward {} · {} steps · {} · {total} (model {} {basis}, Jev {}, embeddings {}) · ended by {}{}",
         task.name,
-        verdict
-            .reward
-            .map_or("unknown".to_string(), |r| format!("{r}")),
+        reward_text(&verdict),
         outcome.steps,
         clock(outcome.seconds),
         dollars(outcome.model_usd, 4),
@@ -495,7 +497,9 @@ async fn go(options: Options) -> Result<u8, String> {
     let summary = serde_json::json!({
         "task": task.name, "model": options.model, "effort": options.effort,
         "outcome": outcome, "reward": verdict.reward, "verifier_output": verdict.output,
-        "container": name, "image": image,
+        "rewards": verdict.rewards, "reward_unknown_because": verdict.reason,
+        "container": name, "image": image, "compose": task.compose,
+        "verifier": if task.separate { "separate" } else { "shared" },
         "acceptance_tests": end_state.tests, "frozen_at": end_state.frozen_at,
         "test_results": end_state.test_results, "dropped_tests": end_state.dropped,
         "kb": options.kb, "kb_trust": options.kb_trust.mode.to_string(),
@@ -527,14 +531,23 @@ async fn go(options: Options) -> Result<u8, String> {
         run_dir.join("summary.json"),
         serde_json::to_string_pretty(&summary).unwrap_or_default(),
     );
-    record.write(&serde_json::json!({"event": "verified", "reward": verdict.reward}));
+    record.write(&serde_json::json!({"event": "verified", "reward": verdict.reward, "reward_unknown_because": verdict.reason}));
     println!("Record: {}", run_dir.display());
     if options.keep {
-        println!("The container {name} is still running (--keep).");
+        println!("The environment {name} is still running (--keep).");
     } else {
         tbench::remove(&name).await;
     }
     Ok(if passed { 0 } else { 1 })
+}
+
+/// The reward, or "unknown" with the reason.
+fn reward_text(verdict: &tbench::Verdict) -> String {
+    match (verdict.reward, &verdict.reason) {
+        (Some(reward), _) => format!("{reward}"),
+        (None, Some(reason)) => format!("unknown ({reason})"),
+        (None, None) => "unknown".to_string(),
+    }
 }
 
 fn terminal_line(text: &str) {

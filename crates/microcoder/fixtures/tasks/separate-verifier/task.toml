@@ -1,0 +1,15 @@
+# A synthetic Microcoder fixture: a separate verifier whose image installs a
+# package at build time, a collect command, and a reward.json.
+schema_version = "1.0"
+artifacts = ["/app/out/"]
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 60.0
+
+[[verifier.collect]]
+command = "if [ -f /app/out/result.txt ]; then cp /app/out/result.txt /app/out/collected.txt; fi"
+
+[environment]
+allow_internet = false
+build_timeout_sec = 300.0

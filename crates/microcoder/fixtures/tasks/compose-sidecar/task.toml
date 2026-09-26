@@ -1,0 +1,11 @@
+# A synthetic Microcoder fixture: the agent's main service and one sidecar.
+schema_version = "1.0"
+
+[verifier]
+timeout_sec = 60.0
+
+[environment]
+build_timeout_sec = 300.0
+
+[environment.env]
+GREETING = "hi"
