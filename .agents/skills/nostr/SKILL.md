@@ -34,6 +34,13 @@ relay is an implementation target for `crates/nostr` and
 until they run, and client-only NIPs are implemented as fixture-backed
 clients rather than pretended.
 
+Read the [September 26 upstream review](../../../docs/protocol/2026-09-26-upstream-nip-sync.md)
+before assuming current-pin support. The source collections are updated;
+the code ledgers retain old pins and their guards fail. New PMA kind 30179
+requires rejection until its gates exist; thread-bounds kind 39007 is
+relay-only but lacks the corresponding client rejection. NIP-78 privacy,
+RS snapshot/barrier guarantees, and PL delivery have pending work.
+
 Read the spec before the code. The files you need most often:
 
 - `nips/official/01.md` — the protocol: events, kinds, filters, and the
@@ -43,7 +50,7 @@ Read the spec before the code. The files you need most often:
 - `nips/official/11.md` — the relay information document.
 - `nips/official/40.md` — the `expiration` tag.
 - `nips/official/19.md` — `npub` and `nsec` encoding.
-- `nips/block/README.md` — a per-spec summary of all 15 Block NIPs.
+- `nips/block/README.md` — a per-spec summary of all 17 Block NIPs.
 - `nips/openagents/NIP-CJ.md` — Coder jobs, the protocol between `coder`
   and `coder-worker`.
 - `nips/openagents/NIP-CAP.md` — capability manifests and presence.

@@ -21,6 +21,27 @@ quality, a package cannot grant authority, and an optimizer cannot activate a
 candidate. General contracts require non-coding fixtures as well as coding
 examples.
 
+## Upstream obligations after the September 26 sync
+
+The [upstream assessment](2026-09-26-upstream-nip-sync.md) and its official and
+Block appendices identify the current source/implementation gaps. Complete
+these alongside the OpenAgents workstreams below; spec synchronization does
+not close them.
+
+| Order | Work | Completion evidence |
+| --- | --- | --- |
+| First | Reject reserved PMA 30179 and client-authored CW 39007; enforce deliberate NIP-78 author visibility. | Public ingress, restored records, history/live/COUNT/search/reconciliation, unrelated authenticated callers, and revocation tests. |
+| First | Separate source inventory from verified implementation revisions and partial/unsupported roles. | All current files accounted for without a kind-range assertion masquerading as feature conformance; both currently failing pin guards advance only with honest evidence. |
+| Next | Repair NIP-22 comments, NIP-84 highlight sources, NIP-02 petname paths, and NIP-86 allow/ban transactions. | New permitted inputs and unchanged negative cases; transaction and concurrent-management evidence. |
+| Next | Complete or disable incomplete PL delivery; implement RS atomic snapshot and CW thread modes as explicit roles. | Durable authority/outbox and current-membership proofs; atomic complete snapshots; bound thread pages, access refresh, deletion recovery, and accurate advertisements. |
+| Verify | NIP-01 zero-history subscriptions; NIP-29 example compatibility. | Real history-to-live lifecycle for zero and mixed limits; retained prefix validation. |
+| Product-dependent | AP adoption/session policy, 42/67 auth hints, 43/86 membership claims, comment emoji, A3 discovery, and FI. | A declared consumer/deployment, per-role fixtures, and no implied host, payment, or data-access authority. |
+
+PMA stays rejected until its staged privacy, CAS, backup/restore, and revocation
+prerequisites are proven. FI and the public Buzz push gateway do not block
+local agent labor. Historical LBR already exists; retain the current LAB
+name and its distinct wire identity.
+
 ## Protocol workstreams
 
 | Contract | Required implementation | Completion evidence |

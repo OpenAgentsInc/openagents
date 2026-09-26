@@ -122,6 +122,12 @@ From `crates/immortal-relay`:
 
 ## The `nips/` tree
 
+This is the original extraction snapshot. The current repository has three
+lanes, including OpenAgents-authored contracts. The
+[September 26 source review](../../protocol/2026-09-26-upstream-nip-sync.md)
+records 100 official Markdown files and 17 Block specifications, with current
+implementation gaps kept separate from source coverage.
+
 ```
 nips/
   README.md          adapted: two lanes, sync contract, review rule

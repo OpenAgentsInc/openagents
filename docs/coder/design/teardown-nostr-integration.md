@@ -36,7 +36,7 @@ as current product documentation.
 The review uses document structure, substantive architecture and failure
 analysis, adaptation recommendations, and later addenda. The catalog index
 helps locate sources; it does not replace individual teardown review. Sources
-are compared with all existing OpenAgents NIPs, the fifteen Block NIPs, and
+are compared with all existing OpenAgents NIPs, the then-pinned fifteen Block NIPs, and
 the relevant pinned official specifications. No upstream lane is changed.
 
 Historical prescriptions for Effect, TypeScript, Electron, Omega, a particular

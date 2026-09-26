@@ -17,6 +17,13 @@ claims of a deployed market or synchronized Coder clients. The
 explains the gaps and reuse across all three NIP lanes. Episodes 213–215,
 266–267, and 275–281 are design inputs, not wire contracts.
 
+LAB keeps its name because OpenAgents already published a different
+[NIP-LBR v1 contract](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/nips/LBR.md)
+over NIP-90 kinds `5934`/`6934`/`7000`. The current `openagents.labor.v1`
+profile uses private `3188` artifacts with MKT/CJ/RUN and claims no legacy
+wire compatibility. See [LAB's provenance note](NIP-LAB.md) and the
+[upstream sync review](../../docs/protocol/2026-09-26-upstream-nip-sync.md).
+
 The [81-document teardown review](../../docs/protocol/2026-09-26-teardown-coverage.md)
 adds six draft profiles: persistent engine sessions (SESS), workspace resources
 and synchronized views (WS), tracked work (WORK), bounded automation (AUTO),

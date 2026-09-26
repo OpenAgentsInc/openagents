@@ -34,6 +34,14 @@ foreign imports and compatible host component sets. These additions reuse
 existing event kinds. The [Coder integration plan](../docs/coder/design/teardown-nostr-integration.md)
 separates protocol implementation from client, runtime, and evaluation work.
 
+The [September 26 upstream sync assessment](../docs/protocol/2026-09-26-upstream-nip-sync.md)
+covers all changed official and Block specifications and the implementation
+gaps they expose. The current pins contain 100 official Markdown files
+(99 specifications and the index) and 17 Block specifications. Source sync
+is complete; runtime conformance is not. Both code-ledger pin guards still
+fail against their old baselines. LAB keeps its name because historical
+OpenAgents LBR already defines a different protocol.
+
 `nips/manifest.json` records the exact upstream commit for each synced lane, with
 a `tree_url` link to browse that commit. Use those links to see the
 upstream history for any file.

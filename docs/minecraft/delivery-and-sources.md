@@ -172,10 +172,12 @@ the repository rather than reviving deleted paths mentioned in old episodes.
 
 - [OpenAgents NIPs](../../nips/openagents/README.md): shared contracts and all ten
   NIPs reviewed for this profile, including CTX, POL, COORD, EVAL, and OPT.
-- [Pinned source manifest](../../nips/manifest.json): official lane at
-  `c53877571f96eb423661fc23c620d629d37b8f19`; Block lane at
-  `8342dfcc5890b81a269a8ec3db73a8a56f76ce79`. Use these source identities rather
-  than an older introductory hash in a support document.
+- Source identities used for this profile review: official
+  `c53877571f96eb423661fc23c620d629d37b8f19` and Block
+  `8342dfcc5890b81a269a8ec3db73a8a56f76ce79`. The
+  [current manifest](../../nips/manifest.json) now has newer pins; the
+  [September 26 upstream assessment](../protocol/2026-09-26-upstream-nip-sync.md)
+  separates the new targets from this profile's earlier evidence.
 - [Protocol profile](protocols.md): links to the selected official contracts
   and all Block contracts, with explicit use or exclusion decisions.
 - [TypeSafe building guide](https://docs.typesafe.ai/concepts/how-to-build-with-system-one),

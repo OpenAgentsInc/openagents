@@ -373,7 +373,12 @@ and workload-specific evaluation determines whether a replacement helps.
 The [OpenAgents NIPs](nips/openagents/README.md) specify agent jobs,
 capabilities, programs, context, policy, coordination, and evaluation.
 `nips/official/` and `nips/block/` retain pinned upstream specifications;
-[nips/manifest.json](nips/manifest.json) records their revisions.
+[nips/manifest.json](nips/manifest.json) records their revisions. The
+[September 26 upstream review](docs/protocol/2026-09-26-upstream-nip-sync.md)
+updates both source collections and identifies pending privacy, admission,
+parser, and workspace-feature changes. The two conformance pin guards still
+fail against the old implementation baselines; the sync does not establish
+current-spec support.
 
 The [teardown integration plan](docs/coder/design/teardown-nostr-integration.md)
 maps all 81 archived teardown documents into Coder. Six new draft profiles

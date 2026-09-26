@@ -65,11 +65,13 @@ physical-control or commercial-settlement authority.
 
 ## Allocation and source checks
 
-The official and Block sources remain pinned at the commits in
-[`nips/manifest.json`](../../nips/manifest.json): official
+At the time of this review, the source pins were official
 `c53877571f96eb423661fc23c620d629d37b8f19` and Block
 `8342dfcc5890b81a269a8ec3db73a8a56f76ce79`. No upstream specification or
-manifest is changed by this review.
+manifest was changed by this review. The subsequent
+[upstream sync assessment](2026-09-26-upstream-nip-sync.md) records the new
+pins, 17-spec Block inventory, and implementation gaps. The current source
+identities are in [`nips/manifest.json`](../../nips/manifest.json).
 
 Two statements in the pinned Block text need reconciliation when implementing
 encryption. AO describes NIP-44 v2 as XChaCha20-Poly1305, but official NIP-44

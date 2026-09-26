@@ -5,6 +5,17 @@
 `openagents.labor.v1` market profile, not an implemented worker or payment
 service. It assigns no new event kinds.
 
+**Name provenance:** OpenAgents already used
+[NIP-LBR v1](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/nips/LBR.md)
+for NIP-90 labor events at `5934`/`6934`/`7000`. The
+[August 4 migration decision](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/nips/NIP90-MIGRATION.md)
+froze that wire for compatibility and proposed an LBR v2 without allocating
+kinds. LAB keeps a distinct name for `openagents.labor.v1`, using private
+`3188` artifacts, MKT agreements, and CJ/RUN execution. It does not claim
+legacy wire compatibility or upgrade old records. The
+[upstream sync review](../../docs/protocol/2026-09-26-upstream-nip-sync.md)
+records the naming assessment.
+
 An agent performs a bounded task for an agreed deliverable. Coding is the
 initial example; research, document preparation, evaluation, and other domains
 can use the same profile with admitted operations and output schemas. A worker
