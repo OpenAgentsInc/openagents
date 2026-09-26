@@ -193,7 +193,14 @@ uses, and marks which are implemented and which are only specified.
   `scripts/install-coder.sh` installs the binary as `coder`, and
   `coder doctor` says which door a turn uses and why.
   `docs/coder/guides/headless.md` covers the headless flags and
-  the exit codes. Every conversation records itself to
+  the exit codes. `coder task` is the opt-in durable local inbox in
+  `coder::task`: submit, inspect, list, and cancel queued requests with
+  exact-byte command retries and private atomic storage. It runs no agent
+  and grants no execution authority; durable task ownership remains a
+  separate migration step. Read `docs/coder/guides/tasks.md` before changing
+  its schema, persistence, or command semantics, and use
+  `docs/coder/migration-status.md` for suite implementation status.
+  Every conversation records itself to
   `~/.openagents/traces/` as it runs; `docs/coder/runtime/traces.md` covers the
   location, the opt-out, and what a trace holds. `delegate` hands a
   bounded task to an executor and runs a fan-out of them under a stated

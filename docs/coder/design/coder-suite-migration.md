@@ -4,6 +4,11 @@ Status: proposed implementation roadmap, September 26, 2026. This is a source
 review and design document; it does not import the private product, launch
 experiments, or establish that its deployments still work.
 
+Implementation now has a separate [delivery tracker](../migration-status.md):
+active issues, public foundations, the full package backlog, dependencies,
+ownership, and acceptance gates. Consult that tracker for delivery status;
+this document retains the source assessment and target architecture.
+
 **Bring Coder's product breadth into OpenAgents around one durable Rust task
 host.** Preserve the useful OS, mobile, desktop, work management, and extension
 designs. Reimplement their behavior against the public Nostr contracts and
@@ -638,11 +643,13 @@ retention, and local execution survival are different guarantees.
 
 ## Delivery roadmap
 
-These work packages are proposed issue boundaries, not filed issues or
-estimated completion dates. Before implementation, reconcile them with the
-then-current issue list and claim one owner per shared area. Record actual
-dependencies and acceptance before coding. Do not reopen completed work
-because an older plan described it as missing.
+These work packages define the migration scope. The
+[delivery tracker](../migration-status.md) maps them to active implementation,
+existing foundations, and remaining acceptance gates; a package can require
+several bounded issues. They are not estimated completion dates. Reconcile
+new work with the current issue list and claim one owner per shared area.
+Record dependencies and acceptance before coding. Do not reopen completed
+work because an older plan described it as missing.
 
 ### Phase 0: contracts and feasibility
 
@@ -824,10 +831,12 @@ cohorts merely because another surface was added.
    retain rollback and export, measure regressions, and keep contribution
    publication separate from ordinary product use.
 
-The first implementation action should be to turn M2–M6 into bounded issues
-with one shared fixture and acceptance owner, while starting M1's platform
-feasibility work. That creates the reusable foundation for the requested OS
-and mobile suite instead of recreating the private product's backend coupling.
+The first implementation slice is M2a/M3a's durable local task inbox: queued
+admission, inspection, and cancellation, without execution.
+The [delivery tracker](../migration-status.md) separates that slice from the
+remaining executor, evidence, and acceptance work in M3–M6. M1's platform
+feasibility can run alongside it. Shared fixtures and explicit acceptance
+keep the requested OS and mobile suite on one reusable contract.
 
 ## Source review ledger
 

@@ -41,6 +41,7 @@ maps every contract to its implemented parts and remaining work.
 | Goal | Guide |
 | --- | --- |
 | Run the coding agent | [Install Coder](docs/coder/guides/install.md), [headless mode](docs/coder/guides/headless.md) |
+| Track suite implementation and next work | [Migration status and issue map](docs/coder/migration-status.md), [durable local task inbox](docs/coder/guides/tasks.md) |
 | Try the experimental knowledge-assisted loop | [Microcoder](docs/coder/guides/microcoder.md), [shared knowledge base](docs/coder/guides/knowledge-base.md) |
 | Compare saved agent transcripts | [Gym head-to-head replay](docs/gym/head-to-head.md) |
 | Inspect benchmark results | [Terminal-Bench status and evidence](docs/terminal-bench/README.md) |

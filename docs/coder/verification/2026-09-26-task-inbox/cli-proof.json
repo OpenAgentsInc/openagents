@@ -1,0 +1,219 @@
+{
+  "schema": "openagents.coder.task-inbox-verification.v1",
+  "recorded_at": "2026-09-26T13:07:28.812412+00:00",
+  "base_commit": "21a67d1bd317d5648d9f09ae53e082100dbfd4f8",
+  "platform": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "version": "26.4"
+  },
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "source_sha256": {
+    "Cargo.lock": "6f301bc98b06cd553afe2e25661bfe9517f939b5bca8f88ce808da048676fe25",
+    "Cargo.toml": "0ad659de98e7072b558e482e10302def5fe4b20915a45fb0dc046929e51181ed",
+    "rust-toolchain.toml": "8e390d6a0838315f972690f46ef8bae8b7ecc9ee6c1ed70140ef852869c2482e",
+    "rustfmt.toml": "81488ae3bcd5756dc21762a103ca15beb799fde4c27672cd7c8e7118f2eef130",
+    "crates/coder/Cargo.toml": "bc2a8715882cbfcab45e29c789b51001b8b279615b2e63a340c568c3185302b5",
+    "crates/coder/src/lib.rs": "78887c7b68db78f604b2241f9ea8ea588ddf6e3cc3fdd0bf5b06bdec24254c1e",
+    "crates/coder/src/main.rs": "8134aa9a24aac76737c3df11bba97fb586fbcc3efef1a267398c77ebb08ef581",
+    "crates/coder/src/cli.rs": "491587cf9651ca22c53c6d42d59ee3a4ca3ea93bd1f02f258b63f05f6cf76e45",
+    "crates/coder/src/task.rs": "98d6e7b91a98db9a138e5033e8694fb89908f7d4f2c8f6dfbe52ecdd377007a2",
+    "crates/coder/src/task/tests.rs": "d0e5195596796441c053a70cc3937bbc9580680f2c7bea6e5d109a39e1be9d42",
+    "crates/coder/src/task_cli.rs": "7d51037580ac7468430055812b10d83a77048b50f85a6d0d86a8566d5ac61e92",
+    "crates/coder/tests/task_inbox.rs": "e6f8bdd36487a286dff87c47c6466ed12cc040f461043249dd6dbd6a510d5cfb",
+    "docs/coder/fixtures/tasks/submit.json": "f3bb129f308d20739a2ab4b6656842b238569eefd0284ac6b5d954f136baa7f3",
+    "docs/coder/fixtures/tasks/cancel.json": "599813627d4aa47a4f926596c96e9da45e4b7b4f45694f263181dc8a91ac701a"
+  },
+  "observations": {
+    "submission_retry_returns_original_receipt": true,
+    "cancellation_retry_returns_original_receipt": true,
+    "one_task": true,
+    "execution": "not_started",
+    "checks": "not_run",
+    "agent_trace_directory_created": false
+  },
+  "commands": [
+    {
+      "arguments": [
+        "coder",
+        "task",
+        "submit",
+        "--file",
+        "docs/coder/fixtures/tasks/submit.json"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "schema": "openagents.coder.task-receipt.v1",
+        "command_id": "example-submit-1",
+        "task_id": "example-task-1",
+        "request_digest": "sha256:f3bb129f308d20739a2ab4b6656842b238569eefd0284ac6b5d954f136baa7f3",
+        "sequence": 1,
+        "revision": 1,
+        "status": "queued",
+        "execution": "not_started",
+        "checks": "not_run"
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "coder",
+        "task",
+        "submit",
+        "--file",
+        "docs/coder/fixtures/tasks/submit.json"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "schema": "openagents.coder.task-receipt.v1",
+        "command_id": "example-submit-1",
+        "task_id": "example-task-1",
+        "request_digest": "sha256:f3bb129f308d20739a2ab4b6656842b238569eefd0284ac6b5d954f136baa7f3",
+        "sequence": 1,
+        "revision": 1,
+        "status": "queued",
+        "execution": "not_started",
+        "checks": "not_run"
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "coder",
+        "task",
+        "list"
+      ],
+      "exit_code": 0,
+      "stdout": [
+        {
+          "task_id": "example-task-1",
+          "revision": 1,
+          "intent": {
+            "title": "Inspect a repository",
+            "prompt": "Count the crates and explain their roles without changing files.",
+            "workspace": {
+              "path": "/workspace/example",
+              "source_revision": null
+            },
+            "configuration": {
+              "adapter": "coder",
+              "model": null
+            }
+          },
+          "intent_digest": "sha256:c2b768ee1ddb1d37ea584d09ec775481049f85b6681ddcb4a3f1d8f1be8b2328",
+          "status": "queued",
+          "execution": "not_started",
+          "checks": "not_run",
+          "cancellation_reason": null
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "coder",
+        "task",
+        "show",
+        "example-task-1"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "task_id": "example-task-1",
+        "revision": 1,
+        "intent": {
+          "title": "Inspect a repository",
+          "prompt": "Count the crates and explain their roles without changing files.",
+          "workspace": {
+            "path": "/workspace/example",
+            "source_revision": null
+          },
+          "configuration": {
+            "adapter": "coder",
+            "model": null
+          }
+        },
+        "intent_digest": "sha256:c2b768ee1ddb1d37ea584d09ec775481049f85b6681ddcb4a3f1d8f1be8b2328",
+        "status": "queued",
+        "execution": "not_started",
+        "checks": "not_run",
+        "cancellation_reason": null
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "coder",
+        "task",
+        "cancel",
+        "--file",
+        "docs/coder/fixtures/tasks/cancel.json"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "schema": "openagents.coder.task-receipt.v1",
+        "command_id": "example-cancel-1",
+        "task_id": "example-task-1",
+        "request_digest": "sha256:599813627d4aa47a4f926596c96e9da45e4b7b4f45694f263181dc8a91ac701a",
+        "sequence": 2,
+        "revision": 2,
+        "status": "cancelled",
+        "execution": "not_started",
+        "checks": "not_run"
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "coder",
+        "task",
+        "cancel",
+        "--file",
+        "docs/coder/fixtures/tasks/cancel.json"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "schema": "openagents.coder.task-receipt.v1",
+        "command_id": "example-cancel-1",
+        "task_id": "example-task-1",
+        "request_digest": "sha256:599813627d4aa47a4f926596c96e9da45e4b7b4f45694f263181dc8a91ac701a",
+        "sequence": 2,
+        "revision": 2,
+        "status": "cancelled",
+        "execution": "not_started",
+        "checks": "not_run"
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "coder",
+        "task",
+        "show",
+        "example-task-1"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "task_id": "example-task-1",
+        "revision": 2,
+        "intent": {
+          "title": "Inspect a repository",
+          "prompt": "Count the crates and explain their roles without changing files.",
+          "workspace": {
+            "path": "/workspace/example",
+            "source_revision": null
+          },
+          "configuration": {
+            "adapter": "coder",
+            "model": null
+          }
+        },
+        "intent_digest": "sha256:c2b768ee1ddb1d37ea584d09ec775481049f85b6681ddcb4a3f1d8f1be8b2328",
+        "status": "cancelled",
+        "execution": "not_started",
+        "checks": "not_run",
+        "cancellation_reason": "Cancel this queued request."
+      },
+      "stderr": ""
+    }
+  ]
+}

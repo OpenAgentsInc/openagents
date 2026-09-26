@@ -1,0 +1,10 @@
+{
+  "schema": "openagents.coder.task-command.v1",
+  "command_id": "example-cancel-1",
+  "task_id": "example-task-1",
+  "expected_revision": 1,
+  "action": {
+    "type": "cancel",
+    "reason": "Cancel this queued request."
+  }
+}

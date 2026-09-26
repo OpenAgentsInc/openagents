@@ -45,6 +45,7 @@
 mod checkup;
 mod cli;
 mod headless;
+mod task_cli;
 
 use std::io::{self, stdout};
 use std::path::Path;
@@ -304,6 +305,9 @@ impl App {
 #[tokio::main]
 async fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if arguments.first().is_some_and(|argument| argument == "task") {
+        return ExitCode::from(task_cli::run(&arguments[1..]));
+    }
     match cli::parse(&arguments) {
         Ok(cli::Invocation::Help) => {
             println!("{}", cli::USAGE);

@@ -1,7 +1,7 @@
 //! The command line: what `coder` was asked to do before it does it.
 //!
-//! Two modes and four flags, parsed by hand. The crate takes no argument
-//! parser as a dependency, and a surface this size does not earn one.
+//! Terminal and headless options, parsed without an argument-parser dependency.
+//! The binary dispatches the local task inbox before parsing these options.
 
 use std::fs;
 use std::path::PathBuf;
@@ -58,6 +58,7 @@ Usage:
   coder                       Open the terminal and start a conversation.
   coder -p <PROMPT>           Run one turn, write the reply to stdout, and exit.
   coder doctor                Show what would answer a turn, and why.
+  coder task --help           Manage durable queued requests; runs no agent.
   coder --version             Show the repository, commit, and tree state.
 
 Options:

@@ -19,6 +19,15 @@ source evidence, current public gaps, dependencies, and release gates. The
 shared task host and measured TypeSafe/Microcoder integration connect those
 interfaces without importing the private backend.
 
+The [migration implementation tracker](migration-status.md) records the active
+task foundation, the complete M0–M20 backlog, dependencies, ownership, and
+acceptance gates. It separates shipped foundations from the work still needed
+for durable tasks, mobile control, CoderOS, and agent labor.
+
+The [local task inbox](guides/tasks.md) records, inspects, and cancels queued
+requests across process restarts. It is the first task-contract slice;
+execution ownership and cross-device control remain in the tracker.
+
 The [teardown integration plan](design/teardown-nostr-integration.md) brings
 81 archived research documents into that direction. It links the complete
 source ledger, six new draft Nostr profiles, and ordered implementation gates

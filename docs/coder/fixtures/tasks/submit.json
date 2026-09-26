@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.coder.task-command.v1",
+  "command_id": "example-submit-1",
+  "task_id": "example-task-1",
+  "expected_revision": null,
+  "action": {
+    "type": "submit",
+    "intent": {
+      "title": "Inspect a repository",
+      "prompt": "Count the crates and explain their roles without changing files.",
+      "workspace": {
+        "path": "/workspace/example",
+        "source_revision": null
+      },
+      "configuration": {
+        "adapter": "coder",
+        "model": null
+      }
+    }
+  }
+}
