@@ -662,14 +662,7 @@ async fn go(options: Options) -> Result<u8, String> {
         .join("\n");
     println!("{}", indent_block(&tail));
     let passed = verdict.reward.is_some_and(|r| r >= 1.0);
-    let total = match outcome.usd {
-        Some(usd) => format!("${usd:.4}"),
-        None => format!(
-            "cost unknown, at least ${:.4} ({} calls unpriced)",
-            outcome.known_usd,
-            outcome.cost_unknown.len()
-        ),
-    };
+    let total = microcoder::run::total_text(&outcome);
     let basis = if options.provider == "codex" || options.provider == "vertex" {
         Basis::ListPrice
     } else {

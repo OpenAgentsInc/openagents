@@ -16,6 +16,32 @@ pub const JEV_USD_PER_MILLION: f64 = 0.042;
 /// Characters of state Jev reads, at most.
 pub const JEV_STATE_CHARS: usize = 16_000;
 
+/// Attempts one Jev call may make: the first and the jev client's two
+/// default retries. The client doesn't say how many it made, so a bound
+/// counts them all.
+pub const JEV_MAX_ATTEMPTS: u64 = 3;
+
+/// Tokens a Jev request may carry beyond its text, added to the bound.
+pub const JEV_OVERHEAD_TOKENS: u64 = 4_096;
+
+/// The most one Jev call about `state` with `set` could cost: each of
+/// [`JEV_MAX_ATTEMPTS`] attempts billed for one input token per byte of the
+/// state and questions (see `microluna::price::BYTES_PER_TOKEN`) plus
+/// [`JEV_OVERHEAD_TOKENS`], at Jev's published rate. Jev's output tokens
+/// are free, so its output cap adds nothing.
+#[must_use]
+pub fn jev_upper_bound(set: &QuestionSet, state: &Value) -> f64 {
+    let bytes = serde_json::to_string(state).map_or(0, |text| text.len())
+        + set.id.len()
+        + set
+            .questions
+            .iter()
+            .map(|q| q.id.len() + q.text.len())
+            .sum::<usize>();
+    let tokens = (bytes as u64).div_ceil(microluna::price::BYTES_PER_TOKEN) + JEV_OVERHEAD_TOKENS;
+    (JEV_MAX_ATTEMPTS * tokens) as f64 * JEV_USD_PER_MILLION / 1_000_000.0
+}
+
 /// The question set, embedded so its digest is the file's.
 pub const QUESTIONS: &str = include_str!("../questions.json");
 
@@ -185,6 +211,9 @@ pub struct Judgment {
     pub usd: Option<f64>,
     /// Why `usd` is unknown, when it is.
     pub cost_unknown: Option<String>,
+    /// The most the call could have cost: `usd` when that's known, a bound
+    /// ([`jev_upper_bound`]) when it isn't, or `None` when there's none.
+    pub usd_upper: Option<f64>,
     pub milliseconds: u64,
     /// Why there are no answers, when there are none.
     pub error: Option<String>,
@@ -196,6 +225,7 @@ impl Judgment {
     pub fn free() -> Self {
         Judgment {
             usd: Some(0.0),
+            usd_upper: Some(0.0),
             ..Judgment::default()
         }
     }
@@ -303,6 +333,12 @@ pub struct Generated {
     pub known_usd: f64,
     /// Why `usd` is unknown, when it is.
     pub cost_unknown: Option<String>,
+    /// The most the call could have cost: `usd` when that's known, a bound
+    /// when the cost is unknown but bounded (on the Codex login: the known
+    /// part plus, for each attempt that may have consumed unreported
+    /// tokens, its request's bytes as input tokens and the output cap, at
+    /// list price), or `None` when there is no bound.
+    pub usd_upper: Option<f64>,
     /// `list_price` (estimated from tokens) or `billed` (the provider's).
     pub cost_basis: Basis,
     pub milliseconds: u64,
@@ -327,39 +363,55 @@ impl Judge for JevJudge {
         }
         let request = jev::SystemOneRequest::new(state.clone(), questions);
         let milliseconds = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let bound = jev_upper_bound(set, state);
         match self.client.system_one(request).await {
-            Ok(response) => Judgment {
-                answers: set
-                    .questions
-                    .iter()
-                    .filter_map(|q| {
-                        response
-                            .noul(&q.id)
-                            .ok()
-                            .map(|answer| (q.id.clone(), answer.noul))
-                    })
-                    .collect(),
-                usd: response
+            Ok(response) => {
+                let usd = response
                     .usage
                     .input_tokens
-                    .map(|tokens| tokens as f64 * JEV_USD_PER_MILLION / 1_000_000.0),
-                cost_unknown: response
-                    .usage
-                    .input_tokens
-                    .is_none()
-                    .then(|| "Jev reported no input tokens".to_string()),
-                milliseconds: milliseconds(),
-                error: None,
-            },
-            Err(error) => Judgment {
-                error: Some(error.to_string()),
-                usd: None,
-                cost_unknown: Some(format!(
-                    "the Jev call failed, so whether it was billed is unknown ({error})"
-                )),
-                milliseconds: milliseconds(),
-                ..Judgment::default()
-            },
+                    .map(|tokens| tokens as f64 * JEV_USD_PER_MILLION / 1_000_000.0);
+                Judgment {
+                    answers: set
+                        .questions
+                        .iter()
+                        .filter_map(|q| {
+                            response
+                                .noul(&q.id)
+                                .ok()
+                                .map(|answer| (q.id.clone(), answer.noul))
+                        })
+                        .collect(),
+                    usd,
+                    cost_unknown: usd
+                        .is_none()
+                        .then(|| format!("Jev reported no input tokens (at most ${bound:.6})")),
+                    usd_upper: usd.or(Some(bound)),
+                    milliseconds: milliseconds(),
+                    error: None,
+                }
+            }
+            Err(error) => {
+                // An error status (such as 402, out of credit) is a request
+                // Jev refused: it cost nothing, as a refused model request
+                // does. So did one refused before it was sent.
+                let refused = matches!(
+                    error,
+                    jev::Error::Api(_) | jev::Error::Config(_) | jev::Error::Question { .. }
+                );
+                Judgment {
+                    error: Some(error.to_string()),
+                    usd: refused.then_some(0.0),
+                    cost_unknown: (!refused).then(|| {
+                        format!(
+                            "the Jev call failed, so whether it was billed is unknown ({error}) \
+                             (at most ${bound:.6})"
+                        )
+                    }),
+                    usd_upper: Some(if refused { 0.0 } else { bound }),
+                    milliseconds: milliseconds(),
+                    ..Judgment::default()
+                }
+            }
         }
     }
 }
@@ -389,9 +441,19 @@ pub fn next_action_tool() -> Value {
     })
 }
 
-impl<T: microluna::Transport> Generate for CodexGenerator<T> {
-    async fn generate(&self, system: &str, prompt: &str) -> Generated {
-        let request = microluna::Request {
+/// Bytes a step's Codex request sends beyond its prompt, at most: the
+/// system instructions with every optional part, the `next_action` tool
+/// declaration, the model, the effort, the cache key, and the JSON around
+/// them. A test holds the real figure under it. The out-of-sample study's
+/// report adds it to each event's `prompt_chars` to bound a call from a
+/// record made before calls carried their own bound.
+pub const STEP_REQUEST_FIXED_BYTES: u64 = 16_384;
+
+impl<T: microluna::Transport> CodexGenerator<T> {
+    /// The request one step sends.
+    #[must_use]
+    pub fn request(&self, system: &str, prompt: &str) -> microluna::Request {
+        microluna::Request {
             model: self.model.clone(),
             instructions: format!("{system} Reply by calling next_action exactly once."),
             input: vec![json!({
@@ -403,7 +465,13 @@ impl<T: microluna::Transport> Generate for CodexGenerator<T> {
             effort: self.effort.clone(),
             cache_key: self.cache_key.clone(),
             parallel_tools: false,
-        };
+        }
+    }
+}
+
+impl<T: microluna::Transport> Generate for CodexGenerator<T> {
+    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        let request = self.request(system, prompt);
         let called = microluna::oneshot::call(&self.transport, &request, "next_action").await;
         Generated {
             action: called.arguments.and_then(|arguments| {
@@ -416,6 +484,7 @@ impl<T: microluna::Transport> Generate for CodexGenerator<T> {
             usd: called.usd,
             known_usd: called.known_usd,
             cost_unknown: called.cost_unknown,
+            usd_upper: called.usd_upper,
             cost_basis: called.basis,
             milliseconds: called.milliseconds,
         }
@@ -481,6 +550,7 @@ impl Generate for OpenRouterGenerator {
                     .cost
                     .is_none()
                     .then(|| "OpenRouter reported no cost for the reply".to_string()),
+                usd_upper: reply.usage.cost,
                 cost_basis: Basis::Billed,
                 milliseconds: reply.milliseconds,
             },
@@ -516,6 +586,7 @@ impl Generate for OpenRouterGenerator {
                     usd: cost,
                     known_usd: cost.unwrap_or(0.0),
                     cost_unknown: unknown,
+                    usd_upper: cost,
                     cost_basis: Basis::Billed,
                     milliseconds: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 }
@@ -605,6 +676,72 @@ mod tests {
 }
 
 #[cfg(test)]
+mod jev_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A one-connection server that reads a request and answers `reply`,
+    /// or closes the connection when `reply` is empty.
+    async fn server(reply: &'static str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut buffer = vec![0u8; 65_536];
+                let _ = socket.read(&mut buffer).await;
+                if !reply.is_empty() {
+                    let _ = socket.write_all(reply.as_bytes()).await;
+                }
+                let _ = socket.shutdown().await;
+            }
+        });
+        url
+    }
+
+    fn judge(url: &str) -> JevJudge {
+        let config = jev::Config::new()
+            .api_key("test-key")
+            .base_url(url)
+            .retry(jev::RetryPolicy {
+                max_retries: 0,
+                ..jev::RetryPolicy::default()
+            });
+        JevJudge {
+            client: jev::Client::new(config).unwrap(),
+        }
+    }
+
+    #[tokio::test]
+    async fn an_out_of_credit_refusal_costs_nothing() {
+        let url = server(
+            "HTTP/1.1 402 Payment Required\r\ncontent-type: application/json\r\ncontent-length: 57\r\n\r\n{\"error\":{\"message\":\"no available TypeSafe API credits\"}}",
+        )
+        .await;
+        let judgment = judge(&url)
+            .judge(&question_set(), &json!({"task": "t"}))
+            .await;
+        assert!(judgment.error.unwrap().contains("402"));
+        assert_eq!(judgment.usd, Some(0.0));
+        assert_eq!(judgment.usd_upper, Some(0.0));
+        assert!(judgment.cost_unknown.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_dropped_connection_is_bounded() {
+        let url = server("").await;
+        let state = json!({"task": "t".repeat(1_000)});
+        let judgment = judge(&url).judge(&question_set(), &state).await;
+        assert!(judgment.error.is_some());
+        assert_eq!(judgment.usd, None);
+        let bound = jev_upper_bound(&question_set(), &state);
+        assert_eq!(judgment.usd_upper, Some(bound));
+        // Three attempts of at most ~5,500 tokens at $0.042 a million.
+        assert!(bound > 0.0006 && bound < 0.001, "{bound}");
+        assert!(judgment.cost_unknown.unwrap().contains("at most $"));
+    }
+}
+
+#[cfg(test)]
 mod codex_tests {
     use super::*;
     use microluna::fake::FakeTransport;
@@ -653,6 +790,46 @@ mod codex_tests {
                 .instructions
                 .ends_with("Reply by calling next_action exactly once.")
         );
+    }
+
+    #[test]
+    fn a_step_request_adds_at_most_the_fixed_bytes_to_its_prompt() {
+        let mut g = generator(Vec::new());
+        g.cache_key = "x".repeat(200);
+        let system = format!(
+            "{}{}{}",
+            crate::run::SYSTEM,
+            crate::run::KB_SYSTEM,
+            crate::run::CREDIBLE_SYSTEM
+        );
+        let prompt = "p".repeat(1_000);
+        let bytes = g.request(&system, &prompt).text_bytes();
+        assert!(
+            bytes - 1_000 < STEP_REQUEST_FIXED_BYTES,
+            "{} fixed bytes",
+            bytes - 1_000
+        );
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_attempt_is_bounded_and_the_retry_priced() {
+        let g = generator(Vec::new());
+        g.transport
+            .then_fail(microluna::TransportError::Stream("timed out".to_string()));
+        g.transport.then(call(
+            r#"{"rationale":"look","commands":["ls"],"view":[],"expand":[],"freeze_tests":false,"finished":false}"#,
+        ));
+        let out = g.generate("system", "prompt").await;
+        assert!(out.action.is_ok());
+        assert_eq!(out.usd, None);
+        let bound = microluna::price::upper_bound(
+            "gpt-6-luna",
+            g.request("system", "prompt").text_bytes(),
+            None,
+        )
+        .unwrap();
+        assert!((out.usd_upper.unwrap() - (out.known_usd + bound)).abs() < 1e-12);
+        assert!(out.cost_unknown.unwrap().contains("at most $"));
     }
 
     #[tokio::test]

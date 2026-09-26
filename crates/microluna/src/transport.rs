@@ -30,6 +30,23 @@ pub struct Request {
     pub parallel_tools: bool,
 }
 
+impl Request {
+    /// The bytes of text the request sends the model: the instructions,
+    /// and the input items and tool declarations as JSON. JSON escaping
+    /// only adds bytes, so this is at least the text the provider
+    /// tokenizes, apart from its own framing.
+    #[must_use]
+    pub fn text_bytes(&self) -> u64 {
+        let json = |value: &[Value]| serde_json::to_string(value).map_or(0, |text| text.len());
+        (self.instructions.len()
+            + json(&self.input)
+            + json(&self.tools)
+            + self.model.len()
+            + self.cache_key.len()
+            + self.effort.as_ref().map_or(0, String::len)) as u64
+    }
+}
+
 /// Tokens one reply consumed and produced.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TokenUsage {
@@ -143,12 +160,24 @@ pub enum TransportError {
         /// The start of the response body.
         body: String,
     },
+    /// The request never left: the connection to the provider couldn't
+    /// be made, so nothing was sent and nothing was consumed.
+    Unsent(String),
     /// The connection or the event stream broke.
     Stream(String),
     /// The provider reported that the response failed.
     Failed(String),
     /// The provider stopped the response before it completed.
     Incomplete(String),
+    /// The response failed or stopped short, and the provider reported
+    /// what it consumed: the cost is known from `usage`.
+    Reported {
+        /// The failure: [`TransportError::Failed`] or
+        /// [`TransportError::Incomplete`].
+        error: Box<TransportError>,
+        /// The usage the failed or incomplete response reported.
+        usage: TokenUsage,
+    },
     /// The script a fake transport follows ran out.
     Exhausted,
 }
@@ -160,9 +189,17 @@ impl fmt::Display for TransportError {
             TransportError::Http { status, body } => {
                 write!(f, "the provider returned HTTP {status}: {body}")
             }
+            TransportError::Unsent(why) => {
+                write!(f, "the request couldn't be sent (no connection): {why}")
+            }
             TransportError::Stream(why) => write!(f, "the response stream stopped early: {why}"),
             TransportError::Failed(why) => write!(f, "the response failed: {why}"),
             TransportError::Incomplete(why) => write!(f, "the response is incomplete: {why}"),
+            TransportError::Reported { error, usage } => write!(
+                f,
+                "{error} (it reported {} input and {} output tokens)",
+                usage.input, usage.output
+            ),
             TransportError::Exhausted => {
                 write!(f, "the test transport has no scripted replies left")
             }
@@ -173,13 +210,13 @@ impl fmt::Display for TransportError {
 impl std::error::Error for TransportError {}
 
 impl TransportError {
-    /// Whether sending the request again may succeed: a broken stream, a
-    /// rate limit, or a server error. A refused login or a failed or
-    /// incomplete response is not.
+    /// Whether sending the request again may succeed: a connection that
+    /// couldn't be made, a broken stream, a rate limit, or a server error.
+    /// A refused login or a failed or incomplete response is not.
     #[must_use]
     pub fn transient(&self) -> bool {
         match self {
-            TransportError::Stream(_) => true,
+            TransportError::Unsent(_) | TransportError::Stream(_) => true,
             TransportError::Http { status, .. } => *status == 429 || *status >= 500,
             _ => false,
         }

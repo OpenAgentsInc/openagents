@@ -317,6 +317,7 @@ impl<T: Transport> Generate for DoorGenerator<T> {
             usd,
             known_usd,
             cost_unknown,
+            usd_upper: usd,
             cost_basis: Basis::Billed,
             milliseconds,
         }

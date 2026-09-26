@@ -151,6 +151,7 @@ impl Generate for Generator {
             usd: Some(0.0),
             known_usd: 0.0,
             cost_unknown: None,
+            usd_upper: Some(0.0),
             cost_basis: Basis::ListPrice,
             milliseconds: 1,
         }
@@ -400,6 +401,7 @@ impl Generate for MissingUsageGenerator {
             cost_unknown: self
                 .prior_unknown
                 .then(|| "earlier attempt charge unknown".into()),
+            usd_upper: (!self.prior_unknown).then_some(0.0),
             cost_basis: Basis::ListPrice,
             milliseconds: 1,
         }
@@ -473,6 +475,7 @@ impl Generate for ContextGenerator {
             usd: Some(0.0),
             known_usd: 0.0,
             cost_unknown: None,
+            usd_upper: Some(0.0),
             cost_basis: Basis::ListPrice,
             milliseconds: 0,
         }

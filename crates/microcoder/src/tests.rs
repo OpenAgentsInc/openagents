@@ -23,6 +23,8 @@ struct Script {
     prompts: RefCell<Vec<String>>,
     /// Each reply's cost; `None` is an unpriced reply.
     usd: Option<f64>,
+    /// Each unpriced reply's bound, when it has one.
+    upper: Option<f64>,
 }
 
 impl Script {
@@ -31,6 +33,7 @@ impl Script {
             replies: RefCell::new(replies.into()),
             prompts: RefCell::new(Vec::new()),
             usd: Some(0.01),
+            upper: None,
         }
     }
 }
@@ -51,6 +54,7 @@ impl Generate for Script {
             usd: self.usd,
             known_usd: self.usd.unwrap_or(0.0),
             cost_unknown: self.usd.is_none().then(|| "fake has no price".to_string()),
+            usd_upper: self.usd.or(self.upper),
             cost_basis: crate::models::Basis::ListPrice,
             milliseconds: 1,
         }
@@ -148,6 +152,7 @@ impl Judge for Jev {
             answers,
             usd: Some(0.001),
             cost_unknown: None,
+            usd_upper: Some(0.001),
             milliseconds: 1,
             error: None,
         }
@@ -309,6 +314,7 @@ async fn the_loop_stops_when_the_model_finishes() {
     assert!((outcome.model_usd.unwrap() - 0.02).abs() < 1e-9);
     assert!((outcome.jev_usd.unwrap() - 0.002).abs() < 1e-9);
     assert!((outcome.usd.unwrap() - 0.022).abs() < 1e-9);
+    assert_eq!(outcome.usd_upper, outcome.usd);
     assert!(outcome.cost_unknown.is_empty());
     assert!(matches!(log.0.last(), Some(Event::Ended { .. })));
 }
@@ -326,10 +332,39 @@ async fn an_unpriced_reply_leaves_the_cost_unknown_not_zero() {
     // Jev's part is still known, and counts toward the lower bound.
     assert!((outcome.known_usd - 0.002).abs() < 1e-9);
     assert_eq!(outcome.cost_unknown.len(), 2);
-    assert!(outcome.cost_unknown[0].starts_with("step 1 model: fake has no price"));
+    assert_eq!(outcome.cost_unknown[0].at, "step 1 model");
+    assert_eq!(outcome.cost_unknown[0].reason, "fake has no price");
+    assert_eq!(
+        outcome.usd_upper, None,
+        "an unbounded call leaves no upper bound"
+    );
     let record = serde_json::to_value(&outcome).unwrap();
     assert!(record["model_usd"].is_null());
     assert!(record["usd"].is_null());
+    assert!(record["usd_upper"].is_null());
+    assert!(record["cost_unknown"][0]["usd_upper"].is_null());
+}
+
+#[tokio::test]
+async fn bounded_unpriced_replies_give_the_run_an_upper_bound() {
+    let mut script = Script::new(vec![
+        Ok(act("look", &["ls"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    script.usd = None;
+    script.upper = Some(0.07);
+    let (_, outcome, _, _) = go(&script, &plain()).await;
+    assert_eq!(outcome.usd, None);
+    // Jev's $0.002 is known; each of the two model calls is at most $0.07.
+    assert!((outcome.known_usd - 0.002).abs() < 1e-9);
+    assert!((outcome.usd_upper.unwrap() - 0.142).abs() < 1e-9);
+    let record = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(record["cost_unknown"][1]["at"], "step 2 model");
+    assert!((record["cost_unknown"][1]["usd_upper"].as_f64().unwrap() - 0.07).abs() < 1e-12);
+    assert_eq!(
+        crate::run::total_text(&outcome),
+        "cost unknown, between $0.0020 and $0.1420 (2 calls unpriced)"
+    );
 }
 
 #[tokio::test]

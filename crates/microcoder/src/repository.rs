@@ -71,6 +71,7 @@ fn refused_generation(model: &str, dispatched: bool, reason: &str) -> Generated 
         known_usd: 0.0,
         cost_unknown: dispatched
             .then(|| "interrupted model request may still consume tokens".into()),
+        usd_upper: (!dispatched).then_some(0.0),
         cost_basis: Basis::ListPrice,
         milliseconds: 0,
     }
@@ -101,6 +102,7 @@ impl<G: Generate> Generate for RecordedGenerator<'_, G> {
             && generated.completion_tokens == 0
         {
             generated.usd = None;
+            generated.usd_upper = None;
             let missing = "Codex returned no usable token usage for a successful reply";
             generated.cost_unknown = Some(match generated.cost_unknown.take() {
                 Some(existing) => format!("{existing}; {missing}"),

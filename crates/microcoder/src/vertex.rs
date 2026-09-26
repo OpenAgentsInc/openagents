@@ -120,6 +120,7 @@ impl Generate for VertexGenerator {
             usd,
             known_usd: usd.unwrap_or(0.0),
             cost_unknown: usd.is_none().then_some(why),
+            usd_upper: usd,
             cost_basis: Basis::ListPrice,
             milliseconds: milliseconds(),
         };
@@ -165,6 +166,7 @@ impl Generate for VertexGenerator {
                     usd,
                     known_usd: usd.unwrap_or(0.0),
                     cost_unknown: usd.is_none().then(no_price),
+                    usd_upper: usd,
                     cost_basis: Basis::ListPrice,
                     milliseconds: reply.milliseconds,
                 }
@@ -185,6 +187,7 @@ impl Generate for VertexGenerator {
                     usd,
                     known_usd: usd.unwrap_or(0.0),
                     cost_unknown: usd.is_none().then(no_price),
+                    usd_upper: usd,
                     cost_basis: Basis::ListPrice,
                     milliseconds: milliseconds(),
                 }

@@ -440,11 +440,18 @@ impl Observer for Terminal {
                 let unknown = if outcome.cost_unknown.is_empty() {
                     String::new()
                 } else {
-                    format!(
-                        " · {} calls of unknown cost, at least ${:.4} known",
-                        outcome.cost_unknown.len(),
-                        outcome.known_usd
-                    )
+                    match outcome.usd_upper {
+                        Some(upper) => format!(
+                            " · {} calls of unknown cost, between ${:.4} and ${upper:.4}",
+                            outcome.cost_unknown.len(),
+                            outcome.known_usd
+                        ),
+                        None => format!(
+                            " · {} calls of unknown cost, at least ${:.4} known",
+                            outcome.cost_unknown.len(),
+                            outcome.known_usd
+                        ),
+                    }
                 };
                 self.line(
                     seconds,

@@ -586,12 +586,7 @@ scripts; a check that isn't written by the last step is lost.",
         }
         let text = crate::run::prompt(&sub, ORACLE_PROMPT, "None in this session.", None, false);
         let generated = generator.generate(&system, &text).await;
-        spend.add(
-            generated.usd,
-            generated.known_usd,
-            generated.cost_unknown.as_deref(),
-            &format!("oracle step {step} model"),
-        );
+        spend.generated(&generated, &format!("oracle step {step} model"));
         used += generated.known_usd;
         let action = match &generated.action {
             Ok(action) => {

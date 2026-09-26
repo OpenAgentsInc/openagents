@@ -430,7 +430,7 @@ impl Transport for CodexTransport {
             .json(&body(request))
             .send()
             .await
-            .map_err(|error| TransportError::Stream(error.without_url().to_string()))?;
+            .map_err(sent_error)?;
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -498,20 +498,26 @@ impl Events {
             }
             "response.failed" => {
                 let error = &event["response"]["error"];
-                return Err(TransportError::Failed(
-                    error["message"]
-                        .as_str()
-                        .or(error["code"].as_str())
-                        .unwrap_or("no reason given")
-                        .to_string(),
+                return Err(reported(
+                    TransportError::Failed(
+                        error["message"]
+                            .as_str()
+                            .or(error["code"].as_str())
+                            .unwrap_or("no reason given")
+                            .to_string(),
+                    ),
+                    &event["response"]["usage"],
                 ));
             }
             "response.incomplete" => {
-                return Err(TransportError::Incomplete(
-                    event["response"]["incomplete_details"]["reason"]
-                        .as_str()
-                        .unwrap_or("no reason given")
-                        .to_string(),
+                return Err(reported(
+                    TransportError::Incomplete(
+                        event["response"]["incomplete_details"]["reason"]
+                            .as_str()
+                            .unwrap_or("no reason given")
+                            .to_string(),
+                    ),
+                    &event["response"]["usage"],
                 ));
             }
             "error" => {
@@ -542,6 +548,33 @@ impl Events {
                 "the stream ended without response.completed".to_string(),
             ))
         }
+    }
+}
+
+/// The error for a request that got no response headers. A connection
+/// that was never made sent nothing ([`TransportError::Unsent`]); any
+/// other failure, a timeout included, may have come after the request
+/// went out ([`TransportError::Stream`]).
+fn sent_error(error: reqwest::Error) -> TransportError {
+    let unsent = error.is_connect();
+    let why = error.without_url().to_string();
+    if unsent {
+        TransportError::Unsent(why)
+    } else {
+        TransportError::Stream(why)
+    }
+}
+
+/// A failed or incomplete response, with the usage it reported when it
+/// reported any: then its cost is known, not unknown.
+fn reported(error: TransportError, usage_value: &Value) -> TransportError {
+    if usage_value["input_tokens"].is_u64() {
+        TransportError::Reported {
+            error: Box::new(error),
+            usage: usage(usage_value),
+        }
+    } else {
+        error
     }
 }
 
@@ -772,5 +805,30 @@ mod tests {
         let mut events = Events::default();
         let failed = b"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"no\"}}}\n\n";
         assert!(matches!(events.push(failed), Err(TransportError::Failed(why)) if why == "no"));
+    }
+
+    #[test]
+    fn a_failure_that_reports_usage_carries_it() {
+        let mut events = Events::default();
+        let failed = concat!(
+            "data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"no\"},",
+            "\"usage\":{\"input_tokens\":900,\"output_tokens\":12}}}\n\n"
+        );
+        match events.push(failed.as_bytes()) {
+            Err(TransportError::Reported { error, usage }) => {
+                assert!(matches!(*error, TransportError::Failed(ref why) if why == "no"));
+                assert_eq!((usage.input, usage.output), (900, 12));
+            }
+            other => panic!("{other:?}"),
+        }
+        let mut events = Events::default();
+        let incomplete = concat!(
+            "data: {\"type\":\"response.incomplete\",\"response\":{\"incomplete_details\":",
+            "{\"reason\":\"max_output_tokens\"},\"usage\":null}}\n\n"
+        );
+        assert!(matches!(
+            events.push(incomplete.as_bytes()),
+            Err(TransportError::Incomplete(why)) if why == "max_output_tokens"
+        ));
     }
 }

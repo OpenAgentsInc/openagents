@@ -274,6 +274,9 @@ pub struct Retrieval {
     pub jev_usd: Option<f64>,
     /// Why `jev_usd` is unknown, when it is.
     pub jev_cost_unknown: Option<String>,
+    /// The most the relevance judgment could have cost, or `None` when
+    /// there's no bound.
+    pub jev_usd_upper: Option<f64>,
     /// Dollars of the search's embeddings, or `None` when unknown.
     pub embedding_usd: Option<f64>,
     /// Why Jev gave no answers, when it didn't.
@@ -296,33 +299,85 @@ pub trait Observer {
     fn event(&mut self, seconds: f64, event: &Event);
 }
 
+/// One call whose cost is unknown: where it was made, why, its known part,
+/// and the most it could have cost when that's bounded.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct UnknownCost {
+    /// Where the call was made, such as `step 13 model`.
+    pub at: String,
+    /// Why the cost is unknown.
+    pub reason: String,
+    /// The part that is known: a lower bound.
+    pub known_usd: f64,
+    /// The most the call could have cost, or `None` when there's no bound.
+    pub usd_upper: Option<f64>,
+}
+
+impl std::fmt::Display for UnknownCost {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.at, self.reason)?;
+        match self.usd_upper {
+            Some(upper) => write!(f, " (between ${:.6} and ${upper:.6})", self.known_usd),
+            None => write!(f, " (at least ${:.6}, no upper bound)", self.known_usd),
+        }
+    }
+}
+
 /// Dollars of one kind, summed: the known part, and each call whose cost
 /// is unknown.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Spend {
     pub known: f64,
-    pub unknown: Vec<String>,
+    pub unknown: Vec<UnknownCost>,
 }
 
 impl Spend {
     /// Adds one call: `usd` when known, else `known` as its lower bound and
-    /// `why` under the label `at`.
+    /// `why` under the label `at`, with no upper bound.
     pub fn add(&mut self, usd: Option<f64>, known: f64, why: Option<&str>, at: &str) {
+        self.add_bounded(usd, known, usd, why, at);
+    }
+
+    /// [`Spend::add`] for a call whose unknown cost is at most `upper`.
+    pub fn add_bounded(
+        &mut self,
+        usd: Option<f64>,
+        known: f64,
+        upper: Option<f64>,
+        why: Option<&str>,
+        at: &str,
+    ) {
         match usd {
             Some(usd) => self.known += usd,
             None => {
                 self.known += known;
-                self.unknown
-                    .push(format!("{at}: {}", why.unwrap_or("no reason recorded")));
+                self.unknown.push(UnknownCost {
+                    at: at.to_string(),
+                    reason: why.unwrap_or("no reason recorded").to_string(),
+                    known_usd: known,
+                    usd_upper: upper.map(|upper| upper.max(known)),
+                });
             }
         }
     }
 
+    /// Adds one model call made at `at`, with its bound.
+    pub fn generated(&mut self, generated: &Generated, at: &str) {
+        self.add_bounded(
+            generated.usd,
+            generated.known_usd,
+            generated.usd_upper,
+            generated.cost_unknown.as_deref(),
+            at,
+        );
+    }
+
     /// Adds a Jev judgment made at `step` (0 before the first step).
     pub fn judged(&mut self, judgment: &Judgment, step: usize) {
-        self.add(
+        self.add_bounded(
             judgment.usd,
             0.0,
+            judgment.usd_upper,
             judgment.cost_unknown.as_deref(),
             &format!("step {step} Jev"),
         );
@@ -332,6 +387,16 @@ impl Spend {
     #[must_use]
     pub fn total(&self) -> Option<f64> {
         self.unknown.is_empty().then_some(self.known)
+    }
+
+    /// The most the calls could have cost: the known part plus each
+    /// unknown call's bound beyond its known part, or `None` when any
+    /// unknown call has no bound.
+    #[must_use]
+    pub fn upper(&self) -> Option<f64> {
+        self.unknown.iter().try_fold(self.known, |sum, call| {
+            call.usd_upper.map(|upper| sum + (upper - call.known_usd))
+        })
     }
 }
 
@@ -410,8 +475,12 @@ pub struct Outcome {
     /// The known dollars: `usd` when that's known, else a lower bound. The
     /// spend limit counts this.
     pub known_usd: f64,
-    /// Each call whose cost is unknown, and why.
-    pub cost_unknown: Vec<String>,
+    /// The most the run could have cost: `usd` when that's known, else the
+    /// known dollars plus each unknown call's bound, or `None` when any
+    /// unknown call has no bound.
+    pub usd_upper: Option<f64>,
+    /// Each call whose cost is unknown: where, why, and its bound.
+    pub cost_unknown: Vec<UnknownCost>,
     /// Knowledge searches ranked with embeddings.
     pub embedding_searches: usize,
     /// Knowledge searches ranked by words alone.
@@ -553,6 +622,7 @@ async fn retrieve<J: Judge>(retriever: &Retriever, judge: &J, state: &State) -> 
         lexical_only: search.lexical_only,
         embedding_usd: search.usd,
         jev_usd: Some(0.0),
+        jev_usd_upper: Some(0.0),
         ..Retrieval::default()
     };
     if candidates.is_empty() {
@@ -572,6 +642,7 @@ async fn retrieve<J: Judge>(retriever: &Retriever, judge: &J, state: &State) -> 
     let judgment = judge.judge(&set, &jev_state).await;
     retrieval.jev_usd = judgment.usd;
     retrieval.jev_cost_unknown = judgment.cost_unknown.clone();
+    retrieval.jev_usd_upper = judgment.usd_upper;
     retrieval.error = judgment.error.clone();
     let mut kept: Vec<Kept> = candidates
         .iter()
@@ -1034,6 +1105,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
                 Some(earlier) => Retrieval {
                     cached: true,
                     jev_usd: Some(0.0),
+                    jev_usd_upper: Some(0.0),
                     embedding_usd: Some(0.0),
                     ..earlier.clone()
                 },
@@ -1043,9 +1115,10 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
                     fresh
                 }
             };
-            jev.add(
+            jev.add_bounded(
                 retrieval.jev_usd,
                 0.0,
+                retrieval.jev_usd_upper,
                 retrieval.jev_cost_unknown.as_deref(),
                 &format!("step {step} knowledge relevance"),
             );
@@ -1109,12 +1182,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             _ => models.generator,
         };
         let generated = generator.generate(&system, &text).await;
-        model.add(
-            generated.usd,
-            generated.known_usd,
-            generated.cost_unknown.as_deref(),
-            &format!("step {step} model"),
-        );
+        model.generated(&generated, &format!("step {step} model"));
         observer.event(
             started.elapsed().as_secs_f64(),
             &Event::Generated {
@@ -1503,6 +1571,11 @@ The task isn't finished until they pass; see the Acceptance tests section."
             .zip(jev.total())
             .zip(embedding.total())
             .map(|((m, j), e)| m + j + e),
+        usd_upper: model
+            .upper()
+            .zip(jev.upper())
+            .zip(embedding.upper())
+            .map(|((m, j), e)| m + j + e),
         cost_unknown: [model.unknown, jev.unknown, embedding.unknown].concat(),
         embedding_searches: searches.embeddings,
         lexical_searches: searches.lexical,
@@ -1517,6 +1590,26 @@ The task isn't finished until they pass; see the Acceptance tests section."
         },
     );
     (state, outcome)
+}
+
+/// The run's cost for its end line: the dollars when known; else "cost
+/// unknown, between $X and $Y" when every unknown call is bounded; else
+/// "cost unknown, at least $X". Unknown is never shown as a figure alone.
+#[must_use]
+pub fn total_text(outcome: &Outcome) -> String {
+    match (outcome.usd, outcome.usd_upper) {
+        (Some(usd), _) => format!("${usd:.4}"),
+        (None, Some(upper)) => format!(
+            "cost unknown, between ${:.4} and ${upper:.4} ({} calls unpriced)",
+            outcome.known_usd,
+            outcome.cost_unknown.len()
+        ),
+        (None, None) => format!(
+            "cost unknown, at least ${:.4} ({} calls unpriced)",
+            outcome.known_usd,
+            outcome.cost_unknown.len()
+        ),
+    }
 }
 
 /// Runs the end-of-run gates that are on, records each check, and returns

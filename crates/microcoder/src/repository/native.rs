@@ -98,6 +98,9 @@ impl Judge for NativeJudge<'_> {
                         .input_tokens
                         .is_none()
                         .then(|| "Jev reported no input tokens".into()),
+                    usd_upper: response.usage.input_tokens.map(|tokens| {
+                        tokens as f64 * crate::models::JEV_USD_PER_MILLION / 1_000_000.0
+                    }),
                     milliseconds,
                     error: None,
                 }
