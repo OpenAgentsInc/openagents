@@ -347,4 +347,16 @@ first. Readers weigh evidence by who published it.
 
 Evidence you publish about someone else's entry can complete a quest: a
 referee can accept it and award XP to the entry's author and to you, the
-runner. The [XP guide](xp.md) covers quests, awards, and the ledger.
+runner. The [XP guide](xp.md) covers quests, awards, and the ledger. Today
+`kb evidence` and `kb publish-evidence` read only entries in your local
+directory signed by your key, so evidence about another author's synced
+entry isn't possible yet; issue
+[#9687](https://github.com/OpenAgentsInc/openagents/issues/9687) tracks it.
+
+## Contribute to the shared base
+
+The [contributor guide](contribute-knowledge.md) is the one-page path for
+people outside OpenAgents: pick a quest from the
+[quest board](../../terminal-bench/quest-board.md), find the missing detail,
+publish it under your key, and let other operators' runs decide whether it
+counts.

@@ -187,6 +187,14 @@ Before the ask goes out:
   Microcoder doesn't, generated from the Gym, with current best cost and
   time for each.
 
+Status, 2026-09-26: the base is published to `relay.openagents.com`
+(#9684). The [contributor guide](guides/contribute-knowledge.md) and the
+[quest board](../terminal-bench/quest-board.md) are up, and the OpenAgents
+referee published 11 NIP-XP quests, one per task Microcoder has run and
+doesn't beat Fable on. While the out-of-sample study runs, quests name only
+those tasks. A runner can't yet publish evidence about another author's
+entry (#9687), so no quest can be completed until that lands.
+
 ### Stage 5: the segue to Verse
 
 The crowdsourced loop above is already a game. What it lacks is a score

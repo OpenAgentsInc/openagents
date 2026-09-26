@@ -22,7 +22,11 @@ doesn't exist yet; nothing here moves money.
    `microcoder kb publish`.
 3. A **runner**, someone other than the author, runs paired Microcoder runs
    with and without the entry and publishes the evidence with
-   `microcoder kb publish-evidence`.
+   `microcoder kb publish-evidence`. Today that command cites only entries
+   signed by the runner's own key, so it can't yet publish evidence about
+   another author's entry; issue
+   [#9687](https://github.com/OpenAgentsInc/openagents/issues/9687) tracks
+   the fix.
 4. The referee checks the evidence against the quest's rule and, when it
    passes, publishes an award that credits the author and the runner.
 5. Each **reader** derives XP from the awards of the referees it trusts,
@@ -34,6 +38,31 @@ task; the report's verdict is `pass`; the report pairs runs on the quest's
 task; and on that task the with-entry runs pass at the quest's pass rate
 and cost less per run than the quest's bar. The first accepted completion
 of a quest version earns its award, once.
+
+## The OpenAgents referee
+
+OpenAgents referees its quests with
+`npub1v59z5gklyzc4v7c8klhqd8nuffl426d3s7zyluu5suxyyjn4khrsrusf6k`
+(hex `650a2a22df20b1567b07b7ee069e7c4a7f5569b187844ff394870c424a75b5c7`).
+Its key lives on the execution host at `~/.openagents/nostr/referee-key`
+and is never copied. On 2026-09-26 it published 11 quests to
+`wss://relay.openagents.com`, one per Terminal-Bench 4 task that Microcoder
+has run and doesn't yet beat Fable 5.1 low on. Their specs are in
+`knowledge/quests/`, and the [quest board](../../terminal-bench/quest-board.md)
+lists them. The [contributor guide](contribute-knowledge.md) explains how to
+take one on.
+
+To count its awards, add it to your trust file,
+`~/.openagents/knowledge/xp-trust.json`:
+
+```json
+{
+  "referees": ["npub1v59z5gklyzc4v7c8klhqd8nuffl426d3s7zyluu5suxyyjn4khrsrusf6k"]
+}
+```
+
+Trusting it is a choice, like trusting any referee: its awards are
+rechecked against the signed entry and evidence either way.
 
 ## Before you begin
 

@@ -1,0 +1,5 @@
+{
+  "npub": "npub1v59z5gklyzc4v7c8klhqd8nuffl426d3s7zyluu5suxyyjn4khrsrusf6k",
+  "pubkey": "650a2a22df20b1567b07b7ee069e7c4a7f5569b187844ff394870c424a75b5c7",
+  "note": "The OpenAgents referee. Its key is on the execution host at ~/.openagents/nostr/referee-key."
+}

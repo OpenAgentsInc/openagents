@@ -1,0 +1,237 @@
+{
+  "read_at": "2026-09-26T14:36:09Z",
+  "tasks": {
+    "batched-eval-parity": [
+      {
+        "run": "batched-eval-parity-1790396765",
+        "reward": null
+      },
+      {
+        "run": "batched-eval-parity-1790398269",
+        "reward": 0.0,
+        "usd": 0.127,
+        "seconds": 609.019517414,
+        "ending": "tests_held"
+      },
+      {
+        "run": "batched-eval-parity-1790405023",
+        "reward": 0.0,
+        "usd": 0.1304,
+        "seconds": 699.271462599,
+        "ending": "tests_held"
+      },
+      {
+        "run": "batched-eval-parity-1790405850",
+        "reward": 0.0,
+        "usd": 0.1994,
+        "seconds": 641.771725343,
+        "ending": "finished"
+      }
+    ],
+    "coq-block-bound": [
+      {
+        "run": "coq-block-bound-1790396868",
+        "reward": null
+      },
+      {
+        "run": "coq-block-bound-1790398269",
+        "reward": 0.0,
+        "usd": 0.1473,
+        "seconds": 2740.138619941,
+        "ending": "time_limit"
+      },
+      {
+        "run": "coq-block-bound-1790405164",
+        "reward": 0.0,
+        "usd": 0.1654,
+        "seconds": 2722.002747567,
+        "ending": "time_limit"
+      }
+    ],
+    "distributed-dedup": [
+      {
+        "run": "distributed-dedup-1790396889",
+        "reward": null
+      }
+    ],
+    "hof-topology-interpenetration": [
+      {
+        "run": "hof-topology-interpenetration-1790397382",
+        "reward": null
+      },
+      {
+        "run": "hof-topology-interpenetration-1790400978",
+        "reward": 0.0,
+        "usd": 0.3481,
+        "seconds": 1068.76407489,
+        "ending": "tests_held"
+      },
+      {
+        "run": "hof-topology-interpenetration-1790407736285",
+        "reward": null
+      }
+    ],
+    "interleaved-vigenere": [
+      {
+        "run": "interleaved-vigenere-1790397336",
+        "reward": null
+      },
+      {
+        "run": "interleaved-vigenere-1790398538",
+        "reward": 0.0,
+        "usd": 0.2273,
+        "seconds": 2706.612247529,
+        "ending": "time_limit"
+      },
+      {
+        "run": "interleaved-vigenere-1790405809",
+        "reward": 0.0,
+        "usd": 0.2902,
+        "seconds": 2730.110144264,
+        "ending": "time_limit"
+      },
+      {
+        "run": "interleaved-vigenere-1790408602063",
+        "reward": 0.0,
+        "usd": 0.0767,
+        "seconds": 758.117760686,
+        "ending": "bad_replies"
+      }
+    ],
+    "mp-checkpoint-consolidation": [
+      {
+        "run": "mp-checkpoint-consolidation-1790394245",
+        "reward": null
+      },
+      {
+        "run": "mp-checkpoint-consolidation-1790394263",
+        "reward": 0.0,
+        "usd": 0.4763,
+        "seconds": 1800.652728044,
+        "ending": "time_limit"
+      },
+      {
+        "run": "mp-checkpoint-consolidation-1790408542007",
+        "reward": 0.0,
+        "usd": 0.2387,
+        "seconds": 810.948639803,
+        "ending": "bad_replies"
+      }
+    ],
+    "production-planning": [
+      {
+        "run": "production-planning-1790396753",
+        "reward": null
+      },
+      {
+        "run": "production-planning-1790398269",
+        "reward": 0.0,
+        "usd": 0.7054,
+        "seconds": 2704.984360381,
+        "ending": "time_limit"
+      },
+      {
+        "run": "production-planning-1790408027711",
+        "reward": 0.0,
+        "usd": 0.5022,
+        "seconds": 1322.668821799,
+        "ending": "bad_replies"
+      }
+    ],
+    "risk-scorer-replay": [
+      {
+        "run": "risk-scorer-replay-1790394156",
+        "reward": null
+      },
+      {
+        "run": "risk-scorer-replay-1790394263",
+        "reward": 0.0,
+        "usd": 0.446,
+        "seconds": 1807.99525083,
+        "ending": "time_limit"
+      },
+      {
+        "run": "risk-scorer-replay-1790394700",
+        "reward": 0.0,
+        "usd": 0.161,
+        "seconds": 544.663593703,
+        "ending": "tests_held"
+      },
+      {
+        "run": "risk-scorer-replay-1790405023",
+        "reward": 0.0,
+        "usd": 0.8956,
+        "seconds": 2709.120567179,
+        "ending": "time_limit"
+      }
+    ],
+    "shadow-relay": [
+      {
+        "run": "shadow-relay-1790394120",
+        "reward": null
+      }
+    ],
+    "sound-change-cascade": [
+      {
+        "run": "sound-change-cascade-1790387446",
+        "reward": null
+      },
+      {
+        "run": "sound-change-cascade-1790394195",
+        "reward": null
+      },
+      {
+        "run": "sound-change-cascade-1790395251",
+        "reward": 0.0,
+        "usd": 0.0394,
+        "seconds": 137.71620881,
+        "ending": "tests_held"
+      },
+      {
+        "run": "sound-change-cascade-1790395393",
+        "reward": 0.0,
+        "usd": 0.0892,
+        "seconds": 273.544360208,
+        "ending": "tests_held"
+      },
+      {
+        "run": "sound-change-cascade-1790402067",
+        "reward": 0.0,
+        "usd": 0.0499,
+        "seconds": 206.684340329,
+        "ending": "tests_held"
+      },
+      {
+        "run": "sound-change-cascade-1790402357",
+        "reward": 0.0,
+        "usd": 0.0777,
+        "seconds": 314.203271906,
+        "ending": "tests_held"
+      },
+      {
+        "run": "sound-change-cascade-1790405319",
+        "reward": 0.0,
+        "usd": 0.5857,
+        "seconds": 2706.380000062,
+        "ending": "time_limit"
+      }
+    ],
+    "telecom-entity-resolution": [
+      {
+        "run": "telecom-entity-resolution-1790397352",
+        "reward": null
+      },
+      {
+        "run": "telecom-entity-resolution-1790399102",
+        "reward": 0.0,
+        "usd": 0.5329,
+        "seconds": 2527.47874551,
+        "ending": "finished"
+      },
+      {
+        "run": "telecom-entity-resolution-1790407889151",
+        "reward": null
+      }
+    ]
+  }
+}

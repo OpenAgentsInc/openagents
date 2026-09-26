@@ -15,6 +15,7 @@ Configure Coder, run work, and verify retained artifacts.
 | [coder-one-repair](coder-one-repair.md) | Repair once from a diagnostic packet |
 | [coder-one-support](coder-one-support.md) | Judge requirement support with paired Jev questions |
 | [coder-one-tunable](coder-one-tunable.md) | Run the tunable composition on Terminal-Bench |
+| [contribute-knowledge](contribute-knowledge.md) | Write a knowledge entry, publish it under your key, and take a quest on the Terminal-Bench 4 quest board |
 | [decision-profiles](decision-profiles.md) | Configure Coder's decision client |
 | [devin-delegation-runbook](devin-delegation-runbook.md) | Delegate work to Devin with Coder |
 | [headless](headless.md) | Headless mode |
