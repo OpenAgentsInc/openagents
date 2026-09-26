@@ -3,6 +3,36 @@ use tokio_postgres::{Client, Statement};
 use super::StoreError;
 
 const DUPLICATE_SQL: &str = "SELECT 1 FROM nostr_event WHERE id = $1";
+const ACCEPT_QUERY_SQL: &str = "INSERT INTO relay_query_authorization (event_id, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING event_id";
+const PRUNE_QUERY_SQL: &str = "DELETE FROM relay_query_authorization WHERE expires_at < $1";
+const READ_STATE_SNAPSHOT_SQL: &str = r#"
+WITH own AS MATERIALIZED (
+    SELECT id, pubkey, created_at, kind, tags::text, content, sig, ingest_seq
+    FROM nostr_event
+    WHERE kind = 30078 AND pubkey = $1
+      AND (expires_at IS NULL OR expires_at > $2)
+    ORDER BY created_at DESC, id ASC LIMIT 4097
+), bounds AS (
+    SELECT count(*) AS n, COALESCE(sum(octet_length(content) + octet_length(tags)), 0)::bigint AS bytes FROM own
+), retained_expiration AS (
+    SELECT EXISTS (
+        SELECT 1 FROM nostr_event
+        WHERE kind = 30078 AND pubkey = $1 AND expires_at <= $2
+    ) AS present
+), admission AS (
+    SELECT NOT EXISTS (SELECT 1 FROM relay_blocked_pubkey WHERE pubkey = $1)
+       AND (NOT EXISTS (SELECT 1 FROM relay_allowed_pubkey) OR EXISTS (SELECT 1 FROM relay_allowed_pubkey WHERE pubkey = $1))
+       AND (NOT closed_membership OR EXISTS (SELECT 1 FROM relay_member_pubkey WHERE pubkey = $1)) AS allowed
+    FROM relay_policy WHERE singleton = TRUE
+)
+SELECT e.id, e.pubkey, e.created_at, e.kind, e.tags, e.content, e.sig, e.ingest_seq,
+       bounds.n, bounds.bytes, admission.allowed, NOT pg_is_in_recovery(),
+       retained_expiration.present
+FROM bounds CROSS JOIN admission CROSS JOIN retained_expiration LEFT JOIN own e
+    ON bounds.n <= 4096 AND bounds.bytes <= 8388608 AND admission.allowed
+       AND NOT retained_expiration.present
+ORDER BY e.created_at DESC, e.id ASC
+"#;
 const POLICY_SQL: &str = r#"
 SELECT closed_membership, max_content_bytes, max_tags,
        max_future_seconds, max_past_seconds
@@ -146,9 +176,10 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
   AND e.kind NOT BETWEEN 39604 AND 39613
   AND e.kind <> 39620
   AND e.kind <> 39650
+  AND e.kind <> 30179
   AND (
       (
-          e.kind NOT IN (1059, 24200, 30174, 30175, 30178, 30300, 30350, 30622, 44200, 3187, 30186)
+          e.kind NOT IN (78, 1059, 21059, 24200, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200, 3187, 3188, 30186)
           AND NOT (
               e.kind = 30181
               AND EXISTS (
@@ -171,7 +202,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
           )
       )
       OR (
-          e.kind IN (1059, 24200, 30622, 44200)
+          e.kind IN (1059, 21059, 24200, 30622, 44200)
           AND $10::text[] IS NOT NULL
           AND (
               SELECT count(*) FROM nostr_indexed_tag recipient_count
@@ -186,7 +217,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
           )
       )
       OR (
-          e.kind IN (30300, 30350)
+          e.kind IN (78, 30078, 30300, 30350)
           AND $10::text[] IS NOT NULL
           AND e.pubkey = ANY($10)
       )
@@ -211,7 +242,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
           )
       )
       OR (
-          e.kind IN (3187, 30186)
+          e.kind IN (3187, 3188, 30186)
           AND $10::text[] IS NOT NULL
           AND (
               e.pubkey = ANY($10)
@@ -234,7 +265,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
   AND (
       $11::text[] IS NULL
       OR (
-          e.kind NOT IN (1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200, 3187, 30186)
+          e.kind NOT IN (78, 1059, 21059, 30078, 30174, 30175, 30178, 30179, 30300, 30350, 30622, 44200, 3187, 3188, 30186)
           AND NOT (
               e.kind = 30181
               AND EXISTS (
@@ -270,6 +301,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
       JOIN relay_group private_group ON private_group.id = group_scope.tag_value
       WHERE group_scope.event_id = e.id
         AND group_scope.tag_name = 'h'
+        AND e.kind NOT IN (78, 3187, 3188, 30078, 30174, 30175, 30178, 30186, 30300, 30350, 30621)
         AND private_group.private = TRUE
         AND (
             $10::text[] IS NULL
@@ -328,9 +360,10 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
   AND e.kind NOT BETWEEN 39604 AND 39613
   AND e.kind <> 39620
   AND e.kind <> 39650
+  AND e.kind <> 30179
   AND (
       (
-          e.kind NOT IN (1059, 24200, 30174, 30175, 30178, 30300, 30350, 30622, 44200, 3187, 30186)
+          e.kind NOT IN (78, 1059, 21059, 24200, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200, 3187, 3188, 30186)
           AND NOT (
               e.kind = 30181
               AND EXISTS (
@@ -353,7 +386,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
           )
       )
       OR (
-          e.kind IN (1059, 24200, 30622, 44200)
+          e.kind IN (1059, 21059, 24200, 30622, 44200)
           AND $8::text[] IS NOT NULL
           AND (
               SELECT count(*) FROM nostr_indexed_tag recipient_count
@@ -368,7 +401,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
           )
       )
       OR (
-          e.kind IN (30300, 30350)
+          e.kind IN (78, 30078, 30300, 30350)
           AND $8::text[] IS NOT NULL
           AND e.pubkey = ANY($8)
       )
@@ -393,7 +426,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
           )
       )
       OR (
-          e.kind IN (3187, 30186)
+          e.kind IN (3187, 3188, 30186)
           AND $8::text[] IS NOT NULL
           AND (
               e.pubkey = ANY($8)
@@ -416,7 +449,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
   AND (
       $9::text[] IS NULL
       OR (
-          e.kind NOT IN (1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200, 3187, 30186)
+          e.kind NOT IN (78, 1059, 21059, 30078, 30174, 30175, 30178, 30179, 30300, 30350, 30622, 44200, 3187, 3188, 30186)
           AND NOT (
               e.kind = 30181
               AND EXISTS (
@@ -439,6 +472,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
       JOIN relay_group private_group ON private_group.id = group_scope.tag_value
       WHERE group_scope.event_id = e.id
         AND group_scope.tag_name = 'h'
+        AND e.kind NOT IN (78, 3187, 3188, 30078, 30174, 30175, 30178, 30186, 30300, 30350, 30621)
         AND private_group.private = TRUE
         AND (
             $8::text[] IS NULL
@@ -660,6 +694,9 @@ SET outcome = EXCLUDED.outcome, processed_at = clock_timestamp()
 
 #[derive(Clone)]
 pub(crate) struct Statements {
+    pub accept_query: Statement,
+    pub prune_query: Statement,
+    pub read_state_snapshot: Statement,
     pub duplicate: Statement,
     pub policy: Statement,
     pub allowed_pubkey: Statement,
@@ -747,6 +784,9 @@ impl Statements {
     pub async fn prepare(client: &Client) -> Result<Self, StoreError> {
         Ok(Self {
             duplicate: client.prepare(DUPLICATE_SQL).await?,
+            accept_query: client.prepare(ACCEPT_QUERY_SQL).await?,
+            prune_query: client.prepare(PRUNE_QUERY_SQL).await?,
+            read_state_snapshot: client.prepare(READ_STATE_SNAPSHOT_SQL).await?,
             policy: client.prepare(POLICY_SQL).await?,
             allowed_pubkey: client.prepare(ALLOWED_PUBKEY_SQL).await?,
             allowed_kind: client.prepare(ALLOWED_KIND_SQL).await?,
@@ -843,11 +883,11 @@ mod tests {
     fn run_records_are_private_on_filter_id_lookup_count_and_search() {
         for sql in [QUERY_FILTER_SQL, QUERY_FILTER_IDS_SQL] {
             assert!(
-                sql.contains("e.kind IN (3187, 30186)"),
+                sql.contains("e.kind IN (3187, 3188, 30186)"),
                 "stored reads admit a run record only for its author or recipient"
             );
             assert!(
-                sql.contains("44200, 3187, 30186"),
+                sql.contains("44200, 3187, 3188, 30186"),
                 "search does not read run ciphertext"
             );
         }

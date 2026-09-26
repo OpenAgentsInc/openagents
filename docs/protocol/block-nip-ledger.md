@@ -6,19 +6,22 @@ at Buzz commit `781d39510cf23cfe224e8f521ae06a23377e06de`. The
 changed specifications and two additions against current code. Retained
 source, tested behavior, and complete implementation are separate claims.
 
-## Known stale inventory guard
+## Source inventory and behavior evidence
 
-[`nostr::block_lane`](../../crates/nostr/src/block_lane.rs) still declares
-`BLOCK_COMMIT = 8342dfcc5890b81a269a8ec3db73a8a56f76ce79` and a 15-file
-`FILES` list. Its test compares that old commit and count with the current
-manifest. The focused September 26 run **failed at that old-pin assertion**,
-as recorded in the [verification result](2026-09-26-upstream-nip-sync.md#verification-and-limits).
-No Rust constant or test was changed by the documentation update.
+[`nostr::block_lane`](../../crates/nostr/src/block_lane.rs) now declares the
+current `BLOCK_COMMIT` and all 17 source files. Its
+`source_inventory_matches_the_current_manifest_independently_of_behavior`
+test checks the manifest, exact file set, and source anchors.
+`BASELINE_FIXTURE_COMMIT` separately retains
+`8342dfcc5890b81a269a8ec3db73a8a56f76ce79`, and
+`baseline_subset_fixtures_still_hold` reruns those earlier scoped checks.
+Updating inventory does not turn FI, PMA, or expanded AP/CW/PL/RS roles into
+complete implementations.
 
-The eventual correction must distinguish the 17-file source inventory from
-role-specific evidence. Merely replacing the pin and count cannot establish
-FI, PMA, or the new AP/CW/PL/RS behaviors. Keep explicit unsupported and
-reserved-kind cases as part of that evidence.
+The current pure `nostr` suite passes 276 tests and strict all-target Clippy.
+The new RS HTTP/Postgres integration test passes independently against a fresh
+writer database. Other new live relay changes remain pending the current
+manual gate; this ledger does not infer their result from unit tests.
 
 ## Retained checks from the earlier 15-specification pin
 
@@ -33,8 +36,8 @@ against the new pin.
 | NIP-AE | `validate_block_ingest` for kind `30174`. | Engram envelope validation. |
 | NIP-AM | `agent_turn_metric_owner` for kind `44200`. | Metric owner extraction/validation. |
 | NIP-AO | `agent_observer_route` for a telemetry frame. | Ephemeral route validation. |
-| NIP-AP | `validate_block_ingest` for kinds `30175` and `30178`. | Envelopes only; no new ACP projection/adoption behavior. |
-| NIP-CW | `render_window` and `accept_window` for one kind `39006` page. | Channel page only; no thread `39007`, batch budgets, or deletion recovery. |
+| NIP-AP | `validate_block_ingest` for kinds `30175` and `30178`. | Retained envelope fixture; current client projection/adoption helpers have separate tests below. |
+| NIP-CW | `render_window` and `accept_window` for one kind `39006` page. | Retained channel-page fixture; thread helpers are separate from missing thread server/recovery roles. |
 | NIP-DV | `dm_visibility_channel` for kind `41010`. | Command parsing. |
 | NIP-ER | `validate_block_ingest` for kind `30300`. | Reminder envelope validation. |
 | NIP-GS | `sign_git_object` and `verify_git_object`. | Git-object client primitives. |
@@ -42,23 +45,35 @@ against the new pin.
 | NIP-MP | `validate_block_ingest` for kind `30621`. | Project envelope validation. |
 | NIP-OA | `verify_owner_attestation` on a signed auth tag. | Attestation verification. |
 | NIP-PL | `accept_lease`, then the fixed APNs reconnect body. | Lease parser and body constant; no full executor/public gateway lifecycle. |
-| NIP-RS | Addressable class of kind `30078`. | Storage class only; no RS merge, complete-load barrier, or atomic snapshot. |
+| NIP-RS | Addressable class of kind `30078`. | Original storage fixture only; the new atomic snapshot has separate evidence below. |
 | NIP-WP | `workspace_icon` for kind `9033`. | Workspace-icon command parsing. |
 
-## New targets without ledger coverage
+## Current-source additions and refusals
 
-| Spec | Required work | Current status |
+| Spec | Owning implementation and evidence | Boundary |
 | --- | --- | --- |
-| NIP-FI | Issuer/community policy, JWT/JWKS and Nostr possession checks, session deadlines, protected HTTP admission, issuer disconnect. | No implementation, fixtures, or advertisement. |
-| NIP-PMA | First reject reserved private kind `30179`; later implement the staged privacy, transactional update, backup, revocation, and migration contract. | No implementation or required rejection; generic admission/read paths remain unsafe for this private kind. |
+| NIP-AP | [`agent_persona`](../../crates/nostr/src/agent_persona.rs): typed known content, portable catalog projection, authenticated foreign adoption, own custom-command preservation, restart decision | No ACP launcher, executable discovery, or catalog UI |
+| NIP-CW | [`thread_window`](../../crates/nostr/src/thread_window.rs): strict batches, exact request binding, signed `39007` bounds, budget accounting | No thread-mode database service, complete reconstruction, or deletion recovery; no `nip-cw` advertisement |
+| NIP-RS | [`read_state_snapshot`](../../crates/nostr/src/read_state_snapshot.rs): exact raw filters/envelopes, identities, signatures, digest, hard bounds | A client verifier authenticates a supplied cut; server completeness depends on the writer adapter |
+| NIP-RS | [`read_state_snapshot_postgres`](../../crates/nostr-relay/tests/read_state_snapshot_postgres.rs): actual HTTP, Host discovery, NIP-98, writer cut, reader isolation, replay/restart, malformed requests, replacement/deletion, corruption, counts/bytes, membership | **Passed** on a fresh disposable database; no RS application merge client or ordinary-EOSE full-state barrier |
+| NIP-FI | [`federated_identity`](../../crates/nostr/src/federated_identity.rs): token/policy/session/deny-set tests with an injected verifier | No JWT crypto implementation, JWKS client, live authentication/session enforcement, or FI advertisement |
+| NIP-PMA | [`domain/block.rs`](../../crates/nostr/src/domain/block.rs), gateway write rejection and private read guards | Kind `30179` refused; no staged managed-agent runtime or PMA advertisement |
+| NIP-PL | [`gateway/config.rs`](../../crates/nostr-relay/src/gateway/config.rs): push executor configuration refuses; NIP-11 omits PL | Existing parser/body fixtures remain; actual delivery is disabled |
 
-The changed CW contract also requires client-publication rejection for
-relay-signed kind `39007`; the existing relay-only guard covers `39005` and
-`39006` but omits it. The optional RS atomic snapshot is absent. PL has a
-configured local HTTP stub path, with preexisting transaction, read-authorization,
-and durable-delivery gaps. Its fixture is not public APNs gateway evidence.
+Public admission also rejects relay-owned thread bounds kind `39007`.
+Unknown thread HTTP modes refuse explicitly instead of falling back to ordinary
+query semantics. The existing channel path handles missing/inaccessible groups
+without bounds and refreshes access after its read; its bounded summary slice
+still does not prove complete CW semantics.
 
-See [implementation status](block-nips.md) for existing Postgres fixtures,
-current NIP-11 advertisement behavior, and the limits of those claims. This
-sync and documentation update ran only the two source-ledger guards, both
-of which failed; it ran no full Rust gate or live relay probe.
+RS requires `NOSTR_RELAY_READ_STATE_COMMUNITY` and the configured relay origin
+for snapshot discovery. The relay base `nip-rs` declaration names the existing
+storage role; the descriptor names the optional atomic mode. New snapshots
+never use the ordinary history cap as a completeness limit.
+
+PL still needs transactional lease/generation authority, current access checks,
+durable authenticated dispatch, and public gateway enrollment/recovery before
+it can be re-enabled. FI and PMA similarly need complete deployment roles
+before advertisement. See [implementation status](block-nips.md) for the exact
+runtime boundaries and [`scripts/test-postgres.sh`](../../scripts/test-postgres.sh)
+for the isolated live test sequence.

@@ -80,8 +80,8 @@ pub fn append_follow(list: &mut Vec<Follow>, follow: Follow) {
 /// The petname path the viewer's lists assign to `target`.
 ///
 /// A direct petname is that name. A petname from someone the viewer follows
-/// is `their-name.viewer-name`, and the chain continues through published
-/// lists. The shortest path wins. Two paths of the same length use the
+/// is `~/viewer-name/their-name`, in traversal order. Only unambiguous
+/// ASCII letters, digits, and underscore labels participate in indirect paths. The shortest path wins. Two paths of the same length use the
 /// lexicographically earlier text.
 #[must_use]
 pub fn displayed_petname(
@@ -98,8 +98,8 @@ pub fn displayed_petname(
         if follow.pubkey == target {
             return Some(follow.petname.clone());
         }
-        if seen.insert(follow.pubkey.clone()) {
-            queue.push_back((follow.pubkey.clone(), follow.petname.clone()));
+        if resolvable_label(viewer_follows, &follow.petname) && seen.insert(follow.pubkey.clone()) {
+            queue.push_back((follow.pubkey.clone(), format!("~/{}", follow.petname)));
         }
     }
     while !queue.is_empty() {
@@ -107,15 +107,15 @@ pub fn displayed_petname(
         let mut found = Vec::new();
         let mut next = BTreeMap::<String, String>::new();
         for _ in 0..width {
-            let (person, suffix) = queue.pop_front().expect("width matches the queue");
+            let (person, prefix) = queue.pop_front().expect("width matches the queue");
             let Some(list) = published.get(person.as_str()) else {
                 continue;
             };
             for follow in *list {
-                if follow.petname.is_empty() {
+                if !resolvable_label(list, &follow.petname) {
                     continue;
                 }
-                let name = format!("{}.{}", follow.petname, suffix);
+                let name = format!("{prefix}/{}", follow.petname);
                 if follow.pubkey == target {
                     found.push(name);
                     continue;
@@ -142,6 +142,95 @@ pub fn displayed_petname(
         }
     }
     None
+}
+
+/// Whether a display label qualifies for NIP-02 name-path resolution.
+#[must_use]
+pub fn petname_is_resolvable(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
+fn resolvable_label(list: &[Follow], name: &str) -> bool {
+    petname_is_resolvable(name) && list.iter().filter(|follow| follow.petname == name).count() == 1
+}
+
+/// Resolve a relative or absolute petname path without network access.
+///
+/// Relative `~/alice/bob` (or a direct `alice`) uses `viewer`. Absolute roots
+/// accept `~npub1...` or a NIP-05 name from `verified_roots`. The caller must
+/// have independently verified those name-to-key bindings; this function does
+/// not fetch or authenticate them. Missing roots, lists, or labels return
+/// `None`, never a guessed key. Follow lists must be keyed by their verified
+/// author and selected using normal replacement rules.
+///
+/// # Errors
+///
+/// Returns an error for invalid path syntax, malformed keys, or an ambiguous
+/// component. Non-resolvable petnames remain valid display labels.
+pub fn resolve_petname(
+    path: &str,
+    viewer: Option<&str>,
+    published: &BTreeMap<&str, &[Follow]>,
+    verified_roots: &BTreeMap<&str, &str>,
+) -> Result<Option<String>, DomainError> {
+    let (root, tail) = if let Some(tail) = path.strip_prefix("~/") {
+        (viewer.map(str::to_owned), tail)
+    } else if let Some(absolute) = path.strip_prefix('~') {
+        let (root, tail) = absolute.split_once('/').ok_or_else(|| {
+            DomainError::InvalidEvent("an absolute petname path needs a root and name".into())
+        })?;
+        let key = if root.starts_with("npub1") {
+            let (prefix, bytes) = crate::nip19::decode(root).map_err(|_| {
+                DomainError::InvalidEvent("a petname root must be a valid npub".into())
+            })?;
+            if prefix != "npub" || bytes.len() != 32 {
+                return Err(DomainError::InvalidEvent(
+                    "a petname root must be an npub".into(),
+                ));
+            }
+            Some(super::hex::encode_lower_hex(&bytes))
+        } else {
+            crate::lane::nip05_identifier(root).map_err(|_| {
+                DomainError::InvalidEvent(
+                    "a petname root must be an npub or verified NIP-05 name".into(),
+                )
+            })?;
+            verified_roots.get(root).map(|key| (*key).to_owned())
+        };
+        (key, tail)
+    } else {
+        (viewer.map(str::to_owned), path)
+    };
+    let components: Vec<_> = tail.split('/').collect();
+    if components.iter().any(|name| !petname_is_resolvable(name)) {
+        return Err(DomainError::InvalidEvent(
+            "petname components use ASCII letters, digits, and underscores".into(),
+        ));
+    }
+    let Some(mut current) = root else {
+        return Ok(None);
+    };
+    decode_lower_hex::<32>(&current, "petname root")?;
+    for component in components {
+        let Some(list) = published.get(current.as_str()) else {
+            return Ok(None);
+        };
+        let mut candidates = list.iter().filter(|follow| follow.petname == component);
+        let Some(found) = candidates.next() else {
+            return Ok(None);
+        };
+        if candidates.next().is_some() {
+            return Err(DomainError::InvalidEvent(
+                "a petname component names more than one profile".into(),
+            ));
+        }
+        decode_lower_hex::<32>(&found.pubkey, "petname target")?;
+        current = found.pubkey.clone();
+    }
+    Ok(Some(current))
 }
 
 fn relay_url(value: &str) -> bool {
@@ -229,11 +318,76 @@ mod tests {
         );
         assert_eq!(
             displayed_petname(&viewer_only, &published, &david).as_deref(),
-            Some("david.erin")
+            Some("~/erin/david")
         );
         assert_eq!(
             displayed_petname(&viewer_only, &published, &frank).as_deref(),
-            Some("frank.david.erin")
+            Some("~/erin/david/frank")
         );
+    }
+    #[test]
+    fn name_paths_resolve_forward_from_verified_roots_and_reject_ambiguity() {
+        let viewer = key(8);
+        let erin = key(1);
+        let charlie = key(2);
+        let first = [
+            follow(&erin, "", "erin"),
+            follow(&charlie, "", "not-a-path"),
+        ];
+        let second = [follow(&charlie, "", "charlie"), follow(&viewer, "", "back")];
+        let published = BTreeMap::from([
+            (viewer.as_str(), first.as_slice()),
+            (erin.as_str(), second.as_slice()),
+        ]);
+        let roots = BTreeMap::from([("carol@names.com", viewer.as_str())]);
+        for path in [
+            "~/erin/charlie",
+            "~carol@names.com/erin/charlie",
+            "~/erin/back/erin/charlie",
+        ] {
+            assert_eq!(
+                resolve_petname(path, Some(&viewer), &published, &roots).unwrap(),
+                Some(charlie.clone())
+            );
+        }
+        let npub =
+            crate::nip19::encode_npub(&super::decode_lower_hex::<32>(&viewer, "key").unwrap());
+        assert_eq!(
+            resolve_petname(&format!("~{npub}/erin/charlie"), None, &published, &roots).unwrap(),
+            Some(charlie.clone())
+        );
+        assert_eq!(
+            resolve_petname("~/erin/charlie", None, &published, &roots).unwrap(),
+            None
+        );
+        assert_eq!(
+            resolve_petname("~absent@names.com/erin", None, &published, &roots).unwrap(),
+            None
+        );
+        assert_eq!(
+            resolve_petname("~/missing", Some(&viewer), &published, &roots).unwrap(),
+            None
+        );
+        for path in [
+            "~/",
+            "~/erin//charlie",
+            "~/erin/../charlie",
+            "~/not-a-path",
+            "~/é",
+        ] {
+            assert!(
+                resolve_petname(path, Some(&viewer), &published, &roots).is_err(),
+                "{path}"
+            );
+        }
+        let ambiguous = [follow(&erin, "", "same"), follow(&charlie, "", "same")];
+        let lists = BTreeMap::from([(viewer.as_str(), ambiguous.as_slice())]);
+        assert!(resolve_petname("~/same", Some(&viewer), &lists, &roots).is_err());
+        // Display labels with punctuation remain available, but cannot be paths.
+        assert_eq!(
+            displayed_petname(&first, &published, &charlie).as_deref(),
+            Some("not-a-path")
+        );
+        assert_eq!(displayed_petname(&first, &published, &key(9)), None);
     }
 }

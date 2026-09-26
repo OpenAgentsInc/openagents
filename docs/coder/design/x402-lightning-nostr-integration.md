@@ -11,6 +11,13 @@ boundaries, a required CAP feature, native private purchase records, and recover
 It allocates no kinds. It is a **Designed** draft; this change does not create a
 wallet adapter, facilitator, paid endpoint, or deployed payment service.
 
+The subsequent [implementation pass](../../protocol/2026-09-26-nip-implementation-coverage.md)
+adds [pure Rust invoice and request-binding validation](../../../crates/nostr/src/x402.rs),
+including signature, exact terms, time, and preimage checks. It does not create
+wallet authority or a durable settlement/consumption service. The phases below
+remain completion requirements; a cryptographic component alone does not close
+the end-to-end payment milestone.
+
 ## What merged, and what was inspected
 
 [PR #2861](https://github.com/x402-foundation/x402/pull/2861) merged on

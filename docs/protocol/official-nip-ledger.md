@@ -1,43 +1,51 @@
 # Official NIP ledger
 
-The source lane is now pinned at
+The source lane and the inventory in
+[`crates/nostr/src/lane.rs`](../../crates/nostr/src/lane.rs) name
 `b82211e96c6dad616ed2ea43034c1c621256b745`: 99 specifications plus the upstream
-README. `crates/nostr/src/lane.rs` still names the previous implementation
-baseline, `c53877571f96eb423661fc23c620d629d37b8f19`. Its pin guard fails after
-the sync, and A3 is missing from its file inventory. This page retains the
-existing implementation evidence; `configured-and-proven` labels below are
-historical code-ledger statuses, not certification of the new source pin.
+README, including A3. The source-inventory guard checks that pin and the complete
+file list. It does not certify protocol behavior. `PREVIOUS_BEHAVIOR_COMMIT`
+retains `c53877571f96eb423661fc23c620d629d37b8f19` for the existing fixture
+baseline; `CURRENT_CLIENT_REVIEWS` names the narrower updated client roles.
+Historical `configured-and-proven` labels below describe that retained fixture
+coverage, not every behavior in a NIP or every newly synced recommendation.
 
 The [September 26 assessment](2026-09-26-upstream-nip-sync.md) and
 [official implementation review](2026-09-26-upstream-nip-sync-official.md)
-record every source change, code location, and acceptance requirement.
-Current gaps include owner visibility for NIP-78, kind-1 comment scopes for
-22, expanded highlight sources for 84, slash petname paths for 02, and
-mutually exclusive allow/ban mutations for 86. Optional auth hints and
-membership claims need separate roles. A3 has generic replaceable storage
-but no typed payment-target client or dedicated fixture. The NIP-43 shape
-check does not establish a relay-wide membership service.
+record the source changes and original gaps. This ledger records the subsequent
+implementation. Current pure-crate verification passes 276 tests and strict
+all-target Clippy. The new relay privacy and concurrent management fixtures are
+implemented; their live verification is pending the current manual gate.
 
-A future ledger revision must separate source inventory, implemented roles,
-and verification evidence rather than updating the SHA and calling every
-new behavior covered.
+| Current-source change | Implemented role | Boundary |
+| --- | --- | --- |
+| NIP-02 | Traversal-order petname display and offline resolution | NIP-05 roots require caller-verified bindings; no network resolver |
+| NIP-22 | Comments can name kind-1 roots and parents | Existing scope and author checks still apply |
+| NIP-30 | Event-local emoji tokens, including kind-1111 comments | No image fetch or product renderer integration |
+| NIP-42 and NIP-67 | Typed `auth` EOSE hint, independent of current-view completeness | The relay does not emit this optional hint or automatically authenticate a client |
+| NIP-43 | Signed relay declarations and fresh join/leave request parsing | No claim issuer, claim redemption, or complete membership service |
+| NIP-78 | Author-authenticated publication; author-only history, live delivery, and counts; no content search | Opaque storage is not encryption; ownership is the signing key |
+| NIP-84 | Structured `i` and arbitrary-text `r` sources; optional attribution | No source fetching or provenance verification |
+| NIP-86 | Serialized allow/ban mutations remove the opposite list entry atomically | Optional administrative host roles still require configuration |
+| NIP-A3 | Typed targets and escaped, inert payment URIs | No address validation, wallet dispatch, or payment authority |
 
 ## What a row proves
 
-**NIP-02 update pending:** The existing helper still emits the old dotted path;
-the new traversal-order slash form and reverse resolution are not covered.
-
-NIP-02 has a previous-pin `configured-and-proven` code-ledger status. The domain
-role is a kind `3` replaceable list whose `p` tags carry a 32-byte hex key, an
-optional `ws://` or `wss://` relay, and an optional petname. The client helpers
-are `parse_follow_list`, `append_follow`, and `displayed_petname` in
-`crates/nostr/src/domain/follow.rs`. The server role is the ordinary replacement
-head: `EventClass::from_kind(3)` is `Replaceable`, so a newer list from the same
-author deletes the previous one in `crates/nostr-relay/src/store/mod.rs`. There
-is no separate setting. The fixture is the pinned `p` tag triple. Live
-acceptance is `lane::tests::nip02_follow_lists_replace_and_petnames_chain`.
-Content is ignored, which is what the pinned text says. The `nostr` and
-`nostr-relay` crates own the row.
+NIP-02's kind `3` follow list is replaceable. Each `p` tag names a
+32-byte hex key, an optional relay, and an optional petname.
+`parse_follow_list`, `append_follow`, `displayed_petname`, and
+`resolve_petname` live in
+[`domain/follow.rs`](../../crates/nostr/src/domain/follow.rs). The display
+helper keeps direct names and emits indirect names in traversal order, such as
+`~/erin/david/frank`. The resolver walks caller-supplied published lists from
+the viewer, an explicit `npub`, or a caller-verified NIP-05 root. Missing data
+returns no resolution; malformed components and ambiguous aliases refuse.
+Display names outside the ASCII path grammar remain displayable but cannot
+become an indirect path. The helper neither fetches lists nor verifies NIP-05
+ownership. A newer list replaces its author's previous list through ordinary
+store replacement. Fixtures cover traversal, cycles bounded by the supplied
+path, unknown roots, missing lists, and ambiguity; the retained replacement
+fixture is `lane::tests::nip02_follow_lists_replace_and_petnames_chain`.
 
 NIP-03 is `configured-and-proven`. `open_attestation` in
 `crates/nostr/src/domain/ots.rs` reads a kind `1040` event: one `e` tag, one
@@ -84,20 +92,15 @@ caller supplies the one-time wrapper key. Kind `21059` belongs to NIP-59.
 Acceptance is
 `nip17::tests::a_private_message_round_trips_and_rejects_an_impersonated_rumor`.
 
-**NIP-22 update pending:** The kind-1 refusal described below is obsolete under
-the new source and still needs removal from code and fixtures.
-
-NIP-22 has a previous-pin `configured-and-proven` code-ledger status. A kind
-`1111` comment names one uppercase root scope (`A`, `E`, or `I`) and one
-lowercase parent scope (`a`, `e`, or `i`). `K` and `k` are required. A nostr
-scope requires its author tag. An addressable parent also carries the parent
-event id in `e`. External scopes use the NIP-73 identifier types, and the kind
-tag has to match that type. Kind `1` is refused. A top-level comment uses the
-same scope for the root and the parent. Admission rejects a malformed comment.
-Kind `1111` stays a regular stored event and is not added to the NIP-11 list.
-Content is kept as text. A URL with a fragment is refused and is not rewritten.
-Acceptance is
-`domain::comment::tests::a_comment_scopes_to_the_root_and_refuses_a_kind_1_reply`.
+NIP-22's kind `1111` comment names one uppercase root scope (`A`, `E`,
+or `I`) and one lowercase parent scope (`a`, `e`, or `i`). `K` and `k` are
+required; a Nostr scope also requires its author. An addressable parent carries
+its event ID in `e`. External scopes use NIP-73 identifiers with matching kind
+tags. Kind `1` roots and parents are accepted, including replies to a comment
+beneath a kind-1 root. A top-level comment uses the same root and parent.
+Admission rejects malformed scopes and missing authors. Content remains text;
+kind `1111` is regular storage and is not advertised as a separate relay role.
+Fixture: `domain::comment::tests::a_comment_scopes_to_the_root_including_kind_1`.
 
 NIP-23 is `configured-and-proven`. Kind `30023` is an addressable
 article with one `d` tag. Optional metadata is `title`, `image`,
@@ -237,23 +240,19 @@ keep two to four relays is not enforced, and indexer discovery is not
 implemented. Acceptance is
 `domain::relay_list::tests::a_relay_list_splits_read_and_write_and_replaces`.
 
-**NIP-84 update pending:** The current parser does not yet accept the newly
-documented structured `i` and text `r` sources.
-
-NIP-84 has a previous-pin `configured-and-proven` code-ledger status. Kind
-`9802` is a highlight. The content is the highlighted text, and it may be empty
-for non-text media. The source is an `a` tag, an `e` tag, or an `r` tag marked
-`source`. An `r` tag marked `mention` is a URL inside the commentary, not the
-source. `p` tags credit pubkeys as `author` or `editor`. A mention uses
-`mention` so it is not read as an author. A `context` tag keeps the surrounding
-paragraph. A `comment` tag makes the event a quote highlight and keeps that
-commentary. `clean_source_url` drops tracker query parameters before a client
-publishes the source URL. The relay stores the URL as tagged and does not fetch
-it. Kind `9802` is a regular event, so a newer highlight does not replace an
-older one, and it is not added to the NIP-11 list. Admission rejects a highlight
-with no source, an unknown role, or an `r` tag that is not `source` or
-`mention`. Acceptance is
-`domain::highlight::tests::a_highlight_names_its_source_and_a_comment_quotes_it`.
+NIP-84's kind `9802` highlight retains the selected text, or empty content
+for non-text media. Sources include Nostr `a` and `e` references, structured
+NIP-73 `i` identifiers, and arbitrary `r` text such as a book description.
+Attribution is recommended by the spec and is not mandatory admission policy.
+An ordinary highlight can omit the `r` marker; a quote highlight's HTTP(S) URLs
+require `source` or `mention`. `p` roles distinguish authors, editors, and
+mentions; `context` retains surrounding text, and `comment` supplies quote
+commentary. `clean_source_url` is an optional local utility, not a protocol
+requirement or relay rewrite. The parser does not fetch a source or prove that
+a quotation is accurate. Fixtures in
+[`domain/highlight.rs`](../../crates/nostr/src/domain/highlight.rs) cover mixed
+sources, text-only references, source-less media, structured-source errors,
+and quote URL markers. The event remains regular stored data.
 
 NIP-89 is `configured-and-proven`. Kind `31989` recommends
 applications for one event kind. Its `d` tag is that kind, and each `a`
@@ -429,20 +428,25 @@ hash. A blurhash is not decoded into pixels. A magnet URI is not
 matched against the infohash. Acceptance is
 `domain::file::tests::a_file_keeps_its_hash_and_does_not_replace`.
 
-**NIP-78 update pending:** The new AUTH and author-only serving recommendations
-are not enforced across the current relay read paths. The storage evidence below
-does not prove privacy.
+NIP-78 uses addressable kind `30078` for an application coordinate and
+regular kind `78` for multiple records. Content and unrelated tags stay opaque;
+a `d` tag groups regular rows and identifies replacement for `30078`. The relay
+now adopts the spec's authentication and author-only serving recommendations
+as its local policy: publication requires NIP-42 authentication as the signing
+author, and history, live delivery, HTTP query results, and counts disclose
+these kinds only to that author. Another authenticated key, including an agent
+owner distinct from the signer, gains no access. Both kinds are excluded from
+content search. Opaque application `h` data is not a Block group membership
+claim. The relay does not decrypt or interpret application content.
 
-NIP-78 has a previous-pin `configured-and-proven` code-ledger status. Kind
-`30078` is an addressable application record. Its `d` tag names the app and the
-context, or any other string of 1 to 1024 characters. Kind `78` is a regular
-event for many rows of the same type. A `d` tag on kind `78` groups those rows
-and does not replace them. Content and the other tags stay opaque. A newer kind
-`30078` record with the same `d` tag replaces the older one. Kind `30078` stays
-out of search. Kinds `78` and `30078` are not added to the NIP-11 list. The
-relay does not decrypt the content or decide which app owns an identifier. Kind
-`78` content remains searchable. Acceptance is
+The pure replacement fixture remains
 `domain::app_data::tests::an_application_record_replaces_on_its_identifier_and_a_plain_event_does_not`.
+The new `current_private_gateway_contract` in
+[`gateway_postgres.rs`](../../crates/nostr-relay/tests/gateway_postgres.rs)
+checks cross-process history, live delivery, counts, and search for authors,
+other readers, and unauthenticated readers. Live execution is pending the
+current manual gate. NIP-RS provides a separately configured complete
+own-author `30078` cut; that Block extension is not a NIP-78 merge engine.
 
 NIP-88 is `configured-and-proven`. Kind `1068` is a poll.
 `content` is the label. Each `option` tag is an alphanumeric id and a
@@ -990,36 +994,60 @@ the kinds stay off the NIP-11 list. Acceptance is
 `deprecated_set_shapes_map_to_standard_lists`, and
 `malformed_lists_are_refused`.
 
-**NIP-67 current boundary:** the parser ignores the new optional `auth` hint. A
-`finish` result describes the current authorized view; it does not prove that
-authentication cannot reveal more. Emitting `auth` is optional, and would
-require a preceding AUTH challenge.
+NIP-67 separates a complete current authorized view from an opportunity to
+authenticate for more. `domain::eose::open_eose` accepts legacy messages,
+multiple known hints, unknown hints, and trailing fields. `EoseHint::Auth` and
+`authentication_may_reveal_more()` expose the opportunity without changing
+`complete()`: `finish` means `Some(true)`, `more` without finish means
+`Some(false)`, and auth-only or unknown hints leave completeness unknown.
+This also supplies the NIP-42 client-side hint role. The relay continues to
+emit `finish` or `more`, not the optional `auth` hint. If emission is added,
+NIP-42 requires an AUTH challenge before that EOSE.
 
-NIP-67 has a previous-pin `configured-and-proven` code-ledger status. The
-relay's `query_history` probes one row past the smaller of each filter's own
-`limit` and its budget share — the store applies the client's `limit` itself, so
-the probe clones the filter with the bound lifted — and again past the combined
-cap after dedup. Either overflow sets `HistoryResult::complete` false and the
-EOSE carries `["more"]`; otherwise it carries `["finish"]`. `wire::eose_message`
-always sends the third element, and NIP-11 advertises `67` unconditionally. On
-the read side, `domain::eose::open_eose` parses two- and three-element forms,
-`Eose::complete` returns `Some(true)` for finish, `Some(false)` for more-only,
-and `None` for absent, empty, or unknown hints — unknown values are ignored
-without error per the pinned rule — and `should_paginate` is true everywhere
-except a definitive finish. The hint covers stored events only; live delivery is
-unchanged, and the boundary-`created_at` tie rule is not yet implemented.
-Acceptance is
+`query_history` probes beyond per-filter and combined limits to distinguish a
+truncated result. `wire::eose_message` sends the third element, and NIP-11
+advertises `67`. These hints concern stored events; live delivery is separate,
+and the recommendation to preserve boundary timestamp ties across pagination
+is not implemented. Fixtures are
 `gateway::subscription::tests::a_truncated_history_announces_more_at_eose` and
 `domain::eose::tests::finish_and_more_answer_completeness`.
 
-The previous code ledger labels its event-shaped entries
-`configured-and-proven`; the `Shape` list is empty. This is not a current-pin
-coverage claim: A3 is unaccounted for, changed behavior needs new evidence,
-and even the old membership check proves only a narrow shape. A `Shape` was
-the partial check: the kind and
-one tag that occur in the pinned text, an event signed with them
-accepted and the same event without the tag refused, re-stating none
-of the optional fields.
+NIP-30's [`domain/emoji.rs`](../../crates/nostr/src/domain/emoji.rs) produces
+text and emoji tokens for kinds `0`, `1`, `1111`, `7`, and `30315`. Profile
+emojification is limited to `name` and `about`. Definitions are local to the
+event; unknown shortcodes remain literal text. The helper validates shortcode,
+HTTP(S) image reference, and optional emoji-set coordinates, rejects ambiguous
+definitions, and performs no network or HTML rendering. Fixtures cover comment
+and profile fields, unknown codes, duplicate definitions, and unsafe URLs.
+
+NIP-43's [`domain/relay_access.rs`](../../crates/nostr/src/domain/relay_access.rs)
+checks signatures, protection, and the expected relay self-key on membership
+and role declarations. Its separate join/leave parser checks freshness using
+the caller's clock and tolerance. The required opaque join `claim` stays private in
+Debug output. Parsing a claim does not redeem it, grant membership, or
+implement issuance. Removed kind `28935` has no claim-issuance role. Existing
+relay membership handlers remain narrower than a complete NIP-43 service.
+
+NIP-86's `Store::manage` holds the policy lock while an allow mutation removes
+the banned entry, or a ban mutation removes the allowed entry, and posts the
+selected entry in the same transaction. The
+[`store_postgres.rs`](../../crates/nostr-relay/tests/store_postgres.rs) fixture
+races opposing mutations from two connections and requires exactly one final
+list entry. Its current live verification is pending the manual gate. This
+change does not turn unsigned calls into administrative authority.
+
+NIP-A3's [`domain/payment_target.rs`](../../crates/nostr/src/domain/payment_target.rs)
+opens replaceable kind `10133` lists of `payto` type/address pairs, preserves
+unknown well-formed types, and constructs inert URIs with encoded components.
+Known Bitcoin and Ethereum targets use their URI schemes; other types use
+`payto://`. Malformed types and empty addresses refuse. The parser does not
+validate network addresses or make a payment. Fixtures cover replacement,
+unknown types, malformed fields, and query/fragment characters treated as data.
+
+The historical `Shape` list is empty. A historical `configured-and-proven`
+label still means the fixture-backed role described in its row, not complete
+client, relay, application, or host behavior. The explicit current-source
+review table adds narrower evidence instead of reclassifying all old rows.
 
 Files whose body says the rules moved to NIP-01 are not a second protocol.
 The check requires that sentence and still verifies a signed NIP-01 event.

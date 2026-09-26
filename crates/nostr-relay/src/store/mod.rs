@@ -403,6 +403,23 @@ impl Store {
         mode: AdmissionMode,
     ) -> Result<AdmissionOutcome, StoreError> {
         self.ensure_current()?;
+        // A historical import cannot activate an unsupported private protocol.
+        if event.kind == crate::domain::PRIVATE_MANAGED_AGENT_KIND {
+            return Err(DomainError::InvalidEvent(
+                "private managed-agent aggregates are reserved and not admitted".to_owned(),
+            )
+            .into());
+        }
+        if event.kind == crate::domain::THREAD_BOUNDS_KIND {
+            return Err(DomainError::InvalidEvent(
+                "thread bounds are response-only relay overlays".to_owned(),
+            )
+            .into());
+        }
+        if event.kind == nostr::contracts::ARTIFACT_ENVELOPE_KIND {
+            nostr::private_artifact::admit(event)
+                .map_err(|error| DomainError::InvalidEvent(error.to_string()))?;
+        }
         if mode == AdmissionMode::Public {
             event.validate_structure()?;
             event.validate_crypto()?;
@@ -1112,9 +1129,9 @@ impl Store {
 
     /// True when a channel window may be served to `reader`.
     ///
-    /// A missing group and an open group are readable. A closed group is
-    /// readable only for a recorded member. A hidden channel is
-    /// indistinguishable from an empty response with no bounds overlay.
+    /// A missing group is not served. Private or hidden groups require a recorded
+    /// member; public groups are readable even when closed to join requests.
+    /// An inaccessible channel returns no rows or bounds overlay.
     pub async fn channel_window_served(
         &mut self,
         channel: &str,
@@ -1123,8 +1140,8 @@ impl Store {
         self.ensure_current()?;
         let transaction = self.client.transaction().await?;
         let served = match load_group(&transaction, &self.statements, channel).await? {
-            None => true,
-            Some(group) if !group.closed => true,
+            None => false,
+            Some(group) if !group.private && !group.hidden => true,
             Some(_) => group_member(&transaction, &self.statements, channel, reader)
                 .await?
                 .is_some(),
@@ -1388,7 +1405,75 @@ impl Store {
         rows.into_iter().map(decode_event_row).collect()
     }
 
-    /// Execute one bounded NIP-01 filter with one immutable prepared query.
+    /// Complete own-author read state from one writer MVCC statement cut.
+    /// Authentication is verified by the HTTP caller; the transaction consumes
+    /// its event identity and checks current membership before exposing rows.
+    /// Expired retained coordinates refuse the whole cut until physical removal.
+    pub async fn read_state_snapshot(
+        &mut self,
+        pubkey: &str,
+        authorization: &str,
+        community: &str,
+        now: u64,
+    ) -> Result<nostr::read_state_snapshot::ReadStateSnapshot, StoreError> {
+        self.ensure_current()?;
+        let now_i64 = pg_i64(now, "snapshot time")?;
+        let expires = pg_i64(now.saturating_add(120), "snapshot authorization expiry")?;
+        let transaction = self.client.transaction().await?;
+        transaction
+            .execute(&self.statements.prune_query, &[&now_i64])
+            .await?;
+        if transaction
+            .query_opt(&self.statements.accept_query, &[&authorization, &expires])
+            .await?
+            .is_none()
+        {
+            return Err(StoreError::Management("snapshot_replay".into()));
+        }
+        let rows = transaction
+            .query(&self.statements.read_state_snapshot, &[&pubkey, &now_i64])
+            .await?;
+        let first = rows
+            .first()
+            .ok_or_else(|| StoreError::CorruptRow("missing snapshot policy".into()))?;
+        if !first.get::<_, bool>(10) {
+            return Err(StoreError::Management("snapshot_not_admitted".into()));
+        }
+        if !first.get::<_, bool>(11) {
+            return Err(StoreError::Management("snapshot_requires_writer".into()));
+        }
+        if first.get::<_, bool>(12) {
+            return Err(StoreError::Management(
+                "snapshot_retained_expiration".into(),
+            ));
+        }
+        let count = first.get::<_, i64>(8);
+        let bytes = usize::try_from(first.get::<_, i64>(9))
+            .map_err(|_| StoreError::Management("snapshot_limit".into()))?;
+        if count > 4096 || bytes > 8_388_608 {
+            return Err(StoreError::Management("snapshot_limit".into()));
+        }
+        let mut events = Vec::new();
+        for row in rows {
+            if row.get::<_, Option<String>>(0).is_some() {
+                events.push(decode_event_row(row)?.event);
+            }
+        }
+        let snapshot = nostr::read_state_snapshot::build_snapshot(community, pubkey, events, bytes)
+            .map_err(|error| {
+                StoreError::Management(
+                    if error == nostr::read_state_snapshot::SnapshotError::LimitExceeded {
+                        "snapshot_limit"
+                    } else {
+                        "snapshot_invalid"
+                    }
+                    .into(),
+                )
+            })?;
+        transaction.commit().await?;
+        Ok(snapshot)
+    }
+
     pub async fn query_filter(
         &self,
         filter: &Filter,
@@ -1848,11 +1933,26 @@ impl Store {
         let result = match request {
             ManagementRequest::BanPubkey { pubkey, reason } => {
                 transaction
+                    .query_one(
+                        &statements.advisory_lock,
+                        &[&format!("management-pubkey:{pubkey}")],
+                    )
+                    .await?;
+                transaction
+                    .execute(&statements.unallow_pubkey, &[&pubkey])
+                    .await?;
+                transaction
                     .execute(&statements.ban_pubkey, &[&pubkey, &reason])
                     .await?;
                 json!(true)
             }
             ManagementRequest::UnbanPubkey { pubkey } => {
+                transaction
+                    .query_one(
+                        &statements.advisory_lock,
+                        &[&format!("management-pubkey:{pubkey}")],
+                    )
+                    .await?;
                 transaction
                     .execute(&statements.unban_pubkey, &[&pubkey])
                     .await?;
@@ -1871,11 +1971,26 @@ impl Store {
             ),
             ManagementRequest::AllowPubkey { pubkey, reason } => {
                 transaction
+                    .query_one(
+                        &statements.advisory_lock,
+                        &[&format!("management-pubkey:{pubkey}")],
+                    )
+                    .await?;
+                transaction
+                    .execute(&statements.unban_pubkey, &[&pubkey])
+                    .await?;
+                transaction
                     .execute(&statements.allow_pubkey_mutation, &[&pubkey, &reason])
                     .await?;
                 json!(true)
             }
             ManagementRequest::UnallowPubkey { pubkey } => {
+                transaction
+                    .query_one(
+                        &statements.advisory_lock,
+                        &[&format!("management-pubkey:{pubkey}")],
+                    )
+                    .await?;
                 transaction
                     .execute(&statements.unallow_pubkey, &[&pubkey])
                     .await?;
@@ -2233,8 +2348,10 @@ fn admission_lock_keys(
 }
 
 fn group_scope(event: &Event) -> Option<&str> {
-    // NIP-RUN uses `h` as a mailbox, not as a NIP-29 group id.
-    if BLOCK_GLOBAL_ONLY_KINDS.contains(&event.kind) || matches!(event.kind, 3_187 | 30_186) {
+    // RUN and private artifacts use `h` as a mailbox; app data tags are opaque.
+    if BLOCK_GLOBAL_ONLY_KINDS.contains(&event.kind)
+        || matches!(event.kind, 78 | 3_187 | 3_188 | 30_186)
+    {
         return None;
     }
     event.group_id()

@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod agent_persona;
 pub mod block_lane;
 pub mod cap;
 pub mod channel_window;
@@ -18,15 +19,21 @@ pub mod decision;
 pub mod domain;
 pub mod execution;
 pub mod ext;
+pub mod federated_identity;
 pub mod git_sign;
 pub mod kb;
 pub mod lane;
+pub mod market_contracts;
 pub mod negentropy;
 pub mod nip04;
 pub mod nip17;
 pub mod nip19;
 pub mod nip44;
 pub mod prg;
+pub mod private_artifact;
 pub mod profile;
 pub mod push_lease;
+pub mod read_state_snapshot;
 pub mod run;
+pub mod thread_window;
+pub mod x402;

@@ -220,7 +220,7 @@ async fn assert_information_document(address: SocketAddr) {
     let body = String::from_utf8(response).unwrap();
     let document: Value = serde_json::from_str(body.split("\r\n\r\n").nth(1).unwrap()).unwrap();
     let extensions = document["supported_extensions"].as_array().unwrap();
-    assert!(extensions.contains(&json!("nip-cw")));
+    assert!(!extensions.contains(&json!("nip-cw")));
     assert!(!extensions.contains(&json!("nip-pl")));
     assert!(!extensions.contains(&json!("nip-gs")));
 }

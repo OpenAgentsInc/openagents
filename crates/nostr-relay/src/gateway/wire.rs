@@ -417,6 +417,8 @@ pub struct Nip11Document<'a> {
     pub nip29: Option<Nip29Capabilities>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub push: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_state_snapshot: Option<nostr::read_state_snapshot::SnapshotDescriptor>,
 }
 
 #[derive(Debug, Serialize)]
@@ -446,10 +448,20 @@ pub fn nip11_json(config: &GatewayConfig, policy: &RelayPolicy) -> String {
     nip11_json_with_icon(config, policy, None)
 }
 
+#[cfg(test)]
 pub fn nip11_json_with_icon(
     config: &GatewayConfig,
     policy: &RelayPolicy,
     icon: Option<&str>,
+) -> String {
+    nip11_json_for_host(config, policy, icon, None)
+}
+
+pub fn nip11_json_for_host(
+    config: &GatewayConfig,
+    policy: &RelayPolicy,
+    icon: Option<&str>,
+    host: Option<&str>,
 ) -> String {
     let supported_nips = config
         .advertised_nips
@@ -460,10 +472,8 @@ pub fn nip11_json_with_icon(
         supported_extensions.extend(["nip-aa", "nip-ae", "nip-am", "nip-ao", "nip-ap", "nip-er"]);
     }
     if config.relay_url.is_some() && config.relay_signer.is_some() {
-        supported_extensions.extend(["nip-cw", "nip-dv", "nip-ia"]);
-    }
-    if config.push.is_some() {
-        supported_extensions.push("nip-pl");
+        // Channel windows exist, but current CW thread modes are not served.
+        supported_extensions.extend(["nip-dv", "nip-ia"]);
     }
     if config.relay_url.is_some() && config.management_pubkey.is_some() {
         supported_extensions.push("nip-wp");
@@ -502,10 +512,9 @@ pub fn nip11_json_with_icon(
             .relay_signer
             .is_some()
             .then_some(Nip29Capabilities { subgroups: true }),
-        push: config
-            .push
-            .as_ref()
-            .map(|executor| nostr::push_lease::descriptor_document(&executor.descriptor())),
+        // No descriptor until the complete delivery role passes conformance.
+        push: None,
+        read_state_snapshot: config.snapshot_descriptor(host),
     };
     serde_json::to_string(&document).expect("serializing NIP-11 cannot fail")
 }
@@ -711,7 +720,7 @@ mod tests {
                 .contains(&json!("nip-dv"))
         );
         assert!(
-            with_signer["supported_extensions"]
+            !with_signer["supported_extensions"]
                 .as_array()
                 .unwrap()
                 .contains(&json!("nip-cw"))

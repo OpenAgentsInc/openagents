@@ -3,31 +3,24 @@
 //! `channel_window_contract` drives NIP-CW `POST /query` over real HTTP:
 //! NIP-98 authentication, cursor-paged top-level rows, relay-signed
 //! `kind:39006` bounds and `kind:39005` summaries, aux closure, a refused
-//! half cursor, and access-scoped membership on a closed group.
+//! half cursor, and access scoping across group privacy changes.
 //!
-//! `push_executor_contract` drives a configured NIP-PL executor: a real
-//! NIP-44-encrypted lease is accepted, a matching stored event posts the
-//! fixed reconnect constant — and nothing else — to a stub push gateway.
+//! NIP-PL configuration is refused until the complete executor is implemented.
 //!
 //! The suite is destructive and runs only against a disposable database.
 
 use std::{
     io::{ErrorKind, Read, Write},
-    net::{SocketAddr, TcpListener as StdTcpListener, TcpStream as StdTcpStream},
-    sync::mpsc,
+    net::{SocketAddr, TcpStream as StdTcpStream},
     time::Duration,
 };
 
-use nostr::{
-    channel_window::{self, Cursor},
-    nip44,
-    push_lease::APNS_BODY,
-};
+use nostr::channel_window::{self, Cursor};
 use nostr_relay::{
     domain::{Event, RelaySigner, Tag},
     gateway::{Gateway, GatewayConfig, PushExecutor},
 };
-use secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
+use secp256k1::{Keypair, Secp256k1, SecretKey};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::time::timeout;
@@ -44,8 +37,7 @@ async fn block_lane_contract_against_postgres() {
         return;
     }
 
-    // Relay one serves the channel window. Relay two shares the database and
-    // carries the configured NIP-PL executor pointed at a stub push gateway.
+    // The channel role runs; the incomplete push executor must remain inert.
     let gateway_one = Gateway::start(test_config(database_url.clone()))
         .await
         .unwrap();
@@ -53,41 +45,25 @@ async fn block_lane_contract_against_postgres() {
     let stop_one = gateway_one.shutdown_handle();
     let server_one = tokio::spawn(gateway_one.run());
 
-    let (wakes, recorded) = mpsc::channel();
-    let listener = StdTcpListener::bind("127.0.0.1:0").unwrap();
-    listener.set_nonblocking(true).unwrap();
-    let gateway_port = listener.local_addr().unwrap().port();
-    std::thread::spawn(move || accept_wakes(listener, wakes));
-
     let mut push_config = test_config(database_url);
     push_config.push = Some(PushExecutor {
         secret: SecretKey::from_byte_array([77; 32]).unwrap(),
         pubkey: pubkey(77),
         origin: "ws://relay.test".to_owned(),
-        gateway: format!("http://127.0.0.1:{gateway_port}/wake"),
+        gateway: "http://127.0.0.1:1/wake".into(),
         app_profile: "app.test/ios".to_owned(),
         transport: "apns".to_owned(),
     });
-    let gateway_two = Gateway::start(push_config).await.unwrap();
-    let address_two = gateway_two.local_addr();
-    let stop_two = gateway_two.shutdown_handle();
-    let server_two = tokio::spawn(gateway_two.run());
-
-    tokio::task::spawn_blocking(move || {
-        channel_window_contract(address_one);
-        push_executor_contract(address_two, recorded);
-    })
-    .await
-    .unwrap();
+    assert!(
+        Gateway::start(push_config).await.is_err(),
+        "incomplete push delivery must not start"
+    );
+    tokio::task::spawn_blocking(move || channel_window_contract(address_one))
+        .await
+        .unwrap();
 
     stop_one.shutdown();
-    stop_two.shutdown();
     timeout(Duration::from_secs(5), server_one)
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
-    timeout(Duration::from_secs(5), server_two)
         .await
         .unwrap()
         .unwrap()
@@ -120,7 +96,7 @@ fn test_config(database_url: String) -> GatewayConfig {
 
 /// NIP-CW `POST /query` end to end: real stored channel events, real
 /// NIP-98 authorization, real signed bounds and summary overlays, real
-/// cursor paging, and closed-group access scoping.
+/// cursor paging, and private-group access scoping independent of joining policy.
 fn channel_window_contract(address: SocketAddr) {
     let created = rpc_request(
         address,
@@ -318,22 +294,20 @@ fn channel_window_contract(address: SocketAddr) {
         "{response:?}"
     );
 
-    // A channel with no group is served: an empty page is still a window
-    // because it carries signed bounds.
+    // A nonexistent channel has no authority to sign a bounds overlay.
     let absent_body = json!({"#h": ["cw-absent"], "top_level": true}).to_string();
     let absent_response = query_request(address, &absent_body, 22);
     let absent_page: Vec<Event> = serde_json::from_slice(&absent_response).unwrap();
-    assert_eq!(absent_page.len(), 1);
-    assert_eq!(absent_page[0].kind, channel_window::BOUNDS_KIND);
+    assert!(absent_page.is_empty());
 
-    // A closed group hides the window from a nonmember and serves a member.
+    // Closed controls joining, not reading: an otherwise public group is served.
     let closed = rpc_request(
         address,
         "creategroup",
         json!([
             "cw-closed",
             "Closed Room",
-            "members only",
+            "public reading, closed joining",
             "",
             true,
             pubkey(30),
@@ -341,187 +315,70 @@ fn channel_window_contract(address: SocketAddr) {
         ]),
     );
     assert_eq!(closed["result"], true, "{closed}");
-    let sealed = signed_event(30, now(), 9, vec![h("cw-closed")], "members only");
+    let sealed = signed_event(30, now(), 9, vec![h("cw-closed")], "channel row");
     send_json(&mut admin, json!(["EVENT", sealed]));
     assert_eq!(read_json(&mut admin)[2], true);
 
     let closed_body = json!({"#h": ["cw-closed"], "top_level": true}).to_string();
     let outsider_response = query_request(address, &closed_body, 22);
     let outsider_page: Vec<Event> = serde_json::from_slice(&outsider_response).unwrap();
+    assert!(outsider_page.iter().any(|event| event.id == sealed.id));
+    channel_window::accept_window(&outsider_page, "cw-closed", None, &pubkey(90)).unwrap();
+
+    // The current metadata controls both queries. Opening joins while making
+    // reads private must remove the rows and every existence-revealing overlay.
+    let private = signed_event(
+        30,
+        now(),
+        9_002,
+        vec![h("cw-closed"), Tag::new(vec!["private".into()])],
+        "make private with open joining",
+    );
+    send_json(&mut admin, json!(["EVENT", private]));
+    assert_eq!(read_json(&mut admin)[2], true, "privacy mutation stores");
+    let outsider_response = query_request(address, &closed_body, 22);
+    let outsider_page: Vec<Event> = serde_json::from_slice(&outsider_response).unwrap();
     assert!(
         outsider_page.is_empty(),
-        "a closed channel serves nothing to a nonmember",
+        "an open private group has no bounds"
     );
     let member_response = query_request(address, &closed_body, 30);
     let member_page: Vec<Event> = serde_json::from_slice(&member_response).unwrap();
     assert!(member_page.iter().any(|event| event.id == sealed.id));
     channel_window::accept_window(&member_page, "cw-closed", None, &pubkey(90)).unwrap();
 
+    // A hidden group's existence is not disclosed by a window overlay either.
+    let hidden = signed_event(
+        30,
+        now(),
+        9_002,
+        vec![h("cw-closed"), Tag::new(vec!["hidden".into()])],
+        "hide metadata",
+    );
+    send_json(&mut admin, json!(["EVENT", hidden]));
+    assert_eq!(read_json(&mut admin)[2], true, "hidden mutation stores");
+    let outsider_response = query_request(address, &closed_body, 22);
+    let outsider_page: Vec<Event> = serde_json::from_slice(&outsider_response).unwrap();
+    assert!(outsider_page.is_empty(), "a hidden group has no bounds");
+    let member_response = query_request(address, &closed_body, 30);
+    let member_page: Vec<Event> = serde_json::from_slice(&member_response).unwrap();
+    assert!(member_page.iter().any(|event| event.id == sealed.id));
+
+    let public = signed_event(
+        30,
+        now(),
+        9_002,
+        vec![h("cw-closed"), Tag::new(vec!["closed".into()])],
+        "restore public reading with closed joining",
+    );
+    send_json(&mut admin, json!(["EVENT", public]));
+    assert_eq!(read_json(&mut admin)[2], true, "public mutation stores");
+    let outsider_response = query_request(address, &closed_body, 22);
+    let outsider_page: Vec<Event> = serde_json::from_slice(&outsider_response).unwrap();
+    assert!(outsider_page.iter().any(|event| event.id == sealed.id));
+    channel_window::accept_window(&outsider_page, "cw-closed", None, &pubkey(90)).unwrap();
+
     admin.close(None).unwrap();
-}
-
-/// NIP-PL executor end to end: NIP-11 advertises the descriptor, a real
-/// NIP-44 lease commits, a matching event posts the fixed reconnect
-/// constant, and a nonmatching event posts nothing.
-fn push_executor_contract(address: SocketAddr, wakes: mpsc::Receiver<String>) {
-    let document = nip11(address);
-    assert!(
-        document["supported_extensions"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("nip-pl")),
-        "a configured executor advertises nip-pl: {document}"
-    );
-    let push = &document["push"];
-    assert_eq!(push["origin"], "ws://relay.test");
-    assert_eq!(push["keys"][0]["pubkey"], pubkey(77));
-    assert_eq!(push["app_profiles"][0]["transport"], "apns");
-
-    let mut author = connect_client(address);
-    let challenge = expect_auth_challenge(&mut author);
-    authenticate(&mut author, 21, &challenge);
-
-    // The lease plaintext is encrypted to the advertised executor key.
-    let plaintext = json!({
-        "v": 1,
-        "origin": "ws://relay.test",
-        "app_profile": "app.test/ios",
-        "transport": "apns",
-        "endpoint": "device-token-1",
-        "generation": 1,
-        "active": true,
-        "subscriptions": [
-            {"filter": {"kinds": [1], "#p": [pubkey(21)]}, "class": "default"}
-        ],
-    })
-    .to_string();
-    let author_secret = SecretKey::from_byte_array([21; 32]).unwrap();
-    let content = nip44::encrypt(
-        &plaintext,
-        &nip44::conversation_key(&author_secret, &xonly(77)),
-        [9; 32],
-    )
-    .unwrap();
-    let lease = signed_event(
-        21,
-        now(),
-        30_350,
-        vec![
-            Tag::new(vec!["d".into(), "installation-one".into()]),
-            Tag::new(vec!["expiration".into(), (now() + 3_600).to_string()]),
-            Tag::new(vec!["exec".into(), "current".into()]),
-        ],
-        &content,
-    );
-    send_json(&mut author, json!(["EVENT", lease]));
-    assert_eq!(
-        read_json(&mut author)[2],
-        true,
-        "a decryptable conforming lease is accepted",
-    );
-
-    // A lease whose origin does not bind the advertised tenant is refused.
-    let mut mismatched = lease.clone();
-    let wrong_origin = plaintext.replacen("ws://relay.test", "ws://other.test", 1);
-    mismatched.content = nip44::encrypt(
-        &wrong_origin,
-        &nip44::conversation_key(&author_secret, &xonly(77)),
-        [10; 32],
-    )
-    .unwrap();
-    mismatched.tags[0] = Tag::new(vec!["d".into(), "installation-two".into()]);
-    resign(&mut mismatched, 21);
-    send_json(&mut author, json!(["EVENT", mismatched]));
-    let refusal = read_json(&mut author);
-    assert_eq!(refusal[2], false);
-    assert!(
-        refusal[3]
-            .as_str()
-            .unwrap()
-            .starts_with("invalid: origin mismatch"),
-        "{refusal}"
-    );
-
-    // A matching stored event wakes the endpoint through the stub gateway.
-    let mut publisher = connect_client(address);
-    let challenge = expect_auth_challenge(&mut publisher);
-    authenticate(&mut publisher, 23, &challenge);
-    let nonmatching = signed_event(23, now(), 1, vec![], "no p tag");
-    send_json(&mut publisher, json!(["EVENT", nonmatching]));
-    assert_eq!(read_json(&mut publisher)[2], true);
-    let matching = signed_event(
-        23,
-        now(),
-        1,
-        vec![Tag::new(vec!["p".into(), pubkey(21)])],
-        "a mention of the lease author",
-    );
-    send_json(&mut publisher, json!(["EVENT", matching]));
-    assert_eq!(read_json(&mut publisher)[2], true);
-
-    let request = wakes
-        .recv_timeout(Duration::from_secs(10))
-        .expect("the matching event wakes the installation");
-    assert!(request.starts_with("POST /wake HTTP/1.1"), "{request}");
-    assert!(
-        request.contains("X-Push-Endpoint: device-token-1"),
-        "{request}"
-    );
-    let body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
-    assert_eq!(body, APNS_BODY);
-    assert!(
-        !request.contains(&matching.id),
-        "the wake never carries event data: {request}"
-    );
-    assert!(
-        wakes.recv_timeout(Duration::from_secs(2)).is_err(),
-        "the nonmatching event posts no wake",
-    );
-
-    author.close(None).unwrap();
-    publisher.close(None).unwrap();
-}
-
-fn accept_wakes(listener: StdTcpListener, wakes: mpsc::Sender<String>) {
-    loop {
-        match listener.accept() {
-            Ok((mut stream, _)) => {
-                stream.set_nonblocking(false).unwrap();
-                stream
-                    .set_read_timeout(Some(Duration::from_secs(5)))
-                    .unwrap();
-                let mut request = Vec::new();
-                let mut buffer = [0_u8; 8_192];
-                while let Ok(read) = stream.read(&mut buffer) {
-                    if read == 0 {
-                        break;
-                    }
-                    request.extend_from_slice(&buffer[..read]);
-                    if request.windows(4).any(|w| w == b"\r\n\r\n") {
-                        let head_end = request.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
-                        if let Ok(head) = std::str::from_utf8(&request[..head_end]) {
-                            let declared = head
-                                .split("\r\n")
-                                .find_map(|line| {
-                                    line.to_ascii_lowercase()
-                                        .strip_prefix("content-length: ")
-                                        .and_then(|rest| rest.trim().parse::<usize>().ok())
-                                })
-                                .unwrap_or(0);
-                            if request.len() >= head_end + 4 + declared {
-                                break;
-                            }
-                        }
-                    }
-                }
-                let _ = wakes.send(String::from_utf8_lossy(&request).into_owned());
-            }
-            Err(error) if error.kind() == ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            Err(_) => return,
-        }
-    }
 }
 
 fn nip98(body: &str, secret: u8) -> String {
@@ -585,21 +442,6 @@ fn rpc_request(address: SocketAddr, method: &str, params: Value) -> Value {
     stream.read_to_string(&mut response).unwrap();
     assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{response}");
     serde_json::from_str(response.split("\r\n\r\n").nth(1).unwrap()).unwrap()
-}
-
-fn nip11(address: SocketAddr) -> Value {
-    let mut stream = StdTcpStream::connect(address).unwrap();
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    stream
-        .write_all(
-            b"GET / HTTP/1.1\r\nHost: relay.test\r\nAccept: application/nostr+json\r\nConnection: close\r\n\r\n",
-        )
-        .unwrap();
-    let mut response = Vec::new();
-    stream.read_to_end(&mut response).unwrap();
-    serde_json::from_slice(http_body(&response)).unwrap()
 }
 
 fn raw_http(address: SocketAddr, head: &str, body: &[u8]) -> Vec<u8> {
@@ -704,15 +546,6 @@ fn signed_event(
     event
 }
 
-fn resign(event: &mut Event, secret_byte: u8) {
-    let secp = Secp256k1::new();
-    let secret = SecretKey::from_byte_array([secret_byte; 32]).unwrap();
-    let keypair = Keypair::from_secret_key(&secp, &secret);
-    let digest = event.computed_id_bytes().unwrap();
-    event.id = event.computed_id().unwrap();
-    event.sig = secp.sign_schnorr_no_aux_rand(&digest, &keypair).to_string();
-}
-
 fn pubkey(secret_byte: u8) -> String {
     let secp = Secp256k1::new();
     let secret = SecretKey::from_byte_array([secret_byte; 32]).unwrap();
@@ -720,14 +553,6 @@ fn pubkey(secret_byte: u8) -> String {
         .x_only_public_key()
         .0
         .to_string()
-}
-
-fn xonly(secret_byte: u8) -> XOnlyPublicKey {
-    let secp = Secp256k1::new();
-    let secret = SecretKey::from_byte_array([secret_byte; 32]).unwrap();
-    Keypair::from_secret_key(&secp, &secret)
-        .x_only_public_key()
-        .0
 }
 
 fn hex(bytes: &[u8]) -> String {

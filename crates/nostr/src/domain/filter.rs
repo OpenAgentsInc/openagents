@@ -219,8 +219,10 @@ impl Serialize for Filter {
 /// Event kinds whose content never enters search, live or historical:
 /// gift-wrap ciphertext and access-gated Block records. This list is the
 /// one the relay's `search_vector` migration and query predicates use.
-pub const SEARCH_EXCLUDED_KINDS: [u16; 9] =
-    [1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200];
+pub const SEARCH_EXCLUDED_KINDS: [u16; 15] = [
+    78, 1059, 3187, 3188, 21059, 30078, 30174, 30175, 30178, 30179, 30186, 30300, 30350, 30622,
+    44200,
+];
 
 pub fn search_excludes_kind(kind: u16) -> bool {
     SEARCH_EXCLUDED_KINDS.contains(&kind)

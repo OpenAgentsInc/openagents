@@ -1,17 +1,56 @@
-//! Evidence for the pinned official NIP lane.
+//! Source inventory and scoped evidence for the official NIP lane.
 //!
-//! Each file under `nips/official/` other than the index is either checked
-//! here or named as a document whose normative text now lives in NIP-01.
-//! A check builds or verifies a value with the shipped functions and
-//! refuses a value that drops a required field. The manifest commit is
-//! `OFFICIAL_COMMIT`.
+//! `OFFICIAL_COMMIT` identifies the vendored source collection, not blanket
+//! implementation conformance. `PROVEN` retains named fixture coverage and its
+//! explicit limitations; unchanged rows originated at `PREVIOUS_BEHAVIOR_COMMIT`.
+//! Source-inventory tests do not prove live relay or client behavior.
 
 use serde_json::Value;
 
 use crate::domain::Event;
 
 /// The official lane commit recorded in `nips/manifest.json`.
-pub const OFFICIAL_COMMIT: &str = "c53877571f96eb423661fc23c620d629d37b8f19";
+pub const OFFICIAL_COMMIT: &str = "b82211e96c6dad616ed2ea43034c1c621256b745";
+
+/// Original source baseline for retained evidence that has not been re-reviewed.
+pub const PREVIOUS_BEHAVIOR_COMMIT: &str = "c53877571f96eb423661fc23c620d629d37b8f19";
+
+/// Current-source client reviews. These scopes are narrower than whole-NIP
+/// conformance and do not establish deployed relay roles.
+pub static CURRENT_CLIENT_REVIEWS: &[(&str, &str)] = &[
+    (
+        "02.md",
+        "forward petname display and offline resolution; NIP-05 roots require caller-verified bindings",
+    ),
+    (
+        "22.md",
+        "kind-1 comment roots and parents; required scope and author checks remain",
+    ),
+    (
+        "30.md",
+        "event-scoped emoji tokens including comments; no network image fetch or UI integration",
+    ),
+    (
+        "42.md",
+        "typed auth opportunity in EOSE; no client auto-auth or relay emission policy",
+    ),
+    (
+        "43.md",
+        "signed declarations and fresh join/leave parsing; no durable membership or claim redemption",
+    ),
+    (
+        "67.md",
+        "auth separate from current-view completeness; trailing fields and unknown hints tolerated",
+    ),
+    (
+        "84.md",
+        "structured i and arbitrary r sources; optional attribution and quote URL markers",
+    ),
+    (
+        "A3.md",
+        "typed payment-target discovery and escaped inert URIs; no address validation or wallet effects",
+    ),
+];
 
 /// One event-shaped specification: a kind and a tag the pinned text names.
 #[derive(Clone, Copy)]
@@ -210,11 +249,11 @@ pub fn vanish_request(event: &Event) -> Result<(), &'static str> {
     }
 }
 
-/// One pinned file whose applicable roles are configured and proven.
+/// A scoped evidence entry, with functions, tests, and explicit limitations.
 ///
-/// `partial` shape checks stay in [`SHAPES`]. A row here is a different
-/// status: domain, client, and server each name the shipped function, and
-/// `acceptance` names the test that calls it.
+/// The historical `configured-and-proven` status describes only the named
+/// fixture behavior. It does not certify every role of the current source or
+/// imply that a live deployment passed its acceptance gates.
 pub struct Evidence {
     pub file: &'static str,
     pub domain: &'static str,
@@ -232,9 +271,22 @@ pub struct Evidence {
 /// Official files whose checks go beyond a kind and one tag.
 pub static PROVEN: &[Evidence] = &[
     Evidence {
+        file: "A3.md",
+        domain: "kind 10133 carries exact lowercase-type payto tags; unknown types remain data",
+        client: "open_payment_targets and PaymentTarget::uri",
+        server: "generic replaceable storage; target syntax validation through Event::validate_structure",
+        paths: "crates/nostr/src/domain/payment_target.rs; crates/nostr/src/domain/expanded.rs",
+        configuration: "no setting; no wallet calls and no NIP-11 payment-role claim",
+        fixture: "known and unknown targets, URI delimiter escaping, malformed tags, and replacement",
+        acceptance: "domain::payment_target::tests::targets_preserve_unknown_types_and_escape_uris_as_data",
+        limitations: "no network-specific address validation, user interface, wallet authority, invoice, or payment",
+        owner: "nostr",
+        status: "client-parser-and-fixtures",
+    },
+    Evidence {
         file: "02.md",
         domain: "kind 3 is replaceable; a p tag is a 32-byte hex key, an optional ws:// or wss:// relay, and an optional petname",
-        client: "parse_follow_list, append_follow, and displayed_petname",
+        client: "parse_follow_list, append_follow, displayed_petname, and resolve_petname",
         server: "EventClass::from_kind(3) is Replaceable, so the relay replacement head deletes the previous list",
         paths: "crates/nostr/src/domain/follow.rs; crates/nostr/src/domain/replacement.rs; crates/nostr-relay/src/store/mod.rs",
         configuration: "no setting; kind 3 uses the ordinary replacement head",
@@ -313,11 +365,11 @@ pub static PROVEN: &[Evidence] = &[
         file: "22.md",
         domain: "kind 1111 names one uppercase root scope and one lowercase parent scope, with K and k",
         client: "open_comment and is_top_level",
-        server: "admission refuses a kind 1111 event that breaks the scope rules, including a reply to kind 1",
+        server: "admission refuses a kind 1111 event that breaks the scope rules; kind-1 root and parent references are permitted",
         paths: "crates/nostr/src/domain/comment.rs; crates/nostr/src/domain/event.rs",
         configuration: "no setting; kind 1111 is an ordinary stored event and is not added to the NIP-11 list",
         fixture: "the pinned blog comment, the web URL comment, and the reply to a podcast comment",
-        acceptance: "domain::comment::tests::a_comment_scopes_to_the_root_and_refuses_a_kind_1_reply",
+        acceptance: "domain::comment::tests::a_comment_scopes_to_the_root_including_kind_1",
         limitations: "content is kept as text and markup is not stripped; a URL with a fragment is refused and is not rewritten into a normalized form",
         owner: "nostr",
         status: "configured-and-proven",
@@ -454,14 +506,14 @@ pub static PROVEN: &[Evidence] = &[
     },
     Evidence {
         file: "84.md",
-        domain: "kind 9802 highlights text or media and names the source with an a, e, or source r tag",
-        client: "open_highlight and clean_source_url",
-        server: "admission requires a source and refuses an unknown role or an r tag that is not source or mention; the event is regular, so a newer highlight does not replace it",
+        domain: "kind 9802 highlights text or media; optional sources use a, e, structured i, or arbitrary r tags",
+        client: "open_highlight and optional local clean_source_url",
+        server: "admission validates supplied sources and quote URL markers; a source is recommended, not required; regular highlights do not replace",
         paths: "crates/nostr/src/domain/highlight.rs; crates/nostr/src/domain/replacement.rs",
         configuration: "no setting; kind 9802 is an ordinary stored event and is not added to the NIP-11 list",
         fixture: "an article address, a note, a cleaned source URL, author and editor p tags, and a comment quote",
         acceptance: "domain::highlight::tests::a_highlight_names_its_source_and_a_comment_quotes_it",
-        limitations: "the relay does not fetch the source or rewrite the stored URL; tracker removal is the client's clean_source_url helper; roles other than author, editor, and mention are refused",
+        limitations: "the relay does not fetch the source or rewrite the stored URL; tracker removal is an optional local helper, not a conformance requirement; roles other than author, editor, and mention are refused",
         owner: "nostr",
         status: "configured-and-proven",
     },
@@ -1156,8 +1208,8 @@ pub static PROVEN: &[Evidence] = &[
     },
     Evidence {
         file: "67.md",
-        domain: "EOSE completeness hints: the relay probes one row past each filter's effective limit and past the combined cap, then emits [\"finish\"] or [\"more\"] as the third EOSE element; the client parser ignores unknown hints and treats their absence as unknown",
-        client: "open_eose, Eose::complete, Eose::should_paginate",
+        domain: "EOSE completeness hints: the relay probes one row past each filter's effective limit and past the combined cap, then emits [\"finish\"] or [\"more\"] as the third EOSE element; the client parser distinguishes auth opportunities, ignores unknown hints, and treats their absence as unknown",
+        client: "open_eose, Eose::complete, Eose::should_paginate, Eose::authentication_may_reveal_more",
         server: "query_history's limit+1 probe, HistoryResult::complete, wire::eose_message emits the hint, NIP-11 advertises 67",
         paths: "crates/nostr/src/domain/eose.rs; crates/nostr-relay/src/gateway/db.rs; crates/nostr-relay/src/gateway/subscription.rs; crates/nostr-relay/src/gateway/wire.rs",
         configuration: "none; the hint is always sent and 67 is in the base supported_nips list",
@@ -1169,7 +1221,9 @@ pub static PROVEN: &[Evidence] = &[
     },
 ];
 
-/// Every official file this module accounts for.
+/// Every official source file accounted for by this inventory.
+///
+/// Inclusion alone is not an implementation or conformance claim.
 pub fn covered_files() -> Vec<&'static str> {
     let mut files: Vec<&str> = SHAPES.iter().map(|shape| shape.file).collect();
     files.extend(PROVEN.iter().map(|row| row.file));
@@ -1272,7 +1326,7 @@ mod tests {
         }];
         assert_eq!(
             displayed_petname(&viewer, &published, &carol).as_deref(),
-            Some("carol.bob.alice")
+            Some("~/alice/bob/carol")
         );
 
         let bad = sign(3, vec![Tag::new(vec!["p".into(), "zz".into()])], "");
@@ -1407,7 +1461,7 @@ mod tests {
     }
 
     #[test]
-    fn every_pinned_official_file_has_one_check_and_the_manifest_commit_matches() {
+    fn every_pinned_official_file_is_in_inventory_and_the_manifest_commit_matches() {
         let manifest = fs::read_to_string(official_dir().join("../manifest.json")).unwrap();
         assert!(manifest.contains(OFFICIAL_COMMIT));
         let mut on_disk = BTreeSet::new();

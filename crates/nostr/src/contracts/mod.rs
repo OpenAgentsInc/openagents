@@ -29,6 +29,7 @@ pub use body::{
 pub use error::{ContractError, RefusalCode};
 pub use json::{
     MAX_BODY_BYTES, MAX_DEPTH, SAFE_INTEGER, digest_bytes, digest_value, jcs, parse_strict,
+    parse_strict_bounded,
 };
 pub use schema::{SchemaClosure, prepare_closure, validate_instance};
 

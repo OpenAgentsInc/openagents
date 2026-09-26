@@ -7,7 +7,7 @@ use nostr::push_lease::{LeaseLimits, PushDescriptor};
 
 use super::GatewayError;
 
-/// Executor key and gateway for NIP-PL. Absent means leases are refused.
+/// Legacy NIP-PL executor configuration. Validation refuses this incomplete runtime.
 #[derive(Clone)]
 pub struct PushExecutor {
     /// Decrypts lease content. Not advertised.
@@ -20,12 +20,12 @@ pub struct PushExecutor {
     pub gateway: String,
     /// Application profile id.
     pub app_profile: String,
-    /// Conforming transport. This build sends the APNs constant.
+    /// Prototype transport label; it is not evidence of conforming delivery.
     pub transport: String,
 }
 
 impl PushExecutor {
-    /// Descriptor advertised beside `nip-pl`.
+    /// Build a descriptor for validation; the gateway does not advertise it.
     #[must_use]
     pub fn descriptor(&self) -> PushDescriptor {
         PushDescriptor {
@@ -130,6 +130,8 @@ pub struct GatewayConfig {
     /// admission tests cover. Unset, those names stay out of the document.
     pub openagents_profiles: bool,
     pub push: Option<PushExecutor>,
+    /// Community UUID for the exact configured relay Host; absent disables RS snapshots.
+    pub read_state_community: Option<String>,
     pub log_level: String,
 }
 
@@ -154,6 +156,7 @@ impl GatewayConfig {
             advertised_nips: None,
             openagents_profiles: false,
             push: None,
+            read_state_community: None,
             log_level: "info".to_owned(),
         }
     }
@@ -170,6 +173,19 @@ impl GatewayConfig {
         };
         let mut config = Self::new(database_url, SocketAddr::new(bind_ip, port));
         config.relay_url = optional_string("NOSTR_RELAY_URL")?;
+        config.read_state_community = optional_string("NOSTR_RELAY_READ_STATE_COMMUNITY")?;
+        if let Some(community) = &config.read_state_community {
+            nostr::read_state_snapshot::SnapshotDescriptor::new(community).map_err(|_| {
+                GatewayError::Config(
+                    "NOSTR_RELAY_READ_STATE_COMMUNITY must be a canonical UUID".into(),
+                )
+            })?;
+            if config.relay_url.is_none() {
+                return Err(GatewayError::Config(
+                    "read-state snapshots require NOSTR_RELAY_URL".into(),
+                ));
+            }
+        }
         config.auth_required = parse_bool("NOSTR_RELAY_AUTH_REQUIRED", false)?;
         config.management_pubkey = optional_string("NOSTR_RELAY_MANAGEMENT_PUBKEY")?;
         config.relay_signer = optional_string("NOSTR_RELAY_SECRET_KEY")?
@@ -290,6 +306,11 @@ impl GatewayConfig {
     }
 
     pub fn validate(&self) -> Result<(), GatewayError> {
+        if let Some(community) = &self.read_state_community {
+            nostr::read_state_snapshot::SnapshotDescriptor::new(community)
+                .map_err(|_| config("read-state community must be a canonical UUID"))?;
+            self.absolute_http_url("/")?;
+        }
         if self.database_url.trim().is_empty() {
             return Err(config(
                 "the database connection settings are empty; set DATABASE_URL",
@@ -500,21 +521,10 @@ impl GatewayConfig {
                 }
             }
         }
-        if let Some(push) = &self.push {
-            if !push.gateway.starts_with("http://")
-                || push.gateway.len() > 2_048
-                || push.gateway.contains([' ', '\n', '\r'])
-                || push.app_profile.is_empty()
-            {
-                return Err(config(
-                    "NOSTR_RELAY_PUSH_GATEWAY must be an http:// URL and NOSTR_RELAY_PUSH_APP_PROFILE must be set",
-                ));
-            }
-            nostr::push_lease::validate_descriptor(&push.descriptor()).map_err(|reason| {
-                config(format!(
-                    "the push notification settings are invalid: {reason}"
-                ))
-            })?;
+        if self.push.is_some() {
+            return Err(config(
+                "NIP-PL delivery is disabled until transactional lease authority, durable delivery, and current-membership checks are implemented",
+            ));
         }
         if !matches!(self.log_level.as_str(), "error" | "warn" | "info" | "debug") {
             return Err(config(
@@ -561,6 +571,20 @@ impl GatewayConfig {
             .map(|offset| offset + scheme_end)
             .unwrap_or(http_url.len());
         Ok(format!("{}{}", &http_url[..authority_end], path))
+    }
+
+    /// The configured origin forms a one-entry Host-to-community map.
+    pub(crate) fn snapshot_descriptor(
+        &self,
+        host: Option<&str>,
+    ) -> Option<nostr::read_state_snapshot::SnapshotDescriptor> {
+        let community = self.read_state_community.as_deref()?;
+        let origin = self.absolute_http_url("/").ok()?;
+        let authority = origin.split_once("://")?.1.trim_end_matches('/');
+        if !host?.eq_ignore_ascii_case(authority) {
+            return None;
+        }
+        nostr::read_state_snapshot::SnapshotDescriptor::new(community).ok()
     }
 }
 

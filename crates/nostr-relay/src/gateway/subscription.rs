@@ -602,7 +602,9 @@ pub(crate) fn event_visible_to_reader(event: &Event, readers: &HashSet<String>) 
             .tag_values("p")
             .next()
             .is_some_and(|recipient| readers.contains(recipient)),
-        30_300 | 30_350 => readers.contains(&event.pubkey),
+        78 | 30_078 | 30_300 | 30_350 => readers.contains(&event.pubkey),
+        30_179 => false,
+        3_188 => nostr::private_artifact::visible(event, readers),
         3_187 | 30_186 => nostr::run::record_visible(event, readers),
         30_181 => {
             if event.tags.iter().any(|tag| {

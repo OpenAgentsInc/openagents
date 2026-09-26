@@ -1,6 +1,7 @@
 # Nostr protocol implementation plan
 
-Status: proposed implementation and conformance work. The
+Status: implementation in progress. The [current coverage report](2026-09-26-nip-implementation-coverage.md)
+separates implemented components from remaining host and client work. The
 [OpenAgents protocol set](../../nips/openagents/README.md) contains standalone
 v1 specifications for general agent infrastructure. Coding is the first domain
 profile. The [consolidated proposed issues](../optimization/proposed-issues.md)
@@ -23,19 +24,25 @@ examples.
 
 ## Upstream obligations after the September 26 sync
 
-The [upstream assessment](2026-09-26-upstream-nip-sync.md) and its official and
-Block appendices identify the current source/implementation gaps. Complete
-these alongside the OpenAgents workstreams below; spec synchronization does
-not close them.
+The [upstream assessment](2026-09-26-upstream-nip-sync.md) preserves the
+initial gap analysis. The implementation pass fixes the official comment,
+highlight, petname, EOSE, and allow/ban semantics; adds A3, relay-access, emoji,
+AP, FI, and thread-window validation; and separates current source inventory
+from retained earlier-pin evidence. Private app data and kind-3188 artifacts
+use explicit author/recipient visibility. PMA publication and forged thread
+bounds are refused. The optional RS writer snapshot has a versioned envelope
+and client verifier. PL delivery is disabled instead of advertised prematurely.
 
-| Order | Work | Completion evidence |
-| --- | --- | --- |
-| First | Reject reserved PMA 30179 and client-authored CW 39007; enforce deliberate NIP-78 author visibility. | Public ingress, restored records, history/live/COUNT/search/reconciliation, unrelated authenticated callers, and revocation tests. |
-| First | Separate source inventory from verified implementation revisions and partial/unsupported roles. | All current files accounted for without a kind-range assertion masquerading as feature conformance; both currently failing pin guards advance only with honest evidence. |
-| Next | Repair NIP-22 comments, NIP-84 highlight sources, NIP-02 petname paths, and NIP-86 allow/ban transactions. | New permitted inputs and unchanged negative cases; transaction and concurrent-management evidence. |
-| Next | Complete or disable incomplete PL delivery; implement RS atomic snapshot and CW thread modes as explicit roles. | Durable authority/outbox and current-membership proofs; atomic complete snapshots; bound thread pages, access refresh, deletion recovery, and accurate advertisements. |
-| Verify | NIP-01 zero-history subscriptions; NIP-29 example compatibility. | Real history-to-live lifecycle for zero and mixed limits; retained prefix validation. |
-| Product-dependent | AP adoption/session policy, 42/67 auth hints, 43/86 membership claims, comment emoji, A3 discovery, and FI. | A declared consumer/deployment, per-role fixtures, and no implied host, payment, or data-access authority. |
+The remaining upstream work has these completion requirements:
+
+| Work | Completion evidence |
+| --- | --- |
+| CW thread and root-resolution server modes | Bounded ancestry scan, one shared batch budget, deletion recovery, permission refresh, and signed request-bound thread pages. Pure parsers and budgets alone do not complete this role. |
+| RS client merge and subscription barriers | Complete initial load across subscriptions, replacement/tombstone handling, restart, and manual unread semantics; consume atomic snapshots only after verification. |
+| PL executor and public gateway | Transactional lease authority, durable outbox, current membership and generation checks, enrollment, authenticated delivery, and device-token policy. |
+| AP/FI host consumers | Actual persona adoption/session behavior and offline cryptographic JWT/JWKS verification, admission, logout, and issuer revocation integration. |
+| PMA staged implementation | Strict private plaintext/schema and audience validation, CAS, backup/restore, and revocation evidence before admission. |
+| Wider client conformance | Role-specific fixtures and consumers for all ledger entries; a codec or event-kind fixture does not establish a complete client application. |
 
 PMA stays rejected until its staged privacy, CAS, backup/restore, and revocation
 prerequisites are proven. FI and the public Buzz push gateway do not block

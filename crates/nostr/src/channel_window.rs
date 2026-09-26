@@ -20,7 +20,8 @@ const MAX_DEPTH: u32 = 100;
 const AUX_CAP: usize = 1_000;
 
 /// Composite cursor. `id` is 64 lowercase hex characters.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Cursor {
     /// Unix seconds.
     pub created_at: u64,
@@ -221,7 +222,7 @@ pub fn accept_window(
     }
     bounds.validate_crypto().map_err(|_| "signature")?;
     let tags = bounds.tags.iter().map(Tag::name).collect::<Vec<_>>();
-    if tags != [Some("d"), Some("h")] {
+    if tags != [Some("d"), Some("h")] || bounds.tags.iter().any(|tag| tag.as_slice().len() != 2) {
         return Err("tags");
     }
     if bounds.tag_values("h").next() != Some(channel) {
@@ -234,8 +235,8 @@ pub fn accept_window(
     if bounds.tag_values("d").next() != Some(format!("{channel}:{suffix}").as_str()) {
         return Err("binding");
     }
-    let content: serde_json::Value =
-        serde_json::from_str(&bounds.content).map_err(|_| "content")?;
+    let content =
+        crate::contracts::parse_strict(bounds.content.as_bytes()).map_err(|_| "content")?;
     let has_more = content
         .get("has_more")
         .and_then(serde_json::Value::as_bool)
@@ -245,7 +246,8 @@ pub fn accept_window(
     if has_more != next_present {
         return Err("exhaustion");
     }
-    if let Some(object) = next.as_object() {
+    if next_present {
+        let object = next.as_object().ok_or("content")?;
         hex_id(
             object
                 .get("id")

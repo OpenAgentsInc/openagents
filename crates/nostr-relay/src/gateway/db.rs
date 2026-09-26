@@ -37,6 +37,14 @@ pub(super) struct DbProtocolConfig {
 }
 
 enum DbRequest {
+    ReadStateSnapshot {
+        pubkey: String,
+        authorization: String,
+        community: String,
+        now: u64,
+        response:
+            oneshot::Sender<Result<nostr::read_state_snapshot::ReadStateSnapshot, StoreError>>,
+    },
     Admit {
         event: Event,
         now: u64,
@@ -330,6 +338,24 @@ impl DbPool {
         result.await.map_err(|_| StoreError::ConnectionClosed)?
     }
 
+    pub async fn read_state_snapshot(
+        &self,
+        pubkey: String,
+        authorization: String,
+        community: String,
+        now: u64,
+    ) -> Result<nostr::read_state_snapshot::ReadStateSnapshot, StoreError> {
+        let (response, result) = oneshot::channel();
+        self.send(DbRequest::ReadStateSnapshot {
+            pubkey,
+            authorization,
+            community,
+            now,
+            response,
+        })?;
+        result.await.map_err(|_| StoreError::ConnectionClosed)?
+    }
+
     pub async fn history(
         &self,
         filters: Vec<Filter>,
@@ -616,6 +642,20 @@ async fn handle_request(
                     "relay signing key is required for DM visibility".into(),
                 )),
             };
+            let fatal = result.as_ref().is_err_and(is_fatal);
+            let _ = response.send(result);
+            fatal
+        }
+        DbRequest::ReadStateSnapshot {
+            pubkey,
+            authorization,
+            community,
+            now,
+            response,
+        } => {
+            let result = store
+                .read_state_snapshot(&pubkey, &authorization, &community, now)
+                .await;
             let fatal = result.as_ref().is_err_and(is_fatal);
             let _ = response.send(result);
             fatal

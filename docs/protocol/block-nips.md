@@ -5,14 +5,18 @@ pinned at Buzz commit `781d39510cf23cfe224e8f521ae06a23377e06de`. These are
 implementation targets. The 2026-09-26 sync changed AP, CW, PL, and RS and
 added FI and PMA; it did not change Rust behavior or establish conformance.
 
-This page describes code inspected at that sync. Existing fixtures cover
-selected behavior developed against the earlier 15-file pin
-`8342dfcc5890b81a269a8ec3db73a8a56f76ce79`; they do not cover all requirements
-of either pin. See the [sync assessment](2026-09-26-upstream-nip-sync.md) for
-the source-level review and remaining work, and the
-[fixture ledger](block-nip-ledger.md) for the known stale pin/count test.
-The two source-ledger guards were run and failed at their old-pin assertions;
-no full Rust gate or live Postgres acceptance was run.
+Subsequent Rust changes add scoped AP, CW, FI, and RS primitives, an opt-in
+atomic RS HTTP snapshot, mandatory reserved-kind refusals, and narrower
+advertisement. The source inventory now covers all 17 files separately from
+the original 15-fixture baseline at
+`8342dfcc5890b81a269a8ec3db73a8a56f76ce79`. Neither source synchronization nor
+that inventory proves complete conformance. See the
+[sync assessment](2026-09-26-upstream-nip-sync.md) for the original findings and
+the [fixture ledger](block-nip-ledger.md) for current evidence.
+
+The current pure `nostr` suite passes 276 tests and strict all-target Clippy.
+The dedicated RS HTTP suite passes against a fresh disposable Postgres database;
+remaining live relay changes are pending the current manual verification gate.
 
 ## Agent identity and turns
 
@@ -42,9 +46,14 @@ no full Rust gate or live Postgres acceptance was run.
   grammar while keeping plaintext content opaque to the relay. Unshared heads
   are author-only; explicitly shared heads can be read publicly. ACL checks
   happen before ordering, limits, COUNT, and live fanout. The new portable
-  `acp_command`, session-policy, shared-catalog projection, and local adoption
-  rules require client behavior that is not implemented here. Keeping
-  content opaque is consistent with the relay role.
+  `acp_command` and session-policy client rules now have typed helpers in
+  [`nostr::agent_persona`](../../crates/nostr/src/agent_persona.rs). They validate
+  known fields, redact machine-local commands from shared catalogs, restrict
+  foreign adoption to portable aliases, preserve an owner's existing custom
+  command during redacted catalog replay, and identify session-boundary changes
+  that require restart. They do not implement local executable discovery, an
+  ACP launcher, catalog UI, or permission to execute a command. Keeping content
+  opaque remains the relay role.
 - **NIP-ER:** kind 30300 validates the address, NIP-44 envelope,
   `not_before`, and expiration ordering. It is author-private and delivered
   lazily when a normal authenticated REQ is made; NIP-11 advertises that lazy
@@ -71,100 +80,109 @@ no full Rust gate or live Postgres acceptance was run.
 
 ## Partial and missing roles
 
-### NIP-CW: channel-window subset
+### NIP-CW: channel service and thread primitives
 
-`POST /query` serves a channel window when `top_level` is true. The page
-contains top-level rows in `(created_at DESC, id ASC)` order and a relay-signed
-kind `39006` bounds event. A closed group the reader is not in returns an
-empty array without bounds. WebSocket `REQ` ignores the extension fields.
-Clients cannot publish kinds `39005` or `39006`.
+With a relay URL and signing key, `POST /query` serves the existing channel
+window when `top_level` is true. It returns top-level rows in
+`(created_at DESC, id ASC)` order and a relay-signed kind `39006` bounds event.
+A nonexistent or inaccessible channel returns an empty array without bounds;
+access is checked again after the read. Clients cannot publish relay-owned
+kinds `39005`, `39006`, or `39007`. Unsupported `thread_window` and
+`resolve_thread_roots` HTTP modes refuse rather than becoming ordinary filters.
 
-The new thread-window mode, signed `39007` bounds, query-wide batch budgets,
-access-refresh barrier, and deleted-reply root-summary recovery are absent.
-The relay-only kind guard also omits `39007`, so generic client admission can
-accept it. That guard is required implementation work, not an available
-protection. The documented legacy thread-pagination mode is also absent.
+[`nostr::thread_window`](../../crates/nostr/src/thread_window.rs) now supplies
+strict normalized thread batches, request bindings, signed `39007` bounds
+verification, and shared query-budget accounting. It binds the exact reader,
+community, channel, root, selection fields, and cursor. These are pure helpers:
+there is no thread-mode database adapter, full auxiliary reconstruction,
+batch-wide access refresh, or deleted-reply root recovery in the running relay.
+The existing channel service also derives summaries and auxiliary events from
+a bounded fetched slice; it is not proof of every current CW guarantee.
 
-Existing channel behavior has narrower evidence than full CW conformance:
-summaries and auxiliary events are derived from a bounded fetched slice, and
-a nonexistent channel currently receives empty bounds, contrary to the
-pinned contract. The live fixture tests that current behavior; its presence
-does not resolve the mismatch. NIP-11 currently advertises `nip-cw` when
-`NOSTR_RELAY_URL` and `NOSTR_RELAY_SECRET_KEY` are set. That coarse label does
-not establish support for the new thread mode or complete channel semantics.
+NIP-11 therefore does **not** advertise `nip-cw`. The explicit channel endpoint
+remains available; broad CW discovery must wait for the missing server roles.
 
-### NIP-RS: storage foundation
+### NIP-RS: private storage and optional atomic snapshot
 
-Kind `30078` uses ordinary NIP-01 addressable replacement. There is no RS
-merge/manual-unread client and no optional atomic snapshot implementation:
-no discovery descriptor, strict snapshot request parser, writer-database
-snapshot envelope, or client completeness verifier.
+Kind `30078` has addressable replacement plus author-only reads. The relay
+retains the base `nip-rs` storage declaration. Setting
+`NOSTR_RELAY_READ_STATE_COMMUNITY` to a UUID with `NOSTR_RELAY_URL` enables the
+optional snapshot path. NIP-11 includes `read_state_snapshot` only when the
+request Host matches the configured origin; a relay signing key is unnecessary.
 
-The previous version of this page claimed that ordinary history high-water
-and buffered live handoff established the required full-state EOSE barrier
-across processes. That claim was too broad. History completion and durable
-notification delivery run independently, and no dedicated fixture establishes
-the cross-subscription barrier needed for a complete RS load. Static review
-identified a delayed-notification/replacement race to test; this assessment
-did not reproduce a live failure. Ordinary query arrays or EOSE must not be
-presented as verified complete read-state snapshots. NIP-11 still advertises
-`nip-rs`; the current evidence supports only the storage foundation.
+`POST /query` accepts exactly one raw filter with `read_state_snapshot: 1`,
+`kinds: [30078]`, and the NIP-98 signing key as its sole author. The writer
+transaction consumes the authorization event, checks membership, block/allow
+policy, and writer status, and reads one complete retained cut. It includes
+unrelated application coordinates and applies no ordinary query cap, `#t`
+filter, or age window.
+The hard ceilings are 4,096 events and 8 MiB separately for stored content/tag
+bytes and the compact event array. Oversize, corrupt, ambiguous, unauthorized,
+and replayed requests never receive a partial `complete` envelope.
 
-### NIP-PL: configured HTTP prototype
+If the same database cut contains an expired but retained own-author coordinate,
+the whole snapshot returns HTTP 503 until that row is physically removed by the
+expiration sweep. It neither returns an expired event nor silently omits retained
+state from a `complete` result. Other authors' expired rows do not block the cut.
 
-Kind `30350` is accepted only when `NOSTR_RELAY_PUSH_SECRET`,
-`NOSTR_RELAY_PUSH_GATEWAY`, and `NOSTR_RELAY_URL` are set. The executor
-validates and decrypts the lease, checks origin, generation, and filter
-narrowing, then stores the event. A later match can post the fixed APNs
-reconnect constant to a configured `http://` stub. The body does not contain
-the triggering event. Without that configuration, the relay refuses the
-lease and does not advertise `nip-pl`. FCM and UnifiedPush are refused.
+[`nostr::read_state_snapshot`](../../crates/nostr/src/read_state_snapshot.rs)
+provides strict raw request and response parsing, signature and coordinate
+checks, and the community/author/event-set digest. This authenticates the supplied
+cut; the hash alone does not prove server completeness, act as a compare-and-swap
+token, or establish freshness after the statement. The dedicated
+[`read_state_snapshot_postgres`](../../crates/nostr-relay/tests/read_state_snapshot_postgres.rs)
+fixture passes against actual HTTP and a fresh Postgres database. It covers
+origin-bound discovery without a signing key, complete results above the
+ordinary limit, strict malformed and duplicate fields, replacement/deletion,
+reader isolation, changing membership, replay after restart, retained expiration,
+recovery after physical sweeping, corruption, and
+both hard byte limits plus count overflow. Corrupt stored-event decoding also
+triggers the relay's existing process-wide fail-closed behavior.
 
-This is a partial prototype, not a conformant public executor or Buzz APNs
-gateway. Important preexisting gaps remain:
+The RS merge/manual-unread application client is still absent. Ordinary history
+and EOSE do not establish the required cross-subscription complete-load barrier;
+that remains separate from this atomic HTTP alternative.
 
-- Endpoint uniqueness, generation checks, and event replacement occur across
-  separate operations, rather than one admission transaction. Prior state
-  comes from a capped list of unexpired events rather than a durable complete
-  lease/watermark book.
-- Match-time filtering does not recheck current group membership. A constant
-  wake body still exposes unauthorized wake timing after membership loss.
-- Dispatch uses a non-durable spawned task, without a durable deduplicated
-  outbox, retry state, or a current-generation check immediately before send.
-- The request uses `X-Push-Endpoint` and a constant body; it has no NIP-98
-  signature, stable job ID, endpoint grant, HTTPS support, or provider-response
-  handling. There is no public App Attest/enrollment/delegation service or
-  executor-key retirement lifecycle.
+### NIP-PL: disabled delivery prototype
 
-The newly pinned public gateway changes add requirements for enrollment
-recovery, limits, conflict handling, renewal, and signed delivery path
-binding. They were not implemented by this sync. NIP-11 currently advertises
-`nip-pl` whenever push configuration exists; that behavior overstates the
-available role. Close or disable the incomplete paths before relying on a
-conformant service. The [assessment](2026-09-26-upstream-nip-sync.md) separates
-these older gaps from the new upstream changes.
+The previous configured HTTP stub did not implement transactional lease
+admission, complete generation/endpoint authority, current membership checks,
+or a durable delivery outbox. Configuration now rejects any push executor, and
+NIP-11 never advertises `nip-pl` or a push descriptor. The gateway refuses
+lease publication without an enabled executor. Retained parser, encryption,
+filter, and constant-body fixtures are narrow evidence, not a live delivery
+service.
 
-### NIP-FI: not implemented
+A public executor still needs atomic lease/replacement and endpoint accounting,
+durable deduplicated dispatch and retry state, generation and membership
+rechecks before send, authenticated HTTPS delivery with stable job identity,
+and provider outcomes. The public gateway additionally requires enrollment,
+App Attest/delegation, renewal, recovery, limits, and key retirement. Disabling
+the incomplete prototype does not implement those roles.
 
-Existing NIP-42 and NIP-98 verification are foundations, not federated
-identity. The relay has no issuer/community policy, assertion/JWKS validator,
-FI session deadlines, protected-route FI admission, or issuer-disconnect
-implementation. FI has no fixtures and is not advertised. It requires a
-separate deployment design and tests across every protected transport.
+### NIP-FI: offline policy primitives
 
-### NIP-PMA: required rejection missing
+[`nostr::federated_identity`](../../crates/nostr/src/federated_identity.rs)
+implements strict compact-token and header parsing, issuer/community policy,
+accepted token classes, exact proven-key comparison, bounded session deadlines,
+and issuer-scoped temporary deny-set updates. It passes the exact token to a
+caller-supplied trusted `OfflineVerifier`; the crate supplies no JWT signature
+algorithms or JWKS network client. Fixtures exercise policy, malformed evidence,
+deadlines, denial classes, and issuer isolation with a test verifier.
 
-Kind `30179` is reserved for private managed-agent state. The upstream draft
-requires relays to reject it until private access, transactional updates,
-backup, revocation, and migration prerequisites exist. None of those roles
-is implemented here, and the current generic admission path does not reject
-it. Ordinary historical/live read paths also lack a PMA-specific privacy
-gate. Do not publish private agent state in this kind to this implementation.
+The relay has no FI handshake integration, verified key distribution/cache,
+session registry, protected-route enforcement, or active issuer disconnect.
+It does not advertise FI. The helpers are not a deployed federation service.
 
-The first required change is explicit rejection across public write paths,
-with an audit of imported or restored rows and their read visibility. Keeping
-ciphertext in ordinary addressable storage is not PMA support. PMA is not
-advertised.
+### NIP-PMA: reserved kind refused
+
+The relay rejects kind `30179` through `validate_block_ingest` and public write
+admission, and hides it from ordinary history, live delivery, and counts.
+This implements the upstream draft's mandatory first gate while the private
+managed-agent runtime is unavailable. It does not implement private access,
+transactional updates, backup, revocation, or migration. PMA is not advertised.
+Historical imports and restored bytes remain retained data, not an authorized
+managed-agent runtime; the read gates must still apply to them.
 
 ### NIP-GS: client primitives
 
@@ -174,49 +192,44 @@ no event kind and is not advertised by the relay.
 
 ## Current advertisement behavior
 
-`POST /query` and the push prototype run inside the relay binary. NIP-11
-always advertises `nip-mp`, `nip-oa`, and `nip-rs`. With NIP-42 configured it
-also advertises `nip-aa`, `nip-ae`, `nip-am`, `nip-ao`, `nip-ap`, and `nip-er`.
-Relay signing additionally enables `nip-dv` and `nip-ia`, and a configured
-management pubkey enables `nip-wp`. CW requires the relay URL and signing key;
-PL requires push configuration. GS, FI, and PMA are not advertised.
+NIP-11 always advertises `nip-mp`, `nip-oa`, and the `nip-rs` storage foundation.
+With NIP-42 configured it adds `nip-aa`, `nip-ae`, `nip-am`, `nip-ao`, `nip-ap`,
+and `nip-er`. Relay signing enables `nip-dv` and `nip-ia`, and a configured
+management pubkey enables `nip-wp`. The optional RS snapshot has its own
+Host-bound descriptor. CW, PL, GS, FI, and PMA are not advertised.
 
-These are observations of current code, not a conformance certificate. CW,
-RS, and PL claims need to be narrowed or completed as described above. A RUN
-journal can cite AO kind `24200` only as non-durable telemetry; it can cite
-AM kind `44200` and AE kind `30174` by ID. Such citations do not change the
-upstream kinds or prove an unimplemented host role.
+These declarations name relay roles, not every client or application behavior
+in a specification. A RUN journal can cite AO kind `24200` only as non-durable
+telemetry; it can cite AM kind `44200` and AE kind `30174` by ID. Such citations
+do not implement a missing host role.
 
-## Existing evidence and its limits
+## Evidence and remaining work
 
-The first 15 specifications have retained fixtures under `tests/fixtures/`,
-consumed by relay fixture suites and protocol unit tests. The live Postgres
-contracts are `gateway_postgres` and `block_lane_postgres`, invoked by
-[`scripts/test-postgres.sh`](../../scripts/test-postgres.sh). This table names
-existing tests; it does not report a fresh run or complete current-pin
-conformance. FI and PMA have no corresponding fixtures.
+The original 15 specifications retain fixtures under `tests/fixtures/`.
+Additional pure tests live beside their owning modules, and the live Postgres
+contracts run through [`scripts/test-postgres.sh`](../../scripts/test-postgres.sh)
+on separate disposable databases. Existing fixture presence is distinct from
+a fresh passing run; the current RS suite result is stated above.
 
-| Specification | Fixtures | Existing evidence |
+| Specification | Evidence | Remaining role boundary |
 | --- | --- | --- |
-| NIP-OA | `tests/fixtures/nipoa/` | `gateway_postgres` owner-attestation admission. |
-| NIP-AA | `tests/fixtures/nipaa/` | `gateway_postgres` virtual membership. |
-| NIP-AO | `tests/fixtures/nipao/` | `gateway_postgres` ephemeral routing. |
-| NIP-AM | `tests/fixtures/nipam/` | `gateway_postgres` owner-scoped reads. |
-| NIP-AE | `tests/fixtures/nipae/` | `gateway_postgres` owner/agent reads. |
-| NIP-AP | `tests/fixtures/nipap/` | Shared-head ACLs; no ACP catalog/adoption consumer. |
-| NIP-ER | `tests/fixtures/niper/` | `gateway_postgres` lazy due delivery. |
-| NIP-MP | `tests/fixtures/nipmp/` | `gateway_postgres` addressable storage. |
-| NIP-IA | `tests/fixtures/nipia/` | `gateway_postgres` archive transaction. |
-| NIP-DV | `tests/fixtures/nipdv/` | `gateway_postgres` hidden-set snapshot. |
-| NIP-WP | `tests/fixtures/nipwp/` | `gateway_postgres` workspace icon. |
-| NIP-CW | `tests/fixtures/nipcw/` | `block_lane_postgres` channel windows, not new thread/batch/recovery modes. |
-| NIP-RS | `tests/fixtures/niprs/` | Addressable storage; no dedicated complete-load barrier or atomic snapshot proof. |
-| NIP-GS | `tests/fixtures/nipgs/` | `nostr::git_sign` unit tests. |
-| NIP-PL | `tests/fixtures/nippl/` | Encrypted lease to constant-body local stub; no public gateway or full executor proof. |
-| NIP-FI | None | Not implemented or advertised. |
-| NIP-PMA | None | No implementation or mandatory rejection guard. |
+| NIP-OA | `tests/fixtures/nipoa/`, `gateway_postgres` | Owner-attestation admission |
+| NIP-AA | `tests/fixtures/nipaa/`, `gateway_postgres` | Virtual membership, not FI |
+| NIP-AO | `tests/fixtures/nipao/`, `gateway_postgres` | Ephemeral private routing |
+| NIP-AM | `tests/fixtures/nipam/`, `gateway_postgres` | Owner-scoped metric reads |
+| NIP-AE | `tests/fixtures/nipae/`, `gateway_postgres` | Owner/agent engram reads |
+| NIP-AP | `agent_persona` tests, shared-head ACL fixtures | Host launcher, local resolution, and catalog UI absent |
+| NIP-ER | `tests/fixtures/niper/`, `gateway_postgres` | Lazy due delivery |
+| NIP-MP | `tests/fixtures/nipmp/`, `gateway_postgres` | Addressable project storage |
+| NIP-IA | `tests/fixtures/nipia/`, `gateway_postgres` | Archive command transaction |
+| NIP-DV | `tests/fixtures/nipdv/`, `gateway_postgres` | Hidden-set snapshot |
+| NIP-WP | `tests/fixtures/nipwp/`, `gateway_postgres` | Workspace icon command |
+| NIP-CW | `channel_window`, `thread_window`, `block_lane_postgres` | Thread helpers exist; corresponding server modes and complete recovery absent |
+| NIP-RS | `read_state_snapshot` and passing `read_state_snapshot_postgres` | Atomic snapshot available; merge/manual-unread client and ordinary-EOSE barrier absent |
+| NIP-GS | `nostr::git_sign` tests | Git-object client primitive |
+| NIP-PL | `push_lease` tests; configuration rejection | Delivery disabled; no public executor/gateway |
+| NIP-FI | `federated_identity` tests | Offline policy only; external crypto/JWKS and relay integration absent |
+| NIP-PMA | Reserved-kind unit and gateway fixtures | Required refusal only; managed-agent state runtime absent |
 
-The [in-process ledger](block-nip-ledger.md) still pins the old commit and
-15-file count in Rust. Its inventory assertion failed against the newly
-synced manifest in the [focused run](2026-09-26-upstream-nip-sync.md#verification-and-limits). That mismatch is intentionally disclosed; this documentation
-update does not change constants and present unimplemented roles as covered.
+The [source and fixture ledger](block-nip-ledger.md) preserves the old baseline
+separately from the current 17-file inventory and these new scoped tests.

@@ -1,13 +1,14 @@
 //! NIP-84 highlights.
 //!
 //! Kind `9802` quotes a span of text, or names non-text media with empty
-//! content. The source is an `a` or `e` tag, or an `r` tag marked `source`.
+//! content. Optional sources use `a`, `e`, structured `i`, or URL/text `r` tags.
 //! `p` tags name authors and editors. A `comment` tag makes the event a
 //! quote highlight: `p` and `r` mentions then use the `mention` marker.
 //!
 //! The relay stores the event and does not replace it. It does not fetch
 //! the source or rewrite a URL. `clean_source_url` is the client helper
-//! that drops tracker query parameters before a tag is published.
+//! that optionally drops tracker query parameters before publication; this is
+//! a local convenience, not a NIP-84 normalization requirement.
 
 use std::str::FromStr;
 
@@ -36,6 +37,14 @@ pub enum HighlightSource {
         relay: Option<String>,
     },
     Url(String),
+    /// An arbitrary external source preserved without URL interpretation.
+    Reference(String),
+    /// A structured source classified using the NIP-73 identifier rules.
+    External {
+        value: String,
+        kind: String,
+        hint: Option<String>,
+    },
 }
 
 /// A pubkey credited on the highlight.
@@ -177,6 +186,7 @@ pub fn open_highlight(event: &Event) -> Result<Highlight, DomainError> {
     if event.kind != KIND {
         return Err(invalid("a highlight has kind 9802"));
     }
+    let quoted = event.tags.iter().any(|tag| tag.name() == Some("comment"));
     let mut sources = Vec::new();
     let mut attributions = Vec::new();
     let mut mention_pubkeys = Vec::new();
@@ -211,21 +221,50 @@ pub fn open_highlight(event: &Event) -> Result<Highlight, DomainError> {
                     relay,
                 });
             }
-            Some("r") => {
+            Some("i") => {
                 let values = tag.as_slice();
-                if values.len() != 3 || !valid_http_url(&values[1]) {
+                if !(2..=3).contains(&values.len()) {
                     return Err(invalid(
-                        "a highlight r tag is an http:// or https:// URL marked source or mention",
+                        "a highlight i tag needs an identifier and optional URL hint",
                     ));
                 }
-                match values[2].as_str() {
-                    "source" => sources.push(HighlightSource::Url(values[1].clone())),
-                    "mention" => mention_urls.push(values[1].clone()),
-                    _ => {
-                        return Err(invalid(
-                            "a highlight r tag is an http:// or https:// URL marked source or mention",
-                        ));
-                    }
+                let kind = super::external_id_kind(&values[1])?;
+                let hint = values
+                    .get(2)
+                    .map(|hint| {
+                        if valid_http_url(hint) {
+                            Ok(hint.clone())
+                        } else {
+                            Err(invalid("a highlight i hint must be an HTTP URL"))
+                        }
+                    })
+                    .transpose()?;
+                sources.push(HighlightSource::External {
+                    value: values[1].clone(),
+                    kind,
+                    hint,
+                });
+            }
+            Some("r") => {
+                let values = tag.as_slice();
+                if !(2..=3).contains(&values.len()) || values[1].is_empty() {
+                    return Err(invalid("a highlight r tag needs a source or mention value"));
+                }
+                let marker = values.get(2).map(String::as_str);
+                let url = valid_http_url(&values[1]);
+                if quoted && url && marker.is_none() {
+                    return Err(invalid(
+                        "a quote highlight URL needs a source or mention marker",
+                    ));
+                }
+                match marker {
+                    Some("mention") => mention_urls.push(values[1].clone()),
+                    None | Some("source") => sources.push(if url {
+                        HighlightSource::Url(values[1].clone())
+                    } else {
+                        HighlightSource::Reference(values[1].clone())
+                    }),
+                    _ => return Err(invalid("a highlight r marker must be source or mention")),
                 }
             }
             Some("p") => {
@@ -263,9 +302,6 @@ pub fn open_highlight(event: &Event) -> Result<Highlight, DomainError> {
             }
             _ => {}
         }
-    }
-    if sources.is_empty() {
-        return Err(invalid("a highlight names an a, e, or source r tag"));
     }
     let context_tags = event
         .tags
@@ -453,7 +489,7 @@ mod tests {
             ])],
             "span".into(),
         );
-        assert!(bare.validate_structure().is_err());
+        bare.validate_structure().unwrap();
         let unknown_role = signer().sign(
             1_700_000_300,
             KIND,
@@ -469,5 +505,58 @@ mod tests {
             "span".into(),
         );
         assert!(unknown_role.validate_structure().is_err());
+    }
+    #[test]
+    fn structured_and_text_sources_preserve_content_without_fetching() {
+        let event = signer().sign(
+            1,
+            KIND,
+            vec![
+                Tag::new(vec!["i".into(), "isbn:9780765382030".into()]),
+                Tag::new(vec![
+                    "i".into(),
+                    "#nostr".into(),
+                    "https://example.com/topic".into(),
+                ]),
+                Tag::new(vec!["r".into(), "Book three, chapter five".into()]),
+            ],
+            "A highlighted sentence".into(),
+        );
+        event.validate_structure().unwrap();
+        let highlight = open_highlight(&event).unwrap();
+        assert_eq!(highlight.sources.len(), 3);
+        assert!(
+            matches!(&highlight.sources[0], HighlightSource::External { kind, .. } if kind == "isbn")
+        );
+        assert_eq!(
+            highlight.sources[2],
+            HighlightSource::Reference("Book three, chapter five".into())
+        );
+        // Source attribution is recommended, not a mandatory admission field.
+        assert!(
+            open_highlight(&signer().sign(1, KIND, vec![], String::new()))
+                .unwrap()
+                .sources
+                .is_empty()
+        );
+        for identifier in ["unknown:thing", "geo:UPPER", "isbn:invalid"] {
+            let bad = signer().sign(
+                1,
+                KIND,
+                vec![Tag::new(vec!["i".into(), identifier.into()])],
+                String::new(),
+            );
+            assert!(open_highlight(&bad).is_err());
+        }
+        let quoted_bare = signer().sign(
+            1,
+            KIND,
+            vec![
+                Tag::new(vec!["comment".into(), "my comment".into()]),
+                Tag::new(vec!["r".into(), "https://example.com/source".into()]),
+            ],
+            "span".into(),
+        );
+        assert!(open_highlight(&quoted_bare).is_err());
     }
 }

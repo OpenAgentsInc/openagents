@@ -215,3 +215,12 @@ market are not implied. CTRL reuses current task contracts rather than
 treating Block read-state sync or live telemetry as durable task control.
 The [implementation plan](../../docs/protocol/implementation-plan.md) tracks
 the role-specific validators, host work, and fixtures still required.
+
+## Current implementation evidence
+
+The [September 26 implementation coverage report](../../docs/protocol/2026-09-26-nip-implementation-coverage.md)
+tracks each contract's actual role. Shared private artifacts now have encrypted
+open/seal and relay privacy paths. MKT/LAB have strict free-negotiation and terms
+validators, and X402 has offline invoice/request-binding verification. These
+components do not implement a running labor or payment service; durable host
+admission, execution, acceptance, and recovery remain explicit work.

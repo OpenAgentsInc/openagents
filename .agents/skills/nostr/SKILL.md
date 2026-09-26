@@ -35,11 +35,13 @@ until they run, and client-only NIPs are implemented as fixture-backed
 clients rather than pretended.
 
 Read the [September 26 upstream review](../../../docs/protocol/2026-09-26-upstream-nip-sync.md)
-before assuming current-pin support. The source collections are updated;
-the code ledgers retain old pins and their guards fail. New PMA kind 30179
-requires rejection until its gates exist; thread-bounds kind 39007 is
-relay-only but lacks the corresponding client rejection. NIP-78 privacy,
-RS snapshot/barrier guarantees, and PL delivery have pending work.
+and [implementation coverage](../../../docs/protocol/2026-09-26-nip-implementation-coverage.md)
+before assuming complete support. Source inventory checks now track the current
+pins separately from behavioral evidence. PMA 30179 is rejected, client-authored
+39007 is refused, and app data and private artifacts have explicit visibility.
+RS has an opt-in atomic HTTP snapshot. PL delivery is disabled until its durable
+authority and delivery lifecycle exists. Client helpers do not imply complete
+AP, FI, CW-thread, or RS merge integration.
 
 Read the spec before the code. The files you need most often:
 
@@ -119,7 +121,8 @@ explicit facilitator support. It pays before execution; MKT/LAB pays after
 acceptance. NWC is wallet transport, not purchase authority. Zap invoices hash
 the zap request, while x402 invoices hash the bound operation; do not reuse
 one invoice as both. L402/LSAT is a distinct macaroon-based protocol. These
-paths have no implemented OpenAgents payment adapter.
+paths have no operational OpenAgents wallet or settlement adapter. Pure
+validation components do not consume proofs or authorize spending.
 
 Read the [teardown integration plan](../../../docs/coder/design/teardown-nostr-integration.md)
 and [file-by-file archive coverage](../../../docs/protocol/2026-09-26-teardown-coverage.md)
@@ -358,7 +361,7 @@ loading history buffers live matches until `EOSE`. Ephemeral events are
 deduplicated by id over a short window and never reach storage.
 
 The Block NIPs the relay serves, and how, are in
-`docs/protocol/block-nips.md`. The relay-signed kinds (`39005`, `39006`,
+`docs/protocol/block-nips.md`. The relay-signed kinds (`39005`, `39006`, `39007`,
 `30622`) are refused from clients with `restricted:`.
 
 ## Debugging a handoff

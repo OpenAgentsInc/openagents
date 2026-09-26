@@ -164,7 +164,10 @@ pub fn validate_descriptor(descriptor: &PushDescriptor) -> Result<(), &'static s
     if descriptor.push_kinds.is_empty()
         || descriptor.push_kinds.iter().any(|kind| {
             (20_000..30_000).contains(kind)
-                || matches!(*kind, 39_005 | 39_006 | 30_622 | 8_002 | 8_003 | 13_535)
+                || matches!(
+                    *kind,
+                    39_005 | 39_006 | 39_007 | 30_622 | 8_002 | 8_003 | 13_535
+                )
         })
     {
         return Err("push_kinds");

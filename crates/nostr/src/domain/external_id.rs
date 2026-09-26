@@ -204,6 +204,13 @@ fn blockchain(value: &str) -> Result<String, DomainError> {
     }
     let id = parts[marker_at + 1];
     if parts[marker_at] == "tx" {
+        // The pinned Ethereum example uses its conventional 0x prefix. Keep
+        // the original identifier intact while validating the payload bytes.
+        let id = if chain == "ethereum" {
+            id.strip_prefix("0x").unwrap_or(id)
+        } else {
+            id
+        };
         if id.is_empty()
             || !id.len().is_multiple_of(2)
             || !id
@@ -273,6 +280,13 @@ mod tests {
         assert_eq!(ids[0].kind, "web");
         assert_eq!(ids[8].kind, "bitcoin:tx");
         assert_eq!(ids[9].kind, "ethereum:tx");
+        assert_eq!(
+            external_id_kind(
+                "ethereum:100:tx:0x98f7812be496f97f80e2e98d66358d1fc733cf34176a8356d171ea7fbbe97ccd"
+            )
+            .unwrap(),
+            "ethereum:tx"
+        );
         assert_eq!(ids[10].kind, "bitcoin:address");
         assert_eq!(
             ids[7].hint.as_deref(),
@@ -297,6 +311,9 @@ mod tests {
             "doi:10.1000/UPPER",
             "#Upper",
             "bitcoin:tx:ABCDEF",
+            "ethereum:100:tx:0x",
+            "ethereum:100:tx:0xAB",
+            "ethereum:100:tx:0xabc",
             "tx:abc",
             "unknown:thing",
         ] {

@@ -46,8 +46,10 @@ The [September 26 upstream sync assessment](../docs/protocol/2026-09-26-upstream
 covers all changed official and Block specifications and the implementation
 gaps they expose. The current pins contain 100 official Markdown files
 (99 specifications and the index) and 17 Block specifications. Source sync
-is complete; runtime conformance is not. Both code-ledger pin guards still
-fail against their old baselines. LAB keeps its name because historical
+is complete; runtime conformance is not. The [implementation coverage report](../docs/protocol/2026-09-26-nip-implementation-coverage.md)
+records current repairs, validated components, running roles, and remaining
+work. Source inventory checks cover the new pins separately from behavioral
+evidence. LAB keeps its name because historical
 OpenAgents LBR already defines a different protocol.
 
 `nips/manifest.json` records the exact upstream commit for each synced lane, with

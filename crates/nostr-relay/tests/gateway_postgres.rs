@@ -300,7 +300,6 @@ async fn assert_nip11_http(address: SocketAddr) {
         "nip-ao",
         "nip-ap",
         "nip-cap-v1",
-        "nip-cw",
         "nip-dv",
         "nip-er",
         "nip-ext-v1",
@@ -321,6 +320,8 @@ async fn assert_nip11_http(address: SocketAddr) {
         );
     }
     let extensions = document["supported_extensions"].as_array().unwrap();
+    assert!(!extensions.contains(&json!("nip-cw")));
+    assert!(!extensions.contains(&json!("nip-pl")));
     assert!(
         extensions
             .windows(2)
@@ -1196,7 +1197,134 @@ fn management_contract(address: SocketAddr) {
     );
 }
 
+fn current_private_gateway_contract(address: SocketAddr, second: SocketAddr) {
+    let mut owner = connect_client(address);
+    let challenge = expect_auth_challenge(&mut owner);
+    authenticate(&mut owner, 97, &challenge);
+    let author = SecretKey::from_byte_array([97; 32]).unwrap();
+    let recipient = pubkey(98).parse().unwrap();
+    let inline = json!({"message":"private input"});
+    let bytes = nostr::contracts::jcs(&inline).unwrap();
+    let body = json!({"v":"openagents.artifact-envelope.v1","requires":[],
+        "artifact":{"digest":nostr::contracts::digest_bytes(&bytes),"size":bytes.len(),"media_type":"application/json","schema":"openagents.fixture.v1"},
+        "inline":inline,"issued_at":now(),"retain_until":now()+3600});
+    let artifact =
+        nostr::private_artifact::seal(&body, &author, &recipient, &"ab".repeat(32), now(), [7; 32])
+            .unwrap();
+    let app = signed_event(97, now(), 78, vec![], "private app state");
+    let state = signed_event(
+        97,
+        now(),
+        30078,
+        vec![Tag::new(vec!["d".into(), "private-test".into()])],
+        "private preferences",
+    );
+    let sentinel = signed_event(97, now(), 1, vec![], "public ordering sentinel");
+    let ids = vec![artifact.id.clone(), app.id.clone(), state.id.clone()];
+    let mut observer = connect_client(second);
+    let challenge = expect_auth_challenge(&mut observer);
+    authenticate(&mut observer, 99, &challenge);
+    send_json(
+        &mut observer,
+        json!(["REQ","private-live",{"ids":[artifact.id,app.id,state.id,sentinel.id],"limit":0}]),
+    );
+    assert!(is_eose_for(&read_json(&mut observer), "private-live"));
+    // Another authenticated key cannot relay an author's private declaration.
+    send_json(&mut observer, json!(["EVENT", artifact]));
+    assert_eq!(read_json(&mut observer)[2], false);
+    for event in [&artifact, &app, &state, &sentinel] {
+        send_json(&mut owner, json!(["EVENT", event]));
+        assert_eq!(read_json(&mut owner)[2], true, "private author publication");
+    }
+    let delivered = read_json(&mut observer);
+    assert_eq!(
+        delivered[2]["id"], sentinel.id,
+        "private live events never reach another key"
+    );
+    send_json(&mut observer, json!(["CLOSE", "private-live"]));
+    for (secret, expected) in [(None, 0), (Some(99), 0), (Some(98), 1), (Some(97), 3)] {
+        let mut reader = connect_client(second);
+        let challenge = expect_auth_challenge(&mut reader);
+        if let Some(secret) = secret {
+            authenticate(&mut reader, secret, &challenge);
+        }
+        send_json(&mut reader, json!(["REQ","private-history",{"ids":ids}]));
+        let mut count = 0;
+        loop {
+            let response = read_json(&mut reader);
+            if is_eose_for(&response, "private-history") {
+                break;
+            }
+            if secret.is_none() {
+                assert_eq!(response[0], "CLOSED");
+                assert!(response[2].as_str().unwrap().starts_with("auth-required:"));
+                break;
+            }
+            assert_eq!(response[0], "EVENT", "{response}");
+            count += 1;
+        }
+        assert_eq!(count, expected, "history reader {secret:?}");
+        send_json(&mut reader, json!(["COUNT","private-count",{"ids":ids}]));
+        assert_eq!(read_json(&mut reader)[2]["count"], expected);
+        send_json(
+            &mut reader,
+            json!(["REQ","private-search",{"ids":ids,"search":"private"}]),
+        );
+        let response = read_json(&mut reader);
+        if secret.is_none() {
+            assert_eq!(response[0], "CLOSED");
+            assert!(response[2].as_str().unwrap().starts_with("auth-required:"));
+        } else {
+            assert!(is_eose_for(&response, "private-search"), "{response}");
+        }
+        reader.close(None).unwrap();
+    }
+    // A zero-history filter remains live, including beside a historical filter.
+    // The private rows already exist, so returning one before EOSE is a failure.
+    for mixed in [false, true] {
+        let mut reader = connect_client(second);
+        let challenge = expect_auth_challenge(&mut reader);
+        authenticate(&mut reader, 97, &challenge);
+        let filter = json!({"authors":[pubkey(97)],"kinds":[78,30078],"limit":0});
+        let request = if mixed {
+            json!(["REQ","zero-history",filter,{"ids":[sentinel.id],"limit":1}])
+        } else {
+            json!(["REQ", "zero-history", filter])
+        };
+        send_json(&mut reader, request);
+        if mixed {
+            assert_eq!(read_json(&mut reader)[2]["id"], sentinel.id);
+        }
+        assert!(is_eose_for(&read_json(&mut reader), "zero-history"));
+        let next = signed_event(
+            97,
+            now(),
+            78,
+            vec![],
+            if mixed { "mixed live" } else { "zero live" },
+        );
+        send_json(&mut owner, json!(["EVENT", next]));
+        assert_eq!(read_json(&mut owner)[2], true);
+        assert_eq!(read_json(&mut reader)[2]["id"], next.id);
+        reader.close(None).unwrap();
+    }
+    for kind in [30179, 39007] {
+        let forged = signed_event(
+            97,
+            now(),
+            kind,
+            vec![Tag::new(vec!["d".into(), "reserved".into()])],
+            "not admitted",
+        );
+        send_json(&mut owner, json!(["EVENT", forged]));
+        assert_eq!(read_json(&mut owner)[2], false, "reserved kind {kind}");
+    }
+    observer.close(None).unwrap();
+    owner.close(None).unwrap();
+}
+
 fn expanded_protocol_contract(address_one: SocketAddr, address_two: SocketAddr) -> String {
+    current_private_gateway_contract(address_one, address_two);
     protected_and_private_contract(address_one, address_two);
     search_and_count_contract(address_one, address_two);
     group_contract(address_one, address_two);

@@ -520,6 +520,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 4_550 {
         super::community::open_community_approval(event)?;
     }
+    if event.kind == 10_133 {
+        super::open_payment_targets(event)?;
+    }
     if event.kind == 10_040 {
         super::assertion::open_trusted_providers(event)?;
     }
@@ -652,9 +655,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     let group_tags = event
         .tags
         .iter()
-        // NIP-MP is explicitly global-only. Its unknown tags are opaque, so a
-        // stray h (or previous) must not turn a project into NIP-29 traffic.
-        .filter(|tag| !BLOCK_GLOBAL_ONLY_KINDS.contains(&event.kind) && tag.name() == Some("h"))
+        // Global artifacts and mailboxes do not carry NIP-29 group authority.
+        .filter(|tag| {
+            !BLOCK_GLOBAL_ONLY_KINDS.contains(&event.kind)
+                && !matches!(event.kind, 78 | 3_187 | 3_188 | 30_186)
+                && tag.name() == Some("h")
+        })
         .collect::<Vec<_>>();
     if !group_tags.is_empty() {
         if group_tags.len() != 1 {

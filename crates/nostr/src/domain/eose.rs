@@ -23,6 +23,8 @@ pub enum EoseHint {
     Finish,
     /// The relay holds more matching stored events than it sent.
     More,
+    /// Authentication may reveal another authorized view of stored events.
+    Auth,
 }
 
 /// A parsed `EOSE` message: the subscription it closes and the hints
@@ -36,7 +38,16 @@ pub struct Eose {
 }
 
 impl Eose {
-    /// What the relay asserts about its stored events: `Some(true)`
+    /// Whether authentication may reveal more stored events.
+    ///
+    /// A simultaneous `finish` applies only to the current view. This hint is
+    /// not a grant; clients need a prior AUTH challenge and an admitted signer.
+    #[must_use]
+    pub fn authentication_may_reveal_more(&self) -> bool {
+        self.hints.contains(&EoseHint::Auth)
+    }
+
+    /// What the relay asserts about its current authorized view of stored events: `Some(true)`
     /// when it sent them all, `Some(false)` when it says more remain,
     /// `None` when it says nothing — an absent or empty hint array, or
     /// only unknown values. Presence is definitive; absence is not.
@@ -65,7 +76,7 @@ impl Eose {
 /// # Errors
 ///
 /// Returns `DomainError::InvalidEvent` when the message is not a
-/// three-or-fewer-element array, is not an `EOSE`, has a non-string
+/// two-or-more-element array, is not an `EOSE`, has a non-string
 /// subscription id, or has a non-array or non-string hint element.
 pub fn open_eose(message: &str) -> Result<Eose, DomainError> {
     let value: Value =
@@ -73,8 +84,8 @@ pub fn open_eose(message: &str) -> Result<Eose, DomainError> {
     let array = value
         .as_array()
         .ok_or_else(|| invalid("an EOSE is a JSON array"))?;
-    if array.len() < 2 || array.len() > 3 {
-        return Err(invalid("an EOSE is two or three elements"));
+    if array.len() < 2 {
+        return Err(invalid("an EOSE needs a subscription id"));
     }
     if array[0].as_str() != Some("EOSE") {
         return Err(invalid("the message is not an EOSE"));
@@ -94,6 +105,7 @@ pub fn open_eose(message: &str) -> Result<Eose, DomainError> {
                 match hint.as_str() {
                     Some("finish") => hints.push(EoseHint::Finish),
                     Some("more") => hints.push(EoseHint::More),
+                    Some("auth") => hints.push(EoseHint::Auth),
                     Some(_) => {}
                     None => return Err(invalid("an EOSE hint is a string")),
                 }
@@ -134,6 +146,24 @@ mod tests {
         let unknown = open_eose(r#"["EOSE", "s", ["chunked"]]"#).unwrap();
         assert_eq!(unknown.complete(), None);
         assert!(unknown.should_paginate());
+    }
+
+    #[test]
+    fn authentication_is_separate_from_current_view_completeness() {
+        for (hints, complete) in [
+            (r#"["auth"]"#, None),
+            (r#"["auth", "finish"]"#, Some(true)),
+            (r#"["more", "auth", "future"]"#, Some(false)),
+        ] {
+            let eose = open_eose(&format!(r#"["EOSE", "s", {hints}, {{"future":true}}]"#)).unwrap();
+            assert!(eose.authentication_may_reveal_more());
+            assert_eq!(eose.complete(), complete);
+        }
+        assert!(
+            !open_eose(r#"["EOSE", "s"]"#)
+                .unwrap()
+                .authentication_may_reveal_more()
+        );
     }
 
     #[test]

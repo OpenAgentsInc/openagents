@@ -1,7 +1,8 @@
-//! NIP-CW `POST /query`.
+//! Authenticated `POST /query`: channel windows and optional RS snapshots.
 //!
-//! A filter with `top_level: true` is a channel window. Any other filter is
-//! served as an ordinary history query. Both require NIP-98 authentication.
+//! A filter with `top_level: true` is a channel window. RS requests use a
+//! distinct versioned envelope; unsupported thread modes refuse explicitly.
+//! Ordinary filters retain the existing history path. All require NIP-98.
 
 use tokio::{net::TcpStream, sync::watch};
 
@@ -28,7 +29,7 @@ pub async fn serve_query(
     config: &GatewayConfig,
     db: &DbPool,
 ) -> Result<(), GatewayError> {
-    if config.relay_url.is_none() || config.relay_signer.is_none() {
+    if config.relay_url.is_none() {
         return write_http(
             &mut stream,
             404,
@@ -75,7 +76,7 @@ pub async fn serve_query(
             .await;
         }
     };
-    let value: serde_json::Value = match serde_json::from_slice(&body) {
+    let value: serde_json::Value = match nostr::contracts::parse_strict(&body) {
         Ok(value) => value,
         Err(_) => {
             return write_http(
@@ -88,7 +89,91 @@ pub async fn serve_query(
             .await;
         }
     };
-    let signer = config.relay_signer.as_ref().expect("signer was checked");
+    if value.is_array() || value.get("read_state_snapshot").is_some() {
+        use nostr::read_state_snapshot::parse_request;
+        let request = match parse_request(&value, &auth.pubkey) {
+            Ok(Some(request)) => request,
+            _ => {
+                return write_http(
+                    &mut stream,
+                    400,
+                    "Bad Request",
+                    "application/json",
+                    "{\"error\":\"unsupported or malformed query mode\"}",
+                )
+                .await;
+            }
+        };
+        let Some(descriptor) = config.snapshot_descriptor(head.header("host")) else {
+            return write_http(
+                &mut stream,
+                404,
+                "Not Found",
+                "application/json",
+                "{\"error\":\"read-state snapshot is not configured for this Host\"}",
+            )
+            .await;
+        };
+        return match db
+            .read_state_snapshot(
+                request.pubkey,
+                auth.event_id,
+                descriptor.community_id,
+                unix_now(),
+            )
+            .await
+        {
+            Ok(snapshot) => {
+                let body = serde_json::to_string(&snapshot)
+                    .map_err(|_| GatewayError::Internal("snapshot serialization failed".into()))?;
+                write_http(&mut stream, 200, "OK", "application/json", &body).await
+            }
+            Err(error) => {
+                let (status, phrase) = match &error {
+                    crate::store::StoreError::Management(reason) if reason == "snapshot_limit" => {
+                        (413, "Payload Too Large")
+                    }
+                    crate::store::StoreError::Management(reason)
+                        if reason == "snapshot_not_admitted" =>
+                    {
+                        (403, "Forbidden")
+                    }
+                    crate::store::StoreError::Management(reason) if reason == "snapshot_replay" => {
+                        (409, "Conflict")
+                    }
+                    _ => (503, "Service Unavailable"),
+                };
+                write_http(
+                    &mut stream,
+                    status,
+                    phrase,
+                    "application/json",
+                    "{\"error\":\"cannot prove complete read state\"}",
+                )
+                .await
+            }
+        };
+    }
+    if value.get("thread_window").is_some() || value.get("resolve_thread_roots").is_some() {
+        return write_http(
+            &mut stream,
+            400,
+            "Bad Request",
+            "application/json",
+            "{\"error\":\"unsupported query mode\"}",
+        )
+        .await;
+    }
+    let Some(signer) = config.relay_signer.as_ref() else {
+        return write_http(
+            &mut stream,
+            404,
+            "Not Found",
+            "application/json",
+            "{\"error\":\"channel windows are not configured\"}",
+        )
+        .await;
+    };
     let events = match channel_window::parse_window(&value) {
         Ok(Some(request)) => {
             match window_events(db, &auth.pubkey, &request, signer, unix_now()).await {
@@ -179,7 +264,12 @@ async fn window_events(
         .into_iter()
         .map(|stored| stored.event)
         .collect::<Vec<_>>();
-    project_window(&events, request, truncated, true, signer, now)
+    // Membership may have changed while history was read. Recheck before release.
+    let served = db
+        .channel_window_served(request.channel.clone(), reader.to_owned())
+        .await
+        .map_err(|_| "store")?;
+    project_window(&events, request, truncated, served, signer, now)
 }
 
 async fn ordinary_events(

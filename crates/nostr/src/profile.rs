@@ -1,9 +1,10 @@
 //! Relay admission for OpenAgents discovery profiles.
 //!
-//! Public CAP, PRG, and EXT records are plaintext and are parsed before
-//! storage. Private CAP policy and RUN envelopes are tag-checked only.
-//! Their content is ciphertext, and this layer does not read it as a
-//! program. A relay `OK` and an `EOSE` are not execution or completeness.
+//! Public CAP, PRG, EXT, and MKT records are parsed before storage. A valid
+//! market discovery record does not prove its referenced capability or offering
+//! is available. Private policy, RUN, and artifact content remains encrypted;
+//! this layer cannot admit the application contract inside it. A relay `OK`
+//! and an `EOSE` are not execution or completeness.
 
 use serde_json::Value;
 
@@ -13,6 +14,7 @@ use crate::domain::Event;
 use crate::ext::{
     self, CHECKPOINT_KIND, LISTING_KIND, MIGRATION_KIND, RELEASE_KIND, REVOCATION_KIND,
 };
+use crate::market_contracts;
 use crate::prg;
 use crate::run::{self, HEAD_KIND, RECORD_KIND};
 
@@ -32,6 +34,7 @@ pub const fn eose_is_complete() -> bool {
 #[must_use]
 pub fn requires_author_auth(event: &Event) -> bool {
     event.kind == RECORD_KIND
+        || event.kind == crate::contracts::ARTIFACT_ENVELOPE_KIND
         || event.kind == HEAD_KIND
         || (event.kind == PREFERENCE_KIND && marked(event, cap::PRIVATE_POLICY_MARKER))
 }
@@ -53,6 +56,9 @@ pub fn admit(event: &Event) -> Result<(), ContractError> {
             ext::parse_record(event).map(|_| ())
         }
         RECORD_KIND | HEAD_KIND => run::admit_envelope(event),
+        crate::contracts::ARTIFACT_ENVELOPE_KIND => crate::private_artifact::admit(event),
+        market_contracts::OFFERING_KIND => market_contracts::parse_offering(event).map(|_| ()),
+        market_contracts::HEAD_KIND => market_contracts::parse_head(event).map(|_| ()),
         _ => Ok(()),
     }
 }
@@ -198,5 +204,102 @@ mod tests {
         json_record.content = r#"{"steps":[]}"#.into();
         assert!(admit(&json_record).is_err());
         assert!(requires_author_auth(&record));
+    }
+
+    fn market_offering_body() -> Value {
+        let author = signer();
+        json!({
+            "v": market_contracts::OFFERING_SCHEMA, "requires": [],
+            "provider": author.pubkey(), "offer": "example",
+            "capability": {
+                "id": format!("{}:example/work", author.pubkey()),
+                "artifact": {"digest": SCHEMA, "size": 17,
+                    "media_type": "application/json", "schema": "openagents.cap.v1"}
+            },
+            "profiles": ["openagents.labor.v1"],
+            "payment_profiles": [market_contracts::FREE_PROFILE], "networks": [],
+            "summary": "A discovery fixture", "price_hint_msat": 0,
+            "capacity_hint": null, "valid_until": 100
+        })
+    }
+
+    fn market_offering(body: &Value) -> Event {
+        let bytes = crate::contracts::jcs(body).unwrap();
+        let digest = crate::contracts::digest_bytes(&bytes);
+        signer().sign(
+            30,
+            market_contracts::OFFERING_KIND,
+            vec![
+                Tag::new(vec!["t".into(), "oa:market-offering:v1".into()]),
+                Tag::new(vec!["x".into(), digest[7..].into()]),
+            ],
+            String::from_utf8(bytes).unwrap(),
+        )
+    }
+
+    fn market_head(body: &Value) -> Event {
+        signer().sign(
+            31,
+            market_contracts::HEAD_KIND,
+            vec![
+                Tag::new(vec!["d".into(), "example".into()]),
+                Tag::new(vec!["t".into(), "oa:market-head:v1".into()]),
+            ],
+            String::from_utf8(crate::contracts::jcs(body).unwrap()).unwrap(),
+        )
+    }
+
+    #[test]
+    fn market_discovery_admission_checks_signed_closed_content() {
+        let body = market_offering_body();
+        let good = market_offering(&body);
+        assert!(admit(&good).is_ok());
+        assert!(!requires_author_auth(&good));
+        for (field, value) in [
+            ("requires", json!(["future"])),
+            ("grant", json!("run-now")),
+            ("provider", json!(PUB)),
+            ("payment_profiles", json!(["unknown"])),
+            ("valid_until", json!(30)),
+        ] {
+            let mut bad = body.clone();
+            bad[field] = value;
+            assert!(admit(&market_offering(&bad)).is_err(), "accepted {field}");
+        }
+        let mut forged = good;
+        forged.content.push(' ');
+        assert!(admit(&forged).is_err());
+    }
+
+    #[test]
+    fn market_head_admission_does_not_resolve_its_offering_reference() {
+        let author = signer();
+        let body = json!({
+            "v": market_contracts::HEAD_SCHEMA, "requires": [],
+            "provider": author.pubkey(), "offer": "example",
+            "offering": {"id": "bb".repeat(32), "pubkey": author.pubkey(),
+                "kind": market_contracts::OFFERING_KIND},
+            "status": "active", "valid_until": 100
+        });
+        let head = market_head(&body);
+        // Admission validates the signed claim without inventing referenced bytes.
+        assert!(admit(&head).is_ok());
+        let other =
+            market_contracts::parse_offering(&market_offering(&market_offering_body())).unwrap();
+        assert!(market_contracts::check_head(&head, &other, 40).is_err());
+        for (field, value) in [
+            ("status", json!("confirmed")),
+            ("offer", json!("different")),
+            ("execute", json!(true)),
+            ("valid_until", json!(31)),
+        ] {
+            let mut bad = body.clone();
+            bad[field] = value;
+            assert!(admit(&market_head(&bad)).is_err(), "accepted {field}");
+        }
+        let mut bad = body;
+        bad["offering"]["kind"] = json!(market_contracts::HEAD_KIND);
+        assert!(admit(&market_head(&bad)).is_err());
+        assert!(!relay_ok_is_execution());
     }
 }

@@ -27,10 +27,19 @@ pub const SAFE_INTEGER: i128 = 9_007_199_254_740_991;
 /// over the ceiling, and [`RefusalCode::Malformed`] for every other
 /// encoding failure, including duplicate keys and unsafe integers.
 pub fn parse_strict(input: &[u8]) -> Result<Value, ContractError> {
-    if input.len() > MAX_BODY_BYTES {
+    parse_strict_bounded(input, MAX_BODY_BYTES)
+}
+
+/// Parse strict JSON under a caller's byte ceiling and the common depth limit.
+///
+/// This is for transport envelopes with a separately specified larger budget.
+/// It does not raise the one-MiB body limit of [`parse_strict`] or its callers.
+/// Duplicate keys, Unicode, numeric bounds, and trailing-data rules are unchanged.
+pub fn parse_strict_bounded(input: &[u8], max_bytes: usize) -> Result<Value, ContractError> {
+    if input.len() > max_bytes {
         return Err(ContractError::new(
             RefusalCode::LimitExceeded,
-            "body exceeds 1048576 bytes",
+            "body exceeds the configured byte ceiling",
         ));
     }
     if input.starts_with(&[0xEF, 0xBB, 0xBF]) {
@@ -517,5 +526,14 @@ mod tests {
             digest_value(&parsed).expect("digest"),
             digest_bytes(br#"{"a":1}"#)
         );
+    }
+
+    #[test]
+    fn envelope_ceiling_does_not_change_default_body_or_strict_encoding_rules() {
+        let raw = format!("\"{}\"", "a".repeat(MAX_BODY_BYTES));
+        assert!(parse_strict(raw.as_bytes()).is_err());
+        assert!(parse_strict_bounded(raw.as_bytes(), MAX_BODY_BYTES + 2).is_ok());
+        assert!(parse_strict_bounded(br#"{"a":1,"a":2}"#, MAX_BODY_BYTES * 8).is_err());
+        assert!(parse_strict_bounded(b"null", 3).is_err());
     }
 }

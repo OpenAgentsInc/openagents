@@ -68,9 +68,8 @@ Platform + Managed Postgres unsupported for the current binary.
 | `NOSTR_RELAY_EXPIRATION_SWEEP_SECONDS` | no | `60` | Interval for physical NIP-40 cleanup (1–86,400). Queries exclude expired events independently of the sweep. |
 | `NOSTR_RELAY_SECRET_KEY` | for NIP-29 | — | Relay's 32-byte secret as 64 lowercase hexadecimal characters. Enables relay-managed groups and signed group history/metadata. The derived public key becomes the NIP-11 relay pubkey; if `NOSTR_RELAY_PUBKEY` is also set, it must match. This is a relay key, never a participant or wallet key, and belongs only in the protected runtime environment. |
 | `NOSTR_RELAY_MANAGEMENT_PUBKEY` | for NIP-86 | — | Exact 32-byte owner public key as 64 lowercase hexadecimal characters. Enables the NIP-98-authenticated management endpoint. `NOSTR_RELAY_URL` is required so HTTP authorization can bind the public URL. |
-| `NOSTR_RELAY_PUSH_SECRET` | for NIP-PL | — | Executor secret as 64 lowercase hexadecimal characters. With `NOSTR_RELAY_PUSH_GATEWAY` and `NOSTR_RELAY_URL`, the relay decrypts kind 30350 leases and advertises `nip-pl`. |
-| `NOSTR_RELAY_PUSH_GATEWAY` | with the push secret | — | `http://` URL that receives the fixed APNs reconnect body. The body does not contain event content. |
-| `NOSTR_RELAY_PUSH_APP_PROFILE` | no | `com.openagents.relay/ios` | Application profile id copied into accepted leases. |
+| `NOSTR_RELAY_READ_STATE_COMMUNITY` | for the optional NIP-RS snapshot | — | Canonical lowercase UUID. With `NOSTR_RELAY_URL`, enables the writer-database snapshot for the exact configured HTTP Host. Discovery advertises the community and snapshot limits only for that Host. No relay signing key is required. |
+| `NOSTR_RELAY_PUSH_SECRET`, `NOSTR_RELAY_PUSH_GATEWAY`, `NOSTR_RELAY_PUSH_APP_PROFILE` | disabled | — | Legacy push configuration is retained for explicit startup refusal. Configuring a push executor fails until transactional lease authority, durable delivery, and current-membership checks exist. NIP-PL is not advertised. |
 
 ### Media
 
@@ -98,8 +97,12 @@ The Block extension handlers need no additional service or database. NIP-AO
 uses the dedicated observer rates below. NIP-IA, NIP-DV, and NIP-CW require
 `NOSTR_RELAY_SECRET_KEY` because their derived state is relay-signed. NIP-CW
 also requires `NOSTR_RELAY_URL` and serves `POST /query`. NIP-WP requires
-`NOSTR_RELAY_MANAGEMENT_PUBKEY`. NIP-PL stays unadvertised until
-`NOSTR_RELAY_PUSH_SECRET` and `NOSTR_RELAY_PUSH_GATEWAY` are set. See
+`NOSTR_RELAY_MANAGEMENT_PUBKEY`. The optional NIP-RS snapshot requires
+`NOSTR_RELAY_READ_STATE_COMMUNITY` and `NOSTR_RELAY_URL`; it accepts only
+an authenticated own-author kind-30078 snapshot request. Configure the proxy
+to preserve the configured Host. Forwarded headers do not select a community.
+The endpoint refuses incomplete or oversized snapshots instead of paginating
+or returning an ordinary event array. NIP-PL delivery is disabled. See
 `docs/protocol/block-nips.md`.
 
 TLS terminates at the reverse proxy. The binary itself never speaks TLS and

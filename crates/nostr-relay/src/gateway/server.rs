@@ -532,7 +532,12 @@ async fn handle_socket(
             return serve_query(stream, &head, &state.config, &state.db).await;
         }
         let icon = state.db.workspace_icon().await?;
-        let nip11 = wire::nip11_json_with_icon(&state.config, &state.policy, icon.as_deref());
+        let nip11 = wire::nip11_json_for_host(
+            &state.config,
+            &state.policy,
+            icon.as_deref(),
+            head.header("host"),
+        );
         return serve_http(stream, &head, &nip11, state.current.load(Ordering::Acquire)).await;
     }
     let websocket =
@@ -1031,6 +1036,19 @@ async fn handle_event(
             &event.id,
             false,
             "restricted: this Block NIP kind is relay-authored only",
+        ));
+        return Ok(());
+    }
+    if matches!(event.kind, 78 | 30_078)
+        && !context
+            .auth
+            .as_ref()
+            .is_some_and(|auth| auth.is_authenticated_as(&event.pubkey))
+    {
+        pending.push_back(ok_message(
+            &event.id,
+            false,
+            "auth-required: app data requires authentication by its exact author",
         ));
         return Ok(());
     }

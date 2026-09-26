@@ -174,7 +174,7 @@ mod tests {
         assert_eq!(many.class(), EventClass::Regular);
         let plain = open_app_data(&many).unwrap();
         assert_eq!(plain.identifier.as_deref(), Some("log"));
-        assert!(search_matches("row", MANY_KIND, &many.content));
+        assert!(!search_matches("row", MANY_KIND, &many.content));
         let later = author.sign(
             1_700_000_500,
             MANY_KIND,

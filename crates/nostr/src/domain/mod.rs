@@ -22,6 +22,7 @@ mod content_warning;
 mod deletion;
 mod draft;
 mod ecash;
+mod emoji;
 mod eose;
 mod error;
 mod event;
@@ -51,6 +52,7 @@ mod note;
 mod nsite;
 mod nutzap;
 mod ots;
+mod payment_target;
 mod peer_order;
 mod picture;
 mod podcast;
@@ -61,6 +63,7 @@ mod proxy;
 mod public_message;
 mod reaction;
 mod references;
+mod relay_access;
 mod relay_list;
 mod remote_sign;
 mod replacement;
@@ -101,9 +104,10 @@ pub use block::{
     AGENT_ENGRAM_KIND, AGENT_PERSONA_KIND, BLOCK_GLOBAL_ONLY_KINDS, DM_HIDE_KIND, DM_OPEN_KIND,
     DM_VISIBILITY_KIND, EVENT_REMINDER_KIND, IDENTITY_ARCHIVE_LIST_KIND,
     IDENTITY_ARCHIVE_REQUEST_KIND, IDENTITY_ARCHIVED_KIND, IDENTITY_UNARCHIVE_REQUEST_KIND,
-    IDENTITY_UNARCHIVED_KIND, IdentityArchiveRequest, MAX_REMINDER_HORIZON_SECONDS, PROJECT_KIND,
-    PUSH_LEASE_KIND, READ_STATE_KIND, RELAY_ONLY_BLOCK_KINDS, TEAM_CATALOG_KIND,
-    THREAD_SUMMARY_KIND, WINDOW_BOUNDS_KIND, WORKSPACE_PROFILE_KIND, dm_visibility_channel,
+    IDENTITY_UNARCHIVED_KIND, IdentityArchiveRequest, MAX_REMINDER_HORIZON_SECONDS,
+    PRIVATE_MANAGED_AGENT_KIND, PROJECT_KIND, PUSH_LEASE_KIND, READ_STATE_KIND,
+    RELAY_ONLY_BLOCK_KINDS, TEAM_CATALOG_KIND, THREAD_BOUNDS_KIND, THREAD_SUMMARY_KIND,
+    WINDOW_BOUNDS_KIND, WORKSPACE_PROFILE_KIND, dm_visibility_channel,
     parse_identity_archive_request, validate_block_ingest, workspace_icon,
 };
 pub use blossom::{
@@ -136,6 +140,7 @@ pub use ecash::{
     EcashNetwork, MintAnnouncement, MintEndpoint, MintKind, MintPointer, MintRecommendation,
     open_cashu_mint, open_fedimint, open_mint_recommendation,
 };
+pub use emoji::{CustomEmoji, EmojiText, EmojiToken, emojify_event};
 pub use eose::{Eose, EoseHint, open_eose};
 pub use error::DomainError;
 pub use event::{EXTENDED_INDEXED_TAG_NAMES, Event, Tag, is_indexed_tag_name};
@@ -150,7 +155,10 @@ pub use file::{FileImage, FileMetadata, open_file_metadata};
 pub use filter::{
     Filter, SEARCH_EXCLUDED_KINDS, matches_any, search_excludes_kind, search_matches, search_terms,
 };
-pub use follow::{Follow, append_follow, displayed_petname, parse_follow_list};
+pub use follow::{
+    Follow, append_follow, displayed_petname, parse_follow_list, petname_is_resolvable,
+    resolve_petname,
+};
 pub use geocache::{
     CacheLogType, CacheSize, CurationList, FoundLog, Geocache, Verification, cache_log_type,
     confirm_find, exclusive_finder, open_curation, open_found_log, open_geocache,
@@ -212,6 +220,7 @@ pub use nutzap::{
     open_nutzap_info,
 };
 pub use ots::{BitcoinAttestation, open_attestation};
+pub use payment_target::{PaymentTarget, open_payment_targets};
 pub use peer_order::{MakerRating, OrderSide, PeerOrder, PeerOrderStatus, open_peer_order};
 pub use picture::{AnnotatedUser, PICTURE_MEDIA_TYPES, Picture, annotated_user, open_picture};
 pub use podcast::{
@@ -231,6 +240,10 @@ pub use reaction::{
     Reaction, ReactionVerdict, open_external_reaction, open_reaction, reaction_verdict,
 };
 pub use references::{TextReference, decode_reference, text_references};
+pub use relay_access::{
+    RelayAccessDeclaration, RelayAccessRequest, RelayMember, open_relay_access_declaration,
+    open_relay_access_request,
+};
 pub use relay_list::{
     ListedRelay, RelayList, RelayMarker, open_relay_list, publish_relays, read_relays, write_relays,
 };

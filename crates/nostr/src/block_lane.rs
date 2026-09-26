@@ -1,12 +1,15 @@
 //! Evidence for the pinned Block NIP lane.
 //!
-//! Each specification file under `nips/block/` other than the index has one
-//! check. The check calls a shipped validator or client and the test requires
-//! the pinned file to contain the anchor that names that behavior. The
-//! manifest commit is [`BLOCK_COMMIT`].
+//! The source inventory names all pinned specifications. Behavior fixtures
+//! establish only their named subset, not complete client or relay conformance.
+//! Updating the source pin never upgrades a fixture's behavioral coverage.
 
 /// The Block lane commit recorded in `nips/manifest.json`.
-pub const BLOCK_COMMIT: &str = "8342dfcc5890b81a269a8ec3db73a8a56f76ce79";
+pub const BLOCK_COMMIT: &str = "781d39510cf23cfe224e8f521ae06a23377e06de";
+
+/// Source revision against which the original fifteen subset fixtures were
+/// written. New modules carry separate behavior tests for later additions.
+pub const BASELINE_FIXTURE_COMMIT: &str = "8342dfcc5890b81a269a8ec3db73a8a56f76ce79";
 
 /// Specification files at that commit, excluding the local index.
 pub static FILES: &[(&str, &str)] = &[
@@ -18,11 +21,13 @@ pub static FILES: &[(&str, &str)] = &[
     ("NIP-CW.md", "39006"),
     ("NIP-DV.md", "30622"),
     ("NIP-ER.md", "30300"),
+    ("NIP-FI.md", "nip-fi+jwt"),
     ("NIP-GS.md", "nostr:git:v1:"),
     ("NIP-IA.md", "9035"),
     ("NIP-MP.md", "30621"),
     ("NIP-OA.md", "nostr:agent-auth:"),
     ("NIP-PL.md", "30350"),
+    ("NIP-PMA.md", "30179"),
     ("NIP-RS.md", "30078"),
     ("NIP-WP.md", "9033"),
 ];
@@ -49,7 +54,7 @@ mod tests {
     use crate::run::validate_block_refs;
 
     #[test]
-    fn every_pinned_block_file_has_one_check_and_the_manifest_commit_matches() {
+    fn source_inventory_matches_the_current_manifest_independently_of_behavior() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../nips");
         let manifest: Value =
             serde_json::from_str(&std::fs::read_to_string(root.join("manifest.json")).unwrap())
@@ -61,7 +66,7 @@ mod tests {
             .find(|source| source["name"] == "block")
             .unwrap();
         assert_eq!(block["commit"], BLOCK_COMMIT);
-        assert_eq!(block["files"], 15);
+        assert_eq!(block["files"], FILES.len());
         let mut found = std::fs::read_dir(root.join("block"))
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_encoded_bytes())
@@ -78,6 +83,14 @@ mod tests {
             let text = std::fs::read_to_string(root.join("block").join(file)).unwrap();
             assert!(text.contains(anchor), "{file} missing {anchor}");
         }
+    }
+
+    #[test]
+    fn baseline_subset_fixtures_still_hold() {
+        assert_eq!(
+            BASELINE_FIXTURE_COMMIT,
+            "8342dfcc5890b81a269a8ec3db73a8a56f76ce79"
+        );
         check_aa();
         check_ae();
         check_am();

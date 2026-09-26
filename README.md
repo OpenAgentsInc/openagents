@@ -375,10 +375,11 @@ capabilities, programs, context, policy, coordination, and evaluation.
 `nips/official/` and `nips/block/` retain pinned upstream specifications;
 [nips/manifest.json](nips/manifest.json) records their revisions. The
 [September 26 upstream review](docs/protocol/2026-09-26-upstream-nip-sync.md)
-updates both source collections and identifies pending privacy, admission,
-parser, and workspace-feature changes. The two conformance pin guards still
-fail against the old implementation baselines; the sync does not establish
-current-spec support.
+records the source changes. The [implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
+tracks the subsequent protocol repairs, private artifact transport, atomic
+read-state snapshots, and new market/labor validators. Source inventories now
+match the pins; fixture coverage and running host roles remain separate claims.
+The report lists unfinished application and deployment work explicitly.
 
 The [teardown integration plan](docs/coder/design/teardown-nostr-integration.md)
 maps all 81 archived teardown documents into Coder. Six new draft profiles
@@ -390,8 +391,8 @@ source and separates specifications from implementation work.
 The [x402 Lightning integration plan](docs/coder/design/x402-lightning-nostr-integration.md)
 and draft [NIP-X402](nips/openagents/NIP-X402.md) specify paid operations with
 Nostr discovery and private evidence, standard HTTP/MCP compatibility, and an
-opt-in native Nostr profile. Wallet, settlement, and recovery implementations
-remain pending. Upfront tool purchases are separate from labor payment after
+opt-in native Nostr profile. [Offline invoice and binding validation](crates/nostr/src/x402.rs) now exists;
+wallet, settlement, and recovery services remain pending. Upfront tool purchases are separate from labor payment after
 acceptance; zaps are not substituted for x402 proofs.
 
 The implemented Coder relay path carries signed, NIP-44-encrypted NIP-CJ

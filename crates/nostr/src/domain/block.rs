@@ -12,6 +12,8 @@ pub const PROJECT_KIND: u16 = 30_621;
 pub const DM_VISIBILITY_KIND: u16 = 30_622;
 pub const THREAD_SUMMARY_KIND: u16 = 39_005;
 pub const WINDOW_BOUNDS_KIND: u16 = 39_006;
+pub const THREAD_BOUNDS_KIND: u16 = 39_007;
+pub const PRIVATE_MANAGED_AGENT_KIND: u16 = 30_179;
 pub const READ_STATE_KIND: u16 = 30_078;
 pub const IDENTITY_ARCHIVE_REQUEST_KIND: u16 = 9_035;
 pub const IDENTITY_UNARCHIVE_REQUEST_KIND: u16 = 9_036;
@@ -27,6 +29,7 @@ pub const RELAY_ONLY_BLOCK_KINDS: &[u16] = &[
     DM_VISIBILITY_KIND,
     THREAD_SUMMARY_KIND,
     WINDOW_BOUNDS_KIND,
+    THREAD_BOUNDS_KIND,
     IDENTITY_ARCHIVED_KIND,
     IDENTITY_UNARCHIVED_KIND,
     IDENTITY_ARCHIVE_LIST_KIND,
@@ -52,6 +55,9 @@ pub struct IdentityArchiveRequest {
 
 pub fn validate_block_ingest(event: &Event, now: u64) -> Result<(), String> {
     match event.kind {
+        PRIVATE_MANAGED_AGENT_KIND => {
+            Err("private managed-agent aggregates are reserved and not admitted".to_owned())
+        }
         AGENT_ENGRAM_KIND => validate_engram(event),
         AGENT_PERSONA_KIND => validate_persona(event),
         TEAM_CATALOG_KIND => validate_team_catalog(event),

@@ -2,7 +2,7 @@
 //!
 //! A kind `1111` comment is a regular event. Uppercase tags name the root
 //! scope and lowercase tags name the parent. `K` and `k` are required.
-//! Kind `1` is never a root or a parent. External scopes use the NIP-73
+//! Kind `1` can be a root or a parent. External scopes use the NIP-73
 //! identifier types.
 //!
 //! Content is kept as text. This module does not render it and does not
@@ -102,9 +102,6 @@ fn nostr_kind(value: &str) -> Result<u16, DomainError> {
     let kind = value
         .parse::<u16>()
         .map_err(|_| invalid("a comment kind must be a number or an external type"))?;
-    if kind == 1 {
-        return Err(invalid("comments must not reply to kind 1"));
-    }
     Ok(kind)
 }
 
@@ -373,14 +370,14 @@ mod tests {
     }
 
     #[test]
-    fn a_comment_scopes_to_the_root_and_refuses_a_kind_1_reply() {
+    fn a_comment_scopes_to_the_root_including_kind_1() {
         let text = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../nips/official/22.md"
         ))
         .unwrap();
         assert!(text.contains("kind:1111"));
-        assert!(text.contains("MUST NOT be used to reply to kind 1"));
+        assert!(text.contains("Comments MUST point to the root scope"));
         let row = crate::lane::PROVEN
             .iter()
             .find(|row| row.file == "22.md")
@@ -459,9 +456,23 @@ mod tests {
                 Tag::new(vec!["k".into(), "1".into()]),
                 Tag::new(vec!["p".into(), author.into()]),
             ],
-            "not a kind 1 reply",
+            "a kind 1 reply",
         );
-        assert!(kind_one.validate_structure().is_err());
+        kind_one.validate_structure().unwrap();
+        assert!(is_top_level(&open_comment(&kind_one).unwrap()));
+        let mut missing_author = kind_one.clone();
+        missing_author.tags.retain(|tag| tag.name() != Some("P"));
+        assert!(open_comment(&missing_author).is_err());
+        let mut reply_to_comment = kind_one.clone();
+        for tag in &mut reply_to_comment.tags {
+            if tag.name() == Some("k") {
+                tag.0[1] = "1111".into();
+            }
+            if tag.name() == Some("e") {
+                tag.0[1] = "ab".repeat(32);
+            }
+        }
+        assert!(!is_top_level(&open_comment(&reply_to_comment).unwrap()));
 
         let web = comment(
             vec![

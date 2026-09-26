@@ -27,7 +27,7 @@ async fn m2_store_contract_against_postgres() {
     }
 
     let (initial_store, report) = Store::connect_with_report(&database_url).await.unwrap();
-    assert_eq!(report.applied_versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    assert_eq!(report.applied_versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     drop(initial_store);
 
     let (mut store, report) = Store::connect_with_report(&database_url).await.unwrap();
@@ -189,6 +189,7 @@ async fn m2_store_contract_against_postgres() {
     concurrent_deletion_race(&database_url, &mut store).await;
     concurrent_media_quota(&database_url, &mut store).await;
     search_equivalence(&mut store).await;
+    current_private_protocols(&database_url, &mut store).await;
     policy_and_fts(&database_url, &mut store).await;
 
     let high_water = store.latest_ingest_seq().await.unwrap();
@@ -201,6 +202,195 @@ async fn m2_store_contract_against_postgres() {
     );
     assert!(listener.is_current());
     migration_hash_drift_fails_closed(&database_url).await;
+}
+
+async fn current_private_protocols(database_url: &str, store: &mut Store) {
+    use nostr::contracts::{digest_bytes, jcs};
+    use nostr_relay::{domain::RelaySigner, store::ManagementRequest};
+    use serde_json::json;
+    let owner = RelaySigner::from_secret_hex(&"61".repeat(32)).unwrap();
+    let recipient = RelaySigner::from_secret_hex(&"62".repeat(32)).unwrap();
+    let outsider = RelaySigner::from_secret_hex(&"63".repeat(32)).unwrap();
+    let inline = json!({"message":"private marker"});
+    let bytes = jcs(&inline).unwrap();
+    let envelope = json!({"v":"openagents.artifact-envelope.v1","requires":[],
+        "artifact":{"digest":digest_bytes(&bytes),"size":bytes.len(),"media_type":"application/json","schema":"openagents.fixture.v1"},
+        "inline":inline,"issued_at":NOW-10,"retain_until":NOW+100});
+    let artifact = nostr::private_artifact::seal(
+        &envelope,
+        &SecretKey::from_byte_array([0x61; 32]).unwrap(),
+        &recipient.pubkey().parse().unwrap(),
+        &"cd".repeat(32),
+        NOW - 5,
+        [9; 32],
+    )
+    .unwrap();
+    let app = owner.sign(NOW - 4, 78, vec![], "private marker".into());
+    let state = owner.sign(
+        NOW - 3,
+        30078,
+        vec![Tag::new(vec!["d".into(), "preferences".into()])],
+        "private marker".into(),
+    );
+    for event in [&artifact, &app, &state] {
+        assert!(matches!(
+            store.admit(event, NOW).await.unwrap(),
+            AdmissionOutcome::Stored { .. }
+        ));
+    }
+    let filter = Filter {
+        ids: Some(vec![artifact.id.clone(), app.id.clone(), state.id.clone()]),
+        ..Filter::default()
+    };
+    for (readers, expected) in [
+        (vec![], 0),
+        (vec![outsider.pubkey().into()], 0),
+        (vec![recipient.pubkey().into()], 1),
+        (vec![owner.pubkey().into()], 3),
+    ] {
+        let (_sender, cancel) = watch::channel(false);
+        let rows = store
+            .query_filter_for(&filter, NOW, 10, i64::MAX, cancel, &readers)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), expected, "private history/ID lookup");
+        assert_eq!(
+            store
+                .count_filters(std::slice::from_ref(&filter), NOW, 10, &readers)
+                .await
+                .unwrap(),
+            Some(expected),
+            "private COUNT"
+        );
+        let search = Filter {
+            search: Some("private".into()),
+            ..filter.clone()
+        };
+        assert_eq!(
+            store
+                .count_filters(&[search], NOW, 10, &readers)
+                .await
+                .unwrap(),
+            Some(0)
+        );
+    }
+    let pma = owner.sign(
+        NOW - 2,
+        30179,
+        vec![Tag::new(vec!["d".into(), recipient.pubkey().into()])],
+        "reserved secret".into(),
+    );
+    assert!(store.admit(&pma, NOW).await.is_err());
+    assert!(store.admit_historical(&pma, NOW).await.is_err());
+    let community = "bd1a3a84-5cf5-4acf-9ad9-3e64b9c3706c";
+    let snapshot = store
+        .read_state_snapshot(owner.pubkey(), &"e1".repeat(32), community, NOW)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.events, vec![state.clone()]);
+    assert!(
+        store
+            .read_state_snapshot(owner.pubkey(), &"e1".repeat(32), community, NOW)
+            .await
+            .is_err()
+    );
+    let replacement = owner.sign(NOW - 1, 30078, state.tags.clone(), "replacement".into());
+    store.admit(&replacement, NOW).await.unwrap();
+    let snapshot = store
+        .read_state_snapshot(owner.pubkey(), &"e2".repeat(32), community, NOW)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.events, vec![replacement]);
+    let empty = store
+        .read_state_snapshot(outsider.pubkey(), &"e3".repeat(32), community, NOW)
+        .await
+        .unwrap();
+    assert!(empty.events.is_empty());
+    // Opposite-list removal and per-key locking must hold across database clients.
+    let mut other = Store::connect(database_url).await.unwrap();
+    let target = outsider.pubkey();
+    let allow_id = "f1".repeat(32);
+    let ban_id = "f2".repeat(32);
+    let (a, b) = tokio::join!(
+        store.manage(
+            &allow_id,
+            owner.pubkey(),
+            ManagementRequest::AllowPubkey {
+                pubkey: target.into(),
+                reason: "allowed".into()
+            },
+            NOW,
+            None
+        ),
+        other.manage(
+            &ban_id,
+            owner.pubkey(),
+            ManagementRequest::BanPubkey {
+                pubkey: target.into(),
+                reason: "banned".into()
+            },
+            NOW,
+            None
+        )
+    );
+    a.unwrap();
+    b.unwrap();
+    let allowed = store
+        .manage(
+            &"f3".repeat(32),
+            owner.pubkey(),
+            ManagementRequest::ListAllowedPubkeys,
+            NOW,
+            None,
+        )
+        .await
+        .unwrap();
+    let banned = store
+        .manage(
+            &"f4".repeat(32),
+            owner.pubkey(),
+            ManagementRequest::ListBannedPubkeys,
+            NOW,
+            None,
+        )
+        .await
+        .unwrap();
+    let has = |values: &serde_json::Value| {
+        values
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["pubkey"] == target)
+    };
+    assert_ne!(
+        has(&allowed),
+        has(&banned),
+        "a concurrent allow/ban leaves exactly one list entry"
+    );
+    store
+        .manage(
+            &"f5".repeat(32),
+            owner.pubkey(),
+            ManagementRequest::UnallowPubkey {
+                pubkey: target.into(),
+            },
+            NOW,
+            None,
+        )
+        .await
+        .unwrap();
+    store
+        .manage(
+            &"f6".repeat(32),
+            owner.pubkey(),
+            ManagementRequest::UnbanPubkey {
+                pubkey: target.into(),
+            },
+            NOW,
+            None,
+        )
+        .await
+        .unwrap();
 }
 
 async fn nostr_effect_import_is_idempotent(database_url: &str, store: &mut Store) {
