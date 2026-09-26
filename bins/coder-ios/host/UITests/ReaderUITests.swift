@@ -9,6 +9,7 @@ final class ReaderUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = ["--synthetic"]
         app.launch()
+        app.openWorldComputer()
         XCTAssertTrue(app.buttons["chat-0"].waitForExistence(timeout: 20))
     }
 
@@ -42,7 +43,7 @@ final class ReaderUITests: XCTestCase {
         XCTAssertEqual(follow.value as? String, "1")
         follow.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         XCTAssertTrue(follow.waitForValue("0", timeout: 3))
-        app.navigationBars.buttons["Refresh"].tap()
+        app.buttons["reader-refresh"].tap()
         XCTAssertEqual(follow.value as? String, "0")
         follow.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         XCTAssertTrue(follow.waitForValue("1", timeout: 3))
@@ -55,10 +56,11 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(first.allSatisfy { $0.isHexDigit })
         app.terminate()
         app.launch()
+        app.openWorldComputer()
         XCTAssertTrue(app.buttons["chat-0"].waitForExistence(timeout: 20))
         XCTAssertEqual(publicKey(), first)
-        app.buttons["Cancel"].tap()
-        XCTAssertTrue(app.staticTexts["reader-read-only"].exists)
+        app.buttons["computer-close"].tap()
+        XCTAssertTrue(app.buttons["computer-interact"].exists)
     }
 
     func testPageSelectionPinsUntilLatestIsRequested() throws {
@@ -69,7 +71,7 @@ final class ReaderUITests: XCTestCase {
         app.buttons["earlier"].tap()
         XCTAssertTrue(position.waitForLabel(containing: "Page 1 of 2", timeout: 5))
         XCTAssertTrue(app.switches["timeline-follow"].waitForValue("0", timeout: 3))
-        app.navigationBars.buttons["Refresh"].tap()
+        app.buttons["reader-refresh"].tap()
         XCTAssertTrue(position.label.contains("Page 1 of 2"))
         app.buttons["later"].tap()
         XCTAssertTrue(position.waitForLabel(containing: "Page 2 of 2", timeout: 5))
@@ -80,7 +82,7 @@ final class ReaderUITests: XCTestCase {
     }
 
     private func publicKey() -> String {
-        app.buttons["Connect"].tap()
+        app.buttons["Device details"].tap()
         let key = app.staticTexts["reader-public-key"]
         XCTAssertTrue(key.waitForExistence(timeout: 10))
         return key.label

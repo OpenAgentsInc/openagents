@@ -17,7 +17,7 @@ visits to the workbench, oracle, library, and proving ground, beside a
 ghost of Fable 5.1 low's cheapest winning run. Other live OpenAgents state
 (Pylons, live runs, sats) is not implemented.
 
-The [Coder iOS Verse tab](mobile.md) shares the world simulation and renderer
+The [Coder iOS Verse home](mobile.md) shares the world simulation and renderer
 through Rust Native's generic native-surface contract. Mobile touch controls,
 Metal mounting, and lifecycle are separate from the retained desktop panels.
 

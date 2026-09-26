@@ -1,6 +1,6 @@
 # Verse in Coder for iOS
 
-The **Verse** tab in Coder mounts the same seeded city, player controller,
+Coder opens directly into **Verse**, which mounts the same seeded city, player controller,
 collision rules, camera, avatar animation, following spade agent, meshes, and
 wgpu scene renderer as the desktop application. Rust Native supplies a generic
 native drawing-surface contract. Verse supplies the world; `coder-ui` supplies
@@ -9,13 +9,21 @@ implementation belongs to the reusable `rust-native` crate.
 
 ## Walk the world
 
-Open **Verse** beside **Chats**. The world starts offline and requires no chat
-pairing or model account.
+The world is the home screen. It starts offline and requires no chat pairing
+or model account. A computer sits directly ahead of the starting position.
+Walk closer and tap **Use computer** to open its controls inside the world.
 
 - Drag on the left half of the world to move. Releasing stops movement.
 - Drag on the right half to turn and look up or down.
 - Tap **Jump**, toggle **Sprint**, or use the zoom buttons.
-- Switch to **Chats** to use the existing read-only Codex and Claude viewer.
+- Use the world computer to pair by QR code and open **Chats**, the read-only
+  Codex and Claude viewer. Selecting a transcript expands its reading area;
+  **All chats** returns to the smaller computer panel. Close the panel to
+  continue walking.
+- Follow the [pairing guide](../coder/guides/mobile-readonly.md). The computer
+  command displays an expiring QR invitation and stays running to serve chats;
+  the phone also accepts its complete pairing string. Camera permission is
+  requested only when you choose to scan.
 
 The world uses a 30 Hz native display callback and a single-sample Metal render
 target. The desktop retains its mouse/keyboard controls and supported 4× MSAA.
@@ -24,7 +32,7 @@ the city with a separate scene or image.
 
 ## Join another player
 
-The connection menu can join a compatible Nostr world relay. This explicitly
+The computer controls can join a compatible Nostr world relay. This explicitly
 publishes the phone's Verse profile, presence, positions, and gestures. It uses
 a separate device-only Keychain identity from the encrypted chat reader. It
 neither copies desktop account credentials nor reads the computer's chat grant.
@@ -46,9 +54,9 @@ players see less frequent position samples than with the desktop's 10 Hz
 moving-pose profile. A compatible wire format does not bypass a relay's
 admission, authentication, or rate limits.
 
-Leaving the tab or backgrounding pauses rendering, clears held input, and
-cancels the world connection. Returning starts a fresh motion session if a relay
-was selected. Cancellation does not prove the relay received an offline state;
+Backgrounding pauses rendering, clears held input, and cancels the world
+connection. Returning starts a fresh motion session if a relay was selected.
+Opening the computer stops player movement while keeping the world visible. Cancellation does not prove the relay received an offline state;
 other clients must age out stale presence. Leaving the relay clears the local
 connection choice. A new native mount starts a new local world.
 
@@ -80,7 +88,9 @@ as the phone's text renderer.
 
 See [the native app build guide](../../bins/coder-ios/README.md),
 [the Verse verification record](../coder/verification/2026-09-26-verse-mobile.md),
-and [issue #9698](https://github.com/OpenAgentsInc/openagents/issues/9698).
+[QR pairing verification](../coder/verification/2026-09-26-world-pairing.md),
+and [issue #9698](https://github.com/OpenAgentsInc/openagents/issues/9698), and
+[Verse-first pairing #9699](https://github.com/OpenAgentsInc/openagents/issues/9699).
 Simulator rendering and lifecycle evidence are separate from physical-device
 frame rate, thermals, and a two-device relay session. Only checks recorded in
 that verification document have been performed.

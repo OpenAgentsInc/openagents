@@ -373,9 +373,10 @@ mutation or managed-session semantics uses separately admitted contracts.
 
 ### Local pairing and source authority
 
-The client creates its own key in its local protected store and supplies only
-its public key to the operator. Local owner admission creates a distinct host
-key and a grant binding that client to explicitly selected source roots. The
+The client creates its own key in its local protected store. It can supply its
+public key to the operator or redeem the short-lived computer invitation below.
+Local owner admission creates a distinct host key and a grant binding that
+client to explicitly selected source roots. The
 host stores canonical roots and their filesystem identity privately. A display
 label, relay membership, possession of a connection code, or guessed file
 identifier is not source admission. A host MUST NOT discover additional roots
@@ -406,6 +407,71 @@ Production uses `wss` with certificate validation and no URL credentials or
 fragment. Plain `ws` is permitted only for an explicitly enabled loopback
 test profile, never enabled by a field supplied by the remote code. Neither
 client nor host follows remote artifact locators, redirects, or source paths.
+
+### Computer invitation bootstrap
+
+A computer can admit source roots before it knows the phone's key. Its explicit
+local `connect` action displays the selected canonical roots and a five-minute
+single-use invitation, both as a QR code and as an equivalent paste string. This
+invitation is a temporary disclosure capability. Anyone who can see it can
+attempt to become its one admitted device, so it MUST NOT appear in public
+logs, telemetry, or a remote QR-generation service. It contains no identity
+secret, filesystem path, or transcript. Local QR files use private permissions
+and are removed after redemption, expiry, or command exit.
+
+The string is `coder-pair:` followed by unpadded base64url of these bytes, in
+order: version byte `1`; host x-only public key (32 bytes); invitation ID
+(32 random bytes); capability (32 independently random bytes); issued time
+(8-byte unsigned big-endian seconds); expiry (8-byte unsigned big-endian
+seconds); relay URL byte length (2-byte unsigned big-endian); and the exact
+UTF-8 relay URL (1–256 bytes). No trailing bytes are allowed. Encoded strings
+are at most 640 bytes. Times use common safe integers, expiry is exactly 300
+seconds after issuance, and relay policy remains local. A scanned string
+cannot enable the loopback-test policy.
+
+Before displaying an invitation, the host durably stores its ID, capability
+digest, exact relay, issuance and expiry, original canonical source identities,
+and operator-selected grant expiry. It stores no recoverable capability in the
+admission book. At most 64 invitations are retained. The host MUST NOT substitute
+new roots at redemption or create a grant before committing consumption.
+
+A redemption body is `openagents.history-observer-pair-request.v1` with
+`requires: []`, `request`, `invitation` (common IDs), `capability` (lower-case
+32-byte hex), `relay`, `issued_at`, and `expires_at`. It is an original signed
+private `3188` artifact from the phone to the pinned host. Its mailbox is the
+request ID; body/envelope lifetimes agree and remain within the invitation and
+the ordinary 60-second request bound. NIP-42 proves the publishing identity to
+the relay; the original signature and encrypted capability prove redemption to
+the host. Relay membership alone cannot redeem an invitation.
+
+Under one durable local lock, the host checks the original signature, distinct
+phone/host keys, capability digest, relay, time window, cancellation, and source
+identity. It binds the first valid redemption to that phone and atomically
+stores both consumption and the ordinary read-only grant before replying.
+Same-phone retries with the same capability retrieve that grant while the
+invitation and grant remain current. Different-phone reuse refuses, including
+after process restart. Revoking the resulting grant also prevents bootstrap
+retries from disclosing it; retries never mint a replacement grant. Interrupted
+or uncertain persistence returns no success. Unused invitations can be cancelled
+locally and cannot authorize anything after expiry.
+
+A response is `openagents.history-observer-pair-reply.v1` with `requires: []`,
+`request`, `request_event`, `invitation`, `issued_at`, `expires_at`, and `result`.
+Result is exactly `{status: "ok", connection}` with the ordinary connection
+code, or `{status: "refused", code}`. The original signer is the QR-pinned host,
+recipient the requesting phone, and mailbox the request ID. The client checks
+the exact request-event correlation and validates the encrypted grant and all
+connection fields before saving anything. A failure preserves an existing
+working connection. The host bounds newly admitted bootstrap replies to 32 per
+invitation; exact signed-request retries return retained replies without using
+another slot. Bootstrap is read-only source admission, never CTRL or engine
+authority, and adds no event kind or public discovery record.
+
+Required bootstrap fixtures include successful encrypted redemption and first
+read, wrong proof/host/recipient, malformed or expired code, another-device
+reuse, same-device retry after reopening the store, cancellation, revocation,
+source replacement, concurrent redemption, and persistence failure. A local
+synthetic relay proves protocol behavior, not physical camera scanning.
 
 ### Bounded request and reply
 

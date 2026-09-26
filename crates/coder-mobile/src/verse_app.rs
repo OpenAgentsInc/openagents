@@ -56,6 +56,8 @@ pub(crate) enum Request {
         relay: String,
     },
     Disconnect,
+    InteractComputer,
+    CloseComputer,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -74,7 +76,32 @@ pub(crate) struct Packet {
     pub error: Option<String>,
     frames_presented: u64,
     position: [f32; 3],
+    computer: Computer,
+    computer_open: bool,
     view: View<()>,
+}
+
+/// Coordinates are normalized from the top-left of the Metal viewport.
+/// Visibility describes projection, not occlusion by another world object.
+#[derive(Serialize)]
+struct Computer {
+    near: bool,
+    visible: bool,
+    screen_x: f32,
+    screen_y: f32,
+    distance: f32,
+}
+
+impl From<verse::runtime::Computer> for Computer {
+    fn from(value: verse::runtime::Computer) -> Self {
+        Self {
+            near: value.near,
+            visible: value.visible,
+            screen_x: value.screen_x,
+            screen_y: value.screen_y,
+            distance: value.distance,
+        }
+    }
 }
 
 pub(crate) fn blueprint() -> Packet {
@@ -117,6 +144,14 @@ fn packet(
         error,
         frames_presented: frames,
         position,
+        computer: Computer {
+            near: false,
+            visible: false,
+            screen_x: 0.5,
+            screen_y: 0.5,
+            distance: 5.0,
+        },
+        computer_open: false,
         view,
     }
 }
@@ -138,6 +173,7 @@ pub(crate) struct Scene {
     touches: BTreeMap<u64, Touch>,
     jump: bool,
     sprint: bool,
+    computer_open: bool,
     pub frames: u64,
     pub error: Option<String>,
 }
@@ -166,6 +202,7 @@ impl Scene {
             touches: BTreeMap::new(),
             jump: false,
             sprint: false,
+            computer_open: false,
             frames: 0,
             error: None,
         })
@@ -227,7 +264,7 @@ impl Scene {
             self.touches.remove(&id);
             return Ok(());
         }
-        if !self.lifecycle.active() {
+        if !self.lifecycle.active() || self.computer_open {
             return Ok(());
         }
         if !x.is_finite() || !y.is_finite() || x.abs() > 32768.0 || y.abs() > 32768.0 {
@@ -278,6 +315,9 @@ impl Scene {
     }
 
     fn input(&mut self) -> InputState {
+        if self.computer_open {
+            return InputState::default();
+        }
         let mut input = InputState {
             jump: std::mem::take(&mut self.jump),
             sprint: self.sprint,
@@ -319,6 +359,9 @@ impl Scene {
         }
         let input = self.input();
         self.world.tick(&input, dt);
+        if !self.computer().near {
+            self.computer_open = false;
+        }
         let now = Instant::now();
         if let Some(session) = &mut self.session {
             session.tick(now, &self.world.player, &self.world.agent);
@@ -344,19 +387,40 @@ impl Scene {
             Request::Active { active } => self.activate(active),
             Request::Pointer { id, phase, x, y } => self.pointer(id, phase, x, y),
             Request::Jump => {
-                if self.lifecycle.active() {
+                if self.lifecycle.active() && !self.computer_open {
                     self.jump = true;
                 }
                 Ok(())
             }
             Request::Sprint { enabled } => {
-                self.sprint = self.lifecycle.active() && enabled;
+                self.sprint = self.lifecycle.active() && !self.computer_open && enabled;
                 Ok(())
             }
-            Request::Zoom { delta } => self.world.apply(Action::Zoom { lines: delta }),
+            Request::Zoom { delta } => {
+                if self.computer_open {
+                    Ok(())
+                } else {
+                    self.world.apply(Action::Zoom { lines: delta })
+                }
+            }
             Request::Connect { relay } => self.connect(relay),
             Request::Disconnect => {
                 self.disconnect();
+                Ok(())
+            }
+            Request::InteractComputer => {
+                let computer = self.computer();
+                if !self.lifecycle.active() || !computer.near || !computer.visible {
+                    return Err("Walk up to the computer to open it".into());
+                }
+                self.computer_open = true;
+                self.touches.clear();
+                self.jump = false;
+                self.sprint = false;
+                Ok(())
+            }
+            Request::CloseComputer => {
+                self.computer_open = false;
                 Ok(())
             }
             Request::Snapshot => Ok(()),
@@ -380,13 +444,26 @@ impl Scene {
         } else {
             "Verse · offline world".into()
         };
-        packet(
+        let mut packet = packet(
             self.lifecycle.id(),
             status,
             self.error.clone(),
             self.frames,
             self.world.player.pos.to_array(),
-        )
+        );
+        packet.computer = self.computer().into();
+        packet.computer_open = self.computer_open;
+        packet
+    }
+
+    fn computer(&self) -> verse::runtime::Computer {
+        let viewport = self.lifecycle.viewport();
+        let aspect = if viewport.width() == 0 || viewport.height() == 0 {
+            0.0
+        } else {
+            viewport.width() as f32 / viewport.height() as f32
+        };
+        self.world.computer(aspect)
     }
 }
 
@@ -431,7 +508,11 @@ mod tests {
         for i in 1..=30 {
             scene.update(1.0 + i as f64 / 30.0).unwrap();
         }
-        assert!(scene.world.player.pos.distance(start) > 4.0);
+        assert!(scene.world.player.pos.distance(start) > 3.0);
+        assert!(
+            scene.computer().near,
+            "the desk stops forward movement within reach"
+        );
         scene.activate(false).unwrap();
         let stopped = scene.world.player.pos;
         scene.update(100.0).unwrap();
@@ -440,6 +521,53 @@ mod tests {
         scene.update(101.03).unwrap();
         assert_eq!(scene.world.player.pos, stopped);
         assert!(scene.touches.is_empty());
+    }
+
+    #[test]
+    fn computer_requires_approach_and_releases_held_input() {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        assert!(scene.action(Request::InteractComputer).is_err());
+        scene.update(1.0).unwrap();
+        scene.pointer(1, PointerPhase::Down, 100.0, 300.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 100.0, 200.0).unwrap();
+        for frame in 1..=20 {
+            scene.update(1.0 + frame as f64 / 30.0).unwrap();
+        }
+        scene.action(Request::Sprint { enabled: true }).unwrap();
+        scene.action(Request::Jump).unwrap();
+        scene.action(Request::InteractComputer).unwrap();
+        assert!(scene.packet().computer_open);
+        assert!(scene.touches.is_empty());
+        let stopped = scene.world.player.pos;
+        scene.pointer(2, PointerPhase::Down, 100.0, 300.0).unwrap();
+        scene.pointer(2, PointerPhase::Move, 100.0, 200.0).unwrap();
+        scene.action(Request::Jump).unwrap();
+        scene.action(Request::Sprint { enabled: true }).unwrap();
+        scene.update(2.0).unwrap();
+        assert_eq!(scene.world.player.pos, stopped);
+        scene.activate(false).unwrap();
+        assert!(
+            scene.packet().computer_open,
+            "camera permission prompts preserve the panel"
+        );
+        scene.activate(true).unwrap();
+        scene.update(3.0).unwrap();
+        assert!(scene.packet().computer_open);
+        scene.action(Request::CloseComputer).unwrap();
+        assert!(!scene.packet().computer_open);
+        assert!(!scene.input().forward);
+        scene.action(Request::InteractComputer).unwrap();
+        scene.world.set_spawn(verse::world::SPAWN, 0.0).unwrap();
+        scene.update(3.1).unwrap();
+        assert!(
+            !scene.packet().computer_open,
+            "moving away invalidates the open panel"
+        );
+        let packet = serde_json::to_value(scene.packet()).unwrap();
+        assert_eq!(packet["computer"]["near"], false);
+        assert_eq!(packet["computer_open"], false);
+        assert!(packet["computer"]["screen_x"].as_f64().unwrap().is_finite());
     }
     #[test]
     fn bad_and_excess_touches_do_not_poison_camera_or_keep_moving() {

@@ -1,0 +1,36 @@
+   Compiling zerocopy v0.8.57
+   Compiling smallvec v1.16.1
+   Compiling coder-history v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-history)
+   Compiling qrcodegen v1.8.0
+   Compiling icu_normalizer v2.3.0
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.5
+   Compiling secp256k1 v0.31.1
+   Compiling nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+   Compiling nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr-transport)
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-connect)
+    Finished `test` profile [unoptimized] target(s) in 6.91s
+     Running unittests src/lib.rs (../target-verse/debug/deps/coder_connect-c1987d4738040a8b)
+
+running 1 test
+Synthetic QR fixture written; payload is intentionally omitted from the test log.
+test tests::pairing::export_synthetic_qr_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.04s
+
+     Running unittests src/main.rs (../target-verse/debug/deps/coder_connect-a011582b25409335)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs (../target-verse/debug/deps/cli-448283124ba9b8b8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

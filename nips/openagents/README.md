@@ -230,13 +230,15 @@ The [SESS retained-history observer](NIP-SESS.md#read-only-observation-of-retain
 has a narrower application implementation in
 [`coder-history`](../../crates/coder-history/README.md),
 [`coder-connect`](../../crates/coder-connect/README.md), and the
-[read-only iOS reader](../../docs/coder/guides/mobile-readonly.md). An explicit
-local pairing binds selected Codex/Claude roots, host and client keys, relay,
+[read-only iOS reader](../../docs/coder/guides/mobile-readonly.md). A five-minute QR or pasted invitation can bind the first redeeming phone
+without copying its public key first; the manual explicit-key path remains.
+Local pairing binds selected Codex/Claude roots, host and client keys, relay,
 and expiry. Finite catalog/transcript reads use NIP-42 authentication and
 signed encrypted private `3188` artifacts, with exact request binding,
 revocation checks, bounded raw records, and source-change refusals.
-[The receipt](../../docs/coder/verification/2026-09-26-mobile-reader.md)
-records synthetic and native simulator evidence and remaining acceptance.
+The [reader receipt](../../docs/coder/verification/2026-09-26-mobile-reader.md)
+and [QR bootstrap receipt](../../docs/coder/verification/2026-09-26-world-pairing.md)
+record synthetic and native evidence and remaining acceptance.
 This implements no managed engine-session admission, input queue, submit,
 steering, interruption, approval, or CTRL task control. It allocates no new
 kind and advertises no general CAP/CJ execution support.

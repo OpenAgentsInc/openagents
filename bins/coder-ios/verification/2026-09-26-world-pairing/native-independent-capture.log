@@ -1,0 +1,214 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project bins/coder-ios/host/Coder.xcodeproj -scheme Coder -configuration Release -destination "platform=iOS Simulator,id=745E63BD-631C-4651-B993-F1E2AAB3791E" -derivedDataPath /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData CODER_RUST_LIBRARY_DIR=/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target-native/aarch64-apple-ios-sim/debug CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= -resultBundlePath /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/IndependentCapture.xcresult -parallel-testing-enabled NO "-only-testing:CoderUITests/VerseUITests/testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback" test
+
+Build settings from command line:
+    CODE_SIGN_IDENTITY = -
+    CODER_RUST_LIBRARY_DIR = /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target-native/aarch64-apple-ios-sim/debug
+    PROVISIONING_PROFILE_SPECIFIER = 
+
+Writing result bundle at path:
+	/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/IndependentCapture.xcresult
+
+note: Using codesigning identity override: -
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (2 targets)
+    Target 'CoderUITests' in project 'Coder'
+        ➜ Explicit dependency on target 'Coder' in project 'Coder'
+    Target 'Coder' in project 'Coder' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/bins/coder-ios/host/App/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+Build description signature: 6e9417665e2d2340dc81d5dd73d43c19
+Build description path: /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Intermediates.noindex/XCBuildData/6e9417665e2d2340dc81d5dd73d43c19.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache
+    cd /Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/bins/coder-ios/host/Coder.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -o /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache
+
+ProcessInfoPlistFile /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Info.plist /Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/bins/coder-ios/host/App/Info.plist (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/bins/coder-ios/host
+    builtin-infoPlistUtility /Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/bins/coder-ios/host/App/Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist -o /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Info.plist
+
+CopySwiftLibs /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/Coder.app (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/bins/coder-ios/host
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder --scan-folder /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Frameworks --scan-folder /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/PlugIns --scan-folder /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/SystemExtensions --scan-folder /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Extensions --platform iphonesimulator --toolchain /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.VdpV4P/Metal.xctoolchain --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+ProcessInfoPlistFile /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/Info.plist /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/empty-CoderUITests.plist (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/bins/coder-ios/host
+    builtin-infoPlistUtility /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/empty-CoderUITests.plist -producttype com.apple.product-type.bundle.ui-testing -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/ProductTypeInfoPlistAdditions.plist -o /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/Info.plist
+
+CopySwiftLibs /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/bins/coder-ios/host
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/CoderUITests --scan-folder /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/Frameworks --scan-folder /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/PlugIns --scan-folder /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/SystemExtensions --scan-folder /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/Extensions --platform iphonesimulator --toolchain /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.VdpV4P/Metal.xctoolchain --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+2026-09-26 16:59:20.345379-0500 CoderUITests-Runner[29950:95645763] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-26 16:59:20.472.
+Test Suite 'CoderUITests.xctest' started at 2026-09-26 16:59:20.472.
+Test Suite 'VerseUITests' started at 2026-09-26 16:59:20.472.
+Test Case '-[CoderUITests.VerseUITests testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback]' started.
+    t =     0.00s Start Test at 2026-09-26 16:59:20.473
+    t =     0.01s Set Up
+    t =     0.02s     Open com.openagents.coder
+    t =     0.02s         Launch com.openagents.coder
+2026-09-26 16:59:20.514 xcodebuild[29575:95644606] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-26 16:59:20.514 xcodebuild[29575:95644606] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.45s             Setting up automation session
+objc[29950]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x109fcc310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10a4a8398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     0.92s             Wait for com.openagents.coder to idle
+    t =     2.16s     Waiting 30.0s for "verse-surface" Other to exist
+    t =     3.21s         Checking `Expect predicate `existsNoRetry == 1` for object "verse-surface" Other`
+    t =     3.21s             Checking existence of `"verse-surface" Other`
+    t =     4.27s     Checking `Expect predicate `BLOCKPREDICATE(0x106ab62b0)` for object Target Application 'com.openagents.coder'`
+    t =     4.27s         Checking existence of `"verse-frames" StaticText`
+    t =     4.28s         Find the "verse-frames" StaticText
+    t =     4.29s Waiting 30.0s for "verse-surface" Other to exist
+    t =     5.32s     Checking `Expect predicate `existsNoRetry == 1` for object "verse-surface" Other`
+    t =     5.32s         Checking existence of `"verse-surface" Other`
+    t =     5.33s Waiting 15.0s for "computer-interact" Button to exist
+    t =     6.37s     Checking `Expect predicate `existsNoRetry == 1` for object "computer-interact" Button`
+    t =     6.37s         Checking existence of `"computer-interact" Button`
+    t =     6.39s Find the "computer-interact" Button
+    t =     6.39s Press "verse-surface" Other[0.15, 0.66] for 0.1 seconds, then drag to "verse-surface" Other[0.15, 0.42] with velocity of 250.00 pixels per second, and then hold for 0.7 seconds 
+    t =     6.39s     Wait for com.openagents.coder to idle
+    t =     6.40s     Find the "verse-surface" Other
+    t =     6.40s     Check for interrupting elements affecting "verse-surface" Other
+    t =     6.41s     Synthesize event
+    t =     6.41s         Find the "verse-surface" Other
+    t =     6.42s         Find the "verse-surface" Other
+    t =     6.43s         Find the "verse-surface" Other
+    t =     6.44s         Find the "verse-surface" Other
+    t =     6.46s         Find the "verse-surface" Other
+    t =     8.25s     Wait for com.openagents.coder to idle
+    t =     9.29s Checking `Expect predicate `enabled == 1` for object "computer-interact" Button`
+    t =     9.29s     Find the "computer-interact" Button
+    t =     9.30s Tap "computer-interact" Button
+    t =     9.30s     Wait for com.openagents.coder to idle
+    t =     9.31s     Find the "computer-interact" Button
+    t =     9.31s     Check for interrupting elements affecting "computer-interact" Button
+    t =     9.32s     Synthesize event
+    t =     9.61s     Wait for com.openagents.coder to idle
+    t =     9.61s Waiting 10.0s for "computer-close" Button to exist
+    t =    10.65s     Checking `Expect predicate `existsNoRetry == 1` for object "computer-close" Button`
+    t =    10.65s         Checking existence of `"computer-close" Button`
+    t =    10.68s Find the "verse-frames" StaticText
+    t =    11.72s Checking `Expect predicate `BLOCKPREDICATE(0x116c9cc60)` for object Target Application 'com.openagents.coder'`
+    t =    11.72s     Checking existence of `"verse-frames" StaticText`
+    t =    11.74s     Find the "verse-frames" StaticText
+    t =    11.75s     Capturing element debug description
+    t =    12.69s Checking `Expect predicate `BLOCKPREDICATE(0x116c9cc60)` for object Target Application 'com.openagents.coder'`
+    t =    12.69s     Checking existence of `"verse-frames" StaticText`
+    t =    12.70s     Find the "verse-frames" StaticText
+    t =    12.71s Find the Target Application 'com.openagents.coder'
+    t =    12.78s Added attachment named 'Synthetic anchored computer catalog'
+Detected file type from extension: PNG
+Note: No display specified. Defaulting to display: C143CEA0-9D70-4783-95B4-79E4661B402B (screenID: 1, name: LCD)
+Wrote screenshot to: /tmp/coder40-computer.png
+    t =    12.78s Tap "computer-pair" Button
+    t =    12.78s     Wait for com.openagents.coder to idle
+    t =    12.78s     Find the "computer-pair" Button
+    t =    12.79s     Check for interrupting elements affecting "computer-pair" Button
+    t =    12.80s     Synthesize event
+    t =    13.09s     Wait for com.openagents.coder to idle
+    t =    13.09s Checking existence of `"computer-command" StaticText`
+    t =    13.10s Tap "computer-scan" Button
+    t =    13.10s     Wait for com.openagents.coder to idle
+    t =    13.11s     Find the "computer-scan" Button
+    t =    13.12s     Check for interrupting elements affecting "computer-scan" Button
+    t =    13.13s     Synthesize event
+    t =    13.42s     Wait for com.openagents.coder to idle
+    t =    13.42s Waiting 5.0s for "camera-status" StaticText to exist
+    t =    14.46s     Checking `Expect predicate `existsNoRetry == 1` for object "camera-status" StaticText`
+    t =    14.46s         Checking existence of `"camera-status" StaticText`
+    t =    14.47s Find the "camera-status" StaticText
+    t =    14.48s Find the "verse-frames" StaticText
+    t =    15.53s Checking `Expect predicate `BLOCKPREDICATE(0x116c9f840)` for object Target Application 'com.openagents.coder'`
+    t =    15.53s     Checking existence of `"verse-frames" StaticText`
+    t =    15.54s     Find the "verse-frames" StaticText
+    t =    15.55s     Capturing element debug description
+    t =    15.55s         Requesting snapshot of accessibility hierarchy for app with pid 30043
+    t =    16.50s Checking `Expect predicate `BLOCKPREDICATE(0x116c9f840)` for object Target Application 'com.openagents.coder'`
+    t =    16.50s     Checking existence of `"verse-frames" StaticText`
+    t =    16.52s     Find the "verse-frames" StaticText
+    t =    16.53s Find the Target Application 'com.openagents.coder'
+    t =    16.59s Added attachment named 'Synthetic inline camera fallback'
+Detected file type from extension: PNG
+Note: No display specified. Defaulting to display: C143CEA0-9D70-4783-95B4-79E4661B402B (screenID: 1, name: LCD)
+Wrote screenshot to: /tmp/coder40-QRfallback.png
+    t =    16.59s Tap "computer-paste" Button
+    t =    16.59s     Wait for com.openagents.coder to idle
+    t =    16.59s     Find the "computer-paste" Button
+    t =    16.60s     Check for interrupting elements affecting "computer-paste" Button
+    t =    16.62s     Synthesize event
+    t =    16.90s     Wait for com.openagents.coder to idle
+    t =    16.91s Waiting 5.0s for "computer-code" TextView to exist
+    t =    17.94s     Checking `Expect predicate `existsNoRetry == 1` for object "computer-code" TextView`
+    t =    17.95s         Checking existence of `"computer-code" TextView`
+    t =    17.97s Tap "computer-code" TextView
+    t =    17.97s     Wait for com.openagents.coder to idle
+    t =    17.97s     Find the "computer-code" TextView
+    t =    17.98s     Check for interrupting elements affecting "computer-code" TextView
+    t =    18.00s     Synthesize event
+    t =    18.29s     Wait for com.openagents.coder to idle
+    t =    18.29s Type 'not-a-valid-invita...' into "computer-code" TextView
+    t =    18.29s     Wait for com.openagents.coder to idle
+    t =    18.29s     Find the "computer-code" TextView
+    t =    18.32s     Check for interrupting elements affecting "computer-code" TextView
+    t =    18.34s     Synthesize event
+    t =    18.91s     Wait for com.openagents.coder to idle
+    t =    18.91s Tap "computer-connect" Button
+    t =    18.91s     Wait for com.openagents.coder to idle
+    t =    18.91s     Find the "computer-connect" Button
+    t =    18.94s     Check for interrupting elements affecting "computer-connect" Button
+    t =    18.96s     Synthesize event
+    t =    18.96s         Scroll element to visible
+    t =    18.96s         Find the "computer-connect" Button
+    t =    18.99s         Computed hit point {107, 368.5} after scrolling to visible
+    t =    19.28s     Wait for com.openagents.coder to idle
+    t =    19.28s Waiting 10.0s for "reader-error" StaticText to exist
+    t =    20.31s     Checking `Expect predicate `existsNoRetry == 1` for object "reader-error" StaticText`
+    t =    20.31s         Checking existence of `"reader-error" StaticText`
+    t =    20.33s Checking existence of `"computer-close" Button`
+    t =    20.36s Checking existence of `"computer-paste" Button`
+    t =    20.38s Find the Target Application 'com.openagents.coder'
+    t =    20.45s Added attachment named 'Synthetic inline pairing refusal'
+    t =    20.45s Tear Down
+Test Case '-[CoderUITests.VerseUITests testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback]' passed (20.696 seconds).
+Test Suite 'VerseUITests' passed at 2026-09-26 16:59:41.169.
+	 Executed 1 test, with 0 failures (0 unexpected) in 20.696 (20.697) seconds
+Test Suite 'CoderUITests.xctest' passed at 2026-09-26 16:59:41.170.
+	 Executed 1 test, with 0 failures (0 unexpected) in 20.696 (20.698) seconds
+Test Suite 'Selected tests' passed at 2026-09-26 16:59:41.171.
+	 Executed 1 test, with 0 failures (0 unexpected) in 20.696 (20.699) seconds
+2026-09-26 16:59:41.461 xcodebuild[29575:95644606] [MT] IDETestOperationsObserverDebug: 22.242 elapsed -- Testing started completed.
+2026-09-26 16:59:41.461 xcodebuild[29575:95644606] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-26 16:59:41.461 xcodebuild[29575:95644606] [MT] IDETestOperationsObserverDebug: 22.242 sec, +22.242 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-ios-build40/IndependentCapture.xcresult
+
+** TEST SUCCEEDED **
+
+Testing started

@@ -16,6 +16,22 @@ use crate::world::{self, World};
 /// Long pauses never become a large physics step.
 pub const MAX_FRAME_SECONDS: f32 = rust_native::surface::MAX_FRAME_DELTA;
 
+/// The shared computer's proximity and viewport projection.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Computer {
+    /// Within the interaction radius in the ground plane.
+    pub near: bool,
+    /// The monitor anchor is in front of the camera and inside the viewport.
+    /// This is projection visibility, not an occlusion test.
+    pub visible: bool,
+    /// Horizontal anchor in [0, 1], measured from the viewport's left edge.
+    pub screen_x: f32,
+    /// Vertical anchor in [0, 1], measured from the viewport's top edge.
+    pub screen_y: f32,
+    /// Ground-plane distance to the desk's center, in meters.
+    pub distance: f32,
+}
+
 /// Camera intent, independent of a mouse, touchscreen, or gamepad.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Action {
@@ -130,6 +146,31 @@ impl WorldRuntime {
         }
     }
 
+    /// Projects the monitor into the same viewport used by the renderer.
+    /// Invalid aspects produce a hidden, finite anchor rather than NaNs.
+    #[must_use]
+    pub fn computer(&self, aspect: f32) -> Computer {
+        let offset = self.player.pos - world::COMPUTER;
+        let distance = offset.x.hypot(offset.z);
+        let clip = self.view(aspect).view_proj * world::COMPUTER_SCREEN.extend(1.0);
+        let mut result = Computer {
+            near: distance <= world::COMPUTER_RANGE,
+            visible: false,
+            screen_x: 0.5,
+            screen_y: 0.5,
+            distance,
+        };
+        if aspect.is_finite() && aspect > 0.0 && clip.is_finite() && clip.w > 0.0 {
+            let ndc = clip.truncate() / clip.w;
+            result.screen_x = (ndc.x * 0.5 + 0.5).clamp(0.0, 1.0);
+            result.screen_y = (0.5 - ndc.y * 0.5).clamp(0.0, 1.0);
+            result.visible = (-1.0..=1.0).contains(&ndc.x)
+                && (-1.0..=1.0).contains(&ndc.y)
+                && (0.0..=1.0).contains(&ndc.z);
+        }
+        result
+    }
+
     /// Local player and follower geometry. Services append remote entities.
     #[must_use]
     pub fn dynamic_mesh(&self) -> Mesh {
@@ -159,6 +200,39 @@ impl WorldRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_computer_is_visible_then_reachable_without_walking_through_it() {
+        let mut runtime = WorldRuntime::new();
+        let initial = runtime.computer(2.0 / 3.0);
+        assert!(!initial.near);
+        assert!(initial.visible);
+        assert_eq!(initial.distance, 5.0);
+        assert!((initial.screen_x - 0.5).abs() < 0.001);
+        for _ in 0..120 {
+            runtime.tick(
+                &InputState {
+                    forward: true,
+                    ..InputState::default()
+                },
+                1.0 / 60.0,
+            );
+        }
+        let reached = runtime.computer(2.0 / 3.0);
+        assert!(reached.near && reached.visible);
+        assert!(runtime.player.pos.z <= world::COMPUTER.z - 0.8 - crate::controller::RADIUS);
+        assert!((0.0..=1.0).contains(&reached.screen_y));
+        runtime
+            .set_spawn(world::SPAWN, std::f32::consts::PI)
+            .unwrap();
+        runtime.camera.distance = crate::camera::MIN_DISTANCE;
+        assert!(!runtime.computer(2.0 / 3.0).visible);
+        for aspect in [0.0, f32::NAN, f32::INFINITY] {
+            let hidden = runtime.computer(aspect);
+            assert!(!hidden.visible);
+            assert!(hidden.screen_x.is_finite() && hidden.screen_y.is_finite());
+        }
+    }
 
     #[test]
     fn semantic_input_advances_the_same_world_deterministically() {

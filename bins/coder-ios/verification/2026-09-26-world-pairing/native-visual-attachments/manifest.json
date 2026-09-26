@@ -1,0 +1,35 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "27ED664A-10B1-4C4B-8D14-F7AFEDA9F12D.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic inline pairing refusal_0_37C06536-627B-4CA1-93BF-32558585AAE6.png",
+        "timestamp" : 1790459854.278
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "C80F0CBF-0061-465C-95B7-B5CBE51479FC.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic inline camera fallback_0_26A83944-B811-41D7-985E-6593D442E65C.png",
+        "timestamp" : 1790459850.414
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "67A0632A-A473-46E9-8475-89203557F606.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic anchored computer catalog_0_21381C78-D0B8-4EDB-B250-EC35839C9680.png",
+        "timestamp" : 1790459846.601
+      }
+    ],
+    "testIdentifier" : "VerseUITests/testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/VerseUITests/testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback"
+  }
+]

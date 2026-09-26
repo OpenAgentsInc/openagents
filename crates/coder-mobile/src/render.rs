@@ -101,7 +101,7 @@ pub(crate) fn root(app: &App) -> Result<Node<Intent>, String> {
 fn catalog(app: &App) -> Vec<Node<Intent>> {
     let mut nodes = Vec::new();
     if app.code.is_none() && !app.synthetic {
-        nodes.push(text("pair-help", "Connect this phone on your computer using the device key below, then paste the connection code. This grants read-only access to the selected saved conversations.", TextRole::Body));
+        nodes.push(text("pair-help", "Use the computer in Verse to scan a QR invitation or paste its pairing string. This grants read-only access to the selected saved conversations.", TextRole::Body));
         return nodes;
     }
     nodes.push(text(

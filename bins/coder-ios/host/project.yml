@@ -22,7 +22,7 @@ targets:
         CODE_SIGN_STYLE: Manual
         "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Distribution"
         "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]": "OpenAgents Coder App Store"
-        CURRENT_PROJECT_VERSION: 39
+        CURRENT_PROJECT_VERSION: 40
         MARKETING_VERSION: 0.5.0
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: App/Info.plist

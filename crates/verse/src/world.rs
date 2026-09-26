@@ -17,6 +17,12 @@ pub const LOT: f32 = 24.0;
 pub const GRID: f32 = 4.0;
 /// Where the player starts.
 pub const SPAWN: Vec3 = Vec3::new(0.0, 0.0, -10.0);
+/// The shared computer stands five meters in front of the initial spawn.
+pub const COMPUTER: Vec3 = Vec3::new(0.0, 0.0, -5.0);
+/// Center of the monitor's front face, used to anchor native controls.
+pub const COMPUTER_SCREEN: Vec3 = Vec3::new(0.0, 2.4, -5.16);
+/// Maximum ground-plane distance at which the computer can be opened.
+pub const COMPUTER_RANGE: f32 = 3.0;
 /// Where the pylon stands.
 pub const PYLON: Vec3 = Vec3::new(0.0, 0.0, 14.0);
 /// Where the quest board stands, facing the plaza.
@@ -52,6 +58,7 @@ pub fn build() -> World {
     let mut world = World::default();
     ground(&mut world.mesh);
     city(&mut world);
+    computer(&mut world);
     pylon(&mut world);
     quest_board(&mut world);
     workbench(&mut world);
@@ -60,6 +67,101 @@ pub fn build() -> World {
     proving_ground(&mut world.mesh);
     horizon(&mut world.mesh);
     world
+}
+
+fn computer(world: &mut World) {
+    let c = COMPUTER;
+    let mesh = &mut world.mesh;
+    let block = |mesh: &mut Mesh, center: Vec3, size: Vec3, intensity| {
+        mesh.cube(
+            Mat4::from_translation(c + center) * Mat4::from_scale(size),
+            intensity,
+        );
+    };
+    // A desk, four legs, monitor and stand, keyboard, and mouse. All surfaces
+    // share the world's hidden-line geometry and palette.
+    block(
+        mesh,
+        Vec3::new(0.0, 1.35, 0.0),
+        Vec3::new(3.6, 0.16, 1.6),
+        Intensity::Half,
+    );
+    for x in [-1.55, 1.55] {
+        for z in [-0.58, 0.58] {
+            block(
+                mesh,
+                Vec3::new(x, 0.64, z),
+                Vec3::new(0.13, 1.28, 0.13),
+                Intensity::Quarter,
+            );
+        }
+    }
+    block(
+        mesh,
+        Vec3::new(0.0, 1.48, 0.15),
+        Vec3::new(0.9, 0.1, 0.5),
+        Intensity::Half,
+    );
+    block(
+        mesh,
+        Vec3::new(0.0, 1.77, 0.05),
+        Vec3::new(0.16, 0.5, 0.16),
+        Intensity::Half,
+    );
+    block(
+        mesh,
+        Vec3::new(0.0, 2.4, 0.0),
+        Vec3::new(2.7, 1.6, 0.3),
+        Intensity::Full,
+    );
+    let face = |x, y| COMPUTER_SCREEN + Vec3::new(x, y, 0.0);
+    mesh.polyline_loop(
+        &[
+            face(-1.2, -0.65),
+            face(1.2, -0.65),
+            face(1.2, 0.65),
+            face(-1.2, 0.65),
+        ],
+        Intensity::Full,
+    );
+    // The terminal prompt makes the front of the monitor recognizable.
+    mesh.line(face(-0.95, 0.35), face(-0.7, 0.2), Intensity::Full);
+    mesh.line(face(-0.7, 0.2), face(-0.95, 0.05), Intensity::Full);
+    mesh.line(face(-0.5, 0.03), face(-0.1, 0.03), Intensity::Full);
+    for y in [-0.2, -0.4] {
+        mesh.line(face(-0.95, y), face(0.8, y), Intensity::Quarter);
+    }
+    block(
+        mesh,
+        Vec3::new(-0.25, 1.47, -0.5),
+        Vec3::new(1.7, 0.08, 0.4),
+        Intensity::Full,
+    );
+    for x in -3..=3 {
+        let x = x as f32 * 0.2 - 0.25;
+        mesh.line(
+            c + Vec3::new(x, 1.516, -0.67),
+            c + Vec3::new(x, 1.516, -0.33),
+            Intensity::Half,
+        );
+    }
+    for z in [-0.56, -0.44] {
+        mesh.line(
+            c + Vec3::new(-1.05, 1.516, z),
+            c + Vec3::new(0.55, 1.516, z),
+            Intensity::Half,
+        );
+    }
+    block(
+        mesh,
+        Vec3::new(1.05, 1.5, -0.5),
+        Vec3::new(0.27, 0.14, 0.4),
+        Intensity::Half,
+    );
+    world.blockers.push(Footprint {
+        min: [c.x - 1.8, c.z - 0.8],
+        max: [c.x + 1.8, c.z + 0.8],
+    });
 }
 
 fn ground(mesh: &mut Mesh) {
@@ -427,6 +529,38 @@ mod tests {
         let b = build();
         assert_eq!(a.blockers, b.blockers);
         assert_eq!(a.mesh.lines, b.mesh.lines);
+    }
+
+    #[test]
+    fn the_computer_has_one_solid_footprint_and_clear_approach() {
+        let world = build();
+        assert_eq!(
+            world
+                .blockers
+                .iter()
+                .filter(|block| block.contains(COMPUTER.x, COMPUTER.z, 0.0))
+                .count(),
+            1
+        );
+        assert!(!world.blockers.iter().any(|block| block.contains(
+            COMPUTER.x,
+            COMPUTER.z - 2.0,
+            crate::controller::RADIUS
+        )));
+        let screen_lines = world
+            .mesh
+            .lines
+            .iter()
+            .filter(|vertex| {
+                (vertex.pos[2] - COMPUTER_SCREEN.z).abs() < 0.001
+                    && (vertex.pos[1] - COMPUTER_SCREEN.y).abs() < 0.7
+                    && vertex.pos[0].abs() < 1.3
+            })
+            .count();
+        assert!(
+            screen_lines >= 18,
+            "monitor bezel and terminal prompt remain visible"
+        );
     }
 
     #[test]

@@ -63,14 +63,30 @@ impl Session {
         self.exchanges < 24 && self.started.elapsed() < Duration::from_secs(75)
     }
     pub async fn exchange(&mut self, pending: &Pending, host: &str, own: &str) -> Result<Event> {
-        let subscription = &pending.request.request;
-        self.socket.send(json!(["REQ",subscription,{"kinds":[3188],"authors":[host],"#p":[own],"#h":[pending.request.request],"limit":0}])).await.map_err(transport)?;
+        self.exchange_event(
+            &pending.event,
+            &pending.request.request,
+            (pending.request.issued_at, pending.request.expires_at),
+            host,
+            own,
+        )
+        .await
+    }
+    pub(crate) async fn exchange_event(
+        &mut self,
+        event: &Event,
+        subscription: &str,
+        lifetime: (u64, u64),
+        host: &str,
+        own: &str,
+    ) -> Result<Event> {
+        self.socket.send(json!(["REQ",subscription,{"kinds":[3188],"authors":[host],"#p":[own],"#h":[subscription],"limit":0}])).await.map_err(transport)?;
         loop {
             let frame = self.socket.next().await.map_err(transport)?;
-            if frame[0] == "CLOSED" && frame[1] == *subscription {
+            if frame[0] == "CLOSED" && frame[1] == subscription {
                 return Err(transport(String::new()));
             }
-            if frame[0] == "EVENT" && frame[1] == *subscription {
+            if frame[0] == "EVENT" && frame[1] == subscription {
                 // No read has been published on this subscription yet. A
                 // replayed old reply cannot establish current host admission.
                 return Err(Error::new(
@@ -78,34 +94,30 @@ impl Session {
                     "reply arrived before this exchange was admitted",
                 ));
             }
-            if frame[0] == "EOSE" && frame[1] == *subscription {
+            if frame[0] == "EOSE" && frame[1] == subscription {
                 break;
             }
         }
-        fresh(
-            pending.request.issued_at,
-            pending.request.expires_at,
-            unix_time()?,
-        )?;
+        fresh(lifetime.0, lifetime.1, unix_time()?)?;
         self.socket
-            .send(json!(["EVENT", pending.event]))
+            .send(json!(["EVENT", event]))
             .await
             .map_err(transport)?;
         let mut acknowledged = false;
         let mut response = None;
         loop {
             let frame = self.socket.next().await.map_err(transport)?;
-            if frame[0] == "CLOSED" && frame[1] == *subscription {
+            if frame[0] == "CLOSED" && frame[1] == subscription {
                 return Err(transport(String::new()));
             }
-            if frame[0] == "OK" && frame[1] == pending.event.id {
+            if frame[0] == "OK" && frame[1] == event.id {
                 if frame[2] != true {
                     return Err(transport(String::new()));
                 }
                 acknowledged = true;
             }
-            if frame[0] == "EVENT" && frame[1] == *subscription {
-                let received = check_reply(frame[2].clone(), host, own, &pending.request.request)?;
+            if frame[0] == "EVENT" && frame[1] == subscription {
+                let received = check_reply(frame[2].clone(), host, own, subscription)?;
                 if response
                     .as_ref()
                     .is_some_and(|old: &Event| old.id != received.id)

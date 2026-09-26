@@ -22,7 +22,7 @@ pub(crate) fn buffer(bytes: Vec<u8>) -> CoderMobileBuffer {
     result
 }
 fn failure() -> CoderMobileBuffer {
-    buffer(br#"{"schema":"coder.mobile.v1","public_key":"","status":"Unavailable","error":"Native bridge request failed.","follow_target":null,"view":null}"#.to_vec())
+    buffer(br#"{"schema":"coder.mobile.v1","public_key":"","paired":false,"reading":false,"status":"Unavailable","error":"Native bridge request failed.","follow_target":null,"follow_page":null,"view":null}"#.to_vec())
 }
 
 /// # Safety

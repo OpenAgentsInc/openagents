@@ -8,7 +8,7 @@ description = "Explicitly paired read-only encrypted access to retained coding h
 
 [features]
 default = ["host"]
-host = ["coder-history/host", "dep:libc"]
+host = ["coder-history/host", "dep:libc", "dep:qrcodegen"]
 
 [[bin]]
 name = "coder-connect"
@@ -25,6 +25,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signa
 url = "2"
 base64 = "0.22"
 libc = { version = "0.2", optional = true }
+qrcodegen = { version = "1.8", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

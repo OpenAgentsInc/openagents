@@ -156,7 +156,7 @@ fn message(text: &str) -> Vec<u8> {
 }
 
 #[test]
-fn app_pairs_pages_refreshes_restores_and_erases_revoked_history() {
+fn app_redeems_qr_invitation_pages_refreshes_restores_and_erases_revoked_history() {
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("synthetic-codex");
     let state = temp.path().join("host");
@@ -181,9 +181,8 @@ fn app_pairs_pages_refreshes_restores_and_erases_revoked_history() {
     let mut server = Server::new(state.clone());
     let host = Host::new(&state, RelayPolicy::LoopbackTest);
     let now = coder_connect::unix_time().unwrap();
-    let code = host
-        .pair(
-            &coder_connect::protocol::pubkey(&secret),
+    let invitation = host
+        .invite(
             &server.relay,
             coder_history::Config {
                 codex: Some(source),
@@ -195,9 +194,10 @@ fn app_pairs_pages_refreshes_restores_and_erases_revoked_history() {
         .unwrap();
     server.start();
     let mut app = App::new(config(&cache, &secret)).unwrap();
-    checked(app.call(Request::Connect {
-        code: serde_json::to_string(&code).unwrap(),
-    }));
+    checked(app.call(Request::Connect { code: invitation }));
+    let code = app.code.clone().unwrap();
+    assert_eq!(code.client, coder_connect::protocol::pubkey(&secret));
+    assert!(app.call(Request::Snapshot).paired);
     checked(app.call(Request::Refresh));
     assert_eq!(app.catalog.len(), 1);
     assert_eq!(app.catalog[0].title, "Synthetic connected chat");

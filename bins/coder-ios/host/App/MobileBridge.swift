@@ -7,6 +7,8 @@ struct MobilePacket: Decodable {
     let view: NativeView?
     let public_key: String
     let status: String
+    let paired: Bool
+    let reading: Bool
     let error: String?
     let follow_target: String?
     let follow_page: String?
@@ -91,8 +93,11 @@ final class MobileBridge: ObservableObject {
                  "revision": view.revision, "node": node])
     }
 
-    func connect(_ code: String) {
-        request(["op": "connect", "code": code])
+    func connect(_ code: String, completed: @escaping (Bool) -> Void = { _ in }) {
+        request(["op": "connect", "code": code]) { result in
+            if case let .success(packet) = result { completed(packet.paired && packet.error == nil) }
+            else { completed(false) }
+        }
     }
 
     func disconnect() { request(["op": "disconnect"]) }
@@ -115,14 +120,17 @@ final class MobileBridge: ObservableObject {
         request(["op": "foreground", "active": active])
     }
 
-    private func request(_ request: [String: Any]) {
+    private func request(_ request: [String: Any], completed: ((Result<MobilePacket, Error>) -> Void)? = nil) {
         guard !busy else {
             nativeError = "The reader is updating. Try this action again when the refresh finishes."
+            completed?(.failure(ReaderError.message(nativeError!)))
             return
         }
         busy = true
         nativeError = nil
-        worker.send(request) { result in Task { @MainActor in self.receive(result) } }
+        worker.send(request) { result in
+            Task { @MainActor in self.receive(result); completed?(result) }
+        }
     }
 
     private func receive(_ result: Result<MobilePacket, Error>) {

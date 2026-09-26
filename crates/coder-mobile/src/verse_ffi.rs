@@ -14,7 +14,7 @@ pub struct VerseHandle {
 }
 
 fn failure() -> CoderMobileBuffer {
-    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"view":null}"#.to_vec())
+    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"computer":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":5.0},"computer_open":false,"view":null}"#.to_vec())
 }
 
 /// Returns the initial Rust-owned surface projection. Release the result with

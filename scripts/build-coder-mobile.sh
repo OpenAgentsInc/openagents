@@ -19,6 +19,10 @@ fi
 command="${1:-sim-build}"
 host="$root/bins/coder-ios/host"
 output="$CODER_IOS_OUTPUT"
+# Cargo resolves a relative target directory from the checkout; Xcode resolves
+# library paths from its project directory. Give both the same absolute path.
+[[ "$CARGO_TARGET_DIR" == /* ]] || export CARGO_TARGET_DIR="$root/$CARGO_TARGET_DIR"
+[[ "$output" == /* ]] || output="$root/$output"
 export CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=2
 export IPHONEOS_DEPLOYMENT_TARGET=17.0
 

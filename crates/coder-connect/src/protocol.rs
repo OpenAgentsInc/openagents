@@ -276,7 +276,7 @@ pub fn identity(id: &str) -> Result<()> {
     }
     Ok(())
 }
-fn public(id: &str) -> Result<()> {
+pub(crate) fn public(id: &str) -> Result<()> {
     identity(id)?;
     XOnlyPublicKey::from_str(id)
         .map(|_| ())

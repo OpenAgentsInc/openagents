@@ -13,44 +13,44 @@ build and the checks actually performed.
 
 ## Connect the phone
 
-1. Open Coder on the phone and tap **Connect**. Copy or share the displayed
-   device public key. The device secret stays in its own Keychain entry; this
-   does not use or transfer a Codex, Claude, or Apple account credential.
-2. On the computer, build the connector from this checkout:
+1. Open Coder on the phone. Verse is the home screen and starts offline.
+   Walk toward the computer in front of you, then tap **Use computer**.
+2. In the OpenAgents checkout on your computer, run:
 
    ```sh
-   cargo build --release -p coder-connect
+   cargo run --release -p coder-connect -- connect
    ```
 
-3. Pair the displayed public key with the roots you want to read:
+   The command selects the existing `~/.codex` and `~/.claude` history folders,
+   prints the selected folders, and displays a QR code and an equivalent
+   pairing string. Keep it running: the same process pairs your phone and
+   serves the chats. Use explicit `--codex-root PATH` or `--claude-root PATH`
+   options to select only particular folders instead of those defaults.
+3. At the computer in Verse, tap **Scan QR code** and allow camera access.
+   Point the phone at the QR code on the physical computer. If the camera
+   is unavailable, choose **Paste code** and paste the complete `coder-pair:`
+   string instead. Neither path requires copying the phone's public key.
+4. Once paired, open **Chats** at the world computer and select a conversation.
+   The foreground reader loads history in bounded pages and checks for new
+   records every five seconds. Close the panel to return to walking.
 
-   ```sh
-   cargo run --release -p coder-connect -- pair \
-     --client YOUR_PHONE_PUBLIC_KEY \
-     --relay wss://relay.openagents.com/ \
-     --codex-root "$HOME/.codex" \
-     --claude-root "$HOME/.claude" \
-     --expires-secs 86400 > connection.json
-   ```
+The QR invitation expires after five minutes and binds to the first device
+that redeems it. A retry by that same device recovers the existing grant;
+scanning it on another device does not transfer access. If it expires, run the
+connect command again to show a new invitation. The selected read-only grant
+lasts one day by default. `--expires-secs` changes that duration within the
+30-day maximum. Keep the invitation private until redeemed.
 
-   Replace `YOUR_PHONE_PUBLIC_KEY`. Omit a root to exclude that harness. Each
-   selected root covers its supported retained conversations, including archived
-   Codex chats and Claude subagents, and future matching files under that root.
-   It does not scan account credential files. Text already recorded in a chat
-   is still part of the disclosed transcript.
+Selected roots cover supported retained conversations, including archived
+Codex chats and Claude subagents, and future matching files under those roots.
+The connector does not scan account credential files. Text already recorded
+in a chat remains part of the disclosed transcript. Device identity secrets
+stay in their own local store or Keychain; no Codex or Claude account login is
+transferred. The QR contains an expiring pairing capability, not history.
 
-4. Transfer the complete `connection.json` through a trusted channel, paste it
-   into **Connection code**, and tap **Connect to computer**. It binds the
-   computer key, phone key, relay, source categories, and expiry. It contains
-   an encrypted signed grant, not an account credential or plaintext history.
-5. Keep the connector running on the computer:
-
-   ```sh
-   cargo run --release -p coder-connect -- serve
-   ```
-
-6. Return to the phone's chat list. Select a chat. The foreground reader loads
-   history in bounded pages and checks for new records every five seconds.
+The previous `pair --client PUBKEY` command and full connection JSON remain
+supported for scripted provisioning. They are no longer the phone's primary
+setup flow. See the [connector reference](../../../crates/coder-connect/README.md).
 
 The phone and computer need Internet access to the same compatible relay;
 no inbound port, shared filesystem, or direct network route is required.
@@ -106,7 +106,7 @@ to 512 MiB. See the [reader's complete limits](../../../crates/coder-history/REA
 Use the phone's **Disconnect and erase cached chats** to forget the pairing
 and erase local content while retaining the device identity. This does not
 revoke the computer grant. To revoke it on the computer, use the `grant` field
-from the connection code:
+printed after pairing (or from a manually generated connection code):
 
 ```sh
 cargo run --release -p coder-connect -- revoke --grant GRANT_ID

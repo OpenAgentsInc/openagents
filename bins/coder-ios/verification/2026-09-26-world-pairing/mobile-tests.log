@@ -1,0 +1,25 @@
+   Compiling qrcodegen v1.8.0
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-connect)
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-mobile)
+    Finished `test` profile [unoptimized] target(s) in 1.90s
+     Running unittests src/lib.rs (../target-mobile/debug/deps/coder_mobile-9ce6d7eddd2036a0)
+
+running 15 tests
+test verse_app::tests::touches_move_shared_player_and_pause_cancels_motion ... ok
+test verse_app::tests::bad_and_excess_touches_do_not_poison_camera_or_keep_moving ... ok
+test verse_app::tests::computer_requires_approach_and_releases_held_input ... ok
+test verse_app::tests::invalid_relay_cannot_replace_a_previous_choice ... ok
+test cache::tests::encrypted_cache_survives_restart_and_refuses_wrong_key_and_swapped_entries ... ok
+test render::tests::one_readable_row_per_record_keeps_every_raw_fragment_available ... ok
+test tests::native_projection_opens_a_cached_chat_and_refuses_stale_actions ... ok
+test tests::invalid_pairing_input_preserves_cached_chats_and_does_not_echo_the_code ... ok
+test tests::ffi_rejects_unknown_operations_without_executing_anything ... ok
+test render::tests::an_evicted_middle_page_reports_the_internal_history_gap ... ok
+test tests::catalog_is_persisted_in_pages_and_source_gaps_are_visible ... ok
+test tests::paused_follow_pins_the_visible_page_across_new_pages ... ok
+test tests::unchanged_catalog_refresh_keeps_all_cached_pages_visible ... ok
+test tests::large_message_is_readable_across_source_pages_without_a_one_kib_cut ... ok
+test connection_tests::app_redeems_qr_invitation_pages_refreshes_restores_and_erases_revoked_history ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.20s
+

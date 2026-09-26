@@ -13,7 +13,45 @@ claim managed session history or a gap-free WS projection. The reader's
 [supported files and limits](../coder-history/README.md) define which retained
 sources it can project.
 
-## Pair a client
+## Connect a phone
+
+Run one command on the computer:
+
+```sh
+cargo run -p coder-connect -- connect
+```
+
+The command lists existing `~/.codex` and `~/.claude` roots, displays a QR code
+and equivalent `coder-pair:` paste string, opens a private local QR page, and
+waits for your phone. In Coder, choose **Scan QR code**, or paste the string.
+After pairing, the command prints the grant ID and keeps serving read-only
+history. Keep it running while the phone reads. No phone public key needs to
+be copied first.
+
+The invitation expires after five minutes and admits one device. Only show it
+to your phone: someone else who can see it can claim it first. It contains a
+temporary pairing capability, never a phone or computer identity secret. QR
+generation happens locally. The local page is removed after pairing, expiry,
+or a normal command exit; an already-open static page says when its code stops
+working. Force-killing the process can leave that private file until cleanup,
+but the host still enforces expiry and single use.
+
+`--no-browser` keeps the QR in the terminal. `--no-codex` or `--no-claude`
+excludes a default root. Supplying either `--codex-root PATH` or
+`--claude-root PATH` selects only the explicitly supplied roots; it does not
+silently add the other default. `--relay` overrides `wss://relay.openagents.com`.
+`--expires-secs` selects the grant lifetime, which defaults to one day and must
+outlive the invitation. The default relay passed the retained synthetic
+bootstrap and read check; this does not establish policies on other relays.
+
+The computer persists exact canonical roots and a digest of the random
+capability before displaying it. The phone proves its own key in a signed,
+encrypted Nostr redemption. Consumption and the device-bound grant commit
+together. A same-device retry after a connection failure or computer restart
+returns the original grant without extending its expiry. Another device,
+cancelled invitation, changed root, or revoked grant is refused.
+
+### Manual public-key pairing
 
 The client creates its own secret key in its protected local store and shows
 its public key. Keep the secret on the client. On the desktop, pair that public
@@ -37,7 +75,8 @@ Pairing creates a host key and a durable grant under
 `~/.openagents/coder-connect/`, or the directory passed with `--state`. The
 directory is private, the key and state files have mode `0600`, and separate
 client and host keys are required. Commands take no secret-key argument and
-never print a key.
+never print an identity secret. `connect` deliberately displays only its
+temporary pairing capability.
 
 `connection.json` is the public bootstrap object: the host and client public
 keys, relay, grant ID, source-category labels, expiry, and the original encrypted
@@ -49,7 +88,8 @@ establish trust by itself.
 Each selected root authorizes disclosure of its supported retained chat files,
 including their exact raw record bytes. The reader does not scan credentials
 or unrelated files, but text previously recorded inside a chat is still chat
-content. Omitting a root excludes it. No ambient root discovery widens a grant.
+content. Manual pairing omits unspecified roots. The `connect` defaults are
+shown before its invitation; no incoming request can discover or add a root.
 
 ## Serve and revoke
 
@@ -62,7 +102,8 @@ cargo run -p coder-connect -- serve
 If the store has grants for several relays, select one with `--relay URL`.
 Each host process serves one admitted relay. Its finite subscription reconnects
 with bounded backoff; Ctrl+C stops serving without changing source files or
-revoking the grant. Starting it again uses the same private state and key.
+revoking a paired grant. It cancels an unused invitation. Starting `serve` again
+uses the same private state and key.
 
 Revoke a grant using the ID from the connection code:
 
@@ -92,6 +133,17 @@ refused. The host does not follow client-provided artifact or source URLs.
 Use `coder-connect` with `default-features = false` on a thin client. The host
 reader and private desktop store are excluded; the crypto, transport, and
 portable reader DTOs remain available.
+
+```rust,ignore
+let code = pairing::redeem(&scanned_string, &client_secret, RelayPolicy::Production).await?;
+let client = Client::new(code, client_secret)?;
+```
+
+The invitation has a 640-byte encoded bound. `redeem` has a 12-second network
+deadline, validates the pinned computer, exact request, and signed grant, and
+returns an ordinary `ConnectionCode`. Call it only after the user's scan or
+paste action. Save it only on success; a failed attempt must not erase a working
+connection. For the manual connection JSON:
 
 ```rust,ignore
 let code = ConnectionCode::parse(&connection_bytes)?;
@@ -143,7 +195,9 @@ per grant within a 64 MiB store ceiling. Local administration and reads use a
 short exclusive store lock. The host saves exact reply evidence before sending
 it. An uncertain save returns no reply; reopening uses the last atomically
 retained state. Revocations survive process restart and are kept through the
-grant's expiry and request window.
+grant's expiry and request window. It also holds at most 64 invitations and 32
+bootstrap replies per invitation. Expired invitations and grants are pruned
+when creating an invitation; reaching the bound with active grants refuses.
 
 Focused checks cover synthetic catalog and transcript reads, original request
 correlation, source replacement, late expiry, persistent rate limits,
@@ -175,6 +229,13 @@ generated fixture text to the selected relay is authorized:
 
 ```sh
 CODER_CONNECT_SYNTHETIC_RELAY=wss://relay.example/ \
-  cargo test -p coder-connect production_relay_reads_only_generated_history \
+  cargo test -p coder-connect production_bootstrap_reads_only_generated_history \
   -- --ignored --nocapture
 ```
+
+Bootstrap tests also cover two-device races, capability and signature failures,
+late expiry, atomic save failure, cancellation, revocation, root replacement,
+retention exhaustion and recovery, and a separate CLI process recovering the
+original consumed grant. A synthetic SVG can be exported for an independent QR
+decoder with `CODER_CONNECT_QR_FIXTURE_DIR` and the ignored
+`export_synthetic_qr_fixture` test. That fixture uses no ambient roots or network.

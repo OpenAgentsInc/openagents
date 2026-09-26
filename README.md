@@ -18,7 +18,7 @@ Voyager's Minecraft agent. [Rust Native](crates/rust-native/README.md) supplies
 the experimental shared UI foundation: typed views and generic styles. Coder's
 application palette lives separately in `coder-ui`, used through the terminal's
 compatibility exports. The iOS reader renders Rust Native lists and transcripts
-through thin SwiftUI controls. Its [Verse tab](docs/verse/mobile.md) mounts the
+through thin SwiftUI controls. Its [Verse home screen](docs/verse/mobile.md) mounts the
 shared desktop world through Rust Native's generic drawing-surface contract
 and a native Metal layer. Product state and transport are Rust; native
 glue also includes the Swift bridge for Apple's on-device model. Python and shell handle training, benchmark

@@ -6,6 +6,7 @@ use std::fmt;
 pub mod client;
 #[cfg(feature = "host")]
 pub mod host;
+pub mod pairing;
 pub mod protocol;
 #[cfg(feature = "host")]
 mod store;

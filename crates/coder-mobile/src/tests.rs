@@ -30,6 +30,7 @@ fn native_projection_opens_a_cached_chat_and_refuses_stale_actions() {
     let dir = tempfile::tempdir().unwrap();
     let mut app = app(dir.path());
     let packet = app.call(Request::Snapshot);
+    assert!(!packet.reading);
     let view = packet.view.unwrap();
     let key = find_button(
         &view["root"],
@@ -43,6 +44,7 @@ fn native_projection_opens_a_cached_chat_and_refuses_stale_actions() {
     };
     let opened = app.call(request());
     assert!(opened.error.is_none());
+    assert!(opened.reading);
     let json = opened.view.unwrap().to_string();
     assert!(json.contains("Native timeline"));
     assert!(json.contains("日本語"));
@@ -106,6 +108,28 @@ fn ffi_rejects_unknown_operations_without_executing_anything() {
         crate::ffi::coder_mobile_buffer_free(reply);
         crate::ffi::coder_mobile_destroy(handle);
     }
+}
+
+#[test]
+fn invalid_pairing_input_preserves_cached_chats_and_does_not_echo_the_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app(dir.path());
+    let before = app.cache.keys("").unwrap();
+    for code in [
+        "https://unrelated.invalid/private-example",
+        "coder-pair:not-a-valid-invitation",
+    ] {
+        let packet = app.call(Request::Connect { code: code.into() });
+        assert!(packet.error.as_deref().unwrap().contains("pairing code"));
+        assert!(!packet.error.as_deref().unwrap().contains(code));
+        assert!(packet.paired);
+        let error = packet.error;
+        assert_eq!(app.call(Request::Foreground { active: true }).error, error);
+        assert_eq!(app.cache.keys("").unwrap(), before);
+        assert!(!app.catalog.is_empty());
+    }
+    let packet = app.call(Request::Disconnect);
+    assert!(!packet.paired);
 }
 
 #[test]

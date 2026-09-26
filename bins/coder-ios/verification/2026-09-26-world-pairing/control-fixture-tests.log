@@ -1,0 +1,226 @@
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.6
+   Compiling serde v1.0.229
+   Compiling syn v2.0.119
+   Compiling jobserver v0.1.35
+   Compiling cc v1.4.7
+   Compiling hashbrown v0.17.1
+   Compiling futures-core v0.3.34
+   Compiling indexmap v2.14.2
+   Compiling synstructure v0.14.0
+   Compiling anyhow v1.0.104
+   Compiling serde_json v1.0.151
+   Compiling once_cell v1.21.4
+   Compiling futures-sink v0.3.34
+   Compiling wasmtime-internal-core v48.0.2
+   Compiling leb128fmt v0.1.0
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.3
+   Compiling thiserror v2.0.20
+   Compiling zerofrom v0.1.8
+   Compiling tokio-macros v2.7.2
+   Compiling yoke v0.8.3
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling zerovec v0.11.8
+   Compiling futures-channel v0.3.34
+   Compiling futures-macro v0.3.34
+   Compiling ring v0.17.14
+   Compiling smallvec v1.16.1
+   Compiling parking_lot_core v0.9.12
+   Compiling parking_lot v0.12.5
+   Compiling futures-io v0.3.34
+   Compiling futures-util v0.3.34
+   Compiling tokio v1.53.1
+   Compiling cranelift-srcgen v0.135.2
+   Compiling rustix v1.1.5
+   Compiling cranelift-assembler-x64-meta v0.135.2
+   Compiling cranelift-bitset v0.135.2
+   Compiling tinystr v0.8.4
+   Compiling icu_locale_core v2.3.0
+   Compiling potential_utf v0.1.6
+   Compiling zerotrie v0.2.5
+   Compiling pulley-macros v48.0.2
+   Compiling semver v1.0.28
+   Compiling target-lexicon v0.13.5
+   Compiling fnv v1.0.7
+   Compiling icu_collections v2.3.0
+   Compiling gimli v0.33.0
+   Compiling wasmparser v0.254.0
+   Compiling icu_provider v2.3.1
+   Compiling rustls v0.23.45
+   Compiling cranelift-entity v0.135.2
+   Compiling cobs v0.3.0
+   Compiling wasmtime-internal-versioned-export-macros v48.0.2
+   Compiling rustls-webpki v0.103.15
+   Compiling bumpalo v3.20.3
+   Compiling cranelift-isle v0.135.2
+   Compiling crc32fast v1.5.2
+   Compiling percent-encoding v2.3.2
+   Compiling postcard v1.1.3
+   Compiling cranelift-bforest v0.135.2
+   Compiling pulley-interpreter v48.0.2
+   Compiling itertools v0.14.0
+   Compiling http-body v1.1.0
+   Compiling cranelift-codegen-shared v0.135.2
+   Compiling object v0.39.1
+   Compiling cranelift-codegen-meta v0.135.2
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling cranelift-assembler-x64 v0.135.2
+   Compiling pkg-config v0.3.34
+   Compiling cpp_demangle v0.5.1
+   Compiling try-lock v0.2.5
+   Compiling tower-service v0.3.3
+   Compiling rustc-hash v2.1.3
+   Compiling bitflags v2.13.2
+   Compiling zstd-sys v2.1.0+zstd.1.5.7
+   Compiling want v0.3.1
+   Compiling cranelift-codegen v0.135.2
+   Compiling idna_adapter v1.2.2
+   Compiling tokio-rustls v0.26.5
+   Compiling wasm-encoder v0.254.0
+   Compiling form_urlencoded v1.2.2
+   Compiling tracing-core v0.1.36
+   Compiling tracing-attributes v0.1.31
+   Compiling secp256k1-sys v0.11.0
+   Compiling wasmtime-internal-component-util v48.0.2
+   Compiling termcolor v1.4.1
+   Compiling atomic-waker v1.1.2
+   Compiling crossbeam-utils v0.8.23
+   Compiling arbitrary v1.4.2
+   Compiling hyper v1.11.1
+   Compiling cranelift-control v0.135.2
+   Compiling wasmprinter v0.254.0
+   Compiling darling_core v0.24.1
+   Compiling tracing v0.1.44
+   Compiling idna v1.1.0
+   Compiling regalloc2 v0.15.2
+   Compiling sync_wrapper v1.0.2
+   Compiling ipnet v2.12.2
+   Compiling id-arena v2.3.0
+   Compiling crossbeam-epoch v0.9.21
+   Compiling tower-layer v0.3.3
+   Compiling rustc-demangle v0.1.28
+   Compiling wasmtime-environ v48.0.2
+   Compiling tower v0.5.3
+   Compiling hyper-util v0.1.20
+   Compiling url v2.5.8
+   Compiling darling_macro v0.24.1
+   Compiling strum_macros v0.28.0
+   Compiling crossbeam-deque v0.8.8
+   Compiling zstd-safe v7.3.0
+   Compiling tempfile v3.27.0
+   Compiling strum v0.28.0
+   Compiling wasm-metadata v0.254.0
+   Compiling wit-parser v0.254.0
+   Compiling darling v0.24.1
+   Compiling tower-http v0.6.11
+   Compiling hyper-rustls v0.27.9
+   Compiling secp256k1 v0.31.1
+   Compiling serde_urlencoded v0.7.1
+   Compiling unicode-truncate v2.0.1
+   Compiling http-body-util v0.1.5
+   Compiling tokio-util v0.7.19
+   Compiling kasuari v0.4.12
+   Compiling wasm-encoder v0.259.0
+   Compiling lru v0.18.4
+   Compiling wasmtime-internal-unwinder v48.0.2
+   Compiling winnow v1.0.4
+   Compiling rayon-core v1.13.0
+   Compiling instability v0.3.13
+   Compiling nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling wast v259.0.0
+   Compiling ratatui-core v0.1.2
+   Compiling wit-component v0.254.0
+   Compiling reqwest v0.12.28
+   Compiling derive_more-impl v2.1.1
+   Compiling wasmtime-internal-jit-debug v48.0.2
+   Compiling wasmtime-internal-fiber v48.0.2
+   Compiling encoding_rs v0.8.41
+   Compiling serde_spanned v1.1.1
+   Compiling toml_datetime v0.7.5+spec-1.1.0
+   Compiling dirs-sys-next v0.1.2
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling wasmtime-internal-component-macro v48.0.2
+   Compiling fixedbitset v0.4.2
+   Compiling wasmtime-internal-cranelift v48.0.2
+   Compiling wasmtime-internal-cache v48.0.2
+   Compiling winnow v0.7.15
+   Compiling uuid v1.26.1
+   Compiling debugid v0.8.0
+   Compiling toml v0.9.12+spec-1.1.0
+   Compiling petgraph v0.6.5
+   Compiling directories-next v2.0.0
+   Compiling zstd v0.13.3
+   Compiling derive_more v2.1.1
+   Compiling wat v1.259.0
+   Compiling wasmtime-internal-wit-bindgen v48.0.2
+   Compiling cranelift-frontend v0.135.2
+   Compiling cranelift-native v0.135.2
+   Compiling wasmtime v48.0.2
+   Compiling supervise v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/supervise)
+   Compiling atif v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/atif)
+   Compiling simdutf8 v0.1.5
+   Compiling multiversion_no_op v1.0.0
+   Compiling ratatui-widgets v0.3.2
+   Compiling crossterm v0.29.0
+   Compiling wasm-compose v0.254.0
+   Compiling rayon v1.12.0
+   Compiling fxprof-processed-profile v0.8.1
+   Compiling coder-boundary v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-boundary)
+   Compiling addr2line v0.26.1
+   Compiling futures v0.3.34
+   Compiling wasmtime-internal-jit-icache-coherence v48.0.2
+   Compiling async-trait v0.1.92
+   Compiling aho-corasick v1.1.5
+   Compiling regex-syntax v0.8.11
+   Compiling mach2 v0.6.0
+   Compiling regex-automata v0.4.18
+   Compiling tungstenite v0.30.0
+   Compiling microluna v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/microluna)
+   Compiling ratatui-crossterm v0.1.2
+   Compiling ratatui-macros v0.7.2
+   Compiling rust-native v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/rust-native)
+   Compiling httpdate v1.0.3
+   Compiling jev v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/jev)
+   Compiling coder-ui v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-ui)
+   Compiling regex v1.13.1
+   Compiling tokio-tungstenite v0.30.0
+   Compiling ratatui v0.30.2
+   Compiling openrouter v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/openrouter)
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder)
+   Compiling knowledge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/knowledge)
+   Compiling coder-terminal v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-terminal)
+   Compiling nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr-transport)
+   Compiling capability v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/capability)
+   Compiling receipts v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/receipts)
+   Compiling plugin v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/plugin)
+   Compiling coder-one v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-one)
+   Compiling coder-control v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-control)
+    Finished `test` profile [unoptimized] target(s) in 1m 05s
+     Running unittests src/lib.rs (../target-mobile/debug/deps/coder_control-6a19073cc407607d)
+
+running 16 tests
+test tests::roundtrip::process_reopen_child ... ok
+test tests::text_carrier_keeps_exact_original_signatures_and_refuses_substitution ... ok
+test tests::setup_changes_and_stale_scope_refuse_without_state_disclosure ... ok
+test tests::reopen_refuses_grant_body_corruption_against_original_signature ... ok
+test tests::text_fetch_preflight_does_not_freeze_command_authority ... ok
+test tests::pairing_consumption_rights_and_expiry_are_current_host_decisions ... ok
+test tests::retained_intent_does_not_dispatch_after_its_cj_deadline ... ok
+test tests::current_grant_can_retrieve_original_command_result_after_command_expiry ... ok
+test tests::poisoned_final_reply_never_escapes_from_the_same_host ... ok
+test tests::cancel_only_does_not_admit_read_or_steer_and_revocation_survives_restart ... ok
+test tests::unsupported_reads_do_not_poison_capacity_or_disclose_a_partial_view ... ok
+test tests::uncertain_command_reconciles_original_local_id_after_restart ... ok
+test tests::command_conflicts_and_substituted_envelopes_do_not_mutate_tasks ... ok
+test tests::scoped_observation_correction_cancellation_and_restart ... ok
+test host::retention_tests::pending_text_retry_at_source_bound_retains_no_new_events ... ok
+test tests::roundtrip::authenticated_relay_controls_real_task_and_replays_original_cut_after_restart ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.39s
+

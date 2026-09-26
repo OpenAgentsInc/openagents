@@ -11,6 +11,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
+mod pairing;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -96,6 +97,8 @@ struct Book {
     v: String,
     host: String,
     admissions: BTreeMap<String, Admission>,
+    #[serde(default)]
+    invitations: BTreeMap<String, pairing::RetainedInvitation>,
 }
 
 /// Each call opens a short exclusive local lock, allowing concurrent CLI revocation.
@@ -139,6 +142,8 @@ impl Host {
         let mut store = Store::open(&self.directory, true)?;
         let secret = store.key(true)?;
         let mut book = self.book(&store, &secret, true)?;
+        book.invitations
+            .retain(|_, i| i.expires_at.saturating_add(MAX_REQUEST_LIFETIME) > now);
         book.admissions
             .retain(|_, a| a.grant.expires_at.saturating_add(MAX_REQUEST_LIFETIME) > now);
         if book.admissions.len() >= 64 {
@@ -216,16 +221,28 @@ impl Host {
             .values()
             .filter(|a| a.revoked_at.is_none() && a.grant.expires_at > now)
             .map(|a| a.grant.relay.clone())
+            .chain(
+                book.invitations
+                    .values()
+                    .filter(|i| !i.cancelled && i.expires_at > now)
+                    .map(|i| i.relay.clone()),
+            )
             .collect();
         relays.sort();
         relays.dedup();
         Ok(relays)
     }
     pub fn handle(&self, event: &Event, relay: &str, now: u64) -> Result<Event> {
+        if self.is_pairing(event)? {
+            return self.redeem_with_clock(event, relay, || Ok(now));
+        }
         self.handle_with_clock(event, relay, || Ok(now))
     }
     /// Recheck the clock after the bounded source read, while admission is locked.
     pub fn handle_current(&self, event: &Event, relay: &str) -> Result<Event> {
+        if self.is_pairing(event)? {
+            return self.redeem_with_clock(event, relay, crate::unix_time);
+        }
         self.handle_with_clock(event, relay, crate::unix_time)
     }
     pub(crate) fn handle_with_clock(
@@ -372,6 +389,7 @@ impl Host {
                 v: "coder-connect.store.v1".into(),
                 host: pubkey(secret),
                 admissions: BTreeMap::new(),
+                invitations: BTreeMap::new(),
             },
             None => return fail(ErrorCode::Unavailable, "observer store is incomplete"),
         };
@@ -416,6 +434,7 @@ impl Host {
                 }
             }
         }
+        self.validate_invitations(&book, secret)?;
         Ok(book)
     }
 }

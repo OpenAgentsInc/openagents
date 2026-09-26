@@ -25,7 +25,7 @@ fn matches(event: &Event, filter: &Value) -> bool {
     member("ids", json!(event.id))
         && member("authors", json!(event.pubkey))
         && member("kinds", json!(event.kind))
-        && ["p", "e"].iter().all(|key| {
+        && ["p", "e", "h"].iter().all(|key| {
             filter[format!("#{key}")]
                 .as_array()
                 .is_none_or(|wanted| event.tag_values(key).any(|v| wanted.contains(&json!(v))))

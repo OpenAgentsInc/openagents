@@ -9,8 +9,6 @@ final class VerseUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = ["--synthetic"]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Verse"].waitForExistence(timeout: 20))
-        app.tabBars.buttons["Verse"].tap()
         XCTAssertTrue(app.otherElements["verse-surface"].waitForExistence(timeout: 30))
         XCTAssertTrue(waitForFrames(after: 0), app.staticTexts["verse-error"].exists ? app.staticTexts["verse-error"].label : "The world presented no frames.")
     }
@@ -34,19 +32,47 @@ final class VerseUITests: XCTestCase {
         attach("Synthetic Verse Metal world")
     }
 
-    func testTabsAndBackgroundResumeWithoutBreakingChats() throws {
-        app.tabBars.buttons["Chats"].tap()
+    func testComputerAndBackgroundResumeWithoutBreakingChats() throws {
+        XCTAssertFalse(app.buttons["computer-close"].exists)
+        XCTAssertFalse(app.buttons["chat-0"].exists)
+        app.openWorldComputer()
         XCTAssertTrue(app.buttons["chat-0"].waitForExistence(timeout: 10))
         app.buttons["chat-0"].tap()
         XCTAssertTrue(app.buttons["back"].waitForExistence(timeout: 10))
-        app.tabBars.buttons["Verse"].tap()
+        app.buttons["computer-close"].tap()
         XCTAssertTrue(waitForFrames(after: 0))
         let before = frameCount()
         XCUIDevice.shared.press(.home)
         app.activate()
         XCTAssertTrue(waitForFrames(after: before))
         XCTAssertFalse(app.staticTexts["verse-error"].exists)
-        attach("Synthetic Verse after background resume")
+        app.openWorldComputer()
+        XCTAssertTrue(app.buttons["back"].exists)
+        attach("Synthetic world computer after background resume")
+    }
+
+
+    func testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback() throws {
+        app.openWorldComputer()
+        XCTAssertTrue(waitForFrames(after: frameCount() + 30))
+        attach("Synthetic anchored computer catalog")
+        app.buttons["computer-pair"].tap()
+        XCTAssertTrue(app.staticTexts["computer-command"].exists)
+        app.buttons["computer-scan"].tap()
+        XCTAssertTrue(app.staticTexts["camera-status"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["camera-status"].label.contains("simulator"))
+        XCTAssertTrue(waitForFrames(after: frameCount() + 30))
+        attach("Synthetic inline camera fallback")
+        app.buttons["computer-paste"].tap()
+        let code = app.textViews["computer-code"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        code.tap()
+        code.typeText("not-a-valid-invitation")
+        app.buttons["computer-connect"].tap()
+        XCTAssertTrue(app.staticTexts["reader-error"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["computer-close"].exists)
+        XCTAssertTrue(app.buttons["computer-paste"].exists)
+        attach("Synthetic inline pairing refusal")
     }
 
     private func coordinates(_ label: String) -> [Double] {

@@ -1,0 +1,92 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "DCBD9AC2-AA75-4265-BE2E-A3F51034334F.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic native follow control_0_E8C293B3-488D-4362-925D-28DE40232256.png",
+        "timestamp" : 1790459563.492
+      }
+    ],
+    "testIdentifier" : "ReaderUITests/testFollowCanPauseAndResume()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/ReaderUITests/testFollowCanPauseAndResume"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "57F4C230-7C35-41A5-BFFC-08FA4AF13808.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic native transcript and source_0_23A71A4E-E471-49C1-9DC4-18ECCB986B02.png",
+        "timestamp" : 1790459577.759
+      }
+    ],
+    "testIdentifier" : "ReaderUITests/testNativeChatSelectionAndExactSource()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/ReaderUITests/testNativeChatSelectionAndExactSource"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "AF10A4E8-F41F-4C4F-B8B6-60F3A3AD7E58.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic earlier-page navigation_0_47B08101-952F-410F-96D2-0A5393056450.png",
+        "timestamp" : 1790459598.112
+      }
+    ],
+    "testIdentifier" : "ReaderUITests/testPageSelectionPinsUntilLatestIsRequested()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/ReaderUITests/testPageSelectionPinsUntilLatestIsRequested"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "BABA34F8-DE13-4129-BA1A-3D92412F0856.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic world computer after background resume_0_4BF99E90-AA07-484D-A32A-7EA788D61DB0.png",
+        "timestamp" : 1790459644.155
+      }
+    ],
+    "testIdentifier" : "VerseUITests/testComputerAndBackgroundResumeWithoutBreakingChats()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/VerseUITests/testComputerAndBackgroundResumeWithoutBreakingChats"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "FC997081-5745-4ED5-B7DF-9633A7E98C4C.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic inline pairing refusal_0_978FF4CE-7A59-4C47-99F8-39F4698BA3AD.png",
+        "timestamp" : 1790459661.379
+      }
+    ],
+    "testIdentifier" : "VerseUITests/testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/VerseUITests/testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "27BF884B-F2C4-45AB-B5A8-5BCFC48A639A.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic Verse Metal world_0_73BB027D-0E1A-47B7-9BCC-D3521B30C39F.png",
+        "timestamp" : 1790459671.341
+      }
+    ],
+    "testIdentifier" : "VerseUITests/testMetalWorldRendersAndTouchMovementChangesPosition()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/VerseUITests/testMetalWorldRendersAndTouchMovementChangesPosition"
+  }
+]

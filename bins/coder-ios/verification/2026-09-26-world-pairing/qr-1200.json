@@ -1,0 +1,11 @@
+{
+  "decoder" : "shipped QRInvitation.decode via Apple Vision",
+  "exact_payload_match" : true,
+  "image_height" : 1200,
+  "image_sha256" : "9c70140e9fe331910088525652c5f1e8a82bba8dda3117efa94b847f90076f28",
+  "image_width" : 1200,
+  "network_used" : false,
+  "payload_bytes" : 191,
+  "physical_camera_tested" : false,
+  "schema" : "coder.synthetic-qr-interop.v1"
+}

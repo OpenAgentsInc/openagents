@@ -11,6 +11,16 @@ struct VersePacket: Decodable {
     let frames_presented: UInt64
     let position: [Double]
     let view: NativeView?
+    let computer: VerseComputer
+    let computer_open: Bool
+}
+
+struct VerseComputer: Decodable {
+    let near: Bool
+    let visible: Bool
+    let screen_x: Double
+    let screen_y: Double
+    let distance: Double
 }
 
 @MainActor
@@ -62,7 +72,9 @@ final class VerseBridge: ObservableObject {
         }
         let packet = try JSONDecoder().decode(VersePacket.self, from: Data(bytes: data, count: result.len))
         guard packet.schema == "coder.verse.v1",
-              packet.position.count == 3, packet.position.allSatisfy(\.isFinite) else {
+              packet.position.count == 3, packet.position.allSatisfy(\.isFinite),
+              packet.computer.screen_x.isFinite, packet.computer.screen_y.isFinite,
+              packet.computer.distance.isFinite else {
             throw ReaderError.message("This app does not support the returned world view.")
         }
         guard let view = packet.view else {

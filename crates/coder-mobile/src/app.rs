@@ -70,6 +70,8 @@ pub(crate) enum Intent {
 pub struct Packet {
     pub schema: &'static str,
     pub public_key: String,
+    pub paired: bool,
+    pub reading: bool,
     pub status: String,
     pub error: Option<String>,
     pub follow_target: Option<String>,
@@ -205,7 +207,11 @@ impl App {
     }
 
     pub fn call(&mut self, request: Request) -> Packet {
-        self.error = None;
+        // Lifecycle callbacks can follow an in-flight pairing call. They must
+        // not erase its failure before the user can read it and retry.
+        if !matches!(request, Request::Snapshot | Request::Foreground { .. }) {
+            self.error = None;
+        }
         let result = self.handle(request);
         if let Err(error) = result {
             self.error = Some(error);
@@ -218,7 +224,9 @@ impl App {
     }
 
     fn handle(&mut self, request: Request) -> Result<(), String> {
-        if self.code.as_ref().is_some_and(|c| c.expires_at <= now()) {
+        if !matches!(request, Request::Connect { .. } | Request::Disconnect)
+            && self.code.as_ref().is_some_and(|c| c.expires_at <= now())
+        {
             self.disconnect()?;
             return Err("Pairing expired. Pair again on the computer.".into());
         }
@@ -243,8 +251,20 @@ impl App {
             }
             Request::Disconnect => self.disconnect(),
             Request::Connect { code } => {
-                let code =
-                    ConnectionCode::parse(code.trim().as_bytes()).map_err(|e| e.to_string())?;
+                let text = code.trim();
+                let code = if text.starts_with("coder-pair:") {
+                    self.runtime
+                        .block_on(coder_connect::pairing::redeem(
+                            text,
+                            &self.secret,
+                            self.policy(),
+                        ))
+                        .map_err(|e| pairing_error(&e))?
+                } else {
+                    ConnectionCode::parse(text.as_bytes()).map_err(|_| {
+                        "This is not a Coder pairing code. Scan the QR code shown by the computer, or paste its complete pairing string.".to_owned()
+                    })?
+                };
                 let client = self.make_client(code.clone()).map_err(|e| e.to_string())?;
                 self.disconnect()?;
                 self.cache.write("connection", &code)?;
@@ -663,6 +683,8 @@ impl App {
         Packet {
             schema: "coder.mobile.v1",
             public_key: self.public_key.clone(),
+            paired: self.code.is_some() || (self.synthetic && !self.catalog.is_empty()),
+            reading: self.selected.is_some(),
             status: self.status.clone(),
             error: self.error.clone(),
             follow_page: self
@@ -761,4 +783,25 @@ impl App {
 
 pub(crate) fn now() -> u64 {
     coder_connect::unix_time().unwrap_or(0)
+}
+
+fn pairing_error(error: &coder_connect::Error) -> String {
+    match error.code {
+        ErrorCode::Transport | ErrorCode::Unavailable => {
+            "Could not reach the computer. Keep its pairing command running and check that both devices are online. Try the same code again.".into()
+        }
+        ErrorCode::Expired => {
+            "This pairing code expired. Run the connect command again on the computer to show a new QR code.".into()
+        }
+        ErrorCode::Conflict | ErrorCode::Revoked | ErrorCode::Forbidden => {
+            "The computer refused this pairing code. It may have already been used by another device. Generate a new code on the computer.".into()
+        }
+        ErrorCode::SourceChanged => {
+            "The computer's selected chat folders changed. Run its connect command again.".into()
+        }
+        ErrorCode::RateLimited => "The computer is busy. Wait briefly, then try again.".into(),
+        ErrorCode::Malformed | ErrorCode::Unsupported | ErrorCode::Bounds => {
+            "This is not a supported Coder pairing code. Scan the QR code shown by the computer, or paste its complete pairing string.".into()
+        }
+    }
 }
