@@ -14,6 +14,7 @@
 //! entries from a finished run, [`evidence`] measures entries from recorded
 //! runs and writes NIP-EVAL reports, and [`remote`] turns entries into
 //! NIP-KB events, accepts synced ones, and applies the reader's trust.
+//! [`xp`] derives the XP ledger from NIP-XP awards over those entries.
 //! [`cli`] is the `kb` command. Nothing here runs an agent's loop or opens
 //! a relay connection.
 
@@ -25,6 +26,7 @@ pub mod lint;
 pub mod remote;
 pub mod search;
 mod write;
+pub mod xp;
 
 pub use write::{archive, date, pending, set_evidence, set_status, template, today, version_path};
 

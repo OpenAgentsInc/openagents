@@ -16,9 +16,9 @@ use tokio_tungstenite::tungstenite::Message;
 
 use super::*;
 
-type Store = Arc<Mutex<Vec<Event>>>;
+pub(crate) type Store = Arc<Mutex<Vec<Event>>>;
 
-async fn relay() -> (String, Store) {
+pub(crate) async fn relay() -> (String, Store) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     let store: Store = Arc::default();
@@ -93,7 +93,7 @@ async fn serve(stream: tokio::net::TcpStream, store: Store) {
     }
 }
 
-fn scratch(name: &str) -> PathBuf {
+pub(crate) fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("microcoder-kbnet-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();

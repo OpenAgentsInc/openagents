@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.xp-revocation.v1",
+  "title": "NIP-XP award revocation (kind 3194) body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "requires", "type", "award", "key", "reason"],
+  "properties": {
+    "v": { "const": 1 },
+    "requires": { "type": "array", "maxItems": 0 },
+    "type": { "const": "revocation" },
+    "award": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "pubkey", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "pubkey": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "kind": { "const": 3193 }
+      }
+    },
+    "key": { "type": "string", "minLength": 73, "maxLength": 220 },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 1000 }
+  }
+}

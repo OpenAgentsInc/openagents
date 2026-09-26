@@ -556,11 +556,11 @@ fn hex_digest(document: &str) -> String {
         .to_string()
 }
 
-fn tag(values: &[&str]) -> Tag {
+pub(crate) fn tag(values: &[&str]) -> Tag {
     Tag::new(values.iter().map(|v| (*v).to_string()).collect())
 }
 
-fn t_values(event: &Event) -> impl Iterator<Item = &str> {
+pub(crate) fn t_values(event: &Event) -> impl Iterator<Item = &str> {
     event
         .tags
         .iter()
@@ -568,7 +568,7 @@ fn t_values(event: &Event) -> impl Iterator<Item = &str> {
         .filter_map(Tag::value)
 }
 
-fn one_tag<'a>(event: &'a Event, name: &str) -> Result<&'a str, ContractError> {
+pub(crate) fn one_tag<'a>(event: &'a Event, name: &str) -> Result<&'a str, ContractError> {
     let values: Vec<&str> = event
         .tags
         .iter()
@@ -581,22 +581,25 @@ fn one_tag<'a>(event: &'a Event, name: &str) -> Result<&'a str, ContractError> {
     }
 }
 
-fn require<'a>(object: &'a Map<String, Value>, key: &str) -> Result<&'a Value, ContractError> {
+pub(crate) fn require<'a>(
+    object: &'a Map<String, Value>,
+    key: &str,
+) -> Result<&'a Value, ContractError> {
     object.get(key).ok_or_else(|| malformed(key))
 }
 
-fn text(object: &Map<String, Value>, key: &str) -> Result<String, ContractError> {
+pub(crate) fn text(object: &Map<String, Value>, key: &str) -> Result<String, ContractError> {
     require(object, key)?
         .as_str()
         .map(str::to_string)
         .ok_or_else(|| malformed(key))
 }
 
-fn number(object: &Map<String, Value>, key: &str) -> Result<u64, ContractError> {
+pub(crate) fn number(object: &Map<String, Value>, key: &str) -> Result<u64, ContractError> {
     require(object, key)?.as_u64().ok_or_else(|| malformed(key))
 }
 
-fn requires_empty(object: &Map<String, Value>) -> Result<(), ContractError> {
+pub(crate) fn requires_empty(object: &Map<String, Value>) -> Result<(), ContractError> {
     match require(object, "requires")?.as_array() {
         Some(items) if items.is_empty() => Ok(()),
         Some(_) => Err(unsupported("requires")),
@@ -604,29 +607,29 @@ fn requires_empty(object: &Map<String, Value>) -> Result<(), ContractError> {
     }
 }
 
-fn reject(object: &Map<String, Value>, allowed: &[&str]) -> Result<(), ContractError> {
+pub(crate) fn reject(object: &Map<String, Value>, allowed: &[&str]) -> Result<(), ContractError> {
     match object.keys().find(|k| !allowed.contains(&k.as_str())) {
         Some(key) => Err(unsupported(key.clone())),
         None => Ok(()),
     }
 }
 
-fn is_hex(value: &str) -> bool {
+pub(crate) fn is_hex(value: &str) -> bool {
     value.len() == 64
         && value
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-fn malformed(detail: impl Into<String>) -> ContractError {
+pub(crate) fn malformed(detail: impl Into<String>) -> ContractError {
     ContractError::new(RefusalCode::Malformed, detail)
 }
 
-fn unsupported(detail: impl Into<String>) -> ContractError {
+pub(crate) fn unsupported(detail: impl Into<String>) -> ContractError {
     ContractError::new(RefusalCode::UnsupportedFeature, detail)
 }
 
-fn mismatch(detail: impl Into<String>) -> ContractError {
+pub(crate) fn mismatch(detail: impl Into<String>) -> ContractError {
     ContractError::new(RefusalCode::IdentityMismatch, detail)
 }
 

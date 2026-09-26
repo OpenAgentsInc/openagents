@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.xp-quest.v1",
+  "title": "NIP-XP quest version (kind 30193) body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "requires", "type", "id", "version", "season", "title", "objective", "acceptance", "reference", "award", "completions"],
+  "properties": {
+    "v": { "const": 1 },
+    "requires": { "type": "array", "maxItems": 0 },
+    "type": { "const": "quest" },
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "version": { "type": "integer", "minimum": 1 },
+    "season": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "opens_at", "closes_at"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "opens_at": { "type": "integer", "minimum": 0 },
+        "closes_at": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "objective": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "task", "min_pass_rate", "max_usd_per_run"],
+      "properties": {
+        "rule": { "enum": ["kb-transfer"] },
+        "task": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "min_pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_usd_per_run": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "number", "exclusiveMinimum": 0 }
+          ]
+        }
+      }
+    },
+    "reference": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["label", "usd", "seconds", "source"],
+          "properties": {
+            "label": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "usd": { "anyOf": [{ "type": "null" }, { "type": "number", "minimum": 0 }] },
+            "seconds": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "source": { "anyOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 4000 }] }
+          }
+        }
+      ]
+    },
+    "award": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["author", "runner"],
+      "properties": {
+        "author": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "runner": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      }
+    },
+    "completions": { "enum": ["first"] }
+  }
+}

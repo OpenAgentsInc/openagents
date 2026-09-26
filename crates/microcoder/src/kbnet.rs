@@ -574,4 +574,4 @@ pub async fn publish_evidence(o: &Options, key: &Path) -> Result<u8, String> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

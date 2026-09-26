@@ -13,6 +13,7 @@ use microcoder::{MODEL, STRONG_MODEL, tbench};
 
 const USAGE: &str = "usage: microcoder <terminal-bench-task> [options]
        microcoder kb <command> ... (microcoder kb --help lists the commands)
+       microcoder xp <command> ... (microcoder xp --help lists the commands)
 
 Runs Microcoder on a Terminal-Bench 4 task and streams every step: Jev's
 judgments, the model's rationale and commands, each command's output, and
@@ -188,6 +189,9 @@ async fn main() -> ExitCode {
             return ExitCode::from(microcoder::kbnet::main(&args[1..]).await);
         }
         return ExitCode::from(knowledge::cli::main(&args[1..]).await);
+    }
+    if args.first().is_some_and(|a| a == "xp") {
+        return ExitCode::from(microcoder::xpnet::main(&args[1..]).await);
     }
     let options = match parse(&args) {
         Ok(options) => options,

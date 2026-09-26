@@ -1,7 +1,7 @@
 # Shared OpenAgents protocol contracts
 
 `draft` `optional` — normative for CAP, PRG, EXT, RUN, CJ, CTX, POL, COORD,
-EVAL, OPT, KB, CTRL, MKT, LAB, SESS, WS, WORK, AUTO, ENV, and LIVE v1.
+EVAL, OPT, KB, XP, CTRL, MKT, LAB, SESS, WS, WORK, AUTO, ENV, and LIVE v1.
 
 The uppercase requirement words express conformance requirements. A reader
 MUST validate the complete required contract before any effect. Signatures

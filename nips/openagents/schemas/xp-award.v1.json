@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.xp-award.v1",
+  "title": "NIP-XP award (kind 3193) body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "requires", "type", "quest", "key", "accepted_at", "entry", "entry_version", "evidence", "awardees"],
+  "properties": {
+    "v": { "const": 1 },
+    "requires": { "type": "array", "maxItems": 0 },
+    "type": { "const": "award" },
+    "quest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "pubkey", "kind", "coordinate"],
+      "properties": {
+        "id": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "pubkey": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "kind": { "const": 30193 },
+        "coordinate": { "type": "string", "minLength": 73, "maxLength": 220 }
+      }
+    },
+    "key": { "type": "string", "minLength": 73, "maxLength": 220 },
+    "accepted_at": { "type": "integer", "minimum": 0 },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "pubkey", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "pubkey": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "kind": { "const": 3190 }
+      }
+    },
+    "entry_version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "digest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "integer", "minimum": 1 },
+        "digest": { "type": "string", "minLength": 64, "maxLength": 64 }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "pubkey", "kind"],
+        "properties": {
+          "id": { "type": "string", "minLength": 64, "maxLength": 64 },
+          "pubkey": { "type": "string", "minLength": 64, "maxLength": 64 },
+          "kind": { "const": 3189 }
+        }
+      }
+    },
+    "awardees": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/author" },
+        { "$ref": "#/$defs/runner" }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    }
+  },
+  "$defs": {
+    "author": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "pubkey", "xp"],
+      "properties": {
+        "role": { "const": "author" },
+        "pubkey": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "xp": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "pubkey", "xp"],
+      "properties": {
+        "role": { "const": "runner" },
+        "pubkey": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "xp": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      }
+    }
+  }
+}
