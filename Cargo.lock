@@ -6355,6 +6355,7 @@ dependencies = [
  "coder-one",
  "coder-terminal",
  "glam",
+ "knowledge",
  "nostr",
  "png",
  "pollster",

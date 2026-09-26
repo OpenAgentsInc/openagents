@@ -25,6 +25,7 @@ use crate::render::{self, Renderer, View};
 use crate::session::{self, Session, Status};
 use crate::ui::Atlas;
 use crate::world::{self, World};
+use crate::xp;
 
 /// How the window joins the shared world.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,6 +34,12 @@ pub struct Options {
     pub profile: String,
     /// Relay URL, or `None` to play offline.
     pub relay: Option<String>,
+    /// Relay the quest board and XP read, when it isn't `relay`.
+    pub xp_relay: Option<String>,
+    /// More public keys (npub or hex) whose XP counts as the player's.
+    pub xp_keys: Vec<String>,
+    /// More referees (npub or hex) to trust, beyond the trust file.
+    pub xp_referees: Vec<String>,
 }
 
 impl Default for Options {
@@ -40,6 +47,9 @@ impl Default for Options {
         Self {
             profile: "default".into(),
             relay: Some(session::DEFAULT_RELAY.into()),
+            xp_relay: None,
+            xp_keys: Vec::new(),
+            xp_referees: Vec::new(),
         }
     }
 }
@@ -60,6 +70,19 @@ pub fn run(options: &Options) -> Result<(), String> {
     app.error.map_or(Ok(()), Err)
 }
 
+/// What a capture shows of quests and XP.
+#[derive(Clone, Debug, Default)]
+pub struct CaptureXp {
+    /// Relay to read quests and awards from; `None` shows the offline HUD.
+    pub relay: Option<String>,
+    /// Public keys whose XP the HUD shows as the player's.
+    pub keys: Vec<String>,
+    /// More referees to trust.
+    pub referees: Vec<String>,
+    /// Whether the quest board is open.
+    pub board: bool,
+}
+
 /// Renders the spawn view through `camera` to a PNG, without a window.
 ///
 /// # Errors
@@ -70,6 +93,7 @@ pub fn capture(
     width: u32,
     height: u32,
     camera: FollowCamera,
+    shot: &CaptureXp,
 ) -> Result<(), String> {
     let world = world::build();
     let player = PlayerController::new(world::SPAWN, 0.0);
@@ -77,10 +101,18 @@ pub fn capture(
     let mut dynamic = avatar::mesh(&player, &Gait::default());
     dynamic.extend(&Agent::new(&player).mesh());
     let atlas = Atlas::new(14.0);
-    let (ui, _) = hud::build(
-        &atlas,
-        &sample_hud(&view, [width as f32, height as f32], &player),
-    );
+    let board = shot.relay.as_ref().map(|relay| {
+        let mut board = xp::Board::start(relay, &shot.referees, None);
+        board.settle(Duration::from_millis(1500), Duration::from_secs(12));
+        board
+    });
+    let mine = xp::my_keys(None, &shot.keys);
+    let mut frame = sample_hud(&view, [width as f32, height as f32], &player);
+    frame.xp = xp::strip(board.as_ref(), &mine);
+    frame.board = shot
+        .board
+        .then(|| xp::board_lines(board.as_ref(), unix_now()));
+    let (ui, _) = hud::build(&atlas, &frame);
     render::capture(
         path,
         width,
@@ -169,6 +201,13 @@ fn sample_hud<'a>(view: &View, size: [f32; 2], player: &PlayerController) -> hud
             name_step: coder_terminal::Intensity::Half,
             bubble: Some("That's the pylon at the heart of the Plaza.".into()),
         },
+        hud::Overhead {
+            feet: world::QUEST_BOARD,
+            lift: 5.4,
+            name: Some("QUEST BOARD".into()),
+            name_step: coder_terminal::Intensity::Half,
+            bubble: None,
+        },
     ]));
     let pills = session::ROOMS.iter().fold(
         vec![
@@ -200,7 +239,16 @@ fn sample_hud<'a>(view: &View, size: [f32; 2], player: &PlayerController) -> hud
         world_title: hud::world_title(session::WORLD, player.pos),
         overheads,
         time: 0.0,
+        xp: Vec::new(),
+        board: None,
+        board_scroll: 0,
     }
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 fn view(camera: &FollowCamera, player: &PlayerController, aspect: f32) -> View {
@@ -272,6 +320,10 @@ struct App {
     pm_target: Option<String>,
     offline_log: chat::Log,
     started: Instant,
+    xp: Option<xp::Board>,
+    board_open: bool,
+    board_scroll: usize,
+    my_keys: Vec<String>,
 }
 
 impl App {
@@ -309,6 +361,15 @@ impl App {
                 }
             );
         }
+        let xp_relay = options.xp_relay.clone().or_else(|| options.relay.clone());
+        let board = xp_relay.as_deref().map(|relay| {
+            xp::Board::start(
+                relay,
+                &options.xp_referees,
+                session.as_ref().map(Session::signer),
+            )
+        });
+        let my_keys = xp::my_keys(session.as_ref().map(Session::pubkey), &options.xp_keys);
         Ok(Self {
             window: None,
             renderer: None,
@@ -342,6 +403,10 @@ impl App {
                 log
             },
             started: Instant::now(),
+            xp: board,
+            board_open: false,
+            board_scroll: 0,
+            my_keys,
         })
     }
 
@@ -668,9 +733,20 @@ impl App {
             KeyCode::KeyE => self.keys.e = pressed,
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys.shift = pressed,
             KeyCode::Space if pressed => self.keys.jump = true,
+            KeyCode::KeyB if pressed => self.board_open = !self.board_open,
+            KeyCode::PageDown if pressed && self.board_open => self.scroll_board(8),
+            KeyCode::PageUp if pressed && self.board_open => self.scroll_board(-8),
+            KeyCode::Escape if pressed && self.board_open => self.board_open = false,
             KeyCode::Escape if pressed => self.quit(event_loop),
             _ => {}
         }
+    }
+
+    /// Scrolls the open quest board by `rows`, within what it holds.
+    fn scroll_board(&mut self, rows: i32) {
+        let max = self.layout.board.map_or(0, |(_, max)| max);
+        let next = self.board_scroll.min(max) as i64 + i64::from(rows);
+        self.board_scroll = next.clamp(0, max as i64) as usize;
     }
 
     fn button(&mut self, button: MouseButton, pressed: bool) {
@@ -772,6 +848,9 @@ impl App {
             }
         }
         self.hear_agent(now);
+        if let Some(board) = &mut self.xp {
+            board.tick();
+        }
         let overheads = self.overheads(now);
         let ui = match &self.atlas {
             Some(atlas) => {
@@ -823,6 +902,11 @@ impl App {
                         world_title: hud::world_title(session::WORLD, self.player.pos),
                         overheads: &overheads,
                         time: (now - self.started).as_secs_f32(),
+                        xp: xp::strip(self.xp.as_ref(), &self.my_keys),
+                        board: self
+                            .board_open
+                            .then(|| xp::board_lines(self.xp.as_ref(), unix_now())),
+                        board_scroll: self.board_scroll,
                     },
                 );
                 self.layout = layout;
@@ -840,15 +924,20 @@ impl App {
     fn overheads(&self, now: Instant) -> Vec<hud::Overhead> {
         use coder_terminal::Intensity;
         let mut out = Vec::new();
+        let snapshot = self.xp.as_ref().and_then(|b| b.snapshot.as_ref());
+        let tagged = |name: String, keys: &[String]| match xp::level_tag(snapshot, keys) {
+            Some(level) => format!("{name} · {level}"),
+            None => name,
+        };
         let (my_name, my_bubble) = match &self.session {
             Some(s) => (
-                s.profile().to_owned(),
+                tagged(s.profile().to_owned(), &self.my_keys),
                 s.bubbles
                     .iter()
                     .find(|b| b.pubkey == s.pubkey())
                     .map(|b| b.text.clone()),
             ),
-            None => ("you".to_owned(), None),
+            None => (tagged("you".to_owned(), &self.my_keys), None),
         };
         out.push(hud::Overhead {
             feet: self.player.pos,
@@ -874,7 +963,10 @@ impl App {
                 out.push(hud::Overhead {
                     feet: e.pos,
                     lift: 2.2,
-                    name: Some(s.name_of(&e.pubkey)),
+                    name: Some(tagged(
+                        s.name_of(&e.pubkey),
+                        std::slice::from_ref(&e.pubkey),
+                    )),
                     name_step: if e.online {
                         Intensity::Half
                     } else {
@@ -887,6 +979,25 @@ impl App {
                         .map(|b| b.text.clone()),
                 });
             }
+        }
+        let board = world::QUEST_BOARD;
+        if board.distance(self.player.pos) <= 80.0 {
+            let near = board.distance(self.player.pos) <= xp::BOARD_REACH;
+            out.push(hud::Overhead {
+                feet: board,
+                lift: 5.4,
+                name: Some(if near && !self.board_open {
+                    "QUEST BOARD · press B to read".to_owned()
+                } else {
+                    "QUEST BOARD".to_owned()
+                }),
+                name_step: if near {
+                    Intensity::Full
+                } else {
+                    Intensity::Half
+                },
+                bubble: None,
+            });
         }
         if let Some(feed) = &self.feed {
             for v in &feed.visitors {
@@ -968,7 +1079,12 @@ impl ApplicationHandler for App {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
                 };
-                self.camera.zoom(lines);
+                let [x, y] = self.cursor;
+                if self.board_open && self.layout.board.is_some_and(|(r, _)| r.contains(x, y)) {
+                    self.scroll_board((-lines * 3.0).round() as i32);
+                } else {
+                    self.camera.zoom(lines);
+                }
             }
             WindowEvent::Focused(false) => {
                 self.keys = Keys::default();

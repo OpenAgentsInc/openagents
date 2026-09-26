@@ -19,6 +19,8 @@ pub const GRID: f32 = 4.0;
 pub const SPAWN: Vec3 = Vec3::new(0.0, 0.0, -10.0);
 /// Where the pylon stands.
 pub const PYLON: Vec3 = Vec3::new(0.0, 0.0, 14.0);
+/// Where the quest board stands, facing the plaza.
+pub const QUEST_BOARD: Vec3 = Vec3::new(-22.0, 0.0, 0.0);
 /// Distance of the horizon ridge, in meters.
 pub const HORIZON: f32 = 900.0;
 
@@ -41,6 +43,7 @@ pub fn build() -> World {
     ground(&mut world.mesh);
     city(&mut world);
     pylon(&mut world);
+    quest_board(&mut world);
     horizon(&mut world.mesh);
     world
 }
@@ -137,6 +140,52 @@ fn pylon(world: &mut World) {
     });
 }
 
+/// The quest board: a line-drawn notice board on two posts, facing the
+/// plaza center, with rows of "notices" and a ring on the ground in front.
+/// Press `B` near it to read the live NIP-XP quests.
+fn quest_board(world: &mut World) {
+    let mesh = &mut world.mesh;
+    let at = |z: f32, y: f32| QUEST_BOARD + Vec3::new(0.0, y, z);
+    let (half, low, high) = (3.2, 1.3, 4.4);
+    for z in [-half, half] {
+        mesh.line(at(z, 0.0), at(z, high + 0.6), Intensity::ThreeQuarters);
+    }
+    let corners = [
+        at(-half, low),
+        at(half, low),
+        at(half, high),
+        at(-half, high),
+    ];
+    mesh.quad(corners);
+    mesh.polyline_loop(&corners, Intensity::Full);
+    // A header bar and the notices under it.
+    mesh.line(
+        at(-half + 0.3, high - 0.45),
+        at(half - 0.3, high - 0.45),
+        Intensity::Full,
+    );
+    let lengths = [5.4, 4.1, 4.8, 3.2, 5.0, 2.6];
+    for (i, len) in lengths.iter().enumerate() {
+        let y = high - 0.85 - i as f32 * 0.42;
+        let step = if i % 2 == 0 {
+            Intensity::ThreeQuarters
+        } else {
+            Intensity::Half
+        };
+        mesh.line(at(-half + 0.4, y), at(-half + 0.4 + len, y), step);
+    }
+    mesh.ring(
+        QUEST_BOARD + Vec3::new(3.0, 0.0, 0.0),
+        2.0,
+        40,
+        Intensity::Half,
+    );
+    world.blockers.push(Footprint {
+        min: [QUEST_BOARD.x - 0.3, QUEST_BOARD.z - half],
+        max: [QUEST_BOARD.x + 0.3, QUEST_BOARD.z + half],
+    });
+}
+
 fn horizon(mesh: &mut Mesh) {
     let mut rng = Rng::new(SEED.rotate_left(17));
     let segments = 180;
@@ -193,6 +242,22 @@ mod tests {
         let b = build();
         assert_eq!(a.blockers, b.blockers);
         assert_eq!(a.mesh.lines, b.mesh.lines);
+    }
+
+    #[test]
+    fn the_quest_board_stands_on_the_open_plaza() {
+        let world = build();
+        let board = world
+            .blockers
+            .iter()
+            .filter(|b| b.contains(QUEST_BOARD.x, QUEST_BOARD.z, 0.0))
+            .count();
+        assert_eq!(board, 1, "only the board's own footprint is there");
+        assert!(!world.blockers.iter().any(|b| b.contains(
+            QUEST_BOARD.x + 3.0,
+            QUEST_BOARD.z,
+            1.0
+        )));
     }
 
     #[test]

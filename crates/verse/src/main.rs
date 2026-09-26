@@ -3,13 +3,18 @@
 //! `verse` opens the window and joins the shared world. `--profile <name>`
 //! picks the player key (one per profile), `--relay <ws-url>` picks the
 //! relay (`VERSE_RELAY` also works), and `--offline` plays alone.
+//! `--xp-relay <ws-url>` (or `VERSE_XP_RELAY`) reads NIP-XP quests and
+//! awards from another relay than the world's, `--xp-referee <npub>`
+//! trusts a referee beyond `~/.openagents/knowledge/xp-trust.json`, and
+//! `--xp-key <npub>` counts another of your keys' XP as yours.
 //!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
 //!
 //! `verse --capture <file.png>` renders the spawn view to a PNG without a
 //! window; `--orbit <degrees>`, `--pitch <degrees>`, `--distance <meters>`,
-//! and `--size <width>x<height>` adjust the shot.
+//! and `--size <width>x<height>` adjust the shot. `--board` opens the quest
+//! board in the shot, reading `--xp-relay` when given.
 
 use std::process::ExitCode;
 
@@ -23,8 +28,14 @@ fn main() -> ExitCode {
     }
     let result = match parse(args.into_iter()) {
         Ok((None, options)) => verse::app::run(&options),
-        Ok((Some(shot), _)) => {
-            verse::app::capture(&shot.path, shot.width, shot.height, shot.camera)
+        Ok((Some(shot), options)) => {
+            let xp = verse::app::CaptureXp {
+                relay: options.xp_relay.clone(),
+                keys: options.xp_keys.clone(),
+                referees: options.xp_referees.clone(),
+                board: shot.board,
+            };
+            verse::app::capture(&shot.path, shot.width, shot.height, shot.camera, &xp)
         }
         Err(e) => Err(e),
     };
@@ -70,6 +81,7 @@ struct Shot {
     width: u32,
     height: u32,
     camera: FollowCamera,
+    board: bool,
 }
 
 fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Options), String> {
@@ -77,6 +89,10 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
     if let Ok(relay) = std::env::var("VERSE_RELAY") {
         options.relay = Some(relay);
     }
+    if let Ok(relay) = std::env::var("VERSE_XP_RELAY") {
+        options.xp_relay = Some(relay);
+    }
+    let mut board = false;
     let mut shot: Option<Shot> = None;
     let mut camera = FollowCamera::default();
     let (mut width, mut height) = (1600, 1000);
@@ -94,6 +110,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
                     width,
                     height,
                     camera,
+                    board,
                 });
             }
             "--orbit" => camera.yaw_offset = degrees(value()?)?,
@@ -115,6 +132,10 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--profile" => options.profile = value()?,
             "--relay" => options.relay = Some(value()?),
             "--offline" => options.relay = None,
+            "--xp-relay" => options.xp_relay = Some(value()?),
+            "--xp-key" => options.xp_keys.push(value()?),
+            "--xp-referee" => options.xp_referees.push(value()?),
+            "--board" => board = true,
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -122,6 +143,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
         width,
         height,
         camera,
+        board,
         ..s
     });
     Ok((shot, options))

@@ -240,6 +240,13 @@ impl Session {
         self.id.signer.pubkey()
     }
 
+    /// A copy of this player's signer, for another relay reader to answer
+    /// NIP-42 challenges with.
+    #[must_use]
+    pub fn signer(&self) -> nostr::domain::RelaySigner {
+        self.id.signer.clone()
+    }
+
     /// Asks the relay where this player left their avatar, waiting up to
     /// `wait`. Falls back to a random clear spot on the plaza.
     pub fn spawn(&mut self, blockers: &[Footprint], bound: f32, wait: Duration) -> Spawn {

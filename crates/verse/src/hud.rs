@@ -8,7 +8,9 @@
 //! will hear a message before it is sent, typing `/` lists the shortcuts,
 //! and ALL and ADS show a character count. The left window has two tabs:
 //! this world's chat, and live public notes from popular Nostr relays.
-//! Speech bubbles are the RuneScape touch Horse Isle never had.
+//! Speech bubbles are the RuneScape touch Horse Isle never had. XP, level,
+//! and titles sit at the top left, and `B` opens the quest board panel
+//! above the chat windows (`crate::xp` writes their lines).
 
 use std::collections::VecDeque;
 
@@ -84,6 +86,8 @@ pub struct Layout {
     pub tabs: [Rect; 2],
     /// The input line.
     pub bar: Rect,
+    /// The open quest board, and the furthest it can scroll, in rows.
+    pub board: Option<(Rect, usize)>,
     /// The chat windows and pill row: clicks here are for the UI, not the
     /// camera.
     pub panels: Vec<Rect>,
@@ -130,6 +134,12 @@ pub struct Frame<'a> {
     pub overheads: &'a [Overhead],
     /// Seconds since start, for the caret blink.
     pub time: f32,
+    /// The XP lines at the top left: XP, level, titles, and the board key.
+    pub xp: Vec<(String, Intensity)>,
+    /// The quest board's lines, while the board is open.
+    pub board: Option<Vec<(String, Intensity)>>,
+    /// Rows the board is scrolled down by.
+    pub board_scroll: usize,
 }
 
 /// The `/` shortcuts, with what each does, for the suggestion list.
@@ -433,7 +443,133 @@ pub fn build(atlas: &Atlas, f: &Frame<'_>) -> (UiBatch, Layout) {
             }
         }
     }
+    xp_strip(&mut ui, atlas, f, m);
+    if let Some(lines) = &f.board {
+        let top = m + (f.xp.len() as f32 + 0.5) * atlas.line + 12.0 * s;
+        let (panel, max) = board(&mut ui, atlas, f, lines, top, panel_y - 6.0 * s);
+        layout.panels.push(panel);
+        layout.board = Some((panel, max));
+    }
     (ui, layout)
+}
+
+/// XP, level, titles, and the board key, top left.
+fn xp_strip(ui: &mut UiBatch, atlas: &Atlas, f: &Frame<'_>, m: f32) {
+    let s = f.scale;
+    let width =
+        f.xp.iter()
+            .map(|(t, _)| atlas.measure(t))
+            .fold(0.0, f32::max);
+    if width <= 0.0 {
+        return;
+    }
+    let pad = 6.0 * s;
+    let h = f.xp.len() as f32 * atlas.line + 2.0 * pad;
+    ui.rect(atlas, m, m, width + 2.0 * pad, h, field(0.9));
+    for (i, (text, step)) in f.xp.iter().enumerate() {
+        ui.text(
+            atlas,
+            m + pad,
+            m + pad + i as f32 * atlas.line,
+            text,
+            amber(*step, 1.0),
+        );
+    }
+}
+
+/// The quest board panel, centered between the XP strip and the chat
+/// windows, scrolled down by `f.board_scroll` rows. Returns its rectangle
+/// and the furthest it can scroll.
+fn board(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    f: &Frame<'_>,
+    lines: &[(String, Intensity)],
+    top: f32,
+    bottom: f32,
+) -> (Rect, usize) {
+    let s = f.scale;
+    let pad = 10.0 * s;
+    let w = (f.size[0] * 0.62).clamp(atlas.advance * 40.0, atlas.advance * 110.0);
+    let mut rows: Vec<(String, Intensity)> = Vec::new();
+    for (text, step) in lines {
+        for row in atlas.wrap(text, w - 2.0 * pad) {
+            rows.push((row, *step));
+        }
+    }
+    // Heading, rule, and padding above the rows; padding below.
+    let chrome = pad * 0.6 + atlas.line + 9.0 * s + pad;
+    let room = (bottom - top).max(atlas.line * 6.0);
+    let fit = ((room - chrome) / atlas.line).floor().max(2.0) as usize;
+    let mut max = 0;
+    if rows.len() > fit {
+        // One row goes to the scroll position.
+        let shown = fit - 1;
+        max = rows.len() - shown;
+        let from = f.board_scroll.min(max);
+        let total = rows.len();
+        rows = rows.into_iter().skip(from).take(shown).collect();
+        rows.push((
+            format!(
+                "rows {}-{} of {total} · mouse wheel or Page Up and Page Down scroll",
+                from + 1,
+                from + shown
+            ),
+            Intensity::Quarter,
+        ));
+    }
+    let r = Rect {
+        x: (f.size[0] - w) / 2.0,
+        y: top,
+        w,
+        h: (chrome + rows.len() as f32 * atlas.line).min(room),
+    };
+    ui.rect(atlas, r.x, r.y, r.w, r.h, field(1.0));
+    ui.frame(
+        atlas,
+        r.x,
+        r.y,
+        r.w,
+        r.h,
+        s.max(1.0),
+        amber(Intensity::Full, 1.0),
+    );
+    let heading_y = r.y + pad * 0.6;
+    ui.text(
+        atlas,
+        r.x + pad,
+        heading_y,
+        "QUEST BOARD · NIP-XP quests on the relay · read-only",
+        amber(Intensity::Full, 1.0),
+    );
+    let close = "B or Esc closes";
+    ui.text(
+        atlas,
+        r.x + r.w - pad - atlas.measure(close),
+        heading_y,
+        close,
+        amber(Intensity::Quarter, 1.0),
+    );
+    let rule = heading_y + atlas.line + 3.0 * s;
+    ui.rect(
+        atlas,
+        r.x + pad,
+        rule,
+        r.w - 2.0 * pad,
+        1.0,
+        amber(Intensity::Quarter, 1.0),
+    );
+    let first = rule + 6.0 * s;
+    for (i, (row, step)) in rows.iter().enumerate() {
+        ui.text(
+            atlas,
+            r.x + pad,
+            first + i as f32 * atlas.line,
+            row,
+            amber(*step, 1.0),
+        );
+    }
+    (r, max)
 }
 
 fn frame_window(ui: &mut UiBatch, atlas: &Atlas, r: Rect) {
@@ -721,6 +857,9 @@ mod tests {
             world_title: world_title("verse-plaza", Vec3::ZERO),
             overheads: &[],
             time: 0.0,
+            xp: vec![("XP 6 · level 1".into(), Intensity::Full)],
+            board: None,
+            board_scroll: 0,
         }
     }
 
@@ -782,5 +921,25 @@ mod tests {
         let (plain, _) = build(&atlas, &frame(&log, &nostr, &closed));
         let (listed, _) = build(&atlas, &frame(&log, &nostr, &typing));
         assert!(listed.vertices.len() > plain.vertices.len() + 200);
+    }
+
+    #[test]
+    fn the_open_board_is_a_clickable_panel() {
+        let atlas = Atlas::new(14.0);
+        let log = Log::default();
+        let nostr = VecDeque::new();
+        let input = Input::default();
+        let (closed, closed_layout) = build(&atlas, &frame(&log, &nostr, &input));
+        let mut open = frame(&log, &nostr, &input);
+        open.board = Some(vec![("A quest".into(), Intensity::Full); 200]);
+        let (drawn, layout) = build(&atlas, &open);
+        assert!(drawn.vertices.len() > closed.vertices.len());
+        assert_eq!(layout.panels.len(), closed_layout.panels.len() + 1);
+        assert!(layout.owns(720.0, 200.0), "the board takes clicks");
+        let (_, max) = layout.board.expect("the board is open");
+        assert!(max > 0, "200 rows don't fit, so the board scrolls");
+        open.board_scroll = max + 50;
+        let (scrolled, _) = build(&atlas, &open);
+        assert!(!scrolled.vertices.is_empty());
     }
 }

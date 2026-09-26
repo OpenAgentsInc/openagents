@@ -12,6 +12,7 @@ coder = { path = "../coder" }
 coder-one = { path = "../coder-one" }
 coder-terminal = { path = "../coder-terminal" }
 glam = "0.30.10"
+knowledge = { path = "../knowledge" }
 nostr = { path = "../nostr" }
 png = "0.18.1"
 pollster = "0.4"
