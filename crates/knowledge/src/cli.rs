@@ -35,6 +35,10 @@ Writing entries:
                     the same from another agent's winning ATIF trajectory: what
                     it knew or did that a cheaper agent would miss; NAME is the
                     task it solved, which no entry may name
+  harvest-contrast <run> <trajectory.json> --task NAME [--model SLUG]
+                    compare a failed run with a winning trajectory on the same
+                    task, and propose entries for the decisions that explain
+                    the failure
 
 Admitting entries:
   evidence [ids] [--attach]
@@ -221,6 +225,7 @@ async fn run(args: &[String]) -> Result<u8, String> {
         "add" => add(&o),
         "harvest" => harvest_run(&o).await,
         "harvest-trace" => harvest_trace(&o).await,
+        "harvest-contrast" => harvest_contrast(&o).await,
         "evidence" => measure(&o),
         "admit" => admit(&o),
         "withdraw" => withdraw(&o),
@@ -398,6 +403,22 @@ async fn harvest_trace(o: &Options) -> Result<u8, String> {
         .ok_or("kb harvest-trace needs --task NAME: the task the trajectory solved")?;
     let record = harvest::trace_record(&path, &task)?;
     harvest_and_report(o, record, &path).await
+}
+
+async fn harvest_contrast(o: &Options) -> Result<u8, String> {
+    let [run, trajectory] = o.words.as_slice() else {
+        return Err("kb harvest-contrast needs a run and a trajectory".to_string());
+    };
+    let mut run_dir = PathBuf::from(run);
+    if !run_dir.is_dir() {
+        run_dir = o.runs()?.join(run);
+    }
+    let task = o
+        .task
+        .clone()
+        .ok_or("kb harvest-contrast needs --task NAME: the task both records are on")?;
+    let record = harvest::contrast_record(&run_dir, Path::new(trajectory), &task)?;
+    harvest_and_report(o, record, &run_dir).await
 }
 
 async fn harvest_run(o: &Options) -> Result<u8, String> {

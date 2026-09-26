@@ -312,3 +312,30 @@ fn a_trajectory_reads_as_the_task_then_each_step() {
     assert!(record.text.contains("Now score candidates."));
     assert!(prompt(&record, &Base { entries: vec![] }).contains("# The trajectory"));
 }
+
+#[test]
+fn a_contrast_pairs_the_failed_run_with_the_winning_trajectory() {
+    let run = run_dir("contrast");
+    let path = scratch("contrast-trace").join("trace.json");
+    let doc = json!({
+        "agent": {"model_name": "strong-model"},
+        "steps": [
+            {"source": "user", "message": "Fix the drift monitor."},
+            {"source": "agent", "message": "The docstring's estimator is the bug."}
+        ]
+    });
+    std::fs::write(&path, doc.to_string()).unwrap();
+    let record = contrast_record(&run, &path, "drift-watch").unwrap();
+    assert!(record.contrast && !record.trace);
+    assert_eq!(record.run, "drift-watch-1790000001");
+    let failed = record.text.find("## The failed run").unwrap();
+    let won = record.text.find("## The winning trajectory").unwrap();
+    assert!(failed < won);
+    assert!(record.text.contains("Trust the docstring's estimator."));
+    assert!(
+        record
+            .text
+            .contains("The docstring's estimator is the bug.")
+    );
+    assert!(prompt(&record, &Base { entries: vec![] }).contains("# The two records"));
+}

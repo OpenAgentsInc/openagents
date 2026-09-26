@@ -87,6 +87,32 @@ improved version; otherwise leave updates empty and give the entry a new id.
 Propose at most three entries, and none when the trajectory teaches nothing general. Fewer, \
 sharper entries are better than many.";
 
+/// What the model is told when it compares a failed run with another
+/// agent's winning trajectory on the same task.
+pub const CONTRAST_SYSTEM: &str =
+    "You write entries for a knowledge base that coding agents search \
+while they work. You read two records of the same task: a cheap agent's run that failed, with the \
+task verifier's last lines, and a strong agent's trajectory that passed. Find the decisions where \
+they differ that explain the failure: a definition, convention, parameter, data preparation step, \
+tool usage, or check the winner got right and the failed run got wrong or skipped. Propose \
+general entries that would have led the cheap agent to the winner's choice on any task of the \
+same kind. Be precise about the decisive detail; a broad description of the method is not enough.
+
+Rules for every entry:
+- Make it general. Never name the task, its files, directories, datasets, or services. Never \
+quote test code, test names, expected outputs, or any value specific to this task's data.
+- Cite a source for any definition: a textbook, a paper, a standard, or official \
+documentation, by author, title, and section.
+- The id is `<topic>.<short-name>` in lowercase letters, digits, dots, and hyphens.
+- kind is method, edge-case, slip, environment, or tool.
+- summary is one or two sentences, under 600 characters. applies_when says what code or state \
+it bears on.
+- body is Markdown with a `## Details` section and a `## How to check` section.
+- If an existing entry already teaches the lesson but misses the decisive detail, set updates to \
+its id and write the improved version; otherwise give the entry a new id.
+
+Propose at most three entries, and none when the difference teaches nothing general.";
+
 /// One proposed entry, as the model writes it.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct Proposal {
@@ -197,6 +223,39 @@ pub struct Record {
     /// Whether it's another agent's winning trajectory rather than a
     /// Microcoder run.
     pub trace: bool,
+    /// Whether it pairs a failed Microcoder run with a winning trajectory on
+    /// the same task.
+    pub contrast: bool,
+}
+
+/// A failed Microcoder run and a winning trajectory on the same task, as one
+/// record: each gets half of [`RECORD_CHARS`].
+///
+/// # Errors
+///
+/// When either can't be read.
+pub fn contrast_record(run_dir: &Path, trajectory: &Path, task: &str) -> Result<Record, String> {
+    let failed = record(run_dir)?;
+    let won = trace_record(trajectory, task)?;
+    let half = RECORD_CHARS / 2;
+    let fit = |text: &str| {
+        if text.chars().count() <= half {
+            text.to_string()
+        } else {
+            format!("{}\n[…]\n{}", head(text, half / 2), tail(text, half / 2))
+        }
+    };
+    Ok(Record {
+        run: failed.run,
+        task: task.to_string(),
+        text: format!(
+            "## The failed run\n\n{}\n\n## The winning trajectory\n\n{}",
+            fit(&failed.text),
+            fit(&won.text)
+        ),
+        trace: false,
+        contrast: true,
+    })
 }
 
 /// Text of an ATIF value that may be a string or a list of text parts.
@@ -296,6 +355,7 @@ pub fn trace_record(path: &Path, task: &str) -> Result<Record, String> {
         task: task.to_string(),
         text: format!("{header}{body}"),
         trace: true,
+        contrast: false,
     })
 }
 
@@ -430,6 +490,7 @@ pub fn record(dir: &Path) -> Result<Record, String> {
         run,
         task,
         trace: false,
+        contrast: false,
         text: format!("{header}\n{body}{verdict}"),
     })
 }
@@ -445,7 +506,13 @@ pub fn prompt(record: &Record, base: &Base) -> String {
     format!(
         "# Existing entries\n\n{}\n\n# The {}\n\n{}",
         existing.join("\n"),
-        if record.trace { "trajectory" } else { "run" },
+        if record.contrast {
+            "two records"
+        } else if record.trace {
+            "trajectory"
+        } else {
+            "run"
+        },
         record.text
     )
 }
@@ -529,7 +596,13 @@ pub async fn harvest_record<P: Propose, E: Embed>(
 ) -> Result<Harvest, String> {
     let (entries, _) = Base::read(dir);
     let base = Base { entries };
-    let system = if record.trace { TRACE_SYSTEM } else { SYSTEM };
+    let system = if record.contrast {
+        CONTRAST_SYSTEM
+    } else if record.trace {
+        TRACE_SYSTEM
+    } else {
+        SYSTEM
+    };
     let (proposals, mut usd) = proposer.propose(system, &prompt(&record, &base)).await?;
     let mut corpus = corpus.clone();
     if !record.task.is_empty() && !corpus.names.contains(&record.task) {
