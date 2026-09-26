@@ -52,8 +52,8 @@ or tool (how to use a command or library correctly).
 applies. applies_when says what code or state it bears on.
 - body is Markdown with a `## Details` section and a `## How to check` section that gives a \
 property or a runnable snippet.
-- If an existing entry covers the lesson, set updates to its id and write the improved \
-version; otherwise leave updates empty.
+- If an existing entry already teaches the same lesson, set updates to its id and write the \
+improved version; otherwise leave updates empty and give the entry a new id.
 
 Propose at most three entries, and none when the run teaches nothing general. Fewer, sharper \
 entries are better than many.";
@@ -337,8 +337,10 @@ pub struct Harvest {
     pub usd: f64,
 }
 
-/// The existing entry a proposal revises: the one it names, the one with
-/// its ID, or the nearest one at or above [`DUPLICATE`].
+/// The existing entry a proposal revises: the one with its ID, else the
+/// nearest one when their cosine similarity is [`DUPLICATE`] or more.
+/// Without embeddings, the entry the model names in `updates` stands in
+/// for the similarity check.
 async fn original<E: Embed>(
     proposal: &Proposal,
     candidate: &Entry,
@@ -346,12 +348,14 @@ async fn original<E: Embed>(
     retriever: Option<&Retriever<E>>,
     usd: &mut f64,
 ) -> Option<(String, Option<f64>)> {
-    for id in [proposal.updates.trim(), proposal.id.trim()] {
-        if !id.is_empty() && base.get(id).is_some() {
-            return Some((id.to_string(), None));
-        }
+    let id = proposal.id.trim();
+    if base.get(id).is_some() {
+        return Some((id.to_string(), None));
     }
-    let retriever = retriever?;
+    let Some(retriever) = retriever else {
+        let named = proposal.updates.trim();
+        return base.get(named).map(|_| (named.to_string(), None));
+    };
     let search = retriever.search(&candidate.search_text(), 1).await;
     *usd += search.usd;
     let hit = search.hits.first()?;

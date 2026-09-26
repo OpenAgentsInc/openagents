@@ -613,15 +613,34 @@ pub fn recorded(path: &Path) -> Result<(Verdict, String), String> {
     Ok((verdict, digest(text.as_bytes())))
 }
 
+/// `n` and `noun`, plural unless `n` is 1: `2 runs`, `2 entries`.
+#[must_use]
+pub fn count(n: usize, noun: &str) -> String {
+    match noun.strip_suffix('y') {
+        _ if n == 1 => format!("1 {noun}"),
+        Some(stem) => format!("{n} {stem}ies"),
+        None => format!("{n} {noun}s"),
+    }
+}
+
+/// `3 paired tasks: 1 for it, 0 against it`.
+#[must_use]
+pub fn tally(measured: &Measured) -> String {
+    format!(
+        "{}: {} for it, {} against it",
+        count(measured.pairs.len(), "paired task"),
+        measured.favoring,
+        measured.opposing
+    )
+}
+
 /// The one-line summary an entry's evidence list keeps.
 #[must_use]
 pub fn line(measured: &Measured, report_digest: &str) -> String {
     format!(
-        "measured {}: {} of {} paired tasks favor it, {} oppose it ({}) {report_digest}",
+        "measured {}: {} ({}) {report_digest}",
         crate::today(),
-        measured.favoring,
-        measured.pairs.len(),
-        measured.opposing,
+        tally(measured),
         match measured.verdict {
             Verdict::Pass => "pass",
             Verdict::Fail => "fail",
@@ -657,22 +676,13 @@ pub fn review(entries: &[Entry], runs: &[Run]) -> Vec<Proposal> {
                 out.push(Proposal {
                     id: entry.id.clone(),
                     action: "demote",
-                    reason: format!(
-                        "shown in {} runs; {} paired tasks, none favors it and {} oppose it",
-                        m.runs_with,
-                        m.pairs.len(),
-                        m.opposing
-                    ),
+                    reason: format!("shown in {}; {}", count(m.runs_with, "run"), tally(&m)),
                 });
             }
             crate::Status::Candidate if m.verdict == Verdict::Pass => out.push(Proposal {
                 id: entry.id.clone(),
                 action: "admit",
-                reason: format!(
-                    "{} of {} paired tasks favor it and none opposes it",
-                    m.favoring,
-                    m.pairs.len()
-                ),
+                reason: tally(&m),
             }),
             _ => {}
         }

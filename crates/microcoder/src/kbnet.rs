@@ -193,10 +193,12 @@ entries to other people, so there's no default relay"
     )
 }
 
-fn load_key(key: &Path) -> Result<Identity, String> {
+/// Loads the key, creating it on first use. `role` says what it's for:
+/// signing, or answering the relay's authentication challenge.
+fn load_key(key: &Path, role: &str) -> Result<Identity, String> {
     let identity = Identity::load_from(key)?;
     println!(
-        "signing as {} (key in {})",
+        "{role} {} (key in {})",
         npub(identity.pubkey()),
         key.display()
     );
@@ -283,7 +285,7 @@ fn hex_digest(text: &str) -> String {
 /// A bad usage, key, or relay.
 pub async fn publish(o: &Options, key: &Path) -> Result<u8, String> {
     let url = relay_url(o)?;
-    let identity = load_key(key)?;
+    let identity = load_key(key, "signing as")?;
     let chosen = entries(o)?;
     let ids: Vec<String> = chosen.iter().map(|(e, _)| e.id.clone()).collect();
     let mut relay = Relay::open(url, &identity).await?;
@@ -390,8 +392,9 @@ version and publish again",
         }
     }
     println!(
-        "{published} entries published, {present} already there, {withdrawals} withdrawals, \
-{refused} refused"
+        "{} published, {present} already there, {}, {refused} refused",
+        evidence::count(published, "entry"),
+        evidence::count(withdrawals, "withdrawal")
     );
     Ok(u8::from(refused > 0))
 }
@@ -413,7 +416,7 @@ pub async fn sync(o: &Options, key: &Path, dir: &Path) -> Result<u8, String> {
                 .ok_or(format!("{author} isn't an npub or a hex public key"))?,
         );
     }
-    let identity = load_key(key)?;
+    let identity = load_key(key, "authenticating to the relay as")?;
     let mut relay = Relay::open(url, &identity).await?;
     println!("connected to {url}");
     let mut filter = json!({
@@ -430,16 +433,17 @@ pub async fn sync(o: &Options, key: &Path, dir: &Path) -> Result<u8, String> {
     });
     let result = remote::accept(&events, &corpus);
     remote::write_cache(dir, &result)?;
+    let authors = result
+        .accepted
+        .iter()
+        .map(|a| &a.author)
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
     println!(
-        "{} events; {} entries accepted from {} authors",
+        "{} events; {} entries accepted from {authors} {}",
         events.len(),
         result.accepted.len(),
-        result
-            .accepted
-            .iter()
-            .map(|a| &a.author)
-            .collect::<std::collections::BTreeSet<_>>()
-            .len()
+        if authors == 1 { "author" } else { "authors" }
     );
     for accepted in &result.accepted {
         let status = Entry::parse(&accepted.version.document)
@@ -501,7 +505,7 @@ authors in the trust file) or --kb-trust all (as candidates).",
 /// A bad usage, key, or relay.
 pub async fn publish_evidence(o: &Options, key: &Path) -> Result<u8, String> {
     let url = relay_url(o)?;
-    let identity = load_key(key)?;
+    let identity = load_key(key, "signing as")?;
     let me = identity.pubkey().to_string();
     let chosen = entries(o)?;
     let ids: Vec<String> = chosen.iter().map(|(e, _)| e.id.clone()).collect();
@@ -550,12 +554,10 @@ pub async fn publish_evidence(o: &Options, key: &Path) -> Result<u8, String> {
                 evidence::write(&path, &report, &artifacts)?;
                 std::fs::write(&path, &report_text).map_err(|e| e.to_string())?;
                 println!(
-                    "{id} v{}: evidence {} published: {} of {} paired tasks favor it, {} oppose it",
+                    "{id} v{}: evidence {} published; {}",
                     entry.version,
                     short(&signed.id),
-                    measured.favoring,
-                    measured.pairs.len(),
-                    measured.opposing
+                    evidence::tally(&measured)
                 );
             }
             Err(error) => {
@@ -564,7 +566,10 @@ pub async fn publish_evidence(o: &Options, key: &Path) -> Result<u8, String> {
             }
         }
     }
-    println!("{published} evidence reports published, {refused} refused");
+    println!(
+        "{} published, {refused} refused",
+        evidence::count(published, "evidence report")
+    );
     Ok(u8::from(refused > 0))
 }
 

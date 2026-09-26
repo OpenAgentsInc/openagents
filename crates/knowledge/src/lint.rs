@@ -149,7 +149,7 @@ pub fn lint(entries: &[Entry], corpus: &Corpus) -> Vec<Problem> {
         if text.contains(crate::write::PLACEHOLDER) {
             say(format!(
                 "it still has template text marked {}; replace it",
-                crate::write::PLACEHOLDER
+                crate::write::PLACEHOLDER.trim_end_matches(':')
             ));
         }
         let length = entry.summary.chars().count();

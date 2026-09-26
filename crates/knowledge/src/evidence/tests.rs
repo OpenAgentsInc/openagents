@@ -90,6 +90,9 @@ fn runs_are_read_from_their_summaries() {
     assert_eq!(task_of("some-task-17"), "some-task");
     assert_eq!(task_of("some-task"), "some-task");
     assert_eq!(task_of("reference"), "reference");
+    assert_eq!(count(1, "entry"), "1 entry");
+    assert_eq!(count(2, "entry"), "2 entries");
+    assert_eq!(count(0, "run"), "0 runs");
 }
 
 #[test]
@@ -167,7 +170,7 @@ fn the_report_has_the_nip_eval_shape() {
         std::fs::read_dir(dir.join("artifacts")).unwrap().count(),
         artifacts.len()
     );
-    assert!(line(&m, &digest).contains("2 of 2 paired tasks favor it, 0 oppose it (pass)"));
+    assert!(line(&m, &digest).contains("2 paired tasks: 2 for it, 0 against it (pass)"));
     assert!(
         recorded(&dir.join("absent.json"))
             .unwrap_err()

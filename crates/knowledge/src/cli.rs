@@ -480,14 +480,12 @@ fn measure(o: &Options) -> Result<u8, String> {
         let report_path = evidence::report_path(&dir, &entry.id, entry.version);
         let text = evidence::write(&report_path, &report, &artifacts)?;
         println!(
-            "{} v{} [{}]: {} runs with it; {} paired tasks, {} favor, {} oppose: {}{}",
+            "{} v{} [{}]: {} with it; {}: {}{}",
             entry.id,
             entry.version,
             entry.status,
-            measured.runs_with,
-            measured.pairs.len(),
-            measured.favoring,
-            measured.opposing,
+            crate::evidence::count(measured.runs_with, "run"),
+            crate::evidence::tally(&measured),
             verdict_word(measured.verdict),
             if measured.excluded_tasks.is_empty() {
                 String::new()
