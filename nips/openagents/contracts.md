@@ -1,7 +1,7 @@
 # Shared OpenAgents protocol contracts
 
 `draft` `optional` — normative for CAP, PRG, EXT, RUN, CJ, CTX, POL, COORD,
-EVAL, OPT, KB, CTRL, MKT, and LAB v1.
+EVAL, OPT, KB, CTRL, MKT, LAB, SESS, WS, WORK, AUTO, ENV, and LIVE v1.
 
 The uppercase requirement words express conformance requirements. A reader
 MUST validate the complete required contract before any effect. Signatures
@@ -316,7 +316,8 @@ profile defines read ACLs, retention, fanout, and COUNT/search behavior.
 ### Private artifact envelope
 
 Kind `3188` is a regular immutable declaration of one scoped artifact for
-one recipient. CTX, POL, COORD, EVAL, OPT, KB, CTRL, MKT, and LAB use it when
+one recipient. CTX, POL, COORD, EVAL, OPT, KB, CTRL, MKT, LAB, SESS, WS,
+WORK, AUTO, ENV, LIVE, and private EXT records use it when
 a separately signed artifact is needed outside a RUN controller's journal.
 It does not dispatch work. A control or market consumer separately validates
 and admits the operation; receiving an artifact alone grants no effect. The event has
@@ -373,7 +374,8 @@ before public interoperation.
 `schemas/` holds JSON Schema 2020-12 documents for these bodies. The Rust
 validators in `crates/nostr` (`contracts`) implement supported shared shapes;
 this does not imply coverage of every body described by a draft NIP. In
-particular, the new CTRL, MKT, and LAB bodies still need schema fixtures and
-role-specific validators. A schema that requires a vocabulary those validators
+particular, the new CTRL, MKT, LAB, SESS, WS, WORK, AUTO, ENV, and LIVE
+bodies and the POL preference/EXT import and component-set additions still
+need schema fixtures and role-specific validators. A schema that requires a vocabulary those validators
 do not implement is refused before execution. The schemas do not grant
 authority and they are not fetched from the network while a document is checked.

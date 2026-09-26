@@ -319,6 +319,15 @@ must not represent queued controls as applied or increase local authority.
 
 ## Handoff and lifecycle
 
+For a richer workbench, [WS](NIP-WS.md) defines reusable finite projection
+cuts, pages, deltas, and command visibility. Its views preserve the independent
+CTRL observation checks; they do not replace this profile's bounded task-read
+schema or grant directory-wide access. [SESS](NIP-SESS.md) defines engine queue,
+steering, and interruption semantics. A CTRL frame correction does not prove
+an engine consumed it, and a SESS operation still needs the appropriate
+independent session authority. Do not silently widen an existing control grant
+when composing these profiles.
+
 The useful lifecycle is invitation → client proof → owner admission → active
 grant → bounded reads/commands → expiry or revocation. Task closure does not
 erase its history, but closes new steering/cancellation admission. History

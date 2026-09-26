@@ -375,6 +375,13 @@ capabilities, programs, context, policy, coordination, and evaluation.
 `nips/official/` and `nips/block/` retain pinned upstream specifications;
 [nips/manifest.json](nips/manifest.json) records their revisions.
 
+The [teardown integration plan](docs/coder/design/teardown-nostr-integration.md)
+maps all 81 archived teardown documents into Coder. Six new draft profiles
+cover sessions, workspaces, tracked work, automation, environments, and live
+media, with governed preferences and component updates in existing contracts.
+The [coverage ledger](docs/protocol/2026-09-26-teardown-coverage.md) links every
+source and separates specifications from implementation work.
+
 The implemented Coder relay path carries signed, NIP-44-encrypted NIP-CJ
 jobs between the terminal and a worker. NIP-42 authenticates relay
 connections. The relay transports ephemeral job events; the worker holds

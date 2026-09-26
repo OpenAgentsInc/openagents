@@ -81,6 +81,111 @@ or changed applicable scope removes future activation. A session hook cannot
 persist into another session by copying a context summary. Conditional style
 guidance does not silently become an execution permission.
 
+## Learned preferences and governed activation
+
+Explicit instructions, learned preferences, retrieved evidence, and client
+presentation settings are different records. CAP `30181` ranks admissible
+bindings; Block AE stores mutable private memory. Neither supplies the
+following learning, review, and activation lifecycle. KB supplies shareable
+knowledge, not permission to mine private history or change a user's policy.
+
+A preference candidate has `v: "openagents.preference-candidate.v1"`,
+`requires: []`, optional inert `meta`, and these fields:
+
+| Field | Contract |
+| --- | --- |
+| `preference` | Common ID for the proposed preference lineage. |
+| `owner`, `proposer` | Pubkeys; the proposer must be attributable, but does not gain the owner's authority. |
+| `scope` | One of `{kind: "explicit", tasks, resources, operations}` with explicit permitted IDs, or `{kind: "policy", policy}` with an ArtifactRef to an independently admitted, supported scope selector. Empty explicit lists select none. Policy mode has no explicit lists and cannot infer a wildcard from their absence. |
+| `body` | ArtifactRef containing the proposed guidance. |
+| `sources`, `counterevidence` | Lists of shared evidence descriptor ArtifactRefs. Private source scopes and retention restrictions carry into derivatives. |
+| `derivation` | Exact producing DefinitionRef and execution receipt ArtifactRef, as `{operation, receipt}`. |
+| `assessment` | ArtifactRef to an attributed confidence/quality assessment, or null. A score requires its meaning and method; it is not evidence of calibrated correctness. |
+| `data_use` | ArtifactRef to the owner's independently admitted source, recipient, purpose, and retention authorization. |
+| `previous` | Prior candidate ArtifactRef or null, with the same owner and preference lineage. A correction preserves the earlier record. |
+| `valid_until` | Unix-second expiry; not a guarantee that the preference remains suitable until then. |
+
+The candidate's authenticated signer is its proposer. Either scope variant
+is intersected with the owner's independently admitted learning and current
+application grants. Unsupported selector semantics refuse. A candidate's
+empty explicit scope MUST NOT be translated into the instruction resolver's
+empty-list convention, which means all resources or operations within its
+parent grant. Emit no applicable instruction for an empty selection; for a
+nonempty selection, retain the exact resolved intersection and its provenance.
+
+The owner or its separately admitted policy controller exposes CAP operations
+over CJ to propose a candidate, decide activation, inspect a generation, and
+record application. Local use follows the same admission rules. Learning has
+its own bounded job and recipient policy. Permission to read a conversation
+for the current task does not authorize preference mining, training, public
+KB publication, or sale of its traces. User correction and Git history are
+possible evidence, not implicit opt-in or universal instructions.
+
+An activation decision has `v: "openagents.preference-decision.v1"`, the
+common fields, `request` (common ID), `candidate` (ArtifactRef), `controller`
+(pubkey), `expected_generation` (integer), `action` (`activate`, `reject`,
+`suspend`, `supersede`, or `withdraw`), `replaces` (active candidate ArtifactRef
+or null), `policy` (ArtifactRef), `evidence` (ArtifactRefs), and `expires_at`.
+The trusted controller validates the exact signed issuer, candidate owner,
+source rights, current generation, scope, and policy. A proposer cannot
+self-activate unless the owner has explicitly admitted a bounded automatic
+activation policy for that exact scope. The decision signer must equal the
+currently admitted controller; untrusted requests to that controller are
+proposals, not activation decisions. Automatic activation cannot change the
+policy that admitted it.
+
+The controller atomically consumes `(owner, request)`, binding the whole input
+digest, and advances its durable owner-scoped preference generation by one on
+acceptance. Generations and predecessor results cannot cross owners.
+An exact retry returns the retained original result; conflicting input refuses.
+Racing decisions with the same expected generation do not both apply. An
+accepted result has `v: "openagents.preference-result.v1"`, common fields,
+`decision` (ArtifactRef), `generation`, `previous` (previous accepted result
+ArtifactRef or null at generation one), `active` (ordered candidate
+ArtifactRefs), and `record` (ArtifactRef to the retained RUN record). The
+result signer is that owner's currently admitted controller. The RUN record
+binds the decision and its admitted transition, not the future result artifact,
+so the references are acyclic. Original signed provenance is retained. Refusals use the CJ
+typed refusal contract and create no accepted generation.
+
+`activate` adds an inactive candidate only if its lineage has no active
+candidate. At most one candidate per owner/preference lineage is active.
+`supersede` requires `replaces` to be currently active in that same lineage
+and atomically replaces it with its successor. `suspend` and `withdraw` require
+an active candidate and remove it; `reject` records a decision about an
+inactive candidate. Other actions require `replaces: null`. Suspension
+permits a later newly admitted activation; withdrawal requires a new candidate
+before reuse. Expiry removes eligibility even if no new generation is yet
+published. The host must recheck validity at application, not rely on a cached
+head. Unsupported scope-policy semantics, unresolved sources, or conflicting
+authority refuse activation.
+
+An application record has `v: "openagents.preference-application.v1"`, common
+fields, `task_frame`, `generation` (accepted result ArtifactRef), `candidate`,
+`instruction_set`, `context` (ArtifactRefs), and `disposition` (`applied`,
+`inapplicable`, `conflicting`, `expired`, or `unavailable`). Applicable guidance
+enters the instruction resolver as optional, with authenticated provenance;
+it cannot override current user corrections or mandatory instructions.
+Record which source and generation influenced a choice so a client can explain
+it. Later outcomes may support new candidates, not silently strengthen an old
+candidate's authority or overwrite its evidence.
+
+Learning and preferences MUST NOT grant tools, widen resource or recipient
+scope, spend funds, publish, change acceptance criteria, weaken enforcement,
+or approve an action. A separately authorized owner may change policy through
+its normal path; a high-confidence learned rule cannot do so. Instruction
+activation, package installation, and preference activation remain distinct.
+Revocation stops future application and invalidates affected pending contexts;
+it does not erase already supplied context or remote copies. Deletion records
+retention limits and surviving provenance rather than claiming global erasure.
+
+Conformance includes forged owners, self-activation, private-history opt-in,
+concurrent generation updates, lost acknowledgments, source withdrawal,
+expired candidates, changed resources, user corrections overriding learned
+guidance, and attempts to promote a preference into execution authority.
+These artifacts are specifications; the existing mutable-memory and knowledge
+implementations do not by themselves implement this lifecycle.
+
 ## Action review and approvals
 
 An action artifact has `v: "openagents.action.v1"`, `task_frame`, `snapshot`,

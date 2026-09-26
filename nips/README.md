@@ -25,6 +25,15 @@ primitives they reuse. The [implementation plan](../docs/protocol/implementation
 tracks remaining work across all lanes. A draft revision changes the target;
 it does not make an existing reader conformant.
 
+The [teardown coverage ledger](../docs/protocol/2026-09-26-teardown-coverage.md)
+maps all 81 archived research documents to this set. Six further drafts cover
+engine sessions (SESS), workspace resources and projections (WS), tracked work
+(WORK), bounded automation (AUTO), environment leases (ENV), and live media
+and device interaction (LIVE). POL adds governed learned preferences; EXT adds
+foreign imports and compatible host component sets. These additions reuse
+existing event kinds. The [Coder integration plan](../docs/coder/design/teardown-nostr-integration.md)
+separates protocol implementation from client, runtime, and evaluation work.
+
 `nips/manifest.json` records the exact upstream commit for each synced lane, with
 a `tree_url` link to browse that commit. Use those links to see the
 upstream history for any file.

@@ -48,16 +48,38 @@ Read the spec before the code. The files you need most often:
   and `coder-worker`.
 - `nips/openagents/NIP-CAP.md` — capability manifests and presence.
 - `nips/openagents/NIP-PRG.md` — programs.
-- `nips/openagents/NIP-EXT.md` — extension releases, discovery, and revocation.
+- `nips/openagents/NIP-EXT.md` — extension releases, discovery, revocation,
+  foreign-format import, and compatible host component-set assessments.
 - `nips/openagents/NIP-RUN.md` — encrypted durable journals and recovery.
 - `nips/openagents/NIP-CTX.md` — task frames, evidence views, and expansion.
-- `nips/openagents/NIP-POL.md` — instructions, approvals, disclosure, and routing records.
+- `nips/openagents/NIP-POL.md` — instructions, approvals, disclosure, routing
+  records, and governed activation of learned private preferences.
 - `nips/openagents/NIP-COORD.md` — task claims, fencing, and background findings.
 - `nips/openagents/NIP-EVAL.md` — attributable workload evaluation and promotion evidence.
 - `nips/openagents/NIP-OPT.md` — semantic AI contracts, immutable implementations,
   bounded studies, actual candidate execution, and optimization evidence.
 - `nips/openagents/NIP-KB.md` — shared knowledge entries, heads, withdrawals,
   and evidence; `crates/nostr` (`kb`) checks them.
+- `nips/openagents/NIP-CTRL.md` — task-scoped client pairing, observation,
+  steering, and cancellation; no approval or wallet authority from pairing.
+- `nips/openagents/NIP-MKT.md` — negotiated offerings, bilateral orders,
+  private records, and separately admitted fixed-price Lightning settlement.
+- `nips/openagents/NIP-LAB.md` — bounded agent labor, exact execution linkage,
+  deliverables, independent checks, rework, disputes, acceptance, and rights.
+- `nips/openagents/NIP-SESS.md` — engine sessions, actual adapter support,
+  queues, turn control, pending interactions, and retained native history.
+- `nips/openagents/NIP-WS.md` — workspace/resource identity, conditional edits,
+  checkpoints, and bounded projection snapshots, deltas, and cuts.
+- `nips/openagents/NIP-WORK.md` — tracked objectives, planning relationships,
+  accountable ownership, delegation, exact revisions, and work disposition.
+- `nips/openagents/NIP-AUTO.md` — durable schedules, source watches, bounded
+  goal continuations, occurrence identity, and restart-safe accounting.
+- `nips/openagents/NIP-ENV.md` — execution environment leases, actual
+  materialization, attachment, cleanup, and uncertain resource accounting.
+- `nips/openagents/NIP-LIVE.md` — admitted media/capture, participants and
+  recipients, input and speaking floors, evidence, and scoped device input.
+- `nips/openagents/NIP-MV.md` — Verse world presence, entity state, and
+  gestures; independent of the shared agent-artifact contracts.
 - `docs/optimization/README.md` — DSPy/GEPA concepts, Gym evaluation, host
   boundaries, and a consolidated unfiled integration backlog.
 - `nips/openagents/contracts.md` — pinned identities, schemas, locks, evidence,
@@ -69,6 +91,26 @@ Read the spec before the code. The files you need most often:
   infrastructure, Coder's domain boundary, and remaining non-code contracts.
 - `docs/protocol/block-nips.md` — what the relay does with each Block NIP,
   including what it deliberately doesn't advertise.
+
+The OpenAgents lane contains 21 NIPs plus the shared contracts. SESS, WS,
+WORK, AUTO, ENV, and LIVE are **Designed** drafts, as are POL's learned
+preference lifecycle and EXT's import/component-set assessment additions.
+They allocate no new event kinds: private artifacts use `3188`, remote host
+operations use admitted CAP/CJ profiles, and effects leave RUN evidence.
+Keeping an encrypted envelope does not implement the contract inside it.
+MKT/LAB and CTRL also remain designed host roles; existing event helpers do
+not establish a running labor service, settlement adapter, or client-control
+system. Check the [glossary](../../../docs/glossary.md#nostr-and-shared-protocols)
+for the narrower implemented and partial roles.
+
+Read the [teardown integration plan](../../../docs/coder/design/teardown-nostr-integration.md)
+and [file-by-file archive coverage](../../../docs/protocol/2026-09-26-teardown-coverage.md)
+when carrying historical ideas forward. The archive supplies design evidence;
+its old TypeScript, hosting, and product decisions are not current instructions.
+A tracked work item, session, run, environment, view, and commercial order have
+separate identities. Assignment does not dispatch; completion does not accept
+labor; acceptance does not pay; a live view does not grant mutation. Hosts
+must enforce these boundaries before advertising the corresponding role.
 
 ## The protocol in one page (NIP-01)
 
@@ -337,4 +379,6 @@ When `coder -p` reports `worker_absent`:
   present, an unsigned answer is not an answer, and a feature that isn't
   configured isn't advertised in NIP-11.
 - A NIP change goes spec first (`nips/openagents/` or a synced upstream
-  commit), then `crates/nostr` with fixtures, then the relay.
+  commit), then validators and fixtures, then the applicable host, client, or
+  relay role. A client-only or encrypted host contract does not become relay
+  behavior merely because its envelope passes validation.

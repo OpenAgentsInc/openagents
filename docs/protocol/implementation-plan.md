@@ -28,11 +28,11 @@ examples.
 | Shared | Strict bounded parsing, references, schema closure, locks, effects, observations, receipts, and encrypted artifacts. | Malformed/unknown input refuses; identity, privacy, and scope hold under every query and execution path. |
 | CAP | Definitions, host bindings, grants, presence, probes, and enforcement plans. | Unsupported bounds refuse; discovery stays inert; optimizer/evaluator/runtime roles are distinct. |
 | PRG | Typed dataflow, seven step kinds, fan-out, retries, AI implementation dispatch, and Wasm ABI. | Complete graph checks precede effects; nested work shares reservations; protected transitions survive candidate search. |
-| EXT | Component packages, inert staging, atomic locks, publication, revocation, and namespace transfer. | Full functional closure is pinned; private examples cannot escape through public releases; active runs retain pins. |
+| EXT | Component packages, inert staging, atomic locks, foreign imports, host component-set assessments, publication, revocation, and namespace transfer. | Full functional closure is pinned; unsupported import semantics refuse; partial upgrades retain recovery obligations; active runs retain pins. |
 | RUN | Authoritative journal, dispatch intent, fencing, reconciliation, and retention. | Crash/late-result fixtures retain unknown effects and spending; recovery preserves study and confirmation state. |
 | CJ | Conversation, typed-decision, and execution families with exact signer/recipient/request binding. | Family isolation, sequence checks, durable idempotency, cancellation, replay, and candidate attribution. |
 | CTX | Task frames, scoped snapshots, derivatives, context manifests, hierarchy, and expansion. | Source completeness and mandatory evidence survive transformation; optimizer participants receive only admitted data. |
-| POL | Instruction precedence, disclosure, approvals, routes, observed usage, and adoption policy. | Model scores cannot override authority; reflection/training/export/deployment grants are distinct. |
+| POL | Instruction precedence, governed learned preferences, disclosure, approvals, routes, observed usage, and adoption policy. | Learning and activation require separate admission; scope cannot widen during translation; reflection/training/export/deployment grants remain distinct. |
 | COORD | Claims, fences, background plans, findings, trial identity, and shared accounting. | Retransmissions deduplicate; independent trials do not; confirmation access serializes across workers. |
 | EVAL | Workload suites, exact attempts, comparisons, uncertainty, public/private reports, and scoped admission. | Protected graders/labels, explicit missing outcomes, independent confirmation, and whole-task claims. |
 | OPT | Signatures, implementations, study/data/search plans, candidates, materialization, trials, cost, and results. | The actual loaded candidate is measured; frozen meaning and data rights survive search; adoption remains separate. |
@@ -40,6 +40,12 @@ examples.
 | CTRL | Task-scoped device grants, pairing, revocation, command admission, and bounded history views. | Independent rights, stale frames, replay, lost acknowledgments, handoff, and redacted catch-up cannot leak evidence or duplicate effects. |
 | MKT | Offerings, private negotiation, mutually accepted orders, cancellation, and settlement evidence. | Exact terms survive restart and relay replacement; wallet authority stays separate; ambiguous payment remains unknown and cannot trigger a duplicate charge. |
 | LAB | Execution linkage, deliverable identity, verification, acceptance, rework, disputes, and data rights. | Two independent operators complete a no-spend job, then separately verified payment; a passing test alone neither accepts a contract nor settles an invoice. |
+| SESS | Engine feature matrix, persistent sessions, exact configuration, durable input queue, interactions, terminal causes, and native history/imports. | Native/emulated/unsupported remain visible; queue promotion waits for quiescence; imported history grants no execution; reconnect never repeats an unknown effect. |
+| WS | Resource/document versions, conditional mutations, worktrees/checkpoints, finite projection cuts/pages/deltas, and command visibility. | Stale edits conflict; cross-store failures retain reconciliation; every client can distinguish stale, partial, inaccessible, and current views. |
+| WORK | Native tracked work, planning graph, admitted revisions, delegation, evidence, disposition, imports, and attention. | Two clients agree on exact accepted revisions; reassignment cannot duplicate execution; issue close, verification, commercial acceptance, and payment stay distinct. |
+| AUTO | Finite plans, schedule slots, verified source observations, checker continuation, counters, controls, and aggregate accounting. | Sleep, duplicates, cancellation, missing checkers, and uncertain effects produce bounded retained outcomes without automatic backlog bursts. |
+| ENV | Allocation/adoption, exact materialization, participant closure, lease admission, required CJ binding, expiry, and cleanup. | No dispatch before attachment admission; unknown create/destroy outcomes retain resource and spending obligations; changed recipients require new admission. |
+| LIVE | Participant/consent admission, transport epochs, input/speaking floors, capture anchors, and observation-bound device input. | Wrong-room audio, stale screenshots, revoked participants, lost stop acknowledgments, and cross-context disclosure refuse or remain explicitly unknown. |
 | MV | World definitions, entity state, ephemeral poses/gestures, and scoped chat. | Preserve the standalone world's fixtures; this role does not imply physical-control or coding-task authority. |
 
 ## Delivery order
@@ -56,6 +62,14 @@ initial implementation can proceed alongside coding-quality work. Begin with
 local durable state and a no-spend order/control flow; prove privacy and
 recovery over relays before payment or cross-device conformance claims.
 No new NIP is implemented merely by adding its document to the index.
+
+The subsequent [81-document teardown review](2026-09-26-teardown-coverage.md)
+adds SESS/WS/WORK/AUTO/ENV/LIVE and POL/EXT lifecycle contracts. Follow the
+[Coder implementation sequence](../coder/design/teardown-nostr-integration.md#implementation-sequence-and-completion-evidence):
+strict schemas and local durable admission, then two-client session/workspace
+proof, tracked work and labor, bounded automation and placement, and media and
+measured contribution reuse. Agent labor proceeds alongside the first local
+contracts; it does not wait for every client or media feature.
 
 The [proposed issues](../optimization/proposed-issues.md) separate this work
 into independently reviewable acceptance slices. Broader strategy/composition

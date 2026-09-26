@@ -3,8 +3,10 @@
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 
 This NIP distributes immutable component packages with signed provenance.
-It does not grant execution, synchronize private machine inventories, or
-require the catalog to be online for every local invocation.
+It does not grant execution or require the catalog to be online for every
+local invocation. Private component-set records below describe exact host
+configurations; public package discovery does not disclose or synchronize a
+machine's private inventory.
 
 Packages can specialize any supported agent domain. A domain profile is an
 assembly of schemas, sources, operations, programs, guidance, and
@@ -191,6 +193,91 @@ verified, still-eligible lock. Uninstall first disables new activation and
 removes the installation reference, then cleans unreferenced bytes. Cleanup
 failure creates a retryable tombstone and MUST NOT reactivate the package.
 Active runs and user retention/deletion policy govern retained evidence.
+
+## Foreign formats and compatible host components
+
+MCP manifests, MCPB archives, skills, and other package formats may be inputs
+to a separately admitted importer. They are not alternative grants or proof
+that this host can preserve every foreign behavior. Import must retain exact
+source bytes and the original publisher's attributable provenance where
+available; an importer cannot sign as that publisher or invent missing rights.
+
+An import receipt has `v: "openagents.extension-import.v1"`, `requires: []`,
+optional inert `meta`, `source` (ArtifactRef), `format` (supported versioned
+format ID), `importer` (DefinitionRef), `output` (package manifest ArtifactRef
+or null), `losses` (ArtifactRef), `outcome` (common outcome), and `receipt`
+(execution receipt ArtifactRef). Losses lists preserved, omitted, and
+unsupported semantics under the importer's pinned schema. Required semantics
+that cannot be preserved refuse. An imported approval flag cannot become a
+local grant; an unknown hook cannot be silently dropped from a package claiming
+equivalent behavior. Building or executing collection code requires its own
+isolated operation; inert installation never executes it.
+
+`completed` requires a nonnull, validated package manifest and retained losses
+classified under the pinned importer schema, with no unsupported required
+semantics. A refused, failed, cancelled, or unknown import cannot authorize
+activation of any partial output. The importer's signature and execution
+receipt attribute the conversion; they do not replace original provenance.
+
+The same provenance principles apply to a compatible set of host components,
+but an extension package cannot install a privileged native executable.
+A host component set is an inert inventory with
+`v: "openagents.component-set.v1"`, common fields, `set` (common ID), `issuer`
+(pubkey), `components`, and `policy`
+(ArtifactRef). Each component has:
+
+- `slot`: a unique slug; at most 256 components per set.
+- `role`: `client`, `engine`, `adapter`, `helper`, `image`, or `extension`.
+- `artifact`: exact executable/image/package ArtifactRef, never a moving URL.
+- `release`: original signed declaration EventRef or null, with null allowed
+  only by an explicit local-build provenance policy.
+- `provenance`: ArtifactRef identifying source, build inputs, toolchain,
+  platform-signing evidence, and explicit unknowns.
+- `interface`: exact protocol/schema-bundle ArtifactRef; a version label alone
+  cannot establish the handlers actually supported.
+- `dependencies`: exact component slots in this set; cycles and absent slots
+  refuse. A component's complete executable closure must be accounted for.
+- `platform`: ArtifactRef to a host-supported OS/architecture/ABI contract.
+
+The full set is pinned by its ArtifactRef. The host independently trusts its
+issuer and validates component provenance, current revocations, compatibility,
+platform requirements, and actual installation authority. A valid package
+signature is neither OS notarization nor evidence of cross-version support.
+Compatibility reports name exact sets and tested transitions; untested matrix
+cells remain unknown. Freeze the component set before evaluating it. A separate
+assessment has `v: "openagents.component-set-assessment.v1"`, common fields,
+`set` (ArtifactRef), `issuer` (assessor pubkey), `reports` (EVAL report
+ArtifactRefs), `policy` (ArtifactRef), and `outcome` (`eligible`, `ineligible`,
+or `unknown`). Each report binds the already frozen set and any tested
+predecessor set. The host validates the assessor, exact subject identities,
+and policy before accepting an eligible assessment; assessment alone performs
+no installation. Keeping reports outside the inventory prevents a digest
+cycle between the set and its own evaluation.
+
+A separately authorized host updater records before/after set references,
+expected installed generation, admitted actions, and outcomes in RUN. It stages
+verified bytes inertly, stops new admissions where required, bounds draining,
+retains unresolved work, and fences old dispatchers before replacement. Startup
+and health observations are separate from successful download or installation.
+A failed health check retains a failed/unknown outcome and may select only a
+previously verified, still-admissible rollback set under explicit policy.
+Rollback must account for state migrations; replacing a binary cannot prove
+that its previous data format can be restored.
+
+Concurrent installers compare the installed generation atomically. A mutable
+channel/listing is discovery only. It cannot roll back locally remembered
+revocations, bypass minimum supported versions, or change an active run's lock.
+Daemon restart and client reconnection use [SESS](NIP-SESS.md); environment
+replacement uses [ENV](NIP-ENV.md). Native OS permissions, signing, packaging,
+drain/kill enforcement, and retained-slot rollback remain host implementation.
+
+Private component inventories and import receipts may use `3188` under owner
+disclosure policy. Public distribution uses existing EXT releases and never
+publishes private installed inventories or credentials by default. This profile
+adds no event kinds and does not define a universal native installer.
+Conformance must cover unsupported foreign semantics, malicious archives,
+source replacement, forged provenance, partial upgrades, lost drain responses,
+stale installers, incompatible state migrations, and revoked rollback targets.
 
 ## Revocation and freshness
 

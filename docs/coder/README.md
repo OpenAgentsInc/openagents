@@ -12,6 +12,11 @@ and release tests. The [networked Coder plan](design/networked-coder-plan.md)
 connects that product to measured coding quality, reusable knowledge, and the
 high-priority [agent labor track](../agents/market-infrastructure.md).
 
+The [teardown integration plan](design/teardown-nostr-integration.md) brings
+81 archived research documents into that direction. It links the complete
+source ledger, six new draft Nostr profiles, and ordered implementation gates
+for sessions, workspaces, tracked work, automation, environments, and live media.
+
 | Directory | Contents |
 | --- | --- |
 | [Guides](guides/) | Configuration, headless use, delegation, project supervision, and artifact verification. |

@@ -93,6 +93,14 @@ kinds; private records reuse `3188` and execution uses the existing CJ family.
 
 ## What remains implementation work or a later profile
 
+Follow-up: the [teardown review](2026-09-26-teardown-coverage.md) now specifies
+finite scheduled/source-triggered continuation in AUTO and image/time anchors
+in LIVE, together with SESS, WS, WORK, and ENV. The paragraph below records
+the gaps at this earlier review; those draft additions resolve part of its
+specification work, not their implementation. Calendar/DST schedules, general
+PRG suspension, threshold approval, and arbitrary domain anchors remain later
+profiles. See the current [implementation plan](implementation-plan.md).
+
 These drafts do not complete the [general architecture backlog](../agents/roadmap.md).
 First-class suspended PRG continuations, external-event/scheduled triggers,
 organizational threshold approval, multimodal anchors, additional domain

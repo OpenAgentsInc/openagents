@@ -17,6 +17,15 @@ claims of a deployed market or synchronized Coder clients. The
 explains the gaps and reuse across all three NIP lanes. Episodes 213–215,
 266–267, and 275–281 are design inputs, not wire contracts.
 
+The [81-document teardown review](../../docs/protocol/2026-09-26-teardown-coverage.md)
+adds six draft profiles: persistent engine sessions (SESS), workspace resources
+and synchronized views (WS), tracked work (WORK), bounded automation (AUTO),
+environment leases (ENV), and live media/device interaction (LIVE). It also
+extends POL's learned-preference lifecycle and EXT's imports and host component
+sets. These reuse private artifacts and existing execution kinds. The
+[Coder integration plan](../../docs/coder/design/teardown-nostr-integration.md)
+defines implementation order and the evidence required before shipping them.
+
 ## Why this exists
 
 Agent work should be understandable and controllable. A user should be able
@@ -128,6 +137,14 @@ and providers through accepted commercial terms and exact deliverables.
 Neither a paired client nor an accepted order bypasses POL, host admission,
 independent verification, or separately authorized wallet actions.
 
+SESS supplies the persistent engine boundary shared by terminal, desktop,
+web, and mobile clients. WS gives those clients exact resources and bounded,
+repairable views. WORK tracks objectives independently of individual runs;
+AUTO admits finite occurrences against them. ENV binds actual runtimes and
+resource lifetimes, while LIVE scopes media and device operations. These
+profiles compose existing authority and execution contracts rather than
+introducing another generic job or payment family.
+
 For example, an evidence-selection operation may compare a typed relevance
 model with a joint retrieval strategy. Both must preserve required context,
 source attribution, and disclosure constraints. Evaluate complete task quality
@@ -144,11 +161,11 @@ conformance requires validation and enforcement for each advertised role.
 | [Shared contracts](contracts.md) | Encoding, references, schemas, locks, effects, evidence, outcomes, and private artifact envelopes. | Private artifact `3188`. |
 | [NIP-CAP](NIP-CAP.md) | Execution descriptions, host bindings, grants, presence, and preferences. | `30180`, `30181`. |
 | [NIP-PRG](NIP-PRG.md) | Typed workflows, seven step kinds, bounded composition, and plugin packet ABI. | `30182`, `30183`. |
-| [NIP-EXT](NIP-EXT.md) | Component packages, immutable releases, discovery, revocation, and namespace transfer. | `3184`–`3186`, `30184`, `30185`. |
+| [NIP-EXT](NIP-EXT.md) | Component packages, immutable releases, imports, host component sets, discovery, revocation, and namespace transfer. | `3184`–`3186`, `30184`, `30185`; private records on shared `3188`. |
 | [NIP-RUN](NIP-RUN.md) | Encrypted durable journals, fencing, evidence, and recovery. | `3187`, `30186`. |
 | [NIP-CJ](NIP-CJ.md) | Conversation, typed-decision, and recoverable execution jobs. | `25900`/`26900`/`27000`, `25910`/`26910`/`27010`, `25920`/`26920`/`27020`. |
 | [NIP-CTX](NIP-CTX.md) | Task frames, snapshots, context views, representations, and expansion. | Shared `3188`; CJ/RUN references. |
-| [NIP-POL](NIP-POL.md) | Instructions, approvals, disclosure, routing, and adoption authority. | Shared `3188`; CJ/RUN references. |
+| [NIP-POL](NIP-POL.md) | Instructions, learned preferences, approvals, disclosure, routing, and adoption authority. | Shared `3188`; CJ/RUN references. |
 | [NIP-COORD](NIP-COORD.md) | Tasks, fenced claims, shared budgets, background findings, and trial coordination. | Shared `3188`; CJ/RUN references. |
 | [NIP-EVAL](NIP-EVAL.md) | Workload evaluation, comparisons, and scoped promotion evidence. | Shared `3188`; public declaration `3189`. |
 | [NIP-OPT](NIP-OPT.md) | AI signatures, implementations, studies, data partitions, candidates, materialization, trials, and results. | Shared `3188`; EXT/EVAL declarations and CJ/RUN execution. |
@@ -156,6 +173,12 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-CTRL](NIP-CTRL.md) | Client pairing, task-scoped control rights, revocation, acknowledged commands, and bounded catch-up. | Shared `3188`; registered CAP operations over CJ execution. |
 | [NIP-MKT](NIP-MKT.md) | Immutable offerings, private negotiation, accepted orders, cancellation, and attributable Bitcoin settlement. | `3192`, `30192`; private records on shared `3188`. |
 | [NIP-LAB](NIP-LAB.md) | Agent-labor terms, execution linkage, deliverables, verification, acceptance, rework, disputes, and rights. | Shared `3188`; MKT agreements and CJ/RUN execution. |
+| [NIP-SESS](NIP-SESS.md) | Engine capability, persistent sessions, durable input queues, steering, interactions, and native history/imports. | Shared `3188`; CAP/CJ operations and RUN records. |
+| [NIP-WS](NIP-WS.md) | Workspace resources, exact document versions, conditional changes, worktrees, checkpoints, and bounded projections. | Shared `3188`; CAP/CJ operations and RUN records. |
+| [NIP-WORK](NIP-WORK.md) | Tracked objectives, planning relations, assignments, revision admission, disposition, source imports, and attention. | Shared `3188`; CAP/CJ operations and WS projections. |
+| [NIP-AUTO](NIP-AUTO.md) | Finite schedules, source triggers, checked continuation, durable occurrence admission, and recovery. | Shared `3188`; CAP/CJ operations and RUN/COORD admission. |
+| [NIP-ENV](NIP-ENV.md) | Environment allocation, exact materialization, bounded leases, participant admission, attachment, and cleanup. | Shared `3188`; CAP/CJ operations and RUN records. |
+| [NIP-LIVE](NIP-LIVE.md) | Media participants and consent, input/speaking floors, capture anchors, and observation-bound device input. | Shared `3188`; CAP/CJ operations and admitted media transports. |
 | [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Standalone: it depends on no other contract here. | `23300`, `23301`, `33300`, `33301`. |
 
 Discovery heads are mutable. Exact signed records and artifact digests pin

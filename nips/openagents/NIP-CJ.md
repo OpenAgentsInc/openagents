@@ -162,6 +162,14 @@ A LAB worker validates and durably binds the separately authenticated order
 linkage before dispatch. The marker grants no authority and does not add a
 new job family, executable prompt convention, or implicit order field.
 
+[NIP-ENV](NIP-ENV.md) similarly defines required feature
+`openagents.environment-binding.v1`: an exact execution attachment must be
+reserved, admitted by every required participant, and activated before
+dispatch. A generic CJ worker refuses this feature if unsupported. The
+attachment references an already signed execute request; the request need
+not refer to its future attachment. LAB and ENV checks are independent, and
+an execution requiring both must satisfy both before any effects.
+
 | Field | Meaning |
 | --- | --- |
 | `request` | Random logical request ID stable across retries. |

@@ -1,0 +1,411 @@
+{
+  "source_commit": "8f84d05896ef14edee491621bf977ee5315cc8ed",
+  "deleted_by": "dabc08102fddd72118d710d644a69c5c4eab95a2",
+  "files": [
+    {
+      "path": "docs/teardowns/2026-07-10-chatgpt-desktop-app-teardown.md",
+      "bytes": 49619,
+      "sha256": "ec829ece4391263e3a51325fd383e4bf9abb0ac93e9e3efb9f211868878abf45"
+    },
+    {
+      "path": "docs/teardowns/2026-07-10-claude-code-teardown.md",
+      "bytes": 75132,
+      "sha256": "ff8e3aa2b8bcfb1e20bc11b2386fc49939cf92f719bc56ee7bdb03b6587a8f74"
+    },
+    {
+      "path": "docs/teardowns/2026-07-10-claude-desktop-app-teardown.md",
+      "bytes": 26082,
+      "sha256": "6fe3ad21144a6964bc496b1d0ce332753f8551d166ca89a09884fbf0da4474a8"
+    },
+    {
+      "path": "docs/teardowns/2026-07-10-claude-subagents-rendering-analysis.md",
+      "bytes": 45435,
+      "sha256": "d2d182fa0cc24f9c52f5697bec832d3b48255a9d157d1151af148811b4873c1b"
+    },
+    {
+      "path": "docs/teardowns/2026-07-10-codex-agent-runtime-teardown.md",
+      "bytes": 97863,
+      "sha256": "92c8ce6fa187fae0647c0b03759f81ef05d733fccf5184be0ab06df141a88550"
+    },
+    {
+      "path": "docs/teardowns/2026-07-10-codex-subagents-rendering-analysis.md",
+      "bytes": 25947,
+      "sha256": "1deaf156af0216b9b409a09f869b26b8fd8b2e8ed3856bdd0c111d987282f6b2"
+    },
+    {
+      "path": "docs/teardowns/2026-07-10-openagents-product-adaptation-analysis.md",
+      "bytes": 164667,
+      "sha256": "d0061aa08de5e426536351336251769c1a7fbe44b37a9dc2faecc5827727d2f9"
+    },
+    {
+      "path": "docs/teardowns/2026-07-10-openagents-subagents-design.md",
+      "bytes": 7779,
+      "sha256": "42c99ff35f02d6e55ee1156fcd4eee401a70d1f65df213cb45e1c9c01c4a56c2"
+    },
+    {
+      "path": "docs/teardowns/2026-07-10-opencode-desktop-app-teardown.md",
+      "bytes": 35351,
+      "sha256": "bc31783854760af7478d8e1c6087aa4bd7567175ac266d3b5f6c0f8b928fe110"
+    },
+    {
+      "path": "docs/teardowns/2026-07-10-opencode-effect-architecture-teardown.md",
+      "bytes": 48431,
+      "sha256": "3b4cbcf1670f583125bae0d7d146d12ee8da052029bd58a2463eff7f660edca7"
+    },
+    {
+      "path": "docs/teardowns/2026-07-10-opencode-v2-architecture-teardown.md",
+      "bytes": 45530,
+      "sha256": "af48ba1af5ec5d44f2cc6d34b4c74dbbc0c2e3439e0468b4a2334017d49b5b77"
+    },
+    {
+      "path": "docs/teardowns/2026-07-11-cursor-product-teardown.md",
+      "bytes": 82813,
+      "sha256": "3ce555eccb012854e9f3a25fcea3849e3abc8368bf4708174333696fd8db9eba"
+    },
+    {
+      "path": "docs/teardowns/2026-07-12-executor-architecture-teardown.md",
+      "bytes": 54900,
+      "sha256": "889f1cdcbe411502f8ef442b90a0a2dc01a40183723ba18b5d54598cf8363fa9"
+    },
+    {
+      "path": "docs/teardowns/2026-07-12-openchamber-product-teardown.md",
+      "bytes": 50790,
+      "sha256": "52618598db24885c8de38b0171220afaaec9a01b0840f312013ce9ad226096f3"
+    },
+    {
+      "path": "docs/teardowns/2026-07-13-crabbox-teardown.md",
+      "bytes": 54118,
+      "sha256": "acdcf6f9ed0d880c180a510dbc750ef6a0b60d0655d099b61a60ad44b38ffb9f"
+    },
+    {
+      "path": "docs/teardowns/2026-07-13-t3-code-teardown.md",
+      "bytes": 128048,
+      "sha256": "b13e56f24aeb7a43b7f2f1b33174319744f05080939798130a7f74de0f30bcd5"
+    },
+    {
+      "path": "docs/teardowns/2026-07-15-codex-app-server-client-support-analysis.md",
+      "bytes": 90332,
+      "sha256": "11b77495456c277613515bb74dc0f77f884c94960206baf24685981fe1714323"
+    },
+    {
+      "path": "docs/teardowns/2026-07-15-grok-build-teardown.md",
+      "bytes": 80030,
+      "sha256": "c214cb85a6aa68609608df9f00e0d08ba524a77ffd31308f53ac3586caa8f1f3"
+    },
+    {
+      "path": "docs/teardowns/2026-07-15-t3-code-openagents-desktop-full-gap-analysis.md",
+      "bytes": 45837,
+      "sha256": "745ec23df28f11a471c6bfbf8eda1e871536911517d0081eb1a135dad8d38ece"
+    },
+    {
+      "path": "docs/teardowns/2026-07-16-amp-code-teardown.md",
+      "bytes": 54250,
+      "sha256": "4613718b0ec72602d54396145998d479cb67e749d4f381413fafc22306abdd98"
+    },
+    {
+      "path": "docs/teardowns/2026-07-16-command-code-teardown.md",
+      "bytes": 55527,
+      "sha256": "a507b48f899e85fbebee382afe48befcd7026100b0fc738ffd08930f7ba9a2fa"
+    },
+    {
+      "path": "docs/teardowns/2026-07-16-factory-desktop-cli-teardown.md",
+      "bytes": 30515,
+      "sha256": "6a2f126758043b3e268a343b832a2bd150c19ae0948aab4e4079619ee6408d9a"
+    },
+    {
+      "path": "docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md",
+      "bytes": 63099,
+      "sha256": "c2451502c0e0f36b7e4206b959c2f78feae4ca5d8d78fb59b0627235f0c17e21"
+    },
+    {
+      "path": "docs/teardowns/2026-07-16-t3-code-opencode-electron-build-update-analysis.md",
+      "bytes": 40574,
+      "sha256": "9171785f1c363ca8391d6c60b481fb5c42d24d6a448fe36d3e99df1a23029def"
+    },
+    {
+      "path": "docs/teardowns/2026-07-17-ai-sdk-v7-harnesses-teardown.md",
+      "bytes": 33402,
+      "sha256": "66cd9aad1263900d95e389348f17120c156546e2110920a2040fed3a55615f35"
+    },
+    {
+      "path": "docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md",
+      "bytes": 48386,
+      "sha256": "7100a3da31a79007e1c981aa460ad32404165bac90c947eefc6d6ce1448d2d40"
+    },
+    {
+      "path": "docs/teardowns/2026-07-17-goose-teardown.md",
+      "bytes": 26961,
+      "sha256": "cce3ed564b7ef429a7bd2cfb2b99ac96057f7be24ef7c6fe9133802f4c4c798c"
+    },
+    {
+      "path": "docs/teardowns/2026-07-17-local-studio-teardown.md",
+      "bytes": 43312,
+      "sha256": "b92adbb0493fac0e9b50aabd00f58fa9d9a21167cb7f88cb5b54075efeab65fe"
+    },
+    {
+      "path": "docs/teardowns/2026-07-17-paseo-teardown.md",
+      "bytes": 35410,
+      "sha256": "04c3e0150a21a92a1f0504c218755c5cf132248995d4bf67cacbc3dea3221cf5"
+    },
+    {
+      "path": "docs/teardowns/2026-07-17-t3-code-mobile-app-teardown.md",
+      "bytes": 35404,
+      "sha256": "3d2ba25d61f0d325428b815146001cf7f88b1a16dac305658198a001dd672d8b"
+    },
+    {
+      "path": "docs/teardowns/2026-07-17-t3-code-openagents-desktop-ui-gap-analysis.md",
+      "bytes": 61493,
+      "sha256": "609032008c709eeafadf48c76fa6e074f2b3626f4fab4e9d2b0cf6636e40f7c1"
+    },
+    {
+      "path": "docs/teardowns/2026-07-17-t3-code-openagents-mobile-component-gap-analysis.md",
+      "bytes": 33482,
+      "sha256": "3c68179866c832e340bc12226af14fd47393ce06a701ec5343b3d58c1517cefb"
+    },
+    {
+      "path": "docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md",
+      "bytes": 43411,
+      "sha256": "f443551d4c75ff3f6cf5abb393d2204be8d573b9bdbad2e52a89a9271ad91ce0"
+    },
+    {
+      "path": "docs/teardowns/2026-07-18-multaiplayer-teardown.md",
+      "bytes": 62301,
+      "sha256": "185eec79e82a5f4ddbe74683b501b105c6fbc650727b9edeec5b4f873bcb00a9"
+    },
+    {
+      "path": "docs/teardowns/2026-07-18-open-interpreter-teardown.md",
+      "bytes": 50636,
+      "sha256": "7882539aaab45de40318d239635cc46f6f5b2fe8d6af1476022a6a22b9e7fc02"
+    },
+    {
+      "path": "docs/teardowns/2026-07-18-pierre-teardown.md",
+      "bytes": 50303,
+      "sha256": "4f5bc90eab7ff379a4f6b7b59dc94542212c4e2aff675165c8e5196728f06b3a"
+    },
+    {
+      "path": "docs/teardowns/2026-07-18-vscode-teardown.md",
+      "bytes": 41361,
+      "sha256": "70a5181d4434a9757c0f76c7657587fea63f732f85c4a6836fbd1b3f437f50ce"
+    },
+    {
+      "path": "docs/teardowns/2026-07-18-zed-teardown.md",
+      "bytes": 64715,
+      "sha256": "623b802aecbaabf60fe64c08e9900c46e51338eed8997cedfe6176ee8988ebfc"
+    },
+    {
+      "path": "docs/teardowns/2026-07-19-ascii-box-optibox-openagents-gcp-analysis.md",
+      "bytes": 27429,
+      "sha256": "dc9938e516411e34326b890215aa1a2b10d6062956ef959d73892f8a15ce89e8"
+    },
+    {
+      "path": "docs/teardowns/2026-07-21-buzz-teardown.md",
+      "bytes": 197049,
+      "sha256": "25ae1fe51370297725ce621c10939fa95ccfe5cb1f91c7cb66789e937915b7cd"
+    },
+    {
+      "path": "docs/teardowns/2026-07-21-cognee-teardown.md",
+      "bytes": 27656,
+      "sha256": "0e02d8cf4d0ab43916fba553992520fd1824490080e389d9a4acad811cf1a84f"
+    },
+    {
+      "path": "docs/teardowns/2026-07-21-freerange-teardown.md",
+      "bytes": 28534,
+      "sha256": "0d9eddcb693658a74bb5149cdf8ef7ac43875ada1cfadb0e5c045c552bb218b5"
+    },
+    {
+      "path": "docs/teardowns/2026-07-21-pi-agent-teardown.md",
+      "bytes": 32990,
+      "sha256": "accd5b82852355b08425b891994bf2beb84b1049b55c94e83fc38e37dda888bb"
+    },
+    {
+      "path": "docs/teardowns/2026-07-25-exo-teardown.md",
+      "bytes": 26460,
+      "sha256": "3da2e918bbf45cb2aa1e086e2e012756511e7ade7255709360f9b0abfd08fc1b"
+    },
+    {
+      "path": "docs/teardowns/2026-07-25-exoharness-exo-teardown.md",
+      "bytes": 38884,
+      "sha256": "db88cd899e7d7124417bac79024ad697665ee03b1cccc59091f514af0d3d0b80"
+    },
+    {
+      "path": "docs/teardowns/2026-07-27-goose-gdk-omega-teardown.md",
+      "bytes": 46284,
+      "sha256": "bececceab3c770b544663f006fd2edd86113287d0031b5e0b46903ef91f7477e"
+    },
+    {
+      "path": "docs/teardowns/2026-07-27-mesh-llm-buzz-omega-teardown.md",
+      "bytes": 42706,
+      "sha256": "eebc9ffed1c97a0cc031c75b416413c05be36fd1f1e7eb9c0dc5dfa8a4ee1ecb"
+    },
+    {
+      "path": "docs/teardowns/2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md",
+      "bytes": 120503,
+      "sha256": "7ecd83aeee28928e7282fa3b5fc4a6aac478e7cb401855a0d66fe20b65895c51"
+    },
+    {
+      "path": "docs/teardowns/2026-07-27-t3-code-desktop-mobile-component-cloud-architecture-audit.md",
+      "bytes": 65712,
+      "sha256": "116ae24aded8965b352714c69ece64cb6a1fa207330445e57656957572301f03"
+    },
+    {
+      "path": "docs/teardowns/2026-07-27-t3-code-server-projection-consistency-architecture.md",
+      "bytes": 94734,
+      "sha256": "9fe41afe441edf833fc53714551bba3a5a367e7351cb37dae2f4a37c584189ad"
+    },
+    {
+      "path": "docs/teardowns/2026-07-27-t3-code-sidebar-v2-replication-analysis.md",
+      "bytes": 62655,
+      "sha256": "72f99344546480cc9a14ce7d10c0566792465e6a801227f94fb207f90dd117ff"
+    },
+    {
+      "path": "docs/teardowns/2026-07-27-tokenrelay-teardown.md",
+      "bytes": 30990,
+      "sha256": "73788ab07d599a6cf9890f4eaba1f4f5331296f717b3ea250e23a3bf18791974"
+    },
+    {
+      "path": "docs/teardowns/2026-07-29-superlogical-teardown.md",
+      "bytes": 54486,
+      "sha256": "d9347f3f2941c64290454c0b275b9b9e3f53dad1626a68f2a5c8c7eb442d901a"
+    },
+    {
+      "path": "docs/teardowns/2026-07-30-armada-teardown.md",
+      "bytes": 67949,
+      "sha256": "2f1645080c852cb28823157250a9b71f2c1e81177b246b576c55150529e70f9a"
+    },
+    {
+      "path": "docs/teardowns/2026-07-30-livekit-armada-buzz-zed-teardown.md",
+      "bytes": 161331,
+      "sha256": "f8ff8fbc63be462087f93f2b2d71fbd355de7a39a666fe9b0cce1a0e49a868a2"
+    },
+    {
+      "path": "docs/teardowns/2026-07-31-external-reference-ui-deep-dive.md",
+      "bytes": 22986,
+      "sha256": "33a290c66e3eb49b4268333ffd5a81b596e361988a675a49bc395f71e9df6da6"
+    },
+    {
+      "path": "docs/teardowns/2026-07-31-external-reference-ui-teardown.md",
+      "bytes": 84675,
+      "sha256": "9c717fbfb98dae8d5572a568c87a97c0a5092ecd4424d814bbd89f480b5df893"
+    },
+    {
+      "path": "docs/teardowns/2026-08-01-hermes-agent-desktop-teardown.md",
+      "bytes": 64911,
+      "sha256": "7a17207c426712b1ecc438abd9a8804bb01cdfd1568e2039ba4a784a6f626c2d"
+    },
+    {
+      "path": "docs/teardowns/2026-08-02-linear-agents-openagents-nostr-adaptation.md",
+      "bytes": 59481,
+      "sha256": "ad4150718fac846bf374cbfb534b08165ed52989711644e06897a38c3a04791c"
+    },
+    {
+      "path": "docs/teardowns/2026-08-02-linear-api-sdk-all-work-adaptation.md",
+      "bytes": 33731,
+      "sha256": "16fcac261e1da3200d5f146e958e50669faf0d1b7436f83511aa13da681930dc"
+    },
+    {
+      "path": "docs/teardowns/2026-08-03-boltz-ecosystem-nostr-rebuild-teardown.md",
+      "bytes": 58297,
+      "sha256": "9d2e4cbb0edeadef49bb29f9c0395562e6e6883dcaac77f38898fa4d5bafa66f"
+    },
+    {
+      "path": "docs/teardowns/2026-08-04-ark-solver-mostro-cashu-rails-teardown.md",
+      "bytes": 11367,
+      "sha256": "89738938a53d216b09a02a5573076f0e8d5294342fe9335719522df68cbf892b"
+    },
+    {
+      "path": "docs/teardowns/2026-08-04-boltz-web-app-ux-parity-teardown.md",
+      "bytes": 57621,
+      "sha256": "2b240f72720a6b852068ca04c6be8d4e9f345f707293ef42be74e090575408de"
+    },
+    {
+      "path": "docs/teardowns/2026-08-04-satora-lendaswap-outage-teardown.md",
+      "bytes": 14018,
+      "sha256": "5e0506ae9d8036cccf534f890a2d3ba2dbf346402cb10763d16eb12f128705da"
+    },
+    {
+      "path": "docs/teardowns/2026-08-04-tbdex-liquidity-protocol-teardown.md",
+      "bytes": 39886,
+      "sha256": "0af68f2336efaa6e91e89f0af0f7fd2e2491ed9071dc0ef2fa3848474406acb8"
+    },
+    {
+      "path": "docs/teardowns/2026-08-10-macro-teardown.md",
+      "bytes": 48071,
+      "sha256": "3f1321fedfd5648f704905439aa48f29d54bf01a77c7c4286936039fcab9d3d5"
+    },
+    {
+      "path": "docs/teardowns/2026-08-13-wanix-apptron-teardown.md",
+      "bytes": 34357,
+      "sha256": "5f35dfe240955f7a0ac2c1adac064ce5b137c6744afccd8bdbcd2834388144da"
+    },
+    {
+      "path": "docs/teardowns/2026-08-23-cc-tool-and-agent-fleet-rendering-reproduction.md",
+      "bytes": 35245,
+      "sha256": "72a31bd090e2579cc24886e798cc890950faa1ae2c105695657606657ff7a709"
+    },
+    {
+      "path": "docs/teardowns/2026-08-23-entire-ecosystem-teardown.md",
+      "bytes": 32328,
+      "sha256": "2ae94bb04450de8232d0eaaa1996d00b5c3333b2421c2dcd4ed83ea876b2358a"
+    },
+    {
+      "path": "docs/teardowns/2026-08-23-openagents-coder-tui-agent-fleet-port-plan.md",
+      "bytes": 19781,
+      "sha256": "8080c1a9a83f36d177ad44c277640cd0ee8d2682e52e539dae535dbd0ac3080a"
+    },
+    {
+      "path": "docs/teardowns/2026-08-24-background-agents-open-inspect-teardown.md",
+      "bytes": 14101,
+      "sha256": "6b10ff43428037e2ba3546e62dd365232c640a222f7ff372916ea96ab6bec03b"
+    },
+    {
+      "path": "docs/teardowns/2026-08-28-claude-code-evolution-themes.md",
+      "bytes": 42687,
+      "sha256": "ee2d2f18aff7d61cf50383b749dbbaf82933598bfdbecf1a3c26d955e3ed771e"
+    },
+    {
+      "path": "docs/teardowns/README.md",
+      "bytes": 79646,
+      "sha256": "c048a482c73bbc4db95e0143e35723da5b4790ba1c2eb8ddc64e0d41e86db5e4"
+    },
+    {
+      "path": "docs/teardowns/cc/01-architecture-query-loop.md",
+      "bytes": 12217,
+      "sha256": "b399734639cac2e971b405cb921824e1c6413b0f66bfe6fd559623654a15fe65"
+    },
+    {
+      "path": "docs/teardowns/cc/02-tool-surface-sandboxing.md",
+      "bytes": 12585,
+      "sha256": "916086c2b459a7783c027de5be65721e93632f9ab5b1ef10ed80e670ac6c3ca7"
+    },
+    {
+      "path": "docs/teardowns/cc/03-subagents-fleet-orchestration.md",
+      "bytes": 8777,
+      "sha256": "93568fc53d82fe67157f03686d2287affffa78514abb495197f0be4f43146a57"
+    },
+    {
+      "path": "docs/teardowns/cc/04-terminal-ui-components-theme.md",
+      "bytes": 11228,
+      "sha256": "a0f1b80a9777eefa9807afc635edae68b31e9a5f11b7964ec1d5bf4817c44856"
+    },
+    {
+      "path": "docs/teardowns/cc/05-context-compaction-memory-skills.md",
+      "bytes": 11430,
+      "sha256": "cba32b02c987043691b17006811f7a64f86f8c22cba5dd4ee53566eda4c5b7e4"
+    },
+    {
+      "path": "docs/teardowns/cc/06-permissions-cost-telemetry-bridge.md",
+      "bytes": 12111,
+      "sha256": "7ce0534a4cc78412b744b627067d56b2e6101e8e1c48aeab469629f9749dbb0b"
+    },
+    {
+      "path": "docs/teardowns/cc/README.md",
+      "bytes": 2849,
+      "sha256": "feb0351d40276a3a56dedb0528e8d4e446f4452499f3ce6847f69b99497ec25a"
+    },
+    {
+      "path": "docs/teardowns/linear-agents.md",
+      "bytes": 43861,
+      "sha256": "ff9c217f08489a57201457099dc5fcc83dc255daf1ed4735f3e2a75f40216808"
+    }
+  ]
+}
