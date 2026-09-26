@@ -86,8 +86,12 @@ zero. `--jobs-dir PATH` and `--traces-dir PATH` read other directories, and
 `gym runs` also lists [Microcoder](../coder/guides/microcoder.md) runs, as
 `microcoder/<run directory>` with the agent **Microcoder**. They come from
 this computer's `~/.openagents/microcoder/runs/` and from the retained host
-directories under `bench/terminal-bench/microcoder-runs/`, in that order; a
-run in the first wins over a retained copy. `--microcoder-dir PATH`
+directories under `bench/terminal-bench/microcoder-runs/`. A run in more
+than one directory is read once, from the copy a retained manifest lists,
+and a manifest's marks (the mixed mark and the commit attribution) hold for
+every copy of a run of that name, wherever it's read from. The order of the
+directories doesn't change the list or any claim; a copy whose
+`summary.json` differs from the one read is noted on the run. `--microcoder-dir PATH`
 (repeatable) reads other directories instead, `--no-microcoder` skips them,
 and `--knowledge-dir PATH` names the knowledge base whose provenance
 decides which runs are in-sample (the checkout's `knowledge/` by default).

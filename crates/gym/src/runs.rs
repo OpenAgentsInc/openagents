@@ -447,33 +447,32 @@ impl Catalog {
         }
         // Microcoder runs: a finished run keeps what was read; the
         // knowledge base is read only when a run needs reading.
+        // Which copy of a run is read, and its manifest marks, don't
+        // depend on the order of the directories.
         let mut knowledge: Option<crate::runs_microcoder::Knowledge> = None;
-        for dir in self.sources.microcoder.clone() {
-            let manifest = crate::runs_microcoder::Manifest::read(&dir);
-            for run_dir in crate::runs_microcoder::run_dirs(&dir) {
-                let id = format!("{}/{}", crate::runs_microcoder::JOB, file_name(&run_dir));
-                if !seen.insert(id.clone()) {
-                    continue;
-                }
-                if let Some(run) = kept.remove(&id) {
-                    runs.push(run);
-                    continue;
-                }
-                let knowledge = knowledge.get_or_insert_with(|| {
-                    self.sources
-                        .knowledge
-                        .as_deref()
-                        .map(crate::runs_microcoder::Knowledge::read)
-                        .unwrap_or_default()
-                });
-                let mut run =
-                    crate::runs_microcoder::read(&run_dir, knowledge, manifest.as_ref(), now);
-                let (_, info) = self.task_info(None, &run.task);
-                run.ask = info.ask;
-                run.category = info.category;
-                run.expert_hours = info.expert_hours;
-                runs.push(run);
+        let plan = crate::runs_microcoder::Plan::new(&self.sources.microcoder);
+        for copy in &plan.copies {
+            let id = format!("{}/{}", crate::runs_microcoder::JOB, copy.name);
+            if !seen.insert(id.clone()) {
+                continue;
             }
+            if let Some(run) = kept.remove(&id) {
+                runs.push(run);
+                continue;
+            }
+            let knowledge = knowledge.get_or_insert_with(|| {
+                self.sources
+                    .knowledge
+                    .as_deref()
+                    .map(crate::runs_microcoder::Knowledge::read)
+                    .unwrap_or_default()
+            });
+            let mut run = plan.read(copy, knowledge, now);
+            let (_, info) = self.task_info(None, &run.task);
+            run.ask = info.ask;
+            run.category = info.category;
+            run.expert_hours = info.expert_hours;
+            runs.push(run);
         }
         runs.sort_by(|a, b| {
             (b.outcome == Outcome::Running)

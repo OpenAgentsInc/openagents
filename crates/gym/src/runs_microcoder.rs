@@ -7,7 +7,9 @@
 //! older runs and milliseconds since `4c749622f2`. Retained copies live in
 //! the checkout under `bench/terminal-bench/microcoder-runs/<host>/`, one
 //! directory per host with a `MANIFEST.json` that names every file's
-//! SHA-256 and where each run's commit attribution comes from.
+//! SHA-256 and where each run's commit attribution comes from. A run in
+//! more than one directory is read once, from the copy a manifest lists,
+//! and a manifest's marks hold for every copy ([`Plan`]).
 //!
 //! Besides the task, model, reward, time, and cost every run has, a
 //! Microcoder run carries the labels a claim about it must print
@@ -28,7 +30,7 @@
 //! - **Commit.** The record's own `commit` when it has one; otherwise the
 //!   retained manifest's attribution, labelled as such.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -334,7 +336,8 @@ pub fn run_dirs(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// The standard places Microcoder runs are read from: this computer's run
-/// directory first, then each retained host directory in the checkout.
+/// directory and each retained host directory in the checkout. Their order
+/// doesn't matter: [`Plan`] picks a run's copy and marks.
 #[must_use]
 pub fn standard_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
@@ -763,25 +766,168 @@ pub fn read(dir: &Path, knowledge: &Knowledge, manifest: Option<&Manifest>, now:
     }
 }
 
-/// Every run in `dirs`, the first directory's copy of a run winning.
-#[must_use]
-pub fn read_all(dirs: &[PathBuf], knowledge: &Knowledge, now: i64) -> Vec<Run> {
-    let mut seen = BTreeSet::new();
-    let mut runs = Vec::new();
-    for dir in dirs {
-        let manifest = Manifest::read(dir);
-        for run_dir in run_dirs(dir) {
-            let name = run_dir
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            if !seen.insert(name) {
-                continue;
+/// Which copy of each run to read from a set of directories, and the marks
+/// their retained manifests hold, whatever order the directories came in.
+///
+/// A run's ID is its directory name, so directories holding a run of the
+/// same name hold copies of one run, and one copy is read. The copy a
+/// manifest lists wins; then a copy in a directory with a manifest; then
+/// the first by path. A manifest's marks, the mixed mark and the commit
+/// attribution, hold for every copy of a run of that name, wherever the
+/// copy read comes from. When two manifests disagree, the first by path
+/// gives the reason and the commit.
+#[derive(Clone, Debug, Default)]
+pub struct Plan {
+    /// Each directory's manifest, in the order of `sources`.
+    manifests: Vec<Option<Manifest>>,
+    /// Every manifest's commit attributions and mixed marks, merged.
+    marks: Manifest,
+    /// The copy of each run to read, by name.
+    pub copies: Vec<Copy>,
+}
+
+/// One run's copy to read, and the copies of it that aren't read.
+#[derive(Clone, Debug)]
+pub struct Copy {
+    /// The run directory's name: the run's ID after `microcoder/`.
+    pub name: String,
+    /// The run directory read.
+    pub dir: PathBuf,
+    /// Which source directory it's in: an index into the plan's manifests.
+    source: usize,
+    /// The other directories holding a run of this name.
+    pub others: Vec<PathBuf>,
+}
+
+impl Plan {
+    /// Plans the reading of every run under `dirs`.
+    #[must_use]
+    pub fn new(dirs: &[PathBuf]) -> Self {
+        let mut sources: Vec<&PathBuf> = dirs.iter().collect();
+        sources.sort();
+        sources.dedup();
+        let manifests: Vec<Option<Manifest>> =
+            sources.iter().map(|dir| Manifest::read(dir)).collect();
+        let mut marks = Manifest::default();
+        for manifest in manifests.iter().flatten() {
+            for (name, commit) in &manifest.commits {
+                marks
+                    .commits
+                    .entry(name.clone())
+                    .or_insert_with(|| commit.clone());
             }
-            runs.push(read(&run_dir, knowledge, manifest.as_ref(), now));
+            for (name, why) in &manifest.mixed {
+                marks
+                    .mixed
+                    .entry(name.clone())
+                    .or_insert_with(|| why.clone());
+            }
+        }
+        // Per name: (preference, run directory, source), lowest first.
+        let mut found: BTreeMap<String, Vec<(u8, PathBuf, usize)>> = BTreeMap::new();
+        for (source, dir) in sources.iter().enumerate() {
+            let manifest = manifests[source].as_ref();
+            for run_dir in run_dirs(dir) {
+                let name = run_dir
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let preference = match manifest {
+                    Some(m) if m.files.contains_key(&name) => 0,
+                    Some(_) => 1,
+                    None => 2,
+                };
+                found
+                    .entry(name)
+                    .or_default()
+                    .push((preference, run_dir, source));
+            }
+        }
+        let copies = found
+            .into_iter()
+            .map(|(name, mut found)| {
+                found.sort();
+                let (_, dir, source) = found.remove(0);
+                Copy {
+                    name,
+                    dir,
+                    source,
+                    others: found.into_iter().map(|(_, dir, _)| dir).collect(),
+                }
+            })
+            .collect();
+        Plan {
+            manifests,
+            marks,
+            copies,
         }
     }
-    runs
+
+    /// The manifest of the directory `copy` is in, when it has one.
+    #[must_use]
+    pub fn manifest(&self, copy: &Copy) -> Option<&Manifest> {
+        self.manifests.get(copy.source).and_then(Option::as_ref)
+    }
+
+    /// Reads `copy`, with every manifest's marks for its name.
+    #[must_use]
+    pub fn read(&self, copy: &Copy, knowledge: &Knowledge, now: i64) -> Run {
+        let mut run = read(&copy.dir, knowledge, self.manifest(copy), now);
+        self.mark(copy, &mut run);
+        run
+    }
+
+    /// Applies the manifests' marks for `copy`'s name to a run read from
+    /// it, and notes another copy whose summary differs.
+    fn mark(&self, copy: &Copy, run: &mut Run) {
+        let Some(m) = run.microcoder.as_deref_mut() else {
+            return;
+        };
+        if !m.mixed
+            && let Some(why) = self.marks.mixed.get(&copy.name)
+        {
+            m.mixed = true;
+            run.notes.push(format!("its records are mixed: {why}"));
+        }
+        if m.commit.is_none()
+            && let Some((commit, source)) = self.marks.commits.get(&copy.name)
+        {
+            m.commit = Some(commit.clone());
+            m.commit_source = Some(source.clone());
+        }
+        if copy.others.is_empty() {
+            return;
+        }
+        let Some(own) = file_digest(&copy.dir.join("summary.json")) else {
+            return;
+        };
+        let differing: Vec<String> = copy
+            .others
+            .iter()
+            .filter(|other| {
+                file_digest(&other.join("summary.json")).is_some_and(|digest| digest != own)
+            })
+            .map(|other| other.display().to_string())
+            .collect();
+        if !differing.is_empty() {
+            run.notes.push(format!(
+                "another copy of this run holds a different summary.json ({}); this one, at {}, was read",
+                differing.join(", "),
+                copy.dir.display()
+            ));
+        }
+    }
+}
+
+/// Every run in `dirs`, one copy of each: the retained copy when a
+/// manifest lists it, with every manifest's marks, in any order of `dirs`.
+#[must_use]
+pub fn read_all(dirs: &[PathBuf], knowledge: &Knowledge, now: i64) -> Vec<Run> {
+    let plan = Plan::new(dirs);
+    plan.copies
+        .iter()
+        .map(|copy| plan.read(copy, knowledge, now))
+        .collect()
 }
 
 /// The run's details in lines, for `gym runs show`.
@@ -1375,6 +1521,71 @@ mod tests {
             Some("the last crates/microcoder commit at or before the start")
         );
         assert_eq!(m.digest_mismatches, vec!["events.jsonl".to_owned()]);
+    }
+
+    #[test]
+    fn a_manifest_marks_every_copy_of_a_run_in_any_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let live = dir.path().join("live");
+        let host = dir.path().join("host");
+        let name = "drift-check-1790393791";
+        std::fs::create_dir_all(live.join(name)).unwrap();
+        std::fs::create_dir_all(&host).unwrap();
+        for file in ["summary.json", "events.jsonl"] {
+            std::fs::copy(
+                fixtures().join("runs").join(name).join(file),
+                live.join(name).join(file),
+            )
+            .unwrap();
+        }
+        // The manifest marks the run, but its directory only holds the
+        // manifest: the live copy is read, and still carries the marks.
+        let manifest = serde_json::json!({
+            "schema": MANIFEST_SCHEMA,
+            "commit_rule": "the rule",
+            "runs": [{"name": name, "commit": "a784eadef8", "mixed": "two runs shared it"}],
+        });
+        std::fs::write(host.join(MANIFEST), manifest.to_string()).unwrap();
+        for dirs in [[live.clone(), host.clone()], [host.clone(), live.clone()]] {
+            let runs = read_all(&dirs, &Knowledge::default(), 0);
+            assert_eq!(runs.len(), 1);
+            let m = runs[0].microcoder.as_ref().unwrap();
+            assert!(!runs[0].retained);
+            assert!(m.mixed);
+            assert_eq!(m.commit.as_deref(), Some("a784eadef8"));
+            assert_eq!(m.commit_source.as_deref(), Some("the rule"));
+            assert!(
+                runs[0]
+                    .notes
+                    .contains(&"its records are mixed: two runs shared it".to_owned())
+            );
+        }
+        // A retained copy that differs from the live one is read, and the
+        // difference is noted.
+        std::fs::create_dir_all(host.join(name)).unwrap();
+        std::fs::copy(
+            live.join(name).join("events.jsonl"),
+            host.join(name).join("events.jsonl"),
+        )
+        .unwrap();
+        std::fs::write(host.join(name).join("summary.json"), "{\"reward\": 0.0}").unwrap();
+        let manifest = serde_json::json!({
+            "schema": MANIFEST_SCHEMA,
+            "runs": [{"name": name, "files": {}}],
+        });
+        std::fs::write(host.join(MANIFEST), manifest.to_string()).unwrap();
+        for dirs in [[live.clone(), host.clone()], [host.clone(), live.clone()]] {
+            let runs = read_all(&dirs, &Knowledge::default(), 0);
+            assert!(runs[0].retained);
+            assert_eq!(runs[0].files.dir, host.join(name));
+            assert!(
+                runs[0]
+                    .notes
+                    .iter()
+                    .any(|n| n
+                        .starts_with("another copy of this run holds a different summary.json"))
+            );
+        }
     }
 
     #[test]

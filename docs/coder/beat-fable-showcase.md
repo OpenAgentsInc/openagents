@@ -96,13 +96,13 @@ Round 2 runs finished by that time. The rule found no other pass that beats
 Fable 5.1 low there; the study's result is the study owner's to report
 [below](#the-honest-limit).
 
-**A Gym caveat found while doing this.** Directory order matters. With the
-live directory read *first*, `fin-saccr-rwa-1790406697` comes from the live
-copy, which doesn't carry the retained manifest's *mixed* mark. The claim
-then counts that directory's pass: 4 of 10, up to $0.0835. With the
-retained directories first, as above, the mark holds and the directory is
-left out. Read the retained directories first until the Gym applies the
-manifest's mark to either copy.
+**A Gym caveat found while doing this, since fixed.** Directory order
+used to matter. With the live directory read *first*,
+`fin-saccr-rwa-1790406697` came from the live copy, which didn't carry the
+retained manifest's *mixed* mark, and the claim counted that directory's
+pass: 4 of 10, up to $0.0835. The Gym now reads a run in more than one
+directory from the copy a manifest lists, and applies a manifest's marks to
+every copy of a run of that name, so either order leaves the directory out.
 
 ### What this supports
 

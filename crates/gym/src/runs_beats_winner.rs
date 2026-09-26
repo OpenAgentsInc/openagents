@@ -659,6 +659,74 @@ mod tests {
         assert_eq!(json["detail"]["labels"]["sample"], "in_sample");
     }
 
+    /// Copies every fixture run into `to`.
+    fn copy_runs(to: &std::path::Path) {
+        let from = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/microcoder/runs");
+        for run in crate::runs_microcoder::run_dirs(&from) {
+            let dir = to.join(run.file_name().unwrap());
+            std::fs::create_dir_all(&dir).unwrap();
+            for entry in std::fs::read_dir(&run).unwrap().flatten() {
+                std::fs::copy(entry.path(), dir.join(entry.file_name())).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn the_claim_does_not_depend_on_the_order_of_the_directories() {
+        use crate::runs_microcoder::{MANIFEST, MANIFEST_SCHEMA};
+        // A live directory with every run, and a retained host directory
+        // whose manifest marks one passing run mixed, as the live copy of
+        // fin-saccr-rwa-1790406697 was on coderos-4080.
+        let root = tempfile::tempdir().unwrap();
+        let live = root.path().join("live");
+        let host = root.path().join("retained/host");
+        copy_runs(&live);
+        let name = "drift-check-1790394263";
+        std::fs::create_dir_all(host.join(name)).unwrap();
+        for file in ["summary.json", "events.jsonl"] {
+            std::fs::copy(live.join(name).join(file), host.join(name).join(file)).unwrap();
+        }
+        let manifest = json!({
+            "schema": MANIFEST_SCHEMA,
+            "commit_rule": "the last crates/microcoder commit at or before the start",
+            "runs": [{
+                "name": name,
+                "files": {},
+                "commit": "7d3ccdb4bd",
+                "mixed": "two runs started in the same second and shared this directory",
+            }],
+        });
+        std::fs::write(host.join(MANIFEST), manifest.to_string()).unwrap();
+        let knowledge = Knowledge::read(
+            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/microcoder/knowledge"),
+        );
+        let reference = self::manifest();
+        let read = |dirs: &[PathBuf]| {
+            let runs = read_all(dirs, &knowledge, i64::MAX / 4);
+            let run = runs.iter().find(|r| r.trial == name).unwrap();
+            let m = run.microcoder.as_deref().unwrap();
+            assert!(m.mixed, "{dirs:?}");
+            assert!(run.retained, "{dirs:?}");
+            assert_eq!(m.commit.as_deref(), Some("7d3ccdb4bd"));
+            claims(&runs, Some(&reference))
+                .iter()
+                .map(|claim| (claim.claim.clone(), claim.caveats.clone()))
+                .collect::<Vec<_>>()
+        };
+        let live_first = read(&[live.clone(), host.clone()]);
+        let retained_first = read(&[host, live]);
+        assert_eq!(live_first, retained_first);
+        // The marked pass is left out: 2 of 3, not 3 of 4.
+        assert_eq!(live_first.len(), 1);
+        assert!(
+            live_first[0]
+                .0
+                .contains("passed drift-check in 2 of 3 graded runs."),
+            "{}",
+            live_first[0].0
+        );
+    }
+
     #[test]
     fn no_manifest_or_no_win_makes_no_claim() {
         let runs = runs();
