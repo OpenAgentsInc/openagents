@@ -283,9 +283,11 @@ async fn go(options: Options) -> Result<u8, String> {
             clock(seconds)
         );
     }
+    // Milliseconds, so runs started in the same second get their own
+    // directories.
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
+        .map_or(0, |d| d.as_millis());
     let run_dir = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
         .join(".openagents/microcoder/runs")
         .join(format!("{}-{stamp}", task.name));
