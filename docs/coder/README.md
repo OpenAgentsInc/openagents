@@ -24,6 +24,11 @@ task foundation, the complete M0–M20 backlog, dependencies, ownership, and
 acceptance gates. It separates shipped foundations from the work still needed
 for durable tasks, mobile control, CoderOS, and agent labor.
 
+[Beating Fable together](beat-fable-together.md) is the plan after Episode
+288: make the Microcoder wins visible in the Gym, run a pre-registered
+out-of-sample knowledge test, open the knowledge base to contributors, and
+bring that work into Verse as quests and XP.
+
 The [local task inbox](guides/tasks.md) records, inspects, and cancels queued
 requests across process restarts. It is the first task-contract slice;
 execution ownership and cross-device control remain in the tracker.
