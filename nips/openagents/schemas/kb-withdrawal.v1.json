@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.kb-withdrawal.v1",
+  "title": "NIP-KB withdrawal (kind 3191) body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "requires", "type", "id", "version", "entry", "reason"],
+  "properties": {
+    "v": { "const": 1 },
+    "requires": { "type": "array", "maxItems": 0 },
+    "type": { "const": "withdrawal" },
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "version": { "type": "integer", "minimum": 1 },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "pubkey", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "pubkey": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "kind": { "const": 3190 }
+      }
+    },
+    "reason": { "type": "string", "maxLength": 1000 }
+  }
+}

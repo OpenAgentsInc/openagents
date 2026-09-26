@@ -19,6 +19,7 @@ pub mod domain;
 pub mod execution;
 pub mod ext;
 pub mod git_sign;
+pub mod kb;
 pub mod lane;
 pub mod negentropy;
 pub mod nip04;
