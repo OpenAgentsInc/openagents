@@ -39,6 +39,9 @@ pub struct Task {
     pub separate: bool,
     pub artifacts: Vec<String>,
     pub verifier_seconds: u64,
+    /// Whether the task allows internet access: `allow_internet` in
+    /// `[environment]`, true unless the task says otherwise.
+    pub internet: bool,
 }
 
 /// Finds `name` under `tasks`.
@@ -96,6 +99,8 @@ pub fn find(tasks: &Path, name: &str) -> Result<Task, String> {
         verifier_seconds: toml_section_value(&toml, "verifier", "timeout_sec")
             .and_then(|v| v.parse::<f64>().ok())
             .map_or(300, |v| v as u64),
+        internet: toml_section_value(&toml, "environment", "allow_internet").as_deref()
+            != Some("false"),
         instruction,
         workdir,
         dir,
@@ -246,17 +251,73 @@ pub async fn remove(name: &str) {
 }
 
 /// A first look at the environment, for the state.
-pub async fn describe(env: &Docker) -> String {
+pub async fn describe(env: &Docker, network: &str) -> String {
     let probe = "echo \"Working directory: $(pwd)\"; echo \"User: $(id -un 2>/dev/null || id -u)\"; \
                  echo; echo 'Files at the top level:'; ls -la; echo; echo 'Tools:'; \
                  for t in python3 pip node npm cargo go gcc make git; do \
                  command -v $t >/dev/null 2>&1 && printf '%s: %s\\n' $t \"$($t --version 2>&1 | head -1)\"; done; true";
     let result = env.run(probe, Duration::from_secs(30)).await;
     format!(
-        "The task runs in a Linux container with no network. Commands run in {}.\n\n{}",
+        "The task runs in a Linux container {}. Commands run in {}.\n\n{}",
+        if network == "none" {
+            "with no network access"
+        } else {
+            "with network access"
+        },
         env.workdir,
         result.output.trim()
     )
+}
+
+/// Runs the task's reference solution (`solution/solve.sh`) in the agent's
+/// container, to check that grading works without a model call.
+///
+/// # Errors
+///
+/// When the task has no reference solution, or it fails.
+pub async fn solve(task: &Task, agent: &Docker) -> Result<(), String> {
+    let solution = task.dir.join("solution");
+    if !solution.join("solve.sh").is_file() {
+        return Err(format!("{} has no reference solution", task.name));
+    }
+    let _ = docker(&[
+        "exec",
+        "-u",
+        "root",
+        &agent.container,
+        "mkdir",
+        "-p",
+        "/solution",
+    ])
+    .await;
+    let (ok, output) = docker(&[
+        "cp",
+        &format!("{}/.", solution.to_string_lossy()),
+        &format!("{}:/solution", agent.container),
+    ])
+    .await;
+    if !ok {
+        return Err(format!("couldn't copy the solution in: {}", output.trim()));
+    }
+    let (ok, output) = docker(&[
+        "exec",
+        "-u",
+        "root",
+        "-w",
+        &agent.workdir,
+        &agent.container,
+        "bash",
+        "/solution/solve.sh",
+    ])
+    .await;
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "the reference solution failed:\n{}",
+            crate::state::cut(&output, 500, 1500)
+        ))
+    }
 }
 
 /// The verifier's result.
@@ -312,16 +373,35 @@ pub async fn verify(task: &Task, agent: &Docker, network: &str, say: &dyn Fn(&st
                 ));
                 continue;
             }
-            let parent = Path::new(path.trim_end_matches('/'))
+            // Replace what's at the path with the agent's copy. `docker cp`
+            // nests a directory inside one that already exists, so a
+            // directory's contents go in with `/.` after the path is emptied.
+            let target = path.trim_end_matches('/');
+            let parent = Path::new(target)
                 .parent()
                 .map_or("/".to_string(), |p| p.to_string_lossy().to_string());
-            let _ = docker(&["exec", "-u", "root", &name, "mkdir", "-p", &parent]).await;
-            let _ = docker(&[
-                "cp",
-                &local.to_string_lossy(),
-                &format!("{name}:{}", path.trim_end_matches('/')),
-            ])
-            .await;
+            if local.is_dir() {
+                let _ = docker(&[
+                    "exec",
+                    "-u",
+                    "root",
+                    &name,
+                    "sh",
+                    "-c",
+                    &format!("rm -rf '{target}' && mkdir -p '{target}'"),
+                ])
+                .await;
+                let _ = docker(&[
+                    "cp",
+                    &format!("{}/.", local.to_string_lossy()),
+                    &format!("{name}:{target}"),
+                ])
+                .await;
+            } else {
+                let _ = docker(&["exec", "-u", "root", &name, "mkdir", "-p", &parent]).await;
+                let _ =
+                    docker(&["cp", &local.to_string_lossy(), &format!("{name}:{target}")]).await;
+            }
         }
         let _ = std::fs::remove_dir_all(&scratch);
         (name.clone(), Some(name))

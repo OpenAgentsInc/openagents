@@ -23,9 +23,12 @@ Options:
   --max-minutes N    default 60
   --max-usd N        model and Jev spend, default 1.00
   --command-seconds N  default 300
-  --network NAME     the container's Docker network (default none)
+  --network NAME     the container's Docker network: default bridge (network on),
+                     or none for a task whose task.toml sets allow_internet = false
   --prompt TEXT      the instruction to the model (default \"Solve this task.\")
   --keep             leave the container running afterward
+  --check-grading    run the task's reference solution instead of the loop,
+                     then grade it: a check that grading works, at no model cost
 
 Keys: OPENROUTER_API_KEY or ~/.openagents/openrouter.json, and
 TYPESAFE_API_KEY or ~/.openagents/jev.json. Tasks come from
@@ -38,9 +41,11 @@ struct Options {
     model: String,
     effort: Option<String>,
     limits: Limits,
-    network: String,
+    /// `None` until the task's own setting decides it.
+    network: Option<String>,
     prompt: String,
     keep: bool,
+    check_grading: bool,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -49,9 +54,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
         model: MODEL.to_string(),
         effort: Some("medium".to_string()),
         limits: Limits::default(),
-        network: "none".to_string(),
+        network: None,
         prompt: USER_PROMPT.to_string(),
         keep: false,
+        check_grading: false,
     };
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -70,9 +76,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--max-minutes" => options.limits.max_seconds = (number(value()?)? * 60.0) as u64,
             "--max-usd" => options.limits.max_usd = number(value()?)?,
             "--command-seconds" => options.limits.command_seconds = number(value()?)? as u64,
-            "--network" => options.network = value()?,
+            "--network" => options.network = Some(value()?),
             "--prompt" => options.prompt = value()?,
             "--keep" => options.keep = true,
+            "--check-grading" => options.check_grading = true,
             "-h" | "--help" => return Err(USAGE.to_string()),
             flag if flag.starts_with("--") => {
                 return Err(format!("unknown option {flag}\n\n{USAGE}"));
@@ -123,6 +130,10 @@ async fn main() -> ExitCode {
 
 async fn go(options: Options) -> Result<u8, String> {
     let task = tbench::find(&tbench::tasks_dir(), &options.task)?;
+    let network = options
+        .network
+        .clone()
+        .unwrap_or_else(|| if task.internet { "bridge" } else { "none" }.to_string());
     let openrouter = openrouter::Config::from_env().map_err(|e| e.to_string())?;
     let generator = OpenRouterGenerator {
         client: openrouter::Client::new(openrouter).map_err(|e| e.to_string())?,
@@ -137,7 +148,7 @@ async fn go(options: Options) -> Result<u8, String> {
     let mut terminal = Terminal::new();
     let say = |text: &str| terminal_line(text);
     println!(
-        "microcoder · {} · {} (effort {}) · up to {} steps, {} min, ${:.2}",
+        "microcoder · {} · {} (effort {}) · up to {} steps, {} min, ${:.2} · network {network}",
         task.name,
         options.model,
         options.effort.as_deref().unwrap_or("default"),
@@ -163,21 +174,48 @@ async fn go(options: Options) -> Result<u8, String> {
         .map_err(|e| format!("can't write the record: {e}"))?;
     record.write(&serde_json::json!({
         "event": "started", "task": task.name, "model": options.model, "effort": options.effort,
-        "limits": options.limits, "network": options.network, "prompt": options.prompt,
+        "limits": options.limits, "network": network, "prompt": options.prompt,
         "questions": set.id, "questions_file": microcoder::models::QUESTIONS,
     }));
 
     let image = tbench::image(&task, &say).await?;
     let name = format!("microcoder-{}-{}", task.name, std::process::id());
-    let env = tbench::start(&image, &name, &options.network, &task.workdir).await?;
+    let env = tbench::start(&image, &name, &network, &task.workdir).await?;
     say(&format!(
         "container {name} is up; commands run in {}",
         task.workdir
     ));
 
+    if options.check_grading {
+        say("running the task's reference solution");
+        let solved = tbench::solve(&task, &env).await;
+        if let Err(error) = &solved {
+            say(error);
+        }
+        let verdict = tbench::verify(&task, &env, &network, &say).await;
+        println!(
+            "grading check: reference solution {} · reward {}",
+            if solved.is_ok() { "ran" } else { "failed" },
+            verdict
+                .reward
+                .map_or("unknown".to_string(), |r| format!("{r}"))
+        );
+        if verdict.reward.is_none_or(|r| r < 1.0) {
+            println!("{}", indent_block(&verdict.output));
+        }
+        if !options.keep {
+            tbench::remove(&name).await;
+        }
+        return Ok(if verdict.reward.is_some_and(|r| r >= 1.0) {
+            0
+        } else {
+            1
+        });
+    }
+
     let outcome = tokio::select! {
         result = async {
-            let environment = tbench::describe(&env).await;
+            let environment = tbench::describe(&env, &network).await;
             println!("{}", indent_block(&environment));
             let state = State {
                 environment,
@@ -195,7 +233,7 @@ async fn go(options: Options) -> Result<u8, String> {
     };
     let (_, outcome) = outcome;
 
-    let verdict = tbench::verify(&task, &env, &options.network, &say).await;
+    let verdict = tbench::verify(&task, &env, &network, &say).await;
     let tail: String = verdict
         .output
         .lines()

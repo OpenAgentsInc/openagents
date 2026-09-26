@@ -105,7 +105,7 @@ impl Observer for Terminal {
                         self.line(seconds, &format!("{head} {meta}"));
                         println!(
                             "        {}",
-                            self.paint("34", &format!("why: {}", action.rationale))
+                            self.paint("1;97", &format!("why: {}", action.rationale))
                         );
                         for command in &action.commands {
                             println!("        {}", self.paint("32", &format!("$ {command}")));
