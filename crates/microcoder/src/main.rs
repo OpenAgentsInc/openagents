@@ -27,6 +27,7 @@ Options:
   --max-minutes N    default 60
   --max-usd N        model and Jev spend, default 1.00
   --command-seconds N  default 300
+  --test-seconds N   how long one acceptance test may run, default 60
   --network NAME     the container's Docker network: default bridge (network on),
                      or none for a task whose task.toml sets allow_internet = false
   --prompt TEXT      the instruction to the model (default \"Solve this task.\")
@@ -95,6 +96,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--max-minutes" => options.limits.max_seconds = (number(value()?)? * 60.0) as u64,
             "--max-usd" => options.limits.max_usd = number(value()?)?,
             "--command-seconds" => options.limits.command_seconds = number(value()?)? as u64,
+            "--test-seconds" => options.limits.test_seconds = number(value()?)? as u64,
             "--network" => options.network = Some(value()?),
             "--prompt" => options.prompt = value()?,
             "--keep" => options.keep = true,

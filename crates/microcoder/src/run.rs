@@ -56,6 +56,9 @@ pub struct Limits {
     pub max_usd: f64,
     /// Seconds one command may run.
     pub command_seconds: u64,
+    /// Seconds one acceptance test may run. The host runs every test after
+    /// every step, so a slow test slows every step.
+    pub test_seconds: u64,
     /// Replies in a row that don't match the format before the loop stops.
     pub max_bad_replies: usize,
     /// Replies in a row that run nothing and change nothing before the
@@ -93,6 +96,7 @@ impl Default for Limits {
             max_seconds: 3_600,
             max_usd: 1.0,
             command_seconds: 300,
+            test_seconds: 60,
             max_bad_replies: 3,
             max_idle_replies: 3,
             acceptance: true,
@@ -457,6 +461,7 @@ or set finished to true if the task is complete."
             continue;
         }
         let deadline = Duration::from_secs(limits.command_seconds);
+        let test_deadline = Duration::from_secs(limits.test_seconds);
         let mut froze = false;
         if action.freeze_tests && state.frozen_at.is_none() && !failed {
             state.tests = load_tests(env, deadline).await;
@@ -465,7 +470,7 @@ or set finished to true if the task is complete."
                     "Step {step} asked to freeze the acceptance tests, but {ACCEPT_DIR} holds no .sh file."
                 ));
             } else {
-                let results = run_tests(env, &state.tests, deadline).await;
+                let results = run_tests(env, &state.tests, test_deadline).await;
                 for (test, result) in state.tests.iter_mut().zip(&results) {
                     test.passed_at_freeze = Some(result.ok());
                 }
@@ -477,7 +482,7 @@ or set finished to true if the task is complete."
         let ran_something = !state.actions.last().is_none_or(|a| a.results.is_empty());
         if state.frozen_at.is_some() && (froze || ran_something) {
             if !froze {
-                state.test_results = run_tests(env, &state.tests, deadline).await;
+                state.test_results = run_tests(env, &state.tests, test_deadline).await;
             }
             observer.event(
                 started.elapsed().as_secs_f64(),
