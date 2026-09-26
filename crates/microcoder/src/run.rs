@@ -25,8 +25,8 @@ use serde_json::json;
 
 use crate::env::Env;
 use crate::models::{
-    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, conform_set, dispute_set,
-    knowledge_set, relevance_set,
+    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, conform_set, coverage_set,
+    dispute_set, knowledge_set, relevance_set,
 };
 use crate::state::{Action, CommandResult, Dropped, Kept, State, Test, cut};
 
@@ -206,6 +206,13 @@ pub enum Event {
         step: usize,
         judgment: Judgment,
         dropped: Vec<String>,
+    },
+    /// Jev judged whether the passing frozen tests leave a stated
+    /// requirement unchecked.
+    Covered {
+        step: usize,
+        judgment: Judgment,
+        uncovered: bool,
     },
     /// Jev compared the finished code with the highly relevant knowledge
     /// entries; `flagged` names the ones it judged the code contradicts.
@@ -541,6 +548,30 @@ async fn read_view<E: Env>(env: &E, paths: &[String]) -> Vec<(String, Option<Str
     files
 }
 
+/// Jev's probability at which passing tests leave a requirement unchecked.
+pub const UNCOVERED: f64 = 0.6;
+
+/// Asks Jev whether the frozen tests leave a stated requirement unchecked.
+async fn coverage<J: Judge>(judge: &J, state: &State) -> (Judgment, bool) {
+    let mut room = 12_000usize;
+    let tests: Vec<serde_json::Value> = state
+        .tests
+        .iter()
+        .map(|t| {
+            let script = cut(&t.script, room.min(2_000), 0);
+            room = room.saturating_sub(script.len());
+            json!({"name": t.name, "script": script})
+        })
+        .collect();
+    let jev_state = json!({ "task": cut(&state.task, 6_000, 0), "tests": tests });
+    let judgment = judge.judge(&coverage_set(), &jev_state).await;
+    let uncovered = judgment
+        .answers
+        .iter()
+        .any(|(id, p)| id == "uncovered" && *p >= UNCOVERED);
+    (judgment, uncovered)
+}
+
 /// Jev's probability at which the finished code contradicts an entry.
 pub const CONTRADICTS: f64 = 0.7;
 
@@ -803,6 +834,8 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut refused = 0usize;
     // Steps in a row that ended with every frozen test passing.
     let mut green = 0usize;
+    // The number of frozen tests when Jev last judged their coverage.
+    let mut covered_at = 0usize;
     // Steps in a row each frozen test has failed, and the tests Jev already
     // checked for being stuck.
     let mut failing_for: std::collections::HashMap<String, usize> = Default::default();
@@ -1011,6 +1044,7 @@ or set finished to true if the task is complete."
         let deadline = Duration::from_secs(limits.command_seconds);
         let test_deadline = Duration::from_secs(limits.test_seconds);
         let mut froze = false;
+        let mut added = false;
         if action.freeze_tests && state.frozen_at.is_none() && !failed {
             state.tests = load_tests(env, deadline).await;
             if state.tests.is_empty() {
@@ -1026,9 +1060,39 @@ or set finished to true if the task is complete."
                 state.frozen_at = Some(step);
                 froze = true;
             }
+        } else if action.freeze_tests && state.frozen_at.is_some() && !failed {
+            // A later freeze adds new tests; frozen ones never change.
+            let known: Vec<&String> = state
+                .tests
+                .iter()
+                .map(|t| &t.name)
+                .chain(state.dropped.iter().map(|d| &d.test.name))
+                .collect();
+            let new: Vec<Test> = load_tests(env, deadline)
+                .await
+                .into_iter()
+                .filter(|t| !known.contains(&&t.name))
+                .collect();
+            if new.is_empty() {
+                state.notes.push(format!(
+                    "Step {step} asked to freeze tests, but {ACCEPT_DIR} holds no new .sh file; \
+frozen tests can't be changed."
+                ));
+            } else {
+                state.notes.push(format!(
+                    "Step {step} added {} frozen tests: {}.",
+                    new.len(),
+                    new.iter()
+                        .map(|t| t.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+                state.tests.extend(new);
+                added = true;
+            }
         }
         let ran_something = !state.actions.last().is_none_or(|a| a.results.is_empty());
-        if state.frozen_at.is_some() && (froze || ran_something) {
+        if state.frozen_at.is_some() && (froze || ran_something || added) {
             if !froze {
                 state.test_results = run_tests(env, &state.tests, test_deadline).await;
             }
@@ -1083,6 +1147,29 @@ row, so they were dropped: {}.",
         let all_pass =
             state.frozen_at.is_some() && state.test_results.iter().all(CommandResult::ok);
         green = if all_pass { green + 1 } else { 0 };
+        if all_pass && covered_at != state.tests.len() {
+            covered_at = state.tests.len();
+            let (judgment, uncovered) = coverage(models.judge, &state).await;
+            jev_usd += judgment.usd;
+            observer.event(
+                started.elapsed().as_secs_f64(),
+                &Event::Covered {
+                    step,
+                    judgment,
+                    uncovered,
+                },
+            );
+            if uncovered {
+                state.notes.push(format!(
+                    "Every frozen test passes, but Jev judged that the task states something no \
+test checks. Go through the task's requirements, outputs, formats, and values one at a time, \
+write a test under {ACCEPT_DIR} for each one no test checks, set freeze_tests to true to add them, \
+and fix what they find before finishing."
+                ));
+                green = 0;
+                continue;
+            }
+        }
         if all_pass && !action.finished {
             if green >= limits.green_stop {
                 break Ending::TestsHeld;
@@ -1090,9 +1177,9 @@ row, so they were dropped: {}.",
             if green >= limits.green_nudge {
                 state.notes.push(format!(
                     "Every acceptance test has passed for {green} steps in a row. Set finished to \
-true now, unless you can name a specific requirement of the task that no test covers; then add \
-the fix for it in this step. The host ends the run after {} steps in a row with every test \
-passing.",
+true now, unless you can name a specific requirement of the task that no test covers; then \
+write a test for it, set freeze_tests to true to add it, and fix the code. The host ends the run \
+after {} steps in a row with every test passing.",
                     limits.green_stop
                 ));
             }

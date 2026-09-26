@@ -1,0 +1,10 @@
+{
+  "id": "openagents.microcoder.coverage.v1",
+  "note": "What Jev answers when every frozen acceptance test first passes, and again whenever tests were added since: whether the task states something no test checks. Yes with probability 0.6 or more tells the model to add tests for the missing requirements before finishing. Change the wording here, not in code; the file is digested into every run's record.",
+  "questions": [
+    {
+      "id": "uncovered",
+      "text": "The acceptance tests in `tests` were written to check the task in `task`, and they all pass. Does the task state a requirement, output, format, file, value, or constraint that none of these tests checks, so the tests could pass while the task isn't done?"
+    }
+  ]
+}

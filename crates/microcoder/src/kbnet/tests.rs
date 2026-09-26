@@ -141,11 +141,22 @@ async fn entries_publish_sync_and_retrieve_through_a_relay() {
     let key = home.join("nostr/knowledge-key");
     let d = dir.to_str().unwrap();
     let publish_all = options(&["--dir", d, "--relay", &url]);
+    // Every entry file in the seed copy, and the admitted ones among them;
+    // a reader leaves synced candidates out unless asked for them.
+    let n = std::fs::read_dir(&dir).unwrap().count();
+    let admitted = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter(|f| {
+            std::fs::read_to_string(f.as_ref().unwrap().path())
+                .unwrap()
+                .contains("\nstatus: admitted\n")
+        })
+        .count();
 
     // First publish: every entry and its head. The key is made on first use.
     assert_eq!(publish(&publish_all, &key).await.unwrap(), 0);
-    assert_eq!(count(&store, kb::ENTRY_KIND), 14);
-    assert_eq!(count(&store, kb::HEAD_KIND), 14);
+    assert_eq!(count(&store, kb::ENTRY_KIND), n);
+    assert_eq!(count(&store, kb::HEAD_KIND), n);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -156,7 +167,7 @@ async fn entries_publish_sync_and_retrieve_through_a_relay() {
 
     // Again: nothing new.
     assert_eq!(publish(&publish_all, &key).await.unwrap(), 0);
-    assert_eq!(store.lock().unwrap().len(), 28);
+    assert_eq!(store.lock().unwrap().len(), 2 * n);
 
     // Changed without a new version: refused. With one: a new version, and
     // the head moves to it.
@@ -166,8 +177,8 @@ async fn entries_publish_sync_and_retrieve_through_a_relay() {
     assert_eq!(publish(&one, &key).await.unwrap(), 1);
     edit(&path, "version: 1", "version: 2");
     assert_eq!(publish(&one, &key).await.unwrap(), 0);
-    assert_eq!(count(&store, kb::ENTRY_KIND), 15);
-    assert_eq!(count(&store, kb::HEAD_KIND), 14);
+    assert_eq!(count(&store, kb::ENTRY_KIND), n + 1);
+    assert_eq!(count(&store, kb::HEAD_KIND), n);
 
     // Sync into a fresh cache, then search it with no local entries at all.
     let cache = scratch("entries-cache");
@@ -183,7 +194,7 @@ async fn entries_publish_sync_and_retrieve_through_a_relay() {
     let empty = scratch("entries-local");
     let trust = remote::TrustConfig::default();
     let (base, loaded) = remote::load(&empty, Some(&cache), &trust, Some(&me), false).unwrap();
-    assert_eq!(loaded.remote.get(&me), Some(&14));
+    assert_eq!(loaded.remote.get(&me), Some(&admitted));
     assert_eq!(base.get("shell.heredoc-quoting").unwrap().version, 2);
     assert!(base.entries.iter().all(|e| e.author == remote::npub(&me)));
     let retriever = Retriever::<knowledge::search::OpenRouterEmbedder>::lexical(base, "test");
@@ -207,7 +218,7 @@ async fn entries_publish_sync_and_retrieve_through_a_relay() {
     assert_eq!(count(&store, kb::WITHDRAWAL_KIND), 1);
     assert_eq!(sync(&sync_all, &key, &cache).await.unwrap(), 0);
     let (base, _) = remote::load(&empty, Some(&cache), &trust, Some(&me), false).unwrap();
-    assert_eq!(base.entries.len(), 13);
+    assert_eq!(base.entries.len(), admitted - 1);
     assert!(base.get("numerics.float-comparison").is_none());
 }
 

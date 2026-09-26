@@ -182,7 +182,8 @@ accepts `finished` only when all of them pass."
         };
         let mut out = format!(
             "Frozen at step {step}. The host runs its own copies after every step, so editing \
-{dir} changes nothing. `finished` is accepted only when every test passes. If you're sure a \
+{dir} changes nothing, but a new .sh file there is added when you set `freeze_tests` again. \
+`finished` is accepted only when every test passes. If you're sure a \
 failing test is itself wrong, so that no correct solution could pass it, say why in the rationale \
 and set `finished` to true: Jev checks each failing test and drops one it agrees is wrong.\n"
         );

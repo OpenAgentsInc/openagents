@@ -300,6 +300,7 @@ async fn go(options: Options) -> Result<u8, String> {
         "route": route.id, "route_file": microcoder::models::ROUTE,
         "dispute_file": microcoder::models::DISPUTE,
         "conform_file": microcoder::models::CONFORM,
+        "coverage_file": microcoder::models::COVERAGE,
         "strong_model": options.strong_model, "route_when": options.limits.route,
         "kb": options.kb, "kb_trust": options.kb_trust.mode.to_string(),
         "knowledge_file": microcoder::models::KNOWLEDGE,

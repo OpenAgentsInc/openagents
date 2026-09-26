@@ -11,8 +11,8 @@ use knowledge::search::Retriever;
 use knowledge::{Base, Entry};
 
 use crate::models::{
-    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, conform_set, dispute_set,
-    knowledge_set, question_set, route_set,
+    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, conform_set, coverage_set,
+    dispute_set, knowledge_set, question_set, route_set,
 };
 use crate::run::{Ending, Event, Limits, Models, Observer, run};
 use crate::state::{CommandResult, State};
@@ -58,6 +58,8 @@ struct Jev {
     wrong: f64,
     /// Every conformance answer.
     contradicts: f64,
+    /// Every coverage answer.
+    uncovered: f64,
     relevance: Vec<(&'static str, f64)>,
     /// The id of every question set asked.
     asked: RefCell<Vec<String>>,
@@ -68,6 +70,7 @@ fn jev(hard: f64) -> Jev {
         hard,
         wrong: 0.1,
         contradicts: 0.1,
+        uncovered: 0.1,
         relevance: Vec::new(),
         asked: RefCell::new(Vec::new()),
     }
@@ -78,6 +81,8 @@ impl Judge for Jev {
         self.asked.borrow_mut().push(set.id.clone());
         let answers = if set.id == route_set().id {
             vec![("hard".to_string(), self.hard)]
+        } else if set.id == coverage_set().id {
+            vec![("uncovered".to_string(), self.uncovered)]
         } else if set.id == conform_set().id {
             set.questions
                 .iter()
@@ -123,6 +128,9 @@ impl Env for Fake {
         if path == "/tmp/acceptance/a.sh" {
             return Some("check a".to_string());
         }
+        if path == "/tmp/acceptance/c.sh" {
+            return Some("check c".to_string());
+        }
         if path == "/tmp/acceptance/b.sh" {
             return Some("check b".to_string());
         }
@@ -137,7 +145,12 @@ impl Env for Fake {
                 exit: Some(0),
                 timed_out: false,
                 seconds: 0.0,
-                output: "/tmp/acceptance/a.sh\n/tmp/acceptance/b.sh\n".to_string(),
+                output: if self.ran.borrow().iter().any(|c| c == "write c") {
+                    "/tmp/acceptance/a.sh\n/tmp/acceptance/b.sh\n/tmp/acceptance/c.sh\n"
+                } else {
+                    "/tmp/acceptance/a.sh\n/tmp/acceptance/b.sh\n"
+                }
+                .to_string(),
             };
         }
         // The test `check b` fails until the model has run `fix b`.
@@ -802,4 +815,33 @@ async fn a_test_stuck_failing_is_checked_without_a_finish() {
         .filter(|e| matches!(e, Event::Disputed { .. }))
         .count();
     assert_eq!(disputes, 1);
+}
+
+#[tokio::test]
+async fn uncovered_requirements_prompt_new_tests_that_a_later_freeze_adds() {
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["fix b"])),
+        Ok(freeze("add a test", &["write c"])),
+        Ok(act("done", &[], true)),
+    ]);
+    let jev = Jev {
+        uncovered: 0.9,
+        ..jev(0.1)
+    };
+    let limits = Limits {
+        max_steps: Some(3),
+        ..Limits::default()
+    };
+    let (state, _, _, log) = go_with(&script, &limits, &jev, None).await;
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[1].contains("Jev judged that the task states something no test checks"));
+    assert!(prompts[2].contains("Step 2 added 1 frozen tests: c.sh."));
+    assert_eq!(state.tests.len(), 3);
+    // Checked once at the first green step and again after the addition.
+    let covered = log
+        .0
+        .iter()
+        .filter(|e| matches!(e, Event::Covered { .. }))
+        .count();
+    assert_eq!(covered, 2);
 }

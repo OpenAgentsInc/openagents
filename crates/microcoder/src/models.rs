@@ -32,6 +32,10 @@ pub const DISPUTE: &str = include_str!("../dispute.json");
 /// relevant knowledge entry.
 pub const CONFORM: &str = include_str!("../conform.json");
 
+/// The question Jev answers when every frozen test passes: whether the
+/// task states something no test checks.
+pub const COVERAGE: &str = include_str!("../coverage.json");
+
 /// One question in the set.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Question {
@@ -96,6 +100,16 @@ pub fn dispute_set() -> QuestionSet {
 #[must_use]
 pub fn conform_set() -> QuestionSet {
     serde_json::from_str(CONFORM).expect("conform.json is valid")
+}
+
+/// The embedded coverage set.
+///
+/// # Panics
+///
+/// When `coverage.json` isn't valid, which a test checks.
+#[must_use]
+pub fn coverage_set() -> QuestionSet {
+    serde_json::from_str(COVERAGE).expect("coverage.json is valid")
 }
 
 /// The relevance question asked once for each of `count` candidates: the
@@ -339,6 +353,11 @@ mod tests {
         let set = route_set();
         assert_eq!(set.questions.len(), 1);
         assert_eq!(set.questions[0].id, "hard");
+    }
+
+    #[test]
+    fn the_coverage_set_asks_one_question() {
+        assert_eq!(coverage_set().questions[0].id, "uncovered");
     }
 
     #[test]

@@ -221,6 +221,33 @@ impl Observer for Terminal {
                     ),
                 );
             }
+            Event::Covered {
+                step,
+                judgment,
+                uncovered,
+            } => {
+                let answers = judgment.error.clone().unwrap_or_else(|| {
+                    judgment
+                        .answers
+                        .iter()
+                        .map(|(id, p)| format!("{id} {p:.2}"))
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                });
+                let verdict = if *uncovered {
+                    "some requirement has no test: add tests"
+                } else {
+                    "the tests cover the task"
+                };
+                self.line(
+                    seconds,
+                    &format!(
+                        "{} {answers} · ${:.5} · {verdict}",
+                        self.paint("1;35", &format!("step {step} · jev checks test coverage")),
+                        judgment.usd
+                    ),
+                );
+            }
             Event::Conformed {
                 step,
                 judgment,
