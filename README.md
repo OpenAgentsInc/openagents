@@ -44,12 +44,15 @@ complete multi-operator market remain unfinished. The
 [implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
 maps every contract to its implemented parts and remaining work.
 
-Coder for iOS is available in internal TestFlight as **0.5.0 (40)**.
+Coder for iOS is available in internal TestFlight as **0.5.0 (41)**.
 [Verse is the home screen](docs/verse/mobile.md): walk to the computer in the
 shared 3D world to pair by QR code or paste a pairing string. The computer opens
 saved Codex and Claude transcripts with follow updates and encrypted local
 caching. [Pair your computer](docs/coder/guides/mobile-readonly.md).
-[Release evidence](docs/coder/verification/2026-09-26-world-pairing.md).
+The [Gym building](docs/verse/gym.md) loads Microcoder and Terminal-Bench boards
+only while you are inside. Inspect recorded charts and explicitly request
+host-enabled runs through a separate Gym connection.
+[Release evidence](docs/coder/verification/2026-09-26-verse-gym.md).
 
 ## Start here
 

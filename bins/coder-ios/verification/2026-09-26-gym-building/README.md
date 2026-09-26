@@ -65,8 +65,9 @@ See the host logs and source receipt in `host/` for exact counts and checks.
 ## Distribution and limits
 
 Build 41 uses the existing Coder bundle, signing team, version 0.5.0, and App
-Store Connect app. Distribution is recorded separately after Apple's upload
-and processing results are available. Native tests do not establish production
+Store Connect app. The [release receipt](testflight-build41.json) records the clean source,
+archive identity, strict signature check, successful upload, and Apple
+`VALID` / `IN_BETA_TESTING` states. Native tests do not establish production
 relay admission, a physical-device Gym session, thermal performance, or any
 model's benchmark score. A configured host and separate device grant are
 required for real boards; synthetic mode is never represented as live data.

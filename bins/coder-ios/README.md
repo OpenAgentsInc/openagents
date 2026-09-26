@@ -11,13 +11,14 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Available in internal TestFlight:** Coder `0.5.0 (40)`, built from
-[`e85bfce6b4`](https://github.com/OpenAgentsInc/openagents/commit/e85bfce6b490d9b48c6a430758830bc00c316248).
+**Available in internal TestFlight:** Coder `0.5.0 (41)`, built from
+[`0a3fe97536`](https://github.com/OpenAgentsInc/openagents/commit/0a3fe97536f59a49a5ec9ba3990919802cdae8d1).
 [Connect your phone](../../docs/coder/guides/mobile-readonly.md) and review the
-[distribution receipt](verification/2026-09-26-world-pairing/testflight-build40.json).
+[distribution receipt](verification/2026-09-26-gym-building/testflight-build41.json).
 
-The new Gym source targets build `41`; the availability statement above changes
-only after App Store Connect confirms distribution.
+Walk east into the [Gym](../../docs/verse/gym.md) for Microcoder and
+Terminal-Bench boards. Its observations and run recipes require a separate
+host grant. Leaving or backgrounding pauses Gym updates.
 
 ## App identity and source boundary
 
@@ -41,7 +42,8 @@ for app compatibility; this read-only shell does not process old authentication
 callbacks. The retained `ExportOptions.plist` records distribution metadata;
 the build helper never uploads the app.
 
-Build `40` makes Verse the home screen and adds a world computer with QR
+Build `41` adds the shared Gym building, recorded native charts, and separately
+authorized recipe requests. Build `40` makes Verse the home screen and adds a world computer with QR
 pairing. Build `39` introduced the shared world; build `38` introduced the
 reader. The app
 identity, marketing version, signing team, and distribution profile stay the
