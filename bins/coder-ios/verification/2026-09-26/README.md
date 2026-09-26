@@ -57,3 +57,11 @@ every keyboard/input method, real phone-to-host pairing, or TestFlight
 processing. The inline Markdown adapter preserves original source but is not
 a complete CommonMark block renderer. Archive and upload receipts must
 separately identify their committed source and distribution results.
+
+## TestFlight delivery
+
+[Build 38's distribution receipt](testflight-build38.json) records the clean
+source commit, archive/package hashes, and App Store Connect result. Coder
+`0.5.0 (38)` is `VALID` and `IN_BETA_TESTING` for the existing internal group.
+This is internal TestFlight delivery; physical-device acceptance and external
+beta/App Store review are separate.

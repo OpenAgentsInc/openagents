@@ -17,8 +17,10 @@ crate's source and README define the delivered subset.
 The initial core implements `Style`, `StylePatch`, `Patch<T>`, and a validated
 `StyleSheet` name registry. It has no implicit text inheritance, dynamic theme
 groups, predicate engine, geometry conversion, CSS extraction, or platform
-renderer. Its spacing and surface values are semantic tokens awaiting adapter
-mappings.
+renderer inside the generic crate. The separate [iOS reader adapter](../../../bins/coder-ios/host/App/NativeView.swift)
+now maps RGBA colors, spacing, weight, and alignment to SwiftUI. Its
+[verification record](../verification/2026-09-26-mobile-reader.md) covers that
+application subset, not every platform or proposed theme feature.
 
 ## What to take from StyleX
 
@@ -269,8 +271,10 @@ property is not portable behavior.
 ## Renderer responsibilities
 
 The shared contract describes intent. Each adapter owns concrete measurement,
-layout, drawing, and platform constraints. This table describes proposed
-adapter responsibilities, not delivered native or web backends.
+layout, drawing, and platform constraints. The iOS reader implements a bounded
+SwiftUI mapping for its current controls; the table describes the broader
+cross-platform target. It does not claim delivered terminal/web adapters,
+complete accessibility support, or every native styling behavior.
 
 | Concern | Terminal | Native | Web |
 | --- | --- | --- | --- |

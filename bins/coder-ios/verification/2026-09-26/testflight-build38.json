@@ -1,0 +1,33 @@
+{
+  "schema": "coder.ios.testflight-release.v1",
+  "recorded_at": "2026-09-26T20:45:23.962705+00:00",
+  "app_store_connect_app": "6807250813",
+  "bundle": "com.openagents.coder",
+  "version": "0.5.0",
+  "build": "38",
+  "source_commit": "2f84cf2627777f40639411f079c26a048039f792",
+  "source_status": "",
+  "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "cargo_lock_sha256": "4c79d186f2a406ce74b9fb5deff2d70cbd203d2679058a050d9ff14fafc3090b",
+  "executable_sha256": "72b5cd04257d21e740d40b2f496f199db6e88c6d9dd8bd0015ef295eefed4072",
+  "xcode": "Xcode 26.6\nBuild version 17F113",
+  "rust": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "archive_result": "succeeded",
+  "signature_verification": "codesign --verify --deep --strict: passed",
+  "upload_result": "succeeded",
+  "upload_finished_at": "2026-09-26T20:44:11Z",
+  "processing_state": "VALID",
+  "tester_group": {
+    "name": "Internal Testers",
+    "automatic_all_builds": true
+  },
+  "physical_device_acceptance": false,
+  "model_or_benchmark_runs": false,
+  "local_artifacts": "<worktree-parent>/target/coder-ios-build38",
+  "release_scope": "Internal TestFlight read-only retained-harness viewer; no App Store production submission.",
+  "app_store_build_id": "03890594-261c-49a7-ba53-cc42166b00c8",
+  "internal_build_state": "IN_BETA_TESTING",
+  "external_build_state": "READY_FOR_BETA_SUBMISSION",
+  "test_notes_saved": true,
+  "verified_at": "2026-09-26T20:47:09.795169+00:00"
+}

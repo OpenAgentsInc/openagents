@@ -6,6 +6,11 @@ cache, and application projection. The thin SwiftUI host renders Rust Native
 views, keeps a device identity in Keychain, and forwards bounded UI events.
 It does not call models, execute tasks, submit chat messages, or grant approvals.
 
+**Available in internal TestFlight:** Coder `0.5.0 (38)`, built from
+[`2f84cf2627`](https://github.com/OpenAgentsInc/openagents/commit/2f84cf2627777f40639411f079c26a048039f792).
+[Connect your phone](../../docs/coder/guides/mobile-readonly.md) and review the
+[distribution receipt](verification/2026-09-26/testflight-build38.json).
+
 ## App identity and source boundary
 
 The user-authorized app metadata and icon preserve the existing Xcode setup:

@@ -46,7 +46,18 @@ seconds. The [native receipt, log, and screenshots](../../../bins/coder-ios/veri
 pin the tested source files. The [observer receipt](../../../crates/coder-connect/fixtures/2026-09-26-observer/receipt.json)
 retains the synthetic host/client and live-relay results.
 
-Archive and upload completion are pending distribution.
+**Coder `0.5.0 (38)` is available to the existing Internal Testers group.**
+App Store Connect reports `VALID` and `IN_BETA_TESTING` for build
+`03890594-261c-49a7-ba53-cc42166b00c8`. The group automatically receives all
+builds; the testing notes include the pairing guide. No external beta review
+or App Store production submission was requested.
+
+The optimized archive was built from clean source commit
+[`2f84cf2627`](https://github.com/OpenAgentsInc/openagents/commit/2f84cf2627777f40639411f079c26a048039f792).
+Signature verification and export/upload succeeded. The
+[distribution receipt](../../../bins/coder-ios/verification/2026-09-26/testflight-build38.json)
+records the exact source, executable and package hashes, preserved identity,
+and Apple processing state.
 The release operator retains the source commit, workspace status, Cargo lock
 and executable hashes, Xcode/Rust versions, `.xcresult`, archive, and export
 logs outside git. No signing material or App Store Connect credentials belong

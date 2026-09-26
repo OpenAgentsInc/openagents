@@ -18,8 +18,9 @@ existing amber theme into that crate. #9697 corrects that dependency boundary:
 uses generic RGBA colors and a product-neutral settings example.
 
 This shares application palette ownership without completing migration of
-screens. No native renderer, SwiftUI shell, input reconciliation, virtualized
-list, or remote client is delivered by this issue.
+screens. The original #9693 issue delivered no native renderer or remote
+client. The later #9694–#9697 work adds the bounded iOS reader described below;
+it does not add general input reconciliation or every platform adapter.
 
 | Initial acceptance item | Evidence |
 | --- | --- |
@@ -28,6 +29,21 @@ list, or remote client is delivered by this issue.
 | Style composition has deterministic leaf precedence and explicit reset. | [Style implementation and tests](../../../crates/rust-native/src/style.rs). |
 | Existing palette values and terminal imports remain compatible. | [Shared theme](../../../crates/coder-ui/src/theme.rs), [terminal compatibility exports](../../../crates/coder-terminal/src/intensity.rs), terminal unit tests. |
 | Native claims and migration order are explicit. | [Specification](architecture.md), [adoption](adoption.md), [styling](styling-design.md), [source review](references.md). |
+
+## Current application delivery
+
+The [iOS reader](../guides/mobile-readonly.md) is the first implemented native
+consumer: Rust owns catalog/transcript synchronization and encrypted cache;
+[SwiftUI](../../../bins/coder-ios/host/App/NativeView.swift) renders the shared
+lists, text, and buttons. Its [receipt](../verification/2026-09-26-mobile-reader.md)
+records synthetic relay/application checks and native simulator checks.
+Distribution status belongs to that receipt, not this build-order document.
+
+This delivers portions of RN1, RN3, RN4, and RN5 for read-only saved history.
+The initial terminal/HTML demonstration, Gym pane, general mounting protocol,
+shared editable-input/IME contract, Android/web reader, and task-control screens
+remain open scope. The existing UIKit probe is historical feasibility evidence;
+it is not the SwiftUI implementation or acceptance for the new reader.
 
 ## Sequence and completion criteria
 
@@ -41,9 +57,9 @@ remain explicitly pending.
 | RN0: foundation | Core tree, validation, activation, generic stylesheet, and migration docs; application theme outside the framework. | Core and first-consumer tests pass; existing terminal imports remain valid. | Initial contract in #9693; product separation in #9697. |
 | RN1: first shared screen | A read-only task/status projection from the mobile probe's synthetic ATIF fixture; terminal and escaped HTML adapters for the initial vocabulary. A static fixture catalog records inputs and views. | Both adapters consume the same validated tree; unknown cost and unrun checks remain distinct; text stays literal; terminal keyboard activation resolves the expected intent; unsupported properties are reported. Static HTML remains explicitly inert pending RN3 DOM events. | RN0. No service credentials or agent runs. |
 | RN2: application adoption | A Gym replay status/control pane and shared transcript document contract. Keep replay timing and evidence interpretation in Gym. | One pane uses the projection without changing replay, search, full-text access, recorded/estimated labels, or `l` analysis behavior. Parsing and wrapping retain existing Markdown semantics. | RN1; inspect and preserve the current Gym model. |
-| RN3: native adapter boundary | Versioned mount/event ABI, applied-revision acknowledgments, thin SwiftUI adapter, and Android native widget adapter for the initial screen. Add Rust/Wasm web interactions where needed. | Each claimed platform preserves native control identity, disposes callbacks, rejects stale mounts, exposes accessible labels, and routes bounded events. A supported-platform matrix states what was actually checked. | RN1. Android and Apple work can proceed independently. |
-| RN4: editing and long content | Native input protocol, selection/composition reconciliation, virtualized lists, and shared rich-document rendering. | Unicode and IME edits survive refreshes, no stale update clobbers native composition, list windows retain full-record access, and accessibility reaches the final item. | RN2 document semantics and RN3 lifecycle contract. |
-| RN5: Coder suite screens | Task inbox/detail, chat/composer, evidence/permission views, navigation, and reconnect presentation over existing task/control APIs. | The same application projection drives each declared surface; actions retain existing authorization, idempotency, unknown-state, and evidence contracts. | RN4 for editing screens; read-only screens can adopt after RN1/RN3. |
+| RN3: native adapter boundary | Preserve the delivered iOS reader ABI and SwiftUI subset; add a reusable mounting contract with applied-revision acknowledgments, Android native widgets, and Rust/Wasm interactions where needed. | Each claimed platform preserves native control identity, disposes callbacks, rejects stale mounts, exposes accessible labels, and routes bounded events. A supported-platform matrix states what was actually checked. | RN0 and an application projection; terminal/HTML, Android, and Apple slices proceed independently. |
+| RN4: editing and long content | Preserve delivered iOS transcript paging, text selection, and full-record access. Add shared editable input, selection/composition reconciliation, and richer document rendering. | Unicode and IME edits survive refreshes, no stale update clobbers native composition, list windows retain full-record access, and accessibility reaches the final item. | RN2 document semantics and RN3 lifecycle contract. |
+| RN5: Coder suite screens | Preserve the delivered read-only saved-history reader. Add task inbox/detail, composer, evidence/permission views, and scoped control over the appropriate APIs. | The same application projection drives each declared surface; actions retain existing authorization, idempotency, unknown-state, and evidence contracts. | RN4 for editing screens; read-only screens can adopt after RN1/RN3. |
 | RN6: framework ergonomics | Measured caching, typed theme groups, environment predicates, optional authoring macros, and web stylesheet extraction. | A demonstrated duplication or performance problem is reduced without changing semantics or platform support claims. | Evidence from real application integrations; never a prerequisite for RN1–RN5. |
 
 ```mermaid
@@ -51,7 +67,7 @@ flowchart TD
     Foundation["RN0: generic core and application theme boundary"]
     First["RN1: one shared status screen"]
     Replay["RN2: Gym pane and document model"]
-    Native["RN3: SwiftUI, Android, web adapters"]
+    Native["RN3: iOS reader delivered; general/other adapters remain"]
     Input["RN4: native editing and virtualized content"]
     Suite["RN5: progressively migrate Coder screens"]
     Optimize["RN6: measured ergonomics and optimization"]
@@ -89,7 +105,7 @@ private Coder UI source or its character-grid layout as the mobile contract.
 | Current workstream | Immediate planning change | Work that continues independently |
 | --- | --- | --- |
 | Suite M3/M5, task owner and transcript views | Treat task state and ATIF as projection inputs; keep UI state out of durable task ownership. | Task lifecycle, retention, control scopes, and reconnect correctness. |
-| Suite M1, mobile/rendering feasibility | Use a SwiftUI adapter as the iOS target and native Android controls behind the shared contract. Keep existing UIKit receipts as historical evidence. | Build/install feasibility and native transport research within their own scope; stopped acceptance remains stopped. |
+| Suite M1, mobile/rendering feasibility | Extend the delivered SwiftUI observation slice within its tested scope; add native Android controls separately. Keep UIKit receipts as historical evidence. | Build/install feasibility and native transport research within their own scope; stopped acceptance remains stopped. |
 | Suite M8/M9, mobile observation/control; M13, desktop/web clients | Build task status and read-only history first, then input and control views. Reuse verified task-control APIs. | Protocol verification, scoped pairing, outbox/reconnect state, secure storage. |
 | Suite M11/M12, portable host and CoderOS | Draw host/client status through shared projections when screens are introduced. | Installation, credentials, service supervision, and update integrity. |
 | Suite M14/M15/M17, device adapters, remote environments, and task automation | Reuse the eventual task/trace UI instead of defining a second widget catalog. | Execution adapter, resource admission, and scheduling correctness. |

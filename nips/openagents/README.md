@@ -225,3 +225,18 @@ open/seal and relay privacy paths. MKT/LAB have strict free-negotiation and term
 validators, and X402 has offline invoice/request-binding verification. These
 components do not implement a running labor or payment service; durable host
 admission, execution, acceptance, and recovery remain explicit work.
+
+The [SESS retained-history observer](NIP-SESS.md#read-only-observation-of-retained-foreign-history)
+has a narrower application implementation in
+[`coder-history`](../../crates/coder-history/README.md),
+[`coder-connect`](../../crates/coder-connect/README.md), and the
+[read-only iOS reader](../../docs/coder/guides/mobile-readonly.md). An explicit
+local pairing binds selected Codex/Claude roots, host and client keys, relay,
+and expiry. Finite catalog/transcript reads use NIP-42 authentication and
+signed encrypted private `3188` artifacts, with exact request binding,
+revocation checks, bounded raw records, and source-change refusals.
+[The receipt](../../docs/coder/verification/2026-09-26-mobile-reader.md)
+records synthetic and native simulator evidence and remaining acceptance.
+This implements no managed engine-session admission, input queue, submit,
+steering, interruption, approval, or CTRL task control. It allocates no new
+kind and advertises no general CAP/CJ execution support.

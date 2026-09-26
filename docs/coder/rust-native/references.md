@@ -10,6 +10,12 @@ tests, models, benchmarks, simulators, or devices. Source tests and retained
 reference receipts describe their own coverage; they are not new OpenAgents
 verification.
 
+Subsequent implementation is recorded separately: the [iOS saved-history
+reader](../guides/mobile-readonly.md) now uses Rust-owned views and a thin
+SwiftUI adapter. Its [receipt](../verification/2026-09-26-mobile-reader.md)
+covers synthetic application/relay and native simulator checks. This does not
+change the historical review or imply full framework/platform acceptance.
+
 ## Inspected revisions
 
 | Reference | Exact revision | Inspection boundary |
@@ -79,14 +85,16 @@ SwiftUI can be an adapter to a Rust-owned semantic model; it should not become
 a second implementation of Coder state, networking, or policy. Its view
 identity and local editing state need the same revision and callback rules as
 UIKit or Android Views. The user selected this direction and the repository's
-[`AGENTS.md`](../../../AGENTS.md) now scopes the planned SwiftUI exception to
-native controls, mounting, and callbacks. This reference review does not prove
-that the bridge has been implemented.
+[`AGENTS.md`](../../../AGENTS.md) scopes the SwiftUI exception to native
+controls, mounting, and callbacks. The subsequent [reader bridge](../../../bins/coder-ios/host/App/)
+implements that boundary for observation. Its own receipt, rather than this
+source review, establishes what was built and checked.
 
 The existing [Rust mobile feasibility work][mobile-feasibility] provides the
-nearer adoption path: Rust invokes UIKit and Android native text/list controls,
-with a Rust-generated HTML observation surface. Extract common semantics
-incrementally from that public implementation. The probe's simulator/emulator
+historical feasibility baseline: Rust invokes UIKit and Android native
+text/list controls, with a Rust-generated HTML observation surface. The later
+reader adds a separate SwiftUI implementation; reuse its shared semantics
+without treating the older probe as equivalent evidence. The probe's simulator/emulator
 observations do not qualify new adapters, and its acknowledged physical-device,
 IME, accessibility, and reconnect gaps remain relevant.
 

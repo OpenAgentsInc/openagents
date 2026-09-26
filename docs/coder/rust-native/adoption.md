@@ -4,15 +4,21 @@ Status: adoption plan, September 26, 2026. The first production change moves
 the existing public palette into the application crate `coder-ui` and preserves
 the terminal's exports. Rust Native remains reusable, with no Coder dependency
 or palette. Its semantic vocabulary includes `Stack`, `List`, `Text`, and
-`Button`.
-Native renderers, text editing, transcript virtualization, and a complete
-Coder screen remain subsequent work.
+`Button`. The [read-only iOS reader](../guides/mobile-readonly.md) now uses
+those views through a [thin SwiftUI adapter](../../../bins/coder-ios/host/App/NativeView.swift):
+saved-chat lists, paged transcripts, full-message parts, exact source bytes,
+and follow controls. Rust owns observation, cache, and application intents.
+[Its verification record](../verification/2026-09-26-mobile-reader.md) separates
+simulator evidence from remaining physical-device acceptance. General adapter
+runtime support, shared editable text, Android/web clients, and task control
+remain separate work.
 
 This plan reviews public source at `6958741c4a72` and the accompanying Rust
 Native foundation. It uses the separate Coder checkout only as design
 reference. No private source, prompts, service contracts, or credentials are
-copied. No platform application, model call, or benchmark run is part of this
-adoption review.
+copied. That original source review ran no platform application, model, or
+benchmark. The later reader's implementation and checks have their own linked
+receipt; they do not retroactively expand the review's evidence.
 
 ## What the existing code already provides
 
@@ -30,7 +36,8 @@ that have a real second consumer.
 | [Decision evidence](../../../crates/coder-terminal/src/decision.rs) and [progress](../../../crates/coder-terminal/src/progress.rs) | Explicit unknown, unavailable, simulated, measured, verification, and execution states with readable detail. | Preserve these distinctions in future semantic projections. Do not replace them with generic success/error badges. |
 | [Scrollback](../../../crates/coder-terminal/src/scrollback.rs) and [event lanes](../../../crates/coder-terminal/src/events.rs) | Bounded display retention and width caches; separate reliable outcomes from bursty text. | Keep transport, scheduling, and retention policy outside the component tree. Make display truncation visible and retain a route to original evidence. |
 | [Mobile fixture](../../../crates/coder-mobile-probe/src/lib.rs) | One synthetic ATIF source with text, HTML, Unicode, and full-transcript exports. | Use as the first follow-on semantic consumer before attaching remote authority. |
-| [iOS probe](../../../crates/coder-mobile-probe/src/ios.rs) and [Android probe](../../../crates/coder-mobile-probe/src/android.rs) | Actual UIKit controls through Rust Objective-C calls and Android framework widgets through Rust JNI. | Reference working platform boundaries. Neither is a SwiftUI or Compose renderer. |
+| [iOS probe](../../../crates/coder-mobile-probe/src/ios.rs) and [Android probe](../../../crates/coder-mobile-probe/src/android.rs) | Actual UIKit controls through Rust Objective-C calls and Android framework widgets through Rust JNI. | Retain their historical feasibility evidence; neither is the later SwiftUI reader or a Compose renderer. |
+| [Reader projection](../../../crates/coder-mobile/src/render.rs) and [SwiftUI adapter](../../../bins/coder-ios/host/App/NativeView.swift) | Rust-owned saved-history pages render as native lists, selectable text, and buttons with revision-bound activation. | Reuse this delivered read-only slice. Keep SESS observation separate from CTRL task rights, and qualify additional controls or platforms independently. |
 | [Gym transcript](../../../crates/gym/src/runs_transcript.rs) | Recorded sources become typed transcript blocks with full content, timestamps, and optional costs. | Keep ingestion and source interpretation in Gym. Project those blocks into shared components without importing Gym into the UI core. |
 | [Gym replay](../../../crates/gym/src/runs_replay.rs), [replay terminal](../../../crates/gym/src/runs_replay_tui.rs), and [run terminal](../../../crates/gym/src/runs_tui.rs) | One replay clock, recorded versus estimated timing, expandable transcript rows, navigation, and details. | Migrate presentation a pane at a time; preserve the replay model, timestamp interpretation, and existing controls. |
 
@@ -57,7 +64,7 @@ flowchart TD
     Application["Application projection and typed intents"]
     Native["Rust Native view, generic style, instance and revision"]
     Terminal["Terminal adapter: Ratatui, cells, existing ladder"]
-    Apple["Apple adapter: planned SwiftUI bridge"]
+    Apple["Apple: SwiftUI read-only reader; other controls planned"]
     Android["Android adapter: native framework controls"]
     Web["Web adapter: semantic HTML, then Rust DOM behavior"]
     Intent["Current enabled control resolves a typed intent"]
@@ -88,8 +95,8 @@ storage, retained outboxes, and reconnect state stay outside Rust Native.
 
 ## File-by-file migration map
 
-The first two rows describe the foundation change. Later rows name proposed
-small changes, not files or integrations that are already implemented. Row
+The first two rows describe the foundation change. The iOS observation slice
+of target 8 is now implemented; other rows remain proposed unless stated. Row
 numbers identify targets, not dependency order. Follow the [build order](build-order.md):
 static HTML belongs in RN1, and native adapters can proceed alongside RN2.
 
@@ -102,7 +109,7 @@ static HTML belongs in RN1, and native adapters can proceed alongside RN2.
 | 5 | `crates/coder-terminal/src/markdown.rs`; proposed `crates/rust-native/src/text.rs` or a dedicated pure text crate | Separate parse/semantic data from `Marks::style`, terminal wrapping, and rendered lines. Preserve the old Markdown facade. Add fixtures for nested lists, tables, links, raw HTML, fenced code, Unicode, and exact source recovery before switching a consumer. Do not perform this extraction just to add a dependency. |
 | 6 | `crates/gym/src/runs_tui.rs`, `runs_replay_tui.rs`, and a new Gym-local projection module | Start with the replay header and its unavailable/error state. Then move transcript row headers and expansion controls. Keep `runs_transcript.rs`, `runs_replay.rs`, and original artifact readers authoritative. Keep chronology/interesting ordering and playback speed in the existing controller. |
 | 7 | `crates/coder/src/main.rs` and a new Coder-local presentation module | Extract presentation from the current draw loop. Adopt the same status/transcript primitives after Gym proves them. Keep `turn::run`, task ownership, permits, event handling, and the terminal editor unchanged in this slice. |
-| 8 | `crates/coder-mobile-probe/src/lib.rs`, `ios.rs`, `android.rs`, `main.rs`; proposed adapters under Rust Native | Replace one synthetic status section through the adapter while retaining a baseline fixture route. Move long transcripts only after stable native row identity and accessible paging exist. Record UIKit and SwiftUI as separate adapter implementations. |
+| 8 | `crates/coder-mobile/src/{app,render,cache}.rs`; `bins/coder-ios/host/App/`; retained `coder-mobile-probe` | The iOS saved-history reader is implemented with stable source rows, bounded paging, full-message parts, raw expansion, and explicit cache gaps. Preserve its synthetic and simulator controls while extending it. Android and a general reusable adapter runtime remain pending; UIKit and SwiftUI retain separate receipts. |
 | 9 | A dedicated Coder client presentation layer over `coder-control`; native app entry points | Connect verified task pages to the same projection. Add an exact persisted outbox and explicit stale, revoked, expired, disconnected, and delivery-unknown states before enabling correction/cancel controls. A disabled control must carry its reason. This is a client milestone, not a generic UI-core feature. |
 | 10 | Web adapter in RN1/RN3 and, separately, `crates/gateway/src/dashboard.rs` or `playground.rs` | Begin with inert semantic HTML in RN1, then interactive DOM support in RN3. Reuse semantic components where the product contract matches. Preserve existing HTTP authentication, escaping, and disclosures. Gateway account views are a later consumer; do not force all service pages or server logic through the first Coder transcript migration. |
 
@@ -115,27 +122,29 @@ not turn it into a native widget surface.
 
 ## Native component mapping
 
-The initial three elements establish the contract. The remaining rows are
-extensions that need their own schema, adapter behavior, and acceptance.
+The current core has stack, list, text, and button elements. The iOS reader
+implements their observation subset. Other platform columns and additional
+controls remain targets needing their own adapter behavior and acceptance.
 Sharing meaning does not require identical geometry or typography.
 
 | Semantic element | Terminal | Apple target | Android target | Web target |
 | --- | --- | --- | --- | --- |
 | Stack | Ordered rows/columns within terminal bounds. | SwiftUI `VStack`/`HStack` with native sizing; UIKit grouping is a separately named fallback. | Native `LinearLayout` or another admitted layout container. | Semantic grouping with CSS layout. |
-| Text | Existing Unicode wrapping and intensity styles. | SwiftUI `Text`; selectable long text needs a separately qualified selection path. | `TextView` with appropriate selection behavior. | Text nodes and semantic text elements, never untrusted `innerHTML`. |
+| Text | Existing Unicode wrapping and intensity styles. | SwiftUI selectable `Text`, bounded message parts, and inert Markdown links are implemented in the reader; physical-device accessibility remains unaccepted. | `TextView` with appropriate selection behavior. | Text nodes and semantic text elements, never untrusted `innerHTML`. |
 | Button | Focusable labeled affordance with keyboard/mouse activation. | SwiftUI `Button`. | Native `Button` and an explicitly implemented Rust callback bridge. | Native `button`, keyboard focus, and disabled semantics. |
 | Text input, planned | Existing terminal editor and key table. | Native composing control through the SwiftUI bridge; preserve selection and marked text. | `EditText` with native IME composition. | Labeled `input` or `textarea`, with composition-aware events. |
-| Transcript list, planned | Visible rows with stable source/event identities and full-detail navigation. | Native lazy/recycled rows with readable headings and expandable records. | A recycled native list; the current probe uses `ListView`. | Semantic entries with accessible bounded paging and source-detail links. |
+| Transcript list, iOS observation implemented | Visible rows with stable source/event identities and full-detail navigation. | SwiftUI `List` with stable row keys, page navigation, raw expansion, and explicit follow pause/resume in the reader. | A recycled native list; the current probe uses `ListView`. | Semantic entries with accessible bounded paging and source-detail links. |
 | Disclosure and details, planned | Existing open/closed row commands plus a full-record view. | Native disclosure/navigation control with restored focus. | Native expanded row or details screen. | `details`/`summary` or an equivalent accessible disclosure. |
 | Table/code, planned | Terminal-aligned columns and source-preserving code blocks. | Native text/list/table treatment with horizontal access when necessary. | Native text/table treatment with accessible row and column labels. | Semantic table and `pre`/`code`, with safely handled links. |
 
-SwiftUI is the intended Apple adapter, not another name for the existing
-UIKit probe. Apple's [UIKit integration documentation](https://developer.apple.com/documentation/swiftui/uikit-integration)
+SwiftUI is implemented by the reader's thin Apple adapter. It is separate
+from the historical UIKit probe. Apple's [UIKit integration documentation](https://developer.apple.com/documentation/swiftui/uikit-integration)
 describes the explicit hosting/representable boundary. A thin SwiftUI bridge
 must expose rendering and platform callbacks to Rust while Rust retains
 application state and business logic. It requires its own narrow language and
-build boundary; no Swift implementation is added by this foundation. Treat a
-UIKit-only fallback as UIKit support, not SwiftUI completion.
+build boundary, now present under `bins/coder-ios/host`. The generic Rust
+framework still contains no Swift or Coder application implementation. A
+UIKit-only fallback remains a separately identified path.
 
 Android framework widgets are the shortest path from the public probe. Compose
 is not implied by JNI calls to those widgets. Adding Compose would require a
@@ -220,8 +229,8 @@ platform runtime work separately authorized and separately reported. Preserve
 the existing renderer until its replacement passes the slice's checks; the
 release matrix must not block an independent palette or semantic-core change.
 
-The first adoption is complete when the palette has one application owner and
-existing terminal behavior remains compatible. The next useful outcome is one
-readable synthetic status surface rendered from the initial semantic subset.
-A shared Coder transcript, native editing, and cross-device task control each
-need their own later completion record.
+The palette foundation and first iOS observation consumer are implemented.
+The reader's saved native transcripts are distinct from a managed Coder task's
+ATIF history. General renderer integration, native editing, and cross-device
+task control still need their own completion records; read access does not
+satisfy those milestones.

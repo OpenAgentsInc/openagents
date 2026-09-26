@@ -2,8 +2,10 @@
 
 Status: experimental foundation and proposed framework direction, September 26,
 2026. [Issue #9693](https://github.com/OpenAgentsInc/openagents/issues/9693)
-covers the initial crate. Sections distinguish current code from contracts to
-implement next; this document is not a claim of complete platform support.
+covers the initial crate. The later [read-only iOS reader](../guides/mobile-readonly.md)
+implements one native application slice; its [receipt](../verification/2026-09-26-mobile-reader.md)
+records the checked platforms and remaining limits. Sections distinguish that
+delivery from general adapter contracts and complete suite support.
 
 ## Product and architecture
 
@@ -28,7 +30,7 @@ flowchart TD
     Core["Rust Native: validation, components, generic styles"]
     Mount["Adapter prepares and commits a native revision"]
     Terminal["Terminal: existing Ratatui facilities"]
-    Apple["iOS: planned SwiftUI controls"]
+    Apple["iOS: SwiftUI saved-history reader"]
     Android["Android: native framework widgets"]
     Web["Web: semantic HTML and Rust DOM adapter"]
     Event["Bounded native event with view identity"]
@@ -47,8 +49,9 @@ flowchart TD
 ```
 
 The reusable core data contract exists in Rust Native. Coder theme values
-belong to `coder-ui`, outside that core. Existing applications already supply domain operations and
-platform facilities; adapter integration is subsequent work.
+belong to `coder-ui`, outside that core. The iOS reader connects the core to
+SwiftUI controls and a Rust application host. General mount reconciliation,
+editable input, and other platform integrations remain subsequent work.
 
 ## Ownership and dependency direction
 
@@ -134,7 +137,7 @@ operation. The initial strict revision policy may reject a click concurrent
 with a refresh. Prefer that visible stale-view response to applying an action
 against changed data. A more permissive policy needs its own exact preconditions.
 
-## Native rendering contract to build next
+## Native rendering: delivered subset and remaining contract
 
 Borrow React Native's separation of rendering, committing, and mounting without
 recreating React, Fabric, or Yoga. A projection builds an immutable semantic
@@ -148,12 +151,14 @@ failed, or superseded mount must never report that a newer view is displayed.
 Use stable keys to reconcile controls without losing focus, selection, list
 position, or native object identity unnecessarily. Do not allow an old mount
 completion to replace a newer revision. The initial code does not implement
-this reconciler or acknowledgment protocol.
+a general reconciler or applied-revision acknowledgment protocol. The reader
+uses a narrower serialized Rust/native bridge with revision-bound callbacks;
+its working controls do not establish the complete framework protocol.
 
 | Surface | Initial adapter direction | Existing foundation and limits |
 | --- | --- | --- |
 | Terminal | `coder-terminal` maps semantics through Ratatui, its ladder, and existing input facilities. | Theme adoption works now. Framing, Markdown, editor, and key bindings remain intact. A generic view renderer is still needed. |
-| iOS | Thin SwiftUI adapter using `Text`, `Button`, `VStack`/`HStack`, then native input and lists. | The public mobile probe uses UIKit through Rust `objc2`; it is not SwiftUI. `UIHostingController` can host a SwiftUI surface in an existing UIKit shell. |
+| iOS | Implemented read-only SwiftUI adapter using `Text`, `Button`, `VStack`/`HStack`, and `List`. | [Reader source](../../../bins/coder-ios/host/App/NativeView.swift) and [receipt](../verification/2026-09-26-mobile-reader.md) cover paged saved history, selection, inert Markdown, and follow behavior. Shared editable input and physical-device acceptance remain open. The earlier UIKit probe is separate. |
 | Android | Rust JNI adapter to native framework text, button, layout, and list widgets. | Reuse the public probe's platform boundary. A Compose adapter would be a separate decision, not a dependency of the first implementation. |
 | Web | Start with escaped semantic HTML; add Rust/Wasm DOM reconciliation and bounded events. | Static HTML proves serialization and semantics, not browser interactions. Use real controls and accessible roles, not a canvas for every screen. |
 | Desktop and Verse | Add appropriate native or existing terminal adapters; share semantic overlays where useful. | Verse retains its `wgpu` world and controller. A scene renderer is not replaced by a UI component tree. |
@@ -162,9 +167,10 @@ Apple documents [hosting SwiftUI in UIKit](https://developer.apple.com/documenta
 SwiftUI's Swift types require a thin Swift boundary; claiming a pure Rust
 call to SwiftUI would hide necessary platform glue. Keep that glue limited to
 view mounting, native state, and callbacks. Rust retains application state,
-authorization, protocol handling, and domain effects. No SwiftUI source is
-added by the initial foundation; the repository's explicit adapter exception
-defines where it may be added later.
+authorization, protocol handling, and domain effects. The initial foundation
+added no SwiftUI source; the reader now supplies that narrow boundary under
+[`bins/coder-ios/host`](../../../bins/coder-ios/README.md), separately from the
+reusable `rust-native` crate.
 
 Before building a foreign-function boundary, define its version, byte-buffer
 ownership, release function, callback lifetime, error result, and threading
@@ -273,9 +279,11 @@ controls, property composition, reset, and compatibility with the current
 terminal palette. Deterministic view fixtures establish structure, not visual
 or behavioral platform parity.
 
-Adapter completion later requires its own focused checks for native identity,
-mount order, lifecycle cleanup, accessibility, input, and long content. Record
-which hosts and build revisions were checked; leave untested platforms as
-unknown. Existing mobile receipts retain their original scope. This foundation
-adds no model runs or platform acceptance campaign. Follow the
+The reader's [verification record](../verification/2026-09-26-mobile-reader.md)
+adds focused Rust, relay, and SwiftUI simulator evidence. It leaves physical
+devices, VoiceOver, shared editable input, Android/web, and a general mounting
+runtime unaccepted. Broader adapter completion requires separate checks for
+native identity, mount order, cleanup, accessibility, input, and long content.
+Existing receipts retain their original scope. This documentation update adds
+no runs. Follow the
 [build order](build-order.md) to adopt one useful surface at a time.
