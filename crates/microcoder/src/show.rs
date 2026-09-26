@@ -18,9 +18,9 @@ pub fn clock(seconds: f64) -> String {
 /// Prints events to standard output.
 pub struct Terminal {
     color: bool,
-    /// Characters of command output shown per command; the record keeps
-    /// the full cut.
-    pub output_chars: usize,
+    /// Lines of command output shown per command; the record keeps the
+    /// whole cut.
+    pub output_lines: usize,
 }
 
 impl Terminal {
@@ -29,7 +29,7 @@ impl Terminal {
     pub fn new() -> Self {
         Terminal {
             color: std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none(),
-            output_chars: 1_200,
+            output_lines: 4,
         }
     }
 
@@ -54,6 +54,23 @@ impl Default for Terminal {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// A command or output line on one line: its first line, cut to `max`
+/// characters, with a note when more lines follow.
+fn one_line(text: &str, max: usize) -> String {
+    let mut lines = text.lines();
+    let first = lines.next().unwrap_or_default();
+    let rest = lines.count();
+    let mut out = if first.chars().count() > max {
+        first.chars().take(max).collect::<String>() + "…"
+    } else {
+        first.to_string()
+    };
+    if rest > 0 {
+        out.push_str(&format!(" (+{rest} lines)"));
+    }
+    out
 }
 
 fn indent(text: &str) -> String {
@@ -107,9 +124,6 @@ impl Observer for Terminal {
                             "        {}",
                             self.paint("1;97", &format!("why: {}", action.rationale))
                         );
-                        for command in &action.commands {
-                            println!("        {}", self.paint("32", &format!("$ {command}")));
-                        }
                         if action.finished {
                             println!("        {}", self.paint("1;32", "finished"));
                         }
@@ -137,22 +151,34 @@ impl Observer for Terminal {
                     &format!(
                         "{} {} · {status} · {:.1} s",
                         self.paint("1;32", "$"),
-                        cut(&result.command, 160, 0).replace('\n', " "),
+                        one_line(&result.command, 160),
                         result.seconds
                     ),
                 );
-                if !result.output.trim().is_empty() {
-                    println!(
-                        "{}",
-                        self.paint(
-                            "2",
-                            &indent(&cut(
-                                result.output.trim_end(),
-                                self.output_chars / 2,
-                                self.output_chars / 2
-                            ))
-                        )
-                    );
+                let lines: Vec<&str> = result
+                    .output
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .collect();
+                if !lines.is_empty() {
+                    let shown: Vec<String> = lines
+                        .iter()
+                        .take(self.output_lines)
+                        .map(|l| one_line(l, 200))
+                        .collect();
+                    println!("{}", self.paint("2", &indent(&shown.join("\n"))));
+                    if lines.len() > self.output_lines {
+                        println!(
+                            "{}",
+                            self.paint(
+                                "2",
+                                &format!(
+                                    "        … {} more lines",
+                                    lines.len() - self.output_lines
+                                )
+                            )
+                        );
+                    }
                 }
             }
             Event::Ended { outcome } => {
@@ -217,5 +243,20 @@ impl<A: Observer, B: Observer> Observer for Both<'_, A, B> {
     fn event(&mut self, seconds: f64, event: &Event) {
         self.0.event(seconds, event);
         self.1.event(seconds, event);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::one_line;
+
+    #[test]
+    fn a_long_or_multi_line_command_prints_on_one_line() {
+        assert_eq!(one_line("ls -la", 160), "ls -la");
+        assert_eq!(
+            one_line("cat > f <<'EOF'\na\nb\nEOF", 160),
+            "cat > f <<'EOF' (+3 lines)"
+        );
+        assert_eq!(one_line(&"x".repeat(10), 4), "xxxx…");
     }
 }
