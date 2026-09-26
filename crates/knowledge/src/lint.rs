@@ -146,6 +146,12 @@ pub fn lint(entries: &[Entry], corpus: &Corpus) -> Vec<Problem> {
         if entry.cites.is_empty() {
             say("it cites no source; add one under provenance.cites".to_string());
         }
+        if text.contains(crate::write::PLACEHOLDER) {
+            say(format!(
+                "it still has template text marked {}; replace it",
+                crate::write::PLACEHOLDER
+            ));
+        }
         let length = entry.summary.chars().count();
         if length > SUMMARY_CHARS {
             say(format!(

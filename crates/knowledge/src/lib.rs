@@ -10,13 +10,23 @@
 //! names or quotes a benchmark task, and [`search`] finds the entries that
 //! bear on a query, by BM25 over each entry's title, summary, tags, and
 //! `applies_when`, combined with cosine similarity over embeddings from
-//! `crates/openrouter` when a key is available. [`cli`] is the `kb`
-//! command. Nothing here runs an agent's loop.
+//! `crates/openrouter` when a key is available. [`harvest`] proposes
+//! entries from a finished run, [`evidence`] measures entries from recorded
+//! runs and writes NIP-EVAL reports, and [`remote`] turns entries into
+//! NIP-KB events, accepts synced ones, and applies the reader's trust.
+//! [`cli`] is the `kb` command. Nothing here runs an agent's loop or opens
+//! a relay connection.
 
 pub mod cli;
+pub mod evidence;
 pub mod front;
+pub mod harvest;
 pub mod lint;
+pub mod remote;
 pub mod search;
+mod write;
+
+pub use write::{archive, date, pending, set_evidence, set_status, template, today, version_path};
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -43,7 +53,9 @@ pub enum Kind {
 }
 
 impl Kind {
-    fn parse(text: &str) -> Option<Self> {
+    /// The kind a name like `edge-case` names.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
         Some(match text {
             "method" => Kind::Method,
             "edge-case" => Kind::EdgeCase,
@@ -80,7 +92,9 @@ pub enum Status {
 }
 
 impl Status {
-    fn parse(text: &str) -> Option<Self> {
+    /// The status a name like `admitted` names.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
         Some(match text {
             "candidate" => Status::Candidate,
             "admitted" => Status::Admitted,
@@ -128,7 +142,8 @@ pub struct Entry {
     pub written_from: Vec<String>,
     /// Sources for its definitions.
     pub cites: Vec<String>,
-    /// Measured evidence, one line each; empty in the first version.
+    /// Admission records, one line each: reviews, measurements, demotions,
+    /// and withdrawals.
     pub evidence: Vec<String>,
     /// The Markdown after the front matter.
     pub body: String,
@@ -161,7 +176,7 @@ pub fn digest(bytes: &[u8]) -> String {
 
 /// Whether `id` is lowercase letters, digits, dots, and hyphens, starting
 /// with a letter.
-fn valid_id(id: &str) -> bool {
+pub(crate) fn valid_id(id: &str) -> bool {
     id.starts_with(|c: char| c.is_ascii_lowercase())
         && id
             .chars()

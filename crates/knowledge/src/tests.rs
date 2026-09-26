@@ -288,3 +288,138 @@ async fn the_mmd_entry_ranks_first_for_an_mmd_query_by_words_alone() {
         .await;
     assert_eq!(search.hits[0].id, "statistics.mmd-estimators");
 }
+
+fn args(words: &[&str]) -> Vec<String> {
+    words.iter().map(|w| (*w).to_string()).collect()
+}
+
+async fn kb(words: &[String]) -> u8 {
+    crate::cli::main(words).await
+}
+
+#[tokio::test]
+async fn the_cli_adds_admits_measures_and_withdraws_an_entry() {
+    let dir = scratch("cli");
+    let d = dir.to_str().unwrap();
+    assert_eq!(
+        kb(&args(&[
+            "add",
+            "numerics.kahan",
+            "--kind",
+            "method",
+            "--title",
+            "Kahan summation",
+            "--dir",
+            d
+        ]))
+        .await,
+        0
+    );
+    let path = dir.join("numerics.kahan.md");
+    assert!(Entry::parse(&std::fs::read_to_string(&path).unwrap()).is_ok());
+    // A second add of the same ID refuses; a bad kind is bad usage.
+    assert_eq!(
+        kb(&args(&[
+            "add",
+            "numerics.kahan",
+            "--kind",
+            "method",
+            "--title",
+            "T",
+            "--dir",
+            d
+        ]))
+        .await,
+        1
+    );
+    assert_eq!(
+        kb(&args(&[
+            "add",
+            "numerics.x",
+            "--kind",
+            "fact",
+            "--title",
+            "T",
+            "--dir",
+            d
+        ]))
+        .await,
+        2
+    );
+    // The template's placeholders fail the lint.
+    assert_eq!(kb(&args(&["lint", "--dir", d, "--corpus", d])).await, 1);
+
+    // Measured with no runs: inconclusive, so --evidence refuses.
+    let runs = scratch("cli-runs");
+    let evidence = scratch("cli-evidence");
+    let (r, e) = (runs.to_str().unwrap(), evidence.to_str().unwrap());
+    assert_eq!(
+        kb(&args(&[
+            "evidence",
+            "--dir",
+            d,
+            "--runs",
+            r,
+            "--evidence-dir",
+            e,
+            "--attach"
+        ]))
+        .await,
+        0
+    );
+    assert!(evidence.join("numerics.kahan.v1.json").exists());
+    let entry = Entry::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert!(
+        entry.evidence[0].starts_with("measured "),
+        "{:?}",
+        entry.evidence
+    );
+    assert_eq!(
+        kb(&args(&[
+            "admit",
+            "numerics.kahan",
+            "--evidence",
+            "--dir",
+            d,
+            "--evidence-dir",
+            e
+        ]))
+        .await,
+        1
+    );
+    assert_eq!(kb(&args(&["admit", "numerics.kahan", "--dir", d])).await, 2);
+
+    // Admitted by review, then withdrawn; the evidence keeps both lines.
+    assert_eq!(
+        kb(&args(&[
+            "admit",
+            "numerics.kahan",
+            "--reviewer",
+            "A. Person",
+            "--dir",
+            d
+        ]))
+        .await,
+        0
+    );
+    let entry = Entry::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(entry.status, Status::Admitted);
+    assert!(entry.evidence[1].ends_with("by review: A. Person"));
+    assert_eq!(
+        kb(&args(&[
+            "withdraw",
+            "numerics.kahan",
+            "--reason",
+            "wrong sign",
+            "--dir",
+            d
+        ]))
+        .await,
+        0
+    );
+    let entry = Entry::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(entry.status, Status::Withdrawn);
+    assert!(entry.evidence[2].ends_with(": wrong sign"));
+    assert_eq!(kb(&args(&["review", "--dir", d, "--runs", r])).await, 0);
+    assert_eq!(kb(&args(&["publish", "--dir", d])).await, 2);
+}
