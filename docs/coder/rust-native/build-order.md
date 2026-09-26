@@ -111,7 +111,7 @@ private Coder UI source or its character-grid layout as the mobile contract.
 | Suite M14/M15/M17, device adapters, remote environments, and task automation | Reuse the eventual task/trace UI instead of defining a second widget catalog. | Execution adapter, resource admission, and scheduling correctness. |
 | Gym | Migrate replay/status panes while preserving clock and transcript models. | Evidence ingestion, comparison, retained traces, and cost accounting. |
 | Gateway account and operator pages | Consider semantic projections when a second surface needs them; start with static web coverage. | Existing Rust HTTP routes, authentication, billing, and operator functionality. |
-| Verse | Reuse the shared theme now and semantic overlays later. | World rendering, controls, and multiplayer. |
+| Verse | The [desktop/iOS world](../../verse/mobile.md) shares its simulation and GPU renderer through a generic native Surface contract; mobile mounts Metal and supplies touch controls. Additional native panels remain separate work. | World rendering, desktop controls, multiplayer, and existing XP/replay/chat features. |
 
 ## State and effect integration
 

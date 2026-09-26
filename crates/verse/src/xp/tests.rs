@@ -9,6 +9,43 @@ use super::*;
 
 const AT: u64 = 1_790_000_000;
 
+#[tokio::test]
+async fn dropping_a_quiet_board_cancels_its_relay_worker() {
+    use futures_util::StreamExt;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut board = Board::start_with(
+        &format!("ws://{}", listener.local_addr().unwrap()),
+        XpTrust::default(),
+        None,
+        None,
+    );
+    tokio::time::timeout(Duration::from_secs(2), async {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+        // Receive the subscription, then keep the relay quiet: no EOSE, updates,
+        // or disconnect can accidentally wake the worker's send-error exit path.
+        let request = socket.next().await.unwrap().unwrap();
+        assert!(request.to_text().unwrap().contains("verse-xp"));
+        while !board.connected {
+            board.tick();
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        drop(board);
+        let ended = tokio::time::timeout(Duration::from_millis(500), socket.next())
+            .await
+            .unwrap();
+        assert!(
+            ended.is_none()
+                || matches!(
+                    ended,
+                    Some(Err(_)) | Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_)))
+                )
+        );
+    })
+    .await
+    .unwrap();
+}
+
 fn trust(c: &Completion) -> XpTrust {
     XpTrust {
         referees: BTreeSet::from([c.referee.pubkey().to_owned()]),

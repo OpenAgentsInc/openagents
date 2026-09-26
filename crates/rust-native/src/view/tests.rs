@@ -1,5 +1,43 @@
 use super::*;
 
+#[test]
+fn native_surfaces_are_local_labeled_resources_not_actions() {
+    let view: View<()> = View::new(
+        "window",
+        1,
+        Node {
+            key: "canvas".into(),
+            style: Style::default(),
+            element: Element::Surface {
+                resource: "drawing.canvas".into(),
+                label: "Drawing canvas".into(),
+            },
+        },
+    );
+    let validated = view.clone().validate().unwrap();
+    assert_eq!(
+        validated.activate(&Activation {
+            instance: "window".into(),
+            revision: 1,
+            node: "canvas".into()
+        }),
+        Err(ViewError::NotInteractive)
+    );
+    View::<()>::from_json(&validated.to_json().unwrap()).unwrap();
+    let mut invalid = view.clone();
+    invalid.root.element = Element::Surface {
+        resource: "https://example.test/plugin".into(),
+        label: "Remote".into(),
+    };
+    assert!(matches!(invalid.validate(), Err(ViewError::Identity)));
+    let mut invalid = view;
+    invalid.root.element = Element::Surface {
+        resource: "canvas".into(),
+        label: " ".into(),
+    };
+    assert!(matches!(invalid.validate(), Err(ViewError::MissingLabel)));
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum Intent {
     InspectTask { task: String },

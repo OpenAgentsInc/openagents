@@ -4,9 +4,9 @@
 //! spatialized.
 //!
 //! The data comes from the Gym's own readers, so a replay and `gym runs`
-//! agree on every number: [`gym::runs_microcoder`] reads the run and its
-//! labels, [`gym::runs_beats_winner`] names Fable's cheapest winning run,
-//! and [`gym::runs_replay`] with [`gym::runs_phases`] reads Fable's
+//! agree on every number: `gym::runs_microcoder` reads the run and its
+//! labels, `gym::runs_beats_winner` names Fable's cheapest winning run,
+//! and `gym::runs_replay` with `gym::runs_phases` reads Fable's
 //! trajectory into placed steps.
 //!
 //! Each recorded event becomes a [`Visit`] to a [`Place`]:
@@ -28,14 +28,20 @@
 //! at the visit's place. Before the first event and after the last, it is
 //! on the plaza.
 
+#[cfg(feature = "replay-host")]
 use std::collections::HashMap;
+#[cfg(feature = "replay-host")]
 use std::path::{Path, PathBuf};
 
-use coder_terminal::Intensity;
+use coder_ui::theme::Intensity;
 use glam::Vec3;
+#[cfg(feature = "replay-host")]
 use gym::runs::{Outcome, Run};
+#[cfg(feature = "replay-host")]
 use gym::runs_microcoder::{self as mc, CostBasis, Knowledge, Manifest};
+#[cfg(feature = "replay-host")]
 use gym::runs_phases::{self, ActionKind, Phase, Step};
+#[cfg(feature = "replay-host")]
 use gym::runs_replay::{self as gr, Source};
 use serde_json::Value;
 
@@ -280,6 +286,7 @@ pub fn microcoder_visits(events: &[Value]) -> Vec<Visit> {
 /// plaza, a step the rules place as a test or a check is the proving
 /// ground, and every other tool call is the workbench.
 #[must_use]
+#[cfg(feature = "replay-host")]
 pub fn fable_visits(steps: &[Step]) -> Vec<Visit> {
     let mut visits: Vec<Visit> = steps
         .iter()
@@ -443,6 +450,7 @@ pub struct Replay {
 }
 
 /// Unix milliseconds now.
+#[cfg(feature = "replay-host")]
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -450,6 +458,7 @@ fn now_ms() -> i64 {
 }
 
 /// The knowledge base the Gym reads a run's labels against.
+#[cfg(feature = "replay-host")]
 fn knowledge() -> Knowledge {
     Knowledge::read(&knowledge::default_dir())
 }
@@ -461,6 +470,7 @@ fn knowledge() -> Knowledge {
 /// # Errors
 ///
 /// Returns a message when no such run exists.
+#[cfg(feature = "replay-host")]
 pub fn find(arg: &str) -> Result<Run, String> {
     let path = Path::new(arg);
     if path.join("events.jsonl").is_file() {
@@ -490,6 +500,7 @@ pub fn find(arg: &str) -> Result<Run, String> {
 }
 
 /// The retained host directories in the checkout.
+#[cfg(feature = "replay-host")]
 fn retained_dirs() -> Vec<PathBuf> {
     mc::standard_dirs()
         .into_iter()
@@ -499,6 +510,7 @@ fn retained_dirs() -> Vec<PathBuf> {
 
 /// One retained run the `beats-winner` rule cites, for the replay list.
 #[derive(Clone, Debug)]
+#[cfg(feature = "replay-host")]
 pub struct Choice {
     pub run: Run,
     /// The run, and its cost and time against Fable's cheapest winning
@@ -512,6 +524,7 @@ pub struct Choice {
 /// cheaper than Fable 5.1 low's cheapest winning run on the task, or
 /// faster than its fastest. Newest first within a task.
 #[must_use]
+#[cfg(feature = "replay-host")]
 pub fn beats_winner_runs() -> Vec<Choice> {
     let runs = mc::read_all(&retained_dirs(), &knowledge(), now_ms());
     let answers = HashMap::new();
@@ -572,6 +585,7 @@ pub fn beats_winner_runs() -> Vec<Choice> {
     choices
 }
 
+#[cfg(feature = "replay-host")]
 fn outcome_text(outcome: &Outcome, reward: Option<f64>) -> String {
     match reward {
         Some(r) => format!("{}, reward {r}", outcome.word()),
@@ -584,6 +598,7 @@ fn outcome_text(outcome: &Outcome, reward: Option<f64>) -> String {
 /// # Errors
 ///
 /// Returns a message when the run has no event log.
+#[cfg(feature = "replay-host")]
 pub fn microcoder_track(run: &Run) -> Result<Track, String> {
     let path = run
         .files
@@ -624,6 +639,7 @@ pub fn microcoder_track(run: &Run) -> Result<Track, String> {
 ///
 /// Returns why there is no ghost: no winning run, or its transcript isn't
 /// on this computer.
+#[cfg(feature = "replay-host")]
 pub fn fable_track(task: &str) -> Result<Track, String> {
     let manifest_path = gym::runs_analysis::fable_manifest_path();
     let manifest = gym::runs_beats_winner::default_manifest()
@@ -675,6 +691,29 @@ pub fn fable_track(task: &str) -> Result<Track, String> {
 }
 
 /// `2:21`, or `1:02:03` past an hour.
+fn display_usd(usd: f64) -> String {
+    if usd == 0.0 {
+        "$0".into()
+    } else if usd.abs() < 0.01 {
+        format!("${usd:.5}")
+    } else if usd.abs() < 0.1 {
+        format!("${usd:.4}")
+    } else {
+        format!("${usd:.2}")
+    }
+}
+
+fn display_duration(ms: u64) -> String {
+    let s = ms / 1000;
+    if s >= 3600 {
+        format!("{}h {:02}m", s / 3600, s % 3600 / 60)
+    } else if s >= 60 {
+        format!("{}m {:02}s", s / 60, s % 60)
+    } else {
+        format!("{s}s")
+    }
+}
+
 fn clock_text(ms: f64) -> String {
     let s = (ms / 1000.0).floor() as u64;
     if s >= 3600 {
@@ -691,6 +730,7 @@ impl Replay {
     /// # Errors
     ///
     /// Returns a message when the run can't be replayed.
+    #[cfg(feature = "replay-host")]
     pub fn load(run: &Run, from: Vec3) -> Result<Self, String> {
         let mine = microcoder_track(run)?;
         let ghost = fable_track(&run.task);
@@ -768,7 +808,7 @@ impl Replay {
     /// and step, each side's result once it finishes, and the keys.
     #[must_use]
     pub fn hud_lines(&self) -> Vec<(String, Intensity)> {
-        let usd = gym::runs_analysis::usd;
+        let usd = display_usd;
         let t = self.clock.elapsed_ms;
         let state = if self.clock.playing {
             "playing"
@@ -834,7 +874,7 @@ impl Replay {
                     .total_usd
                     .map_or_else(|| "cost unknown".to_owned(), usd),
                 track.cost_basis,
-                gym::runs::duration(track.duration_ms),
+                display_duration(track.duration_ms),
                 track.time_basis
             )
         };
@@ -889,6 +929,17 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "replay-host")]
+    #[test]
+    fn portable_presentation_matches_the_existing_gym_units() {
+        for amount in [0.0, 0.0001, 0.02, 0.5, 3.0] {
+            assert_eq!(display_usd(amount), gym::runs_analysis::usd(amount));
+        }
+        for ms in [0, 1500, 65_000, 3_800_000] {
+            assert_eq!(display_duration(ms), gym::runs::duration(ms));
+        }
+    }
+
     #[test]
     fn each_microcoder_event_visits_its_place() {
         let events = [
@@ -936,6 +987,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "replay-host")]
     fn fable_tool_calls_are_the_workbench_and_tests_the_proving_ground() {
         let step = |ms: u64, phase: Option<Phase>, kind: ActionKind| Step {
             n: 1,
@@ -1090,6 +1142,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "replay-host")]
     fn retained(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -1099,6 +1152,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "replay-host")]
     fn a_retained_win_replays_through_the_gym_reader() {
         let dir = retained("embedding-drift-monitor-1790393791");
         let run = find(dir.to_str().unwrap()).expect("the retained run reads");
@@ -1118,6 +1172,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "replay-host")]
     fn the_list_is_the_retained_passes_that_beat_fable() {
         let choices = beats_winner_runs();
         let names: Vec<&str> = choices.iter().map(|c| c.run.trial.as_str()).collect();
@@ -1144,6 +1199,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "replay-host")]
     fn the_ghost_is_fables_cheapest_winning_run_when_its_transcript_is_here() {
         match fable_track("embedding-drift-monitor") {
             Ok(ghost) => {

@@ -4,6 +4,8 @@ mod app;
 mod cache;
 mod ffi;
 mod render;
+mod verse_app;
+mod verse_ffi;
 
 pub use app::{App, Config, Packet, Request};
 

@@ -1,0 +1,82 @@
+[
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "068F8580-51B8-4507-8882-C9C4EFB1B538.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Synthetic native follow control_0_33706D2E-959E-4BCE-97F9-D5DDB5521271.png",
+        "timestamp": 1790457259.629,
+        "retainedFileName": "synthetic-follow.png"
+      }
+    ],
+    "testIdentifier": "ReaderUITests/testFollowCanPauseAndResume()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ReaderUITests/testFollowCanPauseAndResume"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "FFB91845-B122-4DC3-AA4D-E19570300D8B.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Synthetic native transcript and source_0_5474226B-AEF0-4D26-90AF-EAD5794BC5E1.png",
+        "timestamp": 1790457267.92,
+        "retainedFileName": "synthetic-source.png"
+      }
+    ],
+    "testIdentifier": "ReaderUITests/testNativeChatSelectionAndExactSource()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ReaderUITests/testNativeChatSelectionAndExactSource"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "97C2C4CC-8551-4F85-9F4E-D23E6FED6766.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Synthetic earlier-page navigation_0_C7F9513A-1E3F-41E3-BA49-4DDDC6624C7E.png",
+        "timestamp": 1790457283.028,
+        "retainedFileName": "synthetic-earlier-page.png"
+      }
+    ],
+    "testIdentifier": "ReaderUITests/testPageSelectionPinsUntilLatestIsRequested()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ReaderUITests/testPageSelectionPinsUntilLatestIsRequested"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "28F97478-EA18-4515-A799-65FA7A040750.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Synthetic Verse Metal world_0_C8B32894-539C-4223-95DF-4A0273E68B49.png",
+        "timestamp": 1790457309.687,
+        "retainedFileName": "synthetic-verse-movement.png"
+      }
+    ],
+    "testIdentifier": "VerseUITests/testMetalWorldRendersAndTouchMovementChangesPosition()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/VerseUITests/testMetalWorldRendersAndTouchMovementChangesPosition"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "AEF33673-C6D0-4B20-9683-9FF66D97CB8B.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Synthetic Verse after background resume_0_D5A66EAE-BEDB-463F-941E-F7703F0C0060.png",
+        "timestamp": 1790457327.319,
+        "retainedFileName": "synthetic-verse-resume.png"
+      }
+    ],
+    "testIdentifier": "VerseUITests/testTabsAndBackgroundResumeWithoutBreakingChats()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/VerseUITests/testTabsAndBackgroundResumeWithoutBreakingChats"
+  }
+]

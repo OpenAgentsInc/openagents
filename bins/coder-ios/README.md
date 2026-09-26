@@ -1,10 +1,12 @@
 # Coder for iOS
 
-This is the existing Coder app identity with a new public read-only chat
-reader. Rust owns pairing, protocol verification, synchronization, encrypted
-cache, and application projection. The thin SwiftUI host renders Rust Native
-views, keeps a device identity in Keychain, and forwards bounded UI events.
-It does not call models, execute tasks, submit chat messages, or grant approvals.
+This is the existing Coder app identity with two public Rust-owned surfaces:
+the read-only **Chats** reader and the interactive **Verse** world. Rust owns
+pairing, protocol verification, synchronization, encrypted reader cache, world
+state, movement, rendering, and application projection. The thin SwiftUI host
+renders Rust Native views, keeps separate device identities in Keychain, and
+forwards bounded UI events. It does not call models, execute tasks, submit chat
+messages, or grant approvals.
 
 **Available in internal TestFlight:** Coder `0.5.0 (38)`, built from
 [`2f84cf2627`](https://github.com/OpenAgentsInc/openagents/commit/2f84cf2627777f40639411f079c26a048039f792).
@@ -20,7 +22,7 @@ The user-authorized app metadata and icon preserve the existing Xcode setup:
 | Project, scheme, target, product | `Coder` |
 | Bundle identifier | `com.openagents.coder` |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `0.5.0` / `38` |
+| Marketing version and build | `0.5.0` / `39` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Swift language setting | `5.10` |
 | App Store Connect app | `6807250813` |
@@ -33,7 +35,7 @@ for app compatibility; this read-only shell does not process old authentication
 callbacks. The retained `ExportOptions.plist` records distribution metadata;
 the build helper never uploads the app.
 
-Build `38` follows the existing App Store Connect build `0.5.0 (37)`. The app
+Build `39` adds Verse to the reader shipped in build `38`. The app
 identity, marketing version, signing team, and distribution profile stay the
 same; the build number advances for this replacement implementation.
 
@@ -50,7 +52,7 @@ provider and service credentials.
 # Build only; do not install or launch.
 scripts/build-coder-mobile.sh sim-build
 
-# Install and launch a synthetic reader on an already booted simulator.
+# Install and launch synthetic Chats and an offline Verse world on a booted simulator.
 scripts/build-coder-mobile.sh sim --synthetic
 
 # Run native UI checks against the separate synthetic fixture and identity.
@@ -79,7 +81,7 @@ and archived executable digest beside the archive. A nonempty workspace status
 must be reviewed rather than described as an exact committed-source build.
 Set `CODER_IOS_BUILD_NUMBER` to a new
 positive build number after checking the existing App Store Connect builds;
-the checked-in build is `38`. The `export` command produces a local
+the checked-in build is `39`. The `export` command produces a local
 distribution package using the existing export settings with destination
 changed to `export`. Upload is a separate operator action using the retained
 upload configuration and protected App Store Connect credentials. Never put
@@ -112,9 +114,9 @@ cached view before it requests a refresh.
    identity is captured when the interaction occurs, so a refresh that is
    already in flight cannot silently select a different page to pin.
 
-The native shell requests refreshes every five seconds while active and
-coalesces them while a Rust call is in progress. Backgrounding stops that
-timer's refresh requests. Rust owns freshness and connection status; cached
+The native shell requests reader refreshes every five seconds while Chats is
+selected and the app is active, and coalesces them while a Rust call is in
+progress. Changing tabs or backgrounding stops that timer's refresh requests. Rust owns freshness and connection status; cached
 content must never be presented as a live acknowledgment.
 
 Inline Markdown uses native selectable attributed text and preserves source
@@ -140,11 +142,46 @@ deadlines. These are the corresponding
 The manifest is not an App Store privacy-label review or a declaration that
 relay transport has no visible metadata.
 
+## Explore Verse
+
+Select **Verse** to enter the same Rust world used by the desktop app. It
+starts offline. Drag in the left half of the surface to move and in the right
+half to look around. **Jump**, **Sprint**, and the zoom controls forward typed
+requests to Rust; they do not implement a second controller in Swift.
+
+The Rust Native projection names a generic surface resource. The app registers
+`verse.world` with a native `CAMetalLayer` mount. wgpu renders the Rust-provided
+city, player, and agent into that layer. Native display callbacks run at up to
+30 frames per second while Verse is selected and the app is active. Changing
+tabs or backgrounding pauses the render loop, clears held input, and resets
+the frame clock. Dismantling the mount destroys its Rust surface before
+releasing the native layer. Chat synchronization uses a different Rust handle
+and worker queue.
+
+Use **World connection > Join relay** to join a compatible world relay. This
+is an explicit network action that publishes the device's world presence and
+movement. **Leave relay** ends that session. The Verse key uses its own
+`com.openagents.coder.verse` Keychain service; it never reuses the reader's
+identity. Synthetic mode uses a separate fixture account and starts offline.
+
+A renderer failure remains visible with **Retry world renderer**; it does not
+leave an unexplained empty surface. The world currently requests three shader
+varyings and downlevel device limits instead of assuming desktop defaults.
+
+Native labels and controls remain outside the GPU glyph atlas. The first
+mobile slice provides world rendering, movement, and world presence; it does
+not port the desktop's chat composer, model-backed agent conversations, quest
+board, or retained-run replay picker. Those desktop paths remain available
+in the desktop app.
+
 ## Verification boundaries
 
-The [2026-09-26 simulator receipt](verification/2026-09-26/README.md) records
-four passing native UI tests, full logs, source hashes, and synthetic
-screenshots for build `38`.
+The [build 39 simulator receipt](verification/2026-09-26-verse/README.md)
+records six passing native UI tests, full logs, unchanged source hashes, and
+synthetic screenshots. It includes actual Metal frame presentation, touch
+movement, tab/background resume, and the four reader regressions, plus the
+initial GPU-limit failure and its correction. The previous
+[build 38 receipt](verification/2026-09-26/README.md) remains unchanged.
 
 The implementation must retain code/build results separately from simulator
 and physical-device behavior. Native controls do not automatically establish

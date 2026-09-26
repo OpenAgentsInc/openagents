@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use glam::Vec3;
+use rust_native::surface::{SurfaceLifecycle, Viewport};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{
@@ -23,9 +24,10 @@ use crate::feed::Feed;
 use crate::hud;
 use crate::render::{self, Renderer, View};
 use crate::replay::{self, Place, Replay};
+use crate::runtime::{Action, WorldRuntime};
 use crate::session::{self, Session, Status};
 use crate::ui::Atlas;
-use crate::world::{self, World};
+use crate::world;
 use crate::xp;
 
 /// How the window joins the shared world.
@@ -124,7 +126,7 @@ pub fn capture(
             let (agent, ghost) = (Agent::at(mine, 0.0), Agent::at(ghost, 0.0));
             dynamic.extend(&agent.mesh());
             if r.ghost.is_ok() {
-                dynamic.extend(&ghost.mesh_at(coder_terminal::Intensity::ThreeQuarters));
+                dynamic.extend(&ghost.mesh_at(coder_ui::theme::Intensity::ThreeQuarters));
             }
             Some((r, agent, ghost))
         }
@@ -231,21 +233,21 @@ fn sample_hud<'a>(view: &View, size: [f32; 2], player: &PlayerController) -> hud
             feet: player.pos,
             lift: 2.2,
             name: Some("you".into()),
-            name_step: coder_terminal::Intensity::ThreeQuarters,
+            name_step: coder_ui::theme::Intensity::ThreeQuarters,
             bubble: Some("gm verse".into()),
         },
         hud::Overhead {
             feet: agent.pos,
             lift: 0.5,
             name: None,
-            name_step: coder_terminal::Intensity::Half,
+            name_step: coder_ui::theme::Intensity::Half,
             bubble: Some("That's the pylon at the heart of the Plaza.".into()),
         },
         hud::Overhead {
             feet: world::QUEST_BOARD,
             lift: 5.4,
             name: Some("QUEST BOARD".into()),
-            name_step: coder_terminal::Intensity::Half,
+            name_step: coder_ui::theme::Intensity::Half,
             bubble: None,
         },
     ]));
@@ -290,7 +292,7 @@ fn sample_hud<'a>(view: &View, size: [f32; 2], player: &PlayerController) -> hud
 
 /// Name tags over the replay landmarks within 80 m of `from`.
 fn landmark_overheads(from: Vec3) -> Vec<hud::Overhead> {
-    use coder_terminal::Intensity;
+    use coder_ui::theme::Intensity;
     Place::LANDMARKS
         .iter()
         .filter(|p| p.position().distance(from) <= 80.0)
@@ -312,7 +314,7 @@ fn landmark_overheads(from: Vec3) -> Vec<hud::Overhead> {
 /// Who each replayed spade is and where it is: over the player's agent
 /// and over the ghost.
 fn replay_overheads(r: &Replay, agent: &Agent, ghost: &Agent) -> Vec<hud::Overhead> {
-    use coder_terminal::Intensity;
+    use coder_ui::theme::Intensity;
     let (mine, theirs) = r.places();
     let mut out = vec![hud::Overhead {
         feet: agent.pos,
@@ -388,13 +390,9 @@ impl Keys {
 struct App {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
-    world: World,
-    player: PlayerController,
-    camera: FollowCamera,
-    gait: Gait,
-    agent: Agent,
+    runtime: WorldRuntime,
     keys: Keys,
-    last: Instant,
+    mount: Option<SurfaceLifecycle>,
     error: Option<String>,
     session: Option<Session>,
     title: String,
@@ -437,8 +435,8 @@ struct Picker {
 }
 
 impl Picker {
-    fn lines(&self) -> Vec<(String, coder_terminal::Intensity)> {
-        use coder_terminal::Intensity;
+    fn lines(&self) -> Vec<(String, coder_ui::theme::Intensity)> {
+        use coder_ui::theme::Intensity;
         let mut out = Vec::new();
         if self.choices.is_empty() {
             out.push((
@@ -541,13 +539,15 @@ impl App {
         Ok(Self {
             window: None,
             renderer: None,
-            agent,
-            world,
-            player,
-            camera: FollowCamera::default(),
-            gait: Gait::default(),
+            runtime: WorldRuntime {
+                world,
+                player,
+                camera: FollowCamera::default(),
+                gait: Gait::default(),
+                agent,
+            },
             keys: Keys::default(),
-            last: Instant::now(),
+            mount: None,
             error: None,
             session,
             title: String::new(),
@@ -613,7 +613,7 @@ impl App {
                 let Some(choice) = picker.choices.get(picker.selected) else {
                     return true;
                 };
-                match Replay::load(&choice.run, self.agent.pos) {
+                match Replay::load(&choice.run, self.runtime.agent.pos) {
                     Ok(r) => self.start_replay(r),
                     Err(e) => {
                         if let Some(p) = &mut self.picker {
@@ -639,19 +639,18 @@ impl App {
     /// lets the agent follow the player when nothing is replaying.
     fn step_agents(&mut self, dt: f32) {
         let Some(r) = &mut self.replay else {
-            self.agent.update(&self.player, dt);
             return;
         };
         r.tick(dt);
         let [mine, ghost] = r.carrots();
-        self.agent.visit(mine, dt);
+        self.runtime.agent.visit(mine, dt);
         self.ghost.visit(ghost, dt);
         let t = r.clock.elapsed_ms;
         let passed = |track: &replay::Track| track.result.starts_with("passed");
         if !self.finished[0] && r.mine.done(t) {
             self.finished[0] = true;
             if passed(&r.mine) {
-                self.agent.celebrate();
+                self.runtime.agent.celebrate();
             }
         }
         if let Ok(g) = &r.ghost
@@ -671,7 +670,7 @@ impl App {
     /// Records the player as offline on the relay before quitting.
     fn quit(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(session) = &mut self.session {
-            session.leave(&self.player, &self.agent);
+            session.leave(&self.runtime.player, &self.runtime.agent);
         }
         self.session = None;
         event_loop.exit();
@@ -825,13 +824,13 @@ impl App {
             surroundings,
         });
         self.agent_says = Some(("…".to_owned(), None));
-        let head = self.player.pos + Vec3::Y * 1.7;
-        self.agent.greet(head);
+        let head = self.runtime.player.pos + Vec3::Y * 1.7;
+        self.runtime.agent.greet(head);
     }
 
     /// What the agent can see, in plain sentences.
     fn surroundings(&self) -> String {
-        let pos = self.player.pos;
+        let pos = self.runtime.player.pos;
         let mut out = vec![
             format!(
                 "- You and your player are in the {} of world {}, at x {:.0}, z {:.0}.",
@@ -1041,7 +1040,7 @@ impl App {
             MouseButton::Right => {
                 self.keys.right_button = pressed;
                 if pressed {
-                    self.player.yaw += self.camera.take_offset();
+                    let _ = self.runtime.apply(Action::FaceCamera);
                 }
             }
             _ => return,
@@ -1064,52 +1063,60 @@ impl App {
 
     fn mouse(&mut self, dx: f32, dy: f32) {
         if self.keys.right_button {
-            self.player.yaw =
-                crate::controller::wrap(self.player.yaw + self.camera.mouselook(dx, dy));
+            let _ = self.runtime.apply(Action::Look { dx, dy });
         } else if self.keys.left_button {
-            self.camera.orbit(dx, dy);
+            let _ = self.runtime.apply(Action::Orbit { dx, dy });
         }
     }
 
     fn frame(&mut self) {
         let now = Instant::now();
-        let dt = (now - self.last).as_secs_f32().min(0.1);
-        self.last = now;
+        let dt = match self
+            .mount
+            .as_mut()
+            .map(|m| m.frame_delta(self.started.elapsed().as_secs_f64()))
+        {
+            Some(Ok(Some(dt))) => dt,
+            Some(Err(error)) => {
+                self.error = Some(error.to_string());
+                return;
+            }
+            _ => return,
+        };
 
         let input = self.keys.input();
         self.keys.jump = false;
-        self.player
-            .update(&input, dt, &self.world.blockers, world::HALF);
-        if self.player.speed > 0.1 && !self.keys.left_button {
-            self.camera.settle(dt);
-        }
-        self.gait
-            .advance(self.player.speed, self.player.airborne(), dt);
+        let dt =
+            self.runtime
+                .tick_with_mode(&input, dt, self.keys.left_button, self.replay.is_none());
         self.step_agents(dt);
 
         // The look-around is the agent assessing what is near: it asks the
         // relay for entity states around it, then glances at what it found.
-        if self.agent.take_scan() {
+        if self.runtime.agent.take_scan() {
             match &mut self.session {
-                Some(session) => session.request_scan(self.agent.pos),
-                None => self.agent.look_around(&[]),
+                Some(session) => session.request_scan(self.runtime.agent.pos),
+                None => self.runtime.agent.look_around(&[]),
             }
         }
-        let mut dynamic = avatar::mesh(&self.player, &self.gait);
-        dynamic.extend(&self.agent.mesh());
+        let mut dynamic = self.runtime.dynamic_mesh();
         if self.replay.as_ref().is_some_and(|r| r.ghost.is_ok()) {
-            dynamic.extend(&self.ghost.mesh_at(coder_terminal::Intensity::ThreeQuarters));
+            dynamic.extend(
+                &self
+                    .ghost
+                    .mesh_at(coder_ui::theme::Intensity::ThreeQuarters),
+            );
         }
         if let Some(session) = &mut self.session {
-            session.tick(now, &self.player, &self.agent);
-            if let Some(found) = session.scan_result(now, &self.agent) {
-                self.agent.look_around(&found);
+            session.tick(now, &self.runtime.player, &self.runtime.agent);
+            if let Some(found) = session.scan_result(now, &self.runtime.agent) {
+                self.runtime.agent.look_around(&found);
             }
             // Two agents that meet greet each other.
-            if let Some((pubkey, at)) = session.greeting(now, &self.agent)
-                && self.agent.greet(at)
+            if let Some((pubkey, at)) = session.greeting(now, &self.runtime.agent)
+                && self.runtime.agent.greet(at)
             {
-                session.greeted(&pubkey, at, &self.agent, now);
+                session.greeted(&pubkey, at, &self.runtime.agent, now);
             }
             dynamic.extend(&session.crowd.mesh(now, dt));
         }
@@ -1121,7 +1128,11 @@ impl App {
         let Some(renderer) = &self.renderer else {
             return;
         };
-        let view = view(&self.camera, &self.player, renderer.aspect());
+        let view = view(
+            &self.runtime.camera,
+            &self.runtime.player,
+            renderer.aspect(),
+        );
         let size = renderer.size();
         if let Some(feed) = &mut self.feed {
             feed.tick(now);
@@ -1131,7 +1142,7 @@ impl App {
                     v.pos,
                     rot,
                     &Gait::default(),
-                    coder_terminal::Intensity::Half,
+                    coder_ui::theme::Intensity::Half,
                 ));
             }
         }
@@ -1155,7 +1166,9 @@ impl App {
                     let shown = s.crowd.shown(now);
                     let avatars = shown.iter().filter(|e| e.role == "avatar" && e.online);
                     let flat = |v: Vec3| Vec3::new(v.x, 0.0, v.z);
-                    let d = |e: &&crate::crowd::Shown| flat(e.pos).distance(flat(self.player.pos));
+                    let d = |e: &&crate::crowd::Shown| {
+                        flat(e.pos).distance(flat(self.runtime.player.pos))
+                    };
                     (
                         avatars
                             .clone()
@@ -1164,7 +1177,7 @@ impl App {
                         avatars.filter(|e| d(e) <= chat::HERE_RADIUS).count(),
                     )
                 });
-                let zone = chat::zone_of(self.player.pos);
+                let zone = chat::zone_of(self.runtime.player.pos);
                 let hint = hud::audience(&self.method, session::WORLD, zone, near, here, &name_of);
                 let limit = matches!(self.method, Channel::All | Channel::Ads)
                     .then_some(chat::MAX_BROADCAST);
@@ -1187,7 +1200,7 @@ impl App {
                         pills,
                         hint,
                         limit,
-                        world_title: hud::world_title(session::WORLD, self.player.pos),
+                        world_title: hud::world_title(session::WORLD, self.runtime.player.pos),
                         overheads: &overheads,
                         time: (now - self.started).as_secs_f32(),
                         xp: xp::strip(self.xp.as_ref(), &self.my_keys),
@@ -1209,15 +1222,17 @@ impl App {
             }
             None => crate::ui::UiBatch::default(),
         };
-        if let Some(renderer) = &mut self.renderer {
-            renderer.draw(view, &dynamic, &ui);
+        if let Some(renderer) = &mut self.renderer
+            && let render::DrawStatus::Error(error) = renderer.draw(view, &dynamic, &ui)
+        {
+            self.error = Some(error);
         }
     }
 
     /// Name tags and speech bubbles: over you, your agent, nearby players,
     /// and Nostr stand-ins.
     fn overheads(&self, now: Instant) -> Vec<hud::Overhead> {
-        use coder_terminal::Intensity;
+        use coder_ui::theme::Intensity;
         let mut out = Vec::new();
         let snapshot = self.xp.as_ref().and_then(|b| b.snapshot.as_ref());
         let tagged = |name: String, keys: &[String]| match xp::level_tag(snapshot, keys) {
@@ -1235,7 +1250,7 @@ impl App {
             None => (tagged("you".to_owned(), &self.my_keys), None),
         };
         out.push(hud::Overhead {
-            feet: self.player.pos,
+            feet: self.runtime.player.pos,
             lift: 2.2,
             name: Some(my_name),
             name_step: Intensity::ThreeQuarters,
@@ -1243,7 +1258,7 @@ impl App {
         });
         if let Some((text, _)) = &self.agent_says {
             out.push(hud::Overhead {
-                feet: self.agent.pos,
+                feet: self.runtime.agent.pos,
                 lift: 0.5,
                 name: None,
                 name_step: Intensity::Half,
@@ -1252,7 +1267,7 @@ impl App {
         }
         if let Some(s) = &self.session {
             for e in s.crowd.shown(now) {
-                if e.role != "avatar" || e.pos.distance(self.player.pos) > 60.0 {
+                if e.role != "avatar" || e.pos.distance(self.runtime.player.pos) > 60.0 {
                     continue;
                 }
                 out.push(hud::Overhead {
@@ -1275,13 +1290,13 @@ impl App {
                 });
             }
         }
-        out.extend(landmark_overheads(self.player.pos));
+        out.extend(landmark_overheads(self.runtime.player.pos));
         if let Some(r) = &self.replay {
-            out.extend(replay_overheads(r, &self.agent, &self.ghost));
+            out.extend(replay_overheads(r, &self.runtime.agent, &self.ghost));
         }
         let board = world::QUEST_BOARD;
-        if board.distance(self.player.pos) <= 80.0 {
-            let near = board.distance(self.player.pos) <= xp::BOARD_REACH;
+        if board.distance(self.runtime.player.pos) <= 80.0 {
+            let near = board.distance(self.runtime.player.pos) <= xp::BOARD_REACH;
             out.push(hud::Overhead {
                 feet: board,
                 lift: 5.4,
@@ -1300,7 +1315,7 @@ impl App {
         }
         if let Some(feed) = &self.feed {
             for v in &feed.visitors {
-                if v.pos.distance(self.player.pos) > 60.0 {
+                if v.pos.distance(self.runtime.player.pos) > 60.0 {
                     continue;
                 }
                 out.push(hud::Overhead {
@@ -1319,6 +1334,9 @@ impl App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
+            if let Some(mount) = &mut self.mount {
+                let _ = mount.set_active(true);
+            }
             return;
         }
         let attributes = Window::default_attributes()
@@ -1334,7 +1352,7 @@ impl ApplicationHandler for App {
         };
         self.scale = window.scale_factor() as f32;
         let atlas = Atlas::new((14.0 * self.scale).round());
-        match Renderer::new(window.clone(), &self.world.mesh, &atlas) {
+        match Renderer::new(window.clone(), &self.runtime.world.mesh, &atlas) {
             Ok(renderer) => {
                 self.renderer = Some(renderer);
                 self.atlas = Some(atlas);
@@ -1346,16 +1364,47 @@ impl ApplicationHandler for App {
             }
         }
         window.focus_window();
+        let size = window.inner_size();
+        let mount = Viewport::new(size.width, size.height, self.scale)
+            .and_then(|viewport| SurfaceLifecycle::new("verse-desktop", viewport));
+        match mount {
+            Ok(mut mount) => {
+                let _ = mount.set_active(true);
+                self.mount = Some(mount);
+            }
+            Err(error) => {
+                self.error = Some(error.to_string());
+                event_loop.exit();
+            }
+        }
         self.window = Some(window);
-        self.last = Instant::now();
+    }
+
+    fn suspended(&mut self, _: &ActiveEventLoop) {
+        self.keys = Keys::default();
+        self.capture(false);
+        if let Some(mount) = &mut self.mount {
+            let _ = mount.set_active(false);
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => self.quit(event_loop),
             WindowEvent::Resized(size) => {
-                if let Some(renderer) = &mut self.renderer {
-                    renderer.resize(size.width, size.height);
+                let resized = Viewport::new(size.width, size.height, self.scale)
+                    .and_then(|v| self.mount.as_mut().map_or(Ok(()), |m| m.resize(v)));
+                match resized {
+                    Ok(()) => {
+                        if let Some(renderer) = &mut self.renderer
+                            && let Err(error) = renderer.resize(size.width, size.height)
+                        {
+                            self.error = Some(error);
+                        }
+                    }
+                    Err(error) => {
+                        self.error = Some(error.to_string());
+                    }
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
@@ -1382,12 +1431,28 @@ impl ApplicationHandler for App {
                 if self.board_open && self.layout.board.is_some_and(|(r, _)| r.contains(x, y)) {
                     self.scroll_board((-lines * 3.0).round() as i32);
                 } else {
-                    self.camera.zoom(lines);
+                    let _ = self.runtime.apply(Action::Zoom { lines });
                 }
             }
-            WindowEvent::Focused(false) => {
-                self.keys = Keys::default();
-                self.capture(false);
+            WindowEvent::Focused(focused) => {
+                if !focused {
+                    self.keys = Keys::default();
+                    self.capture(false);
+                }
+                if let Some(mount) = &mut self.mount {
+                    let _ = mount.set_active(focused);
+                }
+            }
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.scale = scale_factor as f32;
+                if let Some(window) = &self.window {
+                    let size = window.inner_size();
+                    if let Ok(viewport) = Viewport::new(size.width, size.height, self.scale)
+                        && let Some(mount) = &mut self.mount
+                    {
+                        let _ = mount.resize(viewport);
+                    }
+                }
             }
             WindowEvent::RedrawRequested => self.frame(),
             _ => {}
@@ -1400,8 +1465,17 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
-        if let Some(window) = &self.window {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let drawable = self
+            .mount
+            .as_ref()
+            .is_some_and(|m| m.active() && m.viewport().drawable());
+        event_loop.set_control_flow(if drawable {
+            ControlFlow::Poll
+        } else {
+            ControlFlow::Wait
+        });
+        if drawable && let Some(window) = &self.window {
             window.request_redraw();
         }
     }

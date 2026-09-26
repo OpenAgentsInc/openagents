@@ -3,9 +3,9 @@
 //! The world speaks in the terminal's one hue. Every line is one of the
 //! four [`Intensity`] steps, every solid face is the terminal's near-black
 //! field, and fog fades toward that same field. No second color exists, so
-//! the palette is borrowed from `coder_terminal` rather than restated.
+//! the palette is borrowed from `coder_ui::theme` rather than restated.
 
-use coder_terminal::{Intensity, NEAR_BLACK};
+use coder_ui::theme::{Intensity, NEAR_BLACK};
 
 /// A linear-light RGB color the renderer writes to an sRGB surface.
 pub type Linear = [f32; 3];

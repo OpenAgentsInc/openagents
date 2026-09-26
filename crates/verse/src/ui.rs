@@ -8,7 +8,7 @@
 //! field, as in the rest of Verse.
 
 use bytemuck::{Pod, Zeroable};
-use coder_terminal::Intensity;
+use coder_ui::theme::Intensity;
 
 use crate::palette;
 

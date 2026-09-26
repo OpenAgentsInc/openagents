@@ -6,13 +6,13 @@
 //!   avatar state. A returning player resumes where they left; a new one
 //!   spawns at a random clear spot on the central plaza.
 //! - **Streaming.** Pose frames for the avatar and the agent go out as
-//!   ephemeral `23300` events, 10 per second while moving and 4 while
-//!   still. Durable `33301` states go out on join, every few seconds of
-//!   movement, and on leave.
+//!   ephemeral `23300` events at the selected desktop or mobile cadence.
+//!   Durable `33301` states go out on join and periodically during movement.
+//!   A queued leave state is best effort, not a delivery acknowledgment.
 //! - **Scans.** When the agent looks around, the session queries entity
 //!   states in the surrounding cells and reports what is near.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use glam::{Quat, Vec3};
@@ -40,6 +40,8 @@ pub const SCAN_RADIUS: f32 = 80.0;
 pub const ROOMS: [&str; 3] = ["lounge", "trading-post", "builders"];
 /// How long an overhead bubble stays up.
 pub const BUBBLE_TIME: Duration = Duration::from_secs(7);
+const MAX_PEOPLE: usize = 1024;
+const MAX_CHAT_IDS: usize = 4096;
 const CHAT_SUB: &str = "chat-world";
 const ROOM_SUB: &str = "chat-rooms";
 const DM_SUB: &str = "chat-pm";
@@ -63,6 +65,51 @@ pub enum Status {
     Online,
     /// Lost the relay; retrying.
     Offline,
+}
+
+/// Explicit publishing cadence. Rendering remains independent of relay traffic.
+#[derive(Clone, Copy, Debug)]
+pub struct PublishIntervals {
+    pub moving: Duration,
+    pub idle: Duration,
+    pub state: Duration,
+}
+impl PublishIntervals {
+    /// Original moving cadence; occasional idle keepalive follows NIP-MV.
+    #[must_use]
+    pub fn desktop() -> Self {
+        Self {
+            moving: Duration::from_millis(100),
+            idle: Duration::from_secs(5),
+            state: Duration::from_secs(3),
+        }
+    }
+    /// Conservative mobile cadence for a relay with a 60-event/minute default.
+    #[must_use]
+    pub fn mobile() -> Self {
+        Self {
+            moving: Duration::from_secs(3),
+            idle: Duration::from_secs(10),
+            state: Duration::from_secs(30),
+        }
+    }
+    fn validate(self) -> Result<(), String> {
+        if self.moving < Duration::from_millis(100)
+            || self.moving > Duration::from_secs(60)
+            || self.idle < self.moving
+            || self.idle > Duration::from_secs(60)
+            || self.state < Duration::from_secs(1)
+            || self.state > Duration::from_secs(300)
+        {
+            return Err("invalid presence publishing intervals".into());
+        }
+        Ok(())
+    }
+}
+struct PendingSpawn {
+    deadline: Instant,
+    found: Option<State>,
+    finished: bool,
 }
 
 struct Scan {
@@ -109,11 +156,15 @@ pub struct Session {
     joined: u64,
     auth_id: Option<String>,
     seen_chat: HashSet<String>,
+    chat_order: VecDeque<String>,
     online: HashSet<String>,
     started: Instant,
     my_pos: Vec3,
     /// The last player to send this one a private message.
     pub last_pm_from: Option<String>,
+    intervals: PublishIntervals,
+    pending_spawn: Option<PendingSpawn>,
+    room_authority: Option<String>,
 }
 
 /// A line floating over a speaker.
@@ -155,7 +206,15 @@ impl Session {
     /// Returns a message when the identity cannot be loaded or created.
     pub fn start_in(dir: &std::path::Path, profile: &str, relay: &str) -> Result<Self, String> {
         let id = identity::load_or_create(dir, profile)?;
-        let link = Link::start(relay);
+        Self::start_with_identity(id, relay)
+    }
+
+    /// Connect with a platform-supplied identity. This performs no filesystem
+    /// identity discovery and does not wait for the network or spawn recovery.
+    pub fn start_with_identity(id: Identity, relay: &str) -> Result<Self, String> {
+        Self::with_link(id, Link::start(relay))
+    }
+    fn with_link(id: Identity, link: Link) -> Result<Self, String> {
         let me = id.signer.pubkey().to_owned();
         link.send(Out::Subscribe {
             id: LIVE_SUB.into(),
@@ -215,10 +274,14 @@ impl Session {
             joined: unix_now(),
             auth_id: None,
             seen_chat: HashSet::new(),
+            chat_order: VecDeque::new(),
             online: HashSet::new(),
             started: Instant::now(),
             my_pos: Vec3::ZERO,
             last_pm_from: None,
+            intervals: PublishIntervals::desktop(),
+            pending_spawn: None,
+            room_authority: None,
         })
     }
 
@@ -247,58 +310,74 @@ impl Session {
         self.id.signer.clone()
     }
 
-    /// Asks the relay where this player left their avatar, waiting up to
-    /// `wait`. Falls back to a random clear spot on the plaza.
-    pub fn spawn(&mut self, blockers: &[Footprint], bound: f32, wait: Duration) -> Spawn {
-        let address = mv::state_address(WORLD, "avatar");
+    /// Set a validated cadence without changing renderer frequency or relay policy.
+    pub fn set_publish_intervals(&mut self, intervals: PublishIntervals) -> Result<(), String> {
+        intervals.validate()?;
+        self.intervals = intervals;
+        Ok(())
+    }
+    /// Pin the relay signer before accepting NIP-29 room metadata.
+    pub fn set_room_authority(&mut self, pubkey: &str) -> Result<(), String> {
+        use std::str::FromStr;
+        secp256k1::XOnlyPublicKey::from_str(pubkey).map_err(|_| "invalid room authority")?;
+        self.room_authority = Some(pubkey.into());
+        Ok(())
+    }
+    /// Begin bounded spawn recovery. Call poll_spawn on later frames. The
+    /// deadline includes connection setup; a timeout falls back to a new spawn.
+    pub fn begin_spawn(&mut self, wait: Duration) {
+        self.pending_spawn = Some(PendingSpawn {
+            deadline: Instant::now() + wait.min(Duration::from_secs(10)),
+            found: None,
+            finished: false,
+        });
         self.link.send(Out::Subscribe {
             id: ME_SUB.into(),
-            filters: vec![json!({
-                "kinds": [mv::STATE_KIND],
-                "authors": [self.pubkey()],
-                "#d": [address],
-                "limit": 1,
-            })],
+            filters: vec![json!({"kinds":[mv::STATE_KIND],"authors":[self.pubkey()],"#d":[mv::state_address(WORLD,"avatar")],"limit":1})],
             live: false,
         });
-        let deadline = Instant::now() + wait;
-        let mut found: Option<State> = None;
-        'wait: while Instant::now() < deadline {
-            for message in self.link.drain() {
-                match message {
-                    In::Connected => self.status = Status::Online,
-                    In::Event { sub, event } if sub == ME_SUB => {
-                        if let Ok(Received::State { state, .. }) = mv::decode(&event, WORLD)
-                            && state.id == "avatar"
-                            && found.as_ref().is_none_or(|f| state.t > f.t)
-                        {
-                            found = Some(state);
-                        }
-                    }
-                    In::Eose(sub) if sub == ME_SUB => break 'wait,
-                    other => self.handle(other, Instant::now()),
-                }
-            }
-            std::thread::sleep(Duration::from_millis(20));
+    }
+    /// Return a verified own-player spawn once recovery finishes, without waiting.
+    pub fn poll_spawn(&mut self, blockers: &[Footprint], bound: f32) -> Option<Spawn> {
+        let now = Instant::now();
+        for message in self.link.drain() {
+            self.handle(message, now);
         }
+        if !self
+            .pending_spawn
+            .as_ref()
+            .is_some_and(|p| p.finished || now >= p.deadline)
+        {
+            return None;
+        }
+        let pending = self.pending_spawn.take()?;
         self.link.send(Out::Close(ME_SUB.into()));
-        if let Some(state) = found {
+        if let Some(state) = pending.found {
             let pos = Vec3::from(state.p);
-            let clear = pos.x.abs() < bound && pos.z.abs() < bound && is_clear(pos, blockers);
-            if clear {
+            if pos.x.abs() < bound && pos.z.abs() < bound && is_clear(pos, blockers) {
                 let (axis, angle) = Quat::from_array(state.q).normalize().to_axis_angle();
                 let yaw = if axis.y < 0.0 { -angle } else { angle };
-                return Spawn {
+                return Some(Spawn {
                     pos: Vec3::new(pos.x, 0.0, pos.z),
                     yaw: crate::controller::wrap(yaw),
                     resumed: true,
-                };
+                });
             }
         }
-        Spawn {
+        Some(Spawn {
             pos: random_spawn(blockers),
-            yaw: random_unit() * std::f32::consts::TAU - std::f32::consts::PI,
+            yaw: 0.0,
             resumed: false,
+        })
+    }
+    /// Desktop compatibility wrapper. Native frame loops use begin_spawn/poll_spawn.
+    pub fn spawn(&mut self, blockers: &[Footprint], bound: f32, wait: Duration) -> Spawn {
+        self.begin_spawn(wait);
+        loop {
+            if let Some(spawn) = self.poll_spawn(blockers, bound) {
+                return spawn;
+            }
+            std::thread::sleep(Duration::from_millis(10));
         }
     }
 
@@ -318,10 +397,13 @@ impl Session {
             .is_some_and(|last| last.distance(player.pos) > 0.005)
             || player.speed > 0.05;
         self.last_player = Some(player.pos);
+        if self.status != Status::Online || self.pending_spawn.is_some() {
+            return;
+        }
         let mut interval = if moving {
-            Duration::from_millis(100)
+            self.intervals.moving
         } else {
-            Duration::from_millis(250)
+            self.intervals.idle
         };
         if self.throttled_until.is_some_and(|t| now < t) {
             interval *= 4;
@@ -342,7 +424,7 @@ impl Session {
         let due = match self.last_state {
             None => true,
             Some((at, pos, yaw)) => {
-                now - at >= Duration::from_secs(3)
+                now - at >= self.intervals.state
                     && (pos.distance(player.pos) > 0.5 || (yaw - player.yaw).abs() > 0.2)
             }
         };
@@ -459,8 +541,8 @@ impl Session {
     /// Records the player and agent as offline where they stand.
     pub fn leave(&mut self, player: &PlayerController, agent: &Agent) {
         self.publish_states(player, agent, false);
-        // Give the link thread a moment to flush before the process exits.
-        std::thread::sleep(Duration::from_millis(250));
+        // Best effort only: a queued offline state is not a relay acknowledgment.
+        // Native suspension drops the session and cancels the link immediately.
     }
 
     fn publish_states(&mut self, player: &PlayerController, agent: &Agent, online: bool) {
@@ -488,8 +570,28 @@ impl Session {
 
     fn handle(&mut self, message: In, now: Instant) {
         match message {
-            In::Connected => self.status = Status::Online,
-            In::Disconnected(_) => self.status = Status::Offline,
+            In::Connected => {
+                self.status = Status::Connecting;
+                self.auth_id = None;
+                self.session = identity::random_hex(8);
+                self.seq = 0;
+                self.last_frame = None;
+                self.last_state = None;
+            }
+            In::Disconnected(_) => {
+                self.status = Status::Offline;
+                self.auth_id = None;
+            }
+            In::Event { sub, event } if sub == ME_SUB => {
+                if event.pubkey == self.pubkey()
+                    && let Ok(Received::State { state, .. }) = mv::decode(&event, WORLD)
+                    && state.id == "avatar"
+                    && let Some(pending) = &mut self.pending_spawn
+                    && pending.found.as_ref().is_none_or(|old| old.t < state.t)
+                {
+                    pending.found = Some(state);
+                }
+            }
             In::Auth(challenge) => {
                 let event = self.id.signer.sign(
                     unix_now(),
@@ -506,26 +608,45 @@ impl Session {
             In::Ok {
                 id, accepted: true, ..
             } if self.auth_id.as_deref() == Some(id.as_str()) => {
+                self.status = Status::Online;
+                // The link restores every retained subscription after AUTH, not only PMs.
                 self.link.send(Out::Subscribe {
                     id: DM_SUB.into(),
                     filters: vec![json!({"kinds": [1_059], "#p": [self.pubkey()]})],
                     live: true,
                 });
             }
+            In::Ok {
+                id,
+                accepted: false,
+                ..
+            } if self.auth_id.as_deref() == Some(id.as_str()) => {
+                self.status = Status::Offline;
+            }
             In::Event { event, .. } if event.kind == mv::CHAT_KIND => {
                 self.receive_chat(&event, now)
             }
             In::Event { event, .. } if event.kind == 1_059 => self.receive_pm(&event, now),
             In::Event { event, .. } if event.kind == 0 => {
-                if let Some(name) = profile_name(&event.content) {
-                    self.names.insert(event.pubkey.clone(), name);
+                if event.validate_crypto().is_ok()
+                    && event.content.len() <= 4096
+                    && let Some(name) = profile_name(&event.content)
+                {
+                    self.remember_name(&event.pubkey, name);
                 }
             }
             In::Event { event, .. } if event.kind == 39_000 => {
+                if self.room_authority.as_ref() != Some(&event.pubkey)
+                    || event.validate_crypto().is_err()
+                {
+                    return;
+                }
                 let d = event.tag_values("d").next().map(str::to_owned);
                 let name = event.tag_values("name").next().map(str::to_owned);
-                if let (Some(d), Some(name)) = (d, name) {
-                    self.room_names.insert(d, name);
+                if let (Some(d), Some(name)) = (d, name)
+                    && ROOMS.contains(&d.as_str())
+                {
+                    self.room_names.insert(d, clean_name(&name));
                 }
             }
             In::Event { event, .. } => {
@@ -533,7 +654,7 @@ impl Session {
                     if let Received::State { pubkey, state } = &received
                         && let Some(name) = &state.name
                     {
-                        self.names.insert(pubkey.clone(), clean_name(name));
+                        self.remember_name(pubkey, clean_name(name));
                     }
                     if let Received::Gesture { pubkey, gesture } = &received
                         && gesture.g == "greet"
@@ -544,7 +665,9 @@ impl Session {
                     {
                         self.greets_received += 1;
                         self.invited.retain(|(p, _)| p != pubkey);
-                        self.invited.push((pubkey.clone(), now));
+                        if self.invited.len() < MAX_PEOPLE {
+                            self.invited.push((pubkey.clone(), now));
+                        }
                         if !self.muted.contains("gestures") {
                             let who = self.name_of(pubkey);
                             self.log.push(chat::Line {
@@ -560,6 +683,14 @@ impl Session {
                 }
             }
             In::Eose(sub) => {
+                if sub == ME_SUB
+                    && let Some(pending) = &mut self.pending_spawn
+                {
+                    pending.finished = true;
+                }
+                if matches!(sub.as_str(), LIVE_SUB | STATE_SUB) && self.auth_id.is_none() {
+                    self.status = Status::Online;
+                }
                 if let Some(scan) = &mut self.scan
                     && scan.sub == sub
                 {
@@ -577,6 +708,24 @@ impl Session {
         }
     }
 
+    fn remember_name(&mut self, pubkey: &str, name: String) {
+        if self.names.len() < MAX_PEOPLE || self.names.contains_key(pubkey) {
+            self.names.insert(pubkey.into(), name);
+        }
+    }
+    fn remember_chat(&mut self, id: &str) -> bool {
+        if !self.seen_chat.insert(id.into()) {
+            return false;
+        }
+        self.chat_order.push_back(id.into());
+        while self.chat_order.len() > MAX_CHAT_IDS {
+            if let Some(old) = self.chat_order.pop_front() {
+                self.seen_chat.remove(&old);
+            }
+        }
+        true
+    }
+
     /// A display name for `pubkey`: its profile or state name, or a short
     /// key while the name is unknown.
     #[must_use]
@@ -591,7 +740,9 @@ impl Session {
     }
 
     fn want_name(&mut self, pubkey: &str) {
-        if !self.names.contains_key(pubkey)
+        if self.asked_names.len() < MAX_PEOPLE
+            && self.want_names.len() < MAX_PEOPLE
+            && !self.names.contains_key(pubkey)
             && pubkey != self.pubkey()
             && self.asked_names.insert(pubkey.to_owned())
         {
@@ -720,8 +871,11 @@ impl Session {
                 unix_now(),
             ),
         };
-        self.seen_chat.insert(event.id.clone());
-        self.publish_now(event);
+        let event_id = event.id.clone();
+        if !self.link.send(Out::Publish(event)) {
+            return Err("Chat was not queued. The relay connection is busy or stopped.".into());
+        }
+        self.remember_chat(&event_id);
         let note = self.audience(channel, zone, now);
         self.log.push(chat::Line {
             channel: Some(channel.clone()),
@@ -791,6 +945,7 @@ impl Session {
             vec![Tag::new(vec!["p".into(), to.to_owned()])],
         )
         .map_err(|e| e.to_string())?;
+        let mut outgoing = Vec::new();
         for target in [reader, myself] {
             let hide = |n: [u8; 2]| u64::from(u16::from_le_bytes(n)) * 2;
             let sealed_at = nostr::nip17::hidden_timestamp(now, hide(identity::random_bytes()))
@@ -815,9 +970,14 @@ impl Session {
                 None,
             )
             .map_err(|e| e.to_string())?;
-            self.publish_now(wrap);
+            outgoing.push(Out::Publish(wrap));
         }
-        self.seen_chat.insert(rumor.id.clone());
+        if !self.link.send_batch(outgoing) {
+            return Err(
+                "Private chat was not queued. The relay connection is busy or stopped.".into(),
+            );
+        }
+        self.remember_chat(&rumor.id);
         let name = self.name_of(to);
         self.log.push(chat::Line {
             channel: Some(Channel::Pm(to.to_owned())),
@@ -830,12 +990,15 @@ impl Session {
     }
 
     fn receive_chat(&mut self, event: &nostr::domain::Event, now: Instant) {
-        if !self.seen_chat.insert(event.id.clone()) || event.pubkey == self.pubkey() {
+        if event.pubkey == self.pubkey() {
             return;
         }
         let Ok(line) = mv::decode_chat(event, WORLD) else {
             return;
         };
+        if !self.remember_chat(&event.id) {
+            return;
+        }
         self.want_name(&line.pubkey);
         let channel = match (&line.room, &line.channel) {
             (Some(room), _) => Channel::Room(room.clone()),
@@ -848,7 +1011,7 @@ impl Session {
         if self.muted.contains(chat::mute_key(&channel)) {
             return;
         }
-        let fresh = line.created_at + 10 >= unix_now();
+        let fresh = line.created_at.saturating_add(10) >= unix_now();
         let here = self.my_pos;
         let my_zone = chat::zone_of(here);
         let speaker_zone = line.zone.as_deref().unwrap_or("");
@@ -865,7 +1028,7 @@ impl Session {
             return;
         }
         let from = self.name_of(&line.pubkey);
-        if fresh && channel.overhead() {
+        if fresh && channel.overhead() && self.bubbles.len() < MAX_PEOPLE {
             self.bubbles.retain(|b| b.pubkey != line.pubkey);
             self.bubbles.push(Bubble {
                 pubkey: line.pubkey.clone(),
@@ -889,7 +1052,7 @@ impl Session {
         let Ok(message) = nostr::nip17::chat_message(&rumor) else {
             return;
         };
-        if !self.seen_chat.insert(rumor.id.clone()) || self.muted.contains("pm") {
+        if !self.remember_chat(&rumor.id) || self.muted.contains("pm") {
             return;
         }
         let mine = message.pubkey == self.pubkey();
@@ -1084,6 +1247,165 @@ fn unix_millis() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn isolated() -> Session {
+        let key = secp256k1::SecretKey::from_byte_array([1; 32]).unwrap();
+        Session::with_link(Identity::from_secret("phone", key).unwrap(), Link::idle()).unwrap()
+    }
+
+    #[test]
+    fn stopped_link_cannot_echo_a_chat_as_success_and_history_identity_is_bounded() {
+        let mut session = isolated();
+        assert!(
+            session
+                .say(&Channel::All, "hello world", Instant::now())
+                .is_err()
+        );
+        let other = nostr::domain::RelaySigner::from_secret_hex(&"02".repeat(32)).unwrap();
+        assert!(session.pm(other.pubkey(), "hello privately").is_err());
+        assert!(session.log.world.is_empty());
+        assert!(session.log.personal.is_empty());
+        for index in 0..MAX_CHAT_IDS + 10 {
+            session.remember_chat(&index.to_string());
+        }
+        assert_eq!(session.seen_chat.len(), MAX_CHAT_IDS);
+        for index in 0..MAX_PEOPLE + 10 {
+            session.remember_name(&index.to_string(), "label".into());
+        }
+        assert_eq!(session.names.len(), MAX_PEOPLE);
+    }
+
+    #[test]
+    fn nonblocking_spawn_only_accepts_the_injected_players_signature() {
+        let mut session = isolated();
+        session.begin_spawn(Duration::from_secs(1));
+        session.status = Status::Online;
+        let player = PlayerController::new(Vec3::ZERO, 0.0);
+        session.tick(Instant::now(), &player, &Agent::new(&player));
+        assert!(session.last_frame.is_none());
+        assert!(session.last_state.is_none());
+        let state = State {
+            v: 1,
+            id: "avatar".into(),
+            role: "avatar".into(),
+            p: [1.0, 0.0, 2.0],
+            q: Quat::IDENTITY.to_array(),
+            t: 1,
+            online: false,
+            follows: None,
+            name: None,
+        };
+        let foreign = nostr::domain::RelaySigner::from_secret_hex(&"02".repeat(32)).unwrap();
+        session.handle(
+            In::Event {
+                sub: ME_SUB.into(),
+                event: Box::new(mv::state_event(&foreign, WORLD, &state, 1)),
+            },
+            Instant::now(),
+        );
+        assert!(session.pending_spawn.as_ref().unwrap().found.is_none());
+        session.handle(
+            In::Event {
+                sub: ME_SUB.into(),
+                event: Box::new(mv::state_event(&session.id.signer, WORLD, &state, 1)),
+            },
+            Instant::now(),
+        );
+        session.handle(In::Eose(ME_SUB.into()), Instant::now());
+        let spawn = session.poll_spawn(&[], 100.0).unwrap();
+        assert!(spawn.resumed);
+        assert_eq!(spawn.pos, Vec3::new(1.0, 0.0, 2.0));
+    }
+
+    #[test]
+    fn socket_open_is_not_authenticated_and_reconnect_resets_pose_identity() {
+        let mut session = isolated();
+        let prior = session.session.clone();
+        session.seq = 42;
+        session.handle(In::Connected, Instant::now());
+        assert_eq!(session.status, Status::Connecting);
+        assert_eq!(session.seq, 0);
+        assert_ne!(session.session, prior);
+        session.handle(In::Auth("challenge".into()), Instant::now());
+        session.handle(In::Eose(STATE_SUB.into()), Instant::now());
+        assert_eq!(session.status, Status::Connecting);
+        session.handle(
+            In::Ok {
+                id: session.auth_id.clone().unwrap(),
+                accepted: true,
+                message: String::new(),
+            },
+            Instant::now(),
+        );
+        assert_eq!(session.status, Status::Online);
+        assert!(
+            session
+                .set_publish_intervals(PublishIntervals::mobile())
+                .is_ok()
+        );
+        assert!(
+            session
+                .set_publish_intervals(PublishIntervals {
+                    moving: Duration::ZERO,
+                    ..PublishIntervals::mobile()
+                })
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn profiles_require_signatures_and_room_labels_require_pinned_authority() {
+        let mut session = isolated();
+        let signer = nostr::domain::RelaySigner::from_secret_hex(&"02".repeat(32)).unwrap();
+        let original = mv::profile_event(&signer, "Alice", 1);
+        let mut forged = original.clone();
+        forged.content = "{\"name\":\"Forged\"}".into();
+        session.handle(
+            In::Event {
+                sub: "names".into(),
+                event: Box::new(forged),
+            },
+            Instant::now(),
+        );
+        assert!(!session.names.contains_key(signer.pubkey()));
+        session.handle(
+            In::Event {
+                sub: "names".into(),
+                event: Box::new(original),
+            },
+            Instant::now(),
+        );
+        assert_eq!(session.name_of(signer.pubkey()), "Alice");
+        let room = signer.sign(
+            1,
+            39000,
+            vec![
+                Tag::new(vec!["d".into(), "lounge".into()]),
+                Tag::new(vec!["name".into(), "Lounge".into()]),
+            ],
+            String::new(),
+        );
+        session.handle(
+            In::Event {
+                sub: ROOM_SUB.into(),
+                event: Box::new(room.clone()),
+            },
+            Instant::now(),
+        );
+        assert!(session.room_names.is_empty());
+        session.set_room_authority(signer.pubkey()).unwrap();
+        session.handle(
+            In::Event {
+                sub: ROOM_SUB.into(),
+                event: Box::new(room),
+            },
+            Instant::now(),
+        );
+        assert_eq!(
+            session.room_names.get("lounge").map(String::as_str),
+            Some("Lounge")
+        );
+    }
 
     #[test]
     fn random_spawns_land_on_the_plaza_and_clear() {

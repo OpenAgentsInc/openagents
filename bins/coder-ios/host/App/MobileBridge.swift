@@ -57,7 +57,7 @@ private final class RustWorker {
         }
         let packet = try JSONDecoder().decode(MobilePacket.self, from: Data(bytes: pointer, count: result.len))
         guard packet.schema == "coder.mobile.v1",
-              packet.view == nil || packet.view?.schema == "rust-native.view.v1" else {
+              packet.view == nil || packet.view?.schema == "rust-native.view.v2" else {
             throw ReaderError.message("This app does not support the returned view version.")
         }
         return packet

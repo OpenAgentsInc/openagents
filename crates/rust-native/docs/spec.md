@@ -6,7 +6,7 @@ not mount them or provide an application runtime.
 
 ## View and interaction contract
 
-`View<I>` uses schema `rust-native.view.v1`, a surface `instance`, a positive
+`View<I>` uses schema `rust-native.view.v2`, a surface `instance`, a positive
 `revision`, and a root `Node<I>`. Each node contains a stable `key`, a resolved
 `Style`, and an element:
 
@@ -16,6 +16,7 @@ not mount them or provide an application runtime.
 | `List` | A labeled bounded window of stable rows. Paging and access to original data remain application responsibilities. |
 | `Text` | Unicode text with a body, heading, code, status, or Markdown role. A Markdown role conveys selectable document meaning; links and embedded content remain inert unless separately admitted by the application. It does not itself parse or render Markdown. |
 | `Button` | A nonempty visible label, an enabled state, and the application's typed intent. |
+| `Surface` | A nonempty accessibility label and an opaque local resource ID. An adapter explicitly registers the renderer; the tree cannot name a URL, library, executable, or shader to load. |
 
 `ValidatedView<I>` exposes an immutable tree and its checked serialization and
 activation paths. Unknown core fields and variants are rejected. The
@@ -35,7 +36,7 @@ code, not sandboxed plugin code.
 Input byte and nesting limits apply before decoding. Constructed trees also
 pass structural and encoded limits. These bounds apply to one view, not an
 application's backing data store. Use bounded windows for long content while
-retaining access to every original record. The v1 schema refuses earlier
+retaining access to every original record. The v2 schema refuses earlier
 versions rather than silently converting them.
 
 ## Revision and lifetime
@@ -84,6 +85,30 @@ and accessibility. A text editor requires an additional explicit contract for
 edit acknowledgments, selection units, marked text, composition ownership, and
 stale updates. Those semantics are not implemented by serializing a string.
 
-The shared core owns neither network access, persistence, a palette, clocks,
+The shared core owns neither network access, persistence, a palette, clock sources,
 credentials, nor task execution. Platform objects belong to adapters;
 application-specific components and effects belong to their application.
+
+## Drawing surfaces
+
+`surface::Viewport` checks physical dimensions (at most 8,192 on either axis
+and 16,777,216 pixels in total) and finite logical-to-physical scale
+(0.25–8). Zero dimensions represent a temporarily hidden surface. An adapter
+can impose smaller GPU or device bounds.
+
+`SurfaceLifecycle` describes one native mount. It starts inactive. Frame
+timestamps must be finite, nonnegative, and monotonic within an active period.
+The first frame after activation or a hidden viewport returns zero elapsed
+time; later frames return at most 50 ms. A destroyed mount refuses reuse.
+The adapter supplies timestamps; the core starts no timer or thread.
+
+The native layer or window must outlive its GPU renderer. Stop display callbacks,
+clear held input, suspend the application's surface subscriptions, release the
+renderer, and only then release the native object. Deactivation must not replay
+background elapsed time as movement. Applications decide whether unrelated
+durable work continues. A resource registration grants no network, credential,
+or task-execution authority.
+
+Native drawing is distinct from native text and controls. Keep accessible
+labels and controls in the semantic tree or platform controls. A GPU drawing
+surface does not make its pixels, geometry, or custom text accessible by itself.

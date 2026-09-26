@@ -6,10 +6,10 @@
 //! motion looks continuous. An entity with no recent frame falls back to
 //! its durable state and is drawn dim: offline, where its owner left it.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
-use coder_terminal::Intensity;
+use coder_ui::theme::Intensity;
 use glam::{Mat4, Quat, Vec3};
 
 use crate::agent;
@@ -27,6 +27,15 @@ const PER_PUBLISHER: usize = 8;
 const MAX_TRACKED: usize = 512;
 /// Most buffered samples per entity.
 const SAMPLES: usize = 32;
+const MAX_SESSIONS: usize = 16;
+
+#[derive(Debug)]
+struct SessionOrder {
+    active: String,
+    sequence: u64,
+    retired: HashSet<String>,
+    latest_time: u64,
+}
 
 #[derive(Clone, Copy, Debug)]
 struct Sample {
@@ -69,7 +78,7 @@ pub struct Shown {
 pub struct Crowd {
     me: String,
     entities: HashMap<(String, String), Remote>,
-    sessions: HashMap<String, (String, u64)>,
+    sessions: HashMap<String, SessionOrder>,
 }
 
 impl Crowd {
@@ -102,14 +111,37 @@ impl Crowd {
                 if pubkey == self.me {
                     return;
                 }
-                if let Some((session, seq)) = self.sessions.get(&pubkey)
-                    && *session == frame.s
-                    && frame.n <= *seq
-                {
-                    return;
+                if let Some(order) = self.sessions.get_mut(&pubkey) {
+                    if order.active == frame.s {
+                        if frame.n <= order.sequence {
+                            return;
+                        }
+                    } else {
+                        if order.retired.contains(&frame.s)
+                            || frame.t < order.latest_time
+                            || order.retired.len() >= MAX_SESSIONS
+                        {
+                            return;
+                        }
+                        order.retired.insert(order.active.clone());
+                        order.active.clone_from(&frame.s);
+                    }
+                    order.sequence = frame.n;
+                    order.latest_time = order.latest_time.max(frame.t);
+                } else {
+                    if self.sessions.len() >= MAX_TRACKED {
+                        return;
+                    }
+                    self.sessions.insert(
+                        pubkey.clone(),
+                        SessionOrder {
+                            active: frame.s.clone(),
+                            sequence: frame.n,
+                            retired: HashSet::new(),
+                            latest_time: frame.t,
+                        },
+                    );
                 }
-                self.sessions
-                    .insert(pubkey.clone(), (frame.s.clone(), frame.n));
                 for pose in frame.e {
                     self.push(&pubkey, &pose, now);
                 }
@@ -314,6 +346,28 @@ mod tests {
         crowd.apply(frame(1, "t", 2.0), t0 + Duration::from_millis(10));
         let shown = crowd.shown(t0 + Duration::from_secs(1));
         assert!((shown[0].pos.x - 2.0).abs() < 1e-4);
+        // A retired session cannot become current again, even at a higher n.
+        crowd.apply(frame(99, "s", 99.0), t0 + Duration::from_millis(20));
+        assert!((crowd.shown(t0 + Duration::from_secs(1))[0].pos.x - 2.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn publisher_session_tracking_is_bounded_even_for_unrendered_entities() {
+        let mut crowd = Crowd::new("me");
+        for i in 0..MAX_TRACKED + 20 {
+            let Received::Frame { frame, .. } = frame(1, "session", 0.0) else {
+                panic!()
+            };
+            crowd.apply(
+                Received::Frame {
+                    pubkey: i.to_string(),
+                    frame,
+                },
+                Instant::now(),
+            );
+        }
+        assert_eq!(crowd.sessions.len(), MAX_TRACKED);
+        assert!(crowd.entities.len() <= MAX_TRACKED);
     }
 
     #[test]

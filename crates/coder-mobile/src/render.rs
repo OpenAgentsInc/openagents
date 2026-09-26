@@ -614,6 +614,7 @@ mod tests {
             }
             Element::Text { value, .. } => out.push((&node.key, value)),
             Element::Button { label, .. } => out.push((&node.key, label)),
+            Element::Surface { label, .. } => out.push((&node.key, label)),
         }
     }
 

@@ -14,7 +14,7 @@
 
 use std::collections::VecDeque;
 
-use coder_terminal::Intensity;
+use coder_ui::theme::Intensity;
 use glam::{Mat4, Vec3, Vec4};
 
 use crate::chat::{self, Channel, Line, Log};

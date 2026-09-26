@@ -449,12 +449,27 @@ pub fn decode(event: &Event, world: &str) -> Result<Received, String> {
             if d != [state_address(world, &state.id).as_str()] {
                 return Err("the d tag does not match the entity".into());
             }
+            if event.tag_values("role").collect::<Vec<_>>() != [state.role.as_str()] {
+                return Err("the role tag does not match the entity".into());
+            }
             state.pose().check()?;
             Ok(Received::State { pubkey, state })
         }
         GESTURE_KIND => {
             let gesture: Gesture =
                 serde_json::from_str(&event.content).map_err(|e| e.to_string())?;
+            if gesture.v != 1
+                || gesture
+                    .d
+                    .is_some_and(|d| !d.is_finite() || !(0.0..=60.0).contains(&d))
+                || gesture
+                    .at
+                    .iter()
+                    .flatten()
+                    .any(|n| !n.is_finite() || n.abs() >= MAX_COORD)
+            {
+                return Err("gesture version, duration, or target is invalid".into());
+            }
             check_id(&gesture.id)?;
             let name_ok = !gesture.g.is_empty()
                 && gesture.g.len() <= 32
@@ -581,6 +596,29 @@ mod tests {
         let mut far = frame();
         far.e[0].p = [1.0e9, 0.0, 0.0];
         assert!(decode(&frame_event(&signer(), WORLD, &far, 1), WORLD).is_err());
+    }
+
+    #[test]
+    fn gesture_version_duration_and_coordinates_are_checked() {
+        let valid = Gesture {
+            v: 1,
+            id: "agent".into(),
+            g: "greet".into(),
+            t: 1,
+            d: Some(1.0),
+            at: vec![[0.0; 3]],
+            to: None,
+        };
+        for variant in 0..3 {
+            let mut bad = valid.clone();
+            match variant {
+                0 => bad.v = 99,
+                1 => bad.d = Some(-1.0),
+                _ => bad.at[0][0] = 1.0e9,
+            };
+            let event = gesture_event(&signer(), WORLD, &bad, Vec3::ZERO, 1);
+            assert!(decode(&event, WORLD).is_err());
+        }
     }
 
     #[test]

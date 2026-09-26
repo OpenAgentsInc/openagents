@@ -5,7 +5,7 @@
 //! That hidden-line look is the whole style.
 
 use bytemuck::{Pod, Zeroable};
-use coder_terminal::Intensity;
+use coder_ui::theme::Intensity;
 use glam::{Mat4, Vec3};
 
 use crate::palette;

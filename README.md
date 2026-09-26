@@ -18,7 +18,9 @@ Voyager's Minecraft agent. [Rust Native](crates/rust-native/README.md) supplies
 the experimental shared UI foundation: typed views and generic styles. Coder's
 application palette lives separately in `coder-ui`, used through the terminal's
 compatibility exports. The iOS reader renders Rust Native lists and transcripts
-through thin SwiftUI controls. Product state and transport are Rust; native
+through thin SwiftUI controls. Its [Verse tab](docs/verse/mobile.md) mounts the
+shared desktop world through Rust Native's generic drawing-surface contract
+and a native Metal layer. Product state and transport are Rust; native
 glue also includes the Swift bridge for Apple's on-device model. Python and shell handle training, benchmark
 acquisition, and infrastructure.
 
@@ -69,7 +71,7 @@ updates with an encrypted device cache. [Release evidence](docs/coder/verificati
 | Operate the Nostr relay | [Local relay runbook](docs/deployment/runbook-local-dev.md), [production (Cloud Run) runbook](docs/deployment/runbook-cloud-run.md), [configuration](docs/deployment/configuration.md) |
 | Review protocol support and gaps | [NIP implementation coverage](docs/protocol/2026-09-26-nip-implementation-coverage.md), [implementation plan](docs/protocol/implementation-plan.md) |
 | Operate a Minecraft agent | [Voyager](docs/voyager/README.md), [watch an episode](docs/minecraft/voyager-runbook.md) |
-| Walk the Verse desktop world | [Verse](docs/verse/README.md) |
+| Walk the Verse world on desktop or iPhone | [Verse](docs/verse/README.md), [mobile controls and shared architecture](docs/verse/mobile.md) |
 
 ## Run Coder
 
@@ -332,7 +334,7 @@ controller components; a policy's presence in code is not a measured result.
 | [plugin-repo-map](crates/plugin-repo-map/), [plugin-code-search](crates/plugin-code-search/), [plugin-test-report](crates/plugin-test-report/) | Evidence guests that [`programs/evidence-guests.json`](programs/evidence-guests.json) runs; built by `scripts/build-plugin-guests.sh`. |
 | [nostr](crates/nostr/), [nostr-relay](crates/nostr-relay/) | Protocol verification and the self-hostable PostgreSQL-backed relay. |
 | [voyager](crates/voyager/) | Minecraft curriculum, bounded programs, critics, skill retention, and traces through the separate [nightly Rust bridge](mc-bridge/). |
-| [verse](crates/verse/) | The Verse desktop world: an amber line city, a WoW-style player controller, a following agent, and multiplayer over Nostr with [NIP-MV](nips/openagents/NIP-MV.md). |
+| [verse](crates/verse/) | The shared desktop/iOS Verse world: an amber line city, player controller, following agent, native GPU surfaces, and multiplayer over Nostr with [NIP-MV](nips/openagents/NIP-MV.md). |
 
 The host owns permissions, deadlines, budgets, and execution boundaries.
 Typed judgments inform decisions; their shape does not establish correctness

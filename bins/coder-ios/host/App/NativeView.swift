@@ -54,9 +54,10 @@ indirect enum NativeElement: Decodable {
     case list(String, [NativeNode])
     case text(String, String)
     case button(String, Bool)
+    case surface(String, String)
 
     private enum Keys: String, CodingKey { case kind, props }
-    private enum Props: String, CodingKey { case axis, children, label, value, role, enabled }
+    private enum Props: String, CodingKey { case axis, children, label, value, role, enabled, resource }
 
     init(from decoder: Decoder) throws {
         let object = try decoder.container(keyedBy: Keys.self)
@@ -71,6 +72,8 @@ indirect enum NativeElement: Decodable {
                                    try props.decode(String.self, forKey: .role))
         case "button": self = .button(try props.decode(String.self, forKey: .label),
                                        try props.decode(Bool.self, forKey: .enabled))
+        case "surface": self = .surface(try props.decode(String.self, forKey: .resource),
+                                         try props.decode(String.self, forKey: .label))
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: object,
                                                     debugDescription: "Unsupported native element")
@@ -90,6 +93,7 @@ struct NativeRenderer: View {
     let revision: UInt64
     let followTarget: String?
     let followChanged: ((Bool) -> Void)?
+    var surface: ((String, String) -> AnyView)? = nil
     let activate: (String) -> Void
 
     var body: some View {
@@ -117,18 +121,22 @@ struct NativeRenderer: View {
         case let .list(label, children):
             return AnyView(NativeList(key: node.key, rows: children, label: label, revision: revision,
                                      followTarget: followTarget, followChanged: followChanged,
-                                     activate: activate))
+                                     surface: surface, activate: activate))
         case let .button(label, enabled):
             return AnyView(Button(label) { activate(node.key) }.disabled(!enabled)
                 .accessibilityIdentifier(node.key))
         case let .text(value, role):
             return AnyView(NativeText(key: node.key, value: value, role: role))
+        case let .surface(resource, label):
+            return surface?(resource, label) ?? AnyView(
+                Text("This device cannot display \(label).")
+                    .accessibilityIdentifier("\(node.key)-unsupported"))
         }
     }
 
     private func render(_ child: NativeNode) -> NativeRenderer {
         NativeRenderer(node: child, revision: revision, followTarget: followTarget,
-                       followChanged: followChanged, activate: activate)
+                       followChanged: followChanged, surface: surface, activate: activate)
     }
 }
 
@@ -174,6 +182,7 @@ private struct NativeList: View {
     let revision: UInt64
     let followTarget: String?
     let followChanged: ((Bool) -> Void)?
+    let surface: ((String, String) -> AnyView)?
     let activate: (String) -> Void
     @State private var following = true
 
@@ -187,7 +196,7 @@ private struct NativeList: View {
             ScrollViewReader { proxy in
                 List(rows) { row in
                     NativeRenderer(node: row, revision: revision, followTarget: nil,
-                                   followChanged: nil, activate: activate)
+                                   followChanged: nil, surface: surface, activate: activate)
                         .id(row.key)
                 }
                 .listStyle(.plain)

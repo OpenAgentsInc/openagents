@@ -15,7 +15,7 @@ struct NativeContractChecks {
                                                        "intent": ["opaque_application_intent": "ignored by native"]]],
         ]
         var fixture: [String: Any] = [
-            "schema": "rust-native.view.v1", "instance": "synthetic", "revision": 2,
+            "schema": "rust-native.view.v2", "instance": "synthetic", "revision": 2,
             "root": ["key": "timeline", "style": [:], "element": ["kind": "list", "props": [
                 "label": "Synthetic timeline", "children": [text, button],
             ]]],
@@ -35,7 +35,12 @@ struct NativeContractChecks {
             _ = try JSONDecoder().decode(NativeView.self, from: JSONSerialization.data(withJSONObject: fixture))
             throw Failure.contract
         } catch is DecodingError {}
-        print("Native contract checks passed: list identity, exact Markdown, opaque intent, disabled state, generic RGBA, unsupported element refusal.")
+        fixture["root"] = ["key": "canvas", "style": [:],
+                            "element": ["kind": "surface", "props": ["resource": "example.world", "label": "Example world"]]]
+        let surface = try JSONDecoder().decode(NativeView.self, from: JSONSerialization.data(withJSONObject: fixture))
+        guard case let .surface(resource, label) = surface.root.element,
+              resource == "example.world", label == "Example world" else { throw Failure.contract }
+        print("Native contract checks passed: list identity, exact Markdown, opaque intent, disabled state, generic RGBA, surface reference, unsupported element refusal.")
     }
     enum Failure: Error { case contract }
 }

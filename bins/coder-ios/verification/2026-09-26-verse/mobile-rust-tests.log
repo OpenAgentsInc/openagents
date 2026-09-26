@@ -1,0 +1,45 @@
+   Compiling rust-native v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/rust-native)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/verse)
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-mobile)
+    Finished `test` profile [unoptimized] target(s) in 1.66s
+     Running unittests src/lib.rs (../target-mobile/debug/deps/coder_mobile-919e07f2e11dfc27)
+
+running 13 tests
+test verse_app::tests::bad_and_excess_touches_do_not_poison_camera_or_keep_moving ... ok
+test verse_app::tests::touches_move_shared_player_and_pause_cancels_motion ... ok
+test verse_app::tests::invalid_relay_cannot_replace_a_previous_choice ... ok
+test cache::tests::encrypted_cache_survives_restart_and_refuses_wrong_key_and_swapped_entries ... ok
+test render::tests::one_readable_row_per_record_keeps_every_raw_fragment_available ... ok
+test tests::native_projection_opens_a_cached_chat_and_refuses_stale_actions ... ok
+test tests::ffi_rejects_unknown_operations_without_executing_anything ... ok
+test render::tests::an_evicted_middle_page_reports_the_internal_history_gap ... ok
+test tests::catalog_is_persisted_in_pages_and_source_gaps_are_visible ... ok
+test tests::paused_follow_pins_the_visible_page_across_new_pages ... ok
+test tests::unchanged_catalog_refresh_keeps_all_cached_pages_visible ... ok
+test tests::large_message_is_readable_across_source_pages_without_a_one_kib_cut ... ok
+test connection_tests::app_pairs_pages_refreshes_restores_and_erases_revoked_history ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.01s
+
+     Running unittests src/lib.rs (../target-mobile/debug/deps/rust_native-3706e6ea6ace353a)
+
+running 16 tests
+test surface::tests::invalid_inputs_and_reused_destroyed_mount_are_refused ... ok
+test style::tests::explicit_leaf_order_and_reset_survive_composition ... ok
+test style::tests::sheet_rejects_ambiguous_and_missing_names ... ok
+test surface::tests::pause_and_hidden_surface_do_not_accumulate_simulation_time ... ok
+test view::tests::disabled_controls_and_text_cannot_dispatch ... ok
+test view::tests::list_labels_keys_and_window_bounds_are_checked ... ok
+test style::tests::caller_order_not_registry_order_controls_composition ... ok
+test view::tests::native_surfaces_are_local_labeled_resources_not_actions ... ok
+test view::tests::resource_bounds_apply_to_constructed_and_decoded_views ... ok
+test view::tests::list_rows_keep_identity_and_nested_button_activation ... ok
+test view::tests::round_trip_and_activation_use_the_current_typed_intent ... ok
+test view::tests::markdown_preserves_source_and_old_schema_is_not_reinterpreted ... ok
+test view::tests::duplicate_keys_and_unknown_fields_are_rejected ... ok
+test view::tests::deepest_supported_tree_round_trips ... ok
+test view::tests::json_nesting_bound_includes_intents_but_not_quoted_brackets ... ok
+test view::tests::encoded_budget_includes_intents_and_escaping ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

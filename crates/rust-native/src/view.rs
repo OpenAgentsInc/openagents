@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::io::{self, Write};
 
-pub const SCHEMA: &str = "rust-native.view.v1";
+pub const SCHEMA: &str = "rust-native.view.v2";
 pub const MAX_VIEW_BYTES: usize = 512 * 1024;
 pub const MAX_NODES: usize = 1_024;
 pub const MAX_DEPTH: usize = 16;
@@ -48,6 +48,13 @@ pub enum TextRole {
     deny_unknown_fields
 )]
 pub enum Element<I> {
+    /// A locally registered native drawing surface. The resource is an opaque
+    /// identifier, never a URL, library path, shader, or executable payload.
+    /// Platform adapters must explicitly register a renderer for it.
+    Surface {
+        resource: String,
+        label: String,
+    },
     Stack {
         axis: Axis,
         children: Vec<Node<I>>,
@@ -128,7 +135,7 @@ impl fmt::Display for ViewError {
             Self::JsonDepthLimit => f.write_str("view exceeds its JSON nesting bound"),
             Self::TextLimit => f.write_str("view text exceeds its byte bound"),
             Self::ViewLimit => f.write_str("view exceeds its encoded byte bound"),
-            Self::MissingLabel => f.write_str("button or list requires a nonempty label"),
+            Self::MissingLabel => f.write_str("button, list, or surface requires a nonempty label"),
             Self::Encoding(error) => write!(f, "invalid Rust Native view encoding: {error}"),
             Self::StaleActivation => f.write_str("activation does not name the current view"),
             Self::NotInteractive => f.write_str("activation does not name a button"),
@@ -190,6 +197,15 @@ impl<I: Serialize> View<I> {
                     pending.extend(children.iter().map(|node| (node, depth + 1)));
                 }
                 Element::Text { value, .. } => check_text(value)?,
+                Element::Surface { resource, label } => {
+                    if !crate::valid_id(resource) {
+                        return Err(ViewError::Identity);
+                    }
+                    check_text(label)?;
+                    if label.trim().is_empty() {
+                        return Err(ViewError::MissingLabel);
+                    }
+                }
                 Element::Button { label, .. } => {
                     check_text(label)?;
                     if label.trim().is_empty() {

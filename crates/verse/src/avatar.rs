@@ -1,6 +1,6 @@
 //! The player's avatar: a boxy line figure that swings its limbs as it runs.
 
-use coder_terminal::Intensity;
+use coder_ui::theme::Intensity;
 use glam::{Mat4, Quat, Vec3};
 
 use crate::controller::PlayerController;

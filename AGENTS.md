@@ -186,7 +186,8 @@ uses, and marks which are implemented and which are only specified.
 - `crates/rust-native` — the experimental shared UI foundation: validated
   serializable semantic views, typed application intents, deterministic style
   composition, and generic colors. Current primitives include `Stack`, `List`,
-  `Text`, and `Button`; native adapters remain separate. The core has no
+  `Text`, `Button`, and a locally registered `Surface`. Bounded viewports and
+  active/disposed frame timing are generic; native adapters remain separate. The core has no
   product palette or application dependency. It owns no
   task execution, network transport, credentials, or platform objects. Read
   `crates/rust-native/docs/` before extending a shared UI contract. Put reusable
@@ -202,8 +203,11 @@ uses, and marks which are implemented and which are only specified.
   NIP-42 and encrypted private Nostr artifacts. This cannot control an engine.
   Read its README and the NIP-SESS observer profile before changing authority.
 - `crates/coder-mobile` — Rust-owned iOS reader state, encrypted cache, paging,
-  synchronization, and C ABI. SwiftUI mounts generic Rust Native views and owns
-  native controls and Keychain. Read `docs/coder/guides/mobile-readonly.md`.
+  synchronization, and C ABI, plus a separate main-thread Verse render handle
+  using the shared `verse::runtime::WorldRuntime`. SwiftUI mounts generic Rust
+  Native views and a Metal layer, and owns native controls and Keychain. Keep
+  Verse identity and lifecycle separate from history-observer authority. Read
+  `docs/coder/guides/mobile-readonly.md` and `docs/verse/mobile.md`.
 - `crates/coder-terminal` — the Coder terminal: the amber intensity ladder,
   the framed composer, and the shell they draw. It also holds the terminal
   design system every other terminal here depends on — the re-exported
@@ -332,12 +336,15 @@ uses, and marks which are implemented and which are only specified.
   store; `voyager evidence` renders a run's coverage matrix and metrics.
   The crate builds and tests without the helper. Read `docs/voyager/`
   before changing an episode, a world manifest, or the bridge protocol.
-- `crates/verse` — the Verse desktop world: a Tron-style city drawn in
+- `crates/verse` — the shared Verse desktop/iOS world: a Tron-style city drawn in
   amber lines on the terminal's near-black field, and a third-person
   character with WoW-style movement and mouselook. The stack follows Ruins
   of Atlantis (`wgpu`, `winit`, `glam`, a custom renderer); the controller
   is reimplemented from its `client_core`, not copied. Every color comes
-  from `coder_terminal::Intensity`; a test refuses any other. `verse
+  from `coder_ui::theme::Intensity`; a test refuses any other. Desktop features
+  retain model chat, XP, and file-backed replays; mobile disables those host
+  dependencies and injects identity. Both use the shared simulation, renderer,
+  and Rust Native surface lifetime. `verse
   --capture <file.png>` renders the spawn view without a window. Players
   share the world over Nostr with NIP-MV (`nips/openagents/NIP-MV.md`):
   pose frames, entity states, and gestures through a relay, which

@@ -2,7 +2,7 @@
 
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 
-Verse is the OpenAgents desktop world: a walkable 3D city drawn in amber
+Verse is the OpenAgents desktop and iOS world: a walkable 3D city drawn in amber
 lines on a near-black field. `crates/verse` holds the first slice, a
 Tron-style city and a third-person character you run around with World of
 Warcraft controls.
@@ -16,6 +16,10 @@ level, and titles. `R` replays a retained Microcoder run as the agent's
 visits to the workbench, oracle, library, and proving ground, beside a
 ghost of Fable 5.1 low's cheapest winning run. Other live OpenAgents state
 (Pylons, live runs, sats) is not implemented.
+
+The [Coder iOS Verse tab](mobile.md) shares the world simulation and renderer
+through Rust Native's generic native-surface contract. Mobile touch controls,
+Metal mounting, and lifecycle are separate from the retained desktop panels.
 
 ## Run it
 
@@ -58,7 +62,7 @@ each other.
 
 | Event | Kind | Stored | When |
 | --- | --- | --- | --- |
-| Pose frame | `23300` | No (ephemeral) | 10 per second while moving, 4 while still. Carries the avatar's and the agent's position and quaternion. |
+| Pose frame | `23300` | No (ephemeral) | 10 per second while moving, one every 5 seconds while still. Mobile uses a slower explicit cadence. Carries the avatar's and the agent's position and quaternion. |
 | Entity state | `33301` | Yes (addressable) | On join, every 3 s of movement, and on quit with `online: false`. |
 | Chat | `9` (NIP-C7), `1059` (NIP-17) | Yes | ALL, ADS, ZONE, NEAR, and HERE as kind `9` with NIP-MV tags; rooms as kind `9` with a NIP-29 `h` tag; PMs gift-wrapped. |
 | Gesture | `23301` | No (ephemeral) | `look-around` when the agent looks around, with the positions it looked at; `greet` when it greets another agent, addressed to that agent. |

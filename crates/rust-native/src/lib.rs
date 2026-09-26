@@ -6,6 +6,7 @@
 //! a native screen. See the crate's docs for implemented and planned layers.
 
 pub mod style;
+pub mod surface;
 pub mod view;
 
 pub use view::{Activation, Axis, Element, Node, TextRole, ValidatedView, View, ViewError};

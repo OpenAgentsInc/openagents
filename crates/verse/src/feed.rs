@@ -160,6 +160,7 @@ impl Feed {
                     0 => {
                         if event.validate_crypto().is_ok()
                             && let Some(name) = profile_name(&event.content)
+                            && (self.names.len() < 4096 || self.names.contains_key(&event.pubkey))
                         {
                             self.names.insert(event.pubkey.clone(), name);
                         }
@@ -194,7 +195,11 @@ impl Feed {
         let Some(text) = tidy(&event.content) else {
             return;
         };
-        if !self.names.contains_key(&event.pubkey) && self.asked.insert(event.pubkey.clone()) {
+        if self.asked.len() < 4096
+            && self.want.len() < 100
+            && !self.names.contains_key(&event.pubkey)
+            && self.asked.insert(event.pubkey.clone())
+        {
             self.want.push((event.pubkey.clone(), link));
         }
         if self.queue.iter().any(|n| n.pubkey == event.pubkey)

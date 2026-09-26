@@ -177,6 +177,7 @@ files are included below.
 | [coder/verification/2026-09-26-frozen-context/README.md](coder/verification/2026-09-26-frozen-context/README.md) | Evidence index | Frozen context and shared transport acceptance |
 | [coder/verification/2026-09-26-knowledge/README.md](coder/verification/2026-09-26-knowledge/README.md) | Evidence index | Knowledge integrity and permissioned input verification |
 | [coder/verification/2026-09-26-mobile-reader.md](coder/verification/2026-09-26-mobile-reader.md) | Retained evidence / audit | Coder iOS reader verification — September 26, 2026 |
+| [coder/verification/2026-09-26-verse-mobile.md](coder/verification/2026-09-26-verse-mobile.md) | Verification | Shared Verse desktop/iOS delivery |
 | [coder/verification/2026-09-26-portable-host/README.md](coder/verification/2026-09-26-portable-host/README.md) | Evidence index | Portable host packaging evidence |
 | [coder/verification/2026-09-26-repository-adapter/README.md](coder/verification/2026-09-26-repository-adapter/README.md) | Evidence index | Repository adapter acceptance, 2026-09-26 |
 | [coder/verification/2026-09-26-task-inbox.md](coder/verification/2026-09-26-task-inbox.md) | Retained evidence / audit | Durable local task inbox verification |
@@ -556,6 +557,7 @@ files are included below.
 | Document | Role | Topic |
 | --- | --- | --- |
 | [verse/README.md](verse/README.md) | Index | Verse |
+| [verse/mobile.md](verse/mobile.md) | Guide | Verse in Coder for iOS |
 | [verse/chat.md](verse/chat.md) | Reference | Verse chat |
 | [verse/gdd.md](verse/gdd.md) | Reference | Verse game design document (draft) |
 

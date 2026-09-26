@@ -15,7 +15,7 @@
 //! does a barrel roll. When it meets another player's agent, it greets it
 //! ([`Agent::greet`]).
 
-use coder_terminal::Intensity;
+use coder_ui::theme::Intensity;
 use glam::{Mat4, Quat, Vec2, Vec3};
 
 use crate::avatar::dim;

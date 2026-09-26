@@ -3,7 +3,7 @@
 //! Everything is generated from a fixed seed, so every launch builds the
 //! same city. The player spawns on an open plaza facing the pylon.
 
-use coder_terminal::Intensity;
+use coder_ui::theme::Intensity;
 use glam::{Mat4, Vec3};
 
 use crate::controller::Footprint;

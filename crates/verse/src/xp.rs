@@ -16,9 +16,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use coder_terminal::Intensity;
+use coder_ui::theme::Intensity;
 use knowledge::remote::{own_pubkey, parse_author};
 use knowledge::xp::{XpTrust, derive, referee_key_file, trust_file};
 use nostr::domain::{Event, RelaySigner, Tag};
@@ -326,6 +330,7 @@ enum Update {
 /// The game's handle on the XP reader thread.
 pub struct Board {
     rx: Receiver<Update>,
+    _stop: Stop,
     /// The relay it reads.
     pub relay: String,
     /// Whether the relay is connected.
@@ -355,13 +360,16 @@ impl Board {
         signer: Option<RelaySigner>,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker_stop = stop.clone();
         let url = relay.to_owned();
         std::thread::Builder::new()
             .name("verse-xp".into())
-            .spawn(move || run(&url, &trust, signer.as_ref(), &tx))
+            .spawn(move || run(&url, &trust, signer.as_ref(), &tx, &worker_stop))
             .expect("the XP thread starts");
         Self {
             rx,
+            _stop: Stop(stop),
             relay: relay.to_owned(),
             connected: false,
             snapshot: None,
@@ -376,6 +384,7 @@ impl Board {
         let (_, rx) = mpsc::channel();
         Self {
             rx,
+            _stop: Stop(Arc::new(AtomicBool::new(false))),
             relay: relay.to_owned(),
             connected: true,
             snapshot: Some(snapshot),
@@ -416,6 +425,13 @@ impl Board {
     }
 }
 
+struct Stop(Arc<AtomicBool>);
+impl Drop for Stop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
 fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -432,7 +448,13 @@ fn filters() -> Vec<serde_json::Value> {
 /// The reader thread: gathers events, fetches what awards name, and sends
 /// a snapshot whenever the events settle. Exits when the game drops its
 /// [`Board`].
-fn run(url: &str, trust: &XpTrust, signer: Option<&RelaySigner>, tx: &Sender<Update>) {
+fn run(
+    url: &str,
+    trust: &XpTrust,
+    signer: Option<&RelaySigner>,
+    tx: &Sender<Update>,
+    stop: &AtomicBool,
+) {
     let link = Link::start(url);
     link.send(Out::Subscribe {
         id: SUB.into(),
@@ -446,7 +468,7 @@ fn run(url: &str, trust: &XpTrust, signer: Option<&RelaySigner>, tx: &Sender<Upd
     let mut dirty = false;
     let mut changed = Instant::now();
     let mut fetches = 0u32;
-    loop {
+    while !stop.load(Ordering::Acquire) {
         for message in link.drain() {
             match message {
                 In::Connected => {

@@ -3,14 +3,26 @@ import SwiftUI
 
 @main
 struct CoderApp: App {
+    @State private var selectedTab = "chats"
     @StateObject private var bridge = MobileBridge(
         synthetic: ProcessInfo.processInfo.arguments.contains("--synthetic"))
 
-    var body: some Scene { WindowGroup { ReaderScreen(bridge: bridge) } }
+    var body: some Scene {
+        WindowGroup {
+            TabView(selection: $selectedTab) {
+                ReaderScreen(bridge: bridge, selected: selectedTab == "chats")
+                    .tabItem { Label("Chats", systemImage: "text.bubble") }.tag("chats")
+                VerseScreen(selected: selectedTab == "verse",
+                            synthetic: ProcessInfo.processInfo.arguments.contains("--synthetic"))
+                    .tabItem { Label("Verse", systemImage: "globe") }.tag("verse")
+            }.tint(Color(red: 1, green: 176.0 / 255.0, blue: 0))
+        }
+    }
 }
 
 private struct ReaderScreen: View {
     @ObservedObject var bridge: MobileBridge
+    let selected: Bool
     @Environment(\.scenePhase) private var phase
     @State private var pairing = false
     @State private var disconnecting = false
@@ -64,9 +76,11 @@ private struct ReaderScreen: View {
                             titleVisibility: .visible) {
             Button("Disconnect and erase", role: .destructive) { bridge.disconnect() }
         } message: { Text("The computer's conversations remain unchanged. This device keeps its Keychain identity.") }
-        .onChange(of: phase) { _, current in bridge.setForeground(current == .active) }
-        .onAppear { bridge.setForeground(phase == .active) }
-        .onReceive(timer) { _ in if phase == .active { bridge.refresh() } }
+        .onChange(of: phase) { _, current in bridge.setForeground(selected && current == .active) }
+        .onChange(of: selected) { _, current in bridge.setForeground(current && phase == .active) }
+        .onAppear { bridge.setForeground(selected && phase == .active) }
+        .onDisappear { bridge.setForeground(false) }
+        .onReceive(timer) { _ in if selected && phase == .active { bridge.refresh() } }
     }
 
     private func followAction(page: String?) -> ((Bool) -> Void)? {

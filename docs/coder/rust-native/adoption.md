@@ -4,7 +4,7 @@ Status: adoption plan, September 26, 2026. The first production change moves
 the existing public palette into the application crate `coder-ui` and preserves
 the terminal's exports. Rust Native remains reusable, with no Coder dependency
 or palette. Its semantic vocabulary includes `Stack`, `List`, `Text`, and
-`Button`. The [read-only iOS reader](../guides/mobile-readonly.md) now uses
+`Button`, plus a locally registered `Surface` for native drawing. The [read-only iOS reader](../guides/mobile-readonly.md) now uses
 those views through a [thin SwiftUI adapter](../../../bins/coder-ios/host/App/NativeView.swift):
 saved-chat lists, paged transcripts, full-message parts, exact source bytes,
 and follow controls. Rust owns observation, cache, and application intents.
@@ -12,6 +12,12 @@ and follow controls. Rust owns observation, cache, and application intents.
 simulator evidence from remaining physical-device acceptance. General adapter
 runtime support, shared editable text, Android/web clients, and task control
 remain separate work.
+
+The [Verse delivery](../../verse/mobile.md) shares the existing Rust world and
+wgpu scene between desktop and the iOS app. Rust Native owns the generic
+surface/viewport/lifecycle contract; Verse retains geometry, controls, and
+networking, and `coder-ui` retains the palette. See [its verification
+record](../verification/2026-09-26-verse-mobile.md).
 
 This plan reviews public source at `6958741c4a72` and the accompanying Rust
 Native foundation. It uses the separate Coder checkout only as design

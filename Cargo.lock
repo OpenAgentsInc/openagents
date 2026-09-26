@@ -751,6 +751,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "verse",
 ]
 
 [[package]]
@@ -6288,7 +6289,6 @@ dependencies = [
  "rustls-pki-types",
  "sha1",
  "thiserror 2.0.20",
- "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -6488,19 +6488,23 @@ dependencies = [
  "bytemuck",
  "coder",
  "coder-one",
- "coder-terminal",
+ "coder-ui",
+ "futures-util",
  "glam",
  "gym",
  "knowledge",
  "nostr",
  "png",
  "pollster",
+ "rust-native",
+ "rustls",
  "secp256k1",
  "serde",
  "serde_json",
  "swash",
  "tokio",
- "tungstenite",
+ "tokio-tungstenite",
+ "webpki-roots 1.0.9",
  "wgpu",
  "winit",
 ]

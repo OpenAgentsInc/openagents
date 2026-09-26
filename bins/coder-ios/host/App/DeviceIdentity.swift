@@ -4,9 +4,17 @@ import Security
 
 enum DeviceIdentity {
     static func loadOrCreate(synthetic: Bool) throws -> Data {
+        try loadOrCreate(service: "com.openagents.coder.reader", synthetic: synthetic)
+    }
+
+    static func loadOrCreateVerse(synthetic: Bool) throws -> Data {
+        try loadOrCreate(service: "com.openagents.coder.verse", synthetic: synthetic)
+    }
+
+    private static func loadOrCreate(service: String, synthetic: Bool) throws -> Data {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.openagents.coder.reader",
+            kSecAttrService as String: service,
             kSecAttrAccount as String: synthetic ? "synthetic-device-v1" : "device-v1",
             kSecAttrSynchronizable as String: false,
         ]

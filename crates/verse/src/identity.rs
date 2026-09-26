@@ -8,6 +8,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use nostr::domain::RelaySigner;
+use secp256k1::rand::RngCore;
 
 /// A loaded or newly created identity.
 pub struct Identity {
@@ -19,6 +20,34 @@ pub struct Identity {
     pub profile: String,
     /// True when this launch created the key.
     pub created: bool,
+}
+
+impl Identity {
+    /// Use an explicitly supplied platform identity without reading HOME or a file.
+    /// The caller owns secure storage, such as the iOS Keychain.
+    pub fn from_secret(profile: &str, secret: secp256k1::SecretKey) -> Result<Self, String> {
+        check_profile(profile)?;
+        let signer = RelaySigner::from_secret_hex(&secret.display_secret().to_string())
+            .map_err(|_| "invalid player identity".to_owned())?;
+        Ok(Self {
+            signer,
+            secret,
+            profile: profile.into(),
+            created: false,
+        })
+    }
+}
+
+fn check_profile(profile: &str) -> Result<(), String> {
+    if profile.is_empty()
+        || profile.len() > 32
+        || !profile
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Err("profile must be 1 to 32 letters, digits, - or _".into());
+    }
+    Ok(())
 }
 
 /// The directory profile keys live in.
@@ -38,16 +67,7 @@ pub fn home() -> PathBuf {
 /// Returns a message when the profile name is unusable, the key cannot be
 /// read or written, or the stored key is invalid.
 pub fn load_or_create(dir: &Path, profile: &str) -> Result<Identity, String> {
-    let valid = !profile.is_empty()
-        && profile.len() <= 32
-        && profile
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
-    if !valid {
-        return Err(format!(
-            "profile {profile:?} must be 1 to 32 letters, digits, - or _"
-        ));
-    }
+    check_profile(profile)?;
     let path = dir.join(format!("{profile}.key"));
     let (secret, created) = match std::fs::read_to_string(&path) {
         Ok(text) => (text.trim().to_owned(), false),
@@ -110,25 +130,21 @@ fn write_private(path: &Path, secret: &str) -> Result<(), String> {
 #[must_use]
 pub fn random_bytes<const N: usize>() -> [u8; N] {
     let mut buf = [0u8; N];
-    let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut buf));
+    secp256k1::rand::rng().fill_bytes(&mut buf);
     buf
 }
 
 /// A fresh random secret key, for one-time NIP-59 wrapper keys.
 #[must_use]
 pub fn random_secret() -> secp256k1::SecretKey {
-    loop {
-        if let Ok(key) = secp256k1::SecretKey::from_byte_array(random_bytes::<32>()) {
-            return key;
-        }
-    }
+    secp256k1::SecretKey::new(&mut secp256k1::rand::rng())
 }
 
 /// A short random hex string, for session ids.
 #[must_use]
 pub fn random_hex(bytes: usize) -> String {
     let mut buf = vec![0u8; bytes];
-    let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut buf));
+    secp256k1::rand::rng().fill_bytes(&mut buf);
     buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 

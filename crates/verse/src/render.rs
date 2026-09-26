@@ -3,15 +3,18 @@
 //! Each frame clears to the near-black field, draws faces with a depth
 //! bias so coincident edges win, then draws amber lines on top. The static
 //! world uploads once. The avatar rewrites a small dynamic buffer every
-//! frame. [`Renderer`] presents to a window; [`capture`] renders the same
+//! frame. [`Renderer`] presents to a window; `capture` renders the same
 //! scene to a PNG without one.
 
+#[cfg(feature = "capture")]
 use std::path::Path;
+#[cfg(feature = "desktop")]
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
+#[cfg(feature = "desktop")]
 use winit::window::Window;
 
 use crate::mesh::{Mesh, Vertex};
@@ -19,8 +22,12 @@ use crate::palette;
 use crate::ui::{Atlas, UiBatch, UiVertex};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+#[cfg(feature = "capture")]
 const CAPTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-const DYNAMIC_BYTES: u64 = 256 * 1024;
+const INITIAL_DYNAMIC_BYTES: u64 = 256 * 1024;
+// A full 512-entity crowd needs about 18 MiB of faces with current geometry.
+// Each stream grows independently; the line stream usually needs much less.
+const MAX_DYNAMIC_BYTES: u64 = 32 * 1024 * 1024;
 const UI_BYTES: u64 = 2 * 1024 * 1024;
 /// Distance where fog starts, in meters.
 pub const FOG_START: f32 = 60.0;
@@ -48,6 +55,7 @@ struct Globals {
 struct Batch {
     buffer: wgpu::Buffer,
     count: u32,
+    capacity: u64,
 }
 
 /// Pipelines and buffers for one color format and sample count.
@@ -74,7 +82,43 @@ struct Targets {
     size: [f32; 2],
 }
 
-/// The GPU state for one window.
+/// Bounded renderer configuration. A requested 4x sample count falls back to
+/// one sample when the adapter does not support it for the chosen format.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RenderOptions {
+    pub sample_count: u32,
+    pub max_extent: u32,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self {
+            sample_count: 4,
+            max_extent: 8192,
+        }
+    }
+}
+
+impl RenderOptions {
+    fn validate(self) -> Result<Self, String> {
+        if !matches!(self.sample_count, 1 | 4) || self.max_extent == 0 || self.max_extent > 8192 {
+            return Err(
+                "renderer requires 1 or 4 samples and an extent bound from 1 to 8192".into(),
+            );
+        }
+        Ok(self)
+    }
+}
+
+/// Whether a requested frame reached the native surface.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DrawStatus {
+    Presented,
+    Skipped(&'static str),
+    Error(String),
+}
+
+/// GPU state for one surface lifetime. The platform owns scheduling and input.
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -82,21 +126,78 @@ pub struct Renderer {
     config: wgpu::SurfaceConfiguration,
     scene: Scene,
     targets: Targets,
+    max_extent: u32,
+    drawable: bool,
 }
 
 impl Renderer {
-    /// Creates the device and pipelines for `window` and uploads `world`.
-    ///
-    /// # Errors
-    ///
-    /// Returns a message when no adapter, device, or surface is available.
+    /// Creates a desktop surface and uploads the shared world geometry.
+    #[cfg(feature = "desktop")]
     pub fn new(window: Arc<Window>, world: &Mesh, atlas: &Atlas) -> Result<Self, String> {
         let instance = instance();
+        let size = window.inner_size();
         let surface = instance
-            .create_surface(window.clone())
+            .create_surface(window)
             .map_err(|e| format!("cannot create a surface: {e}"))?;
-        let (adapter, device, queue) = open(&instance, Some(&surface))?;
+        Self::from_surface(
+            instance,
+            surface,
+            size.width,
+            size.height,
+            world,
+            atlas,
+            RenderOptions::default(),
+        )
+    }
 
+    /// Creates an Apple surface from the native host's CAMetalLayer.
+    ///
+    /// # Safety
+    /// `layer` must point to a valid CAMetalLayer on its owning UI thread. The
+    /// native host must keep the layer alive and attached for this renderer's
+    /// entire lifetime, and must drop the renderer before destroying the layer.
+    /// All calls and teardown must stay on that owning thread.
+    #[cfg(target_vendor = "apple")]
+    pub unsafe fn from_metal_layer(
+        layer: *mut core::ffi::c_void,
+        width: u32,
+        height: u32,
+        world: &Mesh,
+        atlas: &Atlas,
+        options: RenderOptions,
+    ) -> Result<Self, String> {
+        if layer.is_null() {
+            return Err("native Metal layer is null".into());
+        }
+        options.validate()?;
+        validate_extent(width, height, options.max_extent)?;
+        let instance = instance();
+        // SAFETY: the caller owns the layer lifetime and UI-thread confinement.
+        let surface = unsafe {
+            instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer))
+        }
+        .map_err(|e| format!("cannot create a Metal surface: {e}"))?;
+        Self::from_surface(instance, surface, width, height, world, atlas, options)
+    }
+
+    /// Builds the same renderer around a platform-created surface.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_surface(
+        instance: wgpu::Instance,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+        world: &Mesh,
+        atlas: &Atlas,
+        options: RenderOptions,
+    ) -> Result<Self, String> {
+        let options = options.validate()?;
+        validate_extent(width, height, options.max_extent)?;
+        let (adapter, device, queue) = open(&instance, Some(&surface))?;
+        let max_extent = options
+            .max_extent
+            .min(device.limits().max_texture_dimension_2d);
+        validate_extent(width, height, max_extent)?;
         let caps = surface.get_capabilities(&adapter);
         let format = caps
             .formats
@@ -105,12 +206,11 @@ impl Renderer {
             .find(wgpu::TextureFormat::is_srgb)
             .or_else(|| caps.formats.first().copied())
             .ok_or("the surface reports no formats")?;
-        let size = window.inner_size();
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
-            width: size.width.max(1),
-            height: size.height.max(1),
+            width,
+            height,
             present_mode: wgpu::PresentMode::AutoVsync,
             desired_maximum_frame_latency: 2,
             alpha_mode: caps
@@ -121,9 +221,16 @@ impl Renderer {
             view_formats: vec![],
         };
         surface.configure(&device, &config);
-
-        let scene = Scene::new(&device, &queue, &adapter, format, world, atlas);
-        let targets = Targets::new(&device, format, config.width, config.height, scene.samples);
+        let scene = Scene::new(
+            &device,
+            &queue,
+            &adapter,
+            format,
+            world,
+            atlas,
+            options.sample_count,
+        );
+        let targets = Targets::new(&device, format, width, height, scene.samples);
         Ok(Self {
             surface,
             device,
@@ -131,26 +238,37 @@ impl Renderer {
             config,
             scene,
             targets,
+            max_extent,
+            drawable: true,
         })
     }
 
-    /// Drawable size in physical pixels.
     #[must_use]
     pub fn size(&self) -> [f32; 2] {
-        [self.config.width as f32, self.config.height as f32]
+        if self.drawable {
+            [self.config.width as f32, self.config.height as f32]
+        } else {
+            [0.0, 0.0]
+        }
     }
 
-    /// Width over height of the drawable area.
     #[must_use]
     pub fn aspect(&self) -> f32 {
         self.config.width as f32 / self.config.height as f32
     }
 
-    /// Reconfigures the surface for a new window size.
-    pub fn resize(&mut self, width: u32, height: u32) {
+    #[must_use]
+    pub fn sample_count(&self) -> u32 {
+        self.scene.samples
+    }
+
+    /// A zero extent suspends presentation until a valid size returns.
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
         if width == 0 || height == 0 {
-            return;
+            self.drawable = false;
+            return Ok(());
         }
+        validate_extent(width, height, self.max_extent)?;
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
@@ -161,19 +279,38 @@ impl Renderer {
             height,
             self.scene.samples,
         );
+        self.drawable = true;
+        Ok(())
     }
 
-    /// Draws and presents one frame: the world, then `dynamic`, then `ui`
-    /// over everything.
-    pub fn draw(&mut self, view: View, dynamic: &Mesh, ui: &UiBatch) {
+    /// Draws one frame. Lost surfaces require a fresh native attachment;
+    /// skipped frames never report that they were presented.
+    pub fn draw(&mut self, view: View, dynamic: &Mesh, ui: &UiBatch) -> DrawStatus {
+        if !self.drawable {
+            return DrawStatus::Skipped("surface has no drawable extent");
+        }
+        if let Err(error) = validate_frame(view, dynamic, ui) {
+            return DrawStatus::Error(error);
+        }
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame)
             | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+            wgpu::CurrentSurfaceTexture::Outdated => {
                 self.surface.configure(&self.device, &self.config);
-                return;
+                return DrawStatus::Skipped("surface was reconfigured");
             }
-            _ => return,
+            wgpu::CurrentSurfaceTexture::Timeout => {
+                return DrawStatus::Skipped("drawable timed out");
+            }
+            wgpu::CurrentSurfaceTexture::Occluded => {
+                return DrawStatus::Skipped("surface is occluded");
+            }
+            wgpu::CurrentSurfaceTexture::Lost => {
+                return DrawStatus::Error("surface was lost; attach a new native surface".into());
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return DrawStatus::Error("surface validation failed".into());
+            }
         };
         let output = frame
             .texture
@@ -184,6 +321,7 @@ impl Renderer {
                 label: Some("verse frame"),
             });
         self.scene.encode(
+            &self.device,
             &self.queue,
             &mut encoder,
             &output,
@@ -194,7 +332,43 @@ impl Renderer {
         );
         self.queue.submit([encoder.finish()]);
         frame.present();
+        DrawStatus::Presented
     }
+}
+
+fn validate_extent(width: u32, height: u32, limit: u32) -> Result<(), String> {
+    if width == 0
+        || height == 0
+        || width > limit
+        || height > limit
+        || u64::from(width) * u64::from(height) > rust_native::surface::MAX_PIXELS
+    {
+        return Err(format!(
+            "drawable extent must be within 1..={limit} pixels per dimension"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String> {
+    if !view.view_proj.is_finite() || !view.eye.is_finite() {
+        return Err("camera contains nonfinite values".into());
+    }
+    let mesh_bytes = |n: usize| {
+        n.checked_mul(std::mem::size_of::<Vertex>())
+            .is_some_and(|n| n <= MAX_DYNAMIC_BYTES as usize)
+    };
+    if !mesh_bytes(dynamic.faces.len())
+        || !mesh_bytes(dynamic.lines.len())
+        || !ui
+            .vertices
+            .len()
+            .checked_mul(std::mem::size_of::<UiVertex>())
+            .is_some_and(|n| n <= UI_BYTES as usize)
+    {
+        return Err("frame exceeds retained GPU geometry or HUD capacity".into());
+    }
+    Ok(())
 }
 
 /// Renders one frame without a window and writes it to `path` as a PNG.
@@ -202,6 +376,7 @@ impl Renderer {
 /// # Errors
 ///
 /// Returns a message when no GPU is available or the file cannot be written.
+#[cfg(feature = "capture")]
 #[allow(clippy::too_many_arguments)]
 pub fn capture(
     path: &Path,
@@ -213,9 +388,12 @@ pub fn capture(
     ui: &UiBatch,
     atlas: &Atlas,
 ) -> Result<(), String> {
+    validate_extent(width, height, RenderOptions::default().max_extent)?;
+    validate_frame(view, dynamic, ui)?;
     let instance = instance();
     let (adapter, device, queue) = open(&instance, None)?;
-    let mut scene = Scene::new(&device, &queue, &adapter, CAPTURE_FORMAT, world, atlas);
+    validate_extent(width, height, device.limits().max_texture_dimension_2d)?;
+    let mut scene = Scene::new(&device, &queue, &adapter, CAPTURE_FORMAT, world, atlas, 4);
     let targets = Targets::new(&device, CAPTURE_FORMAT, width, height, scene.samples);
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("verse capture"),
@@ -241,7 +419,16 @@ pub fn capture(
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("verse capture"),
     });
-    scene.encode(&queue, &mut encoder, &output, &targets, view, dynamic, ui);
+    scene.encode(
+        &device,
+        &queue,
+        &mut encoder,
+        &output,
+        &targets,
+        view,
+        dynamic,
+        ui,
+    );
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {
             texture: &texture,
@@ -304,15 +491,39 @@ fn open(
         compatible_surface: surface,
     }))
     .map_err(|e| format!("no graphics adapter: {e}"))?;
+    let required_limits = scene_limits(adapter.limits())?;
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("verse"),
+        required_limits,
         ..Default::default()
     }))
     .map_err(|e| format!("no graphics device: {e}"))?;
     Ok((adapter, device, queue))
 }
 
+// The world shader passes color, world position, and fog at locations 0..2;
+// the HUD shader passes only UV and color. Neither uses compute or storage.
+fn scene_limits(available: wgpu::Limits) -> Result<wgpu::Limits, String> {
+    let mut required = wgpu::Limits::downlevel_defaults().using_resolution(available.clone());
+    required.max_inter_stage_shader_variables = 3;
+    let mut unsupported = Vec::new();
+    required.check_limits_with_fail_fn(&available, false, |name, requested, supported| {
+        unsupported.push(format!(
+            "{name} needs {requested}, adapter supports {supported}"
+        ));
+    });
+    if unsupported.is_empty() {
+        Ok(required)
+    } else {
+        Err(format!(
+            "graphics adapter cannot run the Verse scene: {}",
+            unsupported.join("; ")
+        ))
+    }
+}
+
 impl Scene {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -320,11 +531,13 @@ impl Scene {
         format: wgpu::TextureFormat,
         world: &Mesh,
         atlas: &Atlas,
+        requested_samples: u32,
     ) -> Self {
-        let samples = if adapter
-            .get_texture_format_features(format)
-            .flags
-            .sample_count_supported(4)
+        let samples = if requested_samples == 4
+            && adapter
+                .get_texture_format_features(format)
+                .flags
+                .sample_count_supported(4)
         {
             4
         } else {
@@ -437,15 +650,17 @@ impl Scene {
                 usage: wgpu::BufferUsages::VERTEX,
             }),
             count: vertices.len() as u32,
+            capacity: std::mem::size_of_val(vertices) as u64,
         };
         let dynamic = |label| Batch {
             buffer: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
-                size: DYNAMIC_BYTES,
+                size: INITIAL_DYNAMIC_BYTES,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
             count: 0,
+            capacity: INITIAL_DYNAMIC_BYTES,
         };
         let (ui_pipeline, ui_bind_group, ui_screen) =
             ui_pipeline(device, queue, format, samples, atlas);
@@ -457,6 +672,7 @@ impl Scene {
                 mapped_at_creation: false,
             }),
             count: 0,
+            capacity: UI_BYTES,
         };
         Self {
             ui_pipeline,
@@ -478,6 +694,7 @@ impl Scene {
     #[allow(clippy::too_many_arguments)]
     fn encode(
         &mut self,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         output: &wgpu::TextureView,
@@ -493,8 +710,7 @@ impl Scene {
             bytemuck::cast_slice(&[targets.size[0], targets.size[1], 0.0, 0.0]),
         );
         let ui_bytes: &[u8] = bytemuck::cast_slice(&ui.vertices);
-        let fit = ui_bytes.len().min(UI_BYTES as usize);
-        let fit = fit - fit % std::mem::size_of::<UiVertex>();
+        let fit = ui_bytes.len();
         if fit > 0 {
             queue.write_buffer(&self.ui.buffer, 0, &ui_bytes[..fit]);
         }
@@ -506,8 +722,8 @@ impl Scene {
             fog: [field[0], field[1], field[2], FOG_END],
         };
         queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
-        write(queue, &mut self.dynamic_faces, &dynamic.faces);
-        write(queue, &mut self.dynamic_lines, &dynamic.lines);
+        write(device, queue, &mut self.dynamic_faces, &dynamic.faces);
+        write(device, queue, &mut self.dynamic_lines, &dynamic.lines);
 
         let (target, resolve) = match &targets.msaa {
             Some(msaa) => (msaa, Some(output)),
@@ -559,6 +775,7 @@ impl Scene {
 }
 
 impl Targets {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
@@ -753,12 +970,148 @@ fn draw_batch(pass: &mut wgpu::RenderPass<'_>, batch: &Batch) {
     }
 }
 
-fn write(queue: &wgpu::Queue, batch: &mut Batch, vertices: &[Vertex]) {
+fn dynamic_capacity(bytes: usize) -> Option<u64> {
+    let requested = u64::try_from(bytes).ok()?;
+    if requested > MAX_DYNAMIC_BYTES {
+        return None;
+    }
+    Some(requested.max(INITIAL_DYNAMIC_BYTES).next_power_of_two())
+}
+
+fn write(device: &wgpu::Device, queue: &wgpu::Queue, batch: &mut Batch, vertices: &[Vertex]) {
     let bytes: &[u8] = bytemuck::cast_slice(vertices);
-    let fit = bytes.len().min(DYNAMIC_BYTES as usize);
-    let fit = fit - fit % std::mem::size_of::<Vertex>();
+    if bytes.len() as u64 > batch.capacity {
+        // Frame validation already admitted the complete batch under the cap.
+        let capacity = dynamic_capacity(bytes.len()).expect("validated dynamic frame capacity");
+        batch.buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("verse resized dynamic geometry"),
+            size: capacity,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        batch.capacity = capacity;
+    }
+    let fit = bytes.len();
     if fit > 0 {
         queue.write_buffer(&batch.buffer, 0, &bytes[..fit]);
     }
     batch.count = (fit / std::mem::size_of::<Vertex>()) as u32;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits() {
+        let mut mobile = wgpu::Limits::downlevel_defaults();
+        mobile.max_texture_dimension_2d = 4096;
+        let required = scene_limits(mobile.clone()).unwrap();
+        assert_eq!(required.max_inter_stage_shader_variables, 3);
+        assert_eq!(required.max_texture_dimension_2d, 4096);
+        assert!(required.check_limits(&mobile));
+        mobile.max_inter_stage_shader_variables = 2;
+        assert!(
+            scene_limits(mobile)
+                .unwrap_err()
+                .contains("max_inter_stage_shader_variables")
+        );
+    }
+
+    #[test]
+    fn renderer_options_and_extents_are_bounded_before_gpu_work() {
+        assert!(RenderOptions::default().validate().is_ok());
+        assert!(
+            RenderOptions {
+                sample_count: 2,
+                max_extent: 8192
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            RenderOptions {
+                sample_count: 1,
+                max_extent: 0
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(validate_extent(0, 100, 8192).is_err());
+        assert!(validate_extent(8193, 100, 8192).is_err());
+        assert!(validate_extent(1024, 768, 8192).is_ok());
+    }
+
+    #[test]
+    fn dynamic_buffers_grow_to_hold_the_full_bounded_crowd() {
+        assert_eq!(dynamic_capacity(1), Some(INITIAL_DYNAMIC_BYTES));
+        assert_eq!(
+            dynamic_capacity(INITIAL_DYNAMIC_BYTES as usize + 1),
+            Some(2 * INITIAL_DYNAMIC_BYTES)
+        );
+        assert_eq!(
+            dynamic_capacity(MAX_DYNAMIC_BYTES as usize),
+            Some(MAX_DYNAMIC_BYTES)
+        );
+        assert_eq!(dynamic_capacity(MAX_DYNAMIC_BYTES as usize + 1), None);
+        let runtime = crate::runtime::WorldRuntime::new();
+        let avatar = crate::avatar::mesh(&runtime.player, &runtime.gait);
+        let agent = runtime.agent.mesh();
+        let mut crowd = runtime.dynamic_mesh();
+        // Each remote entity can be an avatar or spade. Bound each geometry
+        // stream by the larger shape, which also covers every mixed crowd.
+        for _ in 0..512 {
+            crowd
+                .faces
+                .extend_from_slice(if avatar.faces.len() > agent.faces.len() {
+                    &avatar.faces
+                } else {
+                    &agent.faces
+                });
+            crowd
+                .lines
+                .extend_from_slice(if avatar.lines.len() > agent.lines.len() {
+                    &avatar.lines
+                } else {
+                    &agent.lines
+                });
+        }
+        assert!(std::mem::size_of_val(crowd.lines.as_slice()) > INITIAL_DYNAMIC_BYTES as usize);
+        assert!(
+            validate_frame(runtime.view(1.0), &crowd, &UiBatch::default()).is_ok(),
+            "full crowd bytes: faces {}, lines {}",
+            std::mem::size_of_val(crowd.faces.as_slice()),
+            std::mem::size_of_val(crowd.lines.as_slice())
+        );
+    }
+
+    #[test]
+    fn over_capacity_frames_fail_instead_of_silently_clipping() {
+        let view = View {
+            view_proj: Mat4::IDENTITY,
+            eye: Vec3::ZERO,
+        };
+        let mut mesh = Mesh::default();
+        let mut ui = UiBatch::default();
+        assert!(validate_frame(view, &mesh, &ui).is_ok());
+        mesh.lines.resize(
+            MAX_DYNAMIC_BYTES as usize / std::mem::size_of::<Vertex>() + 1,
+            Vertex {
+                pos: [0.0; 3],
+                color: [0.0; 3],
+                fog: 0.0,
+            },
+        );
+        assert!(validate_frame(view, &mesh, &ui).is_err());
+        mesh.lines.clear();
+        ui.vertices.resize(
+            UI_BYTES as usize / std::mem::size_of::<UiVertex>() + 1,
+            UiVertex {
+                pos: [0.0; 2],
+                uv: [0.0; 2],
+                color: [0.0; 4],
+            },
+        );
+        assert!(validate_frame(view, &mesh, &ui).is_err());
+    }
 }

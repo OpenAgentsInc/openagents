@@ -14,6 +14,7 @@ coder-connect = { path = "../coder-connect", default-features = false }
 coder-history = { path = "../coder-history", default-features = false }
 coder-ui = { path = "../coder-ui" }
 rust-native = { path = "../rust-native" }
+verse = { path = "../verse", default-features = false }
 nostr = { path = "../nostr" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -12,7 +12,7 @@ pub struct CoderMobileBuffer {
     pub len: usize,
 }
 
-fn buffer(bytes: Vec<u8>) -> CoderMobileBuffer {
+pub(crate) fn buffer(bytes: Vec<u8>) -> CoderMobileBuffer {
     let mut bytes = bytes.into_boxed_slice();
     let result = CoderMobileBuffer {
         data: bytes.as_mut_ptr(),

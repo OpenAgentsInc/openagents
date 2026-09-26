@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the existing Coder Xcode app with the public Rust reader library.
+# Build the existing Coder Xcode app with its public Rust application library.
 # Provider credentials are excluded from all compiler and signing processes.
 set -euo pipefail
 
@@ -91,7 +91,7 @@ case "$command" in
     xcodebuild "${args[@]}" \
       CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= \
       -resultBundlePath "$results" -parallel-testing-enabled NO test
-    echo "Synthetic native reader test results: $results"
+    echo "Synthetic native app test results: $results"
     ;;
   sim|sim-build)
     xcodebuild "${args[@]}" CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= build
