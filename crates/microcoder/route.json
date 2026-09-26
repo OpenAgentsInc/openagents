@@ -1,0 +1,10 @@
+{
+  "id": "openagents.microcoder.route.v1",
+  "note": "What Jev answers about the task once, before the first step. When `hard` is yes with probability 0.5 or more, the steps that write the acceptance tests use the stronger model; the rest use the default model. Change the wording here, not in code; the file is digested into every run's record.",
+  "questions": [
+    {
+      "id": "hard",
+      "text": "Judging by the task in `task` and the environment in `environment`, does doing this task correctly depend on precise specialized knowledge, such as exact mathematical, statistical, scientific, or domain definitions, or on subtle reasoning where a fast, low-cost model is likely to write plausible but wrong code or tests?"
+    }
+  ]
+}

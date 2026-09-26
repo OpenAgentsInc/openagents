@@ -3,11 +3,11 @@
 
 use std::process::ExitCode;
 
-use microcoder::models::{JevJudge, OpenRouterGenerator, question_set, review_set};
-use microcoder::run::{Ending, Limits, Models, USER_PROMPT, run};
+use microcoder::models::{JevJudge, OpenRouterGenerator, question_set, route_set};
+use microcoder::run::{Ending, Limits, Models, Route, USER_PROMPT, run};
 use microcoder::show::{Both, Record, Terminal, clock};
 use microcoder::state::State;
-use microcoder::{MODEL, tbench};
+use microcoder::{MODEL, STRONG_MODEL, tbench};
 
 const USAGE: &str = "usage: microcoder <terminal-bench-task> [options]
 
@@ -19,6 +19,10 @@ Fable 5.1 low's time and cost on the same task.
 Options:
   --model SLUG       the OpenRouter model (default openai/gpt-6-luna)
   --effort LEVEL     low, medium, or high (default medium)
+  --strong-model SLUG  the OpenRouter model that writes the acceptance tests on
+                     a task Jev judges hard (default openai/gpt-6-sol)
+  --route WHEN       when the stronger model writes the tests: auto (when Jev
+                     judges the task hard), always, or never (default auto)
   --max-steps N      default no limit
   --max-minutes N    default 60
   --max-usd N        model and Jev spend, default 1.00
@@ -41,6 +45,7 @@ Exit codes: 0 the tests passed, 1 they didn't, 2 the run couldn't start.";
 struct Options {
     task: String,
     model: String,
+    strong_model: String,
     effort: Option<String>,
     limits: Limits,
     /// `None` until the task's own setting decides it.
@@ -54,6 +59,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
     let mut options = Options {
         task: String::new(),
         model: MODEL.to_string(),
+        strong_model: STRONG_MODEL.to_string(),
         effort: Some("medium".to_string()),
         limits: Limits::default(),
         network: None,
@@ -70,6 +76,17 @@ fn parse(args: &[String]) -> Result<Options, String> {
         };
         match arg.as_str() {
             "--model" => options.model = value()?,
+            "--strong-model" => options.strong_model = value()?,
+            "--route" => {
+                options.limits.route = match value()?.as_str() {
+                    "auto" => Route::Auto,
+                    "always" => Route::Always,
+                    "never" => Route::Never,
+                    other => {
+                        return Err(format!("--route wants auto, always, or never, not {other}"));
+                    }
+                }
+            }
             "--effort" => {
                 let effort = value()?;
                 options.effort = (effort != "default").then_some(effort);
@@ -143,18 +160,25 @@ async fn go(options: Options) -> Result<u8, String> {
         model: options.model.clone(),
         effort: options.effort.clone(),
     };
+    let strong = OpenRouterGenerator {
+        client: openrouter::Client::new(openrouter::Config::from_env().map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?,
+        model: options.strong_model.clone(),
+        effort: options.effort.clone(),
+    };
     let set = question_set();
-    let review = review_set();
+    let route = route_set();
     let judge = JevJudge {
         client: jev_client()?,
     };
     let mut terminal = Terminal::new();
     let say = |text: &str| terminal_line(text);
     println!(
-        "microcoder · {} · {} (effort {}) · {}, {} min, ${:.2} · network {network}",
+        "microcoder · {} · {} (effort {}), tests by {} when needed · {}, {} min, ${:.2} · network {network}",
         task.name,
         options.model,
         options.effort.as_deref().unwrap_or("default"),
+        options.strong_model,
         options
             .limits
             .max_steps
@@ -182,7 +206,8 @@ async fn go(options: Options) -> Result<u8, String> {
         "event": "started", "task": task.name, "model": options.model, "effort": options.effort,
         "limits": options.limits, "network": network, "prompt": options.prompt,
         "questions": set.id, "questions_file": microcoder::models::QUESTIONS,
-        "review": review.id, "review_file": microcoder::models::REVIEW,
+        "route": route.id, "route_file": microcoder::models::ROUTE,
+        "strong_model": options.strong_model, "route_when": options.limits.route,
     }));
 
     let image = tbench::image(&task, &say).await?;
@@ -230,7 +255,7 @@ async fn go(options: Options) -> Result<u8, String> {
                 ..State::default()
             };
             let mut both = Both(&mut terminal, &mut record);
-            run(state, &options.prompt, &env, &Models { generator: &generator, judge: &judge, set: &set, review: &review }, &options.limits, &mut both).await
+            run(state, &options.prompt, &env, &Models { generator: &generator, judge: &judge, set: &set, route: &route, strong: Some(&strong) }, &options.limits, &mut both).await
         } => result,
         _ = tokio::signal::ctrl_c() => {
             println!("\nInterrupted; removing the container.");

@@ -66,7 +66,25 @@ pub struct Limits {
     pub acceptance: bool,
     /// Refused `finished` replies before the loop stops anyway.
     pub max_refused_finishes: usize,
+    /// Whether the stronger model writes the acceptance tests.
+    pub route: Route,
+    /// Steps the stronger model takes, at most, before the default model
+    /// carries on even if no tests are frozen.
+    pub strong_steps: usize,
 }
+
+/// When the stronger model writes the acceptance tests.
+#[derive(Clone, Copy, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Route {
+    /// When Jev judges the task hard.
+    Auto,
+    Always,
+    Never,
+}
+
+/// The probability of `hard` at which the stronger model writes the tests.
+pub const HARD: f64 = 0.5;
 
 impl Default for Limits {
     fn default() -> Self {
@@ -79,6 +97,8 @@ impl Default for Limits {
             max_idle_replies: 3,
             acceptance: true,
             max_refused_finishes: 3,
+            route: Route::Auto,
+            strong_steps: 8,
         }
     }
 }
@@ -116,10 +136,11 @@ pub enum Event {
         step: usize,
         result: CommandResult,
     },
-    /// Jev reviewed the tests the model asked to freeze.
-    Reviewed {
-        step: usize,
+    /// Jev judged, once before the first step, whether the task is hard.
+    Assessed {
         judgment: Judgment,
+        /// Whether the acceptance tests are written by the stronger model.
+        strong: bool,
     },
     /// The acceptance tests ran; `froze` is true on the run that froze them.
     Tested {
@@ -191,8 +212,10 @@ pub struct Models<'a, G: Generate, J: Judge> {
     pub generator: &'a G,
     pub judge: &'a J,
     pub set: &'a QuestionSet,
-    /// The questions Jev answers about the tests at the first freeze.
-    pub review: &'a QuestionSet,
+    /// The question Jev answers once about the task.
+    pub route: &'a QuestionSet,
+    /// The stronger model, for the steps that write the acceptance tests.
+    pub strong: Option<&'a G>,
 }
 
 /// Reads the files the model keeps in view: the first [`VIEW_FILES`]
@@ -216,34 +239,6 @@ async fn read_view<E: Env>(env: &E, paths: &[String]) -> Vec<(String, Option<Str
         files.push((path, contents));
     }
     files
-}
-
-/// The state Jev reads when it reviews the tests.
-fn review_state(state: &State) -> serde_json::Value {
-    let tests: Vec<serde_json::Value> = state
-        .tests
-        .iter()
-        .map(|t| json!({"name": t.name, "script": cut(&t.script, 3_000, 0)}))
-        .collect();
-    json!({
-        "task": cut(&state.task, 6_000, 0),
-        "tests": tests,
-    })
-}
-
-/// The send-back notes of the review questions Jev answered yes.
-fn review_notes(judgment: &Judgment, set: &QuestionSet) -> Vec<String> {
-    judgment
-        .answers
-        .iter()
-        .filter(|(_, p)| *p >= 0.5)
-        .filter_map(|(id, _)| {
-            set.questions
-                .iter()
-                .find(|q| &q.id == id)
-                .and_then(|q| q.send_back.clone())
-        })
-        .collect()
 }
 
 /// Reads the tests the model wrote under [`ACCEPT_DIR`].
@@ -291,14 +286,42 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     observer: &mut O,
 ) -> (State, Outcome) {
     let started = Instant::now();
-    let mut model_usd = 0.0;
     let mut jev_usd = 0.0;
+    // Whether the stronger model writes the acceptance tests.
+    let strong_tests = match (models.strong, limits.acceptance, limits.route) {
+        (None, _, _) | (_, false, _) | (_, _, Route::Never) => false,
+        (Some(_), true, Route::Always) => true,
+        (Some(_), true, Route::Auto) => {
+            let judgment = models
+                .judge
+                .judge(
+                    models.route,
+                    &json!({
+                        "task": cut(&state.task, 6_000, 0),
+                        "environment": cut(&state.environment, 1_500, 0),
+                    }),
+                )
+                .await;
+            jev_usd += judgment.usd;
+            let hard = judgment
+                .answers
+                .iter()
+                .any(|(id, p)| id == "hard" && *p >= HARD);
+            observer.event(
+                started.elapsed().as_secs_f64(),
+                &Event::Assessed {
+                    judgment,
+                    strong: hard,
+                },
+            );
+            hard
+        }
+    };
+    let mut strong_used = 0usize;
+    let mut model_usd = 0.0;
     let mut bad = 0usize;
     let mut idle = 0usize;
     let mut refused = 0usize;
-    // Whether a freeze was already sent back for tests that passed before
-    // any fix.
-    let mut sent_back = false;
     let mut step = 0usize;
     let ending = loop {
         if limits.max_steps.is_some_and(|max| step >= max) {
@@ -319,7 +342,18 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             &Event::Judged { step, judgment },
         );
         let text = prompt(&state, user_prompt, &jev_text, limits.acceptance);
-        let generated = models.generator.generate(SYSTEM, &text).await;
+        let generator = match models.strong {
+            Some(strong)
+                if strong_tests
+                    && state.frozen_at.is_none()
+                    && strong_used < limits.strong_steps =>
+            {
+                strong_used += 1;
+                strong
+            }
+            _ => models.generator,
+        };
+        let generated = generator.generate(SYSTEM, &text).await;
         model_usd += generated.usd;
         observer.event(
             started.elapsed().as_secs_f64(),
@@ -432,64 +466,12 @@ or set finished to true if the task is complete."
                 ));
             } else {
                 let results = run_tests(env, &state.tests, deadline).await;
-                // The first freeze is checked; the second is final.
-                let problems = if sent_back {
-                    Vec::new()
-                } else {
-                    let judgment = models
-                        .judge
-                        .judge(models.review, &review_state(&state))
-                        .await;
-                    jev_usd += judgment.usd;
-                    let mut problems = review_notes(&judgment, models.review);
-                    observer.event(
-                        started.elapsed().as_secs_f64(),
-                        &Event::Reviewed { step, judgment },
-                    );
-                    let passing: Vec<&str> = results
-                        .iter()
-                        .filter(|r| r.ok())
-                        .map(|r| r.command.as_str())
-                        .collect();
-                    if !passing.is_empty() {
-                        // A test that passes on the unchanged code can't
-                        // show that a fix worked.
-                        problems.insert(0, format!(
-                            "{} already pass on the unchanged code. The task says the code is broken, \
-so a test that passes now either checks something that isn't broken, or states the requirement the \
-way the broken code already behaves. Check each one against the task and against the standard \
-definition of what it tests. Rewrite it so it fails on the current code, or delete it if its \
-requirement truly holds already.",
-                            passing.join(", ")
-                        ));
-                    }
-                    problems
-                };
-                if problems.is_empty() {
-                    for (test, result) in state.tests.iter_mut().zip(&results) {
-                        test.passed_at_freeze = Some(result.ok());
-                    }
-                    state.test_results = results;
-                    state.frozen_at = Some(step);
-                    froze = true;
-                } else {
-                    sent_back = true;
-                    observer.event(
-                        started.elapsed().as_secs_f64(),
-                        &Event::Tested {
-                            step,
-                            froze: false,
-                            results,
-                        },
-                    );
-                    state.notes.push(
-                        "The tests weren't frozen. Fix the problems below, then set freeze_tests to \
-true again; the second freeze is final."
-                            .to_string(),
-                    );
-                    state.notes.extend(problems);
-                    state.tests.clear();
+                for (test, result) in state.tests.iter_mut().zip(&results) {
+                    test.passed_at_freeze = Some(result.ok());
                 }
+                state.test_results = results;
+                state.frozen_at = Some(step);
+                froze = true;
             }
         }
         let ran_something = !state.actions.last().is_none_or(|a| a.results.is_empty());

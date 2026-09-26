@@ -16,18 +16,15 @@ pub const JEV_STATE_CHARS: usize = 16_000;
 /// The question set, embedded so its digest is the file's.
 pub const QUESTIONS: &str = include_str!("../questions.json");
 
-/// The questions Jev answers about the acceptance tests at the first
-/// freeze.
-pub const REVIEW: &str = include_str!("../review.json");
+/// The question Jev answers about the task once, to choose the model that
+/// writes the acceptance tests.
+pub const ROUTE: &str = include_str!("../route.json");
 
 /// One question in the set.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Question {
     pub id: String,
     pub text: String,
-    /// For a review question: what the model is told when Jev answers yes.
-    #[serde(default)]
-    pub send_back: Option<String>,
 }
 
 /// The question set.
@@ -47,14 +44,14 @@ pub fn question_set() -> QuestionSet {
     serde_json::from_str(QUESTIONS).expect("questions.json is valid")
 }
 
-/// The embedded test-review set.
+/// The embedded routing set.
 ///
 /// # Panics
 ///
-/// When `review.json` isn't valid, which a test checks.
+/// When `route.json` isn't valid, which a test checks.
 #[must_use]
-pub fn review_set() -> QuestionSet {
-    serde_json::from_str(REVIEW).expect("review.json is valid")
+pub fn route_set() -> QuestionSet {
+    serde_json::from_str(ROUTE).expect("route.json is valid")
 }
 
 /// Jev's answers for one step.
@@ -269,10 +266,10 @@ mod tests {
     }
 
     #[test]
-    fn every_review_question_says_what_it_sends_back() {
-        let set = review_set();
-        assert!(!set.questions.is_empty());
-        assert!(set.questions.iter().all(|q| q.send_back.is_some()));
+    fn the_route_set_asks_whether_the_task_is_hard() {
+        let set = route_set();
+        assert_eq!(set.questions.len(), 1);
+        assert_eq!(set.questions[0].id, "hard");
     }
 
     #[test]

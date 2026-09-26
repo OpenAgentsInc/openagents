@@ -186,9 +186,9 @@ impl Observer for Terminal {
                     }
                 }
             }
-            Event::Reviewed { step, judgment } => {
+            Event::Assessed { judgment, strong } => {
                 let answers = if let Some(error) = &judgment.error {
-                    format!("no answers: {error}")
+                    format!("no answer: {error}")
                 } else {
                     judgment
                         .answers
@@ -200,9 +200,14 @@ impl Observer for Terminal {
                 self.line(
                     seconds,
                     &format!(
-                        "{} {answers} · ${:.5}",
-                        self.paint("1;35", &format!("step {step} · jev test review")),
-                        judgment.usd
+                        "{} {answers} · ${:.5} · {}",
+                        self.paint("1;35", "jev task check"),
+                        judgment.usd,
+                        if *strong {
+                            "the stronger model writes the acceptance tests"
+                        } else {
+                            "the default model does every step"
+                        }
                     ),
                 );
             }

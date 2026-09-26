@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::env::Env;
 use crate::models::{
-    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, question_set, review_set,
+    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, question_set, route_set,
 };
 use crate::run::{Ending, Event, Limits, Models, Observer, run};
 use crate::state::{CommandResult, State};
@@ -46,18 +46,15 @@ impl Generate for Script {
     }
 }
 
-/// Answers `done` 0.3, and every test-review question `review`.
+/// Answers `done` 0.3, and `hard` with `hard`.
 struct Jev {
-    review: f64,
+    hard: f64,
 }
 
 impl Judge for Jev {
     async fn judge(&self, set: &QuestionSet, _state: &Value) -> Judgment {
-        let answers = if set.id == review_set().id {
-            set.questions
-                .iter()
-                .map(|q| (q.id.clone(), self.review))
-                .collect()
+        let answers = if set.id == route_set().id {
+            vec![("hard".to_string(), self.hard)]
         } else {
             vec![("done".to_string(), 0.3)]
         };
@@ -146,25 +143,27 @@ fn state() -> State {
 }
 
 async fn go(script: &Script, limits: &Limits) -> (State, crate::run::Outcome, Vec<String>, Log) {
-    go_with(script, limits, &Jev { review: 0.1 }).await
+    go_with(script, limits, &Jev { hard: 0.1 }, None).await
 }
 
 async fn go_with(
     script: &Script,
     limits: &Limits,
     jev: &Jev,
+    strong: Option<&Script>,
 ) -> (State, crate::run::Outcome, Vec<String>, Log) {
     let env = Fake {
         ran: RefCell::new(Vec::new()),
     };
     let mut log = Log::default();
     let set = question_set();
-    let review = review_set();
+    let route = route_set();
     let models = Models {
         generator: script,
         judge: jev,
         set: &set,
-        review: &review,
+        route: &route,
+        strong,
     };
     let (state, outcome) = run(state(), "Solve this task.", &env, &models, limits, &mut log).await;
     let ran = env.ran.into_inner();
@@ -326,29 +325,28 @@ async fn finished_waits_for_the_frozen_tests_to_pass() {
     let script = Script::new(vec![
         Ok(act("done already", &[], true)),
         Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
-        Ok(freeze("keep them", &["echo a holds already"])),
         Ok(act("done", &[], true)),
         Ok(act("fix", &["fix b"], false)),
         Ok(act("done", &[], true)),
     ]);
     let (state, outcome, ran, log) = go(&script, &Limits::default()).await;
     assert_eq!(outcome.ending, Ending::Finished);
-    assert_eq!(outcome.steps, 6);
-    assert_eq!(state.frozen_at, Some(3));
-    // The host ran b at the sent-back freeze, the final one, and after the fix.
-    assert_eq!(ran.iter().filter(|c| *c == "check b").count(), 3);
+    assert_eq!(outcome.steps, 5);
+    assert_eq!(state.frozen_at, Some(2));
+    // The host ran b at the freeze and after the fix.
+    assert_eq!(ran.iter().filter(|c| *c == "check b").count(), 2);
     let prompts = script.prompts.into_inner();
     assert!(prompts[0].contains("None frozen yet"));
     assert!(prompts[1].contains("no acceptance tests are frozen"));
-    assert!(prompts[3].contains("## b.sh: FAIL"));
-    assert!(prompts[3].contains("The frozen script:\n\n```\n  1  check b\n```"));
-    assert!(prompts[4].contains("1 acceptance tests fail"));
+    assert!(prompts[2].contains("## b.sh: FAIL"));
+    assert!(prompts[2].contains("The frozen script:\n\n```\n  1  check b\n```"));
+    assert!(prompts[3].contains("1 acceptance tests fail"));
     let tested = log
         .0
         .iter()
         .filter(|e| matches!(e, Event::Tested { .. }))
         .count();
-    assert_eq!(tested, 3);
+    assert_eq!(tested, 2);
 }
 
 #[tokio::test]
@@ -363,44 +361,52 @@ async fn repeated_refused_finishes_stop_the_loop() {
 }
 
 #[tokio::test]
-async fn a_freeze_with_tests_that_already_pass_is_sent_back_once() {
-    let script = Script::new(vec![
-        Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
-        Ok(freeze("again", &["echo same tests"])),
+async fn a_hard_task_has_the_stronger_model_write_the_tests() {
+    let luna = Script::new(vec![
         Ok(act("fix", &["fix b"], false)),
         Ok(act("done", &[], true)),
     ]);
-    let (state, outcome, _, _) = go(&script, &Limits::default()).await;
+    let strong = Script::new(vec![
+        Ok(act("look", &["ls"], false)),
+        Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
+    ]);
+    let (state, outcome, _, log) =
+        go_with(&luna, &Limits::default(), &Jev { hard: 0.8 }, Some(&strong)).await;
     assert_eq!(outcome.ending, Ending::Finished);
-    // a.sh passes on the unchanged code: the first freeze is sent back and
-    // the second is final.
     assert_eq!(state.frozen_at, Some(2));
-    assert_eq!(state.tests[0].passed_at_freeze, Some(true));
-    assert_eq!(state.tests[1].passed_at_freeze, Some(false));
-    let prompts = script.prompts.into_inner();
-    assert!(prompts[1].contains("The tests weren't frozen."));
-    assert!(prompts[1].contains("a.sh already pass on the unchanged code"));
+    // The stronger model wrote the tests; the default model did the rest.
+    assert_eq!(strong.prompts.into_inner().len(), 2);
+    assert_eq!(luna.prompts.into_inner().len(), 2);
+    assert!(
+        log.0
+            .iter()
+            .any(|e| matches!(e, Event::Assessed { strong: true, .. }))
+    );
 }
 
 #[tokio::test]
-async fn a_review_question_answered_yes_sends_the_freeze_back() {
-    let script = Script::new(vec![
-        Ok(freeze("write tests", &["echo b only"])),
-        Ok(freeze("add a known-answer test", &["echo more"])),
+async fn an_easy_task_stays_on_the_default_model() {
+    let luna = Script::new(vec![
+        Ok(freeze("write tests", &["cat > /tmp/acceptance/a.sh"])),
         Ok(act("fix", &["fix b"], false)),
         Ok(act("done", &[], true)),
     ]);
-    let (state, outcome, _, log) = go_with(&script, &Limits::default(), &Jev { review: 0.9 }).await;
+    let strong = Script::new(Vec::new());
+    let (_, outcome, _, _) =
+        go_with(&luna, &Limits::default(), &Jev { hard: 0.2 }, Some(&strong)).await;
     assert_eq!(outcome.ending, Ending::Finished);
-    assert_eq!(state.frozen_at, Some(2));
-    let note = review_set().questions[0].send_back.clone().unwrap();
-    let prompts = script.prompts.into_inner();
-    assert!(prompts[1].contains(&note));
-    // Only the first freeze is reviewed.
-    let reviews = log
-        .0
-        .iter()
-        .filter(|e| matches!(e, Event::Reviewed { .. }))
-        .count();
-    assert_eq!(reviews, 1);
+    assert!(strong.prompts.into_inner().is_empty());
+}
+
+#[tokio::test]
+async fn the_stronger_model_hands_over_after_its_step_budget() {
+    let luna = Script::new(vec![Ok(act("done", &[], true))]);
+    let strong = Script::new(Vec::new());
+    let limits = Limits {
+        strong_steps: 2,
+        max_steps: Some(4),
+        ..Limits::default()
+    };
+    let _ = go_with(&luna, &limits, &Jev { hard: 0.9 }, Some(&strong)).await;
+    assert_eq!(strong.prompts.into_inner().len(), 2);
 }

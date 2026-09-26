@@ -25,5 +25,9 @@ pub mod tbench;
 /// The default model.
 pub const MODEL: &str = "openai/gpt-6-luna";
 
+/// The stronger model that writes the acceptance tests when Jev judges a
+/// task hard.
+pub const STRONG_MODEL: &str = "openai/gpt-6-sol";
+
 #[cfg(test)]
 mod tests;

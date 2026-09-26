@@ -142,10 +142,7 @@ impl State {
             return format!(
                 "None frozen yet. Before you change the task's files, define the end conditions: \
 write one bash test per requirement as {dir}/<name>.sh. A test exits 0 only when its requirement \
-is met, so most should fail now. Cover every requirement and symptom the task states. For each \
-method, statistic, or algorithm the task names, test it against its standard definition and \
-properties on inputs where you know the right answer, not only the end behavior. A test that \
-already passes before any change is sent back once, since it can't show a fix worked. Then set \
+is met, so most should fail now. Cover every requirement and symptom the task states. Then set \
 `freeze_tests` to true. The host freezes the tests, runs its own copies after every step, and \
 accepts `finished` only when all of them pass."
             );
