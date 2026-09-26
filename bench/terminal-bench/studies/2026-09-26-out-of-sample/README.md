@@ -8,7 +8,7 @@ Standard library only, Python 3.9 or later.
 | File | What it does |
 | --- | --- |
 | `confirm.py` | Watches a round's outcomes and queues each passing held-out task's confirmation runs, once. |
-| `report.py` | Builds a round's results tables (Markdown and JSON) under the win rules. |
+| `report.py` | Builds a round's results tables (Markdown and JSON) under the win rules, for the TB4 study or, with `--study tb21`, the TB2.1 knowledge-off study. |
 | `study.py` | Shared: whitelisted collection, pools, the Fable reference, parsing, and the rules. Run as a script, it prints a round's collection as JSON. |
 | `test_study.py` | Fixture tests with a fake Microcoder binary. Nothing real runs. |
 
@@ -22,10 +22,15 @@ log it takes only the record path on a `Record:` line among the last 8 lines.
 If there's no such line, it matches the record directory by name and start
 time. From each `summary.json` it takes only reward, why the reward is
 unknown, steps, seconds, cost fields, how the run ended, cost basis, provider,
-model, kb, and the IDs and digests of the entries used. It never reads
-transcripts, `events.jsonl`, verifier output, test results, or model
-reasoning. The fixture tests plant secrets in all of those places and check
-that none come through.
+model, kb, and the IDs and digests of the entries used. For a record whose
+cost is partly unknown and that has no `usd_upper` (made before Microcoder
+recorded the bound), it also reads `events.jsonl`, but keeps only the
+numeric fields of each unpriced model step: step, prompt size in bytes,
+tokens in and out, known dollars, and milliseconds. It parses only
+`generated` lines and keeps no text from them. It never reads transcripts,
+event text, verifier output, test results, or model reasoning. The fixture
+tests plant secrets in all of those places and check that none come
+through.
 
 ## Commands
 
@@ -48,6 +53,9 @@ python3 confirm.py --round r2 --once
 python3 report.py --round r2
 python3 report.py --round r2 --format md
 python3 report.py --round r2 --format json --json-out /tmp/r2-report.json
+
+# The TB2.1 knowledge-off study's tables (round t1).
+python3 report.py --study tb21 --round t1 --format md
 ```
 
 From another machine, `report.py` collects over ssh. It pipes `study.py` to
@@ -119,8 +127,35 @@ confirm a first one.
   `intrastat-meldung`, `retro-console-soc`, `wdm-design`). The report lists
   both values, and its tables use the replays.
 - **Cost win.** A pass (reward ≥ 1) on a held-out task whose total cost
-  (model, Jev, and embeddings) is below Fable's cheapest winning run. An
-  unknown cost (a non-empty `cost_unknown`, or no cost) never counts.
+  (model, Jev, and embeddings) is below Fable's cheapest winning run, with
+  no unknown part. A run whose cost is partly unknown (a non-empty
+  `cost_unknown`) also counts when its upper bound is below the bar. The
+  bound is `outcome.usd_upper` when Microcoder recorded it, labelled
+  "(upper bound)". For an older record without it, the bound is rebuilt:
+  the known dollars plus, for each failed attempt of each unpriced model
+  step, the step's prompt bytes plus 16,384 bytes of instructions and tool
+  declaration, counted as one token a byte plus 4,096 tokens, and the
+  128,000-token output cap, at list price (long-context rates above
+  272,000 input tokens). That is labelled "(upper bound, reconstructed)".
+  A Jev call the API refused with an error status (such as HTTP 402, out
+  of credit) cost nothing and adds $0. Any other unpriced Jev call in an
+  older record, an unpriced embeddings call, an unpriced model, or a billed
+  provider has no bound: the cost shows as "unknown" and never counts.
+  (Newer Microcoder records bound Jev calls too: each of the client's 3
+  attempts at one token per byte of state and questions plus 4,096 tokens,
+  at $0.042 per million.)
+- **TB2.1 study (`--study tb21`).** The [TB2.1 knowledge-off
+  study](../../../../docs/terminal-bench/2026-09-26-tb21-oos-study.md):
+  the 65 pre-registered tasks, checked against their digest. The bar is
+  Fable 5 xhigh's `usd_per_trial` from `reference/tb21-dev-set.json`. A cost
+  win is a pass whose cost, or upper bound, is under that bar, by the same
+  cost rules. A task is confirmed when at least 2 of its first 3 graded runs
+  are cost wins. The report also gives each run's cost as a multiple of
+  the bar (marked `≤` when taken from an upper bound) and Fable's mean agent
+  time. Sweep tasks show as outside the study. The collection is the same
+  whitelisted one, so the round's logs need the same `<task>.<arm>.<ms>.log`
+  names for records to be matched; an outcome line with no record has no
+  bound.
 - **Time win.** A cost win that also finishes faster than Fable's fastest
   winning run.
 - **Confirmed out-of-sample win.** At least 2 of the task's first 3

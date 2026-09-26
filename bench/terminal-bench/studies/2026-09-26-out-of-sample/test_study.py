@@ -232,6 +232,199 @@ class ReportTests(unittest.TestCase):
                          ("the verifier's environment didn't start", 4242.0, True))
 
 
+def codex_summary(task, known, unknown, upper="absent", reward=1.0):
+    """A Codex-login (list-price) pass whose cost is partly unknown."""
+    s = summary(task, reward, 40, 900.0, None, basis="list_price")
+    s["provider"], s["model"] = "codex", "gpt-6-luna"
+    o = s["outcome"]
+    o["known_usd"], o["cost_unknown"] = known, unknown
+    if upper != "absent":
+        o["usd_upper"] = upper
+    return s
+
+
+def generated_event(step, prompt_chars, usd, known):
+    return json.dumps({"event": "generated", "step": step, "prompt_chars": prompt_chars,
+                       "generated": {"action": {"Ok": {"rationale": "SECRET-RATIONALE", "commands": ["SECRET-CMD"],
+                                                       "view": [], "freeze_tests": False, "expand": [],
+                                                       "finished": False}},
+                                     "model": "gpt-6-luna", "prompt_tokens": 15751, "completion_tokens": 196,
+                                     "usd": usd, "known_usd": known,
+                                     "cost_unknown": None if usd is not None else "SECRET-WHY",
+                                     "cost_basis": "list_price", "milliseconds": 311887},
+                       "seconds": 12.5}, separators=(",", ":"))
+
+
+class BoundTests(unittest.TestCase):
+    """Cost wins on an upper bound: recorded, reconstructed, or none."""
+
+    TIMEOUT = ("an attempt failed after the request was sent and may have consumed tokens no reply "
+               "reported (attempt 1: the response stream stopped early: error decoding response body)")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        f = self.f = build_fixture(Path(self.tmp.name))
+        # Recorded bound under the bar ($3.09).
+        f.run("heat-pump-warranty", "on", codex_summary("heat-pump-warranty", 0.20, [
+            {"at": "step 13 model", "reason": self.TIMEOUT, "known_usd": 0.0003, "usd_upper": 0.0702}],
+            upper=0.27), reward_line("heat-pump-warranty", 1, 40, "15:00", 0.2))
+        # An old record: no usd_upper, the bound is rebuilt from events.jsonl.
+        f.run("intrastat-meldung", "on", codex_summary("intrastat-meldung", 0.20,
+                                                       [f"step 13 model: {self.TIMEOUT}"]),
+              reward_line("intrastat-meldung", 1, 40, "15:00", 0.2))
+        rec = next(f.runs.glob("intrastat-meldung-*"))
+        (rec / "events.jsonl").write_text("\n".join([
+            '{"event":"started","secret":"SECRET-EVENT"}',
+            generated_event(12, 59000, 0.004, 0.004),
+            generated_event(13, 60136, None, 0.00031374),
+            '{"event":"ran","result":{"stdout":"SECRET-OUTPUT"}}']) + "\n")
+        # An old record whose unknown part is a Jev call: no bound.
+        f.run("kv-live-surgery", "on", codex_summary("kv-live-surgery", 0.20, [
+            "step 4 Jev: the Jev call failed, so whether it was billed is unknown (timeout)"]),
+            reward_line("kv-live-surgery", 1, 40, "15:00", 0.2))
+        # A recorded bound over the bar ($1.21).
+        f.run("nextjs-performance", "on", codex_summary("nextjs-performance", 0.30, [
+            {"at": "step 2 model", "reason": self.TIMEOUT, "known_usd": 0.0, "usd_upper": 1.5}], upper=1.8),
+            reward_line("nextjs-performance", 1, 40, "15:00", 0.3))
+        # A new record with no bound (recorded null).
+        f.run("legacy-utility-triage", "on", codex_summary("legacy-utility-triage", 0.20, [
+            {"at": "step 3 Jev", "reason": "Jev reported no input tokens", "known_usd": 0.0, "usd_upper": None}],
+            upper=None), reward_line("legacy-utility-triage", 1, 40, "15:00", 0.2))
+        self.collected = study.collect(str(f.study), "r9", str(f.runs))
+        self.rep = report.build(self.collected)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_of(self, task):
+        return next(r for r in self.rep["runs"] if r["task"] == task)
+
+    def test_a_recorded_bound_under_the_bar_is_a_cost_win(self):
+        r = self.run_of("heat-pump-warranty")
+        self.assertIsNone(r["usd"])
+        self.assertEqual((r["usd_upper"], r["upper_source"]), (0.27, "recorded"))
+        self.assertEqual((r["cost_win"], r["cost_win_basis"]), (True, "upper bound"))
+        md = report.markdown(self.rep)
+        self.assertIn("unknown, $0.2000 to $0.2700 (upper bound) |", md)
+        self.assertIn("**yes** (upper bound) |", md)
+
+    def test_an_old_record_is_bounded_from_its_numbers(self):
+        r = self.run_of("intrastat-meldung")
+        want = 0.20 + ((60136 + 16384 + 4096) * 0.10 + 128_000 * 0.50) / 1e6
+        self.assertAlmostEqual(r["usd_upper"], want, places=12)
+        self.assertEqual((r["cost_win"], r["cost_win_basis"]), (True, "upper bound, reconstructed"))
+        self.assertIn("**yes** (upper bound, reconstructed)", report.markdown(self.rep))
+        calls = next(s for n, s in self.collected["summaries"].items()
+                     if n.startswith("intrastat-meldung"))["unpriced_calls"]
+        self.assertEqual(calls, [{"step": 13, "prompt_chars": 60136, "prompt_tokens": 15751,
+                                  "completion_tokens": 196, "known_usd": 0.00031374, "milliseconds": 311887}])
+
+    def test_reconstruction_reads_only_numbers(self):
+        blob = json.dumps(self.collected)
+        for secret in ("SECRET-RATIONALE", "SECRET-CMD", "SECRET-WHY", "SECRET-EVENT", "SECRET-OUTPUT"):
+            self.assertNotIn(secret, blob)
+
+    def test_no_bound_means_unknown_and_no_win(self):
+        for task in ("kv-live-surgery", "legacy-utility-triage"):
+            r = self.run_of(task)
+            self.assertEqual((r["usd"], r["usd_upper"], r["cost_win"]), (None, None, False), task)
+        md = report.markdown(self.rep)
+        self.assertIn("| Pass | 40 | 15:00 | unknown | list_price |", md)
+
+    def test_a_bound_over_the_bar_is_not_a_win(self):
+        r = self.run_of("nextjs-performance")
+        self.assertEqual((r["usd_upper"], r["cost_win"]), (1.8, False))
+
+    def test_attempts_count_and_the_default(self):
+        s = {"cost_basis": "list_price", "model": "gpt-6-luna", "known_usd": 0.0,
+             "unpriced_calls": [{"step": 1, "prompt_chars": 1000}]}
+        one = study.upper_bound("gpt-6-luna", 1000 + study.STEP_REQUEST_FIXED_BYTES)
+        s["cost_unknown"] = ["step 1 model: 3 attempts failed after the request was sent (...)"]
+        self.assertAlmostEqual(study.reconstruct_upper(s), 3 * one)
+        s["cost_unknown"] = ["step 1 model: something unrecorded"]
+        self.assertAlmostEqual(study.reconstruct_upper(s), (study.RETRIES + 1) * one)
+        s["cost_unknown"] = ["step 1 model: gpt-6-luna has no known list price"]
+        self.assertIsNone(study.reconstruct_upper(s))
+        s["cost_basis"] = "billed"
+        s["cost_unknown"] = ["step 1 model: 3 attempts failed after the request was sent (...)"]
+        self.assertIsNone(study.reconstruct_upper(s))
+
+
+JEV_402 = ("the Jev call failed, so whether it was billed is unknown (POST https://api.typesafe.ai/v1/systemone: "
+           "402 Your organization has no available TypeSafe API credits.)")
+
+
+def tb21_line(task, reward, steps, clock, known, unpriced):
+    return (f"{task} · reward {reward} · {steps} steps · {clock} · cost unknown, at least ${known:.4f} "
+            f"({unpriced} calls unpriced) (model ${known:.4f} list_price, Jev cost unknown, embeddings $0.000000) "
+            f"· ended by the model finishing")
+
+
+class Tb21Tests(unittest.TestCase):
+    """The TB2.1 knowledge-off study: Fable 5 xhigh's cost per trial as the bar."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        f = self.f = Fixture(Path(self.tmp.name))
+        jev = [f"step {n} Jev: {JEV_402}" for n in range(1, 19)]
+        # build-pmars (bar $0.284): three passes whose unknown part is Jev
+        # refusing for want of credit, which cost nothing -> confirmed.
+        for _ in range(3):
+            s = codex_summary("build-pmars", 0.0174, jev)
+            s["kb"] = "off"
+            f.run("build-pmars", "off", s, tb21_line("build-pmars", 1, 18, "03:41", 0.0174, 18))
+        # bn-fit-modify: a failed screen.
+        s = codex_summary("bn-fit-modify", 0.0061, jev[:4], reward=0.0)
+        f.run("bn-fit-modify", "off", s, tb21_line("bn-fit-modify", 0, 4, "02:25", 0.0061, 4))
+        # prove-plus-comm (bar $0.07): a pass whose Jev call timed out. A
+        # pinned record can't bound that, so it's unknown and never a win.
+        s = codex_summary("prove-plus-comm", 0.01, [
+            "step 2 Jev: the Jev call failed, so whether it was billed is unknown (the request timed out after 30000ms)"])
+        f.run("prove-plus-comm", "off", s, tb21_line("prove-plus-comm", 1, 5, "01:00", 0.01, 1))
+        # code-from-image (bar $0.04): a recorded bound over the bar.
+        s = codex_summary("code-from-image", 0.03, [
+            {"at": "step 3 model", "reason": BoundTests.TIMEOUT, "known_usd": 0.0, "usd_upper": 0.07}], upper=0.10)
+        f.run("code-from-image", "off", s, tb21_line("code-from-image", 1, 6, "01:10", 0.03, 1))
+        # A sweep task is outside the study.
+        f.run("gcode-to-text", "off", summary("gcode-to-text", 1.0, 9, 90.0, 0.02),
+              reward_line("gcode-to-text", 1, 9, "01:30", 0.02))
+        self.collected = study.collect(str(f.study), "r9", str(f.runs))
+        self.rep = report.build_tb21(self.collected)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_jev_refusals_cost_nothing_and_the_task_confirms(self):
+        runs = [r for r in self.rep["runs"] if r["task"] == "build-pmars"]
+        self.assertEqual(len(runs), 3)
+        for r in runs:
+            self.assertAlmostEqual(r["usd_upper"], 0.0174)
+            self.assertEqual((r["cost_win"], r["cost_win_basis"]), (True, "upper bound, reconstructed"))
+            self.assertAlmostEqual(r["cost_ratio"], 0.0174 / 0.284)
+        v = {x["task"]: x for x in self.rep["verdicts"]}
+        self.assertEqual(v["build-pmars"]["verdict"], "Confirmed out-of-sample win")
+        self.assertEqual(v["bn-fit-modify"]["verdict"], "Screen failed")
+        md = report.markdown_tb21(self.rep)
+        self.assertIn("| `build-pmars` | Pass | 40 | 15:00 | unknown, $0.0174 to $0.0174 (upper bound, reconstructed) "
+                      "| list_price | Luna's own tests held | $0.28 | ≤ 0.06× | 2:28 | **yes** (upper bound, reconstructed) |",
+                      md)
+
+    def test_unbounded_and_over_the_bar_are_not_wins(self):
+        by = {r["task"]: r for r in self.rep["runs"]}
+        self.assertEqual((by["prove-plus-comm"]["usd_upper"], by["prove-plus-comm"]["cost_win"]), (None, False))
+        self.assertEqual((by["code-from-image"]["usd_upper"], by["code-from-image"]["cost_win"]), (0.10, False))
+        v = {x["task"]: x for x in self.rep["verdicts"]}
+        self.assertEqual(v["prove-plus-comm"]["verdict"], "Awaiting confirmation")
+        self.assertEqual(v["code-from-image"]["verdict"], "Awaiting confirmation")
+
+    def test_sweep_tasks_are_outside(self):
+        self.assertEqual(next(r for r in self.rep["runs"] if r["task"] == "gcode-to-text")["pool"], "outside")
+        self.assertEqual(self.rep["totals"]["cost_wins"], 3)
+        self.assertIn("**Outside the pre-registered 65 (not counted):** `gcode-to-text`.",
+                      report.markdown_tb21(self.rep))
+        self.assertEqual(len(self.rep["not_run"]), 61)
+
+
 class ConfirmTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

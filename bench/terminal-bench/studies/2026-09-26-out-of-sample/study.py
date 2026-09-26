@@ -7,8 +7,12 @@ Two jobs live here:
   held-out run: the outcome lines, each log's record path (matched from the
   log's last lines, nothing else is kept), and a whitelist of summary.json
   fields (reward, steps, time, cost, how the run ended, cost basis, entries
-  used). Transcripts, events, verifier output, test results, and model
-  reasoning are never read into the result. Run as a script, this module
+  used). For a record whose cost is unknown and that carries no
+  `usd_upper` (made before calls recorded their bound), it also takes the
+  numeric fields of each unpriced model call from `events.jsonl` (step,
+  prompt size, tokens, known dollars, milliseconds), and nothing else from
+  that file. Transcripts, event text, verifier output, test results, and
+  model reasoning are never read into the result. Run as a script, this module
   prints that JSON, so `report.py --host` can pipe it over ssh.
 
 * **Rules.** Pools (parsed from the pre-registration and checked against its
@@ -32,6 +36,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3] if len(HERE.parents) > 3 else HERE
 PREREG = REPO / "docs/terminal-bench/2026-09-26-out-of-sample-study.md"
+TB21_PREREG = REPO / "docs/terminal-bench/2026-09-26-tb21-oos-study.md"
+TB21_DEV_SET = REPO / "bench/terminal-bench/reference/tb21-dev-set.json"
+TB21_DIGEST = "310f2588dd8b8079a1992a51aa9dc441149336527fce4be4f9c22009b72fbdb3"
 REPLAYS = REPO / "bench/terminal-bench/reference/fable-5.1-replays.json"
 LEXICON = REPO / "bench/terminal-bench/reference/tuned-lexicon.json"
 
@@ -48,8 +55,44 @@ RECORD_LINE = re.compile(r"Record: (\S+)")
 
 SUMMARY_TOP = ("task", "model", "effort", "provider", "kb", "cost_basis", "reward",
                "reward_unknown_because", "knowledge_assisted")
-SUMMARY_OUTCOME = ("steps", "seconds", "usd", "known_usd", "model_usd", "jev_usd",
+SUMMARY_OUTCOME = ("steps", "seconds", "usd", "known_usd", "usd_upper", "model_usd", "jev_usd",
                    "embedding_usd", "cost_unknown", "knowledge_assisted")
+
+# The numeric fields of an unpriced model call that the bound needs.
+EVENT_CALL_FIELDS = ("prompt_tokens", "completion_tokens", "known_usd", "milliseconds")
+GENERATED_PREFIX = '{"event":"generated"'
+
+
+def _number(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _unpriced_calls(events: Path) -> list | None:
+    """Each model step whose cost is unknown, from events.jsonl: numbers only.
+
+    Only `generated` lines are parsed, and from each only `step`,
+    `prompt_chars`, and the numeric token, dollar, and timing fields of a
+    call whose `usd` is null are kept. Nothing textual leaves this function.
+    """
+    calls = []
+    try:
+        with events.open(encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if not line.startswith(GENERATED_PREFIX):
+                    continue
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                g = e.get("generated")
+                if not isinstance(g, dict) or g.get("usd") is not None:
+                    continue
+                call = {"step": _number(e.get("step")), "prompt_chars": _number(e.get("prompt_chars"))}
+                call.update({k: _number(g.get(k)) for k in EVENT_CALL_FIELDS})
+                calls.append(call)
+    except OSError:
+        return None
+    return calls
 
 
 def _summary_fields(path: Path) -> dict | None:
@@ -150,6 +193,8 @@ def collect(study_dir: str, round_name: str, runs_dir: str | None = None) -> dic
             if rp.name not in summaries:
                 fields = _summary_fields(rp / "summary.json")
                 if fields is not None:
+                    if fields.get("cost_unknown") and "usd_upper" not in fields:
+                        fields["unpriced_calls"] = _unpriced_calls(rp / "events.jsonl")
                     summaries[rp.name] = fields
             log["record"] = rp.name
     outcomes = []
@@ -326,7 +371,7 @@ def classify(run: dict) -> dict:
     """Fill in kind, cost, time, ending for one run (log + outcome + summary)."""
     o, s = run.get("outcome"), run.get("summary") or {}
     run.update(kind=None, reward=None, steps=None, seconds=None, usd=None, cost_basis=None,
-               ending=None, detail=None, entries=None)
+               ending=None, detail=None, entries=None, known_usd=None, usd_upper=None, upper_source=None)
     if o is None:
         run["kind"] = "running"
         run["ending"] = "No outcome line yet"
@@ -346,8 +391,11 @@ def classify(run: dict) -> dict:
     steps = s.get("steps", o.get("steps"))
     seconds = s.get("seconds", o.get("seconds"))
     usd = s.get("usd") if s.get("usd") is not None else o.get("usd")
+    known_usd, usd_upper, upper_source = None, None, None
     if s.get("cost_unknown"):
         usd = None  # unknown cost stays unknown
+        known_usd = s.get("known_usd")
+        usd_upper, upper_source = cost_bound(s)
     basis = s.get("cost_basis") or ("billed" if o.get("billed") else "list_price")
     ending_raw = s.get("ending") or o.get("ending")
     detail = s.get("ending_detail")
@@ -357,7 +405,8 @@ def classify(run: dict) -> dict:
     ending = ENDINGS.get(ending_raw, (ending_raw or "").replace("_", " ").capitalize() or None)
     entries = len(s["entries"]) if "entries" in s else o.get("entries")
     run.update(reward=reward, steps=steps, seconds=seconds, usd=usd, cost_basis=basis,
-               ending=ending, entries=entries)
+               ending=ending, entries=entries, known_usd=known_usd, usd_upper=usd_upper,
+               upper_source=upper_source)
     if ending_raw in ("bad_replies", "BadReplies") and PROVIDER_FAULT.search(detail or rest):
         code = re.search(r"HTTP (\d{3})", detail or rest)
         typ = re.search(r'"type\\?":\\?"([a-z_]+)', detail or rest)
@@ -371,6 +420,119 @@ def classify(run: dict) -> dict:
     else:
         run["kind"] = "fail"
     return run
+
+
+# ------------------------------------------------------- cost bounds
+#
+# The same bound crates/microluna/src/price.rs puts on a Codex call that
+# failed after it was sent (`upper_bound`), rebuilt for records made before
+# calls carried it. List prices in dollars per million tokens (input,
+# output); every input token is counted uncached.
+
+LIST_PRICES = {"gpt-6-astra": (10.00, 50.00), "gpt-6-sol": (2.00, 10.00), "gpt-6-luna": (0.10, 0.50)}
+MAX_OUTPUT_TOKENS = 128_000        # OpenAI's model pages, retrieved 2026-09-26
+LONG_CONTEXT_INPUT_TOKENS = 272_000  # above it: 2x input, 1.5x output
+BYTES_PER_TOKEN = 1                # byte-level BPE: a token covers at least one byte
+REQUEST_OVERHEAD_TOKENS = 4_096    # framing, rendered tool syntax, provider preamble
+# A step's request beyond its prompt (system instructions, the next_action
+# tool, model, effort, cache key): microcoder's STEP_REQUEST_FIXED_BYTES,
+# which a test holds the real figure under. `prompt_chars` in events.jsonl
+# is the prompt's length in bytes (Rust `String::len`).
+STEP_REQUEST_FIXED_BYTES = 16_384
+RETRIES = 3                        # microluna::oneshot::RETRIES
+
+UNPRICED_MODEL = re.compile(r"^step (\d+) model$")
+# A Jev call the API refused with an error status (such as 402, out of
+# credit), as a pinned binary recorded it: it cost nothing, like a refused
+# model request.
+JEV_REFUSED = re.compile(r"^the Jev call failed, so whether it was billed is unknown "
+                         r"\((?:GET|POST) \S+: [1-5]\d\d ")
+FAILED_ATTEMPTS = re.compile(r"^(an attempt|(\d+) attempts) failed after the request was sent")
+
+
+def _model_slug(model: str | None) -> str | None:
+    if not model:
+        return None
+    m = model.rsplit("/", 1)[-1]
+    return m[:-4] if m.endswith("-pro") else m
+
+
+def upper_bound(model: str | None, request_bytes: float) -> float | None:
+    """The most one attempt of `request_bytes` bytes could cost at list price."""
+    rates = LIST_PRICES.get(_model_slug(model) or "")
+    if rates is None:
+        return None
+    tokens_in = -(-int(request_bytes) // BYTES_PER_TOKEN) + REQUEST_OVERHEAD_TOKENS
+    rin, rout = rates
+    if tokens_in > LONG_CONTEXT_INPUT_TOKENS:
+        rin, rout = rin * 2, rout * 1.5
+    return (tokens_in * rin + MAX_OUTPUT_TOKENS * rout) / 1_000_000
+
+
+def _unknown_parts(entry) -> tuple[str | None, str]:
+    """(where, why) of one cost_unknown entry, old string or new object form."""
+    if isinstance(entry, dict):
+        return entry.get("at"), entry.get("reason") or ""
+    if isinstance(entry, str) and ": " in entry:
+        at, why = entry.split(": ", 1)
+        return at, why
+    return None, ""
+
+
+def reconstruct_upper(s: dict) -> float | None:
+    """The most a run could have cost, rebuilt from its record, or None.
+
+    Only a list-price run whose every unknown call is a model step that
+    failed after the request was sent, or a Jev call the API refused with an
+    error status ($0), can be bounded: its known dollars
+    plus, for each failed attempt, the request's bytes (the step's
+    `prompt_chars` plus STEP_REQUEST_FIXED_BYTES) as input tokens and the
+    output cap, at list price. The number of failed attempts comes from the
+    recorded reason; when it can't be read, the most a step can have
+    (RETRIES + 1) is used. Anything else (an unpriced model, a Jev or
+    embeddings call, a billed provider, a step missing from events.jsonl)
+    leaves the cost unbounded.
+    """
+    if s.get("cost_basis") != "list_price" or not isinstance(s.get("known_usd"), (int, float)):
+        return None
+    calls = s.get("unpriced_calls")
+    if not isinstance(calls, list):
+        return None
+    by_step = {c.get("step"): c for c in calls if isinstance(c, dict)}
+    total = float(s["known_usd"])
+    for entry in s.get("cost_unknown") or []:
+        at, why = _unknown_parts(entry)
+        if JEV_REFUSED.match(why):
+            continue
+        m = UNPRICED_MODEL.match(at or "")
+        if not m:
+            return None
+        call = by_step.get(int(m.group(1)))
+        if not call or not isinstance(call.get("prompt_chars"), (int, float)):
+            return None
+        f = FAILED_ATTEMPTS.match(why)
+        if f is None and "no known list price" in why:
+            return None
+        attempts = (1 if f.group(1) == "an attempt" else int(f.group(2))) if f else RETRIES + 1
+        bound = upper_bound(s.get("model"), call["prompt_chars"] + STEP_REQUEST_FIXED_BYTES)
+        if bound is None:
+            return None
+        total += attempts * bound
+    return total
+
+
+def cost_bound(s: dict) -> tuple[float | None, str | None]:
+    """A run's upper bound on cost and where it came from.
+
+    ("recorded") when summary.json carries `usd_upper`, ("reconstructed")
+    when it is rebuilt from events.jsonl's numbers, or (None, None).
+    """
+    if isinstance(s.get("usd_upper"), (int, float)):
+        return float(s["usd_upper"]), "recorded"
+    if "usd_upper" in s:
+        return None, None
+    up = reconstruct_upper(s)
+    return (up, "reconstructed") if up is not None else (None, None)
 
 
 RESULT_KINDS = ("pass", "fail")
@@ -420,14 +582,54 @@ def assemble(collected: dict) -> list[dict]:
     return runs + orphans
 
 
+def cost_win_basis(run: dict, bar: float | None) -> str | None:
+    """Why a run is a cost win against `bar`, or None when it isn't.
+
+    A pass whose known cost is under the bar with no unknown part is
+    "exact". A pass whose cost is partly unknown is a win only when its upper
+    bound is under the bar: "upper bound" when Microcoder recorded it,
+    "upper bound, reconstructed" when rebuilt from events.jsonl's numbers.
+    An unknown cost with no bound is never a cost win.
+    """
+    if run["kind"] != "pass" or bar is None:
+        return None
+    if run["usd"] is not None:
+        return "exact" if run["usd"] < bar else None
+    if run.get("usd_upper") is not None and run["usd_upper"] < bar:
+        return "upper bound" if run.get("upper_source") == "recorded" else "upper bound, reconstructed"
+    return None
+
+
 def win_flags(run: dict, ref: dict | None) -> dict:
+    """Cost and time wins against Fable 5.1 low's cheapest and fastest
+    winning runs (see cost_win_basis)."""
     cheapest = ref["cheapest"]["cost_usd"] if ref and ref.get("cheapest") else None
     fastest = ref["fastest"]["seconds"] if ref and ref.get("fastest") else None
-    cost_win = bool(run["kind"] == "pass" and run["usd"] is not None and cheapest is not None
-                    and run["usd"] < cheapest)
+    basis = cost_win_basis(run, cheapest)
+    cost_win = basis is not None
     time_win = bool(cost_win and run["seconds"] is not None and fastest is not None
                     and run["seconds"] < fastest)
-    return {"cost_win": cost_win, "time_win": time_win}
+    return {"cost_win": cost_win, "time_win": time_win, "cost_win_basis": basis}
+
+
+def tb21_pool(prereg: Path = TB21_PREREG) -> list[str]:
+    """The TB2.1 study's 65 tasks, checked against the pre-registered digest."""
+    tasks = re.findall(r"^\| `([^`]+)` \|", Path(prereg).read_text(), re.M)
+    got = hashlib.sha256("\n".join(sorted(tasks)).encode()).hexdigest()
+    if got != TB21_DIGEST:
+        raise SystemExit(f"TB2.1 pool digest {got} != pre-registered {TB21_DIGEST}")
+    return tasks
+
+
+def tb21_reference(dev_set: Path = TB21_DEV_SET) -> dict:
+    """Per task: Fable 5 xhigh's cost per trial (the bar) and mean agent time."""
+    tasks = json.loads(Path(dev_set).read_text()).get("tasks", {})
+    out = {}
+    for t, row in tasks.items():
+        f = row.get("fable_5_xhigh") or {}
+        out[t] = {"usd_per_trial": f.get("usd_per_trial"), "mean_agent_sec": f.get("mean_agent_sec"),
+                  "successes": f.get("successes"), "trials": f.get("trials")}
+    return out
 
 
 def screen_passed(runs: list[dict], task: str) -> bool:
