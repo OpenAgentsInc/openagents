@@ -6,8 +6,10 @@ with terminal and headless interfaces implemented today. The
 [suite plan](docs/coder/design/typesafe-product-suite.md) extends the same runtime
 to mobile, web, cloud execution, and computer control. **Coder One** supplies
 the configurable agent components used
-in Terminal-Bench experiments and Coder's delegate execution. **Gym** measures
-results and lets you inspect and replay the evidence.
+in Terminal-Bench experiments and Coder's delegate execution. **Microcoder**
+is a separate experimental loop that combines Jev, generation, and a shared
+knowledge base. **Gym** measures results and lets you inspect and replay the
+evidence.
 
 The repository also contains decision-model implementations and services,
 Rust SDKs and CLIs, a Nostr relay, public protocol specifications, and
@@ -21,28 +23,32 @@ integration target. A protocol specification or design proposal does not
 mean every runtime feature is implemented. The [glossary](docs/glossary.md)
 labels implemented, partial, and proposed concepts.
 
-**Agent labor is a high-priority planned track:** let independent operators
+**Agent labor is a high-priority development track:** let independent operators
 offer bounded coding work and receive Bitcoin for accepted results. The
 [labor market plan](docs/agents/market-infrastructure.md) and
 [Coder network plan](docs/coder/design/networked-coder-plan.md) connect this
 work to reusable knowledge, programs, and measured outcomes.
 
-The [OpenAgents protocol index](nips/openagents/README.md) includes new draft
-contracts for scoped client control, negotiated markets, and agent labor.
-The [coverage review](docs/protocol/2026-09-26-openagents-gap-review.md)
-explains their relationship to the official and Block NIPs. The specifications
-precede runtime implementation; they do not announce a working labor market.
+The [OpenAgents protocol index](nips/openagents/README.md) contains 22 authored
+NIPs plus shared contracts. Encrypted artifacts, free market negotiation, and
+labor-term validation now have Rust components. Durable fulfillment, buyer
+acceptance, and settlement remain unfinished. The
+[implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
+maps every contract to its implemented parts and remaining work.
 
 ## Start here
 
 | Goal | Guide |
 | --- | --- |
 | Run the coding agent | [Install Coder](docs/coder/guides/install.md), [headless mode](docs/coder/guides/headless.md) |
+| Try the experimental knowledge-assisted loop | [Microcoder](docs/coder/guides/microcoder.md), [shared knowledge base](docs/coder/guides/knowledge-base.md) |
 | Compare saved agent transcripts | [Gym head-to-head replay](docs/gym/head-to-head.md) |
 | Inspect benchmark results | [Terminal-Bench status and evidence](docs/terminal-bench/README.md) |
 | Run a benchmark or controlled experiment | [Harness runbook](docs/terminal-bench/runbook.md), [experiment template](docs/terminal-bench/targeted-experiment-template.md) |
 | Use typed decisions | [Decision models](docs/decision-models/README.md), [caller CLI](docs/decision-models/guides/caller.md), [Rust clients](docs/decision-models/guides/clients.md) |
 | Run decision services | [Gateway](docs/decision-models/service/gateway.md), [deployment](deploy/README.md) |
+| Operate the Nostr relay | [Local relay runbook](docs/deployment/runbook-local-dev.md), [configuration](docs/deployment/configuration.md) |
+| Review protocol support and gaps | [NIP implementation coverage](docs/protocol/2026-09-26-nip-implementation-coverage.md), [implementation plan](docs/protocol/implementation-plan.md) |
 | Operate a Minecraft agent | [Voyager](docs/voyager/README.md), [watch an episode](docs/minecraft/voyager-runbook.md) |
 | Walk the Verse desktop world | [Verse](docs/verse/README.md) |
 
@@ -216,129 +222,71 @@ See the [full replay guide](docs/gym/head-to-head.md),
 noninteractive view. The plain `gym-terminal` command without
 `--terminal-bench` opens the decision-model views.
 
-## Coder One benchmark evidence
+## Coding-agent benchmark evidence
 
-The [issue-flow policy comparison](docs/coder/measurements/2026-09-25-issue-flow-policies.md)
-retains the requirements default: both policies passed 1/4 development
-issues; lean was 17.7% cheaper and 22.2% faster across attempts, below the
-20% cost-saving tie threshold. The operator stopped the planned second
-round. Full traces, the interrupted attempt, grader limitations, and costs
-remain retained; this is not a Terminal-Bench or repeatability result.
+The latest [Microcoder development results](docs/terminal-bench/tb4-results.md#microcoder-development-runs-in-sample)
+show knowledge-assisted passes on three selected tasks. The strongest individual
+efficiency result is a `fin-saccr-rwa` pass in **2:48 for $0.0404**, against
+Fable 5.1 low's three public passes at **3:42–4:28 and $1.23–$1.49**.
+This is an in-sample development result with knowledge learned from the task;
+it does not establish general superiority or the effect of adding Coder to
+an otherwise identical configuration.
 
-The [completed Microluna v18 family](docs/terminal-bench/2026-09-25-microluna-v18-family.md)
-passed **0/9 confirmation and 0/9 development attempts**. The completed cohort
-meets the numerical loss condition; source changes after setup-only failures and
-a driver restart make the strict protocol result inconclusive. Counted spend is
-$0.9636, with six incomplete charges; cost and time per successful output are
-undefined. The report retains every attempt, candidate-coverage gap, run card,
-and the budget-accounting correction. #9640 is complete as a measurement, with
-no policy promotion. The [retention and budget repairs](docs/terminal-bench/2026-09-25-retention-budget-repairs.md)
-add sealed sequential checkpoints, task-coverage preflight, and a persistent cohort
-budget ledger. They reproduce the conservative spend total and leave the historical
-coverage gaps explicit. The [morning assessment](docs/coder/design/2026-09-25-morning-assessment.md)
-explains what the remaining evidence can support.
+Microcoder figures are per-run Luna, Jev, and embedding costs. They do not
+include the cost of developing the knowledge base.
 
-The [executed-contract measurement](docs/terminal-bench/2026-09-25-executed-contract-supplement.md)
-now includes all 16 candidates from the previously excluded eight-task cohort.
-It detects two missing required outputs, but environment failures also produce
-failure calls and three of six pass calls are wrong. The component remains
-outside runtime policies; both replays and the negative result are retained.
+| Task | Reported development result | Efficiency observation |
+| --- | --- | --- |
+| `fin-saccr-rwa` | 4/4 with SA-CCR knowledge entry v9 | The 2:48 pass was faster than all three Fable low passes and cost about 1/30 of its cheapest recorded pass. Two of the four runs share a mixed record directory. |
+| `embedding-drift-monitor` | 8/9 with knowledge | A 2:21 pass cost $0.0165 and was faster than four of Fable low's five passes; the median successful Microcoder run was slower. |
+| `gsea-proteomics` | 4/4 with relay-supplied knowledge | Every pass cost less than Fable low's cheapest pass. The decisive entry came from a winning Fable trace on this task. |
 
-The [72-candidate archive confirmation](docs/terminal-bench/2026-09-25-archive-check-confirmation.md)
-is complete: Luna passes 26/36 and Astra 35/36 on 12 unused archived task groups.
-Executed checks detect 6/11 official failures with 6/9 precision, versus 1/11
-and 1/1 for scenario checks. They do not meet the frozen joint-improvement bar;
-#9584 remains open. An independent audit confirms real specification defects
-in the three circuit candidates behind the official false alarms. Original
-grades remain unchanged. This is not TB4, a Fable comparison, or a matched
-Coder ablation. Full transcripts, sealed predictions, costs, timings, and
-uncertainty are retained; `gym coder truth --confirmation PATH` reads the result.
+The [knowledge-base guide](docs/coder/guides/knowledge-base.md) covers retrieval,
+harvesting, admission, and NIP-KB sharing. GSEA and SA-CCR runs received their
+entries from a Nostr relay. Their knowledge was developed using these tasks
+and public winning traces, so those tasks cannot establish generalization.
+The results ledger reports no out-of-sample Microcoder passes. Earlier
+failures remain recorded, and interrupted or credit-exhausted runs are
+ungraded rather than counted as successes or failures.
 
-The follow-up [literal artifact checker](docs/terminal-bench/2026-09-25-literal-artifact-checks.md)
-catches three real failures with three calls, zero model tokens, and a 0.747-second
-median replay time. Its combined development result catches 7/11 failures at
-7/10 precision. The labels were already open, so this is not new confirmation;
-runtime policies remain unchanged. A subsequent
-[artifact lifecycle correction](docs/terminal-bench/2026-09-25-literal-lifecycle.md)
-removes synthetic temporary-file and deferred-write false alarms while preserving
-all 72 development calls. The [90-attempt confirmation protocol](bench/terminal-bench/experiments/2026-09-25-literal-confirmation/protocol.md)
-started its 90 attempts at 11:26 UTC after the separate v18 family run finished.
-Checks run as candidates finish; official outcomes stay unopened until the
-complete prediction seal is pushed.
+[Microluna v19-fire](docs/terminal-bench/tb4-results.md#fire-loop-development-runs-in-sample)
+also passed embedding **5/5 at about $0.0153 per run**, excluding the fire-loop
+judge's Jev cost. Its 5:26 median was slower than Fable low's 2:55. This task
+was used to develop the harness and its method check. See the
+[fire-loop guide](docs/coder/guides/fire-loop.md) for the development workflow.
 
-The [earlier candidate-review study](docs/terminal-bench/2026-09-25-candidate-review-validation.md)
-retains the rejected opinion-based rules, the negative 16-candidate evaluation,
-and mini controls that exposed two cancellation bugs in a passing fixture.
-The [Microluna evidence repair](docs/terminal-bench/2026-09-25-truthful-checks-microluna.md)
-recovers selected reports and reviews of unchanged submitted files.
-
-Fresh Microluna v13 runs passed **3/3 embedding-drift-monitor attempts for
-$0.01599 per accepted result**, including Jev—about 1/54 of Fable low's
-recorded cost. They were slower, and passed **0/3 session-window-debug**
-attempts, where Fable passed 0/25. These are selected development tasks,
-not a full-suite result or a matched test of adding Coder.
-The [iteration assessment and full traces](docs/terminal-bench/2026-09-24-microluna-iteration-speed.md)
-cover the results, independent candidate retention, the new `tbench candidates`
-grader (19.4% less wall time with two workers in the measured comparison),
-and readable-summary fixes for Microluna and Gym head-to-head replay.
-
-The [previous 12-attempt experiment](docs/terminal-bench/2026-09-24-microluna-candidate-evidence.md)
-explains why preserving every earlier tie rejected a useful review repair.
-The [iteration record](docs/terminal-bench/2026-09-24-microluna-iterations.md)
-tracks the separate v9–v17 work. The
-[two-target assessment](docs/terminal-bench/2026-09-24-microluna-two-targets.md)
-explains the withdrawn v7 announcement and the still-open goal of passing
-where Fable failed.
-
-The September 24 follow-ups found two limits in the current controller:
-
-- [Escalation after a failed check](docs/terminal-bench/2026-09-24-escalation-on-failed-check.md)
-  rescued **0 of 12 escalated trials**, at $20.40 of GPT-6 Astra usage.
-- [Per-task effort routing](docs/terminal-bench/2026-09-24-effort-routing.md)
-  passed **8/15**, against fixed xhigh's **10/14**, while costing 76% of
-  fixed xhigh using its recorded cost lower bound. One xhigh call is
-  unpriced, so the exact ratio is unknown; the 60% cost target is unproven.
-
-The [Luna pivot](docs/coder/design/luna-pivot.md) sets the current design
-focus. The older controller experiments below do not evaluate Microluna.
-
-The latest retained matched-controller experiment, published September 23,
-holds Claude Code, Opus 5.5, medium effort, tools, system prompt, and outer
-budgets fixed across **10 TB4 tasks, with three attempts per task per arm**:
+The retained [same-executor controller experiment](docs/terminal-bench/2026-09-23-matched-controller-targeted.md)
+is a separate result. It holds Claude Code, Opus 5.5, medium effort, tools,
+system prompt, and outer budgets fixed across ten TB4 tasks, with three
+attempts per task per arm:
 
 | Arm | Passes | Total model usage cost | Mean agent minutes per attempt |
 | --- | ---: | ---: | ---: |
 | Plain Claude Code | 15/30 | $27.04 | 6.6 |
 | Coder One v8 controller | 18/30 | $45.42 | 14.6 |
 
-The three extra passes are not statistically established as a general gain
-(exact McNemar p = 0.51). The controller cost **68% more** and took **2.2×
-the agent time**. Persistence produced a specific win on
-`mvcc-lsm-compaction`—3/3 versus 0/3—and most of the additional cost.
-These results do not establish that adding Coder makes an otherwise
-identical configuration faster or cheaper. Read the
-[matched-controller assessment and traces](docs/terminal-bench/2026-09-23-matched-controller-targeted.md).
+The controller cost **68% more** and took **2.2× the agent time**. The three
+extra passes were not statistically established as a general gain (exact
+McNemar p = 0.51). Persistence produced the specific `mvcc-lsm-compaction`
+win, 3/3 versus 0/3, and most of the additional cost. Selected Microcoder
+wins do not overturn that controlled result.
 
-The earlier 26-task comparison found Coder One v2 passing 11 tasks for
-$32.87 against plain Claude's 9 for $59.27. That remains a
-[historical configuration comparison](docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md),
-not the controlled result above. Broad TB4 totals also carry a
-[quota-audit qualification](docs/terminal-bench/data-quality.md).
-The [two-task matched pilot](docs/terminal-bench/2026-09-23-matched-opus-controller.md)
-and [v8 persistence follow-up](docs/terminal-bench/2026-09-23-persist-v8.md)
-report separate experiments; their counts should not be combined.
+Negative studies remain available. The [v18 family](docs/terminal-bench/2026-09-25-microluna-v18-family.md)
+passed 0/9 confirmation and 0/9 development attempts; setup changes and a
+restart left its strict protocol result inconclusive. The
+[72-candidate truthful-checks confirmation](docs/terminal-bench/2026-09-25-archive-check-confirmation.md)
+missed its declared joint-improvement requirement. The later
+[90-attempt protocol](bench/terminal-bench/experiments/2026-09-25-literal-confirmation/protocol.md)
+and launch records establish the frozen plan and recorded launch; they do not
+establish its current status or a completed measurement.
 
-The [Terminal-Bench index](docs/terminal-bench/README.md) links the latest
-retained reports, per-task results, costs, traces, and limitations. It is
-not the execution host's live queue. Use the
-[tunable policy guide](docs/coder/guides/coder-one-tunable.md) to understand
-which routing, briefing, checks, repair, escalation, and persistence
-components each policy enables.
-
-The implemented [v10 policy](crates/coder-one/policies/tunable-v10.json)
-judges persistence against specific flagged failures, starts those rounds
-on GPT-6 Sol, and accepts a second candidate only when it resolves a
-failure without regressions. The v8 results above do not evaluate v10.
+Use the [results ledger](docs/terminal-bench/tb4-results.md) for per-task
+comparisons, the [report index](docs/terminal-bench/README.md) for historical
+studies and retained traces, and the [data-quality notes](docs/terminal-bench/data-quality.md)
+for accounting and grading limitations. These are repository snapshots, not
+the execution host's live queue. The
+[tunable policy guide](docs/coder/guides/coder-one-tunable.md) explains the
+controller components; a policy's presence in code is not a measured result.
 
 ## Implementation map
 
@@ -346,6 +294,8 @@ failure without regressions. The v8 results above do not evaluate v10.
 | --- | --- |
 | [coder](crates/coder/) | Terminal and headless turns, typed routing, delegation, the shell loop, and the `coder-worker` relay client. |
 | [coder-one](crates/coder-one/) | Standalone issue-to-PR agent and reusable components for probing, briefing, execution, checks, repair, escalation, and persistence. |
+| [microluna](crates/microluna/) | Short model sessions with five native tools, host-enforced execution, and ATIF traces; used by Coder One and Coder's delegate path. |
+| [microcoder](crates/microcoder/), [knowledge](crates/knowledge/) | Experimental Jev-guided coding loop, knowledge retrieval and expansion, entry admission, and NIP-KB publication and synchronization. |
 | [coder-project](crates/coder-project/), [coder-scheduler](crates/coder-scheduler/) | Supervised project programs, deterministic task admission, durable scheduling records, and simulations. |
 | [coder-terminal](crates/coder-terminal/) | Shared terminal design system, composer, frames, and rendering. |
 | [coder-boundary](crates/coder-boundary/), [supervise](crates/supervise/) | Filesystem enforcement, workspace snapshots, process-group cleanup, deadlines, and output bounds. |
@@ -370,18 +320,36 @@ and workload-specific evaluation determines whether a replacement helps.
 
 ## Architecture and protocols
 
-The [OpenAgents NIPs](nips/openagents/README.md) specify agent jobs,
-capabilities, programs, context, policy, coordination, and evaluation.
-`nips/official/` and `nips/block/` retain pinned upstream specifications;
-[nips/manifest.json](nips/manifest.json) records their revisions. The
-[September 26 upstream review](docs/protocol/2026-09-26-upstream-nip-sync.md)
-records the source changes. The [implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
-tracks the subsequent protocol repairs, private artifact transport, atomic
-read-state snapshots, and new market/labor validators. Source inventories now
-match the pins; fixture coverage and running host roles remain separate claims.
-The report lists unfinished application and deployment work explicitly.
-The [verification record](docs/protocol/verification/2026-09-26-nips/README.md)
-retains the tested revision, gate results, and earlier failures and fixes.
+The [NIP directory](nips/README.md) has three lanes: 99 official
+specifications, 17 Block/Buzz extensions, and 22 OpenAgents NIPs plus shared
+contracts. [nips/manifest.json](nips/manifest.json) pins the upstream revisions;
+the [September 26 review](docs/protocol/2026-09-26-upstream-nip-sync.md) records
+their changes. A source inventory does not establish complete implementation.
+
+Current implementation status, September 26, 2026:
+
+| Area | Implemented scope | Remaining boundary |
+| --- | --- | --- |
+| Official protocol updates | Petnames, comments, highlights, emoji, authentication hints, relay-access declarations, payment-target parsing, and atomic allow/ban updates. | Client helpers have specific roles; parsing a declaration does not run a membership or payment service. See the [official ledger](docs/protocol/official-nip-ledger.md). |
+| Private relay data | Author-only NIP-78 app state, author/recipient visibility for encrypted artifacts, and exclusion of private content from search. | Hosts still authorize the actions described by those artifacts. |
+| Block read-state snapshots | Configured, authenticated HTTP snapshots from the writer database, with signature/digest checks, replay protection, and refusal of incomplete cuts. | Client merge behavior and cross-subscription synchronization remain separate work. See [Block support](docs/protocol/block-nips.md). |
+| Other Block helpers | Persona adoption checks, thread-batch parsing and bounds, and federated-identity policy checks with a required external verifier. | Complete launchers, thread query service, JWT/JWKS integration, push delivery, and managed-agent lifecycle remain unfinished. |
+| Agent markets and labor | Authenticated free negotiation, exact terms and order identities, replay/equivocation checks, and labor-policy validation. | Durable reservations, execution linkage, delivery, independent checks, acceptance, disputes, and settlement are not yet a working market. |
+| x402 Lightning | Offline BOLT11 signature, amount, payee, expiry, request-binding, and preimage validation for HTTP/MCP and the explicitly selected native Nostr profile. | Wallet authority, durable proof consumption, execution recovery, and live payment interoperability remain unfinished. |
+
+**Relay configuration changed:** incomplete NIP-PL push configuration now
+fails at startup. Reserved PMA events and unsupported CW thread query modes
+are refused; unsupported roles are not advertised. See the
+[configuration contract](docs/deployment/configuration.md#protocol-expansion)
+before upgrading a relay configured for those paths.
+
+The [coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
+lists each contract's implementation and gaps. The
+[implementation plan](docs/protocol/implementation-plan.md) defines completion
+evidence, beginning with a durable free-labor rehearsal. Session, workspace,
+tracked-work, automation, environment, and live-media profiles also retain
+substantial runtime work. No complete-NIP or operational-market claim follows
+from the new validators.
 
 The [teardown integration plan](docs/coder/design/teardown-nostr-integration.md)
 maps all 81 archived teardown documents into Coder. Six new draft profiles
@@ -432,18 +400,24 @@ require link, path, and artifact checks rather than the Rust gate. Required
 checks run on contributor machines or non-GitHub infrastructure; this
 repository does not use GitHub-billed automation.
 
-The September 24 Markdown update passed all 23 replay tests, 13 shared
-Markdown tests, and a corpus check covering 694 local and all 1,649 public
-transcripts. Strict Gym and terminal-renderer Clippy also passed. Its full
-workspace gate was blocked by a Coder One scratch-path test. That failure
-is now fixed: path scrubbing handles repeated separators in temporary
-paths. The [verification record](docs/gym/head-to-head.md#verification)
-documents the earlier runs. Feature-specific success does not mean the
-full repository gate is green.
+The [September 26 verification record](docs/protocol/verification/2026-09-26-nips/README.md)
+covers the latest protocol implementation and its two test-fixture repairs.
+It records 290 passing Nostr library tests, passing default and feature-enabled
+workspace tests and strict Clippy, dependency checks, and live PostgreSQL
+acceptance, including snapshots, privacy, restart, backup/restore, and actual
+Coder/worker processes. Gym's feature suite passes 595 tests, with one ignored.
 
-The [experiment safeguards review](docs/terminal-bench/2026-09-24-issue-review.md#validation)
-records the later Python, Rust, live Jev, and retained-data checks, including
-the remaining workspace and fixture failures.
+Required coverage comes from a full run plus scoped recoveries: the original
+full run remains marked failed, and the successful scoped runs remain marked
+partial. The records retain the earlier failures, exact code revisions, and
+fixes for host-dependent Gym metadata and webhook test synchronization. Metal,
+long-running soak, external model and wallet integration, and production
+deployment are outside that evidence.
+
+The [replay-rendering record](docs/gym/head-to-head.md#verification) and
+[experiment safeguards review](docs/terminal-bench/2026-09-24-issue-review.md#validation)
+retain earlier feature-specific results. Documentation-only README updates
+check links and formatting without rerunning the Rust suite.
 
 [AGENTS.md](AGENTS.md) is the contributor contract. See [LICENSE](LICENSE)
 and the [dependency and provenance policy](docs/dependencies.md) for the
