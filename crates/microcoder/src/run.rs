@@ -106,6 +106,12 @@ pub struct Limits {
     pub acceptance: bool,
     /// Refused `finished` replies before the loop stops anyway.
     pub max_refused_finishes: usize,
+    /// Steps in a row with every frozen test passing before the model is
+    /// told to finish.
+    pub green_nudge: usize,
+    /// Steps in a row with every frozen test passing before the host ends
+    /// the run itself.
+    pub green_stop: usize,
     /// Whether the stronger model writes the acceptance tests.
     pub route: Route,
     /// Steps the stronger model takes, at most, before the default model
@@ -138,6 +144,8 @@ impl Default for Limits {
             max_idle_replies: 3,
             acceptance: true,
             max_refused_finishes: 3,
+            green_nudge: 3,
+            green_stop: 6,
             // Off by default; --route auto or always turns it on.
             route: Route::Never,
             strong_steps: 8,
@@ -159,6 +167,9 @@ pub enum Ending {
     /// The model kept saying it was finished while acceptance tests failed
     /// or before any were frozen.
     Unaccepted,
+    /// Every frozen test passed for [`Limits::green_stop`] steps in a row
+    /// and the model still didn't finish.
+    TestsHeld,
 }
 
 /// What the loop reports as it runs.
@@ -664,6 +675,8 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut bad = 0usize;
     let mut idle = 0usize;
     let mut refused = 0usize;
+    // Steps in a row that ended with every frozen test passing.
+    let mut green = 0usize;
     let mut step = 0usize;
     let ending = loop {
         if limits.max_steps.is_some_and(|max| step >= max) {
@@ -895,6 +908,23 @@ or set finished to true if the task is complete."
                     results: state.test_results.clone(),
                 },
             );
+        }
+        let all_pass =
+            state.frozen_at.is_some() && state.test_results.iter().all(CommandResult::ok);
+        green = if all_pass { green + 1 } else { 0 };
+        if all_pass && !action.finished {
+            if green >= limits.green_stop {
+                break Ending::TestsHeld;
+            }
+            if green >= limits.green_nudge {
+                state.notes.push(format!(
+                    "Every acceptance test has passed for {green} steps in a row. Set finished to \
+true now, unless you can name a specific requirement of the task that no test covers; then add \
+the fix for it in this step. The host ends the run after {} steps in a row with every test \
+passing.",
+                    limits.green_stop
+                ));
+            }
         }
         if action.finished && !failed {
             if state.frozen_at.is_some() && state.test_results.iter().any(|r| !r.ok()) {

@@ -290,6 +290,9 @@ impl Observer for Terminal {
                     Ending::Unaccepted => {
                         "finished replies refused while acceptance tests failed".to_string()
                     }
+                    Ending::TestsHeld => {
+                        "every acceptance test passing for several steps in a row".to_string()
+                    }
                 };
                 let embeddings = if outcome.embedding_usd > 0.0 {
                     format!(" · embeddings ${:.6}", outcome.embedding_usd)

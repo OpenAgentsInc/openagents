@@ -698,3 +698,23 @@ async fn any_highly_relevant_entry_is_shown_in_full_unasked() {
     assert!(prompts[0].contains("## stats.thing (in full)"));
     assert!(prompts[0].contains("The body of stats.thing."));
 }
+
+#[tokio::test]
+async fn passing_tests_nudge_then_end_the_run() {
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["fix b"])),
+        Ok(act("review", &["ls"], false)),
+        Ok(act("review", &["ls"], false)),
+        Ok(act("review", &["ls"], false)),
+        Ok(act("review", &["ls"], false)),
+        Ok(act("review", &["ls"], false)),
+        Ok(act("review", &["ls"], false)),
+    ]);
+    let (_, outcome, _, _) = go(&script, &Limits::default()).await;
+    // All tests pass from the freeze at step 1; the sixth passing step ends it.
+    assert_eq!(outcome.ending, Ending::TestsHeld);
+    assert_eq!(outcome.steps, 6);
+    let prompts = script.prompts.into_inner();
+    assert!(!prompts[2].contains("Every acceptance test has passed"));
+    assert!(prompts[3].contains("Every acceptance test has passed for 3 steps in a row"));
+}
