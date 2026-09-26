@@ -54,6 +54,23 @@ pub struct State {
     /// The files the model keeps in view, read after its last action:
     /// each path and its contents, or `None` when there's no such file.
     pub files: Vec<(String, Option<String>)>,
+    /// The acceptance tests, once frozen.
+    pub tests: Vec<Test>,
+    /// The step the tests were frozen at.
+    pub frozen_at: Option<usize>,
+    /// The latest run of every test, in order; each result's `command` is
+    /// the test's name.
+    pub test_results: Vec<CommandResult>,
+}
+
+/// One frozen acceptance test: a bash script that exits 0 only when its
+/// requirement is met.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct Test {
+    pub name: String,
+    pub script: String,
+    /// Whether it passed when it was frozen, before the fix.
+    pub passed_at_freeze: Option<bool>,
 }
 
 /// The first `head` and last `tail` characters of `text`, with a line that
@@ -92,6 +109,71 @@ impl State {
             })
             .collect::<Vec<_>>()
             .join("\n\n")
+    }
+
+    /// A one-line count of the latest test run, or `None` before a freeze.
+    #[must_use]
+    pub fn tests_summary(&self) -> Option<String> {
+        if self.tests.is_empty() {
+            return None;
+        }
+        let passing = self.test_results.iter().filter(|r| r.ok()).count();
+        let failing: Vec<&str> = self
+            .test_results
+            .iter()
+            .filter(|r| !r.ok())
+            .map(|r| r.command.as_str())
+            .collect();
+        Some(if failing.is_empty() {
+            format!("{passing} of {} acceptance tests pass", self.tests.len())
+        } else {
+            format!(
+                "{passing} of {} acceptance tests pass; failing: {}",
+                self.tests.len(),
+                failing.join(", ")
+            )
+        })
+    }
+
+    /// The acceptance tests as the prompt shows them.
+    #[must_use]
+    pub fn render_tests(&self, dir: &str) -> String {
+        let Some(step) = self.frozen_at else {
+            return format!(
+                "None frozen yet. Before you change the task's files, define the end conditions: \
+write one bash test per requirement as {dir}/<name>.sh. A test exits 0 only when its requirement \
+is met, so most should fail now. Cover every requirement and symptom the task states. For each \
+method, statistic, or algorithm the task names, test it against its standard definition and \
+properties on inputs where you know the right answer, not only the end behavior. Then set \
+`freeze_tests` to true. The host freezes the tests, runs its own copies after every step, and \
+accepts `finished` only when all of them pass."
+            );
+        };
+        let mut out = format!(
+            "Frozen at step {step}. The host runs its own copies after every step, so editing \
+{dir} changes nothing. `finished` is accepted only when every test passes.\n"
+        );
+        for (test, result) in self.tests.iter().zip(&self.test_results) {
+            let before = match test.passed_at_freeze {
+                Some(true) => " (it already passed when frozen)",
+                _ => "",
+            };
+            let status = if result.ok() {
+                "pass".to_string()
+            } else if result.timed_out {
+                format!("FAIL: timed out after {:.0} s", result.seconds)
+            } else {
+                "FAIL".to_string()
+            };
+            out.push_str(&format!("\n## {}: {status}{before}\n", test.name));
+            if !result.ok() {
+                out.push_str(&format!(
+                    "\n```\n{}\n```\n",
+                    cut(result.output.trim_end(), 600, 1_200)
+                ));
+            }
+        }
+        out
     }
 
     /// The actions as the prompt shows them: the last [`RECENT`] in full,

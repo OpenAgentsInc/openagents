@@ -186,6 +186,32 @@ impl Observer for Terminal {
                     }
                 }
             }
+            Event::Tested {
+                step,
+                froze,
+                results,
+            } => {
+                let passing = results.iter().filter(|r| r.ok()).count();
+                let failing: Vec<&str> = results
+                    .iter()
+                    .filter(|r| !r.ok())
+                    .map(|r| r.command.as_str())
+                    .collect();
+                let head = if *froze {
+                    format!("step {step} · froze {} acceptance tests", results.len())
+                } else {
+                    format!("step {step} · acceptance tests")
+                };
+                let mut text = format!(
+                    "{} {passing} of {} pass",
+                    self.paint("1;35", &head),
+                    results.len()
+                );
+                if !failing.is_empty() {
+                    text.push_str(&format!(" · failing: {}", failing.join(", ")));
+                }
+                self.line(seconds, &text);
+            }
             Event::Ended { outcome } => {
                 let why = match &outcome.ending {
                     Ending::Finished => "the model finished".to_string(),
@@ -194,6 +220,9 @@ impl Observer for Terminal {
                     Ending::SpendLimit => "the spend limit".to_string(),
                     Ending::BadReplies(error) => format!("unusable replies ({error})"),
                     Ending::Idle => "replies that ran nothing".to_string(),
+                    Ending::Unaccepted => {
+                        "finished replies refused while acceptance tests failed".to_string()
+                    }
                 };
                 self.line(
                     seconds,

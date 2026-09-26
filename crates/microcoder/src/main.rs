@@ -26,6 +26,8 @@ Options:
   --network NAME     the container's Docker network: default bridge (network on),
                      or none for a task whose task.toml sets allow_internet = false
   --prompt TEXT      the instruction to the model (default \"Solve this task.\")
+  --no-acceptance    skip the acceptance tests the model otherwise writes and
+                     freezes first, and that must pass before it can finish
   --keep             leave the container running afterward
   --check-grading    run the task's reference solution instead of the loop,
                      then grade it: a check that grading works, at no model cost
@@ -79,6 +81,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--network" => options.network = Some(value()?),
             "--prompt" => options.prompt = value()?,
             "--keep" => options.keep = true,
+            "--no-acceptance" => options.limits.acceptance = false,
             "--check-grading" => options.check_grading = true,
             "-h" | "--help" => return Err(USAGE.to_string()),
             flag if flag.starts_with("--") => {
@@ -234,7 +237,7 @@ async fn go(options: Options) -> Result<u8, String> {
             return Ok(1);
         }
     };
-    let (_, outcome) = outcome;
+    let (end_state, outcome) = outcome;
 
     let saved = tbench::save_artifacts(&task, &env, &run_dir.join("artifacts")).await;
     say(&format!(
@@ -282,6 +285,8 @@ async fn go(options: Options) -> Result<u8, String> {
         "task": task.name, "model": options.model, "effort": options.effort,
         "outcome": outcome, "reward": verdict.reward, "verifier_output": verdict.output,
         "container": name, "image": image,
+        "acceptance_tests": end_state.tests, "frozen_at": end_state.frozen_at,
+        "test_results": end_state.test_results,
     });
     let _ = std::fs::write(
         run_dir.join("summary.json"),

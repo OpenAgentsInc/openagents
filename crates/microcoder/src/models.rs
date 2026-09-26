@@ -86,6 +86,9 @@ pub struct NextAction {
     /// Files to show in full in the next step's prompt.
     #[serde(default)]
     pub view: Vec<String>,
+    /// Freeze the acceptance tests written so far.
+    #[serde(default)]
+    pub freeze_tests: bool,
     pub finished: bool,
 }
 
@@ -109,12 +112,16 @@ pub fn next_action_schema() -> Value {
                 "items": {"type": "string"},
                 "description": "Paths of files to show in full in the next step's Files section. The host reads them fresh after the commands run. A non-empty list replaces the files in view; an empty list keeps them. List every file you need to see or edit; don't cat them. At most 12."
             },
+            "freeze_tests": {
+                "type": "boolean",
+                "description": "True once the acceptance tests are written, to freeze them after this step's commands run. They freeze once; later values are ignored."
+            },
             "finished": {
                 "type": "boolean",
-                "description": "True only when the task is complete and nothing is left to run."
+                "description": "True only when the task is complete and nothing is left to run. With acceptance tests on, the host accepts it only when every frozen test passes."
             }
         },
-        "required": ["rationale", "commands", "view", "finished"],
+        "required": ["rationale", "commands", "view", "freeze_tests", "finished"],
         "additionalProperties": false
     })
 }
@@ -259,7 +266,7 @@ mod tests {
         let schema = next_action_schema();
         assert_eq!(
             schema["required"],
-            json!(["rationale", "commands", "view", "finished"])
+            json!(["rationale", "commands", "view", "freeze_tests", "finished"])
         );
         assert_eq!(schema["additionalProperties"], false);
     }

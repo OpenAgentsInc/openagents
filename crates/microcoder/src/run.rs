@@ -18,7 +18,7 @@ use serde_json::json;
 
 use crate::env::Env;
 use crate::models::{Generate, Generated, Judge, Judgment, NextAction, QuestionSet};
-use crate::state::{Action, CommandResult, State, cut};
+use crate::state::{Action, CommandResult, State, Test, cut};
 
 /// What every generation is told, before the prompt.
 pub const SYSTEM: &str = "You work on a task by running shell commands in its working \
@@ -33,6 +33,9 @@ you'll see them after each step's commands run. A non-empty `view` replaces the 
 one keeps it. Set `finished` to true, with no commands, \
 only when the task is complete. Every other step must run at least one command: the \
 files in view are already current, so asking to see them again does nothing.";
+
+/// Where the model writes its acceptance tests before they freeze.
+pub const ACCEPT_DIR: &str = "/tmp/acceptance";
 
 /// Files kept in view, at most.
 pub const VIEW_FILES: usize = 12;
@@ -58,6 +61,11 @@ pub struct Limits {
     /// Replies in a row that run nothing and change nothing before the
     /// loop stops.
     pub max_idle_replies: usize,
+    /// Whether the model defines acceptance tests first and `finished`
+    /// waits for them to pass.
+    pub acceptance: bool,
+    /// Refused `finished` replies before the loop stops anyway.
+    pub max_refused_finishes: usize,
 }
 
 impl Default for Limits {
@@ -69,6 +77,8 @@ impl Default for Limits {
             command_seconds: 300,
             max_bad_replies: 3,
             max_idle_replies: 3,
+            acceptance: true,
+            max_refused_finishes: 3,
         }
     }
 }
@@ -84,6 +94,9 @@ pub enum Ending {
     BadReplies(String),
     /// Replies in a row ran no commands and asked for nothing new.
     Idle,
+    /// The model kept saying it was finished while acceptance tests failed
+    /// or before any were frozen.
+    Unaccepted,
 }
 
 /// What the loop reports as it runs.
@@ -102,6 +115,12 @@ pub enum Event {
     Ran {
         step: usize,
         result: CommandResult,
+    },
+    /// The acceptance tests ran; `froze` is true on the run that froze them.
+    Tested {
+        step: usize,
+        froze: bool,
+        results: Vec<CommandResult>,
     },
     Ended {
         outcome: Outcome,
@@ -126,9 +145,17 @@ pub struct Outcome {
 /// Builds one step's prompt from the state, the user prompt, and Jev's
 /// judgment.
 #[must_use]
-pub fn prompt(state: &State, user_prompt: &str, jev: &str) -> String {
+pub fn prompt(state: &State, user_prompt: &str, jev: &str, acceptance: bool) -> String {
+    let tests = if acceptance {
+        format!(
+            "# Acceptance tests\n\n{}\n\n",
+            state.render_tests(ACCEPT_DIR)
+        )
+    } else {
+        String::new()
+    };
     let mut out = format!(
-        "# Task\n\n{}\n\n# Instruction\n\n{user_prompt}\n\n# Environment\n\n{}\n\n# Files in view (current: read after the last step's commands ran)\n\n{}\n\n# Jev's judgments of the current state\n\n{jev}\n\n# Steps so far\n\n{}",
+        "# Task\n\n{}\n\n# Instruction\n\n{user_prompt}\n\n# Environment\n\n{}\n\n# Files in view (current: read after the last step's commands ran)\n\n{}\n\n{tests}# Jev's judgments of the current state\n\n{jev}\n\n# Steps so far\n\n{}",
         state.task,
         state.environment,
         state.render_files(),
@@ -150,6 +177,7 @@ fn jev_state(state: &State) -> serde_json::Value {
         "environment": cut(&state.environment, 1_500, 0),
         "actions": cut(&state.render_actions(), 4_000, crate::models::JEV_STATE_CHARS - 4_000),
         "files_in_view": state.files.iter().map(|(path, _)| path.clone()).collect::<Vec<_>>(),
+        "acceptance_tests": state.tests_summary().unwrap_or_else(|| "none frozen yet".to_string()),
     })
 }
 
@@ -183,6 +211,41 @@ async fn read_view<E: Env>(env: &E, paths: &[String]) -> Vec<(String, Option<Str
     files
 }
 
+/// Reads the tests the model wrote under [`ACCEPT_DIR`].
+async fn load_tests<E: Env>(env: &E, deadline: Duration) -> Vec<Test> {
+    let listing = env
+        .run(&format!("ls -1 {ACCEPT_DIR}/*.sh 2>/dev/null"), deadline)
+        .await;
+    let mut tests = Vec::new();
+    for path in listing
+        .output
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.ends_with(".sh"))
+    {
+        if let Some(script) = env.read(path).await {
+            let name = path.rsplit('/').next().unwrap_or(path).to_string();
+            tests.push(Test {
+                name,
+                script,
+                passed_at_freeze: None,
+            });
+        }
+    }
+    tests
+}
+
+/// Runs every frozen test from the host's own copy.
+async fn run_tests<E: Env>(env: &E, tests: &[Test], deadline: Duration) -> Vec<CommandResult> {
+    let mut results = Vec::new();
+    for test in tests {
+        let mut result = env.run(&test.script, deadline).await;
+        result.command = test.name.clone();
+        results.push(result);
+    }
+    results
+}
+
 /// Runs the loop until the model finishes or a limit stops it.
 pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     mut state: State,
@@ -197,6 +260,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut jev_usd = 0.0;
     let mut bad = 0usize;
     let mut idle = 0usize;
+    let mut refused = 0usize;
     let mut step = 0usize;
     let ending = loop {
         if limits.max_steps.is_some_and(|max| step >= max) {
@@ -216,7 +280,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             started.elapsed().as_secs_f64(),
             &Event::Judged { step, judgment },
         );
-        let text = prompt(&state, user_prompt, &jev_text);
+        let text = prompt(&state, user_prompt, &jev_text, limits.acceptance);
         let generated = models.generator.generate(SYSTEM, &text).await;
         model_usd += generated.usd;
         observer.event(
@@ -245,7 +309,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
                 continue;
             }
         };
-        if action.finished && action.commands.is_empty() {
+        if action.finished && action.commands.is_empty() && !limits.acceptance {
             state.actions.push(Action {
                 step,
                 rationale: action.rationale,
@@ -314,8 +378,62 @@ or set finished to true if the task is complete."
             action.view.clone()
         };
         state.files = read_view(env, &paths).await;
+        if !limits.acceptance {
+            if action.finished && !failed {
+                break Ending::Finished;
+            }
+            continue;
+        }
+        let deadline = Duration::from_secs(limits.command_seconds);
+        let mut froze = false;
+        if action.freeze_tests && state.frozen_at.is_none() && !failed {
+            state.tests = load_tests(env, deadline).await;
+            if state.tests.is_empty() {
+                state.notes.push(format!(
+                    "Step {step} asked to freeze the acceptance tests, but {ACCEPT_DIR} holds no .sh file."
+                ));
+            } else {
+                state.frozen_at = Some(step);
+                froze = true;
+            }
+        }
+        let ran_something = !state.actions.last().is_none_or(|a| a.results.is_empty());
+        if state.frozen_at.is_some() && (froze || ran_something) {
+            state.test_results = run_tests(env, &state.tests, deadline).await;
+            if froze {
+                for (test, result) in state.tests.iter_mut().zip(&state.test_results) {
+                    test.passed_at_freeze = Some(result.ok());
+                }
+            }
+            observer.event(
+                started.elapsed().as_secs_f64(),
+                &Event::Tested {
+                    step,
+                    froze,
+                    results: state.test_results.clone(),
+                },
+            );
+        }
         if action.finished && !failed {
-            break Ending::Finished;
+            let failing = state.test_results.iter().filter(|r| !r.ok()).count();
+            if state.frozen_at.is_some() && failing == 0 {
+                break Ending::Finished;
+            }
+            refused += 1;
+            if refused >= limits.max_refused_finishes {
+                break Ending::Unaccepted;
+            }
+            state.notes.push(if state.frozen_at.is_none() {
+                format!(
+                    "Step {step} said the task is finished, but no acceptance tests are frozen. \
+Write them under {ACCEPT_DIR} and set freeze_tests to true."
+                )
+            } else {
+                format!(
+                    "Step {step} said the task is finished, but {failing} acceptance tests fail. \
+The task isn't finished until they pass; see the Acceptance tests section."
+                )
+            });
         }
     };
     let outcome = Outcome {
