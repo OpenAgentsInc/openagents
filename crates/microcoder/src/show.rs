@@ -6,7 +6,6 @@ use std::io::{IsTerminal, Write};
 use std::path::Path;
 
 use crate::run::{Ending, Event, Observer};
-use crate::state::cut;
 
 /// `mm:ss`.
 #[must_use]
