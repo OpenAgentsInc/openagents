@@ -68,7 +68,7 @@ never ran, and that Fable 5.1 low passed at least once in the public replays:
 | `vpp-loss-divergence` | 1/5 | $4.65 | 14.9 | ML/Training | builds on first use |
 | `wdm-design` | 5/5 | $5.39 | 184.8 | Science/Physics | kept |
 
-A second pool holds the 24 tasks Fable 5.1 low never passed (SHA-256
+A second pool holds the 23 tasks Fable 5.1 low never passed (the first version of this file said 24; the digest was always over these 23) (SHA-256
 `625fc34c5d27cb87806d0cab539aaf5183aa7a7b1e2696e44c7928a4f390f93b`): `bun-sourcemap-leak`, `cad-model`, `cargo-flight-dispatch`, `data-anonymization`, `foodstuff-beta-activity`, `freecad-impeller`, `freight-dispatch-shift`, `glycan-ms2-elucidation`, `html-js-filter`, `lake-temp-glm`, `layout-config-recreation`, `medical-claims-processing`, `music-harmony`, `mvcc-lsm-compaction`, `ontology-kg-querying`, `protein-autointerp-disulfide`, `roy-polymorph-cn`, `session-window-debug`, `sglang-qwen-burst`, `vba-userform-port`, `vf2-speedup-networkx`, `vllm-deepseek-streaming`, `wal-recovery-ordering`. A pass there beats Fable outright. They get one screening run
 each and are reported separately.
 
