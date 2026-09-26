@@ -7,6 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
+| [2026-09-26-nostr-adoption/README.md](2026-09-26-nostr-adoption/README.md) | Nostr adoption across all 44 workspace packages: existing paths, missing integrations, pre-adoption blockers, and local boundaries |
 | [2026-09-19-codebase-audit/README.md](2026-09-19-codebase-audit/README.md) | Workspace audit: September 19, 2026 |
 | [2026-09-19-codebase-audit/issues.md](2026-09-19-codebase-audit/issues.md) | Open issue map |
 | [2026-09-19-codebase-audit/remediation.md](2026-09-19-codebase-audit/remediation.md) | Remediation register |

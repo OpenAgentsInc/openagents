@@ -10,6 +10,7 @@ operations, gaps, and evidence.
 | Need | Document |
 | --- | --- |
 | Current role coverage and limitations | [Implementation coverage](2026-09-26-nip-implementation-coverage.md) |
+| Product functionality that should use Nostr | [Codebase adoption audit](../audits/2026-09-26-nostr-adoption/README.md) |
 | Remaining protocol work and completion criteria | [Implementation plan](implementation-plan.md) |
 | Exact upstream sources | [NIP manifest](../../nips/manifest.json) and [source-sync review](2026-09-26-upstream-nip-sync.md) |
 | Run the relay | [Deployment index](../deployment/README.md) |

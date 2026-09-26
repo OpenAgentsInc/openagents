@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 450 documents plus itself as of September 26, 2026.
+This catalog lists 455 documents plus itself as of September 26, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -59,6 +59,8 @@ files are included below.
 | [audits/2026-09-20-delegation-after-action-report/README.md](audits/2026-09-20-delegation-after-action-report/README.md) | Evidence index | After-action report: stalled issue burndown and missing task history |
 | [audits/2026-09-21-project-completion-failure/README.md](audits/2026-09-21-project-completion-failure/README.md) | Evidence index | Audit of project completion failure |
 | [audits/2026-09-22-jev-opportunities/README.md](audits/2026-09-22-jev-opportunities/README.md) | Evidence index | What cheaper semantic decisions could change in OpenAgents |
+| [audits/2026-09-26-nostr-adoption/README.md](audits/2026-09-26-nostr-adoption/README.md) | Retained evidence / audit | Nostr adoption: existing paths, missing integrations, and priorities |
+| [audits/2026-09-26-nostr-adoption/coverage.md](audits/2026-09-26-nostr-adoption/coverage.md) | Retained evidence / audit | Disposition of all 44 workspace packages and additional host surfaces |
 | [audits/README.md](audits/README.md) | Evidence index | Engineering audits |
 
 ## coder

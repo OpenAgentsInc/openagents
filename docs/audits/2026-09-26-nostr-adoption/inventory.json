@@ -1,0 +1,476 @@
+{
+  "source_commit": "b152f145e53d3c0b9979b5a3c89375ada667186c",
+  "method": "Tracked Rust file counts and direct normal manifest dependencies only; no inference of runtime coverage. Audit prose traces actual entry points.",
+  "packages": [
+    {
+      "package": "atif",
+      "path": "crates/atif",
+      "rust_files": 4,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "capability",
+      "path": "crates/capability",
+      "rust_files": 8,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "coder",
+      "path": "crates/coder",
+      "rust_files": 85,
+      "nostr_dependencies": [
+        "nostr",
+        "nostr-transport"
+      ],
+      "transport_dependencies": [
+        "reqwest",
+        "tokio-tungstenite"
+      ],
+      "feature_names": []
+    },
+    {
+      "package": "coder-boundary",
+      "path": "crates/coder-boundary",
+      "rust_files": 6,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "coder-connect",
+      "path": "crates/coder-connect",
+      "rust_files": 13,
+      "nostr_dependencies": [
+        "nostr",
+        "nostr-transport"
+      ],
+      "transport_dependencies": [],
+      "feature_names": [
+        "default",
+        "host"
+      ]
+    },
+    {
+      "package": "coder-control",
+      "path": "crates/coder-control",
+      "rust_files": 13,
+      "nostr_dependencies": [
+        "nostr",
+        "nostr-transport"
+      ],
+      "transport_dependencies": [],
+      "feature_names": [
+        "default",
+        "host"
+      ]
+    },
+    {
+      "package": "coder-history",
+      "path": "crates/coder-history",
+      "rust_files": 7,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": [
+        "default",
+        "host"
+      ]
+    },
+    {
+      "package": "coder-labor",
+      "path": "crates/coder-labor",
+      "rust_files": 10,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [
+        "tokio-tungstenite"
+      ],
+      "feature_names": []
+    },
+    {
+      "package": "coder-mobile",
+      "path": "crates/coder-mobile",
+      "rust_files": 9,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "coder-mobile-probe",
+      "path": "crates/coder-mobile-probe",
+      "rust_files": 6,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "coder-one",
+      "path": "crates/coder-one",
+      "rust_files": 228,
+      "nostr_dependencies": [],
+      "transport_dependencies": [
+        "reqwest"
+      ],
+      "feature_names": []
+    },
+    {
+      "package": "coder-project",
+      "path": "crates/coder-project",
+      "rust_files": 13,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "coder-scheduler",
+      "path": "crates/coder-scheduler",
+      "rust_files": 8,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "coder-terminal",
+      "path": "crates/coder-terminal",
+      "rust_files": 16,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "coder-ui",
+      "path": "crates/coder-ui",
+      "rust_files": 2,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "coderbench",
+      "path": "crates/coderbench",
+      "rust_files": 11,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "discovery",
+      "path": "crates/discovery",
+      "rust_files": 4,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "gateway",
+      "path": "crates/gateway",
+      "rust_files": 32,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [
+        "axum",
+        "reqwest",
+        "tokio-tungstenite"
+      ],
+      "feature_names": []
+    },
+    {
+      "package": "gym",
+      "path": "crates/gym",
+      "rust_files": 96,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": [
+        "default",
+        "tui"
+      ]
+    },
+    {
+      "package": "gym-bridge",
+      "path": "crates/gym-bridge",
+      "rust_files": 10,
+      "nostr_dependencies": [
+        "nostr",
+        "nostr-transport"
+      ],
+      "transport_dependencies": [],
+      "feature_names": [
+        "default",
+        "host"
+      ]
+    },
+    {
+      "package": "jev",
+      "path": "crates/jev",
+      "rust_files": 30,
+      "nostr_dependencies": [],
+      "transport_dependencies": [
+        "reqwest"
+      ],
+      "feature_names": [
+        "blocking",
+        "live"
+      ]
+    },
+    {
+      "package": "kev",
+      "path": "crates/kev",
+      "rust_files": 21,
+      "nostr_dependencies": [],
+      "transport_dependencies": [
+        "axum"
+      ],
+      "feature_names": [
+        "serve",
+        "metal"
+      ]
+    },
+    {
+      "package": "knowledge",
+      "path": "crates/knowledge",
+      "rust_files": 25,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "laya",
+      "path": "crates/laya",
+      "rust_files": 14,
+      "nostr_dependencies": [],
+      "transport_dependencies": [
+        "axum"
+      ],
+      "feature_names": [
+        "serve",
+        "metal"
+      ]
+    },
+    {
+      "package": "lev",
+      "path": "crates/lev",
+      "rust_files": 32,
+      "nostr_dependencies": [],
+      "transport_dependencies": [
+        "axum"
+      ],
+      "feature_names": [
+        "serve"
+      ]
+    },
+    {
+      "package": "microcoder",
+      "path": "crates/microcoder",
+      "rust_files": 25,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [
+        "reqwest",
+        "tokio-tungstenite"
+      ],
+      "feature_names": []
+    },
+    {
+      "package": "microluna",
+      "path": "crates/microluna",
+      "rust_files": 16,
+      "nostr_dependencies": [],
+      "transport_dependencies": [
+        "reqwest"
+      ],
+      "feature_names": []
+    },
+    {
+      "package": "nostr",
+      "path": "crates/nostr",
+      "rust_files": 127,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": [
+        "default",
+        "server"
+      ]
+    },
+    {
+      "package": "nostr-relay",
+      "path": "crates/nostr-relay",
+      "rust_files": 39,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [
+        "tokio-tungstenite"
+      ],
+      "feature_names": []
+    },
+    {
+      "package": "nostr-transport",
+      "path": "crates/nostr-transport",
+      "rust_files": 2,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [
+        "tokio-tungstenite"
+      ],
+      "feature_names": []
+    },
+    {
+      "package": "oak",
+      "path": "crates/oak",
+      "rust_files": 9,
+      "nostr_dependencies": [],
+      "transport_dependencies": [
+        "axum",
+        "reqwest"
+      ],
+      "feature_names": [
+        "mcp-http"
+      ]
+    },
+    {
+      "package": "openrouter",
+      "path": "crates/openrouter",
+      "rust_files": 3,
+      "nostr_dependencies": [],
+      "transport_dependencies": [
+        "reqwest"
+      ],
+      "feature_names": []
+    },
+    {
+      "package": "plugin",
+      "path": "crates/plugin",
+      "rust_files": 6,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "plugin-code-search",
+      "path": "crates/plugin-code-search",
+      "rust_files": 1,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "plugin-outline",
+      "path": "crates/plugin-outline",
+      "rust_files": 1,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": [
+        "default",
+        "snapshot"
+      ]
+    },
+    {
+      "package": "plugin-pdk",
+      "path": "crates/plugin-pdk",
+      "rust_files": 2,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": [
+        "default",
+        "guest"
+      ]
+    },
+    {
+      "package": "plugin-repo-map",
+      "path": "crates/plugin-repo-map",
+      "rust_files": 1,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "plugin-test-report",
+      "path": "crates/plugin-test-report",
+      "rust_files": 1,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "receipts",
+      "path": "crates/receipts",
+      "rust_files": 7,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "rust-native",
+      "path": "crates/rust-native",
+      "rust_files": 6,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "supervise",
+      "path": "crates/supervise",
+      "rust_files": 12,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": [
+        "default",
+        "job"
+      ]
+    },
+    {
+      "package": "tenancy",
+      "path": "crates/tenancy",
+      "rust_files": 21,
+      "nostr_dependencies": [],
+      "transport_dependencies": [],
+      "feature_names": []
+    },
+    {
+      "package": "verse",
+      "path": "crates/verse",
+      "rust_files": 34,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [
+        "tokio-tungstenite"
+      ],
+      "feature_names": [
+        "default",
+        "desktop",
+        "model-host",
+        "xp-host",
+        "replay-host",
+        "capture"
+      ]
+    },
+    {
+      "package": "voyager",
+      "path": "crates/voyager",
+      "rust_files": 20,
+      "nostr_dependencies": [
+        "nostr"
+      ],
+      "transport_dependencies": [
+        "reqwest"
+      ],
+      "feature_names": []
+    }
+  ]
+}
