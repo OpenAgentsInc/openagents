@@ -168,8 +168,17 @@ accepts `finished` only when all of them pass."
             };
             out.push_str(&format!("\n## {}: {status}{before}\n", test.name));
             if !result.ok() {
+                // The script, numbered, so a traceback's line number points
+                // at the assertion that failed.
+                let numbered: String = test
+                    .script
+                    .lines()
+                    .enumerate()
+                    .map(|(n, line)| format!("{:>3}  {line}\n", n + 1))
+                    .collect();
                 out.push_str(&format!(
-                    "\n```\n{}\n```\n",
+                    "\nThe frozen script:\n\n```\n{}\n```\n\nIts output:\n\n```\n{}\n```\n",
+                    cut(numbered.trim_end(), 4_000, 0),
                     cut(result.output.trim_end(), 600, 1_200)
                 ));
             }

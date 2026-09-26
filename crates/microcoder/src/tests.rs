@@ -341,6 +341,7 @@ async fn finished_waits_for_the_frozen_tests_to_pass() {
     assert!(prompts[0].contains("None frozen yet"));
     assert!(prompts[1].contains("no acceptance tests are frozen"));
     assert!(prompts[3].contains("## b.sh: FAIL"));
+    assert!(prompts[3].contains("The frozen script:\n\n```\n  1  check b\n```"));
     assert!(prompts[4].contains("1 acceptance tests fail"));
     let tested = log
         .0
