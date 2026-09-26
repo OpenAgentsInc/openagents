@@ -20,6 +20,7 @@ Configure Coder, run work, and verify retained artifacts.
 | [headless](headless.md) | Headless mode |
 | [install](install.md) | Install this repository's build as `coder`, roll back, and run `coder doctor` |
 | [knowledge-base](knowledge-base.md) | Find, write, measure, admit, and share knowledge-base entries with `microcoder kb` |
+| [microcoder](microcoder.md) | Run the simple Jev and OpenRouter loop on a Terminal-Bench 4 task |
 | [program-authority](program-authority.md) | Program authority |
 | [project-supervision](project-supervision.md) | Capacity-aware project supervision |
 | [tracker-intake](tracker-intake.md) | Scoped tracker intake |

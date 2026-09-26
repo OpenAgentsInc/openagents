@@ -5,6 +5,16 @@ replaces "route to a stronger model when things go wrong" with "give the
 cheap model the structure it needs to not go wrong." The measurements it
 cites are in [`docs/terminal-bench/`](../../terminal-bench/README.md).
 
+Update, 2026-09-25: the harness half of this plan moved from Microluna to
+[Microcoder](../guides/microcoder.md), the simple loop on OpenRouter
+(issue [#9666](https://github.com/OpenAgentsInc/openagents/issues/9666)).
+Microluna's policy versions, oracles, and fire-loop cards won on one task
+and were set aside. The Jev structure below still applies. Microcoder adds
+a shared [knowledge base](knowledge-base.md), which the
+[thesis](thesis.md) now counts as a third factor beside the contract and
+the loop. Routing to a stronger model exists in Microcoder but is off by
+default.
+
 ## The thesis
 
 The general argument, with its predictions and what would falsify it, is
