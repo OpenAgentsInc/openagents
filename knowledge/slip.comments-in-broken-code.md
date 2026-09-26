@@ -16,7 +16,7 @@ applies_when: >-
 status: admitted
 author: openagents
 provenance:
-  written_from: [reference]
+  written_from: [reference, embedding-drift-monitor-1790393791]
   cites:
     - "Kernighan and Pike, The Practice of Programming (1999), section 1.6, Comments"
     - "Zeller, Why Programs Fail, 2nd edition (2009), chapter 6, Scientific Debugging"

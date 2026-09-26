@@ -88,7 +88,9 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Every word of an entry, for the checks.
+/// Every word of an entry the model can see, for the checks. Provenance
+/// is left out: it names the runs an entry came from, and the prompt never
+/// shows it.
 fn full_text(entry: &Entry) -> String {
     [
         entry.id.as_str(),
@@ -97,7 +99,6 @@ fn full_text(entry: &Entry) -> String {
         &entry.tags.join(" "),
         &entry.applies_when,
         &entry.cites.join(" "),
-        &entry.written_from.join(" "),
         &entry.body,
     ]
     .join("\n")
