@@ -1,0 +1,24 @@
+[package]
+name = "microcoder"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Microcoder: the simple coding loop. Jev judges the state, one OpenRouter call returns the next shell commands, the host runs them."
+publish.workspace = true
+
+[[bin]]
+name = "microcoder"
+path = "src/main.rs"
+
+[dependencies]
+jev = { path = "../jev" }
+openrouter = { path = "../openrouter" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "signal"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "signal", "test-util"] }
+
+[lints]
+workspace = true

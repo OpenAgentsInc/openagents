@@ -3086,6 +3086,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "microcoder"
+version = "0.1.0"
+dependencies = [
+ "jev",
+ "openrouter",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "microluna"
 version = "0.1.0"
 dependencies = [

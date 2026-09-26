@@ -1,0 +1,29 @@
+//! Microcoder: the simple coding loop.
+//!
+//! ```text
+//! state = { environment, task }
+//! while next_action isn't finished:
+//!     jev_results = jev(state, user_prompt)
+//!     prompt      = state + user_prompt + jev_results
+//!     next_action = generate(prompt)        # one OpenRouter call, structured
+//!     run next_action's commands
+//! ```
+//!
+//! [`run::run`] is the loop. [`models`] holds the two calls a step makes: Jev
+//! through `crates/jev`, and one structured OpenRouter call through
+//! `crates/openrouter`, GPT-6 Luna by default. [`env`] is where commands run.
+//! [`tbench`] runs the loop on a Terminal-Bench 4 task, and [`show`] streams a
+//! run to the terminal. Issues #9666 to #9669 hold the design.
+
+pub mod env;
+pub mod models;
+pub mod run;
+pub mod show;
+pub mod state;
+pub mod tbench;
+
+/// The default model.
+pub const MODEL: &str = "openai/gpt-6-luna";
+
+#[cfg(test)]
+mod tests;

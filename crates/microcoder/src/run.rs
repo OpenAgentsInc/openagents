@@ -1,0 +1,257 @@
+//! The loop.
+//!
+//! ```text
+//! while next_action isn't finished:
+//!     jev_results = jev(state, user_prompt)
+//!     prompt      = state + user_prompt + jev_results
+//!     next_action = generate(prompt)
+//!     run next_action's commands
+//! ```
+//!
+//! Every generation is built fresh from the current state. There's no
+//! conversation: no earlier model reply is sent back as a message.
+
+use std::time::{Duration, Instant};
+
+use serde::Serialize;
+use serde_json::json;
+
+use crate::env::Env;
+use crate::models::{Generate, Generated, Judge, Judgment, NextAction, QuestionSet};
+use crate::state::{Action, CommandResult, State, cut};
+
+/// What every generation is told, before the prompt.
+pub const SYSTEM: &str = "You work on a task by running shell commands in its working \
+directory. Each reply is one step: the commands to run next and why. You see the task, the \
+environment, what earlier steps ran and printed, and judgments from Jev, a decision model, \
+about the state. Treat Jev's judgments as evidence, not orders. Commands run in order with sh -c \
+and stop at the first one that fails; nobody answers questions, and there is no editor. Write \
+files with shell redirection or heredocs. Set `finished` to true, with no commands, only when \
+the task is complete.";
+
+/// The default user prompt.
+pub const USER_PROMPT: &str = "Solve this task.";
+
+/// When the loop stops, besides a finished action.
+#[derive(Clone, Debug, Serialize)]
+pub struct Limits {
+    pub max_steps: usize,
+    pub max_seconds: u64,
+    /// Dollars of model and Jev spend.
+    pub max_usd: f64,
+    /// Seconds one command may run.
+    pub command_seconds: u64,
+    /// Replies in a row that don't match the format before the loop stops.
+    pub max_bad_replies: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits {
+            max_steps: 60,
+            max_seconds: 3_600,
+            max_usd: 1.0,
+            command_seconds: 300,
+            max_bad_replies: 3,
+        }
+    }
+}
+
+/// Why the loop stopped.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case", tag = "reason", content = "detail")]
+pub enum Ending {
+    Finished,
+    StepLimit,
+    TimeLimit,
+    SpendLimit,
+    BadReplies(String),
+}
+
+/// What the loop reports as it runs.
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+pub enum Event {
+    Judged {
+        step: usize,
+        judgment: Judgment,
+    },
+    Generated {
+        step: usize,
+        prompt_chars: usize,
+        generated: Generated,
+    },
+    Ran {
+        step: usize,
+        result: CommandResult,
+    },
+    Ended {
+        outcome: Outcome,
+    },
+}
+
+/// Where events go.
+pub trait Observer {
+    fn event(&mut self, seconds: f64, event: &Event);
+}
+
+/// The run's totals.
+#[derive(Clone, Debug, Serialize)]
+pub struct Outcome {
+    pub ending: Ending,
+    pub steps: usize,
+    pub seconds: f64,
+    pub model_usd: f64,
+    pub jev_usd: f64,
+}
+
+/// Builds one step's prompt from the state, the user prompt, and Jev's
+/// judgment.
+#[must_use]
+pub fn prompt(state: &State, user_prompt: &str, jev: &str) -> String {
+    let mut out = format!(
+        "# Task\n\n{}\n\n# Instruction\n\n{user_prompt}\n\n# Environment\n\n{}\n\n# Jev's judgments of the current state\n\n{jev}\n\n# Steps so far\n\n{}",
+        state.task,
+        state.environment,
+        state.render_actions()
+    );
+    if !state.notes.is_empty() {
+        out.push_str("\n\n# Notes from the host\n\n");
+        for note in &state.notes {
+            out.push_str(&format!("- {note}\n"));
+        }
+    }
+    out
+}
+
+/// The state Jev reads.
+fn jev_state(state: &State) -> serde_json::Value {
+    json!({
+        "task": cut(&state.task, 6_000, 0),
+        "environment": cut(&state.environment, 1_500, 0),
+        "actions": cut(&state.render_actions(), 4_000, crate::models::JEV_STATE_CHARS - 4_000),
+    })
+}
+
+/// The two model calls and the questions Jev answers.
+pub struct Models<'a, G: Generate, J: Judge> {
+    pub generator: &'a G,
+    pub judge: &'a J,
+    pub set: &'a QuestionSet,
+}
+
+/// Runs the loop until the model finishes or a limit stops it.
+pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
+    mut state: State,
+    user_prompt: &str,
+    env: &E,
+    models: &Models<'_, G, J>,
+    limits: &Limits,
+    observer: &mut O,
+) -> (State, Outcome) {
+    let started = Instant::now();
+    let mut model_usd = 0.0;
+    let mut jev_usd = 0.0;
+    let mut bad = 0usize;
+    let mut step = 0usize;
+    let ending = loop {
+        if step >= limits.max_steps {
+            break Ending::StepLimit;
+        }
+        if started.elapsed() >= Duration::from_secs(limits.max_seconds) {
+            break Ending::TimeLimit;
+        }
+        if model_usd + jev_usd >= limits.max_usd {
+            break Ending::SpendLimit;
+        }
+        step += 1;
+        let judgment = models.judge.judge(&jev_state(&state)).await;
+        jev_usd += judgment.usd;
+        let jev_text = judgment.render(models.set);
+        observer.event(
+            started.elapsed().as_secs_f64(),
+            &Event::Judged { step, judgment },
+        );
+        let text = prompt(&state, user_prompt, &jev_text);
+        let generated = models.generator.generate(SYSTEM, &text).await;
+        model_usd += generated.usd;
+        observer.event(
+            started.elapsed().as_secs_f64(),
+            &Event::Generated {
+                step,
+                prompt_chars: text.len(),
+                generated: generated.clone(),
+            },
+        );
+        let action: NextAction = match generated.action {
+            Ok(action) => {
+                bad = 0;
+                action
+            }
+            Err(error) => {
+                bad += 1;
+                if bad >= limits.max_bad_replies {
+                    break Ending::BadReplies(error);
+                }
+                state.notes.push(format!(
+                    "Step {step}'s reply couldn't be used ({}); reply with the JSON object the format asks for.",
+                    cut(&error, 300, 0)
+                ));
+                continue;
+            }
+        };
+        if action.finished && action.commands.is_empty() {
+            state.actions.push(Action {
+                step,
+                rationale: action.rationale,
+                results: Vec::new(),
+                skipped: Vec::new(),
+            });
+            break Ending::Finished;
+        }
+        let mut results = Vec::new();
+        let mut skipped = Vec::new();
+        let mut failed = false;
+        for command in &action.commands {
+            if failed {
+                skipped.push(command.clone());
+                continue;
+            }
+            let result = env
+                .run(command, Duration::from_secs(limits.command_seconds))
+                .await;
+            failed = !result.ok();
+            observer.event(
+                started.elapsed().as_secs_f64(),
+                &Event::Ran {
+                    step,
+                    result: result.clone(),
+                },
+            );
+            results.push(result);
+        }
+        state.actions.push(Action {
+            step,
+            rationale: action.rationale,
+            results,
+            skipped,
+        });
+        if action.finished && !failed {
+            break Ending::Finished;
+        }
+    };
+    let outcome = Outcome {
+        ending,
+        steps: step,
+        seconds: started.elapsed().as_secs_f64(),
+        model_usd,
+        jev_usd,
+    };
+    observer.event(
+        outcome.seconds,
+        &Event::Ended {
+            outcome: outcome.clone(),
+        },
+    );
+    (state, outcome)
+}
