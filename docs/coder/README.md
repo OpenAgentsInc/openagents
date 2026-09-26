@@ -27,7 +27,9 @@ for durable tasks, mobile control, CoderOS, and agent labor.
 [Beating Fable together](beat-fable-together.md) is the plan after Episode
 288: make the Microcoder wins visible in the Gym, run a pre-registered
 out-of-sample knowledge test, open the knowledge base to contributors, and
-bring that work into Verse as quests and XP.
+bring that work into Verse as quests and XP. The
+[showcase](beat-fable-showcase.md) is its public write-up: where Microcoder
+beats Fable 5.1 low, with the Gym's labels, and how to join.
 
 The [local task inbox](guides/tasks.md) records, inspects, and cancels queued
 requests across process restarts. It is the first task-contract slice;

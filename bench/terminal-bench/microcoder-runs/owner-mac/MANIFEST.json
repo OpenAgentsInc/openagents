@@ -1,0 +1,25 @@
+{
+ "schema": "openagents.gym.microcoder-retained.v1",
+ "host": "owner-mac",
+ "source": "~/.openagents/microcoder/runs on owner-mac",
+ "copied_at": "2026-09-26T18:15:51+00:00",
+ "files": "summary.json and events.jsonl only; artifacts/ is not retained",
+ "commit_rule": "attributed, not recorded: the last commit to crates/microcoder on main at or before the run's start",
+ "runs": [
+  {
+   "name": "react-lead-form-1790398548",
+   "files": {
+    "events.jsonl": "sha256:f70de08c24e494d0e93a191523bb59c9598483c46e75d458ce92fe22338d8866"
+   },
+   "commit": "50288027e3"
+  },
+  {
+   "name": "react-lead-form-1790398585",
+   "files": {
+    "summary.json": "sha256:2bd8eee5af5cad5779e7fdc14a7c5e2e315d1fe3cbc315c0e4ef1078aff92e21",
+    "events.jsonl": "sha256:7f57881fec0c5cc2d38cfd9e83f6a0b22688e97884fb6310c766b65a596e8d7a"
+   },
+   "commit": "50288027e3"
+  }
+ ]
+}

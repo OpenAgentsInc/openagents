@@ -194,6 +194,9 @@ referee published 11 NIP-XP quests, one per task Microcoder has run and
 doesn't beat Fable on. While the out-of-sample study runs, quests name only
 those tasks. Since #9687, a runner measures and publishes evidence about
 another author's synced entry, so a quest can be completed end to end.
+The [showcase](beat-fable-showcase.md) is the write-up: the `beats-winner`
+claims with their labels, the mechanism, the out-of-sample study's status,
+and the open call.
 
 ### Stage 5: the segue to Verse
 
