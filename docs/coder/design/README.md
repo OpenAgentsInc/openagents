@@ -26,6 +26,7 @@ discovery, and package distribution.
 | [pattern-components](pattern-components.md) | Patterns as components: where the v8 to v13 wording came from, what Fable's pass did step by step, and how recurring patterns become selectable components instead of fitted wording |
 | [coder-as-decision-router-consumer](coder-as-decision-router-consumer.md) | Coder as a Decision Router consumer |
 | [coder-terminal-v05-algorithm-and-goldens](coder-terminal-v05-algorithm-and-goldens.md) | Proposed v0.5 algorithm, Terminal-Bench panel, golden evidence, and NIP mapping |
+| [Coder suite migration](coder-suite-migration.md) | Source-based gap analysis of the private Coder product and a phased public roadmap for durable tasks, mobile, CoderOS, TypeSafe/Microcoder, extensions, and agent labor |
 | [decision-function-inventory](decision-function-inventory.md) | Coder decision-function inventory |
 | [knowledge-base](knowledge-base.md) | The shared knowledge base: entries, retrieval, expansion, admission by measurement, and sharing over Nostr (NIP-KB) |
 | [luna-pivot](luna-pivot.md) | The Luna pivot: Jev structure around GPT-6 Luna, and the Microluna harness (superseded by Microcoder for the harness) |

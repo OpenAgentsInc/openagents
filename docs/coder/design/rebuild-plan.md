@@ -11,6 +11,10 @@ interfaces; mobile, web, managed workers, optional sync, and Coder OS extend
 the same product. Build thin views and host adapters around one task runtime.
 Keep agent labor on its [high-priority parallel track](../../agents/market-infrastructure.md).
 
+The [Coder suite migration roadmap](coder-suite-migration.md) inventories the
+private reference implementation and specifies the public reimplementation
+sequence for the task host, clients, CoderOS, and supporting capabilities.
+
 ## Agent structure
 
 Use one host execution path for interactive and automated tasks. The host

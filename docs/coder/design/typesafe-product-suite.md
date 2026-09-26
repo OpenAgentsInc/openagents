@@ -17,6 +17,11 @@ headless integrations, mobile, web, and an opinionated computer environment.
 Agent labor remains a high-priority parallel track: the same product can
 hire an outside agent or let its operator offer bounded work.
 
+The [private-product migration assessment](coder-suite-migration.md) adds a
+source-based inventory of the existing mobile, desktop, web, and CoderOS
+designs. Its roadmap maps those designs to the public runtime, identifies
+implementation gaps, and sequences fresh implementations with release gates.
+
 The design commitment is to implement and evaluate every opportunity below,
 not to enable every feature or insert a Jev call into every operation.
 Retain negative findings. A feature earns its default setting through useful

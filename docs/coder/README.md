@@ -12,6 +12,13 @@ and release tests. The [networked Coder plan](design/networked-coder-plan.md)
 connects that product to measured coding quality, reusable knowledge, and the
 high-priority [agent labor track](../agents/market-infrastructure.md).
 
+The [Coder suite migration roadmap](design/coder-suite-migration.md) reviews
+the private Coder implementation as design reference. It identifies what to
+reimplement for mobile, desktop, web, CoderOS, and remote execution, with
+source evidence, current public gaps, dependencies, and release gates. The
+shared task host and measured TypeSafe/Microcoder integration connect those
+interfaces without importing the private backend.
+
 The [teardown integration plan](design/teardown-nostr-integration.md) brings
 81 archived research documents into that direction. It links the complete
 source ledger, six new draft Nostr profiles, and ordered implementation gates

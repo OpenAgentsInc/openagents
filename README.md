@@ -379,6 +379,7 @@ For further design and operation:
 
 - [Roadmap](docs/roadmap.md): one ordered plan from the transcript archive, folding the legacy threads (plugins, payments, Nostr, compute, products) into the current direction.
 - [Coder documentation](docs/coder/README.md), [TypeSafe-agent analysis](docs/coder/design/typesafe-agent-analysis.md), and [delivery roadmap](docs/coder/design/typesafe-agent-roadmap.md).
+- [Coder suite migration](docs/coder/design/coder-suite-migration.md): private-product gap analysis and the public roadmap for mobile, CoderOS, durable tasks, and TypeSafe/Microcoder integration.
 - [Project supervision](docs/coder/guides/project-supervision.md) and [Devin delegation](docs/coder/guides/devin-delegation-runbook.md).
 - [Programs](docs/programs.md), [extensions](docs/extensions/README.md), and [optimization proposals](docs/optimization/proposed-issues.md). The full DSPy/GEPA integration remains proposed.
 - [Decision models](docs/decision-models/README.md), including [Kev](docs/kev/README.md), [Laya](docs/laya/README.md), and [Lev](docs/lev/README.md).
