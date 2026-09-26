@@ -10,8 +10,10 @@ Status: partial. One world exists, and players share it over Nostr with
 avatars and agents move and turn, and the relay remembers where everyone
 left. A quest board on the plaza lists live
 [NIP-XP](../../nips/openagents/NIP-XP.md) quests, and the HUD shows your XP,
-level, and titles. Other live OpenAgents state (Pylons, runs, sats) is not
-implemented.
+level, and titles. `R` replays a retained Microcoder run as the agent's
+visits to the workbench, oracle, library, and proving ground, beside a
+ghost of Fable 5.1 low's cheapest winning run. Other live OpenAgents state
+(Pylons, live runs, sats) is not implemented.
 
 ## Run it
 
@@ -182,6 +184,78 @@ cargo run -p verse --release -- --xp-relay ws://127.0.0.1:7490 \
 publishes a fresh completion and checks the board derives its XP, title,
 and quest row.
 
+## Run replays
+
+A replay plays a retained Microcoder run as your agent's visits to places
+in the world. Beside it, a ghost replays Fable 5.1 low's cheapest winning
+run on the same task. It is the Gym's `W` head-to-head
+([`docs/gym/head-to-head.md`](../gym/head-to-head.md)), spatialized.
+
+![A replay 33 seconds into embedding-drift-monitor: the agent at the proving ground, the ghost at the workbench](replay.png)
+
+**Start one.** Press `R` in the world to list the retained runs the Gym's
+`beats-winner` rule cites: Microcoder passes in
+`bench/terminal-bench/microcoder-runs/` that cost less than Fable's
+cheapest winning run on the task, or finished faster than its fastest. Each
+row shows the run's cost and time, then the Fable run's, and the labels.
+Up and Down choose, and Enter plays. To start with a replay, pass a run
+directory or a Gym run ID:
+
+```sh
+cargo run -p verse --release -- --offline \
+  --replay microcoder/embedding-drift-monitor-1790394524
+```
+
+**Where the agents go.** Four landmarks stand around the plaza, drawn in
+the same amber lines. Directions are as seen from the spawn, facing the
+pylon. Each event in the run's `events.jsonl` is a visit:
+
+| Event | Place |
+| --- | --- |
+| A model step, or a command it ran | The workbench, a table to the left |
+| A Jev question (progress, a disputed test, coverage, conformance) | The oracle, a door ahead and to the left |
+| Knowledge retrieval, or an entry shown in full | The library, a hall of shelves ahead and to the right |
+| Acceptance tests, or a timed verifier record | The proving ground, a ring of posts beyond the pylon |
+| The finish | The plaza |
+
+An event is written when its work ends, so a visit spans from the
+previous event to its own. Before the first event and after the last, an
+agent waits on the plaza. The retained runs record the task's verifier
+without a loop time, so grading shows as the result line, not as a visit.
+
+The ghost, a spade one step down the amber ladder, maps Fable's trajectory
+coarsely. A tool call is the workbench, a step the Gym's phase rules place
+as a test or a check is the proving ground, and its finish call is the
+plaza. A step the rules leave unplaced takes Jev's stored phase when
+`gym runs fingerprint` saved one; a replay never asks Jev. On the three
+in-sample tasks, Fable's cheapest runs check their work with inline
+scripts the rules leave unplaced, so the ghost stays at the workbench.
+
+Both sides read through the Gym's own code (`gym::runs_microcoder`,
+`gym::runs_beats_winner`, `gym::runs_replay`, and `gym::runs_phases`), so a
+replay and `gym runs` agree on every number. Fable's transcript is read
+from the public replay cache; when it isn't on this computer, the replay
+plays without a ghost and says how to fetch it
+(`cd bench/terminal-bench && uv run python -m tbench.public_replays`).
+
+**The HUD.** The top right shows the task, the speed, and the labels every
+number carries (in-sample or out-of-sample, knowledge-assisted, provider,
+cost basis). For each side it shows the elapsed time against its length,
+the cost, where it is, and what it is doing. Microcoder's cost grows with
+the model and Jev costs its events record; Fable's is the public record's
+total, which has no per-step breakdown. When a side finishes, its result
+line shows the outcome, cost, and time, and a passing spade spins. The two
+times differ in kind: Microcoder's is its loop time, and Fable's is the
+public trial's wall time, which includes setup and grading.
+
+| Key | Effect |
+| --- | --- |
+| `R` | Open or close the replay list. |
+| `1` / `2` / `3` | Play at 1×, 10×, or 60×. |
+| `P` | Pause or resume. At the end, play again. |
+| `Home` | Restart from zero. |
+| `Esc` | Stop the replay; your agent comes back to you. |
+
 ## The agent
 
 The agent is a spade from a deck of cards, extruded into 3D and drawn like
@@ -207,7 +281,7 @@ It also plays emotes over that motion:
 | Barrel roll | At random while idle. | One full roll around its facing axis, rising a little. |
 | Greet | Its agent comes within 7 m of another player's online agent, or that agent greets it first. | Turns to face the other agent, bows twice, and hops. Sends a `greet` gesture addressed to the other agent, whose player greets back. Each pair greets at most once every 45 s. |
 
-The agent has no behavior yet beyond following and emoting. Its game design is in
+Beyond following and emoting, the agent only plays [run replays](#run-replays). Its game design is in
 [`gdd.md`](gdd.md).
 
 ## Controls
@@ -229,9 +303,10 @@ The agent has no behavior yet beyond following and emoting. Its game design is i
 | `T` | Talk to your agent, privately. Its reply appears over the spade. |
 | `N` | Switch the world chat window between WORLD and live NOSTR notes. |
 | `B` | Open or close the quest board. |
+| `R` | Open or close the [run replay](#run-replays) list. `1`, `2`, and `3` set a replay's speed, `P` pauses it, and `Home` restarts it. |
 | `Page Up` / `Page Down` | Scroll the open quest board. The mouse wheel over it does too. |
 | `/` | Open the chat line with a shortcut: `/a`, `/$`, `/z`, `/n`, `/h`, `/r room`, `/name`. |
-| `Esc` | Close the chat line or the quest board, or quit when both are closed. |
+| `Esc` | Close the chat line, the quest board, or the replay list; stop a replay; or quit. |
 
 While a mouse button is held, the cursor is hidden and locked. When the
 character moves and the left button is up, the camera swings back behind it.
@@ -257,6 +332,17 @@ cargo run -p verse --release -- \
 | `--board` | Open the quest board in the shot. |
 | `--xp-relay <url>` | Read quests and awards from this relay before the shot, for up to 12 s. Without it the HUD shows offline. |
 | `--xp-referee <npub>`, `--xp-key <npub>` | As in the game: trust a referee, count a key's XP as yours. |
+| `--replay <run>` | Show this run replaying, with its ghost and HUD. |
+| `--at <seconds>` | How far into the replay to show. Default: halfway. |
+
+The replay picture above is:
+
+```sh
+cargo run -p verse --release -- --offline \
+  --replay microcoder/embedding-drift-monitor-1790394524 --at 33 \
+  --orbit -35 --distance 40 --pitch 38 --size 1200x750 \
+  --capture docs/verse/replay.png
+```
 
 ## Design
 
@@ -312,7 +398,7 @@ The character collides with building footprints and the world edge.
 | [`src/app.rs`](../../crates/verse/src/app.rs) | winit event loop, key and button state, cursor capture, the frame step. |
 | [`src/controller.rs`](../../crates/verse/src/controller.rs) | `InputState`, `PlayerController`, footprints, collision. |
 | [`src/camera.rs`](../../crates/verse/src/camera.rs) | `FollowCamera`: orbit, mouselook, zoom, settle, view-projection. |
-| [`src/world.rs`](../../crates/verse/src/world.rs) | Seeded city, ground grid, pylon, horizon. The same city every launch. |
+| [`src/world.rs`](../../crates/verse/src/world.rs) | Seeded city, ground grid, pylon, quest board, replay landmarks, horizon. The same city every launch. |
 | [`src/avatar.rs`](../../crates/verse/src/avatar.rs) | The boxy line character and its distance-driven walk cycle. |
 | [`src/agent.rs`](../../crates/verse/src/agent.rs) | The floating spade agent: spring follow, bob, wobble, emotes, scan requests, and geometry. |
 | [`src/mv.rs`](../../crates/verse/src/mv.rs) | NIP-MV: kinds, frame, state, and gesture content, signing, cells, and validation. |
@@ -324,6 +410,7 @@ The character collides with building footprints and the world edge.
 | [`src/hud.rs`](../../crates/verse/src/hud.rs) | Chat windows, input line, name tags, and speech bubbles. |
 | [`src/brain.rs`](../../crates/verse/src/brain.rs) | The agent's side of AGENT chat: door choice, instructions, streamed replies. |
 | [`src/xp.rs`](../../crates/verse/src/xp.rs) | NIP-XP reading: the reader thread, the snapshot of quests, XP, and titles, the level curve, and the board and HUD text. `src/xp/fixture.rs` holds throwaway signed fixtures. |
+| [`src/replay.rs`](../../crates/verse/src/replay.rs) | Run replays: events to visits, the shared clock, the `beats-winner` list, the ghost, and the HUD lines. |
 | [`src/feed.rs`](../../crates/verse/src/feed.rs) | The NOSTR tab: public notes from damus and primal, filtering, pacing, and stand-ins. |
 | [`src/ui.rs`](../../crates/verse/src/ui.rs), [`src/ui.wgsl`](../../crates/verse/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
 | [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
@@ -331,8 +418,9 @@ The character collides with building footprints and the world edge.
 | [`src/render.rs`](../../crates/verse/src/render.rs), [`src/shader.wgsl`](../../crates/verse/src/shader.wgsl) | Pipelines, fog, the window renderer, and PNG capture. |
 
 Test the crate with `cargo test -p verse`. Tests cover the controller rules,
-the camera limits, the world's determinism and clear spawn, and the palette
-guard. They do not need a GPU.
+the camera limits, the world's determinism and clear spawn, the palette
+guard, and replays: the event-to-visit mapping, visit timing, the clock's
+speeds, and a retained win read through the Gym. They do not need a GPU.
 
 ## Game design
 

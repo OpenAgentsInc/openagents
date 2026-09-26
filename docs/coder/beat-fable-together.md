@@ -275,7 +275,12 @@ lists the live NIP-XP quests from `relay.openagents.com`, with each quest's
 task, bar, Fable 5.1 low reference cost and time, award, season, and award
 count. The HUD shows the player's XP, level, and achievement titles,
 derived with `knowledge::xp` under the player's trust list, and name tags
-show other players' levels. Run replays and the Gym's own best cost and
+show other players' levels. Run replays are in too
+([how](../verse/README.md#run-replays)): `R` lists the retained Microcoder
+passes the `beats-winner` rule cites, and a replay plays one as the spade's
+visits to the workbench, oracle, library, and proving ground, beside a
+dimmer ghost of Fable 5.1 low's cheapest winning run, with each side's
+time, cost, labels, and result on the HUD. The Gym's own best cost and
 time on each quest are still to come, and linking a player's Verse key to
 the knowledge keys that earn XP needs a signed claim that doesn't exist
 yet (today a player passes `--xp-key`).
