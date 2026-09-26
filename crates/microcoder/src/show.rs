@@ -338,6 +338,85 @@ impl Observer for Terminal {
                 }
                 self.line(seconds, &text);
             }
+            Event::Gated { step, checked } => {
+                let answers: Vec<String> = checked
+                    .judgments
+                    .iter()
+                    .flat_map(|j| j.answers.iter())
+                    .filter(|(_, p)| *p >= 0.5)
+                    .map(|(id, p)| format!("{id} {p:.2}"))
+                    .collect();
+                let verdict = if checked.refused {
+                    "sent back"
+                } else {
+                    "passed"
+                };
+                self.line(
+                    seconds,
+                    &format!(
+                        "{} {verdict}{}",
+                        self.paint(
+                            "1;35",
+                            &format!("step {step} · {} check before ending", checked.check)
+                        ),
+                        if answers.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" · {}", answers.join(" · "))
+                        }
+                    ),
+                );
+                for detail in &checked.detail {
+                    println!("        {}", one_line(detail, 160));
+                }
+            }
+            Event::OracleStep(step) => {
+                let why = match &step.generated.action {
+                    Ok(action) => action.rationale.clone(),
+                    Err(error) => format!("unusable reply: {error}"),
+                };
+                self.line(
+                    seconds,
+                    &format!(
+                        "{} {} · {}",
+                        self.paint("1;36", &format!("oracle step {}", step.step)),
+                        one_line(&why, 200),
+                        dollars(step.generated.usd, 5)
+                    ),
+                );
+                for result in &step.results {
+                    println!(
+                        "        $ {} → {}",
+                        one_line(&result.command, 100),
+                        if result.ok() { "ok" } else { "failed" }
+                    );
+                }
+            }
+            Event::Oracle { report } => {
+                self.line(
+                    seconds,
+                    &format!(
+                        "{} {} steps · kept {} · dropped as already passing {}{}",
+                        self.paint("1;36", "oracle"),
+                        report.steps,
+                        if report.kept.is_empty() {
+                            "none".to_string()
+                        } else {
+                            report.kept.join(", ")
+                        },
+                        if report.trivial.is_empty() {
+                            "none".to_string()
+                        } else {
+                            report.trivial.join(", ")
+                        },
+                        report
+                            .stopped
+                            .as_ref()
+                            .map(|why| format!(" · stopped by {why}"))
+                            .unwrap_or_default()
+                    ),
+                );
+            }
             Event::Ended { outcome } => {
                 let why = match &outcome.ending {
                     Ending::Finished => "the model finished".to_string(),

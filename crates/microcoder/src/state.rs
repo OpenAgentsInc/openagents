@@ -69,6 +69,9 @@ pub struct State {
     pub expanded: Vec<String>,
     /// Frozen tests Jev judged wrong when the model said it was finished.
     pub dropped: Vec<Dropped>,
+    /// Checks a separate session wrote from the task alone (`--oracle`),
+    /// frozen with the model's tests at its first freeze.
+    pub oracle: Vec<Test>,
 }
 
 /// A frozen test dropped as wrong.
@@ -177,7 +180,21 @@ impl State {
 write one bash test per requirement as {dir}/<name>.sh. A test exits 0 only when its requirement \
 is met, so most should fail now, and finishes within a minute. Cover every requirement and symptom the task states. Then set \
 `freeze_tests` to true. The host freezes the tests, runs its own copies after every step, and \
-accepts `finished` only when all of them pass."
+accepts `finished` only when all of them pass.{}",
+                if self.oracle.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " A separate session has already written independent checks from the \
+task's statement alone, before any solution existed; they are frozen with your tests and must \
+pass too: {}.",
+                        self.oracle
+                            .iter()
+                            .map(|t| t.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                }
             );
         };
         let mut out = format!(

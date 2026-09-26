@@ -1,0 +1,10 @@
+{
+  "id": "openagents.microcoder.requirements.v1",
+  "note": "What Jev answers, with --gate-requirements, before a run that has every frozen test passing may end: one question per statement of the task, which code quotes from the instruction (its sentences, list items, and fenced blocks), in one request per 20 statements. The host replaces {entry} with the key that holds the statement (entry_1, entry_2, and so on). A statement answered yes with probability 0.6 or more is named in a note that sends the run back to test it; each statement is named at most once. Change the wording here, not in code; the file is digested into every run's record.",
+  "questions": [
+    {
+      "id": "unchecked",
+      "text": "The statement in `{entry}` is quoted from the task in `task`. `tests` holds every acceptance test written for the task, and they all pass. Does the statement set a requirement on the finished work, such as an output, file, field, format, value, behavior, or constraint, that none of the tests in `tests` checks, so the tests would still pass if the work ignored the statement?"
+    }
+  ]
+}

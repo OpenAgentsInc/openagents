@@ -23,8 +23,11 @@ Fable 5.1 low's time and cost on the same task.
 
 Options:
   --model SLUG       the model (default gpt-6-luna)
-  --provider NAME    codex (the operator's Codex login, the default) or
-                     openrouter (OPENROUTER_API_KEY)
+  --provider NAME    codex (the operator's Codex login, the default),
+                     openrouter (OPENROUTER_API_KEY), or door (the OpenAgents
+                     door at openagents.com/v1/responses on OPENAGENTS_API_KEY
+                     or ~/.openagents/bearer; name a gateway model such as
+                     --model google/gemini-3.8-flash)
   --effort LEVEL     low, medium, or high (default medium)
   --strong-model SLUG  the model that writes the acceptance tests on
                      a task Jev judges hard (default gpt-6-sol)
@@ -48,6 +51,25 @@ Options:
                      as candidates) (default the trust file's mode, else own)
   --kb-lexical       rank knowledge entries by words alone, without embeddings;
                      summary.json records the retrieval mode either way
+  --gate-requirements  before a run with every frozen test passing ends, Jev
+                     checks each statement of the task for a test that
+                     checks it, and sends the run back to test the ones
+                     without one (at most twice)
+  --gate-target      the same, once, for a numeric target no test measures
+  --gate-credible    ask the model to say whether its solution is credible when
+                     it finishes, and send the run back (at most twice) when
+                     Jev judges its recent reasoning doubts the solution
+  --doubt-threshold P  Jev's probability of doubt that sends the run back
+                     (default 0.9)
+  --adversarial N    before a green run ends, send it back up to N times to
+                     write tests that try to break the solution, while under
+                     --budget-fraction of the time and spend limits (default 0)
+  --budget-fraction F  the share of the limits adversarial rounds may use
+                     (default 0.5)
+  --oracle           before the loop, a separate session writes checks from the
+                     task's statement and files alone; those that fail on the
+                     untouched workspace are frozen with the model's tests
+  --oracle-steps N   steps the oracle session may take (default 8)
   --keep             leave the container running afterward
   --check-grading    run the task's reference solution instead of the loop,
                      then grade it: a check that grading works, at no model cost
@@ -111,9 +133,9 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--model" => options.model = value()?,
             "--provider" => {
                 options.provider = value()?;
-                if options.provider != "codex" && options.provider != "openrouter" {
+                if !["codex", "openrouter", "door"].contains(&options.provider.as_str()) {
                     return Err(format!(
-                        "--provider wants codex or openrouter, not {}",
+                        "--provider wants codex, openrouter, or door, not {}",
                         options.provider
                     ));
                 }
@@ -157,6 +179,14 @@ fn parse(args: &[String]) -> Result<Options, String> {
             }
             "--keep" => options.keep = true,
             "--no-acceptance" => options.limits.acceptance = false,
+            "--gate-requirements" => options.limits.gates.requirements = true,
+            "--gate-target" => options.limits.gates.target = true,
+            "--gate-credible" => options.limits.gates.credible = true,
+            "--doubt-threshold" => options.limits.gates.doubt = number(value()?)?,
+            "--adversarial" => options.limits.gates.adversarial = number(value()?)? as usize,
+            "--budget-fraction" => options.limits.gates.budget_fraction = number(value()?)?,
+            "--oracle" => options.limits.gates.oracle = true,
+            "--oracle-steps" => options.limits.gates.oracle_steps = number(value()?)? as usize,
             "--check-grading" => options.check_grading = true,
             "-h" | "--help" => return Err(USAGE.to_string()),
             flag if flag.starts_with("--") => {
@@ -237,6 +267,15 @@ async fn go(options: Options) -> Result<u8, String> {
                 model: slug,
                 effort: options.effort.clone(),
             }));
+        }
+        if options.provider == "door" {
+            let session = format!("microcoder-{}-{}", options.task, std::process::id());
+            return Ok(AnyGenerator::Door(microcoder::door::DoorGenerator::new(
+                microcoder::door::DoorTransport::from_env()?,
+                model,
+                options.effort.clone(),
+                &session,
+            )));
         }
         let login = microluna::codex::Login::default_path()
             .ok_or("no Codex login: can't find ~/.codex/auth.json; run `codex login`")?;
@@ -347,15 +386,24 @@ async fn go(options: Options) -> Result<u8, String> {
         );
     }
     // Milliseconds, so runs started in the same second get their own
-    // directories.
-    let stamp = std::time::SystemTime::now()
+    // directories. Two runs can still start in the same millisecond (a
+    // queue starting two at once did), so the directory is claimed with
+    // `create_dir`, which fails when it exists, and a taken millisecond
+    // moves to the next one.
+    let mut stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis());
-    let run_dir = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-        .join(".openagents/microcoder/runs")
-        .join(format!("{}-{stamp}", task.name));
-    std::fs::create_dir_all(&run_dir)
-        .map_err(|e| format!("can't make {}: {e}", run_dir.display()))?;
+    let runs = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+        .join(".openagents/microcoder/runs");
+    std::fs::create_dir_all(&runs).map_err(|e| format!("can't make {}: {e}", runs.display()))?;
+    let run_dir = loop {
+        let dir = runs.join(format!("{}-{stamp}", task.name));
+        match std::fs::create_dir(&dir) {
+            Ok(()) => break dir,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => stamp += 1,
+            Err(e) => return Err(format!("can't make {}: {e}", dir.display())),
+        }
+    };
     let mut record = Record::create(&run_dir.join("events.jsonl"))
         .map_err(|e| format!("can't write the record: {e}"))?;
     record.write(&serde_json::json!({
@@ -366,6 +414,9 @@ async fn go(options: Options) -> Result<u8, String> {
         "dispute_file": microcoder::models::DISPUTE,
         "conform_file": microcoder::models::CONFORM,
         "coverage_file": microcoder::models::COVERAGE,
+        "requirements_file": microcoder::models::REQUIREMENTS,
+        "credible_file": microcoder::models::CREDIBLE,
+        "target_file": microcoder::models::TARGET,
         "strong_model": options.strong_model, "route_when": options.limits.route,
         "kb": options.kb, "kb_trust": options.kb_trust.mode.to_string(),
         "knowledge_file": microcoder::models::KNOWLEDGE,
@@ -501,6 +552,8 @@ async fn go(options: Options) -> Result<u8, String> {
         "container": name, "image": image, "compose": task.compose,
         "verifier": if task.separate { "separate" } else { "shared" },
         "acceptance_tests": end_state.tests, "frozen_at": end_state.frozen_at,
+        "gates": options.limits.gates,
+        "oracle_checks": end_state.oracle.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
         "test_results": end_state.test_results, "dropped_tests": end_state.dropped,
         "kb": options.kb, "kb_trust": options.kb_trust.mode.to_string(),
         "knowledge_assisted": outcome.knowledge_assisted,

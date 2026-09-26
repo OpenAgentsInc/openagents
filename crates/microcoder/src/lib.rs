@@ -21,7 +21,9 @@
 //! a Nostr relay and syncs other authors' entries from one (NIP-KB), and
 //! [`xpnet`] publishes quests and awards and derives the XP ledger (NIP-XP).
 
+pub mod door;
 pub mod env;
+pub mod gate;
 pub mod kbnet;
 pub mod models;
 pub mod run;

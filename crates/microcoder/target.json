@@ -1,0 +1,14 @@
+{
+  "id": "openagents.microcoder.target.v1",
+  "note": "What Jev answers, with --gate-target, once a run, before a run that has every frozen test passing may end: whether the task states a numeric target and whether any test measures it. `target` at 0.6 or more with `measured` under 0.5 sends the run back once to measure the target and improve toward it. Change the wording here, not in code; the file is digested into every run's record.",
+  "questions": [
+    {
+      "id": "target",
+      "text": "Does the task in `task` state a numeric target the finished work must reach, such as a score, accuracy, error, tolerance, speed, time, memory, size, or cost threshold?"
+    },
+    {
+      "id": "measured",
+      "text": "Does some test in `tests` measure the quantity the task in `task` sets a numeric target for, with the method the task states, and compare it with that target?"
+    }
+  ]
+}

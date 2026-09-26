@@ -3111,6 +3111,7 @@ dependencies = [
  "microluna",
  "nostr",
  "openrouter",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",

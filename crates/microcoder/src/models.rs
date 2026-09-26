@@ -39,6 +39,18 @@ pub const CONFORM: &str = include_str!("../conform.json");
 /// task states something no test checks.
 pub const COVERAGE: &str = include_str!("../coverage.json");
 
+/// The question Jev answers about each statement of the task before a
+/// green run may end: whether no test checks it (`--gate-requirements`).
+pub const REQUIREMENTS: &str = include_str!("../requirements.json");
+
+/// The question Jev answers about the model's recent reasoning before a
+/// green run may end: whether it doubts its solution (`--gate-credible`).
+pub const CREDIBLE: &str = include_str!("../credible.json");
+
+/// The questions Jev answers once before a green run may end: whether the
+/// task states a numeric target and a test measures it (`--gate-target`).
+pub const TARGET: &str = include_str!("../target.json");
+
 /// One question in the set.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Question {
@@ -113,6 +125,37 @@ pub fn conform_set() -> QuestionSet {
 #[must_use]
 pub fn coverage_set() -> QuestionSet {
     serde_json::from_str(COVERAGE).expect("coverage.json is valid")
+}
+
+/// The embedded requirements set: one question template, repeated per
+/// statement by [`relevance_set`].
+///
+/// # Panics
+///
+/// When `requirements.json` isn't valid, which a test checks.
+#[must_use]
+pub fn requirements_set() -> QuestionSet {
+    serde_json::from_str(REQUIREMENTS).expect("requirements.json is valid")
+}
+
+/// The embedded credibility set.
+///
+/// # Panics
+///
+/// When `credible.json` isn't valid, which a test checks.
+#[must_use]
+pub fn credible_set() -> QuestionSet {
+    serde_json::from_str(CREDIBLE).expect("credible.json is valid")
+}
+
+/// The embedded numeric-target set.
+///
+/// # Panics
+///
+/// When `target.json` isn't valid, which a test checks.
+#[must_use]
+pub fn target_set() -> QuestionSet {
+    serde_json::from_str(TARGET).expect("target.json is valid")
 }
 
 /// The relevance question asked once for each of `count` candidates: the
@@ -383,6 +426,8 @@ impl<T: microluna::Transport> Generate for CodexGenerator<T> {
 pub enum AnyGenerator {
     Codex(CodexGenerator),
     OpenRouter(OpenRouterGenerator),
+    /// The OpenAgents door (`--provider door`), such as for Gemini.
+    Door(crate::door::DoorGenerator),
 }
 
 impl Generate for AnyGenerator {
@@ -390,6 +435,7 @@ impl Generate for AnyGenerator {
         match self {
             AnyGenerator::Codex(g) => g.generate(system, prompt).await,
             AnyGenerator::OpenRouter(g) => g.generate(system, prompt).await,
+            AnyGenerator::Door(g) => g.generate(system, prompt).await,
         }
     }
 }

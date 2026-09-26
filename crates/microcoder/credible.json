@@ -1,0 +1,10 @@
+{
+  "id": "openagents.microcoder.credible.v1",
+  "note": "What Jev answers, with --gate-credible, before a run that has every frozen test passing may end: whether the model's own recent reasoning doubts its solution. Yes with probability 0.9 or more (--doubt-threshold) sends the run back with a note, at most twice a run. Change the wording here, not in code; the file is digested into every run's record.",
+  "questions": [
+    {
+      "id": "doubt",
+      "text": "`rationales` holds the model's reasoning for its latest steps on the task in `task`, the latest last. Does that reasoning say or imply that the solution may not be correct or complete: for example that a result is a guess, an approximation, a placeholder, a fallback, or unverified, that it only fits the given examples, or that some requirement of the task isn't met or can't be met?"
+    }
+  ]
+}

@@ -12,7 +12,8 @@ use knowledge::{Base, Entry};
 
 use crate::models::{
     Generate, Generated, Judge, Judgment, NextAction, QuestionSet, conform_set, coverage_set,
-    dispute_set, knowledge_set, question_set, route_set,
+    credible_set, dispute_set, knowledge_set, question_set, requirements_set, route_set,
+    target_set,
 };
 use crate::run::{Ending, Event, Limits, Models, Observer, run};
 use crate::state::{CommandResult, State};
@@ -68,6 +69,12 @@ struct Jev {
     uncovered: f64,
     /// The answer to `progress` each step, when set.
     progress: Option<f64>,
+    /// Every requirements answer.
+    unchecked: f64,
+    /// Every credibility answer.
+    doubt: f64,
+    /// The numeric-target answers: `target`, then `measured`.
+    target: (f64, f64),
     relevance: Vec<(&'static str, f64)>,
     /// The id of every question set asked.
     asked: RefCell<Vec<String>>,
@@ -80,6 +87,9 @@ fn jev(hard: f64) -> Jev {
         contradicts: 0.1,
         uncovered: 0.1,
         progress: None,
+        unchecked: 0.1,
+        doubt: 0.1,
+        target: (0.1, 0.9),
         relevance: Vec::new(),
         asked: RefCell::new(Vec::new()),
     }
@@ -92,6 +102,18 @@ impl Judge for Jev {
             vec![("hard".to_string(), self.hard)]
         } else if set.id == coverage_set().id {
             vec![("uncovered".to_string(), self.uncovered)]
+        } else if set.id == requirements_set().id {
+            set.questions
+                .iter()
+                .map(|q| (q.id.clone(), self.unchecked))
+                .collect()
+        } else if set.id == credible_set().id {
+            vec![("doubt".to_string(), self.doubt)]
+        } else if set.id == target_set().id {
+            vec![
+                ("target".to_string(), self.target.0),
+                ("measured".to_string(), self.target.1),
+            ]
         } else if set.id == conform_set().id {
             set.questions
                 .iter()
@@ -148,6 +170,12 @@ impl Env for Fake {
         if path == "/tmp/acceptance/b.sh" {
             return Some("check b".to_string());
         }
+        if path == "/tmp/oracle/o.sh" {
+            return Some("check o".to_string());
+        }
+        if path == "/tmp/oracle/t.sh" {
+            return Some("true".to_string());
+        }
         (!path.starts_with("missing")).then(|| format!("contents of {path}"))
     }
 
@@ -167,9 +195,21 @@ impl Env for Fake {
                 .to_string(),
             };
         }
-        // The test `check b` fails until the model has run `fix b`.
+        if command.starts_with("ls -1 /tmp/oracle") {
+            return CommandResult {
+                command: command.to_string(),
+                exit: Some(0),
+                timed_out: false,
+                seconds: 0.0,
+                output: "/tmp/oracle/o.sh\n/tmp/oracle/t.sh\n".to_string(),
+            };
+        }
+        // The tests `check b` and `check o` fail until the model has run
+        // `fix b` and `fix o`.
+        let fixed = |what: &str| self.ran.borrow().iter().any(|c| c == what);
         let fails = command.starts_with("fail")
-            || (command == "check b" && !self.ran.borrow().iter().any(|c| c == "fix b"));
+            || (command == "check b" && !fixed("fix b"))
+            || (command == "check o" && !fixed("fix o"));
         CommandResult {
             command: command.to_string(),
             exit: Some(i32::from(fails)),
@@ -211,7 +251,7 @@ fn plain() -> Limits {
 fn state() -> State {
     State {
         environment: "/app".to_string(),
-        task: "Make the thing.".to_string(),
+        task: "Make the thing work well.".to_string(),
         ..State::default()
     }
 }
@@ -928,4 +968,252 @@ async fn passing_tests_dont_end_a_run_that_is_still_making_progress() {
     // Not at 6 passing steps; only at three times that.
     assert_eq!(outcome.ending, Ending::TestsHeld);
     assert_eq!(outcome.steps, 18);
+}
+
+fn gated(gates: crate::gate::Gates) -> Limits {
+    Limits {
+        max_steps: Some(20),
+        gates,
+        ..Limits::default()
+    }
+}
+
+fn gate_checks(log: &Log) -> Vec<(String, bool)> {
+    log.0
+        .iter()
+        .filter_map(|e| match e {
+            Event::Gated { checked, .. } => Some((checked.check.clone(), checked.refused)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn with_the_gates_off_a_green_finish_ends_the_run_at_once() {
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["fix b"])),
+        Ok(act("done", &[], true)),
+    ]);
+    let jev = Jev {
+        unchecked: 0.9,
+        doubt: 0.9,
+        ..jev(0.1)
+    };
+    let (_, outcome, _, log) = go_with(&script, &Limits::default(), &jev, None).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(outcome.steps, 2);
+    assert!(gate_checks(&log).is_empty());
+    let asked = jev.asked.into_inner();
+    assert!(!asked.contains(&requirements_set().id));
+    assert!(!asked.contains(&credible_set().id));
+}
+
+#[tokio::test]
+async fn an_unchecked_statement_sends_a_green_finish_back_and_is_named_once() {
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["fix b"])),
+        Ok(act("done", &[], true)),
+        Ok(freeze("add a test", &["write c"])),
+        Ok(act("done", &[], true)),
+    ]);
+    let jev = Jev {
+        unchecked: 0.9,
+        ..jev(0.1)
+    };
+    let gates = crate::gate::Gates {
+        requirements: true,
+        ..crate::gate::Gates::default()
+    };
+    let (_, outcome, _, log) = go_with(&script, &gated(gates), &jev, None).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(outcome.steps, 4);
+    // Sent back at step 2; at step 4 the only statement was already named.
+    assert_eq!(
+        gate_checks(&log),
+        [
+            ("requirements".to_string(), true),
+            ("requirements".to_string(), false)
+        ]
+    );
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[2].contains(
+        "no test checks these statements of the task:\n1. \"Make the thing work well.\""
+    ));
+}
+
+#[tokio::test]
+async fn held_tests_go_back_while_the_models_reasoning_doubts_the_solution() {
+    let script = Script::new(vec![Ok(freeze("write tests", &["fix b"]))]);
+    let jev = Jev {
+        doubt: 0.9,
+        ..jev(0.1)
+    };
+    let gates = crate::gate::Gates {
+        credible: true,
+        ..crate::gate::Gates::default()
+    };
+    let limits = Limits {
+        max_steps: Some(40),
+        ..gated(gates)
+    };
+    let (_, outcome, _, log) = go_with(&script, &limits, &jev, None).await;
+    // Held at step 6, sent back twice, then ended six green steps later.
+    assert_eq!(outcome.ending, Ending::TestsHeld);
+    assert_eq!(outcome.steps, 18);
+    assert_eq!(
+        gate_checks(&log),
+        [
+            ("credible".to_string(), true),
+            ("credible".to_string(), true),
+        ]
+    );
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[6].contains("your own recent reasoning doubts the solution"));
+}
+
+#[tokio::test]
+async fn the_credibility_check_asks_the_model_to_say_so_in_the_system_text() {
+    struct System(RefCell<Vec<String>>);
+    impl Generate for System {
+        async fn generate(&self, system: &str, _prompt: &str) -> Generated {
+            self.0.borrow_mut().push(system.to_string());
+            Script::new(vec![Ok(act("done", &[], true))])
+                .generate(system, "")
+                .await
+        }
+    }
+    let seen = System(RefCell::new(Vec::new()));
+    let gates = crate::gate::Gates {
+        credible: true,
+        ..crate::gate::Gates::default()
+    };
+    let limits = Limits {
+        max_steps: Some(1),
+        ..gated(gates)
+    };
+    let env = Fake {
+        ran: RefCell::new(Vec::new()),
+    };
+    let set = question_set();
+    let route = route_set();
+    let judge = jev(0.1);
+    let models = Models {
+        generator: &seen,
+        judge: &judge,
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let _ = run(
+        state(),
+        "Solve this task.",
+        &env,
+        &models,
+        &limits,
+        &mut Log::default(),
+    )
+    .await;
+    assert!(seen.0.borrow()[0].ends_with(crate::run::CREDIBLE_SYSTEM));
+}
+
+#[tokio::test]
+async fn an_unmeasured_numeric_target_sends_the_run_back_once() {
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["fix b"])),
+        Ok(act("done", &[], true)),
+        Ok(act("done", &[], true)),
+    ]);
+    let jev = Jev {
+        target: (0.9, 0.1),
+        ..jev(0.1)
+    };
+    let gates = crate::gate::Gates {
+        target: true,
+        ..crate::gate::Gates::default()
+    };
+    let (_, outcome, _, log) = go_with(&script, &gated(gates), &jev, None).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(outcome.steps, 3);
+    assert_eq!(gate_checks(&log), [("target".to_string(), true)]);
+}
+
+#[tokio::test]
+async fn adversarial_rounds_stop_at_their_count() {
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["fix b"])),
+        Ok(act("done", &[], true)),
+        Ok(act("done", &[], true)),
+        Ok(act("done", &[], true)),
+    ]);
+    let gates = crate::gate::Gates {
+        adversarial: 2,
+        ..crate::gate::Gates::default()
+    };
+    let (_, outcome, _, log) = go_with(&script, &gated(gates), &jev(0.1), None).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(outcome.steps, 4);
+    assert_eq!(
+        gate_checks(&log),
+        [
+            ("adversarial".to_string(), true),
+            ("adversarial".to_string(), true)
+        ]
+    );
+    assert!(script.prompts.into_inner()[2].contains("try to break the solution"));
+}
+
+#[tokio::test]
+async fn adversarial_rounds_stop_once_the_budget_share_is_spent() {
+    let script = Script::new(vec![
+        Ok(freeze("write tests", &["fix b"])),
+        Ok(act("done", &[], true)),
+    ]);
+    let gates = crate::gate::Gates {
+        adversarial: 2,
+        budget_fraction: 0.0,
+        ..crate::gate::Gates::default()
+    };
+    let (_, outcome, _, log) = go_with(&script, &gated(gates), &jev(0.1), None).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(outcome.steps, 2);
+    assert!(gate_checks(&log).is_empty());
+}
+
+#[tokio::test]
+async fn the_oracle_is_written_first_and_blocks_the_finish_until_it_passes() {
+    let script = Script::new(vec![
+        // The oracle session: one step that writes the checks.
+        Ok(act("write the oracle", &["cat > /tmp/oracle/o.sh"], true)),
+        // The loop.
+        Ok(freeze("write tests", &["fix b"])),
+        Ok(act("done", &[], true)),
+        Ok(act("fix o", &["fix o"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let gates = crate::gate::Gates {
+        oracle: true,
+        ..crate::gate::Gates::default()
+    };
+    let (state, outcome, _, log) = go_with(&script, &gated(gates), &jev(0.1), None).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(outcome.steps, 4);
+    // `t.sh` passed on the untouched workspace, so only `o.sh` was kept.
+    let report = log.0.iter().find_map(|e| match e {
+        Event::Oracle { report } => Some(report.clone()),
+        _ => None,
+    });
+    let report = report.expect("an oracle event");
+    assert_eq!(report.kept, ["oracle-o.sh"]);
+    assert_eq!(report.trivial, ["oracle-t.sh"]);
+    let names: Vec<&str> = state.tests.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["oracle-o.sh", "a.sh", "b.sh"]);
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[0].contains("Don't solve the task"));
+    assert!(prompts[0].contains("The session has 8 steps"));
+    assert!(prompts[1].contains("independent checks from the task's statement alone"));
+    assert!(prompts[1].contains("oracle-o.sh"));
+    assert!(prompts[3].contains("## oracle-o.sh: FAIL"));
+    // The oracle session's reply is priced into the model's spend.
+    assert!((outcome.model_usd.unwrap() - 0.05).abs() < 1e-9);
 }
