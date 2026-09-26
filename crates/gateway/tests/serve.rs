@@ -5364,16 +5364,44 @@ async fn retention_sweeps_expired_terminal_jobs() {
     assert_eq!(status, StatusCode::NOT_FOUND, "{gone}");
 }
 
+async fn wait_for_delivery_records(path: &std::path::Path, count: usize) -> Vec<Value> {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            match std::fs::read_to_string(path) {
+                Ok(log) if log.ends_with('\n') => {
+                    let records: Vec<Value> = log
+                        .lines()
+                        .map(|line| serde_json::from_str(line).expect("valid delivery record"))
+                        .collect();
+                    if records.len() >= count {
+                        return records;
+                    }
+                }
+                // The sender can still be writing the final record and its newline.
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!("could not read delivery records: {error}"),
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the sender must finish recording the delivery attempts")
+}
+
 #[tokio::test]
 async fn the_webhook_delivers_a_signed_terminal_event() {
     // The receiver records every delivery — headers included — so the
     // test verifies the signature itself.
     let received = Arc::new(Mutex::new(Vec::<(String, String, Value)>::new()));
     let captured = received.clone();
+    let release_response = Arc::new(tokio::sync::Notify::new());
+    let response_gate = release_response.clone();
     let app = axum::Router::new().route(
         "/hook",
         post(move |headers: HeaderMap, body: Bytes| {
             let captured = captured.clone();
+            let response_gate = response_gate.clone();
             async move {
                 captured.lock().unwrap().push((
                     headers
@@ -5388,6 +5416,7 @@ async fn the_webhook_delivers_a_signed_terminal_event() {
                         .to_string(),
                     serde_json::from_slice::<Value>(&body).unwrap_or_default(),
                 ));
+                response_gate.notified().await;
                 StatusCode::OK
             }
         }),
@@ -5419,44 +5448,46 @@ async fn the_webhook_delivers_a_signed_terminal_event() {
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    let deliveries = received.lock().unwrap();
-    assert_eq!(deliveries.len(), 1, "{deliveries:?}");
-    let (event_id, signature, event) = &deliveries[0];
-    assert_eq!(event["v"], "openagents.job-event.v1");
-    assert_eq!(event["type"], "job.completed");
-    assert_eq!(event["job"], job);
-    assert_eq!(event["counts"]["answered"], 2);
-    // The signature is the hmac the receiver can recompute.
-    let body_bytes = serde_json::to_vec(event).unwrap();
-    let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::Mac>::new_from_slice(b"testsecret").unwrap();
-    mac.update(event_id.as_bytes());
-    mac.update(b".");
-    mac.update(&body_bytes);
-    let expected = format!(
-        "sha256={}",
-        mac.finalize()
-            .into_bytes()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    );
-    assert_eq!(*signature, expected);
-    drop(deliveries);
+    {
+        let deliveries = received.lock().unwrap();
+        assert_eq!(deliveries.len(), 1, "{deliveries:?}");
+        let (event_id, signature, event) = &deliveries[0];
+        assert_eq!(event["v"], "openagents.job-event.v1");
+        assert_eq!(event["type"], "job.completed");
+        assert_eq!(event["job"], job);
+        assert_eq!(event["counts"]["answered"], 2);
+        // The signature is the hmac the receiver can recompute.
+        let body_bytes = serde_json::to_vec(event).unwrap();
+        let mut mac =
+            <hmac::Hmac<sha2::Sha256> as hmac::Mac>::new_from_slice(b"testsecret").unwrap();
+        mac.update(event_id.as_bytes());
+        mac.update(b".");
+        mac.update(&body_bytes);
+        let expected = format!(
+            "sha256={}",
+            mac.finalize()
+                .into_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        );
+        assert_eq!(*signature, expected);
+    }
 
-    // Every attempt is recorded — one here, delivered.
-    let log = std::fs::read_to_string(
-        deployment
-            .dir
-            .path()
-            .join("jobs")
-            .join(&job)
-            .join("deliveries.jsonl"),
-    )
-    .unwrap();
-    let lines: Vec<Value> = log
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
+    let path = deployment
+        .dir
+        .path()
+        .join("jobs")
+        .join(&job)
+        .join("deliveries.jsonl");
+    // Receiving the event precedes the sender's record. Poll the missing log
+    // before releasing the response, then verify the completed delivery.
+    assert!(!path.exists());
+    let (lines, ()) = tokio::join!(
+        biased;
+        wait_for_delivery_records(&path, 1),
+        async { release_response.notify_one() },
+    );
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0]["outcome"], "delivered");
     assert_eq!(lines[0]["attempt"], 1);
@@ -5507,18 +5538,15 @@ async fn a_failed_delivery_retries_then_completes() {
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
-    let log = std::fs::read_to_string(
-        deployment
-            .dir
-            .path()
-            .join("jobs")
-            .join(&job)
-            .join("deliveries.jsonl"),
-    )
-    .unwrap();
-    let outcomes: Vec<String> = log
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+    let path = deployment
+        .dir
+        .path()
+        .join("jobs")
+        .join(&job)
+        .join("deliveries.jsonl");
+    let outcomes: Vec<String> = wait_for_delivery_records(&path, 2)
+        .await
+        .into_iter()
         .map(|line| line["outcome"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(outcomes, vec!["failed", "delivered"]);
