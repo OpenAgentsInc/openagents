@@ -493,17 +493,17 @@ fn relevant(pairs: &[(&'static str, f64)]) -> Jev {
 async fn kept_entries_appear_in_the_prompt_and_the_system_text() {
     let script = Script::new(vec![Ok(act("done", &[], true))]);
     let kb = base();
-    let jev = relevant(&[("stats.thing", 0.9), ("slip.trap", 0.6)]);
+    let jev = relevant(&[("stats.thing", 0.7), ("slip.trap", 0.6)]);
     let (state, _, _, log) = go_kb(&script, &plain(), &jev, None, Some(&kb)).await;
     let prompts = script.prompts.into_inner();
     assert!(prompts[0].contains("# Knowledge base"));
     assert!(prompts[0].contains(
-        "- stats.thing (method, relevance 0.90; by openagents, admitted): Title of stats.thing. \
+        "- stats.thing (method, relevance 0.70; by openagents, admitted): Title of stats.thing. \
 How to make the thing correctly."
     ));
     assert!(prompts[0].contains("- slip.trap (slip, relevance 0.60"));
     assert!(!prompts[0].contains("shell.other"), "0.1 is below the bar");
-    // A slip under 0.8 isn't shown in full without being asked for.
+    // Nothing at 0.8 or more, so no body is shown without being asked for.
     assert!(!prompts[0].contains("The body of"));
     assert_eq!(state.knowledge.len(), 2);
     // Jev judged the candidates, then the state.
@@ -531,7 +531,7 @@ async fn an_expanded_entry_shows_its_body_next_step_and_stays() {
         Ok(act("done", &[], true)),
     ]);
     let kb = base();
-    let jev = relevant(&[("stats.thing", 0.9)]);
+    let jev = relevant(&[("stats.thing", 0.7)]);
     go_kb(&script, &plain(), &jev, None, Some(&kb)).await;
     let prompts = script.prompts.into_inner();
     assert!(!prompts[0].contains("The body of stats.thing"));
@@ -579,7 +579,7 @@ async fn the_record_lists_the_entries_used_with_their_digests() {
     first.expand = vec!["stats.thing".to_string()];
     let script = Script::new(vec![Ok(first), Ok(act("done", &[], true))]);
     let kb = base();
-    let jev = relevant(&[("stats.thing", 0.9)]);
+    let jev = relevant(&[("stats.thing", 0.7)]);
     let (_, outcome, _, log) = go_kb(&script, &plain(), &jev, None, Some(&kb)).await;
     let used = &outcome.knowledge;
     assert_eq!(used.len(), 1);
@@ -686,4 +686,15 @@ async fn the_stronger_model_is_off_by_default() {
     assert!(strong.prompts.into_inner().is_empty());
     // Jev isn't asked whether the task is hard.
     assert!(!jev.asked.borrow().contains(&route_set().id));
+}
+
+#[tokio::test]
+async fn any_highly_relevant_entry_is_shown_in_full_unasked() {
+    let script = Script::new(vec![Ok(act("done", &[], true))]);
+    let kb = base();
+    let jev = relevant(&[("stats.thing", 0.9)]);
+    let _ = go_kb(&script, &plain(), &jev, None, Some(&kb)).await;
+    let prompts = script.prompts.into_inner();
+    assert!(prompts[0].contains("## stats.thing (in full)"));
+    assert!(prompts[0].contains("The body of stats.thing."));
 }

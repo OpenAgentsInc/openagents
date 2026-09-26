@@ -153,13 +153,14 @@ The action schema gains one field, `expand`: a list of entry IDs whose bodies
 the agent wants to read. The host shows each body, in full, in the next
 prompt's `# Knowledge base` section, and keeps it there until the agent asks
 for other entries, the same way `view` keeps files. At
-most 3 bodies and 12,000 characters are shown at once. An ID that isn't in
+most 6 bodies and 20,000 characters are shown at once. An ID that isn't in
 the base gets a note saying so.
 
 Jev can also expand an entry: when its relevance answer for an entry is 0.8
-or more and the entry is a `slip`, the host shows the body without being
-asked, because a slip matters most when the agent doesn't know it's making
-it.
+or more, the host shows the body without being asked, most relevant first.
+In the first runs neither GPT-6 Luna nor GPT-6 Sol ever used `expand`, so
+the entries that mattered most, such as a method's exact definition, were
+only ever seen as summaries.
 
 This is the [NIP-CTX](../../../nips/openagents/NIP-CTX.md) expansion
 operation applied to knowledge: an expansion request names targets and a

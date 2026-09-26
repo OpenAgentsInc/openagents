@@ -60,15 +60,16 @@ pub const KB_KEPT: usize = 8;
 /// Jev's probability at which an entry is kept.
 pub const KB_RELEVANT: f64 = 0.5;
 
-/// Jev's probability at which a kept `slip` entry is shown in full without
-/// being asked for.
+/// Jev's probability at which a kept entry is shown in full without being
+/// asked for. Models rarely ask, so the host shows the entries that matter
+/// most.
 pub const KB_AUTO_EXPAND: f64 = 0.8;
 
 /// Entry bodies shown at once, at most.
-pub const KB_BODIES: usize = 3;
+pub const KB_BODIES: usize = 6;
 
 /// Characters of entry bodies shown at once, at most.
-pub const KB_BODY_CHARS: usize = 12_000;
+pub const KB_BODY_CHARS: usize = 20_000;
 
 /// Where the model writes its acceptance tests before they freeze.
 pub const ACCEPT_DIR: &str = "/tmp/acceptance";
@@ -428,11 +429,12 @@ async fn retrieve<J: Judge>(retriever: &Retriever, judge: &J, state: &State) -> 
 }
 
 /// The entries whose bodies the prompt shows: the ones the model asked for,
-/// then slips Jev judged highly relevant, within [`KB_BODIES`].
+/// then, most relevant first, every kept entry Jev judged at
+/// [`KB_AUTO_EXPAND`] or more, within [`KB_BODIES`].
 fn shown_bodies(state: &State) -> Vec<String> {
     let mut ids: Vec<String> = state.expanded.clone();
     for kept in &state.knowledge {
-        if kept.kind == "slip" && kept.relevance >= KB_AUTO_EXPAND && !ids.contains(&kept.id) {
+        if kept.relevance >= KB_AUTO_EXPAND && !ids.contains(&kept.id) {
             ids.push(kept.id.clone());
         }
     }
