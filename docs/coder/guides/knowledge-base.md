@@ -259,7 +259,15 @@ microcoder kb publish --relay wss://relay.openagents.com
 ```
 
 The relay's default limit is 60 events a minute for each key; 14 entries and
-their heads are 28 events.
+their heads are 28 events. The OpenAgents relay allows 3,000 a minute.
+
+The OpenAgents relay holds the base. On 2026-09-26 the 58 entries in
+`knowledge/` and their heads (116 events) and 16 evidence reports were
+published to it from the execution host, signed by
+`npub15krnek9tl9gwjdaqn9hzayet8l05z5spg3e8d7xp7al7fujvkcvqnaf3wp`. A sync
+into an empty cache returned all 58 entries and all 16 reports, and every
+signature checked. Reads and writes don't need NIP-42 authentication. To
+see whose entries you're trusting, add that `npub` to your trust file.
 
 ### Sync other authors' entries
 

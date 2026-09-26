@@ -1,0 +1,12 @@
+# Build context for `gcloud builds submit` from the repository root, which
+# builds the relay image from the root Dockerfile (see
+# docs/deployment/runbook-cloud-run.md). Upload only what that Dockerfile
+# copies; the rest of the tree is over a gigabyte.
+/*
+!/Dockerfile
+!/Cargo.toml
+!/Cargo.lock
+!/migrations/
+!/crates/
+!/nips/
+!/tests/

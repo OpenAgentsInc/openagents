@@ -1,0 +1,18 @@
+# Cloud Build config for the production relay image. Run from the repository
+# root; see docs/deployment/runbook-cloud-run.md.
+#
+#   gcloud builds submit --project openagentsgemini \
+#     --config deploy/nostr-relay.cloudbuild.yaml \
+#     --substitutions _TAG=$(git rev-parse --short=10 HEAD) .
+#
+# The org policy requires an explicit build service account, and that account
+# can't write the default logs bucket, so logs go to Cloud Logging only.
+steps:
+- name: gcr.io/cloud-builders/docker
+  args: ['build', '--network', 'cloudbuild', '-t', 'us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/nostr-relay:$_TAG', '.']
+images: ['us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/nostr-relay:$_TAG']
+serviceAccount: projects/openagentsgemini/serviceAccounts/oa-cloud-run-source-builder@openagentsgemini.iam.gserviceaccount.com
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+timeout: 2400s

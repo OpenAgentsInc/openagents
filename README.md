@@ -48,7 +48,7 @@ maps every contract to its implemented parts and remaining work.
 | Run a benchmark or controlled experiment | [Harness runbook](docs/terminal-bench/runbook.md), [experiment template](docs/terminal-bench/targeted-experiment-template.md) |
 | Use typed decisions | [Decision models](docs/decision-models/README.md), [caller CLI](docs/decision-models/guides/caller.md), [Rust clients](docs/decision-models/guides/clients.md) |
 | Run decision services | [Gateway](docs/decision-models/service/gateway.md), [deployment](deploy/README.md) |
-| Operate the Nostr relay | [Local relay runbook](docs/deployment/runbook-local-dev.md), [configuration](docs/deployment/configuration.md) |
+| Operate the Nostr relay | [Local relay runbook](docs/deployment/runbook-local-dev.md), [production (Cloud Run) runbook](docs/deployment/runbook-cloud-run.md), [configuration](docs/deployment/configuration.md) |
 | Review protocol support and gaps | [NIP implementation coverage](docs/protocol/2026-09-26-nip-implementation-coverage.md), [implementation plan](docs/protocol/implementation-plan.md) |
 | Operate a Minecraft agent | [Voyager](docs/voyager/README.md), [watch an episode](docs/minecraft/voyager-runbook.md) |
 | Walk the Verse desktop world | [Verse](docs/verse/README.md) |
