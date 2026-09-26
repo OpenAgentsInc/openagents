@@ -40,3 +40,10 @@ recenter controls after injected orientation and movement; the simulator
 compositor omits some unchanged clock and Sprint glyphs in that capture.
 The [unavailable-motion capture](native-motion-unavailable.png) records the
 explicit touch fallback. None of these captures contains private chats.
+
+## Distribution
+
+[TestFlight build 42](testflight-build42.json) records the successful signed
+archive and upload, clean source identity, and Apple's `VALID` /
+`IN_BETA_TESTING` states. No physical motion acceptance is inferred from
+simulator tests or TestFlight processing.

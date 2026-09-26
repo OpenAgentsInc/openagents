@@ -11,19 +11,20 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Available in internal TestFlight:** Coder `0.5.0 (41)`, built from
-[`0a3fe97536`](https://github.com/OpenAgentsInc/openagents/commit/0a3fe97536f59a49a5ec9ba3990919802cdae8d1).
+**Available in internal TestFlight:** Coder `0.5.0 (42)`, built from
+[`f7389bb05f`](https://github.com/OpenAgentsInc/openagents/commit/f7389bb05f6849d717392a310c20169f16f0390d).
 [Connect your phone](../../docs/coder/guides/mobile-readonly.md) and review the
-[distribution receipt](verification/2026-09-26-gym-building/testflight-build41.json).
+[distribution receipt](verification/2026-09-26-fullscreen-motion/testflight-build42.json).
 
 Walk east into the [Gym](../../docs/verse/gym.md) for Microcoder and
 Terminal-Bench boards. Its observations and run recipes require a separate
 host grant. Leaving or backgrounding pauses Gym updates.
 
-The source for build `42` adds a full-screen world behind the system clock and
-optional phone-motion look. See [mobile controls](../../docs/verse/mobile.md) and
+Build `42` fills the display behind the system clock and home indicator.
+Switch between right-side touch look and phone-motion look; use **Recenter**
+to establish a comfortable reference. In motion mode, hold the left side to
+walk forward. See [controls](../../docs/verse/mobile.md) and
 [verification](../../docs/coder/verification/2026-09-26-fullscreen-motion.md).
-Availability above still names the last confirmed TestFlight release.
 
 ## App identity and source boundary
 

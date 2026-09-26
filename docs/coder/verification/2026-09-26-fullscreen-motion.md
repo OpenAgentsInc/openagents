@@ -56,3 +56,14 @@ Rust tests check camera math and lifecycle separately from native layout and
 input tests. A successful device archive verifies compilation and signing;
 it does not prove motion comfort, drift, battery use, or sensor behavior on a
 physical iPhone. No model, training, or benchmark workload is part of this change.
+
+## Distribution
+
+Coder **0.5.0 (42)** is available in internal TestFlight. Apple reports `VALID`
+and `IN_BETA_TESTING`. The archive uses clean source
+[`f7389bb05f`](https://github.com/OpenAgentsInc/openagents/commit/f7389bb05f6849d717392a310c20169f16f0390d)
+and passed strict code-signature verification. The
+[release receipt](../../../bins/coder-ios/verification/2026-09-26-fullscreen-motion/testflight-build42.json)
+records the source, lockfile, executable, toolchain, and Apple build identity.
+The bundle, signing team, version 0.5.0, and profile remain unchanged. This is
+an internal beta; physical motion direction and comfort still need a phone test.
