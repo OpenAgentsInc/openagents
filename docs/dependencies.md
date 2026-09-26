@@ -95,14 +95,16 @@ those provenance statements and inspect new carried-over code independently.
 Models, weight files, Apple framework terms, and non-Cargo assets require their
 own distribution review; the dependency check does not license them.
 
-**The repository's own license is unresolved.** The root `LICENSE` contains
-Apache-2.0, README names CC0-1.0, and all 13 workspace package manifests omit
-license metadata. The owner must resolve that conflict before release.
+The September 20 audit found conflicting repository declarations. As reviewed
+on September 26, the root [LICENSE](../LICENSE) contains Apache-2.0 and the root
+README no longer labels the repository CC0-1.0. The workspace package metadata
+still omits a `license` field; the earlier count of 13 packages is obsolete.
+Preserve component-specific provenance, including the relay's public CC0 source.
+
 `licenses.private.ignore = true` excludes unpublished workspace packages from
-license classification, while keeping their dependency graphs under review.
-It is not a license grant or a resolution of the conflicting repository text.
-Do not use a passing dependency check as authorization to release unresolved
-workspace code.
+license classification while keeping their dependencies under review. A passing
+dependency check does not validate the repository's own distribution metadata
+or assemble the required notices.
 
 ## Verification record
 
@@ -110,7 +112,8 @@ On 2026-09-20, `./scripts/check-dependencies.sh` passed advisory, license, and
 source checks with `cargo-deny 0.20.2`. The sole advisory exception is the
 maintenance finding above. No dependency version, source, or numeric
 implementation changed. Numeric regression tests were therefore not rerun
-for this policy-only change. Workspace license resolution remains outstanding.
+for this policy-only change. The license findings in that run are historical; the source-provenance section
+above records the later repository-text review.
 
 Later on 2026-09-20 at `5f0e67b9f2`, the gate added the bans check and
 passed all four: `advisories ok, bans ok, licenses ok, sources ok`. The bans

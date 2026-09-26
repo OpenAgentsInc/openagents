@@ -105,15 +105,18 @@ Read the spec before the code. The files you need most often:
 - `docs/protocol/block-nips.md` — what the relay does with each Block NIP,
   including what it deliberately doesn't advertise.
 
-The OpenAgents lane contains 22 NIPs plus the shared contracts. X402, SESS, WS,
+The OpenAgents lane contains 23 NIPs plus the shared contracts. X402, SESS, WS,
 WORK, AUTO, ENV, and LIVE are **Designed** drafts, as are POL's learned
 preference lifecycle and EXT's import/component-set assessment additions.
 They allocate no new event kinds: private artifacts use `3188`, remote host
 operations use admitted CAP/CJ profiles, and effects leave RUN evidence.
 Keeping an encrypted envelope does not implement the contract inside it.
-MKT/LAB and CTRL also remain designed host roles; existing event helpers do
-not establish a running labor service, settlement adapter, or client-control
-system. Check the [glossary](../../../docs/glossary.md#nostr-and-shared-protocols)
+MKT/LAB has a bounded free-order host in `crates/coder-labor`, with retained relay
+and process fixtures. Paid settlement, independently operated service delivery,
+and broader market roles remain unfinished. CTRL has a bounded local-owner bridge in `crates/coder-control`; read
+`docs/coder/runtime/nostr-task-control.md` for its rights, expiry, exact retry,
+and disclosure limits. It does not complete mobile control or a cross-device
+product. Check the [glossary](../../../docs/glossary.md#nostr-and-shared-protocols)
 for the narrower implemented and partial roles.
 
 Read the [x402 integration assessment](../../../docs/coder/design/x402-lightning-nostr-integration.md)

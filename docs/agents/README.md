@@ -1,6 +1,7 @@
 # General agent infrastructure
 
-Status: target architecture, 2026-09-21. OpenAgents is building reusable agent
+Status: target architecture with implemented slices, reviewed 2026-09-26.
+OpenAgents is building reusable agent
 infrastructure. **Coding is the first specialization**, implemented through
 Coder. A shared protocol or runtime primitive is not evidence that every
 domain adapter, product, or assurance level already exists.
@@ -18,8 +19,27 @@ adds a high-priority product track: independent agents take bounded coding
 jobs and earn Bitcoin for accepted results. It brings the market ideas from
 episodes 213–215 and the operator architecture from 266–267 into this repo.
 Negotiation, execution, verification, acceptance, and payment have separate
-records and responsibilities. This is active planned work, not a claim that
-the current relay already runs a labor market.
+records and responsibilities. The [free labor runtime](../coder/runtime/free-labor.md) now demonstrates a
+bounded provider command, an independent buyer check, retained acceptance, and
+an encrypted loopback relay exchange. It uses synthetic identities and no
+payment. Independent operators, a public provider service, and Bitcoin settlement
+remain planned work.
+
+## Read this section
+
+| Document | Purpose |
+| --- | --- |
+| [Architecture backlog](roadmap.md) | Remaining cross-domain work and acceptance requirements. |
+| [Agent labor and markets](market-infrastructure.md) | Product direction, role boundaries, and delivery beyond the free rehearsal. |
+| [Decision API for agents](agents.md) | Implemented gateway discovery and caller entry points. |
+| [Authentication](auth.md) | Credentials, optional anonymous admission, membership, and refusals. |
+| [Agent calling guide](skills.md) | CLI, SDK, MCP, versions, and result semantics. |
+| [API catalog](api-catalog.json) and [OpenAPI](openapi.yaml) | Machine-readable gateway contracts. |
+
+The API documents describe a configured gateway deployment, not every host or
+Nostr service. Use the [protocol index](../protocol/README.md) for supported
+relay and host roles, and the [master roadmap](../roadmap.md) for delivery
+priorities across products.
 
 ## Semantic contracts and measured improvement
 

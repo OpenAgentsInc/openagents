@@ -16,7 +16,8 @@ the unfiled work for full AI programming and optimization integration.
 4. Add Wasm packet execution with pure and snapshot-read profiles, bounded
    memory/imports, and retained original evidence. The packet execution,
    both profiles, and the limits landed in #9519 as `crates/plugin` and the
-   program `module` step; retained original evidence isn't built. See
+   program `module` step. Three opt-in evidence guests subsequently landed in
+   #9630; a general host evidence-retention lifecycle remains a separate gap. See
    [What is built](plugins.md#what-is-built).
 5. Implement inert package installation, atomic locks, revocation, and scoped
    update/adoption policy.

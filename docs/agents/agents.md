@@ -51,8 +51,10 @@ subscription, with separate product and support consent.
 
 ## Honest limits
 
-- Discovery is unauthenticated by design; every inference route
-  requires a bearer key.
+- Discovery is unauthenticated by design. Inference always passes admission;
+  configured shared doors can accept anonymous calls when membership is not
+  required. Tenant-only doors require the appropriate credential and scope.
+  See [anonymous calls](auth.md#anonymous-calls).
 - Inference consumes quota and may cost money — `GET /v1/balance`
   exists only where the operator enabled monetary admission, and the
   `/v1/accounts`, `/v1/sessions`, `/v1/workspaces`, `/v1/invitations`,

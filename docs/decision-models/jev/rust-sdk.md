@@ -1,10 +1,11 @@
 # Jev Rust SDK design
 
-**Status (2026-09-16):** proposed. The owner asked for a Rust crate that
-mirrors TypeSafe's official Python and JavaScript SDKs, with the same
-methods and the same behavior, so that Coder and the other Rust binaries call
-Jev through one typed client. Nothing in this document is built yet; the
-[to-do list](todo.md) holds the work items.
+**Historical SDK design, September 16, 2026.** The Rust SDK is now
+implemented in [`crates/jev`](../../../crates/jev/). Use the
+[current client matrix](../guides/clients.md) and [caller guide](../guides/caller.md)
+for supported methods, configuration, and retry behavior. The proposal below
+retains the original design rationale; future-tense statements are not a
+current missing-feature list.
 
 The crate speaks the official API directly:
 
@@ -46,7 +47,7 @@ everything above.
 The crate is a client library. It holds no Coder policy, no question
 constants, and no threshold. Those belong to the crate that owns the
 decision, in one reviewable module per decision, as the
-[integration map](integration-map.md) lays out.
+[integration map](../../coder/design/decision-function-inventory.md) lays out.
 
 ## Public surface
 
@@ -272,7 +273,7 @@ output ever carries the key.
   the decision.
 - A fallback that answers questions through a language model, the way
   `system-one-adapter-python` does. That is a separate crate if Coder wants
-  it, and the [integration map](integration-map.md) says when.
+  it, and the [integration map](../../coder/design/decision-function-inventory.md) says when.
 - The Vercel AI Gateway evaluation transport, and any type or feature that
   anticipates it. The wire protocol is recorded in the knowledge base. If
   the owner later wants the Gateway as a backup, that is a separate crate or

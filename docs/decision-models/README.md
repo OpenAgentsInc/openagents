@@ -1,5 +1,7 @@
 # Decision models
 
+For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
+
 One document — the *state* — plus a map of typed questions goes in. One typed
 answer per question comes out, with probabilities. No text is generated.
 
@@ -118,8 +120,8 @@ which are inferred, and which are neither. Where a number has been withdrawn
 because it did not survive its own noise floor, the withdrawal stays on the
 page next to the claim rather than replacing it quietly.
 
-The machinery that enforces this lives in `crates/gym` and is surveyed in
-[`../gym.md`](../gym.md).
+The machinery that enforces this lives in `crates/gym`; the
+[Gym index](../gym/README.md) links its current contracts and retained evidence.
 
 ### The ceiling stands beside the score
 

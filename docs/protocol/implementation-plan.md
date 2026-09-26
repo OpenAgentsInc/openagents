@@ -1,12 +1,18 @@
 # Nostr protocol implementation plan
 
-Status: implementation in progress. The [current coverage report](2026-09-26-nip-implementation-coverage.md)
+Status: implementation in progress, reviewed 2026-09-26. Start with the
+[protocol index](README.md) for source pins, current roles, and historical reviews. The [current coverage report](2026-09-26-nip-implementation-coverage.md)
 separates implemented components from remaining host and client work. The
 [OpenAgents protocol set](../../nips/openagents/README.md) contains standalone
 v1 specifications for general agent infrastructure. Coding is the first domain
 profile. The [consolidated proposed issues](../optimization/proposed-issues.md)
 define the unfiled backlog for full semantic-programming and optimization
 integration. This plan creates no GitHub issues.
+
+The [free labor runtime](../coder/runtime/free-labor.md) completes a bounded
+MKT/LAB host rehearsal with encrypted loopback transport and retained buyer and
+provider state. The workstream table below describes the wider target; it does
+not reset that evidence or claim an independent paid market.
 
 ## Scope and boundaries
 
@@ -65,7 +71,8 @@ name and its distinct wire identity.
 | EVAL | Workload suites, exact attempts, comparisons, uncertainty, public/private reports, and scoped admission. | Protected graders/labels, explicit missing outcomes, independent confirmation, and whole-task claims. |
 | OPT | Signatures, implementations, study/data/search plans, candidates, materialization, trials, cost, and results. | The actual loaded candidate is measured; frozen meaning and data rights survive search; adoption remains separate. |
 | KB | Immutable entries, heads, withdrawals, reader trust, and out-of-source evidence. | Preserve existing publish/sync validation; complete private entries and curated packages with provenance and rights checks. |
-| CTRL | Task-scoped device grants, pairing, revocation, command admission, and bounded history views. | Independent rights, stale frames, replay, lost acknowledgments, handoff, and redacted catch-up cannot leak evidence or duplicate effects. |
+| XP | Signed frozen quests, referee awards, revocations, and trusted reader ledgers. | Preserve the implemented `kb-transfer` fixtures; reject self/in-sample or unavailable evidence and conflicting live awards. XP remains separate from payment. |
+| CTRL | A [bounded local-owner bridge](../coder/runtime/nostr-task-control.md) supplies task grants, pairing, revocation, exact commands, and finite views. Complete native client integration and the remaining distributed roles. | Keep current rights, expiry, duplicate/conflicting requests, failed persistence, and restart covered; handoff and complete RUN history still need their own implementation and evidence. |
 | MKT | Offerings, private negotiation, mutually accepted orders, cancellation, and settlement evidence. | Exact terms survive restart and relay replacement; wallet authority stays separate; ambiguous payment remains unknown and cannot trigger a duplicate charge. |
 | X402 | Strict x402 v2 Lightning validation, transport-aware binding, required CAP feature, admitted wallets, durable proof consumption and purchase recovery. | Upstream HTTP/MCP vectors, explicit native-profile refusal/support, fee enforcement, atomic consumption/intent, response-loss recovery, private evidence, and unchanged MKT/LAB settlement. See the [integration plan](../coder/design/x402-lightning-nostr-integration.md). |
 | LAB | Execution linkage, deliverable identity, verification, acceptance, rework, disputes, and data rights. | Two independent operators complete a no-spend job, then separately verified payment; a passing test alone neither accepts a contract nor settles an invoice. |

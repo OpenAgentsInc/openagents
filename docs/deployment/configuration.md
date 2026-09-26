@@ -1,4 +1,4 @@
-# Configuration Contract
+# Relay configuration contract
 
 nostr-relay reads its configuration from environment variables only. There are
 no configuration files and no command-line configuration flags. This adapts
@@ -34,18 +34,15 @@ sees one flat, typed contract.
 | `DATABASE_URL` | yes* | — | Postgres connection string, e.g. `postgres://nostr_relay:<YOUR_DB_PASSWORD>@127.0.0.1:5432/nostr-relay`. Unix-socket form is supported: `postgres://nostr_relay@%2Fvar%2Frun%2Fpostgresql/nostr-relay` or keyword form `host=/var/run/postgresql user=nostr-relay dbname=nostr_relay`. |
 | `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` | yes* | libpq-style defaults | Standard Postgres variables, used only when `DATABASE_URL` is not set. |
 
-\* Exactly one form must be provided. If both are set, `DATABASE_URL` wins.
+\* Provide a connection string or the standard Postgres variables. If both
+forms are set, `DATABASE_URL` wins.
 
-Note on TLS to Postgres: the allowed dependency set gives `tokio-postgres`
-without a TLS backend, so database connections are plaintext. This is
-correct for the supported topologies: same host, private Unix socket, or a
-private network the platform secures. A deployment that requires TLS to the
-database (for example a managed Postgres that enforces `sslmode=require`)
-uses the owner-approved `tokio-postgres-rustls` backend. That optional feature
-is approved in `AGENTS.md` but is not in the dependency tree yet; it lands
-only with a managed-Postgres deployment path and a live TLS proof. The
-DigitalOcean runbook therefore supports its Droplet topology and marks App
-Platform + Managed Postgres unsupported for the current binary.
+The current store connects through `tokio-postgres::NoTls`. Use a local
+Unix socket or an operator-secured connection such as the documented
+Cloud SQL socket. The binary does not implement direct database TLS; a managed
+Postgres service that requires `sslmode=require` is unsupported without a
+separately implemented and verified TLS adapter. There is no current AGENTS.md
+exception or absent DigitalOcean runbook that changes this behavior.
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
@@ -68,6 +65,7 @@ Platform + Managed Postgres unsupported for the current binary.
 | `NOSTR_RELAY_EXPIRATION_SWEEP_SECONDS` | no | `60` | Interval for physical NIP-40 cleanup (1–86,400). Queries exclude expired events independently of the sweep. |
 | `NOSTR_RELAY_SECRET_KEY` | for NIP-29 | — | Relay's 32-byte secret as 64 lowercase hexadecimal characters. Enables relay-managed groups and signed group history/metadata. The derived public key becomes the NIP-11 relay pubkey; if `NOSTR_RELAY_PUBKEY` is also set, it must match. This is a relay key, never a participant or wallet key, and belongs only in the protected runtime environment. |
 | `NOSTR_RELAY_MANAGEMENT_PUBKEY` | for NIP-86 | — | Exact 32-byte owner public key as 64 lowercase hexadecimal characters. Enables the NIP-98-authenticated management endpoint. `NOSTR_RELAY_URL` is required so HTTP authorization can bind the public URL. |
+| `NOSTR_RELAY_OPENAGENTS_PROFILES` | no | `false` | Advertise the implemented CAP/PRG/EXT/RUN relay roles in NIP-11. This does not run programs, decrypt private artifacts, or enable a task owner; see [retention](../protocol/openagents-retention.md). |
 | `NOSTR_RELAY_READ_STATE_COMMUNITY` | for the optional NIP-RS snapshot | — | Canonical lowercase UUID. With `NOSTR_RELAY_URL`, enables the writer-database snapshot for the exact configured HTTP Host. Discovery advertises the community and snapshot limits only for that Host. No relay signing key is required. |
 | `NOSTR_RELAY_PUSH_SECRET`, `NOSTR_RELAY_PUSH_GATEWAY`, `NOSTR_RELAY_PUSH_APP_PROFILE` | disabled | — | Legacy push configuration is retained for explicit startup refusal. Configuring a push executor fails until transactional lease authority, durable delivery, and current-membership checks exist. NIP-PL is not advertised. |
 
@@ -144,7 +142,7 @@ binary is directly reachable.
 | `NOSTR_RELAY_LOG_LEVEL` | no | `info` | One of `error`, `warn`, `info`, `debug`. Logs are single-line JSON on stdout. |
 | `NOSTR_RELAY_SHUTDOWN_GRACE_SECONDS` | no | `10` | On SIGTERM: stop accepting, drain in-flight admissions, close connections, exit within this bound. |
 
-## NIP-11 identity (optional, advertised only) (optional, advertised only)
+## NIP-11 identity (optional, advertised only)
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
@@ -197,5 +195,8 @@ NOSTR_RELAY_MANAGEMENT_PUBKEY=<64-lowercase-hex-public-key>
 
 ## Status note
 
-The M1–M7 executable relay implements this contract. If implementation must
-diverge, change this file in the same commit.
+The relay implements this configuration contract. M1–M7 are retained historical
+milestone labels, not the current implementation boundary. Use the
+[protocol coverage report](../protocol/2026-09-26-nip-implementation-coverage.md)
+for later changes, optional roles, and unsupported features. Update this page
+with configuration changes.

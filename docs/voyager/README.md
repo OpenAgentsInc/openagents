@@ -1,5 +1,7 @@
 # Voyager
 
+For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
+
 An open-ended agent that lives in a Minecraft world, after the Voyager
 paper (arXiv:2305.16291): a curriculum proposes tasks, programs run as
 bounded code-as-action, a critic checks what each attempt did, and what

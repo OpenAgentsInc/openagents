@@ -9,8 +9,12 @@ permits each part to close. Its starting revision is
 
 **Shipped foundations now include** explicit durable execution, reconstructed
 evidence, knowledge integrity, private knowledge inputs, Rust mobile feasibility,
-and a recoverable free labor order. Frozen context and protected independent checks are delivered; detached and
-fresh model-run acceptance continues under the Microcoder issue. The original inbox
+and a recoverable free labor order. Frozen context and protected independent checks are delivered. The Microcoder
+repository adapter now includes detached and container code paths. Fresh live
+acceptance was stopped at the user's request; retained attempts are not an
+independently verified success. Code and documentation work can continue, while
+[#9674](https://github.com/OpenAgentsInc/openagents/issues/9674) remains open. See
+the [exact stopped record](verification/2026-09-26-repository-adapter/README.md). The original inbox
 [#9672](https://github.com/OpenAgentsInc/openagents/issues/9672) remains the inert
 submission boundary; execution requires a separate grant.
 This is the foundation for moving between terminal, headless, phone, desktop, and
@@ -46,9 +50,10 @@ not automatically running in another agent.
 | Order | Work | Status and ownership | Exit condition |
 | --- | --- | --- | --- |
 | 1 | [Durable local inbox, #9672](https://github.com/OpenAgentsInc/openagents/issues/9672): M0 fixtures, M2a/M3a | **Shipped foundation.** The implementation and [acceptance evidence](verification/2026-09-26-task-inbox.md) complete this bounded slice. | Opt-in `coder task` submission/list/inspection and queued-task cancellation; versioned closed commands, exact-byte retry identity, expected revisions, private atomic storage, and real CLI tests. No execution, Nostr control, or running-task interruption. |
-| 2 | [Durable execution owner, #9673](https://github.com/OpenAgentsInc/openagents/issues/9673), then [Microcoder adapter, #9674](https://github.com/OpenAgentsInc/openagents/issues/9674): M3/M4 | **Owner delivered; #9674 remains in progress.** The bounded-command owner passes its acceptance. The local Microcoder adapter uses the same host; container and remaining model-host acceptance continue under #9674. | Owner/view acceptance: 38 focused task cases and nine process/CLI cases pass. Finish the explicitly scoped Microcoder acceptance without blocking unrelated issues. |
+| 2 | [Durable execution owner, #9673](https://github.com/OpenAgentsInc/openagents/issues/9673), then [Microcoder adapter, #9674](https://github.com/OpenAgentsInc/openagents/issues/9674): M3/M4 | **Owner delivered; #9674 remains in progress.** The bounded-command owner passes its acceptance. The Microcoder adapter uses the same host and has detached/container paths. Code checks are separate from the stopped, incomplete live acceptance under #9674. | Owner/view acceptance: 38 focused task cases and nine process/CLI cases pass. Retain the incomplete acceptance result and finish code/documentation scope; do not launch more model or benchmark runs under this task. |
 | 3 | [Evidence and views, #9675](https://github.com/OpenAgentsInc/openagents/issues/9675): M5 | **Shipped foundation.** Paged ATIF reads, retained artifacts, explicit gaps, and reconnect fixtures pass targeted acceptance. | A new reader reconstructs task state and pages complete retained evidence without the writer's memory. Missing, truncated, or inaccessible evidence stays visible. |
 | 4 | [Independent completion and context, #9676](https://github.com/OpenAgentsInc/openagents/issues/9676): M6 | **Delivered.** Frozen coverage, exact knowledge and source lineage, scoped instructions, corrections, and protected independent checks pass [targeted acceptance](verification/2026-09-26-frozen-context/README.md). | The exact candidate has a versioned requirement/check record; a model's finish, changed tests, or an exit code cannot create verified success. |
+| 5 | [Scoped Nostr control, #9691](https://github.com/OpenAgentsInc/openagents/issues/9691): bounded M7/M9 foundation | **Delivered bounded host/client bridge.** Owner-installed mapping, separate rights, expiry/revocation, signed private commands, durable replay, and finite views. | Synthetic authenticated socket and separate-process recovery checks; [runtime limits](runtime/nostr-task-control.md). This does not complete mobile apps, full signed RUN history, or distributed handoff. |
 | Parallel | [Knowledge evidence integrity, #9677](https://github.com/OpenAgentsInc/openagents/issues/9677): M6a, following closed [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670) | **Shipped foundation.** Complete intake and honest cost/comparison semantics pass targeted tests and strict Clippy. Existing retrieval, contribution, and relay sharing remain shipped. | Complete attempt intake, exact entry/configuration identities, unknown cost accounting, source-separated confirmation, and uncertainty before stronger admission claims. |
 | Parallel | [Mobile feasibility, #9678](https://github.com/OpenAgentsInc/openagents/issues/9678): M1; [free labor, #9679](https://github.com/OpenAgentsInc/openagents/issues/9679): M18; generic host packaging fixtures: M11/M12 | **Shipped bounded slices.** Mobile feasibility has simulator/emulator evidence; free labor has a retained authenticated relay/process round trip. Host bundle installation and one-shot service packaging are delivered in #9690. | Narrow public prototypes and explicit findings that inform shared contracts; no device, OS, or market release claim from prototypes. |
 
@@ -72,21 +77,21 @@ Their Gym, publication, and XP changes remain intact. This task does not launch 
 
 This order does not require another expensive benchmark campaign before
 task durability can improve. Use deterministic fixtures and fake executors
-for contract and recovery work. Run a small live acceptance only when it
-resolves an actual integration question. Algorithm comparisons remain
-separately scoped, frozen studies.
+for contract and recovery work. This task is restricted to code and documentation; no further model or
+benchmark runs are authorized here. Algorithm comparisons remain separately
+owned, frozen studies, and any unmeasured live acceptance stays incomplete.
 
 ## Public foundations to reuse
 
 | Area | Implemented basis | What remains for this migration |
 | --- | --- | --- |
-| Local task requests | [Durable inbox](guides/tasks.md), [store and command contract](../../crates/coder/src/task.rs), and [acceptance](verification/2026-09-26-task-inbox.md). | Local execution admission, owner lifecycle, and evidence recovery are delivered. Remote control is tracked in #9691; current conversations do not consume the inbox. |
+| Local task requests | [Durable inbox](guides/tasks.md), [store and command contract](../../crates/coder/src/task.rs), and [acceptance](verification/2026-09-26-task-inbox.md). | Local execution admission, owner lifecycle, and evidence recovery are delivered. The bounded CTRL bridge in #9691 connects explicit clients to the owner; complete mobile integration and conversational inbox adoption remain separate. |
 | One terminal/headless execution path | [Shared turn](../../crates/coder/src/turn.rs), host permits, [headless guide](guides/headless.md), and [delegate door](runtime/delegate-door.md). | A durable interactive owner that survives client exit, reconciles effects after failure, and accepts typed control from multiple clients. |
 | Execution and workspaces | [Subprocess supervision](runtime/subprocesses.md), [execution boundary](verification/2026-09-20-execution-boundary.md), and [worktree lifecycle](verification/2026-09-20-worktree-lifecycle.md). | Apply these guarantees to every selected task adapter; add resource leases and truthful support reporting where they are absent. |
 | Existing durable records | [Program run state](../../crates/coder/src/runstate.rs), reconciliation, and [project supervision](guides/project-supervision.md). | Reuse the established separation of execution, verification, acceptance, and integration. These are not already a complete cross-client SESS owner. |
 | Traces and evaluation | [ATIF traces](runtime/traces.md), [Gym](../gym/), and [Terminal-Bench results](../terminal-bench/README.md). | Shared task identities, complete artifact closure, replayable views, cost completeness, and fault/recovery evidence. A trace is evidence of recorded events, not permission to replay effects. |
-| Microcoder | [Current guide](guides/microcoder.md), [source](../../crates/microcoder/), and closed [#9666](https://github.com/OpenAgentsInc/openagents/issues/9666)–[#9669](https://github.com/OpenAgentsInc/openagents/issues/9669). | General repository admission, shared enforcement and cancellation, durable checkpoints, task-view integration, and independent completion. Keep existing benchmark execution distinct from this product integration. |
-| Knowledge | [Knowledge guide](guides/knowledge-base.md), [design](design/knowledge-base.md), [source](../../crates/knowledge/), and closed [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670). | Exact prospective evidence (M6a, #9677); private entries, curated packages, and OPT studies (M16); independently demonstrated transfer (M19). Do not rebuild already shipped retrieval, harvesting, publication, or withdrawal. |
+| Microcoder | [Current guide](guides/microcoder.md), [source](../../crates/microcoder/), and closed [#9666](https://github.com/OpenAgentsInc/openagents/issues/9666)–[#9669](https://github.com/OpenAgentsInc/openagents/issues/9669). | The repository adapter implements admission, shared boundaries, cancellation, detached launch, and task evidence. Complete live independent acceptance remains unverified after the stop request; existing benchmark execution is a distinct path. |
+| Knowledge | [Knowledge guide](guides/knowledge-base.md), [design](design/knowledge-base.md), [source](../../crates/knowledge/), and closed [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670). | Evidence integrity (M6a) and private/immutable inputs (#9686) are delivered. Package activation and complete OPT integration remain in M16; independently demonstrated transfer remains M19. Do not rebuild existing retrieval, publication, or withdrawal. |
 | Extensions | [Wasm host and evidence guests](../extensions/plugins.md), local programs, and capability trust. | Complete package distribution, compatibility, host activation, rollback, and measured adoption. Installation must remain inert. |
 | Nostr | [Protocol coverage audit](../protocol/2026-09-26-nip-implementation-coverage.md), relay, contract validators, private artifacts, and existing CJ/KB transports. | Persistent application services for sessions, device control, workspace views, environments, automation, and labor. Pure validation and relay acceptance do not establish those services. |
 | Accounts and optional hosting | [Gateway and tenancy](../decision-models/service/gateway.md). | Bind hosted task owners and workers to their own authorization, isolation, export, and recovery contracts. Local use must not depend on a hosted account. |
@@ -131,7 +136,7 @@ command or append-only journal is an intermediate result, not that gate.
 
 | Package | Status and dependencies | Work and acceptance required |
 | --- | --- | --- |
-| **M7 — Nostr task transport** | **In progress, scoped CTRL slice [#9691](https://github.com/OpenAgentsInc/openagents/issues/9691).** M2, M3, M5. | Implement SESS/CTRL/RUN application handling, signed and admitted commands, private artifact resolution, ordered views, cursors, and owner-side revocation. Exercise duplicate/reordered delivery, replay, restart, and two clients attempting concurrent ownership. Relay acknowledgments cannot authorize an effect. |
+| **M7 — Nostr task transport** | **Bounded CTRL host/client slice delivered in [#9691](https://github.com/OpenAgentsInc/openagents/issues/9691); full M7 remains partial.** [Supported scope](runtime/nostr-task-control.md). M2, M3, M5. | Implement SESS/CTRL/RUN application handling, signed and admitted commands, private artifact resolution, ordered views, cursors, and owner-side revocation. Exercise duplicate/reordered delivery, replay, restart, and two clients attempting concurrent ownership. Relay acknowledgments cannot authorize an effect. |
 | **M8 — Mobile observation** | **Queued.** M1, M5, M7. | Deliver iOS and Android task lists, complete readable transcripts, artifact/check/cost views, drafts, and explicit unavailable states. Test real-device paging, offline freshness, process death, credential loss, account changes, and revoked access. Retain each platform's results separately. |
 | **M9 — Mobile control** | **Queued.** M8 and accepted owner control. | Add admitted task submission, steering, cancellation, exact-byte outbox/reconciliation, and separately granted POL approval. Refuse stale approvals and changed arguments. Complete the selected computer-to-phone task once across disconnect and restart; a retried request cannot create a second task effect. |
 | **M10 — Notifications** | **Queued.** M7, M8. | Implement durable PL lease/delivery authority, platform push bindings, bounded retries, current-access checks, expiration, and revocation. Use notifications to request an authorized refresh rather than disclose private task content. Test real-device background delivery; foreground clients must work without it. |
@@ -278,9 +283,9 @@ its authority boundary. Its acceptance is deliberately narrower than M2/M3:
   cancellation, invalid input, and storage failure/corruption with public
   synthetic fixtures. Exercise the real CLI without paid model calls.
 
-The immediate follow-up,
-[#9673](https://github.com/OpenAgentsInc/openagents/issues/9673), adds the
-actual execution owner and remaining runtime contract. It pins effective
+The completed follow-up,
+[#9673](https://github.com/OpenAgentsInc/openagents/issues/9673), delivered the
+local execution owner and its bounded runtime contract. It pins effective
 configuration, source, grants, budgets, and capability support; keeps an
 OS-held owner lock and ownership epoch; acknowledges commands durably; and
 records effect intent before dispatch through the existing supervisor and
@@ -288,13 +293,14 @@ boundary. Owner loss leaves uncertain effects unknown until reconciliation.
 Client detach, requested cancellation, confirmed process stop, completion,
 verification, acceptance, and integration need separate meanings.
 
-A bounded executor fixture must prove that lifecycle before
-[#9674](https://github.com/OpenAgentsInc/openagents/issues/9674) adds the full
-Microcoder adapter. The evidence/view and independent-check issues then
-complete G1. The current terminal/headless path remains available alongside the opt-in
-owner and repository adapter. #9691 now owns the next scoped Nostr control
-slice; #9690 delivers portable-host bundle packaging. Both proceed independently of
-Claude's registered study and recent issues.
+Bounded executor, evidence-view, and frozen-check fixtures now cover those
+local contracts. [#9674](https://github.com/OpenAgentsInc/openagents/issues/9674)
+retains an incomplete live Microcoder acceptance gate after the operator stopped
+runs. The current terminal/headless path remains available alongside the opt-in
+owner and repository adapter. The [scoped Nostr control bridge](runtime/nostr-task-control.md)
+in #9691 and portable-host bundle packaging in #9690 are independent slices;
+neither establishes complete G1 or mobile product acceptance. Claude's
+registered study and recent issues remain separately owned.
 
 ## Protocol implementation boundaries
 

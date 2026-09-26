@@ -1,5 +1,10 @@
 # Delegation brief
 
+Status: retained September 20 handoff. Its next-action list and issue states
+are historical, not current instructions. Use the [master roadmap](roadmap.md),
+[Coder migration tracker](coder/migration-status.md), and
+[task guide](coder/guides/tasks.md) for the current ownership and delivery path.
+
 Written 2026-09-20 to hand this work to the next agent. It says where things
 stand, what to do next and why, and the constraints that are easy to lose.
 

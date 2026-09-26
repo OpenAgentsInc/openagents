@@ -451,34 +451,21 @@ evaluations, and lists the use cases Vercel names for an agent loop:
 choosing the next tool or subagent, deciding whether to continue, retry, ask
 the user, or stop, scoring urgency or risk before an action, and verifying
 model outputs and enforcing guardrails. Those four are the seams the
-[integration map](integration-map.md) checks against Coder.
+[integration map](../../coder/design/decision-function-inventory.md) checks against Coder.
 
-## Where the key lives
+## Current integration and credentials
 
-The owner's TypeSafe API key is stored in the workspace secrets directory at
-`~/work/.secrets/typesafe.env` as `TYPESAFE_API_KEY`. That directory is
-ignored by git. Do not print the key, commit it, or paste it into an issue.
-A Coder integration reads it the way the door reads its own credentials,
-from configuration or the environment, never from source.
+The earlier Coder integration described in this September 16 reference is
+historical. The current SDK is [`crates/jev`](../../../crates/jev/); its
+[current client matrix](../guides/clients.md) and [caller guide](../guides/caller.md)
+are authoritative for supported settings. `jev` accepts an explicit `ApiKey`
+or `TYPESAFE_API_KEY` from the environment. Host applications can provide their
+own protected configuration loader; the SDK does not search a private sibling
+repository or automatically load the older `coder_jev` configuration file.
 
-The terminal reads it through `coder_jev::config`, which resolves three
-settings in the same order the `jev` client resolves one: an explicit value,
-then the environment, then the file, then the default. A value that is empty
-or holds only whitespace reads as unset.
-
-| Setting | Variable | File field | Default |
-| --- | --- | --- | --- |
-| Key | `TYPESAFE_API_KEY` | `api_key` | none |
-| Model | `TYPESAFE_DEFAULT_MODEL` | `model` | the `jev` client's |
-| Switch | `CODER_JEV` | `enabled` | on |
-
-The file is `~/.openagents/jev.json`, beside the bearer, and nothing outside
-`~/.openagents` is read. Jev mode is off until a key is present, so a machine
-with no key runs the normal loop and the session records one line saying so.
-`CODER_JEV` takes `on`, `1`, `true`, or `yes` and their opposites; a value
-that reads as none of them turns Jev mode off. The key reaches no line the
-terminal writes: `jev::ApiKey` prints `***`, and each sentence that says why
-Jev mode is off names a variable or a path rather than a value.
+Keep credentials out of source, logs, transcripts, fixtures, and issue text.
+A model endpoint setting and possession of a key do not authorize a benchmark
+campaign, another recipient, or disclosure of private inputs.
 
 ## Sources
 

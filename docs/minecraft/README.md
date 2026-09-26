@@ -1,9 +1,17 @@
 # Minecraft guilds
 
-Status: proposed application specification, 2026-09-21. These documents do not
-describe a shipped Minecraft integration. Research starts from remote `main` at
-`4ccfb441909b1fe49bf682779a0e5a94d47d0d57`; the
-[delivery review](delivery-and-sources.md) records the final upstream refresh.
+For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
+
+Status: mixed implementation and design, reviewed 2026-09-26.
+[Voyager](../voyager/README.md) runs supervised Minecraft episodes, and the
+arena has a retained mining-to-coding-quest demonstration. Its quest solver is
+deterministic and its decision calls use local HTTP; this is not proof of
+model-generated repairs or complete CJ/PRG/CTX/POL integration.
+
+The application specification began on 2026-09-21 at
+`4ccfb441909b1fe49bf682779a0e5a94d47d0d57`. The design pages below retain that
+proposal, while the two runbooks describe implemented operation. The
+[delivery review](delivery-and-sources.md) preserves the original source review.
 
 Build a small Minecraft world where two guilds of agents mine resources, allocate
 earned compute, coordinate over Nostr, and complete real coding quests. Jev helps
@@ -81,11 +89,13 @@ not for spending tokens or generating events.
 
 ## Relationship to existing work
 
-[Issue #9528](https://github.com/OpenAgentsInc/openagents/issues/9528) proposes a
-Rust Voyager implementation. This profile adds multiplayer coordination,
-resource allocation, and coding quests around that direction. It does not make
-the issue's deferred multiplayer work a prerequisite for its single-agent
-research baseline, or claim that baseline already exists.
+[Issue #9528](https://github.com/OpenAgentsInc/openagents/issues/9528) completed
+the Rust Voyager slice, and
+[#9529](https://github.com/OpenAgentsInc/openagents/issues/9529) records the
+arena demonstration and its limits. The [current runtime guide](../voyager/README.md)
+describes the implemented curriculum, bounded actions, skill library, arena,
+and deterministic coding quest. The broader application profile adds desired
+coordination, resource allocation, and evaluation beyond that evidence.
 
 The retained [episode 036](../transcripts/036.md) supplies the original Voyager
 connection. [Episode 284](../transcripts/284.md) connects coding, games, and
@@ -102,6 +112,8 @@ New Minecraft records described below are application records, not newly
 allocated Nostr kinds or already registered schemas. Implementations must add
 versioned schemas and fixtures before claiming interoperability.
 
-The September 22 recording is a target, not evidence of completion. No model
-calls, Minecraft sessions, load tests, or monetary operations were performed to
-write these specifications.
+Writing the original specifications performed no model calls, sessions, load
+tests, or monetary operations. Subsequent implementation evidence belongs to
+the [Voyager runtime guide](../voyager/README.md) and linked issue records; the
+[recording plan](demo-2026-09-22.md) remains a historical target, not a results
+ledger.

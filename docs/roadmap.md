@@ -1,299 +1,185 @@
-# Roadmap: from the transcript archive to one plan
+# OpenAgents master roadmap
 
-Status: proposal, 2026-09-25, for
-[#9598](https://github.com/OpenAgentsInc/openagents/issues/9598). It reads the
-episode transcripts in [`transcripts/`](transcripts/), mainly episodes 200 to
-288 and the 2024 plugin episodes (48 to 107), against what this repository
-holds today, and proposes one ordered plan that folds the legacy threads into
-the current direction. Episode numbers are cited as "ep N". The transcripts are
-machine-generated, so quotes are approximate.
+Updated September 26, 2026. This is the single cross-project roadmap for what
+OpenAgents is building and considering. Detailed designs define contracts;
+runbooks describe shipped behavior; dated reports preserve measured outcomes.
+The [documentation index](README.md), [complete catalog](catalog.md), and
+[glossary](glossary.md) separate those roles.
 
-Update, 2026-09-26: **agent labor is a high-priority track alongside Coder's
-core**, following the operator's direction and a fresh reading of episodes
-213–215 and 266–267. The [labor and market infrastructure plan](agents/market-infrastructure.md)
-replaces the blanket decision to park all five markets. It prioritizes paid,
-bounded coding work and independently operated providers. Compute and data
-support that work when useful; swaps, liquidity, and financial risk markets
-are not prerequisites. The [networked Coder plan](coder/design/networked-coder-plan.md)
-connects labor to shared knowledge, programs, and measured improvement.
+The direction is one reliable, economical coding agent that people can embed
+in their workflows, use across their devices, extend with reusable components,
+and hire through an open network. Coder is the anchor product. Agent labor is
+a high-priority parallel track. Shared knowledge and reusable programs should
+improve accepted work across operators; their existence alone is not a network
+effect or proof of better coding performance.
 
-The same update incorporates a full rereading of the TypeSafe proposal and
-episodes 275–281 through the [Coder suite plan](coder/design/typesafe-product-suite.md).
-Coder's terminal, mobile, web, hosted execution, and computer-control surfaces
-are planned around one runtime. Access plans and execution locations are
-separate choices, not competing products. Build explicit context and operation discovery before
-automatically optimizing their policies; terminal-first does not mean
-terminal-only. The phase order below governs quality claims, not a prohibition
-on building those shared facilities or the labor track in parallel.
+The earlier [transcript-derived roadmap](history/2026-09-25-transcript-roadmap.md)
+is retained as historical analysis. Its issue statuses, model results, and
+calendar estimates are not current commitments. The transcript archive itself
+is unchanged by this documentation pass.
 
-## The vision this plan serves
+## Status and authority
 
-Episode 288 states it:
+| Label | Meaning |
+| --- | --- |
+| Implemented | The described code path exists; its evidence and support boundaries still apply. |
+| Partial | An implemented slice exists, while the larger named outcome remains incomplete. |
+| Active | An issue is claimed and work is underway; this is not a completion claim. |
+| Planned | A specific desired outcome with dependencies and acceptance; no implied active owner. |
+| Research | A hypothesis or experiment that can be rejected. |
+| Deferred | An explicit optional direction outside the current product milestone. |
+| Historical | Retained evidence or a superseded proposal; not an instruction to recreate an old stack. |
 
-> "really good reliable coding agent … coding agent as primitive that you just
-> rely on and then put in any other workflow using system one heavily bringing
-> speed and cost way down keeping quality on par with the big models. Make it
-> reliable embeddable in any surface fully open source and extensible
-> increasingly drawing on our extensible plugin slash program system … I think
-> we've got the shape of it. We just got to fill in the pieces."
+An issue can close after a scoped implementation, a negative experiment, or a
+recorded deferral. Read its closing result before interpreting closure as a
+successful capability. A parser, example, simulator run, or service template
+is evidence for that specific layer only. Production readiness and comparative
+model claims need their own evidence.
 
-Around that core, the archive keeps returning to four commitments that predate
-Coder and still stand:
+The [suite delivery tracker](coder/migration-status.md) owns the M0–M20 package
+ledger, including M6a, and live issue ownership. The [benchmark status](terminal-bench/README.md)
+owns comparison results. The [protocol coverage review](protocol/2026-09-26-nip-implementation-coverage.md)
+owns implemented NIP roles. This page links those sources instead of copying
+changing scores, inventories, or every issue checkbox.
 
-1. **Pay the people who contribute**, in Bitcoin (ep 1 onward; "PAY THE
-   PEOPLE", ep 230; "the members of our ecosystem … will be paid the most",
-   ep 230, ep 237).
-2. **Open source on open protocols**: Nostr and Bitcoin as the neutral
-   meeting point (ep 200, ep 286), "100% of all code that we ship is open
-   source" (ep 255).
-3. **A network, not a chatbot**: "the moat is a network" (ep 269); plugins and
-   programs whose first author gets paid when others reuse them (ep 269,
-   ep 275).
-4. **Verification as the product**: "the atomic unit … is the accepted
-   outcome" (ep 237); "verifiable software" (ep 259); receipts and public
-   traces (ep 272).
+## Priorities and dependencies
 
-## What the history teaches
+1. Make each local task controllable and inspectable: exact admission, one
+   execution owner, bounded effects, complete evidence, and independent checks.
+2. Finish the Microcoder repository adapter and client continuity over that
+   owner. Ship useful local and cross-client slices as their acceptance passes.
+3. Improve the economical coding loop and shared knowledge through frozen,
+   source-separated comparisons. Keep implementation work moving while
+   independent studies run.
+4. Deliver useful agent labor alongside the core: free bounded orders first,
+   independently operated providers next, then explicitly authorized Bitcoin
+   settlement and demonstrated buyer demand.
+5. Expand host packaging, native clients, environments, component distribution,
+   and optional managed capacity without duplicating the agent or its authority.
 
-The archive is also a record of how plans went wrong. The plan below is built
-around these lessons.
+```mermaid
+flowchart TD
+    Contract["Exact task, context, grants, and acceptance"]
+    Owner["Durable owner and bounded execution"]
+    Evidence["Retained traces, artifacts, checks, and accounting"]
+    Core["Microcoder and replaceable typed AI operations"]
+    Clients["Nostr continuity and thin clients"]
+    Hosts["Owned hosts, CoderOS, and admitted environments"]
+    Knowledge["Reusable knowledge, programs, and extensions"]
+    Labor["Independent agent labor and acceptance"]
+    Payment["Separately authorized Bitcoin settlement"]
+    Evaluation["Protected comparisons and measured contribution value"]
+    Contract --> Owner --> Evidence
+    Evidence --> Core
+    Evidence --> Clients --> Hosts
+    Evidence --> Knowledge
+    Evidence --> Labor --> Payment
+    Core --> Evaluation
+    Knowledge --> Evaluation
+    Labor --> Evaluation
+    Evaluation --> Knowledge
+```
 
-- **Too many anchors.** Between ep 199 and ep 288 the anchor product changed
-  at least eight times: MechSuit on Claude Code, Autopilot (four different
-  forms), Khala, Khala Code, OpenAgents Desktop, Omega, Sarah, the Agent Forge,
-  and Coder. The speaker names the problem himself: "We never had one stable
-  product to anchor it all" (ep 262), and "Is it just a character flaw of mine
-  that I just cannot do simply scoped MVP?" (ep 254). **Lesson:** one anchor,
-  Coder, and everything else either serves it or waits.
-- **Supply without demand.** The 2024 plugin marketplace had uploads, reviews,
-  and per-use fees, and "market forces did not really figure it out" (ep 138);
-  about 20 developers were paid "but we didn't really have the use case"
-  (ep 165). GPUtopia had the same shape: "oversupply of sellers and no
-  compelling buy-side" (ep 201). The pre-reset Coder plugins went unused: with
-  14 installed, the model called none of them (the 2026-08-28 A/B review,
-  removed in `dabc08102f`). **Lesson:** build the demand first. A plugin or a
-  market is worth building only when a program that already runs calls it.
-- **Promises outrun delivery.** Dated promises recur and lapse: the January 14
-  mainnet (ep 202), the five weekly markets (ep 213, paused in ep 216), "the
-  largest decentralized training run" (ep 222 to ep 236), a working plugin
-  marketplace "by the end of this week" (ep 058). **Lesson:** keep a public
-  ledger, and retire promises out loud instead of letting them lapse.
-- **Stack churn.** Rust, then Effect and TypeScript on Bun and Cloudflare
-  (ep 233), then Bun removed (ep 253), then Elixir and Phoenix (ep 270), then
-  Rust again (ep 279). The repository is now Rust by rule (`AGENTS.md`).
-  **Lesson:** the stack is settled; don't reopen it.
-- **Claims ahead of evidence.** Clip 288g announced a thesis win that the
-  record later withdrew (`terminal-bench/2026-09-24-microluna-two-targets.md`).
-  **Lesson:** a claim names the pinned policy, held-out tasks, repeated
-  results, and all-in cost, or it isn't made
-  ([assessment](coder/design/2026-09-24-assessment.md)).
+This graph describes product dependencies. It does not require every research
+result, platform release, or full verification matrix before independent work
+can proceed. [Development verification](verification.md) is targeted; the full
+manual matrix is release-only.
+
+## Complete outcome map
+
+Stable R identifiers group the vision across documents. They are navigation
+labels, not new protocols or a second issue tracker.
+
+| Track | Current basis | Next desired outcome and completion evidence | Detailed owner documents |
+| --- | --- | --- | --- |
+| **R1 — Economical coding** | Coder, Coder One, Microluna, and Microcoder implement different recorded execution paths. Selected task wins and historical losses exist. | Repeated useful repository and benchmark completions under exact model, effort, tool, and budget controls. Count all attempts, latency distributions, known costs, and unknown totals; demonstrate transfer before broad superiority claims. | [Thesis](coder/design/thesis.md), [networked Coder plan](coder/design/networked-coder-plan.md), [Microcoder guide](coder/guides/microcoder.md), [current results](terminal-bench/README.md) |
+| **R2 — One durable task** | Local inbox, explicit execution owner, recovery, ATIF views, retained artifacts, frozen context, and protected checks are implemented. | Complete the common local/container model adapter, detached control, recovery, and exact candidate verification. Keep completion, verification, acceptance, and integration separate. | [Task owner](coder/runtime/task-owner.md), [repository adapter](coder/runtime/microcoder-repository.md), [frozen context](coder/runtime/frozen-task-context.md), M2–M6 in the [migration tracker](coder/migration-status.md) |
+| **R3 — Clients and continuity** | Terminal/headless and Gym inspection work; Rust mobile feasibility has target-specific prototype evidence. A scoped CTRL host/client bridge supplies private task control; full native client integration remains planned. | One computer-started task is observed, corrected, disconnected, reconnected, and checked through an authorized mobile client without duplicated effects. Deliver iOS, Android, desktop, and Rust web slices with separate input, accessibility, lifecycle, credential, and revocation evidence. | [Product suite](coder/design/typesafe-product-suite.md), [mobile feasibility](coder/design/rust-mobile-feasibility.md), [CTRL host](coder/runtime/nostr-task-control.md), [CTRL contract](../nips/openagents/NIP-CTRL.md), M1/M7–M10/M13 |
+| **R4 — Hosts, CoderOS, and environments** | Local execution boundaries, process supervision, worktrees, and verified bundle/one-shot service packaging exist. | Accept clean Linux and macOS hosts; support exact resource admission, restart recovery, update/rollback, and state compatibility. Build a pinned generic CoderOS profile and admitted environment leases with materialization, cleanup, and uncertain-resource accounting. | [Portable host](coder/runtime/portable-host.md), [migration assessment](coder/design/coder-suite-migration.md), [ENV](../nips/openagents/NIP-ENV.md), M11/M12/M15 |
+| **R5 — Context and operation discovery** | Scoped local instruction capture, exact frozen knowledge, evidence programs, and bounded context selection exist in specific paths. | Share versioned source captures, workspace views, requirement coverage, and recipient-specific context. Discover a small eligible operation set, expand schemas/manuals on demand, and measure missing evidence and false activation. | [TypeSafe analysis](coder/design/typesafe-agent-analysis.md), [decision-function inventory](coder/design/decision-function-inventory.md), [CTX](../nips/openagents/NIP-CTX.md), [WS](../nips/openagents/NIP-WS.md), [POL](../nips/openagents/NIP-POL.md) |
+| **R6 — Programs, plugins, and packages** | Rust registries, six runnable program step kinds (generic `invoke` remains refused), a bounded Wasm host, evidence guests, local locks, client plugins, and skill-directory components exist. | Distribute compatible, exact components over Nostr; keep installation inert; admit host bindings separately; scope skills and roll back activation. Prove useful reuse by another operator and compare components with their absence. | [Extensions](extensions/README.md), [programs](programs.md), [CAP](../nips/openagents/NIP-CAP.md), [PRG](../nips/openagents/NIP-PRG.md), [EXT](../nips/openagents/NIP-EXT.md), M16 |
+| **R7 — Shared knowledge and contribution** | Local retrieval/contribution, NIP-KB publication, immutable snapshots, private bundles, exact evidence intake, and study bookkeeping exist. | Demonstrate source-separated benefit on unseen work with retained failures, exact entry versions, lawful disclosure, and uncertainty. Support curation, withdrawal, attribution, and rewarded useful contributions without treating retrieval or authorship as proof of value. | [Knowledge guide](coder/guides/knowledge-base.md), [evidence](coder/runtime/knowledge-evidence.md), [bundles](coder/runtime/knowledge-bundles.md), [study rules](coder/runtime/knowledge-studies.md), [Beat Fable initiative](coder/beat-fable-together.md), M6a/M19 |
+| **R8 — Agent labor** | A bounded zero-price buyer/provider host completes an authenticated order, real execution, delivery, separate checking, and buyer acceptance. | Let independent operators offer explicit capacity and complete useful coding jobs. Add discovery, commercial rights, rework and dispute handling under fixed terms, recovery, and paid acceptance. Measure repeat buyers, accepted jobs, provider earnings, and all-in cost. | [Market infrastructure](agents/market-infrastructure.md), [free labor](coder/runtime/free-labor.md), [MKT](../nips/openagents/NIP-MKT.md), [LAB](../nips/openagents/NIP-LAB.md), M18 |
+| **R9 — Bitcoin and operation payments** | Monetary ledgers and payment-related protocol validation exist; they do not constitute a live Lightning labor or x402 payment service. | Add bounded wallet/facilitator adapters, exact purchase authorization, invoice/payment binding, fee limits, recovery, and unknown-state handling. Distinguish pre-execution x402 operations, post-acceptance labor settlement, zaps, and optional author royalties. | [Lightning x402 assessment](coder/design/x402-lightning-nostr-integration.md), [X402](../nips/openagents/NIP-X402.md), [NWC](../nips/official/47.md), [zaps](../nips/official/57.md), [market plan](agents/market-infrastructure.md) |
+| **R10 — Open coordination protocols** | Pinned official/Block NIPs, relay behavior, signatures/encryption, CJ decisions/execution, and selected OpenAgents validators and hosts exist. | Finish admitted host roles for SESS, CTRL, WS, WORK, AUTO, ENV, LIVE, RUN, and related contracts. Test replay, expiry, ownership generations, disclosure, revocation, and finite catch-up; advertise only proven roles. | [NIP index](../nips/README.md), [protocol implementation plan](protocol/implementation-plan.md), [teardown integration](coder/design/teardown-nostr-integration.md), [coverage](protocol/2026-09-26-nip-implementation-coverage.md) |
+| **R11 — Decision API and services** | Native decisions, classification, batch/jobs, review policies, accounts, workspaces, usage, billing, discovery, MCP, Rust clients, skills, recipes, and training/admission components are implemented in bounded forms. | Qualify deployments and customer workflows on real permitted workloads, declare operational commitments, support portable installs and upgrades, and retain honest capacity, privacy, identity, and billing evidence. Additional SDK languages require their own accepted language boundary. | [Decision API](decision-models/api/decision-api.md), [service contracts](decision-models/service/README.md), [clients](decision-models/guides/clients.md), [caller pilot](gym/measurements/2026-09-24-caller-pilot/plan.md) |
+| **R12 — Decision models and placement** | Jev client plus local Kev, Laya, and Lev serving paths; hardware-specific measurements and artifact identity exist. | Choose doors by workload evidence, latency, error costs, support, and actual economics. Qualify trained artifacts and placement/mesh proposals independently. Keep image decisions and confidential inference deferred until their separate feasibility and threat-model gates pass. | [Decision models](decision-models/README.md), [Kev](kev/README.md), [Laya](laya/README.md), [Lev](lev/README.md), [image decisions](decision-models/service/image-decisions.md), [confidential inference](decision-models/service/confidential-inference.md) |
+| **R13 — Measurement and optimization** | Gym evaluates decision models and reads coding runs; Terminal-Bench harnesses, replay, component studies, and retained negative results exist. | Make every proposed replacement reproducibly comparable. Bound search and costs, protect confirmation, retain exposure, and promote only under declared criteria. OPT contracts and optimization machinery do not prove improved behavior by themselves. | [Gym](gym/README.md), [Terminal-Bench](terminal-bench/README.md), [optimization](optimization/README.md), [NIP-OPT](../nips/openagents/NIP-OPT.md), [NIP-EVAL](../nips/openagents/NIP-EVAL.md) |
+| **R14 — Device actions, media, and automation** | Specific terminal/world/device probes and subprocess boundaries exist; broad device and automation host contracts are designed. | Admit observation, transmission, recording, speaking, browser/computer input, schedules, and continuations separately. Prove target freshness, exact authority, human override, missed-occurrence handling, and cleanup on each supported platform. | [LIVE](../nips/openagents/NIP-LIVE.md), [AUTO](../nips/openagents/NIP-AUTO.md), [teardown plan](coder/design/teardown-nostr-integration.md), M10/M14/M17 |
+| **R15 — Optional managed hosting** | Gateway tenancy/accounting and worker primitives supply pieces, not a complete Coder Cloud product. | Offer managed task capacity beside owned hosts and labor providers, with explicit tenant isolation, execution placement, export/deletion, recovery, access plans, and measured service economics. Local use remains independent. | [Suite plan](coder/design/typesafe-product-suite.md), [service specification](coder/design/service-spec.md), [tenancy/gateway](decision-models/service/gateway.md), M20 |
+| **R16 — Verse, games, and broader agents** | Verse's shared world/chat and Voyager/Minecraft research paths exist; XP and knowledge quests implement narrower contribution mechanics. | Use worlds and progression to make useful work visible, without equating activity or awards with transfer. Keep open-ended game research and future noncoding domain profiles independently evaluated. | [Verse](verse/README.md), [Voyager](voyager/README.md), [Minecraft](minecraft/README.md), [general agents](agents/README.md), [XP](../nips/openagents/NIP-XP.md) |
+| **R17 — Operations, discovery, and documentation** | Public discovery/docs, install/runbook infrastructure, focused manual verification, and release checks exist. | Keep one current entry point per domain, exact version/support statements, working examples, compatibility windows, dependencies/licenses, incident and recovery procedures, and release evidence. | [Documentation policy](documentation.md), [verification](verification.md), [dependencies](dependencies.md), [deployment](deployment/README.md), [service operations](decision-models/service/operations.md) |
+
+## The first suite milestone
+
+The M-package tracker defines the complete migration backlog. The first product
+slice is narrower: a repository task starts on a computer, exposes its actual
+transcript and artifacts, accepts an authorized correction from a mobile
+client, survives disconnect/reconnect, and returns one independently checked
+result. Duplicate delivery must not duplicate execution. Revoked or stale
+clients must lose authority before they receive new content or cause effects.
+
+Each platform supplies its own evidence. A simulator proves that simulator
+path, a physical device proves that device path, and neither proves clean-host
+installation, production deployment, or every platform's accessibility. A
+bounded service package is useful before a complete CoderOS distribution.
+
+Paid labor has its own parallel milestone: an independent provider completes
+a real buyer's bounded coding job, the buyer accepts it under frozen terms,
+and the agreed Bitcoin payment is confirmed. An unresolved payment stays
+explicitly unresolved and leaves this milestone incomplete. A free synthetic
+order establishes part of this path, not the commercial milestone.
+
+## What establishes improvement
+
+The unit of value is a useful accepted outcome under known requirements.
+Preserve the original task/source, model and effort, tool and component set,
+context/knowledge identities, execution budget, checker authority, attempts,
+trace gaps, and cost completeness. Report unsuccessful and ungraded attempts.
+
+Same-task harvested knowledge is development evidence. Repetition on the same
+task does not establish transfer. A run that costs less than a public leader's
+run is a real configuration comparison when its evidence supports that claim;
+it does not isolate Coder's causal contribution. That requires the same
+executor configuration with and without the changed Coder component.
+
+Truthful checks remain an empirical problem. Earlier studies and their
+negative or inconclusive results stay visible in the benchmark index. Frozen
+independent checks strengthen the product's acceptance boundary; they do not
+retroactively turn earlier model-written checks into trustworthy labels.
+
+Network value must survive this same scrutiny: useful knowledge transfers,
+components get reused, independent providers fulfill jobs, and contributors
+receive the agreed credit or payment. More agents, tokens, protocol documents,
+or possible group combinations do not establish that result.
 
 ## The legacy map
 
-Every thread the archive opened, its state, and where it goes in this plan.
+| Historical direction | Current disposition |
+| --- | --- |
+| MechSuit, Autopilot, Khala/Khala Code, Omega, Sarah, and earlier OpenAgents Desktop brands | Preserve their useful designs and history; implement the selected behavior as Coder suite capabilities. The names do not denote current supported products. |
+| Earlier TypeScript/Effect/Bun, Elixir/Phoenix, private service APIs, and backend-specific clients | Reference designs only. Reimplement in public Rust under the repository contract; retain the existing narrowly scoped Swift Lev exception and infrastructure tooling exceptions. |
+| Extism-era marketplace and prior evidence plugins | Current Wasm/program/skill systems supply the implementation direction. Measure use and benefit; do not revive an unused registry as a success metric. |
+| Historical author revenue shares and developer bounties | Record an explicit disposition when terms are settled. Labor settlement is high priority; automatic royalties or historical payout completion are not claimed. |
+| Nostr markets and earlier swap infrastructure | Reuse bilateral negotiation, provider independence, exact obligations, and recovery. Swaps, liquidity markets, and financial risk products are not prerequisites for Coder or labor. |
+| GPUtopia, Pylon, Psionic, distributed inference, and broader compute markets | Optional infrastructure/research directions. Pull in only an admitted capability with demand and measurements; do not make the current coding milestone depend on them. |
+| Agent Forge/GetAfter and a GitHub replacement | Deferred product direction. Current collaboration stays on the repository's chosen issue/source host; durable evidence and open protocols can improve continuity independently. |
+| General notes/calendar, forums/social products, experimental input, broad hardware markets, and optional compositor parity | Deferred unless a bounded component demonstrably serves the current task/client or labor path. Generic agent contracts permit later domains without promising their applications now. |
 
-| Thread | Episodes | State today | Disposition |
-| --- | --- | --- | --- |
-| Coding agent core: MechSuit, Probe, Autopilot's coding mode, Khala Code, Coder One, Microluna | 199, 206, 218, 228, 246, 275, 287, 288 | Coder, Coder One, Microluna, and Jev are built; one task passes repeatedly; held-out tasks 0 of 4 | **The anchor.** Phases 1 and 2. |
-| Typed decisions: the DSPy "guidance module", Blueprint, System One, Jev | 206, 211, 242, 250, 286, 287 | Jev is the decision model; the gateway serves it | **Kept.** Jev stays narrow and calibrated (thesis). |
-| Autopilot, Sarah, Omega, OpenAgents Desktop, Khala as product brands | 199 to 274 | Folded or dropped ("some versions of these will all be folded into the open agents product suite", ep 274) | **Retire the names.** The product is Coder. |
-| The Agent Forge and GetAfter, a GitHub replacement | 243, 270 to 274, 281 | Paused ("too big of an apple", ep 281) | **Parked** until phase 5. GitHub stays the host. |
-| 2024 Extism Wasm plugins, the plugin registry, the agent store | 048 to 107 | Removed with that codebase; the current Wasm host (`crates/plugin`) replaces the runtime | **Superseded** by the program and module system. Network-capable guests stay excluded by design. |
-| Per-use fees to plugin authors, lifetime revenue share, the "1 million sats to the first 100 developers" bounty | 054, 085, 087, 102, 107, 212, 245, 269 | Nothing in the repository pays an author | **Deliver once, in phase 4**, through one mechanism, or retire explicitly. |
-| Pre-reset Coder evidence plugins (code search, git facts, repo maps, session search) | removed in `dabc08102f` | Deleted; the model never called them | **Revive through measured use.** Known program steps invoke them directly; open-ended work can discover a small eligible operation set. |
-| Skills: monetized agent skills, the skills NIP, `tenancy::skills`, `.agents/skills/` | 199, 211, 212, 214 | A free, reviewed skill directory exists; "scoped skills" are designed but not connected | **Connect** in phase 3; payment follows phase 4's mechanism. |
-| Client plugins for Claude Code and Codex, and MCP servers (`oak-mcp`) | 165, 255 | Implemented for the decision API | **Kept** as adapters; a discovered MCP server grants nothing. |
-| Nostr: NIP-90 jobs, Nexus, NIP-28 and NIP-29, the Immortal relay, NIP-MKT, NIP-CJ, NIP-OPT, NIP-PRG, NIP-CAP, NIP-EXT | 200, 203, 209, 263, 266, 267, 287 | Relay and CJ conversation/delegate paths and KB sharing exist; new MKT/LAB drafts now specify negotiated labor, while CTRL specifies cross-client control | **Active.** Implement the [new contracts](../nips/openagents/README.md) over current CJ execution. They do not claim historical market-wire compatibility; any later source import needs separate review. |
-| Agent labor: idle agents doing paid coding work | 213 to 215, 266, 267 | Task intake, bounded delegation, supervision, and verification exist; no complete commercial order and payout path | **High priority now**, alongside the Coder core. Ship bounded jobs, provider availability, acceptance, recovery, and Bitcoin payouts. |
-| Bitcoin payments: Spark, then LDK, MoneyDevKit, L402, the Economy Kernel, the five markets | 201, 207, 212 to 216, 227, 230, 235 | Local monetary accounting and sandbox billing exist; no Bitcoin labor payout or contributor royalty implementation | **Labor payments now; component royalties in phase 4.** Reuse one payment adapter with distinct agreements and receipts for labor, licensed data, and component reuse. |
-| Compute: GPUtopia, Pylon, Psionic, Tassadar, Apple Silicon, the Foundation Models bridge | 201 to 238, 275 | Lev (Apple on-device model) is built; Pylon and Psionic are outside this repository | **Phase 5**, except System One on local models, which phase 2 can use through Lev. |
-| Verification and receipts: Economy Kernel, product promises, AssuranceSpec, Observer, ATIF traces, the Gym | 230, 234, 237, 252, 259, 272, 288 | ATIF, receipts, the Gym, the issue-flow evaluation set, truthful checks (#9584) | **The spine of every phase.** |
-| Forum, Moltbook, Shout, agent social network | 209, 212, 230, 231, 235, 275 | Not in this repository | **Parked** (phase 5). |
-| Games: the agentic MMORPG, the Verse, XP and progression, StarCraft UI | 189, 199, 237, 240, 284 | `crates/voyager` explores open-ended agents in Minecraft; progression docs only | **Research only.** Voyager continues as a test bed, not a product. |
-| Coder Cloud, accessible/free and pro access, mobile/web clients, optional sync, Coder OS | 275 to 281 | Terminal/headless, worker execution, and local supervision exist; current mobile clients, Coder Cloud, and the OS distribution are not implemented here | **Complementary suite capabilities.** Phase 2 delivers slices over one task contract. Historical prices and subsidies are not current promises. |
+The [historical roadmap](history/2026-09-25-transcript-roadmap.md),
+[transcript index](transcripts/README.md), and [teardown coverage ledger](protocol/2026-09-26-teardown-coverage.md)
+retain the detailed source history. Reading a historical instruction is not
+permission to resurrect its stack, prices, secrets, or operational settings.
 
-## The plan
+## Maintaining this roadmap
 
-Each phase has exit criteria. The coding-quality claims proceed through those
-gates; shared host features and the agent labor track run alongside them.
-Their limited deliverables and explicit acceptance do not require Coder to
-solve every benchmark task first. Use the suite plan's TS-1–TS-5 milestones
-for context, discovery, continuity, concurrency, and measured contributions.
+When a slice lands, update its owning runtime guide and evidence index, then
+change this page only if the track's status, priority, dependency, or acceptance
+boundary changes. Keep issue ownership in the migration/feature tracker and
+results in dated measurement reports. Link superseded proposals to their
+successors; preserve failed evidence. New ideas belong under an existing R
+track or need an explicit new disposition here.
 
-### Agent labor: high priority now
-
-1. Take actual repository jobs with a named buyer, exact base, deliverable,
-   budget, deadline, and acceptance/rework terms. Support repair, regression
-   tests, review, and investigation.
-2. Ship a client and provider process. **Go online** offers only the scopes,
-   executors, slots, and resource limits the operator selects; **Pause** stops
-   new orders and accounts for accepted work. Isolate buyer work from the
-   provider's private files, credentials, and payment authority.
-3. Bind signed offers, quotes, and orders to retained execution, artifacts,
-   verification, and buyer acceptance. Prove cancellation, restart, duplicate
-   handling, and relay/provider outages with a no-spend rehearsal.
-4. Add Bitcoin payment for accepted work under the agreed terms. Test the
-   payment adapter's confirmations, unknown states, refunds, and recovery
-   before using it for real payouts. Worker compensation does not wait for
-   a complete royalty or data marketplace.
-5. Count real demand: repeat buyers, accepted jobs, provider net earnings,
-   total cost, and sponsored spend. Publish or sell a run's lessons only
-   under its owner's consent and license; source tasks cannot validate their
-   own contributions.
-
-**Exit:** an outside operator completes a real buyer's coding job, the buyer
-accepts the result, and the operator receives the agreed Bitcoin payment.
-The history survives a restart, and the same client works across independent
-providers and relays. The [implementation stages](agents/roadmap.md#priority-agent-labor)
-identify the missing pieces.
-
-### Phase 0: an honest ledger (now, days)
-
-1. **A public promise ledger.** One file listing every public promise in the
-   archive that is still open, from the tables in the source notes: the ones
-   to keep, the ones kept, and the ones retired, each retired with a reason.
-   The 2024 plugin-author payments and the "1 million sats" bounty are the
-   most important entries; they get a stated disposition, not silence.
-2. **Fix the documents that contradict the code.** Done in 68ac39fed6.
-   `extensions/plugins.md`, `glossary.md`, and `programs.md` said
-   the Wasm host and the program `module` step weren't built; both landed on
-   2026-09-21 (#9519).
-3. **Disambiguate the words.** "Plugin" means a Wasm guest in this repository,
-   a client package for Claude Code or Codex under `plugins/`, and an Extism
-   module in 2024; "skill" means a `SKILL.md` guide and, in Voyager, a Lua
-   program. The glossary says which is which. Done in 68ac39fed6:
-   [Plugins and skills](glossary.md#plugins-and-skills).
-
-**Exit:** the ledger is published, and no document contradicts the code.
-
-### Phase 1: the primitive works (now, weeks)
-
-This is the Luna pivot and the determinism thesis, and it's the current work
-([assessment](coder/design/2026-09-24-assessment.md)).
-
-1. **A signal that separates passing work from failing work** (#9584). Nothing
-   else can stop, select, or retry well without it.
-2. **The pre-registered Luna-sized family**
-   ([protocol](../bench/terminal-bench/experiments/2026-09-25-luna-sized-family/protocol.md)):
-   does the cheaper-work claim hold beyond one task?
-3. **The lean loop in the product** (#9624), decided by the issue-flow
-   evaluation set (#9625).
-4. **Stall detection** (#9627) and **best-of-N** (#9587), each in a matched run
-   once the signal exists.
-5. **The capability-gap log** stays current
-   ([capability-gaps.md](terminal-bench/capability-gaps.md)); tasks in it
-   aren't tuned on.
-
-**Exit:** a pre-registered win on held-out Terminal-Bench tasks (repeated
-passes at a stated fraction of Fable 5.1's cost per pass), and the issue flow
-passing a stated share of its held-out issues. Without that, nothing below
-ships as a claim.
-
-### Phase 2: embeddable across the suite
-
-"Put it in any other workflow" (ep 288).
-
-1. **One contract for a coding turn**, the same in every surface: `coder -p`,
-   the terminal, the issue flow, a NIP-CJ execution job on the relay, and an
-   HTTP route on the gateway beside `POST /v1/systemone`. Each returns a
-   receipt: what ran, what changed, what the checks said, and what it cost.
-2. **A Rust SDK** for that contract, next to `crates/jev`.
-3. **System One on local models where it pays**: Jev-shaped judgments through
-   Lev on Apple silicon, measured like any other judgment.
-4. **One task across interfaces**: add thin web/mobile observation first,
-   then steering, approval, and cancellation through the same owner. Keep
-   local-only, trusted-device, and opted-in hosted sync modes distinct. Test
-   reconnects, duplicate commands, and execution transfer without duplicate
-   effects. Current traces alone do not implement durable task resume.
-5. **Hosted execution and access plans**: add managed capacity as a placement
-   option beside owned computers and labor providers. Decide free/sponsored
-   allowances and paid entitlements from actual service economics. A pro plan
-   is an access policy, not an alternative to cloud or mobile functionality.
-6. **Coder OS and connected devices**: expose browser/computer actions and
-   reproducible environment setup as admitted host capabilities. Reuse task
-   identity, evidence, and effect policy; do not create another execution loop.
-
-**Exit:** one external workflow (for example a CI job that turns labeled
-issues into draft pull requests) uses the contract for a month with its
-results in the Gym. For each released suite surface, demonstrate the same
-task, trace, artifacts, costs, and truthful outcome across clients, including
-cancellation and network-loss recovery. Product utility can be demonstrated
-before phase 1's quality advantage is proven; marketing that advantage cannot.
-
-### Phase 3: extensible through programs (overlaps phase 2's end, weeks)
-
-"Increasingly drawing on our extensible plugin slash program system" (ep 288).
-The 2024 lesson is to connect extensions to actual work. Known program steps
-call plugins directly. For open-ended tasks, the host filters eligible
-descriptors, retrieves a small useful set, and loads schemas and manuals when
-needed. A model may propose an action from that set; host code validates and
-executes it. Measure missed tools and false activation instead of loading a
-whole registry or forbidding dynamic tools altogether.
-
-1. **Revive the evidence plugins as program steps**: code search, git facts,
-   repo maps, and session search, as `SnapshotRead` Wasm guests run by
-   `module` steps, each measured on the issue-flow evaluation set and kept only
-   if it helps. Started in #9630: a repository map, code search, and a
-   test-report parser, run by `programs/evidence-guests.json` from Coder
-   One's probe stage behind a manifest switch that's off by default. The
-   [measurement plan](extensions/plugins.md#measurement-plan) decides which
-   stay.
-2. **Programs that compose** (the specified `program` and `invoke` steps) and
-   **local packages with locks** (built) become the way to share a workflow.
-3. **Publish the registries on the relay**: programs, capabilities, question
-   sets, and packages as NIP-PRG, NIP-CAP, and NIP-EXT events, so another host
-   can find and run them.
-4. **Connect the skill directory to scoped skills**, so a reviewed `SKILL.md`
-   can be pinned into a program's context.
-
-**Exit:** at least one program from outside the core team runs in another
-host, by digest, from the relay.
-
-### Phase 4: pay the contributors (after phase 3)
-
-This extends labor payments to authors of reused components and addresses
-the older revenue-share promises. The first paid labor jobs do not wait for
-this phase.
-
-1. **One payment mechanism**: a receipt shows which published programs,
-   modules, and skills an accepted outcome used; a Lightning payout pays their
-   authors a stated share. Accepted means verified by the checks from phase 1,
-   not claimed by a model.
-2. **Start where demand already exists**: pay only for use inside runs that
-   users already pay for or that the project funds. No marketplace listing
-   pays anything until something calls it.
-3. **NIP-OPT**: shared optimizations (signatures and measured improvements)
-   published as events, credited to their authors, paid the same way.
-4. **Close the ledger's payment entries**: the 2024 plugin-author promise and
-   the bounty are delivered through this mechanism or retired with a reason.
-
-**Exit:** a month of payouts to outside authors, each traceable to receipts.
-
-### Phase 5: other markets and products (only on demand)
-
-The broad compute platform (Pylon, Psionic, Tassadar), liquidity and financial
-risk markets, the Agent Forge, the forum, and the games need their own demand
-and evidence. Agent labor is already active above; small compute, evaluation,
-storage, or licensed-data services may support it without waiting for a broad
-platform. Swap infrastructure is outside the current labor plan. Each added
-service needs an issue and a predeclared test of its value to buyers.
-
-## What not to do
-
-- Don't start a new product name or brand. The product is Coder, the lab is
-  OpenAgents.
-- Don't reopen the language or runtime.
-- Ground the labor market in useful buyer jobs; distinguish funded trials
-  from repeat outside demand before recruiting supply at scale.
-- Measure model routing and escalation against whole-task outcomes. Keep
-  Luna's quality and cost claims testable while allowing labor providers to
-  use any admitted executor that satisfies their agreed delivery contract.
-- Don't announce a result before its pre-registered test says so.
-
-## Sources
-
-The four archive readings behind this plan covered episodes 200 to 229, 230 to
-259, 260 to 288, and the plugin episodes 048 to 107 with the current extension
-design (`extensions/`, `programs.md`, `crates/plugin*`, `plugins/`,
-`tenancy::skills`). The archive's own guide is
-[`transcripts/README.md`](transcripts/README.md).
+This roadmap does not assign dates without an accepted delivery plan. It does
+not turn a design into a release promise or a full release check into a daily
+issue blocker.

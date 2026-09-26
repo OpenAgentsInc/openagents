@@ -185,9 +185,11 @@ mid-stream gaps means blocking work between calls.
   best-effort now. Keep fatal `?` only where a broken binding truly
   must stop the episode.
 
-## Verify before pushing
+## Verify changes
 
-`./scripts/verify-rust.sh` under the pinned toolchain; read
-`docs/verification.md` for scope. Use a separate Cargo target
-directory per worktree, and keep `mc-bridge/target/` out of commits
-(it is `.gitignore`d).
+Run the affected Voyager or helper checks under their pinned toolchains.
+For workspace Rust changes, `./scripts/verify-rust.sh --crates voyager` selects
+the package checks; a release uses the broader
+[verification procedure](../verification.md). Documentation-only edits need
+link and command checks, not a Rust gate. Use a separate Cargo target directory
+per worktree, and keep `mc-bridge/target/` out of commits.

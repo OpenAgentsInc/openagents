@@ -1,6 +1,11 @@
 # Coder design
 
-Product direction, architecture proposals, and implementation plans.
+Product direction, architecture proposals, and implementation plans. Start with
+[the migration tracker](../migration-status.md) for what is implemented and
+accepted, then [the suite assessment](coder-suite-migration.md) for the target
+product. The [runtime index](../runtime/README.md) owns implemented contracts.
+A proposed protocol or dated assessment does not by itself establish a shipped
+runtime, a measured improvement, or authorization to run another experiment.
 
 Coder is the first specialization of [OpenAgents' general agent infrastructure](../../agents/README.md).
 These documents focus on coding; shared protocols and runtime contracts also
@@ -9,7 +14,8 @@ serve other domains through explicit adapters and policy.
 The [AI programming and optimization design](../../optimization/README.md)
 defines semantic contracts, replaceable implementations, DSPy/GEPA authoring,
 Gym evaluation, and measured adoption. Its [proposed-issues document](../../optimization/proposed-issues.md)
-contains the unfiled full-integration backlog.
+records the original proposed integration backlog; consult linked issues and
+current delivery trackers before treating an item as unassigned work.
 
 [Documentation index](../README.md)
 
@@ -31,6 +37,8 @@ discovery, and package distribution.
 | [knowledge-base](knowledge-base.md) | The shared knowledge base: entries, retrieval, expansion, admission by measurement, and sharing over Nostr (NIP-KB) |
 | [luna-pivot](luna-pivot.md) | The Luna pivot: Jev structure around GPT-6 Luna, and the Microluna harness (superseded by Microcoder for the harness) |
 | [microluna](microluna.md) | Microluna: calling Luna directly on a logged-in Codex session, and what to keep from Codex |
+| [microluna-parallel](microluna-parallel.md) | Historical Microluna parallel exploration proposal |
+| [microluna-v8](microluna-v8.md) | Historical v8 changes, retained failures, and limits of the selected-task result |
 | [microluna-v18](microluna-v18.md) | Microluna v18: the executed briefing built from what worked in the v13 trials, and the run-characterization card that admits each change |
 | [networked-coder-plan](networked-coder-plan.md) | A measured plan for the best coding agent: truthful checks, economical routing, and a network of reusable, evaluated components |
 | [prompt-audit](prompt-audit.md) | Every Coder One and Microluna prompt line judged against the determinism thesis, what changed, and whether Fable 5.1's trajectories record a system prompt |
@@ -43,3 +51,13 @@ discovery, and package distribution.
 | [typesafe-agent-protocol-addendum](typesafe-agent-protocol-addendum.md) | Complete proposal coverage: Nostr specifications and host/client implementation responsibilities |
 | [typesafe-agent-roadmap](typesafe-agent-roadmap.md) | Roadmap for a TypeSafe-native Coder |
 | [typesafe-product-suite](typesafe-product-suite.md) | Complete TypeSafe proposal applied to Coder's interfaces, execution locations, context, tools, and measured delivery |
+| [Rust mobile feasibility](rust-mobile-feasibility.md) | Public simulator/emulator and rendering prototypes, platform-language choices, and device-release limits |
+| [Teardown Nostr integration](teardown-nostr-integration.md) | Archived design adaptation, protocol gaps, and host/client implementation sequencing |
+| [x402 Lightning integration](x402-lightning-nostr-integration.md) | Nostr discovery and policy around Lightning purchase bindings, retries, and retained evidence |
+
+Dated assessments preserve the evidence and hypotheses available when written.
+The Microluna v6–v19 plans describe that historical component stack. Microcoder
+is the current loop direction; the [operating guide](../guides/microcoder.md)
+and [repository adapter](../runtime/microcoder-repository.md) distinguish its
+benchmark and general task-host entry points. Older studies stay available
+because their negative results and limitations constrain stronger claims.

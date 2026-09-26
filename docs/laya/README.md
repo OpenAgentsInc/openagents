@@ -1,9 +1,12 @@
 # Laya
 
+For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
+
 **Status:** all three checkpoints are ported and serve `POST /v1/systemone`.
-Sequence encoding reproduces the Python reference exactly, and every
-answer field matches the reference's reported values to its own
-four-decimal precision. The port lives in `crates/laya`; conformance
+On the retained four-case fixture corpus per checkpoint, sequence encoding
+reproduces the Python reference exactly, and the reported answer fields match
+to its four-decimal precision. This establishes scoped port conformance, not
+general model accuracy or parity on every possible request. The port lives in `crates/laya`; conformance
 fixtures in `crates/laya/fixtures/`; the run record in
 [`measurements/`](measurements/).
 
@@ -88,7 +91,9 @@ curl -s localhost:8010/v1/systemone -d '{
 }'
 ```
 
-Both run entirely on local weights; nothing meters or leaves the machine.
+These loopback calls run against local weights and incur no inference API
+charge. Hardware, energy, and operator costs remain separate; serving on a
+public interface requires a separately configured admission layer.
 
 ## Contract notes
 

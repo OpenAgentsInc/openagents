@@ -1,6 +1,9 @@
 # Coder guides
 
-Configure Coder, run work, and verify retained artifacts.
+Configure Coder, run work, and verify retained artifacts. These guides describe
+operator entry points; [runtime contracts](../runtime/README.md) define their
+authority and evidence boundaries. [Design documents](../design/README.md) are
+plans or analysis, not alternative operating instructions.
 
 [Documentation index](../README.md)
 
@@ -18,12 +21,14 @@ Configure Coder, run work, and verify retained artifacts.
 | [contribute-knowledge](contribute-knowledge.md) | Write a knowledge entry, publish it under your key, and take a quest on the Terminal-Bench 4 quest board |
 | [decision-profiles](decision-profiles.md) | Configure Coder's decision client |
 | [devin-delegation-runbook](devin-delegation-runbook.md) | Delegate work to Devin with Coder |
+| [fire-loop](fire-loop.md) | Inspect the historical in-sample fire-loop development workflow and its admission limits |
 | [headless](headless.md) | Headless mode |
 | [install](install.md) | Install this repository's build as `coder`, roll back, and run `coder doctor` |
 | [knowledge-base](knowledge-base.md) | Find, write, measure, admit, and share knowledge-base entries with `microcoder kb` |
-| [microcoder](microcoder.md) | Run the simple Jev and OpenRouter loop on a Terminal-Bench 4 task |
+| [microcoder](microcoder.md) | Run the Microcoder loop on a Terminal-Bench task with explicit provider, cost, and retrieval settings |
 | [program-authority](program-authority.md) | Program authority |
 | [project-supervision](project-supervision.md) | Capacity-aware project supervision |
+| [tasks](tasks.md) | Submit, cancel, inspect, and verify explicitly admitted durable local tasks |
 | [tracker-intake](tracker-intake.md) | Scoped tracker intake |
 | [worker-executor](worker-executor.md) | Running `coder-worker` on a local executor |
 | [xp](xp.md) | Publish quests, award accepted knowledge completions, and read the XP ledger with `microcoder xp` |

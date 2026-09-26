@@ -170,7 +170,7 @@ that claims to fix this.
 
 ### The floors
 
-[`lev/measurements/2026-09-19-seed-variance.md`](lev/measurements/2026-09-19-seed-variance.md)
+[`lev/measurements/2026-09-19-seed-variance.md`](../../lev/measurements/2026-09-19-seed-variance.md)
 puts a two-door accuracy comparison at **0.056** at two sigma. That floor is
 seed-block variance on a sampling estimator over 196 items. It does not bind
 the same way here, in both directions:

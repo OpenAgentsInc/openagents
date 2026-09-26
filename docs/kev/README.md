@@ -1,5 +1,7 @@
 # Kev
 
+For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
+
 **Status:** all four model sizes are ported, with conformance measured for
 the checkpoint contents pinned in this repository. `kev` is Jared Palmer's
 open-source reconstruction of a Jev-style decision model, tracked in this
@@ -126,10 +128,11 @@ unmodified Jev client reaches the default variant. A name outside that set
 answers `model_unavailable` at 503.
 
 Kev serves on Linux and macOS, on CPU by default. Metal (`--device metal`)
-requires macOS and the `metal` feature; CUDA is not built. Tests that need
-the real `kev-0.5b` artifacts skip when `KEV_ARTIFACT_DIR` and
-`KEV_BASE_DIR` are absent; the refusal and admission tests run everywhere
-against a synthetic variant.
+requires macOS and the `metal` feature; CUDA is not built. Real-weight tests require the declared artifact bundle; missing artifacts are
+not a passing inference result. The expensive conformance battery additionally
+requires `KEV_CONFORMANCE=1`; the refusal and admission tests use a synthetic
+variant. The [serving reconciliation](measurements/2026-09-22-serving-reconciliation.md)
+separates actual Metal inference, CPU deadline failures, and compile-only checks.
 
 One caveat travels with `score`. On `kev-0.5b` the weighted mean it returns
 is not a usable position on the rubric, and a caller should read the level
@@ -174,7 +177,7 @@ the port reads, and checks source, converted-head, and base files against
 the fixture set's `artifact-lock.json`. It writes to `KEV_ARTIFACTS`, by
 default `../kev-artifacts` beside the checkout, and needs no token for
 these public checkpoints. Run
-`KEV_VARIANT=<variant> cargo test -p kev --features serve --release` for
+`KEV_CONFORMANCE=1 KEV_VARIANT=<variant> cargo test -p kev --features serve --release` for
 the default artifact layout; the [fixture instructions](../../crates/kev/fixtures/README.md)
 describe overrides for other roots.
 
@@ -237,7 +240,7 @@ revision.
 | [`architecture.md`](architecture.md) | The mechanism kev implements: packing, block-causal mask, branch positions, pointer readout, delimiter hardening, and the wire contract. |
 | [`jev-unmasked.md`](jev-unmasked.md) | What Archer Hume's probes established about the real Jev, and what stays inferred. |
 | [`model-cards.md`](model-cards.md) | `kev-0.5b` in detail — data, recipe, metrics, mechanism tests, limitations — plus the preview family and the research findings behind it. |
-| [`port-roadmap.md`](port-roadmap.md) | The in-progress port of the mechanism into `crates/kev`: what gets pulled over in what order, and the issue that tracks each step. |
+| [`port-roadmap.md`](port-roadmap.md) | The completed fixture-pinned port of the mechanism into `crates/kev`: what gets pulled over in what order, and the issue that tracks each step. |
 | [`mesh-plan.md`](mesh-plan.md) | The proposed path to serving and training decision models on the earn mesh: Pylon manifests, a psionic decision-model lane, the fleet `systemone` work shape, and the TypeSafe-compatible fan-out API. |
 | [`jev-comparison.md`](jev-comparison.md) | Side-by-side answers from the local port and hosted Jev on identical requests, with the divergence analysis: where the port tracks Jev and where the weights' limits show. |
 | [`measurements/2026-09-19-variant-scores.md`](measurements/2026-09-19-variant-scores.md) | All four checkpoints scored on `support-v2-three-way` through the Gym: the panel, what clears the suite's noise floor, why no calibration map is admitted, and why the latency column settles nothing yet. |

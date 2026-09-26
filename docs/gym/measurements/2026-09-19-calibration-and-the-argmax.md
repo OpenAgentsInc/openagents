@@ -185,7 +185,7 @@ records fitted before it.
 
 Nothing, and not for the reason the issue expected. The floors — ECE 0.0266,
 Brier 0.0119, log loss 0.6428, from
-[`2026-09-19-calibration-variance.md`](2026-09-19-calibration-variance.md) —
+[`2026-09-19-calibration-variance.md`](../../lev/measurements/2026-09-19-calibration-variance.md) —
 are spreads of an unchanged door across disjoint seed blocks, scored by
 `calibrate::score` over `Draws::observations`. Those are raw block draws
 carrying a top frequency and an outcome, with no distribution in them, so no

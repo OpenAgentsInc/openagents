@@ -31,8 +31,9 @@ work to reusable knowledge, programs, and measured outcomes.
 
 The [OpenAgents protocol index](nips/openagents/README.md) contains 23 authored
 NIPs plus shared contracts. Encrypted artifacts, free market negotiation, and
-labor-term validation now have Rust components. Durable fulfillment, buyer
-acceptance, and settlement remain unfinished. The
+labor-term validation now have Rust components. A recoverable [free labor host](docs/coder/runtime/free-labor.md) links an
+exact order to bounded execution and acceptance. Paid settlement and the
+complete multi-operator market remain unfinished. The
 [implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
 maps every contract to its implemented parts and remaining work.
 
@@ -40,8 +41,10 @@ maps every contract to its implemented parts and remaining work.
 
 | Goal | Guide |
 | --- | --- |
+| Find documentation and the complete direction | [Documentation index](docs/README.md), [master roadmap](docs/roadmap.md), [catalog](docs/catalog.md), [glossary](docs/glossary.md) |
 | Run the coding agent | [Install Coder](docs/coder/guides/install.md), [headless mode](docs/coder/guides/headless.md) |
 | Track suite implementation and next work | [Migration status and issue map](docs/coder/migration-status.md), [local task commands](docs/coder/guides/tasks.md), [execution owner and evidence](docs/coder/runtime/task-owner.md) |
+| Control an existing task over Nostr | [Scoped host/client bridge](docs/coder/runtime/nostr-task-control.md): explicit pairing, observe/steer/cancel rights, retained retries, and bounded private history |
 | Install a bounded task host | [Verified bundles, one-shot services, and rollback](docs/coder/runtime/portable-host.md), [platform acceptance and limits](docs/coder/verification/2026-09-26-portable-host/README.md) |
 | Try the experimental knowledge-assisted loop | [Microcoder](docs/coder/guides/microcoder.md), [shared knowledge base](docs/coder/guides/knowledge-base.md) |
 | Inspect exact knowledge inputs and comparisons | [Private and immutable bundles](docs/coder/runtime/knowledge-bundles.md), [evidence integrity](docs/coder/runtime/knowledge-evidence.md), [frozen study bookkeeping](docs/coder/runtime/knowledge-studies.md) |

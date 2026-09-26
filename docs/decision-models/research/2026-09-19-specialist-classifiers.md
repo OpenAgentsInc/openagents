@@ -110,7 +110,7 @@ held-out items **with mean confidence 0.974**. On those same items,
 `jev-latest` scored **90.2%**.
 
 In-distribution parity, out-of-domain collapse, and confident-wrong failure
-instead of abstention. That is exactly what [`../kev/model-cards.md`](../kev/model-cards.md)
+instead of abstention. That is exactly what [`../kev/model-cards.md`](../../kev/model-cards.md)
 already records about small specialists, arrived at independently by someone
 selling the opposite conclusion. It is the strongest external corroboration
 of our own position that turned up today.

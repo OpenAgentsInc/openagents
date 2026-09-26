@@ -61,7 +61,7 @@ The label counts on the items a door can be scored on:
 
 The constant is the floor: a question is worth asking only when it beats
 0.875 on the same items by more than the
-[0.056 two-sigma floor](lev/measurements/2026-09-19-seed-variance.md), on
+[0.056 two-sigma floor](../../lev/measurements/2026-09-19-seed-variance.md), on
 both partitions, with the same sign.
 
 ## The candidates

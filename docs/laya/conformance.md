@@ -43,7 +43,7 @@ directory.
 On 2026-09-22 (this machine, CPU, fp32, `cargo test -p laya --test
 conformance -- --nocapture`):
 
-| Checkpoint | Sequence parity | Max answer |delta| |
+| Checkpoint | Sequence parity | Maximum absolute answer delta |
 | --- | --- | --- |
 | `english` | exact | 0.000000 |
 | `multilingual` | exact | 0.000000 |

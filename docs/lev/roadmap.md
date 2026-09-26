@@ -2,8 +2,11 @@
 
 **Status:** the original sequence is recorded, including implemented work,
 negative measurements, and deferred fleet work. The tracker is [#9345](https://github.com/OpenAgentsInc/openagents/issues/9345).
-Adapter transfer measurements remain open in
-[#9380](https://github.com/OpenAgentsInc/openagents/issues/9380).
+The tracker and adapter-transfer issue
+[#9380](https://github.com/OpenAgentsInc/openagents/issues/9380) are closed.
+The [transfer record](../decision-models/measurements/2026-09-20-lev-domain-gap.md)
+retains the negative generalization findings and refusals; closure does not
+admit a new workload.
 The sequence below records implementation and evidence separately from
 whether a measured model or calibration map is admitted.
 
@@ -42,7 +45,8 @@ the base model. The adapter implementation subsequently landed in #9353,
 and choice, band, and permutation adapters were trained and measured under
 #9363. Apple's toolkit remains an external, nonredistributable training
 dependency; it is not needed to serve an existing package. Adapter transfer
-beyond the training domain is the open measurement in #9380.
+beyond the training domain was measured in #9380; the retained failures and
+coverage limits remain part of the [disposition](disposition.md).
 
 **D5 — Who reads Apple's terms?** Serving the on-device model to third
 parties through the mesh, for payment, is a licensing question with a yes or
@@ -65,7 +69,7 @@ L2, marked uncalibrated in every response, or refuses when the caller sends
 
 | # | Issue | State | Evidence |
 | --- | --- | --- | --- |
-| 0 | [#9345](https://github.com/OpenAgentsInc/openagents/issues/9345) tracker | open | #9380 and final evidence reconciliation remain |
+| 0 | [#9345](https://github.com/OpenAgentsInc/openagents/issues/9345) tracker | **closed** | Original sequence and follow-on evidence reconciled on September 20; later serving reconciliation is linked below. |
 | 1 | [#9346](https://github.com/OpenAgentsInc/openagents/issues/9346) behavior record | **done** | `docs/lev/measurements/2026-09-19-behavior.md` |
 | 2 | [#9347](https://github.com/OpenAgentsInc/openagents/issues/9347) contract types, schema compiler | **done** | 22 unit tests, adversarial option text |
 | 3 | [#9348](https://github.com/OpenAgentsInc/openagents/issues/9348) bridge seam, isolation | **done** | historical isolation record; live startup floor passed in `measurements/2026-09-20-admission-live.md` (#9389) |
@@ -91,19 +95,25 @@ The later flip-rate record withdrew improvements that did not clear the
 measured noise floor; see
 [`measurements/2026-09-19-flip-rate-variance.md`](measurements/2026-09-19-flip-rate-variance.md).
 
-## Remaining evidence
+## Evidence and remaining measurement limits
 
-- #9389 is complete: the live startup admission probe is recorded in
-  [`measurements/2026-09-20-admission-live.md`](measurements/2026-09-20-admission-live.md).
-- #9380 remains open: band and permutation adapters on `coder-turns-v1`,
-  Lev on `external-v1`, the domain gaps and disposition, and release evidence
-  references remain to be completed and reconciled.
-- #9398 remains open: the base state-budget sweep is retained, but the
-  admitted choice adapter still needs the same eleven rungs. See
-  [`../decision-models/2026-09-20-state-budget.md`](../decision-models/measurements/2026-09-20-state-budget.md).
-- #9382, #9393, and #9426 track quiet timing, deployment comparisons, and the
-  remaining hardware verification. Do not treat implementation status here
-  as evidence that those measurements ran.
+Issue states were checked on 2026-09-26. Preserve the recorded scope of each
+result rather than treating a closed issue as an unrestricted positive finding.
+
+- #9389 completed the [live startup probe](measurements/2026-09-20-admission-live.md).
+- #9380 completed [adapter transfer measurements](../decision-models/measurements/2026-09-20-lev-domain-gap.md).
+  Band and permutation coding runs and the base external-label run retain every
+  refusal. Observation references do not widen calibration grants.
+- #9398 completed the [base and choice state-budget comparison](../decision-models/measurements/2026-09-20-state-budget.md).
+  [Choice provenance](../decision-models/measurements/2026-09-20-state-budget-choice.md)
+  explicitly records the failed attempt and recovery composite.
+- #9426 closed after [serving reconciliation](../kev/measurements/2026-09-22-serving-reconciliation.md).
+  Actual Metal conformance, the CPU deadline failures, and feature compilation
+  remain separate observations.
+- #9382 and #9393 are closed, but their last retained comments defer remaining
+  slow-door latency collection. The [4B pass](../gym/measurements/2026-09-20-kev-4b-metal-pass.md)
+  is one run, not a quiet multi-block noise floor. Do not infer missing 8B or
+  Lev measurements from issue closure.
 
 The detailed issue descriptions below preserve the original design brief.
 Where the original probability rule differs from the implemented door,

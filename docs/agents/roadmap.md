@@ -17,12 +17,16 @@ alongside Coder's quality work. These local planning IDs are not GitHub issues.
 
 [NIP-MKT](../../nips/openagents/NIP-MKT.md) and
 [NIP-LAB](../../nips/openagents/NIP-LAB.md) now define the first draft contracts.
-Their existence completes the initial specification slice, not the parser,
-host, payment, or interoperability work below.
+The strict parsers and a persisted free-only host slice now exist.
+[Issue #9679](https://github.com/OpenAgentsInc/openagents/issues/9679) closed with
+[retained synthetic relay evidence](../coder/verification/2026-09-26-free-labor/README.md):
+one explicitly granted provider command, separate buyer verification, acceptance,
+restart, and refusal cases. This completes a bounded implementation slice, not
+the independent-operator or paid-market milestones below.
 
 | ID | Work | Completion evidence |
 | --- | --- | --- |
-| `LABOR-1` | Implement strict MKT/LAB schemas, cross-record validators, and the minimum order state machine. Review any later historical import separately; the new draft does not claim historical wire compatibility. | Fixtures bind task/base, parties, exact terms, bounds, and outcome identities; no event-kind or authority conflict. |
+| `LABOR-1` | Implemented for the free-only reference profile: strict MKT/LAB parsing, durable role journals, and the admitted order/delivery/check/acceptance path. Review other profiles and historical imports separately. | [Runtime and evidence](../coder/runtime/free-labor.md) bind task/base, parties, exact terms, bounds, and outcomes. Paid profiles and a complete public service remain unsupported. |
 | `LABOR-2` | Ship client intake and a bounded provider process with Go online/Pause controls, isolated job execution, retained patches/tests/traces, and acceptance review. | Two independent operators complete real repository jobs in a no-spend rehearsal; a compatible non-Coder executor can participate. |
 | `LABOR-3` | Demonstrate restart, relay replacement, duplicate dispatch protection, cancellation, and uncertain-result reconciliation. | Two relay operators, worker crashes, late replies, stale bases, and unavailable buyers produce correct terminal or unknown states without repeated effects. |
 | `LABOR-4` | Add an explicit Bitcoin payment adapter and agreed refund/dispute behavior. Keep worker compensation distinct from component royalties and licensed data. | A real outside operator receives payment for an accepted buyer job; confirmation, duplicate payment, timeout, and recovery cases retain exact receipts and liabilities. Test the rail before live use. |

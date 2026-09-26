@@ -1,6 +1,13 @@
 # Coder shared runtime and product-suite plan
 
-Status: target design. The [architecture](typesafe-agent-analysis.md),
+Status: target design, with bounded foundations now implemented. Use the
+[migration tracker](../migration-status.md) for delivery status, the
+[task owner](../runtime/task-owner.md) for the local execution contract, and the
+[repository adapter](../runtime/microcoder-repository.md) for explicit model
+support and its incomplete live acceptance. This plan does not supersede those
+runtime limits or authorize benchmark work.
+
+The [architecture](typesafe-agent-analysis.md),
 [roadmap](typesafe-agent-roadmap.md), and
 [AI programming design](../../optimization/README.md) define the agent.
 Coder is the first specialization of general agent infrastructure.

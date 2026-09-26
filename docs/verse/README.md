@@ -1,5 +1,7 @@
 # Verse
 
+For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
+
 Verse is the OpenAgents desktop world: a walkable 3D city drawn in amber
 lines on a near-black field. `crates/verse` holds the first slice, a
 Tron-style city and a third-person character you run around with World of

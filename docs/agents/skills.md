@@ -62,10 +62,11 @@ for the tool semantics and bounds.
   `refused` result carries the door's typed code; an `unavailable`
   result means the work may not have run at all. Neither is a wrong
   answer, and neither is a zero.
-- Probabilities are calibrated judgments. A `noul` of 0.5 means yes and
-  no are about equally likely — it is not "medium". The threshold that
-  turns a probability into an action belongs to your code, measured on
-  your own labelled data.
+- Probabilities are model judgments, not evidence that this door is calibrated
+  on your workload. A `noul` of 0.5 represents an approximately even prediction,
+  not a medium-severity label. A threshold that turns a prediction into an
+  action belongs to your code and needs measurement on the relevant labeled
+  data. Read any returned calibration metadata and scope limits.
 - `confidence` describes how concentrated a distribution is. It is not
   permission to act and not an end-to-end correctness probability.
 

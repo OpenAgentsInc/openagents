@@ -8,6 +8,11 @@ and the [official NIP index](../../nips/official/README.md) with the current
 [agent labor plan](../agents/market-infrastructure.md). It adds three v1
 drafts. It does not implement their validators, host behavior, or relay roles.
 
+This is the review at the initial CTRL/MKT/LAB addition. Its specification
+counts and missing implementations describe that point in history. Use the
+[current index](README.md) and [coverage report](2026-09-26-nip-implementation-coverage.md)
+for the expanded source set and subsequent host work.
+
 ## Missing contracts added
 
 | New contract | Missing agreement between independent participants | Existing foundation reused |

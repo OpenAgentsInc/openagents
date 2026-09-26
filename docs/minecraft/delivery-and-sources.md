@@ -4,6 +4,12 @@ Status: research and implementation plan, 2026-09-21. Source review is not runti
 verification. This document distinguishes existing building blocks from proposed
 integration and preserves the reasoning behind the scope.
 
+This is the original September 21 source review, not the current issue or
+implementation inventory. Voyager and the arena slices later landed under
+[#9528](https://github.com/OpenAgentsInc/openagents/issues/9528) and
+[#9529](https://github.com/OpenAgentsInc/openagents/issues/9529). Read the
+[current overview](README.md) and [runtime guide](../voyager/README.md) first.
+
 ## Baseline and gaps
 
 The initial worktree starts from fetched remote `main` at

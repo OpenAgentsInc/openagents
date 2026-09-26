@@ -1,5 +1,10 @@
 # Text optimization here: nine programs, one experiment, no wins
 
+Status: historical audit through 2026-09-19. The negative findings below apply
+to the reviewed attempts and retained evidence; this document is not a live
+scoreboard for later experiments. Use the [optimization index](optimization/README.md)
+and [master roadmap](roadmap.md) for current contracts and delivery decisions.
+
 A history of DSPy, GEPA, and prompt optimization across `openagents`,
 `psionic`, `coder`, and `backroom`, what it means for the Gym, and the one
 run that finally happened.

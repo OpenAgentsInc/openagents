@@ -1,10 +1,13 @@
 # Coder documentation
 
+For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
+
 Coder is a coding product across interfaces and execution locations. Today,
 it routes turns through typed decisions, generates responses, and runs
-approved work through a shared terminal and headless runtime. Mobile, web,
-managed cloud execution, and Coder OS are part of the intended suite; their
-historical demonstrations are not current implementations in this workspace.
+approved work through a shared terminal and headless runtime. Mobile, web, managed cloud execution, and CoderOS are part of the intended
+suite. The public workspace now has bounded mobile and host prototypes; those
+fixtures and the historical private demonstrations do not establish complete
+product releases.
 
 The [TypeSafe product-suite plan](design/typesafe-product-suite.md) maps the
 complete source proposal and episodes 275–281 to runtime work, current gaps,
@@ -19,7 +22,8 @@ source evidence, current public gaps, dependencies, and release gates. The
 shared task host and measured TypeSafe/Microcoder integration connect those
 interfaces without importing the private backend.
 
-The [migration implementation tracker](migration-status.md) records the active
+Use the [migration implementation tracker](migration-status.md) for current
+delivery status. It records the active
 task foundation, the complete M0–M20 backlog, dependencies, ownership, and
 acceptance gates. It separates shipped foundations from the work still needed
 for durable tasks, mobile control, CoderOS, and agent labor.
@@ -30,6 +34,17 @@ out-of-sample knowledge test, open the knowledge base to contributors, and
 bring that work into Verse as quests and XP. The
 [showcase](beat-fable-showcase.md) is its public write-up: where Microcoder
 beats Fable 5.1 low, with the Gym's labels, and how to join.
+
+## Use the current implementation
+
+| Task | Start here |
+| --- | --- |
+| Install or run a turn | [Install](guides/install.md), [headless mode](guides/headless.md), [shared turn contract](runtime/shell-loop.md) |
+| Submit and inspect durable work | [Task commands](guides/tasks.md), [execution owner](runtime/task-owner.md), [frozen context](runtime/frozen-task-context.md) |
+| Use Microcoder outside the benchmark harness | [Repository adapter](runtime/microcoder-repository.md), including admitted configurations and incomplete live acceptance |
+| Inspect runs and evidence | [Traces](runtime/traces.md), [artifact verification](guides/artifact-verification.md), [Terminal-Bench index](../terminal-bench/README.md) |
+| Reuse or share knowledge | [Knowledge guide](guides/knowledge-base.md), [private bundles](runtime/knowledge-bundles.md), [evidence integrity](runtime/knowledge-evidence.md) |
+| Review the suite roadmap | [Delivery tracker](migration-status.md), [design index](design/README.md), [migration assessment](design/coder-suite-migration.md) |
 
 The [local task commands](guides/tasks.md) retain requests across process
 restarts. The [execution owner](runtime/task-owner.md) adds explicit bounded
@@ -53,6 +68,8 @@ remain explicit. [Knowledge bundles](runtime/knowledge-bundles.md),
 [prospective study bookkeeping](runtime/knowledge-studies.md) distinguish
 permissioned reusable inputs from measured improvements.
 
+## Plans and reference material
+
 The [teardown integration plan](design/teardown-nostr-integration.md) brings
 81 archived research documents into that direction. It links the complete
 source ledger, six new draft Nostr profiles, and ordered implementation gates
@@ -70,10 +87,11 @@ for sessions, workspaces, tracked work, automation, environments, and live media
 | [Examples](examples/) | Work lists and project supervisor configuration. |
 | [Source archive](thoughts-on-a-typesafe-coding-agent/) | Original exports and images for the coding-agent proposal. |
 
-Start with the [headless guide](guides/headless.md) to run a turn or the
-[Devin delegation runbook](guides/devin-delegation-runbook.md) to assign work.
-The [rebuild plan](design/rebuild-plan.md) describes the target architecture
-and links to the proposed delivery roadmap.
+The [rebuild plan](design/rebuild-plan.md) describes target architecture. Use
+the [runtime index](runtime/README.md) for implemented contracts and the
+[delivery tracker](migration-status.md) for acceptance limits. Older dated
+assessments and benchmark version plans remain historical evidence; their
+missing-feature lists and queued experiments are not current execution orders.
 
 The [Terminal-Bench task comparison](measurements/2026-09-22-terminal-bench-chat-fit.md)
 locates the CoderBench golden and ranks upstream tasks against recent work.

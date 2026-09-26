@@ -1,5 +1,11 @@
 # Psionic and Pylon
 
+Status: historical cross-repository source map, 2026-09-19. Product and runtime
+claims below belong to the reviewed repositories at that time. This checkout
+does not gain their fleet, wallet, or earn behavior by retaining the survey.
+Use the [master roadmap](roadmap.md) and [agent labor plan](agents/market-infrastructure.md)
+for current integration priorities.
+
 A map of the Psionic machine-learning stack and the Pylon node product: what
 each one is, which repository owns it, and where the files live. Surveyed
 2026-09-19 across `~/work/psionic`, `~/work/openagents`, and `~/work/coder`.

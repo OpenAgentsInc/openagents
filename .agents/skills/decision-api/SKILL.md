@@ -81,8 +81,10 @@ CLI is built on.
 
 ## What an answer does not mean
 
-Probabilities are calibrated judgments, not permission and not proof of
-correctness. A Noul of 0.5 means yes and no are about equally likely.
+Probabilities are model judgments, not permission or proof of correctness.
+Calibration must be measured on the target workload; the wire contract does
+not establish it. A Noul of 0.5 expresses equal model probability for yes and no,
+not an independently established frequency.
 `confidence` describes how concentrated a distribution is. Acting on an
 answer — a threshold, a routing rule, an escalation — belongs to the
 caller's policy and should be measured on the caller's labelled data.

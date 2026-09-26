@@ -6,11 +6,17 @@ primitives. The product includes the inference service, batch execution,
 agent tools, customer accounts, commercial controls, and the evidence needed
 to evaluate a decision on a caller's own workload.
 
-This document specifies the target product. It does not announce a hosted
-service or make proposed features available. The serving binaries and
-measurement tools exist; most service and customer features remain open
-work. The [delivery plan](#delivery-plan-and-issue-ownership) identifies an
-owner for every workstream. Product tracker: [#9481](https://github.com/OpenAgentsInc/openagents/issues/9481).
+This document defines the product contract and retains its implementation
+history. Updated September 26, 2026: the gateway, classification/batch/jobs,
+review policies, accounts/workspaces, accounting/billing, discovery, Rust
+clients, customer views, skill directory, recipes, and tenant-training
+components now have implementations. Their [service guides](../service/README.md)
+and [client matrix](../guides/clients.md) define the supported boundaries.
+This is not a production availability or service-level announcement. Image
+support, confidential inference, additional SDK languages, and stronger
+workload/deployment claims retain separate gates. The [master roadmap](../../roadmap.md)
+owns current priorities; the [issue map below](#delivery-plan-and-issue-ownership)
+records historical workstreams from [#9481](https://github.com/OpenAgentsInc/openagents/issues/9481).
 
 [Coder and Coder Terminal](../../coder/design/coder-as-decision-router-consumer.md)
 are the flagship consumers of this public contract. Their roadmap links
@@ -30,13 +36,13 @@ under [the verification guide](../../verification.md).
 | Capability | Current evidence and limit |
 | --- | --- |
 | Native typed decisions | `crates/jev` implements the client contract; `kev-serve` and `lev-serve` serve `POST /v1/systemone` and `GET /v1/models`. |
-| Tenant foundations | `crates/tenancy` implements registry bindings, key storage/lifecycle, and durable quota reservations. These library components do not establish the hosted gateway or full customer account system. |
-| Execution receipt schema | `crates/receipts` defines per-attempt identities, typed outcomes, timing, and request/result digests. HTTP/relay publication and Coder consumption remain integration work under [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471) and [#9505](https://github.com/OpenAgentsInc/openagents/issues/9505). |
+| Tenant foundations | `crates/tenancy` implements registry bindings, key lifecycle, durable quota, accounts, workspaces, sessions, billing, and training/skill books. The [gateway](../service/gateway.md) mounts configured service surfaces; deployment and commercial qualification remain separate. |
+| Execution receipt schema | `crates/receipts` defines per-attempt identities, typed outcomes, timing, and request/result digests. The gateway and relay paths emit the shared shape, with Coder consumption described by the linked runtime guides. Original implementation issues: [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471) and [#9505](https://github.com/OpenAgentsInc/openagents/issues/9505). |
 | Local serving | [Kev](../../kev/README.md) runs the open model locally; [Lev](../../lev/README.md) reaches Apple's on-device runtime through the Swift helper. Neither binary establishes the hosted tenant service. |
 | Artifact and execution identity | [Model identity](../../gym/model-identity.md) records the serving process's claim about loaded artifacts and configuration. Authentication can make that claim attributable; the card alone is not remote execution attestation. |
 | Caller-owned evaluation | [Measured records](../../gym/measured-records.md) covers `gym build`, evaluation, reports, and receipt-chain verification. Intake, reports, and Rust intake are landed: [#9464](https://github.com/OpenAgentsInc/openagents/issues/9464), [#9465](https://github.com/OpenAgentsInc/openagents/issues/9465), and [#9477](https://github.com/OpenAgentsInc/openagents/issues/9477). |
 | Report coverage and commitments | [Measured records](../../gym/measured-records.md) now includes expected coverage, `gym report --commitment`, and `gym verify --commitment`; [#9478](https://github.com/OpenAgentsInc/openagents/issues/9478) and [#9479](https://github.com/OpenAgentsInc/openagents/issues/9479) are landed. Authenticity still depends on the independently trusted channel that carries the commitment. |
-| Relay infrastructure | Authentication, capability manifests, and Coder jobs exist. A versioned decision job, shared authorization/accounting, and decision-worker admission remain open: [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469) and [#9470](https://github.com/OpenAgentsInc/openagents/issues/9470). |
+| Relay infrastructure | Authentication, capability manifests, and Coder jobs exist. The versioned decision worker and authenticated capability advertisement are implemented with shared authorization/accounting; see [worker](../service/decision-worker.md) and [advertisement](../service/decision-advertise.md). Original issues: [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469) and [#9470](https://github.com/OpenAgentsInc/openagents/issues/9470). |
 | Training and admission | Adapter formats, artifact locks, retained training tooling, and Gym exist. [Candidate admission](../service/candidate-admission.md) implements frozen comparisons, retained evidence, one-shot confirmation, and registry activation/rollback. Synthetic verification does not qualify a production candidate. [Tenant training](../service/tenant-training.md) is landed: four-partition corpora with provenance and leakage checks, headroom assessment, frozen recipes, a retained trials ledger, sealed candidates, and retention deletes — all operator-side through `tenant-train`. |
 
 Latency evidence applies to its recorded workload and host. Hosted Jev's
@@ -777,7 +783,7 @@ rewritten chain or dropped tail while allowing later appended rows.
 A chain that verifies internally does not establish that it is the original
 whole store. The retained commitment strengthens that claim only when its
 own authenticity comes from a separately trusted channel. Signed or relayed
-publication remains work under [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471) and [#9475](https://github.com/OpenAgentsInc/openagents/issues/9475); neither a commitment nor its signature attests
+publication history is recorded under [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471) and [#9475](https://github.com/OpenAgentsInc/openagents/issues/9475); neither a commitment nor its signature attests
 remote execution. Local commitment support is landed in [#9479](https://github.com/OpenAgentsInc/openagents/issues/9479).
 
 Training uses caller-permitted data with training examples held apart from
@@ -920,8 +926,11 @@ must meet.
 
 ## Delivery plan and issue ownership
 
-The expanded product is a set of dependent releases, not one gateway
-launch. Keep useful narrow releases available while later work proceeds.
+This table is the historical implementation map, not the current open-issue
+queue. Feature issues in this range are closed; closure can record bounded
+implementation or explicit deferral and does not establish a production
+launch. Read the linked current service guides for support and release limits.
+Keep useful narrow releases available while later work proceeds.
 
 | Stage | Issues and completion boundary |
 | --- | --- |
@@ -948,9 +957,11 @@ Track overall delivery in [#9481](https://github.com/OpenAgentsInc/openagents/is
 their acceptance evidence exists; writing this specification completes none
 of the unbuilt service features.
 
-The remaining deployment comparisons in [#9382](https://github.com/OpenAgentsInc/openagents/issues/9382) and
-[#9393](https://github.com/OpenAgentsInc/openagents/issues/9393), and serving-verification closure in [#9426](https://github.com/OpenAgentsInc/openagents/issues/9426),
-remain open and deferred by the operator. This update does not restart
-those runs. Attention optimization, caching, and Coder-specific fine-tuning
+The deployment comparisons in [#9382](https://github.com/OpenAgentsInc/openagents/issues/9382) and
+[#9393](https://github.com/OpenAgentsInc/openagents/issues/9393) are historical
+references to deferred measurement work. Their closure does not establish those
+comparisons. By contrast, [#9426](https://github.com/OpenAgentsInc/openagents/issues/9426)
+completed [serving reconciliation](../../kev/measurements/2026-09-22-serving-reconciliation.md)
+with its stated limits retained. This document restarts none of those runs. Attention optimization, caching, and Coder-specific fine-tuning
 in [#9459](https://github.com/OpenAgentsInc/openagents/issues/9459), [#9460](https://github.com/OpenAgentsInc/openagents/issues/9460), and [#9461](https://github.com/OpenAgentsInc/openagents/issues/9461) remain
 measurement-led decisions, not blanket prerequisites for the first service.

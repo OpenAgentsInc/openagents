@@ -1,5 +1,7 @@
 # Programming and improving agent systems
 
+For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
+
 Status: architecture and implementation plan, 2026-09-21. These documents
 extend the [general agent architecture](../agents/README.md) and the
 [TypeSafe Coder plan](../coder/design/typesafe-agent-analysis.md). Coding is

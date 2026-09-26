@@ -1,6 +1,7 @@
 # Authenticate to the decision API
 
-Every call to the gateway authenticates with a bearer credential. This
+Protected gateway routes authenticate with a bearer credential. Public
+discovery and configured anonymous shared-door calls are exceptions. This
 page covers what the credential looks like, where it may live, what a
 rejected call returns, and how keys come into existence. It describes
 what `crates/gateway` and the `oak` caller implement today — nothing
@@ -152,8 +153,9 @@ design: `GET /v1/docs` and its `search`, `examples`, and `{id}` routes,
 `api-catalog.json`, `openapi.yaml`, the agent card, the skills index)
 answer without `Authorization`. A credential on a discovery call is
 accepted and ignored. Public access to documents never grants access to
-inference — `POST /v1/systemone`, `/v1/classify`, and `/v1/jobs` always
-authenticate. Under `billing`, the plan catalog (`GET /v1/plans`) and
+inference. Decision calls always pass the configured admission checks; only
+the explicit anonymous shared-door lane can proceed without a bearer. Durable
+jobs and account operations retain their own authentication requirements. Under `billing`, the plan catalog (`GET /v1/plans`) and
 the checkout-session read (`GET /v1/billing/sessions/{id}`) are public
 too — the catalog is the published price list, and the session read is
 the browser's display-only return target. Under `skills`, the

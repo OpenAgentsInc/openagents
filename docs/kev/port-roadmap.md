@@ -72,7 +72,9 @@ the artifact digests.
 
 ## Verification record
 
-Run from the workspace root. The harness iterates every committed
+Run from the workspace root. The expensive conformance battery is opt-in;
+set `KEV_CONFORMANCE=1` to execute it. Without that flag, a green test command
+does not establish real-weight conformance. The harness iterates every committed
 fixture set (`fixtures/` for `kev-0.5b`, `fixtures/variants/<id>/` for
 the rest) and resolves artifacts by convention under
 `~/work/kev-artifacts/`. `KEV_VARIANT=<id>` selects one variant;
@@ -80,9 +82,9 @@ the rest) and resolves artifacts by convention under
 `KEV_TEST_DEVICE=metal` runs on Metal.
 
 ```text
-cargo test -p kev --features serve --release
-KEV_VARIANT=kev-8b cargo test -p kev --features serve --release
-KEV_TEST_DEVICE=metal cargo test -p kev --features metal --test conformance --release
+KEV_CONFORMANCE=1 cargo test -p kev --features serve --release
+KEV_CONFORMANCE=1 KEV_VARIANT=kev-8b cargo test -p kev --features serve --release
+KEV_CONFORMANCE=1 KEV_TEST_DEVICE=metal cargo test -p kev --features metal --test conformance --release
 cargo build -p kev --features serve,metal --release --bin kev-serve
 target/release/kev-serve --adapter-dir ~/work/kev-artifacts/kev-0.5b \
     --base-dir ~/work/kev-artifacts/qwen2.5-0.5b --port 8009 [--device metal] [--dtype bf16]

@@ -13,6 +13,20 @@ in [215](../transcripts/215.md), and the infrastructure in
 [networked Coder plan](../coder/design/networked-coder-plan.md). Historical
 launches and demonstrations do not establish what this checkout supports.
 
+## Current implementation boundary
+
+[Issue #9679](https://github.com/OpenAgentsInc/openagents/issues/9679) delivered
+the [free labor runtime](../coder/runtime/free-labor.md). A retained synthetic
+loopback run negotiates exact free terms, executes one explicitly granted
+repository command, independently checks its artifact, and records buyer
+acceptance. Signed encrypted events and buyer/provider journals survive restart;
+refusal and unknown states have separate fixtures.
+
+This is one operator exercising both roles with public fixture identities. It
+does not establish independent providers, a public marketplace, model-generated
+repair quality, a wallet adapter, or profitable work. The sequence below remains
+the product plan beyond that bounded proof.
+
 ## What the episodes add
 
 Episode 266 proposes a common market language: providers announce what they
@@ -59,9 +73,9 @@ in the current `nostr-relay` binary.
 
 | Existing foundation | Reuse | Remaining market work |
 | --- | --- | --- |
-| `crates/nostr` and `crates/nostr-relay` | Signed events, authentication, encryption primitives, storage, subscriptions, and bounded transport. | Implement the MKT/LAB drafts with strict parsers and role-specific privacy/recovery fixtures. The [allocation review](../protocol/2026-09-26-openagents-gap-review.md) found no listed collision; recheck before public interoperation. Official marketplace support is not negotiated-market support. |
+| `crates/nostr` and `crates/nostr-relay` | Signed events, authentication, encryption primitives, storage, subscriptions, and bounded transport. | Extend the implemented strict MKT/LAB parsers and free-only role journals to the remaining service and payment profiles. The [allocation review](../protocol/2026-09-26-openagents-gap-review.md) found no listed collision; recheck before public interoperation. Official marketplace support is not negotiated-market support. |
 | CAP and EXT contracts; local capability and package readers | Discover interfaces and identify exact implementations. | Provider offerings must also describe commercial terms, capacity, expiry, and supported market profiles. |
-| CJ jobs, host boundaries, and subprocess supervision | Reuse the working conversation/delegate path and execution admission records. | Complete durable execution artifact resolution and dispatch, bind an accepted order to one execution identity, and reconcile failures. The generic execution worker is not yet a complete market worker. |
+| CJ jobs, host boundaries, and subprocess supervision | Reuse the working conversation/delegate path and execution admission records. | The free runtime resolves its admitted graph and binds one accepted order to one local task execution. Independent provider deployment, broader execution profiles, and reconciliation across separately operated relays remain. |
 | Gym, EVAL, OPT, ATIF traces, and KB sharing | Retain outcomes, compare implementations, and publish attributable evidence. | Bind evidence to the agreed deliverable and independent evaluator; report provider reliability by task family and version. |
 | Gateway quota, money, and [billing](../decision-models/service/billing.md) | Account for service usage and recover local ledger mutations. Billing currently accepts only its sandbox provider. | Bitcoin payouts, external settlement adapters, negotiated prices, disputes, and counterparty risk. The existing gateway ledger is not a cross-provider payment network. |
 
@@ -251,8 +265,9 @@ of those economics.
 
 ## Integration sequence
 
-The [general roadmap](roadmap.md) tracks these as proposed work, not filed
-issues or completed implementations.
+The [general roadmap](roadmap.md) tracks the broader work with local planning
+IDs. The free-only implementation and evidence are recorded in #9679; that
+closed issue does not complete the independent-operator or paid stages below.
 
 1. **Implement the reviewed contracts.** The MKT/LAB drafts and
    [cross-lane review](../protocol/2026-09-26-openagents-gap-review.md) now define

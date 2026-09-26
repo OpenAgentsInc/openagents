@@ -13,13 +13,24 @@ and its [official](2026-09-26-upstream-nip-sync-official.md) and
 the gaps at the source-only sync; this report records subsequent implementation
 scope. The [implementation plan](implementation-plan.md) remains the backlog.
 
+## Subsequent application slices
+
+This report originally described the source-sync implementation. Later September
+26 work added the [durable task owner](../coder/guides/tasks.md),
+[private knowledge integration](../coder/migration-status.md), and the
+[free labor runtime](../coder/runtime/free-labor.md). The latter now has
+[retained local relay evidence](../coder/verification/2026-09-26-free-labor/README.md).
+These are scoped host implementations, not blanket conformance for their NIPs.
+Use the [migration tracker](../coder/migration-status.md) for application delivery
+and this report for the lower-level source-sync boundary.
+
 ## Source identity and evidence boundaries
 
 | Lane | Current source | What the inventory establishes |
 | --- | --- | --- |
 | Official | `b82211e96c6dad616ed2ea43034c1c621256b745`; 99 specifications and the upstream index. | [`lane.rs`](../../crates/nostr/src/lane.rs) accounts for every specification, including A3. Current client reviews and the prior behavior baseline are separate. |
 | Block | `781d39510cf23cfe224e8f521ae06a23377e06de`; 17 specifications. | [`block_lane.rs`](../../crates/nostr/src/block_lane.rs) includes FI and PMA. Retained subset fixtures do not certify every role at the new pin. |
-| OpenAgents | The [22 authored specifications](../../nips/openagents/README.md), plus [shared contracts](../../nips/openagents/contracts.md). | Each contract's implemented portion and remaining host obligations appear below. There is no blanket OpenAgents conformance claim. |
+| OpenAgents | The [23 authored specifications](../../nips/openagents/README.md), plus [shared contracts](../../nips/openagents/contracts.md). | Each contract's implemented portion and remaining host obligations appear below. There is no blanket OpenAgents conformance claim. |
 
 The [manifest](../../nips/manifest.json) remains the upstream source authority.
 Verification must bind to the actual implementation tree. Named tests below
@@ -75,9 +86,10 @@ after the real sweep.
 | [EVAL](../../nips/openagents/NIP-EVAL.md) | KB-linked signed publication/report subset in [`kb.rs`](../../crates/nostr/src/kb.rs); local Gym evidence. | General frozen suite/trial/partition/comparison and promotion contracts, leakage checks, and evaluator admission. |
 | [OPT](../../nips/openagents/NIP-OPT.md) | PRG/CJ/EVAL and local optimization foundations. | Semantic signatures, exact implementations, studies, data partitions, candidates, trial accounting, and promotion. |
 | [KB](../../nips/openagents/NIP-KB.md) | Signed immutable versions, heads, withdrawal, equivocation, and EVAL evidence in [`kb.rs`](../../crates/nostr/src/kb.rs); publication/sync commands. | Wider promotion and evaluator trust. Signatures establish attribution, not quality or a positive network effect. |
-| [CTRL](../../nips/openagents/NIP-CTRL.md) | Private artifacts and existing CJ/RUN substrate. | Pairing possession/admission, rights/epochs, command freshness, revocation at the actual owner, and observations that preserve disclosure scope. |
+| [XP](../../nips/openagents/NIP-XP.md) | [`xp.rs`](../../crates/nostr/src/xp.rs) validates signed quests, awards, revocations, and the `kb-transfer` acceptance rule; [`knowledge::xp`](../../crates/knowledge/src/xp.rs) derives the reader's trusted ledger. Verse displays quests and XP. | Reader trust, available evidence, and source-task exclusions still determine whether an award counts. XP is not spendable money or proof of a paid labor market. |
+| [CTRL](../../nips/openagents/NIP-CTRL.md) | [Twelve closed artifact parsers](../../crates/nostr/src/control.rs) and a [bounded local-owner bridge](../coder/runtime/nostr-task-control.md): authenticated pairing, independent rights, exact commands, expiry/revocation, finite private projections, and durable retry identity. | Complete client products, full signed RUN history, controller handoff, remote creation/start, and broader SESS/CTX integration. Partial projections and a scoped host are not complete CTRL conformance. |
 | [MKT](../../nips/openagents/NIP-MKT.md) | [`market_contracts`](../../crates/nostr/src/market_contracts.rs) validates signed offerings/heads, exact terms, authenticated RFQ/quote/order/ack, OrderRef, bounded per-issuer history, replay/equivocation, and receipt-time freshness. Public admission uses these parsers. | Durable host reservations/confirmation, full domain validation, remaining fulfillment/cancellation/dispute/closure records, and live market operation. Paid negotiation and payment records explicitly refuse in this component. |
-| [LAB](../../nips/openagents/NIP-LAB.md) | [`market_contracts::labor`](../../crates/nostr/src/market_contracts/labor.rs) checks closed terms, checker policies, rights, roles, deadlines, rework bounds, criterion sets, reuse restrictions, and required recipients. Its MKT adapter checks exact policy bytes. | The required host interface must validate the complete frame/lock/schema/provenance/disclosure graph. Execution linkage, delivery/check records, review, disputes, supersession, acceptance, and settlement remain unimplemented. |
+| [LAB](../../nips/openagents/NIP-LAB.md) | [`market_contracts::labor`](../../crates/nostr/src/market_contracts/labor.rs) checks closed terms, checker policies, rights, roles, deadlines, rework bounds, criterion sets, reuse restrictions, and required recipients. Its MKT adapter checks exact policy bytes. | [`coder-labor`](../../crates/coder-labor/src/lib.rs) now supplies an admitted free-only graph, durable role journals, execution linkage, delivery, independent checks, and acceptance. General profiles, public provider operation, paid settlement, and dispute resolution remain unimplemented; dispute records alone do not resolve a dispute. |
 | [SESS](../../nips/openagents/NIP-SESS.md) | CJ/RUN and local session concepts. | Truthful adapter features, effective configuration, session admission, durable queues/control, elicitation versus approval, terminal causes, and native/foreign history loss accounting. |
 | [WS](../../nips/openagents/NIP-WS.md) | Shared artifacts, local snapshots, and the separate Block RS work. | Resource/document/checkpoint identity and conditional mutations; exact view definitions/cuts/pages/deltas and structural-gap handling. RS does not implement WS by implication. |
 | [WORK](../../nips/openagents/NIP-WORK.md) | WS/CJ relationship designs. | Authority-scoped planning graph, exact-revision proposals/admission, disposition, delegation, evidence, and bounded synchronization. |
@@ -167,9 +179,12 @@ Live acceptance is separate:
   commands, feature scope, failures, and omitted prerequisites. Production
   configuration and wallet/provider interoperability require their own evidence.
 
-The next complete application milestone is a persisted **free labor rehearsal**:
-resolve and admit one real LAB graph, confirm its order durably, bind a bounded
-CJ run, retain delivery and independent checks, and reach an attributable
-acceptance outcome without a wallet call. Until that runs through the real
-transport and storage paths, this change is protocol infrastructure, not a
-completed agent-labor market.
+The persisted **free labor rehearsal** subsequently passed in
+[the retained #9679 record](../coder/verification/2026-09-26-free-labor/README.md).
+It resolves an admitted LAB graph, confirms exact free terms, binds a bounded
+execution, retains delivery and independent checks, and records buyer acceptance
+through real loopback WebSocket transport and private local storage. Public
+synthetic identities and one operator establish a reproducible fixture, not
+an independently operated or paid labor market. The next market milestones are
+independent provider operation, broader recovery evidence, and separately
+admitted settlement.

@@ -1,12 +1,16 @@
 # Lev
 
+For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
+
 **Status:** built and measured. `crates/lev` serves the System One contract
 from Apple's on-device model, and the real `crates/jev` client reaches it
 with a `base_url` change — the same contract `crates/kev` serves from open
 weights and TypeSafe serves from its own.
 
-Scored against the other two on 52 authored items, evaluation split, one
-client:
+The following is the historical 52-item support-suite comparison, with
+evaluation subsets and door configurations described in the retained
+[suite record](measurements/2026-09-19-suite-scores.md). It is not a current
+all-workload ranking:
 
 | Door | Accuracy | ECE | Brier | Latency |
 | --- | --- | --- | --- | --- |
@@ -40,26 +44,27 @@ reconstruction, Lev is the Apple one.
 
 One document (the *state*) plus a map of typed questions goes in, one typed
 answer per question comes out, and the code that asked owns the workflow.
-That contract does not care what produced the answer. Lev produces it with
-the model Apple ships in every recent Apple Silicon Mac, reached through the
-`FoundationModels` framework.
+That contract does not care what produced the answer. Lev produces it through Apple's `FoundationModels` framework when the helper
+reports the model available. Eligibility, Apple Intelligence enablement, and
+model readiness are checked at runtime; a running Apple Silicon Mac alone is
+not sufficient.
 
 Three properties make it worth building:
 
-- **The weights are already there.** Nothing downloads, nothing is pinned
-  to a license boundary this repository has to carry, and nothing competes
-  for memory beyond what the operating system already pays. A `kev-4b`
-  worker needs about 9.6 GB resident before it answers anything. A Lev
-  worker needs a Mac that is already running.
+- **Apple supplies the base model.** This repository does not distribute the
+  base weights. The helper reports device eligibility, enablement, and readiness;
+  compatible OS assets and any selected adapter must be available. Inference
+  still consumes device memory, compute, energy, and time.
 - **The answer shape is guaranteed by the runtime, not by a prompt.**
   Apple's guided generation constrains decoding to a schema, so a Choice
   over an admitted option set cannot return an option that is not in the
   set. Caller text cannot add one either. Kev enforces its option set
   through sanitized delimiters and a pointer readout over the supplied
   options. Both constrain answer shape; neither establishes correctness.
-- **The marginal cost is zero.** No tokens are billed, nothing leaves the
-  machine, and the model is resident between requests. That is the right
-  economics for a judgment that runs in front of every metered agent turn.
+- **Local inference has no per-token API charge.** The local helper keeps
+  inference on the device. Hardware and operating costs remain, and latency
+  still matters when a judgment precedes a metered agent turn. Do not report an
+  unknown total cost as zero.
 
 One property makes it hard, and the whole design turns on it:
 
@@ -77,9 +82,10 @@ Kev is a laptop-scale reconstruction whose numbers come from a head trained
 with cross-entropy against labelled outcomes. Its probabilities are a
 learned predictive distribution, and the mechanism that produces them is
 measurable end to end. Lev's numbers cannot come from there. They come from
-an estimator over observable behavior plus a calibration map fitted on
-labelled data, and until that map is fitted for a question family, Lev
-refuses to report a probability at all.
+an estimator over observable behavior and, for an admitted family, a fitted
+calibration map. The current door can return explicitly uncalibrated sampling
+frequencies; callers that require a matching admitted map send
+`extensions.require_calibration` and receive a refusal when one is unavailable.
 
 Both Lev and local Kev can keep requests on the machine without an API
 charge. Lev depends on Apple's model availability and admitted question
@@ -98,8 +104,8 @@ is good enough for any particular workflow is a measurement;
 | Weights | closed, hosted | open adapter and head on an open base | closed, on-device, shipped by the OS |
 | Readout | direct, trained against outcomes | pointer head, cross-entropy | none; estimated from behavior |
 | Question isolation | packed branches, measured | block-causal mask, measured | one session per question, by construction |
-| Cost per request | metered | our hardware | none |
-| Probability source | the model | the model | an estimator plus a fitted calibration map |
+| Inference charging | Provider policy | Local hardware; no inference API charge | Local hardware; no inference API charge |
+| Probability source | the model | the model | Sampling frequencies; an admitted map where available |
 | Shape guarantee | API validation | delimiter hardening, probed | constrained decoding, structural |
 | Status here | `crates/jev`, shipped | `crates/kev`, serving four checkpoints | `crates/lev`, built and measured |
 

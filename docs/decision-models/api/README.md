@@ -1,6 +1,8 @@
 # Decision API contracts
 
-Product scope, HTTP contracts, and the proposed relay contract.
+Product scope, HTTP contracts, and the implemented bounded relay decision
+worker contract. See the [service guide](../service/decision-worker.md) for its
+admission and deployment limits.
 
 [Documentation index](../README.md)
 

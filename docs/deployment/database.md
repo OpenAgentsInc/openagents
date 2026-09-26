@@ -1,4 +1,4 @@
-# Postgres Store and Roles
+# Postgres store and roles
 
 nostr-relay uses one Postgres database. The store owns migrations, event
 admission, policy checks, indexed reads, process notification, and gap
@@ -63,6 +63,15 @@ expired legacy rows so tail sweeps do not retry them.
 vector and GIN index with kind 1059 excluded. Gift-wrap ciphertext is
 recipient-private and must never enter full-text search; recipient-gated
 history and ID lookup remain available.
+
+`migrations/0009_nip29_groups.sql` adds group privacy, visibility, write-policy,
+parent/child, banner, and LiveKit fields with bounded parent references.
+Existing groups keep their prior public-read, restricted-write policy.
+
+`migrations/0010_private_protocol_search.sql` excludes the expanded set of
+private protocol kinds and private CAP policy from full-text search, including
+existing rows. It also adds `relay_query_authorization` for replay protection
+on authenticated HTTP queries.
 
 The database independently rejects malformed identity widths, negative or
 out-of-range protocol numbers, ephemeral kinds, inconsistent replacement

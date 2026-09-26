@@ -1,6 +1,6 @@
-# Runbook: Debian VPS (canonical single-box deployment)
+# Debian VPS relay deployment
 
-This is the canonical Immortal deployment: Debian 13 (`trixie`), Postgres 17
+This is the supported single-box relay topology: Debian 13 (`trixie`), Postgres 17
 from apt, one `nostr-relay` binary under systemd, and Caddy or nginx terminating
 public TLS. It applies to a physical server or any VPS provider. All durable
 event/control state stays in the one Postgres database; M7's content-addressed
@@ -32,12 +32,18 @@ sudo apt-get upgrade -y
 sudo apt-get install -y postgresql curl ca-certificates
 ```
 
-If building on the server, install Debian's Rust 1.85 toolchain and compiler:
+If building on the server, install the compiler prerequisites and use the
+repository-pinned Rust toolchain through rustup. The workspace currently requires
+Rust 1.97.1; Debian's older packaged compiler is not the build contract.
 
 ```sh
-sudo apt-get install -y cargo build-essential
-cargo build --locked --release
+sudo apt-get install -y build-essential pkg-config
+rustup toolchain install 1.97.1 --profile minimal
+cargo +1.97.1 build --locked --release -p nostr-relay --bin nostr-relay
 ```
+
+Use a separate `CARGO_TARGET_DIR` for each worktree. If building elsewhere, match
+the target architecture and operating-system requirements before installing.
 
 Allow only SSH, HTTP, and HTTPS at the provider firewall. If the provider has
 no firewall, use `ufw`:
@@ -66,8 +72,8 @@ sudo -u postgres createdb --owner=nostr-relay nostr-relay
 Verify the credential:
 
 ```sh
-psql 'postgres://nostr_relay:<YOUR_DB_PASSWORD>@127.0.0.1:5432/nostr-relay' \
-  --command='SELECT 1;'
+psql --host=127.0.0.1 --username=nostr-relay --dbname=nostr-relay \
+  --password --command='SELECT 1;'
 ```
 
 The `nostr-relay` role is not a superuser and owns only its database. The first
@@ -337,25 +343,24 @@ prevents an old release from silently interpreting a schema it does not know.
 - `journalctl -u nostr-relay.service --since=-1h -p warning --no-pager`
 - `curl -fsS https://relay.example.com/health` from off-host
 - `df -h /var/lib/postgresql /var/backups/nostr-relay`
-- `sudo -u postgres psql --dbname=nostr_relay --command="SELECT pg_size_pretty(pg_database_size('nostr-relay'));"`
+- `sudo -u postgres psql --dbname=nostr_relay --command="SELECT pg_size_pretty(pg_database_size(current_database()));"`
 - `systemctl list-timers nostr-relay-backup.timer --no-pager`
 - restore the newest off-host dump into a temporary database at least monthly
 
-## 11. Reproduce the fresh-Debian acceptance
+## 11. Verify a fresh installation
 
-The guarded acceptance command starts a disposable Debian 13 container,
-installs apt Postgres and Debian Rust, builds the release binary, serves
-health and NIP-11, publishes and reads a pinned signed event, then creates and
-restores a logical backup:
+The historical `scripts/run-debian-acceptance.sh` wrapper is not present in this
+checkout. Do not treat its former existence as a current clean-host acceptance
+result. The [local relay runbook](runbook-local-dev.md) and
+[`scripts/test-postgres.sh`](../../scripts/test-postgres.sh) cover disposable
+Postgres and relay behavior on an equipped contributor host.
 
-```sh
-./scripts/run-debian-acceptance.sh
-```
-
-It uses a running Apple Container, Podman, or Docker runtime selected locally
-and requires a wrapper-only disposable-container guard before the destructive
-inner script runs. It does not use GitHub workflows or any GitHub-billed
-service.
+A fresh Debian installation still needs its own recorded build, service start,
+health/NIP-11 checks, authenticated publish/read exchange, backup restore, and
+upgrade/rollback proof. Retain the exact binary, configuration, compiler,
+database version, and failures. The
+[portable Coder host fixture](../coder/runtime/portable-host.md) is a different
+service and does not supply this relay installation evidence.
 
 ## Current platform references
 

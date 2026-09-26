@@ -1,5 +1,11 @@
 # Earn in the coder repository
 
+Status: historical sibling-repository survey, 2026-09-19. Commands and service
+claims below describe that reviewed Coder source, not this repository. For
+current public implementation, use the [migration tracker](coder/migration-status.md),
+[agent labor plan](agents/market-infrastructure.md), and
+[free labor runtime](coder/runtime/free-labor.md).
+
 A map of Coder's Earn functionality: the mode that offers a machine's spare
 capacity to the inference mesh for credit on the owner's ledger. Surveyed
 2026-09-19 in `~/work/coder` (`OpenAgentsInc/coder`).

@@ -109,7 +109,7 @@ candidates discover for 160 calls.
 in `a50e6efe` before a single calibration row existed. The selection cannot
 have been made after the fact, and the commit is the evidence.
 
-**Agreement ceiling, added 2026-09-20.** A second reader, labelling blind, agreed with the stored labels on `routing` 50/51 (0.980, kappa 0.971), `urgency` 29/31 (0.935, kappa 0.870), and `severity` 18/18 (1.000, kappa 1.000), on a 100-item sample of these same 196 items. Read each family accuracy against that ceiling, not against 1.0; the intervals and the three disputed items are in [`../decision-models/2026-09-20-instrument-validity.md`](../decision-models/2026-09-20-instrument-validity.md).
+**Agreement ceiling, added 2026-09-20.** A second reader, labelling blind, agreed with the stored labels on `routing` 50/51 (0.980, kappa 0.971), `urgency` 29/31 (0.935, kappa 0.870), and `severity` 18/18 (1.000, kappa 1.000), on a 100-item sample of these same 196 items. Read each family accuracy against that ceiling, not against 1.0; the intervals and the three disputed items are in [`../decision-models/2026-09-20-instrument-validity.md`](../../decision-models/measurements/2026-09-20-instrument-validity.md).
 
 ## Calibration, the partition that decides
 

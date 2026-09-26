@@ -1,11 +1,12 @@
 # Runbook: production relay on Cloud Run
 
-`wss://relay.openagents.com` is the relay binary from this repository running
-on Cloud Run. This runbook is how it's built, deployed, checked, and rolled
-back. The [Debian VPS runbook](runbook-debian-vps.md) covers self-hosting the
+This runbook records the repository relay's Cloud Run deployment and the
+operator procedure for building, checking, deploying, and rolling it back. The
+last recorded revision is dated below; this document is not a live service-health
+or current-traffic check. The [Debian VPS runbook](runbook-debian-vps.md) covers self-hosting the
 same binary on one box.
 
-## What's running
+## Recorded deployment
 
 | | |
 | --- | --- |
@@ -41,7 +42,8 @@ History:
 
 Use the automation service account for builds, reads, and logs:
 `CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config`
-(see the workspace `AGENTS.md`). On 2026-09-26 it was still refused
+(a recorded operator-local configuration path, not a repository prerequisite).
+On 2026-09-26 it was still refused
 `iam.serviceaccounts.actAs` on the runtime service account for
 `gcloud run deploy` and `update-traffic`, even with a resource-level
 `roles/iam.serviceAccountUser` binding, so those two steps ran as the owner's
@@ -137,9 +139,9 @@ gcloud run services update-traffic openagents-nostr-relay \
 Revisions from before the last migration can't start against the current
 ledger. As of 2026-09-26 that means `openagents-nostr-relay-00023-kax`
 (`9b5bb212f1`, migrations 1-8) won't cold-start, so the safe rollback is
-forward: fix `main`, build, deploy. If an older binary must run anyway,
-migrations 9 and 10 left a schema it can use (new columns with defaults, a
-new table, a rebuilt search column), so deleting ledger rows 9 and 10 lets it
-start. That edits the production ledger: do it only with the owner's
-sign-off, and a later deploy then re-runs those migrations and fails on the
-existing columns, so it needs the same care going forward.
+forward: fix `main`, build, deploy. Do not delete migration-ledger rows to force an older binary to start: that
+separates the recorded schema from the installed schema and causes subsequent
+migration replay to fail. If a code rollback is necessary, build the corrected
+code with the current migration set and verify compatibility, or use a separately
+reviewed backup-restore procedure with its data-loss and downtime consequences.
+An application traffic rollback does not roll back a database migration.

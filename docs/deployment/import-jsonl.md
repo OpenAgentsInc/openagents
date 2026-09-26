@@ -1,7 +1,7 @@
-# Signed-event JSONL Import
+# Signed-event JSONL import
 
 `nostr-relay import-jsonl` imports an ordered export of signed Nostr events into
-Immortal's Postgres store. It preserves each event's `id`, `pubkey`, `sig`,
+the relay's Postgres store. It preserves each event's `id`, `pubkey`, `sig`,
 `created_at`, kind, tags, and content. The command never signs, rewrites, or
 decrypts an event.
 
@@ -19,9 +19,9 @@ accepted.
 
 ## Run
 
-Stop Immortal before importing. This keeps ephemeral notifications and the
+Stop every relay process using the destination database before importing. This keeps ephemeral notifications and the
 durable sequence boundary out of live client traffic. The command applies and
-verifies Immortal's embedded migrations, so use the same database-owner
+verifies the relay's embedded migrations, so use the same database-owner
 credential as a normal first start.
 
 ```sh
@@ -60,7 +60,7 @@ the configured M2 policy pipeline. It uses the historical-admission lane for
 extension rules a source relay could not have enforced. This does not bypass
 author ownership, signatures, event identity, limits, or relay policy.
 
-After the report matches the source reconciliation, start Immortal and verify
+After the report matches the source reconciliation, start the relay and verify
 health, NIP-11, representative event IDs, replacement heads, and deleted-event
 absence before moving the hostname. Use
 [`runbook-debian-vps.md`](runbook-debian-vps.md) for the cutover and rollback

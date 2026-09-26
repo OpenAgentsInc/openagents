@@ -14,6 +14,20 @@ operation means from how a model-backed implementation realizes it. DSPy and
 GEPA can help search implementation choices. Gym and domain evaluators measure
 them; host policy controls adoption and all execution authority.
 
+## Implemented entry points
+
+Use [capabilities and programs](../programs.md) for the original operational
+path, [program authority](../coder/guides/program-authority.md) for execution
+grants, and [the Wasm host inventory](plugins.md#what-is-built) for supported
+profiles and limits. The local package resolver is described in
+[packages](packages.md); a signed catalog, automatic import, and general
+optimization lifecycle are wider targets.
+
+The [migration tracker](../coder/migration-status.md) and
+[master roadmap](../roadmap.md) own current delivery priorities. An EXT document,
+installed plugin, or benchmark result does not silently activate another
+component or grant a provider access.
+
 ## Read the specification
 
 | Document | Scope |

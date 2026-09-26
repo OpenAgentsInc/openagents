@@ -126,9 +126,12 @@ Admitted:
   three-way suite `lev-base@1` scores 0.825. Both the base and choice releases
   name an admitted `routing` map fitted against their own door; this is an
   in-domain grant, not a claim about routing in every application.
-- **Anything that must not leave the machine.** Nothing is sent anywhere.
-- **Anything that must not be billed.** There is no marginal cost, so a
-  judgment can run in front of every metered call.
+- **An admitted workload requiring local inference.** The local helper keeps
+  inference on-device; deployment access and trace disclosure are separate
+  operator choices.
+- **An admitted workload avoiding inference API charges.** Hardware, energy,
+  and latency still count. This is not a zero-total-cost claim or permission to
+  apply a support-routing calibration to a new workload.
 - **Shape-guaranteed decisions.** Constrained decoding means the answer is
   always an admitted option. A caller never parses prose and never handles an
   option it did not offer.

@@ -45,9 +45,10 @@ it is called supported.
 
 ### Authentication
 
-Credentials come from the environment or a `0600` config file, never a
-flag — a flag would land the key in the process list. `jev` reads them
-in `Client::new`/`Client::from_env`; `oak` reads `OPENAGENTS_API_KEY`,
+Credentials never belong in a flag that exposes them in the process list.
+`jev` accepts an explicit typed key in `Client::new` or reads
+`TYPESAFE_API_KEY` through `Client::from_env`; it does not load a config file
+on its own. `oak` also supports a `0600` config file and reads `OPENAGENTS_API_KEY`,
 `OPENAGENTS_BASE_URL`, `OPENAGENTS_MODEL`, `OPENAGENTS_WORKSPACE`, or the
 same keys in `--config`'s JSON file.
 
