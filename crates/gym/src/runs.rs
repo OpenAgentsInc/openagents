@@ -2006,6 +2006,36 @@ pub(crate) fn fixture_sources() -> (tempfile::TempDir, Sources) {
         &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs"),
         dir.path(),
     );
+    // Retained run records name the original operator's absolute task paths.
+    // Point only these temporary copies at exact public metadata retained with
+    // the fixtures, so test evidence never depends on an external checkout.
+    for job in std::fs::read_dir(dir.path().join("jobs")).expect("fixture jobs") {
+        let job = job.expect("a fixture job").path();
+        for trial in std::fs::read_dir(job).expect("fixture trials") {
+            let config_path = trial.expect("a fixture trial").path().join("config.json");
+            if !config_path.is_file() {
+                continue;
+            }
+            let mut config = read_json(&config_path).expect("fixture config JSON");
+            let original = config
+                .pointer("/task/path")
+                .and_then(Value::as_str)
+                .expect("fixture task path");
+            let task = Path::new(original).file_name().expect("fixture task name");
+            let retained = dir.path().join("tasks").join(task);
+            assert!(
+                retained.join("instruction.md").is_file(),
+                "retained instruction"
+            );
+            assert!(
+                retained.join("task.toml").is_file(),
+                "retained task metadata"
+            );
+            config["task"]["path"] = json!(retained);
+            std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap())
+                .expect("a relocated temporary fixture config");
+        }
+    }
     let sources = Sources {
         jobs: Some(dir.path().join("jobs")),
         traces: Some(dir.path().join("traces")),
