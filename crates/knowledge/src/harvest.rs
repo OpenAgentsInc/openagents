@@ -53,7 +53,8 @@ applies. applies_when says what code or state it bears on.
 - body is Markdown with a `## Details` section and a `## How to check` section that gives a \
 property or a runnable snippet.
 - If an existing entry already teaches the same lesson, set updates to its id and write the \
-improved version; otherwise leave updates empty and give the entry a new id.
+improved version: its whole body with your change folded in, dropping nothing it already \
+says; otherwise leave updates empty and give the entry a new id.
 
 Propose at most three entries, and none when the run teaches nothing general. Fewer, sharper \
 entries are better than many.";
@@ -82,7 +83,8 @@ applies. applies_when says what code or state it bears on.
 - body is Markdown with a `## Details` section and a `## How to check` section that gives a \
 property or a runnable snippet.
 - If an existing entry already teaches the same lesson, set updates to its id and write the \
-improved version; otherwise leave updates empty and give the entry a new id.
+improved version: its whole body with your change folded in, dropping nothing it already \
+says; otherwise leave updates empty and give the entry a new id.
 
 Propose at most three entries, and none when the trajectory teaches nothing general. Fewer, \
 sharper entries are better than many.";
@@ -109,7 +111,7 @@ documentation, by author, title, and section.
 it bears on.
 - body is Markdown with a `## Details` section and a `## How to check` section.
 - If an existing entry already teaches the lesson but misses the decisive detail, set updates to \
-its id and write the improved version; otherwise give the entry a new id.
+its id and write the improved version: its whole body with your change folded in, dropping nothing it already says; otherwise give the entry a new id.
 
 Propose at most three entries, and none when the difference teaches nothing general.";
 
@@ -517,6 +519,28 @@ pub fn prompt(record: &Record, base: &Base) -> String {
     )
 }
 
+/// A revision's body: the current body whole, then the proposal's body
+/// under an "Added in version N" heading, its own headings one level down.
+#[must_use]
+pub fn merged_body(current: &str, proposal: &str, version: u32) -> String {
+    let added: String = proposal
+        .trim()
+        .lines()
+        .map(|line| {
+            if line.starts_with('#') {
+                format!("#{line}\n")
+            } else {
+                format!("{line}\n")
+            }
+        })
+        .collect();
+    format!(
+        "{}\n\n## Added in version {version}\n\n{}",
+        current.trim_end(),
+        added.trim_end()
+    )
+}
+
 /// What happened to one proposal.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Written {
@@ -652,6 +676,12 @@ pub async fn harvest_record<P: Propose, E: Embed>(
             let newest = pending(dir, &current.id, current.version)
                 .map_or(current.version, |(_, e)| e.version);
             entry.version = newest + 1;
+            // The model sees only titles, so a revision keeps the current
+            // body whole and adds the proposal under its own heading.
+            entry.body = merged_body(&current.body, &entry.body, entry.version);
+            entry.summary = current.summary.clone();
+            entry.cites.extend(current.cites.iter().cloned());
+            entry.cites.dedup();
             for from in &current.written_from {
                 if from != "reference" && !entry.written_from.contains(from) {
                     entry.written_from.insert(0, from.clone());

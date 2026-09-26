@@ -339,3 +339,14 @@ fn a_contrast_pairs_the_failed_run_with_the_winning_trajectory() {
     );
     assert!(prompt(&record, &Base { entries: vec![] }).contains("# The two records"));
 }
+
+#[test]
+fn a_revision_keeps_the_current_body_and_adds_the_proposal() {
+    let body = merged_body(
+        "## Details\n\nThe whole formula.\n\n## How to check\n\nRecompute it.",
+        "## Details\n\nPuts use the other tail.",
+        3,
+    );
+    assert!(body.starts_with("## Details\n\nThe whole formula."));
+    assert!(body.contains("Recompute it.\n\n## Added in version 3\n\n### Details\n\nPuts use"));
+}
