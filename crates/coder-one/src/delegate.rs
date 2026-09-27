@@ -686,7 +686,12 @@ impl Briefing {
     /// toward the cap like the rest.
     #[must_use]
     pub fn build_under(head: &str, inputs: &BriefingInputs, cap: usize) -> Self {
-        Self::build_under_knowing(head, inputs, &[], cap)
+        Self::build_under_knowing(
+            head,
+            inputs,
+            &crate::briefing_knowledge::Knowledge::NONE,
+            cap,
+        )
     }
 
     /// [`Briefing::build`] with the knowledge-base entries the host
@@ -700,7 +705,7 @@ impl Briefing {
     #[must_use]
     pub fn build_knowing(
         inputs: &BriefingInputs,
-        knowledge: &[crate::briefing_knowledge::Entry],
+        knowledge: &crate::briefing_knowledge::Knowledge,
         cap: usize,
     ) -> Self {
         Self::build_under_knowing(head_for(inputs), inputs, knowledge, cap)
@@ -712,7 +717,7 @@ impl Briefing {
     pub fn build_under_knowing(
         head: &str,
         inputs: &BriefingInputs,
-        knowledge: &[crate::briefing_knowledge::Entry],
+        knowledge: &crate::briefing_knowledge::Knowledge,
         cap: usize,
     ) -> Self {
         let directions = format!("\n## What to do\n\n{}\n", inputs.directions);
@@ -778,14 +783,14 @@ impl Briefing {
             }
         };
 
-        if !knowledge.is_empty() {
+        if !knowledge.entries.is_empty() {
             let heading = format!(
                 "{}\n\n{}",
                 crate::briefing_knowledge::HEADING,
-                crate::briefing_knowledge::NOTE
+                knowledge.note()
             );
             let mut left_out = Vec::new();
-            for entry in knowledge {
+            for entry in &knowledge.entries {
                 if !add(entry.label(), &heading, entry.section(), &mut body) {
                     left_out.push(format!("{} v{}", entry.id, entry.version));
                 }
@@ -2573,7 +2578,7 @@ pub struct Plan<'a> {
     pub base: Option<&'a str>,
     /// The knowledge-base entries the host selected for the briefing
     /// (`CODER_ONE_BRIEFING_KNOWLEDGE`); empty for every other run.
-    pub knowledge: &'a [crate::briefing_knowledge::Entry],
+    pub knowledge: &'a crate::briefing_knowledge::Knowledge,
 }
 
 /// What a delegated run leaves for the record.
@@ -3823,7 +3828,7 @@ pub(crate) mod tests {
             pack: crate::pack::Params::default(),
             isolation: "none",
             base: None,
-            knowledge: &[],
+            knowledge: &crate::briefing_knowledge::Knowledge::NONE,
         };
         let (ended, delegated) = explore_then_delegate(
             &mut state,

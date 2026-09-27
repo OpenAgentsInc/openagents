@@ -606,6 +606,63 @@
       },
       "note": "coder-one-delegate-fable-low with a knowledge section in the briefing (issue #9746, series 2): the operator selects entries from Coder's knowledge base on the host with `microcoder kb search` over the task instruction and passes the file as the required briefing_knowledge kwarg. The adapter uploads it, the doctor reports its entries, and the briefing carries each entry whole right after the task, under a 24,000-character cap. Entries written from the same task make a run in-sample and knowledge-assisted; label it so."
     },
+    "coder-one-delegate-fable-low-kb-pypi": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneDelegate",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "delegate": "always",
+        "claude_code_version": "2.1.280",
+        "delegate_model": "claude-fable-5-1"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256",
+        "briefing_knowledge"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "api.anthropic.com",
+        "downloads.claude.ai",
+        "pypi.org",
+        "files.pythonhosted.org"
+      ],
+      "agent_network": "allowlist",
+      "cost_provenance": "mixed",
+      "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL"
+      ],
+      "auth_modes": {
+        "subscription-oauth": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "note": "Generation and Jev as in coder-one; the delegate runs on a Claude subscription token from `claude setup-token` at reasoning effort low (CODER_ONE_DELEGATE_EFFORT=low, a literal). The briefing cap is 24,000 characters (CODER_ONE_BRIEFING_CAP, a literal) to hold the knowledge section beside the explorer's evidence. The API-key variables are excluded so the CLI uses the token. The delegate's total_cost_usd is then a list-price figure, not a bill (cli_list_price).",
+          "env_overrides": {
+            "CODER_ONE_DELEGATE_EFFORT": "low",
+            "CODER_ONE_BRIEFING_CAP": "24000"
+          }
+        }
+      },
+      "note": "coder-one-delegate-fable-low-kb with PyPI added to the agent phase's allowlist (issue #9746, series 3), so the delegate can install a package such as openpyxl the way the public Fable 5.1 low reference runs, which had open network, could. Everything else is the kb arm: the required briefing_knowledge kwarg, the knowledge section, and the 24,000-character cap. Entries written from the same task make a run in-sample and knowledge-assisted; label it so."
+    },
     "coder-one-delegate-auto": {
       "role": "candidate",
       "harbor_import_path": "tbench.coder_one:CoderOneDelegate",

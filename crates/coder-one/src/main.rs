@@ -715,7 +715,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             pack: coder_one::pack::Params::default(),
             isolation: "none",
             base: base.as_deref(),
-            knowledge: &[],
+            knowledge: &coder_one::briefing_knowledge::Knowledge::NONE,
         };
         delegate::explore_then_delegate(
             &mut state,

@@ -10,7 +10,8 @@ a fixed rule to the ranked output:
 
 Each kept entry is the synced entry file, read whole, with its version and
 its digest (the sha256 of the file, checked against the signed event's
-``x`` tag). The output is the JSON file the ``briefing_knowledge`` adapter
+``x`` tag). ``--note`` records the paragraph the briefing puts under the
+section's heading in place of Coder One's default. The output is the JSON file the ``briefing_knowledge`` adapter
 kwarg takes. It records the exact command, the search's full output, the
 rule, and every hit's fate.
 
@@ -111,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-score", type=float, default=0.45)
     parser.add_argument("--max-entries", type=int, default=6)
     parser.add_argument("--budget", type=int, default=16_000)
+    parser.add_argument("--note", help="the paragraph under the section's heading, in place of the default")
     args = parser.parse_args(argv)
 
     instruction = args.instruction.read_text()
@@ -152,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
             "order": "search rank; a hit that would pass the budget is skipped",
         },
         "hits": fates,
+        **({"note": args.note} if args.note else {}),
         "entries": entries,
     }
     args.out.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")

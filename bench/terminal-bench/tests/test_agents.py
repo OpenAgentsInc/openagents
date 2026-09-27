@@ -28,6 +28,7 @@ def test_known_arms(agents):
         "coder-one-delegate-opus",
         "coder-one-delegate-fable-low",
         "coder-one-delegate-fable-low-kb",
+        "coder-one-delegate-fable-low-kb-pypi",
         "coder-one-delegate-auto",
         "coder-one-delegate-luna",
         "coder-one-delegate-luna-auto",
@@ -262,6 +263,22 @@ def test_fable_low_kb_arm_needs_the_knowledge_file_and_raises_the_cap(agents):
     assert out["CODER_ONE_BRIEFING_CAP"] == "24000"
     assert "CODER_ONE_BRIEFING_CAP" not in agent_config_env(
         base, auth_mode="subscription-oauth", env=env
+    )
+
+
+def test_fable_low_kb_pypi_arm_adds_only_the_package_index(agents):
+    profile = agents["coder-one-delegate-fable-low-kb-pypi"]
+    kb = agents["coder-one-delegate-fable-low-kb"]
+    assert profile.kwargs == kb.kwargs
+    assert profile.required_kwargs == kb.required_kwargs
+    assert profile.agent_network == "allowlist"
+    assert set(profile.extra_allowed_hosts) - set(kb.extra_allowed_hosts) == {
+        "pypi.org",
+        "files.pythonhosted.org",
+    }
+    env = {"OPENAGENTS_API_KEY": "a", "TYPESAFE_API_KEY": "b", "CLAUDE_CODE_OAUTH_TOKEN": "c"}
+    assert agent_config_env(profile, auth_mode="subscription-oauth", env=env) == agent_config_env(
+        kb, auth_mode="subscription-oauth", env=env
     )
 
 

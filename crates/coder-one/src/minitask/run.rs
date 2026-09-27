@@ -445,7 +445,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             }
         },
         base: base.as_deref(),
-        knowledge: &[],
+        knowledge: &crate::briefing_knowledge::Knowledge::NONE,
     };
     let mut checkpoint = |_: &State| {};
     let monitor = options.monitor.clone().map(|params| crate::monitor::Setup {

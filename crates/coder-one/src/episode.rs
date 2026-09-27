@@ -266,9 +266,9 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
 fn briefing_knowledge(
     policy: &Manifest,
     output_dir: &Path,
-) -> Result<Vec<crate::briefing_knowledge::Entry>, String> {
-    let Some((path, json, entries)) = crate::briefing_knowledge::from_env()? else {
-        return Ok(Vec::new());
+) -> Result<crate::briefing_knowledge::Knowledge, String> {
+    let Some((path, json, knowledge)) = crate::briefing_knowledge::from_env()? else {
+        return Ok(crate::briefing_knowledge::Knowledge::NONE);
     };
     if policy.mode() == Mode::Off
         || crate::compose::composes(policy)
@@ -283,13 +283,14 @@ fn briefing_knowledge(
     std::fs::create_dir_all(&artifacts)
         .and_then(|()| std::fs::write(artifacts.join(crate::briefing_knowledge::ARTIFACT), json))
         .map_err(|error| format!("cannot keep a copy of {}: {error}", path.display()))?;
-    Ok(entries)
+    Ok(knowledge)
 }
 
 /// The doctor's line for the briefing knowledge, or the problem with it.
 fn doctor_knowledge() -> Result<Option<String>, String> {
     Ok(
-        crate::briefing_knowledge::from_env()?.map(|(path, _, entries)| {
+        crate::briefing_knowledge::from_env()?.map(|(path, _, knowledge)| {
+            let entries = &knowledge.entries;
             format!(
                 "briefing knowledge: {} entries from {} ({})",
                 entries.len(),

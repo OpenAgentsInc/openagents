@@ -3,6 +3,12 @@
 Run on the host that holds the jobs:
 
     python3 summarize.py <job> [<job>...] > attempts.json
+    python3 summarize.py --bar COST SECONDS --search-usd USD <job>... > series2.json
+
+With ``--bar``, each row also says whether it beat the bar: reward 1,
+total cost below COST, and whole-trial time below SECONDS. The total then
+adds ``--search-usd``, the knowledge search's embedding charge, and an
+unknown component makes the total unknown, which can't win.
 
 The delegate estimate prices the stream's per-message usage and Claude
 Code's thinking-token estimate at Fable 5.1 list prices. It is a lower
@@ -22,7 +28,7 @@ def ts(s):
 
 
 def row(job):
-    T = next(p for p in (JOBS / job).iterdir() if p.is_dir() and p.name.startswith("sound-change-cascade__"))
+    T = next(p for p in (JOBS / job).iterdir() if p.is_dir() and "__" in p.name and (p / "result.json").exists())
     r = json.loads((T / "result.json").read_text())
     ep = T / "agent/episode"
     u = json.loads((ep / "evaluation/usage.json").read_text())
@@ -92,7 +98,32 @@ def row(job):
                      "result_event": None if result is None else {k: result.get(k) for k in ("subtype", "is_error", "num_turns", "total_cost_usd", "duration_ms", "duration_api_ms")}},
         "cost": {"generation_usd": gen, "jev_usd": jev, "delegate_usd": comp["delegate"].get("cost_usd"),
                  "total_usd": u["cost"].get("amount_usd"), "known_lower_bound_usd": u["cost"].get("lower_bound_usd")},
+        "briefing_knowledge": {
+            "included": [i for i in (dl.get("briefing") or {}).get("included") or [] if i.startswith("knowledge ")],
+            "omitted": [i for i in (dl.get("briefing") or {}).get("omitted") or [] if i.startswith("knowledge ")],
+        },
     }
 
 
-print(json.dumps([row(j) for j in sys.argv[1:]], indent=1, default=str))
+def judge(row, bar_cost, bar_seconds, search_usd):
+    """Adds the knowledge search's charge and the verdict against the bar."""
+    total = row["cost"]["total_usd"]
+    total = None if total is None else round(total + search_usd, 6)
+    row["cost"]["knowledge_search_usd"] = search_usd
+    row["cost"]["total_with_search_usd"] = total
+    row["beat_the_bar"] = bool(
+        row["reward"] == 1 and total is not None and total < bar_cost and row["trial_seconds"] < bar_seconds
+    )
+    return row
+
+
+args = sys.argv[1:]
+bar = search = None
+if args[:1] == ["--bar"]:
+    bar, args = (float(args[1]), float(args[2])), args[3:]
+    if args[:1] == ["--search-usd"]:
+        search, args = float(args[1]), args[2:]
+rows = [row(j) for j in args]
+if bar:
+    rows = [judge(r, bar[0], bar[1], search or 0.0) for r in rows]
+print(json.dumps(rows, indent=1, default=str))

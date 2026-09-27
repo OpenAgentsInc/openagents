@@ -218,7 +218,7 @@ async fn compose_task(
         pack: brief.pack_params(),
         isolation: "a scratch directory",
         base: None,
-        knowledge: &[],
+        knowledge: &crate::briefing_knowledge::Knowledge::NONE,
     };
     let setup = Setup {
         manifest,

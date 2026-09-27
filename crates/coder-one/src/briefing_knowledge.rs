@@ -8,8 +8,10 @@
 //! a section the delegate reads right after the task. Nothing here
 //! searches: the selection is the host's, and it's on the record.
 //!
-//! The file is `{"entries": [{"id", "version", "sha256", "score"?,
-//! "text"}]}` with other fields kept for the record. `sha256` is the
+//! The file is `{"note"?, "entries": [{"id", "version", "sha256",
+//! "score"?, "text"}]}` with other fields kept for the record. `note`, when
+//! present, replaces [`NOTE`] as the paragraph under the heading, so the
+//! host's wording is on the record with its selection. `sha256` is the
 //! knowledge base's entry digest: the sha256 of the entry file's bytes,
 //! which `text` holds verbatim. An entry whose text doesn't match its
 //! digest is refused.
@@ -26,7 +28,7 @@ pub const ARTIFACT: &str = "briefing-knowledge.json";
 /// The section's heading.
 pub const HEADING: &str = "## What Coder's knowledge base says";
 
-/// The paragraph under the heading.
+/// The paragraph under the heading unless the selection gives its own.
 pub const NOTE: &str = "Coder wrote these entries from its earlier runs. \
 Each one is whole. Use what applies to this task, and check it against the \
 task's own words and data.";
@@ -69,9 +71,31 @@ impl Entry {
     }
 }
 
-#[derive(serde::Deserialize)]
-struct Selection {
-    entries: Vec<Entry>,
+/// The host's selection: the entries in its order, and the paragraph
+/// that introduces them when it isn't [`NOTE`].
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Knowledge {
+    #[serde(default)]
+    pub note: Option<String>,
+    pub entries: Vec<Entry>,
+}
+
+impl Knowledge {
+    /// No selection: the briefing has no knowledge section.
+    pub const NONE: Self = Self {
+        note: None,
+        entries: Vec::new(),
+    };
+
+    /// The paragraph under the heading.
+    #[must_use]
+    pub fn note(&self) -> &str {
+        self.note
+            .as_deref()
+            .map(str::trim)
+            .filter(|note| !note.is_empty())
+            .unwrap_or(NOTE)
+    }
 }
 
 /// Reads a selection file's JSON, in the host's order. Refuses an entry
@@ -80,8 +104,8 @@ struct Selection {
 /// # Errors
 ///
 /// A message naming the problem.
-pub fn parse(json: &str) -> Result<Vec<Entry>, String> {
-    let selection: Selection = serde_json::from_str(json)
+pub fn parse(json: &str) -> Result<Knowledge, String> {
+    let selection: Knowledge = serde_json::from_str(json)
         .map_err(|error| format!("the briefing knowledge isn't a selection: {error}"))?;
     let mut seen = std::collections::BTreeSet::new();
     for entry in &selection.entries {
@@ -96,7 +120,7 @@ pub fn parse(json: &str) -> Result<Vec<Entry>, String> {
             return Err(format!("knowledge entry {} appears twice", entry.id));
         }
     }
-    Ok(selection.entries)
+    Ok(selection)
 }
 
 /// Reads the selection the environment names, when it names one.
@@ -104,7 +128,7 @@ pub fn parse(json: &str) -> Result<Vec<Entry>, String> {
 /// # Errors
 ///
 /// A message when the file can't be read or parsed.
-pub fn from_env() -> Result<Option<(std::path::PathBuf, String, Vec<Entry>)>, String> {
+pub fn from_env() -> Result<Option<(std::path::PathBuf, String, Knowledge)>, String> {
     let Some(path) = std::env::var(ENV)
         .ok()
         .map(|value| value.trim().to_string())
@@ -115,8 +139,8 @@ pub fn from_env() -> Result<Option<(std::path::PathBuf, String, Vec<Entry>)>, St
     let path = std::path::PathBuf::from(path);
     let json = std::fs::read_to_string(&path)
         .map_err(|error| format!("cannot read {ENV} {}: {error}", path.display()))?;
-    let entries = parse(&json)?;
-    Ok(Some((path, json, entries)))
+    let knowledge = parse(&json)?;
+    Ok(Some((path, json, knowledge)))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -136,6 +160,13 @@ mod tests {
             sha256: hex(&Sha256::digest(text.as_bytes())),
             score: Some(0.9),
             text,
+        }
+    }
+
+    fn knowing(entries: &[Entry]) -> Knowledge {
+        Knowledge {
+            note: None,
+            entries: entries.to_vec(),
         }
     }
 
@@ -159,7 +190,7 @@ mod tests {
     #[test]
     fn no_knowledge_builds_the_same_briefing_as_before() {
         let plain = Briefing::build(&inputs(), BRIEFING_CAP);
-        let knowing = Briefing::build_knowing(&inputs(), &[], BRIEFING_CAP);
+        let knowing = Briefing::build_knowing(&inputs(), &Knowledge::NONE, BRIEFING_CAP);
         assert_eq!(plain, knowing);
         assert!(!plain.text.contains(HEADING));
     }
@@ -170,7 +201,7 @@ mod tests {
             entry("finance.first", "EAD is alpha times RC plus PFE."),
             entry("slip.second", "Check the sign of a sold put."),
         ];
-        let briefing = Briefing::build_knowing(&inputs(), &entries, BRIEFING_CAP);
+        let briefing = Briefing::build_knowing(&inputs(), &knowing(&entries), BRIEFING_CAP);
         let text = &briefing.text;
         let task = text.find("## The task").unwrap();
         let section = text.find(HEADING).unwrap();
@@ -195,7 +226,7 @@ mod tests {
             entry("small.three", "Also short."),
         ];
         let cap = 2_000;
-        let briefing = Briefing::build_knowing(&inputs(), &entries, cap);
+        let briefing = Briefing::build_knowing(&inputs(), &knowing(&entries), cap);
         assert!(briefing.chars() <= cap, "{} characters", briefing.chars());
         assert!(!briefing.text.contains(&"x".repeat(100)));
         assert!(briefing.text.contains("Also short."));
@@ -225,7 +256,7 @@ mod tests {
         inputs.files = (0..10)
             .map(|i| (format!("inputs/f{i}.csv"), Some(0.5), "z".repeat(300)))
             .collect();
-        let briefing = Briefing::build_knowing(&inputs, &entries, 2_500);
+        let briefing = Briefing::build_knowing(&inputs, &knowing(&entries), 2_500);
         assert!(briefing.chars() <= 2_500);
         assert!(briefing.included.contains(&entries[0].label()));
         assert!(
@@ -237,10 +268,27 @@ mod tests {
     }
 
     #[test]
+    fn the_hosts_note_replaces_the_default_paragraph() {
+        let entries = vec![entry("finance.first", "EAD is alpha times RC plus PFE.")];
+        let json =
+            serde_json::json!({ "note": "Act on these entries.", "entries": entries }).to_string();
+        let knowledge = parse(&json).unwrap();
+        let briefing = Briefing::build_knowing(&inputs(), &knowledge, BRIEFING_CAP);
+        assert!(
+            briefing
+                .text
+                .contains(&format!("{HEADING}\n\nAct on these entries.\n"))
+        );
+        assert!(!briefing.text.contains(NOTE));
+    }
+
+    #[test]
     fn parse_keeps_the_order_and_refuses_a_wrong_digest() {
         let entries = vec![entry("b.two", "Two."), entry("a.one", "One.")];
         let json = serde_json::json!({ "command": "kb search", "entries": entries }).to_string();
-        assert_eq!(parse(&json).unwrap(), entries);
+        let parsed = parse(&json).unwrap();
+        assert_eq!(parsed.entries, entries);
+        assert_eq!(parsed.note(), NOTE);
 
         let mut wrong = entries.clone();
         wrong[0].text.push('!');

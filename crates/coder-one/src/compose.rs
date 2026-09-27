@@ -1649,7 +1649,7 @@ where
         pack: plan.pack,
         isolation: plan.isolation,
         base: plan.base,
-        knowledge: &[],
+        knowledge: &crate::briefing_knowledge::Knowledge::NONE,
     };
     let (mut ended, mut delegated) = match (&mut exec, &mut fan) {
         (Some(exec), _) => {
