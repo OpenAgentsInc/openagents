@@ -260,3 +260,84 @@ fn unchanged_catalog_refresh_keeps_all_cached_pages_visible() {
     assert_eq!(app.catalog_state.pages, 2);
     assert_eq!(app.catalog[0].title, "Updated title");
 }
+
+#[test]
+fn the_computers_surface_is_separate_from_the_reader() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app(dir.path());
+    let packet = app.call(Request::Snapshot);
+    let reader = packet.view.unwrap();
+    let computers = packet.computers.unwrap();
+    assert_ne!(reader["instance"], computers["instance"]);
+    assert!(
+        computers["instance"]
+            .as_str()
+            .unwrap()
+            .starts_with("computers:")
+    );
+    assert!(!packet.computers_exit);
+    let activate = |view: &serde_json::Value, label: &str| Request::ComputersActivate {
+        instance: view["instance"].as_str().unwrap().into(),
+        revision: view["revision"].as_u64().unwrap(),
+        node: find_button(&view["root"], label),
+    };
+    // Scanning asks the native host for a value; the reader is unchanged.
+    let asked = app.call(activate(&computers, "Scan invitation"));
+    let input = asked.computers_input.clone().unwrap();
+    assert!(input.scan);
+    assert_eq!(asked.view.unwrap()["revision"], reader["revision"]);
+    let added = app.call(Request::ComputersInput {
+        token: input.token.clone(),
+        value: "coder-host:synthetic".into(),
+    });
+    assert!(added.computers_input.is_none());
+    assert!(added.error.is_none());
+    let view = added.computers.unwrap();
+    assert!(view.to_string().contains("6 computers added."));
+    // A stale activation is refused on the Computers surface only.
+    let stale = app.call(activate(&computers, "Scan invitation"));
+    assert!(stale.error.is_none());
+    let view = stale.computers.unwrap();
+    assert!(view.to_string().contains("The screen changed"));
+    // Continue reports the exit once.
+    let finished = app.call(activate(&view, "Continue"));
+    assert!(finished.computers_exit);
+    assert!(
+        finished
+            .computers
+            .unwrap()
+            .to_string()
+            .contains("Up to date.")
+    );
+    assert!(!app.call(Request::Snapshot).computers_exit);
+}
+
+#[test]
+fn the_normal_app_offers_computers_with_every_effect_unavailable() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = App::new(Config {
+        cache_dir: dir.path().into(),
+        secret_hex: "02".repeat(32),
+        synthetic: false,
+    })
+    .unwrap();
+    let packet = app.call(Request::Snapshot);
+    let computers = packet.computers.unwrap();
+    let text = computers.to_string();
+    assert!(text.contains("This build can't reach computers yet"));
+    let paste = find_button(&computers["root"], "Paste invitation");
+    let request = Request::ComputersActivate {
+        instance: computers["instance"].as_str().unwrap().into(),
+        revision: computers["revision"].as_u64().unwrap(),
+        node: paste,
+    };
+    let refused = app.call(request);
+    assert!(refused.computers_input.is_none());
+    assert!(
+        refused
+            .computers
+            .unwrap()
+            .to_string()
+            .contains("That control isn't available.")
+    );
+}

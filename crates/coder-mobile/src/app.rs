@@ -1,4 +1,7 @@
 use crate::cache::Cache;
+use coder_computers::{
+    Capabilities, Computers, InputRequest, LocalHost, Outcome, Platform, synthetic::Synthetic,
+};
 use coder_connect::{Client, ConnectionCode, ErrorCode, Observation, Query, RelayPolicy};
 use coder_history::{
     CatalogCursor, CatalogPage, CatalogRequest, Chat, TranscriptCursor, TranscriptPage,
@@ -46,6 +49,33 @@ pub enum Request {
         enabled: bool,
         page: Option<String>,
     },
+    /// Activate a control on the separate Computers surface.
+    ComputersActivate {
+        instance: String,
+        revision: u64,
+        node: String,
+    },
+    /// Answer the Computers surface's current input request.
+    ComputersInput {
+        token: String,
+        value: String,
+    },
+    ComputersCancel {
+        token: String,
+    },
+    ComputersRefresh,
+}
+
+impl Request {
+    fn computers(&self) -> bool {
+        matches!(
+            self,
+            Self::ComputersActivate { .. }
+                | Self::ComputersInput { .. }
+                | Self::ComputersCancel { .. }
+                | Self::ComputersRefresh
+        )
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -77,6 +107,14 @@ pub struct Packet {
     pub follow_target: Option<String>,
     pub follow_page: Option<String>,
     pub view: Option<serde_json::Value>,
+    /// The Computers surface: its own instance and revisions, independent
+    /// of the reader's view.
+    pub computers: Option<serde_json::Value>,
+    /// A value the Computers surface asks the native host to collect.
+    pub computers_input: Option<InputRequest>,
+    /// First run finished on the last call; the host returns to its
+    /// existing onboarding.
+    pub computers_exit: bool,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -125,6 +163,8 @@ pub struct App {
     current: Option<ValidatedView<Intent>>,
     active: bool,
     pub(crate) synthetic: bool,
+    computers: Option<Computers>,
+    computers_exit: bool,
 }
 
 impl App {
@@ -165,7 +205,31 @@ impl App {
             current: None,
             active: true,
             synthetic: config.synthetic,
+            computers: None,
+            computers_exit: false,
         };
+        // A phone never runs a host. Until the resident host client lands,
+        // the normal app offers these screens with every effect unavailable.
+        let service: Box<dyn coder_computers::ComputersService + Send> = if config.synthetic {
+            Box::new(Synthetic::fixture(Platform::Phone, now))
+        } else {
+            Box::new(coder_computers::Unavailable::new(
+                app.public_key.clone(),
+                LocalHost::NotSupported,
+                now,
+            ))
+        };
+        let capabilities = Capabilities {
+            platform: Platform::Phone,
+            camera: true,
+        };
+        let instance = format!("computers:{}", coder_connect::protocol::random_id());
+        match Computers::new(service, capabilities, instance) {
+            Ok(computers) => app.computers = Some(computers),
+            Err(error) => app
+                .notices
+                .push(format!("Computers unavailable: {}", error.message)),
+        }
         match app.cache.read::<ConnectionCode>("connection") {
             Ok(Some(code)) => match app.make_client(code.clone()) {
                 Ok(client) => {
@@ -209,6 +273,14 @@ impl App {
     pub fn call(&mut self, request: Request) -> Packet {
         // Lifecycle callbacks can follow an in-flight pairing call. They must
         // not erase its failure before the user can read it and retry.
+        if request.computers() {
+            // Computers refusals show on that surface; the reader's error,
+            // view, and pairing state stay as they were.
+            self.computers(request);
+            let packet = self.packet();
+            self.computers_exit = false;
+            return packet;
+        }
         if !matches!(request, Request::Snapshot | Request::Foreground { .. }) {
             self.error = None;
         }
@@ -223,6 +295,32 @@ impl App {
         self.packet()
     }
 
+    fn computers(&mut self, request: Request) {
+        let Some(computers) = self.computers.as_mut() else {
+            return;
+        };
+        // A refusal is already the screen's notice.
+        let outcome = match request {
+            Request::ComputersActivate {
+                instance,
+                revision,
+                node,
+            } => computers.activate(&Activation {
+                instance,
+                revision,
+                node,
+            }),
+            Request::ComputersInput { token, value } => computers.submit(&token, &value),
+            Request::ComputersCancel { token } => computers.cancel_input(&token),
+            Request::ComputersRefresh => computers
+                .refresh()
+                .map(|()| Outcome::Updated)
+                .map_err(coder_computers::Refusal::Failed),
+            _ => return,
+        };
+        self.computers_exit = outcome == Ok(Outcome::ContinueOnboarding);
+    }
+
     fn handle(&mut self, request: Request) -> Result<(), String> {
         if !matches!(request, Request::Connect { .. } | Request::Disconnect)
             && self.code.as_ref().is_some_and(|c| c.expires_at <= now())
@@ -232,6 +330,11 @@ impl App {
         }
         match request {
             Request::Snapshot => Ok(()),
+            // `call` routes these to the Computers surface first.
+            Request::ComputersActivate { .. }
+            | Request::ComputersInput { .. }
+            | Request::ComputersCancel { .. }
+            | Request::ComputersRefresh => Ok(()),
             Request::Follow { enabled, page } => {
                 let keys = self.page_keys()?;
                 self.window = if enabled {
@@ -700,6 +803,13 @@ impl App {
                 .current
                 .as_ref()
                 .and_then(|v| serde_json::to_value(v.view()).ok()),
+            computers: self
+                .computers
+                .as_ref()
+                .and_then(Computers::view)
+                .and_then(|v| serde_json::to_value(v.view()).ok()),
+            computers_input: self.computers.as_ref().and_then(Computers::input).cloned(),
+            computers_exit: self.computers_exit,
         }
     }
 

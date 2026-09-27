@@ -12,6 +12,20 @@ struct MobilePacket: Decodable {
     let error: String?
     let follow_target: String?
     let follow_page: String?
+    // The Computers surface has its own instance and revisions.
+    let computers: NativeView?
+    let computers_input: ComputersInput?
+    let computers_exit: Bool?
+}
+
+/// A value Rust asks the native host to collect. Rust validates it.
+struct ComputersInput: Decodable, Equatable {
+    let token: String
+    let purpose: String
+    let label: String
+    let prompt: String
+    let scan: Bool
+    let max_bytes: Int
 }
 
 private final class RustWorker {
@@ -59,7 +73,8 @@ private final class RustWorker {
         }
         let packet = try JSONDecoder().decode(MobilePacket.self, from: Data(bytes: pointer, count: result.len))
         guard packet.schema == "coder.mobile.v1",
-              packet.view == nil || packet.view?.schema == "rust-native.view.v2" else {
+              packet.view == nil || packet.view?.schema == "rust-native.view.v2",
+              packet.computers == nil || packet.computers?.schema == "rust-native.view.v2" else {
             throw ReaderError.message("This app does not support the returned view version.")
         }
         return packet
@@ -101,6 +116,17 @@ final class MobileBridge: ObservableObject {
     }
 
     func disconnect() { request(["op": "disconnect"]) }
+
+    func activateComputers(view: NativeView, node: String) {
+        request(["op": "computers_activate", "instance": view.instance,
+                 "revision": view.revision, "node": node])
+    }
+
+    func submitComputers(token: String, value: String) {
+        request(["op": "computers_input", "token": token, "value": value])
+    }
+
+    func refreshComputers() { request(["op": "computers_refresh"]) }
 
     func setFollowing(_ enabled: Bool, page: String?) {
         if busy { pendingFollow = (enabled, page); return }

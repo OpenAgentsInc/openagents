@@ -13,7 +13,7 @@ internal fun packet(text: String, schema: String): JSONObject {
     require(text.toByteArray().size in 1..1_048_576) { "Rust returned an invalid or oversized view packet." }
     return JSONObject(text).also {
         require(it.getString("schema") == schema) { "This app does not support the returned view version." }
-        it.optJSONObject("view")?.let { view ->
+        for (key in listOf("view", "computers")) it.optJSONObject(key)?.let { view ->
             require(view.getString("schema") == "rust-native.view.v2") { "Unsupported Rust Native view version." }
         }
     }

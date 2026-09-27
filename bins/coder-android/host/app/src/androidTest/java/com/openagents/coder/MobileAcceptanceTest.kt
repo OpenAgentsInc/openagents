@@ -137,6 +137,48 @@ class MobileAcceptanceTest {
         waitFor { exists("chat-0") }
     }
 
+    @Test fun computersScreensShowStatusesAccessAndPastedInvitation() {
+        launch()
+        computer()
+        waitFor { exists("chat-0") }
+        click("computers-toggle")
+        waitFor { exists("first-run-title") }
+        capture("computers-first-run")
+        click("first-run-continue")
+        // First run hands back to the existing chats flow.
+        waitFor { exists("chat-0") }
+        click("computers-toggle")
+        waitFor { exists("computers-title") }
+        for ((key, words) in listOf("host-0-status" to "Online", "host-1-status" to "Connecting",
+                "host-2-status" to "Offline", "host-3-status" to "Out of date",
+                "host-4-status" to "Not enrolled", "host-5-status" to "Revoked",
+                "host-6-status" to "switched off")) {
+            assertTrue("$key: ${text(key)}", text(key).contains(words))
+        }
+        capture("computers-statuses")
+        click("host-0-access")
+        waitFor { exists("access-title") }
+        assertFalse("Revoking this device is disabled", exists("device-0-revoke", enabled = true))
+        assertTrue(text("device-0-revoke-reason").contains("device you're using"))
+        capture("computers-access")
+        click("tab-computers")
+        click("host-0-switch")
+        waitFor { text("host-0-status").contains("switched off") }
+        click("tab-add")
+        waitFor { exists("ssh-connect") }
+        assertFalse("SSH is desktop and terminal only", exists("ssh-connect", enabled = true))
+        assertTrue(text("ssh-connect-reason").contains("desktop or terminal"))
+        click("invite-paste")
+        waitFor { exists("computers-input") }
+        onMain { (find(it.window.decorView, "computers-input") as EditText).setText("coder-host:emulator") }
+        click("computers-submit")
+        waitFor { text("notice").contains("Added New computer.") }
+        capture("computers-added")
+        click("tab-activity")
+        waitFor { text("activity-0-subject").contains("Build server") }
+        capture("computers-activity")
+    }
+
     @Test fun backgroundAndSurfaceRecreationKeepReaderIdentity() {
         launch()
         computer()

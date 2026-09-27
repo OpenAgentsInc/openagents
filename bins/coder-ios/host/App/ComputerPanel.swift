@@ -16,6 +16,9 @@ struct ComputerPanel: View {
     @State private var disconnecting = false
     @State private var copied = false
     @State private var relay = ""
+    @State private var computers = false
+    @State private var computersScanning = false
+    @State private var computersValue = ""
     private let command = "cargo run --release -p coder-connect -- connect"
     private let timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     private var paired: Bool { reader.packet?.paired == true }
@@ -26,7 +29,17 @@ struct ComputerPanel: View {
             HStack {
                 Label("Computer", systemImage: "desktopcomputer").font(.headline)
                 Spacer()
-                if reading { refreshButton }
+                if reading && !computers { refreshButton }
+                if !reading || computers {
+                    Button(computers ? "Chats" : "Computers") {
+                        computers.toggle()
+                        computersScanning = false
+                        scanning = false
+                        if computers { reader.refreshComputers() }
+                    }
+                    .disabled(reader.busy)
+                    .accessibilityIdentifier("computers-toggle")
+                }
                 Button("Back to world", systemImage: "xmark") { close() }
                     .labelStyle(.iconOnly).accessibilityIdentifier("computer-close")
             }
@@ -37,7 +50,9 @@ struct ComputerPanel: View {
                 HStack { ProgressView(); Text("Connecting or updating…").font(.caption) }
                     .accessibilityIdentifier("computer-busy")
             }
-            if !paired || pairing {
+            if computers {
+                computersContent
+            } else if !paired || pairing {
                 pairingControls
             } else {
                 if !reading { HStack {
@@ -72,7 +87,7 @@ struct ComputerPanel: View {
                     }
                 }.font(.caption) }
             }
-            if !reading { DisclosureGroup("World connection") {
+            if !reading && !computers { DisclosureGroup("World connection") {
                 Text("Joining publishes this device's world presence and movement with a separate Verse identity.")
                     .font(.caption)
                 TextField("wss://relay.example.com", text: $relay)
@@ -91,18 +106,80 @@ struct ComputerPanel: View {
         .background(Color(red: 0.025, green: 0.02, blue: 0).opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(.tint.opacity(0.7), lineWidth: 1))
         .onAppear { reader.setForeground(active) }
-        .onDisappear { scanning = false; reader.setForeground(false) }
+        .onDisappear { scanning = false; computersScanning = false; reader.setForeground(false) }
+        .onChange(of: reader.packet?.computers_exit) { _, exit in
+            // First run finished: return to the existing pairing onboarding.
+            if exit == true { computers = false; computersScanning = false }
+        }
         .onChange(of: active) { _, current in
             reader.setForeground(current)
         }
         .onReceive(timer) { _ in
-            if active, paired, !pairing, !scanning { reader.refresh() }
+            if active, paired, !pairing, !scanning, !computers { reader.refresh() }
         }
     }
 
     private var refreshButton: some View {
         Button("Refresh", systemImage: "arrow.clockwise") { reader.refresh(force: true) }
             .labelStyle(.iconOnly).disabled(reader.busy).accessibilityIdentifier("reader-refresh")
+    }
+
+    /// The Rust Native Computers tree, plus the one native field or scanner
+    /// its current input request names. Rust validates every value.
+    private var computersContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                if let view = reader.packet?.computers {
+                    NativeRenderer(node: view.root, revision: view.revision,
+                                   followTarget: nil, followChanged: nil) { node in
+                        reader.activateComputers(view: view, node: node)
+                    }
+                } else {
+                    Text("Computers are unavailable on this device.")
+                }
+                if let input = reader.packet?.computers_input {
+                    computersInput(input).id(input.token)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private func computersInput(_ input: ComputersInput) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(input.prompt).font(.caption)
+            if input.scan {
+                if computersScanning {
+                    InlineQRScanner { value in
+                        computersScanning = false
+                        submitComputers(input, value)
+                    }
+                    Button("Stop scanning") { computersScanning = false }
+                } else {
+                    Button("Scan QR code", systemImage: "qrcode.viewfinder") { computersScanning = true }
+                        .disabled(reader.busy || !active)
+                        .accessibilityIdentifier("computers-scan")
+                }
+            }
+            TextField(input.label, text: $computersValue, axis: .vertical)
+                .lineLimit(1...4)
+                .autocorrectionDisabled().textInputAutocapitalization(.never)
+                .accessibilityLabel(input.label).accessibilityIdentifier("computers-input")
+            Button("Submit") { submitComputers(input, computersValue) }
+                .disabled(reader.busy || computersValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("computers-submit")
+        }
+        .onAppear { computersValue = ""; computersScanning = input.scan && active }
+    }
+
+    private func submitComputers(_ input: ComputersInput, _ value: String) {
+        guard value.utf8.count <= input.max_bytes else {
+            inputError = "That's too long. Copy it again."
+            return
+        }
+        inputError = nil
+        reader.submitComputers(token: input.token, value: value)
+        computersValue = ""
     }
 
     private var pairingControls: some View {

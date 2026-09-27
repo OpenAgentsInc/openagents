@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var reader: ReaderBridge
     private lateinit var scanner: QRScanner
     private lateinit var renderer: NativeRenderer
+    private lateinit var computersRenderer: NativeRenderer
     private lateinit var gym: GymPanel
     private lateinit var status: TextView
     private lateinit var worldError: TextView
@@ -54,6 +55,14 @@ class MainActivity : ComponentActivity() {
     private var readerError: TextView? = null
     private var readerStatus: TextView? = null
     private var scannerContainer: LinearLayout? = null
+    // The Computers surface: its own Rust Native tree and input requests.
+    private var computers = false
+    private var computersToggle: Button? = null
+    private var computersContent: LinearLayout? = null
+    private var computersInput: LinearLayout? = null
+    private var computersToken: String? = null
+    private var handledExit: JSONObject? = null
+    private var scanned: (String) -> Unit = { submitCode(it) }
     private var computerMode = ""
     private var opened = ""
     private var pairing = false
@@ -71,7 +80,7 @@ class MainActivity : ComponentActivity() {
     private val main = Handler(Looper.getMainLooper())
     private val refresh = object : Runnable {
         override fun run() {
-            if (foreground && opened == "computer" && !pairing && !scanning) reader.refresh()
+            if (foreground && opened == "computer" && !pairing && !scanning && !computers) reader.refresh()
             main.postDelayed(this, 5000)
         }
     }
@@ -107,6 +116,10 @@ class MainActivity : ComponentActivity() {
             reader.request(json("op" to "activate", "instance" to view.getString("instance"),
                 "revision" to view.getLong("revision"), "node" to node))
         }, { enabled, page -> reader.follow(enabled, page) })
+        computersRenderer = NativeRenderer(this, { view, node ->
+            reader.request(json("op" to "computers_activate", "instance" to view.getString("instance"),
+                "revision" to view.getLong("revision"), "node" to node))
+        }, { _, _ -> }, "computers")
         gym = GymPanel(this, world)
         reader = ReaderBridge(storage, synthetic) { if (opened == "computer") renderComputer() }
         setContentView(root)
@@ -178,13 +191,21 @@ class MainActivity : ComponentActivity() {
         if (packet == null) return
         val newPanel = when { packet.optBoolean("computer_open") -> "computer"; packet.optBoolean("gym_open") -> "gym"; else -> "" }
         if (newPanel != opened) {
-            opened = newPanel; computerMode = ""; renderer.clear(); stopCamera(); controls.visibility = if (opened.isEmpty()) View.VISIBLE else View.GONE
+            opened = newPanel; computerMode = ""; computers = false; renderer.clear(); computersRenderer.clear(); stopCamera(); controls.visibility = if (opened.isEmpty()) View.VISIBLE else View.GONE
             controls.findViewWithTag<Switch>("verse-sprint")?.isChecked = false
             reader.foreground(foreground && opened == "computer")
             if (opened.isEmpty()) panel.visibility = View.GONE else {
                 panel.visibility = View.VISIBLE; panel.removeAllViews()
                 val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                 header.addView(label(if (opened == "computer") "Computer" else "Gym", size = 18f), LinearLayout.LayoutParams(0, -2, 1f))
+                if (opened == "computer") {
+                    computersToggle = button("Computers", "computers-toggle") {
+                        computers = !computers
+                        if (computers) reader.request(json("op" to "computers_refresh"))
+                        renderComputer(true)
+                    }
+                    header.addView(computersToggle)
+                }
                 header.addView(button("Back to world", if (opened == "computer") "computer-close" else "gym-close") { closePanel() })
                 panel.addView(header)
                 panelBody = column(); panel.addView(panelBody, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -270,13 +291,20 @@ class MainActivity : ComponentActivity() {
         val packet = reader.snapshot
         val paired = packet?.optBoolean("paired") == true
         val reading = packet?.optBoolean("reading") == true && !pairing
-        val mode = if (!paired || pairing) "pair" else "chats"
+        if (computers && packet != null && packet !== handledExit && packet.optBoolean("computers_exit")) {
+            // First run finished: return to the existing pairing and chats flow.
+            handledExit = packet; computers = false
+        }
+        val mode = if (computers) "computers" else if (!paired || pairing) "pair" else "chats"
+        computersToggle?.text = if (computers) "Chats" else "Computers"
+        computersToggle?.visibility = if (reading && !computers) View.GONE else View.VISIBLE
         if (force || mode != computerMode || reading != lastReading) {
             computerMode = mode; lastReading = reading
-            stopCamera(); renderer.clear(); panelBody.removeAllViews(); readerContent = null
+            stopCamera(); renderer.clear(); computersRenderer.clear(); panelBody.removeAllViews(); readerContent = null
+            computersContent = null; computersInput = null; computersToken = null
             readerError = label("", "reader-error"); panelBody.addView(readerError)
             readerStatus = label("", "reader-status", 11f); panelBody.addView(readerStatus)
-            if (mode == "pair") buildPairing(paired) else buildChats(reading)
+            when (mode) { "computers" -> buildComputers(); "pair" -> buildPairing(paired); else -> buildChats(reading) }
         }
         val error = reader.error ?: packet?.textOrNull("error")
         readerError?.text = error.orEmpty(); readerError?.visibility = if (error == null) View.GONE else View.VISIBLE
@@ -286,6 +314,51 @@ class MainActivity : ComponentActivity() {
             try { readerContent?.let { renderer.mount(it, packet) } }
             catch (_: Exception) { readerError?.text = "This native view could not be displayed."; readerError?.visibility = View.VISIBLE }
         }
+        if (mode == "computers" && packet != null) {
+            try { computersContent?.let { computersRenderer.mount(it, packet) } }
+            catch (_: Exception) { readerError?.text = "This native view could not be displayed."; readerError?.visibility = View.VISIBLE }
+            renderComputersInput(packet.optJSONObject("computers_input"))
+        }
+    }
+
+    private fun buildComputers() {
+        val body = column()
+        panelBody.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        computersContent = column(); body.addView(computersContent)
+        computersInput = column(); body.addView(computersInput)
+    }
+
+    /** Show the one native field or scanner Rust asked for. Rust validates the value. */
+    private fun renderComputersInput(input: JSONObject?) {
+        val box = computersInput ?: return
+        val token = input?.optString("token")
+        if (token == computersToken) return
+        computersToken = token; stopCamera(); box.removeAllViews()
+        if (input == null || token == null) return
+        box.addView(label(input.optString("prompt"), size = 12f))
+        val limit = input.optInt("max_bytes", 16_384)
+        if (input.optBoolean("scan")) {
+            box.addView(button("Scan QR code", "computers-scan") {
+                scanned = { submitComputers(token, it, limit) }
+                scanning = true; requestingCamera = true; cameraPermission.launch(Manifest.permission.CAMERA)
+            })
+            scannerContainer = column(); box.addView(scannerContainer)
+        }
+        val field = EditText(this).apply {
+            hint = input.optString("label"); contentDescription = input.optString("label"); tag = "computers-input"
+            minLines = 1; maxLines = 4; isSaveEnabled = false; setTextColor(AMBER)
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            filters = arrayOf(android.text.InputFilter.LengthFilter(limit))
+        }
+        box.addView(field)
+        box.addView(button("Submit", "computers-submit") { submitComputers(token, field.text.toString(), limit); field.text.clear() })
+    }
+
+    private fun submitComputers(token: String, value: String, limit: Int) {
+        stopCamera()
+        if (value.toByteArray().size > limit) { readerError?.text = "That's too long. Copy it again."; readerError?.visibility = View.VISIBLE; return }
+        reader.request(json("op" to "computers_input", "token" to token, "value" to value))
     }
 
     private fun buildPairing(paired: Boolean) {
@@ -297,6 +370,7 @@ class MainActivity : ComponentActivity() {
         body.addView(label(command, "computer-command", 12f))
         body.addView(button("Copy command", "computer-copy-command") { copy("Connect command", command) })
         body.addView(button("Scan QR code", "computer-scan") {
+            scanned = { submitCode(it) }
             scanning = true; requestingCamera = true; cameraPermission.launch(Manifest.permission.CAMERA)
         })
         scannerContainer = column(); body.addView(scannerContainer)
@@ -360,7 +434,7 @@ class MainActivity : ComponentActivity() {
         val box = scannerContainer ?: return
         box.removeAllViews()
         scanner.start(box) { result ->
-            if (scanning && foreground) result.fold({ submitCode(it) }, { cameraFailure(it.message ?: "The camera could not read this invitation.") })
+            if (scanning && foreground) result.fold({ scanned(it) }, { cameraFailure(it.message ?: "The camera could not read this invitation.") })
         }
         box.addView(button("Stop scanning", "computer-scan-stop") { stopCamera() })
     }
@@ -374,7 +448,7 @@ class MainActivity : ComponentActivity() {
     private fun stopCamera() { scanning = false; requestingCamera = false; if (::scanner.isInitialized) scanner.stop(); scannerContainer?.removeAllViews() }
     private fun copy(name: String, value: String) = getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(name, value))
     private fun closePanel() {
-        stopCamera(); pairing = false
+        stopCamera(); pairing = false; computers = false
         world.send(json("action" to if (opened == "gym") "close_gym" else "close_computer"))
     }
     override fun onResume() {

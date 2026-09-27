@@ -32,9 +32,10 @@ internal fun Context.button(value: String, key: String, action: () -> Unit): But
 }
 internal fun Context.column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-/** Native controls reconcile by stable key; text selection survives unchanged content. */
+/** Native controls reconcile by stable key; text selection survives unchanged content.
+ *  `viewKey` names the packet field that holds this renderer's view. */
 class NativeRenderer(private val context: Context, private val activate: (JSONObject, String) -> Unit,
-                     private val follow: (Boolean, String) -> Unit) {
+                     private val follow: (Boolean, String) -> Unit, private val viewKey: String = "view") {
     private data class Mounted(val kind: String, val view: View, var value: String? = null,
         var original: Boolean = false, var following: Boolean = false,
         var followPage: String? = null, var followTarget: String? = null,
@@ -48,7 +49,7 @@ class NativeRenderer(private val context: Context, private val activate: (JSONOb
     private var seen = mutableSetOf<String>()
 
     fun mount(container: LinearLayout, packet: JSONObject) {
-        val view = packet.optJSONObject("view")
+        val view = packet.optJSONObject(viewKey)
         if (view == null) { container.removeAllViews(); clear(); return }
         require(view.getString("schema") == "rust-native.view.v2") { "Unsupported native view." }
         val instance = view.getString("instance")
