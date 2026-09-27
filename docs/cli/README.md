@@ -124,6 +124,34 @@ Each goes through `computer exec`, so the journal records it too.
 `openagents pair` shows the QR code that reads this computer's chats on a
 phone.
 
+## Reach (NIP-REACH)
+
+Read and edit the owner host directory, read a host's presence, and prove a
+route to it. Every command runs through the same live service the Computers
+screens use, so the owner authority rule, the freshness verdict, and route
+selection match the phone.
+
+```sh
+openagents reach directory list --json
+openagents reach directory add HOST --label "studio box"
+openagents reach directory remove HOST
+openagents reach presence HOST            # the sample and its freshness verdict
+openagents reach probe HOST               # the encrypted handshake and route class
+openagents reach probe HOST --same-machine
+```
+
+`directory add` and `directory remove` publish the next directory revision
+against the one this device last read. They refuse without the owner key, when
+the last read failed, or when two directories share the highest revision.
+`presence` exits 1 when the sample is stale or from the future. `probe`
+reports the route class: `loopback`, `lan`, `tailnet`, `public`, or `relay`.
+It refuses loopback hints unless you pass `--same-machine`, because a host on
+another machine cannot be reached at loopback.
+
+`--relay URL` must name a relay one of this device's grants uses; the command
+refuses any other relay instead of ignoring it. `--timeout SECONDS` bounds the
+relay read and the handshake (default 15).
+
 ## Verse (NIP-MV)
 
 Headless presence: see who is around, listen, speak, move, and gesture.

@@ -18,6 +18,7 @@ mod computer;
 mod hosts;
 mod key;
 mod out;
+mod reach;
 mod relay;
 mod sov;
 mod study;
@@ -35,6 +36,7 @@ Pairing and computers (NIP-HOST, NIP-REACH):
   pair         Show a QR code to read this computer's chats on a phone.
   computer     Enroll with hosts, list them, run commands, order and steer work.
   study        Launch and read Microcoder study runs on a host.
+  reach        Owner directory, host presence, and route probes.
 
 Coder:
   task         Durable local task requests and explicit execution.
@@ -85,6 +87,7 @@ fn main() -> ExitCode {
         "study" => study::run(&output, &rest),
         "sov" => sov::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        "reach" => reach::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
         other => {
             eprintln!("openagents: unknown command `{other}`\n\n{USAGE}");
