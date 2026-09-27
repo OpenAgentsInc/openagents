@@ -62,6 +62,7 @@ than an operating service.
 - [AI programming and optimization](#ai-programming-and-optimization)
 - [Nostr and shared protocols](#nostr-and-shared-protocols)
 - [Durable work and client contracts](#durable-work-and-client-contracts)
+- [Remote access and host reach](#remote-access-and-host-reach)
 - [Network effects and contribution value](#network-effects-and-contribution-value)
 - [Agent labor and markets](#agent-labor-and-markets)
 - [Voyager](#voyager)
@@ -669,6 +670,28 @@ These terms connect the implemented local foundations to the broader contracts i
 | Environment lease | Designed | A signed allocation with an exact request, bounded lifetime, reservation, and allocator identity. It is neither a ready runtime nor a transferable bearer grant; lost creation responses and uncertain cleanup require reconciliation. See [ENV lease admission](../nips/openagents/NIP-ENV.md#lease-admission-and-materialization). |
 | Environment materialization | Designed | Evidence of the actual resource, component closure, runtime generation, configuration, model, participants, workspace, and enforcement realized for a lease. Missing required identity or substituted recipients cannot produce readiness. See [ENV materialization](../nips/openagents/NIP-ENV.md#lease-admission-and-materialization). |
 | Input floor and speaking floor | Designed | Separate bounded LIVE permissions selecting whose authenticated audio reaches one processor and when an agent may play audio. Both bind exact participants, tracks, and media epochs; neither authorizes task actions or recording. See [LIVE floors](../nips/openagents/NIP-LIVE.md#input-and-speaking-floors). |
+
+## Remote access and host reach
+
+These terms belong to the [remote access program](https://github.com/OpenAgentsInc/openagents/issues/9704). Statuses change as its child issues land; each child's verification record is the authority for what is implemented.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Host | Designed | One running Coder host process on one computer, identified by a host Nostr key. It owns tasks, sessions, terminals, and files for that computer and issues every grant that reaches them. A relay, an SSH login, or a tailnet membership can introduce a device to a host; none is a login. See [#9712](https://github.com/OpenAgentsInc/openagents/issues/9712). |
+| Host enrollment | Designed | NIP-HOST's admission of a device key to a host with a closed set of rights. A host invitation is single use, lasts five minutes, is stored only as a digest, and is persisted before it is shown. See [#9705](https://github.com/OpenAgentsInc/openagents/issues/9705). |
+| Reverse enrollment | Designed | Enrolling a headless host by approving its short code from a device that already holds access-administration rights. The host admits only when the approval's signer, request, code, and expiry match. See [#9705](https://github.com/OpenAgentsInc/openagents/issues/9705). |
+| Device grant | Designed | A host-signed, host-wide grant naming one device key, its rights (`observe`, `operate`, `terminal`, `review`, `access_read`, `access_admin`), expiry, and revocation epoch. Unlike a CTRL grant, it is not scoped to one task. A copied grant is not a bearer credential. See [#9705](https://github.com/OpenAgentsInc/openagents/issues/9705). |
+| Host directory | Designed | The owner-signed, owner-encrypted list of host keys, labels, and relays that lets a client find your computers. A host cannot add itself. See [#9706](https://github.com/OpenAgentsInc/openagents/issues/9706). |
+| Host presence | Designed | A host-signed, privately delivered record of protocol version, capabilities, compatibility, host generation, and bounded resource telemetry. Readers judge its freshness by receipt time. Presence grants nothing. See [#9706](https://github.com/OpenAgentsInc/openagents/issues/9706). |
+| Reachability hint | Designed | A host-signed endpoint with a class (`loopback`, `lan`, `tailnet`, `public`, or `relay`) and a transport kind. Only the connecting device can prove a route works, and selection never falls back to loopback from another machine. See [#9706](https://github.com/OpenAgentsInc/openagents/issues/9706). |
+| Direct channel | Designed | A connection that carries host traffic without a relay after both sides prove their Nostr keys and bind the channel to the device's current grant and the host generation. Relay-carried control remains the fallback. See [#9706](https://github.com/OpenAgentsInc/openagents/issues/9706). |
+| Placement | Designed | The rule that picks a host for new work from fresh presence telemetry and per-client weights. It never moves existing work. See [#9706](https://github.com/OpenAgentsInc/openagents/issues/9706). |
+| Connection supervisor | Designed | The single owner of retry policy for one host in a client. It separates transport health from data freshness and never retries a blocked connection (revoked, incompatible, or unauthenticated) until something changes. See [#9707](https://github.com/OpenAgentsInc/openagents/issues/9707). |
+| Terminal session | Designed | NIP-TERM's host-owned PTY that outlives client disconnection, with sequenced output, a bounded replay buffer, and an explicit gap when a reader asks for discarded output. It requires the `terminal` right. See [#9708](https://github.com/OpenAgentsInc/openagents/issues/9708). |
+| SSH-launched host | Designed | A host installed, started, or adopted over SSH. A launcher-owned host is `managed`; a host found already running is `external`. Only an explicit remove stops a managed host; client exit and tunnel loss never do. See [#9709](https://github.com/OpenAgentsInc/openagents/issues/9709). |
+| Host service and trial update | Designed | The background service that runs a host at login or boot, and the update path that runs a new version as a trial, commits when it reports ready, and otherwise rolls back its binary and state snapshot. See [#9710](https://github.com/OpenAgentsInc/openagents/issues/9710). |
+| Push lease executor | Designed | The relay role that holds Block NIP-PL leases and wakes a device through its platform push service with a fixed signal that carries no content. See [#9711](https://github.com/OpenAgentsInc/openagents/issues/9711). |
+| Activity summary | Designed | A bounded, redacted, recipient-encrypted summary of what needs attention on a host, fetched after a wake. It never carries prompts, output, paths, or credentials, and it grants nothing. See [#9711](https://github.com/OpenAgentsInc/openagents/issues/9711). |
 
 ## Network effects and contribution value
 

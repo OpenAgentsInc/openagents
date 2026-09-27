@@ -125,6 +125,36 @@ probes retain their original scope; the later mobile hosts have separate
 does not replace task grants, and framework completion is not a prerequisite
 for unrelated runtime, host, knowledge, or labor work.
 
+### Reach your computers from any client
+
+The [remote access program](https://github.com/OpenAgentsInc/openagents/issues/9704)
+lets you reach and control every computer you own from the terminal, desktop,
+web, iPhone, and Android clients without a hosted account, router
+configuration, or a vendor tunnel. Each computer runs one Coder host. A client
+finds your hosts through an owner-encrypted directory, enrolls with scoped
+rights, connects over a route it has proven works, and keeps working across
+disconnects, sleep, restarts, and host updates. Nostr keys are the identity,
+private Nostr records are the control plane, and the host issues and enforces
+every grant. A relay, an SSH login, or a tailnet membership can introduce a
+device; none of them is a login.
+
+It closes six protocol gaps: host-wide device enrollment (NIP-HOST), the owner
+host directory, presence, reachability hints, and direct channels (NIP-REACH),
+interactive terminal sessions (NIP-TERM), audience-bound activity summaries
+(a WS section), and SSH-launched hosts (an ENV section). Wave 1 builds the
+pieces independently: [#9705](https://github.com/OpenAgentsInc/openagents/issues/9705)
+enrollment, [#9706](https://github.com/OpenAgentsInc/openagents/issues/9706)
+reach, [#9707](https://github.com/OpenAgentsInc/openagents/issues/9707)
+connection supervision, [#9708](https://github.com/OpenAgentsInc/openagents/issues/9708)
+terminals, [#9709](https://github.com/OpenAgentsInc/openagents/issues/9709)
+SSH hosts, [#9710](https://github.com/OpenAgentsInc/openagents/issues/9710)
+the host service with trial updates, and [#9711](https://github.com/OpenAgentsInc/openagents/issues/9711)
+push wakeups. Wave 2 composes them into one resident host,
+[#9712](https://github.com/OpenAgentsInc/openagents/issues/9712), and the
+shared Rust Native "Computers" screens,
+[#9713](https://github.com/OpenAgentsInc/openagents/issues/9713). Status:
+**Active.** Each issue's verification record states what its checks prove.
+
 ## Complete outcome map
 
 Stable R identifiers group the vision across documents. They are navigation
@@ -134,8 +164,8 @@ labels, not new protocols or a second issue tracker.
 | --- | --- | --- | --- |
 | **R1 — Economical coding** | Coder, Coder One, Microluna, and Microcoder implement different recorded execution paths. Selected task wins and historical losses exist. | Repeated useful repository and benchmark completions under exact model, effort, tool, and budget controls. Count all attempts, latency distributions, known costs, and unknown totals; demonstrate transfer before broad superiority claims. | [Thesis](coder/design/thesis.md), [networked Coder plan](coder/design/networked-coder-plan.md), [Microcoder guide](coder/guides/microcoder.md), [current results](terminal-bench/README.md) |
 | **R2 — One durable task** | Local inbox, explicit execution owner, recovery, ATIF views, retained artifacts, frozen context, and protected checks are implemented. | Complete the common local/container model adapter, detached control, recovery, and exact candidate verification. Keep completion, verification, acceptance, and integration separate. | [Task owner](coder/runtime/task-owner.md), [repository adapter](coder/runtime/microcoder-repository.md), [frozen context](coder/runtime/frozen-task-context.md), M2–M6 in the [migration tracker](coder/migration-status.md) |
-| **R3 — Clients and continuity** | Terminal/headless and Gym inspection work; Rust mobile feasibility has target-specific prototype evidence. Rust Native supplies the generic semantic/style core; `coder-ui` owns the application theme consumed by the terminal. A scoped CTRL host/client bridge supplies private task control; the [mobile reader](coder/guides/mobile-readonly.md) and [Android host](../bins/coder-android/README.md) supply native lists/transcripts, encrypted retained-harness observation, and shared Verse behavior. Full task control and desktop/web client adapters remain planned. | One computer-started task is observed, corrected, disconnected, reconnected, and checked through an authorized mobile client without duplicated effects. Deliver iOS, Android, desktop, and Rust web slices with separate input, accessibility, lifecycle, credential, and revocation evidence. | [Product suite](coder/design/typesafe-product-suite.md), [Rust Native adoption](coder/rust-native/adoption.md), [mobile feasibility](coder/design/rust-mobile-feasibility.md), [CTRL host](coder/runtime/nostr-task-control.md), [CTRL contract](../nips/openagents/NIP-CTRL.md), M1/M7–M10/M13 |
-| **R4 — Hosts, CoderOS, and environments** | Local execution boundaries, process supervision, worktrees, and verified bundle/one-shot service packaging exist. | Accept clean Linux and macOS hosts; support exact resource admission, restart recovery, update/rollback, and state compatibility. Build a pinned generic CoderOS profile and admitted environment leases with materialization, cleanup, and uncertain-resource accounting. | [Portable host](coder/runtime/portable-host.md), [migration assessment](coder/design/coder-suite-migration.md), [ENV](../nips/openagents/NIP-ENV.md), M11/M12/M15 |
+| **R3 — Clients and continuity** | Terminal/headless and Gym inspection work; Rust mobile feasibility has target-specific prototype evidence. Rust Native supplies the generic semantic/style core; `coder-ui` owns the application theme consumed by the terminal. A scoped CTRL host/client bridge supplies private task control; the [mobile reader](coder/guides/mobile-readonly.md) and [Android host](../bins/coder-android/README.md) supply native lists/transcripts, encrypted retained-harness observation, and shared Verse behavior. Full task control and desktop/web client adapters remain planned. | One computer-started task is observed, corrected, disconnected, reconnected, and checked through an authorized mobile client without duplicated effects. Deliver iOS, Android, desktop, and Rust web slices with separate input, accessibility, lifecycle, credential, and revocation evidence. Reach every owned computer from each client through the [remote access program](https://github.com/OpenAgentsInc/openagents/issues/9704). | [Product suite](coder/design/typesafe-product-suite.md), [Rust Native adoption](coder/rust-native/adoption.md), [mobile feasibility](coder/design/rust-mobile-feasibility.md), [CTRL host](coder/runtime/nostr-task-control.md), [CTRL contract](../nips/openagents/NIP-CTRL.md), M1/M7–M10/M13 |
+| **R4 — Hosts, CoderOS, and environments** | Local execution boundaries, process supervision, worktrees, and verified bundle/one-shot service packaging exist. | Accept clean Linux and macOS hosts; support exact resource admission, restart recovery, update/rollback, and state compatibility. Build a pinned generic CoderOS profile and admitted environment leases with materialization, cleanup, and uncertain-resource accounting. Run each host as a background service with trial updates, and start or adopt hosts over SSH ([#9710](https://github.com/OpenAgentsInc/openagents/issues/9710), [#9709](https://github.com/OpenAgentsInc/openagents/issues/9709)). | [Portable host](coder/runtime/portable-host.md), [migration assessment](coder/design/coder-suite-migration.md), [ENV](../nips/openagents/NIP-ENV.md), M11/M12/M15 |
 | **R5 — Context and operation discovery** | Scoped local instruction capture, exact frozen knowledge, evidence programs, and bounded context selection exist in specific paths. | Share versioned source captures, workspace views, requirement coverage, and recipient-specific context. Discover a small eligible operation set, expand schemas/manuals on demand, and measure missing evidence and false activation. | [TypeSafe analysis](coder/design/typesafe-agent-analysis.md), [decision-function inventory](coder/design/decision-function-inventory.md), [CTX](../nips/openagents/NIP-CTX.md), [WS](../nips/openagents/NIP-WS.md), [POL](../nips/openagents/NIP-POL.md) |
 | **R6 — Programs, plugins, and packages** | Rust registries, six runnable program step kinds (generic `invoke` remains refused), a bounded Wasm host, evidence guests, local locks, client plugins, and skill-directory components exist. | Distribute compatible, exact components over Nostr; keep installation inert; admit host bindings separately; scope skills and roll back activation. Prove useful reuse by another operator and compare components with their absence. | [Extensions](extensions/README.md), [programs](programs.md), [CAP](../nips/openagents/NIP-CAP.md), [PRG](../nips/openagents/NIP-PRG.md), [EXT](../nips/openagents/NIP-EXT.md), M16 |
 | **R7 — Shared knowledge and contribution** | Local retrieval/contribution, NIP-KB publication, immutable snapshots, private bundles, exact evidence intake, and study bookkeeping exist. | Demonstrate source-separated benefit on unseen work with retained failures, exact entry versions, lawful disclosure, and uncertainty. Support curation, withdrawal, attribution, and rewarded useful contributions without treating retrieval or authorship as proof of value. | [Knowledge guide](coder/guides/knowledge-base.md), [evidence](coder/runtime/knowledge-evidence.md), [bundles](coder/runtime/knowledge-bundles.md), [study rules](coder/runtime/knowledge-studies.md), [Beat Fable initiative](coder/beat-fable-together.md), M6a/M19 |
