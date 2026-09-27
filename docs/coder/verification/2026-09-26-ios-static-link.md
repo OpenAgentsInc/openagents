@@ -7,9 +7,11 @@ completed app bundle for external library dependencies. It also removes the
 world's title and idle-status overlays, replaces the jump button with a double
 tap, and replaces zoom buttons with a two-finger pinch.
 
-Build **0.5.0 (45)** is the replacement in preparation. All 10 final native
-simulator tests passed with Release Swift and optimized Rust. TestFlight
-delivery is pending. The
+Build **0.5.0 (45)** is available in internal TestFlight: App Store Connect
+reports `VALID` and `IN_BETA_TESTING`. All 10 final native simulator tests passed
+with Release Swift and optimized Rust. A separate normal launch stayed alive
+with both external Rust libraries temporarily hidden. The signed device archive
+also passes the dependency and signature checks. The
 [evidence directory](../../../bins/coder-ios/verification/2026-09-26-static-link/README.md)
 is the release record; a completed build or upload is not a physical-device
 launch observation.
@@ -94,7 +96,6 @@ UI crate.
 | Packaging verifier regression tests | 11 passed, including the build 44 absolute-library failure and transitive bundled dependencies |
 
 Final simulator launch, native gesture, archive, and delivery evidence is
-recorded in the [release evidence directory](../../../bins/coder-ios/verification/2026-09-26-static-link/README.md)
-when complete. Physical-device launch, motion feel, and frame rate remain
+recorded in the [release evidence directory](../../../bins/coder-ios/verification/2026-09-26-static-link/README.md). Physical-device launch, motion feel, and frame rate remain
 separate observations; no unavailable phone log is presented as collected
 crash evidence.

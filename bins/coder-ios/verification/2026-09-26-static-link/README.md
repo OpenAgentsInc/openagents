@@ -39,7 +39,12 @@ temporarily hidden remained alive after 10 seconds. The libraries were restored
 in cleanup. The [screenshot](normal-launch.png) shows the actual clean Verse
 world; the simulator remains open. [Xcode summary](native-tests-summary.json).
 
-TestFlight delivery is pending. Physical-device acceptance remains unverified.
+[Build 45 distribution receipt](testflight-build45.json): upload succeeded,
+processing is `VALID`, and internal distribution is `IN_BETA_TESTING`. Release
+notes are saved. The [signed device archive](archive-bundle-verification.json)
+passes the same dependency and signature checks. The receipt records the exact
+clean source commit and archive hashes. Physical-device acceptance remains
+unverified.
 
 Text logs trim trailing whitespace for repository hygiene. Raw logs and Xcode
 result bundles remain on the release machine. No model or benchmark runs were

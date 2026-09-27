@@ -13,9 +13,13 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Startup correction:** build `44` was distributed but has a confirmed native
-library packaging defect. Build `45` explicitly includes Rust through its static
-archive and is being verified for replacement. See the
+**Latest internal TestFlight: 0.5.0 (45).** App Store Connect confirms `VALID`
+and `IN_BETA_TESTING`. Build `45` fixes the native-library startup failure in
+builds `43` and `44`, removes title and idle-status overlays, and replaces jump
+and zoom buttons with double-tap and pinch gestures. Normal optimized simulator
+launch, background resume, cold relaunch, and all 10 native tests pass.
+[Distribution receipt](verification/2026-09-26-static-link/testflight-build45.json).
+Physical-device acceptance remains separate. See the
 [startup diagnosis](../../docs/coder/verification/2026-09-26-ios-static-link.md).
 [Connect your phone](../../docs/coder/guides/mobile-readonly.md).
 

@@ -49,9 +49,12 @@ design as a Designed profile for durable identity, bounded initiative,
 custody, guardians, and market participation. It composes the current NIPs;
 custody, sovereign lifecycle, and treasury adapters remain to be built.
 
-Coder iOS build **0.5.0 (44)** has a confirmed startup packaging failure.
-[The replacement build 45](docs/coder/verification/2026-09-26-ios-static-link.md)
-is being verified with normal simulator launch and native dependency checks.
+Coder iOS **0.5.0 (45)** is available in internal TestFlight. It fixes the startup
+packaging failure in builds 43 and 44 and removes title, idle-status, and extra
+movement controls. Double-tap to jump; pinch with two fingers to zoom.
+[Verification and release evidence](docs/coder/verification/2026-09-26-ios-static-link.md)
+include normal optimized simulator launch, resume, relaunch, and 10 passing
+native tests.
 [Verse fills the screen](docs/verse/mobile.md), including behind the system
 clock. Motion look follows body turns and upward tilt with interpolated camera
 movement; hold the left side to walk. Touch look remains available. The computer now renders its prompt on the physical
