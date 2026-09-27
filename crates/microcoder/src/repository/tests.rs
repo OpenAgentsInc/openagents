@@ -312,6 +312,57 @@ fn unsupported_configuration_is_refused_without_fallback() {
     assert!(configuration.validate().is_err());
 }
 
+#[test]
+fn claude_is_an_admitted_provider_and_other_names_are_not() {
+    let (_root, _store, bytes) = fixture();
+    let mut grant = task::owner::Grant::parse(&bytes).unwrap();
+    let configuration = grant.adapter_configuration.as_mut().unwrap();
+    configuration.provider = "claude".into();
+    configuration.model = "claude-opus-5-5".into();
+    configuration.generation_endpoint = crate::claude::ENDPOINT.into();
+    configuration.decision_endpoint = "https://decision.example.invalid".into();
+    assert!(configuration.validate().is_ok());
+    assert_eq!(
+        configuration.capabilities()["cost_reporting"],
+        "provider-reported-list-price"
+    );
+    configuration.provider = "openrouter".into();
+    assert!(configuration.validate().is_err());
+    configuration.provider = "claude".into();
+    configuration.generation_endpoint = "http://api.anthropic.com".into();
+    assert!(configuration.validate().is_err());
+}
+
+#[tokio::test]
+async fn claude_execution_refuses_another_endpoint_before_admission() {
+    let (_root, store, bytes) = fixture();
+    let mut grant = task::owner::Grant::parse(&bytes).unwrap();
+    let configuration = grant.adapter_configuration.as_mut().unwrap();
+    configuration.provider = "claude".into();
+    configuration.model = "claude-opus-5-5".into();
+    configuration.generation_endpoint = "https://other.example.invalid".into();
+    configuration.decision_endpoint = "https://decision.example.invalid".into();
+    let client = jev::Client::new(
+        jev::Config::default()
+            .api_key("unused-fixture-key")
+            .base_url("https://decision.example.invalid")
+            .default_model("fixture-judge"),
+    )
+    .unwrap();
+    let judge = crate::models::JevJudge { client };
+    let error = execute(&store, &serde_json::to_vec(&grant).unwrap(), judge)
+        .await
+        .unwrap_err();
+    assert!(error.contains(crate::claude::ENDPOINT), "{error}");
+    assert!(std::fs::read_dir(&store).unwrap().all(|entry| {
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".atif.jsonl")
+    }));
+}
+
 struct PendingGenerator {
     started: Cell<bool>,
 }

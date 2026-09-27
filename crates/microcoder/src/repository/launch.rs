@@ -26,8 +26,8 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
             .adapter_configuration
             .as_ref()
             .ok_or("repository launch requires an adapter configuration")?;
-        if configuration.provider != "codex" {
-            return Err("the detached repository CLI requires the Codex provider".into());
+        if !matches!(configuration.provider.as_str(), "codex" | "claude") {
+            return Err("the detached repository CLI requires the codex or claude provider".into());
         }
         let store = Store::open(directory)?;
         let task = store.show(&grant.task_id)?;
@@ -77,8 +77,10 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
         process.env_clear().env("PATH", "/usr/bin:/bin");
         // These stay in the model host. Its supervised shell children clear
         // their environment again and never receive provider credentials.
+        // CLAUDE_BIN names the claude binary when it is off the fixed PATH.
         for key in [
             "HOME",
+            crate::claude::BIN_VAR,
             "TYPESAFE_API_KEY",
             "TYPESAFE_BASE_URL",
             "TYPESAFE_DEFAULT_MODEL",

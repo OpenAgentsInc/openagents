@@ -45,6 +45,23 @@ fn run() -> Result<Value, String> {
     let checker = PathBuf::from(&args[2])
         .canonicalize()
         .map_err(|e| e.to_string())?;
+    // The generation provider is the operator's choice; the grant records it
+    // exactly. Defaults name Codex; ACCEPTANCE_PROVIDER=claude with
+    // ACCEPTANCE_MODEL naming the exact served model uses the claude login.
+    let setting = |key: &str, default: &str| std::env::var(key).unwrap_or_else(|_| default.into());
+    let provider = setting("ACCEPTANCE_PROVIDER", "codex");
+    let (default_model, default_endpoint) = match provider.as_str() {
+        "codex" => ("gpt-6-luna", "https://chatgpt.com/backend-api/codex"),
+        "claude" => ("claude-opus-5-5", "https://api.anthropic.com"),
+        other => {
+            return Err(format!(
+                "ACCEPTANCE_PROVIDER wants codex or claude, not {other}"
+            ));
+        }
+    };
+    let model = setting("ACCEPTANCE_MODEL", default_model);
+    let effort = setting("ACCEPTANCE_EFFORT", "medium");
+    let generation_endpoint = setting("ACCEPTANCE_GENERATION_ENDPOINT", default_endpoint);
     let profile: Option<Value> = args
         .get(3)
         .map(|p| {
@@ -149,7 +166,7 @@ fn run() -> Result<Value, String> {
             },
             configuration: task::RequestedConfiguration {
                 adapter: task::adapter::NAME.into(),
-                model: Some("gpt-6-luna".into()),
+                model: Some(model.clone()),
             },
         };
         let task_id = format!("repository-{name}");
@@ -169,8 +186,8 @@ fn run() -> Result<Value, String> {
         let grant = json!({"schema":task::owner::GRANT_SCHEMA,"task_id":task_id,"intent_digest":task.intent_digest,"expected_revision":task.revision,
             "expected_source_snapshot":Snapshot::observe(&workspace).digest(),"program":Path::new("/bin/bash").canonicalize().map_err(|e|e.to_string())?,
             "arguments":[],"write_workspace":true,"wall_seconds":300,"stream_bytes":65536,"memory_bytes":1073741824,"requirements":requirements,
-            "adapter_configuration":{"schema":task::adapter::CONFIG_SCHEMA,"provider":"codex","model":"gpt-6-luna","effort":"medium",
-            "generation_endpoint":"https://chatgpt.com/backend-api/codex","decision_endpoint":std::env::var("TYPESAFE_BASE_URL").unwrap_or_else(|_|"https://api.typesafe.ai".into()),
+            "adapter_configuration":{"schema":task::adapter::CONFIG_SCHEMA,"provider":provider,"model":model,"effort":effort,
+            "generation_endpoint":generation_endpoint,"decision_endpoint":std::env::var("TYPESAFE_BASE_URL").unwrap_or_else(|_|"https://api.typesafe.ai".into()),
             "decision_model":std::env::var("TYPESAFE_DEFAULT_MODEL").unwrap_or_else(|_|"jev-latest".into()),"max_steps":8,"acceptance":false,"route":"never","knowledge":"off","dollar_limit_micros":null,
             "expected_controller_digest":controller_digest,"container":if name=="range"{profile.clone()}else{None}}});
         task::owner::Grant::parse(&serde_json::to_vec(&grant).map_err(|e| e.to_string())?)
@@ -180,7 +197,8 @@ fn run() -> Result<Value, String> {
         write(&root.join(format!("{name}-submission.json")), &command)?;
         cases.push(json!({"name":name,"task_id":task_id,"store":store,"workspace":workspace,"grant":grant_path,"checker":program,"trust":trust_file,"controller":controller,"model_calls_started":false}));
     }
-    let value = json!({"schema":"openagents.repository-acceptance-setup.v1","synthetic":true,"cases":cases});
+    let value = json!({"schema":"openagents.repository-acceptance-setup.v1","synthetic":true,
+        "provider":provider,"model":model,"effort":effort,"generation_endpoint":generation_endpoint,"cases":cases});
     write(&root.join("cases.json"), &value)?;
     Ok(value)
 }

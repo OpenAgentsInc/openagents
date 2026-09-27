@@ -123,6 +123,32 @@ impl Judge for NativeJudge<'_> {
     }
 }
 
+/// The `claude` binary's native output, retained before reduction: what
+/// the binary was asked, what it printed, and how it exited.
+struct Claude<'a> {
+    host: &'a Host,
+    inner: crate::claude::ClaudeGenerator,
+}
+impl Generate for Claude<'_> {
+    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        let sequence = match self.host.effect(
+            "claude_request",
+            json!({"binary":self.inner.binary,"args":self.inner.args(system),"model":self.inner.model,
+                "effort":self.inner.effort,"prompt":prompt}),
+        ) {
+            Ok(sequence) => sequence,
+            Err(error) => return refused_generation(&self.inner.model, false, &error.to_string()),
+        };
+        let invocation = self.inner.invoke(system, prompt).await;
+        let observation = json!({"status":invocation.status,"stdout":invocation.stdout,"stderr":invocation.stderr,
+            "model":invocation.generated.model,"usd":invocation.generated.usd,"billing":"provider-reported-list-price"});
+        if let Err(error) = self.host.result(sequence, "claude_request", observation) {
+            return refused_generation(&self.inner.model, true, &error.to_string());
+        }
+        invocation.generated
+    }
+}
+
 pub(super) async fn run<T: microluna::Transport>(
     host: Host,
     transport: T,
@@ -139,6 +165,25 @@ pub(super) async fn run<T: microluna::Transport>(
             model: configuration.model.clone(),
             effort: configuration.effort.clone(),
             cache_key: session,
+        };
+        let judge = NativeJudge {
+            host: &host,
+            client,
+        };
+        run_loop(&host, &generator, &judge).await?
+    };
+    finish(host, state, outcome)
+}
+
+pub(super) async fn run_claude(
+    host: Host,
+    generator: crate::claude::ClaudeGenerator,
+    client: jev::Client,
+) -> Result<task::Task, task::Error> {
+    let (state, outcome) = {
+        let generator = Claude {
+            host: &host,
+            inner: generator,
         };
         let judge = NativeJudge {
             host: &host,

@@ -23,6 +23,9 @@ const STEP_LIMIT: usize = 8 * 1024 * 1024;
 #[serde(deny_unknown_fields)]
 pub struct Configuration {
     pub schema: String,
+    /// `codex` (the operator's Codex login), `claude` (the operator's Claude
+    /// Code login through the `claude` binary), or `synthetic` (in-process
+    /// fixtures). `model` is the exact identity the provider must report.
     pub provider: String,
     pub model: String,
     pub effort: Option<String>,
@@ -43,7 +46,7 @@ pub struct Configuration {
 impl Configuration {
     pub fn validate(&self) -> Result<(), Error> {
         if self.schema != CONFIG_SCHEMA
-            || !matches!(self.provider.as_str(), "codex" | "synthetic")
+            || !matches!(self.provider.as_str(), "codex" | "claude" | "synthetic")
             || !identifier(&self.model, true)
             || !identifier(&self.decision_model, true)
             || self
@@ -104,7 +107,9 @@ impl Configuration {
             "process_cleanup":"observed", "crash_resume":"unsupported",
             "model_written_acceptance":"unsupported", "routing":"unsupported",
             "knowledge":"unsupported", "hard_dollar_limit":"unsupported",
-            "billing":"unknown", "effort_confirmation":"not_reported",
+            "billing":"unknown",
+            "effort_confirmation":"not_reported",
+            "cost_reporting": if self.provider == "claude" { "provider-reported-list-price" } else { "token-list-price" },
             "provider_artifact_attestation":"unsupported",
             "container_adapter": if self.container.is_some() { "docker-per-command-workspace-persistence" } else { "not_requested" },
             "frozen_knowledge_context":self.knowledge == "frozen-context"
