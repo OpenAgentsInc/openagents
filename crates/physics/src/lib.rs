@@ -16,6 +16,8 @@
 //!   whole steps and reports time it drops.
 //! - [`ledger`]: linear and angular momentum with named external impulses,
 //!   for conservation tests.
+//! - [`sensors`]: raycasts, per-body contact force, an IMU, and debug lines
+//!   for contacts and joints.
 //! - [`thrusters`]: body-mounted thrusters, a bounded allocator from a wanted
 //!   force and torque to throttles, and a vector PID controller.
 //! - [`trace`]: sampled states and a tolerance comparison for replay tests.
@@ -30,6 +32,7 @@ pub mod collision;
 pub mod contact;
 pub mod joint;
 pub mod ledger;
+pub mod sensors;
 pub mod thrusters;
 pub mod trace;
 pub mod world;
@@ -40,6 +43,7 @@ pub use collision::{Collider, ColliderId, ContactPoint, Filter, Manifold, Materi
 pub use contact::{ContactReport, SolverSettings};
 pub use joint::{Joint, JointId, JointKind, Spring};
 pub use ledger::{Ledger, LedgerError, Momentum};
+pub use sensors::{DebugKind, DebugLine, Imu, ImuReading, RayHit};
 pub use thrusters::{Pid, Thruster, ThrusterSet, Wrench};
 pub use trace::{Divergence, Tolerance, Trace, attitude_difference};
 pub use world::{BodyId, Field, NoField, SleepSettings, StepStats, Uniform, World};

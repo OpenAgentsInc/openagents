@@ -827,3 +827,83 @@ fn latched_parts_sleep_and_free_parts_never_do() {
             < 0.01
     );
 }
+
+#[test]
+fn the_hud_reads_impact_g_load_spin_and_proximity() {
+    let mut station = Station::new();
+    station.tide = false;
+    // Facing the airlock (-z) from 6 m away, at rest.
+    station.astronaut_mut().pos = DVec3::new(0.0, 6.0, 23.5);
+    station.face(std::f64::consts::PI);
+    station.step(
+        1.0 / 60.0,
+        &Command {
+            direction: DVec3::ZERO,
+            yaw: station.yaw,
+            climb: false,
+        },
+    );
+    let s = station.snapshot();
+    let ahead = s.proximity_m.unwrap();
+    assert!(
+        (ahead - (23.5 - 17.0 - station::ASTRONAUT_RADIUS)).abs() < 0.5,
+        "{ahead}"
+    );
+    assert!(s.impact_n == 0.0 && s.g_load < 1e-9);
+    // Thrusting ahead reads the pack's acceleration: 40 N on about 250 kg.
+    let forward = Command {
+        direction: -DVec3::Z,
+        yaw: station.yaw,
+        climb: false,
+    };
+    station.step(1.0 / 60.0, &forward);
+    let g = station.snapshot().g_load;
+    let expected = station::THRUST / station.mass() / station::G0;
+    assert!((g - expected).abs() / expected < 0.05, "{g} vs {expected}");
+    // Hitting the airlock registers an impact; the lines show it.
+    let mut hit = 0.0_f64;
+    for _ in 0..(20 * 60) {
+        station.step(1.0 / 60.0, &forward);
+        hit = hit.max(station.snapshot().impact_n);
+    }
+    assert!(hit > 10.0, "{hit}");
+    assert!(
+        station
+            .debug_lines()
+            .iter()
+            .any(|l| l.kind == physics::DebugKind::Thrust)
+    );
+    // A commanded turn reads as spin.
+    station.step(
+        1.0 / 60.0,
+        &Command {
+            direction: DVec3::ZERO,
+            yaw: 0.0,
+            climb: false,
+        },
+    );
+    for _ in 0..30 {
+        station.step(
+            1.0 / 60.0,
+            &Command {
+                direction: DVec3::ZERO,
+                yaw: 0.0,
+                climb: false,
+            },
+        );
+    }
+    assert!(station.snapshot().spin_deg_s > 1.0);
+}
+
+#[test]
+fn grabbing_closes_on_the_part_surface_facing_the_hands() {
+    let mut station = busy_station();
+    station.grab().unwrap();
+    let grip = station.world.joint(station.grip.unwrap()).unwrap();
+    let (_, held) = grip.anchors(&station.world);
+    let engine = station.body(&station.parts[0]);
+    // The engine is a 2.2 m box: the grab point lies on its face toward the
+    // hands, 1.1 m from its center along x.
+    let local = engine.orientation.inverse() * (held - engine.pos);
+    assert!((local.x - 1.1).abs() < 1e-6, "{local}");
+}

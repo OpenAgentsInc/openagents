@@ -13,6 +13,7 @@ use glam::{DVec3, Mat4, Quat, Vec3};
 use verse_lagrange::{
     Command, PartKind, PartState, Station,
     orbit::{EARTH_RADIUS, MOON_RADIUS, SUN_RADIUS},
+    physics::DebugKind,
     station::{self, AIRLOCK},
 };
 
@@ -33,6 +34,8 @@ const SAFETY: [f32; 3] = [0.92, 0.6, 0.08];
 
 pub(crate) struct Lagrange {
     pub station: Station,
+    /// Draw contacts, their impulses, joints, and thrust.
+    pub overlay: bool,
     rendered: Mesh,
 }
 
@@ -40,6 +43,7 @@ impl Lagrange {
     pub fn new() -> Self {
         let mut zone = Self {
             station: Station::new(),
+            overlay: false,
             rendered: Mesh::default(),
         };
         zone.rendered = zone.build_dynamic();
@@ -299,7 +303,12 @@ impl Lagrange {
         let astronaut_pos = s.astronaut().interpolated(alpha).0;
         let astronaut = astronaut_pos.as_vec3();
         let carrying = s.parts.iter().any(|p| p.state == PartState::Carried);
-        suit(&mut mesh, feet(astronaut_pos), s.heading_yaw() as f32, carrying);
+        suit(
+            &mut mesh,
+            feet(astronaut_pos),
+            s.heading_yaw() as f32,
+            carrying,
+        );
         for p in &s.plumes {
             let pos = DVec3::from(p.pos).as_vec3();
             let dir = DVec3::from(p.dir).as_vec3();
@@ -353,6 +362,18 @@ impl Lagrange {
         }
         if let Some(target) = s.target {
             dashed(&mut mesh, astronaut, target.as_vec3(), [0.3, 0.8, 0.9]);
+        }
+        if self.overlay {
+            for l in s.debug_lines() {
+                let color = match l.kind {
+                    DebugKind::ContactNormal => [0.3, 0.9, 1.2],
+                    DebugKind::ContactImpulse => [1.4, 0.3, 0.2],
+                    DebugKind::Joint => [0.9, 0.9, 0.3],
+                    DebugKind::Strained => [1.5, 0.2, 0.9],
+                    DebugKind::Thrust => [1.2, 0.7, 1.4],
+                };
+                line(&mut mesh, l.from.as_vec3(), l.to.as_vec3(), color);
+            }
         }
         mesh
     }

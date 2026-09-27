@@ -145,6 +145,8 @@ pub enum Intent {
     Fireball,
     Grab,
     Release,
+    /// Show or hide the physics overlay: contacts, joints, and thrust.
+    Forces,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

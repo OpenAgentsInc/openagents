@@ -209,6 +209,15 @@ impl WorldRuntime {
                     .cast(spell, origin.to_array(), direction.to_array())?;
                 self.zone_state.error = None;
             }
+            Intent::Forces => {
+                let lagrange = self
+                    .zone_state
+                    .lagrange
+                    .as_mut()
+                    .ok_or("Enter Lagrange 1 first")?;
+                lagrange.overlay = !lagrange.overlay;
+                lagrange.tick();
+            }
             Intent::Grab | Intent::Release => {
                 let lagrange = self
                     .zone_state
@@ -395,6 +404,16 @@ impl WorldRuntime {
             } else {
                 add("grab", "Grab", Intent::Grab, s.can_grab);
             }
+            add(
+                "forces",
+                if lagrange.overlay {
+                    "Hide forces"
+                } else {
+                    "Forces"
+                },
+                Intent::Forces,
+                true,
+            );
             add("return", "Plaza", Intent::Return, true);
             let status = if let Some(kind) = s.carrying {
                 match s.latch_distance_m {
@@ -417,8 +436,15 @@ impl WorldRuntime {
             } else {
                 status
             };
+            let mut sensed = format!("{:.2} g · spin {:.0}°/s", s.g_load, s.spin_deg_s);
+            if let Some(ahead) = s.proximity_m {
+                sensed.push_str(&format!(" · {ahead:.1} m ahead"));
+            }
+            if s.impact_n > 1.0 {
+                sensed.push_str(&format!(" · impact {:.0} N", s.impact_n));
+            }
             format!(
-                "Earth {:.2}M km · N2 {:.1} kg · {:.1} m/s\n{}",
+                "Earth {:.2}M km · N2 {:.1} kg · {:.1} m/s\n{sensed}\n{}",
                 s.orbit.earth_distance_km / 1.0e6,
                 s.propellant_kg,
                 s.speed_m_s,

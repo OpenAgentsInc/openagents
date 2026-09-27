@@ -708,3 +708,176 @@ fn a_settled_pile_sleeps_and_steps_cheaply() {
         "no contacts solved while asleep"
     );
 }
+
+/// `sensors/lidar_teleop.py`'s raycaster against each shape, checked
+/// against geometry.
+#[test]
+fn raycasts_hit_each_shape_where_geometry_says() {
+    let mut world = World::new(0.01);
+    let ball = world
+        .add(Body::new(1.0, DVec3::ONE, DVec3::new(0.0, 0.0, 5.0)).with_kind(BodyKind::Static));
+    world.add_collider(Collider::new(ball, Shape::Sphere { radius: 1.0 }));
+    let mut crate_body =
+        Body::new(1.0, DVec3::ONE, DVec3::new(10.0, 0.0, 5.0)).with_kind(BodyKind::Static);
+    crate_body.orientation = DQuat::from_rotation_y(std::f64::consts::FRAC_PI_4);
+    let cube = world.add(crate_body);
+    world.add_collider(Collider::new(cube, Shape::Cuboid { half: DVec3::ONE }));
+    let rod = world
+        .add(Body::new(1.0, DVec3::ONE, DVec3::new(20.0, 0.0, 5.0)).with_kind(BodyKind::Static));
+    world.add_collider(
+        Collider::new(
+            rod,
+            Shape::Capsule {
+                radius: 0.5,
+                half_length: 2.0,
+            },
+        )
+        .at(
+            DVec3::ZERO,
+            DQuat::from_rotation_y(std::f64::consts::FRAC_PI_2),
+        ),
+    );
+    let all = |_: &Collider| true;
+    let hit = world.raycast(DVec3::ZERO, DVec3::Z, 100.0, &all).unwrap();
+    assert_eq!(hit.body, ball);
+    assert!((hit.distance - 4.0).abs() < 1e-12 && (hit.normal + DVec3::Z).length() < 1e-12);
+    // The cube is turned 45 degrees, so the ray meets an edge.
+    let hit = world
+        .raycast(DVec3::new(10.0, 0.0, 0.0), DVec3::Z, 100.0, &all)
+        .unwrap();
+    assert_eq!(hit.body, cube);
+    assert!(
+        (hit.distance - (5.0 - 2f64.sqrt())).abs() < 1e-9,
+        "{}",
+        hit.distance
+    );
+    // The rod lies along x: from above, the ray meets its side; along its
+    // axis, its end cap.
+    let hit = world
+        .raycast(DVec3::new(21.0, 10.0, 5.0), -DVec3::Y, 100.0, &all)
+        .unwrap();
+    assert!((hit.distance - 9.5).abs() < 1e-9 && (hit.normal - DVec3::Y).length() < 1e-9);
+    let hit = world
+        .raycast(DVec3::new(30.0, 0.0, 5.0), -DVec3::X, 100.0, &all)
+        .unwrap();
+    assert!((hit.distance - 7.5).abs() < 1e-9, "{}", hit.distance);
+    // Filters and range.
+    assert!(world.raycast(DVec3::ZERO, DVec3::Z, 3.0, &all).is_none());
+    let not_ball = |c: &Collider| c.body != ball;
+    assert!(
+        world
+            .raycast(DVec3::ZERO, DVec3::Z, 100.0, &not_ball)
+            .is_none()
+    );
+}
+
+/// `sensors/contact_force_go2.py`: a block at rest reads its weight, and in
+/// a head-on collision the summed contact force equals the momentum change.
+#[test]
+fn contact_force_reads_weight_and_impacts() {
+    let mut world = World::new(0.01);
+    world.sleep.enabled = false;
+    ground(&mut world, Material::default());
+    let half = DVec3::splat(0.2);
+    let block = world.add(Body::new(
+        5.0,
+        Body::box_inertia(5.0, half * 2.0),
+        DVec3::new(0.0, 0.2, 0.0),
+    ));
+    world.add_collider(Collider::new(block, Shape::Cuboid { half }));
+    let g = Uniform(DVec3::new(0.0, -G, 0.0));
+    for _ in 0..200 {
+        world.step(&g);
+    }
+    let (force, _) = world.contact_force(block);
+    assert!(
+        (force - DVec3::new(0.0, 5.0 * G, 0.0)).length() < 1e-6,
+        "{force}"
+    );
+    let mut world = World::new(0.01);
+    let mut a = Body::new(2.0, DVec3::splat(0.1), DVec3::new(-1.0, 0.0, 0.0));
+    a.vel = DVec3::new(1.5, 0.0, 0.0);
+    let a = world.add(a);
+    world.add_collider(
+        Collider::new(a, Shape::Sphere { radius: 0.2 }).with_material(Material {
+            restitution: 1.0,
+            ..Material::default()
+        }),
+    );
+    let b = world.add(Body::new(2.0, DVec3::splat(0.1), DVec3::new(1.0, 0.0, 0.0)));
+    world.add_collider(Collider::new(b, Shape::Sphere { radius: 0.2 }));
+    let before = world[b].momentum();
+    let mut felt = DVec3::ZERO;
+    for _ in 0..200 {
+        world.step(&NoField);
+        felt += world.contact_force(b).0 * world.dt;
+    }
+    assert!((world[b].momentum() - before - felt).length() < 1e-9);
+    assert!(
+        felt.x > 2.5,
+        "an elastic hit passes the momentum on: {felt}"
+    );
+    assert!(!world.debug_lines().is_empty() || world.contacts.is_empty());
+}
+
+/// `sensors/imu_franka.py`: the accelerometer reads thrust over mass, zero in
+/// free fall, and the gyro reads the body rate.
+#[test]
+fn the_imu_reads_thrust_free_fall_and_spin() {
+    let mut world = World::new(0.01);
+    let mut body = Body::new(250.0, DVec3::splat(40.0), DVec3::ZERO);
+    body.orientation = DQuat::from_rotation_y(0.7);
+    body.omega = DVec3::new(0.0, 0.3, 0.0);
+    let id = world.add(body);
+    let mut imu = crate::Imu::default();
+    let g = DVec3::new(0.0, -1.62, 0.0);
+    for i in 0..50 {
+        if i >= 10 {
+            world[id].apply_force(DVec3::new(40.0, 0.0, 0.0));
+        }
+        world.step(&Uniform(g));
+        let reading = imu.read(&world[id], g, world.dt);
+        if (2..10).contains(&i) {
+            assert!(
+                reading.specific_force.length() < 1e-9,
+                "free fall reads zero"
+            );
+        }
+        if i > 11 {
+            let world_frame = world[id].orientation * reading.specific_force;
+            assert!(
+                (world_frame - DVec3::new(0.16, 0.0, 0.0)).length() < 1e-9,
+                "{world_frame}"
+            );
+        }
+        assert!((reading.angular_rate - DVec3::new(0.0, 0.3, 0.0)).length() < 1e-9);
+    }
+}
+
+#[test]
+fn debug_lines_show_contacts_and_joints() {
+    let mut world = World::new(0.01);
+    world.sleep.enabled = false;
+    ground(&mut world, Material::default());
+    let half = DVec3::splat(0.2);
+    let block = world.add(Body::new(
+        5.0,
+        Body::box_inertia(5.0, half * 2.0),
+        DVec3::new(0.0, 0.2, 0.0),
+    ));
+    world.add_collider(Collider::new(block, Shape::Cuboid { half }));
+    let hook = world
+        .add(Body::new(1.0, DVec3::ONE, DVec3::new(0.0, 3.0, 0.0)).with_kind(BodyKind::Static));
+    world.add_joint(crate::Joint::new(
+        hook,
+        DVec3::ZERO,
+        block,
+        DVec3::ZERO,
+        crate::JointKind::Tether { length: 5.0 },
+    ));
+    world.step(&Uniform(DVec3::new(0.0, -G, 0.0)));
+    let lines = world.debug_lines();
+    let count = |k| lines.iter().filter(|l| l.kind == k).count();
+    assert_eq!(count(crate::DebugKind::ContactNormal), 4);
+    assert_eq!(count(crate::DebugKind::Joint), 3);
+}

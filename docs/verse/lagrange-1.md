@@ -224,6 +224,20 @@ a moving body touches it, a force acts on it, a joint on it changes, or its
 owner sets it moving. The snapshot reports the awake body count and the last
 step's wall-clock time.
 
+### Sensors and the forces overlay
+
+The suit carries an inertial measurement unit (`physics::Imu`): the HUD shows
+the proper acceleration in standard gravities (a full 40 N burn empty is about
+0.016 g) and the spin rate. A ray along the facing reports the nearest
+structure or part ahead, and the contact force on the astronaut and anything
+it holds shows as an impact in newtons. Grabbing casts a ray from the hands to
+the part's center and closes the glove where it meets the surface.
+
+The **Forces** control draws the physics overlay: contact points with their
+normals (cyan) and impulses (red), joints such as the grip, tethers, and
+latches (yellow, magenta at their limit), and each firing thruster's force
+(violet).
+
 ## Approximations
 
 - The Sun and the EMB move on circular orbits (no eccentricity), the Moon is a
@@ -249,7 +263,7 @@ exact unstable eigenvector, Jacobi conservation and uncontrolled divergence,
 two years of controlled flight, microgravity magnitude, the rocket equation
 and position hold, inelastic capture, latch conditions (position, speed,
 spin, and alignment), a latched part under impact, the safety tether's arrest, latched parts
-sleeping while free parts never do,
+sleeping while free parts never do, the HUD's sensors, the grab point,
 collisions, frame-rate
 independence, the frame step cap, save and restore, journal replay, and the
 momentum ledger through coasting, burns, structure contact, the tether,

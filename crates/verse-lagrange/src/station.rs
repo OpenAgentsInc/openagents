@@ -7,8 +7,9 @@
 
 use glam::{DQuat, DVec3};
 use physics::{
-    Body, BodyId, BodyKind, Collider, ColliderId, Composite, Filter, FixedStep, Joint, JointId,
-    JointKind, Ledger, Material, Momentum, Shape, ThrusterSet, World,
+    Body, BodyId, BodyKind, Collider, ColliderId, Composite, DebugKind, DebugLine, Filter,
+    FixedStep, Imu, Joint, JointId, JointKind, Ledger, Material, Momentum, Shape, ThrusterSet,
+    World,
 };
 use serde::{Deserialize, Serialize};
 
@@ -409,6 +410,15 @@ pub struct Snapshot {
     pub awake_bodies: usize,
     /// Wall-clock time of the last physics step, ms, for profiling.
     pub step_ms: f64,
+    /// Contact force on the astronaut and anything it holds in the last
+    /// step, N.
+    pub impact_n: f64,
+    /// What the suit's accelerometer feels, in standard gravities.
+    pub g_load: f64,
+    /// The astronaut's rotation rate, degrees per second.
+    pub spin_deg_s: f64,
+    /// Distance to the nearest structure or part straight ahead, m.
+    pub proximity_m: Option<f64>,
     pub refilling: bool,
     /// A station-keeping burn fired within the last second.
     pub keeping_active: bool,
@@ -449,6 +459,12 @@ pub struct Station {
     pub anchor: BodyId,
     /// The astronaut's safety tether from the airlock.
     pub tether: JointId,
+    /// The suit's inertial measurement unit.
+    #[serde(default)]
+    pub imu: Imu,
+    /// Thrusters that fired in the last step: world force and position.
+    #[serde(skip)]
+    pub fired: Vec<(DVec3, DVec3)>,
     /// Apply the L1 tidal field to local bodies. Off only for conservation
     /// tests, since the rotating-frame field is an external force.
     #[serde(default = "enabled")]
@@ -569,6 +585,8 @@ impl Station {
             pilot: Command::default(),
             journal: None,
             grip: None,
+            imu: Imu::default(),
+            fired: Vec::new(),
             anchor,
             tether,
             tide: true,
@@ -948,6 +966,13 @@ impl Station {
             if tidal { tide(c2, p, v) } else { DVec3::ZERO }
         });
         self.account_contacts();
+        let astronaut = *self.astronaut();
+        let field = if self.tide {
+            tide(c2, astronaut.pos, astronaut.vel)
+        } else {
+            DVec3::ZERO
+        };
+        self.imu.read(&astronaut, field, dt);
         self.check_grip();
         self.account_tethers();
         // Emergency boundary: only if the tether gave way past its tension.
@@ -978,7 +1003,44 @@ impl Station {
             astronaut.mass = mass + added;
         }
         self.emit_plumes(&fired, dt);
+        self.fired = fired;
         self.settle_parts();
+    }
+
+    /// Contact force on the astronaut and anything it holds, N.
+    #[must_use]
+    pub fn impact(&self) -> f64 {
+        let mut total = self.world.contact_force(self.astronaut).0;
+        if let Some(i) = self.carried() {
+            total += self.world.contact_force(self.parts[i].body).0;
+        }
+        total.length()
+    }
+
+    /// Distance to the nearest structure or part along the astronaut's
+    /// facing, within 50 m, ignoring the astronaut and what it holds.
+    #[must_use]
+    pub fn proximity(&self) -> Option<f64> {
+        let held = self.carried().map(|i| self.parts[i].body);
+        let astronaut = self.astronaut;
+        self.world
+            .raycast(self.astronaut().pos, self.facing(), 50.0, &|c| {
+                c.body != astronaut && Some(c.body) != held && c.filter.group != 0
+            })
+            .map(|hit| hit.distance)
+    }
+
+    /// Lines for a physics overlay: contacts, their impulses, joints (the
+    /// grip, tethers, and latches), and the pack's firing thrusters.
+    #[must_use]
+    pub fn debug_lines(&self) -> Vec<DebugLine> {
+        let mut lines = self.world.debug_lines();
+        lines.extend(self.fired.iter().map(|(force, at)| DebugLine {
+            from: *at,
+            to: *at + *force * 0.05,
+            kind: DebugKind::Thrust,
+        }));
+        lines
     }
 
     /// The astronaut and anything it holds, as one body.
@@ -1165,8 +1227,22 @@ impl Station {
             }
         };
         let kind = self.parts[index].kind;
-        let grabbed = self.world.colliders()[self.parts[index].collider.0 as usize]
-            .closest_point(&self.world, hands);
+        // Reach from the hands toward the part's center; the glove closes where
+        // that ray meets the part, or on its nearest point if the hands are
+        // already inside it.
+        let target = self.parts[index].collider;
+        let body = self.parts[index].body;
+        let center = self.world[body].pos;
+        let grabbed = self
+            .world
+            .raycast(hands, center - hands, GRAB_RANGE + 10.0, &|c| {
+                c.body == body
+            })
+            .filter(|hit| hit.distance > 0.0)
+            .map_or_else(
+                || self.world.colliders()[target.0 as usize].closest_point(&self.world, hands),
+                |hit| hit.point,
+            );
         self.set_state(index, PartState::Carried);
         let grip = Joint::weld_here(&self.world, self.astronaut, self.parts[index].body, grabbed)
             .soft(GRIP_FREQUENCY, 1.0)
@@ -1360,6 +1436,10 @@ impl Station {
             latch_angle_deg: self.latch_error().map(|e| e.1.to_degrees()),
             awake_bodies: self.world.stats.awake,
             step_ms: self.world.stats.total.as_secs_f64() * 1_000.0,
+            impact_n: self.impact(),
+            g_load: self.imu.reading.specific_force.length() / G0,
+            spin_deg_s: self.astronaut().omega.length().to_degrees(),
+            proximity_m: self.proximity(),
             latch_distance_m: latch_distance,
             refilling: self.refilling,
             keeping_active: self.keeping_glow > 0.0,

@@ -24,7 +24,9 @@ pub struct SolverSettings {
     pub erp: f64,
     /// Penetration tolerated without correction, m.
     pub slop: f64,
-    /// Closing speed below which contacts do not bounce, m/s.
+    /// Closing speed below which contacts do not bounce, m/s. Well above
+    /// what one step of gravity adds (about 0.1 m/s at 100 Hz), so resting
+    /// contacts do not chatter.
     pub bounce_threshold: f64,
     /// Contacts start this far before touching, m, plus the distance the
     /// pair can close in one step.
@@ -37,7 +39,7 @@ impl Default for SolverSettings {
             iterations: 20,
             erp: 0.2,
             slop: 0.005,
-            bounce_threshold: 0.1,
+            bounce_threshold: 0.5,
             margin: 0.01,
         }
     }
@@ -336,16 +338,25 @@ impl World {
                 let rb = c.point - self.bodies()[b].pos;
                 let (ma, mb) = (&motions[a], &motions[b]);
                 let closing = (mb.point_velocity(rb) - ma.point_velocity(ra)).dot(c.normal);
+                // Bounce when the surfaces meet within this step, including
+                // a speculative contact about to close; otherwise a fast body
+                // stopped at the surface one step early would lose it.
+                let meets = c.separation <= 0.0 || -closing * dt >= c.separation;
+                let bounce = if meets && closing < -settings.bounce_threshold {
+                    -restitution * closing
+                } else {
+                    0.0
+                };
                 let target = if c.separation > 0.0 {
-                    // Speculative: allow closing until the surfaces meet.
-                    -c.separation / dt
+                    // Speculative: allow closing until the surfaces meet, or
+                    // bounce if they meet within the step.
+                    if bounce > 0.0 {
+                        bounce
+                    } else {
+                        -c.separation / dt
+                    }
                 } else {
                     let push = settings.erp * (-c.separation - settings.slop).max(0.0) / dt;
-                    let bounce = if closing < -settings.bounce_threshold {
-                        -restitution * closing
-                    } else {
-                        0.0
-                    };
                     push.max(bounce)
                 };
                 let tangents = basis(c.normal);

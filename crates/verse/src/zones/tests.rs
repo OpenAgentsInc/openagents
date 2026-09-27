@@ -215,6 +215,27 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
     assert!(ready.controls.iter().any(|c| c.label == "Latch"));
     runtime.zone_intent(Intent::Release).unwrap();
     assert_eq!(runtime.zone_snapshot(1.0).station.unwrap().installed, 1);
+    // The forces overlay toggles and draws joint lines for the latch weld.
+    let before = runtime
+        .zone_state
+        .lagrange
+        .as_ref()
+        .unwrap()
+        .dynamic()
+        .lines
+        .len();
+    runtime.zone_intent(Intent::Forces).unwrap();
+    let lagrange = runtime.zone_state.lagrange.as_ref().unwrap();
+    assert!(lagrange.overlay);
+    assert!(lagrange.dynamic().lines.len() > before);
+    assert!(
+        runtime
+            .zone_snapshot(1.0)
+            .controls
+            .iter()
+            .any(|c| c.label == "Hide forces")
+    );
+    assert!(runtime.zone_snapshot(1.0).caption.contains(" g · spin "));
     // Map taps become autopilot targets rather than ground routes.
     runtime.navigate_to([0.0, 10.0]).unwrap();
     assert!(!runtime.navigation().is_active());
