@@ -59,6 +59,27 @@ openagents computer steer HOST TASK --revision 2 Prefer the smaller change
 openagents computer cancel HOST TASK --revision 3
 ```
 
+### Shell commands on a linked host (NIP-TERM)
+
+`exec` opens a shell on the host over its current route (loopback, tailnet,
+direct, or relay; the Computers supervisor picks it), replaces the shell
+with the command, and returns the command's output and exit code. The
+command runs in the host's workspace with the host's environment, so a
+`claude` or `codex` session the host is logged into is available to it.
+`shell` is the same terminal, interactive. Both need the host to have
+granted this device the `terminal` right.
+
+```sh
+openagents computer exec HOST -- git status --short
+openagents computer exec HOST --timeout 1800 --json -- codex exec "add a test for the parser"
+openagents computer shell HOST              # Ctrl-] detaches; the shell keeps running
+```
+
+`exec` exits with the command's code, `124` when `--timeout SECONDS`
+(default 600) passed first, and `1` when the host refused. With `--json`
+it prints `{"output", "exit", "timed_out", "shell", "route"}` instead of
+streaming.
+
 `openagents task` is the durable local queue (`coder task`), and
 `openagents pair` shows the QR code that reads this computer's chats on a
 phone.

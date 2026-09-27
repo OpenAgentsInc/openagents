@@ -19,6 +19,7 @@ mod key;
 mod out;
 mod relay;
 mod sov;
+mod terminal;
 mod world;
 mod zone;
 

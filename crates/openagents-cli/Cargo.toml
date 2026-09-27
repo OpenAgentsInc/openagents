@@ -19,6 +19,7 @@ coder-host = { path = "../coder-host" }
 coder-link = { path = "../coder-link" }
 coder-reach = { path = "../coder-reach" }
 glam = "0.30.10"
+libc = "0.2"
 nostr = { path = "../nostr" }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
