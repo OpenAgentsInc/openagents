@@ -88,10 +88,21 @@ as declared.
   call, recorded as `list_price`. The $2.00 cap applies to that figure plus
   Jev and embeddings, as before. Because each step is a new process, no
   prompt cache carries between steps; cache-creation tokens count as input
-  tokens. Opus costs more per step at list price than Luna, so the cap may
-  end runs earlier than in Round 4; the cap stands, and a run it ends is
-  reported as ended by cost.
-- **Runs, arms, tasks, caps, knowledge, records, reporting:** as declared.
+  tokens.
+- **Spend cap:** `--max-usd 6.00` per run in place of $2.00, so the 16 runs
+  stay under about $100 of list-price figures a day, the ceiling the
+  operator set for the Claude subscription. Opus costs more per step at
+  list price than Luna, and $2.00 would have ended most runs early. The
+  step and time caps stand at 200 steps and 90 minutes. A run the cap ends
+  is reported as ended by cost.
+- **Pilot before the 16:** the operator asked for a small sanity check
+  first. The second attempt starts with one pilot pair, `sound-change-cascade`
+  base and full, one run each, and the remaining 14 runs start only after
+  the pilot shows the Claude route works end to end (steps produce
+  `next_action` output, cost and model are recorded, the run ends for a
+  task reason and not a provider fault). The pilot runs count toward the
+  declared two runs per arm for that task; they are not extra runs.
+- **Runs, arms, tasks, knowledge, records, reporting:** as declared.
   The records go under `~/gates-reasoning-runs/runs/` on coderos-4080 next
   to the kept first-attempt faults.
 - **Reading the result:** a step that fails because Claude Code refuses or
