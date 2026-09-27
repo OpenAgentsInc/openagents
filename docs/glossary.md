@@ -289,6 +289,7 @@ entries have demonstrated a network-wide improvement.
 | Knowledge provenance / source task | Implemented | The runs and independent references from which an entry or pattern was written. A task that taught an entry cannot count as evidence that the entry generalizes. See [knowledge evidence](coder/guides/knowledge-base.md#measure-entries) and [pattern provenance](coder/design/pattern-components.md). |
 | Knowledge trust | Implemented | The reader's `own`, `listed`, or `all` author policy for synced entries. Signatures identify publishers; they do not certify correctness, and unlisted authors' entries remain candidates at most. See [author trust](coder/guides/knowledge-base.md#choose-whose-entries-a-run-sees). |
 | Knowledge lint | Implemented | Validation for required references, completed fields, size limits, benchmark-task names, and long overlap with available test corpora. Its corpus coverage is bounded; passing lint does not prove an entry is correct or free of all task fitting. See [writing entries](coder/guides/knowledge-base.md#write-an-entry-by-hand). |
+| Embedding provider | Implemented | Where knowledge-search vectors come from: `openai` or `openrouter` (both `text-embedding-3-small`, one cache key), or the opt-in `vertex` (`text-embedding-005`, cached apart, `--kb-embeddings vertex`). A query is ranked only against vectors from the same model, and a study round must declare the provider before use. See the [verification record](coder/verification/2026-09-27-vertex-embeddings.md). |
 
 ## Checks, components, and iteration
 
