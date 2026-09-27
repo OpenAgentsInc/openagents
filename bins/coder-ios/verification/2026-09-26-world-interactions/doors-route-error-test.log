@@ -1,0 +1,8 @@
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `test` profile [unoptimized] target(s) in 1.56s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-e7ac66d55632a722)
+
+running 1 test
+test runtime::tests::blocked_door_route_is_visible_and_restoration_never_restarts_it ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 158 filtered out; finished in 0.00s

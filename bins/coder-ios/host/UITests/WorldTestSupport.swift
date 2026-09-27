@@ -12,6 +12,40 @@ struct VerseTestObservation: Decodable {
     let computer_target: [Double]
     let map: VerseTestMap
     let companion: VerseTestCompanion
+    let doors: VerseTestDoors
+    let door_preferences_revision: UInt64
+    let door_storage_writes: UInt64
+}
+
+struct VerseTestDoors: Decodable {
+    let held: String
+    let doors: [VerseTestDoor]
+    let hud: VerseTestDoorHud
+    let error: String?
+}
+struct VerseTestDoor: Decodable {
+    let id: String
+    let near: Bool
+    let visible: Bool
+    let screen_x: Double
+    let screen_y: Double
+    let state: String
+    let destination: String?
+    let remembered: String?
+}
+struct VerseTestDoorHud: Decodable {
+    let visible: Bool
+    let door: String?
+    let caption: String
+    let frame: [Double]
+    let buttons: [VerseTestDoorButton]
+    let captured_pointers: [UInt64]
+}
+struct VerseTestDoorButton: Decodable {
+    let id: String
+    let frame: [Double]
+    let enabled: Bool
+    let selected: Bool
 }
 
 struct VerseTestCompanion: Decodable {

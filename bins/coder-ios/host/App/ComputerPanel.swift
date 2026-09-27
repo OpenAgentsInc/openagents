@@ -80,14 +80,17 @@ struct ComputerPanel: View {
             relay = worldConnection?.relay ?? "wss://relay.openagents.com"
             reader.setForeground(active)
         }
-        .onDisappear { scanning = false; computersScanning = false; reader.setForeground(false) }
+        .onDisappear { scanning = false; computersScanning = false; computersValue = ""; reader.setForeground(false) }
         .onChange(of: worldConnection?.relay) { _, value in
             relay = value ?? "wss://relay.openagents.com"
         }
         .onChange(of: reader.packet?.computers_exit) { _, exit in
             if exit == true { computers = false; computersScanning = false }
         }
-        .onChange(of: active) { _, current in reader.setForeground(current) }
+        .onChange(of: active) { _, current in
+            if !current { computersValue = "" }
+            reader.setForeground(current)
+        }
         .task(id: active && paired && !pairing && !scanning && !computers && !settings) {
             guard active && paired && !pairing && !scanning && !computers && !settings else { return }
             while !Task.isCancelled {
@@ -212,25 +215,42 @@ struct ComputerPanel: View {
                         .accessibilityIdentifier("computers-scan")
                 }
             }
-            TextField(input.label, text: $computersValue, axis: .vertical)
-                .lineLimit(1...4)
-                .autocorrectionDisabled().textInputAutocapitalization(.never)
-                .accessibilityLabel(input.label).accessibilityIdentifier("computers-input")
-            Button("Submit") { submitComputers(input, computersValue) }
-                .disabled(reader.busy || computersValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityIdentifier("computers-submit")
+            Group {
+                if input.secret {
+                    SecureField(input.label, text: $computersValue)
+                        .textContentType(nil)
+                        .privacySensitive()
+                } else {
+                    TextField(input.label, text: $computersValue, axis: .vertical)
+                        .lineLimit(1...4)
+                }
+            }
+            .autocorrectionDisabled().textInputAutocapitalization(.never)
+            .accessibilityLabel(input.label).accessibilityIdentifier("computers-input")
+            HStack {
+                Button("Submit") { submitComputers(input, computersValue) }
+                    .disabled(reader.busy || computersValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("computers-submit")
+                Button("Cancel") {
+                    computersValue = ""; computersScanning = false; inputError = nil
+                    reader.cancelComputers(token: input.token)
+                }
+                .disabled(reader.busy)
+                .accessibilityIdentifier("computers-cancel")
+            }
         }
         .onAppear { computersValue = ""; computersScanning = input.scan && active }
+        .onDisappear { computersValue = ""; computersScanning = false }
     }
 
     private func submitComputers(_ input: ComputersInput, _ value: String) {
+        computersValue = ""; computersScanning = false
         guard value.utf8.count <= input.max_bytes else {
             inputError = "That's too long. Copy it again."
             return
         }
         inputError = nil
         reader.submitComputers(token: input.token, value: value)
-        computersValue = ""
     }
 
     private var pairingControls: some View {

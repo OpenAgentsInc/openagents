@@ -20,6 +20,8 @@ use crate::brain::{self, Brain};
 use crate::camera::FollowCamera;
 use crate::chat::{self, Channel};
 use crate::controller::{InputState, PlayerController};
+use crate::doors::hud::DoorHud;
+use crate::doors::{DemoItem, DoorId, DoorIntent, Doors};
 use crate::feed::Feed;
 use crate::hud;
 use crate::minimap::{MapAction, MapHud};
@@ -442,6 +444,13 @@ struct App {
     map_frame: Option<crate::minimap::Snapshot>,
     map_error: Option<String>,
     companion_press: Option<CompanionPress>,
+    door_press: Option<(DoorId, CompanionPress)>,
+    door_hud: DoorHud,
+    door_frame: Option<crate::doors::hud::Snapshot>,
+    door_store: (std::path::PathBuf, String),
+    door_error: Option<String>,
+    door_storage_error: Option<String>,
+    door_save_revision: u64,
     presented_entities: crate::mesh::Mesh,
     scale: f32,
     chat: hud::Input,
@@ -592,6 +601,14 @@ impl App {
             }
             None => None,
         };
+        let door_directory = crate::identity::home();
+        let mut doors = Doors::default();
+        let door_error = match crate::doors::store::load(&door_directory, &options.profile) {
+            Ok(Some(document)) => doors.restore(&document).err(),
+            Ok(None) => None,
+            Err(error) => Some(error),
+        };
+        let door_save_revision = doors.revision();
         Ok(Self {
             window: None,
             renderer: None,
@@ -602,6 +619,7 @@ impl App {
                 gait: Gait::default(),
                 agent,
                 navigation: Default::default(),
+                doors,
             },
             keys: Keys::default(),
             mount: None,
@@ -615,6 +633,13 @@ impl App {
             map_frame: None,
             map_error: None,
             companion_press: None,
+            door_press: None,
+            door_hud: DoorHud::default(),
+            door_frame: None,
+            door_store: (door_directory, options.profile.clone()),
+            door_error: None,
+            door_storage_error: door_error,
+            door_save_revision,
             presented_entities: crate::mesh::Mesh::default(),
             scale: 1.0,
             chat: hud::Input::default(),
@@ -1193,6 +1218,10 @@ impl App {
 
     fn stop_map(&mut self) {
         self.companion_press = None;
+        self.door_press = None;
+        self.door_hud.clear_contacts();
+        self.door_frame = None;
+        self.runtime.doors.cancel_transient();
         self.runtime.cancel_navigation();
         self.map.expanded = false;
         self.map.clear_contacts();
@@ -1201,6 +1230,9 @@ impl App {
 
     fn map_action(&mut self, action: MapAction) {
         self.companion_press = None;
+        self.door_press = None;
+        self.door_hud.clear_contacts();
+        self.door_frame = None;
         match action {
             MapAction::Toggle => {
                 self.map.expanded = !self.map.expanded;
@@ -1275,6 +1307,24 @@ impl App {
                 && (self.map.expanded || self.runtime.navigation().is_active())
             {
                 self.stop_map();
+                return;
+            }
+        }
+        if pressed
+            && self.door_frame.as_ref().is_some_and(|frame| frame.visible)
+            && let Some(door) = self.door_context()
+        {
+            let action = match code {
+                KeyCode::Digit1 => Some(DoorIntent::Hold(DemoItem::Prism)),
+                KeyCode::Digit2 => Some(DoorIntent::Hold(DemoItem::Ring)),
+                KeyCode::Digit3 => Some(DoorIntent::Hold(DemoItem::Bolt)),
+                KeyCode::Digit4 => Some(DoorIntent::Hold(DemoItem::Empty)),
+                KeyCode::Digit5 => Some(DoorIntent::Reset(door)),
+                KeyCode::KeyF => Some(DoorIntent::Tap(door)),
+                _ => None,
+            };
+            if let Some(action) = action {
+                self.door_action(action);
                 return;
             }
         }
@@ -1353,6 +1403,7 @@ impl App {
                 .is_some_and(|mount| mount.active() && mount.viewport().drawable())
             || self.layout.owns(self.cursor[0], self.cursor[1])
             || self.cursor_on_map()
+            || self.cursor_on_door_hud()
         {
             return false;
         }
@@ -1366,6 +1417,110 @@ impl App {
             self.cursor[1] / size[1],
             &self.presented_entities,
         )
+    }
+
+    fn door_context(&self) -> Option<DoorId> {
+        if !self.map_visible()
+            || self.map.expanded
+            || !self
+                .mount
+                .as_ref()
+                .is_some_and(|m| m.active() && m.viewport().drawable())
+        {
+            return None;
+        }
+        let aspect = self.renderer.as_ref()?.aspect();
+        DoorId::ALL
+            .into_iter()
+            .filter(|&id| {
+                let door = self.runtime.door(id, aspect);
+                door.near
+                    && door.visible
+                    && self.runtime.door_hit_with_entities(
+                        id,
+                        aspect,
+                        door.screen_x,
+                        door.screen_y,
+                        &self.presented_entities,
+                    )
+            })
+            .min_by(|&a, &b| {
+                self.runtime
+                    .door(a, aspect)
+                    .distance
+                    .total_cmp(&self.runtime.door(b, aspect).distance)
+            })
+    }
+
+    fn door_at_cursor(&self) -> Option<DoorId> {
+        if !self.map_visible()
+            || self.map.expanded
+            || !self
+                .mount
+                .as_ref()
+                .is_some_and(|mount| mount.active() && mount.viewport().drawable())
+            || self.cursor_on_map()
+            || self.cursor_on_door_hud()
+            || self.layout.owns(self.cursor[0], self.cursor[1])
+        {
+            return None;
+        }
+        let renderer = self.renderer.as_ref()?;
+        let size = renderer.size();
+        point_door(
+            &self.runtime,
+            renderer.aspect(),
+            [self.cursor[0] / size[0], self.cursor[1] / size[1]],
+            &self.presented_entities,
+        )
+    }
+
+    fn cursor_on_door_hud(&self) -> bool {
+        self.door_frame.as_ref().is_some_and(|frame| {
+            let [x, y] = self.cursor.map(|v| v / self.scale);
+            let [left, top, width, height] = frame.frame;
+            frame.visible && x >= left && x <= left + width && y >= top && y <= top + height
+        })
+    }
+
+    fn door_action(&mut self, action: DoorIntent) {
+        let Some(context) = self.door_context() else {
+            return;
+        };
+        if matches!(action, DoorIntent::Tap(id) | DoorIntent::Reset(id) if id != context) {
+            return;
+        }
+        self.apply_admitted_door_action(action);
+    }
+
+    /// Pointer taps admit their exact visible point; HUD and keyboard actions admit the anchor.
+    fn apply_admitted_door_action(&mut self, action: DoorIntent) {
+        let result = match action {
+            DoorIntent::Hold(item) => {
+                self.runtime.hold_door_item(item);
+                Ok(())
+            }
+            DoorIntent::Tap(id) => self.runtime.tap_door(id).map(|_| ()),
+            DoorIntent::Reset(id) => {
+                self.runtime.reset_door(id);
+                Ok(())
+            }
+        };
+        self.door_error = result.err();
+        let revision = self.runtime.doors.revision();
+        if revision != self.door_save_revision {
+            match crate::doors::store::save(
+                &self.door_store.0,
+                &self.door_store.1,
+                &self.runtime.doors.document(),
+            ) {
+                Ok(()) => {
+                    self.door_save_revision = revision;
+                    self.door_storage_error = None;
+                }
+                Err(error) => self.door_storage_error = Some(error),
+            }
+        }
     }
 
     fn button(&mut self, button: MouseButton, pressed: bool) {
@@ -1392,7 +1547,56 @@ impl App {
         if self.map.captured(1) {
             return;
         }
+        if button == MouseButton::Left {
+            let at = self.cursor.map(|v| v / self.scale);
+            if !pressed && self.door_hud.captured(1) {
+                let cancelled = self.door_context().is_none();
+                if let Some(action) = self.door_hud.up(1, at, cancelled) {
+                    self.door_action(action);
+                }
+                return;
+            }
+            if pressed
+                && !self.keys.left_button
+                && !self.keys.right_button
+                && self.door_context().is_some()
+                && self
+                    .door_frame
+                    .as_ref()
+                    .is_some_and(|frame| self.door_hud.down(1, at, frame))
+            {
+                self.companion_press = None;
+                self.door_press = None;
+                return;
+            }
+        }
+        if self.door_hud.captured(1) {
+            return;
+        }
         if self.gym_open {
+            return;
+        }
+        if button == MouseButton::Left
+            && !pressed
+            && let Some((id, tap)) = self.door_press.take()
+        {
+            if tap.released(self.cursor.map(|v| v / self.scale), Instant::now())
+                && self.door_at_cursor() == Some(id)
+            {
+                self.apply_admitted_door_action(DoorIntent::Tap(id));
+            }
+            return;
+        }
+        if button == MouseButton::Left
+            && pressed
+            && !self.keys.left_button
+            && !self.keys.right_button
+            && let Some(id) = self.door_at_cursor()
+        {
+            self.door_press = Some((
+                id,
+                CompanionPress::new(self.cursor.map(|v| v / self.scale), Instant::now()),
+            ));
             return;
         }
         if button == MouseButton::Left
@@ -1422,7 +1626,9 @@ impl App {
             }
             MouseButton::Left => self.keys.left_button = pressed,
             MouseButton::Right => {
-                if pressed && self.companion_press.take().is_some() {
+                if pressed
+                    && (self.companion_press.take().is_some() || self.door_press.take().is_some())
+                {
                     self.keys.left_button = true;
                 }
                 self.keys.right_button = pressed;
@@ -1449,15 +1655,20 @@ impl App {
     }
 
     fn mouse(&mut self, dx: f32, dy: f32) {
-        if self.gym_open || self.map.captured(1) {
+        if self.gym_open || self.map.captured(1) || self.door_hud.captured(1) {
             return;
         }
-        if let Some(tap) = &mut self.companion_press {
+        if let Some(tap) = self
+            .companion_press
+            .as_mut()
+            .or_else(|| self.door_press.as_mut().map(|(_, tap)| tap))
+        {
             tap.motion(dx / self.scale, dy / self.scale);
             if tap.valid {
                 return;
             }
             self.companion_press = None;
+            self.door_press = None;
             self.keys.left_button = true;
             self.capture(true);
         }
@@ -1668,6 +1879,28 @@ impl App {
                             .vertices,
                     );
                 }
+                let bottom_clearance = layout
+                    .panels
+                    .iter()
+                    .map(|panel| (size[1] - panel.y) / self.scale)
+                    .fold(86.0_f32, f32::max)
+                    .min(2048.0);
+                let _ = self.door_hud.set_bottom_clearance(bottom_clearance);
+                self.door_frame = Some(
+                    self.door_hud.snapshot(
+                        size.map(|v| v / self.scale),
+                        self.door_context(),
+                        &self.runtime.doors,
+                        self.map_visible() && !self.map.expanded,
+                        self.door_error
+                            .as_deref()
+                            .or(self.door_storage_error.as_deref()),
+                    ),
+                );
+                if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.door_frame) {
+                    ui.vertices
+                        .extend(self.door_hud.draw(atlas, frame, self.scale).vertices);
+                }
                 self.layout = layout;
                 ui
             }
@@ -1862,6 +2095,10 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => self.quit(event_loop),
             WindowEvent::Resized(size) => {
                 self.companion_press = None;
+                self.door_press = None;
+                self.door_hud.clear_contacts();
+                self.door_frame = None;
+                self.runtime.doors.cancel_transient();
                 self.map.clear_contacts();
                 self.map_frame = None;
                 if size.width == 0 || size.height == 0 {
@@ -1896,6 +2133,10 @@ impl ApplicationHandler for App {
                 if let Some(tap) = &mut self.companion_press {
                     tap.moved(self.cursor.map(|value| value / self.scale));
                 }
+                if let Some((_, tap)) = &mut self.door_press {
+                    tap.moved(self.cursor.map(|v| v / self.scale));
+                }
+                self.door_hud.moved(1, self.cursor.map(|v| v / self.scale));
                 self.map
                     .moved(1, self.cursor.map(|value| value / self.scale));
             }
@@ -1904,7 +2145,12 @@ impl ApplicationHandler for App {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 self.companion_press = None;
-                if self.cursor_on_map() || self.map.captured(1) {
+                self.door_press = None;
+                if self.cursor_on_map()
+                    || self.map.captured(1)
+                    || self.cursor_on_door_hud()
+                    || self.door_hud.captured(1)
+                {
                     return;
                 }
                 let lines = match delta {
@@ -1936,6 +2182,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.companion_press = None;
+                self.door_press = None;
+                self.door_hud.clear_contacts();
+                self.door_frame = None;
                 self.map.clear_contacts();
                 self.map_frame = None;
                 self.scale = scale_factor as f32;
@@ -1949,7 +2198,10 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => self.frame(),
-            WindowEvent::CursorLeft { .. } => self.companion_press = None,
+            WindowEvent::CursorLeft { .. } => {
+                self.companion_press = None;
+                self.door_press = None;
+            }
             _ => {}
         }
     }
@@ -1974,6 +2226,24 @@ impl ApplicationHandler for App {
             window.request_redraw();
         }
     }
+}
+
+/// Pick the visible point independently from the anchor used by contextual controls.
+fn point_door(
+    runtime: &WorldRuntime,
+    aspect: f32,
+    point: [f32; 2],
+    entities: &crate::mesh::Mesh,
+) -> Option<DoorId> {
+    DoorId::ALL
+        .into_iter()
+        .filter(|&id| runtime.door_hit_with_entities(id, aspect, point[0], point[1], entities))
+        .min_by(|&a, &b| {
+            runtime
+                .door(a, aspect)
+                .distance
+                .total_cmp(&runtime.door(b, aspect).distance)
+        })
 }
 
 /// Keep the desktop row order and its keyboard selection in agreement.
@@ -2014,6 +2284,40 @@ fn read_gym_connection(path: &std::path::Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desktop_door_pick_accepts_visible_edges_around_an_occluded_anchor() {
+        let mut runtime = WorldRuntime::new();
+        let aspect = 1.6;
+        for id in DoorId::ALL {
+            runtime.player.pos = id.position() + Vec3::new(0.0, 0.0, -3.0);
+            let view = runtime.view(aspect);
+            let anchor = id.plane() + Vec3::Y * 0.8;
+            let edge = anchor + Vec3::X;
+            let project = |point: Vec3| {
+                let clip = view.view_proj * point.extend(1.0);
+                [0.5 + clip.x / clip.w * 0.5, 0.5 - clip.y / clip.w * 0.5]
+            };
+            let mut entities = crate::mesh::Mesh::default();
+            entities.cube(
+                glam::Mat4::from_translation((view.eye + anchor) * 0.5)
+                    * glam::Mat4::from_scale(Vec3::splat(0.12)),
+                coder_ui::theme::Intensity::Half,
+            );
+            assert_eq!(
+                point_door(&runtime, aspect, project(anchor), &entities),
+                None
+            );
+            assert_eq!(
+                point_door(&runtime, aspect, project(edge), &entities),
+                Some(id)
+            );
+            assert_eq!(
+                point_door(&runtime, aspect, [f32::NAN, 0.5], &entities),
+                None
+            );
+        }
+    }
 
     #[test]
     fn companion_click_rejects_long_holds_and_returning_drags() {

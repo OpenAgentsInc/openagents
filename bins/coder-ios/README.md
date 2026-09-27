@@ -23,16 +23,33 @@ Physical-device acceptance remains separate. See the
 [startup diagnosis](../../docs/coder/verification/2026-09-26-ios-static-link.md).
 [Connect your phone](../../docs/coder/guides/mobile-readonly.md).
 
+The next build's source adds the [expandable map, companion reactions, and
+Spark/Halo gates](../../docs/verse/world-interactions.md). Select one of eight
+map landmarks or a clear position to walk there; manual movement cancels the
+route. Tap the companion for a brief wiggle and hop. Near a gate, choose a
+demo item, tap to inspect its destination, then tap again to walk there. Item
+and gate memory survive relaunch; they provide no service or payment authority.
+
+The same update adds `./pair` / `coder pair`, automatic chat loading after
+pairing, concise chat panels, a remembered world relay, and composed left-side
+movement with right-side look or double-tap jump. Camera mode and **Recenter**
+use labeled icons. [Connection evidence](../../docs/coder/verification/2026-09-26-mobile-connections.md)
+and [world-interaction evidence](verification/2026-09-26-world-interactions/README.md)
+separate Rust checks, native acceptance, and distribution. The final combined
+native run is in progress; these changes are not yet a confirmed TestFlight update.
+
 Walk east into the [Gym](../../docs/verse/gym.md) for Microcoder and
 Terminal-Bench boards. Its observations and run recipes require a separate
 host grant. Leaving or backgrounding pauses Gym updates.
 
-The motion-camera changes first shipped in build `44` correct motion look for left and right body turns, enables upward
-look, and interpolates camera movement. Native updates request 60 Hz; fresh
+The motion-camera changes introduced in build `44` and included in working
+build `45` correct left and right body turns, enable upward look, and interpolate
+camera movement. Native updates request 60 Hz; fresh
 samples remain valid after a slow frame. See the
 [motion-camera verification](../../docs/coder/verification/2026-09-26-motion-camera.md).
 
-The world-computer changes first shipped in build `43` replace the native computer button with the shared world-space
+The world-computer changes introduced in build `43` and included in working
+build `45` replace the native computer button with the shared world-space
 monitor interaction. See [verification](../../docs/coder/verification/2026-09-26-world-computer.md).
 
 Build `42` fills the display behind the system clock and home indicator.
@@ -119,7 +136,8 @@ and archived executable digest beside the archive. A nonempty workspace status
 must be reviewed rather than described as an exact committed-source build.
 Set `CODER_IOS_BUILD_NUMBER` to a new
 positive build number after checking the existing App Store Connect builds;
-the checked-in build is `45`. The `export` command produces a local
+the checked-in build is `46`, while the confirmed TestFlight build remains `45`.
+The `export` command produces a local
 distribution package using the existing export settings with destination
 changed to `export`. Upload is a separate operator action using the retained
 upload configuration and protected App Store Connect credentials. Never put
@@ -142,9 +160,9 @@ cached view before it requests a refresh.
 
 ## Connect and read
 
-1. Walk toward the computer in Verse and tap **Use computer**. On your
-   physical computer, run `./pair` in an updated OpenAgents checkout (or `coder pair` when installed)
-   from the OpenAgents checkout. Keep the command running.
+1. Walk toward the computer in Verse and tap its monitor. On your physical
+   computer, run `./pair` in an updated OpenAgents checkout, or `coder pair`
+   with current Coder installed. Keep the command running.
 2. Tap **Scan QR code** and scan the computer's invitation. **Paste code**
    accepts the same `coder-pair:` string. Camera permission is requested only
    after choosing to scan; declining it leaves the paste path available.

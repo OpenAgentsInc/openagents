@@ -9,6 +9,7 @@ use crate::agent::Agent;
 use crate::avatar::{self, Gait};
 use crate::camera::FollowCamera;
 use crate::controller::{InputState, PlayerController, wrap};
+use crate::doors::{self, DemoItem, DoorId, Doors, TapResult};
 use crate::mesh::Mesh;
 use crate::nav::{self, NavError, Navigation, NavigationStatus};
 use crate::render::View;
@@ -18,6 +19,17 @@ use crate::world::{self, World};
 pub const MAX_FRAME_SECONDS: f32 = rust_native::surface::MAX_FRAME_DELTA;
 /// Maximum distance from the player's shoulder to a tappable companion.
 pub const COMPANION_RANGE: f32 = 4.0;
+
+/// A local demo door's anchor. Projection visibility does not imply admission.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+pub struct DoorProjection {
+    pub id: DoorId,
+    pub near: bool,
+    pub visible: bool,
+    pub screen_x: f32,
+    pub screen_y: f32,
+    pub distance: f32,
+}
 
 /// The local companion's projected anchor and bounded reaction state.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -88,6 +100,7 @@ pub struct WorldRuntime {
     pub camera: FollowCamera,
     pub gait: Gait,
     pub agent: Agent,
+    pub doors: Doors,
     pub(crate) navigation: Navigation,
 }
 
@@ -109,6 +122,7 @@ impl WorldRuntime {
             camera: FollowCamera::default(),
             gait: Gait::default(),
             agent,
+            doors: Doors::default(),
             navigation: Navigation::default(),
         }
     }
@@ -116,6 +130,7 @@ impl WorldRuntime {
     /// Start ordinary walking to an exact clear ground position.
     /// A refused destination stops any earlier route.
     pub fn navigate_to(&mut self, destination: [f32; 2]) -> Result<(), NavError> {
+        self.doors.route_owner = None;
         match nav::plan(
             [self.player.pos.x, self.player.pos.z],
             destination,
@@ -136,6 +151,7 @@ impl WorldRuntime {
 
     /// Stop automatic walking without moving the player or changing the view.
     pub fn cancel_navigation(&mut self) {
+        self.doors.route_owner = None;
         if self.navigation.is_active() {
             self.navigation.stop(NavigationStatus::Cancelled);
         }
@@ -198,6 +214,7 @@ impl WorldRuntime {
         if dt == 0.0 {
             return 0.0;
         }
+        self.doors.tick(dt);
         if input.forward
             || input.backward
             || input.left
@@ -408,6 +425,12 @@ impl WorldRuntime {
                 direction,
                 distance,
             )
+            && !mesh_occludes(
+                &doors::held_mesh(self.doors.held(), &self.player),
+                origin,
+                direction,
+                distance,
+            )
             && !mesh_occludes(&world::computer_display(None), origin, direction, distance)
             && !mesh_occludes(entities, origin, direction, distance)
     }
@@ -416,6 +439,162 @@ impl WorldRuntime {
     /// The host owns gesture, visibility, replay, and surface-lifecycle admission.
     pub fn pet_companion(&mut self) -> bool {
         self.companion(1.0).near && self.agent.pet()
+    }
+
+    #[must_use]
+    pub fn door(&self, id: DoorId, aspect: f32) -> DoorProjection {
+        let offset = self.player.pos - id.position();
+        let distance = offset.x.hypot(offset.z);
+        // The upper opening stays above the avatar when approaching head-on.
+        let anchor = id.plane() + Vec3::Y * 0.8;
+        let clip = self.view(aspect).view_proj * anchor.extend(1.0);
+        let mut result = DoorProjection {
+            id,
+            near: distance.is_finite()
+                && distance <= doors::RANGE
+                && (0.0..=3.0).contains(&self.player.pos.y),
+            visible: false,
+            screen_x: 0.5,
+            screen_y: 0.5,
+            distance: if distance.is_finite() {
+                distance
+            } else {
+                f32::MAX
+            },
+        };
+        if aspect.is_finite() && aspect > 0.0 && clip.is_finite() && clip.w > 0.0 {
+            let ndc = clip.truncate() / clip.w;
+            result.screen_x = (ndc.x * 0.5 + 0.5).clamp(0.0, 1.0);
+            result.screen_y = (0.5 - ndc.y * 0.5).clamp(0.0, 1.0);
+            result.visible = (-1.0..=1.0).contains(&ndc.x)
+                && (-1.0..=1.0).contains(&ndc.y)
+                && (0.0..=1.0).contains(&ndc.z);
+        }
+        result
+    }
+
+    #[must_use]
+    pub fn nearest_door(&self, aspect: f32) -> Option<DoorId> {
+        DoorId::ALL
+            .into_iter()
+            .map(|id| self.door(id, aspect))
+            .filter(|door| {
+                door.near
+                    && door.visible
+                    && self.door_hit(door.id, aspect, door.screen_x, door.screen_y)
+            })
+            .min_by(|a, b| a.distance.total_cmp(&b.distance))
+            .map(|door| door.id)
+    }
+
+    #[must_use]
+    pub fn door_hit(&self, id: DoorId, aspect: f32, x: f32, y: f32) -> bool {
+        self.door_hit_with_entities(id, aspect, x, y, &Mesh::default())
+    }
+
+    /// Admit the bounded inner plane from the front, through no foreground faces.
+    #[must_use]
+    pub fn door_hit_with_entities(
+        &self,
+        id: DoorId,
+        aspect: f32,
+        x: f32,
+        y: f32,
+        entities: &Mesh,
+    ) -> bool {
+        if !self.door(id, aspect).near {
+            return false;
+        }
+        let view = self.view(aspect);
+        let plane = id.plane();
+        if view.eye.z >= plane.z {
+            return false;
+        }
+        let Some((eye, direction)) = viewport_ray(&view, aspect, x, y) else {
+            return false;
+        };
+        if direction.z <= f32::EPSILON {
+            return false;
+        }
+        let distance = (plane.z - eye.z) / direction.z;
+        let target = eye + direction * distance;
+        let offset = target - plane;
+        if !target.is_finite()
+            || offset.x.abs() > doors::PLANE_HALF[0]
+            || offset.y.abs() > doors::PLANE_HALF[1]
+        {
+            return false;
+        }
+        let clip = view.view_proj * target.extend(1.0);
+        if !clip.is_finite() || clip.w <= 0.0 || !(0.0..=1.0).contains(&(clip.z / clip.w)) {
+            return false;
+        }
+        !mesh_occludes(&self.world.mesh, eye, direction, distance)
+            && !mesh_occludes(
+                &avatar::mesh(&self.player, &self.gait),
+                eye,
+                direction,
+                distance,
+            )
+            && !mesh_occludes(&self.agent.mesh(), eye, direction, distance)
+            && !mesh_occludes(
+                &doors::held_mesh(self.doors.held(), &self.player),
+                eye,
+                direction,
+                distance,
+            )
+            && !mesh_occludes(&world::computer_display(None), eye, direction, distance)
+            && !mesh_occludes(entities, eye, direction, distance)
+    }
+
+    /// Hosts admit visibility and tap intent; this rechecks proximity and runs no service.
+    pub fn tap_door(&mut self, id: DoorId) -> Result<bool, String> {
+        if !self.door(id, 1.0).near {
+            return Err("Walk closer to the door".into());
+        }
+        match self.doors.tap(id) {
+            TapResult::Walk(destination) => match self.navigate_to(destination.point()) {
+                Ok(()) => {
+                    self.doors.route_owner = Some(id);
+                    Ok(true)
+                }
+                Err(error) => {
+                    self.doors.route_failed(id);
+                    Err(error.to_string())
+                }
+            },
+            TapResult::Reacted => Ok(true),
+            TapResult::Refused | TapResult::Ignored => Ok(false),
+        }
+    }
+
+    pub fn hold_door_item(&mut self, item: DemoItem) {
+        if self.doors.held() != item {
+            if self.doors.route_owner.is_some() {
+                self.cancel_navigation();
+            }
+            self.doors.hold(item);
+        }
+    }
+    pub fn reset_door(&mut self, id: DoorId) {
+        if self.doors.route_owner == Some(id) {
+            self.cancel_navigation();
+        }
+        self.doors.reset(id);
+    }
+    /// Cancel transient door input and its walk without clearing remembered choices.
+    pub fn cancel_door_interactions(&mut self) {
+        if self.doors.route_owner.is_some() {
+            self.cancel_navigation();
+        }
+        self.doors.cancel_transient();
+    }
+    pub fn restore_door_state(&mut self, document: &str) -> Result<(), String> {
+        let mut restored = self.doors.clone();
+        restored.restore(document)?;
+        self.cancel_door_interactions();
+        self.doors = restored;
+        Ok(())
     }
 
     /// Tests a normalized viewport point against the physical monitor.
@@ -516,6 +695,7 @@ impl WorldRuntime {
     fn mesh_with_computer_display(&self, interaction: Option<bool>) -> Mesh {
         let mut dynamic = avatar::mesh(&self.player, &self.gait);
         dynamic.extend(&self.agent.mesh());
+        dynamic.extend(&self.doors.mesh(&self.player));
         dynamic.extend(&world::computer_display(interaction));
         dynamic
     }
@@ -532,6 +712,7 @@ impl WorldRuntime {
             return Err("spawn is nonfinite or outside the world".into());
         }
         self.cancel_navigation();
+        self.doors.cancel_transient();
         self.player = PlayerController::new(position, wrap(yaw));
         self.agent = Agent::new(&self.player);
         self.gait = Gait::default();
@@ -602,6 +783,166 @@ mod tests {
     fn projected(runtime: &WorldRuntime, aspect: f32, at: Vec3) -> [f32; 2] {
         let clip = runtime.view(aspect).view_proj * at.extend(1.0);
         [clip.x / clip.w * 0.5 + 0.5, 0.5 - clip.y / clip.w * 0.5]
+    }
+
+    #[test]
+    fn door_anchors_are_hittable_on_approach_and_reject_front_obstructions() {
+        let mut runtime = WorldRuntime::new();
+        for id in DoorId::ALL {
+            runtime
+                .set_spawn(id.position() + Vec3::new(0.0, 0.0, -3.0), 0.0)
+                .unwrap();
+            for aspect in [0.46, 1.0, 2.2] {
+                let door = runtime.door(id, aspect);
+                assert!(door.near && door.visible);
+                assert!(
+                    runtime.door_hit(id, aspect, door.screen_x, door.screen_y),
+                    "{id:?} {aspect}"
+                );
+                assert_eq!(runtime.nearest_door(aspect), Some(id));
+                let (eye, direction) =
+                    viewport_ray(&runtime.view(aspect), aspect, door.screen_x, door.screen_y)
+                        .unwrap();
+                let distance = (id.plane().z - eye.z) / direction.z;
+                let at = eye + direction * (distance - 1.0);
+                let mut foreground = Mesh::default();
+                foreground.cube(
+                    glam::Mat4::from_translation(at),
+                    coder_ui::theme::Intensity::Full,
+                );
+                assert!(!runtime.door_hit_with_entities(
+                    id,
+                    aspect,
+                    door.screen_x,
+                    door.screen_y,
+                    &foreground
+                ));
+                let old = runtime.world.mesh.clone();
+                runtime.world.mesh.extend(&foreground);
+                assert!(!runtime.door_hit(id, aspect, door.screen_x, door.screen_y));
+                runtime.world.mesh = old;
+                let outside = projected(&runtime, aspect, id.plane() + Vec3::X * 1.4);
+                assert!(!runtime.door_hit(id, aspect, outside[0], outside[1]));
+            }
+            for (aspect, x, y) in [
+                (f32::NAN, 0.5, 0.5),
+                (0.0, 0.5, 0.5),
+                (1.0, f32::NAN, 0.5),
+                (1.0, 0.5, 1.1),
+            ] {
+                assert!(!runtime.door_hit(id, aspect, x, y));
+            }
+            runtime
+                .set_spawn(
+                    id.position() + Vec3::new(0.0, 0.0, 3.0),
+                    std::f32::consts::PI,
+                )
+                .unwrap();
+            let door = runtime.door(id, 1.0);
+            assert!(!runtime.door_hit(id, 1.0, door.screen_x, door.screen_y));
+            runtime.set_spawn(world::SPAWN, 0.0).unwrap();
+            assert!(runtime.tap_door(id).is_err());
+        }
+    }
+
+    #[test]
+    fn doors_preview_then_walk_and_reset_cancels_only_their_own_route() {
+        let mut runtime = WorldRuntime::new();
+        let id = DoorId::Spark;
+        runtime
+            .set_spawn(id.position() + Vec3::new(0.0, 0.0, -3.0), 0.0)
+            .unwrap();
+        let start = runtime.player.pos;
+        assert!(runtime.tap_door(id).unwrap());
+        assert!(!runtime.navigation().is_active());
+        for _ in 0..60 {
+            runtime.tick(&InputState::default(), 1.0 / 60.0);
+        }
+        assert_eq!(runtime.player.pos, start);
+        assert!(runtime.tap_door(id).unwrap());
+        assert_eq!(
+            runtime.navigation().destination(),
+            Some(doors::Destination::Library.point())
+        );
+        runtime.reset_door(DoorId::Halo);
+        assert!(runtime.navigation().is_active());
+        runtime.reset_door(id);
+        assert_eq!(runtime.navigation().status(), NavigationStatus::Cancelled);
+        runtime.navigate_to([-12.0, -12.0]).unwrap();
+        runtime.reset_door(id);
+        assert!(
+            runtime.navigation().is_active(),
+            "reset must preserve an unrelated map route"
+        );
+        runtime.cancel_navigation();
+        runtime.tap_door(id).unwrap();
+        runtime.cancel_door_interactions();
+        assert_eq!(runtime.doors.state(id).phase, doors::DoorPhase::Idle);
+        assert_eq!(runtime.doors.state(id).last, Some(DemoItem::Prism));
+    }
+
+    #[test]
+    fn blocked_door_route_is_visible_and_restoration_never_restarts_it() {
+        let mut runtime = WorldRuntime::new();
+        let id = DoorId::Spark;
+        runtime
+            .set_spawn(id.position() + Vec3::new(0.0, 0.0, -3.0), 0.0)
+            .unwrap();
+        runtime.tap_door(id).unwrap();
+        for _ in 0..60 {
+            runtime.tick(&InputState::default(), 1.0 / 60.0);
+        }
+        let target = doors::Destination::Library.point();
+        runtime.world.blockers.push(crate::controller::Footprint {
+            min: [target[0] - 1.0, target[1] - 1.0],
+            max: [target[0] + 1.0, target[1] + 1.0],
+        });
+        assert!(runtime.tap_door(id).is_err());
+        assert!(!runtime.navigation().is_active());
+        assert_eq!(runtime.doors.state(id).caption(), "No route found");
+        for _ in 0..120 {
+            runtime.tick(&InputState::default(), 1.0 / 60.0);
+        }
+        assert_eq!(runtime.doors.state(id).caption(), "No route found");
+        let document = runtime.doors.document();
+        runtime.restore_door_state(&document).unwrap();
+        assert_eq!(runtime.doors.state(id).phase, doors::DoorPhase::Idle);
+        assert_eq!(runtime.doors.state(id).selected, None);
+        assert!(!runtime.navigation().is_active());
+    }
+
+    #[test]
+    fn all_door_destinations_remain_reachable_and_gym_ends_outside_the_hall() {
+        let mut runtime = WorldRuntime::new();
+        for id in DoorId::ALL {
+            for item in DemoItem::ALL {
+                if let Some(target) = doors::destination(id, item) {
+                    runtime
+                        .set_spawn(id.position() + Vec3::new(0.0, 0.0, -3.0), 0.0)
+                        .unwrap();
+                    runtime.navigate_to(target.point()).unwrap();
+                    for _ in 0..3000 {
+                        runtime.tick(&InputState::default(), 1.0 / 60.0);
+                        assert!(!runtime.world.blockers.iter().any(|b| b.contains(
+                            runtime.player.pos.x,
+                            runtime.player.pos.z,
+                            crate::controller::RADIUS
+                        )));
+                        if !runtime.navigation().is_active() {
+                            break;
+                        }
+                    }
+                    assert_eq!(
+                        runtime.navigation().status(),
+                        NavigationStatus::Arrived,
+                        "{id:?} {item:?}"
+                    );
+                    if target == doors::Destination::GymApproach {
+                        assert!(!runtime.gym(1.0).inside);
+                    }
+                }
+            }
+        }
     }
 
     #[test]

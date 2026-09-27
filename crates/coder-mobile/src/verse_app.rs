@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 static NEXT_MOUNT: AtomicU64 = AtomicU64::new(1);
 use verse::controller::InputState;
+use verse::doors::{DemoItem, DoorId, DoorIntent};
 use verse::runtime::{Action, WorldRuntime};
 use verse::session::Session;
 
@@ -28,6 +29,8 @@ pub(crate) struct Config {
     pub synthetic_gym: bool,
     #[serde(default)]
     pub world_relay: Option<String>,
+    #[serde(default)]
+    pub door_preferences: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -87,6 +90,15 @@ pub(crate) enum Request {
         relay: String,
     },
     Disconnect,
+    DoorHold {
+        item: DemoItem,
+    },
+    DoorTap {
+        door: DoorId,
+    },
+    DoorReset {
+        door: DoorId,
+    },
     PetCompanion,
     InteractComputer,
     CloseComputer,
@@ -130,6 +142,9 @@ pub(crate) struct Packet {
     status: String,
     connection: Connection,
     map: verse::minimap::Snapshot,
+    doors: DoorPacket,
+    door_preferences: String,
+    door_preferences_revision: u64,
     pub error: Option<String>,
     frames_presented: u64,
     position: [f32; 3],
@@ -148,6 +163,24 @@ pub(crate) struct Packet {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gym_board: Option<verse::gym::BoardView>,
     view: View<()>,
+}
+
+#[derive(Serialize)]
+struct DoorPacket {
+    held: DemoItem,
+    doors: Vec<DoorView>,
+    hud: verse::doors::hud::Snapshot,
+    error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct DoorView {
+    #[serde(flatten)]
+    projection: verse::runtime::DoorProjection,
+    label: &'static str,
+    state: verse::doors::DoorPhase,
+    destination: Option<&'static str>,
+    remembered: Option<DemoItem>,
 }
 
 #[derive(Serialize)]
@@ -302,6 +335,20 @@ fn packet(
             "",
             None,
         ),
+        doors: DoorPacket {
+            held: DemoItem::Prism,
+            doors: Vec::new(),
+            hud: verse::doors::hud::DoorHud::default().snapshot(
+                [393.0, 852.0],
+                None,
+                &verse::doors::Doors::default(),
+                false,
+                None,
+            ),
+            error: None,
+        },
+        door_preferences: verse::doors::Doors::default().document(),
+        door_preferences_revision: 0,
         error,
         frames_presented: frames,
         position,
@@ -348,6 +395,7 @@ fn packet(
 enum WorldTarget {
     Computer,
     Companion,
+    Door(DoorId),
 }
 
 struct Touch {
@@ -426,6 +474,8 @@ pub(crate) struct Scene {
     pub atlas: verse::ui::Atlas,
     map: verse::minimap::MapHud,
     map_error: Option<String>,
+    door_hud: verse::doors::hud::DoorHud,
+    door_notice: Option<String>,
     pub lifecycle: SurfaceLifecycle,
     pub session: Option<Session>,
     /// Remote geometry from the last presented frame, also used for picking.
@@ -481,6 +531,10 @@ impl Scene {
             return Err("The Gym preview requires synthetic mode".into());
         }
         let mut world = WorldRuntime::new();
+        let door_notice = config
+            .door_preferences
+            .as_deref()
+            .and_then(|value| world.restore_door_state(value).err());
         if config.synthetic_gym {
             // This explicit fixture starts outside the entrance. The real touch
             // path must cross the boundary before the board loads its rows.
@@ -493,6 +547,8 @@ impl Scene {
             atlas: verse::ui::Atlas::new(12.0),
             map: verse::minimap::MapHud::default(),
             map_error: None,
+            door_hud: verse::doors::hud::DoorHud::default(),
+            door_notice,
             lifecycle,
             session: None,
             presented_entities: verse::mesh::Mesh::default(),
@@ -530,6 +586,8 @@ impl Scene {
         if !active {
             self.world.cancel_navigation();
             self.map.clear_contacts();
+            self.door_hud.clear_contacts();
+            self.world.cancel_door_interactions();
             self.presented_entities = verse::mesh::Mesh::default();
             self.touches.clear();
             self.jump = false;
@@ -588,6 +646,8 @@ impl Scene {
         self.lifecycle.resize(viewport).map_err(|e| e.to_string())?;
         if changed {
             self.map.clear_contacts();
+            self.door_hud.clear_contacts();
+            self.world.cancel_door_interactions();
             self.touches.clear();
             self.jump = false;
             self.reset_motion();
@@ -612,9 +672,29 @@ impl Scene {
             }
             return Ok(());
         }
+        if self.door_hud.captured(id) {
+            match phase {
+                PointerPhase::Move => self.door_hud.moved(id, point),
+                PointerPhase::Up | PointerPhase::Cancel => {
+                    if let Some(intent) =
+                        self.door_hud
+                            .up(id, point, matches!(phase, PointerPhase::Cancel))
+                    {
+                        self.door_intent(intent)?;
+                    }
+                }
+                PointerPhase::Down => {}
+            }
+            return Ok(());
+        }
         if matches!(phase, PointerPhase::Down) {
             let snapshot = self.map_snapshot();
             if self.map.down(id, point, &snapshot) {
+                self.cancel_taps();
+                return Ok(());
+            }
+            let snapshot = self.door_snapshot();
+            if self.door_hud.down(id, point, &snapshot) {
                 self.cancel_taps();
                 return Ok(());
             }
@@ -664,6 +744,9 @@ impl Scene {
                     Some(WorldTarget::Computer) => self.open_computer(),
                     Some(WorldTarget::Companion) => {
                         self.world.pet_companion();
+                    }
+                    Some(WorldTarget::Door(door)) => {
+                        self.door_intent_at(DoorIntent::Tap(door), Some([x, y]))?;
                     }
                     None => {}
                 }
@@ -903,7 +986,10 @@ impl Scene {
                 right,
                 bottom,
                 left,
-            } => self.map.set_insets([top, right, bottom, left]),
+            } => {
+                self.map.set_insets([top, right, bottom, left])?;
+                self.door_hud.set_insets([top, right, bottom, left])
+            }
             Request::MapToggle => self.map_action(verse::minimap::MapAction::Toggle),
             Request::MapCancel => self.map_action(verse::minimap::MapAction::Cancel),
             Request::MapWalk { x, z } => self.map_action(verse::minimap::MapAction::Walk([x, z])),
@@ -965,6 +1051,9 @@ impl Scene {
                 self.disconnect();
                 Ok(())
             }
+            Request::DoorHold { item } => self.door_intent(DoorIntent::Hold(item)),
+            Request::DoorTap { door } => self.door_intent(DoorIntent::Tap(door)),
+            Request::DoorReset { door } => self.door_intent(DoorIntent::Reset(door)),
             Request::PetCompanion => {
                 let companion = self.world.companion(self.aspect());
                 let size = self.lifecycle.viewport().logical_size();
@@ -1005,6 +1094,8 @@ impl Scene {
                 self.reset_motion();
                 self.world.cancel_navigation();
                 self.map.clear_contacts();
+                self.door_hud.clear_contacts();
+                self.world.cancel_door_interactions();
                 self.gym_open = true;
                 self.computer_open = false;
                 self.touches.clear();
@@ -1083,6 +1174,26 @@ impl Scene {
                 .and_then(|session| session.connection_error),
         );
         packet.map = self.map_snapshot();
+        packet.door_preferences = self.world.doors.document();
+        packet.door_preferences_revision = self.world.doors.revision();
+        packet.doors = DoorPacket {
+            held: self.world.doors.held(),
+            doors: DoorId::ALL
+                .iter()
+                .map(|&id| {
+                    let state = self.world.doors.state(id);
+                    DoorView {
+                        projection: self.world.door(id, self.aspect()),
+                        label: id.label(),
+                        state: state.phase,
+                        destination: state.selected.map(|value| value.label()),
+                        remembered: state.last,
+                    }
+                })
+                .collect(),
+            hud: self.door_snapshot(),
+            error: self.door_notice.clone(),
+        };
         packet.camera_mode = self.camera_mode;
         packet.camera_yaw =
             verse::controller::wrap(self.world.player.yaw + self.world.camera.yaw_offset);
@@ -1114,7 +1225,11 @@ impl Scene {
             return Err("Return to the world to use the map".into());
         }
         match action {
-            verse::minimap::MapAction::Toggle => self.map.expanded = !self.map.expanded,
+            verse::minimap::MapAction::Toggle => {
+                self.map.expanded = !self.map.expanded;
+                self.door_hud.clear_contacts();
+                self.cancel_taps();
+            }
             verse::minimap::MapAction::Cancel => {
                 self.world.cancel_navigation();
                 self.map_error = None;
@@ -1159,7 +1274,7 @@ impl Scene {
     }
 
     pub fn map_ui(&self) -> verse::ui::UiBatch {
-        self.map.draw(
+        let mut ui = self.map.draw(
             &self.atlas,
             &self.map_snapshot(),
             &self.world.world.blockers,
@@ -1167,7 +1282,84 @@ impl Scene {
             self.world.player.yaw,
             self.world.navigation().waypoints(),
             self.lifecycle.viewport().scale(),
+        );
+        let door_ui = self.door_hud.draw(
+            &self.atlas,
+            &self.door_snapshot(),
+            self.lifecycle.viewport().scale(),
+        );
+        ui.vertices.extend(door_ui.vertices);
+        ui
+    }
+
+    fn door_snapshot(&self) -> verse::doors::hud::Snapshot {
+        self.door_hud.snapshot(
+            self.lifecycle.viewport().logical_size(),
+            self.world.nearest_door(self.aspect()),
+            &self.world.doors,
+            self.lifecycle.active()
+                && !self.panel_open()
+                && !self.spawn_pending
+                && !self.map.expanded,
+            self.door_notice.as_deref(),
         )
+    }
+
+    fn door_intent(&mut self, intent: DoorIntent) -> Result<(), String> {
+        self.door_intent_at(intent, None)
+    }
+
+    fn door_intent_at(
+        &mut self,
+        intent: DoorIntent,
+        point: Option<[f32; 2]>,
+    ) -> Result<(), String> {
+        if !self.lifecycle.active() || self.panel_open() || self.spawn_pending || self.map.expanded
+        {
+            return Err("Return to the world to use a gate".into());
+        }
+        if let Some([x, y]) = point {
+            // A visible edge remains tappable when the named accessibility
+            // anchor is hidden. Recheck the actual point, never a second point.
+            if !matches!(intent, DoorIntent::Tap(id) if self.door_hit(id, x, y)) {
+                return Err("Tap a visible part of the gate".into());
+            }
+        } else {
+            let near = self.world.nearest_door(self.aspect());
+            let door = match intent {
+                DoorIntent::Hold(_) => near,
+                DoorIntent::Tap(id) | DoorIntent::Reset(id) => {
+                    Some(id).filter(|id| Some(*id) == near)
+                }
+            }
+            .ok_or("Approach a visible gate to use it")?;
+            let projected = self.world.door(door, self.aspect());
+            let size = self.lifecycle.viewport().logical_size();
+            if !self.door_hit(
+                door,
+                projected.screen_x * size[0],
+                projected.screen_y * size[1],
+            ) {
+                return Err("Approach the front of the gate to use it".into());
+            }
+        }
+        self.cancel_taps();
+        self.jump = false;
+        self.door_notice = None;
+        match intent {
+            DoorIntent::Hold(item) => {
+                self.world.hold_door_item(item);
+            }
+            DoorIntent::Reset(door) => {
+                self.world.reset_door(door);
+            }
+            DoorIntent::Tap(door) => {
+                if let Err(error) = self.world.tap_door(door) {
+                    self.door_notice = Some(error);
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn gym_view(&self) -> Option<verse::gym::BoardView> {
@@ -1314,6 +1506,8 @@ impl Scene {
     fn open_computer(&mut self) {
         self.world.cancel_navigation();
         self.map.clear_contacts();
+        self.door_hud.clear_contacts();
+        self.world.cancel_door_interactions();
         self.reset_motion();
         self.computer_open = true;
         self.gym_open = false;
@@ -1333,8 +1527,26 @@ impl Scene {
         } else if self.computer_hit(x, y) {
             Some(WorldTarget::Computer)
         } else {
-            None
+            DoorId::ALL
+                .iter()
+                .copied()
+                .find(|id| self.door_hit(*id, x, y))
+                .map(WorldTarget::Door)
         }
+    }
+
+    fn door_hit(&self, id: DoorId, x: f32, y: f32) -> bool {
+        let size = self.lifecycle.viewport().logical_size();
+        !self.spawn_pending
+            && size[0] > 0.0
+            && size[1] > 0.0
+            && self.world.door_hit_with_entities(
+                id,
+                size[0] / size[1],
+                x / size[0],
+                y / size[1],
+                &self.presented_entities,
+            )
     }
 
     fn companion_hit(&self, x: f32, y: f32) -> bool {
@@ -1387,6 +1599,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: false,
             world_relay: None,
+            door_preferences: None,
         })
         .unwrap()
     }
@@ -1400,8 +1613,206 @@ mod tests {
             gym_code: None,
             synthetic_gym: true,
             world_relay: None,
+            door_preferences: None,
         })
         .unwrap()
+    }
+
+    fn door_scene(id: DoorId) -> Scene {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        scene
+            .world
+            .set_spawn(
+                id.position() + verse::world::SPAWN.with_x(0.0).with_z(-3.0),
+                0.0,
+            )
+            .unwrap();
+        scene.update(1.0).unwrap();
+        scene.update(1.01).unwrap();
+        assert_eq!(scene.door_snapshot().door, Some(id));
+        assert!(scene.door_snapshot().visible);
+        scene
+    }
+
+    fn tap_door_plane(scene: &mut Scene, id: DoorId) {
+        let projected = scene.world.door(id, scene.aspect());
+        let size = scene.lifecycle.viewport().logical_size();
+        let [x, y] = [projected.screen_x * size[0], projected.screen_y * size[1]];
+        assert!(scene.door_hit(id, x, y));
+        scene.pointer(41, PointerPhase::Down, x, y).unwrap();
+        scene.pointer(41, PointerPhase::Up, x, y).unwrap();
+    }
+
+    #[test]
+    fn door_taps_select_then_walk_and_background_preserves_only_choices() {
+        let mut scene = door_scene(DoorId::Spark);
+        let before = scene.world.player.pos;
+        tap_door_plane(&mut scene, DoorId::Spark);
+        assert_eq!(
+            scene.world.doors.state(DoorId::Spark).last,
+            Some(DemoItem::Prism)
+        );
+        assert_eq!(
+            scene.world.doors.state(DoorId::Spark).phase,
+            verse::doors::DoorPhase::Reacting
+        );
+        assert!(!scene.world.navigation().is_active());
+        for i in 1..=60 {
+            scene.update(1.01 + f64::from(i) / 60.0).unwrap();
+        }
+        tap_door_plane(&mut scene, DoorId::Spark);
+        assert!(scene.world.navigation().is_active());
+        for i in 1..=30 {
+            scene.update(2.01 + f64::from(i) / 60.0).unwrap();
+        }
+        assert!(scene.world.player.pos.distance(before) > 0.2);
+        let saved = scene.packet().door_preferences;
+        scene.activate(false).unwrap();
+        assert!(!scene.world.navigation().is_active());
+        assert_eq!(scene.packet().door_preferences, saved);
+        assert!(scene.session.is_none());
+        assert!(!scene.packet().gym_active);
+        let mut restored = super::Scene::new(Config {
+            secret_hex: "11".repeat(32),
+            width: 800,
+            height: 1200,
+            scale: 2.0,
+            synthetic: true,
+            gym_code: None,
+            synthetic_gym: false,
+            world_relay: None,
+            door_preferences: Some(saved.clone()),
+        })
+        .unwrap();
+        restored.activate(true).unwrap();
+        assert_eq!(restored.packet().door_preferences, saved);
+        assert_eq!(
+            restored.world.doors.state(DoorId::Spark).phase,
+            verse::doors::DoorPhase::Idle
+        );
+        assert!(!restored.world.navigation().is_active());
+    }
+
+    #[test]
+    fn door_item_strip_captures_input_and_refusal_keeps_memory() {
+        let mut scene = door_scene(DoorId::Spark);
+        tap_door_plane(&mut scene, DoorId::Spark);
+        let position = scene.world.player.pos;
+        let yaw = scene.world.player.yaw;
+        let hud = scene.door_snapshot();
+        let ring = hud
+            .buttons
+            .iter()
+            .find(|button| button.id == "ring")
+            .unwrap()
+            .frame;
+        let [x, y] = [ring[0] + ring[2] / 2.0, ring[1] + ring[3] / 2.0];
+        scene.pointer(42, PointerPhase::Down, x, y).unwrap();
+        assert!(scene.door_hud.captured(42));
+        assert!(scene.touches.is_empty());
+        scene.pointer(42, PointerPhase::Up, x, y).unwrap();
+        assert_eq!(scene.world.doors.held(), DemoItem::Ring);
+        tap_door_plane(&mut scene, DoorId::Spark);
+        assert!(scene.door_snapshot().caption.contains("does not fit"));
+        assert_eq!(
+            scene.world.doors.state(DoorId::Spark).last,
+            Some(DemoItem::Prism)
+        );
+        assert!(!scene.world.navigation().is_active());
+        assert!(!scene.jump);
+        assert_eq!(scene.world.player.pos, position);
+        assert_eq!(scene.world.player.yaw, yaw);
+        scene
+            .action(Request::DoorReset {
+                door: DoorId::Spark,
+            })
+            .unwrap();
+        assert_eq!(scene.world.doors.state(DoorId::Spark).last, None);
+        scene.action(Request::MapToggle).unwrap();
+        assert!(!scene.door_snapshot().visible);
+        assert!(
+            scene
+                .action(Request::DoorTap {
+                    door: DoorId::Spark
+                })
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn visible_door_edge_tap_does_not_require_an_unobstructed_accessibility_anchor() {
+        let id = DoorId::Spark;
+        let mut scene = door_scene(id);
+        let view = scene.world.view(scene.aspect());
+        let mut anchor = id.plane();
+        anchor.y += 0.8;
+        let obstruction = view.eye.lerp(anchor, 0.8);
+        let right = verse::world::SPAWN.with_x(0.18).with_y(0.0).with_z(0.0);
+        let up = verse::world::SPAWN.with_x(0.0).with_y(0.18).with_z(0.0);
+        scene.presented_entities.quad([
+            obstruction - right - up,
+            obstruction + right - up,
+            obstruction + right + up,
+            obstruction - right + up,
+        ]);
+        assert!(scene.action(Request::DoorTap { door: id }).is_err());
+        let mut side = anchor;
+        side.x += 1.0;
+        let clip = view.view_proj * side.extend(1.0);
+        let size = scene.lifecycle.viewport().logical_size();
+        let point = [
+            (clip.x / clip.w * 0.5 + 0.5) * size[0],
+            (0.5 - clip.y / clip.w * 0.5) * size[1],
+        ];
+        assert!(scene.door_hit(id, point[0], point[1]));
+        scene
+            .pointer_at(7, PointerPhase::Down, point[0], point[1], 1.02)
+            .unwrap();
+        scene
+            .pointer_at(7, PointerPhase::Up, point[0], point[1], 1.08)
+            .unwrap();
+        assert_eq!(
+            scene.world.doors.state(id).phase,
+            verse::doors::DoorPhase::Reacting
+        );
+        assert_eq!(scene.world.doors.state(id).last, Some(DemoItem::Prism));
+    }
+
+    #[test]
+    fn door_taps_reject_drag_cancel_pinch_and_hidden_panels() {
+        for case in 0..4 {
+            let mut scene = door_scene(DoorId::Halo);
+            let projection = scene.world.door(DoorId::Halo, scene.aspect());
+            let size = scene.lifecycle.viewport().logical_size();
+            let [x, y] = [projection.screen_x * size[0], projection.screen_y * size[1]];
+            scene.pointer_at(1, PointerPhase::Down, x, y, 1.02).unwrap();
+            match case {
+                0 => {
+                    scene
+                        .pointer_at(1, PointerPhase::Move, x + 30.0, y, 1.03)
+                        .unwrap();
+                }
+                1 => {
+                    scene
+                        .pointer_at(1, PointerPhase::Cancel, x, y, 1.03)
+                        .unwrap();
+                }
+                2 => {
+                    scene.action(Request::PinchZoom { scale: 1.1 }).unwrap();
+                }
+                _ => {
+                    scene.computer_open = true;
+                }
+            }
+            scene.pointer_at(1, PointerPhase::Up, x, y, 1.06).unwrap();
+            assert_eq!(
+                scene.world.doors.state(DoorId::Halo).last,
+                None,
+                "Invalid gesture {case}"
+            );
+            assert!(!scene.world.navigation().is_active());
+        }
     }
 
     fn companion_scene() -> (Scene, [f32; 2]) {

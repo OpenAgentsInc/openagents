@@ -186,3 +186,13 @@ signed saved position from the relay.
 **Leave** stops the connection and forgets the saved relay. World presence uses
 its own identity and does not pair a chat reader. Synthetic acceptance tests
 show **Preview** and publish no world events.
+
+## Companion and demo gates
+
+Tap your floating companion for a short wiggle and hop. Use the map's Spark
+or Halo shortcut to approach a local demo gate, then turn to face it. Choose a
+key in the nearby strip and tap the gate to see its effect and destination.
+Tap again after the effect to walk there. Empty hands reuse that gate's last
+compatible key; Reset clears its choice. Choices stay on this device, while
+walks and effects stop when the app becomes inactive. See the
+[interaction guide and portal specification](world-interactions.md).

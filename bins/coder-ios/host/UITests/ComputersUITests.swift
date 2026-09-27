@@ -53,11 +53,10 @@ final class ComputersUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["host-0-status"].waitForLabel(containing: "switched off", timeout: 10))
 
         tap("tab-add")
-        let ssh = app.buttons["ssh-connect"]
-        reveal(ssh)
-        XCTAssertFalse(ssh.isEnabled)
-        XCTAssertTrue(app.staticTexts["ssh-connect-reason"].label.contains("desktop or terminal"))
-        scrollToTop()
+        // The shared Phone projection omits SSH instead of offering a
+        // disabled control. Invitation enrollment remains available.
+        XCTAssertFalse(app.buttons["ssh-connect"].exists)
+        XCTAssertFalse(app.staticTexts["ssh-title"].exists)
         tap("invite-paste")
         let field = app.descendants(matching: .any)["computers-input"]
         reveal(field)
@@ -71,6 +70,37 @@ final class ComputersUITests: XCTestCase {
         tap("tab-activity")
         XCTAssertTrue(app.staticTexts["activity-0-subject"].waitForLabel(containing: "Build server", timeout: 10))
         attachScreenshot("Computers activity")
+    }
+
+    func testOwnerKeyInputIsMaskedAndClearedOnCancel() throws {
+        app.buttons["computer-settings"].tap()
+        app.buttons["computers-toggle"].tap()
+        XCTAssertTrue(app.staticTexts["first-run-title"].waitForExistence(timeout: 20))
+        tap("first-run-continue")
+        XCTAssertTrue(app.buttons["chat-0"].waitForExistence(timeout: 10))
+        app.buttons["computer-settings"].tap()
+        app.buttons["computers-toggle"].tap()
+        tap("directory-owner-key")
+
+        let field = app.secureTextFields["computers-input"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.textFields["computers-input"].exists)
+        reveal(field)
+        field.tap()
+        // This deliberately invalid marker is never submitted or persisted.
+        let marker = "not-a-real-owner-key"
+        field.typeText(marker)
+        XCTAssertFalse((field.value as? String ?? "").contains(marker))
+        tap("computers-cancel")
+        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 10), .completed)
+
+        tap("directory-owner-key")
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        let value = field.value as? String
+        XCTAssertTrue(value == "" || value == field.placeholderValue,
+                      "Cancelled key text must not return")
+        tap("computers-cancel")
     }
 
     private func tap(_ key: String) {

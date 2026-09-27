@@ -17,7 +17,7 @@ pub struct Landmark {
     pub z: f32,
 }
 
-pub const LANDMARKS: [Landmark; 6] = [
+pub const LANDMARKS: [Landmark; 8] = [
     Landmark {
         id: "computer",
         label: "Computer",
@@ -54,7 +54,21 @@ pub const LANDMARKS: [Landmark; 6] = [
         x: -5.0,
         z: -10.0,
     },
+    Landmark {
+        id: "spark",
+        label: "Spark door",
+        x: -12.0,
+        z: -9.0,
+    },
+    Landmark {
+        id: "halo",
+        label: "Halo door",
+        x: 12.0,
+        z: -9.0,
+    },
 ];
+
+const EXPANDED_EXTRA: f32 = 76.0 + LANDMARKS.len().div_ceil(3) as f32 * 28.0;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Snapshot {
@@ -159,15 +173,22 @@ impl MapHud {
         let [top, right, bottom, left] = self.insets;
         let available_w = (size[0] - left - right - 24.0).max(1.0);
         let available_h = (size[1] - top - bottom - 24.0).max(1.0);
-        let visible = visible && available_w >= 100.0 && available_h >= 160.0;
+        let minimum_height = if self.expanded {
+            EXPANDED_EXTRA + 28.0
+        } else {
+            160.0
+        };
+        let visible = visible && available_w >= 100.0 && available_h >= minimum_height;
         let side = if self.expanded {
-            available_w.min(available_h - 132.0).clamp(1.0, 440.0)
+            available_w
+                .min(available_h - EXPANDED_EXTRA)
+                .clamp(1.0, 440.0)
         } else {
             116.0_f32
                 .min(available_w)
                 .min((available_h - 26.0).max(1.0))
         };
-        let height = side + if self.expanded { 132.0 } else { 26.0 };
+        let height = side + if self.expanded { EXPANDED_EXTRA } else { 26.0 };
         let x = if self.expanded {
             left + (available_w - side) * 0.5 + 12.0
         } else {
@@ -207,7 +228,7 @@ impl MapHud {
         let full = ui::amber(Intensity::Full, 1.0);
         let half = ui::amber(Intensity::Half, 1.0);
         let faint = ui::amber(Intensity::Quarter, 0.65);
-        ui.rect(atlas, x, y, w, h, ui::field(0.93));
+        ui.rect(atlas, x, y, w, h, ui::field(0.985));
         ui.frame(atlas, x, y, w, h, 1.0, half);
         ui.text(
             atlas,
@@ -461,6 +482,25 @@ mod tests {
         hud.down(3, center, &map);
         assert_eq!(hud.up(3, center, true), None);
     }
+
+    #[test]
+    fn every_landmark_has_a_separate_footer_target() {
+        let mut hud = MapHud {
+            expanded: true,
+            ..MapHud::default()
+        };
+        let map = hud.snapshot([393.0, 852.0], [0.0, -10.0], true, "", None);
+        for (index, landmark) in LANDMARKS.iter().enumerate() {
+            let [x, y, w, h] = landmark_rect(&map, index);
+            assert!(y + h <= map.frame[1] + map.frame[3] - 26.0);
+            let point = [x + w * 0.5, y + h * 0.5];
+            assert!(hud.down(index as u64, point, &map));
+            assert_eq!(
+                hud.up(index as u64, point, false),
+                Some(MapAction::Walk([landmark.x, landmark.z]))
+            );
+        }
+    }
     #[test]
     fn insets_and_visibility_bound_capture() {
         let mut hud = MapHud::default();
@@ -488,7 +528,7 @@ mod tests {
                 assert!(!hud.down(1, at, &map));
                 assert!(!hud.captured(1));
             }
-            let boundary = hud.snapshot([144.0, 224.0], [0.0, 0.0], true, "", None);
+            let boundary = hud.snapshot([144.0, 252.0], [0.0, 0.0], true, "", None);
             assert!(boundary.visible);
         }
     }

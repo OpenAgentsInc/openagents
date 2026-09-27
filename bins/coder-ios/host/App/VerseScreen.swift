@@ -60,6 +60,13 @@ struct VerseScreen: View {
                     Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("verse-error")
                     Button("Retry world renderer") { bridge.retry() }
                 }
+                if let error = bridge.doorStorageError ?? bridge.packet?.doors.error {
+                    Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("door-storage-error")
+                    if bridge.canRetryDoorSave {
+                        Button("Retry saving choices") { bridge.retryDoorPreferences() }
+                            .accessibilityIdentifier("door-save-retry")
+                    }
+                }
                 Spacer()
                 if !panelOpen {
                     HStack(spacing: 16) {

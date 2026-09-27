@@ -17,6 +17,7 @@ pub mod camera;
 pub mod chat;
 pub mod controller;
 pub mod crowd;
+pub mod doors;
 pub mod feed;
 pub mod gym;
 pub mod hud;

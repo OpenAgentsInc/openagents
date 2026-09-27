@@ -39,8 +39,19 @@ final class MapUITests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(walking.map.destination)[0], gym.x, accuracy: 1)
         XCTAssertEqual(try XCTUnwrap(walking.map.destination)[1], gym.z, accuracy: 1)
         waitFor { hypot($0.position[0] - initial.position[0], $0.position[2] - initial.position[2]) > 0.3 }
-        let start = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.78))
-        let end = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.65))
+        // The route passes Halo, whose item strip can appear above the
+        // bottom controls. Begin below it so this is a world movement gesture.
+        let startOffset = CGVector(dx: 0.15, dy: 0.88)
+        let hud = try XCTUnwrap(app.verseObservation()).doors.hud
+        if hud.visible {
+            let x = Double(surface.frame.width * startOffset.dx)
+            let y = Double(surface.frame.height * startOffset.dy)
+            let inside = x >= hud.frame[0] && x <= hud.frame[0] + hud.frame[2]
+                && y >= hud.frame[1] && y <= hud.frame[1] + hud.frame[3]
+            XCTAssertFalse(inside, "Manual movement must start outside the gate item strip.")
+        }
+        let start = surface.coordinate(withNormalizedOffset: startOffset)
+        let end = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.78))
         start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
         waitFor { $0.map.state == "Walk stopped" }
         XCTAssertFalse(app.staticTexts["verse-error"].exists)

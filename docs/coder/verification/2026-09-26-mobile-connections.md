@@ -105,8 +105,9 @@ archive/distribution evidence. No model or benchmark runs are required.
 Physical-device gesture comfort, sensor noise, and frame rate remain separate
 from simulator acceptance.
 
-The final shared mobile suite passes 50 tests, with one manual device fixture
-ignored. Strict Clippy passes for the mobile targets. Ten focused Verse session
+The connection checkpoint passed 50 mobile tests. After integrating the map,
+companion, and gate changes, the current shared mobile suite passes 61 tests,
+with one manual device fixture ignored. Strict Clippy passes for the mobile targets. Ten focused Verse session
 tests pass. Android's main and instrumentation sources compile, and its two
 native pinch-admission unit tests pass; this change has no new Android emulator
 runtime receipt. The shared observer library passes 25 tests, with three
@@ -127,5 +128,25 @@ monitor-hit capture bug: starting a drag on the monitor kept the gesture
 reserved as a tap. Crossing the drag threshold now releases that capture.
 The native touch adapter also orders fresh contacts and accepts reversed
 contact batches for pinch admission. The identity test uses a targeted key
-query and retains the across-relaunch equality assertion. Native retesting
-is pending; the combined release now also waits for issues #9720–#9722.
+query and retains the across-relaunch equality assertion. The combined native pass then ran 21 tests: 18 passed, one live-host test
+skipped because its separate fixture was absent, and two assertions failed.
+One expected the mobile SSH control intentionally removed from the Phone
+projection. The other began a movement swipe inside the new gate item strip.
+Both tests now check the current UI without changing production input routing;
+the focused retest remains pending. Normal startup, background/relaunch,
+chats, identity, world-relay persistence, pinch, companion tapping, gate
+choices, and per-gate persistence passed in that combined run.
+
+### Release integration with the owner-key field
+
+Main added a phone owner-key input while this release was in acceptance.
+The shared request correctly marked the input secret, but the native hosts
+did not consume that flag. Both now use password fields for secret requests,
+keep invitation input unchanged, disable text suggestions/autofill where the
+platform supports it, and clear drafts on submission, cancellation, dismissal,
+or backgrounding. Separate native tests check masking and cancel/reopen
+behavior with an invalid marker, never a real key. Rust continues to own
+validation and the existing owner-grant authority check.
+
+Gate-storage errors also stay in the gate UI; they no longer appear as world
+relay errors in Computer settings.

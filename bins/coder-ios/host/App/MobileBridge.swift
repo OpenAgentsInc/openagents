@@ -34,7 +34,23 @@ struct ComputersInput: Decodable, Equatable {
     let label: String
     let prompt: String
     let scan: Bool
+    let secret: Bool
     let max_bytes: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case token, purpose, label, prompt, scan, secret, max_bytes
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        token = try values.decode(String.self, forKey: .token)
+        purpose = try values.decode(String.self, forKey: .purpose)
+        label = try values.decode(String.self, forKey: .label)
+        prompt = try values.decode(String.self, forKey: .prompt)
+        scan = try values.decode(Bool.self, forKey: .scan)
+        secret = try values.decodeIfPresent(Bool.self, forKey: .secret) ?? false
+        max_bytes = try values.decode(Int.self, forKey: .max_bytes)
+    }
 }
 
 private final class RustWorker {
@@ -138,6 +154,10 @@ final class MobileBridge: ObservableObject {
 
     func submitComputers(token: String, value: String) {
         request(["op": "computers_input", "token": token, "value": value])
+    }
+
+    func cancelComputers(token: String) {
+        request(["op": "computers_cancel", "token": token])
     }
 
     func refreshComputers() { request(["op": "computers_refresh"]) }

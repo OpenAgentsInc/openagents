@@ -207,9 +207,8 @@ class MobileAcceptanceTest {
         click("host-0-switch")
         waitFor { text("host-0-status").contains("switched off") }
         click("tab-add")
-        waitFor { exists("ssh-connect") }
-        assertFalse("SSH is desktop and terminal only", exists("ssh-connect", enabled = true))
-        assertTrue(text("ssh-connect-reason").contains("desktop or terminal"))
+        assertFalse("The Phone projection omits SSH", exists("ssh-connect"))
+        assertFalse("The Phone projection omits the SSH section", exists("ssh-title"))
         click("invite-paste")
         waitFor { exists("computers-input") }
         onMain { (find(it.window.decorView, "computers-input") as EditText).setText("coder-host:emulator") }
@@ -219,6 +218,37 @@ class MobileAcceptanceTest {
         click("tab-activity")
         waitFor { text("activity-0-subject").contains("Build server") }
         capture("computers-activity")
+    }
+
+    @Test fun ownerKeyInputIsMaskedAndClearedOnCancel() {
+        launch()
+        computer()
+        waitFor { exists("chat-0") }
+        openComputers()
+        waitFor { exists("first-run-title") }
+        click("first-run-continue")
+        waitFor { exists("chat-0") }
+        openComputers()
+        click("directory-owner-key")
+        waitFor { exists("computers-input") }
+        onMain { activity ->
+            val field = find(activity.window.decorView, "computers-input") as EditText
+            assertEquals(android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                field.inputType and android.text.InputType.TYPE_MASK_VARIATION)
+            assertTrue(field.transformationMethod is android.text.method.PasswordTransformationMethod)
+            assertFalse("Key input is not saved in view state", field.isSaveEnabled)
+            assertEquals(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS, field.importantForAutofill)
+            // This deliberately invalid marker is never submitted or persisted.
+            field.setText("not-a-real-owner-key")
+        }
+        click("computers-cancel")
+        waitFor { !exists("computers-input") }
+        click("directory-owner-key")
+        waitFor { exists("computers-input") }
+        onMain { activity ->
+            assertEquals("", (find(activity.window.decorView, "computers-input") as EditText).text.toString())
+        }
+        click("computers-cancel")
     }
 
     /**
@@ -543,9 +573,119 @@ class MobileAcceptanceTest {
         assertEquals(companion.getLong("pet_count") + 1, worldSnapshot().getJSONObject("companion").getLong("pet_count"))
     }
 
-    private fun launch(gym: Boolean = false, motion: Boolean = false) {
+    @Test fun doorMemoriesRefuseIncompatibleItemsAndPersistThroughRecreation() {
+        val scope = UUID.randomUUID().toString()
+        val storage = DeviceStorage(instrumentation.targetContext, true, scope)
+        launch(doorScope = scope)
+        approachDoor("spark")
+        tapDoor("spark")
+        waitFor { door("spark").textOrNull("remembered") == "prism" }
+        tapDoorItem("ring")
+        tapDoor("spark")
+        waitFor { worldSnapshot().getJSONObject("doors").getJSONObject("hud").getString("caption").contains("does not fit") }
+        assertEquals("prism", door("spark").getString("remembered"))
+        assertNotEquals("Walking", worldSnapshot().getJSONObject("map").getString("state"))
+        tapDoorItem("empty")
+        tapDoor("spark")
+        waitFor { door("spark").getString("state") == "selected" }
+        assertEquals("Library", door("spark").getString("destination"))
+        approachDoor("halo")
+        tapDoorItem("ring")
+        tapDoor("halo")
+        waitFor { door("halo").textOrNull("remembered") == "ring" }
+        val saved = storage.doorPreferences()
+        assertNotNull(saved)
+        val rendered = frames()
+        waitFor { frames() > rendered + 20 }
+        assertEquals(saved, storage.doorPreferences())
+        scenario!!.recreate()
+        waitFor { frames() > 0 }
+        assertEquals("ring", worldSnapshot().getJSONObject("doors").getString("held"))
+        assertEquals("prism", door("spark").getString("remembered"))
+        assertEquals("ring", door("halo").getString("remembered"))
+        assertEquals("idle", door("halo").getString("state"))
+        assertNotEquals("Walking", worldSnapshot().getJSONObject("map").getString("state"))
+        approachDoor("halo")
+        tapDoorItem("reset")
+        waitFor { door("halo").isNull("remembered") }
+        assertEquals("prism", door("spark").getString("remembered"))
+        scenario!!.recreate()
+        waitFor { frames() > 0 }
+        assertTrue(door("halo").isNull("remembered"))
+        assertEquals("prism", door("spark").getString("remembered"))
+        assertEquals("ring", worldSnapshot().getJSONObject("doors").getString("held"))
+    }
+
+    @Test fun invalidDoorPreferencesRemainUnchangedUntilAnExplicitChoice() {
+        val scope = UUID.randomUUID().toString()
+        val storage = DeviceStorage(instrumentation.targetContext, true, scope)
+        val unsupported = "{\"v\":99}"
+        storage.saveDoorPreferences(unsupported)
+        launch(doorScope = scope)
+        waitFor { exists("door-storage-error", nonempty = true) }
+        assertFalse(exists("door-save-retry"))
+        val rendered = frames()
+        waitFor { frames() > rendered + 20 }
+        assertEquals(unsupported, storage.doorPreferences())
+    }
+
+    private fun door(id: String): JSONObject {
+        val doors = worldSnapshot().getJSONObject("doors").getJSONArray("doors")
+        return (0 until doors.length()).map { doors.getJSONObject(it) }.first { it.getString("id") == id }
+    }
+    private fun tapLogical(x: Double, y: Double) {
+        var width = 1f; var height = 1f
+        onMain { activity ->
+            val surface = find(activity.window.decorView, "verse-surface")!!
+            val density = surface.resources.displayMetrics.density
+            width = surface.width / density; height = surface.height / density
+        }
+        tapSurface((x / width).toFloat(), (y / height).toFloat())
+    }
+    private fun approachDoor(id: String) {
+        val compact = worldSnapshot().getJSONObject("map").getJSONArray("frame")
+        tapLogical(compact.getDouble(0) + compact.getDouble(2) / 2, compact.getDouble(1) + 12)
+        waitFor { worldSnapshot().getJSONObject("map").getBoolean("expanded") }
+        val map = worldSnapshot().getJSONObject("map")
+        val landmarks = map.getJSONArray("landmarks")
+        val target = (0 until landmarks.length()).map { landmarks.getJSONObject(it) }.first { it.getString("id") == id }
+        val plot = map.getJSONArray("plot"); val center = map.getJSONArray("center")
+        tapLogical(plot.getDouble(0) + ((target.getDouble("x") - center.getDouble(0)) / map.getDouble("half_extent") + 1) * plot.getDouble(2) / 2,
+            plot.getDouble(1) + (1 - (target.getDouble("z") - center.getDouble(1)) / map.getDouble("half_extent")) * plot.getDouble(3) / 2)
+        waitFor { worldSnapshot().getJSONObject("map").getString("state") == "Arrived" }
+        var width = 1f
+        onMain { activity ->
+            val surface = find(activity.window.decorView, "verse-surface")!!
+            width = surface.width / surface.resources.displayMetrics.density
+        }
+        for (attempt in 0 until 16) {
+            if (door(id).getBoolean("near") && door(id).getBoolean("visible") && worldSnapshot().getJSONObject("doors").getJSONObject("hud").getBoolean("visible")) break
+            val yaw = worldSnapshot().getDouble("camera_yaw")
+            val wrapped = kotlin.math.atan2(kotlin.math.sin(yaw), kotlin.math.cos(yaw))
+            if (abs(wrapped) < 0.05) break
+            val points = (wrapped / 0.004).coerceIn(-60.0, 60.0)
+            gesture(0.75f, 0.48f, 0.75f + (points / width).toFloat(), 0.48f, 0)
+        }
+        waitFor { worldSnapshot().getJSONObject("doors").getJSONObject("hud").let { it.getBoolean("visible") && it.getString("door") == id } }
+    }
+    private fun tapDoor(id: String) {
+        val target = door(id)
+        assertTrue(target.getBoolean("near") && target.getBoolean("visible"))
+        tapSurface(target.getDouble("screen_x").toFloat(), target.getDouble("screen_y").toFloat())
+    }
+    private fun tapDoorItem(id: String) {
+        val hud = worldSnapshot().getJSONObject("doors").getJSONObject("hud")
+        assertTrue(hud.getBoolean("visible"))
+        val buttons = hud.getJSONArray("buttons")
+        val button = (0 until buttons.length()).map { buttons.getJSONObject(it) }.first { it.getString("id") == id && it.getBoolean("enabled") }
+        val frame = button.getJSONArray("frame")
+        tapLogical(frame.getDouble(0) + frame.getDouble(2) / 2, frame.getDouble(1) + frame.getDouble(3) / 2)
+        if (id != "reset") waitFor { worldSnapshot().getJSONObject("doors").getString("held") == id }
+    }
+
+    private fun launch(gym: Boolean = false, motion: Boolean = false, doorScope: String? = null) {
         val intent = Intent(ApplicationProvider.getApplicationContext(), MainActivity::class.java)
-            .putExtra("synthetic", true).putExtra("gym_preview", gym).putExtra("motion_preview", motion)
+            .putExtra("synthetic", true).putExtra("gym_preview", gym).putExtra("motion_preview", motion).putExtra("door_scope", doorScope)
         scenario = ActivityScenario.launch(intent)
         waitFor { frames() > 0 }
     }

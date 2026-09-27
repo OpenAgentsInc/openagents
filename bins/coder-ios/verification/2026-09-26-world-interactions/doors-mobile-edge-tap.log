@@ -1,0 +1,211 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.26
+   Compiling libc v0.2.189
+   Compiling cfg-if v1.0.5
+   Compiling once_cell v1.21.4
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.13
+   Compiling itoa v1.0.18
+   Compiling typenum v1.20.1
+   Compiling zerocopy v0.8.57
+   Compiling smallvec v1.16.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling bytes v1.12.1
+   Compiling serde_core v1.0.229
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-core v0.3.34
+   Compiling zeroize v1.9.0
+   Compiling serde v1.0.229
+   Compiling log v0.4.34
+   Compiling thiserror v2.0.20
+   Compiling zmij v1.0.23
+   Compiling cc v1.4.7
+   Compiling rustls-pki-types v1.15.1
+   Compiling bitflags v2.13.2
+   Compiling serde_json v1.0.151
+   Compiling getrandom v0.3.4
+   Compiling httparse v1.10.1
+   Compiling litemap v0.8.3
+   Compiling memchr v2.8.3
+   Compiling writeable v0.6.4
+   Compiling untrusted v0.9.0
+   Compiling icu_normalizer_data v2.3.0
+   Compiling rustls v0.23.45
+   Compiling http v1.5.0
+   Compiling const-oid v0.10.2
+   Compiling utf8_iter v1.0.4
+   Compiling hybrid-array v0.4.15
+   Compiling icu_properties_data v2.3.0
+   Compiling slab v0.4.12
+   Compiling futures-sink v0.3.34
+   Compiling futures-task v0.3.34
+   Compiling getrandom v0.4.3
+   Compiling subtle v2.6.1
+   Compiling rand_core v0.10.1
+   Compiling percent-encoding v2.3.2
+   Compiling cfg_aliases v0.2.2
+   Compiling webpki-roots v1.0.9
+   Compiling base64 v0.22.1
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling syn v3.0.6
+   Compiling syn v2.0.119
+   Compiling ring v0.17.14
+   Compiling secp256k1-sys v0.11.0
+   Compiling objc2 v0.6.4
+   Compiling form_urlencoded v1.2.2
+   Compiling digest v0.11.3
+   Compiling errno v0.3.14
+   Compiling signal-hook-registry v1.4.8
+   Compiling mio v1.2.3
+   Compiling socket2 v0.6.5
+   Compiling getrandom v0.2.17
+   Compiling cpufeatures v0.3.1
+   Compiling chacha20 v0.10.2
+   Compiling objc2-encode v4.1.0
+   Compiling sha2 v0.11.0
+   Compiling sha1 v0.11.0
+   Compiling data-encoding v2.11.1
+   Compiling libm v0.2.16
+   Compiling autocfg v1.5.1
+   Compiling webpki-roots v0.26.11
+   Compiling ryu-js v1.0.3
+   Compiling version_check v0.9.5
+   Compiling naga v29.0.4
+   Compiling unicode-width v0.2.0
+   Compiling num-traits v0.2.19
+   Compiling generic-array v0.14.7
+   Compiling hashbrown v0.17.1
+   Compiling bit-vec v0.9.1
+   Compiling equivalent v1.0.2
+   Compiling foldhash v0.2.0
+   Compiling parking_lot_core v0.9.12
+   Compiling bit-set v0.9.1
+   Compiling hashbrown v0.16.1
+   Compiling codespan-reporting v0.13.1
+   Compiling rand_core v0.9.5
+   Compiling indexmap v2.14.2
+   Compiling http-body v1.1.0
+   Compiling hexf-parse v0.2.1
+   Compiling rustc-hash v1.1.0
+   Compiling raw-window-handle v0.6.2
+   Compiling scopeguard v1.2.0
+   Compiling arrayvec v0.7.8
+   Compiling wgpu-hal v29.0.4
+   Compiling lock_api v0.4.14
+   Compiling synstructure v0.14.0
+   Compiling qrcodegen v1.8.0
+   Compiling tower-service v0.3.3
+   Compiling try-lock v0.2.5
+   Compiling tracing-core v0.1.36
+   Compiling want v0.3.1
+   Compiling futures-channel v0.3.34
+   Compiling atomic-waker v1.1.2
+   Compiling rand v0.10.2
+   Compiling zerocopy-derive v0.8.57
+   Compiling profiling v1.0.18
+   Compiling cpufeatures v0.2.17
+   Compiling supervise v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/supervise)
+   Compiling wgpu-core v29.0.4
+   Compiling sync_wrapper v1.0.2
+   Compiling tracing v0.1.44
+   Compiling ipnet v2.12.2
+   Compiling tower-layer v0.3.3
+   Compiling litrs v1.0.0
+   Compiling wgpu v29.0.4
+   Compiling rustix v1.1.5
+   Compiling ryu v1.0.23
+   Compiling http-body-util v0.1.5
+   Compiling yazi v0.2.1
+   Compiling coder-link v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-link)
+   Compiling document-features v0.2.12
+   Compiling static_assertions v1.1.0
+   Compiling zeno v0.3.3
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.3
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling serde_derive v1.0.229
+   Compiling tokio-macros v2.7.2
+   Compiling thiserror-impl v2.0.20
+   Compiling futures-macro v0.3.34
+   Compiling bytemuck_derive v1.12.1
+   Compiling objc2-core-foundation v0.3.2
+   Compiling tokio v1.53.1
+   Compiling block2 v0.6.2
+   Compiling zerofrom v0.1.8
+   Compiling fastrand v2.5.0
+   Compiling futures-util v0.3.34
+   Compiling pollster v0.4.0
+   Compiling glam v0.30.10
+   Compiling parking_lot v0.12.5
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling digest v0.10.7
+   Compiling bytemuck v1.25.2
+   Compiling objc2-foundation v0.3.2
+   Compiling sha2 v0.10.9
+   Compiling tempfile v3.27.0
+   Compiling yoke v0.8.3
+   Compiling rustls-webpki v0.103.15
+   Compiling objc2-metal v0.3.2
+   Compiling wgpu-types v29.0.4
+   Compiling font-types v0.12.5
+   Compiling read-fonts v0.41.0
+   Compiling coder-history v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-history)
+   Compiling rust-native v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/rust-native)
+   Compiling serde_urlencoded v0.7.1
+   Compiling coder-pty v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-pty)
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling zerovec v0.11.8
+   Compiling zerotrie v0.2.5
+   Compiling rand_chacha v0.9.0
+   Compiling coder-ui v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-ui)
+   Compiling rand v0.9.5
+   Compiling secp256k1 v0.31.1
+   Compiling hyper v1.11.1
+   Compiling tower v0.5.3
+   Compiling objc2-quartz-core v0.3.2
+   Compiling nostr v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr)
+   Compiling coder-service v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-service)
+   Compiling raw-window-metal v1.1.0
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling icu_locale_core v2.3.0
+   Compiling hyper-util v0.1.20
+   Compiling icu_provider v2.3.1
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling tokio-rustls v0.26.5
+   Compiling tungstenite v0.30.0
+   Compiling hyper-rustls v0.27.9
+   Compiling tokio-tungstenite v0.30.0
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling tower-http v0.6.11
+   Compiling reqwest v0.12.28
+   Compiling skrifa v0.44.0
+   Compiling wgpu-naga-bridge v29.0.4
+   Compiling swash v0.2.10
+   Compiling wgpu-core-deps-apple v29.0.4
+   Compiling nostr-transport v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr-transport)
+   Compiling coder-reach v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-reach)
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-connect)
+   Compiling push-gateway v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/push-gateway)
+   Compiling coder-access v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-access)
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym-bridge)
+   Compiling coder-host v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-host)
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+   Compiling coder-computers v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-computers)
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-mobile)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.00s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/coder_mobile-ebe2a86e627df727)
+
+running 1 test
+test verse_app::tests::visible_door_edge_tap_does_not_require_an_unobstructed_accessibility_anchor ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 60 filtered out; finished in 0.06s

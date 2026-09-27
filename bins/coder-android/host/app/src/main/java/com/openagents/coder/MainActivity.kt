@@ -43,6 +43,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var renderer: NativeRenderer
     private lateinit var computersRenderer: NativeRenderer
     private lateinit var gym: GymPanel
+    private lateinit var doorError: TextView
+    private lateinit var doorRetry: Button
     private lateinit var worldError: TextView
     private lateinit var retry: Button
     private lateinit var controls: LinearLayout
@@ -116,7 +118,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = false; isAppearanceLightNavigationBars = false
         }
-        val storage = DeviceStorage(this, synthetic)
+        val storage = DeviceStorage(this, synthetic, if (synthetic) intent.getStringExtra("door_scope") else null)
         root = FrameLayout(this).apply { setBackgroundColor(BACKGROUND) }
         safe = FrameLayout(this)
         scanner = QRScanner(this)
@@ -156,6 +158,8 @@ class MainActivity : ComponentActivity() {
         val header = column()
         worldError = label("", "verse-error").apply { visibility = View.GONE }; header.addView(worldError)
         retry = button("Retry world renderer", "verse-retry") { world.retry() }.apply { visibility = View.GONE }; header.addView(retry)
+        doorError = label("", "door-storage-error").apply { visibility = View.GONE }; header.addView(doorError)
+        doorRetry = button("Retry saving choices", "door-save-retry") { world.retryDoorPreferences() }.apply { visibility = View.GONE }; header.addView(doorRetry)
         safe.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         controls = column()
         val modes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
@@ -189,11 +193,16 @@ class MainActivity : ComponentActivity() {
         if (value != null) latestWorld = value
         val packet = latestWorld
         val problem = error ?: packet?.textOrNull("error")
+        val doorProblem = world.doorStorageError ?: packet?.optJSONObject("doors")?.textOrNull("error")
+        doorError.text = doorProblem.orEmpty()
+        doorError.visibility = if (doorProblem == null) View.GONE else View.VISIBLE
+        doorRetry.visibility = if (world.canRetryDoorSave) View.VISIBLE else View.GONE
         worldError.text = problem.orEmpty(); worldError.visibility = if (problem == null) View.GONE else View.VISIBLE
         retry.visibility = worldError.visibility
         if (packet == null) return
         val newPanel = when { packet.optBoolean("computer_open") -> "computer"; packet.optBoolean("gym_open") -> "gym"; else -> "" }
         if (newPanel != opened) {
+            clearComputersValue()
             opened = newPanel; computerMode = ""; computers = false; settings = false; renderer.clear(); computersRenderer.clear(); stopCamera(); controls.visibility = if (opened.isEmpty()) View.VISIBLE else View.GONE
             reader.foreground(foreground && opened == "computer")
             if (opened.isEmpty()) panel.visibility = View.GONE else {
@@ -305,6 +314,7 @@ class MainActivity : ComponentActivity() {
         headerRefresh?.isEnabled = !reader.busy
         if (force || mode != computerMode || reading != lastReading) {
             computerMode = mode; lastReading = reading
+            clearComputersValue()
             stopCamera(); renderer.clear(); computersRenderer.clear(); panelBody.removeAllViews(); readerContent = null
             computersContent = null; computersInput = null; computersToken = null; computersQr = null; shownQr = null
             worldConnectionStatus = null; worldConnectionError = null
@@ -364,6 +374,7 @@ class MainActivity : ComponentActivity() {
         val box = computersInput ?: return
         val token = input?.optString("token")
         if (token == computersToken) return
+        clearComputersValue()
         computersToken = token; stopCamera(); box.removeAllViews()
         if (input == null || token == null) return
         box.addView(label(input.optString("prompt"), size = 12f))
@@ -375,19 +386,33 @@ class MainActivity : ComponentActivity() {
             })
             scannerContainer = column(); box.addView(scannerContainer)
         }
+        val secret = input.optBoolean("secret", false)
         val field = EditText(this).apply {
             hint = input.optString("label"); contentDescription = input.optString("label"); tag = "computers-input"
-            minLines = 1; maxLines = 4; isSaveEnabled = false; setTextColor(AMBER)
+            minLines = 1; maxLines = if (secret) 1 else 4; isSaveEnabled = false; setTextColor(AMBER)
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                if (secret) android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD else android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            if (secret) {
+                transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+                imeOptions = imeOptions or android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+            }
             filters = arrayOf(android.text.InputFilter.LengthFilter(limit))
         }
         box.addView(field)
-        box.addView(button("Submit", "computers-submit") { submitComputers(token, field.text.toString(), limit); field.text.clear() })
+        box.addView(button("Submit", "computers-submit") { submitComputers(token, field.text.toString(), limit) })
+        box.addView(button("Cancel", "computers-cancel") {
+            clearComputersValue(); stopCamera()
+            reader.request(json("op" to "computers_cancel", "token" to token))
+        })
+    }
+
+    private fun clearComputersValue() {
+        computersInput?.findViewWithTag<EditText>("computers-input")?.text?.clear()
     }
 
     private fun submitComputers(token: String, value: String, limit: Int) {
-        stopCamera()
+        clearComputersValue(); stopCamera()
         if (value.toByteArray().size > limit) { readerError?.text = "That's too long. Copy it again."; readerError?.visibility = View.VISIBLE; return }
         reader.request(json("op" to "computers_input", "token" to token, "value" to value))
     }
@@ -502,6 +527,7 @@ class MainActivity : ComponentActivity() {
     private fun stopCamera() { scanning = false; requestingCamera = false; if (::scanner.isInitialized) scanner.stop(); scannerContainer?.removeAllViews() }
     private fun copy(name: String, value: String) = getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(name, value))
     private fun closePanel() {
+        clearComputersValue()
         stopCamera(); pairing = false; computers = false; settings = false
         world.send(json("action" to if (opened == "gym") "close_gym" else "close_computer"))
     }
@@ -513,6 +539,7 @@ class MainActivity : ComponentActivity() {
         if (scanning && !requestingCamera && opened == "computer") startCamera()
     }
     override fun onPause() {
+        clearComputersValue()
         foreground = false
         if (requestingCamera) { scanner.stop(); scannerContainer?.removeAllViews() } else stopCamera()
         if (::world.isInitialized) world.setResumed(false)

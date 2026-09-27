@@ -1,0 +1,61 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName" : "Coder Launch 45",
+        "modelName" : "iPhone 17 Pro",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 2,
+      "passedTests" : 18,
+      "skippedTests" : 1,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Coder · Built with macOS 26.4",
+  "expectedFailures" : 0,
+  "failedTests" : 2,
+  "finishTime" : 1790482914.265,
+  "passedTests" : 18,
+  "result" : "Failed",
+  "skippedTests" : 1,
+  "startTime" : 1790482439.333,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "Failed to get matching snapshot: No matches found for Elements matching predicate '\"ssh-connect\" IN identifiers' from input {(\n    Button, identifier: 'computer-settings', label: 'Computer settings',\n    Button, identifier: 'computer-close', label: 'Back to world',\n    Button, identifier: 'tab-computers', label: 'Computers',\n    Button, identifier: 'tab-add', label: 'Add a computer',\n    Button, identifier: 'tab-activity', label: 'Activity',\n    Button, identifier: 'invite-scan', label: 'Scan invitation',\n    Button, identifier: 'invite-paste', label: 'Paste invitation',\n    Button, identifier: 'approve-4-0-code', label: 'Enter code',\n    Button, identifier: 'approve-4-0-deny', label: 'Deny',\n    Button, identifier: 'local-client-only', label: 'Run with no local host', Disabled\n)}",
+      "targetName" : "CoderUITests",
+      "testIdentifier" : 3,
+      "testIdentifierString" : "ComputersUITests/testComputersStatusesAccessAndInvitationInput()",
+      "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/ComputersUITests/testComputersStatusesAccessAndInvitationInput",
+      "testName" : "testComputersStatusesAccessAndInvitationInput()"
+    },
+    {
+      "failureText" : "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")",
+      "targetName" : "CoderUITests",
+      "testIdentifier" : 11,
+      "testIdentifierString" : "MapUITests/testMapTapStartsWalkingAndManualMovementStopsIt()",
+      "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/MapUITests/testMapTapStartsWalkingAndManualMovementStopsIt",
+      "testName" : "testMapTapStartsWalkingAndManualMovementStopsIt()"
+    }
+  ],
+  "title" : "Test - Coder",
+  "topInsights" : [
+    {
+      "category" : "Longest Test Runs",
+      "impact" : "16% of duration",
+      "text" : "1 longest test run with outlier durations exceeding 74.18s (three standard deviations)"
+    }
+  ],
+  "totalTestCount" : 21
+}

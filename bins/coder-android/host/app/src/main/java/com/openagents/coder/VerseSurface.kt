@@ -28,6 +28,13 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     SurfaceHolder.Callback, Choreographer.FrameCallback, SensorEventListener {
     var worldStorageError: String? = null
         private set
+    var doorStorageError: String? = null
+        private set
+    var canRetryDoorSave = false
+        private set
+    private var attemptedDoorRevision: Long? = null
+    private var latestDoorDocument: String? = null
+    private var doorStorageWrites = 0L
     private var handle = 0L
     private var attached = false
     private var disposed = false
@@ -45,6 +52,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     private var hudInsets = floatArrayOf(0f, 0f, 0f, 0f)
     private var accessibilityState = ""
     private val landmarkActions = mutableMapOf<Int, String>()
+    private val doorActions = mutableMapOf<Int, Pair<String, JSONObject>>()
     private val pinchAdmission = PinchAdmission()
     private val pinch = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
@@ -96,6 +104,12 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             val config = json("secret_hex" to storage.identity("verse"), "width" to width,
                 "height" to height, "scale" to resources.displayMetrics.density,
                 "synthetic" to synthetic, "synthetic_gym" to (synthetic && gymPreview))
+            attemptedDoorRevision = null
+            latestDoorDocument = null
+            doorStorageWrites = 0
+            canRetryDoorSave = false
+            try { storage.doorPreferences()?.let { config.put("door_preferences", it) }; doorStorageError = null }
+            catch (_: Exception) { doorStorageError = "Saved door choices unavailable. Unlock the device and retry." }
             try { storage.worldRelay()?.let { config.put("world_relay", it) } }
             catch (_: Exception) { worldStorageError = "Saved world relay unavailable. Unlock the device and retry." }
             storage.gymCode()?.let { config.put("gym_code", it) }
@@ -175,6 +189,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             require(result.getJSONArray("position").length() == 3 &&
                 result.getString("camera_mode") in listOf("touch", "motion")) { "Invalid world view." }
             snapshot = result
+            retainDoorPreferences(result)
             if (request.optString("action") in listOf("connect", "disconnect") && result.textOrNull("error") == null) {
                 try {
                     storage.saveWorldRelay(result.getJSONObject("connection").textOrNull("relay"))
@@ -192,14 +207,20 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
                 "gym_active" to result.optBoolean("gym_active"),
                 "motion_needed" to result.optBoolean("motion_needed"),
                 "map" to result.getJSONObject("map"),
-                "companion" to result.getJSONObject("companion"))}"
+                "companion" to result.getJSONObject("companion"),
+                "doors" to result.getJSONObject("doors"),
+                "door_preferences_revision" to result.getLong("door_preferences_revision"),
+                "door_storage_writes" to doorStorageWrites)}"
             val available = computerAvailable()
             val map = result.getJSONObject("map")
-            val mapState = "$available:${companionAvailable()}:${map.optBoolean("visible")}:${map.optBoolean("expanded")}:${!map.isNull("destination")}:${map.optJSONArray("landmarks")}"
+            val advertisedDoors = advertisedDoorActions()
+            val mapState = "${advertisedDoors}:$available:${companionAvailable()}:${map.optBoolean("visible")}:${map.optBoolean("expanded")}:${!map.isNull("destination")}:${map.optJSONArray("landmarks")}"
             if (accessibilityState != mapState) {
                 computerAccessible = available
                 accessibilityState = mapState
                 landmarkActions.clear()
+                doorActions.clear()
+                for (action in advertisedDoors) doorActions[android.view.View.generateViewId()] = action
                 val landmarks = map.optJSONArray("landmarks") ?: JSONArray()
                 for (index in 0 until minOf(landmarks.length(), 256)) {
                     landmarkActions[android.view.View.generateViewId()] = landmarks.getJSONObject(index).getString("id")
@@ -218,6 +239,32 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             nativeError = failure.message ?: "The world could not update."
             changed(null, nativeError); null
         }
+    }
+
+    private fun retainDoorPreferences(packet: JSONObject) {
+        val document = packet.getString("door_preferences")
+        require(document.toByteArray(Charsets.UTF_8).size <= 2048) { "Invalid door choices." }
+        val revision = packet.getLong("door_preferences_revision")
+        latestDoorDocument = document
+        val previous = attemptedDoorRevision
+        attemptedDoorRevision = revision
+        // The initial revision must not overwrite unavailable or invalid storage.
+        if (previous != null && previous != revision) saveDoorPreferences(document)
+    }
+
+    fun retryDoorPreferences() {
+        if (!canRetryDoorSave) return
+        latestDoorDocument?.let { saveDoorPreferences(it) }
+        changed(snapshot, nativeError)
+    }
+
+    private fun saveDoorPreferences(document: String) {
+        try {
+            storage.saveDoorPreferences(document)
+            doorStorageWrites += 1
+            doorStorageError = null
+            canRetryDoorSave = false
+        } catch (_: Exception) { doorStorageError = "Door choice not saved."; canRetryDoorSave = true }
     }
 
     fun configureGym(code: String): Boolean {
@@ -307,8 +354,9 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
                     pointers.add(id)
                     // Rust decides HUD ownership before native pinch admission.
                     pointer(event, index, "down")
-                    val captured = snapshot?.optJSONObject("map")?.optJSONArray("captured_pointers")
-                    if (captured != null && (0 until captured.length()).any { captured.optLong(it) == id.toLong() }) {
+                    val captured = listOf(snapshot?.optJSONObject("map")?.optJSONArray("captured_pointers"),
+                        snapshot?.optJSONObject("doors")?.optJSONObject("hud")?.optJSONArray("captured_pointers"))
+                    if (captured.any { ids -> ids != null && (0 until ids.length()).any { ids.optLong(it) == id.toLong() } }) {
                         hudPointers.add(id)
                     } else {
                         pinchAdmission.down(id, event.getX(index) / density, event.getY(index) / density, event.eventTime)
@@ -352,8 +400,45 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             companion.optDouble("cooldown_seconds", 1.0) <= 0
     }
 
+    private fun advertisedDoorActions(): List<Pair<String, JSONObject>> {
+        if (!running || panelOpen() || snapshot?.optJSONObject("map")?.optBoolean("expanded") == true) return emptyList()
+        val state = snapshot?.optJSONObject("doors") ?: return emptyList()
+        val doors = state.optJSONArray("doors") ?: return emptyList()
+        val actions = mutableListOf<Pair<String, JSONObject>>()
+        for (index in 0 until minOf(doors.length(), 8)) {
+            val door = doors.getJSONObject(index)
+            val id = door.optString("id")
+            if (id in listOf("spark", "halo") && door.optBoolean("near") && door.optBoolean("visible")) {
+                actions.add("Use ${door.getString("label")}" to json("action" to "door_tap", "door" to id))
+            }
+        }
+        val hud = state.optJSONObject("hud") ?: return actions
+        if (!hud.optBoolean("visible")) return actions
+        val buttons = hud.optJSONArray("buttons") ?: return actions
+        for (index in 0 until minOf(buttons.length(), 8)) {
+            val button = buttons.getJSONObject(index)
+            if (!button.optBoolean("enabled")) continue
+            val request = button.getJSONObject("action")
+            when (request.optString("action")) {
+                "door_hold" -> {
+                    val item = request.optString("item")
+                    if (item in listOf("prism", "ring", "bolt", "empty"))
+                        actions.add("Hold ${button.getString("label")}" to json("action" to "door_hold", "item" to item))
+                }
+                "door_reset" -> {
+                    val id = request.optString("door")
+                    val target = (0 until doors.length()).map { doors.getJSONObject(it) }.firstOrNull { it.optString("id") == id }
+                    if (id in listOf("spark", "halo") && target != null)
+                        actions.add("Reset ${target.getString("label")}" to json("action" to "door_reset", "door" to id))
+                }
+            }
+        }
+        return actions
+    }
+
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
+        for ((action, value) in doorActions) info.addAction(AccessibilityNodeInfo.AccessibilityAction(action, value.first))
         if (synthetic && motionPreview) {
             info.addAction(AccessibilityNodeInfo.AccessibilityAction(R.id.verse_inject_motion_action, "Inject motion sample"))
         }
@@ -380,6 +465,11 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     }
 
     override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
+        doorActions[action]?.let { selected ->
+            val current = advertisedDoorActions().firstOrNull { it.second.toString() == selected.second.toString() } ?: return false
+            val result = send(current.second) ?: return false
+            return result.textOrNull("error") == null
+        }
         if (action == R.id.verse_inject_motion_action && synthetic && motionPreview) {
             injectMotion()
             return true

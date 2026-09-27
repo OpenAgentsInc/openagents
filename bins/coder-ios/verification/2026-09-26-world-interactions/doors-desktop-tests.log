@@ -1,0 +1,17 @@
+   Compiling coder v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder)
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `test` profile [unoptimized] target(s) in 6.52s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-baeaec56c1889682)
+
+running 9 tests
+test doors::tests::empty_reuses_memory_and_incompatible_keys_never_overwrite_it ... ok
+test doors::tests::changing_keys_reselects_and_timers_are_bounded ... ok
+test doors::tests::intents_serialize_as_closed_native_requests ... ok
+test doors::hud::tests::item_strip_respects_native_controls_and_capture_cancellation ... ok
+test doors::tests::every_catalog_combination_selects_only_its_declared_route ... ok
+test doors::tests::preferences_round_trip_only_held_items_and_compatible_memories ... ok
+test doors::tests::invalid_preferences_are_rejected_without_partial_import ... ok
+test doors::tests::geometry_stays_finite_bounded_and_uses_only_the_product_palette ... ok
+test doors::store::tests::preferences_are_private_atomic_and_bounded_to_the_profile ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 169 filtered out; finished in 0.03s

@@ -1,0 +1,8 @@
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `test` profile [unoptimized] target(s) in 3.68s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-baeaec56c1889682)
+
+running 1 test
+test app::tests::desktop_door_pick_accepts_visible_edges_around_an_occluded_anchor ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 178 filtered out; finished in 0.00s

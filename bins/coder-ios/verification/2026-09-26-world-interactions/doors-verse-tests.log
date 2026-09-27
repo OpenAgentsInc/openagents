@@ -1,0 +1,180 @@
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `test` profile [unoptimized] target(s) in 1.54s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-e7ac66d55632a722)
+
+running 159 tests
+test agent::tests::a_scanning_agent_does_not_greet ... ok
+test avatar::tests::a_standing_gait_does_not_swing ... ok
+test agent::tests::a_visiting_agent_flies_to_its_goal_and_faces_it ... ok
+test agent::tests::the_agent_starts_beside_the_player ... ok
+test agent::tests::every_emote_starts_and_ends_at_rest ... ok
+test agent::tests::a_short_step_earns_no_look_around ... ok
+test agent::tests::a_greeting_faces_the_other_agent_and_bows ... ok
+test agent::tests::a_tap_reaction_survives_a_late_scan_result_or_greeting ... ok
+test agent::tests::the_look_around_goes_left_then_right ... ok
+test agent::tests::the_agent_lags_then_catches_up ... ok
+test agent::tests::tapping_wiggles_once_then_finishes_without_interrupting_following ... ok
+test camera::tests::pitch_is_clamped ... ok
+test camera::tests::settle_swings_back_behind ... ok
+test camera::tests::the_camera_starts_behind_and_above ... ok
+test camera::tests::the_eye_never_sinks_below_the_ground ... ok
+test camera::tests::ordinary_orbit_views_still_point_at_the_player ... ok
+test camera::tests::zoom_is_bounded ... ok
+test camera::tests::mouselook_takes_the_orbit_angle ... ok
+test camera::tests::upward_view_keeps_its_pitch_when_ground_clearance_lifts_the_eye ... ok
+test agent::tests::the_look_around_faces_what_the_scan_found ... ok
+test controller::tests::a_turns_without_mouselook_and_strafes_with_it ... ok
+test controller::tests::s_backpedals_slower_and_wins_over_w ... ok
+test avatar::tests::the_avatar_stands_on_its_feet ... ok
+test controller::tests::the_world_edge_holds ... ok
+test chat::tests::long_broadcasts_and_shouting_are_refused ... ok
+test chat::tests::an_unknown_shortcut_is_a_private_message ... ok
+test chat::tests::lines_land_in_their_windows ... ok
+test controller::tests::a_jump_leaves_and_returns_to_the_ground ... ok
+test chat::tests::bang_commands_mute_and_unmute ... ok
+test agent::tests::catching_up_after_a_run_earns_a_look_around ... ok
+test chat::tests::scope_follows_distance_and_zone ... ok
+test controller::tests::a_footprint_stops_the_character ... ok
+test chat::tests::shortcuts_pick_the_channel_for_one_line ... ok
+test agent::tests::the_ghost_is_one_step_down_the_ladder ... ok
+test controller::tests::w_runs_forward_along_positive_z ... ok
+test chat::tests::ads_wait_a_minute_and_all_draws_on_a_budget ... ok
+test controller::tests::wrap_keeps_angles_in_range ... ok
+test agent::tests::the_spade_is_its_size_and_amber ... ok
+test crowd::tests::my_own_events_are_ignored ... ok
+test doors::tests::empty_reuses_memory_and_incompatible_keys_never_overwrite_it ... ok
+test feed::tests::relay_names_shorten ... ok
+test doors::tests::changing_keys_reselects_and_timers_are_bounded ... ok
+test feed::tests::visitors_stand_apart_on_the_ring ... ok
+test crowd::tests::a_publisher_cannot_flood_the_crowd ... ok
+test crowd::tests::an_offline_entity_rests_at_its_state ... ok
+test crowd::tests::stale_and_reordered_frames_are_dropped ... ok
+test crowd::tests::frames_interpolate_in_the_past ... ok
+test doors::tests::intents_serialize_as_closed_native_requests ... ok
+test doors::hud::tests::item_strip_respects_native_controls_and_capture_cancellation ... ok
+test doors::tests::every_catalog_combination_selects_only_its_declared_route ... ok
+test doors::tests::preferences_round_trip_only_held_items_and_compatible_memories ... ok
+test hud::tests::a_point_ahead_projects_to_the_screen_center ... ok
+test hud::gym::tests::tall_charts_can_scroll_even_when_the_number_of_rows_is_small ... ok
+test feed::tests::notes_are_tidied_for_a_chat_line ... ok
+test identity::tests::a_bad_profile_name_is_refused ... ok
+test doors::tests::invalid_preferences_are_rejected_without_partial_import ... ok
+test hud::gym::tests::missing_measurements_and_unenforced_spend_are_not_free_or_bounded ... ok
+test mesh::tests::a_cube_has_twelve_edges_and_twelve_triangles ... ok
+test mesh::tests::cube_edges_are_unit_length ... ok
+test agent::tests::an_idle_agent_plays_every_idle_emote ... ok
+test minimap::tests::every_landmark_has_a_separate_footer_target ... ok
+test minimap::tests::insets_and_visibility_bound_capture ... ok
+test gym::tests::stale_and_changed_recipes_cannot_be_confirmed ... ok
+test gym::tests::leaving_during_launch_keeps_identity_and_marks_the_outcome_unknown ... ok
+test gym::tests::starting_requires_a_current_reviewed_recipe_and_explicit_confirmation ... ok
+test gym::tests::entry_loads_but_exit_and_background_stop_observation ... ok
+test minimap::tests::map_selects_exact_positions_and_cancelled_drags_do_nothing ... ok
+test gym::tests::a_previous_visit_cannot_update_the_new_board ... ok
+test minimap::tests::route_segments_clip_at_every_edge_and_can_cross_the_entire_plot ... ok
+test minimap::tests::small_viewports_hide_both_map_sizes_and_refuse_capture ... ok
+test gym::tests::unknown_cost_and_metric_denominators_survive_projection ... ok
+test gym::tests::confirmation_and_reconciliation_queue_one_identical_logical_request ... ok
+test mv::tests::cells_follow_the_floor ... ok
+test mv::tests::a_tampered_frame_is_refused ... ok
+test doors::tests::geometry_stays_finite_bounded_and_uses_only_the_product_palette ... ok
+test identity::tests::the_key_file_is_private ... ok
+test nav::tests::rejects_invalid_blocked_and_sealed_destinations ... ok
+test mv::tests::another_world_is_refused ... ok
+test nav::tests::routes_are_deterministic_and_do_not_cut_inflated_corners ... ok
+test mv::tests::a_gesture_round_trips ... ok
+test mv::tests::a_state_round_trips_with_its_address ... ok
+test net::tests::a_req_carries_every_filter ... ok
+test mv::tests::a_frame_round_trips ... ok
+test net::tests::relay_messages_parse ... ok
+test crowd::tests::publisher_session_tracking_is_bounded_even_for_unrendered_entities ... ok
+test palette::tests::full_amber_is_the_terminal_amber ... ok
+test net::tests::relay_parsing_and_queues_are_bounded ... ok
+test net::tests::cancellation_interrupts_an_unfinished_websocket_handshake ... ok
+test identity::tests::a_profile_is_created_once_then_reused ... ok
+test mv::tests::bad_numbers_are_refused ... ok
+test palette::tests::the_ladder_stays_ordered_in_linear_light ... ok
+test render::tests::scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits ... ok
+test replay::tests::a_side_that_starts_late_waits_on_the_plaza ... ok
+test replay::tests::a_visit_spans_from_the_previous_event_to_its_own ... ok
+test replay::tests::places_are_apart_and_the_ghost_stands_beside_the_agent ... ok
+test net::tests::authentication_ack_restores_live_and_unfinished_one_shot_subscriptions ... ok
+test render::tests::renderer_options_and_extents_are_bounded_before_gpu_work ... ok
+test replay::tests::each_microcoder_event_visits_its_place ... ok
+test replay::tests::the_agents_travel_at_a_bounded_speed_and_arrive ... ok
+test net::tests::offline_queue_keeps_ordinary_events_and_replaces_only_replaceable_addresses ... ok
+test mv::tests::gesture_version_duration_and_coordinates_are_checked ... ok
+test replay::tests::the_clock_plays_at_1_10_and_60_times ... ok
+test mv::tests::world_chat_round_trips_with_its_scope ... ok
+test runtime::tests::changed_obstacles_stop_navigation_before_the_player_crosses_them ... ok
+test runtime::tests::blocked_door_route_is_visible_and_restoration_never_restarts_it ... ok
+test runtime::tests::bad_input_and_resume_gaps_cannot_poison_the_simulation ... ok
+test runtime::tests::companion_refuses_invalid_projection_input_and_distant_reactions ... ok
+test render::tests::dynamic_buffers_grow_to_hold_the_full_bounded_crowd ... ok
+test runtime::tests::companion_picking_refuses_foreground_static_player_and_remote_faces ... ok
+test runtime::tests::computer_action_prompt_requires_an_interactive_host ... ok
+test runtime::tests::computer_picking_rejects_distance_back_faces_invalid_input_and_occlusion ... ok
+test runtime::tests::computer_picking_respects_presented_remote_geometry_without_advancing_it ... ok
+test runtime::tests::external_agent_motion_is_not_advanced_as_a_follower ... ok
+test render::tests::over_capacity_frames_fail_instead_of_silently_clipping ... ok
+test runtime::tests::gym_entry_requires_the_real_doorway_and_excludes_walls_and_roof ... ok
+test runtime::tests::semantic_input_advances_the_same_world_deterministically ... ok
+test runtime::tests::door_anchors_are_hittable_on_approach_and_reject_front_obstructions ... ok
+test runtime::tests::computer_picking_tracks_the_monitor_in_portrait_landscape_and_oblique_views ... ok
+test session::tests::a_greeting_is_returned_from_a_little_farther ... ok
+test session::tests::greetings_go_to_the_nearest_agent_in_range_once_per_cooldown ... ok
+test runtime::tests::navigation_walks_around_a_building_without_teleporting_or_entering_it ... ok
+test session::tests::both_world_subscriptions_must_be_ready_and_refusals_stay_visible ... ok
+test runtime::tests::the_computer_is_visible_then_reachable_without_walking_through_it ... ok
+test session::tests::published_poses_name_the_avatar_and_its_agent ... ok
+test runtime::tests::manual_movement_jump_and_explicit_cancel_stop_routes ... ok
+test session::tests::rejected_auth_does_not_become_connected_on_eose ... ok
+test session::tests::socket_open_is_not_authenticated_and_reconnect_resets_pose_identity ... ok
+test session::tests::random_spawns_land_on_the_plaza_and_clear ... ok
+test session::tests::profiles_require_signatures_and_room_labels_require_pinned_authority ... ok
+test session::tests::nonblocking_spawn_only_accepts_the_injected_players_signature ... ok
+test session::tests::stopped_link_cannot_echo_a_chat_as_success_and_history_identity_is_bounded ... ok
+test world::tests::computer_display_stays_inside_the_physical_monitor_and_changes_with_proximity ... ok
+test runtime::tests::companion_picking_uses_the_spade_in_portrait_landscape_and_animated_views ... ok
+test world::tests::computer_text_reads_left_to_right_from_the_monitors_front ... ok
+test world::tests::faces_are_near_black ... FAILED
+test world::tests::every_color_is_on_the_amber_ladder ... ok
+test world::tests::the_city_has_buildings ... ok
+test world::tests::gym_hall_and_door_are_clear_and_signage_is_world_geometry ... ok
+test world::tests::the_computer_has_one_solid_footprint_and_clear_approach ... ok
+test world::tests::the_city_is_the_same_every_launch ... ok
+test world::tests::the_quest_board_stands_on_the_open_plaza ... ok
+test minimap::tests::compact_map_draws_a_route_to_an_offscreen_destination ... ok
+test hud::tests::pills_tabs_and_the_bar_are_clickable ... ok
+test hud::tests::long_lines_wrap_within_the_window ... ok
+test world::tests::the_spawn_is_clear ... ok
+test hud::tests::a_replay_shows_top_right_and_its_list_is_a_panel ... ok
+test world::tests::the_replay_landmarks_stand_clear_of_the_city ... ok
+test hud::tests::a_slash_lists_the_shortcuts ... ok
+test hud::tests::the_open_board_is_a_clickable_panel ... ok
+test ui::tests::text_is_monospaced ... ok
+test ui::tests::wrapping_breaks_at_spaces_and_splits_long_words ... ok
+test ui::tests::logical_layout_preserves_uvs_without_copying_the_bitmap ... ok
+test ui::tests::the_font_rasterizes_printable_ascii ... ok
+test nav::tests::seeded_world_gym_is_reachable_through_the_doorway ... ok
+test runtime::tests::doors_preview_then_walk_and_reset_cancels_only_their_own_route ... ok
+test runtime::tests::navigation_uses_the_seeded_gym_door_and_camera_control_does_not_cancel_it ... ok
+test minimap::tests::seeded_world_and_far_route_fit_the_renderer_hud_budget ... ok
+test nav::tests::every_map_landmark_has_a_clear_route_from_spawn ... ok
+test runtime::tests::all_door_destinations_remain_reachable_and_gym_ends_outside_the_hall ... ok
+
+failures:
+
+---- world::tests::faces_are_near_black stdout ----
+
+thread 'world::tests::faces_are_near_black' (98643469) panicked at crates/verse/src/world.rs:977:9:
+assertion failed: world.mesh.faces.iter().all(|v| v.color == palette::field())
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    world::tests::faces_are_near_black
+
+test result: FAILED. 158 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+error: test failed, to rerun pass `-p verse --lib`

@@ -55,6 +55,17 @@ movement controls. Double-tap to jump; pinch with two fingers to zoom.
 [Verification and release evidence](docs/coder/verification/2026-09-26-ios-static-link.md)
 include normal optimized simulator launch, resume, relaunch, and 10 passing
 native tests.
+
+Source for the next mobile build adds an expandable map with eight walking
+destinations, a tappable companion, and Spark/Halo gates with local item choices
+and saved destination memory. It also shortens computer setup to `./pair` or
+`coder pair`, loads chats after pairing, remembers the world relay, and improves
+combined movement/look controls. These changes are awaiting combined native
+acceptance and distribution; build 45 remains the confirmed TestFlight release.
+See [world interactions](docs/verse/world-interactions.md),
+[interaction evidence](bins/coder-ios/verification/2026-09-26-world-interactions/README.md),
+and [connection corrections](docs/coder/verification/2026-09-26-mobile-connections.md).
+
 [Verse fills the screen](docs/verse/mobile.md), including behind the system
 clock. Motion look follows body turns and upward tilt with interpolated camera
 movement; hold the left side to walk. Touch look remains available. The computer now renders its prompt on the physical
@@ -93,7 +104,7 @@ and [full-screen release evidence](docs/coder/verification/2026-09-26-fullscreen
 | Operate the Nostr relay | [Local relay runbook](docs/deployment/runbook-local-dev.md), [production (Cloud Run) runbook](docs/deployment/runbook-cloud-run.md), [configuration](docs/deployment/configuration.md) |
 | Review protocol support and gaps | [NIP implementation coverage](docs/protocol/2026-09-26-nip-implementation-coverage.md), [implementation plan](docs/protocol/implementation-plan.md) |
 | Operate a Minecraft agent | [Voyager](docs/voyager/README.md), [watch an episode](docs/minecraft/voyager-runbook.md) |
-| Walk the Verse world on desktop or your phone | [Verse](docs/verse/README.md), [mobile controls](docs/verse/mobile.md), [Gym building and run boards](docs/verse/gym.md) |
+| Walk the Verse world on desktop or your phone | [Verse](docs/verse/README.md), [mobile controls](docs/verse/mobile.md), [maps, companions, and gates](docs/verse/world-interactions.md), [Gym building and run boards](docs/verse/gym.md) |
 
 ## Run Coder
 
@@ -357,7 +368,7 @@ controller components; a policy's presence in code is not a measured result.
 | [nostr](crates/nostr/), [nostr-relay](crates/nostr-relay/) | Protocol verification and the self-hostable PostgreSQL-backed relay. |
 | [voyager](crates/voyager/) | Minecraft curriculum, bounded programs, critics, skill retention, and traces through the separate [nightly Rust bridge](mc-bridge/). |
 | [gym-bridge](crates/gym-bridge/README.md) | Private Gym observation and explicit recipe launches over Nostr; portable client plus a separately enabled local host. |
-| [verse](crates/verse/) | The shared desktop/iOS/Android Verse world: an amber line city, player controller, following agent, native GPU surfaces, and multiplayer over Nostr with [NIP-MV](nips/openagents/NIP-MV.md). |
+| [verse](crates/verse/) | Shared desktop/iOS/Android world, collision-aware map navigation, companion reactions, local item-dependent gates, native GPU surfaces, and multiplayer presence over [NIP-MV](nips/openagents/NIP-MV.md). Local gate choices do not grant service access or synchronize inventory. |
 
 The host owns permissions, deadlines, budgets, and execution boundaries.
 Typed judgments inform decisions; their shape does not establish correctness

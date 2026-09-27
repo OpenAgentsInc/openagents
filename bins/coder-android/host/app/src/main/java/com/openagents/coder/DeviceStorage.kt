@@ -16,8 +16,10 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** Device-only encrypted native storage. Rust independently encrypts transcript caches. */
-class DeviceStorage(private val context: Context, private val synthetic: Boolean) {
+class DeviceStorage(private val context: Context, private val synthetic: Boolean, doorScope: String? = null) {
     private val scope = if (synthetic) "synthetic-v1" else "device-v1"
+    private val doorName = "door-preferences" + if (synthetic && doorScope != null &&
+        doorScope.matches(Regex("[A-Za-z0-9-]{1,64}"))) "-$doorScope" else ""
 
     fun identity(purpose: String): String = synchronized(storageLock) {
         require(purpose.matches(Regex("[a-z][a-z0-9-]{0,63}"))) { "Invalid device identity purpose." }
@@ -54,6 +56,18 @@ class DeviceStorage(private val context: Context, private val synthetic: Boolean
         require(bytes.size <= 2048) { "The relay URL is too long." }
         // An encrypted empty value is an atomic tombstone for explicit Leave.
         write("world-relay", bytes)
+    }
+
+    fun doorPreferences(): String? = synchronized(storageLock) {
+        val bytes = read(doorName)
+        check(bytes == null || bytes.size <= 2048) { "Saved door choices unavailable. Unlock the device and retry." }
+        bytes?.toString(Charsets.UTF_8)
+    }
+
+    fun saveDoorPreferences(document: String) = synchronized(storageLock) {
+        val bytes = document.toByteArray(Charsets.UTF_8)
+        require(bytes.size <= 2048) { "Door choice not saved." }
+        write(doorName, bytes)
     }
 
     private fun key(name: String): SecretKey {

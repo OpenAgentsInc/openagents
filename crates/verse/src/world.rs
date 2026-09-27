@@ -74,6 +74,9 @@ pub fn build() -> World {
     oracle(&mut world);
     library(&mut world);
     proving_ground(&mut world.mesh);
+    let (doors, blockers) = crate::doors::geometry();
+    world.mesh.extend(&doors);
+    world.blockers.extend(blockers);
     horizon(&mut world.mesh);
     world
 }

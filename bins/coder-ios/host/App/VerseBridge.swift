@@ -26,6 +26,9 @@ struct VersePacket: Decodable {
     let motion_needed: Bool
     let map: VerseMap
     let companion: VerseCompanion
+    let doors: VerseDoors
+    let door_preferences: String
+    let door_preferences_revision: UInt64
 }
 
 struct VerseMap: Decodable {
@@ -116,6 +119,11 @@ final class VerseBridge: ObservableObject {
     @Published private(set) var packet: VersePacket?
     @Published private(set) var nativeError: String?
     @Published private(set) var gymBoard: GymBoardView?
+    @Published private(set) var doorStorageError: String?
+    @Published private(set) var canRetryDoorSave = false
+    private var attemptedDoorRevision: UInt64?
+    private var latestDoorDocument: String?
+    private(set) var doorStorageWrites: UInt64 = 0
     @Published private(set) var worldStorageError: String?
     @Published private(set) var gymStorageError: String?
     @Published private(set) var motionError: String?
@@ -162,6 +170,47 @@ final class VerseBridge: ObservableObject {
     }
 
     func retry() { canvas?.recreate() }
+
+    func retryDoorPreferences() {
+        guard canRetryDoorSave, let document = latestDoorDocument else { return }
+        do {
+            try DoorPreferences.save(document, synthetic: synthetic)
+            doorStorageWrites += 1
+            doorStorageError = nil
+            canRetryDoorSave = false
+        } catch { doorStorageError = error.localizedDescription }
+    }
+
+    func storedDoorPreferences() -> String? {
+        attemptedDoorRevision = nil
+        latestDoorDocument = nil
+        doorStorageWrites = 0
+        canRetryDoorSave = false
+        do {
+            let document = try DoorPreferences.load(synthetic: synthetic)
+            doorStorageError = nil
+            return document
+        } catch { doorStorageError = error.localizedDescription; return nil }
+    }
+
+    func retainDoorPreferences(_ packet: VersePacket, from source: VerseMetalView) {
+        guard canvas === source else { return }
+        latestDoorDocument = packet.door_preferences
+        guard let previous = attemptedDoorRevision else {
+            // Initial decode establishes the revision without rewriting invalid
+            // or unavailable saved data with a default document.
+            attemptedDoorRevision = packet.door_preferences_revision
+            return
+        }
+        guard previous != packet.door_preferences_revision else { return }
+        attemptedDoorRevision = packet.door_preferences_revision
+        do {
+            try DoorPreferences.save(packet.door_preferences, synthetic: synthetic)
+            doorStorageWrites += 1
+            doorStorageError = nil
+            canRetryDoorSave = false
+        } catch { doorStorageError = error.localizedDescription; canRetryDoorSave = true }
+    }
 
     func toggleCameraMode() {
         if packet?.camera_mode == "motion" {
@@ -253,7 +302,7 @@ final class VerseBridge: ObservableObject {
               ["touch", "motion"].contains(packet.camera_mode),
               packet.camera_yaw.isFinite, packet.camera_pitch.isFinite,
               packet.camera_distance.isFinite, packet.camera_distance > 0,
-              packet.map.valid, packet.companion.valid,
+              packet.map.valid, packet.companion.valid, packet.door_preferences.utf8.count <= 2048, packet.doors.valid,
               packet.gym_board?.valid ?? true else {
             throw ReaderError.message("This app does not support the returned world view.")
         }

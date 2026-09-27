@@ -1,0 +1,11 @@
+    Checking coder-history v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-history)
+    Checking push-gateway v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/push-gateway)
+    Checking coder-connect v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-connect)
+    Checking coder-access v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-access)
+    Checking gym-bridge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym-bridge)
+    Checking coder-host v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-host)
+    Checking coder v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder)
+    Checking coder-computers v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-computers)
+    Checking verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Checking coder-mobile v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-mobile)
+    Finished `dev` profile [unoptimized] target(s) in 6.62s
