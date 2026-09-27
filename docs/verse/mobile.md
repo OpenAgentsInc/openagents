@@ -39,10 +39,11 @@ shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
   zoom out. A deliberate pinch owns those touches until you lift them. Adding
   a right-hand control after movement starts keeps independent controls active.
   The HUD has no walk/sprint toggle, jump button, or zoom buttons.
-- Use the world computer to pair by QR code and open **Chats**, the read-only
-  Codex and Claude viewer. Selecting a transcript expands its reading area;
-  **All chats** returns to the chat list. Close the panel to
-  continue walking.
+- Use the world computer to reach your linked computers: see each one's
+  status and route, open it, order work, and follow that work in
+  **Activity**. Its **CHATS** page keeps QR pairing and the read-only Codex
+  and Claude viewer. Selecting a transcript expands its reading area;
+  **All chats** returns to the chat list. Tap **CLOSE** to continue walking.
 - Walk east to the **GYM** building. Enter, approach the boards, and tap
   the physical **GYM** board to inspect Microcoder and Terminal-Bench runs.
   Its **TAP TO OPEN** prompt is world geometry, with no floating native entry button.
@@ -138,11 +139,40 @@ VoiceOver and TalkBack expose a **Use computer** action on the world surface
 when the computer is in reach. That action uses the same Rust proximity and
 visibility checks without drawing another control over the scene.
 
-Opening the computer still shows the existing native pairing, world-connection,
-and chat-reader panels over Verse. This change moves the computer prompt and
-its pointer interaction into the 3D world; it does not replace the reader,
-keyboard, QR scanner, or transcript selection with a 3D UI. Closing the panel
-returns to walking.
+### The computer's screen
+
+On iOS, the computer opens its screen in the world HUD, drawn by Rust with the
+same amber lettering as the map and zone controls. A leader line joins it to
+the monitor, and the world stays visible above and behind it. While it is
+open, every touch goes to the screen: tap a control, or drag to scroll. The
+world does not move.
+
+- **COMPUTERS** lists your linked computers with an honest status and the
+  route in use (on this computer, local network, tailnet, public address, or
+  relay). **Open** selects one and shows its rights, the workspaces it
+  shares, **Order work**, **Terminal**, **Access**, and its recent work.
+- **Add a computer** enrolls this phone with a one-use `coder-host:`
+  invitation. **SCAN QR** opens the camera; **PASTE** opens the keyboard.
+  Create the invitation on the computer with `coder host invite`.
+- **Order work** picks a workspace the computer lists, takes a prompt from the
+  keyboard, and sends it with NIP-HOST `task.create`. The screen moves to
+  **Activity**, where the computer's redacted summaries show each task's
+  phase and revision. **Steer** replaces an open task's instructions;
+  **Stop task** asks the computer to stop it after you confirm. The computer
+  records the task and runs it only under its own policy.
+- **Terminal** needs the `terminal` right and opens the **TERMINAL** page for
+  that computer. See [NIP-TERM on mobile, #9733](https://github.com/OpenAgentsInc/openagents/issues/9733).
+- **CHATS** is the existing native page: `coder-pair:` pairing, the read-only
+  chat reader, and the world connection under **…**. Its computer button
+  returns to **COMPUTERS**.
+
+Native code supplies only the keyboard, the camera scanner, and the Chats
+page. VoiceOver reads each control on the screen by its label, and swiping
+up or down with three fingers scrolls it. **CLOSE**, walking away, or moving
+the app to the background ends the interaction. Android keeps its native
+computer panel, which shows the same Rust Computers screens, including
+ordering and following work. See the
+[verification record](../coder/verification/2026-09-27-verse-computer-hud.md).
 
 ## Join another player
 
@@ -206,7 +236,7 @@ The `desktop` feature is enabled by default for the Verse executable. Both mobil
 applications depend on `verse` with default features disabled: no desktop
 harnesses, local Gym result store, knowledge store, or window event loop enter
 those targets. The portable `gym-bridge` client observes a separately configured
-host; its filesystem readers and execution host are feature-gated out of both mobile targets. Reader text, pairing controls, and other panels remain native platform widgets.
+host; its filesystem readers and execution host are feature-gated out of both mobile targets. Reader text, pairing controls, and other panels remain native platform widgets; on iOS, the computer's Computers and terminal screens are HUD geometry drawn by `coder-mobile`'s `computer_hud`.
 The computer prompt is scene geometry; it uses neither native text widgets nor
 the desktop glyph atlas.
 
@@ -229,7 +259,7 @@ the linked verification records have been performed.
 
 ## World connection
 
-At the computer, open **…** to view the world connection. **Join** saves the
+At the computer, open **CHATS**, then **…**, to view the world connection. **Join** saves the
 selected relay on this device; the app reconnects when reopened. **Connected**
 means the world subscriptions are accepted, including authentication when the
 relay requests it. It does not mean other players are currently present.

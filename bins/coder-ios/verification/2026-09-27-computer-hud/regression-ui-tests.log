@@ -1,0 +1,16 @@
+Test Case '-[CoderUITests.ComputersUITests testHostsOrderWorkSteerStopTerminalAndChatsInTheWorld]' passed (32.228 seconds).
+Test Case '-[CoderUITests.ComputersUITests testOwnerKeyInputIsMaskedAndClearedOnCancel]' passed (16.867 seconds).
+Test Case '-[CoderUITests.GymUITests testInteriorBoardShowsChartsAndStopsWhenPlayerLeaves]' passed (27.596 seconds).
+Test Case '-[CoderUITests.GymUITests testRecipeReviewRequiresExplicitConfirmationAndPreviewRefusesExecution]' passed (15.974 seconds).
+Test Case '-[CoderUITests.OwnerKeyUITests testOwnerKeyIsMaskedAndAcceptedOnlyWhenAGrantNamesIt]' passed (27.733 seconds).
+Test Case '-[CoderUITests.ProductionLaunchUITests testProductionWorldLoadsResumesAndRelaunches]' passed (29.627 seconds).
+Test Case '-[CoderUITests.VerseUITests testComputerAndBackgroundResumeWithoutBreakingChats]' passed (27.245 seconds).
+Test Case '-[CoderUITests.VerseUITests testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback]' passed (23.931 seconds).
+Test Case '-[CoderUITests.VerseUITests testMetalWorldRendersAndTouchMovementChangesPosition]' passed (11.453 seconds).
+Test Case '-[CoderUITests.VerseUITests testPinchZoomsWithoutMovingThePlayerOrTurningTheCamera]' passed (12.516 seconds).
+Test Case '-[CoderUITests.PushRegistrationUITests testConfiguredBuildPassesTheTokenToRust]' skipped (0.038 seconds).
+Test Case '-[CoderUITests.ReaderUITests testFollowCanPauseAndResume]' passed (20.078 seconds).
+Test Case '-[CoderUITests.ReaderUITests testNativeChatSelectionAndExactSource]' passed (17.549 seconds).
+Test Case '-[CoderUITests.ReaderUITests testPageSelectionPinsUntilLatestIsRequested]' passed (20.935 seconds).
+Test Case '-[CoderUITests.ReaderUITests testSyntheticDeviceIdentitySurvivesRelaunch]' passed (35.459 seconds).
+Test Case '-[CoderUITests.WorldConnectionUITests testAbsentChoiceCustomRelayAndExplicitOfflineSurviveRelaunch]' passed (48.504 seconds).

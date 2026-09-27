@@ -4,9 +4,11 @@
 mod android;
 mod app;
 mod cache;
+mod computer_hud;
 mod ffi;
 mod push;
 mod render;
+mod terminal;
 mod verse_app;
 mod verse_ffi;
 

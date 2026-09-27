@@ -47,6 +47,8 @@ final class VerseMetalView: UIView {
     private var gymAccessible = false
     private var companionAccessible = false
     private var hudPointers = Set<UInt64>()
+    /// The world computer's HUD takes every touch while it shows.
+    private var computerHudVisible = false
     private var hudInsets = EdgeInsets()
     private var zoneState: VerseZone?
     private var mapState: VerseMap?
@@ -110,6 +112,8 @@ final class VerseMetalView: UIView {
                     "width": width, "height": height, "scale": Double(scale),
                     "synthetic": bridge.synthetic,
                     "synthetic_gym": bridge.synthetic && ProcessInfo.processInfo.arguments.contains("--gym-preview"),
+                    // Rust draws the world computer's screen in the HUD.
+                    "computer_hud": true,
                 ]
                 let cache = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                     .appendingPathComponent("VerseZones", isDirectory: true)
@@ -201,7 +205,12 @@ final class VerseMetalView: UIView {
         let result: Result<VersePacket, Error>
         do {
             let input = try JSONSerialization.data(withJSONObject: request)
-            let limit = request["action"] as? String == "gym_configure" ? 96 * 1024 : 4_096
+            let limit: Int
+            switch request["action"] as? String {
+            case "gym_configure": limit = 96 * 1024
+            case "computer_feed": limit = 640 * 1024
+            default: limit = 4_096
+            }
             guard input.count <= limit else { throw ReaderError.message("World input exceeds its bound.") }
             let output = input.withUnsafeBytes {
                 coder_verse_call(handle, $0.bindMemory(to: UInt8.self).baseAddress, $0.count)
@@ -212,6 +221,11 @@ final class VerseMetalView: UIView {
             bridge.retainDoorPreferences(packet, from: self)
             syncMotion(packet)
             syncAccessibility(packet)
+            computerHudVisible = packet.computer_open && packet.computer_hud.visible
+            if !packet.computer_commands.isEmpty {
+                let commands = packet.computer_commands
+                DispatchQueue.main.async { [weak self] in self?.bridge.computerCommands?(commands) }
+            }
         }
         if deferred {
             DispatchQueue.main.async { [weak self] in
@@ -322,6 +336,9 @@ final class VerseMetalView: UIView {
                 "live_remote_entities": packet.live_remote_entities,
                 "presented_remote_vertices": packet.presented_remote_vertices,
                 "computer_ready": available,
+                "computer_open": packet.computer_open,
+                "computer_page": packet.computer_page,
+                "computer_hud": packet.computer_hud.observation,
                 "computer_target": [packet.computer.screen_x, packet.computer.screen_y],
                 "map": packet.map.observation,
                 "companion": packet.companion.observation,
@@ -411,7 +428,7 @@ final class VerseMetalView: UIView {
             pointers[ObjectIdentifier(touch)] = id
             let at = touch.location(in: self)
             pointer(touch, id: id, phase: "down")
-            if mapState?.captured_pointers.contains(id) == true || doorState?.hud.captured_pointers.contains(id) == true || zoneState?.hud.captured_pointers.contains(id) == true {
+            if computerHudVisible || mapState?.captured_pointers.contains(id) == true || doorState?.hud.captured_pointers.contains(id) == true || zoneState?.hud.captured_pointers.contains(id) == true {
                 hudPointers.insert(id)
             } else {
                 pinchAdmission.down(id, x: Double(at.x), y: Double(at.y), time: touch.timestamp)

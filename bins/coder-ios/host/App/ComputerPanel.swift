@@ -1,5 +1,7 @@
-// Native input and presentation at the world's computer. Rust validates pairing
-// and projects every history row; entering this panel grants no task authority.
+// The world computer's Chats page: the read-only reader, its pairing, and the
+// world connection. The Computers screens draw in the world HUD instead. Rust
+// validates pairing and projects every history row; this page grants no task
+// authority.
 import SwiftUI
 import UIKit
 
@@ -7,6 +9,8 @@ struct ComputerPanel: View {
     @ObservedObject var reader: MobileBridge
     let active: Bool
     let close: () -> Void
+    /// Return to the Computers screens in the world HUD.
+    let computers: () -> Void
     let worldAction: ([String: Any]) -> Void
     let worldConnection: VerseConnection?
     let worldStorageError: String?
@@ -21,9 +25,6 @@ struct ComputerPanel: View {
     @State private var relay = ""
     @State private var settings = false
     @State private var aboutVerse = false
-    @State private var computers = false
-    @State private var computersScanning = false
-    @State private var computersValue = ""
     private let command = "./pair"
     private var paired: Bool { reader.packet?.paired == true }
     private var reading: Bool { reader.packet?.reading == true && !pairing }
@@ -31,19 +32,19 @@ struct ComputerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(settings ? "Settings" : computers ? "Computers" : "Chats").font(.headline)
+                Text(settings ? "Settings" : "Chats").font(.headline)
                 Spacer()
-                if !settings && !computers && paired && !pairing { refreshButton }
+                if !settings && paired && !pairing { refreshButton }
+                Button("Computers", systemImage: "desktopcomputer") { computers() }
+                    .labelStyle(.iconOnly).accessibilityIdentifier("computers-toggle")
                 Button {
                     if settings {
                         settings = false
-                        computers = false
                         pairing = false
                     } else {
                         settings = true
                     }
                     scanning = false
-                    computersScanning = false
                 } label: {
                     Image(systemName: settings ? "chevron.left" : "ellipsis")
                 }
@@ -61,8 +62,6 @@ struct ComputerPanel: View {
             }
             if settings {
                 settingsContent
-            } else if computers {
-                computersContent
             } else if !paired || pairing {
                 pairingControls
             } else if let view = reader.packet?.view {
@@ -82,29 +81,16 @@ struct ComputerPanel: View {
             relay = worldConnection?.relay ?? "wss://relay.openagents.com"
             reader.setForeground(active)
         }
-        .onDisappear { scanning = false; computersScanning = false; computersValue = ""; reader.setForeground(false) }
+        .onDisappear { scanning = false; reader.setForeground(false) }
         .onChange(of: worldConnection?.relay) { _, value in
             relay = value ?? "wss://relay.openagents.com"
         }
-        .onChange(of: reader.packet?.computers_exit) { _, exit in
-            if exit == true { computers = false; computersScanning = false }
-        }
-        .onChange(of: active) { _, current in
-            if !current { computersValue = "" }
-            reader.setForeground(current)
-        }
-        .task(id: active && paired && !pairing && !scanning && !computers && !settings) {
-            guard active && paired && !pairing && !scanning && !computers && !settings else { return }
+        .onChange(of: active) { _, current in reader.setForeground(current) }
+        .task(id: active && paired && !pairing && !scanning && !settings) {
+            guard active && paired && !pairing && !scanning && !settings else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 if !Task.isCancelled { reader.refresh() }
-            }
-        }
-        .task(id: computers && active && !settings) {
-            guard computers && active && !settings else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
-                if !Task.isCancelled, !computersScanning { reader.pollComputers() }
             }
         }
     }
@@ -113,12 +99,8 @@ struct ComputerPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Button("Pair computer", systemImage: "qrcode") {
-                    settings = false; computers = false; pairing = true
+                    settings = false; pairing = true
                 }.accessibilityIdentifier("computer-pair")
-                Button(computers ? "Chats" : "Computers", systemImage: "desktopcomputer") {
-                    settings = false; computers.toggle()
-                    if computers { reader.refreshComputers() }
-                }.accessibilityIdentifier("computers-toggle")
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
                     Text("World connection").font(.headline)
@@ -190,84 +172,6 @@ struct ComputerPanel: View {
     private var refreshButton: some View {
         Button("Refresh", systemImage: "arrow.clockwise") { reader.refresh(force: true) }
             .labelStyle(.iconOnly).disabled(reader.busy).accessibilityIdentifier("reader-refresh")
-    }
-
-    /// The Rust Native Computers tree, plus the one native field or scanner
-    /// its current input request names. Rust validates every value.
-    private var computersContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                if let view = reader.packet?.computers {
-                    NativeRenderer(node: view.root, revision: view.revision,
-                                   followTarget: nil, followChanged: nil) { node in
-                        reader.activateComputers(view: view, node: node)
-                    }
-                } else {
-                    Text("Computers are unavailable on this device.")
-                }
-                if let qr = reader.packet?.computers_qr {
-                    InvitationQRCode(qr: qr)
-                }
-                if let input = reader.packet?.computers_input {
-                    computersInput(input).id(input.token)
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .scrollDismissesKeyboard(.interactively)
-    }
-
-    private func computersInput(_ input: ComputersInput) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(input.prompt).font(.caption)
-            if input.scan {
-                if computersScanning {
-                    InlineQRScanner { value in
-                        computersScanning = false
-                        submitComputers(input, value)
-                    }
-                    Button("Stop scanning") { computersScanning = false }
-                } else {
-                    Button("Scan QR code", systemImage: "qrcode.viewfinder") { computersScanning = true }
-                        .disabled(reader.busy || !active)
-                        .accessibilityIdentifier("computers-scan")
-                }
-            }
-            if input.secret {
-                SecretInputField(label: input.label, value: $computersValue) {
-                    if !reader.busy { submitComputers(input, computersValue) }
-                }
-                .textContentType(nil)
-            } else {
-                TextField(input.label, text: $computersValue, axis: .vertical)
-                    .lineLimit(1...4)
-                    .autocorrectionDisabled().textInputAutocapitalization(.never)
-                    .accessibilityLabel(input.label).accessibilityIdentifier("computers-input")
-            }
-            HStack {
-                Button("Submit") { submitComputers(input, computersValue) }
-                    .disabled(reader.busy || computersValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("computers-submit")
-                Button("Cancel") {
-                    computersValue = ""; computersScanning = false; inputError = nil
-                    reader.cancelComputers(token: input.token)
-                }
-                .disabled(reader.busy)
-                .accessibilityIdentifier("computers-cancel")
-            }
-        }
-        .onAppear { computersValue = ""; computersScanning = input.scan && active }
-        .onDisappear { computersValue = ""; computersScanning = false }
-    }
-
-    private func submitComputers(_ input: ComputersInput, _ value: String) {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        computersValue = ""; computersScanning = false
-        guard value.utf8.count <= input.max_bytes else {
-            inputError = "That's too long. Copy it again."
-            return
-        }
-        inputError = nil
-        reader.submitComputers(token: input.token, value: value)
     }
 
     private var pairingControls: some View {

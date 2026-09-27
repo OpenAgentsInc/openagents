@@ -1,0 +1,9 @@
+Test Suite 'Selected tests' started at 2026-09-27 09:37:20.356.
+Test Suite 'CoderUITests.xctest' started at 2026-09-27 09:37:20.356.
+Test Suite 'ComputersLiveUITests' started at 2026-09-27 09:37:20.356.
+Test Case '-[CoderUITests.ComputersLiveUITests testEnrollSelectOrderAndFollowOnARealHost]' started.
+Test Case '-[CoderUITests.ComputersLiveUITests testEnrollSelectOrderAndFollowOnARealHost]' passed (38.685 seconds).
+Test Suite 'ComputersLiveUITests' passed at 2026-09-27 09:37:59.043.
+Test Suite 'CoderUITests.xctest' passed at 2026-09-27 09:37:59.043.
+Test Suite 'Selected tests' passed at 2026-09-27 09:37:59.044.
+results: /Users/christopherdavid/work/openagents/.claude/worktrees/agent-a382b74e488408f45/target/coder-ios/TestResults-20260927T143716Z.xcresult

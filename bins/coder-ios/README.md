@@ -187,7 +187,11 @@ cached view before it requests a refresh.
 
 ## Connect and read
 
-1. Walk toward the computer in Verse and tap its monitor. On your physical
+1. Walk toward the computer in Verse, tap its monitor, and choose **CHATS**.
+   (The computer opens on **COMPUTERS**, your linked hosts, drawn in the
+   world HUD; see [the world computer](../../docs/verse/mobile.md#the-computers-screen)
+   and [its verification](../../docs/coder/verification/2026-09-27-verse-computer-hud.md).)
+   On your physical
    computer, run `./pair` in an updated OpenAgents checkout, or `coder pair`
    with current Coder installed. Keep the command running.
 2. Tap **Scan QR code** and scan the computer's invitation. **Paste code**

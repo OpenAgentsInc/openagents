@@ -392,7 +392,12 @@ fn the_app_enrolls_watches_invites_sees_activity_and_is_revoked_against_a_real_h
 ///    rights and create a task, so the app shows activity.
 /// 3. `CODER_COMPUTERS_REVOKE_AFTER` seconds (default 60) after the app
 ///    enrolled, a third device revokes it; the run writes `revoked.txt`.
-/// 4. Stop when `stop` appears in the directory, or five minutes later.
+///    With `never`, the app stays enrolled for ordering work.
+/// 4. The host shares the workspaces `checkout` and `scratch`. Each task
+///    the app orders, steers, or stops is written to `host-tasks.txt` as
+///    the host's task owner received it.
+/// 5. Stop when `stop` appears in the directory, or five minutes (ten with
+///    `never`) later.
 ///
 /// ```sh
 /// CODER_COMPUTERS_FIXTURE_DIR=/private/tmp/computers-run \
@@ -405,10 +410,11 @@ fn serve_a_host_for_a_device_run() {
     else {
         panic!("set CODER_COMPUTERS_FIXTURE_DIR to a private directory");
     };
-    let revoke_after = std::env::var("CODER_COMPUTERS_REVOKE_AFTER")
-        .ok()
-        .and_then(|text| text.parse::<u64>().ok())
-        .unwrap_or(60);
+    // `never` keeps the app enrolled, for runs that order and follow work.
+    let revoke_after = match std::env::var("CODER_COMPUTERS_REVOKE_AFTER").ok() {
+        Some(text) if text == "never" => None,
+        text => Some(text.and_then(|text| text.parse::<u64>().ok()).unwrap_or(60)),
+    };
     std::fs::create_dir_all(&out).unwrap();
     let temp = tempfile::tempdir().unwrap();
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -417,52 +423,8 @@ fn serve_a_host_for_a_device_run() {
         .build()
         .unwrap();
     let (relay, _relay_task, _events) = runtime.block_on(relay::start());
-    let owner = key();
-    let access_dir = temp.path().join("access");
-    let store = Host::new(&access_dir, POLICY);
-    store.init(&coder_host::reach::pubkey(&owner)).unwrap();
-    let workspace = temp.path().join("checkout");
-    std::fs::create_dir_all(&workspace).unwrap();
-    let runtime_record = temp.path().join("host/runtime");
-    let args: Vec<String> = [
-        "serve",
-        "--state",
-        &access_dir.to_string_lossy(),
-        "--root",
-        &temp.path().join("host").to_string_lossy(),
-        "--loopback-test",
-        "--relay",
-        &relay,
-        "--workspace",
-        &format!("checkout={}", workspace.canonicalize().unwrap().display()),
-        "--runtime",
-        &runtime_record.to_string_lossy(),
-        "--tasks",
-        &temp.path().join("tasks").to_string_lossy(),
-    ]
-    .iter()
-    .map(|arg| (*arg).to_owned())
-    .collect();
-    let owned: Arc<dyn Tasks> = Arc::new(Memory::default());
-    std::thread::spawn(move || {
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(3)
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(coder_host::cli::run(&args, Box::new(move |_, _| Ok(owned))))
-    });
-    let deadline = Instant::now() + WAIT;
-    while !runtime_record.exists() {
-        assert!(Instant::now() < deadline, "the host did not start serving");
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    let record = std::fs::read_to_string(&runtime_record).unwrap();
-    let host_port = record
-        .lines()
-        .find_map(|line| line.strip_prefix("port="))
-        .unwrap()
-        .to_owned();
+    let ledger = Arc::new(Ledger::default());
+    let (store, _, host_port) = serve(temp.path(), &relay, ledger.clone());
     let relay_port = relay.rsplit(':').next().unwrap().to_owned();
     let invitation = store
         .invite(&relay, Rights::all(), now(), now() + 3600)
@@ -497,32 +459,71 @@ fn serve_a_host_for_a_device_run() {
     };
     let enrolled = Instant::now();
     println!("fixture: the app enrolled as {app}");
-    std::thread::sleep(Duration::from_secs(5));
-    let other = key();
-    helpers.push(coder_host::reach::pubkey(&other));
-    let narrowed = store
-        .invite(
-            &relay,
-            Rights::new([Right::Observe, Right::Operate]).unwrap(),
-            now(),
-            now() + 3600,
-        )
-        .unwrap();
-    let access = runtime
-        .block_on(redeem(&narrowed.code, &other, POLICY))
-        .unwrap();
-    let operator = Client::device(access, other, POLICY).unwrap();
-    runtime
-        .block_on(operator.call(Operation::CreateTask {
-            task: TaskCreate {
-                title: "Device run task".into(),
-                prompt: "Created by the fixture for the activity screen.".into(),
-                workspace: "checkout".into(),
-            },
-        }))
-        .unwrap();
-    println!("fixture: another device created a task");
+    // A run that orders work keeps the phone's own task the only one.
+    if revoke_after.is_some() {
+        std::thread::sleep(Duration::from_secs(5));
+        let other = key();
+        helpers.push(coder_host::reach::pubkey(&other));
+        let narrowed = store
+            .invite(
+                &relay,
+                Rights::new([Right::Observe, Right::Operate]).unwrap(),
+                now(),
+                now() + 3600,
+            )
+            .unwrap();
+        let access = runtime
+            .block_on(redeem(&narrowed.code, &other, POLICY))
+            .unwrap();
+        let operator = Client::device(access, other, POLICY).unwrap();
+        runtime
+            .block_on(operator.call(Operation::CreateTask {
+                task: TaskCreate {
+                    title: "Device run task".into(),
+                    prompt: "Created by the fixture for the activity screen.".into(),
+                    workspace: "checkout".into(),
+                },
+            }))
+            .unwrap();
+        println!("fixture: another device created a task");
+    }
+    // Report what the phone orders, steers, and stops, as the host's task
+    // owner received it. Titles are the phone's; prompts stay private.
+    let mut reported = String::new();
+    let mut report = |ledger: &Ledger| {
+        let lines: Vec<String> = ledger
+            .tasks()
+            .iter()
+            .filter(|held| held.title != "Device run task")
+            .map(|held| {
+                format!(
+                    "{} | {} | revision {} | {:?} | {} steer(s)",
+                    held.title,
+                    held.workspace,
+                    held.revision,
+                    held.phase,
+                    held.steers.len()
+                )
+            })
+            .collect();
+        let text = lines.join("\n");
+        if text != reported {
+            println!("fixture: host tasks:\n{text}");
+            write("host-tasks.txt", &text);
+            reported = text;
+        }
+    };
+    let Some(revoke_after) = revoke_after else {
+        let stop = Instant::now() + Duration::from_secs(600);
+        while Instant::now() < stop && !out.join("stop").exists() {
+            report(&ledger);
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        println!("fixture: done");
+        return;
+    };
     while enrolled.elapsed() < Duration::from_secs(revoke_after) {
+        report(&ledger);
         std::thread::sleep(Duration::from_millis(250));
     }
     let admin = key();
@@ -545,4 +546,262 @@ fn serve_a_host_for_a_device_run() {
         std::thread::sleep(Duration::from_millis(250));
     }
     println!("fixture: done");
+}
+
+/// One task as a host's owner holds it.
+#[derive(Clone, Debug)]
+struct Held {
+    workspace: String,
+    title: String,
+    revision: u64,
+    phase: Phase,
+    steers: Vec<String>,
+}
+
+/// Tasks with revisions: a steer or a cancel at another revision is stale.
+/// Nothing runs; creating records a queued task.
+#[derive(Default)]
+struct Ledger(Mutex<BTreeMap<String, Held>>);
+
+impl Ledger {
+    fn tasks(&self) -> Vec<Held> {
+        self.0.lock().unwrap().values().cloned().collect()
+    }
+
+    fn change(
+        &self,
+        task: &str,
+        revision: u64,
+        change: impl FnOnce(&mut Held),
+    ) -> Result<TaskRef, Code> {
+        let mut tasks = self.0.lock().unwrap();
+        let held = tasks.get_mut(task).ok_or(Code::Forbidden)?;
+        if held.revision != revision {
+            return Err(Code::Stale);
+        }
+        change(held);
+        held.revision += 1;
+        Ok(TaskRef {
+            task: task.to_owned(),
+            revision: held.revision,
+            phase: held.phase,
+        })
+    }
+}
+
+impl Tasks for Ledger {
+    fn create(&self, key: &str, _: &str, task: &TaskCreate) -> Result<TaskRef, Code> {
+        if !["checkout", "scratch"].contains(&task.workspace.as_str()) {
+            return Err(Code::Forbidden);
+        }
+        let mut tasks = self.0.lock().unwrap();
+        let held = tasks.entry(key.to_owned()).or_insert_with(|| Held {
+            workspace: task.workspace.clone(),
+            title: task.title.clone(),
+            revision: 1,
+            phase: Phase::Queued,
+            steers: Vec::new(),
+        });
+        Ok(TaskRef {
+            task: key.to_owned(),
+            revision: held.revision,
+            phase: held.phase,
+        })
+    }
+    fn steer(
+        &self,
+        _: &str,
+        _: &str,
+        task: &str,
+        revision: u64,
+        prompt: &str,
+    ) -> Result<TaskRef, Code> {
+        self.change(task, revision, |held| held.steers.push(prompt.to_owned()))
+    }
+    fn cancel(
+        &self,
+        _: &str,
+        _: &str,
+        task: &str,
+        revision: u64,
+        _: &str,
+    ) -> Result<TaskRef, Code> {
+        self.change(task, revision, |held| held.phase = Phase::Cancelled)
+    }
+}
+
+/// Serve a host through the `coder host serve` command path with two
+/// workspaces, `checkout` and `scratch`, and wait until it serves.
+fn serve(temp: &std::path::Path, relay: &str, tasks: Arc<dyn Tasks>) -> (Host, String, String) {
+    let owner = key();
+    let access_dir = temp.join("access");
+    let store = Host::new(&access_dir, POLICY);
+    let host_key = store.init(&coder_host::reach::pubkey(&owner)).unwrap();
+    let mut workspaces = Vec::new();
+    for name in ["checkout", "scratch"] {
+        let path = temp.join(name);
+        std::fs::create_dir_all(&path).unwrap();
+        workspaces.push(format!("{name}={}", path.canonicalize().unwrap().display()));
+    }
+    let runtime_record = temp.join("host/runtime");
+    let mut args: Vec<String> = [
+        "serve",
+        "--state",
+        &access_dir.to_string_lossy(),
+        "--root",
+        &temp.join("host").to_string_lossy(),
+        "--loopback-test",
+        "--relay",
+        relay,
+        "--runtime",
+        &runtime_record.to_string_lossy(),
+        "--tasks",
+        &temp.join("tasks").to_string_lossy(),
+    ]
+    .iter()
+    .map(|arg| (*arg).to_owned())
+    .collect();
+    for workspace in workspaces {
+        args.push("--workspace".into());
+        args.push(workspace);
+    }
+    std::thread::spawn(move || {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(3)
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(coder_host::cli::run(&args, Box::new(move |_, _| Ok(tasks))))
+    });
+    let deadline = Instant::now() + WAIT;
+    while !runtime_record.exists() {
+        assert!(Instant::now() < deadline, "the host did not start serving");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let record = std::fs::read_to_string(&runtime_record).unwrap();
+    let port = record
+        .lines()
+        .find_map(|line| line.strip_prefix("port="))
+        .unwrap()
+        .to_owned();
+    (store, host_key, port)
+}
+
+/// Answer the current input request with `value`.
+fn answer(app: &mut App, purpose: &str, value: &str) -> Packet {
+    let packet = app.call(Request::Snapshot);
+    let input = packet.computers_input.expect("an input request");
+    assert_eq!(
+        serde_json::to_value(input.purpose).unwrap(),
+        Value::from(purpose)
+    );
+    app.call(Request::ComputersInput {
+        token: input.token,
+        value: value.into(),
+    })
+}
+
+#[test]
+fn the_app_orders_steers_and_stops_a_task_on_a_real_host() {
+    let temp = tempfile::tempdir().unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(3)
+        .enable_all()
+        .build()
+        .unwrap();
+    let (relay, _relay_task, _events) = runtime.block_on(relay::start());
+    step("serve a host with two workspaces");
+    let ledger = Arc::new(Ledger::default());
+    let (store, _, _) = serve(temp.path(), &relay, ledger.clone());
+    let invitation = store
+        .invite(&relay, Rights::all(), now(), now() + 3600)
+        .unwrap();
+
+    step("enroll the app and see the host online");
+    let mut app = App::new(Config {
+        cache_dir: temp.path().join("app"),
+        secret_hex: key().display_secret().to_string(),
+        synthetic: false,
+        loopback_test: true,
+        push: None,
+    })
+    .unwrap();
+    press(&mut app, "invite-paste");
+    answer(&mut app, "invitation", &invitation.code);
+    press(&mut app, "first-run-continue");
+    until(&mut app, "the host online", |view| {
+        status(view).starts_with("Online") && status(view).ends_with("Up to date.")
+    });
+
+    step("open the host: its route, rights, and workspaces");
+    press(&mut app, "host-0-open");
+    let view = until(&mut app, "the host's workspaces", |view| {
+        text(view, "host-workspaces").as_deref() == Some("Workspaces: checkout, scratch.")
+    });
+    assert!(text(&view, "host-status").unwrap().starts_with("Online"));
+    assert!(
+        text(&view, "host-rights")
+            .unwrap()
+            .contains("Run and steer tasks")
+    );
+
+    step("order work: a listed workspace and a prompt");
+    press(&mut app, "host-order");
+    press(&mut app, "order-workspace-1");
+    press(&mut app, "order-prompt");
+    answer(
+        &mut app,
+        "task_prompt",
+        "Fix the flaky parser test\nFind why it fails one run in ten.",
+    );
+    let sent = press(&mut app, "order-submit");
+    let view = sent.computers.unwrap();
+    assert!(
+        text(&view, "notice")
+            .unwrap()
+            .contains("Sent \"Fix the flaky parser test\""),
+        "{}",
+        all_text(&view)
+    );
+    let held = ledger.tasks();
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].workspace, "scratch");
+    assert_eq!(held[0].title, "Fix the flaky parser test");
+
+    step("follow it in Activity");
+    until(&mut app, "the queued task", |view| {
+        text(view, "activity-0-time").is_some_and(|time| time.contains("Revision 1."))
+            && text(view, "activity-0-subject").is_some_and(|s| s.ends_with("Task, queued."))
+    });
+
+    step("steer it");
+    press(&mut app, "activity-0-steer");
+    answer(&mut app, "steer_prompt", "Only the parser module.");
+    assert_eq!(ledger.tasks()[0].steers, ["Only the parser module."]);
+    until(&mut app, "the steered revision", |view| {
+        text(view, "activity-0-time").is_some_and(|time| time.contains("Revision 2."))
+    });
+
+    step("stop it");
+    press(&mut app, "activity-0-cancel");
+    press(&mut app, "activity-0-cancel-yes");
+    assert_eq!(ledger.tasks()[0].phase, Phase::Cancelled);
+    let view = until(&mut app, "the cancelled task", |view| {
+        text(view, "activity-0-subject").is_some_and(|s| s.ends_with("Task, cancelled."))
+    });
+    assert!(node(&view, "activity-0-steer").is_none());
+
+    step("open the terminal entry point and leave it");
+    press(&mut app, "tab-computers");
+    press(&mut app, "host-0-open");
+    let opened = press(&mut app, "host-terminal");
+    let terminal = opened.terminal.expect("the terminal screen");
+    assert!(all_text(&terminal).contains("Terminal on Computer"));
+    let closed = app.call(Request::TerminalActivate {
+        instance: terminal["instance"].as_str().unwrap().into(),
+        revision: terminal["revision"].as_u64().unwrap(),
+        node: "terminal-close".into(),
+    });
+    assert!(closed.terminal.is_none());
+    step("done");
 }

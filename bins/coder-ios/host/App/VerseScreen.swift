@@ -1,5 +1,6 @@
-// Rust draws and hit-tests the computer in the world. Native code lays out
-// its reader and pairing panel only after that interaction opens it.
+// Rust draws and hit-tests the computer in the world, and draws its
+// Computers and terminal screens in the world HUD. Native code shows only the
+// Chats page, the keyboard, and the camera scanner those screens ask for.
 import SwiftUI
 
 struct VerseScreen: View {
@@ -7,6 +8,9 @@ struct VerseScreen: View {
     @ObservedObject var reader: MobileBridge
     @Environment(\.scenePhase) private var phase
     @State private var pairing = false
+    /// The input request the HUD asked the keyboard or scanner for.
+    @State private var inputToken: String?
+    @State private var scanning = false
     let synthetic: Bool
 
     init(reader: MobileBridge, synthetic: Bool) {
@@ -17,9 +21,19 @@ struct VerseScreen: View {
 
     private var active: Bool { phase == .active }
     private var computerOpen: Bool { bridge.packet?.computer_open == true }
+    private var chatsOpen: Bool { computerOpen && bridge.packet?.computer_page == "chats" }
+    private var hudOpen: Bool { computerOpen && bridge.packet?.computer_hud.visible == true }
     private var gymOpen: Bool { bridge.packet?.gym_open == true }
-    private var panelOpen: Bool { computerOpen || gymOpen }
+    /// A native control covers the world: the world surface takes no touches.
+    private var nativeOpen: Bool { chatsOpen || gymOpen || currentInput != nil }
     private var motionLook: Bool { bridge.packet?.camera_mode == "motion" }
+    /// The input request the keyboard or scanner is answering, while it is
+    /// still the Computers surface's current one.
+    private var currentInput: ComputersInput? {
+        guard hudOpen, let token = inputToken, let input = reader.packet?.computers_input,
+              input.token == token else { return nil }
+        return input
+    }
 
     var body: some View {
         GeometryReader { safeGeometry in
@@ -32,7 +46,68 @@ struct VerseScreen: View {
             }
             .ignoresSafeArea()
         }
+        .overlay(alignment: .bottom) {
+            if let input = currentInput {
+                ComputerInputBar(input: input, scanning: scanning, busy: reader.busy,
+                                 submit: { value in
+                                     reader.submitComputers(token: input.token, value: value)
+                                     inputToken = nil; scanning = false
+                                 },
+                                 cancel: {
+                                     reader.cancelComputers(token: input.token)
+                                     inputToken = nil; scanning = false
+                                 },
+                                 stopScanning: { scanning = false })
+                    .id("\(input.token)-\(scanning)")
+                    .padding(.horizontal, 12).padding(.bottom, 8)
+            }
+        }
         .onChange(of: active) { _, enabled in reader.setLifecycle(enabled) }
+        .onAppear { bridge.computerCommands = { commands in commands.forEach(run) } }
+        .onChange(of: reader.hudFeedRevision) { _, _ in forwardFeed() }
+        .onChange(of: reader.busy) { _, _ in forwardFeed() }
+        .onChange(of: computerOpen) { _, open in
+            if open { forwardFeed() } else { inputToken = nil; scanning = false; pairing = false }
+        }
+        .onChange(of: reader.packet?.computers_input?.token) { _, token in
+            if token != inputToken { inputToken = nil; scanning = false }
+        }
+        // Host status moves on its own; poll while the HUD shows Computers.
+        .task(id: hudOpen && active && currentInput == nil) {
+            guard hudOpen && active && currentInput == nil else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                if !Task.isCancelled { reader.pollComputers() }
+            }
+        }
+    }
+
+    /// Hand the reader's latest Computers and terminal views to the HUD.
+    private func forwardFeed() {
+        guard computerOpen else { return }
+        var feed = reader.hudFeed
+        feed["busy"] = reader.busy
+        if let error = reader.nativeError { feed["error"] = error }
+        bridge.send(["action": "computer_feed", "feed": feed])
+    }
+
+    private func run(_ command: VerseComputerCommand) {
+        switch command.kind {
+        case "activate":
+            guard let surface = command.surface, let instance = command.instance,
+                  let revision = command.revision, let node = command.node else { return }
+            reader.activateSurface(surface, instance: instance, revision: revision, node: node)
+        case "scan":
+            inputToken = command.token; scanning = true
+        case "type":
+            inputToken = command.token; scanning = false
+        case "cancel_input":
+            if let token = command.token { reader.cancelComputers(token: token) }
+            inputToken = nil; scanning = false
+        case "refresh":
+            reader.refreshComputers()
+        default: break
+        }
     }
 
     private func canvas(size: CGSize, safe: EdgeInsets) -> some View {
@@ -43,6 +118,15 @@ struct VerseScreen: View {
                                    mount(resource: resource, label: label)
                                }) { _ in }
                     .frame(width: size.width, height: size.height)
+            }
+            if hudOpen, let hud = bridge.packet?.computer_hud {
+                ComputerHudAccessibility(items: hud.items, activate: { key in
+                    bridge.send(["action": "computer_hud_tap", "key": key])
+                }, scroll: { delta in
+                    bridge.send(["action": "computer_hud_scroll", "delta": delta])
+                })
+                .frame(width: size.width, height: size.height)
+                .allowsHitTesting(false)
             }
             if bridge.synthetic {
                 // XCTest's full-screen pinch starts at the camera controls.
@@ -69,7 +153,7 @@ struct VerseScreen: View {
                     }
                 }
                 Spacer()
-                if !panelOpen {
+                if !computerOpen && !gymOpen {
                     HStack(spacing: 16) {
                         Spacer()
                         Button {
@@ -102,13 +186,11 @@ struct VerseScreen: View {
             .padding(.bottom, safe.bottom + 12)
             .padding(.leading, safe.leading + 16)
             .padding(.trailing, safe.trailing + 16)
-            .allowsHitTesting(!panelOpen)
-            if let computer = bridge.packet?.computer, !gymOpen, computer.visible || computerOpen {
+            .allowsHitTesting(!computerOpen && !gymOpen)
+            if let computer = bridge.packet?.computer, !gymOpen, chatsOpen {
                 let anchor = CGPoint(x: clamped(computer.screen_x, 0, 1) * size.width,
                                      y: clamped(computer.screen_y, 0, 1) * size.height)
-                if computerOpen {
-                    anchoredPanel(anchor: anchor, size: size, safe: safe)
-                }
+                anchoredPanel(anchor: anchor, size: size, safe: safe)
             }
             if let gym = bridge.packet?.gym, !computerOpen, gymOpen {
                 let anchor = CGPoint(x: clamped(gym.screen_x, 0, 1) * size.width,
@@ -120,6 +202,7 @@ struct VerseScreen: View {
         .background(Color(red: 0.025, green: 0.02, blue: 0))
     }
 
+    /// The Chats page: the read-only reader and its pairing, as before.
     private func anchoredPanel(anchor: CGPoint, size: CGSize, safe: EdgeInsets) -> some View {
         let bounds = panelBounds(size: size, safe: safe)
         let width = min(bounds.width, 540)
@@ -139,6 +222,9 @@ struct VerseScreen: View {
             ComputerPanel(reader: reader, active: active, close: {
                 pairing = false
                 bridge.send(["action": "close_computer"])
+            }, computers: {
+                pairing = false
+                bridge.send(["action": "computer_page", "page": "computers"])
             }, worldAction: { bridge.send($0) }, worldConnection: bridge.packet?.connection,
            worldStorageError: bridge.worldStorageError ?? bridge.nativeError ?? bridge.packet?.error,
            worldCredits: bridge.verseCredits, pairing: $pairing)
@@ -177,7 +263,7 @@ struct VerseScreen: View {
         }
         return AnyView(VerseSurface(bridge: bridge, active: active, label: label)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .allowsHitTesting(!panelOpen))
+            .allowsHitTesting(!nativeOpen))
     }
 
     private func clamped(_ value: Double, _ lower: Double, _ upper: Double) -> Double {

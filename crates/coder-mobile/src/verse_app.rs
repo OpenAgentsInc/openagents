@@ -37,6 +37,10 @@ pub(crate) struct Config {
     pub door_preferences: Option<String>,
     #[serde(default)]
     pub zone_cache_directory: Option<String>,
+    /// Draw the world computer's screen in the HUD. A host that keeps its
+    /// native computer panel leaves this off.
+    #[serde(default)]
+    pub computer_hud: bool,
 }
 
 #[derive(Deserialize)]
@@ -112,6 +116,23 @@ pub(crate) enum Request {
     PetCompanion,
     InteractComputer,
     CloseComputer,
+    /// The reader worker's latest Computers and terminal views for the
+    /// computer's HUD.
+    ComputerFeed {
+        feed: Box<crate::computer_hud::Feed>,
+    },
+    /// Show a page of the open computer. Chats is drawn natively.
+    ComputerPage {
+        page: crate::computer_hud::Page,
+    },
+    /// Activate a laid-out HUD control by key, as accessibility does.
+    ComputerHudTap {
+        key: String,
+    },
+    /// Scroll the HUD body, as accessibility does.
+    ComputerHudScroll {
+        delta: f32,
+    },
     InteractGym,
     CloseGym,
     GymView,
@@ -173,6 +194,10 @@ pub(crate) struct Packet {
     companion: Companion,
     computer: Computer,
     computer_open: bool,
+    computer_page: crate::computer_hud::Page,
+    computer_hud: crate::computer_hud::Snapshot,
+    /// What the native host must do for the computer's HUD, once each.
+    pub computer_commands: Vec<crate::computer_hud::Command>,
     gym: Gym,
     gym_open: bool,
     gym_revision: u64,
@@ -409,6 +434,9 @@ fn packet(
             distance: 5.0,
         },
         computer_open: false,
+        computer_page: crate::computer_hud::Page::Computers,
+        computer_hud: crate::computer_hud::Snapshot::default(),
+        computer_commands: Vec::new(),
         gym: Gym {
             inside: false,
             near: false,
@@ -532,6 +560,7 @@ pub(crate) struct Scene {
     jump: bool,
     sprint: bool,
     computer_open: bool,
+    computer_hud: crate::computer_hud::ComputerHud,
     gym_open: bool,
     gym_configuration_error: Option<String>,
     pub gym_board: verse::gym::Board,
@@ -625,6 +654,7 @@ impl Scene {
             jump: false,
             sprint: false,
             computer_open: false,
+            computer_hud: crate::computer_hud::ComputerHud::new(config.computer_hud),
             gym_open: false,
             gym_configuration_error: initial_gym_error,
             gym_board,
@@ -645,6 +675,7 @@ impl Scene {
         if !active {
             self.world.zone_cancel_loading();
             self.zone_hud.clear_contacts();
+            self.computer_hud.clear_contacts();
             self.world.cancel_navigation();
             self.map.clear_contacts();
             self.door_hud.clear_contacts();
@@ -714,6 +745,7 @@ impl Scene {
         self.lifecycle.resize(viewport).map_err(|e| e.to_string())?;
         if changed {
             self.zone_hud.clear_contacts();
+            self.computer_hud.clear_contacts();
             self.map.clear_contacts();
             self.door_hud.clear_contacts();
             self.world.cancel_door_interactions();
@@ -726,6 +758,35 @@ impl Scene {
 
     pub fn pointer(&mut self, id: u64, phase: PointerPhase, x: f32, y: f32) -> Result<(), String> {
         let point = [x, y];
+        // The open computer's HUD takes every contact; the world behind it
+        // sees none. A contact that began on the HUD ends there.
+        if (self.computer_open && self.computer_hud.drawn()) || self.computer_hud.captured(id) {
+            if !x.is_finite() || !y.is_finite() || x.abs() > 32768.0 || y.abs() > 32768.0 {
+                self.computer_hud.clear_contacts();
+                return Err("Touch coordinates exceed their bounds".into());
+            }
+            let size = self.lifecycle.viewport().logical_size();
+            match phase {
+                PointerPhase::Down if self.lifecycle.active() => {
+                    self.computer_hud.down(id, point);
+                }
+                PointerPhase::Down => {}
+                PointerPhase::Move => self.computer_hud.moved(&self.atlas, size, id, point),
+                PointerPhase::Up | PointerPhase::Cancel => {
+                    let close = self.computer_hud.up(
+                        &self.atlas,
+                        size,
+                        id,
+                        point,
+                        matches!(phase, PointerPhase::Cancel) || !self.computer_open,
+                    );
+                    if close {
+                        self.close_computer();
+                    }
+                }
+            }
+            return Ok(());
+        }
         if self.zone_hud.captured(id) {
             match phase {
                 PointerPhase::Move => self.zone_hud.moved(id, point),
@@ -1051,8 +1112,9 @@ impl Scene {
         self.world.tick(&input, dt);
         self.map.tick(dt);
         let panel_was_open = self.panel_open();
-        if !self.computer().near {
+        if self.computer_open && !self.computer().near {
             self.computer_open = false;
+            self.computer_hud.close();
         }
         if !self.gym().inside {
             self.gym_open = false;
@@ -1093,6 +1155,7 @@ impl Scene {
             } => {
                 self.map.set_insets([top, right, bottom, left])?;
                 self.door_hud.set_insets([top, right, bottom, left])?;
+                self.computer_hud.set_insets([top, right, bottom, left]);
                 self.zone_hud.set_insets([top, right, bottom, left])
             }
             Request::MapToggle => self.map_action(verse::minimap::MapAction::Toggle),
@@ -1188,8 +1251,33 @@ impl Scene {
                 Ok(())
             }
             Request::CloseComputer => {
-                self.reset_motion();
-                self.computer_open = false;
+                self.close_computer();
+                Ok(())
+            }
+            Request::ComputerFeed { feed } => self.computer_hud.feed(*feed),
+            Request::ComputerPage { page } => {
+                if !self.computer_open {
+                    return Err("Open the computer first".into());
+                }
+                self.computer_hud.set_page(page)
+            }
+            Request::ComputerHudTap { key } => {
+                if !self.lifecycle.active() || !self.computer_open || !self.computer_hud.drawn() {
+                    return Err("Open the computer first".into());
+                }
+                let size = self.lifecycle.viewport().logical_size();
+                match self.computer_hud.act(&self.atlas, size, &key) {
+                    Some(true) => {
+                        self.close_computer();
+                        Ok(())
+                    }
+                    Some(false) => Ok(()),
+                    None => Err("That control isn't on the computer's screen".into()),
+                }
+            }
+            Request::ComputerHudScroll { delta } => {
+                let size = self.lifecycle.viewport().logical_size();
+                self.computer_hud.scroll_by(&self.atlas, size, delta);
                 Ok(())
             }
             Request::InteractGym => {
@@ -1336,6 +1424,12 @@ impl Scene {
         };
         packet.computer = self.computer().into();
         packet.computer_open = self.computer_open;
+        packet.computer_page = self.computer_hud.page();
+        packet.computer_hud = self.computer_hud.snapshot(
+            &self.atlas,
+            self.lifecycle.viewport().logical_size(),
+            self.computer_open && self.lifecycle.active(),
+        );
         packet.gym = self.gym().into();
         packet.gym_open = self.gym_open;
         packet.gym_revision = self.gym_board.revision();
@@ -1427,6 +1521,20 @@ impl Scene {
             self.lifecycle.viewport().scale(),
         );
         ui.vertices.extend(zone_ui.vertices);
+        if self.computer_open && self.computer_hud.drawn() {
+            let size = self.lifecycle.viewport().logical_size();
+            let computer = self.computer();
+            let anchor = computer
+                .visible
+                .then(|| [computer.screen_x * size[0], computer.screen_y * size[1]]);
+            let computer_ui = self.computer_hud.draw(
+                &self.atlas,
+                size,
+                self.lifecycle.viewport().scale(),
+                anchor,
+            );
+            ui.vertices.extend(computer_ui.vertices);
+        }
         ui
     }
 
@@ -1759,10 +1867,22 @@ impl Scene {
         self.world.cancel_door_interactions();
         self.reset_motion();
         self.computer_open = true;
+        self.computer_hud.open();
         self.gym_open = false;
         self.touches.clear();
         self.jump = false;
         self.sprint = false;
+    }
+
+    fn close_computer(&mut self) {
+        self.reset_motion();
+        self.computer_open = false;
+        self.computer_hud.close();
+    }
+
+    /// What the native host must do for the computer's HUD, once each.
+    pub(crate) fn take_computer_commands(&mut self) -> Vec<crate::computer_hud::Command> {
+        self.computer_hud.take_commands()
     }
 
     /// Called only after pointer or accessibility picking validates the board.
@@ -1899,6 +2019,7 @@ mod tests {
             world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
+            computer_hud: true,
         })
         .unwrap()
     }
@@ -2123,6 +2244,7 @@ mod tests {
             world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
+            computer_hud: true,
         })
         .unwrap()
     }
@@ -2194,6 +2316,7 @@ mod tests {
             world_offline: false,
             door_preferences: Some(saved.clone()),
             zone_cache_directory: None,
+            computer_hud: true,
         })
         .unwrap();
         restored.activate(true).unwrap();
@@ -2829,6 +2952,123 @@ mod tests {
         let point = [computer.screen_x * size[0], computer.screen_y * size[1]];
         assert!(scene.computer_hit(point[0], point[1]));
         (scene, point)
+    }
+
+    fn computers_feed() -> crate::computer_hud::Feed {
+        serde_json::from_value(serde_json::json!({
+            "computers": {
+                "schema": "rust-native.view.v2", "instance": "computers-test", "revision": 3,
+                "root": {"key": "root", "style": {}, "element": {"kind": "stack", "props": {
+                    "axis": "vertical", "children": [
+                        {"key": "computers-title", "style": {}, "element": {"kind": "text",
+                            "props": {"value": "Computers", "role": "heading"}}},
+                        {"key": "host-0-open", "style": {}, "element": {"kind": "button",
+                            "props": {"label": "Open", "enabled": true, "intent": {"kind": "refresh"}}}}
+                    ]}}}
+            },
+            "busy": false
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn the_open_computer_draws_computers_in_the_hud_and_owns_every_touch() {
+        let (mut scene, [x, y]) = computer_scene();
+        scene.pointer(1, PointerPhase::Down, x, y).unwrap();
+        scene.pointer(1, PointerPhase::Up, x, y).unwrap();
+        assert!(scene.computer_open);
+        // Opening asks the native host for a fresh Computers view.
+        assert_eq!(
+            scene.take_computer_commands(),
+            vec![crate::computer_hud::Command::Refresh]
+        );
+        scene
+            .action(Request::ComputerFeed {
+                feed: Box::new(computers_feed()),
+            })
+            .unwrap();
+        let packet = scene.packet();
+        assert!(packet.computer_hud.visible);
+        assert!(!scene.map_ui().vertices.is_empty());
+        let open = packet
+            .computer_hud
+            .items
+            .iter()
+            .find(|item| item.key == "host-0-open")
+            .unwrap()
+            .clone();
+        // A drag on the left half does not walk while the computer is open.
+        let position = scene.world.player.pos;
+        scene.pointer(2, PointerPhase::Down, 40.0, 600.0).unwrap();
+        scene.pointer(2, PointerPhase::Move, 40.0, 400.0).unwrap();
+        scene.update(1.2).unwrap();
+        scene.update(1.4).unwrap();
+        scene.pointer(2, PointerPhase::Up, 40.0, 400.0).unwrap();
+        assert_eq!(scene.world.player.pos, position);
+        assert!(scene.touches.is_empty());
+        // A tap on a laid-out control names the node of the current view.
+        let [fx, fy, fw, fh] = open.frame;
+        scene
+            .pointer(3, PointerPhase::Down, fx + fw / 2.0, fy + fh / 2.0)
+            .unwrap();
+        scene
+            .pointer(3, PointerPhase::Up, fx + fw / 2.0, fy + fh / 2.0)
+            .unwrap();
+        assert_eq!(
+            scene.take_computer_commands(),
+            vec![crate::computer_hud::Command::Activate {
+                surface: crate::computer_hud::Surface::Computers,
+                instance: "computers-test".into(),
+                revision: 3,
+                node: "host-0-open".into(),
+            }]
+        );
+        // Chats stays reachable as the native page.
+        scene
+            .action(Request::ComputerHudTap {
+                key: "hud-tab-chats".into(),
+            })
+            .unwrap();
+        let packet = scene.packet();
+        assert_eq!(packet.computer_page, crate::computer_hud::Page::Chats);
+        assert!(!packet.computer_hud.visible);
+        scene
+            .action(Request::ComputerPage {
+                page: crate::computer_hud::Page::Computers,
+            })
+            .unwrap();
+        assert!(
+            scene
+                .action(Request::ComputerHudTap {
+                    key: "missing".into()
+                })
+                .is_err()
+        );
+        scene
+            .action(Request::ComputerHudTap {
+                key: "hud-close".into(),
+            })
+            .unwrap();
+        assert!(!scene.computer_open);
+        assert!(!scene.packet().computer_hud.visible);
+    }
+
+    #[test]
+    fn a_native_computer_panel_keeps_world_routing_unchanged() {
+        let (mut scene, [x, y]) = computer_scene();
+        scene.computer_hud = crate::computer_hud::ComputerHud::new(false);
+        scene.pointer(1, PointerPhase::Down, x, y).unwrap();
+        scene.pointer(1, PointerPhase::Up, x, y).unwrap();
+        assert!(scene.computer_open);
+        assert!(scene.take_computer_commands().is_empty());
+        assert!(!scene.packet().computer_hud.visible);
+        assert!(
+            scene
+                .action(Request::ComputerPage {
+                    page: crate::computer_hud::Page::Computers
+                })
+                .is_err()
+        );
     }
 
     #[test]

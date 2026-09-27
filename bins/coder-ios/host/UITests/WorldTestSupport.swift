@@ -19,12 +19,34 @@ struct VerseTestObservation: Decodable {
     let presented_remote_vertices: UInt64
     let computer_ready: Bool
     let computer_target: [Double]
+    let computer_open: Bool
+    let computer_page: String
+    let computer_hud: VerseTestComputerHud
     let map: VerseTestMap
     let companion: VerseTestCompanion
     let doors: VerseTestDoors
     let zone: VerseTestZone
     let door_preferences_revision: UInt64
     let door_storage_writes: UInt64
+}
+
+struct VerseTestComputerHud: Decodable {
+    let visible: Bool
+    let page: String
+    let busy: Bool
+    let scroll: Double
+    let max_scroll: Double
+    let body: [Double]
+    let input: String
+    let items: [VerseTestHudItem]
+}
+
+struct VerseTestHudItem: Decodable {
+    let key: String
+    let label: String
+    let role: String
+    let enabled: Bool
+    let frame: [Double]
 }
 
 struct VerseTestWorldConfiguration: Decodable {
@@ -172,7 +194,18 @@ extension XCUIApplication {
         return try? JSONDecoder().decode(VerseTestObservation.self, from: data)
     }
 
+    /// Open the world computer on its native Chats page.
     func openWorldComputer(beforeTap: (() -> Void)? = nil) {
+        openWorldComputerHud(beforeTap: beforeTap)
+        let chats = buttons["hud-tab-chats"]
+        XCTAssertTrue(chats.waitForExistence(timeout: 10))
+        chats.tap()
+        XCTAssertTrue(buttons["computer-close"].waitForExistence(timeout: 10))
+    }
+
+    /// Open the world computer. It shows the Computers screens in the world
+    /// HUD, which Rust draws and hit-tests.
+    func openWorldComputerHud(beforeTap: (() -> Void)? = nil) {
         let surface = otherElements["verse-surface"]
         XCTAssertTrue(surface.waitForExistence(timeout: 30))
         XCTAssertFalse(buttons["computer-interact"].exists, "The computer is drawn in the world, not as a native button.")
@@ -192,7 +225,77 @@ extension XCUIApplication {
         }
         beforeTap?()
         surface.coordinate(withNormalizedOffset: CGVector(dx: target.x, dy: target.y)).tap()
-        XCTAssertTrue(buttons["computer-close"].waitForExistence(timeout: 10))
+        let shown = buttons["hud-close"].waitForExistence(timeout: 10)
+        let state = verseObservation().map {
+            "open \($0.computer_open), page \($0.computer_page), hud \($0.computer_hud.visible), items \($0.computer_hud.items.count)"
+        } ?? "no observation"
+        XCTAssertTrue(shown, "The computer's HUD did not open: \(state)")
+        XCTAssertFalse(buttons["computer-close"].exists, "Computers draw in the world, not a native panel.")
+    }
+
+    /// Tap a control the HUD laid out, scrolling its body until it is fully
+    /// in view. The tap is a real touch on the world surface.
+    func hudTap(_ key: String, timeout: TimeInterval = 20) {
+        let control = hudElement(key, timeout: timeout)
+        XCTAssertTrue(control.isEnabled, "\(key) is disabled")
+        control.tap()
+    }
+
+    /// Wait for a HUD element, scrolling its body down, then up, to find it.
+    @discardableResult
+    func hudElement(_ key: String, timeout: TimeInterval = 20) -> XCUIElement {
+        let element = descendants(matching: .any)[key]
+        let deadline = Date().addingTimeInterval(timeout)
+        var direction = 1.0
+        while !element.exists && Date() < deadline {
+            if let hud = verseObservation()?.computer_hud, hud.max_scroll > 0 {
+                if hud.scroll >= hud.max_scroll - 1 { direction = -1 }
+                if hud.scroll <= 1 { direction = 1 }
+                hudSwipe(direction, hud: hud)
+            } else {
+                _ = element.waitForExistence(timeout: 0.5)
+            }
+        }
+        XCTAssertTrue(element.exists, "\(key) is not on the computer's screen")
+        return element
+    }
+
+    /// Drag the HUD body: positive moves further down the screen's content.
+    func hudSwipe(_ direction: Double, hud: VerseTestComputerHud) {
+        let surface = otherElements["verse-surface"]
+        let frame = surface.frame
+        guard hud.body.count == 4, frame.width > 0, frame.height > 0 else { return }
+        let x = (hud.body[0] + hud.body[2] * 0.5) / frame.width
+        let top = (hud.body[1] + hud.body[3] * 0.25) / frame.height
+        let bottom = (hud.body[1] + hud.body[3] * 0.75) / frame.height
+        let from = surface.coordinate(withNormalizedOffset: CGVector(dx: x, dy: direction > 0 ? bottom : top))
+        let to = surface.coordinate(withNormalizedOffset: CGVector(dx: x, dy: direction > 0 ? top : bottom))
+        from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .default, thenHoldForDuration: 0.1)
+    }
+
+    /// Scroll the HUD back to its top.
+    func hudScrollToTop() {
+        for _ in 0..<12 {
+            guard let hud = verseObservation()?.computer_hud, hud.scroll > 1 else { return }
+            hudSwipe(-1, hud: hud)
+        }
+    }
+
+    /// The label of a HUD text or control, once it exists.
+    func hudLabel(_ key: String, timeout: TimeInterval = 20) -> String {
+        hudElement(key, timeout: timeout).label
+    }
+
+    /// Wait until a HUD element's label contains `expected`, polling as the
+    /// HUD's screen refreshes.
+    func waitForHud(_ key: String, containing expected: String, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let element = descendants(matching: .any)[key]
+            if element.exists && element.label.contains(expected) { return true }
+            _ = element.waitForExistence(timeout: 1)
+        }
+        return false
     }
 
     private func computerTarget(_ surface: XCUIElement) -> (ready: Bool, x: Double, y: Double)? {

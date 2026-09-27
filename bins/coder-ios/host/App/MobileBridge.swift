@@ -18,6 +18,8 @@ struct MobilePacket: Decodable {
     let computers_input: ComputersInput?
     let computers_qr: ComputersQR?
     let computers_exit: Bool?
+    /// The terminal screen a host's Terminal control opened.
+    let terminal: NativeView?
     /// Push wake status, present once push is configured or requested.
     let push: String?
 }
@@ -56,12 +58,19 @@ struct ComputersInput: Decodable, Equatable {
     }
 }
 
+/// One reader response: the decoded packet and the views the world
+/// computer's HUD draws.
+struct MobileResult {
+    let packet: MobilePacket
+    let feed: [String: Any]
+}
+
 private final class RustWorker {
     private let queue = DispatchQueue(label: "com.openagents.coder.reader", qos: .userInitiated)
     private var handle: UnsafeMutableRawPointer?
 
     func initialize(synthetic: Bool, loopbackTest: Bool,
-                    completion: @escaping (Result<MobilePacket, Error>) -> Void) {
+                    completion: @escaping (Result<MobileResult, Error>) -> Void) {
         queue.async {
             do {
                 let secret = try DeviceIdentity.loadOrCreate(synthetic: synthetic)
@@ -89,14 +98,14 @@ private final class RustWorker {
         }
     }
 
-    func send(_ request: [String: Any], completion: @escaping (Result<MobilePacket, Error>) -> Void) {
+    func send(_ request: [String: Any], completion: @escaping (Result<MobileResult, Error>) -> Void) {
         queue.async {
             do { completion(.success(try self.call(request))) }
             catch { completion(.failure(error)) }
         }
     }
 
-    private func call(_ request: [String: Any]) throws -> MobilePacket {
+    private func call(_ request: [String: Any]) throws -> MobileResult {
         guard let handle else { throw ReaderError.message("The reader has not opened its local state.") }
         let input = try JSONSerialization.data(withJSONObject: request)
         guard input.count <= 131_072 else { throw ReaderError.message("The native request is too large.") }
@@ -107,13 +116,23 @@ private final class RustWorker {
         guard let pointer = result.data, result.len > 0, result.len <= 1_048_576 else {
             throw ReaderError.message("Rust returned an invalid or oversized view packet.")
         }
-        let packet = try JSONDecoder().decode(MobilePacket.self, from: Data(bytes: pointer, count: result.len))
+        let data = Data(bytes: pointer, count: result.len)
+        let packet = try JSONDecoder().decode(MobilePacket.self, from: data)
         guard packet.schema == "coder.mobile.v1",
               packet.view == nil || packet.view?.schema == "rust-native.view.v2",
-              packet.computers == nil || packet.computers?.schema == "rust-native.view.v2" else {
+              packet.computers == nil || packet.computers?.schema == "rust-native.view.v2",
+              packet.terminal == nil || packet.terminal?.schema == "rust-native.view.v2" else {
             throw ReaderError.message("This app does not support the returned view version.")
         }
-        return packet
+        // The world computer's HUD draws these same Rust views. Forward
+        // them unchanged; Rust validates them again on the world side.
+        var feed: [String: Any] = [:]
+        if let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["computers", "computers_input", "computers_qr", "terminal"] {
+                if let value = raw[key], !(value is NSNull) { feed[key] = value }
+            }
+        }
+        return MobileResult(packet: packet, feed: feed)
     }
 
     deinit {
@@ -126,6 +145,10 @@ private final class RustWorker {
 @MainActor
 final class MobileBridge: ObservableObject {
     @Published private(set) var packet: MobilePacket?
+    /// The Computers and terminal views for the world computer's HUD, and a
+    /// counter that changes whenever they arrive.
+    private(set) var hudFeed: [String: Any] = [:]
+    @Published private(set) var hudFeedRevision = 0
     @Published private(set) var busy = true
     @Published private(set) var nativeError: String?
     /// Why this device couldn't obtain a push token, if it couldn't.
@@ -136,6 +159,8 @@ final class MobileBridge: ObservableObject {
     private var pendingLifecycle: Bool?
     private var pendingFollow: (enabled: Bool, page: String?)?
     private var pendingPushToken: String?
+    /// HUD taps and answers that arrived while a request ran, in order.
+    private var queued: [[String: Any]] = []
 
     /// `loopbackTest` is for test launches only: the Computers surface then
     /// admits a `ws://` loopback relay and a host on this machine.
@@ -165,11 +190,25 @@ final class MobileBridge: ObservableObject {
     }
 
     func submitComputers(token: String, value: String) {
-        request(["op": "computers_input", "token": token, "value": value])
+        enqueue(["op": "computers_input", "token": token, "value": value])
     }
 
     func cancelComputers(token: String) {
-        request(["op": "computers_cancel", "token": token])
+        enqueue(["op": "computers_cancel", "token": token])
+    }
+
+    /// A tap the world computer's HUD resolved to a node of a Rust view.
+    /// Rust resolves it again against its current revision.
+    func activateSurface(_ surface: String, instance: String, revision: UInt64, node: String) {
+        let op = surface == "terminal" ? "terminal_activate" : "computers_activate"
+        enqueue(["op": op, "instance": instance, "revision": revision, "node": node])
+    }
+
+    /// Run now, or after the request in flight, so a HUD tap during a poll
+    /// is not lost.
+    private func enqueue(_ command: [String: Any]) {
+        if busy { queued.append(command); return }
+        request(command)
     }
 
     func refreshComputers() { request(["op": "computers_refresh"]) }
@@ -226,17 +265,25 @@ final class MobileBridge: ObservableObject {
         busy = true
         nativeError = nil
         worker.send(request) { result in
-            Task { @MainActor in self.receive(result); completed?(result) }
+            Task { @MainActor in
+                self.receive(result)
+                completed?(result.map(\.packet))
+            }
         }
     }
 
-    private func receive(_ result: Result<MobilePacket, Error>) {
+    private func receive(_ result: Result<MobileResult, Error>) {
         busy = false
         switch result {
-        case let .success(packet): self.packet = packet
+        case let .success(response):
+            self.packet = response.packet
+            hudFeed = response.feed
+            hudFeedRevision &+= 1
         case let .failure(error): nativeError = error.localizedDescription
         }
-        if let active = pendingForeground {
+        if !queued.isEmpty {
+            request(queued.removeFirst())
+        } else if let active = pendingForeground {
             pendingForeground = nil
             setForeground(active)
         } else if let active = pendingLifecycle {

@@ -1,0 +1,10 @@
+coder host: serving 3e27ec47c7a76da65cc1e147a3aea63733fdf19db7de3a8e2bb720df4c283ec8 at generation N on 127.0.0.1:65100
+fixture: relay port 65099, host port 65100; waiting for the app
+fixture: the app enrolled as ec530568bc9d5d2da510f39b838e32f6ed0f1b17f873401d1d0aa768cd68fe4b
+fixture: host tasks:
+Fix the flaky parser test | scratch | revision 1 | Queued | 0 steer(s)
+fixture: host tasks:
+Fix the flaky parser test | scratch | revision 2 | Queued | 1 steer(s)
+fixture: host tasks:
+Fix the flaky parser test | scratch | revision 3 | Cancelled | 1 steer(s)
+fixture: done

@@ -18,6 +18,10 @@ struct VersePacket: Decodable {
     let view: NativeView?
     let computer: VerseComputer
     let computer_open: Bool
+    /// `computers` or `terminal` draw in the HUD; `chats` is native.
+    let computer_page: String
+    let computer_hud: VerseComputerHud
+    let computer_commands: [VerseComputerCommand]
     let gym: VerseGym
     let gym_open: Bool
     let gym_active: Bool
@@ -143,6 +147,8 @@ final class VerseBridge: ObservableObject {
     private weak var canvas: VerseMetalView?
     private var lastPublished: CFTimeInterval = 0
     private var gymRequestedRevision: UInt64?
+    /// Runs the world computer HUD's commands, once each.
+    var computerCommands: (([VerseComputerCommand]) -> Void)?
 
     init(synthetic: Bool) {
         self.synthetic = synthetic
@@ -328,7 +334,8 @@ final class VerseBridge: ObservableObject {
               packet.camera_yaw.isFinite, packet.camera_pitch.isFinite,
               packet.camera_distance.isFinite, packet.camera_distance > 0,
               (packet.credits?.utf8.count ?? 0) <= 32_768, packet.map.valid, packet.zone.valid, packet.companion.valid, packet.door_preferences.utf8.count <= 2048, packet.doors.valid,
-              packet.gym_board?.valid ?? true else {
+              packet.gym_board?.valid ?? true, packet.computer_hud.valid,
+              packet.computer_commands.count <= 16 else {
             throw ReaderError.message("This app does not support the returned world view.")
         }
         guard let view = packet.view else {

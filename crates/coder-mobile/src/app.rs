@@ -77,6 +77,15 @@ pub enum Request {
         token: String,
     },
     ComputersRefresh,
+    /// Activate a control on the terminal screen a host's **Terminal**
+    /// control opened.
+    TerminalActivate {
+        instance: String,
+        revision: u64,
+        node: String,
+    },
+    /// Leave the terminal screen.
+    TerminalClose,
     /// The application became active or moved to the background. Each host
     /// supervisor probes after a short absence and replaces its connection
     /// after a long one.
@@ -104,6 +113,8 @@ impl Request {
                 | Self::ComputersInput { .. }
                 | Self::ComputersCancel { .. }
                 | Self::ComputersRefresh
+                | Self::TerminalActivate { .. }
+                | Self::TerminalClose
                 | Self::Lifecycle { .. }
         )
     }
@@ -174,6 +185,10 @@ pub struct Packet {
     /// First run finished on the last call; the host returns to its
     /// existing onboarding.
     pub computers_exit: bool,
+    /// The terminal screen a host's **Terminal** control opened, as its own
+    /// Rust Native view. See [`crate::terminal`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<serde_json::Value>,
     /// Push wake status, present once the app is configured for push or a
     /// push request arrived.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -229,6 +244,8 @@ pub struct App {
     pub(crate) synthetic: bool,
     computers: Option<Computers>,
     computers_exit: bool,
+    /// The terminal screen a host's Terminal control opened.
+    terminal: Option<crate::terminal::Terminal>,
     pairing_completed: bool,
     push: Option<crate::push::Push>,
     push_status: Option<String>,
@@ -275,6 +292,7 @@ impl App {
             synthetic: config.synthetic,
             computers: None,
             computers_exit: false,
+            terminal: None,
             pairing_completed: false,
             push: None,
             push_status: None,
@@ -444,6 +462,30 @@ impl App {
     }
 
     fn computers(&mut self, request: Request) {
+        match request {
+            Request::TerminalClose => {
+                self.terminal = None;
+                return;
+            }
+            Request::TerminalActivate {
+                instance,
+                revision,
+                node,
+            } => {
+                let event = Activation {
+                    instance,
+                    revision,
+                    node,
+                };
+                if let Some(terminal) = self.terminal.as_mut()
+                    && terminal.activate(&event) == Ok(crate::terminal::Outcome::Closed)
+                {
+                    self.terminal = None;
+                }
+                return;
+            }
+            _ => {}
+        }
         let Some(computers) = self.computers.as_mut() else {
             return;
         };
@@ -471,6 +513,20 @@ impl App {
             _ => return,
         };
         self.computers_exit = outcome == Ok(Outcome::ContinueOnboarding);
+        // The Terminal control passed the shared authority check; the
+        // terminal screen takes over for that host (#9733).
+        if outcome == Ok(Outcome::Terminal)
+            && let Some(host) = computers.take_terminal()
+        {
+            let label = computers
+                .snapshot()
+                .host(&host)
+                .map_or_else(|| "this computer".to_owned(), |record| record.label.clone());
+            match crate::terminal::Terminal::open(host, label) {
+                Ok(terminal) => self.terminal = Some(terminal),
+                Err(error) => self.notices.push(format!("Terminal unavailable: {error}")),
+            }
+        }
     }
 
     fn handle(&mut self, request: Request) -> Result<(), String> {
@@ -487,6 +543,8 @@ impl App {
             | Request::ComputersInput { .. }
             | Request::ComputersCancel { .. }
             | Request::ComputersRefresh
+            | Request::TerminalActivate { .. }
+            | Request::TerminalClose
             | Request::Lifecycle { .. }
             | Request::PushToken { .. }
             | Request::PushDisable => Ok(()),
@@ -1007,6 +1065,10 @@ impl App {
                         .collect(),
                 }),
             computers_exit: self.computers_exit,
+            terminal: self
+                .terminal
+                .as_ref()
+                .and_then(crate::terminal::Terminal::view),
             push: self.push_status.clone(),
         }
     }

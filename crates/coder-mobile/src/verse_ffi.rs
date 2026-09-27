@@ -8,6 +8,10 @@ thread_local! { static CREATE_ERROR: RefCell<Option<String>> = const { RefCell::
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
+/// The largest native request: a forwarded Computers view (Rust Native's
+/// 512 KiB view bound) with its input request and QR code.
+const MAX_REQUEST_BYTES: usize = 640 * 1024;
+
 pub struct VerseHandle {
     pub(crate) scene: Scene,
     pub(crate) renderer: Option<verse::render::Renderer>,
@@ -105,7 +109,7 @@ pub unsafe extern "C" fn coder_verse_call(
     bytes: *const u8,
     len: usize,
 ) -> CoderMobileBuffer {
-    if handle.is_null() || bytes.is_null() || len == 0 || len > 96 * 1024 {
+    if handle.is_null() || bytes.is_null() || len == 0 || len > MAX_REQUEST_BYTES {
         return failure();
     }
     catch_unwind(AssertUnwindSafe(|| {
@@ -129,12 +133,19 @@ impl VerseHandle {
     }
 
     pub(crate) fn call_bytes(&mut self, bytes: &[u8]) -> Result<Vec<u8>, String> {
-        if bytes.is_empty() || bytes.len() > 96 * 1024 {
+        if bytes.is_empty() || bytes.len() > MAX_REQUEST_BYTES {
             return Err("Native Verse request exceeds its size limit".into());
         }
         let request: Request =
             serde_json::from_slice(bytes).map_err(|_| "Invalid native Verse request".to_owned())?;
-        if bytes.len() > 4096 && !matches!(&request, Request::GymConfigure { .. }) {
+        let limit = match &request {
+            // A forwarded Computers view is bounded by Rust Native's view
+            // limit; the HUD validates it again.
+            Request::ComputerFeed { .. } => MAX_REQUEST_BYTES,
+            Request::GymConfigure { .. } => 96 * 1024,
+            _ => 4096,
+        };
+        if bytes.len() > limit {
             return Err("Native Verse request exceeds its size limit".into());
         }
         let include_credits = matches!(&request, Request::ZoneCredits);
@@ -162,6 +173,7 @@ impl VerseHandle {
             Ok(()) => {}
         }
         let mut packet = self.scene.packet();
+        packet.computer_commands = self.scene.take_computer_commands();
         if include_credits {
             packet.credits = Some(verse::zones::CREDITS);
         }
@@ -267,6 +279,7 @@ mod tests {
             world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
+            computer_hud: true,
         })
         .unwrap();
         let mut handle = VerseHandle {
