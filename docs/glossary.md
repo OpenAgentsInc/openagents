@@ -562,7 +562,7 @@ These portable target contracts come from [NIP-OPT](../nips/openagents/NIP-OPT.m
 
 The [NIP index](../nips/README.md) separates pinned official Nostr specifications,
 pinned Block extensions, and OpenAgents drafts authored here. The OpenAgents
-lane contains 23 NIPs and their shared contract. Event kinds are draft
+lane contains 27 NIPs and their shared contract. Event kinds are draft
 assignments, not upstream registrations. Implementation status applies to the
 role described below; storing an event does not implement its application.
 
@@ -595,6 +595,10 @@ role described below; storing an event does not implement its application.
 | NIP-ENV | Designed | Execution environment definitions, reserved leases, actual materialization, runtime attachments, cleanup, and resource accounting. Discovery, a live process, and lease expiry do not prove readiness, isolation, or stopped billing. See [NIP-ENV](../nips/openagents/NIP-ENV.md). |
 | NIP-LIVE | Designed | Admitted media/capture sessions, exact participants and recipients, separate input and speaking floors, capture/transcript evidence, and device input bound to fresh observations. Speech recognition and room membership cannot supply action authority. See [NIP-LIVE](../nips/openagents/NIP-LIVE.md). |
 | NIP-MV | Partial | Shared 3D-world presence: pose frames (`23300`), gestures (`23301`), entity state (`33301`), and world definitions (`33300`). [Verse](../crates/verse/src/mv.rs) implements frames, gestures, and state; it does not publish world definitions or establish authoritative physics. This NIP is independent of the shared agent-artifact contracts. See [NIP-MV](../nips/openagents/NIP-MV.md). |
+| NIP-REACH | Partial | Private host directory, presence, reachability hints, authenticated direct channels, and placement. The [coder-reach crate](../crates/coder-reach/README.md) implements a tested local subset; relay publication and WebSocket transport remain unimplemented. A reachable host does not gain control of a run. See [NIP-REACH](../nips/openagents/NIP-REACH.md). |
+| NIP-SOV | Designed | Sovereign-agent composition profile, adapted from historical NIP-SA with a new wire identity. Binds durable identity, custody and governance, bounded AUTO lifecycle, POL guardians, treasury policy, and retained RUN evidence. Allocates no new kinds and supplies no custody, wallet, or autonomous-host implementation. See [NIP-SOV](../nips/openagents/NIP-SOV.md). |
+| Sovereign agent | Designed | An agent with a declared arrangement for persistent identity, authorized initiative, state, assets, and market participation. Independence from an operator depends on actual custody, enforcement, and recovery evidence; a public key alone does not establish it. See [SOV's definition](../nips/openagents/NIP-SOV.md#purpose-and-meaning-of-sovereignty). |
+| Custodian and guardian | Designed | A custodian supplies signing or decryption under admitted policy. A guardian approves an exact application action; a quorum of such approvals is separate from threshold key custody. SOV specifies a guardian policy but implements neither service. See [custody](../nips/openagents/NIP-SOV.md#custody-signing-and-decryption) and [guardians](../nips/openagents/NIP-SOV.md#guardians-and-exact-action-approval). |
 
 ### Wire identity and evidence
 

@@ -36,13 +36,18 @@ offer bounded coding work and receive Bitcoin for accepted results. The
 [Coder network plan](docs/coder/design/networked-coder-plan.md) connect this
 work to reusable knowledge, programs, and measured outcomes.
 
-The [OpenAgents protocol index](nips/openagents/README.md) contains 23 authored
+The [OpenAgents protocol index](nips/openagents/README.md) contains 27 authored
 NIPs plus shared contracts. Encrypted artifacts, free market negotiation, and
 labor-term validation now have Rust components. A recoverable [free labor host](docs/coder/runtime/free-labor.md) links an
 exact order to bounded execution and acceptance. Paid settlement and the
 complete multi-operator market remain unfinished. The
 [implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
 maps every contract to its implemented parts and remaining work.
+
+[NIP-SOV](nips/openagents/NIP-SOV.md) restores the historical sovereign-agent
+design as a Designed profile for durable identity, bounded initiative,
+custody, guardians, and market participation. It composes the current NIPs;
+custody, sovereign lifecycle, and treasury adapters remain to be built.
 
 Coder for iOS is available in internal TestFlight as **0.5.0 (43)**.
 [Verse fills the screen](docs/verse/mobile.md), including behind the system
@@ -356,7 +361,7 @@ and workload-specific evaluation determines whether a replacement helps.
 ## Architecture and protocols
 
 The [NIP directory](nips/README.md) has three lanes: 99 official
-specifications, 17 Block/Buzz extensions, and 22 OpenAgents NIPs plus shared
+specifications, 17 Block/Buzz extensions, and 27 OpenAgents NIPs plus shared
 contracts. [nips/manifest.json](nips/manifest.json) pins the upstream revisions;
 the [September 26 review](docs/protocol/2026-09-26-upstream-nip-sync.md) records
 their changes. A source inventory does not establish complete implementation.

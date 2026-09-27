@@ -80,6 +80,7 @@ name and its distinct wire identity.
 | WS | Resource/document versions, conditional mutations, worktrees/checkpoints, finite projection cuts/pages/deltas, and command visibility. | Stale edits conflict; cross-store failures retain reconciliation; every client can distinguish stale, partial, inaccessible, and current views. |
 | WORK | Native tracked work, planning graph, admitted revisions, delegation, evidence, disposition, imports, and attention. | Two clients agree on exact accepted revisions; reassignment cannot duplicate execution; issue close, verification, commercial acceptance, and payment stay distinct. |
 | AUTO | Finite plans, schedule slots, verified source observations, checker continuation, counters, controls, and aggregate accounting. | Sleep, duplicates, cancellation, missing checkers, and uncertain effects produce bounded retained outcomes without automatic backlog bursts. |
+| [SOV](../../nips/openagents/NIP-SOV.md) — Designed | Compose identity and custody declarations, bounded AUTO lifecycle, WORK goals, POL guardians, treasury reservations, MKT/LAB settlement, X402 purchases, and retained RUN evidence. | Role-specific admission, custody/recovery limits, shared spending reservations, expired or revoked approvals, runner loss, and unknown effects remain correct across restart. The historical SA restoration supplies no runtime, threshold signer, or wallet implementation. |
 | ENV | Allocation/adoption, exact materialization, participant closure, lease admission, required CJ binding, expiry, and cleanup. | No dispatch before attachment admission; unknown create/destroy outcomes retain resource and spending obligations; changed recipients require new admission. |
 | LIVE | Participant/consent admission, transport epochs, input/speaking floors, capture anchors, and observation-bound device input. | Wrong-room audio, stale screenshots, revoked participants, lost stop acknowledgments, and cross-context disclosure refuse or remain explicitly unknown. |
 | MV | World definitions, entity state, ephemeral poses/gestures, and scoped chat. | Preserve the standalone world's fixtures; this role does not imply physical-control or coding-task authority. |
@@ -119,6 +120,17 @@ than allocating payment event kinds. Do not change the current MKT/LAB
 postacceptance contract to accommodate an upfront API charge. Real wallet
 spending and a production launch require their own admitted pilot after the
 validator, budget, replay, and recovery evidence exists.
+
+The historical SA draft is restored as the
+[NIP-SOV composition profile](../../nips/openagents/NIP-SOV.md). Implement its
+roles through the existing contracts: durable local identity and admission,
+bounded AUTO execution with RUN recovery, then separately admitted custody and
+treasury adapters and market participation. It allocates no new event kinds.
+General organization roles, multiple approvers, and threshold authorization
+remain the distinct `AUTH-1` workstream in the
+[agent roadmap](../agents/roadmap.md); SOV guardian references do not complete
+that design. Require retained role-specific fixtures before advertising any
+sovereign-agent host support.
 
 ## Conformance across Nostr lanes
 

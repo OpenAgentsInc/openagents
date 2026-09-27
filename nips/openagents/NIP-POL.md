@@ -201,6 +201,12 @@ draft, analysis, or proposed mutation does not authorize sending or applying it.
 One approval covers the named action only; threshold/multi-party approvals
 need a separate supported policy and are not implied by a list of signatures.
 
+[SOV's guardian policy](NIP-SOV.md#guardians-and-exact-action-approval) specifies
+one optional policy for that purpose: exact members, a threshold, operation
+scope, expiry, denials, and atomic action-level consumption. It is a Designed
+profile requiring separate host support, not a default for POL approvals or
+a threshold key-custody protocol.
+
 An approval request has `v: "openagents.approval-request.v1"`, `request`,
 `action` (ArtifactRef), `requester`, `approver` (pubkeys), `expires_at`, and
 `reviews` (receipt ArtifactRefs). An approval decision has

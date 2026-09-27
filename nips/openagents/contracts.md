@@ -1,7 +1,8 @@
 # Shared OpenAgents protocol contracts
 
 `draft` `optional` — normative for CAP, PRG, EXT, RUN, CJ, CTX, POL, COORD,
-EVAL, OPT, KB, XP, CTRL, MKT, LAB, SESS, WS, WORK, AUTO, ENV, and LIVE v1.
+EVAL, OPT, KB, XP, CTRL, MKT, LAB, X402, SESS, WS, WORK, AUTO, ENV, LIVE,
+HOST, REACH, TERM, and SOV v1.
 
 The uppercase requirement words express conformance requirements. A reader
 MUST validate the complete required contract before any effect. Signatures
@@ -317,7 +318,7 @@ profile defines read ACLs, retention, fanout, and COUNT/search behavior.
 
 Kind `3188` is a regular immutable declaration of one scoped artifact for
 one recipient. CTX, POL, COORD, EVAL, OPT, KB, CTRL, MKT, LAB, SESS, WS,
-WORK, AUTO, ENV, LIVE, X402, and private EXT records use it when
+WORK, AUTO, ENV, LIVE, HOST, REACH, TERM, SOV, X402, and private EXT records use it when
 a separately signed artifact is needed outside a RUN controller's journal.
 It does not dispatch work. A control or market consumer separately validates
 and admits the operation; receiving an artifact alone grants no effect. The event has
@@ -379,3 +380,9 @@ bodies and the POL preference/EXT import and component-set additions still
 need schema fixtures and role-specific validators. A schema that requires a vocabulary those validators
 do not implement is refused before execution. The schemas do not grant
 authority and they are not fetched from the network while a document is checked.
+
+SOV's profile, activation, checkpoint, and guardian policy are **Designed**.
+They have no schema validators or admitted host implementation yet. REACH's
+current narrower implementation is recorded in the
+[coverage report](../../docs/protocol/2026-09-26-nip-implementation-coverage.md);
+neither contract inherits conformance from shared envelope support.

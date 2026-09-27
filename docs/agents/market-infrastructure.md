@@ -85,15 +85,42 @@ The coding side already has [tracker intake](../coder/guides/tracker-intake.md),
 [worker deployment path](../coder/guides/worker-executor.md). These provide
 task versions, bounded scheduling, retained patches, and verification
 records. The local queue and working relay delegate are useful foundations;
-neither is an end-to-end commercial labor market. Historical NIP-DS,
-agent-credit and sovereign-agent specifications, wallet integrations, and
-the Economy Kernel also need a fresh source inventory before any reuse.
+neither is an end-to-end commercial labor market. The historical sovereign-agent
+draft has now been reviewed and adapted as
+[NIP-SOV](../../nips/openagents/NIP-SOV.md). Historical NIP-DS, agent-credit
+specifications, wallet integrations, and the Economy Kernel still need a fresh
+source inventory before any reuse.
 
 Use an explicit source revision, license review, dependency review, and
 fixtures for each imported component. Update the implementation ledger before
 advertising support. Preserve the transcript archive as history. Keep
 historical claims about deployment and swap readiness separate from the
 supported roles reported by this repository.
+
+## Sovereign agent participation
+
+[NIP-SOV](../../nips/openagents/NIP-SOV.md) restores the historical SA design as
+a **Designed** composition profile. It preserves distinct agent identity,
+custody and recovery arrangements, persistent goals, bounded initiative,
+agent-held assets, and market participation. It reuses the current contracts
+and allocates no new event kinds. The document does not establish a sovereign
+agent runtime, threshold signer, or wallet adapter.
+
+An admitted AUTO plan can wake an agent to pursue WORK goals within finite
+bounds. POL supplies authority, disclosure, and guardian approval; RUN retains
+effects and recovery evidence. A treasury must reserve spending across runs
+and delegated work before an admitted adapter buys compute or skills. MKT/LAB
+governs negotiated work and earned settlement; X402 governs separately admitted
+upfront purchases. Unknown effects and payments retain their obligations until
+reconciled. A trigger, an agent profile, a guardian relationship, or a license
+does not authorize spending or execution by itself.
+
+Custody declarations must expose who can sign, decrypt, recover, or bypass a
+policy. They do not establish protection from a privileged host or revoke
+plaintext already delivered. General organization roles and multiple-approver
+authority remain the separate `AUTH-1` workstream in the
+[agent roadmap](roadmap.md). Restoring SA does not complete that work or change
+the free-only labor runtime's implementation boundary.
 
 ## Keep the roles independent
 

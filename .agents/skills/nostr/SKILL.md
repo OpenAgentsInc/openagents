@@ -91,6 +91,15 @@ Read the spec before the code. The files you need most often:
   materialization, attachment, cleanup, and uncertain resource accounting.
 - `nips/openagents/NIP-LIVE.md` — admitted media/capture, participants and
   recipients, input and speaking floors, evidence, and scoped device input.
+- `nips/openagents/NIP-REACH.md` — private host directory, bounded presence,
+  reachability, and authenticated direct channels. Placement grants no rights.
+- `nips/openagents/NIP-HOST.md` — host-wide device enrollment and scoped
+  grants; access rights do not supply POL approval or spending authority.
+- `nips/openagents/NIP-TERM.md` — host-owned interactive terminals, bounded
+  output replay, explicit gaps, and current access checks.
+- `nips/openagents/NIP-SOV.md` — Designed successor to historical SA: durable
+  identity, supported custody, bounded AUTO lifecycle, POL guardians, treasury
+  policy, and retained recovery evidence. It allocates no new event kinds.
 - `nips/openagents/NIP-MV.md` — Verse world presence, entity state, and
   gestures; independent of the shared agent-artifact contracts.
 - `docs/optimization/README.md` — DSPy/GEPA concepts, Gym evaluation, host
@@ -105,12 +114,16 @@ Read the spec before the code. The files you need most often:
 - `docs/protocol/block-nips.md` — what the relay does with each Block NIP,
   including what it deliberately doesn't advertise.
 
-The OpenAgents lane contains 23 NIPs plus the shared contracts. X402, SESS, WS,
-WORK, AUTO, ENV, and LIVE are **Designed** drafts, as are POL's learned
+The OpenAgents lane contains 27 NIPs plus the shared contracts. X402, SESS, WS,
+WORK, AUTO, ENV, LIVE, and SOV are **Designed** drafts, as are POL's learned
 preference lifecycle and EXT's import/component-set assessment additions.
 They allocate no new event kinds: private artifacts use `3188`, remote host
 operations use admitted CAP/CJ profiles, and effects leave RUN evidence.
 Keeping an encrypted envelope does not implement the contract inside it.
+SOV does not restore the legacy `392xx` allocations or imply working key
+custody, guardians, or payments. REACH has a narrower `coder-reach`
+implementation; consult its role limits before treating reachability as
+availability or controller-transfer authority.
 MKT/LAB has a bounded free-order host in `crates/coder-labor`, with retained relay
 and process fixtures. Paid settlement, independently operated service delivery,
 and broader market roles remain unfinished. CTRL has a bounded local-owner bridge in `crates/coder-control`; read

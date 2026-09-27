@@ -33,6 +33,15 @@ profile uses private `3188` artifacts with MKT/CJ/RUN and claims no legacy
 wire compatibility. See [LAB's provenance note](NIP-LAB.md) and the
 [upstream sync review](../../docs/protocol/2026-09-26-upstream-nip-sync.md).
 
+[NIP-SOV](NIP-SOV.md) restores the historical NIP-SA sovereign-agent design
+as a **Designed** composition profile: durable identity, custody and recovery,
+private state, bounded initiative, guardians, agent labor, and purchases.
+It replaces the old `392xx` records with the current contracts and private
+`3188` artifacts. The new name distinguishes this wire format from historical
+SA; it allocates no kinds and implements no custody, wallet, or autonomous
+host. The [source and migration map](NIP-SOV.md#provenance-and-migration)
+retain the original draft and explain the changes.
+
 The [81-document teardown review](../../docs/protocol/2026-09-26-teardown-coverage.md)
 adds six draft profiles: persistent engine sessions (SESS), workspace resources
 and synchronized views (WS), tracked work (WORK), bounded automation (AUTO),
@@ -161,6 +170,12 @@ resource lifetimes, while LIVE scopes media and device operations. These
 profiles compose existing authority and execution contracts rather than
 introducing another generic job or payment family.
 
+SOV composes these pieces around a persistent agent identity. Its admitted
+profile binds custody, governance, disclosure, and treasury policy; its finite
+lifecycle uses AUTO/COORD/RUN and actual ENV materialization. REACH can locate
+a candidate host but cannot move controller authority. Independence, signing,
+approval, and spending require their own supported mechanisms and evidence.
+
 For example, an evidence-selection operation may compare a typed relevance
 model with a joint retrieval strategy. Both must preserve required context,
 source attribution, and disclosure constraints. Evaluate complete task quality
@@ -200,6 +215,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-LIVE](NIP-LIVE.md) | Media participants and consent, input/speaking floors, capture anchors, and observation-bound device input. | Shared `3188`; CAP/CJ operations and admitted media transports. |
 | [NIP-REACH](NIP-REACH.md) | Owner host directory, host presence with bounded telemetry and receipt-time freshness, reachability hints without loopback fallback, authenticated direct channels bound to a grant and host generation, and placement. Implemented in [`coder-reach`](../../crates/coder-reach/README.md) with synthetic loopback-socket tests; relay publication and WebSocket transport are not implemented. | Shared `3188`; no new kinds. |
 | [NIP-TERM](NIP-TERM.md) | Interactive terminal sessions: open, attach, detach, input, resize, signal, and close under the `terminal` right; per-terminal output sequence numbers, bounded replay with explicit gaps, idle expiry, and `lost` after a host restart. Implemented in [`coder-pty`](../../crates/coder-pty/README.md) with real-PTY tests on macOS; NIP-HOST rights, NIP-REACH channels, and `3188` sealing are traits the resident host wires. | Shared `3188` or NIP-REACH data frames; no new kinds. |
+| [NIP-SOV](NIP-SOV.md) | Designed successor to historical SA: durable agent identity, admitted custody, bounded lifecycle, guardians, treasury policy, market participation, and retained recovery evidence. | Shared `3188`; existing AUTO/CAP/CJ/COORD/RUN contracts; no new kinds. |
 | [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Standalone: it depends on no other contract here. | `23300`, `23301`, `33300`, `33301`. |
 
 Discovery heads are mutable. Exact signed records and artifact digests pin
