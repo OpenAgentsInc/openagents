@@ -687,6 +687,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-computers"
+version = "0.1.0"
+dependencies = [
+ "coder-access",
+ "coder-link",
+ "coder-reach",
+ "coder-terminal",
+ "coder-ui",
+ "crossterm",
+ "nostr",
+ "ratatui",
+ "rust-native",
+ "secp256k1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "coder-connect"
 version = "0.1.0"
 dependencies = [
@@ -760,6 +778,7 @@ name = "coder-mobile"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "coder-computers",
  "coder-connect",
  "coder-history",
  "coder-ui",
@@ -898,6 +917,7 @@ dependencies = [
  "crossterm",
  "pulldown-cmark",
  "ratatui",
+ "rust-native",
  "tokio",
  "unicode-segmentation",
  "unicode-width",

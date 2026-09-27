@@ -11,6 +11,7 @@ coder-ui = { path = "../coder-ui" }
 crossterm = "0.29"
 pulldown-cmark = { version = "0.13.4", default-features = false }
 ratatui = "0.30"
+rust-native = { path = "../rust-native" }
 tokio = { version = "1", features = ["sync"] }
 unicode-segmentation = "1"
 unicode-width = "0.2"

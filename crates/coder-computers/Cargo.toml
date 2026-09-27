@@ -1,0 +1,26 @@
+[package]
+name = "coder-computers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Coder's Computers screens: host status, enrollment, access, and activity as Rust Native projections."
+
+[dependencies]
+coder-access = { path = "../coder-access", default-features = false }
+coder-link = { path = "../coder-link" }
+coder-reach = { path = "../coder-reach" }
+coder-ui = { path = "../coder-ui" }
+nostr = { path = "../nostr" }
+rust-native = { path = "../rust-native" }
+secp256k1 = "0.31.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+coder-terminal = { path = "../coder-terminal" }
+crossterm = "0.29"
+ratatui = "0.30"
+
+[lints]
+workspace = true

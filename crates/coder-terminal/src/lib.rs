@@ -26,6 +26,8 @@
 //!   lanes, so a command outcome is never dropped for a burst of text.
 //! - [`Scrollback`] bounds the transcript and wraps each line once per
 //!   width.
+//! - [`native`] draws Rust Native views on the ladder and turns keyboard
+//!   focus into revision-bound activations.
 
 mod composer;
 pub mod decision;
@@ -37,6 +39,7 @@ mod intensity;
 mod keys;
 mod ladder;
 pub mod markdown;
+pub mod native;
 pub mod progress;
 mod scrollback;
 mod spinner;
