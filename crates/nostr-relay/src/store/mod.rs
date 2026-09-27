@@ -6,6 +6,7 @@
 
 mod error;
 mod migration;
+mod push;
 mod statements;
 
 use std::{
@@ -34,6 +35,10 @@ use crate::domain::{
 
 pub use error::StoreError;
 pub use migration::MigrationReport;
+pub use push::{
+    ActivePushLease, PushDeliveryCheck, PushDisposition, PushJob, PushJobRecord, PushLeaseState,
+    PushLeaseWrite, PushMatchReport,
+};
 use statements::Statements;
 
 const EVENT_CHANNEL: &str = "nostr_event";
@@ -110,6 +115,9 @@ pub enum AdmissionRejection {
     GroupPreviousUnknown,
     GroupSigningUnavailable,
     GroupHierarchy(&'static str),
+    /// A NIP-PL lease failed a check that must share the admission
+    /// transaction: generation watermark, endpoint uniqueness, or quota.
+    PushLease(&'static str),
 }
 
 impl AdmissionRejection {
@@ -135,6 +143,7 @@ impl AdmissionRejection {
             Self::GroupPreviousUnknown => "group_previous_unknown",
             Self::GroupSigningUnavailable => "group_signing_unavailable",
             Self::GroupHierarchy(_) => "group_hierarchy",
+            Self::PushLease(_) => "push_lease",
         }
     }
 }
@@ -367,6 +376,7 @@ impl Store {
             relay_signer,
             virtual_owner,
             AdmissionMode::Public,
+            None,
         )
         .await
     }
@@ -378,7 +388,7 @@ impl Store {
         relay_signer: Option<&RelaySigner>,
     ) -> Result<AdmissionOutcome, StoreError> {
         event.validate_nip01_structure()?;
-        self.admit_inner(event, now, relay_signer, None, AdmissionMode::Legacy)
+        self.admit_inner(event, now, relay_signer, None, AdmissionMode::Legacy, None)
             .await
     }
 
@@ -401,8 +411,17 @@ impl Store {
         relay_signer: Option<&RelaySigner>,
         virtual_owner: Option<&str>,
         mode: AdmissionMode,
+        lease: Option<&PushLeaseWrite>,
     ) -> Result<AdmissionOutcome, StoreError> {
         self.ensure_current()?;
+        if lease.is_some()
+            && (event.kind != crate::domain::PUSH_LEASE_KIND || mode != AdmissionMode::Public)
+        {
+            return Err(DomainError::InvalidEvent(
+                "executor lease state requires a kind 30350 event".to_owned(),
+            )
+            .into());
+        }
         // A historical import cannot activate an unsupported private protocol.
         if event.kind == crate::domain::PRIVATE_MANAGED_AGENT_KIND {
             return Err(DomainError::InvalidEvent(
@@ -790,6 +809,15 @@ impl Store {
             }
         }
 
+        if let Some(lease) = lease
+            && let Some(reason) = push::check_lease(&transaction, lease, now).await?
+        {
+            transaction.commit().await?;
+            return Ok(AdmissionOutcome::Rejected(AdmissionRejection::PushLease(
+                reason,
+            )));
+        }
+
         if event.class() == EventClass::Ephemeral {
             notify_ephemeral(&transaction, &statements, event).await?;
             transaction.commit().await?;
@@ -846,6 +874,10 @@ impl Store {
                     .execute(&statements.delete_event, &[&old_id])
                     .await?;
             }
+        }
+
+        if let Some(lease) = lease {
+            push::write_lease(&transaction, lease, &event.id, created_at, now).await?;
         }
 
         if let Some(request) = deletion {
@@ -3116,6 +3148,10 @@ async fn apply_deletion(
                 through,
                 request_id,
             } => {
+                // NIP-PL: revocation is a higher-generation replacement only.
+                if address.kind == crate::domain::PUSH_LEASE_KIND {
+                    continue;
+                }
                 let kind = i32::from(address.kind);
                 let through = pg_i64(through, "deletion timestamp")?;
                 let params: &[&(dyn ToSql + Sync)] = &[

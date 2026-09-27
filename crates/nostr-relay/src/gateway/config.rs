@@ -1,44 +1,13 @@
-use std::{env, net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
+use std::{env, net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
 use secp256k1::SecretKey;
 
 use crate::domain::RelaySigner;
-use nostr::push_lease::{LeaseLimits, PushDescriptor};
 
-use super::GatewayError;
-
-/// Legacy NIP-PL executor configuration. Validation refuses this incomplete runtime.
-#[derive(Clone)]
-pub struct PushExecutor {
-    /// Decrypts lease content. Not advertised.
-    pub secret: SecretKey,
-    /// Advertised encryption pubkey.
-    pub pubkey: String,
-    /// Canonical origin copied into lease plaintext.
-    pub origin: String,
-    /// `http://` next hop that receives the fixed reconnect body.
-    pub gateway: String,
-    /// Application profile id.
-    pub app_profile: String,
-    /// Prototype transport label; it is not evidence of conforming delivery.
-    pub transport: String,
-}
-
-impl PushExecutor {
-    /// Build a descriptor for validation; the gateway does not advertise it.
-    #[must_use]
-    pub fn descriptor(&self) -> PushDescriptor {
-        PushDescriptor {
-            origin: self.origin.clone(),
-            key_id: "current".to_owned(),
-            pubkey: self.pubkey.clone(),
-            app_profile: self.app_profile.clone(),
-            transport: self.transport.clone(),
-            push_kinds: vec![1, 7, 9, 1_059],
-            limits: LeaseLimits::default(),
-        }
-    }
-}
+use super::{
+    GatewayError,
+    push::{ApnsGateway, FcmGateway, PushExecutor, RetryPolicy, WakeTransport},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayLimits {
@@ -283,39 +252,7 @@ impl GatewayConfig {
             config.identity.pubkey = Some(signer.pubkey().to_owned());
         }
         config.log_level = env::var("NOSTR_RELAY_LOG_LEVEL").unwrap_or_else(|_| "info".to_owned());
-        config.push = match optional_string("NOSTR_RELAY_PUSH_SECRET")? {
-            None => None,
-            Some(secret) => {
-                let gateway = optional_string("NOSTR_RELAY_PUSH_GATEWAY")?.ok_or_else(|| {
-                    GatewayError::Config(
-                        "NOSTR_RELAY_PUSH_GATEWAY is required with NOSTR_RELAY_PUSH_SECRET"
-                            .to_owned(),
-                    )
-                })?;
-                let origin = config.relay_url.clone().ok_or_else(|| {
-                    GatewayError::Config(
-                        "NOSTR_RELAY_URL is required with NOSTR_RELAY_PUSH_SECRET".to_owned(),
-                    )
-                })?;
-                let app_profile = optional_string("NOSTR_RELAY_PUSH_APP_PROFILE")?
-                    .unwrap_or_else(|| "com.openagents.relay/ios".to_owned());
-                let signer = RelaySigner::from_secret_hex(&secret)
-                    .map_err(|error| GatewayError::Config(error.to_string()))?;
-                let key = SecretKey::from_byte_array(decode_secret(&secret)?).map_err(|_| {
-                    GatewayError::Config(
-                        "NOSTR_RELAY_PUSH_SECRET is not a valid Nostr secret key".to_owned(),
-                    )
-                })?;
-                Some(PushExecutor {
-                    secret: key,
-                    pubkey: signer.pubkey().to_owned(),
-                    origin,
-                    gateway,
-                    app_profile,
-                    transport: "apns".to_owned(),
-                })
-            }
-        };
+        config.push = push_from_env(&config)?;
         config.validate()?;
         Ok(config)
     }
@@ -536,10 +473,18 @@ impl GatewayConfig {
                 }
             }
         }
-        if self.push.is_some() {
-            return Err(config(
-                "NIP-PL delivery is disabled until transactional lease authority, durable delivery, and current-membership checks are implemented",
-            ));
+        if let Some(push) = &self.push {
+            if self.relay_url.as_deref() != Some(push.origin.as_str()) {
+                return Err(config(
+                    "NIP-PL delivery requires NOSTR_RELAY_URL, and the push origin must equal it",
+                ));
+            }
+            if self.relay_signer.is_none() {
+                return Err(config(
+                    "NIP-PL delivery requires NOSTR_RELAY_SECRET_KEY to sign gateway requests",
+                ));
+            }
+            push.validate().map_err(config)?;
         }
         if !matches!(self.log_level.as_str(), "error" | "warn" | "info" | "debug") {
             return Err(config(
@@ -601,6 +546,85 @@ impl GatewayConfig {
         }
         nostr::read_state_snapshot::SnapshotDescriptor::new(community).ok()
     }
+}
+
+/// Delivery stays off unless `NOSTR_RELAY_PUSH_SECRET` is set. Once it is,
+/// every other push setting is required; a partial configuration refuses.
+fn push_from_env(config: &GatewayConfig) -> Result<Option<PushExecutor>, GatewayError> {
+    let Some(secret) = optional_string("NOSTR_RELAY_PUSH_SECRET")? else {
+        for name in [
+            "NOSTR_RELAY_PUSH_GATEWAY",
+            "NOSTR_RELAY_PUSH_TRANSPORT",
+            "NOSTR_RELAY_PUSH_APP_PROFILE",
+            "NOSTR_RELAY_PUSH_KINDS",
+        ] {
+            if optional_string(name)?.is_some() {
+                return Err(GatewayError::Config(format!(
+                    "{name} requires NOSTR_RELAY_PUSH_SECRET; push delivery is off without it"
+                )));
+            }
+        }
+        return Ok(None);
+    };
+    let required = |name: &str| -> Result<String, GatewayError> {
+        optional_string(name)?.ok_or_else(|| {
+            GatewayError::Config(format!("{name} is required with NOSTR_RELAY_PUSH_SECRET"))
+        })
+    };
+    let gateway = required("NOSTR_RELAY_PUSH_GATEWAY")?;
+    let transport_name = required("NOSTR_RELAY_PUSH_TRANSPORT")?;
+    let app_profile = required("NOSTR_RELAY_PUSH_APP_PROFILE")?;
+    let origin = config.relay_url.clone().ok_or_else(|| {
+        GatewayError::Config("NOSTR_RELAY_URL is required with NOSTR_RELAY_PUSH_SECRET".to_owned())
+    })?;
+    let signer = config.relay_signer.clone().ok_or_else(|| {
+        GatewayError::Config(
+            "NOSTR_RELAY_SECRET_KEY is required with NOSTR_RELAY_PUSH_SECRET".to_owned(),
+        )
+    })?;
+    let key = SecretKey::from_byte_array(decode_secret(&secret)?).map_err(|_| {
+        GatewayError::Config("NOSTR_RELAY_PUSH_SECRET is not a valid Nostr secret key".to_owned())
+    })?;
+    let transport: Arc<dyn WakeTransport> = match transport_name.as_str() {
+        "apns" => Arc::new(ApnsGateway::new(&gateway, signer).map_err(GatewayError::Config)?),
+        "fcm" => Arc::new(FcmGateway::new(&gateway, signer).map_err(GatewayError::Config)?),
+        _ => {
+            return Err(config_error(
+                "NOSTR_RELAY_PUSH_TRANSPORT must be apns or fcm",
+            ));
+        }
+    };
+    let mut executor = PushExecutor::new(key, origin, app_profile, transport);
+    if let Some(kinds) = optional_string("NOSTR_RELAY_PUSH_KINDS")? {
+        executor.push_kinds = parse_push_kinds(&kinds)?;
+    }
+    executor.retry = RetryPolicy {
+        max_attempts: parse_or("NOSTR_RELAY_PUSH_MAX_ATTEMPTS", "5")?,
+        base_delay_seconds: parse_or("NOSTR_RELAY_PUSH_RETRY_BASE_SECONDS", "10")?,
+        max_delay_seconds: parse_or("NOSTR_RELAY_PUSH_RETRY_MAX_SECONDS", "600")?,
+    };
+    Ok(Some(executor))
+}
+
+fn parse_push_kinds(value: &str) -> Result<Vec<u16>, GatewayError> {
+    let kinds = value
+        .split(',')
+        .map(|part| {
+            part.parse::<u16>().map_err(|_| {
+                config_error("NOSTR_RELAY_PUSH_KINDS must be comma-separated kind numbers")
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if kinds.is_empty() || kinds.len() > 64 {
+        return Err(config_error(
+            "NOSTR_RELAY_PUSH_KINDS must name between 1 and 64 kinds",
+        ));
+    }
+    Ok(kinds)
+}
+
+fn config_error(reason: &str) -> GatewayError {
+    GatewayError::Config(reason.to_owned())
 }
 
 fn decode_secret(value: &str) -> Result<[u8; 32], GatewayError> {
@@ -735,7 +759,43 @@ fn config(reason: impl Into<String>) -> GatewayError {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_supported_nips;
+    use super::{GatewayConfig, parse_push_kinds, parse_supported_nips};
+    use crate::{
+        domain::RelaySigner,
+        gateway::push::{Platform, PushExecutor, TestTransport},
+    };
+    use secp256k1::SecretKey;
+
+    #[test]
+    fn push_delivery_is_off_by_default_and_refuses_partial_configuration() {
+        let mut config = GatewayConfig::new("dbname=x".into(), "127.0.0.1:0".parse().unwrap());
+        assert!(config.push.is_none());
+        assert!(config.validate().is_ok());
+        let executor = PushExecutor::new(
+            SecretKey::from_byte_array([9; 32]).unwrap(),
+            "ws://relay.test".into(),
+            "app.test/ios".into(),
+            TestTransport::new(Platform::Fcm),
+        );
+        // No relay URL, then no relay signing key: both refuse.
+        config.push = Some(executor.clone());
+        assert!(config.validate().is_err());
+        config.relay_url = Some("ws://relay.test".into());
+        assert!(config.validate().is_err());
+        config.relay_signer = Some(RelaySigner::from_secret_hex(&"08".repeat(32)).unwrap());
+        assert!(config.validate().is_ok());
+        let mut other = executor.clone();
+        other.origin = "ws://other.test".into();
+        config.push = Some(other);
+        assert!(config.validate().is_err());
+        let mut ephemeral = executor;
+        ephemeral.push_kinds = vec![20_001];
+        config.push = Some(ephemeral);
+        assert!(config.validate().is_err());
+        assert_eq!(parse_push_kinds("1,3188").unwrap(), [1, 3_188]);
+        assert!(parse_push_kinds("1, 2").is_err());
+        assert!(parse_push_kinds("").is_err());
+    }
 
     #[test]
     fn supported_nip_environment_grammar_is_bounded() {

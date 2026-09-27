@@ -15,7 +15,7 @@ use crate::{
     domain::{Event, Filter, IdentityArchiveRequest, RelaySigner},
     store::{
         AdmissionOutcome, IdentityStatus, ManagementRequest, MediaDeleteOutcome, MediaRecord,
-        MediaUploadOutcome, Store, StoreError, StoredEvent,
+        MediaUploadOutcome, PushLeaseWrite, Store, StoreError, StoredEvent,
     },
 };
 
@@ -152,10 +152,11 @@ enum DbRequest {
         reader: String,
         response: oneshot::Sender<Result<bool, StoreError>>,
     },
-    PushLeases {
+    AdmitPushLease {
+        event: Event,
         now: u64,
-        limit: i64,
-        response: oneshot::Sender<Result<Vec<Event>, StoreError>>,
+        lease: PushLeaseWrite,
+        response: oneshot::Sender<Result<AdmissionOutcome, StoreError>>,
     },
 }
 
@@ -495,11 +496,18 @@ impl DbPool {
         result.await.map_err(|_| StoreError::ConnectionClosed)?
     }
 
-    pub async fn push_leases(&self, now: u64, limit: i64) -> Result<Vec<Event>, StoreError> {
+    /// Admit a lease event and its executor state in one transaction.
+    pub async fn admit_push_lease(
+        &self,
+        event: Event,
+        now: u64,
+        lease: PushLeaseWrite,
+    ) -> Result<AdmissionOutcome, StoreError> {
         let (response, result) = oneshot::channel();
-        self.send(DbRequest::PushLeases {
+        self.send(DbRequest::AdmitPushLease {
+            event,
             now,
-            limit,
+            lease,
             response,
         })?;
         result.await.map_err(|_| StoreError::ConnectionClosed)?
@@ -793,12 +801,15 @@ async fn handle_request(
             let _ = response.send(result);
             fatal
         }
-        DbRequest::PushLeases {
+        DbRequest::AdmitPushLease {
+            event,
             now,
-            limit,
+            lease,
             response,
         } => {
-            let result = store.push_leases(now, limit).await;
+            let result = store
+                .admit_push_lease(&event, now, &lease, relay_signer)
+                .await;
             let fatal = result.as_ref().is_err_and(is_fatal);
             let _ = response.send(result);
             fatal

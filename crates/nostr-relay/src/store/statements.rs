@@ -131,7 +131,7 @@ DO UPDATE SET
 "#;
 const DELETE_EVENT_TARGET_SQL: &str = r#"
 DELETE FROM nostr_event
-WHERE id = $1 AND pubkey = $2 AND kind <> 5
+WHERE id = $1 AND pubkey = $2 AND kind <> 5 AND kind <> 30350
 "#;
 const DELETE_ADDRESS_TARGET_SQL: &str = r#"
 DELETE FROM nostr_event

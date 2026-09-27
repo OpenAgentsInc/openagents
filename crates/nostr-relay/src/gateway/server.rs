@@ -31,8 +31,8 @@ use crate::{
         validate_block_ingest, verify_agent_auth_attestation, verify_owner_binding, workspace_icon,
     },
     store::{
-        AdmissionOutcome, AdmissionRejection, NotificationListener, Store, StoreError,
-        StoreNotification,
+        AdmissionOutcome, AdmissionRejection, NotificationListener, PushLeaseWrite, Store,
+        StoreError, StoreNotification,
     },
 };
 
@@ -42,7 +42,7 @@ use super::{
     db::{DbPool, DbProtocolConfig},
     management::{is_management_request, serve_management},
     media::{MediaStorage, STALE_RESERVATION_AGE, is_media_request, serve_media},
-    push::{self, prepare_lease},
+    push::{self, PushExecutor},
     query::{is_query_request, serve_query},
     rate::{ConnectionPermit, RateLimiter},
     socket::{
@@ -90,6 +90,8 @@ struct ServerState {
     current: Arc<AtomicBool>,
     shutdown: watch::Sender<bool>,
     media: Option<MediaStorage>,
+    /// Shortens the push worker's wait after an admission.
+    push_wake: Arc<tokio::sync::Notify>,
 }
 
 struct ConnectionContext {
@@ -344,6 +346,21 @@ impl Gateway {
             }
         }));
 
+        let push_wake = Arc::new(tokio::sync::Notify::new());
+        if let Some(executor) = config.push.clone() {
+            background.push(
+                spawn_push_worker(
+                    &config.database_url,
+                    executor,
+                    Arc::clone(&push_wake),
+                    shutdown.clone(),
+                    shutdown_receiver.clone(),
+                    Arc::clone(&current),
+                )
+                .await?,
+            );
+        }
+
         let listener = match TcpListener::bind(config.bind_addr).await {
             Ok(listener) => listener,
             Err(error) => {
@@ -363,6 +380,7 @@ impl Gateway {
             current,
             shutdown: shutdown.clone(),
             media,
+            push_wake,
         });
         Ok(Self {
             listener,
@@ -1171,8 +1189,9 @@ async fn handle_event(
         pending.push_back(ok_message(&event.id, false, &format!("invalid: {reason}")));
         return Ok(());
     }
+    let mut lease = None;
     if event.kind == PUSH_LEASE_KIND {
-        let Some(executor) = context.state.config.push.clone() else {
+        let Some(executor) = context.state.config.push.as_ref() else {
             pending.push_back(ok_message(
                 &event.id,
                 false,
@@ -1180,9 +1199,12 @@ async fn handle_event(
             ));
             return Ok(());
         };
-        if let Err(reason) = prepare_lease(&context.state.db, &executor, &event, unix_now()).await {
-            pending.push_back(ok_message(&event.id, false, &format!("invalid: {reason}")));
-            return Ok(());
+        match push::lease_write(executor, &event, unix_now()) {
+            Ok(write) => lease = Some(write),
+            Err(reason) => {
+                pending.push_back(ok_message(&event.id, false, &format!("invalid: {reason}")));
+                return Ok(());
+            }
         }
     }
 
@@ -1194,7 +1216,7 @@ async fn handle_event(
         pending.push_back(ok_message(&event.id, false, reason));
         return Ok(());
     }
-    admit_event(context, event, pending, virtual_owner).await
+    admit_event(context, event, pending, virtual_owner, lease).await
 }
 
 async fn handle_workspace_profile(
@@ -1523,7 +1545,7 @@ async fn handle_agent_observer_event(
                 .map(str::to_owned)
         })
         .flatten();
-    admit_event(context, event, pending, virtual_owner).await
+    admit_event(context, event, pending, virtual_owner, None).await
 }
 
 async fn admit_event(
@@ -1531,6 +1553,7 @@ async fn admit_event(
     event: Event,
     pending: &mut VecDeque<String>,
     virtual_owner: Option<String>,
+    lease: Option<PushLeaseWrite>,
 ) -> Result<(), GatewayError> {
     let event_bytes = serde_json::to_vec(&event)
         .map_err(|error| GatewayError::Internal(format!("event serialization: {error}")))?;
@@ -1543,15 +1566,26 @@ async fn admit_event(
         return Ok(());
     }
     let event_id = event.id.clone();
-    let wake_event = event.clone();
     let ephemeral = (event.class() == EventClass::Ephemeral).then(|| Arc::new(event.clone()));
     let admission_now = unix_now();
-    match context
-        .state
-        .db
-        .admit(event, admission_now, virtual_owner)
-        .await
-    {
+    let is_lease = lease.is_some();
+    let admission = match lease {
+        Some(lease) => {
+            context
+                .state
+                .db
+                .admit_push_lease(event, admission_now, lease)
+                .await
+        }
+        None => {
+            context
+                .state
+                .db
+                .admit(event, admission_now, virtual_owner)
+                .await
+        }
+    };
+    match admission {
         Ok(outcome) => {
             if matches!(&outcome, AdmissionOutcome::Ephemeral)
                 && let Some(event) = ephemeral
@@ -1573,15 +1607,18 @@ async fn admit_event(
                     fail_process(&context.state.current, &context.state.shutdown);
                 }
             }
-            let (accepted, reason) = admission_response(outcome);
-            if accepted
-                && wake_event.kind != PUSH_LEASE_KIND
-                && let Some(executor) = context.state.config.push.clone()
-            {
-                let db = context.state.db.clone();
-                tokio::spawn(async move {
-                    push::deliver_wakes(&db, &executor, &wake_event).await;
-                });
+            let stored = matches!(outcome, AdmissionOutcome::Stored { .. });
+            let (accepted, reason) = if is_lease
+                && matches!(
+                    outcome,
+                    AdmissionOutcome::Rejected(AdmissionRejection::Superseded)
+                ) {
+                (false, "invalid: stale replacement".to_owned())
+            } else {
+                admission_response(outcome)
+            };
+            if stored && !is_lease && context.state.config.push.is_some() {
+                context.state.push_wake.notify_one();
             }
             pending.push_back(ok_message(&event_id, accepted, &reason));
         }
@@ -2070,6 +2107,7 @@ fn admission_response(outcome: AdmissionOutcome) -> (bool, String) {
                 "error: relay group signing key is unavailable".to_owned(),
             ),
             AdmissionRejection::GroupHierarchy(reason) => (false, format!("invalid: {reason}")),
+            AdmissionRejection::PushLease(reason) => (false, format!("invalid: {reason}")),
         },
     }
 }
@@ -2103,6 +2141,35 @@ fn queue_websocket_text(
         Err(WebSocketError::Io(error)) if error.kind() == io::ErrorKind::WouldBlock => Ok(()),
         Err(error) => Err(error.into()),
     }
+}
+
+/// Start the NIP-PL worker on its own verified connection. A lost
+/// connection fails the process, like the other background stores.
+async fn spawn_push_worker(
+    database_url: &str,
+    executor: PushExecutor,
+    wake: Arc<tokio::sync::Notify>,
+    shutdown: watch::Sender<bool>,
+    stop: watch::Receiver<bool>,
+    current: Arc<AtomicBool>,
+) -> Result<JoinHandle<()>, GatewayError> {
+    let mut store = Store::connect_verified(database_url).await?;
+    // The first pass fixes a new origin's cursor before the socket binds,
+    // so no event admitted through this process precedes it.
+    push::match_events(&mut store, &executor, unix_now()).await?;
+    let entropy = read_process_secret()?;
+    let worker = entropy[..16]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(tokio::spawn(async move {
+        if push::run_worker(store, executor, worker, wake, stop)
+            .await
+            .is_err()
+        {
+            fail_process(&current, &shutdown);
+        }
+    }))
 }
 
 fn fail_process(current: &AtomicBool, shutdown: &watch::Sender<bool>) {

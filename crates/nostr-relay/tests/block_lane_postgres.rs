@@ -5,7 +5,8 @@
 //! `kind:39006` bounds and `kind:39005` summaries, aux closure, a refused
 //! half cursor, and access scoping across group privacy changes.
 //!
-//! NIP-PL configuration is refused until the complete executor is implemented.
+//! An incomplete NIP-PL configuration is refused at startup. The complete
+//! executor has its own suite in `push_postgres.rs`.
 //!
 //! The suite is destructive and runs only against a disposable database.
 
@@ -18,7 +19,10 @@ use std::{
 use nostr::channel_window::{self, Cursor};
 use nostr_relay::{
     domain::{Event, RelaySigner, Tag},
-    gateway::{Gateway, GatewayConfig, PushExecutor},
+    gateway::{
+        Gateway, GatewayConfig, PushExecutor,
+        push::{Platform, TestTransport},
+    },
 };
 use secp256k1::{Keypair, Secp256k1, SecretKey};
 use serde_json::{Value, json};
@@ -37,7 +41,7 @@ async fn block_lane_contract_against_postgres() {
         return;
     }
 
-    // The channel role runs; the incomplete push executor must remain inert.
+    // The channel role runs; an incomplete push executor must not start.
     let gateway_one = Gateway::start(test_config(database_url.clone()))
         .await
         .unwrap();
@@ -46,14 +50,24 @@ async fn block_lane_contract_against_postgres() {
     let server_one = tokio::spawn(gateway_one.run());
 
     let mut push_config = test_config(database_url);
-    push_config.push = Some(PushExecutor {
-        secret: SecretKey::from_byte_array([77; 32]).unwrap(),
-        pubkey: pubkey(77),
-        origin: "ws://relay.test".to_owned(),
-        gateway: "http://127.0.0.1:1/wake".into(),
-        app_profile: "app.test/ios".to_owned(),
-        transport: "apns".to_owned(),
-    });
+    // An executor for another origin, and one without an application
+    // profile, are both incomplete.
+    push_config.push = Some(PushExecutor::new(
+        SecretKey::from_byte_array([77; 32]).unwrap(),
+        "ws://other.test".to_owned(),
+        "app.test/ios".to_owned(),
+        TestTransport::new(Platform::Apns),
+    ));
+    assert!(
+        Gateway::start(push_config.clone()).await.is_err(),
+        "a push origin other than the relay URL must not start"
+    );
+    push_config.push = Some(PushExecutor::new(
+        SecretKey::from_byte_array([77; 32]).unwrap(),
+        "ws://relay.test".to_owned(),
+        String::new(),
+        TestTransport::new(Platform::Apns),
+    ));
     assert!(
         Gateway::start(push_config).await.is_err(),
         "incomplete push delivery must not start"

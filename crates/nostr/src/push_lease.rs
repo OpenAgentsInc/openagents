@@ -1,10 +1,13 @@
 //! NIP-PL push leases.
 //!
-//! A lease authorizes a wake. The wake body is the fixed APNs reconnect
-//! constant and never carries event content, ids, or ciphertext. FCM and
-//! UnifiedPush stay refused until a profile registers its own constant.
+//! A lease authorizes a wake. The wake body is a fixed transport constant
+//! and never carries event content, ids, or ciphertext. APNs uses the Block
+//! PL constant. FCM uses the constant registered by the OpenAgents wake
+//! profile in NIP-WS. UnifiedPush stays refused because no profile registers
+//! a constant for it.
 
 use secp256k1::{SecretKey, XOnlyPublicKey};
+use sha2::{Digest, Sha256};
 
 use crate::domain::{Event, Filter};
 use crate::nip44::{conversation_key, decrypt};
@@ -12,6 +15,9 @@ use crate::nip44::{conversation_key, decrypt};
 /// The only conforming v1 application body.
 pub const APNS_BODY: &str =
     r#"{"aps":{"alert":{"body":"Reconnect to your relay now"},"mutable-content":1}}"#;
+/// The FCM data map registered by the OpenAgents wake profile in NIP-WS.
+/// The gateway sends it as the message's complete `data` member.
+pub const FCM_DATA: &str = r#"{"wake":"reconnect"}"#;
 /// Default maximum lease lifetime, in seconds.
 pub const DEFAULT_MAX_LEASE_TTL: u64 = 2_592_000;
 /// Clock skew allowed when checking expiration.
@@ -76,7 +82,7 @@ pub struct PushDescriptor {
     pub pubkey: String,
     /// Application profile id.
     pub app_profile: String,
-    /// Transport of that profile. Only `apns` is conforming.
+    /// Transport of that profile: `apns` or `fcm`.
     pub transport: String,
     /// Kinds a lease may name.
     pub push_kinds: Vec<u16>,
@@ -118,6 +124,59 @@ pub struct LeaseSubscription {
     pub p_tags_max: Option<u64>,
 }
 
+impl LeaseSubscription {
+    /// The normalized stored form: `{filter, ignore, p_tags_max}`.
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "filter": self.filter,
+            "ignore": self.ignore,
+            "p_tags_max": self.p_tags_max,
+        })
+    }
+}
+
+/// Read subscriptions an executor stored with [`LeaseSubscription::to_json`].
+///
+/// # Errors
+///
+/// Returns an error when the stored form is not the normalized shape.
+pub fn subscriptions_from_json(
+    value: &serde_json::Value,
+) -> Result<Vec<LeaseSubscription>, String> {
+    let items = value
+        .as_array()
+        .ok_or_else(|| "stored subscriptions are not an array".to_owned())?;
+    items
+        .iter()
+        .map(|item| {
+            let object = item
+                .as_object()
+                .filter(|object| object.len() == 3)
+                .ok_or_else(|| "stored subscription is not normalized".to_owned())?;
+            let filter = serde_json::from_value(object.get("filter").cloned().unwrap_or_default())
+                .map_err(|_| "stored filter is invalid".to_owned())?;
+            let ignore = serde_json::from_value(object.get("ignore").cloned().unwrap_or_default())
+                .map_err(|_| "stored ignore list is invalid".to_owned())?;
+            let p_tags_max = match object.get("p_tags_max") {
+                Some(serde_json::Value::Null) => None,
+                Some(value) => Some(
+                    value
+                        .as_u64()
+                        .filter(|value| *value >= 1)
+                        .ok_or_else(|| "stored p_tags_max is invalid".to_owned())?,
+                ),
+                None => return Err("stored subscription is not normalized".to_owned()),
+            };
+            Ok(LeaseSubscription {
+                filter,
+                ignore,
+                p_tags_max,
+            })
+        })
+        .collect()
+}
+
 /// Decrypt lease content addressed to `secret` by `author`.
 ///
 /// # Errors
@@ -139,12 +198,30 @@ pub fn open_lease(
 pub fn application_body(transport: &str) -> Result<&'static str, &'static str> {
     match transport {
         "apns" => Ok(APNS_BODY),
-        "fcm" | "unifiedpush" => Err("transport has no registered reconnect constant"),
+        "fcm" => Ok(FCM_DATA),
+        "unifiedpush" => Err("transport has no registered reconnect constant"),
         _ => Err("unknown transport"),
     }
 }
 
+/// SHA-256 of an opaque lease endpoint, as 64 lowercase hex characters.
+///
+/// Executors index and deduplicate on this digest so the endpoint itself
+/// stays inside the encrypted lease.
+#[must_use]
+pub fn endpoint_digest(endpoint: &str) -> String {
+    use std::fmt::Write as _;
+    let digest = Sha256::digest(endpoint.as_bytes());
+    let mut out = String::with_capacity(64);
+    for byte in digest {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 /// Validate a descriptor this process is willing to advertise.
+///
+/// The transport must have a registered wake constant: `apns` or `fcm`.
 ///
 /// # Errors
 ///
@@ -158,7 +235,7 @@ pub fn validate_descriptor(descriptor: &PushDescriptor) -> Result<(), &'static s
     {
         return Err("key");
     }
-    if descriptor.transport != "apns" || descriptor.app_profile.is_empty() {
+    if application_body(&descriptor.transport).is_err() || descriptor.app_profile.is_empty() {
         return Err("transport");
     }
     if descriptor.push_kinds.is_empty()
@@ -185,7 +262,7 @@ pub fn descriptor_document(descriptor: &PushDescriptor) -> serde_json::Value {
         "push_kinds": descriptor.push_kinds,
         "urgent_kinds": [],
         "h_grammar": "uuid-v4-lowercase",
-        "class_support": { "apns": ["silent", "default", "time_sensitive"] },
+        "class_support": { descriptor.transport.clone(): ["silent", "default", "time_sensitive"] },
         "limitation": {
             "max_lease_ttl": descriptor.limits.max_lease_ttl,
             "max_leases_per_pubkey": descriptor.limits.max_leases_per_pubkey,
@@ -873,7 +950,30 @@ mod tests {
         let body = application_body("apns").unwrap();
         assert_eq!(body, APNS_BODY);
         assert!(!body.contains(&message.id));
-        assert!(application_body("fcm").is_err());
+        assert_eq!(application_body("fcm").unwrap(), FCM_DATA);
+        assert!(application_body("unifiedpush").is_err());
+        let stored = serde_json::Value::Array(
+            accepted
+                .subscriptions
+                .iter()
+                .map(LeaseSubscription::to_json)
+                .collect(),
+        );
+        assert_eq!(
+            subscriptions_from_json(&stored).unwrap(),
+            accepted.subscriptions
+        );
+        assert_eq!(endpoint_digest("abc123").len(), 64);
+        let mut fcm = descriptor.clone();
+        fcm.transport = "fcm".into();
+        assert!(validate_descriptor(&fcm).is_ok());
+        assert_eq!(
+            descriptor_document(&fcm)["class_support"]["fcm"][0],
+            "silent"
+        );
+        let mut unknown = descriptor.clone();
+        unknown.transport = "unifiedpush".into();
+        assert!(validate_descriptor(&unknown).is_err());
         let newer = author.sign(
             1_300,
             30_350,

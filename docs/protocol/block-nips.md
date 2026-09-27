@@ -143,22 +143,48 @@ The RS merge/manual-unread application client is still absent. Ordinary history
 and EOSE do not establish the required cross-subscription complete-load barrier;
 that remains separate from this atomic HTTP alternative.
 
-### NIP-PL: disabled delivery prototype
+### NIP-PL: executor, off by default
 
-The previous configured HTTP stub did not implement transactional lease
-admission, complete generation/endpoint authority, current membership checks,
-or a durable delivery outbox. Configuration now rejects any push executor, and
-NIP-11 never advertises `nip-pl` or a push descriptor. The gateway refuses
-lease publication without an enabled executor. Retained parser, encryption,
-filter, and constant-body fixtures are narrow evidence, not a live delivery
-service.
+The relay implements the executor role behind `NOSTR_RELAY_PUSH_SECRET`. Without
+it, delivery is off, the gateway refuses lease publication, and NIP-11 does not
+advertise `nip-pl`. Once it is set, every other push setting is required; a
+partial configuration refuses at startup. See
+[configuration](../deployment/configuration.md).
 
-A public executor still needs atomic lease/replacement and endpoint accounting,
-durable deduplicated dispatch and retry state, generation and membership
-rechecks before send, authenticated HTTPS delivery with stable job identity,
-and provider outcomes. The public gateway additionally requires enrollment,
-App Attest/delegation, renewal, recovery, limits, and key retirement. Disabling
-the incomplete prototype does not implement those roles.
+- **Lease admission.** The [executor](../../crates/nostr-relay/src/gateway/push/mod.rs)
+  decrypts and validates each `kind:30350` lease, then the
+  [store](../../crates/nostr-relay/src/store/push.rs) commits the event, the
+  effective lease state, and the generation watermark in one transaction. A
+  lease that loses NIP-01 ordering or does not raise the generation leaves all
+  three unchanged. Endpoint uniqueness and the per-author quota are checked in
+  the same transaction. Expired leases free their endpoint and quota slot.
+  NIP-09 deletion never removes a lease; revocation is a higher-generation
+  tombstone.
+- **Matching.** A worker reads stored events from a durable per-origin cursor,
+  applies the lease filters, envelope visibility, and the author's current read
+  access, and inserts one job per `(origin, app profile, transport, endpoint
+  hash, event)`. The cursor advances in the same transaction, so a restart
+  neither loses nor duplicates a match. A new origin's cursor starts at the
+  newest stored event; history does not wake anyone.
+- **Delivery.** A job is claimed by one worker at a time and every later state
+  change is fenced by the claim. Before each send the worker rechecks that the
+  lease is active, unexpired, at the job's generation and endpoint, and that
+  the author can still read the event, including private group membership. A
+  replacement or revocation suppresses waiting jobs. Transient failures retry
+  with bounded exponential backoff; exhausted, expired, and refused jobs move
+  to the `dead` state. A permanently invalid endpoint disables that lease
+  generation until a higher generation replaces it.
+- **Transports.** The [APNs and FCM adapters](../../crates/nostr-relay/src/gateway/push/transport.rs)
+  post the PL relay-delivery request (`v`, `endpoint_grant`, `request_id`,
+  `expires_at`) with NIP-98 authorization to `/v1/deliveries/apns` or
+  `/v1/deliveries/fcm` under the configured gateway URL. The gateway holds the
+  platform credentials and sends the registered wake constant. A test
+  transport records requests for local runs and tests.
+
+The push gateway itself, including enrollment, delegation, renewal, recovery,
+and provider credentials, is not part of this repository. No real APNs or FCM
+delivery has run; see the
+[verification record](../coder/verification/2026-09-26-push-leases-and-activity-summaries.md).
 
 ### NIP-FI: offline policy primitives
 
@@ -196,7 +222,8 @@ NIP-11 always advertises `nip-mp`, `nip-oa`, and the `nip-rs` storage foundation
 With NIP-42 configured it adds `nip-aa`, `nip-ae`, `nip-am`, `nip-ao`, `nip-ap`,
 and `nip-er`. Relay signing enables `nip-dv` and `nip-ia`, and a configured
 management pubkey enables `nip-wp`. The optional RS snapshot has its own
-Host-bound descriptor. CW, PL, GS, FI, and PMA are not advertised.
+Host-bound descriptor. A configured push executor adds `nip-pl` and its `push`
+descriptor. CW, GS, FI, and PMA are not advertised.
 
 These declarations name relay roles, not every client or application behavior
 in a specification. A RUN journal can cite AO kind `24200` only as non-durable
@@ -227,7 +254,7 @@ a fresh passing run; the current RS suite result is stated above.
 | NIP-CW | `channel_window`, `thread_window`, `block_lane_postgres` | Thread helpers exist; corresponding server modes and complete recovery absent |
 | NIP-RS | `read_state_snapshot` and passing `read_state_snapshot_postgres` | Atomic snapshot available; merge/manual-unread client and ordinary-EOSE barrier absent |
 | NIP-GS | `nostr::git_sign` tests | Git-object client primitive |
-| NIP-PL | `push_lease` tests; configuration rejection | Delivery disabled; no public executor/gateway |
+| NIP-PL | `push_lease` tests, `gateway::push` tests, `push_postgres` | Executor off by default; gateway and real device delivery absent |
 | NIP-FI | `federated_identity` tests | Offline policy only; external crypto/JWKS and relay integration absent |
 | NIP-PMA | Reserved-kind unit and gateway fixtures | Required refusal only; managed-agent state runtime absent |
 

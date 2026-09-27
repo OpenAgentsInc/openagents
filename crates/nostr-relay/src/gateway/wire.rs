@@ -481,6 +481,9 @@ pub fn nip11_json_for_host(
     if config.openagents_profiles {
         supported_extensions.extend(["nip-cap-v1", "nip-ext-v1", "nip-prg-v1", "nip-run-v1"]);
     }
+    if config.push.is_some() {
+        supported_extensions.push("nip-pl");
+    }
     supported_extensions.sort_unstable();
     let document = Nip11Document {
         name: &config.identity.name,
@@ -512,8 +515,11 @@ pub fn nip11_json_for_host(
             .relay_signer
             .is_some()
             .then_some(Nip29Capabilities { subgroups: true }),
-        // No descriptor until the complete delivery role passes conformance.
-        push: None,
+        // Present only when a validated executor is configured.
+        push: config
+            .push
+            .as_ref()
+            .map(|executor| nostr::push_lease::descriptor_document(&executor.descriptor())),
         read_state_snapshot: config.snapshot_descriptor(host),
     };
     serde_json::to_string(&document).expect("serializing NIP-11 cannot fail")

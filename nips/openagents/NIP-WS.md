@@ -392,6 +392,106 @@ from a generic offline outbox. PTY byte framing, terminal emulation, preview
 tunnels, and debugger transports require their own admitted domain adapters;
 a ResourceRef alone cannot open a port or process handle.
 
+## Audience-bound activity summaries
+
+A device that is not connected learns that a host needs attention through two
+separate records: a Block [PL](../block/NIP-PL.md) wake that carries nothing,
+and an activity summary that the device fetches after it reconnects. The
+summary tells a person which task or session needs them and why. It grants
+nothing, it is not a projection cut, and it never replaces the authoritative
+state that a later operation reads.
+
+### Summary body
+
+An activity summary is `openagents.activity-summary.v1` with exactly these
+members:
+
+| Member | Requirement |
+| --- | --- |
+| `v` | `openagents.activity-summary.v1`. |
+| `requires` | An empty list. A non-empty list refuses as `unsupported_feature`. |
+| `host` | The host's pubkey. It equals the envelope signer. |
+| `subject` | `{kind, id}`: kind is `task` or `session`, and id is the host-issued 64-character lowercase hexadecimal subject ID. |
+| `sequence` | Per-subject counter. A higher value supersedes a lower one. |
+| `phase` | `queued`, `running`, `waiting`, `completed`, `failed`, `cancelled`, or `unknown`. |
+| `headline` | Single-line UTF-8 text of 1 to 160 bytes. |
+| `attention` | `none`, `approval`, `input`, `completed`, or `failed`. |
+| `updated_at` | Unix seconds of the host state the summary reflects. |
+
+Unlike other WS records, a summary carries no `meta`, because inert
+annotations are a place where content could leak. The encoded body is at most
+1,024 bytes. Attention and phase agree: `approval` and `input` require
+`waiting`, `completed` requires `completed`, and `failed` is required by, and
+requires, `failed`. `none` is valid with any phase except `failed`.
+
+### Disclosure rules
+
+A summary never contains a prompt, engine or tool output, a file path, a URL,
+a credential, an error message, or any other private task content. The host
+builds the headline from its own typed state, such as an owner-set task title
+or a fixed status phrase, never from text an engine produced or a user sent.
+
+- **Failure detail.** A `failed` summary's headline is exactly the generic
+  phrase `Task failed` or `Session failed` for its subject kind. The cause
+  stays in the host's authoritative records.
+- **Recognizable tokens.** Before sealing, the host replaces every
+  whitespace-delimited token that looks like a path, URL, address,
+  assignment, known credential prefix, `npub` or `nsec` string, long
+  hexadecimal string, or long mixed letter-and-digit string with
+  `[redacted]`, collapses control characters and whitespace to single spaces,
+  and truncates to 160 bytes on a character boundary. A headline with nothing
+  left becomes the generic phrase for its phase, such as `Task waiting`.
+- **Verification.** A reader refuses a body that these rules would change,
+  with `not_admitted`. Token redaction is a backstop for mistakes; it does not
+  prove that a headline is safe, which is why the host must not source
+  headlines from untrusted text.
+
+### Delivery and reading
+
+The host seals one private `3188` artifact per enrolled device that currently
+holds the right to observe the host, as the host's access profile defines it.
+The artifact's schema is `openagents.activity-summary.v1`, its media type is
+`application/json`, and `inline` carries the body. `issued_at` equals
+`updated_at`, and `retain_until` is later than `updated_at` by at most seven
+days. Use a fresh mailbox per host and device sharing scope. Sealing grants
+nothing, and a device whose right is revoked receives no new summaries;
+copies it already received cannot be retracted.
+
+A device opens a summary only when the signer is the host it enrolled with,
+the recipient is its own key, the schema and media type match, and the body
+verifies. It keeps the highest `sequence` per host and subject. An equal
+sequence with different bytes is a `conflict`, and a lower sequence is stale.
+Before it acts, for example to approve a pending action, the device reads the
+authoritative state through the host's operations; a summary is a pointer, not
+evidence.
+
+### Wakes
+
+To wake while disconnected, a device publishes a PL lease authored by its own
+key, with a subscription such as `{"kinds":[3188],"#p":["<device pubkey>"]}`.
+When a new summary is stored, the executor wakes the device, the device
+reconnects over NIP-42, and it reads its summaries with an ordinary `REQ`.
+The wake itself names no host, task, event, or relay, and a push service
+learns only that a fixed wake occurred.
+
+This profile registers these wake constants. The APNs application body is
+the PL constant
+`{"aps":{"alert":{"body":"Reconnect to your relay now"},"mutable-content":1}}`.
+The FCM message's complete `data` member is the constant `{"wake":"reconnect"}`;
+the message has no `notification` member. The executor posts the PL
+relay-delivery request, exactly `{v, endpoint_grant, request_id,
+expires_at}` with NIP-98 authorization, to `/v1/deliveries/apns` or
+`/v1/deliveries/fcm` under a configured gateway that holds the platform
+credentials. The response statuses and their handling follow the PL relay
+delivery section for both platforms. UnifiedPush has no registered constant
+and is not a transport for this profile.
+
+The executor rechecks the lease generation, expiry, and endpoint, and the
+device's current read access to the matched event, before every wake. A
+revoked lease, an expired lease, or a device that lost access gets no further
+wakes. Push delivery is best effort; a device that is foregrounded reads its
+summaries without waiting for a wake.
+
 ## Conformance
 
 Required identity cases include equal paths on different hosts, equal clone
@@ -409,3 +509,10 @@ schema versions, authoritative-source forks, and restart after a committed
 command before display update. Test read-your-command against included source
 frontiers, not wall time. UI and installed-device tests remain necessary for
 usability; passing protocol fixtures does not establish those results.
+
+Summary tests include the 160-byte bound on a character boundary, the body
+bound, each redacted token class, the generic failure phrase, contradictory
+attention, unknown members and versions, duplicate keys, a signer or
+recipient mismatch, stale and forked sequences, and a revoked device that gets
+neither new summaries nor wakes. Real APNs and FCM delivery needs installed
+devices and gateway credentials; fixtures do not establish it.

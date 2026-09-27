@@ -67,7 +67,13 @@ exception or absent DigitalOcean runbook that changes this behavior.
 | `NOSTR_RELAY_MANAGEMENT_PUBKEY` | for NIP-86 | — | Exact 32-byte owner public key as 64 lowercase hexadecimal characters. Enables the NIP-98-authenticated management endpoint. `NOSTR_RELAY_URL` is required so HTTP authorization can bind the public URL. |
 | `NOSTR_RELAY_OPENAGENTS_PROFILES` | no | `false` | Advertise the implemented CAP/PRG/EXT/RUN relay roles in NIP-11. This does not run programs, decrypt private artifacts, or enable a task owner; see [retention](../protocol/openagents-retention.md). |
 | `NOSTR_RELAY_READ_STATE_COMMUNITY` | for the optional NIP-RS snapshot | — | Canonical lowercase UUID. With `NOSTR_RELAY_URL`, enables the writer-database snapshot for the exact configured HTTP Host. Discovery advertises the community and snapshot limits only for that Host. No relay signing key is required. |
-| `NOSTR_RELAY_PUSH_SECRET`, `NOSTR_RELAY_PUSH_GATEWAY`, `NOSTR_RELAY_PUSH_APP_PROFILE` | disabled | — | Legacy push configuration is retained for explicit startup refusal. Configuring a push executor fails until transactional lease authority, durable delivery, and current-membership checks exist. NIP-PL is not advertised. |
+| `NOSTR_RELAY_PUSH_SECRET` | to enable NIP-PL | — | Executor encryption secret as 64 lowercase hexadecimal characters. Leases are encrypted to its public key. Setting it turns delivery on and makes every setting below required, except the optional ones; without it, delivery is off and any other push variable refuses startup. Requires `NOSTR_RELAY_URL`, which becomes the push origin, and `NOSTR_RELAY_SECRET_KEY`, which signs gateway requests. Protected runtime environment only. |
+| `NOSTR_RELAY_PUSH_TRANSPORT` | with the secret | — | `apns` or `fcm`. |
+| `NOSTR_RELAY_PUSH_APP_PROFILE` | with the secret | — | The one application profile this executor serves, 1–512 bytes. |
+| `NOSTR_RELAY_PUSH_GATEWAY` | with the secret | — | `http://` base URL of the push gateway that holds the platform credentials, with no query or fragment. The relay posts to `/v1/deliveries/apns` or `/v1/deliveries/fcm` beneath it. The relay does not speak TLS, so place the gateway on loopback or a private link. |
+| `NOSTR_RELAY_PUSH_KINDS` | no | `1,7,9,1059,3188` | Comma-separated kinds a lease may name. Ephemeral, presence, and relay-signed snapshot kinds refuse. |
+| `NOSTR_RELAY_PUSH_MAX_ATTEMPTS` | no | `5` | Attempts per wake, including the first (1–20). |
+| `NOSTR_RELAY_PUSH_RETRY_BASE_SECONDS`, `NOSTR_RELAY_PUSH_RETRY_MAX_SECONDS` | no | `10`, `600` | Exponential backoff start and ceiling. The ceiling is at most 86,400. |
 
 ### Media
 
@@ -100,8 +106,8 @@ also requires `NOSTR_RELAY_URL` and serves `POST /query`. NIP-WP requires
 an authenticated own-author kind-30078 snapshot request. Configure the proxy
 to preserve the configured Host. Forwarded headers do not select a community.
 The endpoint refuses incomplete or oversized snapshots instead of paginating
-or returning an ordinary event array. NIP-PL delivery is disabled. See
-`docs/protocol/block-nips.md`.
+or returning an ordinary event array. NIP-PL delivery is off unless
+`NOSTR_RELAY_PUSH_SECRET` is set. See `docs/protocol/block-nips.md`.
 
 TLS terminates at the reverse proxy. The binary itself never speaks TLS and
 has no certificate configuration.

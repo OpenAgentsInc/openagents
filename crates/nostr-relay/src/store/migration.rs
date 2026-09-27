@@ -81,6 +81,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "private_protocol_search",
         sql: include_str!("../../../../migrations/0010_private_protocol_search.sql"),
     },
+    Migration {
+        version: 11,
+        name: "push_executor",
+        sql: include_str!("../../../../migrations/0011_push_executor.sql"),
+    },
 ];
 
 type AppliedMigrations = BTreeMap<i64, (String, String)>;

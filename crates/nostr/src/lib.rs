@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod activity_summary;
 pub mod agent_persona;
 pub mod block_lane;
 pub mod cap;

@@ -27,7 +27,10 @@ async fn m2_store_contract_against_postgres() {
     }
 
     let (initial_store, report) = Store::connect_with_report(&database_url).await.unwrap();
-    assert_eq!(report.applied_versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert_eq!(
+        report.applied_versions,
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    );
     drop(initial_store);
 
     let (mut store, report) = Store::connect_with_report(&database_url).await.unwrap();

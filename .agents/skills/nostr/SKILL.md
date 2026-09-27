@@ -39,8 +39,8 @@ and [implementation coverage](../../../docs/protocol/2026-09-26-nip-implementati
 before assuming complete support. Source inventory checks now track the current
 pins separately from behavioral evidence. PMA 30179 is rejected, client-authored
 39007 is refused, and app data and private artifacts have explicit visibility.
-RS has an opt-in atomic HTTP snapshot. PL delivery is disabled until its durable
-authority and delivery lifecycle exists. Client helpers do not imply complete
+RS has an opt-in atomic HTTP snapshot. The PL executor is off by default and
+needs a credential-holding push gateway; no real device delivery is recorded. Client helpers do not imply complete
 AP, FI, CW-thread, or RS merge integration.
 
 Read the spec before the code. The files you need most often:
