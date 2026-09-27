@@ -1,5 +1,5 @@
 //! Coder's native Verse surface. Scene behavior comes from the shared Verse
-//! runtime; this adapter owns touch gestures and explicit mobile connectivity.
+//! runtime; this adapter owns touch gestures and mobile connection preferences.
 use coder_ui::theme::{Intensity, NEAR_BLACK};
 use rust_native::style::{Color, Style};
 use rust_native::surface::{SurfaceLifecycle, Viewport};
@@ -30,6 +30,9 @@ pub(crate) struct Config {
     pub synthetic_gym: bool,
     #[serde(default)]
     pub world_relay: Option<String>,
+    /// An explicit Leave choice overrides the public default and any stale URL.
+    #[serde(default)]
+    pub world_offline: bool,
     #[serde(default)]
     pub door_preferences: Option<String>,
     #[serde(default)]
@@ -148,6 +151,10 @@ pub(crate) struct Packet {
     schema: &'static str,
     status: String,
     connection: Connection,
+    world_public_key: String,
+    remote_entities: usize,
+    live_remote_entities: usize,
+    presented_remote_vertices: usize,
     map: verse::minimap::Snapshot,
     doors: DoorPacket,
     zone: ZonePacket,
@@ -345,6 +352,10 @@ fn packet(
         schema: "coder.verse.v1",
         status,
         connection: connection(None, false, false, None, None),
+        world_public_key: String::new(),
+        remote_entities: 0,
+        live_remote_entities: 0,
+        presented_remote_vertices: 0,
         map: verse::minimap::MapHud::default().snapshot(
             [393.0, 852.0],
             [0.0, -10.0],
@@ -417,6 +428,7 @@ fn packet(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WorldTarget {
     Computer,
+    Gym,
     Companion,
     Door(DoorId),
     Portal,
@@ -506,6 +518,7 @@ pub(crate) struct Scene {
     /// Remote geometry from the last presented frame, also used for picking.
     pub presented_entities: verse::mesh::Mesh,
     secret: secp256k1::SecretKey,
+    public_key: String,
     relay: Option<String>,
     restore_spawn: bool,
     synthetic: bool,
@@ -539,7 +552,14 @@ impl Scene {
             viewport,
         )
         .map_err(|e| e.to_string())?;
-        let (relay, initial_error) = match config.world_relay {
+        let selected_relay = if config.world_offline {
+            None
+        } else {
+            config
+                .world_relay
+                .or_else(|| (!config.synthetic).then(|| verse::session::PUBLIC_RELAY.to_owned()))
+        };
+        let (relay, initial_error) = match selected_relay {
             Some(value) => match validated_world_relay(&value) {
                 Ok(relay) => (Some(relay), None),
                 Err(error) => (None, Some(error)),
@@ -588,6 +608,10 @@ impl Scene {
             session: None,
             presented_entities: verse::mesh::Mesh::default(),
             secret,
+            public_key: verse::identity::Identity::from_secret("phone", secret)?
+                .signer
+                .pubkey()
+                .to_owned(),
             relay,
             restore_spawn,
             synthetic: config.synthetic,
@@ -817,6 +841,7 @@ impl Scene {
                         )?;
                     }
                     Some(WorldTarget::Computer) => self.open_computer(),
+                    Some(WorldTarget::Gym) => self.open_gym(),
                     Some(WorldTarget::Companion) => {
                         self.world.pet_companion();
                     }
@@ -1169,20 +1194,13 @@ impl Scene {
             }
             Request::InteractGym => {
                 let gym = self.gym();
-                if !self.lifecycle.active() || !gym.inside || !gym.near || !gym.visible {
+                let size = self.lifecycle.viewport().logical_size();
+                if !self.lifecycle.active()
+                    || !self.gym_hit(gym.screen_x * size[0], gym.screen_y * size[1])
+                {
                     return Err("Walk inside the Gym and approach its board to open it".into());
                 }
-                self.reset_motion();
-                self.world.cancel_navigation();
-                self.map.clear_contacts();
-                self.door_hud.clear_contacts();
-                self.world.cancel_door_interactions();
-                self.zone_hud.clear_contacts();
-                self.gym_open = true;
-                self.computer_open = false;
-                self.touches.clear();
-                self.jump = false;
-                self.sprint = false;
+                self.open_gym();
                 Ok(())
             }
             Request::CloseGym => {
@@ -1255,6 +1273,17 @@ impl Scene {
                 .as_ref()
                 .and_then(|session| session.connection_error),
         );
+        packet.world_public_key.clone_from(&self.public_key);
+        packet.remote_entities = self
+            .session
+            .as_ref()
+            .map_or(0, |session| session.crowd.len());
+        packet.live_remote_entities = self
+            .session
+            .as_ref()
+            .map_or(0, |session| session.crowd.live_len(Instant::now()));
+        packet.presented_remote_vertices =
+            self.presented_entities.faces.len() + self.presented_entities.lines.len();
         if !self.plaza_online_allowed() {
             packet.connection.state = "local_zone";
             packet.connection.label = if self.world.zone_loading() {
@@ -1737,6 +1766,21 @@ impl Scene {
         self.sprint = false;
     }
 
+    /// Called only after pointer or accessibility picking validates the board.
+    fn open_gym(&mut self) {
+        self.reset_motion();
+        self.world.cancel_navigation();
+        self.map.clear_contacts();
+        self.door_hud.clear_contacts();
+        self.world.cancel_door_interactions();
+        self.zone_hud.clear_contacts();
+        self.gym_open = true;
+        self.computer_open = false;
+        self.touches.clear();
+        self.jump = false;
+        self.sprint = false;
+    }
+
     fn aspect(&self) -> f32 {
         let size = self.lifecycle.viewport().logical_size();
         size[0] / size[1].max(1.0)
@@ -1747,6 +1791,8 @@ impl Scene {
             Some(WorldTarget::Companion)
         } else if self.computer_hit(x, y) {
             Some(WorldTarget::Computer)
+        } else if self.gym_hit(x, y) {
+            Some(WorldTarget::Gym)
         } else if self.portal_hit(x, y) {
             Some(WorldTarget::Portal)
         } else {
@@ -1799,6 +1845,20 @@ impl Scene {
             )
     }
 
+    fn gym_hit(&self, x: f32, y: f32) -> bool {
+        let size = self.lifecycle.viewport().logical_size();
+        self.world.is_plaza()
+            && !self.spawn_pending
+            && size[0] > 0.0
+            && size[1] > 0.0
+            && self.world.gym_hit_with_entities(
+                size[0] / size[1],
+                x / size[0],
+                y / size[1],
+                &self.presented_entities,
+            )
+    }
+
     fn computer_hit(&self, x: f32, y: f32) -> bool {
         let size = self.lifecycle.viewport().logical_size();
         self.world.is_plaza()
@@ -1837,6 +1897,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: false,
             world_relay: None,
+            world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
         })
@@ -2015,6 +2076,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: true,
             world_relay: None,
+            world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
         })
@@ -2085,6 +2147,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: false,
             world_relay: None,
+            world_offline: false,
             door_preferences: Some(saved.clone()),
             zone_cache_directory: None,
         })
@@ -2377,6 +2440,42 @@ mod tests {
     }
 
     #[test]
+    fn physical_gym_board_taps_open_but_drags_and_cancelled_contacts_do_not() {
+        for gesture in 0..4 {
+            let mut scene = gym_scene();
+            scene.activate(true).unwrap();
+            let mut near = verse::world::GYM_BOARD;
+            near.x -= 3.0;
+            near.y = 0.0;
+            scene
+                .world
+                .set_spawn(near, std::f32::consts::FRAC_PI_2)
+                .unwrap();
+            scene.update(1.0).unwrap();
+            let gym = scene.gym();
+            let size = scene.lifecycle.viewport().logical_size();
+            let [x, y] = [gym.screen_x * size[0], gym.screen_y * size[1]];
+            assert!(scene.gym_hit(x, y));
+            assert_eq!(scene.world_target(x, y), Some(WorldTarget::Gym));
+            scene.pointer_at(1, PointerPhase::Down, x, y, 1.0).unwrap();
+            match gesture {
+                1 => scene
+                    .pointer_at(1, PointerPhase::Move, x + 50.0, y, 1.1)
+                    .unwrap(),
+                2 => scene
+                    .pointer_at(1, PointerPhase::Cancel, x, y, 1.1)
+                    .unwrap(),
+                3 => scene.activate(false).unwrap(),
+                _ => {}
+            }
+            scene.pointer_at(1, PointerPhase::Up, x, y, 1.2).unwrap();
+            assert_eq!(scene.gym_open, gesture == 0);
+            assert!(scene.touches.is_empty());
+            assert!(!scene.jump);
+        }
+    }
+
+    #[test]
     fn gym_fixture_loads_only_after_walking_inside_and_pauses_on_exit() {
         let mut scene = gym_scene();
         scene.activate(true).unwrap();
@@ -2508,6 +2607,38 @@ mod tests {
         assert_eq!(restored.packet().connection.state, "offline");
         assert!(restored.packet().connection.relay.is_none());
         assert!(restored.session.is_none());
+    }
+
+    #[test]
+    fn new_installs_default_to_public_plaza_without_opening_a_socket_before_activation() {
+        let base = serde_json::json!({
+            "secret_hex": "11".repeat(32), "width": 800, "height": 1200, "scale": 2
+        });
+        for (overrides, expected) in [
+            (serde_json::json!({}), Some(verse::session::PUBLIC_RELAY)),
+            (serde_json::json!({"synthetic": true}), None),
+            (serde_json::json!({"world_offline": true}), None),
+            (
+                serde_json::json!({"world_relay": "wss://relay.example.test"}),
+                Some("wss://relay.example.test"),
+            ),
+            (
+                serde_json::json!({"world_offline": true, "world_relay": "wss://relay.example.test"}),
+                None,
+            ),
+        ] {
+            let mut value = base.clone();
+            value
+                .as_object_mut()
+                .unwrap()
+                .extend(overrides.as_object().unwrap().clone());
+            let scene = Scene::new(serde_json::from_value(value).unwrap()).unwrap();
+            assert_eq!(scene.relay.as_deref(), expected);
+            assert_eq!(scene.restore_spawn, expected.is_some());
+            assert!(scene.session.is_none());
+            assert!(!scene.lifecycle.active());
+            assert!(!scene.gym_board.view().active);
+        }
     }
 
     #[test]

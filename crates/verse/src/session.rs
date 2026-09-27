@@ -30,6 +30,8 @@ use crate::net::{In, Link, Out};
 
 /// The world this client joins.
 pub const WORLD: &str = "verse-plaza";
+/// Public plaza relay used by unconfigured Coder mobile installs.
+pub const PUBLIC_RELAY: &str = "wss://relay.openagents.com";
 /// The relay used when none is named.
 pub const DEFAULT_RELAY: &str = "ws://127.0.0.1:7447";
 /// Radius of the spawn disc around the plaza center, in meters.
@@ -89,7 +91,7 @@ impl PublishIntervals {
     pub fn mobile() -> Self {
         Self {
             moving: Duration::from_secs(3),
-            idle: Duration::from_secs(10),
+            idle: Duration::from_secs(5),
             state: Duration::from_secs(30),
         }
     }
@@ -1300,6 +1302,13 @@ fn unix_millis() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mobile_keepalive_has_room_before_remote_presence_expires() {
+        let interval = super::PublishIntervals::mobile();
+        assert!(interval.idle + std::time::Duration::from_secs(2) < crate::crowd::STALE);
+        assert!(interval.validate().is_ok());
+    }
+
     use super::*;
 
     fn isolated() -> Session {

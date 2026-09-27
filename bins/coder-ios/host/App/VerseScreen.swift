@@ -110,22 +110,10 @@ struct VerseScreen: View {
                     anchoredPanel(anchor: anchor, size: size, safe: safe)
                 }
             }
-            if let gym = bridge.packet?.gym, !computerOpen, gymOpen || (gym.inside && gym.visible) {
+            if let gym = bridge.packet?.gym, !computerOpen, gymOpen {
                 let anchor = CGPoint(x: clamped(gym.screen_x, 0, 1) * size.width,
                                      y: clamped(gym.screen_y, 0, 1) * size.height)
-                if gymOpen {
-                    gymPanel(anchor: anchor, size: size, safe: safe)
-                } else {
-                    Button { bridge.send(["action": "interact_gym"]) } label: {
-                        Label(gym.near ? "Open Gym board" : "Gym board", systemImage: "chart.xyaxis.line")
-                            .padding(.horizontal, 12).padding(.vertical, 9)
-                            .background(.ultraThinMaterial, in: Capsule())
-                    }
-                    .disabled(!gym.near || !active)
-                    .accessibilityIdentifier("gym-interact")
-                    .position(x: clamped(anchor.x, safe.leading + 106, size.width - safe.trailing - 106),
-                              y: clamped(anchor.y - 28, safe.top + 70, size.height - safe.bottom - 160))
-                }
+                gymPanel(anchor: anchor, size: size, safe: safe)
             }
         }
         .frame(width: size.width, height: size.height)

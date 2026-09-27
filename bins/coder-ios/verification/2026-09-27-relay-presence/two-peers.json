@@ -1,0 +1,421 @@
+{
+  "cadence_ms": {
+    "idle": 5000,
+    "moving": 3000,
+    "state": 30000
+  },
+  "elapsed_ms": 8929,
+  "errors": [],
+  "events": [
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"d94e67776664d555\",\"n\":1,\"t\":1790488214360,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[-20.0,0.0,-20.0],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[-20.9,2.2,-20.800001],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488214,
+        "id": "ed7214c50c5bca9740c0f34d45ec653d98c354db4a59e9b06c018603f69f5685",
+        "kind": 23300,
+        "pubkey": "f4fc8ea9d94b3327caa2be18bb037324a1fce9784273bb0b51a6c488d6647486",
+        "sig": "42dc9c4b70315be09561854740ca69d5d354032582e8b081b24343a4d256fbeb7474278394decf01b9fd099a6f0d348893cdc589ac876f4319048ac259f73bfc",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 539
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[-20.0,0.0,-20.0],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488214361,\"online\":true,\"name\":\"verse-presence-probe-a\"}",
+        "created_at": 1790488214,
+        "id": "86d3d515f9e79a0ab2d312cd0ec1ffa6f2cd190b5b653d774d00e13f3e4b7185",
+        "kind": 33301,
+        "pubkey": "f4fc8ea9d94b3327caa2be18bb037324a1fce9784273bb0b51a6c488d6647486",
+        "sig": "31dbf45bd9d631c42fd556cf881fc475fb15f5138a2e11c32460a7a099406559fba3cb83d5929454898a196c787a7a594be6035ffdecd997fd01613bc8712947",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/avatar"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 539
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7edcb1461411af0e\",\"n\":1,\"t\":1790488214431,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[-16.0,0.0,-20.0],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[-16.9,2.2,-20.800001],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488214,
+        "id": "7bffc960811a51b216126943150bfbbc3280cb942d71f56cd21f36af3471de99",
+        "kind": 23300,
+        "pubkey": "33c62a8e684aa0f804c134ad59e95809c2dcaf7b1993676d3ac02ac8b88c8afa",
+        "sig": "b14ec987e4177e5538fa2ea75068c91b14dcae33cffddd972cb416dd0fdbe0a36308c770beaf53b781f1d84acf32c3cc805dd7a9c66fc75bac50665f3c6f9aa2",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 603
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"agent\",\"role\":\"agent\",\"p\":[-20.9,2.2,-20.800001],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488214361,\"online\":true,\"follows\":\"avatar\",\"name\":\"verse-presence-probe-a\"}",
+        "created_at": 1790488214,
+        "id": "11616509592f1ec5f2f5c3935bdb41239d20409ff68448f45f1bb264b0b6c5d2",
+        "kind": 33301,
+        "pubkey": "f4fc8ea9d94b3327caa2be18bb037324a1fce9784273bb0b51a6c488d6647486",
+        "sig": "21c6f01617c2226cd4cf26cc9517b19499230d20ac0cf323722cebc2512cc99502dcec7c74b476674a50fbf4eb067621f8a2aaa51e6bae4fcfb24ac98da9387d",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/agent"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "agent"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 603
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[-16.0,0.0,-20.0],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488214431,\"online\":true,\"name\":\"verse-presence-probe-b\"}",
+        "created_at": 1790488214,
+        "id": "a0ebcb509b5fada827ec27a52435f92770c9a0461406900c080c616e5887c9e3",
+        "kind": 33301,
+        "pubkey": "33c62a8e684aa0f804c134ad59e95809c2dcaf7b1993676d3ac02ac8b88c8afa",
+        "sig": "c51b2336e9f08d26c5c24b9dd6e0c9822f67001b3cd27e5926ad61c66f97214f97d83f50f24e6f7da2727301bbd24712ec56ba7547bfa744d85b49851dc58f39",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/avatar"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 603
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"agent\",\"role\":\"agent\",\"p\":[-16.9,2.2,-20.800001],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488214432,\"online\":true,\"follows\":\"avatar\",\"name\":\"verse-presence-probe-b\"}",
+        "created_at": 1790488214,
+        "id": "04e9f7fc44882595d1b3ff0bb63ec84ed72d74967c73ac4efad7e2301fc21924",
+        "kind": 33301,
+        "pubkey": "33c62a8e684aa0f804c134ad59e95809c2dcaf7b1993676d3ac02ac8b88c8afa",
+        "sig": "cfc9717eb030190530d4afa51b53346b4e62f83bcc11fcc62473f1306a331429e522634d2b4a5c85c3816bf6fbc59b3ff7407de33ded18e74c5a532a794119e6",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/agent"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "agent"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 665
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"d94e67776664d555\",\"n\":2,\"t\":1790488217366,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[-20.0,0.0,-14.0],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.0],\"a\":\"run\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[-20.9,2.2,-16.0],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488217,
+        "id": "28431f43621b683220659ba2ae1cf61cac04e765a5cfeaf5c9d041af13940ab9",
+        "kind": 23300,
+        "pubkey": "f4fc8ea9d94b3327caa2be18bb037324a1fce9784273bb0b51a6c488d6647486",
+        "sig": "712a5f9fa3b8a43436e7fb0042beb1d11086646bfc57d7547ebdee4ee8dcfef2cc0b0dec8d88e0f25b1553743f28b844ce2e7b4061878a5d247981acba7dc8b3",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 3530
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7edcb1461411af0e\",\"n\":2,\"t\":1790488217421,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[-16.0,0.0,-14.0],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.0],\"a\":\"run\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[-16.9,2.2,-16.0],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488217,
+        "id": "a315289c10cb40a80fa0fd620fe9f1e77df9ee4a78c77f57630325cea2821191",
+        "kind": 23300,
+        "pubkey": "33c62a8e684aa0f804c134ad59e95809c2dcaf7b1993676d3ac02ac8b88c8afa",
+        "sig": "d22080211f2977684c3d17f54d9484e76f2dd16399c1e18c0daafef1e7ee996a70e83f6896355173e7d7a2c15d44fa293cfe26aadaadad3e7ee2e2105f38ff83",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 3593
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"d94e67776664d555\",\"n\":3,\"t\":1790488220417,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[-20.0,0.0,-14.0],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.0],\"a\":\"run\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[-20.9,2.2,-16.0],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488220,
+        "id": "f51e8f92a5697869a915f45437cb3705016c343ec371233b618208f62e482228",
+        "kind": 23300,
+        "pubkey": "f4fc8ea9d94b3327caa2be18bb037324a1fce9784273bb0b51a6c488d6647486",
+        "sig": "9f1834fa993f6a384323be56d941fdf3c9ea8533ec9849b280cc7292910f7f466a4eb9f5a5fd9daa41a3ae2e555bdad967348bfadf05fbd7a6d42434da192db6",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 6580
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7edcb1461411af0e\",\"n\":3,\"t\":1790488220477,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[-16.0,0.0,-14.0],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.0],\"a\":\"run\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[-16.9,2.2,-16.0],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488220,
+        "id": "1e5f7b8cabac27dc859914f2c0b96664f1ef0a3694f9644820469f3aafd08e31",
+        "kind": 23300,
+        "pubkey": "33c62a8e684aa0f804c134ad59e95809c2dcaf7b1993676d3ac02ac8b88c8afa",
+        "sig": "c256112d31df7cb46653a4630fc8c7ff237147b14fdf0208bf9faa60d9ce003211d87566f4d3d8a8204fcaf99c095ef3fe9c7435c4e6798479ba54b3b9a2be4b",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 6641
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[-16.0,0.0,-14.0],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488222642,\"online\":false,\"name\":\"verse-presence-probe-b\"}",
+        "created_at": 1790488222,
+        "id": "0c6a733bc33210aaad2486999116fd9501c3019e26f9f1bde7a70e9b9e2d7e05",
+        "kind": 33301,
+        "pubkey": "33c62a8e684aa0f804c134ad59e95809c2dcaf7b1993676d3ac02ac8b88c8afa",
+        "sig": "36341a08775f86598332098812be22d0ee8bf5d4983cda764c1d92c698837af71d1b573d5ad58f5d0bd0222acb0fb387e4d99669dcdc8de21153bc8ab3897dcd",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/avatar"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 8865
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[-20.0,0.0,-14.0],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488222641,\"online\":false,\"name\":\"verse-presence-probe-a\"}",
+        "created_at": 1790488222,
+        "id": "846c286547139e7e68d879a1d28ed45753ad8640557e790500297e0c5e2edea5",
+        "kind": 33301,
+        "pubkey": "f4fc8ea9d94b3327caa2be18bb037324a1fce9784273bb0b51a6c488d6647486",
+        "sig": "0d2d740b341186b9147164ee1b536ec2575984d9cf504b16d5178750ccb01d78d1e456600499c5872ca9722f229152a63d171b7bc23e33b495ac7cd62597555e",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/avatar"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 8865
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"agent\",\"role\":\"agent\",\"p\":[-16.9,2.2,-16.0],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488222643,\"online\":false,\"follows\":\"avatar\",\"name\":\"verse-presence-probe-b\"}",
+        "created_at": 1790488222,
+        "id": "e146799a06b25be1d4dff1545105c301442d0b5af1ae5628bd12c28b7a7dd495",
+        "kind": 33301,
+        "pubkey": "33c62a8e684aa0f804c134ad59e95809c2dcaf7b1993676d3ac02ac8b88c8afa",
+        "sig": "794062adafeb5c5c2f441b0d8bc087a5359e6dc7780830ed2bd6f8170390aaf74931dfc6a4d88042d2329c5ebf120e95480d4b257ed036a11ba9daab2566d0fc",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/agent"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "agent"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 8927
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"agent\",\"role\":\"agent\",\"p\":[-20.9,2.2,-16.0],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488222641,\"online\":false,\"follows\":\"avatar\",\"name\":\"verse-presence-probe-a\"}",
+        "created_at": 1790488222,
+        "id": "803b82c2382b804839352187b58204ed1fb2d776169d16ffe441463a487a0276",
+        "kind": 33301,
+        "pubkey": "f4fc8ea9d94b3327caa2be18bb037324a1fce9784273bb0b51a6c488d6647486",
+        "sig": "c2e57b397644df3366723eb9f9495305c9723a6a35925d5bc3b2cdca3aba43d7c598c4389464a72804dea5546317249fce3f5250d17f87b16ca248ca5dbcf774",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/agent"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "agent"
+          ],
+          [
+            "c",
+            "-1,-1"
+          ]
+        ]
+      },
+      "received_ms": 8927
+    }
+  ],
+  "frame_sequences": {
+    "33c62a8e684aa0f804c134ad59e95809c2dcaf7b1993676d3ac02ac8b88c8afa": [
+      1,
+      2,
+      3
+    ],
+    "f4fc8ea9d94b3327caa2be18bb037324a1fce9784273bb0b51a6c488d6647486": [
+      1,
+      2,
+      3
+    ]
+  },
+  "leave_queued_ms": 8690,
+  "limitations": [
+    "Real public relay; two headless Session peers on one Mac, not two phones",
+    "Session Online checks world subscriptions and any challenged AUTH; the witness records its own AUTH acceptance",
+    "No chat, profiles, greetings, models, or benchmark runs",
+    "Four offline addressable state records remain; fresh private keys are never persisted",
+    "This bounded check does not prove long-duration throughput or physical-device rendering"
+  ],
+  "offline_state_count": 4,
+  "online_state_count": 4,
+  "passed": true,
+  "peer_connection_errors": [
+    null,
+    null
+  ],
+  "peer_online_ms": [
+    409,
+    468
+  ],
+  "peer_pubkeys": [
+    "f4fc8ea9d94b3327caa2be18bb037324a1fce9784273bb0b51a6c488d6647486",
+    "33c62a8e684aa0f804c134ad59e95809c2dcaf7b1993676d3ac02ac8b88c8afa"
+  ],
+  "peer_saw_moved_avatar": [
+    true,
+    true
+  ],
+  "peer_saw_other_online": [
+    true,
+    true
+  ],
+  "peer_status": [
+    "Online",
+    "Online"
+  ],
+  "relay": "wss://relay.openagents.com",
+  "schema": "verse.presence-probe.v1",
+  "started_at_unix": 1790488213,
+  "witness_authenticated": true,
+  "witness_subscribed": true
+}

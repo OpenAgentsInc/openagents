@@ -8,6 +8,15 @@ struct VerseTestObservation: Decodable {
     let camera_distance: Double
     let motion_needed: Bool
     let gym_active: Bool
+    let gym_ready: Bool
+    let gym_target: [Double]
+    let world_preference: String
+    let world_configuration: VerseTestWorldConfiguration
+    let world_connection: VerseTestWorldConnection
+    let world_public_key: String
+    let remote_entities: UInt64
+    let live_remote_entities: UInt64
+    let presented_remote_vertices: UInt64
     let computer_ready: Bool
     let computer_target: [Double]
     let map: VerseTestMap
@@ -16,6 +25,16 @@ struct VerseTestObservation: Decodable {
     let zone: VerseTestZone
     let door_preferences_revision: UInt64
     let door_storage_writes: UInt64
+}
+
+struct VerseTestWorldConfiguration: Decodable {
+    let world_relay: String?
+    let world_offline: Bool?
+}
+
+struct VerseTestWorldConnection: Decodable {
+    let state: String
+    let relay: String
 }
 
 struct VerseTestZone: Decodable {

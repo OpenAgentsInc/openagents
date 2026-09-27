@@ -188,7 +188,7 @@ impl VerseHandle {
                         renderer.set_atmosphere(verse::zones::atmosphere(self.scene.world.zone))?;
                         self.rendered_zone_revision = self.scene.world.zone_revision;
                     }
-                    let mut mesh = self.scene.world.dynamic_mesh_with_computer_interaction();
+                    let mut mesh = self.scene.world.dynamic_mesh_with_interactions(true, true);
                     let entities = self
                         .scene
                         .session
@@ -264,6 +264,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: false,
             world_relay: None,
+            world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
         })

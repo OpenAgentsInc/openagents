@@ -111,8 +111,14 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             canRetryDoorSave = false
             try { storage.doorPreferences()?.let { config.put("door_preferences", it) }; doorStorageError = null }
             catch (_: Exception) { doorStorageError = "Saved door choices unavailable. Unlock the device and retry." }
-            try { storage.worldRelay()?.let { config.put("world_relay", it) } }
-            catch (_: Exception) { worldStorageError = "Saved world relay unavailable. Unlock the device and retry." }
+            try {
+                storage.worldRelay()?.let { config.put("world_relay", it) }
+                config.put("world_offline", storage.worldOffline())
+                worldStorageError = null
+            } catch (_: Exception) {
+                config.put("world_offline", true)
+                worldStorageError = "Saved world relay unavailable. Unlock the device and retry."
+            }
             storage.gymCode()?.let { config.put("gym_code", it) }
             handle = CoderNative.createVerse(holder.surface, config.toString())
             check(handle != 0L) { packet(CoderNative.verseBlueprint(), "coder.verse.v1").textOrNull("error")

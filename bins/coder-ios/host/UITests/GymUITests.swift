@@ -17,10 +17,16 @@ final class GymUITests: XCTestCase {
         XCTAssertFalse(app.buttons["gym-close"].exists)
         move(forward: true, hold: 3.5)
         XCTAssertTrue(gymInterest(active: true))
-        let open = app.buttons["gym-interact"]
-        XCTAssertTrue(open.waitForExistence(timeout: 5))
-        XCTAssertTrue(open.isEnabled)
-        open.tap()
+        XCTAssertFalse(app.buttons["gym-interact"].exists, "The Gym board is drawn in the world.")
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.app.verseObservation()?.gym_ready == true
+        }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        let target = try XCTUnwrap(app.verseObservation()).gym_target
+        XCTAssertEqual(target.count, 2)
+        XCTAssertTrue(target.allSatisfy { $0.isFinite && (0...1).contains($0) })
+        attach("Physical Gym board before opening")
+        app.otherElements["verse-surface"].coordinate(withNormalizedOffset: CGVector(dx: target[0], dy: target[1])).tap()
         XCTAssertTrue(app.buttons[runID].waitForExistence(timeout: 10))
     }
 

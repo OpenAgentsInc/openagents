@@ -69,7 +69,7 @@ The user-authorized app metadata and icon preserve the existing Xcode setup:
 | Project, scheme, target, product | `Coder` |
 | Bundle identifier | `com.openagents.coder` |
 | Development team | `HQWSG26L43` |
-| Marketing version and source build | `0.5.0` / `47` |
+| Marketing version and source build | `0.5.0` / `48` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Swift language setting | `5.10` |
 | App Store Connect app | `6807250813` |
@@ -243,9 +243,10 @@ render loop, clears held input, and resets the frame clock. Dismantling the moun
 releasing the native layer. Chat synchronization uses a different Rust handle
 and worker queue.
 
-Use the computer's world connection controls to join a compatible world relay. This
-is an explicit network action that publishes the device's world presence and
-movement. **Leave relay** ends that session. The Verse key uses its own
+New or unconfigured installs join `wss://relay.openagents.com` by default and
+publish the device's world presence and movement. Use the computer to change
+relays or choose **Leave**. The app remembers a custom relay or an explicit
+offline choice across relaunch. The Verse key uses its own
 `com.openagents.coder.verse` Keychain service; it never reuses the reader's
 identity. Synthetic mode uses a separate fixture account and starts offline.
 

@@ -54,7 +54,7 @@ controls, implementation status, and the ordered mobile release.
 ## Gym building
 
 Walk east and enter the building marked **GYM**. Press `G` on desktop, or
-approach the boards and tap the Gym board control on mobile. Updates start only while
+approach the boards and tap the physical **GYM** display on mobile. Updates start only while
 the player is inside and the surface is active. See [Gym setup](gym.md) for
 source grants, recorded charts, and bounded launch recipes.
 

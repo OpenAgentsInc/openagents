@@ -51,6 +51,10 @@ class DeviceStorage(private val context: Context, private val synthetic: Boolean
         bytes?.takeIf { it.isNotEmpty() }?.toString(Charsets.UTF_8)
     }
 
+    fun worldOffline(): Boolean = synchronized(storageLock) {
+        read("world-relay")?.isEmpty() == true
+    }
+
     fun saveWorldRelay(relay: String?) = synchronized(storageLock) {
         val bytes = (relay ?: "").toByteArray(Charsets.UTF_8)
         require(bytes.size <= 2048) { "The relay URL is too long." }

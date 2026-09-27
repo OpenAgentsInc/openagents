@@ -44,6 +44,7 @@ final class VerseMetalView: UIView {
     private var pointers: [ObjectIdentifier: UInt64] = [:]
     private var nextPointer: UInt64 = 1
     private var computerAccessible = false
+    private var gymAccessible = false
     private var companionAccessible = false
     private var hudPointers = Set<UInt64>()
     private var hudInsets = EdgeInsets()
@@ -54,6 +55,7 @@ final class VerseMetalView: UIView {
     private var accessibilityActionState = ""
     private var highestObservedY = 0.0
     private var pinchAdmission = PinchAdmission()
+    private var initialWorldConfiguration: [String: Any] = [:]
 
     init(bridge: VerseBridge) {
         self.bridge = bridge
@@ -113,7 +115,8 @@ final class VerseMetalView: UIView {
                     .appendingPathComponent("VerseZones", isDirectory: true)
                 configuration["zone_cache_directory"] = cache.path
                 if let preferences = bridge.storedDoorPreferences() { configuration["door_preferences"] = preferences }
-                if let relay = bridge.storedWorldRelay() { configuration["world_relay"] = relay }
+                initialWorldConfiguration = bridge.storedWorldConfiguration()
+                configuration.merge(initialWorldConfiguration) { _, new in new }
                 if let code = bridge.storedGymCode() { configuration["gym_code"] = code }
                 let config = try JSONSerialization.data(withJSONObject: configuration)
                 handle = config.withUnsafeBytes {
@@ -223,6 +226,8 @@ final class VerseMetalView: UIView {
         let available = running && packet.computer.near && packet.computer.visible
             && !packet.computer_open && !packet.gym_open
         computerAccessible = available
+        gymAccessible = running && packet.gym_active && packet.gym.inside && packet.gym.near
+            && packet.gym.visible && !packet.computer_open && !packet.gym_open && !packet.map.expanded
         companionAccessible = running && !packet.computer_open && !packet.gym_open &&
             packet.companion.near && packet.companion.visible && packet.companion.cooldown_seconds <= 0
         zoneState = packet.zone
@@ -235,12 +240,15 @@ final class VerseMetalView: UIView {
         let mapAvailable = running && map.visible
         let state = "\(available):\(companionAccessible):\(mapAvailable):\(map.expanded):\(map.destination != nil):" + map.landmarks.map(\.id).joined(separator: ",") + ":\(doorActionsAvailable):\(doorActions):\(packet.doors.hud.visible):\(packet.doors.hud.door ?? ""):\(itemActions)"
         let zoneActions = packet.zone.hud.visible ? packet.zone.hud.buttons.filter(\.enabled).map(\.id).joined(separator: ",") : ""
-        let combinedState = state + ":" + zoneActions
+        let combinedState = state + ":\(gymAccessible):" + zoneActions
         if combinedState != accessibilityActionState {
             accessibilityActionState = combinedState
             var actions: [UIAccessibilityCustomAction] = []
             if available {
                 actions.append(UIAccessibilityCustomAction(name: "Use computer", target: self, selector: #selector(useComputerAccessibly)))
+            }
+            if gymAccessible {
+                actions.append(UIAccessibilityCustomAction(name: "Open Gym board", target: self, selector: #selector(useGymAccessibly)))
             }
             if companionAccessible {
                 actions.append(UIAccessibilityCustomAction(name: "Pet companion", target: self, selector: #selector(petCompanionAccessibly)))
@@ -293,7 +301,7 @@ final class VerseMetalView: UIView {
             }
             accessibilityCustomActions = actions
         }
-        if bridge.synthetic {
+        if bridge.synthetic || ProcessInfo.processInfo.arguments.contains("--uitest-observe-world") {
             // Keep test observations in accessibility metadata, not in the HUD.
             highestObservedY = max(highestObservedY, packet.position[1])
             let metadata: [String: Any] = [
@@ -304,6 +312,15 @@ final class VerseMetalView: UIView {
                 "camera_distance": packet.camera_distance,
                 "motion_needed": packet.motion_needed,
                 "gym_active": packet.gym_active,
+                "gym_ready": gymAccessible,
+                "gym_target": [packet.gym.screen_x, packet.gym.screen_y],
+                "world_preference": bridge.initialWorldPreference,
+                "world_configuration": initialWorldConfiguration,
+                "world_connection": ["state": packet.connection.state, "relay": packet.connection.relay ?? ""],
+                "world_public_key": packet.world_public_key,
+                "remote_entities": packet.remote_entities,
+                "live_remote_entities": packet.live_remote_entities,
+                "presented_remote_vertices": packet.presented_remote_vertices,
                 "computer_ready": available,
                 "computer_target": [packet.computer.screen_x, packet.computer.screen_y],
                 "map": packet.map.observation,
@@ -316,7 +333,7 @@ final class VerseMetalView: UIView {
             accessibilityValue = (try? JSONSerialization.data(withJSONObject: metadata))
                 .flatMap { String(data: $0, encoding: .utf8) }
         } else {
-            accessibilityValue = available ? "Computer in reach" : packet.zone.hud.visible ? (packet.zone.error ?? packet.zone.caption) : "Exploring \(packet.zone.label)"
+            accessibilityValue = available ? "Computer in reach" : gymAccessible ? "Gym board in reach" : packet.zone.hud.visible ? (packet.zone.error ?? packet.zone.caption) : "Exploring \(packet.zone.label)"
         }
     }
 
@@ -325,6 +342,12 @@ final class VerseMetalView: UIView {
         guard let result = send(["action": "interact_computer"], forcePublish: true) else { return false }
         if case let .success(packet) = result { return packet.computer_open }
         return false
+    }
+
+    @objc private func useGymAccessibly() -> Bool {
+        guard running, gymAccessible else { return false }
+        guard case let .success(packet)? = send(["action": "interact_gym"], forcePublish: true) else { return false }
+        return packet.gym_open
     }
 
     @objc private func petCompanionAccessibly() -> Bool {

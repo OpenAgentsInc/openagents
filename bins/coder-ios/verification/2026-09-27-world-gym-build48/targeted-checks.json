@@ -1,0 +1,28 @@
+{
+  "build": "48",
+  "rust": "1.97.1",
+  "checks": [
+    {
+      "command": "cargo test --locked -p coder-mobile --lib",
+      "log": "mobile-tests.log",
+      "log_sha256": "297d06a41b91d97e19a199f138d6f411521913edb55d226cd23f7f63d05e24e7"
+    },
+    {
+      "command": "cargo test --locked -p verse --no-default-features --lib",
+      "log": "verse-tests.log",
+      "log_sha256": "39eac611b342a3298972d86a569d1b116771f3887e162e19c3bad3dbdd2028be"
+    },
+    {
+      "command": "cargo clippy --locked -p coder-mobile --all-targets -- -D warnings",
+      "log": "clippy.log",
+      "log_sha256": "6cd27e0be99d585b6df7c0a4bf832c8e08f2fa5b441e05cce160d047ddc6b132"
+    },
+    {
+      "command": "Gradle :app:compileDebugKotlin with sanitized existing Android build environment",
+      "log": "android-kotlin.log",
+      "log_sha256": "07e968b9c3bb0a8f5437bda61c9efd16519011d91f46a8ef14c331fd828ea875"
+    }
+  ],
+  "manual_ignored": "coder-mobile retains one ignored manually invoked fixture",
+  "scope": "Affected Rust library tests, Clippy over mobile and its consumers, Android Kotlin compile only. No full-workspace gate or benchmark/model run."
+}

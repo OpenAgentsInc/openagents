@@ -31,6 +31,12 @@ pub const GYM_CENTER: Vec3 = Vec3::new(48.0, 0.0, 0.0);
 pub const GYM_ENTRANCE: Vec3 = Vec3::new(36.0, 0.0, 0.0);
 /// Center of the main bulletin board, facing the hall's entrance.
 pub const GYM_BOARD: Vec3 = Vec3::new(58.8, 2.8, 0.0);
+/// The central board's readable front, slightly west of its backing surface.
+pub const GYM_BOARD_SCREEN: Vec3 = Vec3::new(58.788, 2.8, 0.0);
+/// Half width along Z and half height of the central board, in meters.
+pub const GYM_BOARD_HALF: [f32; 2] = [2.5, 1.55];
+/// Maximum ground-plane distance for opening the board from inside the hall.
+pub const GYM_BOARD_RANGE: f32 = 6.0;
 /// Where the pylon stands.
 pub const PYLON: Vec3 = Vec3::new(0.0, 0.0, 14.0);
 /// Where the quest board stands, facing the plaza.
@@ -211,22 +217,37 @@ pub(crate) fn computer_display(interaction: Option<bool>) -> Mesh {
 }
 
 fn computer_text(mesh: &mut Mesh, text: &str, baseline: f32, height: f32, step: Intensity) {
+    // A viewer faces +Z from the monitor's -Z front. Screen right is world -X.
+    display_text(
+        mesh,
+        text,
+        COMPUTER_SCREEN + Vec3::Y * baseline,
+        -Vec3::X,
+        height,
+        step,
+    );
+}
+
+fn display_text(
+    mesh: &mut Mesh,
+    text: &str,
+    center: Vec3,
+    right: Vec3,
+    height: f32,
+    step: Intensity,
+) {
     let width = height * 0.66;
     let advance = height * 0.96;
     let start = -((text.len() - 1) as f32 * advance + width) / 2.0;
     for (index, letter) in text.bytes().enumerate() {
         let x = start + index as f32 * advance;
-        let point = |(u, v): (f32, f32)| {
-            // A viewer faces +Z from the monitor's -Z front. Its screen-right
-            // axis is world -X, so both glyph strokes and letter order use -X.
-            COMPUTER_SCREEN + Vec3::new(-(x + u * width), baseline + v * height, 0.0)
-        };
+        let point = |(u, v): (f32, f32)| center + right * (x + u * width) + Vec3::Y * (v * height);
         for stroke in computer_glyph(letter) {
             for pair in stroke.windows(2) {
                 let a = point(pair[0]);
                 let b = point(pair[1]);
                 let delta = b - a;
-                let normal = Vec3::new(-delta.y, delta.x, 0.0).normalize() * height * 0.038;
+                let normal = right.cross(Vec3::Y).cross(delta).normalize() * height * 0.038;
                 mesh.amber_quad([a - normal, b - normal, b + normal, a + normal], step);
             }
         }
@@ -244,6 +265,14 @@ fn computer_glyph(letter: u8) -> &'static [&'static [(f32, f32)]] {
             &[(1.0, 1.0), (0.0, 1.0), (0.0, 0.0), (1.0, 0.0)],
             &[(0.0, 0.5), (0.8, 0.5)],
         ],
+        b'G' => &[&[
+            (1.0, 1.0),
+            (0.0, 1.0),
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (1.0, 0.5),
+            (0.5, 0.5),
+        ]],
         b'K' => &[
             &[(0.0, 0.0), (0.0, 1.0)],
             &[(1.0, 1.0), (0.0, 0.45), (1.0, 0.0)],
@@ -268,8 +297,42 @@ fn computer_glyph(letter: u8) -> &'static [&'static [(f32, f32)]] {
         b'T' => &[&[(0.0, 1.0), (1.0, 1.0)], &[(0.5, 1.0), (0.5, 0.0)]],
         b'U' => &[&[(0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]],
         b'W' => &[&[(0.0, 1.0), (0.0, 0.0), (0.5, 0.45), (1.0, 0.0), (1.0, 1.0)]],
+        b'Y' => &[
+            &[(0.0, 1.0), (0.5, 0.5), (1.0, 1.0)],
+            &[(0.5, 0.5), (0.5, 0.0)],
+        ],
         _ => &[],
     }
+}
+
+/// Depth-tested text on the physical Gym board. Hosts opt into the action cue
+/// only when they implement its tap action; geometry alone starts no service.
+pub(crate) fn gym_display(interaction: Option<bool>) -> Mesh {
+    let mut mesh = Mesh::default();
+    let step = if interaction == Some(true) {
+        Intensity::Full
+    } else {
+        Intensity::Half
+    };
+    display_text(
+        &mut mesh,
+        "GYM",
+        GYM_BOARD_SCREEN + Vec3::Y * 1.1,
+        Vec3::Z,
+        0.32,
+        step,
+    );
+    if let Some(near) = interaction {
+        display_text(
+            &mut mesh,
+            if near { "TAP TO OPEN" } else { "WALK CLOSER" },
+            GYM_BOARD_SCREEN - Vec3::Y * 0.2,
+            Vec3::Z,
+            0.4,
+            step,
+        );
+    }
+    mesh
 }
 
 fn gym(world: &mut World) {
@@ -377,10 +440,10 @@ fn gym_boards(mesh: &mut Mesh) {
     let at = |u: f32, v: f32| GYM_BOARD + Vec3::new(0.0, v, u);
     let panel = |mesh: &mut Mesh, center: f32, half_width: f32| {
         let corners = [
-            at(center - half_width, -1.55),
-            at(center + half_width, -1.55),
-            at(center + half_width, 1.55),
-            at(center - half_width, 1.55),
+            at(center - half_width, -GYM_BOARD_HALF[1]),
+            at(center + half_width, -GYM_BOARD_HALF[1]),
+            at(center + half_width, GYM_BOARD_HALF[1]),
+            at(center - half_width, GYM_BOARD_HALF[1]),
         ];
         mesh.quad(corners);
         mesh.polyline_loop(&corners, Intensity::Full);
@@ -390,12 +453,9 @@ fn gym_boards(mesh: &mut Mesh) {
             Intensity::Half,
         );
     };
-    // A central bulletin and two plot panels. Empty rows and axes denote
+    // A central bulletin and two plot panels. Empty axes denote
     // surfaces awaiting admitted data; they do not depict invented results.
-    panel(mesh, 0.0, 2.5);
-    for v in [-0.8, -0.2, 0.4] {
-        mesh.line(at(-2.15, v), at(2.15, v), Intensity::Quarter);
-    }
+    panel(mesh, 0.0, GYM_BOARD_HALF[0]);
     for center in [-5.7, 5.7] {
         panel(mesh, center, 2.3);
         mesh.line(
@@ -906,6 +966,51 @@ mod tests {
             }
         }
         for letter in b"COMPUTERTAPNOWALKLS" {
+            assert!(!computer_glyph(*letter).is_empty());
+        }
+    }
+
+    #[test]
+    fn gym_display_is_readable_geometry_inside_the_board_with_host_owned_action_cues() {
+        let neutral = gym_display(None);
+        let distant = gym_display(Some(false));
+        let nearby = gym_display(Some(true));
+        assert!(neutral.faces.len() < distant.faces.len());
+        assert!(neutral.faces.len() < nearby.faces.len());
+        assert!(!nearby.faces.is_empty());
+        assert_ne!(distant.faces, nearby.faces);
+        for mesh in [neutral, distant, nearby] {
+            for vertex in &mesh.faces {
+                let offset = Vec3::from(vertex.pos) - GYM_BOARD_SCREEN;
+                assert!(offset.x.abs() < 1e-5);
+                assert!(offset.z.abs() < GYM_BOARD_HALF[0]);
+                assert!(offset.y.abs() < GYM_BOARD_HALF[1]);
+                assert_eq!(vertex.fog, 1.0);
+            }
+        }
+        let camera = crate::camera::FollowCamera::default();
+        let view = camera.view_proj(Vec3::new(54.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2, 1.0);
+        let mut title = Mesh::default();
+        display_text(
+            &mut title,
+            "GYM",
+            GYM_BOARD_SCREEN,
+            Vec3::Z,
+            0.32,
+            Intensity::Full,
+        );
+        let average_x = |vertices: &[crate::mesh::Vertex]| {
+            vertices
+                .iter()
+                .map(|v| {
+                    let clip = view * Vec3::from(v.pos).extend(1.0);
+                    clip.x / clip.w
+                })
+                .sum::<f32>()
+                / vertices.len() as f32
+        };
+        assert!(average_x(&title.faces[..30]) < average_x(&title.faces[title.faces.len() - 24..]));
+        for letter in b"GYM" {
             assert!(!computer_glyph(*letter).is_empty());
         }
     }

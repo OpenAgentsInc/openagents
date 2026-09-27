@@ -1,0 +1,3 @@
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.97s
+     Running `/Users/christopherdavid/work/openagents-mobile45-target/debug/examples/presence_probe 'wss://relay.openagents.com'`

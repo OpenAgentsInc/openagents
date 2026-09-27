@@ -26,14 +26,9 @@ enum WorldConnection {
 
     static func save(_ relay: String?, synthetic: Bool) throws {
         let request = query(synthetic: synthetic)
-        guard let relay else {
-            let status = SecItemDelete(request as CFDictionary)
-            guard status == errSecSuccess || status == errSecItemNotFound else {
-                throw ReaderError.message("Could not forget the saved relay. It may reconnect after reopening Coder.")
-            }
-            return
-        }
-        let data = Data(relay.utf8)
+        // An empty value records an explicit Leave. No item means that Rust
+        // should choose its default on a first launch.
+        let data = Data((relay ?? "").utf8)
         guard data.count <= 2048 else { throw ReaderError.message("The relay URL is too long.") }
         let attributes: [String: Any] = [kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
@@ -42,7 +37,14 @@ enum WorldConnection {
             status = SecItemAdd(request.merging(attributes) { _, new in new } as CFDictionary, nil)
         }
         guard status == errSecSuccess else {
-            throw ReaderError.message("Relay joined for this session, but could not be saved.")
+            throw ReaderError.message("The world connection choice could not be saved.")
+        }
+    }
+
+    static func resetSyntheticPreference() throws {
+        let status = SecItemDelete(query(synthetic: true) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw ReaderError.message("Could not reset the preview world connection.")
         }
     }
 }

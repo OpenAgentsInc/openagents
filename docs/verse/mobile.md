@@ -13,8 +13,9 @@ implementation belongs to the reusable `rust-native` crate.
 The world fills the entire display behind the system clock and home indicator.
 Camera icons sit at the bottom right inside the safe area. The hand/gyroscope
 icon switches touch and motion look; the crosshair recenters the camera. The world has no
-title banner or idle-status labels. It starts offline and requires no chat
-pairing or model account. A computer sits directly ahead of the starting position.
+title banner or idle-status labels. New or unconfigured installs join
+`wss://relay.openagents.com` automatically using their own Verse identity.
+No chat pairing or model account is required. A computer sits directly ahead of the starting position.
 Walk closer and tap the computer's monitor to open its controls. The monitor
 shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
 
@@ -43,7 +44,8 @@ shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
   **All chats** returns to the chat list. Close the panel to
   continue walking.
 - Walk east to the **GYM** building. Enter, approach the boards, and tap
-  **Use Gym board** to inspect Microcoder and Terminal-Bench runs.
+  the physical **GYM** board to inspect Microcoder and Terminal-Bench runs.
+  Its **TAP TO OPEN** prompt is world geometry, with no floating native entry button.
   [Gym setup and controls](gym.md) cover its separate host grant, recorded
   charts, and explicitly confirmed run recipes. Leaving pauses Gym updates.
 - Follow the [pairing guide](../coder/guides/mobile-readonly.md). The computer
@@ -127,8 +129,12 @@ returns to walking.
 
 ## Join another player
 
-The computer controls can join a compatible Nostr world relay. This explicitly
-publishes the phone's Verse profile, presence, positions, and gestures. It uses
+The public plaza is the default world connection. It publishes the phone's
+Verse presence and positions over NIP-MV. The computer controls can change
+the relay or choose **Leave**. A custom relay survives relaunch; an explicit
+**Leave** keeps the app offline until you choose **Join** again. Synthetic
+previews remain offline. A saved-preference read failure also stays offline
+and shows a storage error rather than replacing the choice with the default. It uses
 a separate protected device identity from the encrypted chat reader
 (Keychain on iOS; Keystore-encrypted storage on Android). It
 neither copies desktop account credentials nor reads the computer's chat grant.
@@ -143,7 +149,7 @@ there. Use a reachable secure WebSocket deployment with NIP-MV support and
 appropriate event limits. The existing [local relay helper](README.md#multiplayer)
 serves the desktop world; exposing it to a phone is an operator deployment task.
 
-Mobile publishes moving poses every three seconds, idle poses every ten
+Mobile publishes moving poses every three seconds, idle poses every five
 seconds, and durable movement state every thirty seconds. Those publication
 intervals are independent of display callbacks. This reduces mobile bandwidth
 and relay pressure; other
@@ -154,8 +160,10 @@ admission, authentication, or rate limits.
 Backgrounding pauses rendering, clears held input, and cancels the world
 connection. Returning starts a fresh motion session if a relay was selected.
 Opening the computer stops player movement while keeping the world visible. Cancellation does not prove the relay received an offline state;
-other clients must age out stale presence. Leaving the relay clears the local
-connection choice. A new native mount starts a new local world.
+other clients must age out stale presence. Leaving the relay saves an explicit
+offline choice. Before build 48, iOS deleted the setting when leaving, so a
+legacy missing setting cannot distinguish a past Leave from first use; both
+now use the public default. A new native mount starts a new local world.
 
 ## Shared code and platform boundaries
 

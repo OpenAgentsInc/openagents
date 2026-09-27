@@ -433,6 +433,7 @@ impl WorldRuntime {
             local.extend(&avatar::mesh(&self.player, &self.gait));
             local.extend(&doors::held_mesh(self.doors.held(), &self.player));
             local.extend(&world::computer_display(None));
+            local.extend(&world::gym_display(None));
         }
         !mesh_occludes(&self.world.mesh, origin, direction, distance)
             && !mesh_occludes(&local, origin, direction, distance)
@@ -549,6 +550,7 @@ impl WorldRuntime {
                 distance,
             )
             && !mesh_occludes(&world::computer_display(None), eye, direction, distance)
+            && !mesh_occludes(&world::gym_display(None), eye, direction, distance)
             && !mesh_occludes(entities, eye, direction, distance)
     }
 
@@ -667,7 +669,7 @@ impl WorldRuntime {
         let clip = self.view(aspect).view_proj * world::GYM_BOARD.extend(1.0);
         let mut result = Gym {
             inside,
-            near: inside && distance <= 6.0,
+            near: inside && distance <= world::GYM_BOARD_RANGE,
             visible: false,
             screen_x: 0.5,
             screen_y: 0.5,
@@ -685,21 +687,66 @@ impl WorldRuntime {
         result
     }
 
-    /// Local geometry with a neutral monitor. Services append remote entities.
+    /// Pick the central Gym board's front surface from inside its interaction range.
+    #[must_use]
+    pub fn gym_hit(&self, aspect: f32, x: f32, y: f32) -> bool {
+        self.gym_hit_with_entities(aspect, x, y, &Mesh::default())
+    }
+
+    /// Include remote faces from the last presented frame, without advancing them.
+    /// Opening a board is separate from granting observation or run authority.
+    #[must_use]
+    pub fn gym_hit_with_entities(&self, aspect: f32, x: f32, y: f32, entities: &Mesh) -> bool {
+        if !self.gym(aspect).near {
+            return false;
+        }
+        let view = self.view(aspect);
+        let plane = world::GYM_BOARD_SCREEN;
+        // The central board faces west. Its back never opens the private panel.
+        if view.eye.x >= plane.x {
+            return false;
+        }
+        let Some((eye, direction)) = viewport_ray(&view, aspect, x, y) else {
+            return false;
+        };
+        if direction.x <= f32::EPSILON {
+            return false;
+        }
+        let distance = (plane.x - eye.x) / direction.x;
+        let target = eye + direction * distance;
+        let offset = target - plane;
+        if !target.is_finite()
+            || offset.z.abs() > world::GYM_BOARD_HALF[0]
+            || offset.y.abs() > world::GYM_BOARD_HALF[1]
+        {
+            return false;
+        }
+        let clip = view.view_proj * target.extend(1.0);
+        if !clip.is_finite() || clip.w <= 0.0 || !(0.0..=1.0).contains(&(clip.z / clip.w)) {
+            return false;
+        }
+        !mesh_occludes(&self.world.mesh, eye, direction, distance)
+            && !mesh_occludes(&self.dynamic_mesh(), eye, direction, distance)
+            && !mesh_occludes(entities, eye, direction, distance)
+    }
+
+    /// Local geometry with neutral displays. Services append remote entities.
     #[must_use]
     pub fn dynamic_mesh(&self) -> Mesh {
-        self.mesh_with_computer_display(None)
+        self.dynamic_mesh_with_interactions(false, false)
     }
 
     /// Local geometry with the mobile computer's proximity and tap prompt.
     /// Use only when the host implements picking and opens the computer.
     #[must_use]
     pub fn dynamic_mesh_with_computer_interaction(&self) -> Mesh {
-        let offset = self.player.pos - world::COMPUTER;
-        self.mesh_with_computer_display(Some(offset.x.hypot(offset.z) <= world::COMPUTER_RANGE))
+        self.dynamic_mesh_with_interactions(true, false)
     }
 
-    fn mesh_with_computer_display(&self, interaction: Option<bool>) -> Mesh {
+    /// Advertise only the physical display actions implemented by this host.
+    /// This changes presentation alone, without admitting a tap or any service.
+    #[must_use]
+    pub fn dynamic_mesh_with_interactions(&self, computer: bool, gym: bool) -> Mesh {
         let mut dynamic = if self.is_plaza() {
             avatar::mesh(&self.player, &self.gait)
         } else {
@@ -709,7 +756,11 @@ impl WorldRuntime {
         dynamic.extend(&self.agent.mesh());
         if self.is_plaza() {
             dynamic.extend(&self.doors.mesh(&self.player));
-            dynamic.extend(&world::computer_display(interaction));
+            let offset = self.player.pos - world::COMPUTER;
+            dynamic.extend(&world::computer_display(
+                computer.then_some(offset.x.hypot(offset.z) <= world::COMPUTER_RANGE),
+            ));
+            dynamic.extend(&world::gym_display(gym.then_some(self.gym(1.0).near)));
         }
         dynamic
     }
@@ -1308,6 +1359,135 @@ mod tests {
         let nearby = runtime.dynamic_mesh_with_computer_interaction();
         assert!(nearby.faces.len() > neutral.faces.len());
         assert_ne!(distant.faces.len(), nearby.faces.len());
+    }
+
+    #[test]
+    fn gym_action_prompt_requires_an_interactive_host_and_tracks_proximity() {
+        let mut runtime = WorldRuntime::new();
+        let neutral = runtime.dynamic_mesh();
+        let distant = runtime.dynamic_mesh_with_interactions(false, true);
+        assert!(distant.faces.len() > neutral.faces.len());
+        assert_eq!(
+            neutral.faces,
+            runtime.dynamic_mesh_with_interactions(false, false).faces
+        );
+        runtime
+            .set_spawn(Vec3::new(54.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
+            .unwrap();
+        let nearby = runtime.dynamic_mesh_with_interactions(false, true);
+        assert!(nearby.faces.len() > runtime.dynamic_mesh().faces.len());
+        assert_ne!(distant.faces.len(), nearby.faces.len());
+    }
+
+    #[test]
+    fn gym_picking_tracks_the_physical_front_in_portrait_landscape_and_oblique_views() {
+        let mut runtime = WorldRuntime::new();
+        runtime
+            .set_spawn(Vec3::new(54.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
+            .unwrap();
+        for aspect in [0.46, 2.0 / 3.0, 1.0, 2.2] {
+            for orbit in [-0.35, 0.0, 0.35] {
+                runtime.camera.yaw_offset = orbit;
+                for offset in [
+                    Vec3::ZERO,
+                    Vec3::new(0.0, 1.3, -2.3),
+                    Vec3::new(0.0, 1.3, 2.3),
+                ] {
+                    let [x, y] = projected(&runtime, aspect, world::GYM_BOARD_SCREEN + offset);
+                    let in_viewport = (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y);
+                    assert_eq!(
+                        runtime.gym_hit(aspect, x, y),
+                        in_viewport,
+                        "aspect {aspect}, orbit {orbit}, offset {offset}"
+                    );
+                }
+                // The side plot panels and space above the board are not an
+                // enlarged native button around the central board's anchor.
+                for offset in [Vec3::new(0.0, 0.0, 2.65), Vec3::new(0.0, 1.7, 0.0)] {
+                    let [x, y] = projected(&runtime, aspect, world::GYM_BOARD_SCREEN + offset);
+                    assert!(!runtime.gym_hit(aspect, x, y));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn gym_picking_respects_static_player_and_presented_remote_faces() {
+        let mut runtime = WorldRuntime::new();
+        runtime
+            .set_spawn(Vec3::new(54.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
+            .unwrap();
+        let [x, y] = projected(&runtime, 1.0, world::GYM_BOARD_SCREEN);
+        assert!(runtime.gym_hit(1.0, x, y));
+        let (eye, direction) = viewport_ray(&runtime.view(1.0), 1.0, x, y).unwrap();
+        let distance = (world::GYM_BOARD_SCREEN.x - eye.x) / direction.x;
+        let mut remote = Mesh::default();
+        remote.cube(
+            glam::Mat4::from_translation(eye + direction * (distance - 1.0)),
+            coder_ui::theme::Intensity::Full,
+        );
+        let before = remote.faces.clone();
+        assert!(!runtime.gym_hit_with_entities(1.0, x, y, &remote));
+        assert_eq!(before, remote.faces);
+        runtime.world.mesh.extend(&remote);
+        assert!(!runtime.gym_hit(1.0, x, y));
+        runtime.world = world::build();
+        for vertex in &mut remote.faces {
+            vertex.pos = (Vec3::from(vertex.pos) + direction * 3.0).to_array();
+        }
+        assert!(runtime.gym_hit_with_entities(1.0, x, y, &remote));
+        runtime.camera.pitch = 0.0;
+        let [x, y] = projected(&runtime, 1.0, world::GYM_BOARD_SCREEN - Vec3::Y * 1.2);
+        let (eye, direction) = viewport_ray(&runtime.view(1.0), 1.0, x, y).unwrap();
+        let distance = (world::GYM_BOARD_SCREEN.x - eye.x) / direction.x;
+        assert!(mesh_occludes(
+            &avatar::mesh(&runtime.player, &runtime.gait),
+            eye,
+            direction,
+            distance
+        ));
+        assert!(!runtime.gym_hit(1.0, x, y));
+    }
+
+    #[test]
+    fn gym_picking_refuses_back_faces_distance_outside_invalid_input_and_other_zones() {
+        let mut runtime = WorldRuntime::new();
+        let test = |runtime: &WorldRuntime| {
+            let [x, y] = projected(runtime, 1.0, world::GYM_BOARD_SCREEN);
+            runtime.gym_hit(1.0, x, y)
+        };
+        for position in [
+            Vec3::new(48.0, 0.0, 0.0),
+            Vec3::new(60.0, 0.0, 0.0),
+            Vec3::new(54.0, 0.0, 8.6),
+            Vec3::new(54.0, 4.6, 0.0),
+        ] {
+            runtime
+                .set_spawn(position, std::f32::consts::FRAC_PI_2)
+                .unwrap();
+            assert!(!test(&runtime));
+        }
+        runtime
+            .set_spawn(Vec3::new(54.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
+            .unwrap();
+        assert!(test(&runtime));
+        for (aspect, x, y) in [
+            (0.0, 0.5, 0.5),
+            (-1.0, 0.5, 0.5),
+            (f32::NAN, 0.5, 0.5),
+            (f32::INFINITY, 0.5, 0.5),
+            (1.0, f32::NAN, 0.5),
+            (1.0, 0.5, f32::INFINITY),
+            (1.0, -0.1, 0.5),
+            (1.0, 0.5, 1.1),
+        ] {
+            assert!(!runtime.gym_hit(aspect, x, y));
+        }
+        runtime.camera.yaw_offset = std::f32::consts::PI;
+        assert!(!test(&runtime), "the camera is behind the board");
+        runtime.camera.yaw_offset = 0.0;
+        runtime.zone = crate::zones::ZoneId::Forest;
+        assert!(!test(&runtime));
     }
 
     #[test]

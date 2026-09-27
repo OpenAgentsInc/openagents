@@ -1,0 +1,16 @@
+{
+  "base_commit": "3ebcd1e435bb1654e2657d0a06357b7a5f3e5272",
+  "working_tree": true,
+  "files": {
+    "crates/verse/examples/presence_probe.rs": "c4db3f3edb9e3f4290e0dd10ea060f0544505019f971074c72405dfd782cb0ed",
+    "crates/verse/src/session.rs": "d6187201074b311a91949fb7c2450cc11b8b0e5415d462adf17fdc25849c0202",
+    "crates/verse/src/net.rs": "aacd044afe03320b557bdd583d91ee47148f00119276a71578137deec0aab0d7",
+    "crates/verse/src/crowd.rs": "7bfae89cdc5f9e7248822e4e6cf1d8be0567165a2186fe8cc46e08ea490b4f28",
+    "crates/verse/src/mv.rs": "5eee6552401d0feb7bf5bec225c5cb674c5e244ecd36df65d4847fe746a52aef"
+  },
+  "evidence": {
+    "two-peers-idle10.json": "6dc0851ced7de783928f6461061a18303cbf586555f039d917aff005fea8f91f",
+    "public-relay-nip11.json": "e3560dfa4ef6315edb9c597a746f561b1dfb6221946e01d140debb2a2b6f1e4d",
+    "two-peers.json": "d9f65a2650be8916de91c4eeec25571364eb888eebb0922ad5de05519b6de7f1"
+  }
+}

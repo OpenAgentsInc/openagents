@@ -30,7 +30,13 @@ the Gym does not run a model, start training, or launch a benchmark.
 
 ## Open the boards
 
-On iOS, approach the bulletin boards and tap **Use Gym board**. The connection
+On iOS, approach the central bulletin board and tap its physical **GYM** display.
+The **TAP TO OPEN** lettering is GPU-rendered on the board and follows the
+camera perspective. Rust accepts the tap only from inside the Gym, within
+reach, with an unobstructed view of the board front. A drag or cancelled touch
+does not open it. VoiceOver offers the same action without drawing a native
+entry button. The detailed run and connection panel still uses native controls.
+The connection
 panel displays the phone's Verse public key. Configure a Gym host for that key
 using the [host setup commands](../../crates/gym-bridge/README.md), then paste
 its `gym-connect:` code. The validated connection stays in device-only

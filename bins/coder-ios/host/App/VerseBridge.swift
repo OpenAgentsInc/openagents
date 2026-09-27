@@ -8,6 +8,10 @@ struct VersePacket: Decodable {
     let schema: String
     let status: String
     let connection: VerseConnection
+    let world_public_key: String
+    let remote_entities: UInt64
+    let live_remote_entities: UInt64
+    let presented_remote_vertices: UInt64
     let error: String?
     let frames_presented: UInt64
     let position: [Double]
@@ -128,6 +132,7 @@ final class VerseBridge: ObservableObject {
     private var latestDoorDocument: String?
     private(set) var doorStorageWrites: UInt64 = 0
     @Published private(set) var worldStorageError: String?
+    private(set) var initialWorldPreference = "unconfigured"
     @Published private(set) var gymStorageError: String?
     @Published private(set) var motionError: String?
     let motionAvailable: Bool
@@ -236,9 +241,24 @@ final class VerseBridge: ObservableObject {
 
     func reportMotionFailure(_ error: Error) { motionError = error.localizedDescription }
 
-    func storedWorldRelay() -> String? {
-        do { return try WorldConnection.load(synthetic: synthetic) }
-        catch { worldStorageError = error.localizedDescription; return nil }
+    func storedWorldConfiguration() -> [String: Any] {
+        do {
+            if synthetic && ProcessInfo.processInfo.arguments.contains("--reset-world-preference") {
+                try WorldConnection.resetSyntheticPreference()
+            }
+            let saved = try WorldConnection.load(synthetic: synthetic)
+            if worldStorageError != nil { worldStorageError = nil }
+            guard let relay = saved else {
+                initialWorldPreference = "unconfigured"
+                return [:]
+            }
+            initialWorldPreference = relay.isEmpty ? "offline" : "relay"
+            return relay.isEmpty ? ["world_offline": true] : ["world_relay": relay]
+        } catch {
+            initialWorldPreference = "unavailable"
+            worldStorageError = error.localizedDescription
+            return ["world_offline": true]
+        }
     }
 
     func storedGymCode() -> String? {
@@ -297,6 +317,7 @@ final class VerseBridge: ObservableObject {
         }
         let packet = try JSONDecoder().decode(VersePacket.self, from: Data(bytes: data, count: result.len))
         guard packet.schema == "coder.verse.v1",
+              packet.world_public_key.utf8.count <= 64,
               ["offline", "paused", "connecting", "connected", "retrying", "preview", "local_zone"].contains(packet.connection.state),
               (packet.connection.relay?.utf8.count ?? 0) <= 2048,
               packet.position.count == 3, packet.position.allSatisfy(\.isFinite),

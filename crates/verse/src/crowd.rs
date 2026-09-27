@@ -98,6 +98,15 @@ impl Crowd {
         self.entities.len()
     }
 
+    /// Entities with a recent pose frame, excluding retained offline states.
+    #[must_use]
+    pub fn live_len(&self, now: Instant) -> usize {
+        self.entities
+            .values()
+            .filter(|remote| remote.at(now).is_some_and(|(_, _, online)| online))
+            .count()
+    }
+
     /// True when nothing is tracked.
     #[must_use]
     pub fn is_empty(&self) -> bool {
@@ -332,6 +341,13 @@ mod tests {
         assert_eq!(shown.len(), 1);
         assert!((shown[0].pos.x - 5.0).abs() < 0.01, "{}", shown[0].pos.x);
         assert!(shown[0].online);
+        assert_eq!(crowd.live_len(t0 + Duration::from_millis(200)), 1);
+        assert_eq!(crowd.live_len(t0 + STALE + Duration::from_secs(1)), 0);
+        assert_eq!(
+            crowd.len(),
+            1,
+            "Stale geometry is retained but not counted as live"
+        );
     }
 
     #[test]

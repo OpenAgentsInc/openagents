@@ -1,0 +1,45 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "modelName": "iPhone 17 Pro",
+        "osBuildNumber": "23F77",
+        "osVersion": "26.5",
+        "platform": "iOS Simulator"
+      },
+      "expectedFailures": 0,
+      "failedTests": 1,
+      "passedTests": 3,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "Coder \u00b7 Built with macOS 26.4",
+  "expectedFailures": 0,
+  "failedTests": 1,
+  "finishTime": 1790488386.901,
+  "passedTests": 3,
+  "result": "Failed",
+  "skippedTests": 0,
+  "startTime": 1790488286.761,
+  "statistics": [],
+  "testFailures": [
+    {
+      "failureText": "XCTAssertEqual failed: (\"Optional(\"wss://world.example.testcom\")\") is not equal to (\"Optional(\"wss://world.example.test\")\")",
+      "targetName": "CoderUITests",
+      "testIdentifier": 4,
+      "testIdentifierString": "WorldConnectionUITests/testAbsentChoiceCustomRelayAndExplicitOfflineSurviveRelaunch()",
+      "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/WorldConnectionUITests/testAbsentChoiceCustomRelayAndExplicitOfflineSurviveRelaunch",
+      "testName": "testAbsentChoiceCustomRelayAndExplicitOfflineSurviveRelaunch()"
+    }
+  ],
+  "title": "Test - Coder",
+  "topInsights": [],
+  "totalTestCount": 4
+}
