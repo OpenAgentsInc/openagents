@@ -49,20 +49,18 @@ design as a Designed profile for durable identity, bounded initiative,
 custody, guardians, and market participation. It composes the current NIPs;
 custody, sovereign lifecycle, and treasury adapters remain to be built.
 
-Coder iOS **0.5.0 (49)** is available in internal TestFlight. The
-[Ruins](docs/verse/zones.md) now runs the original Wizard Woods
-real-time combat and player controller. Zombies pursue continuously, wizards
-cast, and the bottom GPU hotbar activates Firebolt, Magic Missile, and Fireball
-with the original mana, cooldowns, projectiles, and damage. The turn-based demo
-is removed. Use **Map → Ruins portal** to enter and **Plaza** to return.
-
-The [release receipt](bins/coder-ios/verification/2026-09-27-atlantis-realtime-build49/testflight-build49.json)
-confirms `VALID` and `IN_BETA_TESTING`. The
-[simulator recording and acceptance](bins/coder-ios/verification/2026-09-27-atlantis-realtime-build49/native-verification.md)
-show autonomous combat, Fireball launch/flight/burst while moving, cooldowns,
-and return. The [source audit](docs/verse/ruins-source-parity.md) identifies
-retained code, scene data, host adaptations, and inherited limits. Physical-device
-acceptance is separate.
+Coder iOS **0.5.0 (50)** is available in internal TestFlight. The plaza has
+two zone portals. **Ruins** (formerly the Atlantis forest) runs the original
+real-time Wizard Woods combat with the Firebolt, Magic Missile, and Fireball
+hotbar. **[Lagrange 1](docs/verse/lagrange-1.md)** is a construction station
+orbiting the Sun–Earth L1 point, with restricted three-body orbital mechanics,
+station-keeping, true-size Sun, Earth, and Moon, and a rocket-equation
+maneuvering pack: grab parts at the depot and latch them into a keel jig. Use
+**Map → Ruins portal** or **L1 portal** to enter and **Plaza** to return.
+[Build and register new zones](docs/verse/zones.md#build-and-register-a-new-zone).
+The [build 50 record](bins/coder-ios/verification/2026-09-27-ruins-lagrange-build50/README.md)
+has the release receipt and simulator evidence. Physical-device acceptance is
+separate.
 
 New or unconfigured installs still join `wss://relay.openagents.com`
 automatically for shared plaza presence. Custom relays and an explicit **Leave**
@@ -70,8 +68,8 @@ choice persist. Tap the physical **GYM** board to open its world-rendered entry;
 detailed Gym records require a separate host grant. The
 [build 48 connection and Gym evidence](bins/coder-ios/verification/2026-09-27-world-gym-build48/native-verification.md)
 and [signed relay receipts](bins/coder-ios/verification/2026-09-27-relay-presence/README.md)
-remain available. Shared Ruins combat, creator publishing, and the future L1
-construction/physics zone remain roadmap work.
+remain available. Shared zone state, saved L1 assemblies, and creator publishing remain roadmap
+work.
 
 Computer setup uses `./pair` or installed `coder pair`. Chats load after
 pairing, the world relay choice persists, and movement combines with looking

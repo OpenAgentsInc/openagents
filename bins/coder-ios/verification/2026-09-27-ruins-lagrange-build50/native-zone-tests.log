@@ -1,0 +1,3 @@
+Test Case '-[CoderUITests.ZoneUITests testLagrangePortalEntersStationFliesAndReturns]' passed (22.165 seconds).
+Test Case '-[CoderUITests.ZoneUITests testPortalLoadsRealtimeRuinsAndHotbarThenReturnsToPlaza]' passed (24.542 seconds).
+Test Case '-[CoderUITests.ZoneUITests testRulesAndArtworkNoticesShipWithoutLoadingRuins]' passed (14.373 seconds).

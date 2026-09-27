@@ -1,0 +1,12 @@
+{
+  "build_id": "d2ba2e44-8060-42aa-a575-dacfc5081df4",
+  "build": "50",
+  "version": "0.5.0",
+  "processing_state": "VALID",
+  "uploaded_date": "2026-09-27T07:01:55-07:00",
+  "expired": false,
+  "nonexempt_encryption": false,
+  "internal_build_state": "IN_BETA_TESTING",
+  "source_commit": "c7451dfd71763f8dde65903b3102acd1a9cad2ae",
+  "source_status_clean": true
+}
