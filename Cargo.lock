@@ -4836,6 +4836,7 @@ dependencies = [
  "microcoder",
  "nostr",
  "openagents-wallet",
+ "openagents-x402",
  "reqwest",
  "secp256k1 0.31.1",
  "serde",
@@ -4855,6 +4856,19 @@ dependencies = [
  "nostr",
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "openagents-x402"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "hex",
+ "nostr",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.20",
 ]
 

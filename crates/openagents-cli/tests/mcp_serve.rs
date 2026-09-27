@@ -105,3 +105,58 @@ fn wallet_refuses_offline_use_with_json() {
     assert_eq!(bad_hash.status.code(), Some(64), "{bad_hash:?}");
     let _ = std::fs::remove_dir_all(&home);
 }
+
+#[test]
+fn x402_refuses_bad_arguments_with_json() {
+    let home = std::env::temp_dir().join(format!("openagents-x402-cli-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let run = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
+            .env("OPENAGENTS_WALLET_HOME", home.join("wallet"))
+            .env("OPENAGENTS_X402_HOME", home.join("x402"))
+            .arg("--json")
+            .arg("x402")
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let no_command = run(&[
+        "serve",
+        "--url",
+        "https://example.com/run",
+        "--msat",
+        "1000",
+    ]);
+    assert_eq!(no_command.status.code(), Some(64));
+
+    let bad_url = run(&[
+        "serve",
+        "--url",
+        "example.com/run",
+        "--msat",
+        "1000",
+        "--",
+        "cat",
+    ]);
+    assert_eq!(bad_url.status.code(), Some(64), "{bad_url:?}");
+
+    let no_wallet = run(&[
+        "serve",
+        "--url",
+        "https://example.com/run",
+        "--msat",
+        "1000",
+        "--",
+        "cat",
+    ]);
+    assert_eq!(no_wallet.status.code(), Some(1), "{no_wallet:?}");
+    let doc: serde_json::Value = serde_json::from_slice(&no_wallet.stdout).unwrap();
+    assert!(
+        doc["error"].as_str().unwrap().contains("wallet init"),
+        "{doc}"
+    );
+
+    let no_max = run(&["fetch", "https://example.com/run"]);
+    assert_eq!(no_max.status.code(), Some(64));
+    let _ = std::fs::remove_dir_all(&home);
+}
