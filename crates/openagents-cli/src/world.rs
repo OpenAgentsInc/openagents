@@ -31,8 +31,20 @@ const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
                             Perform a gesture (for example greet or look-around).
   name NAME                 Publish a kind 0 profile with this display name.
   leave                     Mark this identity's avatar offline.
+  control ENTITY move X,Y,Z [--yaw DEGREES] [--role ROLE] [--name NAME]
+  control ENTITY gesture NAME [--to PUBKEY,ENTITY] [--at X,Y,Z]
+  control ENTITY leave      Drive another entity this identity publishes (for
+                            example an agent it spawned): the same events as
+                            move, gesture, and leave, under that entity id.
+  quests                    Every quest on the XP relay, trusted referees first.
+  xp [--pubkey KEY]...      The XP ledger and level for this identity's keys,
+                            or for the keys given.
+  board                     What the plaza's quest board shows: counts,
+                            standings, this identity's level, and the quests.
 Options for every command: --as PROFILE (key), --relay URL, --world ID
-(default verse-plaza), --entity ID (default avatar).";
+(default verse-plaza), --entity ID (default avatar). Quest commands also take
+--xp-relay URL (default VERSE_XP_RELAY, then the world relay) and
+--referee KEY to trust another referee for this reading.";
 
 /// Every entity the world knows about, by publisher and entity id.
 #[derive(Default)]
@@ -135,6 +147,8 @@ pub struct Context {
     pub identity: verse::identity::Identity,
     pub world: String,
     pub entity: String,
+    /// The role the entity's state and frames carry, `avatar` by default.
+    pub role: String,
 }
 
 impl Context {
@@ -157,6 +171,7 @@ impl Context {
             identity,
             world,
             entity,
+            role: "avatar".to_owned(),
         })
     }
 
@@ -226,7 +241,7 @@ impl Context {
         let state = State {
             v: 1,
             id: self.entity.clone(),
-            role: "avatar".into(),
+            role: self.role.clone(),
             p: pos.to_array(),
             q: rot.to_array(),
             t: millis,
@@ -241,7 +256,7 @@ impl Context {
                 s: verse::identity::random_hex(4),
                 n: 1,
                 t: millis,
-                e: vec![EntityPose::new(&self.entity, "avatar", pos, rot)],
+                e: vec![EntityPose::new(&self.entity, &self.role, pos, rot)],
             };
             self.client.send(mv::frame_event(
                 &self.identity.signer,
@@ -270,6 +285,18 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         Ok(seconds) => seconds,
         Err(message) => return output.usage("verse", &message, USAGE),
     };
+    let quest = match command.as_str() {
+        "quests" => Some(crate::quest::quests(output, &args)),
+        "xp" => Some(crate::quest::xp(output, &args)),
+        "board" => Some(crate::quest::board(output, &args)),
+        _ => None,
+    };
+    if let Some(result) = quest {
+        return match result {
+            Ok(code) => code,
+            Err(message) => output.fail("verse", &message),
+        };
+    }
     let mut context = match Context::open(&args) {
         Ok(context) => context,
         Err(message) => return output.fail("verse", &message),
@@ -285,6 +312,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "gesture" => gesture(output, &mut context, &args),
         "name" => name(output, &mut context, &args),
         "leave" => leave(output, &mut context),
+        "control" => control(output, &mut context, &args),
         other => return output.usage("verse", &format!("unknown command `{other}`"), USAGE),
     };
     context.client.close();
@@ -579,6 +607,43 @@ fn me(output: &Output, context: &mut Context) -> Result<u8, String> {
     Ok(0)
 }
 
+/// `control ENTITY ACTION ...`: the move, gesture, and leave commands under
+/// another entity id this identity publishes. NIP-MV entities belong to
+/// the key that signs them, so this drives only what `--as` already owns.
+fn control(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
+    let positional = args.positional();
+    let (Some(entity), Some(action)) = (positional.first(), positional.get(1)) else {
+        return Err("ENTITY and an action (move, gesture, or leave) are required".into());
+    };
+    if entity.is_empty()
+        || entity.len() > 64
+        || !entity
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Err("ENTITY is 1 to 64 characters of a-z, A-Z, 0-9, -, or _".into());
+    }
+    if entity == "avatar" {
+        return Err("ENTITY is another entity; use move, gesture, and leave for the avatar".into());
+    }
+    context.entity = entity.clone();
+    if let Some(role) = args.option("role") {
+        if role.is_empty() || role.len() > 32 {
+            return Err("--role is 1 to 32 bytes".into());
+        }
+        context.role = role.to_owned();
+    } else {
+        context.role = "agent".to_owned();
+    }
+    let rest = Args::from_positional(&positional[2..], args);
+    match action.as_str() {
+        "move" | "go" => move_to(output, context, &rest),
+        "gesture" => gesture(output, context, &rest),
+        "leave" => leave(output, context),
+        other => Err(format!("unknown control action `{other}`")),
+    }
+}
+
 fn move_to(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
     let Some(target) = args.positional().first() else {
         return Err("a target X,Y,Z is required".into());
@@ -596,6 +661,8 @@ fn move_to(output: &Output, context: &mut Context, args: &Args) -> Result<u8, St
     output.emit(
         &json!({
             "pubkey": context.pubkey(),
+            "entity": context.entity,
+            "role": context.role,
             "pos": pos.to_array(),
             "yaw": yaw,
             "accepted": published.accepted,

@@ -14,12 +14,16 @@ use std::path::Path;
 use std::process::ExitCode;
 
 mod args;
+mod catalog;
 mod computer;
+mod discover;
 mod hosts;
 mod key;
 mod out;
+mod quest;
 mod reach;
 mod relay;
+mod session;
 mod sov;
 mod study;
 mod terminal;
@@ -37,18 +41,26 @@ Pairing and computers (NIP-HOST, NIP-REACH):
   computer     Enroll with hosts, list them, run commands, order and steer work.
   study        Launch and read Microcoder study runs on a host.
   reach        Owner directory, host presence, and route probes.
+  session      Observe a paired computer's chats (NIP-SESS): pair, list, read, tail.
 
 Coder:
   task         Durable local task requests and explicit execution.
 
 Verse (NIP-MV):
-  verse        See who is around, listen, speak, move, and gesture.
+  verse        See who is around, listen, speak, move, gesture, drive owned
+               entities, and read quests, XP, and the board.
   zone         Drive the Lagrange 1 construction zone.
   sov          Sovereign agents under NIP-SOV: profile, spawn, status.
 
 Keys and relays:
   key          Show or create Nostr identities.
   relay        Query, publish to, and follow a relay.
+
+Discovery (NIP-CAP, NIP-PRG, NIP-EXT), read-only:
+  cap          List and describe published capability heads.
+  prg          List and describe published program heads.
+  ext          List published extension records.
+  discover     Show the well-known agent card and agent-skills index.
 
   doctor       Show the identities, stores, and relays this command uses.
   version      Show the repository, commit, and tree state.
@@ -85,10 +97,15 @@ fn main() -> ExitCode {
         "verse" => world::run(&output, &rest),
         "zone" => zone::run(&output, &rest),
         "study" => study::run(&output, &rest),
+        "session" | "sessions" => session::run(&output, &rest),
         "sov" => sov::run(&output, &rest),
         "key" => key::run(&output, &rest),
         "reach" => reach::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
+        "cap" => catalog::cap(&output, &rest),
+        "prg" => catalog::prg(&output, &rest),
+        "ext" => catalog::ext(&output, &rest),
+        "discover" => discover::run(&output, &rest),
         other => {
             eprintln!("openagents: unknown command `{other}`\n\n{USAGE}");
             EXIT_USAGE
