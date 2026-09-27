@@ -32,26 +32,62 @@ final class OwnerKeyUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         XCTAssertFalse(app.textFields["computers-input"].exists)
         reveal(field)
+        let canvas = app.otherElements["verse-surface"].frame
         field.tap()
         field.typeText(otherKey)
+        assertKeyboardKeepsWorldBounds(canvas)
         XCTAssertNotEqual(field.value as? String, otherKey, "The typed key is masked.")
         attachScreenshot("Owner key masked")
-        tap("computers-submit")
-        XCTAssertTrue(app.staticTexts["notice"].waitForLabel(containing: "isn't the owner key", timeout: 10))
+        submitFromKeyboard()
+        showNotice(containing: "isn't the owner key")
         XCTAssertFalse(anyText(containing: otherKey), "A refused key is never echoed.")
 
+        let importKey = app.buttons["directory-owner-key"]
+        reveal(importKey)
+        XCTAssertTrue(importKey.isEnabled, "A refused key does not authorize the owner directory.")
         let again = app.secureTextFields["computers-input"]
-        XCTAssertTrue(again.waitForExistence(timeout: 10))
         reveal(again)
+        XCTAssertTrue(again.waitForExistence(timeout: 10))
+        let empty = again.value as? String
+        XCTAssertTrue(empty == "" || empty == again.placeholderValue, "Submission clears the key draft.")
         again.tap()
         again.typeText(ownerKey)
-        tap("computers-submit")
-        XCTAssertTrue(app.staticTexts["notice"].waitForLabel(containing: "now holds your owner key", timeout: 10))
-        XCTAssertTrue(app.staticTexts["directory-status"].waitForLabel(containing: "Your directory is empty", timeout: 10))
+        assertKeyboardKeepsWorldBounds(canvas)
+        submitFromKeyboard()
+        showNotice(containing: "now holds your owner key")
+        let directory = app.staticTexts["directory-status"]
+        reveal(directory)
+        XCTAssertTrue(directory.waitForLabel(containing: "Your directory is empty", timeout: 10))
         XCTAssertFalse(app.buttons["directory-owner-key"].exists)
         XCTAssertFalse(app.secureTextFields["computers-input"].exists)
         XCTAssertFalse(anyText(containing: ownerKey), "The accepted key is never echoed.")
         attachScreenshot("Owner key accepted")
+    }
+
+    private func assertKeyboardKeepsWorldBounds(_ expected: CGRect) {
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["verse-error"].exists)
+        let actual = app.otherElements["verse-surface"].frame
+        XCTAssertEqual(actual.minX, expected.minX, accuracy: 0.5)
+        XCTAssertEqual(actual.minY, expected.minY, accuracy: 0.5)
+        XCTAssertEqual(actual.width, expected.width, accuracy: 0.5)
+        XCTAssertEqual(actual.height, expected.height, accuracy: 0.5)
+    }
+
+    private func submitFromKeyboard() {
+        let done = app.keyboards.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                                  object: app.keyboards.firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
+    }
+
+    private func showNotice(containing message: String) {
+        let notice = app.staticTexts["notice"]
+        for _ in 0..<12 where !notice.isHittable { app.scrollViews.firstMatch.swipeDown() }
+        XCTAssertTrue(notice.waitForLabel(containing: message, timeout: 10))
+        XCTAssertTrue(notice.isHittable, "The result is visible in the Computers view.")
     }
 
     private func anyText(containing value: String) -> Bool {

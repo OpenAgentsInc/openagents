@@ -6,9 +6,14 @@ import SwiftUI
 struct SecretInputField: View {
     let label: String
     @Binding var value: String
+    var submit: () -> Void = {}
+    @FocusState private var focused: Bool
 
     var body: some View {
         SecureField(label, text: $value)
+            .focused($focused)
+            .submitLabel(.done)
+            .onSubmit { focused = false; submit() }
             .autocorrectionDisabled().textInputAutocapitalization(.never)
             .privacySensitive()
             .accessibilityLabel(label).accessibilityIdentifier("computers-input")

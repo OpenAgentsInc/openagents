@@ -220,8 +220,10 @@ struct ComputerPanel: View {
                 }
             }
             if input.secret {
-                SecretInputField(label: input.label, value: $computersValue)
-                    .textContentType(nil)
+                SecretInputField(label: input.label, value: $computersValue) {
+                    if !reader.busy { submitComputers(input, computersValue) }
+                }
+                .textContentType(nil)
             } else {
                 TextField(input.label, text: $computersValue, axis: .vertical)
                     .lineLimit(1...4)
@@ -245,6 +247,7 @@ struct ComputerPanel: View {
     }
 
     private func submitComputers(_ input: ComputersInput, _ value: String) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         computersValue = ""; computersScanning = false
         guard value.utf8.count <= input.max_bytes else {
             inputError = "That's too long. Copy it again."

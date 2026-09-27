@@ -8,17 +8,14 @@ struct VerseSurface: UIViewRepresentable {
     let bridge: VerseBridge
     let active: Bool
     let label: String
-    let safeInsets: EdgeInsets
 
     func makeUIView(context: Context) -> VerseMetalView {
         let view = VerseMetalView(bridge: bridge)
         view.accessibilityLabel = label
-        view.setHudInsets(safeInsets)
         return view
     }
 
     func updateUIView(_ uiView: VerseMetalView, context: Context) {
-        uiView.setHudInsets(safeInsets)
         uiView.setActive(active)
     }
 
@@ -83,9 +80,15 @@ final class VerseMetalView: UIView {
         layoutSurface()
     }
 
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        updateHudInsets()
+    }
+
     private func layoutSurface() {
         guard window != nil, bounds.width > 0, bounds.height > 0,
               let metal = layer as? CAMetalLayer else { return }
+        updateHudInsets()
         let scale = max(1, traitCollection.displayScale)
         let width = UInt32(min(4096, max(1, (bounds.width * scale).rounded())))
         let height = UInt32(min(4096, max(1, (bounds.height * scale).rounded())))
@@ -133,7 +136,12 @@ final class VerseMetalView: UIView {
         }
     }
 
-    func setHudInsets(_ insets: EdgeInsets) {
+    private func updateHudInsets() {
+        guard let windowInsets = window?.safeAreaInsets else { return }
+        // The full-bleed world reserves physical display edges only. SwiftUI's
+        // keyboard avoidance belongs to the native panel, not the Rust HUD.
+        let insets = EdgeInsets(top: windowInsets.top, leading: windowInsets.left,
+                                bottom: windowInsets.bottom, trailing: windowInsets.right)
         guard insets.top.isFinite, insets.trailing.isFinite, insets.bottom.isFinite, insets.leading.isFinite,
               insets.top >= 0, insets.trailing >= 0, insets.bottom >= 0, insets.leading >= 0 else { return }
         guard hudInsets != insets else { return }

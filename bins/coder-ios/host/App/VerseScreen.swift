@@ -23,8 +23,9 @@ struct VerseScreen: View {
 
     var body: some View {
         GeometryReader { safeGeometry in
-            // Capture the window's safe areas before extending the actual Metal
-            // surface. World projection coordinates use the full canvas size.
+            // Native panels avoid the keyboard and physical display edges.
+            // The Metal view reads its own window insets for the world HUD.
+            // World projection coordinates still use the full canvas size.
             let safe = safeGeometry.safeAreaInsets
             GeometryReader { geometry in
                 canvas(size: geometry.size, safe: safe)
@@ -39,7 +40,7 @@ struct VerseScreen: View {
             if let packet = bridge.packet, let view = packet.view {
                 NativeRenderer(node: view.root, revision: view.revision,
                                followTarget: nil, followChanged: nil, surface: { resource, label in
-                                   mount(resource: resource, label: label, safe: safe)
+                                   mount(resource: resource, label: label)
                                }) { _ in }
                     .frame(width: size.width, height: size.height)
             }
@@ -181,11 +182,11 @@ struct VerseScreen: View {
                       height: max(80, size.height - top - safe.bottom - 16))
     }
 
-    private func mount(resource: String, label: String, safe: EdgeInsets) -> AnyView {
+    private func mount(resource: String, label: String) -> AnyView {
         guard resource == "verse.world" else {
             return AnyView(Text("This world surface is unavailable."))
         }
-        return AnyView(VerseSurface(bridge: bridge, active: active, label: label, safeInsets: safe)
+        return AnyView(VerseSurface(bridge: bridge, active: active, label: label)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(!panelOpen))
     }

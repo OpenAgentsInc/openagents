@@ -133,7 +133,7 @@ skipped because its separate fixture was absent, and two assertions failed.
 One expected the mobile SSH control intentionally removed from the Phone
 projection. The other began a movement swipe inside the new gate item strip.
 Both tests now check the current UI without changing production input routing;
-the focused retest remains pending. Normal startup, background/relaunch,
+all six focused retests pass. Normal startup, background/relaunch,
 chats, identity, world-relay persistence, pinch, companion tapping, gate
 choices, and per-gate persistence passed in that combined run.
 
@@ -150,3 +150,19 @@ validation and the existing owner-grant authority check.
 
 Gate-storage errors also stay in the gate UI; they no longer appear as world
 relay errors in Computer settings.
+
+### Keyboard and world safe areas
+
+The incoming owner-key acceptance test exposed a keyboard integration problem:
+SwiftUI's keyboard-aware bottom inset was also sent to the map HUD, exceeding
+its intentional physical-inset bound. The Metal host now reads physical
+`UIWindow.safeAreaInsets` for the Rust HUD. Native panels keep their separate
+keyboard-aware layout. Rust validation stays unchanged.
+
+The form also gains explicit keyboard focus and Done submission. The incoming
+test's button tap did not consume the draft, and its subsequent refusal lookup
+was above the scrolled form. The revised native check submits through the real
+keyboard, scrolls to the notice, and retains both wrong-owner refusal and
+correct-owner acceptance assertions. It also checks that showing the keyboard
+leaves the full canvas intact without a world error. All six final native checks pass, including this keyboard regression, both map
+checks, masking/cancellation, fullscreen layout, and normal launch/resume/relaunch.

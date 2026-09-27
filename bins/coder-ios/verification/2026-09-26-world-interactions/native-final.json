@@ -1,0 +1,42 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName" : "Coder Launch 45",
+        "modelName" : "iPhone 17 Pro",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 0,
+      "passedTests" : 6,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Coder · Built with macOS 26.4",
+  "expectedFailures" : 0,
+  "failedTests" : 0,
+  "finishTime" : 1790483944.043,
+  "passedTests" : 6,
+  "result" : "Passed",
+  "skippedTests" : 0,
+  "startTime" : 1790483805.541,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+
+  ],
+  "title" : "Test - Coder",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 6
+}

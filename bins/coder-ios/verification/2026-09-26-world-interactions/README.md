@@ -2,8 +2,7 @@
 
 The confirmed internal TestFlight release remains **0.5.0 (45)**. Source for
 build 46 adds the ordered map, companion, and reactive-gate changes in
-issues #9720, #9721, and #9722. Combined native acceptance and distribution are
-pending. See [design and controls](../../../../docs/verse/world-interactions.md)
+issues #9720, #9721, and #9722. Native acceptance is complete; distribution is pending. See [design and controls](../../../../docs/verse/world-interactions.md)
 and the separate [connection corrections](../../../../docs/coder/verification/2026-09-26-mobile-connections.md).
 
 ## Current Rust and adapter checks
@@ -14,13 +13,13 @@ companion consumers. Earlier checkpoint logs remain alongside them.
 | Check | Result | Retained evidence |
 | --- | --- | --- |
 | Shared Verse library without desktop features | 159 passed | [Final shared suite](doors-verse-tests-final.log) |
-| Mobile library after the visible-edge correction | 60 passed, 1 manual host fixture ignored | [Final mobile suite](doors-final-mobile-tests.log) |
+| Mobile library after the final main merge | 61 passed, 1 manual host fixture ignored | [Final mobile suite](final-main-mobile-tests.log) |
 | Verse and mobile all-target Clippy with warnings denied | Passed | [Final Clippy](doors-final-clippy.log) |
 | Desktop-enabled door domain, HUD, and private preference-store tests | 9 passed | [Desktop door tests](doors-desktop-tests.log) |
 | Desktop pointer admission with an occluded anchor and visible gate edge | 1 passed | [Desktop visible-edge regression](doors-desktop-visible-edge-test.log) |
 | Mobile pointer admission with an occluded anchor and visible gate edge | 1 passed | [Mobile visible-edge regression](doors-mobile-edge-tap.log) |
 | Route failure remains visible until the next explicit action | 1 passed | [Route-error regression](doors-route-error-test.log) |
-| Android application, instrumentation sources, and JVM task | Build successful; unchanged JVM task reused | [Android door compilation](../2026-09-26-mobile-connections/android-doors-compile.log) |
+| Android application and instrumentation compilation; native pinch tests | Compilation passed; 2 JVM tests passed | [Final Android checks](../2026-09-26-mobile-connections/android-final-compile-and-pinch.log) |
 
 The ignored mobile test, `computers_live_tests::serve_a_host_for_a_device_run`,
 is an explicit host fixture for a simulator or device session. It is not an
@@ -33,22 +32,39 @@ door checks cover item compatibility, independent remembered keys, reset,
 versioned persistence, bounded effects, picking, and pointer cancellation.
 A remembered item does not resume navigation after relaunch.
 
-## Native checkpoints and pending combined acceptance
+## Native checkpoints
 
 At the map and companion checkpoint, [four combined native tests passed](map-companion-pinch-native.log):
 map destination selection and manual cancellation, map drag isolation, a real
 companion tap, and pinch in both directions. That checkpoint preceded the door
 integration; it is not final build-46 acceptance.
 
-The final combined simulator build succeeded. Its native suite is still under
-review. The map manual-cancellation test reached its destination-selection and
-walking assertions, but its old drag-start coordinate overlapped the new gate
-item strip while passing Halo. The strip correctly owns a contact that starts
-inside it. The test now starts below the strip at normalized `(0.15, 0.88)` and
-asserts that this point is outside the visible HUD before dragging. Its route
-and movement assertions remain intact. A retest is required before declaring
-the combined suite passed. Door acceptance, archive, upload, and processing receipts
-must be added here as they become available.
+The [initial combined run](native-integration-initial.log) ran 21 tests:
+18 passed, one live-host fixture skipped, and two assertions failed. The
+[focused retest](native-integration-retest.log) passes all six tests: Computers
+status/invitation flow, masked owner-key cancellation, gate choices and restart
+persistence, map dragging, walking/manual cancellation, and world-relay
+persistence/Leave. The [machine-readable summary](native-integration-retest.json)
+retains the counts and simulator identity.
+
+The two initial failures were stale UI assumptions. Computers no longer shows
+a mobile SSH control. The map cancellation gesture started inside the new
+gate item strip while passing Halo. The corrected test starts below it at
+normalized `(0.15, 0.88)` and asserts that this point is outside the visible HUD.
+Its destination, movement, and cancellation assertions remain intact.
+
+The final merge preserves another contributor's optional push registration
+and shared secret-field component. Push remains unconfigured for this release.
+The first [merged-app pass](native-main-merge-initial.log) passed masking/cancel
+and normal startup but exposed a keyboard/form integration failure. The final
+[six-test pass](native-final.log), with its [summary](native-final.json), passes
+wrong-key refusal and correct-key acceptance, masking/cancel, full-bleed layout,
+both map checks, and normal launch/resume/relaunch. Physical HUD safe areas now
+come from the window; keyboard insets belong only to the native panel.
+
+An additional [normal-launch check](normal-launch.json) starts the optimized
+app without synthetic arguments while external Rust dylibs are temporarily
+unavailable. It remains alive after ten seconds. [Startup screenshot](normal-launch.png).
 
 ## Retained failures and corrections
 
@@ -63,9 +79,9 @@ must be added here as they become available.
   added to the static world mesh, violating its renderer contract. The titles
   moved into bounded, depth-tested dynamic geometry. The
   [corrected shared suite](doors-verse-tests-final.log) passed all 159 tests.
-- The final native map assertion described above remains unresolved in this
-  receipt until its corrected-coordinate retest is retained. Passing earlier
-  checkpoints does not erase that integration failure.
+- The [initial native integration failures](native-integration-initial.log)
+  remain retained with their [summary](native-integration-initial.json). The
+  corrected checks pass in the [six-test retest](native-integration-retest.log).
 
 ## Visual evidence
 
