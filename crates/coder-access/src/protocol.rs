@@ -277,6 +277,21 @@ pub enum Operation {
     CreateTask { task: TaskCreate },
     #[serde(rename = "terminal.open")]
     OpenTerminal { cols: u16, rows: u16 },
+    /// Replace a task's instructions, as a CTRL steer does. `revision` is the
+    /// task revision the device last read.
+    #[serde(rename = "task.steer")]
+    SteerTask {
+        task: String,
+        revision: u64,
+        prompt: String,
+    },
+    /// Request a task's cancellation, as a CTRL cancel does.
+    #[serde(rename = "task.cancel")]
+    CancelTask {
+        task: String,
+        revision: u64,
+        reason: String,
+    },
 }
 impl Operation {
     pub fn name(&self) -> &'static str {
@@ -290,6 +305,8 @@ impl Operation {
             Self::Revoke { .. } => "device.revoke",
             Self::CreateTask { .. } => "task.create",
             Self::OpenTerminal { .. } => "terminal.open",
+            Self::SteerTask { .. } => "task.steer",
+            Self::CancelTask { .. } => "task.cancel",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -303,7 +320,9 @@ impl Operation {
             | Self::CancelInvite { .. }
             | Self::Revoke { .. } => Some(Right::AccessAdmin),
             Self::ListDevices {} => Some(Right::AccessRead),
-            Self::CreateTask { .. } => Some(Right::Operate),
+            Self::CreateTask { .. } | Self::SteerTask { .. } | Self::CancelTask { .. } => {
+                Some(Right::Operate)
+            }
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -356,6 +375,26 @@ impl Operation {
                 if !(1..=1000).contains(cols) || !(1..=1000).contains(rows) {
                     return fail(Code::Bounds, "terminal size exceeds its bound");
                 }
+            }
+            Self::SteerTask {
+                task,
+                revision,
+                prompt,
+            } => {
+                identity(task).map_err(Error::from)?;
+                safe(*revision)?;
+                if prompt.trim().is_empty() || prompt.len() > 16 * 1024 {
+                    return fail(Code::Bounds, "steering prompt exceeds its bound");
+                }
+            }
+            Self::CancelTask {
+                task,
+                revision,
+                reason,
+            } => {
+                identity(task).map_err(Error::from)?;
+                safe(*revision)?;
+                text(reason, 512)?;
             }
         }
         Ok(())
@@ -465,7 +504,10 @@ impl Outcome {
             | (Operation::ListDevices {}, Self::Devices { .. })
             | (Operation::Revoke { .. }, Self::Revoked { .. }) => true,
             (
-                Operation::CreateTask { .. } | Operation::OpenTerminal { .. },
+                Operation::CreateTask { .. }
+                | Operation::OpenTerminal { .. }
+                | Operation::SteerTask { .. }
+                | Operation::CancelTask { .. },
                 Self::Dispatched { receipt },
             ) => receipt.operation == op.name(),
             _ => false,

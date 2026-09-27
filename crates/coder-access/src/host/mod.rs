@@ -159,6 +159,17 @@ impl Host {
     pub(crate) fn key(&self) -> Result<SecretKey> {
         Ok(Store::open_named(&self.directory, STORE, false)?.key(false)?)
     }
+    /// The host's signing key. A resident host signs presence, hints,
+    /// channel proofs, terminal results, and summaries with this one key, so
+    /// every record a device reads names the same host identity.
+    pub fn signing_key(&self) -> Result<SecretKey> {
+        self.key()
+    }
+    /// The private state file. A resident host watches its identity to
+    /// reload grants that another local process changed.
+    pub fn state_path(&self) -> PathBuf {
+        self.directory.join(format!("{STORE}.json"))
+    }
     pub fn policy(&self) -> RelayPolicy {
         self.policy
     }
@@ -331,7 +342,10 @@ impl Host {
                     grants,
                 })
             }
-            Operation::CreateTask { .. } | Operation::OpenTerminal { .. } => {
+            Operation::CreateTask { .. }
+            | Operation::OpenTerminal { .. }
+            | Operation::SteerTask { .. }
+            | Operation::CancelTask { .. } => {
                 // Record the admitted intent before the effect. A crash after
                 // dispatch replays the same idempotency key, never a new one.
                 if book.replies.len() >= MAX_REPLIES {

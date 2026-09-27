@@ -87,6 +87,22 @@ async fn observe_only_device_cannot_create_a_task_or_open_a_terminal() {
     let (_, observer) = f.enroll("observe").await;
     for (op, right) in [
         (task(), Right::Operate),
+        (
+            Operation::SteerTask {
+                task: random_id(),
+                revision: 1,
+                prompt: "Use the smaller fixture".into(),
+            },
+            Right::Operate,
+        ),
+        (
+            Operation::CancelTask {
+                task: random_id(),
+                revision: 1,
+                reason: "No longer needed".into(),
+            },
+            Right::Operate,
+        ),
         (terminal(), Right::Terminal),
         (Operation::ListDevices {}, Right::AccessRead),
         (
