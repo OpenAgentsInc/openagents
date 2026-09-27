@@ -14,7 +14,9 @@ use std::path::Path;
 use std::process::ExitCode;
 
 mod args;
+mod catalog;
 mod computer;
+mod discover;
 mod hosts;
 mod key;
 mod out;
@@ -47,6 +49,12 @@ Verse (NIP-MV):
 Keys and relays:
   key          Show or create Nostr identities.
   relay        Query, publish to, and follow a relay.
+
+Discovery (NIP-CAP, NIP-PRG, NIP-EXT), read-only:
+  cap          List and describe published capability heads.
+  prg          List and describe published program heads.
+  ext          List published extension records.
+  discover     Show the well-known agent card and agent-skills index.
 
   doctor       Show the identities, stores, and relays this command uses.
   version      Show the repository, commit, and tree state.
@@ -86,6 +94,10 @@ fn main() -> ExitCode {
         "sov" => sov::run(&output, &rest),
         "key" => key::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
+        "cap" => catalog::cap(&output, &rest),
+        "prg" => catalog::prg(&output, &rest),
+        "ext" => catalog::ext(&output, &rest),
+        "discover" => discover::run(&output, &rest),
         other => {
             eprintln!("openagents: unknown command `{other}`\n\n{USAGE}");
             EXIT_USAGE

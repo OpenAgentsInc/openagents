@@ -195,6 +195,28 @@ openagents relay publish event.json      # a file, inline JSON, or - for stdin
 
 `relay` answers NIP-42 challenges with the `--as` profile key.
 
+## Discovery (NIP-CAP, NIP-PRG, NIP-EXT)
+
+```sh
+openagents cap list --profile executor --limit 20
+openagents cap describe PUBKEY:SLUG
+openagents prg list --step delegate
+openagents prg describe --author PUBKEY SLUG
+openagents ext list                        # listings; --type release|revocation|migration|checkpoint
+openagents ext list --package ROOT_PUBKEY:SLUG
+openagents discover --origin https://openagents.com
+openagents discover --fetch --timeout 5    # compare what the origin serves
+```
+
+`cap`, `prg`, and `ext` read published heads from one relay (`--relay`,
+`--timeout`, and `--as` for NIP-42) and never run a probe, install a
+package, or mint a grant. Every record carries `valid` and, when the
+signature, kind, marker, or body fails the contract, a `refusal`, so a
+malformed head shows up instead of vanishing. `describe` exits 1 when the
+head it found is invalid. `discover` prints the agent card and agent-skills
+index this checkout serves for an origin; `--fetch` also reads both from the
+origin over HTTP and exits 1 when either differs or fails to load.
+
 ## Verify
 
 ```sh
