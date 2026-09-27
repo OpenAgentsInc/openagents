@@ -33,6 +33,11 @@ pub const BIN_VAR: &str = "CLAUDE_BIN";
 /// defaults name Codex models, which Claude Code can't serve.
 pub const DEFAULT_ALIAS: &str = "opus";
 
+/// The service the binary sends requests to; a repository grant that names
+/// this provider must name this endpoint, since Microcoder can't redirect
+/// the binary.
+pub const ENDPOINT: &str = "https://api.anthropic.com";
+
 /// The longest one call may take before the binary is killed.
 pub const TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
@@ -197,21 +202,44 @@ impl Report {
     }
 }
 
+/// One call of the binary: the step it produced and what the process
+/// printed, for a host that retains native evidence before reducing it.
+#[derive(Debug)]
+pub struct Invocation {
+    pub generated: Generated,
+    /// The binary's exit status, or `None` when it did not run or was killed.
+    pub status: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
 impl Generate for ClaudeGenerator {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        self.invoke(system, prompt).await.generated
+    }
+}
+
+impl ClaudeGenerator {
+    /// Runs the binary once for this step.
+    pub async fn invoke(&self, system: &str, prompt: &str) -> Invocation {
         let started = Instant::now();
         let milliseconds = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        let failed = |why: String, usd: Option<f64>| Generated {
-            action: Err(why.clone()),
-            model: self.model.clone(),
-            prompt_tokens: 0,
-            completion_tokens: 0,
-            usd,
-            known_usd: usd.unwrap_or(0.0),
-            cost_unknown: usd.is_none().then_some(why),
-            usd_upper: usd,
-            cost_basis: Basis::ListPrice,
-            milliseconds: milliseconds(),
+        let failed = |why: String, usd: Option<f64>| Invocation {
+            generated: Generated {
+                action: Err(why.clone()),
+                model: self.model.clone(),
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                usd,
+                known_usd: usd.unwrap_or(0.0),
+                cost_unknown: usd.is_none().then_some(why),
+                usd_upper: usd,
+                cost_basis: Basis::ListPrice,
+                milliseconds: milliseconds(),
+            },
+            status: None,
+            stdout: String::new(),
+            stderr: String::new(),
         };
         let args = self.args(system);
         let mut child = match tokio::process::Command::new(&self.binary)
@@ -251,8 +279,8 @@ impl Generate for ClaudeGenerator {
                 );
             }
         };
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         let report = Report::parse(&stdout);
         dump_request(
             "claude",
@@ -268,10 +296,15 @@ impl Generate for ClaudeGenerator {
             Ok(report) => report,
             Err(why) => {
                 let excerpt: String = stderr.trim().chars().take(300).collect();
-                return failed(
-                    format!("{why} (exit {:?}; stderr: {excerpt})", output.status.code()),
-                    None,
-                );
+                return Invocation {
+                    status: output.status.code(),
+                    stdout,
+                    stderr,
+                    ..failed(
+                        format!("{why} (exit {:?}; stderr: {excerpt})", output.status.code()),
+                        None,
+                    )
+                };
             }
         };
         let usd = report.total_cost_usd;
@@ -288,19 +321,24 @@ impl Generate for ClaudeGenerator {
                 None => parse_action(&report.result),
             }
         };
-        Generated {
-            action,
-            model,
-            prompt_tokens: report.input_tokens(),
-            completion_tokens: report.usage.output_tokens,
-            usd,
-            known_usd: usd.unwrap_or(0.0),
-            cost_unknown: usd
-                .is_none()
-                .then(|| "claude reported no cost for the call".to_string()),
-            usd_upper: usd,
-            cost_basis: Basis::ListPrice,
-            milliseconds: milliseconds(),
+        Invocation {
+            generated: Generated {
+                action,
+                model,
+                prompt_tokens: report.input_tokens(),
+                completion_tokens: report.usage.output_tokens,
+                usd,
+                known_usd: usd.unwrap_or(0.0),
+                cost_unknown: usd
+                    .is_none()
+                    .then(|| "claude reported no cost for the call".to_string()),
+                usd_upper: usd,
+                cost_basis: Basis::ListPrice,
+                milliseconds: milliseconds(),
+            },
+            status: output.status.code(),
+            stdout,
+            stderr,
         }
     }
 }

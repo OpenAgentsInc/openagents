@@ -1,0 +1,89 @@
+{
+  "schema": "openagents.coder.task-execution-grant.v1",
+  "task_id": "repository-range",
+  "intent_digest": "sha256:b467209cb2d689e31b1c07e9c1e3680cc558cd57b34c4e4f62a05731601f0bfd",
+  "expected_revision": 1,
+  "expected_source_snapshot": "27f6989e8145f67cc638f881fdb49e963f6118494d400dbe0240e9a32d2260a1",
+  "program": "/nix/store/yisa2lg79zcvgk4ck4yr6r0lz6j63hs3-bash-interactive-5.3p9/bin/bash",
+  "arguments": [],
+  "write_workspace": true,
+  "wall_seconds": 300,
+  "stream_bytes": 65536,
+  "memory_bytes": 1073741824,
+  "requirements": {
+    "schema": "openagents.coder.task-requirements.v2",
+    "version": 1,
+    "requirements": [
+      {
+        "id": "contract",
+        "statement": "Fix inclusive_span in lib.rs for the documented contract over all i64 inputs. Preserve the public signature.",
+        "checks": [
+          "independent-rust"
+        ]
+      }
+    ],
+    "plan": {
+      "schema": "openagents.verification.v1",
+      "input_digest": "{candidate_digest}",
+      "seconds": 50,
+      "allow_unrestricted_reads": true,
+      "allow_network": true,
+      "checks": [
+        {
+          "id": "independent-rust",
+          "manifest": "/home/christopherdavid/acceptance-9674-b/registry/capabilities/repository-check-range.json",
+          "manifest_digest": "add9ec71ed095286ce08d5fd9bc8f6d725d4bf55ad889a789fb86d334f6b262c",
+          "arguments": [
+            "{candidate_digest}"
+          ],
+          "seconds": 45,
+          "output_bytes": 65536,
+          "acceptance": {
+            "kind": "suite",
+            "suite_digest": "sha256:3b3b9871f8058a2f6d9c44c1f662ede0e47295abd6811c10dba3ccc443936e4b",
+            "input_digest": "{candidate_digest}"
+          }
+        }
+      ]
+    },
+    "instruction_targets": [],
+    "source_exclusions": [
+      "repository-task-range"
+    ],
+    "task_sources": [
+      "repository-task-range"
+    ],
+    "check_lineage": [
+      {
+        "check": "independent-rust",
+        "sources": [
+          "public-integer-contract-range"
+        ]
+      }
+    ]
+  },
+  "adapter_configuration": {
+    "schema": "openagents.microcoder.repository-config.v1",
+    "provider": "claude",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "generation_endpoint": "https://api.anthropic.com",
+    "decision_endpoint": "https://api.typesafe.ai",
+    "decision_model": "jev-1.13.0",
+    "max_steps": 8,
+    "acceptance": false,
+    "route": "never",
+    "knowledge": "off",
+    "dollar_limit_micros": null,
+    "expected_controller_digest": "sha256:2fc6cafeea94d295d97cefbbe5911d2b6a8966bf33c18ebe516d53bedafc312a",
+    "container": {
+      "schema": "openagents.microcoder.container.v1",
+      "docker_program": "/nix/store/ln47bf0h2xcg5a0q0bfpgffa0d5k03y8-docker-29.7.2/bin/docker",
+      "docker_digest": "sha256:7d040c2a867d2fc4e6849e71c28175cf89e1f196980f5ce87e72afef7ff217e9",
+      "socket": "/run/docker.sock",
+      "image": "sha256:4cd829461bd5c4d511c32e269da9cb8929223b666519d8004e35fc8d1d771ab7",
+      "uid": 1000,
+      "gid": 100
+    }
+  }
+}

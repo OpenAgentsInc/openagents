@@ -282,11 +282,27 @@ pub async fn execute(
     {
         return Err("The configured decision client differs from the execution grant.".into());
     }
-    if config.provider != "codex"
-        || config.generation_endpoint != microluna::codex::BASE_URL
-        || config.model.contains('/')
-    {
-        return Err("Repository execution requires the exact Codex endpoint and model slug; other providers are unsupported.".into());
+    if config.model.contains('/') {
+        return Err("Repository execution requires an exact model name, not a routed slug.".into());
+    }
+    if config.provider == "claude" {
+        if config.generation_endpoint != crate::claude::ENDPOINT {
+            return Err(format!(
+                "Repository execution through claude requires the generation endpoint {}.",
+                crate::claude::ENDPOINT
+            ));
+        }
+        let generator =
+            crate::claude::ClaudeGenerator::from_env(&config.model, config.effort.clone())?;
+        let host = Host::admit(directory, bytes)
+            .await
+            .map_err(|error| error.to_string())?;
+        return native::run_claude(host, generator, judge.client)
+            .await
+            .map_err(|error| error.to_string());
+    }
+    if config.provider != "codex" || config.generation_endpoint != microluna::codex::BASE_URL {
+        return Err("Repository execution requires the exact Codex endpoint; other providers are unsupported.".into());
     }
     let login = microluna::codex::Login::default_path().ok_or("no Codex login path")?;
     let session = format!("repository-{}-1", grant.task_id);
