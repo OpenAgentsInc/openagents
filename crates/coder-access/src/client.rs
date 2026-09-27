@@ -59,6 +59,16 @@ impl Client {
     pub fn host(&self) -> &str {
         &self.host
     }
+    /// The relay this client's requests name.
+    pub fn relay(&self) -> &str {
+        &self.relay
+    }
+    pub(crate) fn policy(&self) -> RelayPolicy {
+        self.policy
+    }
+    pub(crate) fn secret(&self) -> &SecretKey {
+        &self.secret
+    }
     pub fn prepare(&self, op: Operation, now: u64) -> Result<Pending> {
         if matches!(op, Operation::Redeem { .. }) {
             return fail(Code::Malformed, "redeem an invitation with `redeem`");

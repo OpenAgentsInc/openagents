@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.host-answer.v1",
+  "title": "NIP-HOST answer: the exact signed reply artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "event"],
+  "properties": {
+    "v": { "const": "openagents.host-answer.v1" },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "pubkey", "created_at", "kind", "tags", "content", "sig"],
+      "properties": {
+        "id": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "pubkey": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "created_at": { "type": "integer", "minimum": 0 },
+        "kind": { "const": 3188 },
+        "tags": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } },
+        "content": { "type": "string", "minLength": 1, "maxLength": 409600 },
+        "sig": { "type": "string", "minLength": 128, "maxLength": 128 }
+      }
+    }
+  }
+}

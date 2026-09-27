@@ -1,0 +1,71 @@
+{
+  "definition": {
+    "binding_contract": {
+      "interface": "openagents.host-request.v1",
+      "operations": [
+        "enroll.redeem",
+        "enroll.approve",
+        "enroll.deny",
+        "invite.create",
+        "invite.cancel",
+        "device.list",
+        "device.revoke",
+        "task.create",
+        "task.steer",
+        "task.cancel",
+        "terminal.open"
+      ],
+      "remote": {
+        "relays": [
+          "wss://relay.openagents.com"
+        ],
+        "worker": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+      },
+      "transport": "nostr-cj"
+    },
+    "effects": {
+      "delegates": false,
+      "network": [
+        "relay"
+      ],
+      "process": true,
+      "reads": [
+        "host-access"
+      ],
+      "spend": false,
+      "writes": [
+        "host-access",
+        "host-tasks",
+        "host-terminals"
+      ]
+    },
+    "id": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:openagents/host-access",
+    "input": {
+      "digest": "sha256:3ee5294db8fca34e910371914ffbe81210a5d2a41605030998621a9521837faa",
+      "media_type": "application/schema+json",
+      "schema": "https://json-schema.org/draft/2020-12/schema",
+      "size": 1000
+    },
+    "minimum": {},
+    "output": {
+      "digest": "sha256:b062f29885a588139faf2e71a0a41d50598fd845db0c082ef2d07f1914075143",
+      "media_type": "application/schema+json",
+      "schema": "https://json-schema.org/draft/2020-12/schema",
+      "size": 1004
+    },
+    "profile": "adapter",
+    "requires": [],
+    "summary": "Answers NIP-HOST requests from enrolled devices under the host's own grants: enrollment, invitations, device listing and revocation, task creation, steering, and cancellation, and terminal opening.",
+    "support": {
+      "bounds": {
+        "input_bytes": "enforced"
+      },
+      "cancellation": "unsupported",
+      "evidence": [
+        "openagents.host-reply.v1"
+      ],
+      "idempotency": "request_attempt"
+    },
+    "v": 1
+  }
+}
