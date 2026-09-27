@@ -42,7 +42,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     private val sensor = sensors.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
         ?: sensors.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
     private var previewTurns = 0
-    private var previewQuaternion = doubleArrayOf(-sqrt(0.5), 0.0, 0.0, sqrt(0.5))
+    private var previewQuaternion = doubleArrayOf(sqrt(0.5), 0.0, 0.0, sqrt(0.5))
     val motionAvailable get() = motionPreview || sensor != null
     var snapshot: JSONObject? = null; private set
     var motionError: String? = null; private set
@@ -183,14 +183,14 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         val angle = previewTurns * 0.25
         val c = sqrt(0.5) * cos(angle / 2)
         val s = sqrt(0.5) * sin(angle / 2)
-        previewQuaternion = doubleArrayOf(-c, s, s, c)
+        previewQuaternion = doubleArrayOf(c, s, s, c)
     }
 
     private fun syncSensors(needed: Boolean) {
         if (!needed || !running) { stopSensors(); return }
         if (sensorRunning) return
         sensorStarted = SystemClock.elapsedRealtimeNanos(); lastSample = 0; latestSensor = null
-        sensorRunning = motionPreview || (sensor != null && sensors.registerListener(this, sensor, 33_333))
+        sensorRunning = motionPreview || (sensor != null && sensors.registerListener(this, sensor, 16_667))
         if (!sensorRunning) motionFailed("Motion updates could not start. Touch look is active.")
     }
     private fun stopSensors() {
@@ -204,12 +204,14 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     private fun pollMotion() {
         if (!sensorRunning) return
         val now = SystemClock.elapsedRealtimeNanos()
+        val receivedAt = System.nanoTime()
         val sample = if (motionPreview) now to previewQuaternion else latestSensor
         if (sample != null && sample.first >= sensorStarted && sample.first > lastSample &&
-            sample.first <= now + 250_000_000 && now - sample.first <= 1_000_000_000) {
+            sample.first <= now + 5_000_000 && now - sample.first <= 250_000_000) {
             lastSample = sample.first
             send(json("action" to "device_motion", "quaternion" to JSONArray(sample.second.toList()),
-                "timestamp" to (sample.first + System.nanoTime() - now) / 1e9), false)
+                "timestamp" to (sample.first + receivedAt - now) / 1e9,
+                "received_at" to receivedAt / 1e9), false)
         } else if (now - (if (lastSample == 0L) sensorStarted else lastSample) >
             if (lastSample == 0L) 2_000_000_000 else 1_000_000_000) {
             motionFailed("Motion updates stopped. Touch look is active.")
@@ -219,10 +221,10 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         if (!sensorRunning || event.values.size < 3) return
         val quaternion = FloatArray(4)
         SensorManager.getQuaternionFromVector(quaternion, event.values)
-        // Android maps device axes into the world. Conjugate to the shared
-        // portrait world-to-device contract; Rust removes roll and sets the baseline.
-        val sample = doubleArrayOf(-quaternion[1].toDouble(), -quaternion[2].toDouble(),
-            -quaternion[3].toDouble(), quaternion[0].toDouble())
+        // Both native hosts supply device-to-world quaternions. Rust projects
+        // the phone-back direction, removes roll, and smooths the camera.
+        val sample = doubleArrayOf(quaternion[1].toDouble(), quaternion[2].toDouble(),
+            quaternion[3].toDouble(), quaternion[0].toDouble())
         if (sample.all { it.isFinite() }) latestSensor = event.timestamp to sample
     }
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit

@@ -23,7 +23,6 @@ final class DeviceMotionDriver {
     private let source: DeviceMotionSource
     private(set) var running = false
     private var startedAt: TimeInterval = 0
-    private var lastDelivery: TimeInterval?
     private var lastTimestamp: TimeInterval?
     private var lastFreshAt: TimeInterval?
     var available: Bool { source.available }
@@ -37,7 +36,6 @@ final class DeviceMotionDriver {
             let changed = running
             if running { source.stop() }
             running = false
-            lastDelivery = nil
             lastTimestamp = nil
             lastFreshAt = nil
             return changed
@@ -48,7 +46,6 @@ final class DeviceMotionDriver {
         source.start()
         running = true
         startedAt = now
-        lastDelivery = nil
         lastTimestamp = nil
         lastFreshAt = nil
         return true
@@ -57,16 +54,16 @@ final class DeviceMotionDriver {
     func poll(now: TimeInterval) throws -> DeviceMotionSample? {
         guard running else { return nil }
         guard now.isFinite, now >= startedAt else { throw DeviceMotionFailure.invalidSample }
-        if let lastDelivery, now - lastDelivery < 1.0 / 30.0 { return nil }
+        // The display link bounds polling to 60 Hz. A second interval gate
+        // would drop fresh samples when display callbacks arrive unevenly.
         if let sample = source.latest(now: now) {
             guard sample.quaternion.count == 4, sample.quaternion.allSatisfy(\.isFinite),
                   sample.timestamp.isFinite else { throw DeviceMotionFailure.invalidSample }
             // A cached pre-start value is not a new baseline. Duplicates and old
             // values cannot keep a stopped or denied sensor looking healthy.
             if sample.timestamp >= startedAt,
-               sample.timestamp <= now + 0.25, now - sample.timestamp <= 1.0,
+               sample.timestamp <= now + 0.005, now - sample.timestamp <= 0.25,
                lastTimestamp.map({ sample.timestamp > $0 }) ?? true {
-                lastDelivery = now
                 lastTimestamp = sample.timestamp
                 lastFreshAt = now
                 return sample
@@ -94,13 +91,22 @@ enum DeviceMotionFailure: LocalizedError {
 final class PreviewDeviceMotionSource: DeviceMotionSource {
     var available: Bool { true }
     private var running = false
-    private var sample: [Double] = [-sqrt(0.5), 0, 0, sqrt(0.5)]
+    private var index = 0
+    // Raw Core Motion quaternions: upright portrait, body left/right by 0.4
+    // radians about gravity, then look up by 0.8 radians. Native checks verify
+    // their gravity vectors through CMAttitude rather than the camera mapping.
+    private let samples: [[Double]] = [
+        [sqrt(0.5), 0, 0, sqrt(0.5)],
+        [0.6930117232058353, 0.14048043101898117, 0.1404804310189812, 0.6930117232058354],
+        [0.6930117232058353, -0.14048043101898117, -0.1404804310189812, 0.6930117232058354],
+        [0.926648825310733, 0, 0, 0.37592812418099114],
+    ]
     func start() { running = true }
     func stop() { running = false }
     func latest(now: TimeInterval) -> DeviceMotionSample? {
-        running ? DeviceMotionSample(quaternion: sample, timestamp: now) : nil
+        running ? DeviceMotionSample(quaternion: samples[index], timestamp: now) : nil
     }
-    func setQuaternion(_ quaternion: [Double]) { sample = quaternion }
+    func advance() { index = (index + 1) % samples.count }
 }
 
 #if os(iOS)
@@ -112,7 +118,7 @@ final class CoreMotionSource: DeviceMotionSource {
         CMMotionManager.availableAttitudeReferenceFrames().contains(.xArbitraryZVertical)
     }
     func start() {
-        manager.deviceMotionUpdateInterval = 1.0 / 30.0
+        manager.deviceMotionUpdateInterval = 1.0 / 60.0
         manager.showsDeviceMovementDisplay = false
         manager.startDeviceMotionUpdates(using: .xArbitraryZVertical)
     }

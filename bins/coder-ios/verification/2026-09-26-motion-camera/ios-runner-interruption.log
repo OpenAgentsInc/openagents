@@ -1,0 +1,112 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-26 20:55:07.243 Df SpringBoard[36540:5d11f04] [com.apple.FrontBoard:Process] [app<com.openagents.coder.uitests.xctrunner>:68501] SpringBoard requested termination ("Termination requested by simulator host")
+2026-09-26 20:55:07.243 Df SpringBoard[36540:5d11f04] [com.apple.FrontBoard:Process] [app<com.openagents.coder.uitests.xctrunner>:68501] Now flagged as pending exit for reason: explicit kill request from client
+2026-09-26 20:55:07.243 Df SpringBoard[36540:5d11f04] [com.apple.FrontBoard:Process] [app<com.openagents.coder.uitests.xctrunner>:68501] Received termination request: <FBSProcessTerminationRequest: 0x12d56d5c0; label: "Termination requested by simulator host"; exceptionCode: "Force Quit (0xFBFBFBFB)"; reportType: (none); explanation: "Termination requested by simulator host">
+2026-09-26 20:55:07.243 Df SpringBoard[36540:5d11f04] [com.apple.FrontBoard:Process] [app<com.openagents.coder.uitests.xctrunner>:68501] Executing termination request: <FBSProcessTerminationRequest: 0x12d56f980; label: "Termination requested by simulator host"; exceptionCode: "Force Quit (0xFBFBFBFB)"; reportType: (none); explanation: "Termination requested by simulator host">
+2026-09-26 20:55:07.244 Df runningboardd[36543:5d11791] [com.apple.runningboard:connection] Received termination request from [osservice<com.apple.SpringBoard>:36540] on <RBSProcessPredicate <RBSProcessHandlePredicateImpl| app<com.openagents.coder.uitests.xctrunner((null))>:68501>> with context <RBSTerminateContext| domain:10 code:0xFBFBFBFB explanation:Termination requested by simulator host
+
+ProcessVisibility: Background
+ProcessState: Running reportType:None maxTerminationResistance:Interactive>
+2026-09-26 20:55:07.244 Df runningboardd[36543:5d119f2] [com.apple.runningboard:process] Executing termination request for: <RBSProcessPredicate <RBSProcessHandlePredicateImpl| app<com.openagents.coder.uitests.xctrunner((null))>:68501>>
+2026-09-26 20:55:07.244 Df runningboardd[36543:5d119f2] [com.apple.runningboard:process] [app<com.openagents.coder.uitests.xctrunner((null))>:68501] Terminating with context: <RBSTerminateContext| domain:10 code:0xFBFBFBFB explanation:Termination requested by simulator host
+
+ProcessVisibility: Background
+ProcessState: Running reportType:None maxTerminationResistance:Interactive>
+2026-09-26 20:55:07.244 Df runningboardd[36543:5d119f2] [com.apple.runningboard:process] [app<com.openagents.coder.uitests.xctrunner((null))>:68501] terminate_with_reason() success
+2026-09-26 20:55:07.244 Df SpringBoard[36540:5d11f06] [com.apple.xpc:connection] [0x11aef8480] invalidated because the client process (pid 68501) either cancelled the connection or exited
+2026-09-26 20:55:07.244 Df backboardd[36561:5d10735] [com.apple.xpc:connection] [0x110969f80] invalidated because the client process (pid 68501) either cancelled the connection or exited
+2026-09-26 20:55:07.244 Df backboardd[36561:5d11823] [com.apple.iohid:default] Connection removed: IOHIDEventSystemConnection uuid:C914C20D-9105-4DE7-A384-BED7FC95D417 pid:68501 process:CoderUITests-Runner type:Passive entitlements:0x0 caller:BackBoardServices: ___getHIDEventSystemClient_block_invoke + 296 attributes:{
+    HighFrequency = 0;
+    bundleID = "com.openagents.coder.uitests.xctrunner";
+    pid = 68501;
+} state:0x1 events:0 mask:0x0 dropped:0 dropStatus:0 droppedMask:0x0 lastDroppedTime:NONE
+2026-09-26 20:55:07.244 Df SpringBoard[36540:5d11f04] [com.apple.FrontBoard:ProcessWorkspace] [app<com.openagents.coder.uitests.xctrunner>:68501] Workspace connection invalidated.
+2026-09-26 20:55:07.244 E  backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] invalidated connection <BSXPC(com.apple.backboard.hid-services.xpc[S:bd-1r])-from(68501:[C:2-1])-as(BKHIDEventDeliveryManager):0x10caf2df0 name=(null)>
+2026-09-26 20:55:07.244 Df backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] pid:68501 terminated
+2026-09-26 20:55:07.244 E  backboardd[36561:5d11fce] [com.apple.BackBoard:EventDelivery] invalidated connection <BSXPC(com.apple.backboard.hid-services.xpc[S:bd-2r])-from(68501:[C:2-2])-as(BKHIDEventDeliveryObserver):0x10caf1400 name=(null)>
+2026-09-26 20:55:07.244 Df backboardd[36561:5d11823] [com.apple.BackBoard:HID] Removing client connection <BKHIDClientConnection: 0x113c22540; IOHIDEventSystemConnectionRef: 0x10c887c00; vpid: 68501(v415EA87); taskPort: 0x38447; bundleID: com.openagents.coder.uitests.xctrunner> for client: IOHIDEventSystemConnection uuid:C914C20D-9105-4DE7-A384-BED7FC95D417 pid:68501 process:CoderUITests-Runner type:Passive entitlements:0x0 caller:BackBoardServices: ___getHIDEventSystemClient_block_invoke + 296 attributes:{
+    HighFrequency = 0;
+    bundleID = "com.openagents.coder.uitests.xctrunner";
+    pid = 68501;
+} state:0x1 events:0 mask:0x0 dropped:0 dropStatus:0 droppedMask:0x0 lastDroppedTime:NONE source:HID
+2026-09-26 20:55:07.244 Df backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] new deferring rules for pid:68501: []
+2026-09-26 20:55:07.244 Df backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] [keyboardFocus 0x10c90a8f0] setRules:forPID(68501): []
+2026-09-26 20:55:07.244 Df cfprefsd[36580:5d11970] [com.apple.xpc:connection] [0x107c20780] invalidated because the client process (pid 68501) either cancelled the connection or exited
+2026-09-26 20:55:07.245 Df Coder[68997:5d11f2a] [com.apple.xpc:connection] [0x104614180] invalidated because the client process (pid 68501) either cancelled the connection or exited
+2026-09-26 20:55:07.245 Df testmanagerd[54111:5d11a88] [com.apple.xpc:connection] [0x101e88600] invalidated because the client process (pid 68501) either cancelled the connection or exited
+2026-09-26 20:55:07.245 Df SpringBoard[36540:5d11aad] [com.apple.xpc:connection] [0x11ae94c00] invalidated because the client process (pid 68501) either cancelled the connection or exited
+2026-09-26 20:55:07.245 Df backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] [systemKeyCommandOverlay 0x10c90a940] setRules:forPID(68501): []
+2026-09-26 20:55:07.245 Df backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] [system 0x10c90a8a0] setRules:forPID(68501): []
+2026-09-26 20:55:07.245 Df SpringBoard[36540:5d11aad] [com.apple.dt.xctest:Default] Connection from client with pid 68501 was invalidated.
+2026-09-26 20:55:07.245 Df Coder[68997:5d11f2a] [com.apple.dt.xctest:Default] Connection from client with pid 68501 was invalidated.
+2026-09-26 20:55:07.245 Df testmanagerd[54111:5d11a88] [com.apple.dt.xctest:Default] Test process connection invalidated or interrupted, closing test session <XCTestSession: 0x101e503c0> pid 68501.
+2026-09-26 20:55:07.245 Df backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] [system 0x10c90a7b0] setRules:forPID(68501): []
+2026-09-26 20:55:07.245 Df testmanagerd[54111:5d11a88] [com.apple.dt.xctest:Default] Closed <XCTestSession: 0x101e503c0> pid 68501, removing from (
+    "<XCTestSession: 0x101e503c0> pid 68501"
+)
+2026-09-26 20:55:07.245 Df backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] [keyboardFocus 0x10c90a850] setRules:forPID(68501): []
+2026-09-26 20:55:07.245 Df testmanagerd[54111:5d11a88] [com.apple.dt.xctest:Default] Tearing down <XCTestSession: 0x101e503c0> pid 68501.
+2026-09-26 20:55:07.245 Df backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] [systemKeyCommandOverlay 0x10c90a800] setRules:forPID(68501): []
+2026-09-26 20:55:07.245 Df testmanagerd[54111:5d11a88] [com.apple.dt.xctest:Default] Removed Automation Mode client <XCTestSession: 0x101e503c0> pid 68501. Total clients: 0
+2026-09-26 20:55:07.245 Df backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] new buffering predicates for pid:68501: <nil>
+2026-09-26 20:55:07.245 Df backboardd[36561:5d11824] [com.apple.BackBoard:EventDelivery] pid:68501 no change to buffering predicates: (null)
+2026-09-26 20:55:07.250 Df runningboardd[36543:5d119f2] [com.apple.xpc:connection] [0x109e06400] invalidated because the client process (pid 68501) either cancelled the connection or exited
+2026-09-26 20:55:07.251 Df lsd[36588:5d11999] [com.apple.xpc:connection] [0x10332aa00] invalidated because the client process (pid 68501) either cancelled the connection or exited
+2026-09-26 20:55:07.251 Df runningboardd[36543:5d119f2] [com.apple.runningboard:process] XPC connection invalidated: [app<com.openagents.coder.uitests.xctrunner((null))>:68501]
+2026-09-26 20:55:07.254 Df testmanagerd[54111:5d11913] [com.apple.dt.xctest:Default] XCTDAuthorizedProcessTracker has cancelled dispatch source for pid 68501 and removed it from its list of dispatch sources to track
+2026-09-26 20:55:07.254 Df launchd_sim[36534:5d10fb7] [system:] removing child: pid/68501
+2026-09-26 20:55:07.254 Df runningboardd[36543:5d11791] [com.apple.runningboard:ttl] [app<com.openagents.coder.uitests.xctrunner((null))>:68501] termination reported by launchd (10, 4227595259, 9)
+2026-09-26 20:55:07.254 Df runningboardd[36543:5d11791] [com.apple.runningboard:process] Removing process: [app<com.openagents.coder.uitests.xctrunner((null))>:68501]
+2026-09-26 20:55:07.254 Df runningboardd[36543:5d11791] [com.apple.runningboard:job] Removing launch job for: [app<com.openagents.coder.uitests.xctrunner((null))>:68501]
+2026-09-26 20:55:07.255 Df runningboardd[36543:5d11791] [com.apple.runningboard:job] Removed job for [app<com.openagents.coder.uitests.xctrunner((null))>:68501]
+2026-09-26 20:55:07.255 Df runningboardd[36543:5d11791] [com.apple.runningboard:process] Removing assertions for terminated process: [app<com.openagents.coder.uitests.xctrunner((null))>:68501]
+2026-09-26 20:55:07.255 Df runningboardd[36543:5d12432] [com.apple.runningboard:process] Notifying connection [osservice<com.apple.SpringBoard>:36540] that process [app<com.openagents.coder.uitests.xctrunner((null))>:68501] exited with context <RBSProcessExitContext| specific, status:<RBSProcessExitStatus| domain:frontboard(10) code:force-quit(0xfbfbfbfb)>>
+2026-09-26 20:55:07.255 Df SpringBoard[36540:5d11f06] [com.apple.runningboard:process] Firing exit handlers for 68501 with context <RBSProcessExitContext| specific, status:<RBSProcessExitStatus| domain:frontboard(10) code:force-quit(0xfbfbfbfb)>>
+2026-09-26 20:55:07.255 Df SpringBoard[36540:5d11f04] [com.apple.runningboard:process] Calling process death completion block for handle [app<com.openagents.coder.uitests.xctrunner((null))>:68501]
+2026-09-26 20:55:07.255 Df SpringBoard[36540:5d11f06] [com.apple.runningboard:monitor] Received state update for 68501 (app<com.openagents.coder.uitests.xctrunner((null))>, none-NotVisible
+2026-09-26 20:55:07.255 Df SpringBoard[36540:5d11f04] [com.apple.FrontBoard:Process] [app<com.openagents.coder.uitests.xctrunner>:68501] Process exited: <RBSProcessExitContext| specific, status:<RBSProcessExitStatus| domain:frontboard(10) code:force-quit(0xfbfbfbfb)>>.
+2026-09-26 20:55:07.255 Df SpringBoard[36540:5d11f04] [com.apple.FrontBoard:Process] [app<com.openagents.coder.uitests.xctrunner>:68501] Setting process task state to: Not Running
+2026-09-26 20:55:07.255 Df SpringBoard[36540:5d11f04] [com.apple.FrontBoard:Process] [app<com.openagents.coder.uitests.xctrunner>:68501] Setting process visibility to: Unknown
+2026-09-26 20:55:07.255 Df SpringBoard[36540:5d11f06] [com.apple.FrontBoard:ProcessWorkspace] [app<com.openagents.coder.uitests.xctrunner>:68501] Invalidating workspace.
+2026-09-26 20:55:07.255 Df SpringBoard[36540:5d11f06] [com.apple.FrontBoard:ProcessWorkspace] Removing source registration for processHandle: [app<com.openagents.coder.uitests.xctrunner((null))>:68501]
+2026-09-26 20:55:07.256 Df locationd[36564:5d119f4] [com.apple.runningboard:monitor] Received state update for 68501 (app<com.openagents.coder.uitests.xctrunner((null))>, none-NotVisible
+2026-09-26 20:55:07.256 Df locationd[36564:5d12392] [com.apple.locationd.Core:Core] {"msg":"RBS #AppMonitor process monitor update handler invoked", "pid":68501, "bundleID":"com.openagents.coder.uitests.xctrunner", "state":"None"}
+2026-09-26 20:55:07.256 Df SpringBoard[36540:5d11f06] [com.apple.FrontBoard:Process] Removing: <FBApplicationProcess: 0x11aefb180; app<com.openagents.coder.uitests.xctrunner>:68501(v415EA87)>
+2026-09-26 20:55:07.256 Df testmanagerd[54111:5d11a88] [com.apple.runningboard:monitor] Received state update for 68501 (app<com.openagents.coder.uitests.xctrunner((null))>, none-NotVisible
+2026-09-26 20:55:07.256 Df mediaremoted[36547:5d1160a] [com.apple.runningboard:monitor] Received state update for 68501 (app<com.openagents.coder.uitests.xctrunner((null))>, none-NotVisible
+2026-09-26 20:55:07.256 Df locationd[36564:5d1195d] [com.apple.runningboard:monitor] Received state update for 68501 (app<com.openagents.coder.uitests.xctrunner((null))>, none-NotVisible
+2026-09-26 20:55:07.256 Df locationd[36564:5d119f4] [com.apple.locationd.Core:Core] {"msg":"RBS #dic AppMonitor received Termination", "pid":68501, "bundleId":"com.openagents.coder.uitests.xctrunner", "isUserKill":0}
+2026-09-26 20:55:07.256 Df locationd[36564:5d119f4] [com.apple.locationd.Core:Core] {"msg":"RBS #AppMonitor Post Application State Change Notification", "notification":"Terminated", "pid":68501, "bundleId":"com.openagents.coder.uitests.xctrunner"}
+2026-09-26 20:55:07.256 Df testmanagerd[54111:5d11913] [com.apple.dt.xctest:Default] <XCTDProcessMonitor: 0x101cb2900> passing update com.openagents.coder.uitests.xctrunner@/Users/christopherdavid/Library/Developer/CoreSimulator/Devices/745E63BD-631C-4651-B993-F1E2AAB3791E/data/Containers/Bundle/Application/3B39BD06-EA50-4DDF-8241-05D4F0BCBA15/CoderUITests-Runner.app processName: CoderUITests-Ru pid: 68501 state: not running to <XCTDProcessManagementServicesProvider: 0x101dfe040>
+2026-09-26 20:55:07.256 Df locationd[36564:5d1195d] [com.apple.locationd.Core:Core] {"msg":"#CLIUA AppMonitor notification", "notification":"Terminated", "pid":68501, "bundleId":"com.openagents.coder.uitests.xctrunner", "ClientKey":"icom.openagents.coder.uitests.xctrunner:"}
+2026-09-26 20:55:07.256 Df testmanagerd[54111:5d11913] [com.apple.dt.xctest:Default] <XCTestSession: 0x101e503c0> pid 68501 com.openagents.coder.uitests.xctrunner@/Users/christopherdavid/Library/Developer/CoreSimulator/Devices/745E63BD-631C-4651-B993-F1E2AAB3791E/data/Containers/Bundle/Application/3B39BD06-EA50-4DDF-8241-05D4F0BCBA15/CoderUITests-Runner.app processName: CoderUITests-Ru pid: 68501 state: not running
+2026-09-26 20:55:07.256 Df mediaremoted[36547:5d1160a] [com.apple.runningboard:monitor] Received state update for 68501 (app<com.openagents.coder.uitests.xctrunner((null))>, none-NotVisible
+2026-09-26 20:55:07.256 Df SpringBoard[36540:57deb47] [com.apple.SpringBoard:Workspace] Process exited: <FBApplicationProcess: 0x11aefb180; app<com.openagents.coder.uitests.xctrunner>:68501(v415EA87)> -> <RBSProcessExitContext| specific, status:<RBSProcessExitStatus| domain:frontboard(10) code:force-quit(0xfbfbfbfb)>>
+2026-09-26 20:55:07.257 Df testmanagerd[54111:5d11a88] [com.apple.runningboard:monitor] Received state update for 68501 (app<com.openagents.coder.uitests.xctrunner((null))>, none-NotVisible
+2026-09-26 20:55:07.257 Df SpringBoard[36540:5d11aad] [com.apple.runningboard:monitor] Received state update for 68501 (app<com.openagents.coder.uitests.xctrunner((null))>, none-NotVisible
+2026-09-26 20:55:07.261 Df runningboardd[36543:5d12432] [com.apple.runningboard:ttl] Acquiring assertion targeting app<com.openagents.coder.uitests.xctrunner((null))> from originator [osservice<com.apple.SpringBoard>:36540] with description <RBSAssertionDescriptor| "FBApplicationProcess" ID:36543-36540-8225 target:app<com.openagents.coder.uitests.xctrunner((null))> attributes:[
+	<RBSDomainAttribute| domain:"com.apple.frontboard" name:"SuspendableLPRunReason-Suspend" sourceEnvironment:"(null)">,
+	<RBSDomainAttribute| domain:"com.apple.frontboard" name:"SuspendableRole-UINonFocal" sourceEnvironment:"(null)">,
+	<RBSDomainAttribute| domain:"com.apple.frontboard" name:"SuspendableJetsamPriority-UISupport" sourceEnvironment:"(null)">,
+	<RBSDomainAttribute| domain:"com.apple.frontboard" name:"SuspendableBootstrapping" sourceEnvironment:"(null)">,
+	<RBSDomainAttribute| domain:"com.apple.pagein-prefetching" name:"LaunchPrefetch" sourceEnvironment:"(null)">
+	]>
+2026-09-26 20:55:07.289 Df testmanagerd[54111:5d11913] [com.apple.dt.xctest:Default] Deallocating <XCTestSession: 0x101e503c0> pid 68501.
+2026-09-26 20:55:07.330 E  runningboardd[36543:5d12432] [com.apple.runningboard:jetsam] memorystatus_control error: MEMORYSTATUS_CMD_CONVERT_MEMLIMIT_MB(-1) returned -1 1 (Operation not permitted)
+2026-09-26 20:55:07.330 E  runningboardd[36543:5d12432] [com.apple.runningboard:jetsam] memorystatus_control error: MEMORYSTATUS_CMD_CONVERT_MEMLIMIT_MB(0) returned -1 1 (Operation not permitted)
+2026-09-26 20:55:07.330 Df runningboardd[36543:5d12432] [com.apple.runningboard:process] [app<com.openagents.coder.uitests.xctrunner((null))>:69489] Memory Limits: active 0 inactive 0
+ <RBJetsamProperties| tasklimit=0
+(null)>
+2026-09-26 20:55:07.330 E  runningboardd[36543:5d12432] [com.apple.runningboard:process] [app<com.openagents.coder.uitests.xctrunner((null))>:69489] Memorystatus failed with unexpected error: Operation not permitted (1)
+2026-09-26 20:55:07.330 E  runningboardd[36543:5d12432] [com.apple.runningboard:process] [app<com.openagents.coder.uitests.xctrunner((null))>:69489] Memorystatus failed with unexpected error: Invalid argument (22)
+2026-09-26 20:55:07.330 E  runningboardd[36543:5d12432] [com.apple.runningboard:process] [app<com.openagents.coder.uitests.xctrunner((null))>:69489] Memorystatus failed with unexpected error: Operation not permitted (1)
+2026-09-26 20:55:07.399 Df runningboardd[36543:5d1243a] [com.apple.runningboard:process] [osservice<com.apple.testmanagerd>:54111] Ignoring jetsam update because this process is not memory-managed
+2026-09-26 20:55:07.488 Df runningboardd[36543:5d12432] [com.apple.runningboard:ttl] Acquiring assertion targeting [app<com.openagents.coder.uitests.xctrunner((null))>:69489] from originator [osservice<com.apple.SpringBoard>:36540] with description <RBSAssertionDescriptor| "FBWorkspace (BG-Active[40])" ID:36543-36540-8229 target:69489 attributes:[
+	<RBSDomainAttribute| domain:"com.apple.frontboard" name:"SuspendableLPRunReason-Suspend" sourceEnvironment:"(null)">,
+	<RBSDomainAttribute| domain:"com.apple.frontboard" name:"SuspendableRole-NonUI" sourceEnvironment:"(null)">,
+	<RBSDomainAttribute| domain:"com.apple.frontboard" name:"SuspendableJetsamPriority-Active" sourceEnvironment:"(null)">
+	]>
+2026-09-26 20:55:07.488 Df SpringBoard[36540:5d11ab2] [com.apple.FrontBoard:ProcessScene] [0x11ef98a80:(FBSceneManager):sceneID:com.openagents.coder.uitests.xctrunner-default] Sending scene action [Logical Activate][0x4083] to process 0x11ae94c00 (watchdog: 599.85s)
+2026-09-26 20:55:07.490 Df SpringBoard[36540:5d11ab2] [com.apple.FrontBoard:ProcessScene] [0x11ef98a80:(FBSceneManager):sceneID:com.openagents.coder.uitests.xctrunner-default] Sending scene action [Forward Event][0xa634] to process 0x11ae94c00 (watchdog: 600.00s)
+2026-09-26 20:55:07.807 Df runningboardd[36543:5d11791] [com.apple.runningboard:process] [osservice<com.apple.testmanagerd>:54111] Ignoring jetsam update because this process is not memory-managed
+2026-09-26 20:55:07.988 Df runningboardd[36543:5d12433] [com.apple.runningboard:process] [osservice<com.apple.testmanagerd>:54111] Ignoring jetsam update because this process is not memory-managed

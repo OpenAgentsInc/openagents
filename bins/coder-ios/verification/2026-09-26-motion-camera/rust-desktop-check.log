@@ -1,0 +1,55 @@
+   Compiling serde_json v1.0.151
+    Checking rand v0.9.5
+    Checking secp256k1 v0.31.1
+    Checking bytemuck v1.25.2
+    Checking object v0.39.1
+    Checking nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr)
+    Checking wasmtime-environ v48.0.2
+    Checking reqwest v0.12.28
+    Checking half v2.7.1
+    Checking atif v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/atif)
+    Checking naga v29.0.4
+    Checking wasmtime-internal-unwinder v48.0.2
+    Checking nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/nostr-transport)
+    Checking wgpu-types v29.0.4
+    Checking coder-boundary v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-boundary)
+    Checking coder-history v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-history)
+    Checking wit-parser v0.254.0
+    Checking coder-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-connect)
+    Checking microluna v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/microluna)
+    Checking wgpu-naga-bridge v29.0.4
+    Checking wasmtime-internal-cranelift v48.0.2
+    Checking wasmtime-internal-cache v48.0.2
+    Checking wasmtime-internal-fiber v48.0.2
+    Checking wasmtime-internal-jit-debug v48.0.2
+    Checking fxprof-processed-profile v0.8.1
+    Checking jev v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/jev)
+    Checking wasmtime v48.0.2
+    Checking wgpu-hal v29.0.4
+    Checking openrouter v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/openrouter)
+    Checking rust-native v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/rust-native)
+    Checking font-types v0.12.5
+    Checking read-fonts v0.41.0
+    Checking coder-ui v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-ui)
+    Checking knowledge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/knowledge)
+    Checking wgpu-core-deps-apple v29.0.4
+    Checking coder-access v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-access)
+    Checking coder-pty v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-pty)
+    Checking plugin v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/plugin)
+    Checking coder-reach v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-reach)
+    Checking coder-link v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-link)
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder)
+    Checking coder-host v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-host)
+    Checking coder-one v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-one)
+    Checking wgpu-core v29.0.4
+    Checking coder-terminal v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-terminal)
+    Checking skrifa v0.44.0
+    Checking capability v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/capability)
+    Checking receipts v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/receipts)
+    Checking winit v0.30.13
+    Checking swash v0.2.10
+    Checking wgpu v29.0.4
+    Checking gym v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/gym)
+    Checking gym-bridge v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/gym-bridge)
+    Checking verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/verse)
+    Finished `dev` profile [unoptimized] target(s) in 25.66s

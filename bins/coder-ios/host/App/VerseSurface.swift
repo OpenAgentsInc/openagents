@@ -134,7 +134,7 @@ final class VerseMetalView: UIView {
         send(["action": "active", "active": active], forcePublish: true, deferred: true)
         if active, displayLink == nil {
             let link = CADisplayLink(target: displayTarget, selector: #selector(VerseDisplayTarget.frame(_:)))
-            link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 30, preferred: 30)
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
             link.add(to: .main, forMode: .common)
             displayLink = link
         }
@@ -216,7 +216,7 @@ final class VerseMetalView: UIView {
         do {
             if let sample = try bridge.motionDriver.poll(now: now) {
                 let result = send(["action": "device_motion", "quaternion": sample.quaternion,
-                                   "timestamp": sample.timestamp], forcePublish: false)
+                                   "timestamp": sample.timestamp, "received_at": now], forcePublish: false)
                 // A packet can retain an unrelated world error. Rust refuses
                 // invalid camera input; native sensor failures have their own
                 // availability, freshness, and decoder path.

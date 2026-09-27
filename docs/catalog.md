@@ -182,6 +182,7 @@ files are included below.
 | [coder/verification/2026-09-26-android-mobile.md](coder/verification/2026-09-26-android-mobile.md) | Verification | Coder Android reader, shared Verse, native lifecycle, and emulator acceptance |
 | [coder/verification/2026-09-26-android-mobile/README.md](coder/verification/2026-09-26-android-mobile/README.md) | Evidence index | Android native acceptance artifacts and screenshots |
 | [coder/verification/2026-09-26-mobile-reader.md](coder/verification/2026-09-26-mobile-reader.md) | Retained evidence / audit | Coder iOS reader verification — September 26, 2026 |
+| [coder/verification/2026-09-26-motion-camera.md](coder/verification/2026-09-26-motion-camera.md) | Verification | Body-turn motion, upward look, smoothing, and iOS build 44 |
 | [coder/verification/2026-09-26-fullscreen-motion.md](coder/verification/2026-09-26-fullscreen-motion.md) | Verification | Full-screen Verse and phone-motion camera |
 | [coder/verification/2026-09-26-verse-mobile.md](coder/verification/2026-09-26-verse-mobile.md) | Verification | Shared Verse desktop/iOS delivery |
 | [coder/verification/2026-09-26-verse-gym.md](coder/verification/2026-09-26-verse-gym.md) | Verification | Verse Gym building and scoped observation |

@@ -49,6 +49,7 @@ pub(crate) enum Request {
     DeviceMotion {
         quaternion: [f32; 4],
         timestamp: f64,
+        received_at: f64,
     },
     ResetMotion,
     Pointer {
@@ -254,21 +255,27 @@ struct Touch {
 struct Motion {
     baseline: Option<MotionBaseline>,
     last_sample: Option<f64>,
+    last_received: Option<f64>,
+    target: Option<[f32; 2]>,
 }
 
 struct MotionBaseline {
     sensor: [f32; 2],
     camera: [f32; 2],
+    heading_valid: bool,
 }
 
-/// Core Motion uses portrait device axes (+X right, +Y top, +Z out of the
-/// screen) and a gravity-aligned reference (+Z up). Its attitude maps the
-/// reference into device coordinates. Inverse-rotate the phone-back direction
-/// into that reference, then retain heading and downward pitch only. Screen
-/// roll cannot tilt the horizon. This also treats q and -q identically.
-enum MotionOrientation {
-    Angles([f32; 2]),
-    Vertical,
+const MOTION_RESPONSE_SECONDS: f32 = 0.06;
+const MOTION_RESET_GAP_SECONDS: f64 = 1.0;
+
+/// Native adapters supply a Hamilton quaternion from portrait device axes
+/// (+X right, +Y top, +Z out of the screen) to a reference with +Z up. Rotate
+/// the phone's back direction into that reference. Positive heading turns
+/// left, matching Verse yaw; positive pitch looks down. Screen roll cannot
+/// tilt the horizon, and q and -q produce the same direction.
+struct MotionOrientation {
+    angles: [f32; 2],
+    horizontal: f32,
 }
 
 fn motion_angles(quaternion: [f32; 4]) -> Option<MotionOrientation> {
@@ -281,20 +288,18 @@ fn motion_angles(quaternion: [f32; 4]) -> Option<MotionOrientation> {
     }
     let [x, y, z, w] = quaternion.map(|v| v / norm.sqrt());
     let forward = [
-        2.0 * (w * y - x * z),
-        -2.0 * (y * z + w * x),
+        -2.0 * (x * z + w * y),
+        2.0 * (w * x - y * z),
         2.0 * (x * x + y * y) - 1.0,
     ];
     let horizontal = forward[0].hypot(forward[1]);
-    // A phone pointing almost vertically has no stable heading. Keep the view
-    // unchanged and establish a new baseline when a stable heading returns.
-    if horizontal < 0.05 {
-        return Some(MotionOrientation::Vertical);
-    }
-    Some(MotionOrientation::Angles([
-        forward[0].atan2(forward[1]),
-        (-forward[2]).atan2(horizontal),
-    ]))
+    Some(MotionOrientation {
+        angles: [
+            (-forward[0]).atan2(forward[1]),
+            (-forward[2]).atan2(horizontal),
+        ],
+        horizontal,
+    })
 }
 
 pub(crate) struct Scene {
@@ -551,6 +556,7 @@ impl Scene {
         else {
             return Ok(None);
         };
+        let camera_dt = self.frame_timestamp.map_or(0.0, |last| timestamp - last);
         self.frame_timestamp = Some(timestamp);
         if self.spawn_pending {
             self.gym_board.set_active(false);
@@ -569,6 +575,15 @@ impl Scene {
                 self.reset_motion();
             }
         }
+        if camera_dt > MOTION_RESET_GAP_SECONDS
+            || self
+                .motion
+                .last_sample
+                .is_some_and(|last| timestamp - last > MOTION_RESET_GAP_SECONDS)
+        {
+            self.reset_motion();
+        }
+        self.advance_motion(camera_dt as f32);
         let input = self.input();
         self.world.tick(&input, dt);
         let panel_was_open = self.panel_open();
@@ -617,8 +632,9 @@ impl Scene {
             Request::DeviceMotion {
                 quaternion,
                 timestamp,
+                received_at,
             } => {
-                self.device_motion(quaternion, timestamp);
+                self.device_motion(quaternion, timestamp, received_at);
                 Ok(())
             }
             Request::ResetMotion => {
@@ -772,6 +788,7 @@ impl Scene {
 
     fn reset_motion(&mut self) {
         self.motion.baseline = None;
+        self.motion.target = None;
         // Keep the high-water mark across sensor restarts. An old native sample
         // must not become the baseline after a panel closes or the app resumes.
         if let Some(frame) = self.frame_timestamp {
@@ -779,54 +796,93 @@ impl Scene {
         }
     }
 
-    fn device_motion(&mut self, quaternion: [f32; 4], timestamp: f64) {
+    fn device_motion(&mut self, quaternion: [f32; 4], timestamp: f64, received_at: f64) {
         if !self.motion_needed()
             || !timestamp.is_finite()
             || !(0.0..=1e12).contains(&timestamp)
+            || !received_at.is_finite()
+            || !(0.0..=1e12).contains(&received_at)
+            || !(-0.005..=0.25).contains(&(received_at - timestamp))
             || self
                 .motion
                 .last_sample
                 .is_some_and(|last| timestamp <= last)
             || self
+                .motion
+                .last_received
+                .is_some_and(|last| received_at < last)
+            || self
                 .frame_timestamp
-                .is_some_and(|frame| (timestamp - frame).abs() > 0.25)
+                .is_some_and(|frame| received_at < frame)
         {
             return;
         }
-        let sensor = match motion_angles(quaternion) {
-            Some(MotionOrientation::Angles(sensor)) => sensor,
-            Some(MotionOrientation::Vertical) => {
-                self.motion.baseline = None;
-                return;
-            }
-            None => return,
+        let Some(orientation) = motion_angles(quaternion) else {
+            return;
         };
+        let sensor = orientation.angles;
         if self
             .motion
             .last_sample
-            .is_some_and(|last| timestamp - last > 1.0)
+            .is_some_and(|last| timestamp - last > MOTION_RESET_GAP_SECONDS)
         {
-            self.motion.baseline = None;
+            self.reset_motion();
         }
         self.motion.last_sample = Some(timestamp);
-        let Some(baseline) = &self.motion.baseline else {
-            let yaw = verse::controller::wrap(self.world.player.yaw + self.world.camera.yaw_offset);
+        self.motion.last_received = Some(received_at);
+        let yaw = verse::controller::wrap(self.world.player.yaw + self.world.camera.yaw_offset);
+        let Some(baseline) = &mut self.motion.baseline else {
             self.motion.baseline = Some(MotionBaseline {
                 sensor,
                 camera: [yaw, self.world.camera.pitch],
+                heading_valid: orientation.horizontal >= 0.15,
             });
+            self.motion.target = Some([yaw, self.world.camera.pitch]);
             // Taking over the orbit preserves the view and makes left movement
             // follow the direction the camera faces from the first sample.
             self.world.player.yaw = yaw;
             self.world.camera.yaw_offset = 0.0;
             return;
         };
-        self.world.player.yaw = verse::controller::wrap(
-            baseline.camera[0] + verse::controller::wrap(sensor[0] - baseline.sensor[0]),
-        );
+        // Near a pole, heading is undefined. Keep pitch responsive, freeze yaw,
+        // and recenter only yaw when the phone leaves the wider recovery band.
+        // Hysteresis prevents noise from repeatedly entering and leaving it.
+        let heading_threshold = if baseline.heading_valid { 0.08 } else { 0.15 };
+        let target_yaw = if orientation.horizontal < heading_threshold {
+            baseline.heading_valid = false;
+            yaw
+        } else if !baseline.heading_valid {
+            baseline.sensor[0] = sensor[0];
+            baseline.camera[0] = yaw;
+            baseline.heading_valid = true;
+            yaw
+        } else {
+            verse::controller::wrap(
+                baseline.camera[0] + verse::controller::wrap(sensor[0] - baseline.sensor[0]),
+            )
+        };
+        self.motion.target = Some([
+            target_yaw,
+            (baseline.camera[1] + sensor[1] - baseline.sensor[1])
+                .clamp(verse::camera::MIN_PITCH, verse::camera::MAX_PITCH),
+        ]);
+    }
+
+    fn advance_motion(&mut self, dt: f32) {
+        if !self.motion_needed() {
+            return;
+        }
+        let Some([yaw, pitch]) = self.motion.target else {
+            return;
+        };
+        // Exponential response gives the same result at different display
+        // rates. Sensor callbacks update the target; only frames move the view.
+        let amount = -(-dt / MOTION_RESPONSE_SECONDS).exp_m1();
+        let current = self.world.player.yaw + self.world.camera.yaw_offset;
+        self.world.player.yaw =
+            verse::controller::wrap(current + verse::controller::wrap(yaw - current) * amount);
         self.world.camera.yaw_offset = 0.0;
-        self.world.camera.pitch = (baseline.camera[1] + sensor[1] - baseline.sensor[1])
-            .clamp(verse::camera::MIN_PITCH, verse::camera::MAX_PITCH);
+        self.world.camera.pitch += (pitch - self.world.camera.pitch) * amount;
     }
 
     fn panel_open(&self) -> bool {
@@ -1209,15 +1265,17 @@ mod tests {
         ]
     }
 
-    /// Raw portrait reference-to-device attitude: upright points through the
-    /// back of the phone along reference +Y, with reference +Z toward its top.
+    /// Start with a portrait phone: its right edge points along reference +X,
+    /// its top points up (+Z), and its back points forward (+Y). A body turn
+    /// acts around world +Z; pitch acts around the phone's right edge; screen
+    /// roll acts last around its local +Z. These are active physical rotations.
     fn attitude(yaw: f32, down_pitch: f32, screen_roll: f32) -> [f32; 4] {
-        let x = (down_pitch - std::f32::consts::FRAC_PI_2) * 0.5;
+        let x = (std::f32::consts::FRAC_PI_2 - down_pitch) * 0.5;
         let z = yaw * 0.5;
         let r = screen_roll * 0.5;
         product(
-            [0.0, 0.0, r.sin(), r.cos()],
-            product([x.sin(), 0.0, 0.0, x.cos()], [0.0, 0.0, z.sin(), z.cos()]),
+            [0.0, 0.0, z.sin(), z.cos()],
+            product([x.sin(), 0.0, 0.0, x.cos()], [0.0, 0.0, r.sin(), r.cos()]),
         )
     }
 
@@ -1237,15 +1295,46 @@ mod tests {
         scene
     }
 
+    fn sample(scene: &mut Scene, quaternion: [f32; 4], timestamp: f64) {
+        scene.device_motion(quaternion, timestamp, timestamp);
+    }
+
     #[test]
-    fn motion_mapping_has_portrait_axes_without_screen_roll() {
-        for (yaw, pitch) in [(0.0, 0.0), (0.7, 0.3), (-0.9, -0.4)] {
+    fn native_portrait_fixtures_turn_the_body_left_and_right_and_look_up() {
+        let s = std::f32::consts::FRAC_1_SQRT_2;
+        // Core Motion's upright quaternion has +X, not -X. Its public rotation
+        // matrix maps reference gravity to device -Y; the quaternion is the
+        // inverse of that matrix. The two quarter turns are around world up.
+        for (q, heading, down_pitch) in [
+            ([s, 0.0, 0.0, s], 0.0, 0.0),
+            ([0.5, 0.5, 0.5, 0.5], std::f32::consts::FRAC_PI_2, 0.0),
+            ([0.5, -0.5, -0.5, 0.5], -std::f32::consts::FRAC_PI_2, 0.0),
+            (
+                [0.923_879_5, 0.0, 0.0, 0.382_683_4],
+                0.0,
+                -std::f32::consts::FRAC_PI_4,
+            ),
+            (
+                [0.382_683_4, 0.0, 0.0, 0.923_879_5],
+                0.0,
+                std::f32::consts::FRAC_PI_4,
+            ),
+        ] {
+            for q in [q, q.map(|v| -v)] {
+                let orientation = motion_angles(q).unwrap();
+                close(orientation.angles[0], heading);
+                close(orientation.angles[1], down_pitch);
+            }
+        }
+    }
+
+    #[test]
+    fn motion_mapping_keeps_heading_and_pitch_independent_of_screen_roll() {
+        for (yaw, pitch) in [(0.0, 0.0), (0.7, 0.3), (-0.9, -0.4), (2.7, -1.3)] {
             for roll in [0.0, 0.8, -2.4] {
                 let q = attitude(yaw, pitch, roll);
-                for q in [q, q.map(|v| -v)] {
-                    let MotionOrientation::Angles(angles) = motion_angles(q).unwrap() else {
-                        panic!("a portrait attitude must have a heading");
-                    };
+                for q in [q, q.map(|v| -v), q.map(|v| v * 1.01)] {
+                    let angles = motion_angles(q).unwrap().angles;
                     close(angles[0], yaw);
                     close(angles[1], pitch);
                 }
@@ -1257,33 +1346,76 @@ mod tests {
     }
 
     #[test]
-    fn enabling_motion_preserves_view_and_wraps_yaw_across_pi() {
+    fn enabling_motion_preserves_view_and_frames_smooth_the_shortest_turn() {
         let mut scene = motion_scene();
-        scene.world.player.yaw = 0.4;
+        scene.world.player.yaw = 2.9;
         scene.world.camera.yaw_offset = 0.2;
         let pitch = scene.world.camera.pitch;
-        scene.device_motion(attitude(3.1, 0.1, 0.0), 1.01);
-        close(scene.world.player.yaw, 0.6);
+        sample(&mut scene, attitude(3.0, 0.1, 0.0), 1.01);
+        close(scene.world.player.yaw, 3.1);
         close(scene.world.camera.yaw_offset, 0.0);
         close(scene.world.camera.pitch, pitch);
-        scene.device_motion(attitude(-3.1, 0.3, 0.8), 1.02);
-        close(scene.world.player.yaw, 0.6 + std::f32::consts::TAU - 6.2);
+        sample(&mut scene, attitude(-3.0, 0.3, 0.8), 1.02);
+        close(scene.world.player.yaw, 3.1);
+        close(scene.world.camera.pitch, pitch);
+        scene.update(1.0 + 1.0 / 60.0).unwrap();
+        let advanced = verse::controller::wrap(scene.world.player.yaw - 3.1);
+        assert!(
+            advanced > 0.0 && advanced < 0.15,
+            "short left turn: {advanced}"
+        );
+        assert!(scene.world.camera.pitch > pitch && scene.world.camera.pitch < pitch + 0.2);
+        let target = scene.motion.target.unwrap();
+        sample(&mut scene, attitude(-3.0, 0.3, 0.8).map(|v| -v), 1.03);
+        close(scene.motion.target.unwrap()[0], target[0]);
+        close(scene.motion.target.unwrap()[1], target[1]);
+        scene.advance_motion(1.0);
+        close(
+            scene.world.player.yaw,
+            verse::controller::wrap(3.1 + std::f32::consts::TAU - 6.0),
+        );
         close(scene.world.camera.pitch, pitch + 0.2);
-        let orientation = (scene.world.player.yaw, scene.world.camera.pitch);
-        scene.device_motion(attitude(-3.1, 0.3, 0.8).map(|v| -v), 1.03);
-        close(scene.world.player.yaw, orientation.0);
-        close(scene.world.camera.pitch, orientation.1);
         let packet = serde_json::to_value(scene.packet()).unwrap();
         assert_eq!(packet["camera_mode"], "motion");
         assert_eq!(packet["motion_needed"], true);
-        assert!(packet["camera_yaw"].as_f64().unwrap().is_finite());
-        assert!(packet["camera_pitch"].as_f64().unwrap().is_finite());
     }
 
     #[test]
-    fn motion_left_hold_moves_while_phone_turns_and_right_touch_is_ignored() {
+    fn motion_response_is_independent_of_display_and_sensor_rates() {
+        let mut results = Vec::new();
+        for display_hz in [15, 30, 60, 120] {
+            for sensor_hz in [30, 60, 120] {
+                let mut scene = motion_scene();
+                sample(&mut scene, attitude(0.0, 0.0, 0.0), 1.0 + 0.0001);
+                sample(&mut scene, attitude(0.6, -0.8, 0.0), 1.0 + 0.0002);
+                let mut next_sample = 1;
+                for frame in 1..=display_hz / 5 {
+                    let timestamp = 1.0 + f64::from(frame) / f64::from(display_hz);
+                    while 1.0 + f64::from(next_sample) / f64::from(sensor_hz) <= timestamp {
+                        sample(
+                            &mut scene,
+                            attitude(0.6, -0.8, 0.0),
+                            1.0 + f64::from(next_sample) / f64::from(sensor_hz),
+                        );
+                        next_sample += 1;
+                    }
+                    scene.update(timestamp).unwrap();
+                }
+                results.push([scene.world.player.yaw, scene.world.camera.pitch]);
+            }
+        }
+        for result in &results {
+            close(result[0], results[0][0]);
+            close(result[1], results[0][1]);
+        }
+        assert!(results[0][0] > 0.57 && results[0][0] < 0.6);
+        assert!(results[0][1] < -0.48);
+    }
+
+    #[test]
+    fn motion_left_hold_follows_the_smoothed_view_and_right_touch_is_ignored() {
         let mut scene = motion_scene();
-        scene.device_motion(attitude(0.0, 0.0, 0.0), 1.01);
+        sample(&mut scene, attitude(0.0, 0.0, 0.0), 1.01);
         scene.pointer(1, PointerPhase::Down, 100.0, 300.0).unwrap();
         assert!(scene.input().forward);
         scene.pointer(2, PointerPhase::Down, 300.0, 300.0).unwrap();
@@ -1291,97 +1423,168 @@ mod tests {
         assert_eq!(scene.touches.len(), 1);
         close(scene.world.player.yaw, 0.0);
         let start = scene.world.player.pos;
-        scene.device_motion(attitude(std::f32::consts::FRAC_PI_2, 0.0, 0.0), 1.02);
+        sample(
+            &mut scene,
+            attitude(std::f32::consts::FRAC_PI_2, 0.0, 0.0),
+            1.02,
+        );
         for frame in 1..=10 {
             scene.update(1.0 + f64::from(frame) / 30.0).unwrap();
         }
         assert!(scene.world.player.pos.x > start.x + 1.0);
-        close(scene.world.player.pos.z, start.z);
+        assert!(scene.world.player.pos.z > start.z);
         scene.pointer(1, PointerPhase::Move, 130.0, 350.0).unwrap();
         let input = scene.input();
         assert!(input.backward && input.strafe_right && !input.forward);
         scene.pointer(1, PointerPhase::Up, 130.0, 350.0).unwrap();
         assert!(!scene.input().forward && !scene.input().backward);
+        let yaw = scene.world.player.yaw;
         scene
             .action(Request::CameraMode {
                 mode: CameraMode::Touch,
             })
             .unwrap();
+        assert!(scene.motion.target.is_none());
         scene.pointer(3, PointerPhase::Down, 100.0, 300.0).unwrap();
-        assert!(
-            !scene.input().forward,
-            "touch mode still requires joystick drag"
-        );
+        assert!(!scene.input().forward, "touch mode requires joystick drag");
         scene.pointer(3, PointerPhase::Move, 100.0, 270.0).unwrap();
         assert!(scene.input().forward);
         scene.pointer(4, PointerPhase::Down, 300.0, 300.0).unwrap();
         scene.pointer(4, PointerPhase::Move, 320.0, 300.0).unwrap();
-        close(scene.world.player.yaw, std::f32::consts::FRAC_PI_2 - 0.08);
+        close(scene.world.player.yaw, yaw - 0.08);
     }
 
     #[test]
-    fn invalid_and_stale_motion_do_not_poison_the_baseline() {
+    fn fresh_motion_is_admitted_after_a_slow_frame_but_stale_or_future_motion_is_not() {
         let mut scene = motion_scene();
-        scene.device_motion(attitude(0.0, 0.0, 0.0), 1.01);
-        let q = attitude(0.5, 0.4, 0.0);
-        for timestamp in [f64::NAN, f64::INFINITY, -1.0, 0.9, 1.01, 2.0] {
-            scene.device_motion(q, timestamp);
+        sample(&mut scene, attitude(0.0, 0.0, 0.0), 1.01);
+        // The previous frame is 500 ms old. The current sensor sample is fresh
+        // against its receipt time and must still turn the next frame.
+        scene.device_motion(attitude(0.5, 0.0, 0.0), 1.49, 1.5);
+        assert_eq!(scene.motion.last_sample, Some(1.49));
+        scene.update(1.5).unwrap();
+        assert!(scene.world.player.yaw > 0.49);
+        let target = scene.motion.target;
+        for (timestamp, received_at) in [
+            (1.51, 1.9),
+            (1.7, 1.6),
+            (1.48, 1.5),
+            (1.51, 1.49),
+            (f64::NAN, 1.6),
+            (1.6, f64::NAN),
+            (1.6, f64::INFINITY),
+            (-1.0, 1.6),
+        ] {
+            scene.device_motion(attitude(-1.0, 0.5, 0.0), timestamp, received_at);
         }
         for invalid in [[0.0; 4], [f32::INFINITY; 4], [f32::NAN; 4]] {
-            scene.device_motion(invalid, 1.2);
+            scene.device_motion(invalid, 1.6, 1.6);
         }
-        assert_eq!(scene.motion.last_sample, Some(1.01));
-        close(scene.world.player.yaw, 0.0);
-        scene.device_motion(q, 1.02);
-        close(scene.world.player.yaw, 0.5);
-        scene.update(2.5).unwrap();
-        scene.device_motion(attitude(-1.0, -0.3, 0.0), 2.51);
-        close(scene.world.player.yaw, 0.5);
-        scene.device_motion(attitude(-0.9, -0.3, 0.0), 2.52);
-        close(scene.world.player.yaw, 0.6);
+        assert_eq!(scene.motion.last_sample, Some(1.49));
+        assert_eq!(scene.motion.last_received, Some(1.5));
+        assert_eq!(scene.motion.target, target);
     }
 
     #[test]
-    fn motion_pitch_is_clamped_and_vertical_phone_rebaselines_without_jump() {
+    fn motion_gaps_and_recenter_discard_pending_interpolation_without_jumping() {
         let mut scene = motion_scene();
-        scene.device_motion(attitude(0.0, -1.0, 0.0), 1.01);
-        scene.device_motion(attitude(0.0, 1.4, 0.0), 1.02);
-        close(scene.world.camera.pitch, verse::camera::MAX_PITCH);
+        sample(&mut scene, attitude(0.0, 0.0, 0.0), 1.01);
+        sample(&mut scene, attitude(1.0, -1.0, 0.0), 1.02);
+        scene.update(1.04).unwrap();
+        let previous = [scene.world.player.yaw, scene.world.camera.pitch];
         scene.action(Request::ResetMotion).unwrap();
-        scene.device_motion(attitude(0.0, 1.0, 0.0), 1.03);
-        scene.device_motion(attitude(0.0, -1.4, 0.0), 1.04);
-        close(scene.world.camera.pitch, verse::camera::MIN_PITCH);
-        scene.device_motion(attitude(0.8, 0.0, 0.0), 1.05);
-        let previous = (scene.world.player.yaw, scene.world.camera.pitch);
-        scene.device_motion([0.0, 0.0, 0.0, 1.0], 1.06);
-        assert!(scene.motion.baseline.is_none());
-        scene.device_motion(attitude(-2.0, 0.0, 0.0), 1.07);
-        close(scene.world.player.yaw, previous.0);
-        close(scene.world.camera.pitch, previous.1);
+        sample(&mut scene, attitude(0.5, -0.5, 0.0), 1.03);
+        assert!(
+            scene.motion.target.is_none(),
+            "ignore queued samples before recenter"
+        );
+        scene.update(1.08).unwrap();
+        close(scene.world.player.yaw, previous[0]);
+        close(scene.world.camera.pitch, previous[1]);
+        sample(&mut scene, attitude(-1.5, 0.7, 0.0), 1.09);
+        scene.update(1.12).unwrap();
+        close(scene.world.player.yaw, previous[0]);
+        close(scene.world.camera.pitch, previous[1]);
+        sample(&mut scene, attitude(-1.0, 0.7, 0.0), 1.13);
+        scene.update(2.5).unwrap();
+        assert!(scene.motion.target.is_none());
+        close(scene.world.player.yaw, previous[0]);
+        sample(&mut scene, attitude(2.0, -0.5, 0.0), 2.51);
+        scene.update(2.54).unwrap();
+        close(scene.world.player.yaw, previous[0]);
+        close(scene.world.camera.pitch, previous[1]);
+        sample(&mut scene, attitude(2.5, -0.5, 0.0), 2.55);
+        // A sensor gap also clears an unfinished target before any new frame.
+        sample(&mut scene, attitude(-1.0, 0.5, 0.0), 4.0);
+        scene.advance_motion(0.05);
+        close(scene.world.player.yaw, previous[0]);
+        close(scene.world.camera.pitch, previous[1]);
     }
 
     #[test]
-    fn motion_lifecycle_resets_and_ignores_samples_while_inactive_or_in_panels() {
+    fn motion_pitch_is_bounded_and_pole_crossings_keep_yaw_stable() {
         let mut scene = motion_scene();
-        scene.device_motion(attitude(0.0, 0.0, 0.0), 1.01);
-        scene.device_motion(attitude(0.4, 0.0, 0.0), 1.02);
+        sample(&mut scene, attitude(0.0, -1.0, 0.0), 1.01);
+        sample(&mut scene, attitude(0.0, 1.4, 0.0), 1.02);
+        close(scene.motion.target.unwrap()[1], verse::camera::MAX_PITCH);
+        scene.action(Request::ResetMotion).unwrap();
+        sample(&mut scene, attitude(0.0, 1.0, 0.0), 1.03);
+        sample(&mut scene, attitude(0.0, -1.4, 0.0), 1.04);
+        close(scene.motion.target.unwrap()[1], verse::camera::MIN_PITCH);
+        scene.advance_motion(0.1);
+        let yaw = scene.world.player.yaw;
+        let previous_pitch = scene.world.camera.pitch;
+        sample(&mut scene, attitude(0.8, -1.56, 0.0), 1.05);
+        assert!(!scene.motion.baseline.as_ref().unwrap().heading_valid);
+        scene.advance_motion(0.05);
+        close(scene.world.player.yaw, yaw);
+        assert!(
+            scene.world.camera.pitch < previous_pitch,
+            "pitch keeps approaching the sky"
+        );
+        // Cross the pole, pass through the hysteresis band, then recover the
+        // heading on the far side without the geometrical half-turn.
+        for (index, pitch) in [-1.58, -1.68, -1.8].into_iter().enumerate() {
+            sample(
+                &mut scene,
+                attitude(-2.0, pitch, 0.0),
+                1.06 + index as f64 * 0.01,
+            );
+            scene.advance_motion(0.03);
+            close(scene.world.player.yaw, yaw);
+        }
+        assert!(scene.motion.baseline.as_ref().unwrap().heading_valid);
+        sample(&mut scene, attitude(-1.8, -1.8, 0.0), 1.09);
+        close(
+            verse::controller::wrap(scene.motion.target.unwrap()[0] - yaw),
+            0.2,
+        );
+    }
+
+    #[test]
+    fn motion_lifecycle_resets_pending_targets_and_ignores_inactive_samples() {
+        let mut scene = motion_scene();
+        sample(&mut scene, attitude(0.0, 0.0, 0.0), 1.01);
+        sample(&mut scene, attitude(0.4, 0.0, 0.0), 1.02);
+        scene.update(1.04).unwrap();
+        let yaw = scene.world.player.yaw;
         scene.activate(false).unwrap();
         assert!(!scene.packet().motion_needed);
-        scene.device_motion(attitude(1.4, 0.0, 0.0), 1.03);
-        close(scene.world.player.yaw, 0.4);
+        assert!(scene.motion.target.is_none());
+        sample(&mut scene, attitude(1.4, 0.0, 0.0), 1.05);
+        close(scene.world.player.yaw, yaw);
         scene.activate(true).unwrap();
         scene.update(2.0).unwrap();
-        scene.device_motion(attitude(1.4, 0.0, 0.0), 2.01);
-        close(scene.world.player.yaw, 0.4);
-        scene.device_motion(attitude(1.5, 0.0, 0.0), 2.02);
-        close(scene.world.player.yaw, 0.5);
+        sample(&mut scene, attitude(1.4, 0.0, 0.0), 2.01);
+        scene.update(2.02).unwrap();
+        close(scene.world.player.yaw, yaw);
         for computer in [true, false] {
             scene.reset_motion();
             scene.computer_open = computer;
             scene.gym_open = !computer;
             assert!(!scene.packet().motion_needed);
-            scene.device_motion(attitude(-1.0, 0.0, 0.0), 2.03);
-            close(scene.world.player.yaw, 0.5);
+            sample(&mut scene, attitude(-1.0, 0.0, 0.0), 2.03);
+            close(scene.world.player.yaw, yaw);
             scene
                 .action(if computer {
                     Request::CloseComputer
@@ -1389,17 +1592,22 @@ mod tests {
                     Request::CloseGym
                 })
                 .unwrap();
-            scene.device_motion(attitude(-1.0, 0.0, 0.0), if computer { 2.04 } else { 2.05 });
-            close(scene.world.player.yaw, 0.5);
+            sample(
+                &mut scene,
+                attitude(-1.0, 0.0, 0.0),
+                if computer { 2.04 } else { 2.05 },
+            );
+            scene.advance_motion(0.05);
+            close(scene.world.player.yaw, yaw);
         }
         scene.spawn_pending = true;
         scene.reset_motion();
         assert!(!scene.packet().motion_needed);
-        scene.device_motion(attitude(0.0, 0.0, 0.0), 2.06);
-        scene.update(2.1).unwrap(); // No session: finish the pending spawn.
+        sample(&mut scene, attitude(0.0, 0.0, 0.0), 2.06);
+        scene.update(2.1).unwrap();
         assert!(scene.packet().motion_needed);
-        scene.device_motion(attitude(0.0, 0.0, 0.0), 2.11);
-        close(scene.world.player.yaw, 0.5);
+        sample(&mut scene, attitude(0.0, 0.0, 0.0), 2.11);
+        close(scene.world.player.yaw, yaw);
     }
 
     #[test]
@@ -1421,7 +1629,19 @@ mod tests {
         );
         assert!(
             serde_json::from_str::<Request>(
-                r#"{"action":"device_motion","quaternion":[0,0,0,1],"timestamp":1,"extra":true}"#
+                r#"{"action":"device_motion","quaternion":[0,0,0,1],"timestamp":1,"received_at":1}"#
+            )
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_str::<Request>(
+                r#"{"action":"device_motion","quaternion":[0,0,0,1],"timestamp":1}"#
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_str::<Request>(
+                r#"{"action":"device_motion","quaternion":[0,0,0,1],"timestamp":1,"received_at":1,"extra":true}"#
             )
             .is_err()
         );

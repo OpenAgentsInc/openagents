@@ -17,8 +17,11 @@ shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
 
 - In **Touch look**, drag on the left half to move and on the right half to
   turn and look up or down. Releasing the left side stops movement.
-- Switch to **Motion look** to look around by turning your phone. Hold the left
-  half to walk forward; move that touch to adjust direction. **Recenter** uses
+- Switch to **Motion look** to look around by turning your body with the phone
+  or pointing the phone left, right, up, or down. Screen roll does not tilt the
+  horizon. The shared Rust camera interpolates toward the latest orientation
+  on each rendered frame. Hold the left half to walk forward; move that touch
+  to adjust direction. **Recenter** uses
   your current phone position as the new reference without changing the view.
   Switch back to **Touch look** whenever you prefer finger controls.
 - Motion look pauses while the app is in the background or an in-world panel
@@ -38,10 +41,22 @@ shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
   the phone also accepts its complete pairing string. Camera permission is
   requested only when you choose to scan.
 
-The world uses a 30 Hz native display callback and a single-sample render
-target: a Metal layer on iOS and an Android native window on Android. The desktop retains its mouse/keyboard controls and supported 4× MSAA.
+The iOS world requests a 60 Hz display callback (30 Hz minimum); Android
+follows its native display callback. Motion samples are requested at 60 Hz.
+Both use a single-sample render target: a Metal layer on iOS and an Android
+native window on Android. Desktop retains its mouse and keyboard controls and
+supported 4× MSAA.
 Both surfaces run `verse::runtime::WorldRuntime`; mobile does not approximate
 the city with a separate scene or image.
+
+Native motion adapters supply device-to-world quaternions and separate sample
+and receipt timestamps. Freshness is checked at receipt, so a slow previous
+render cannot make a fresh sensor reading look stale. Recenter, app suspension,
+and panel transitions discard the previous motion target. The camera keeps
+its eye above the ground while preserving the requested view direction,
+including upward look; the ground clamp does not force it to keep looking
+at the avatar. See the
+[motion-camera verification](../coder/verification/2026-09-26-motion-camera.md).
 
 ## Use the world computer
 

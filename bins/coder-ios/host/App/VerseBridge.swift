@@ -52,7 +52,6 @@ final class VerseBridge: ObservableObject {
     let motionSynthetic: Bool
     let motionDriver: DeviceMotionDriver
     private let motionPreview: PreviewDeviceMotionSource?
-    private var previewTurns = 0
     let synthetic: Bool
     private weak var canvas: VerseMetalView?
     private var lastPublished: CFTimeInterval = 0
@@ -102,11 +101,7 @@ final class VerseBridge: ObservableObject {
 
     func previewMotion() {
         guard motionSynthetic, packet?.camera_mode == "motion" else { return }
-        previewTurns += 1
-        let angle = Double(previewTurns) * 0.25
-        let c = sqrt(0.5) * cos(angle / 2)
-        let s = sqrt(0.5) * sin(angle / 2)
-        motionPreview?.setQuaternion([-c, s, s, c])
+        motionPreview?.advance()
     }
 
     func reportMotionFailure(_ error: Error) { motionError = error.localizedDescription }

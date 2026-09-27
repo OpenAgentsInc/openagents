@@ -1,0 +1,7 @@
+6aa09e652df870993372c21ac459f611d8370befcbb53be4c8df148ca70b6f8e  bins/coder-ios/host/App/DeviceMotion.swift
+525ef98af2a8d43dddf2a4bcff640483826dd00b5926fb63c098979f66d86290  bins/coder-ios/host/App/VerseBridge.swift
+9d9e3d1937396e014727eb6ef1b3c5e445b03c271f8550967d437b55068bec48  bins/coder-ios/host/App/VerseSurface.swift
+a7a3e68b858d3cb3dab3476d6a3ad30f95fc486db22cc613de80770e6eec2b74  bins/coder-ios/host/Tests/DeviceMotionChecks.swift
+1964fd121fede6a7bb5ace697b5467860e87b962f65c206599b98b7a37f155c8  bins/coder-ios/host/UITests/FullscreenMotionUITests.swift
+4f50f2aba0e4dd62f4cc7ca0efec1d3ececb6cdce67d02b5f6446b7ea5e4a7c1  crates/coder-mobile/src/verse_app.rs
+6fdb6f3996b3909cc4c6b11d5ef85dc5b029f2dce666164ece29050a71e4550b  crates/verse/src/camera.rs

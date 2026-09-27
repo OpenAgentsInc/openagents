@@ -54,10 +54,20 @@ final class FullscreenMotionUITests: XCTestCase {
         XCTAssertTrue(wait { self.frameCount() > baselineFrame + 8 }, "Present frames with the new motion baseline before injecting a turn.")
         let beforeMotion = camera()
         app.buttons["verse-motion-sample"].tap()
-        XCTAssertTrue(wait { abs(self.camera()[0] - beforeMotion[0]) > 0.05 }, "An injected native quaternion changes the Rust camera.")
+        XCTAssertTrue(waitForCamera(yaw: beforeMotion[0] + 0.4, pitch: beforeMotion[1]),
+                      "A body turn to the left changes yaw without changing pitch after smoothed frames.")
+        app.buttons["verse-motion-sample"].tap()
+        XCTAssertTrue(waitForCamera(yaw: beforeMotion[0] - 0.4, pitch: beforeMotion[1]),
+                      "A body turn to the right moves the smoothed camera in the opposite direction.")
+        app.buttons["verse-motion-sample"].tap()
+        XCTAssertTrue(waitForCamera(yaw: beforeMotion[0], pitch: beforeMotion[1] - 0.8),
+                      "Raising the phone's viewing direction looks upward after smoothed frames.")
+        XCTAssertLessThan(camera()[1], 0, "Motion look can point above the horizon.")
+        attach("Motion look above the horizon")
         let afterMotion = camera()
         dragRight()
         XCTAssertEqual(camera()[0], afterMotion[0], accuracy: 0.01, "Right drag cannot compete with motion control.")
+        XCTAssertEqual(camera()[1], afterMotion[1], accuracy: 0.01, "Right drag cannot change motion-controlled pitch.")
         let beforeMove = position()
         app.otherElements["verse-surface"].coordinate(withNormalizedOffset: CGVector(dx: 0.16, dy: 0.43)).press(forDuration: 0.9)
         XCTAssertTrue(wait { self.distance(self.position(), beforeMove) > 0.1 }, "Holding the left side moves in motion mode.")
@@ -110,6 +120,14 @@ final class FullscreenMotionUITests: XCTestCase {
 
     private func frameCount() -> UInt64 {
         UInt64(app.staticTexts["verse-frames"].label.split(separator: " ").last ?? "0") ?? 0
+    }
+    private func waitForCamera(yaw: Double, pitch: Double) -> Bool {
+        let started = frameCount()
+        return wait {
+            let value = self.camera()
+            let yawError = atan2(sin(value[0] - yaw), cos(value[0] - yaw))
+            return self.frameCount() > started + 8 && abs(yawError) < 0.01 && abs(value[1] - pitch) < 0.01
+        }
     }
     private func camera() -> [Double] { values("verse-camera", count: 2) }
     private func position() -> [Double] { values("verse-position", count: 3) }
