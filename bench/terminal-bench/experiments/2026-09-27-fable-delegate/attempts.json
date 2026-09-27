@@ -1,0 +1,197 @@
+[
+ {
+  "job": "tb4--coder-one-delegate-fable-low--sound-change-cascade--9746-a1",
+  "trial": "sound-change-cascade__wSSYZLV",
+  "trial_id": "887713d4-8a3a-499a-a58c-67bd038e60bf",
+  "reward": 0.0,
+  "exception": null,
+  "trial_seconds": 650.2,
+  "phases_sec": {
+   "environment_setup": 2.8,
+   "agent_setup": 2.9,
+   "agent_execution": 634.4,
+   "verifier": 4.5
+  },
+  "agent_sec": {
+   "before_first_step": 2.7,
+   "explore_and_briefing": 30.8,
+   "delegate": 600.0,
+   "after_delegate": 0.9
+  },
+  "explore": {
+   "steps": 6,
+   "shell_commands": 6,
+   "jev_calls": 7,
+   "generations": 7,
+   "generation_tokens_in_out": [
+    21310,
+    2512
+   ],
+   "jev_input_tokens": 15063,
+   "jev_requests": 7
+  },
+  "delegate": {
+   "status": "timed_out",
+   "deadline_sec": 600,
+   "effort": "low",
+   "model": "claude-fable-5-1",
+   "api_calls": 6,
+   "num_turns": null,
+   "total_cost_usd": null,
+   "cost_provenance": "unknown",
+   "briefing_chars": 6676,
+   "briefing_sha256": "a210b423d34339f3d04d2071916442dfa565dc1f35abbfefbb9be5016927504e",
+   "stream_tokens": {
+    "input": 162,
+    "w5m": 0,
+    "w1h": 47558,
+    "read": 166416,
+    "output_reported": 27
+   },
+   "thinking_estimate": 39500,
+   "estimate_usd": {
+    "input_side": 0.9944,
+    "thinking": 1.975,
+    "total_lower_bound": 2.9694
+   },
+   "result_event": null
+  },
+  "cost": {
+   "generation_usd": 0.025404,
+   "jev_usd": 0.000632646,
+   "delegate_usd": null,
+   "total_usd": null,
+   "known_lower_bound_usd": 0.026036646
+  }
+ },
+ {
+  "job": "tb4--coder-one-delegate-fable-low--sound-change-cascade--9746-a2",
+  "trial": "sound-change-cascade__2qfCLu3",
+  "trial_id": "d7c1bca6-0c50-4e13-9e15-69e1c1be9599",
+  "reward": 0.0,
+  "exception": null,
+  "trial_seconds": 861.3,
+  "phases_sec": {
+   "environment_setup": 3.2,
+   "agent_setup": 3.4,
+   "agent_execution": 845.0,
+   "verifier": 4.5
+  },
+  "agent_sec": {
+   "before_first_step": 2.9,
+   "explore_and_briefing": 31.3,
+   "delegate": 810.0,
+   "after_delegate": 0.8
+  },
+  "explore": {
+   "steps": 6,
+   "shell_commands": 6,
+   "jev_calls": 7,
+   "generations": 7,
+   "generation_tokens_in_out": [
+    20047,
+    2295
+   ],
+   "jev_input_tokens": 14369,
+   "jev_requests": 7
+  },
+  "delegate": {
+   "status": "timed_out",
+   "deadline_sec": 810,
+   "effort": "low",
+   "model": "claude-fable-5-1",
+   "api_calls": 8,
+   "num_turns": null,
+   "total_cost_usd": null,
+   "cost_provenance": "unknown",
+   "briefing_chars": 6713,
+   "briefing_sha256": "30cd66d29ce35b369565474fdc44c5d49f2aec565da59e3282745b89116e0617",
+   "stream_tokens": {
+    "input": 226,
+    "w5m": 0,
+    "w1h": 42590,
+    "read": 219126,
+    "output_reported": 107
+   },
+   "thinking_estimate": 28154,
+   "estimate_usd": {
+    "input_side": 0.9088,
+    "thinking": 1.4077,
+    "total_lower_bound": 2.3165
+   },
+   "result_event": null
+  },
+  "cost": {
+   "generation_usd": 0.023644,
+   "jev_usd": 0.0006034980000000001,
+   "delegate_usd": null,
+   "total_usd": null,
+   "known_lower_bound_usd": 0.024247498
+  }
+ },
+ {
+  "job": "tb4--coder-one-delegate-fable-low--sound-change-cascade--9746-a3",
+  "trial": "sound-change-cascade__FuBWzZP",
+  "trial_id": "d6796842-142a-41bb-94ec-787bba8eaf5c",
+  "reward": 0.0,
+  "exception": null,
+  "trial_seconds": 859.4,
+  "phases_sec": {
+   "environment_setup": 3.3,
+   "agent_setup": 3.5,
+   "agent_execution": 843.8,
+   "verifier": 4.4
+  },
+  "agent_sec": {
+   "before_first_step": 2.9,
+   "explore_and_briefing": 30.3,
+   "delegate": 810.0,
+   "after_delegate": 0.7
+  },
+  "explore": {
+   "steps": 6,
+   "shell_commands": 6,
+   "jev_calls": 7,
+   "generations": 7,
+   "generation_tokens_in_out": [
+    21555,
+    2145
+   ],
+   "jev_input_tokens": 15227,
+   "jev_requests": 7
+  },
+  "delegate": {
+   "status": "timed_out",
+   "deadline_sec": 810,
+   "effort": "low",
+   "model": "claude-fable-5-1",
+   "api_calls": 12,
+   "num_turns": null,
+   "total_cost_usd": null,
+   "cost_provenance": "unknown",
+   "briefing_chars": 6542,
+   "briefing_sha256": "0f4529a47a94e41e923d400e7f26f3035874a03845dc896fc8471c04c27e7f0c",
+   "stream_tokens": {
+    "input": 354,
+    "w5m": 0,
+    "w1h": 62640,
+    "read": 439535,
+    "output_reported": 44
+   },
+   "thinking_estimate": 25266,
+   "estimate_usd": {
+    "input_side": 1.3662,
+    "thinking": 1.2633,
+    "total_lower_bound": 2.6295
+   },
+   "result_event": null
+  },
+  "cost": {
+   "generation_usd": 0.024213,
+   "jev_usd": 0.000639534,
+   "delegate_usd": null,
+   "total_usd": null,
+   "known_lower_bound_usd": 0.024852534
+  }
+ }
+]
