@@ -1,5 +1,5 @@
 //! Local-only display of the intended, short-lived pairing capability.
-use coder_connect::{Error, ErrorCode, Result, pairing};
+use crate::{Error, ErrorCode, Result, pairing};
 use std::{
     io::Write,
     os::unix::fs::OpenOptionsExt,
@@ -10,21 +10,21 @@ pub struct Display {
     pub expires_at: u64,
     path: PathBuf,
     pub active: bool,
-    host: coder_connect::host::Host,
+    host: crate::host::Host,
 }
 impl Display {
     pub fn show(
         directory: &Path,
         code: &str,
-        policy: coder_connect::RelayPolicy,
+        policy: crate::RelayPolicy,
         browser: bool,
     ) -> Result<Self> {
-        let invitation = pairing::Invitation::parse(code, coder_connect::unix_time()?, policy)?;
+        let invitation = pairing::Invitation::parse(code, crate::unix_time()?, policy)?;
         let svg = pairing::qr_svg(code)?;
         let terminal = pairing::terminal_qr(code)?;
         let path = directory.join(format!("pairing-{}.html", invitation.id));
         let html = format!(
-            "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Connect Coder</title><style>body{{font:18px system-ui;max-width:680px;margin:30px auto;padding:20px;background:#111;color:#eee}}svg{{display:block;width:min(100%,520px);height:auto;margin:20px auto}}input{{box-sizing:border-box;width:100%;padding:12px}}strong{{color:#ffbd45}}</style><h1>Connect your phone</h1><p>In Coder, choose <strong>Scan QR code</strong>.</p><p>Single use. Expires five minutes after creation. Only share this code with the phone you want to connect. Anyone who can see it can claim this invitation first.</p>{svg}<label>Paste instead<input readonly value=\"{code}\" aria-label=\"Pairing code\"></label><p>The computer command must stay running. This static page does not show pairing status; see the terminal. After successful pairing or expiry, this code cannot admit another phone.</p></html>",
+            "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Connect Coder</title><style>body{{font:18px system-ui;max-width:680px;margin:30px auto;padding:20px;background:#111;color:#eee}}svg{{display:block;width:min(100%,520px);height:auto;margin:20px auto}}input{{box-sizing:border-box;width:100%;padding:12px}}strong{{color:#ffbd45}}</style><h1>Connect your phone</h1><p>In Coder, choose <strong>Scan QR code</strong>.</p><p>Private, single-use code. Expires in five minutes. Only show it to your phone.</p>{svg}<label>Paste instead<input readonly value=\"{code}\" aria-label=\"Pairing code\"></label><p>Keep the command running. Check the terminal for pairing status.</p></html>",
         );
         let mut file = std::fs::OpenOptions::new()
             .write(true)
@@ -63,7 +63,7 @@ impl Display {
             expires_at: invitation.expires_at,
             path,
             active: true,
-            host: coder_connect::host::Host::new(directory, policy),
+            host: crate::host::Host::new(directory, policy),
         })
     }
     pub fn clear(&mut self) {

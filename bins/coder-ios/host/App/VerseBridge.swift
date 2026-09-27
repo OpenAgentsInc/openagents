@@ -7,6 +7,7 @@ import SwiftUI
 struct VersePacket: Decodable {
     let schema: String
     let status: String
+    let connection: VerseConnection
     let error: String?
     let frames_presented: UInt64
     let position: [Double]
@@ -23,6 +24,13 @@ struct VersePacket: Decodable {
     let camera_pitch: Double
     let camera_distance: Double
     let motion_needed: Bool
+}
+
+struct VerseConnection: Decodable {
+    let state: String
+    let label: String
+    let relay: String?
+    let error: String?
 }
 
 struct VerseComputer: Decodable {
@@ -47,6 +55,7 @@ final class VerseBridge: ObservableObject {
     @Published private(set) var packet: VersePacket?
     @Published private(set) var nativeError: String?
     @Published private(set) var gymBoard: GymBoardView?
+    @Published private(set) var worldStorageError: String?
     @Published private(set) var gymStorageError: String?
     @Published private(set) var motionError: String?
     let motionAvailable: Bool
@@ -81,7 +90,14 @@ final class VerseBridge: ObservableObject {
             nativeError = "The world surface is not mounted. Open Verse again."
             return
         }
-        canvas.send(request, forcePublish: true)
+        let result = canvas.send(request, forcePublish: true)
+        if let action = request["action"] as? String, ["connect", "disconnect"].contains(action),
+           case let .success(packet) = result, packet.error == nil {
+            do {
+                try WorldConnection.save(packet.connection.relay, synthetic: synthetic)
+                worldStorageError = nil
+            } catch { worldStorageError = error.localizedDescription }
+        }
     }
 
     func retry() { canvas?.recreate() }
@@ -98,7 +114,7 @@ final class VerseBridge: ObservableObject {
         }
     }
 
-    func recenterMotion() { send(["action": "reset_motion"]) }
+    func recenterMotion() { send(["action": "recenter_camera"]) }
 
     func previewMotion() {
         guard motionSynthetic, packet?.camera_mode == "motion" else { return }
@@ -106,6 +122,11 @@ final class VerseBridge: ObservableObject {
     }
 
     func reportMotionFailure(_ error: Error) { motionError = error.localizedDescription }
+
+    func storedWorldRelay() -> String? {
+        do { return try WorldConnection.load(synthetic: synthetic) }
+        catch { worldStorageError = error.localizedDescription; return nil }
+    }
 
     func storedGymCode() -> String? {
         do { return try GymConnection.load(synthetic: synthetic) }
@@ -162,6 +183,8 @@ final class VerseBridge: ObservableObject {
         }
         let packet = try JSONDecoder().decode(VersePacket.self, from: Data(bytes: data, count: result.len))
         guard packet.schema == "coder.verse.v1",
+              ["offline", "paused", "connecting", "connected", "retrying", "preview"].contains(packet.connection.state),
+              (packet.connection.relay?.utf8.count ?? 0) <= 2048,
               packet.position.count == 3, packet.position.allSatisfy(\.isFinite),
               packet.computer.screen_x.isFinite, packet.computer.screen_y.isFinite,
               packet.computer.distance.isFinite,

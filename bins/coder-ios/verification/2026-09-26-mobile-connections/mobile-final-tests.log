@@ -1,0 +1,59 @@
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-mobile)
+    Finished `test` profile [unoptimized] target(s) in 1.43s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/coder_mobile-3da529fdc40a9fb3)
+
+running 51 tests
+test computers_live_tests::serve_a_host_for_a_device_run ... ignored, serves a host for a simulator or emulator run; see its documentation
+test tests::the_normal_app_offers_live_computers_and_validates_what_it_is_given ... ok
+test verse_app::tests::bad_and_excess_touches_do_not_poison_camera_or_keep_moving ... ok
+test cache::tests::encrypted_cache_survives_restart_and_refuses_wrong_key_and_swapped_entries ... ok
+test verse_app::tests::computer_requires_approach_and_releases_held_input ... ok
+test verse_app::tests::double_tap_requires_a_close_pair_without_drag_hold_cancel_or_second_finger ... ok
+test verse_app::tests::dragging_from_the_monitor_releases_tap_capture_to_world_controls ... ok
+test verse_app::tests::enabling_motion_preserves_view_and_frames_smooth_the_shortest_turn ... ok
+test verse_app::tests::explicit_recenter_restores_default_view_and_requires_fresh_motion ... ok
+test verse_app::tests::exposed_monitor_edge_opens_even_when_its_center_is_occluded ... ok
+test render::tests::an_empty_transcript_reports_its_completed_read_instead_of_loading_forever ... ok
+test verse_app::tests::fresh_motion_is_admitted_after_a_slow_frame_but_stale_or_future_motion_is_not ... ok
+test render::tests::an_evicted_transcript_reports_its_missing_cache_instead_of_loading ... ok
+test verse_app::tests::gym_fixture_loads_only_after_walking_inside_and_pauses_on_exit ... ok
+test verse_app::tests::gym_requires_deliberate_selection_and_retains_the_preview_refusal_after_leaving ... ok
+test verse_app::tests::held_movement_and_right_look_remain_independent ... ok
+test render::tests::one_readable_row_per_record_keeps_every_raw_fragment_available ... ok
+test verse_app::tests::invalid_relay_cannot_replace_a_previous_choice ... ok
+test verse_app::tests::lifecycle_camera_and_panel_changes_discard_double_taps ... ok
+test verse_app::tests::motion_gaps_and_recenter_discard_pending_interpolation_without_jumping ... ok
+test verse_app::tests::monitor_gestures_reject_drag_cancel_long_hold_and_multiple_fingers ... ok
+test verse_app::tests::motion_left_hold_follows_the_smoothed_view_and_right_drag_does_not_look ... ok
+test verse_app::tests::motion_lifecycle_resets_pending_targets_and_ignores_inactive_samples ... ok
+test verse_app::tests::motion_mapping_keeps_heading_and_pitch_independent_of_screen_roll ... ok
+test verse_app::tests::motion_pitch_is_bounded_and_pole_crossings_keep_yaw_stable ... ok
+test verse_app::tests::native_portrait_fixtures_turn_the_body_left_and_right_and_look_up ... ok
+test verse_app::tests::motion_response_is_independent_of_display_and_sensor_rates ... ok
+test verse_app::tests::nearby_double_taps_jump_once_in_each_camera_mode_and_touch_region ... ok
+test verse_app::tests::physical_monitor_tap_opens_without_moving_in_both_camera_modes ... ok
+test verse_app::tests::pinch_scales_camera_distance_and_cancels_pending_input ... ok
+test tests::invalid_pairing_input_preserves_cached_chats_and_does_not_echo_the_code ... ok
+test verse_app::tests::remembered_world_relay_is_validated_before_restore ... ok
+test verse_app::tests::render_stalls_do_not_turn_held_touches_into_taps ... ok
+test verse_app::tests::right_double_tap_jumps_while_left_movement_is_held ... ok
+test tests::ffi_rejects_unknown_operations_without_executing_anything ... ok
+test verse_app::tests::touches_move_shared_player_and_pause_cancels_motion ... ok
+test tests::the_computers_surface_is_separate_from_the_reader ... ok
+test render::presentation_tests::transcript_prioritizes_messages_and_keeps_source_details_available ... ok
+test verse_app::tests::wire_motion_requests_are_closed_and_default_is_touch ... ok
+test tests::native_projection_opens_a_cached_chat_and_refuses_stale_actions ... ok
+test verse_app::tests::world_connection_labels_follow_the_observed_transport_status ... ok
+test verse_app::tests::world_selection_survives_panels_suspension_and_remount_without_preview_networking ... ok
+test verse_ffi::tests::detached_surface_preserves_scene_without_advancing_or_resuming ... ok
+test tests::paused_follow_pins_the_visible_page_across_new_pages ... ok
+test tests::catalog_is_persisted_in_pages_and_source_gaps_are_visible ... ok
+test render::tests::an_evicted_middle_page_reports_the_internal_history_gap ... ok
+test tests::unchanged_catalog_refresh_keeps_all_cached_pages_visible ... ok
+test tests::large_message_is_readable_across_source_pages_without_a_one_kib_cut ... ok
+test connection_tests::first_read_failure_keeps_the_grant_and_error_until_a_read_succeeds ... ok
+test connection_tests::app_redeems_qr_invitation_pages_refreshes_restores_and_erases_revoked_history ... ok
+test computers_live_tests::the_app_enrolls_watches_invites_sees_activity_and_is_revoked_against_a_real_host ... ok
+
+test result: ok. 50 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 4.33s
+

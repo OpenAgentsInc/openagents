@@ -7,6 +7,9 @@ import android.text.SpannableString
 import android.text.style.ClickableSpan
 import android.text.style.ImageSpan
 import android.view.Gravity
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -39,7 +42,7 @@ class NativeRenderer(private val context: Context, private val activate: (JSONOb
     private data class Mounted(val kind: String, val view: View, var value: String? = null,
         var original: Boolean = false, var following: Boolean = false,
         var followPage: String? = null, var followTarget: String? = null,
-        var text: TextView? = null, var source: Button? = null,
+        var text: TextView? = null,
         var scroll: ScrollView? = null, var children: LinearLayout? = null, var toggle: Switch? = null)
     private val mounts = mutableMapOf<String, Mounted>()
     private val markwon = Markwon.create(context)
@@ -141,14 +144,25 @@ class NativeRenderer(private val context: Context, private val activate: (JSONOb
             val text = context.label("", if (role == "markdown") "$key-text" else key)
             if (role == "heading") { text.textSize = 18f; text.setTypeface(text.typeface, Typeface.BOLD); if (android.os.Build.VERSION.SDK_INT >= 28) text.isAccessibilityHeading = true }
             if (role == "code") text.typeface = Typeface.MONOSPACE
+            if (role == "status") text.textSize = 12f
             text.autoLinkMask = 0
             if (role != "markdown") return Mounted(kind, text, text = text)
             val outer = context.column(); outer.addView(text)
             val mounted = Mounted(kind, outer, text = text)
-            val source = context.button("Show original Markdown", "$key-source") {
-                mounted.original = !mounted.original; updateText(mounted, role)
+            val sourceAction = View.generateViewId()
+            text.customSelectionActionModeCallback = object : ActionMode.Callback {
+                override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                    menu.add(Menu.NONE, sourceAction, Menu.NONE, if (mounted.original) "Formatted text" else "Original Markdown")
+                    return true
+                }
+                override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
+                override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                    if (item.itemId != sourceAction) return false
+                    mounted.original = !mounted.original; updateText(mounted, role); mode.finish()
+                    return true
+                }
+                override fun onDestroyActionMode(mode: ActionMode) = Unit
             }
-            source.textSize = 11f; mounted.source = source; outer.addView(source)
             return mounted
         }
         return when (kind) {
@@ -184,7 +198,6 @@ class NativeRenderer(private val context: Context, private val activate: (JSONOb
                 getSpans(0, length, ImageSpan::class.java).forEach { removeSpan(it) }
             }
         } else value
-        mounted.source?.text = if (mounted.original) "Show formatted text" else "Show original Markdown"
         mounted.text!!.linksClickable = false
     }
     private fun replaceChildren(parent: LinearLayout, children: List<Pair<View, LinearLayout.LayoutParams>>) {

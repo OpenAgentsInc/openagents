@@ -1,0 +1,24 @@
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-mobile)
+    Finished `test` profile [unoptimized] target(s) in 2.58s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/coder_mobile-3da529fdc40a9fb3)
+
+running 1 test
+test verse_app::tests::dragging_from_the_monitor_releases_tap_capture_to_world_controls ... FAILED
+
+failures:
+
+---- verse_app::tests::dragging_from_the_monitor_releases_tap_capture_to_world_controls stdout ----
+
+thread 'verse_app::tests::dragging_from_the_monitor_releases_tap_capture_to_world_controls' (98392900) panicked at crates/coder-mobile/src/verse_app.rs:1494:17:
+assertion `left != right` failed: Monitor-started drag must move
+  left: Vec3(0.0, 0.0, -7.5)
+ right: Vec3(0.0, 0.0, -7.5)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    verse_app::tests::dragging_from_the_monitor_releases_tap_capture_to_world_controls
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 50 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p coder-mobile --lib`

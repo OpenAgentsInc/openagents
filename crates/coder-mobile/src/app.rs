@@ -131,6 +131,7 @@ pub(crate) enum Intent {
     Reload,
     Raw { record: u64 },
     TextPart { record: u64, part: usize },
+    Details,
     Disconnect,
 }
 
@@ -139,6 +140,9 @@ pub struct Packet {
     pub schema: &'static str,
     pub public_key: String,
     pub paired: bool,
+    /// This call saved a verified pairing. A first-read error is separate
+    /// from admission and must not keep the user in the pairing form.
+    pub pairing_completed: bool,
     pub reading: bool,
     pub status: String,
     pub error: Option<String>,
@@ -194,6 +198,7 @@ pub struct App {
     pub(crate) window: Option<String>,
     pub(crate) raw: BTreeSet<u64>,
     pub(crate) text_parts: BTreeMap<u64, usize>,
+    pub(crate) details: bool,
     retry_after: u64,
     pub(crate) status: String,
     pub(crate) error: Option<String>,
@@ -205,6 +210,7 @@ pub struct App {
     pub(crate) synthetic: bool,
     computers: Option<Computers>,
     computers_exit: bool,
+    pairing_completed: bool,
 }
 
 impl App {
@@ -236,17 +242,19 @@ impl App {
             window: None,
             raw: BTreeSet::new(),
             text_parts: BTreeMap::new(),
+            details: false,
             retry_after: 0,
-            status: "Not connected · read-only".into(),
+            status: "Not paired".into(),
             error: None,
             notices: vec![],
             instance: coder_connect::protocol::random_id(),
             revision: 0,
             current: None,
-            active: true,
+            active: false,
             synthetic: config.synthetic,
             computers: None,
             computers_exit: false,
+            pairing_completed: false,
         };
         // A phone never runs a host. The normal app reaches its computers
         // through the live host client; synthetic mode uses the fixture.
@@ -287,13 +295,12 @@ impl App {
                     if let Err(e) = app.restore_catalog() {
                         app.error = Some(e);
                     }
-                    app.status = "Cached · refresh to check the computer".into();
+                    app.status = "Cached".into();
                 }
                 Err(_) => {
                     app.cache.erase("")?;
-                    app.error = Some(
-                        "Saved pairing expired or belongs to another device. Pair again.".into(),
-                    );
+                    app.error =
+                        Some("Pairing expired or belongs to another device. Pair again.".into());
                 }
             },
             Ok(None) => {}
@@ -339,6 +346,7 @@ impl App {
     }
 
     pub fn call(&mut self, request: Request) -> Packet {
+        self.pairing_completed = false;
         // Lifecycle callbacks can follow an in-flight pairing call. They must
         // not erase its failure before the user can read it and retry.
         if request.computers() {
@@ -349,7 +357,10 @@ impl App {
             self.computers_exit = false;
             return packet;
         }
-        if !matches!(request, Request::Snapshot | Request::Foreground { .. }) {
+        if !matches!(
+            request,
+            Request::Snapshot | Request::Foreground { .. } | Request::Refresh | Request::RefreshNow
+        ) {
             self.error = None;
         }
         let result = self.handle(request);
@@ -422,7 +433,11 @@ impl App {
                 Ok(())
             }
             Request::Foreground { active } => {
+                let entering = active && !self.active;
                 self.active = active;
+                if entering && self.client.is_some() && self.error.is_none() {
+                    return self.force_refresh();
+                }
                 Ok(())
             }
             Request::Disconnect => self.disconnect(),
@@ -438,7 +453,8 @@ impl App {
                         .map_err(|e| pairing_error(&e))?
                 } else {
                     ConnectionCode::parse(text.as_bytes()).map_err(|_| {
-                        "This is not a Coder pairing code. Scan the QR code shown by the computer, or paste its complete pairing string.".to_owned()
+                        "Invalid pairing code. Scan or paste the code from your computer."
+                            .to_owned()
                     })?
                 };
                 let client = self.make_client(code.clone()).map_err(|e| e.to_string())?;
@@ -446,9 +462,11 @@ impl App {
                 self.cache.write("connection", &code)?;
                 self.code = Some(code);
                 self.client = Some(client);
-                self.status = "Paired · refresh to connect".into();
-                // Pairing returns immediately; the foreground timer requests data.
-                Ok(())
+                self.pairing_completed = true;
+                self.status = "Loading chats…".into();
+                // The explicit pairing action includes the first bounded read.
+                // A failed read retains the grant and reports a sync error.
+                self.refresh_catalog(true)
             }
             Request::Refresh => self.refresh(),
             Request::RefreshNow => self.force_refresh(),
@@ -490,13 +508,20 @@ impl App {
                 self.window = None;
                 self.raw.clear();
                 self.text_parts.clear();
+                self.details = false;
                 self.retry_after = 0;
-                self.status = "Cached transcript · checking for updates".into();
-                Ok(())
+                self.status = if self.transcript.cursor.is_some() {
+                    "Cached"
+                } else {
+                    "Loading chat…"
+                }
+                .into();
+                self.refresh()
             }
             Intent::Back => {
                 self.selected = None;
                 self.raw.clear();
+                self.details = false;
                 Ok(())
             }
             Intent::Earlier | Intent::Later => {
@@ -533,7 +558,7 @@ impl App {
                     self.transcript = TranscriptState::default();
                     self.window = None;
                 }
-                Ok(())
+                self.refresh()
             }
             Intent::TextPart { record, part } => {
                 self.text_parts.insert(record, part);
@@ -543,6 +568,10 @@ impl App {
                 if !self.raw.remove(&record) {
                     self.raw.insert(record);
                 }
+                Ok(())
+            }
+            Intent::Details => {
+                self.details = !self.details;
                 Ok(())
             }
             Intent::Disconnect => self.disconnect(),
@@ -561,7 +590,8 @@ impl App {
         self.notices.clear();
         self.retry_after = 0;
         self.text_parts.clear();
-        self.status = "Not connected · read-only".into();
+        self.details = false;
+        self.status = "Not paired".into();
         self.cache.erase("")
     }
 
@@ -599,7 +629,8 @@ impl App {
         match outcome {
             Ok(result) => {
                 self.retry_after = 0;
-                self.status = "Connected · read-only".into();
+                self.error = None;
+                self.status = "Connected".into();
                 Ok(result)
             }
             Err(error) => {
@@ -615,17 +646,23 @@ impl App {
                     }
                     ErrorCode::SourceChanged => {
                         self.status = "Source changed · reload required".into();
-                        Err("The computer's history file changed. Reload this transcript to avoid mixing versions.".into())
+                        Err("Chat files changed. Reload the chat or pair again.".into())
                     }
                     ErrorCode::Conflict => {
                         self.catalog_state.next = None;
                         self.catalog_state.refresh_next = None;
                         self.status = "Chat list changed · refresh required".into();
-                        Err("The chat list changed during paging. Refresh to start a new list snapshot.".into())
+                        Err("Chat list changed. Refresh to reload it.".into())
                     }
                     _ => {
-                        self.status = "Offline or unavailable · showing cached history".into();
-                        Err(error.to_string())
+                        self.status = "Offline".into();
+                        Err(match error.code {
+                            ErrorCode::Transport | ErrorCode::Unavailable => {
+                                "Computer unavailable. Keep its pairing command running.".into()
+                            }
+                            ErrorCode::RateLimited => "Computer busy. Retrying shortly.".into(),
+                            _ => error.to_string(),
+                        })
                     }
                 }
             }
@@ -642,7 +679,7 @@ impl App {
         if !self.active || now() < self.retry_after {
             return Ok(());
         }
-        if self.synthetic && self.client.is_none() {
+        if self.client.is_none() {
             return Ok(());
         }
         if self.selected.is_some() {
@@ -860,6 +897,7 @@ impl App {
             schema: "coder.mobile.v1",
             public_key: self.public_key.clone(),
             paired: self.code.is_some() || (self.synthetic && !self.catalog.is_empty()),
+            pairing_completed: self.pairing_completed && self.code.is_some(),
             reading: self.selected.is_some(),
             status: self.status.clone(),
             error: self.error.clone(),
@@ -986,20 +1024,16 @@ pub(crate) fn now() -> u64 {
 fn pairing_error(error: &coder_connect::Error) -> String {
     match error.code {
         ErrorCode::Transport | ErrorCode::Unavailable => {
-            "Could not reach the computer. Keep its pairing command running and check that both devices are online. Try the same code again.".into()
+            "Computer unavailable. Keep its pairing command running and try again.".into()
         }
-        ErrorCode::Expired => {
-            "This pairing code expired. Run the connect command again on the computer to show a new QR code.".into()
-        }
+        ErrorCode::Expired => "Pairing code expired. Run the pairing command again.".into(),
         ErrorCode::Conflict | ErrorCode::Revoked | ErrorCode::Forbidden => {
-            "The computer refused this pairing code. It may have already been used by another device. Generate a new code on the computer.".into()
+            "Pairing code refused or already used. Generate a new code on the computer.".into()
         }
-        ErrorCode::SourceChanged => {
-            "The computer's selected chat folders changed. Run its connect command again.".into()
-        }
+        ErrorCode::SourceChanged => "Chat folders changed. Run the pairing command again.".into(),
         ErrorCode::RateLimited => "The computer is busy. Wait briefly, then try again.".into(),
         ErrorCode::Malformed | ErrorCode::Unsupported | ErrorCode::Bounds => {
-            "This is not a supported Coder pairing code. Scan the QR code shown by the computer, or paste its complete pairing string.".into()
+            "Invalid pairing code. Scan or paste the code from your computer.".into()
         }
     }
 }

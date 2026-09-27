@@ -125,8 +125,13 @@ pub struct Session {
     id: Identity,
     /// Remote players.
     pub crowd: Crowd,
-    /// Connection status.
+    /// World subscription status, after any required relay authentication.
     pub status: Status,
+    /// A bounded local explanation of a connection failure.
+    pub connection_error: Option<&'static str>,
+    world_live_ready: bool,
+    world_state_ready: bool,
+    auth_accepted: bool,
     session: String,
     seq: u64,
     last_frame: Option<Instant>,
@@ -251,6 +256,10 @@ impl Session {
             crowd: Crowd::new(&me),
             id,
             status: Status::Connecting,
+            connection_error: None,
+            world_live_ready: false,
+            world_state_ready: false,
+            auth_accepted: false,
             session: identity::random_hex(4),
             seq: 0,
             last_frame: None,
@@ -573,6 +582,10 @@ impl Session {
             In::Connected => {
                 self.status = Status::Connecting;
                 self.auth_id = None;
+                self.auth_accepted = false;
+                self.world_live_ready = false;
+                self.world_state_ready = false;
+                self.connection_error = None;
                 self.session = identity::random_hex(8);
                 self.seq = 0;
                 self.last_frame = None;
@@ -580,7 +593,11 @@ impl Session {
             }
             In::Disconnected(_) => {
                 self.status = Status::Offline;
+                self.connection_error = Some("Relay unavailable. Reconnecting…");
                 self.auth_id = None;
+                self.auth_accepted = false;
+                self.world_live_ready = false;
+                self.world_state_ready = false;
             }
             In::Event { sub, event } if sub == ME_SUB => {
                 if event.pubkey == self.pubkey()
@@ -593,6 +610,10 @@ impl Session {
                 }
             }
             In::Auth(challenge) => {
+                self.status = Status::Connecting;
+                self.auth_accepted = false;
+                self.world_live_ready = false;
+                self.world_state_ready = false;
                 let event = self.id.signer.sign(
                     unix_now(),
                     22_242,
@@ -608,7 +629,10 @@ impl Session {
             In::Ok {
                 id, accepted: true, ..
             } if self.auth_id.as_deref() == Some(id.as_str()) => {
-                self.status = Status::Online;
+                self.auth_accepted = true;
+                self.world_live_ready = false;
+                self.world_state_ready = false;
+                self.update_world_status();
                 // The link restores every retained subscription after AUTH, not only PMs.
                 self.link.send(Out::Subscribe {
                     id: DM_SUB.into(),
@@ -622,6 +646,7 @@ impl Session {
                 ..
             } if self.auth_id.as_deref() == Some(id.as_str()) => {
                 self.status = Status::Offline;
+                self.connection_error = Some("Relay rejected device authentication.");
             }
             In::Event { event, .. } if event.kind == mv::CHAT_KIND => {
                 self.receive_chat(&event, now)
@@ -688,9 +713,13 @@ impl Session {
                 {
                     pending.finished = true;
                 }
-                if matches!(sub.as_str(), LIVE_SUB | STATE_SUB) && self.auth_id.is_none() {
-                    self.status = Status::Online;
+                if sub == LIVE_SUB {
+                    self.world_live_ready = true;
                 }
+                if sub == STATE_SUB {
+                    self.world_state_ready = true;
+                }
+                self.update_world_status();
                 if let Some(scan) = &mut self.scan
                     && scan.sub == sub
                 {
@@ -704,7 +733,32 @@ impl Session {
             } if message.starts_with("rate-limited:") => {
                 self.throttled_until = Some(now + Duration::from_secs(5));
             }
+            In::Closed(sub, reason) if matches!(sub.as_str(), LIVE_SUB | STATE_SUB) => {
+                if sub == LIVE_SUB {
+                    self.world_live_ready = false;
+                }
+                if sub == STATE_SUB {
+                    self.world_state_ready = false;
+                }
+                if reason.starts_with("auth-required:") {
+                    self.status = Status::Connecting;
+                } else {
+                    self.status = Status::Offline;
+                    self.connection_error =
+                        Some("Relay refused world updates. Rejoin or choose another relay.");
+                }
+            }
             In::Ok { .. } | In::Closed(..) | In::Notice(_) => {}
+        }
+    }
+
+    fn update_world_status(&mut self) {
+        if self.connection_error.is_none()
+            && self.world_live_ready
+            && self.world_state_ready
+            && (self.auth_id.is_none() || self.auth_accepted)
+        {
+            self.status = Status::Online;
         }
     }
 
@@ -1318,6 +1372,55 @@ mod tests {
     }
 
     #[test]
+    fn both_world_subscriptions_must_be_ready_and_refusals_stay_visible() {
+        let mut session = isolated();
+        let now = Instant::now();
+        session.handle(In::Connected, now);
+        session.handle(In::Eose(LIVE_SUB.into()), now);
+        assert_eq!(session.status, Status::Connecting);
+        session.handle(In::Eose(STATE_SUB.into()), now);
+        assert_eq!(session.status, Status::Online);
+        session.handle(
+            In::Closed(LIVE_SUB.into(), "restricted: members only".into()),
+            now,
+        );
+        assert_eq!(session.status, Status::Offline);
+        assert!(session.connection_error.is_some());
+        session.handle(In::Eose(STATE_SUB.into()), now);
+        assert_eq!(session.status, Status::Offline);
+        session.handle(In::Connected, now);
+        assert_eq!(session.status, Status::Connecting);
+        assert!(session.connection_error.is_none());
+        session.handle(In::Disconnected("private transport diagnostic".into()), now);
+        assert_eq!(
+            session.connection_error,
+            Some("Relay unavailable. Reconnecting…")
+        );
+    }
+
+    #[test]
+    fn rejected_auth_does_not_become_connected_on_eose() {
+        let mut session = isolated();
+        let now = Instant::now();
+        session.handle(In::Auth("challenge".into()), now);
+        session.handle(
+            In::Ok {
+                id: session.auth_id.clone().unwrap(),
+                accepted: false,
+                message: "restricted: device not admitted".into(),
+            },
+            now,
+        );
+        session.handle(In::Eose(LIVE_SUB.into()), now);
+        session.handle(In::Eose(STATE_SUB.into()), now);
+        assert_eq!(session.status, Status::Offline);
+        assert_eq!(
+            session.connection_error,
+            Some("Relay rejected device authentication.")
+        );
+    }
+
+    #[test]
     fn socket_open_is_not_authenticated_and_reconnect_resets_pose_identity() {
         let mut session = isolated();
         let prior = session.session.clone();
@@ -1337,6 +1440,10 @@ mod tests {
             },
             Instant::now(),
         );
+        assert_eq!(session.status, Status::Connecting);
+        session.handle(In::Eose(STATE_SUB.into()), Instant::now());
+        assert_eq!(session.status, Status::Connecting);
+        session.handle(In::Eose(LIVE_SUB.into()), Instant::now());
         assert_eq!(session.status, Status::Online);
         assert!(
             session

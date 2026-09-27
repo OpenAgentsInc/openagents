@@ -48,13 +48,16 @@ struct VerseScreen: View {
                 }
                 Spacer()
                 if !panelOpen {
-                    HStack {
+                    HStack(spacing: 16) {
+                        Spacer()
                         Button {
                             bridge.toggleCameraMode()
                         } label: {
-                            Label(motionLook ? "Motion look" : "Touch look", systemImage: motionLook ? "gyroscope" : "hand.draw")
+                            Image(systemName: motionLook ? "gyroscope" : "hand.draw")
+                                .frame(width: 44, height: 44)
                         }
                         .disabled(!active || (!bridge.motionAvailable && !motionLook))
+                        .accessibilityLabel(motionLook ? "Motion look" : "Touch look")
                         .accessibilityIdentifier("verse-camera-mode")
                         .accessibilityHint(bridge.motionAvailable
                             ? "Switches between dragging and phone orientation for camera control."
@@ -62,11 +65,11 @@ struct VerseScreen: View {
                         .highPriorityGesture(
                             LongPressGesture(minimumDuration: 0.6).onEnded { _ in bridge.previewMotion() },
                             including: bridge.motionSynthetic ? .all : .none)
-                        Spacer()
-                        if motionLook {
-                            Button("Recenter") { bridge.recenterMotion() }
-                                .disabled(!active).accessibilityIdentifier("verse-motion-recenter")
+                        Button { bridge.recenterMotion() } label: {
+                            Image(systemName: "scope").frame(width: 44, height: 44)
                         }
+                        .accessibilityLabel("Recenter camera")
+                        .disabled(!active).accessibilityIdentifier("verse-motion-recenter")
                     }
                     if let error = bridge.motionError {
                         Text(error).font(.caption).accessibilityIdentifier("verse-motion-error")
@@ -112,7 +115,7 @@ struct VerseScreen: View {
         let width = min(bounds.width, 540)
         let minimum = min(340, bounds.height)
         let maximum = max(minimum, min(560, bounds.height * 0.75))
-        let reading = reader.packet?.reading == true && !pairing
+        let reading = reader.packet?.paired == true && !pairing
         let height = reading ? bounds.height : clamped(bounds.maxY - anchor.y - 30, minimum, maximum)
         let left = clamped(anchor.x - width / 2, bounds.minX, bounds.maxX - width)
         let below = anchor.y + 30
@@ -126,7 +129,8 @@ struct VerseScreen: View {
             ComputerPanel(reader: reader, active: active, close: {
                 pairing = false
                 bridge.send(["action": "close_computer"])
-            }, worldAction: { bridge.send($0) }, pairing: $pairing)
+            }, worldAction: { bridge.send($0) }, worldConnection: bridge.packet?.connection,
+           worldStorageError: bridge.worldStorageError ?? bridge.nativeError ?? bridge.packet?.error, pairing: $pairing)
             .frame(width: width, height: height)
             .position(x: left + width / 2, y: top + height / 2)
         }
@@ -150,7 +154,7 @@ struct VerseScreen: View {
     }
 
     private func panelBounds(size: CGSize, safe: EdgeInsets) -> CGRect {
-        let top = safe.top + 64
+        let top = safe.top + 12
         return CGRect(x: safe.leading + 12, y: top,
                       width: max(1, size.width - safe.leading - safe.trailing - 24),
                       height: max(80, size.height - top - safe.bottom - 16))

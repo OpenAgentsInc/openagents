@@ -1,0 +1,1 @@
+{"auth_accepted":true,"auth_challenged":true,"auth_only":true,"elapsed_ms":350,"failures":[],"live_subscription_eose_ms":350,"published_events":0,"received_payloads_retained":false,"relay":"wss://relay.openagents.com","socket_connected_ms":204,"state_subscription_eose_ms":302,"worker_stopped":true,"world":"verse-plaza"}

@@ -43,6 +43,19 @@ class DeviceStorage(private val context: Context, private val synthetic: Boolean
         write("gym-grant", bytes)
     }
 
+    fun worldRelay(): String? = synchronized(storageLock) {
+        val bytes = read("world-relay")
+        check(bytes == null || bytes.size <= 2048) { "The saved relay URL is too long." }
+        bytes?.takeIf { it.isNotEmpty() }?.toString(Charsets.UTF_8)
+    }
+
+    fun saveWorldRelay(relay: String?) = synchronized(storageLock) {
+        val bytes = (relay ?: "").toByteArray(Charsets.UTF_8)
+        require(bytes.size <= 2048) { "The relay URL is too long." }
+        // An encrypted empty value is an atomic tombstone for explicit Leave.
+        write("world-relay", bytes)
+    }
+
     private fun key(name: String): SecretKey {
         val alias = "com.openagents.coder.$scope.$name"
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }

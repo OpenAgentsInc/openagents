@@ -195,14 +195,26 @@ fn app_redeems_qr_invitation_pages_refreshes_restores_and_erases_revoked_history
         .unwrap();
     server.start();
     let mut app = App::new(config(&cache, &secret)).unwrap();
-    checked(app.call(Request::Connect { code: invitation }));
+    checked(app.call(Request::Foreground { active: true }));
+    let paired = checked(app.call(Request::Connect { code: invitation }));
+    assert!(paired.pairing_completed);
+    assert!(
+        paired
+            .view
+            .unwrap()
+            .to_string()
+            .contains("Synthetic connected chat")
+    );
     let code = app.code.clone().unwrap();
     assert_eq!(code.client, coder_connect::protocol::pubkey(&secret));
-    assert!(app.call(Request::Snapshot).paired);
-    checked(app.call(Request::Refresh));
+    let snapshot = app.call(Request::Snapshot);
+    assert!(snapshot.paired);
+    assert!(!snapshot.pairing_completed);
+    // Pairing itself loads the catalog; no timer tick or manual refresh is needed.
     assert_eq!(app.catalog.len(), 1);
     assert_eq!(app.catalog[0].title, "Synthetic connected chat");
     open_chat(&mut app);
+    assert!(!app.page_keys().unwrap().is_empty());
     for _ in 0..8 {
         checked(app.call(Request::Refresh));
         if !app.transcript.has_more {
@@ -213,6 +225,7 @@ fn app_redeems_qr_invitation_pages_refreshes_restores_and_erases_revoked_history
     assert!(app.page_keys().unwrap().len() >= 3);
     assert_eq!(retained_bytes(&app), original);
 
+    checked(app.call(Request::Foreground { active: false }));
     let appended = message("Appended while the phone was connected: café 日本語.");
     std::fs::OpenOptions::new()
         .append(true)
@@ -221,7 +234,10 @@ fn app_redeems_qr_invitation_pages_refreshes_restores_and_erases_revoked_history
         .write_all(&appended)
         .unwrap();
     original.extend(appended);
-    let refreshed = checked(app.call(Request::Refresh));
+    checked(app.call(Request::Refresh));
+    assert!(retained_bytes(&app).len() < original.len());
+    // Reopening the computer reads immediately, without waiting for its timer.
+    let refreshed = checked(app.call(Request::Foreground { active: true }));
     assert!(
         refreshed
             .view
@@ -247,10 +263,63 @@ fn app_redeems_qr_invitation_pages_refreshes_restores_and_erases_revoked_history
     );
     host.revoke(&code.grant, None, coder_connect::unix_time().unwrap())
         .unwrap();
-    let revoked = restored.call(Request::Refresh);
+    let revoked = restored.call(Request::Foreground { active: true });
     assert!(revoked.error.unwrap().contains("Access ended"));
     assert!(restored.code.is_none());
     assert!(restored.catalog.is_empty());
     assert!(restored.cache.keys("").unwrap().is_empty());
     assert!(restored.selected.is_none());
+}
+
+#[test]
+fn first_read_failure_keeps_the_grant_and_error_until_a_read_succeeds() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("synthetic-codex");
+    let unavailable = temp.path().join("temporarily-unavailable");
+    let state = temp.path().join("host");
+    std::fs::create_dir_all(source.join("sessions")).unwrap();
+    let secret = SecretKey::new(&mut secp256k1::rand::rng());
+    let mut server = Server::new(state.clone());
+    let host = Host::new(&state, RelayPolicy::LoopbackTest);
+    let now = coder_connect::unix_time().unwrap();
+    let code = host
+        .pair(
+            &coder_connect::protocol::pubkey(&secret),
+            &server.relay,
+            coder_history::Config {
+                codex: Some(source.clone()),
+                claude: None,
+            },
+            now,
+            now + 3600,
+        )
+        .unwrap();
+    std::fs::rename(&source, &unavailable).unwrap();
+    server.start();
+    let mut app = App::new(config(&temp.path().join("cache"), &secret)).unwrap();
+    let paired = app.call(Request::Connect {
+        code: serde_json::to_string(&code).unwrap(),
+    });
+    assert!(paired.paired);
+    assert!(paired.pairing_completed);
+    assert!(paired.error.is_some());
+    assert_eq!(app.code.as_ref().unwrap().grant, code.grant);
+    assert!(app.catalog.is_empty());
+    assert_eq!(app.catalog_state.pages, 0);
+    let error = paired.error.clone();
+    assert_eq!(app.call(Request::Foreground { active: true }).error, error);
+    assert_eq!(app.call(Request::Refresh).error, error);
+    std::fs::rename(&unavailable, &source).unwrap();
+    let refreshed = checked(app.call(Request::RefreshNow));
+    assert!(refreshed.paired);
+    assert!(!refreshed.pairing_completed);
+    // A successful empty catalog differs from a read that has never completed.
+    assert_eq!(app.catalog_state.pages, 1);
+    assert!(app.catalog.is_empty());
+    let invalid = app.call(Request::Connect {
+        code: "coder-pair:invalid".into(),
+    });
+    assert!(invalid.paired);
+    assert!(!invalid.pairing_completed);
+    assert!(invalid.error.is_some());
 }

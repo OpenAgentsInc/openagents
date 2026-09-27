@@ -159,15 +159,15 @@ private struct NativeText: View {
         VStack(alignment: .leading, spacing: 4) {
             text
                 .font(role == "code" ? .system(.body, design: .monospaced) :
-                      role == "heading" ? .headline : .body)
+                      role == "heading" ? .headline : role == "status" ? .caption : .body)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(role == "heading" ? .isHeader : [])
                 .accessibilityIdentifier(key)
+        }
+        .contextMenu {
             if role == "markdown" {
-                Button(original ? "Show formatted text" : "Show original Markdown") {
-                    original.toggle()
-                }.font(.caption).accessibilityIdentifier("\(key)-source")
+                Button(original ? "Formatted text" : "Original Markdown") { original.toggle() }
             }
         }
         // Viewing untrusted Markdown never opens an external destination.

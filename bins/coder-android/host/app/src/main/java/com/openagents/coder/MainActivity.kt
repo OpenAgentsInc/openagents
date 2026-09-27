@@ -21,6 +21,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -45,8 +46,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var worldError: TextView
     private lateinit var retry: Button
     private lateinit var controls: LinearLayout
-    private lateinit var cameraButton: Button
-    private lateinit var recenter: Button
+    private lateinit var cameraButton: ImageButton
+    private lateinit var recenter: ImageButton
     private lateinit var motionStatus: TextView
     private lateinit var gymButton: Button
     private lateinit var panel: LinearLayout
@@ -57,7 +58,12 @@ class MainActivity : ComponentActivity() {
     private var scannerContainer: LinearLayout? = null
     // The Computers surface: its own Rust Native tree and input requests.
     private var computers = false
-    private var computersToggle: Button? = null
+    private var settings = false
+    private var settingsToggle: Button? = null
+    private var headerTitle: TextView? = null
+    private var headerRefresh: Button? = null
+    private var worldConnectionStatus: TextView? = null
+    private var worldConnectionError: TextView? = null
     private var computersContent: LinearLayout? = null
     private var computersInput: LinearLayout? = null
     private var computersQr: ImageView? = null
@@ -83,7 +89,7 @@ class MainActivity : ComponentActivity() {
     private val main = Handler(Looper.getMainLooper())
     private val refresh = object : Runnable {
         override fun run() {
-            if (foreground && opened == "computer" && !pairing && !scanning && !computers) reader.refresh()
+            if (foreground && opened == "computer" && !pairing && !scanning && !computers && !settings) reader.refresh()
             // Host status moves on its own; poll while the Computers screens show.
             if (foreground && opened == "computer" && computers && !scanning) reader.pollComputers()
             main.postDelayed(this, 5000)
@@ -150,13 +156,14 @@ class MainActivity : ComponentActivity() {
         retry = button("Retry world renderer", "verse-retry") { world.retry() }.apply { visibility = View.GONE }; header.addView(retry)
         safe.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         controls = column()
-        val modes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        cameraButton = button("Touch look", "verse-camera-mode") { world.toggleMotion() }
-        modes.addView(cameraButton, LinearLayout.LayoutParams(0, -2, 1f))
-        recenter = button("Recenter", "verse-motion-recenter") { world.send(json("action" to "reset_motion")) }
-        modes.addView(recenter); controls.addView(modes)
+        val modes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
+        cameraButton = iconButton(R.drawable.ic_touch_look, "Touch look", "verse-camera-mode") { world.toggleMotion() }
+        modes.addView(cameraButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+        recenter = iconButton(R.drawable.ic_recenter, "Recenter", "verse-motion-recenter") { world.send(json("action" to "recenter_camera")) }
+        modes.addView(recenter, LinearLayout.LayoutParams(dp(48), dp(48)))
+        controls.addView(modes)
         motionStatus = label("", "verse-motion-error", 11f); controls.addView(motionStatus)
-        safe.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        safe.addView(controls, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END))
         gymButton = button("Gym board", "gym-interact") { world.send(json("action" to "interact_gym")) }.apply { visibility = View.GONE }
         root.addView(gymButton, FrameLayout.LayoutParams(dp(190), -2))
         panel = column().apply {
@@ -165,7 +172,14 @@ class MainActivity : ComponentActivity() {
             background = GradientDrawable().apply { setColor(0xfa060500.toInt()); cornerRadius = dp(16).toFloat(); setStroke(dp(1), AMBER) }
             isClickable = true
         }
-        safe.addView(panel, FrameLayout.LayoutParams(-1, -1).apply { topMargin = dp(60) })
+        safe.addView(panel, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    private fun iconButton(icon: Int, description: String, key: String, action: () -> Unit) = ImageButton(this).apply {
+        setImageResource(icon); setColorFilter(AMBER); tag = key; contentDescription = description
+        setPadding(dp(12), dp(12), dp(12), dp(12))
+        background = GradientDrawable().apply { setColor(0xbb060500.toInt()); cornerRadius = dp(24).toFloat() }
+        setOnClickListener { action() }
     }
 
     private fun receiveWorld(value: JSONObject?, error: String?) {
@@ -178,21 +192,29 @@ class MainActivity : ComponentActivity() {
         if (packet == null) return
         val newPanel = when { packet.optBoolean("computer_open") -> "computer"; packet.optBoolean("gym_open") -> "gym"; else -> "" }
         if (newPanel != opened) {
-            opened = newPanel; computerMode = ""; computers = false; renderer.clear(); computersRenderer.clear(); stopCamera(); controls.visibility = if (opened.isEmpty()) View.VISIBLE else View.GONE
+            opened = newPanel; computerMode = ""; computers = false; settings = false; renderer.clear(); computersRenderer.clear(); stopCamera(); controls.visibility = if (opened.isEmpty()) View.VISIBLE else View.GONE
             reader.foreground(foreground && opened == "computer")
             if (opened.isEmpty()) panel.visibility = View.GONE else {
                 panel.visibility = View.VISIBLE; panel.removeAllViews()
                 val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                header.addView(label(if (opened == "computer") "Computer" else "Gym", size = 18f), LinearLayout.LayoutParams(0, -2, 1f))
+                headerTitle = label(if (opened == "computer") "Chats" else "Gym", size = 18f)
+                header.addView(headerTitle, LinearLayout.LayoutParams(0, -2, 1f))
                 if (opened == "computer") {
-                    computersToggle = button("Computers", "computers-toggle") {
-                        computers = !computers
-                        if (computers) reader.request(json("op" to "computers_refresh"))
-                        renderComputer(true)
+                    headerRefresh = button("↻", "reader-refresh") { reader.refresh(true) }.apply {
+                        contentDescription = "Refresh chats"
+                        minWidth = dp(40); minimumWidth = dp(40)
                     }
-                    header.addView(computersToggle)
+                    header.addView(headerRefresh)
+                    settingsToggle = button("…", "computer-settings") {
+                        settings = !settings && !computers
+                        computers = false; pairing = false
+                        renderComputer(true)
+                    }.apply { contentDescription = "Computer settings"; minWidth = dp(40); minimumWidth = dp(40) }
+                    header.addView(settingsToggle)
                 }
-                header.addView(button("Back to world", if (opened == "computer") "computer-close" else "gym-close") { closePanel() })
+                header.addView(button("×", if (opened == "computer") "computer-close" else "gym-close") { closePanel() }.apply {
+                    contentDescription = "Back to world"; minWidth = dp(40); minimumWidth = dp(40)
+                })
                 panel.addView(header)
                 panelBody = column(); panel.addView(panelBody, LinearLayout.LayoutParams(-1, 0, 1f))
                 if (opened == "computer") renderComputer(true) else mountedGymRevision = -1
@@ -201,14 +223,17 @@ class MainActivity : ComponentActivity() {
         val location = packet.getJSONObject("gym")
         placeAnchor(gymButton, location, opened.isEmpty() && location.optBoolean("inside"))
         gymButton.text = if (location.optBoolean("near")) "Open Gym board" else "Gym board"
-        cameraButton.text = if (packet.optString("camera_mode") == "motion") "Motion look" else "Touch look"
+        val motion = packet.optString("camera_mode") == "motion"
+        cameraButton.contentDescription = if (motion) "Motion look" else "Touch look"
+        cameraButton.setImageResource(if (motion) R.drawable.ic_motion_look else R.drawable.ic_touch_look)
         cameraButton.isEnabled = foreground && world.motionAvailable
-        recenter.visibility = if (packet.optString("camera_mode") == "motion") View.VISIBLE else View.GONE
+        recenter.isEnabled = foreground
         motionStatus.text = world.motionError ?: if (!world.motionAvailable) "Motion look is unavailable on this device." else ""
         motionStatus.visibility = if (motionStatus.text.isEmpty()) View.GONE else View.VISIBLE
         if (!packet.optBoolean("gym_active") || !location.optBoolean("inside")) { gymBoard = null; requestedGymRevision = -1 }
         packet.optJSONObject("gym_board")?.let { gymBoard = it }
         layoutPanel()
+        if (opened == "computer" && settings) updateWorldConnection()
         if (opened == "gym") {
             val revision = packet.optLong("gym_revision")
             if (gymBoard?.optLong("revision") != revision && requestedGymRevision != revision) {
@@ -237,17 +262,13 @@ class MainActivity : ComponentActivity() {
     private fun layoutPanel() {
         if (opened.isEmpty() || safe.width <= 0 || safe.height <= 0) return
         val availableWidth = (safe.width - safe.paddingLeft - safe.paddingRight).coerceAtLeast(1)
-        val availableHeight = (safe.height - safe.paddingTop - safe.paddingBottom - dp(60)).coerceAtLeast(dp(80))
+        val availableHeight = (safe.height - safe.paddingTop - safe.paddingBottom).coerceAtLeast(dp(80))
         val width = minOf(availableWidth, dp(540))
-        val reading = opened == "computer" && reader.snapshot?.optBoolean("reading") == true && !pairing
-        val height = if (reading || opened == "gym") availableHeight else
-            minOf(availableHeight, maxOf(dp(340), minOf(dp(560), (availableHeight * 0.75).toInt())))
+        val height = availableHeight
         val anchor = latestWorld?.optJSONObject(if (opened == "gym") "gym" else "computer")
         val anchorX = ((anchor?.optDouble("screen_x", 0.5) ?: 0.5) * root.width).toInt()
-        val anchorY = ((anchor?.optDouble("screen_y", 0.5) ?: 0.5) * root.height).toInt()
         val left = (anchorX - safe.paddingLeft - width / 2).coerceIn(0, availableWidth - width)
-        val top = if (reading || opened == "gym") dp(60) else
-            (anchorY + dp(30) - safe.paddingTop).coerceIn(dp(60), dp(60) + availableHeight - height)
+        val top = 0
         val params = panel.layoutParams as FrameLayout.LayoutParams
         if (params.width != width || params.height != height || params.leftMargin != left || params.topMargin != top) {
             params.width = width; params.height = height; params.leftMargin = left; params.topMargin = top
@@ -272,22 +293,27 @@ class MainActivity : ComponentActivity() {
         val reading = packet?.optBoolean("reading") == true && !pairing
         if (computers && packet != null && packet !== handledExit && packet.optBoolean("computers_exit")) {
             // First run finished: return to the existing pairing and chats flow.
-            handledExit = packet; computers = false
+            handledExit = packet; computers = false; settings = false
         }
-        val mode = if (computers) "computers" else if (!paired || pairing) "pair" else "chats"
-        computersToggle?.text = if (computers) "Chats" else "Computers"
-        computersToggle?.visibility = if (reading && !computers) View.GONE else View.VISIBLE
+        val mode = if (computers) "computers" else if (settings) "settings" else if (!paired || pairing) "pair" else "chats"
+        headerTitle?.text = when (mode) { "settings" -> "Settings"; "computers" -> "Computers"; "pair" -> "Pair computer"; else -> "Chats" }
+        settingsToggle?.text = if (settings || computers) "Chats" else "…"
+        settingsToggle?.contentDescription = if (settings || computers) "Back to chats" else "Computer settings"
+        headerRefresh?.visibility = if (mode == "chats") View.VISIBLE else View.GONE
+        headerRefresh?.isEnabled = !reader.busy
         if (force || mode != computerMode || reading != lastReading) {
             computerMode = mode; lastReading = reading
             stopCamera(); renderer.clear(); computersRenderer.clear(); panelBody.removeAllViews(); readerContent = null
             computersContent = null; computersInput = null; computersToken = null; computersQr = null; shownQr = null
+            worldConnectionStatus = null; worldConnectionError = null
             readerError = label("", "reader-error"); panelBody.addView(readerError)
             readerStatus = label("", "reader-status", 11f); panelBody.addView(readerStatus)
-            when (mode) { "computers" -> buildComputers(); "pair" -> buildPairing(paired); else -> buildChats(reading) }
+            when (mode) { "computers" -> buildComputers(); "settings" -> buildSettings(paired); "pair" -> buildPairing(paired); else -> buildChats() }
         }
         val error = reader.error ?: packet?.textOrNull("error")
         readerError?.text = error.orEmpty(); readerError?.visibility = if (error == null) View.GONE else View.VISIBLE
-        readerStatus?.text = if (reader.busy) "Connecting or updating…" else packet?.optString("status") ?: "Opening protected local state"
+        readerStatus?.text = "Updating…"
+        readerStatus?.visibility = if (reader.busy) View.VISIBLE else View.GONE
         layoutPanel()
         if (mode == "chats" && packet != null) {
             try { readerContent?.let { renderer.mount(it, packet) } }
@@ -367,9 +393,8 @@ class MainActivity : ComponentActivity() {
     private fun buildPairing(paired: Boolean) {
         val body = column()
         panelBody.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        body.addView(label("Connect your computer", size = 18f))
-        body.addView(label("Run this in the OpenAgents repository on your computer, then scan its QR invitation."))
-        val command = "cargo run --release -p coder-connect -- connect"
+        body.addView(label("In your OpenAgents folder:"))
+        val command = "./pair"
         body.addView(label(command, "computer-command", 12f))
         body.addView(button("Copy command", "computer-copy-command") { copy("Connect command", command) })
         body.addView(button("Scan QR code", "computer-scan") {
@@ -387,50 +412,74 @@ class MainActivity : ComponentActivity() {
         val connect = button("Connect to computer", "computer-connect") { submitCode(input.text.toString()); input.text.clear() }.apply { visibility = View.GONE }
         body.addView(button("Paste code", "computer-paste") { stopCamera(); input.visibility = View.VISIBLE; connect.visibility = View.VISIBLE; input.requestFocus() })
         body.addView(input); body.addView(connect)
-        body.addView(label("This connection can read saved chats. It cannot run commands or approve work.", size = 12f))
         if (paired) body.addView(button("Back to chats", "computer-chats") { pairing = false; renderComputer(true) })
-        worldConnection(body)
     }
 
-    private fun buildChats(reading: Boolean) {
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        if (!reading) actions.addView(button("Connect computer", "computer-pair") { pairing = true; renderComputer(true) }, LinearLayout.LayoutParams(0, -2, 1f))
-        actions.addView(button("Refresh", "reader-refresh") { reader.refresh(true) })
-        panelBody.addView(actions)
-        if (!reading) panelBody.addView(label("Read-only", "reader-read-only", 12f))
+    private fun buildChats() {
         readerContent = column(); panelBody.addView(readerContent, LinearLayout.LayoutParams(-1, 0, 1f))
-        if (!reading) {
-            panelBody.addView(button("Device details", "reader-details") { details = !details; renderComputer(true) })
-            if (details) {
-                panelBody.addView(label(reader.snapshot?.optString("public_key").orEmpty(), "reader-public-key", 11f))
-                panelBody.addView(button("Disconnect this computer", "reader-disconnect") {
-                    val confirm = column()
-                    confirm.addView(label("Erase cached chats on this phone? The computer's files stay unchanged."))
-                    confirm.addView(button("Disconnect and erase", "reader-disconnect-confirm") {
-                        reader.request(json("op" to "disconnect")); details = false
-                    })
-                    confirm.addView(button("Keep connection", "reader-disconnect-cancel") { panelBody.removeView(confirm) })
-                    panelBody.addView(confirm)
+    }
+
+    private fun buildSettings(paired: Boolean) {
+        val body = column()
+        panelBody.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        body.addView(button("Pair computer", "computer-pair") {
+            settings = false; pairing = true; renderComputer(true)
+        })
+        body.addView(button("Computers", "computers-toggle") {
+            settings = false; computers = true
+            renderComputer(true)
+            reader.request(json("op" to "computers_refresh"))
+        })
+        worldConnection(body)
+        body.addView(button("Device details", "reader-details") { details = !details; renderComputer(true) })
+        if (details) {
+            body.addView(label(reader.snapshot?.optString("public_key").orEmpty(), "reader-public-key", 11f))
+            body.addView(label(reader.snapshot?.optString("status").orEmpty(), "reader-connection-status", 11f))
+            if (paired) body.addView(button("Disconnect computer", "reader-disconnect") {
+                val confirm = column()
+                confirm.addView(label("Erase cached chats on this phone?"))
+                confirm.addView(button("Disconnect and erase", "reader-disconnect-confirm") {
+                    reader.request(json("op" to "disconnect")); details = false
                 })
-            }
-            worldConnection(panelBody)
+                confirm.addView(button("Cancel", "reader-disconnect-cancel") { body.removeView(confirm) })
+                body.addView(confirm)
+            })
         }
     }
 
     private fun worldConnection(body: LinearLayout) {
         body.addView(button("World connection", "world-connection") { worldDetails = !worldDetails; renderComputer(true) })
         if (!worldDetails) return
-        body.addView(label("Joining publishes this device's world presence and movement with a separate Verse identity.", size = 12f))
-        val relay = EditText(this).apply { hint = "wss://relay.example.com"; tag = "world-relay"; setTextColor(AMBER); inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI }
+        worldConnectionStatus = label("", "world-connection-status", 12f).also { body.addView(it) }
+        worldConnectionError = label("", "world-connection-error", 12f).also { body.addView(it) }
+        val relay = EditText(this).apply {
+            hint = "World relay"; contentDescription = "World relay URL"; tag = "world-relay"
+            setTextColor(AMBER)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+            setText(latestWorld?.optJSONObject("connection")?.textOrNull("relay") ?: "wss://relay.openagents.com")
+        }
         body.addView(relay)
-        body.addView(button("Join relay", "world-join") { world.send(json("action" to "connect", "relay" to relay.text.toString())) })
-        body.addView(button("Leave relay", "world-leave") { world.send(json("action" to "disconnect")) })
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        actions.addView(button("Join", "world-join") {
+            world.send(json("action" to "connect", "relay" to relay.text.toString().trim()))
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        actions.addView(button("Leave", "world-leave") { world.send(json("action" to "disconnect")) }, LinearLayout.LayoutParams(0, -2, 1f))
+        body.addView(actions)
+        updateWorldConnection()
+    }
+
+    private fun updateWorldConnection() {
+        val connection = latestWorld?.optJSONObject("connection")
+        worldConnectionStatus?.text = connection?.optString("label") ?: "Offline"
+        val error = world.worldStorageError ?: connection?.textOrNull("error") ?: latestWorld?.textOrNull("error")
+        worldConnectionError?.text = error.orEmpty()
+        worldConnectionError?.visibility = if (error == null) View.GONE else View.VISIBLE
     }
     private fun submitCode(code: String) {
         stopCamera()
         if (code.toByteArray().size > 65_536) { readerError?.text = "The connection code is too large. Copy a fresh invitation."; readerError?.visibility = View.VISIBLE; return }
         reader.request(json("op" to "connect", "code" to code)) { success ->
-            if (success) { pairing = false; renderComputer(true) }
+            if (success) { pairing = false; settings = false; renderComputer(true) }
         }
     }
     private fun startCamera() {
@@ -451,7 +500,7 @@ class MainActivity : ComponentActivity() {
     private fun stopCamera() { scanning = false; requestingCamera = false; if (::scanner.isInitialized) scanner.stop(); scannerContainer?.removeAllViews() }
     private fun copy(name: String, value: String) = getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(name, value))
     private fun closePanel() {
-        stopCamera(); pairing = false; computers = false
+        stopCamera(); pairing = false; computers = false; settings = false
         world.send(json("action" to if (opened == "gym") "close_gym" else "close_computer"))
     }
     override fun onResume() {

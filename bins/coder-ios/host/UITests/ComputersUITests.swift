@@ -15,6 +15,7 @@ final class ComputersUITests: XCTestCase {
     }
 
     func testComputersStatusesAccessAndInvitationInput() throws {
+        app.buttons["computer-settings"].tap()
         app.buttons["computers-toggle"].tap()
         XCTAssertTrue(app.staticTexts["first-run-title"].waitForExistence(timeout: 20))
         attachScreenshot("Computers first run")
@@ -22,6 +23,7 @@ final class ComputersUITests: XCTestCase {
         // First run hands back to the existing pairing and chats flow.
         XCTAssertTrue(app.buttons["chat-0"].waitForExistence(timeout: 10))
 
+        app.buttons["computer-settings"].tap()
         app.buttons["computers-toggle"].tap()
         XCTAssertTrue(app.staticTexts["computers-title"].waitForExistence(timeout: 10))
         for (key, words) in [

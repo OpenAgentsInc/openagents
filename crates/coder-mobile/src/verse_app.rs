@@ -26,6 +26,8 @@ pub(crate) struct Config {
     pub gym_code: Option<String>,
     #[serde(default)]
     pub synthetic_gym: bool,
+    #[serde(default)]
+    pub world_relay: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -52,6 +54,7 @@ pub(crate) enum Request {
         received_at: f64,
     },
     ResetMotion,
+    RecenterCamera,
     Pointer {
         id: u64,
         phase: PointerPhase,
@@ -112,6 +115,7 @@ pub(crate) enum PointerPhase {
 pub(crate) struct Packet {
     schema: &'static str,
     status: String,
+    connection: Connection,
     pub error: Option<String>,
     frames_presented: u64,
     position: [f32; 3],
@@ -129,6 +133,54 @@ pub(crate) struct Packet {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gym_board: Option<verse::gym::BoardView>,
     view: View<()>,
+}
+
+#[derive(Serialize)]
+struct Connection {
+    state: &'static str,
+    label: &'static str,
+    relay: Option<String>,
+    error: Option<&'static str>,
+}
+
+fn connection(
+    relay: Option<&str>,
+    active: bool,
+    synthetic: bool,
+    status: Option<verse::session::Status>,
+    error: Option<&'static str>,
+) -> Connection {
+    let (state, label) = if relay.is_none() {
+        ("offline", "Offline")
+    } else if !active {
+        ("paused", "Paused")
+    } else if synthetic {
+        ("preview", "Preview")
+    } else {
+        match status {
+            Some(verse::session::Status::Online) => ("connected", "Connected"),
+            Some(verse::session::Status::Offline) => ("retrying", "Not connected"),
+            _ => ("connecting", "Connecting…"),
+        }
+    };
+    Connection {
+        state,
+        label,
+        relay: relay.map(str::to_owned),
+        error,
+    }
+}
+
+fn validated_world_relay(relay: &str) -> Result<String, String> {
+    let relay = relay.trim();
+    if relay.len() > 2048
+        || coder_connect::RelayPolicy::Production
+            .validate(relay)
+            .is_err()
+    {
+        return Err("Use a wss:// relay URL without credentials, a query, or a fragment".into());
+    }
+    Ok(relay.to_owned())
 }
 
 /// Coordinates are normalized from the top-left of the Metal viewport.
@@ -215,6 +267,7 @@ fn packet(
     Packet {
         schema: "coder.verse.v1",
         status,
+        connection: connection(None, false, false, None, None),
         error,
         frames_presented: frames,
         position,
@@ -257,6 +310,7 @@ struct Touch {
 }
 
 struct WorldTap {
+    movement: bool,
     position: [f32; 2],
     finished: f64,
 }
@@ -325,6 +379,7 @@ pub(crate) struct Scene {
     pub presented_entities: verse::mesh::Mesh,
     secret: secp256k1::SecretKey,
     relay: Option<String>,
+    restore_spawn: bool,
     synthetic: bool,
     spawn_pending: bool,
     camera_mode: CameraMode,
@@ -356,6 +411,14 @@ impl Scene {
             viewport,
         )
         .map_err(|e| e.to_string())?;
+        let (relay, initial_error) = match config.world_relay {
+            Some(value) => match validated_world_relay(&value) {
+                Ok(relay) => (Some(relay), None),
+                Err(error) => (None, Some(error)),
+            },
+            None => (None, None),
+        };
+        let restore_spawn = relay.is_some() && !config.synthetic;
         let mut gym_board = verse::gym::Board::new(secret, config.synthetic);
         let initial_gym_error = config
             .gym_code
@@ -378,7 +441,8 @@ impl Scene {
             session: None,
             presented_entities: verse::mesh::Mesh::default(),
             secret,
-            relay: None,
+            relay,
+            restore_spawn,
             synthetic: config.synthetic,
             spawn_pending: false,
             camera_mode: CameraMode::Touch,
@@ -394,7 +458,7 @@ impl Scene {
             gym_configuration_error: initial_gym_error,
             gym_board,
             frames: 0,
-            error: None,
+            error: initial_error,
         })
     }
 
@@ -413,7 +477,7 @@ impl Scene {
             self.jump = false;
             self.sprint = false;
             self.session = None;
-        } else if self.session.is_none() && self.relay.is_some() {
+        } else if self.session.is_none() && self.relay.is_some() && !self.synthetic {
             self.start_session()?;
         }
         self.sync_gym_interest();
@@ -421,18 +485,15 @@ impl Scene {
     }
 
     pub fn connect(&mut self, relay: String) -> Result<(), String> {
-        if self.synthetic {
-            return Err("Synthetic mode does not connect to a relay".into());
-        }
-        coder_connect::RelayPolicy::Production
-            .validate(&relay)
-            .map_err(|_| {
-                "Use a credential-free wss:// Verse relay URL without a query or fragment"
-                    .to_owned()
-            })?;
+        let relay = validated_world_relay(&relay)?;
         self.session = None;
+        self.presented_entities = verse::mesh::Mesh::default();
         self.relay = Some(relay);
-        if self.lifecycle.active() {
+        // Joining from the computer must keep the current pose and panel. Only
+        // a new app mount restores the signed pose from a remembered relay.
+        self.restore_spawn = false;
+        self.spawn_pending = false;
+        if self.lifecycle.active() && !self.synthetic {
             self.start_session()?;
         }
         Ok(())
@@ -445,8 +506,10 @@ impl Scene {
             self.relay.as_deref().ok_or("No Verse relay selected")?,
         )?;
         session.set_publish_intervals(verse::session::PublishIntervals::mobile())?;
-        session.begin_spawn(Duration::from_millis(1500));
-        self.spawn_pending = true;
+        self.spawn_pending = std::mem::take(&mut self.restore_spawn);
+        if self.spawn_pending {
+            session.begin_spawn(Duration::from_millis(1500));
+        }
         self.reset_motion();
         self.gym_board.set_active(false);
         self.session = Some(session);
@@ -457,6 +520,8 @@ impl Scene {
         self.presented_entities = verse::mesh::Mesh::default();
         self.session = None;
         self.relay = None;
+        self.restore_spawn = false;
+        self.spawn_pending = false;
     }
 
     /// A resize invalidates input in the previous viewport's coordinate space.
@@ -505,12 +570,22 @@ impl Scene {
                 && self.lifecycle.active()
                 && !self.panel_open()
                 && !self.spawn_pending
-                && self.touches.is_empty();
+                && (self.touches.is_empty()
+                    || (!touch.movement
+                        && !touch.computer
+                        && self
+                            .touches
+                            .values()
+                            .all(|other| other.movement && !other.computer)));
             if valid && touch.computer && self.computer_hit(x, y) {
                 self.open_computer();
             } else if valid && !touch.computer && elapsed <= WORLD_TAP_SECONDS {
-                self.world_tap([x, y], timestamp);
-            } else {
+                self.world_tap([x, y], timestamp, touch.movement);
+            } else if self
+                .last_world_tap
+                .as_ref()
+                .is_some_and(|tap| tap.movement == touch.movement)
+            {
                 self.last_world_tap = None;
             }
             return Ok(());
@@ -529,16 +604,23 @@ impl Scene {
                     self.cancel_taps();
                     return Err("Touch identity is already active".into());
                 }
-                // A second finger makes every participating touch a movement
-                // gesture. It cannot finish either half of a double tap.
                 let single_touch = self.touches.is_empty();
-                if !single_touch {
+                let size = self.lifecycle.viewport().logical_size();
+                let movement = x < size[0] * 0.5;
+                // A right-side tap is independent from an established movement
+                // hold. Near-simultaneous contacts still cancel taps for pinch.
+                let beside_movement = !movement
+                    && self.touches.values().all(|other| {
+                        other.movement
+                            && !other.computer
+                            && (!other.tap_valid || timestamp - other.started > 0.15)
+                    });
+                if !single_touch && !beside_movement {
                     self.cancel_taps();
                 }
                 if self.touches.len() >= 2 {
                     return Ok(());
                 }
-                let size = self.lifecycle.viewport().logical_size();
                 if x < 0.0 || y < 0.0 || x > size[0] || y > size[1] {
                     self.cancel_taps();
                     return Ok(());
@@ -547,7 +629,6 @@ impl Scene {
                 if computer {
                     self.last_world_tap = None;
                 }
-                let movement = x < size[0] * 0.5;
                 if self.touches.values().any(|p| p.movement == movement) {
                     return Ok(());
                 }
@@ -558,22 +639,31 @@ impl Scene {
                         latest: [x, y],
                         movement,
                         computer,
-                        tap_valid: single_touch,
+                        tap_valid: single_touch || beside_movement,
                         started: timestamp,
                     },
                 );
-                if !computer && !movement && self.camera_mode == CameraMode::Touch {
-                    self.world.apply(Action::FaceCamera)?;
-                }
             }
             PointerPhase::Move => {
                 if let Some(touch) = self.touches.get_mut(&id) {
-                    touch.tap_valid &=
-                        (x - touch.origin[0]).hypot(y - touch.origin[1]) <= TAP_DRIFT_POINTS;
-                    if !touch.tap_valid {
+                    let dragged =
+                        (x - touch.origin[0]).hypot(y - touch.origin[1]) > TAP_DRIFT_POINTS;
+                    touch.tap_valid &= !dragged;
+                    if dragged {
+                        // The monitor captures a tap, not the rest of a drag.
+                        // Continue with the control chosen by the starting side.
+                        touch.computer = false;
+                    }
+                    if !touch.tap_valid
+                        && self
+                            .last_world_tap
+                            .as_ref()
+                            .is_some_and(|tap| tap.movement == touch.movement)
+                    {
                         self.last_world_tap = None;
                     }
                     if !touch.computer && !touch.movement && self.camera_mode == CameraMode::Touch {
+                        self.world.apply(Action::FaceCamera)?;
                         self.world.apply(Action::Look {
                             dx: (x - touch.latest[0]).clamp(-500.0, 500.0),
                             dy: (y - touch.latest[1]).clamp(-500.0, 500.0),
@@ -594,15 +684,17 @@ impl Scene {
         }
     }
 
-    fn world_tap(&mut self, position: [f32; 2], timestamp: f64) {
+    fn world_tap(&mut self, position: [f32; 2], timestamp: f64, movement: bool) {
         if self.last_world_tap.take().is_some_and(|previous| {
-            (0.0..=DOUBLE_TAP_SECONDS).contains(&(timestamp - previous.finished))
+            previous.movement == movement
+                && (0.0..=DOUBLE_TAP_SECONDS).contains(&(timestamp - previous.finished))
                 && (position[0] - previous.position[0]).hypot(position[1] - previous.position[1])
                     <= DOUBLE_TAP_DISTANCE_POINTS
         }) {
             self.jump = true;
         } else {
             self.last_world_tap = Some(WorldTap {
+                movement,
                 position,
                 finished: timestamp,
             });
@@ -727,6 +819,12 @@ impl Scene {
                 self.reset_motion();
                 Ok(())
             }
+            Request::RecenterCamera => {
+                self.reset_motion();
+                self.world.camera.yaw_offset = 0.0;
+                self.world.camera.pitch = verse::camera::FollowCamera::default().pitch;
+                Ok(())
+            }
             Request::Pointer { id, phase, x, y } => self.pointer(id, phase, x, y),
             Request::Jump => {
                 if self.lifecycle.active() && !self.panel_open() {
@@ -849,6 +947,15 @@ impl Scene {
             self.error.clone(),
             self.frames,
             self.world.player.pos.to_array(),
+        );
+        packet.connection = connection(
+            self.relay.as_deref(),
+            self.lifecycle.active(),
+            self.synthetic,
+            self.session.as_ref().map(|session| session.status),
+            self.session
+                .as_ref()
+                .and_then(|session| session.connection_error),
         );
         packet.camera_mode = self.camera_mode;
         packet.camera_yaw =
@@ -1051,6 +1158,7 @@ mod tests {
             synthetic: true,
             gym_code: None,
             synthetic_gym: false,
+            world_relay: None,
         })
         .unwrap()
     }
@@ -1063,6 +1171,7 @@ mod tests {
             synthetic: true,
             gym_code: None,
             synthetic_gym: true,
+            world_relay: None,
         })
         .unwrap()
     }
@@ -1150,6 +1259,97 @@ mod tests {
             refused.request_id
         );
         assert!(scene.gym_view().is_none());
+    }
+
+    #[test]
+    fn world_selection_survives_panels_suspension_and_remount_without_preview_networking() {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        scene.world.set_spawn([1.0, 0.0, -2.0].into(), 0.7).unwrap();
+        scene.open_computer();
+        let position = scene.world.player.pos;
+        scene
+            .connect("  wss://relay.example.test/world  ".into())
+            .unwrap();
+        assert_eq!(
+            scene.packet().connection.relay.as_deref(),
+            Some("wss://relay.example.test/world")
+        );
+        assert_eq!(scene.packet().connection.state, "preview");
+        assert!(scene.computer_open);
+        assert_eq!(scene.world.player.pos, position);
+        assert!(!scene.spawn_pending);
+        assert!(!scene.restore_spawn);
+        assert!(scene.session.is_none());
+        scene.computer_open = false;
+        scene.open_computer();
+        assert!(scene.packet().connection.relay.is_some());
+        scene.activate(false).unwrap();
+        assert_eq!(scene.packet().connection.state, "paused");
+        scene.activate(true).unwrap();
+        assert_eq!(scene.world.player.pos, position);
+        assert!(scene.session.is_none());
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "secret_hex": "11".repeat(32), "width": 800, "height": 1200, "scale": 2,
+            "synthetic": true, "world_relay": scene.packet().connection.relay
+        }))
+        .unwrap();
+        let mut restored = Scene::new(config).unwrap();
+        restored.activate(true).unwrap();
+        assert_eq!(restored.packet().connection.state, "preview");
+        assert_eq!(
+            restored.packet().connection.relay,
+            scene.packet().connection.relay
+        );
+        assert!(restored.session.is_none());
+        restored.disconnect();
+        restored.activate(false).unwrap();
+        restored.activate(true).unwrap();
+        assert_eq!(restored.packet().connection.state, "offline");
+        assert!(restored.packet().connection.relay.is_none());
+        assert!(restored.session.is_none());
+    }
+
+    #[test]
+    fn remembered_world_relay_is_validated_before_restore() {
+        for relay in [
+            "ws://remote.example.test",
+            "wss://example.test/?token=secret",
+            "wss://user:pass@example.test",
+        ] {
+            let config: Config = serde_json::from_value(serde_json::json!({
+                "secret_hex": "11".repeat(32), "width": 800, "height": 1200, "scale": 2,
+                "world_relay": relay
+            }))
+            .unwrap();
+            let restored = Scene::new(config).unwrap();
+            assert!(restored.relay.is_none());
+            assert!(restored.error.is_some());
+            assert!(restored.session.is_none());
+        }
+    }
+
+    #[test]
+    fn world_connection_labels_follow_the_observed_transport_status() {
+        use verse::session::Status;
+        for (status, expected) in [
+            (None, "connecting"),
+            (Some(Status::Connecting), "connecting"),
+            (Some(Status::Online), "connected"),
+            (Some(Status::Offline), "retrying"),
+        ] {
+            let value = connection(Some("wss://example.test"), true, false, status, None);
+            assert_eq!(value.state, expected);
+        }
+        let failed = connection(
+            Some("wss://example.test"),
+            true,
+            false,
+            Some(Status::Offline),
+            Some("Relay refused world updates."),
+        );
+        assert_eq!(failed.error, Some("Relay refused world updates."));
+        assert_eq!(connection(None, true, false, None, None).state, "offline");
     }
 
     #[test]
@@ -1274,6 +1474,43 @@ mod tests {
     }
 
     #[test]
+    fn dragging_from_the_monitor_releases_tap_capture_to_world_controls() {
+        for right in [false, true] {
+            let (mut scene, [center_x, y]) = computer_scene();
+            let x = center_x + if right { 4.0 } else { -4.0 };
+            assert!(scene.computer_hit(x, y));
+            let position = scene.world.player.pos;
+            let yaw = scene.world.player.yaw;
+            scene.pointer_at(1, PointerPhase::Down, x, y, 1.02).unwrap();
+            scene.update(1.04).unwrap();
+            assert_eq!(scene.world.player.pos, position);
+            assert_eq!(scene.world.player.yaw, yaw);
+            let end = if right { [x + 40.0, y] } else { [x, y - 40.0] };
+            scene
+                .pointer_at(1, PointerPhase::Move, end[0], end[1], 1.08)
+                .unwrap();
+            scene.update(1.08).unwrap();
+            if right {
+                assert_ne!(
+                    scene.world.player.yaw, yaw,
+                    "Monitor-started drag must look"
+                );
+                assert_eq!(scene.world.player.pos, position);
+            } else {
+                assert_ne!(
+                    scene.world.player.pos, position,
+                    "Monitor-started drag must move"
+                );
+            }
+            scene
+                .pointer_at(1, PointerPhase::Up, end[0], end[1], 1.1)
+                .unwrap();
+            assert!(!scene.computer_open);
+            assert!(!scene.jump);
+        }
+    }
+
+    #[test]
     fn exposed_monitor_edge_opens_even_when_its_center_is_occluded() {
         let (mut scene, [center_x, center_y]) = computer_scene();
         let size = scene.lifecycle.viewport().logical_size();
@@ -1362,6 +1599,99 @@ mod tests {
                 assert!(!scene.jump, "a third tap starts another pair");
             }
         }
+    }
+
+    #[test]
+    fn held_movement_and_right_look_remain_independent() {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        scene.update(1.0).unwrap();
+        scene
+            .pointer_at(10, PointerPhase::Down, 100.0, 500.0, 1.0)
+            .unwrap();
+        scene
+            .pointer_at(10, PointerPhase::Move, 100.0, 450.0, 1.05)
+            .unwrap();
+        let before = scene.world.player.pos;
+        let yaw = scene.world.player.yaw;
+        scene
+            .pointer_at(20, PointerPhase::Down, 300.0, 500.0, 1.2)
+            .unwrap();
+        scene
+            .pointer_at(20, PointerPhase::Move, 350.0, 480.0, 1.25)
+            .unwrap();
+        assert!(scene.input().forward);
+        assert_ne!(scene.world.player.yaw, yaw);
+        scene.update(1.04).unwrap();
+        assert_ne!(scene.world.player.pos, before);
+        scene
+            .pointer_at(20, PointerPhase::Up, 350.0, 480.0, 1.3)
+            .unwrap();
+        assert!(
+            scene.input().forward,
+            "Releasing look must keep movement held"
+        );
+        assert!(!scene.jump);
+    }
+
+    #[test]
+    fn right_double_tap_jumps_while_left_movement_is_held() {
+        for mode in [CameraMode::Touch, CameraMode::Motion] {
+            let mut scene = scene();
+            scene.activate(true).unwrap();
+            scene.action(Request::CameraMode { mode }).unwrap();
+            scene.update(1.0).unwrap();
+            scene
+                .pointer_at(10, PointerPhase::Down, 100.0, 500.0, 1.0)
+                .unwrap();
+            if mode == CameraMode::Touch {
+                scene
+                    .pointer_at(10, PointerPhase::Move, 100.0, 450.0, 1.05)
+                    .unwrap();
+            }
+            world_tap(&mut scene, 300.0, 1.3);
+            // Ordinary joystick updates between the taps cannot erase them.
+            scene
+                .pointer_at(10, PointerPhase::Move, 100.0, 450.0, 1.4)
+                .unwrap();
+            world_tap(&mut scene, 300.0, 1.45);
+            assert!(
+                scene.jump,
+                "Right-side double tap must work beside {mode:?} movement"
+            );
+            let height = scene.world.player.pos.y;
+            scene.update(1.04).unwrap();
+            assert!(scene.input().forward);
+            assert!(scene.world.player.pos.y > height);
+            assert!(scene.touches.contains_key(&10));
+        }
+    }
+
+    #[test]
+    fn explicit_recenter_restores_default_view_and_requires_fresh_motion() {
+        let mut scene = motion_scene();
+        scene.world.player.yaw = 0.7;
+        scene.world.camera.yaw_offset = 0.4;
+        scene.world.camera.pitch = -0.9;
+        scene.world.camera.distance = 5.0;
+        sample(&mut scene, attitude(0.0, 0.0, 0.0), 1.01);
+        sample(&mut scene, attitude(1.0, -1.0, 0.0), 1.02);
+        let position = scene.world.player.pos;
+        let heading = scene.world.player.yaw;
+        scene.world.camera.yaw_offset = 0.4;
+        scene.action(Request::RecenterCamera).unwrap();
+        close(scene.world.camera.yaw_offset, 0.0);
+        close(scene.world.camera.pitch, 0.28);
+        close(scene.world.camera.distance, 5.0);
+        close(scene.world.player.yaw, heading);
+        assert_eq!(scene.world.player.pos, position);
+        sample(&mut scene, attitude(0.5, -0.5, 0.0), 1.01);
+        assert!(scene.motion.target.is_none());
+        sample(&mut scene, attitude(-1.0, 0.7, 0.0), 1.03);
+        scene.advance_motion(0.05);
+        close(scene.world.player.yaw, heading);
+        close(scene.world.camera.pitch, 0.28);
+        assert!(serde_json::from_str::<Request>(r#"{"action":"recenter_camera"}"#).is_ok());
     }
 
     #[test]
@@ -1569,7 +1899,9 @@ mod tests {
             .pointer(1, PointerPhase::Cancel, f32::NAN, 0.0)
             .unwrap();
         assert!(!scene.input().forward);
-        assert!(scene.connect("wss://example.test".into()).is_err());
+        scene.connect("wss://example.test".into()).unwrap();
+        assert!(scene.session.is_none());
+        assert_eq!(scene.packet().connection.state, "preview");
         scene.packet().view.validate().unwrap();
     }
 

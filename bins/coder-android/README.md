@@ -71,18 +71,20 @@ installation, not a Google Play release.
 - The canvas paints behind the system bars; native controls respect their
   insets. Drag the left half to move and the right half to look. Double-tap
   the world to jump. Pinch with two fingers to zoom: spread them to move the
-  camera closer and bring them together to move it farther away. Two fingers
-  reserve zoom immediately; movement and touch look resume after all fingers
-  lift and you start a new gesture.
-- Select **Motion look** to aim by rotating the device while holding the left
-  side to move. **Recenter** resets its reference. Sensors stop when the app
+  camera closer and bring them together to move it farther away. A deliberate
+  pinch owns its contacts until they lift. An established left movement control
+  stays active while the right side looks or double-taps to jump.
+- The bottom-right hand/gyroscope icon switches touch and motion look. In motion
+  mode, aim with the device while holding the left side to move. The crosshair
+  returns the camera behind the character and resets the phone reference.
+  Sensors stop when the app
   is inactive or a world panel is open. A device without a usable rotation
   sensor keeps touch controls available.
 - Approach the world computer, select **Use computer**, and follow the
   [pairing guide](../../docs/coder/guides/mobile-readonly.md). Scan the QR code
-  from `cargo run --release -p coder-connect -- connect`, or paste the full
+  from `./pair` in an updated checkout (or installed `coder pair`), or paste the full
   invitation. Camera access is requested only for scanning.
-- In the computer panel, **Computers** lists the hosts this phone enrolled
+- In the computer panel, open **Settings → Computers** to list the hosts this phone enrolled
   with a `coder-host:` invitation from `coder host invite`, each with its
   live status. The **Access** screen lists enrolled devices and creates
   invitations with narrowed rights, shown as a QR code. See
@@ -97,7 +99,7 @@ installation, not a Google Play release.
   are separate from chat pairing. Recipe actions require explicit confirmation;
   viewing the world or a board starts no benchmark or model.
 
-The world keeps the camera mode control, **Recenter** in motion mode, nearby
+The world keeps the camera mode control, the recenter crosshair in either camera mode, nearby
 interactions, and actionable errors. The title, connection status, idle labels,
 diagnostics, instructions, walk/sprint toggle, and jump/zoom buttons are removed
 from the canvas. Synthetic test metadata remains available through accessibility.

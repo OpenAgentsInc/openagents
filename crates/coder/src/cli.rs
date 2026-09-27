@@ -58,6 +58,7 @@ Usage:
   coder                       Open the terminal and start a conversation.
   coder -p <PROMPT>           Run one turn, write the reply to stdout, and exit.
   coder doctor                Show what would answer a turn, and why.
+  coder pair                  Show a QR code to read computer chats on your phone.
   coder task --help           Manage durable queued requests; runs no agent.
   coder host --help           Enroll devices and run the resident host.
   coder --version             Show the repository, commit, and tree state.

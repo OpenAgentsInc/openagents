@@ -26,6 +26,8 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
                    private val motionPreview: Boolean,
                    private val changed: (JSONObject?, String?) -> Unit) : SurfaceView(context),
     SurfaceHolder.Callback, Choreographer.FrameCallback, SensorEventListener {
+    var worldStorageError: String? = null
+        private set
     private var handle = 0L
     private var attached = false
     private var disposed = false
@@ -39,11 +41,10 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     private var sensorRunning = false
     private var computerAccessible = false
     private val pointers = mutableSetOf<Int>()
-    private var pinchOwnsTouches = false
+    private val pinchAdmission = PinchAdmission()
     private val pinch = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-            if (!running || panelOpen()) return false
-            pinchOwnsTouches = true
+            if (!running || panelOpen() || !pinchAdmission.allowed) return false
             cancelPointers()
             return true
         }
@@ -91,6 +92,8 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             val config = json("secret_hex" to storage.identity("verse"), "width" to width,
                 "height" to height, "scale" to resources.displayMetrics.density,
                 "synthetic" to synthetic, "synthetic_gym" to (synthetic && gymPreview))
+            try { storage.worldRelay()?.let { config.put("world_relay", it) } }
+            catch (_: Exception) { worldStorageError = "Saved world relay unavailable. Unlock the device and retry." }
             storage.gymCode()?.let { config.put("gym_code", it) }
             handle = CoderNative.createVerse(holder.surface, config.toString())
             check(handle != 0L) { packet(CoderNative.verseBlueprint(), "coder.verse.v1").textOrNull("error")
@@ -155,6 +158,14 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             require(result.getJSONArray("position").length() == 3 &&
                 result.getString("camera_mode") in listOf("touch", "motion")) { "Invalid world view." }
             snapshot = result
+            if (request.optString("action") in listOf("connect", "disconnect") && result.textOrNull("error") == null) {
+                try {
+                    storage.saveWorldRelay(result.getJSONObject("connection").textOrNull("relay"))
+                    worldStorageError = null
+                } catch (_: Exception) {
+                    worldStorageError = "Could not save the world relay change. Retry before closing Coder."
+                }
+            }
             if (synthetic) contentDescription = "$worldDescription ${json(
                 "frames" to result.optLong("frames_presented"),
                 "position" to result.getJSONArray("position"),
@@ -256,17 +267,23 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!running || panelOpen()) { cancelTouches(); return false }
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) pinchOwnsTouches = false
-        if (event.pointerCount > 1 && !pinchOwnsTouches) {
-            // Two fingers reserve zoom before the scale detector crosses its
-            // recognition threshold. Keep the remaining finger reserved, too.
-            pinchOwnsTouches = true
-            cancelPointers()
+        val index = event.actionIndex
+        val density = resources.displayMetrics.density
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pinchAdmission.reset()
+                pinchAdmission.down(event.getPointerId(index), event.getX(index) / density, event.getY(index) / density, event.eventTime)
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> pinchAdmission.down(event.getPointerId(index), event.getX(index) / density, event.getY(index) / density, event.eventTime)
+            MotionEvent.ACTION_MOVE -> for (i in 0 until event.pointerCount)
+                pinchAdmission.move(event.getPointerId(i), event.getX(i) / density, event.getY(i) / density)
         }
+        if (pinchAdmission.reserved) cancelPointers()
         pinch.onTouchEvent(event)
-        if (pinchOwnsTouches) {
-            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
-                pinchOwnsTouches = false
+        if (pinchAdmission.reserved) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> pinchAdmission.up(event.getPointerId(index))
+                MotionEvent.ACTION_CANCEL -> pinchAdmission.reset()
             }
             return true
         }
@@ -280,9 +297,10 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val index = event.actionIndex
                 if (pointers.remove(event.getPointerId(index))) pointer(event, index, "up")
+                pinchAdmission.up(event.getPointerId(index))
                 performClick()
             }
-            MotionEvent.ACTION_CANCEL -> cancelPointers()
+            MotionEvent.ACTION_CANCEL -> { cancelPointers(); pinchAdmission.reset() }
         }
         return true
     }
@@ -329,7 +347,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     }
     private fun cancelTouches() {
         cancelPointers()
-        pinchOwnsTouches = false
+        pinchAdmission.reset()
         val now = SystemClock.uptimeMillis()
         val cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
         pinch.onTouchEvent(cancel)

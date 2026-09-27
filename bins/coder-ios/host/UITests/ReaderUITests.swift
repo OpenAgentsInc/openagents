@@ -14,12 +14,15 @@ final class ReaderUITests: XCTestCase {
     }
 
     func testNativeChatSelectionAndExactSource() throws {
-        XCTAssertTrue(app.staticTexts["reader-read-only"].exists)
+        XCTAssertFalse(app.staticTexts["reader-status"].exists)
         app.buttons["chat-0"].tap()
         XCTAssertTrue(app.buttons["back"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["chat-title"].exists)
         XCTAssertTrue(app.switches["timeline-follow"].exists)
 
+        XCTAssertFalse(app.staticTexts["history-progress"].exists)
+        XCTAssertFalse(app.staticTexts["page-position"].exists)
+        app.buttons["details"].tap()
         // The renderer exposes the exact bytes as a separate Rust action,
         // independent of its selectable Markdown presentation.
         let source = app.buttons.matching(NSPredicate(format: "identifier ENDSWITH '-raw'")).firstMatch
@@ -57,7 +60,7 @@ final class ReaderUITests: XCTestCase {
         app.terminate()
         app.launch()
         app.openWorldComputer()
-        XCTAssertTrue(app.buttons["chat-0"].waitForExistence(timeout: 20))
+        attachScreenshot("Synthetic reader after relaunch")
         XCTAssertEqual(publicKey(), first)
         app.buttons["computer-close"].tap()
         XCTAssertFalse(app.buttons["computer-interact"].exists)
@@ -66,6 +69,7 @@ final class ReaderUITests: XCTestCase {
 
     func testPageSelectionPinsUntilLatestIsRequested() throws {
         app.buttons["chat-0"].tap()
+        app.buttons["details"].tap()
         let position = app.staticTexts["page-position"]
         XCTAssertTrue(position.waitForExistence(timeout: 10))
         XCTAssertTrue(position.label.contains("Page 2 of 2"))
@@ -83,10 +87,20 @@ final class ReaderUITests: XCTestCase {
     }
 
     private func publicKey() -> String {
-        app.buttons["Device details"].tap()
-        let key = app.staticTexts["reader-public-key"]
+        let settings = app.buttons.matching(identifier: "computer-settings").firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        let details = app.buttons.matching(identifier: "Device details").firstMatch
+        XCTAssertTrue(details.waitForExistence(timeout: 10))
+        details.tap()
+        let key = app.staticTexts.matching(identifier: "reader-public-key").firstMatch
         XCTAssertTrue(key.waitForExistence(timeout: 10))
-        return key.label
+        let loaded = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label MATCHES '[0-9a-fA-F]{64}'"), object: key)
+        XCTAssertEqual(XCTWaiter.wait(for: [loaded], timeout: 10), .completed)
+        let value = key.label
+        settings.tap()
+        return value
     }
 
     private func reveal(_ element: XCUIElement) {

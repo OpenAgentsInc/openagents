@@ -97,6 +97,14 @@ class MobileAcceptanceTest {
                 "verse-controls-hint")) assertFalse("Removed visible control: $tag", exists(tag))
         assertFalse(hasText("Coder"))
         assertFalse(hasText("Verse offline world"))
+        assertTrue("Recenter is available in touch mode", exists("verse-motion-recenter"))
+        onMain { activity ->
+            for (tag in listOf("verse-camera-mode", "verse-motion-recenter")) {
+                val control = find(activity.window.decorView, tag)!!
+                assertTrue("Camera control is icon-only", control is android.widget.ImageButton)
+                assertTrue("Camera control retains its accessibility name", !control.contentDescription.isNullOrEmpty())
+            }
+        }
         val initial = position()
         tapSurface(0.82f, 0.32f)
         tapSurface(0.82f, 0.32f)
@@ -123,6 +131,11 @@ class MobileAcceptanceTest {
         launch()
         computer()
         click("chat-0")
+        waitFor { exists("details") }
+        assertFalse("Source metadata is collapsed", exists("history-progress"))
+        assertFalse("Page metadata is collapsed", exists("page-position"))
+        assertFalse("Device details stay in Settings", exists("reader-public-key"))
+        click("details")
         waitFor { text("page-position").contains("Page 2 of 2") }
         click("earlier")
         waitFor { text("page-position").contains("Page 1 of 2") }
@@ -136,7 +149,7 @@ class MobileAcceptanceTest {
             Selection.setSelection(view.text as Spannable, 1, 6)
         }
         click("reader-refresh")
-        waitFor { !text("reader-status").contains("Connecting or updating") }
+        waitFor { !exists("reader-status", nonempty = true) }
         assertTrue(text("page-position").contains("Page 1 of 2"))
         onMain { activity ->
             val same = find(activity.window.decorView, selected.get().tag.toString()) as TextView
@@ -170,13 +183,13 @@ class MobileAcceptanceTest {
         launch()
         computer()
         waitFor { exists("chat-0") }
-        click("computers-toggle")
+        openComputers()
         waitFor { exists("first-run-title") }
         capture("computers-first-run")
         click("first-run-continue")
         // First run hands back to the existing chats flow.
         waitFor { exists("chat-0") }
-        click("computers-toggle")
+        openComputers()
         waitFor { exists("computers-title") }
         for ((key, words) in listOf("host-0-status" to "Online", "host-1-status" to "Connecting",
                 "host-2-status" to "Offline", "host-3-status" to "Out of date",
@@ -225,7 +238,7 @@ class MobileAcceptanceTest {
         scenario = ActivityScenario.launch(intent)
         waitFor { frames() > 0 }
         computer()
-        click("computers-toggle")
+        openComputers()
         waitFor { exists("first-run-title") }
         click("invite-paste")
         waitFor { exists("computers-input") }
@@ -233,8 +246,8 @@ class MobileAcceptanceTest {
         click("computers-submit")
         waitFor(60_000) { text("notice").contains("Added Computer") }
         click("first-run-continue")
-        waitFor { exists("computers-toggle", enabled = true) }
-        click("computers-toggle")
+        waitFor { exists("computer-settings", enabled = true) }
+        openComputers()
         waitFor(60_000) { text("host-0-status").contains("Online") }
         capture("computers-live-online")
         click("host-0-access")
@@ -283,8 +296,10 @@ class MobileAcceptanceTest {
     @Test fun invalidPairingIsVisibleAndPasteRemainsAvailable() {
         launch()
         computer()
+        openSettings()
         click("computer-pair")
         waitFor { exists("computer-paste") }
+        assertEquals("./pair", text("computer-command"))
         assertTrue(exists("computer-scan"))
         click("computer-paste")
         waitFor { exists("computer-code") }
@@ -296,6 +311,36 @@ class MobileAcceptanceTest {
         waitFor { exists("reader-error", nonempty = true) }
         assertTrue(exists("computer-paste"))
         assertTrue(exists("computer-close"))
+    }
+
+    @Test fun worldRelayIsRememberedAcrossPanelAndActivityReopen() {
+        DeviceStorage(instrumentation.targetContext, true).saveWorldRelay(null)
+        launch()
+        computer()
+        openSettings()
+        click("world-connection")
+        assertEquals("Offline", text("world-connection-status"))
+        onMain { activity ->
+            (find(activity.window.decorView, "world-relay") as EditText).setText("wss://relay.example.test")
+        }
+        click("world-join")
+        waitFor { text("world-connection-status") == "Preview" }
+        click("computer-close")
+        computer()
+        openSettings()
+        if (!exists("world-relay")) click("world-connection")
+        assertEquals("wss://relay.example.test", text("world-relay"))
+        assertEquals("Preview", text("world-connection-status"))
+        scenario!!.recreate()
+        waitFor { frames() > 0 }
+        computer()
+        openSettings()
+        click("world-connection")
+        assertEquals("wss://relay.example.test", text("world-relay"))
+        assertEquals("Preview", text("world-connection-status"))
+        click("world-leave")
+        waitFor { text("world-connection-status") == "Offline" }
+        assertNull(DeviceStorage(instrumentation.targetContext, true).worldRelay())
     }
 
     @Test fun motionModeRecenterAndPauseUseTheSharedController() {
@@ -312,10 +357,15 @@ class MobileAcceptanceTest {
         waitFor { abs(cameraYaw() - yaw) > 0.05 }
         assertTrue(exists("verse-motion-recenter"))
         val centered = cameraYaw()
+        val centeredPosition = position()
+        val centeredDistance = worldSnapshot().getDouble("camera_distance")
         click("verse-motion-recenter")
         val recenterFrame = frames()
         waitFor { frames() > recenterFrame + 3 }
-        assertEquals("Recenter preserves the view", centered, cameraYaw(), 0.02)
+        assertEquals("Recenter faces the player heading", centered, cameraYaw(), 0.02)
+        assertEquals("Recenter restores the default pitch", 0.28, worldSnapshot().getDouble("camera_pitch"), 0.02)
+        assertEquals("Recenter preserves zoom", centeredDistance, worldSnapshot().getDouble("camera_distance"), 0.001)
+        assertTrue("Recenter preserves player position", distance(centeredPosition, position()) < 0.05)
         val before = position()
         holdForward()
         waitFor { distance(position(), before) > 0.1 }
@@ -527,10 +577,25 @@ class MobileAcceptanceTest {
         event(MotionEvent.ACTION_UP, endSpan + 0.2f, 1)
     }
 
+    private fun openSettings() {
+        if (!exists("computer-pair")) click("computer-settings")
+        // The first click from Computers returns to Chats.
+        if (!exists("computer-pair")) click("computer-settings")
+        waitFor { exists("computer-pair") }
+    }
+
+    private fun openComputers() {
+        openSettings()
+        click("computers-toggle")
+    }
+
     private fun publicKey(): String {
+        openSettings()
         if (!exists("reader-public-key")) click("reader-details")
         waitFor { text("reader-public-key").length == 64 }
-        return text("reader-public-key")
+        val value = text("reader-public-key")
+        click("computer-settings")
+        return value
     }
 
     private fun walk() = gesture(0.12f, 0.50f, 0.12f, 0.32f, 1200)
@@ -560,7 +625,7 @@ class MobileAcceptanceTest {
     }
 
     private fun click(tag: String) {
-        waitFor { exists(tag, enabled = true) && !text("reader-status").contains("Connecting or updating") }
+        waitFor { exists(tag, enabled = true) && !exists("reader-status", nonempty = true) }
         onMain { activity ->
             val view = find(activity.window.decorView, tag)!!
             assertTrue("Click $tag", view.performClick())

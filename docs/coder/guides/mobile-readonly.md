@@ -18,12 +18,15 @@ describe the build and the checks actually performed.
 ## Connect the phone
 
 1. Open Coder on the phone. Verse is the home screen and starts offline.
-   Walk toward the computer in front of you, then tap **Use computer**.
+   Walk toward the computer in front of you, then tap its screen.
 2. In the OpenAgents checkout on your computer, run:
 
    ```sh
-   cargo run --release -p coder-connect -- connect
+   ./pair
    ```
+
+   Update the checkout first if it does not have `pair`. With Coder installed,
+   you can run `coder pair` from any folder instead.
 
    The command selects the existing `~/.codex` and `~/.claude` history folders,
    prints the selected folders, and displays a QR code and an equivalent
@@ -34,9 +37,14 @@ describe the build and the checks actually performed.
    Point the phone at the QR code on the physical computer. If the camera
    is unavailable, choose **Paste code** and paste the complete `coder-pair:`
    string instead. Neither path requires copying the phone's public key.
-4. Once paired, the chat list opens at the world computer. Select a conversation.
-   The foreground reader loads history in bounded pages and checks for new
-   records every five seconds. Close the panel to return to walking.
+4. Pairing immediately loads the first chat list. Select a chat to fetch its
+   transcript immediately. The open reader checks for updates every five
+   seconds, independently of world redraws. Close the panel to return to walking.
+
+A valid pairing remains saved if the first read fails. The app shows the error
+and retries; you do not need to pair again. An empty successful catalog says
+**No saved chats found on this computer**. Keep `./pair` running and the computer
+awake for new reads.
 
 The QR invitation expires after five minutes and binds to the first device
 that redeems it. A retry by that same device recovers the existing grant;
@@ -70,14 +78,14 @@ visibility policy; arbitrary public relays are not interchangeable.
 - **Follow new messages** follows the end while new pages arrive. Dragging the
   transcript pauses follow and pins the page that was on screen, including if
   a refresh was already in flight. Resume explicitly when ready.
-- **Show exact source bytes** exposes the retained native record fragments.
+- Open **Details**, then **Show exact source bytes** to expose the retained native record fragments.
   Unknown events, malformed JSON, tool data, and oversized records stay
   inspectable. A fragment that splits UTF-8 is displayed as base64, with its
   original byte range. Markdown links are inert.
-- The byte counter reports received source bytes against the last observed
+- The byte counter under **Details** reports received source bytes against the last observed
   file size. It is not an execution progress estimate. A partial final line is
   labeled as a record the harness is still writing.
-- **Reload history** discards that chat's cached pages and starts again from
+- **Details → Reload history** discards that chat's cached pages and starts again from
   the beginning. Use it after a changed or replaced source is reported.
 
 The app shows the persisted native records, not text the harness never saved.
@@ -87,16 +95,15 @@ metadata row cannot recreate its transcript.
 
 ## Computers screens
 
-Select **Computers** in the Computer panel to open the shared
+Open the **…** settings button, then select **Computers** to open the shared
 [Computers screens](../../../crates/coder-computers/README.md): your hosts and
-their status, **Add a computer**, **Access**, and **Activity**. Select
-**Chats** to return. These screens are separate from chat pairing. A
+their status, **Add a computer**, **Access**, and **Activity**. Return to settings and select **Chats** to return. These screens are separate from chat pairing. A
 `coder-host:` invitation grants host access; a `coder-pair:` code still only
 reads saved chats.
 
-This build has no host client yet, so the normal app shows every Computers
-action as unavailable with its reason. The synthetic build (`--synthetic`)
-uses an offline fixture that contacts no host.
+The normal app uses the live host client for enrollment, status, access, and
+activity. An unavailable action explains the missing right or host capability.
+The synthetic build (`--synthetic`) uses an offline fixture that contacts no host.
 
 ## Cache, reconnect, and revocation
 
@@ -121,7 +128,7 @@ Complete records up to 256 KiB have a readable projection; larger records
 remain available as exact paged fragments. Individual source files are bounded
 to 512 MiB. See the [reader's complete limits](../../../crates/coder-history/README.md).
 
-Use the phone's **Disconnect and erase cached chats** to forget the pairing
+Open **… → Device details → Disconnect computer** and confirm **Disconnect and erase** to forget the pairing
 and erase local content while retaining the device identity. This does not
 revoke the computer grant. To revoke it on the computer, use the `grant` field
 printed after pairing (or from a manually generated connection code):

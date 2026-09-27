@@ -14,7 +14,7 @@ pub struct VerseHandle {
 }
 
 fn failure() -> CoderMobileBuffer {
-    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"camera_mode":"touch","camera_yaw":0.0,"camera_pitch":0.28,"motion_needed":false,"computer":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":5.0},"computer_open":false,"gym":{"inside":false,"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":60.0},"gym_open":false,"gym_revision":0,"gym_active":false,"view":null}"#.to_vec())
+    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"camera_mode":"touch","camera_yaw":0.0,"camera_pitch":0.28,"camera_distance":6.0,"motion_needed":false,"connection":{"state":"offline","label":"Offline","relay":null,"error":null},"computer":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":5.0},"computer_open":false,"gym":{"inside":false,"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":60.0},"gym_open":false,"gym_revision":0,"gym_active":false,"view":null}"#.to_vec())
 }
 
 /// Returns the initial Rust-owned surface projection. Release the result with
@@ -251,6 +251,7 @@ mod tests {
             synthetic: true,
             gym_code: None,
             synthetic_gym: false,
+            world_relay: None,
         })
         .unwrap();
         let mut handle = VerseHandle {

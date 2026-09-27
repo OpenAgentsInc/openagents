@@ -8,6 +8,7 @@ struct MobilePacket: Decodable {
     let public_key: String
     let status: String
     let paired: Bool
+    let pairing_completed: Bool?
     let reading: Bool
     let error: String?
     let follow_target: String?
@@ -123,7 +124,7 @@ final class MobileBridge: ObservableObject {
 
     func connect(_ code: String, completed: @escaping (Bool) -> Void = { _ in }) {
         request(["op": "connect", "code": code]) { result in
-            if case let .success(packet) = result { completed(packet.paired && packet.error == nil) }
+            if case let .success(packet) = result { completed(packet.pairing_completed == true) }
             else { completed(false) }
         }
     }

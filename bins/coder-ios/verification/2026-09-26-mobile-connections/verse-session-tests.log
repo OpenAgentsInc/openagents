@@ -1,0 +1,20 @@
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-connect)
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym-bridge)
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `test` profile [unoptimized] target(s) in 2.01s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-e7ac66d55632a722)
+
+running 10 tests
+test session::tests::a_greeting_is_returned_from_a_little_farther ... ok
+test session::tests::published_poses_name_the_avatar_and_its_agent ... ok
+test session::tests::greetings_go_to_the_nearest_agent_in_range_once_per_cooldown ... ok
+test session::tests::both_world_subscriptions_must_be_ready_and_refusals_stay_visible ... ok
+test session::tests::rejected_auth_does_not_become_connected_on_eose ... ok
+test session::tests::socket_open_is_not_authenticated_and_reconnect_resets_pose_identity ... ok
+test session::tests::random_spawns_land_on_the_plaza_and_clear ... ok
+test session::tests::nonblocking_spawn_only_accepts_the_injected_players_signature ... ok
+test session::tests::profiles_require_signatures_and_room_labels_require_pinned_authority ... ok
+test session::tests::stopped_link_cannot_echo_a_chat_as_success_and_history_identity_is_bounded ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 116 filtered out; finished in 0.02s
+

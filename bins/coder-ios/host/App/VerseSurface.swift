@@ -31,7 +31,7 @@ private final class VerseDisplayTarget: NSObject {
 }
 
 @MainActor
-final class VerseMetalView: UIView {
+final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
     override class var layerClass: AnyClass { CAMetalLayer.self }
     private let bridge: VerseBridge
     private var handle: UnsafeMutableRawPointer?
@@ -45,7 +45,7 @@ final class VerseMetalView: UIView {
     private var nextPointer: UInt64 = 1
     private var computerAccessible = false
     private var highestObservedY = 0.0
-    private var pinching = false
+    private var pinchAdmission = PinchAdmission()
     private lazy var pinchRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(pinch(_:)))
 
     init(bridge: VerseBridge) {
@@ -57,7 +57,8 @@ final class VerseMetalView: UIView {
         accessibilityIdentifier = "verse-surface"
         accessibilityHint = "Drag on the left to move and on the right to look around. Double-tap to jump and pinch with two fingers to zoom. Walk to the computer and tap its screen to open your chats."
         accessibilityTraits = [.allowsDirectInteraction]
-        pinchRecognizer.cancelsTouchesInView = true
+        pinchRecognizer.cancelsTouchesInView = false
+        pinchRecognizer.delegate = self
         addGestureRecognizer(pinchRecognizer)
         bridge.bind(self)
         displayTarget.view = self
@@ -98,6 +99,7 @@ final class VerseMetalView: UIView {
                     "synthetic": bridge.synthetic,
                     "synthetic_gym": bridge.synthetic && ProcessInfo.processInfo.arguments.contains("--gym-preview"),
                 ]
+                if let relay = bridge.storedWorldRelay() { configuration["world_relay"] = relay }
                 if let code = bridge.storedGymCode() { configuration["gym_code"] = code }
                 let config = try JSONSerialization.data(withJSONObject: configuration)
                 handle = config.withUnsafeBytes {
@@ -133,7 +135,7 @@ final class VerseMetalView: UIView {
         guard active != running else { return }
         running = active
         if !active {
-            pinching = false
+            pinchAdmission.reset()
             stopMotion()
             cancelPointers()
         }
@@ -252,47 +254,40 @@ final class VerseMetalView: UIView {
         DispatchQueue.main.async { [weak self] in self?.bridge.reportMotionFailure(error) }
     }
 
-    @objc private func pinch(_ recognizer: UIPinchGestureRecognizer) {
-        defer { recognizer.scale = 1 }
-        guard running else { pinching = false; return }
-        switch recognizer.state {
-        case .began:
-            pinching = true
-            cancelPointers()
-        case .changed:
-            break
-        case .ended, .cancelled, .failed:
-            pinching = false
-            return
-        default:
-            return
-        }
-        guard recognizer.scale.isFinite, recognizer.scale > 0 else { return }
-        send(["action": "pinch_zoom", "scale": Double(recognizer.scale)], forcePublish: true)
+    override func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+        recognizer !== pinchRecognizer || (running && pinchAdmission.allowed)
     }
 
-    private func hasMultipleTouches(_ event: UIEvent?) -> Bool {
-        (event?.allTouches?.filter {
-            $0.phase == .began || $0.phase == .moved || $0.phase == .stationary
-        }.count ?? 0) > 1
+    @objc private func pinch(_ recognizer: UIPinchGestureRecognizer) {
+        defer { recognizer.scale = 1 }
+        guard running, pinchAdmission.reserved else { return }
+        guard recognizer.state == .began || recognizer.state == .changed,
+              recognizer.scale.isFinite, recognizer.scale > 0 else { return }
+        send(["action": "pinch_zoom", "scale": Double(recognizer.scale)], forcePublish: true)
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard running else { return }
-        guard !pinching, !hasMultipleTouches(event) else { cancelPointers(); return }
-        for touch in touches {
+        // UIKit delivers a set, so admit the oldest contact first.
+        for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
             guard pointers.count < 8 else { continue }
             let id = nextPointer
             nextPointer &+= 1
             pointers[ObjectIdentifier(touch)] = id
-            pointer(touch, id: id, phase: "down")
+            let at = touch.location(in: self)
+            pinchAdmission.down(id, x: Double(at.x), y: Double(at.y), time: touch.timestamp)
+            if !pinchAdmission.reserved { pointer(touch, id: id, phase: "down") }
         }
+        if pinchAdmission.reserved { cancelRustPointers() }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard !pinching, !hasMultipleTouches(event) else { cancelPointers(); return }
         for touch in touches {
-            if let id = pointers[ObjectIdentifier(touch)] { pointer(touch, id: id, phase: "move") }
+            if let id = pointers[ObjectIdentifier(touch)] {
+                let at = touch.location(in: self)
+                pinchAdmission.move(id, x: Double(at.x), y: Double(at.y))
+                if !pinchAdmission.reserved { pointer(touch, id: id, phase: "move") }
+            }
         }
     }
 
@@ -301,7 +296,10 @@ final class VerseMetalView: UIView {
 
     private func finish(_ touches: Set<UITouch>, phase: String) {
         for touch in touches {
-            if let id = pointers.removeValue(forKey: ObjectIdentifier(touch)) { pointer(touch, id: id, phase: phase) }
+            if let id = pointers.removeValue(forKey: ObjectIdentifier(touch)) {
+                if !pinchAdmission.reserved { pointer(touch, id: id, phase: phase) }
+                pinchAdmission.up(id)
+            }
         }
     }
 
@@ -312,12 +310,17 @@ final class VerseMetalView: UIView {
               "x": Double(at.x), "y": Double(at.y)], forcePublish: phase != "move")
     }
 
-    private func cancelPointers() {
+    private func cancelRustPointers() {
         for id in pointers.values {
             send(["action": "pointer", "id": id, "phase": "cancel", "x": 0, "y": 0],
                  forcePublish: false, deferred: true)
         }
+    }
+
+    private func cancelPointers() {
+        cancelRustPointers()
         pointers.removeAll()
+        pinchAdmission.reset()
     }
 
     func recreate() {
@@ -335,7 +338,7 @@ final class VerseMetalView: UIView {
         displayLink?.invalidate()
         displayLink = nil
         running = false
-        pinching = false
+        pinchAdmission.reset()
         stopMotion()
         cancelPointers()
         if let handle {

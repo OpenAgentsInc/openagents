@@ -50,7 +50,7 @@ The user-authorized app metadata and icon preserve the existing Xcode setup:
 | Project, scheme, target, product | `Coder` |
 | Bundle identifier | `com.openagents.coder` |
 | Development team | `HQWSG26L43` |
-| Marketing version and source build | `0.5.0` / `45` |
+| Marketing version and source build | `0.5.0` / `46` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Swift language setting | `5.10` |
 | App Store Connect app | `6807250813` |
@@ -143,7 +143,7 @@ cached view before it requests a refresh.
 ## Connect and read
 
 1. Walk toward the computer in Verse and tap **Use computer**. On your
-   physical computer, run `cargo run --release -p coder-connect -- connect`
+   physical computer, run `./pair` in an updated OpenAgents checkout (or `coder pair` when installed)
    from the OpenAgents checkout. Keep the command running.
 2. Tap **Scan QR code** and scan the computer's invitation. **Paste code**
    accepts the same `coder-pair:` string. Camera permission is requested only
@@ -192,9 +192,10 @@ The app launches into the same Rust world used by the desktop app. It starts
 offline, facing the computer, with no title banner or idle-status labels over
 the world. Drag in the left half of the surface to move and in the right half
 to look around. **Motion look** uses the phone's orientation instead; hold the
-left half to walk and use **Recenter** to reset the reference.
+left half to walk and use the crosshair to return the camera behind your character.
 
-Double-tap open world space with one finger to jump. Spread two fingers to
+Double-tap with your right thumb to jump, including while holding the left side to move.
+Left movement and right camera dragging also work together. Spread two fingers to
 zoom in, or pinch them together to zoom out. The computer monitor keeps its
 single-tap interaction. Pinching cancels held movement and pending taps. The
 HUD has no walk/sprint toggle, jump button, or zoom buttons. Rust owns gesture

@@ -58,7 +58,7 @@ class ReaderBridge(private val storage: DeviceStorage, synthetic: Boolean,
         worker.execute {
             val result = runCatching { call(input) }
             main.post { if (!disposed) { receive(result); completed?.invoke(result.getOrNull()?.let {
-                it.optBoolean("paired") && it.textOrNull("error") == null } == true) } }
+                it.optBoolean("pairing_completed") } == true) } }
         }
     }
 

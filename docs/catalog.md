@@ -182,6 +182,7 @@ files are included below.
 | [coder/verification/2026-09-26-android-mobile.md](coder/verification/2026-09-26-android-mobile.md) | Verification | Coder Android reader, shared Verse, native lifecycle, and emulator acceptance |
 | [coder/verification/2026-09-26-android-mobile/README.md](coder/verification/2026-09-26-android-mobile/README.md) | Evidence index | Android native acceptance artifacts and screenshots |
 | [coder/verification/2026-09-26-mobile-reader.md](coder/verification/2026-09-26-mobile-reader.md) | Retained evidence / audit | Coder iOS reader verification — September 26, 2026 |
+| [coder/verification/2026-09-26-mobile-connections.md](coder/verification/2026-09-26-mobile-connections.md) | Verification | Immediate chat loading, saved world relay, concise panels, and combined mobile controls |
 | [coder/verification/2026-09-26-ios-static-link.md](coder/verification/2026-09-26-ios-static-link.md) | Verification | iOS startup crash, static Rust linkage, and build 45 acceptance |
 | [coder/verification/2026-09-26-motion-camera.md](coder/verification/2026-09-26-motion-camera.md) | Verification | Body-turn motion, upward look, smoothing, and iOS build 44 |
 | [coder/verification/2026-09-26-fullscreen-motion.md](coder/verification/2026-09-26-fullscreen-motion.md) | Verification | Full-screen Verse and phone-motion camera |

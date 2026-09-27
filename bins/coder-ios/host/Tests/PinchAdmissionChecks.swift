@@ -1,0 +1,35 @@
+import Foundation
+
+@main enum PinchAdmissionChecks {
+    static func main() {
+        var gesture = PinchAdmission()
+        gesture.down(1, x: 100, y: 400, time: 1)
+        gesture.move(1, x: 100, y: 350)
+        gesture.down(2, x: 300, y: 400, time: 1.05)
+        precondition(!gesture.reserved, "A committed movement drag must keep its right look control")
+        gesture.up(2)
+        gesture.down(3, x: 300, y: 400, time: 1.2)
+        precondition(!gesture.reserved, "A right tap beside movement must remain independent")
+        gesture.up(3)
+        gesture.reset()
+        gesture.down(1, x: 100, y: 400, time: 2)
+        gesture.down(2, x: 300, y: 400, time: 2.3)
+        precondition(!gesture.reserved, "A held left control cannot become pinch")
+        gesture.reset()
+        gesture.down(1, x: 100, y: 400, time: 3)
+        gesture.down(2, x: 300, y: 400, time: 3.04)
+        precondition(gesture.allowed, "Fresh near-simultaneous contacts admit pinch")
+        gesture.up(1)
+        precondition(gesture.reserved && !gesture.allowed, "The remaining pinch contact cannot move or tap")
+        gesture.up(2)
+        precondition(!gesture.reserved)
+        gesture.down(2, x: 300, y: 400, time: 4.04)
+        gesture.down(1, x: 100, y: 400, time: 4)
+        precondition(gesture.allowed, "An unordered native batch must still admit a fresh pinch")
+        gesture.reset()
+        gesture.down(2, x: 300, y: 400, time: 5.3)
+        gesture.down(1, x: 100, y: 400, time: 5)
+        precondition(!gesture.reserved, "Ordering tolerance cannot convert held controls to pinch")
+        print("Pinch admission checks passed")
+    }
+}

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Show a phone-pairing QR code from this checkout, then serve read-only chats.
+set -euo pipefail
+
+source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "pair: Rust is required for this source checkout. Install it from https://rustup.rs, then run ./pair again." >&2
+  exit 1
+fi
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/openagents/target-pair}"
+cd "$source_dir"
+exec cargo run --release --locked -p coder-connect -- connect "$@"

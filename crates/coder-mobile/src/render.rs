@@ -70,13 +70,15 @@ fn row(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
 
 pub(crate) fn root(app: &App) -> Result<Node<Intent>, String> {
     let mut nodes = vec![];
-    if let Some(error) = &app.error {
-        nodes.push(text("error", error, TextRole::Status));
-    }
-    for (index, notice) in app.notices.iter().take(8).enumerate() {
+    for (index, notice) in app
+        .notices
+        .iter()
+        .take(if app.details { 8 } else { 1 })
+        .enumerate()
+    {
         nodes.push(text(format!("notice-{index}"), notice, TextRole::Status));
     }
-    if app.notices.len() > 8 {
+    if app.details && app.notices.len() > 8 {
         nodes.push(text(
             "more-notices",
             format!(
@@ -101,12 +103,16 @@ pub(crate) fn root(app: &App) -> Result<Node<Intent>, String> {
 fn catalog(app: &App) -> Vec<Node<Intent>> {
     let mut nodes = Vec::new();
     if app.code.is_none() && !app.synthetic {
-        nodes.push(text("pair-help", "Use the computer in Verse to scan a QR invitation or paste its pairing string. This grants read-only access to the selected saved conversations.", TextRole::Body));
+        nodes.push(text(
+            "pair-help",
+            "Pair a computer to read chats.",
+            TextRole::Body,
+        ));
         return nodes;
     }
     nodes.push(text(
         "catalog-count",
-        format!("{} saved chats loaded · read-only", app.catalog.len()),
+        format!("{} chats", app.catalog.len()),
         TextRole::Status,
     ));
     let rows = app
@@ -127,12 +133,17 @@ fn catalog(app: &App) -> Vec<Node<Intent>> {
                 coder_history::Harness::Codex => "Codex",
                 coder_history::Harness::Claude => "Claude",
             };
-            let updated = chat.updated_at.as_deref().unwrap_or("time unavailable");
+            let updated = chat.updated_at.as_deref().unwrap_or("");
             button(
                 format!("chat-{}", app.catalog_start + index),
                 format!(
-                    "{}\n{harness}{suffix} · {updated}{}",
+                    "{}\n{harness}{suffix}{}{}",
                     chat.title,
+                    if updated.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" · {updated}")
+                    },
                     if chat.source_id.is_none() {
                         " · source unavailable"
                     } else {
@@ -157,7 +168,13 @@ fn catalog(app: &App) -> Vec<Node<Intent>> {
     if app.catalog.is_empty() {
         nodes.push(text(
             "catalog-empty",
-            "No saved conversations loaded yet. Refresh while the computer connector is running.",
+            if app.catalog_state.pages > 0 {
+                "No saved chats found on this computer."
+            } else if app.error.is_some() {
+                "Chats unavailable. Keep ./pair running and retry."
+            } else {
+                "Loading chats…"
+            },
             TextRole::Body,
         ));
     }
@@ -188,12 +205,14 @@ fn catalog(app: &App) -> Vec<Node<Intent>> {
             true,
         ));
     }
-    nodes.push(button(
-        "refresh",
-        "Refresh from computer",
-        Intent::Refresh,
-        app.code.is_some(),
-    ));
+    if app.catalog.is_empty() && app.error.is_some() {
+        nodes.push(button(
+            "refresh",
+            "Retry",
+            Intent::Refresh,
+            app.code.is_some(),
+        ));
+    }
 
     nodes
 }
@@ -201,30 +220,47 @@ fn catalog(app: &App) -> Vec<Node<Intent>> {
 fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
     let chat = app.selected.as_ref().ok_or("no chat selected")?;
     let mut nodes = vec![
-        button("back", "All chats", Intent::Back, true),
+        row(
+            "transcript-header",
+            vec![
+                button("back", "Chats", Intent::Back, true),
+                button(
+                    "details",
+                    if app.details {
+                        "Hide details"
+                    } else {
+                        "Details"
+                    },
+                    Intent::Details,
+                    true,
+                ),
+            ],
+        ),
         text("chat-title", &chat.title, TextRole::Heading),
     ];
     let keys = app.page_keys()?;
     let count = keys.len();
     let index = app.window_index(&keys);
     let received = app.transcript.cursor.as_ref().map_or(0, |c| c.offset);
-    nodes.push(text(
-        "history-progress",
-        format!(
-            "{received} / {} bytes received{}",
-            app.transcript.snapshot_bytes,
-            if app.transcript.has_more {
-                " · loading"
-            } else {
-                ""
-            }
-        ),
-        TextRole::Status,
-    ));
+    if app.details {
+        nodes.push(text(
+            "history-progress",
+            format!(
+                "{received} / {} bytes received{}",
+                app.transcript.snapshot_bytes,
+                if app.transcript.has_more {
+                    " · loading"
+                } else {
+                    ""
+                }
+            ),
+            TextRole::Status,
+        ));
+    }
     if app.transcript.pending_line {
         nodes.push(text(
             "partial",
-            "The harness is writing a record. Waiting for its next bytes.",
+            "Waiting for the next message…",
             TextRole::Status,
         ));
     }
@@ -242,19 +278,25 @@ fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
             .cache
             .read(key)?
             .ok_or("Cached page was evicted. Reload from the computer.")?;
-        nodes.push(text(
-            "page-position",
-            format!(
-                "Page {} of {} · source bytes {}–{}",
-                index + 1,
-                count,
-                page.chunks.first().map_or(page.next.offset, |c| c.offset),
-                page.next.offset
-            ),
-            TextRole::Status,
-        ));
+        if app.details {
+            nodes.push(text(
+                "page-position",
+                format!(
+                    "Page {} of {} · bytes {}–{}",
+                    index + 1,
+                    count,
+                    page.chunks.first().map_or(page.next.offset, |c| c.offset),
+                    page.next.offset
+                ),
+                TextRole::Status,
+            ));
+        }
         if page.chunks.first().is_some_and(|c| c.offset > 0) && index == 0 {
-            nodes.push(text("cache-gap","This device does not have the beginning of the transcript cached. Reload to fetch it again.",TextRole::Status));
+            nodes.push(text(
+                "cache-gap",
+                "Earlier messages are not cached. Open Details to reload.",
+                TextRole::Status,
+            ));
         }
         if app
             .window
@@ -263,7 +305,7 @@ fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
         {
             nodes.push(text(
                 "evicted-position",
-                "Your reading page was evicted from the cache. Reload history to retrieve it.",
+                "This page left the cache. Open Details to reload.",
                 TextRole::Status,
             ));
         }
@@ -276,7 +318,11 @@ fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
                         .first()
                         .map_or(page.next.offset, |chunk| chunk.offset)
             }) {
-                nodes.push(text("cache-internal-gap", "Some earlier source bytes were evicted between cached pages. Reload to retrieve the missing history.", TextRole::Status));
+                nodes.push(text(
+                    "cache-internal-gap",
+                    "Some earlier messages left the cache. Open Details to reload.",
+                    TextRole::Status,
+                ));
             }
         }
         let mut groups: Vec<Vec<&RecordChunk>> = Vec::new();
@@ -293,13 +339,23 @@ fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
             rows.push(record(app, group, &keys, index)?);
         }
     } else {
-        rows.push(text("empty-transcript", "The full transcript loads in bounded pages. Keep this screen open while the computer connector is running.",TextRole::Body));
+        rows.push(text(
+            "empty-transcript",
+            if app.error.is_some() {
+                "Messages unavailable. Retry."
+            } else if app.transcript.cursor.is_some() {
+                if app.transcript.snapshot_bytes == 0 {
+                    "No messages yet."
+                } else {
+                    "Messages left the cache. Open Details to reload."
+                }
+            } else {
+                "Loading messages…"
+            },
+            TextRole::Body,
+        ));
     }
-    rows.push(text(
-        "timeline-end",
-        "Read-only · the original harness remains on your computer",
-        TextRole::Status,
-    ));
+    rows.push(text("timeline-end", "", TextRole::Status));
     nodes.push(Node {
         key: "timeline".into(),
         style: Style::default(),
@@ -308,18 +364,20 @@ fn timeline(app: &App) -> Result<Vec<Node<Intent>>, String> {
             children: rows,
         },
     });
-    nodes.push(row(
-        "transcript-actions",
-        vec![
-            button("refresh", "Refresh", Intent::Refresh, app.code.is_some()),
-            button(
-                "reload",
-                "Reload history",
-                Intent::Reload,
-                app.code.is_some(),
-            ),
-        ],
-    ));
+    if app.details {
+        nodes.push(row(
+            "transcript-actions",
+            vec![
+                button("refresh", "Refresh", Intent::Refresh, app.code.is_some()),
+                button(
+                    "reload",
+                    "Reload history",
+                    Intent::Reload,
+                    app.code.is_some(),
+                ),
+            ],
+        ));
+    }
     Ok(nodes)
 }
 
@@ -337,7 +395,7 @@ fn record(
     if chunk.offset > chunk.record_offset {
         children.push(text(
             format!("{prefix}-continued"),
-            "This record starts on an earlier source page.",
+            "Continued from the previous page.",
             TextRole::Status,
         ));
     }
@@ -350,11 +408,15 @@ fn record(
         .or_else(|| group.iter().rev().find_map(|item| item.readable.as_ref()));
     if let Some(readable) = readable {
         let role = readable.role.as_deref().unwrap_or(&readable.kind);
-        let time = readable.timestamp.as_deref().unwrap_or("time not recorded");
+        let time = readable.timestamp.as_deref().unwrap_or("");
         let name = readable.tool_name.as_deref().unwrap_or("");
         children.push(text(
             format!("{prefix}-label"),
-            format!("{role} {name} · {time}"),
+            if app.details {
+                format!("{role} {name} · {time}")
+            } else {
+                format!("{role} {name}").trim().to_owned()
+            },
             TextRole::Status,
         ));
         if !show_raw {
@@ -407,21 +469,27 @@ fn record(
                 ));
             }
             if readable.text_truncated {
-                children.push(text(format!("{prefix}-cut"),"Readable preview is shortened. Open source bytes for this record; every byte remains available through transcript pages.",TextRole::Status));
+                children.push(text(
+                    format!("{prefix}-cut"),
+                    "Preview shortened. Open Details for source bytes.",
+                    TextRole::Status,
+                ));
             }
         }
-        children.push(button(
-            format!("{prefix}-raw"),
-            if show_raw {
-                "Show readable record"
-            } else {
-                "Show exact source bytes"
-            },
-            Intent::Raw {
-                record: chunk.offset,
-            },
-            true,
-        ));
+        if app.details || show_raw {
+            children.push(button(
+                format!("{prefix}-raw"),
+                if show_raw {
+                    "Show readable record"
+                } else {
+                    "Show exact source bytes"
+                },
+                Intent::Raw {
+                    record: chunk.offset,
+                },
+                true,
+            ));
+        }
     }
     if show_raw || readable.is_none() {
         if readable.is_none() {
@@ -450,7 +518,11 @@ fn record(
             match std::str::from_utf8(&raw) {
                 Ok(value) => chunks(&mut children, &part_prefix, value, TextRole::Code),
                 Err(_) => {
-                    children.push(text(format!("{part_prefix}-encoding"), "This byte fragment crosses UTF-8 or contains non-UTF-8 data. Exact bytes are shown as base64.", TextRole::Status));
+                    children.push(text(
+                        format!("{part_prefix}-encoding"),
+                        "Binary fragment · base64",
+                        TextRole::Status,
+                    ));
                     chunks(
                         &mut children,
                         &format!("{part_prefix}-base64"),
@@ -623,6 +695,7 @@ mod tests {
     fn one_readable_row_per_record_keeps_every_raw_fragment_available() {
         let dir = tempfile::tempdir().unwrap();
         let (mut app, raw) = fixture(dir.path(), 25_000);
+        app.details = true;
         let view = root(&app).unwrap();
         let mut values = vec![];
         texts(&view, &mut values);
@@ -661,9 +734,122 @@ mod tests {
         let mut values = vec![];
         texts(&view, &mut values);
         assert!(
-            values
-                .iter()
-                .any(|(key, value)| *key == "cache-internal-gap" && value.contains("evicted"))
+            values.iter().any(
+                |(key, value)| *key == "cache-internal-gap" && value.contains("left the cache")
+            )
         );
+    }
+
+    #[test]
+    fn an_empty_transcript_reports_its_completed_read_instead_of_loading_forever() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("history");
+        std::fs::create_dir_all(source.join("sessions")).unwrap();
+        std::fs::write(source.join("sessions/empty.jsonl"), b"").unwrap();
+        let history = History::open(HistoryConfig {
+            codex: Some(source),
+            claude: None,
+        })
+        .unwrap();
+        let mut app = App::new(Config {
+            cache_dir: dir.path().join("cache"),
+            secret_hex: "01".repeat(32),
+            synthetic: false,
+            loopback_test: false,
+        })
+        .unwrap();
+        app.selected = history
+            .catalog(CatalogRequest::default())
+            .unwrap()
+            .entries
+            .into_iter()
+            .next();
+        let empty_text = |app: &App| {
+            let view = root(app).unwrap();
+            let mut values = vec![];
+            texts(&view, &mut values);
+            values
+                .into_iter()
+                .find(|(key, _)| *key == "empty-transcript")
+                .unwrap()
+                .1
+                .to_owned()
+        };
+        assert_eq!(empty_text(&app), "Loading messages…");
+        app.apply_page(
+            history
+                .transcript(TranscriptRequest {
+                    source_id: app.source().unwrap(),
+                    cursor: None,
+                    max_bytes: coder_history::MAX_PAGE_BYTES,
+                })
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(app.page_keys().unwrap().is_empty());
+        assert_eq!(empty_text(&app), "No messages yet.");
+        app.error = Some("Computer unavailable.".into());
+        assert_eq!(empty_text(&app), "Messages unavailable. Retry.");
+    }
+
+    #[test]
+    fn an_evicted_transcript_reports_its_missing_cache_instead_of_loading() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, _) = fixture(dir.path(), 100);
+        for key in app.page_keys().unwrap() {
+            app.cache.erase(&key).unwrap();
+        }
+        let view = root(&app).unwrap();
+        let mut values = vec![];
+        texts(&view, &mut values);
+        assert!(values.iter().any(|(key, value)| {
+            *key == "empty-transcript"
+                && *value == "Messages left the cache. Open Details to reload."
+        }));
+    }
+}
+
+#[cfg(test)]
+mod presentation_tests {
+    use super::*;
+    use crate::app::{Config, Request};
+
+    #[test]
+    fn transcript_prioritizes_messages_and_keeps_source_details_available() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut app = App::new(Config {
+            cache_dir: directory.path().into(),
+            secret_hex: "01".repeat(32),
+            synthetic: true,
+            loopback_test: false,
+        })
+        .unwrap();
+        let catalog = app.call(Request::Snapshot).view.unwrap();
+        let opened = app
+            .call(Request::Activate {
+                instance: catalog["instance"].as_str().unwrap().into(),
+                revision: catalog["revision"].as_u64().unwrap(),
+                node: "chat-0".into(),
+            })
+            .view
+            .unwrap();
+        let readable = opened.to_string();
+        assert!(readable.contains("Native timeline"));
+        assert!(!readable.contains("history-progress"));
+        assert!(!readable.contains("page-position"));
+        assert!(!readable.contains("Show exact source bytes"));
+        let detailed = app
+            .call(Request::Activate {
+                instance: opened["instance"].as_str().unwrap().into(),
+                revision: opened["revision"].as_u64().unwrap(),
+                node: "details".into(),
+            })
+            .view
+            .unwrap()
+            .to_string();
+        assert!(detailed.contains("Native timeline"));
+        assert!(detailed.contains("history-progress"));
+        assert!(detailed.contains("page-position"));
+        assert!(detailed.contains("Show exact source bytes"));
     }
 }

@@ -305,6 +305,15 @@ impl App {
 #[tokio::main]
 async fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if arguments.first().is_some_and(|argument| argument == "pair") {
+        return match coder_connect::cli::pair(&arguments[1..]).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("coder pair: {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if arguments.first().is_some_and(|argument| argument == "task") {
         return ExitCode::from(task_cli::run(&arguments[1..]).await);
     }

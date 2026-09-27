@@ -10,7 +10,8 @@ implementation belongs to the reusable `rust-native` crate.
 ## Walk the world
 
 The world fills the entire display behind the system clock and home indicator.
-Camera controls stay inside the safe area over the canvas. The world has no
+Camera icons sit at the bottom right inside the safe area. The hand/gyroscope
+icon switches touch and motion look; the crosshair recenters the camera. The world has no
 title banner or idle-status labels. It starts offline and requires no chat
 pairing or model account. A computer sits directly ahead of the starting position.
 Walk closer and tap the computer's monitor to open its controls. The monitor
@@ -23,18 +24,19 @@ shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
   horizon. The shared Rust camera interpolates toward the latest orientation
   on each rendered frame. Hold the left half to walk forward; move that touch
   to adjust direction. **Recenter** uses
-  your current phone position as the new reference without changing the view.
+  your current phone position as the new reference and returns the camera behind
+  your character at its default pitch. Zoom stays unchanged.
   Switch back to **Touch look** whenever you prefer finger controls.
 - Motion look pauses while the app is in the background or an in-world panel
   is open. It starts from a fresh reference when you return. If motion is
   unavailable, use touch look.
-- Double-tap open world space with one finger to jump. Dragging, holding, or
-  using a second finger cancels the tap gesture. The computer monitor keeps
-  its immediate single-tap action.
-- Spread two fingers to zoom in; pinch them together to zoom out. Two fingers are reserved for zoom, so they cancel held movement and pending
-  taps. Use one finger at a time for touch movement or touch look; motion look
-  lets you keep walking while you turn the phone. Walking is the default; the HUD has
-  no walk/sprint toggle, jump button, or zoom buttons.
+- Double-tap open world space with your right thumb to jump, including while
+  your left thumb keeps moving. You can also move on the left and drag the
+  camera on the right at the same time. The computer keeps its single-tap action.
+- Place two fingers together, then spread them to zoom in or pinch inward to
+  zoom out. A deliberate pinch owns those touches until you lift them. Adding
+  a right-hand control after movement starts keeps independent controls active.
+  The HUD has no walk/sprint toggle, jump button, or zoom buttons.
 - Use the world computer to pair by QR code and open **Chats**, the read-only
   Codex and Claude viewer. Selecting a transcript expands its reading area;
   **All chats** returns to the smaller computer panel. Close the panel to
@@ -163,3 +165,17 @@ See the [iOS build guide](../../bins/coder-ios/README.md),
 Simulator rendering and lifecycle evidence are separate from physical-device
 frame rate, thermals, and a two-device relay session. Only checks recorded in
 the linked verification records have been performed.
+
+## World connection
+
+At the computer, open **…** to view the world connection. **Join** saves the
+selected relay on this device; the app reconnects when reopened. **Connected**
+means the world subscriptions are accepted, including authentication when the
+relay requests it. It does not mean other players are currently present.
+Failures appear in the same panel. Joining or reconnecting keeps your current
+position and leaves the panel open. A fresh app mount may restore your own
+signed saved position from the relay.
+
+**Leave** stops the connection and forgets the saved relay. World presence uses
+its own identity and does not pair a chat reader. Synthetic acceptance tests
+show **Preview** and publish no world events.

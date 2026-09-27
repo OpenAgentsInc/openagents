@@ -8,6 +8,8 @@ struct ComputerPanel: View {
     let active: Bool
     let close: () -> Void
     let worldAction: ([String: Any]) -> Void
+    let worldConnection: VerseConnection?
+    let worldStorageError: String?
     @Binding var pairing: Bool
     @State private var pasting = false
     @State private var scanning = false
@@ -16,117 +18,153 @@ struct ComputerPanel: View {
     @State private var disconnecting = false
     @State private var copied = false
     @State private var relay = ""
+    @State private var settings = false
     @State private var computers = false
     @State private var computersScanning = false
     @State private var computersValue = ""
-    private let command = "cargo run --release -p coder-connect -- connect"
-    private let timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    private let command = "./pair"
     private var paired: Bool { reader.packet?.paired == true }
     private var reading: Bool { reader.packet?.reading == true && !pairing }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("Computer", systemImage: "desktopcomputer").font(.headline)
+                Text(settings ? "Settings" : computers ? "Computers" : "Chats").font(.headline)
                 Spacer()
-                if reading && !computers { refreshButton }
-                if !reading || computers {
-                    Button(computers ? "Chats" : "Computers") {
-                        computers.toggle()
-                        computersScanning = false
-                        scanning = false
-                        if computers { reader.refreshComputers() }
+                if !settings && !computers && paired && !pairing { refreshButton }
+                Button {
+                    if settings {
+                        settings = false
+                        computers = false
+                        pairing = false
+                    } else {
+                        settings = true
                     }
-                    .disabled(reader.busy)
-                    .accessibilityIdentifier("computers-toggle")
+                    scanning = false
+                    computersScanning = false
+                } label: {
+                    Image(systemName: settings ? "chevron.left" : "ellipsis")
                 }
+                .accessibilityLabel(settings ? "Back to chats" : "Computer settings")
+                .accessibilityIdentifier("computer-settings")
                 Button("Back to world", systemImage: "xmark") { close() }
                     .labelStyle(.iconOnly).accessibilityIdentifier("computer-close")
             }
             if let error = inputError ?? reader.nativeError ?? reader.packet?.error {
-                Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("reader-error")
+                Text(error).font(.caption).textSelection(.enabled).accessibilityIdentifier("reader-error")
             }
             if reader.busy {
-                HStack { ProgressView(); Text("Connecting or updating…").font(.caption) }
+                HStack { ProgressView(); Text("Loading…").font(.caption) }
                     .accessibilityIdentifier("computer-busy")
             }
-            if computers {
+            if settings {
+                settingsContent
+            } else if computers {
                 computersContent
             } else if !paired || pairing {
                 pairingControls
+            } else if let view = reader.packet?.view {
+                NativeRenderer(node: view.root, revision: view.revision,
+                               followTarget: reader.packet?.follow_target,
+                               followChanged: followAction(page: reader.packet?.follow_page)) { node in
+                    reader.activate(view: view, node: node)
+                }
             } else {
-                if !reading { HStack {
-                    Text("Read-only").font(.caption).accessibilityIdentifier("reader-read-only")
-                    Spacer()
-                    Button("Connect computer") { pairing = true }
-                        .accessibilityIdentifier("computer-pair")
-                    refreshButton
-                } }
-                if let view = reader.packet?.view {
-                    NativeRenderer(node: view.root, revision: view.revision,
-                                   followTarget: reader.packet?.follow_target,
-                                   followChanged: followAction(page: reader.packet?.follow_page)) { node in
-                        reader.activate(view: view, node: node)
-                    }
-                } else {
-                    Text("Saved chats appear when the computer finishes connecting.")
-                }
-                if !reading { DisclosureGroup("Device details") {
-                    Text(reader.packet?.public_key ?? "Unavailable")
-                        .font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
-                        .accessibilityIdentifier("reader-public-key")
-                    if disconnecting {
-                        Text("Erase cached chats on this phone? The computer's files stay unchanged.")
-                            .font(.caption)
-                        HStack {
-                            Button("Disconnect and erase", role: .destructive) { reader.disconnect(); disconnecting = false }
-                            Button("Keep connection") { disconnecting = false }
-                        }
-                    } else {
-                        Button("Disconnect this computer", role: .destructive) { disconnecting = true }
-                    }
-                }.font(.caption) }
+                Text("Loading chats…").font(.caption)
             }
-            if !reading && !computers { DisclosureGroup("World connection") {
-                Text("Joining publishes this device's world presence and movement with a separate Verse identity.")
-                    .font(.caption)
-                TextField("wss://relay.example.com", text: $relay)
-                    .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .accessibilityLabel("World relay URL")
-                HStack {
-                    Button("Join relay") { worldAction(["action": "connect", "relay": relay]) }
-                        .disabled(relay.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !active)
-                    Button("Leave relay") { worldAction(["action": "disconnect"]) }
-                }
-            }.font(.caption) }
-            Text(reader.packet?.status ?? "Opening protected local state")
-                .font(.caption2).foregroundStyle(.secondary).accessibilityIdentifier("reader-status")
         }
-        .padding(14)
+        .padding(12)
         .background(Color(red: 0.025, green: 0.02, blue: 0).opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(.tint.opacity(0.7), lineWidth: 1))
-        .onAppear { reader.setForeground(active) }
+        .onAppear {
+            relay = worldConnection?.relay ?? "wss://relay.openagents.com"
+            reader.setForeground(active)
+        }
         .onDisappear { scanning = false; computersScanning = false; reader.setForeground(false) }
+        .onChange(of: worldConnection?.relay) { _, value in
+            relay = value ?? "wss://relay.openagents.com"
+        }
         .onChange(of: reader.packet?.computers_exit) { _, exit in
-            // First run finished: return to the existing pairing onboarding.
             if exit == true { computers = false; computersScanning = false }
         }
-        .onChange(of: active) { _, current in
-            reader.setForeground(current)
+        .onChange(of: active) { _, current in reader.setForeground(current) }
+        .task(id: active && paired && !pairing && !scanning && !computers && !settings) {
+            guard active && paired && !pairing && !scanning && !computers && !settings else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                if !Task.isCancelled { reader.refresh() }
+            }
         }
-        .onReceive(timer) { _ in
-            if active, paired, !pairing, !scanning, !computers { reader.refresh() }
-        }
-        // Host status moves on its own; poll while the Computers screens
-        // show. A task lives with the view's identity, so frequent parent
-        // redraws, such as the world's frame counter, don't restart it.
-        .task(id: computers && active) {
-            guard computers && active else { return }
+        .task(id: computers && active && !settings) {
+            guard computers && active && !settings else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 if !Task.isCancelled, !computersScanning { reader.pollComputers() }
             }
         }
+    }
+
+    private var settingsContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Button("Pair computer", systemImage: "qrcode") {
+                    settings = false; computers = false; pairing = true
+                }.accessibilityIdentifier("computer-pair")
+                Button(computers ? "Chats" : "Computers", systemImage: "desktopcomputer") {
+                    settings = false; computers.toggle()
+                    if computers { reader.refreshComputers() }
+                }.accessibilityIdentifier("computers-toggle")
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("World connection").font(.headline)
+                    Text(worldConnection?.label ?? "Offline")
+                        .font(.caption).accessibilityIdentifier("world-connection-status")
+                    if let error = worldStorageError ?? worldConnection?.error {
+                        Text(error).font(.caption).textSelection(.enabled)
+                            .accessibilityIdentifier("world-connection-error")
+                    }
+                    TextField("Relay URL", text: $relay)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .accessibilityLabel("World relay URL").accessibilityIdentifier("world-relay")
+                    HStack {
+                        Button(worldConnection?.relay == nil ? "Join" : "Reconnect") {
+                            worldAction(["action": "connect", "relay": relay])
+                        }
+                        .disabled(relay.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !active)
+                        .accessibilityIdentifier("world-join")
+                        if worldConnection?.relay != nil {
+                            Button("Leave") { worldAction(["action": "disconnect"]) }
+                                .accessibilityIdentifier("world-leave")
+                        }
+                    }
+                    Text("Shares your avatar and movement.").font(.caption2).foregroundStyle(.secondary)
+                }
+                Divider()
+                DisclosureGroup("Device details") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(reader.packet?.public_key ?? "Unavailable")
+                            .font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
+                            .accessibilityIdentifier("reader-public-key")
+                        Text(reader.packet?.status ?? "Opening…")
+                            .font(.caption2).accessibilityIdentifier("reader-status")
+                        if paired {
+                            if disconnecting {
+                                Text("Erase cached chats on this phone?").font(.caption)
+                                HStack {
+                                    Button("Disconnect and erase", role: .destructive) {
+                                        reader.disconnect(); disconnecting = false; settings = false
+                                    }
+                                    Button("Cancel") { disconnecting = false }
+                                }
+                            } else {
+                                Button("Disconnect computer", role: .destructive) { disconnecting = true }
+                            }
+                        }
+                    }
+                }.font(.caption)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var refreshButton: some View {
@@ -198,14 +236,14 @@ struct ComputerPanel: View {
     private var pairingControls: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Connect your computer").font(.headline)
-                Text("Run this in the OpenAgents repository on your computer, then scan its QR invitation.")
+                Text("In your OpenAgents folder:")
                 Text(command).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                     .accessibilityIdentifier("computer-command")
-                Button(copied ? "Command copied" : "Copy command", systemImage: "doc.on.doc") {
+                Button(copied ? "Copied" : "Copy command", systemImage: "doc.on.doc") {
                     UIPasteboard.general.string = command
                     copied = true
                 }
+                Text("Then scan the QR code.").font(.caption)
                 if scanning {
                     InlineQRScanner { value in
                         scanning = false
@@ -228,12 +266,16 @@ struct ComputerPanel: View {
                     TextEditor(text: $code).frame(minHeight: 85, maxHeight: 130)
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                         .accessibilityLabel("Computer invitation").accessibilityIdentifier("computer-code")
-                    Button("Connect to computer") { submit(code); code = "" }
+                    Button("Connect") { submit(code); code = "" }
                         .disabled(reader.busy || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("computer-connect")
                 }
-                Text("This connection can read saved chats. It cannot run commands or approve work.")
+                Text("Read-only chat access.")
                     .font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup("Setup help") {
+                    Text("Update this checkout first. With Coder installed, run coder pair instead. Keep the command running while you read chats.")
+                        .font(.caption).textSelection(.enabled)
+                }.font(.caption)
                 if paired {
                     Button("Back to chats") { pairing = false; scanning = false; pasting = false }
                         .accessibilityIdentifier("computer-chats")
@@ -244,7 +286,7 @@ struct ComputerPanel: View {
 
     private func submit(_ value: String) {
         guard value.utf8.count <= 65_536 else {
-            inputError = "The connection code is too large. Copy a fresh invitation from the computer."
+            inputError = "Code too long. Copy a fresh invitation."
             return
         }
         inputError = nil

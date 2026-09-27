@@ -632,6 +632,7 @@ dependencies = [
  "atif",
  "capability",
  "coder-boundary",
+ "coder-connect",
  "coder-host",
  "coder-one",
  "coder-terminal",

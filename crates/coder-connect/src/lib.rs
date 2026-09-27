@@ -3,10 +3,14 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+#[cfg(feature = "host")]
+pub mod cli;
 pub mod client;
 #[cfg(feature = "host")]
 pub mod host;
 pub mod pairing;
+#[cfg(feature = "host")]
+mod pairing_ui;
 pub mod protocol;
 #[cfg(feature = "host")]
 pub mod store;

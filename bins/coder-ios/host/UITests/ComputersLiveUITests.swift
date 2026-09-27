@@ -19,6 +19,7 @@ final class ComputersLiveUITests: XCTestCase {
         app.launchArguments = ["--synthetic", "--loopback-test"]
         app.launch()
         app.openWorldComputer()
+        tap("computer-settings")
         tap("computers-toggle")
         XCTAssertTrue(app.staticTexts["first-run-title"].waitForExistence(timeout: 20))
 
@@ -32,6 +33,7 @@ final class ComputersLiveUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["notice"].waitForLabel(containing: "Added Computer", timeout: 30))
         scrollToTop()
         tap("first-run-continue")
+        tap("computer-settings")
         tap("computers-toggle")
         XCTAssertTrue(app.staticTexts["computers-title"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["host-0-status"].waitForLabel(containing: "Online", timeout: 60))
