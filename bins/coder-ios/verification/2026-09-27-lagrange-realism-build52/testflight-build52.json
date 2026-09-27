@@ -1,0 +1,12 @@
+{
+  "build_id": "8d907605-669d-4842-9ef8-3279b6087475",
+  "build": "52",
+  "version": "0.5.0",
+  "processing_state": "VALID",
+  "uploaded_date": "2026-09-27T16:17:30-07:00",
+  "expired": false,
+  "nonexempt_encryption": false,
+  "internal_build_state": "IN_BETA_TESTING",
+  "external_build_state": "READY_FOR_BETA_SUBMISSION",
+  "checked_at": "2026-09-27T23:19:15Z"
+}

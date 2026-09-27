@@ -13,10 +13,19 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Latest internal TestFlight: 0.5.0 (50).** App Store Connect confirms `VALID`
-and `IN_BETA_TESTING`. The [build 50 record](verification/2026-09-27-ruins-lagrange-build50/README.md)
-binds it to clean source commit `c7451dfd71`. The Atlantis zone is renamed
-Ruins, and a second plaza portal opens [Lagrange 1](../../docs/verse/lagrange-1.md).
+**Latest internal TestFlight: 0.5.0 (52).** App Store Connect confirms `VALID`
+and `IN_BETA_TESTING`. The [build 52 record](verification/2026-09-27-lagrange-realism-build52/README.md)
+binds it to clean source commit `ca54eab66d`. Lagrange 1 now renders with
+physical light: real-unit sunlight and shadows, bounce light, measured
+materials, the textured Earth and Moon and catalogue stars, and an **Art**
+camera preset.
+
+Build 51 adds whole-screen touch look and a bottom movement stick
+([record](verification/2026-09-27-touch-look-stick-build51/README.md)).
+
+Build 50 binds to clean source commit `c7451dfd71`: the Atlantis zone is
+renamed Ruins, and a second plaza portal opens [Lagrange 1](../../docs/verse/lagrange-1.md)
+([record](verification/2026-09-27-ruins-lagrange-build50/README.md)).
 
 Build 49: App Store Connect confirms `VALID`
 and `IN_BETA_TESTING`. The [distribution receipt](verification/2026-09-27-atlantis-realtime-build49/testflight-build49.json)
@@ -94,7 +103,7 @@ The user-authorized app metadata and icon preserve the existing Xcode setup:
 | Project, scheme, target, product | `Coder` |
 | Bundle identifier | `com.openagents.coder` |
 | Development team | `HQWSG26L43` |
-| Marketing version and source build | `0.5.0` / `50` |
+| Marketing version and source build | `0.5.0` / `52` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Swift language setting | `5.10` |
 | App Store Connect app | `6807250813` |
@@ -163,7 +172,7 @@ and archived executable digest beside the archive. A nonempty workspace status
 must be reviewed rather than described as an exact committed-source build.
 Set `CODER_IOS_BUILD_NUMBER` to a new
 positive build number after checking the existing App Store Connect builds;
-the checked-in and confirmed internal TestFlight build is `50`.
+the checked-in and confirmed internal TestFlight build is `52`.
 The `export` command produces a local
 distribution package using the existing export settings with destination
 changed to `export`. Upload is a separate operator action using the retained
