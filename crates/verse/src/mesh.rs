@@ -59,6 +59,13 @@ impl Mesh {
         self.faces.extend_from_slice(&[a, b, c, a, c, d]);
     }
 
+    /// Appends an amber quad in the world geometry's depth-tested face pass.
+    pub fn amber_quad(&mut self, corners: [Vec3; 4], step: Intensity) {
+        let color = palette::amber(step);
+        let [a, b, c, d] = corners.map(|p| vertex(p, color, 1.0));
+        self.faces.extend_from_slice(&[a, b, c, a, c, d]);
+    }
+
     /// Appends a box: near-black faces with amber edges. `transform` maps
     /// the unit cube centered on the origin into the world.
     pub fn cube(&mut self, transform: Mat4, step: Intensity) {

@@ -1,5 +1,5 @@
-// The persistent world is the backdrop. Rust projects the computer's position
-// and decides whether interaction is available; native code lays out the panel.
+// Rust draws and hit-tests the computer in the world. Native code lays out
+// its reader and pairing panel only after that interaction opens it.
 import SwiftUI
 
 struct VerseScreen: View {
@@ -121,18 +121,6 @@ struct VerseScreen: View {
                                      y: clamped(computer.screen_y, 0, 1) * size.height)
                 if computerOpen {
                     anchoredPanel(anchor: anchor, size: size, safe: safe)
-                } else {
-                    Button {
-                        bridge.send(["action": "interact_computer"])
-                    } label: {
-                        Label(computer.near ? "Use computer" : "Computer", systemImage: "desktopcomputer")
-                            .padding(.horizontal, 12).padding(.vertical, 9)
-                            .background(.ultraThinMaterial, in: Capsule())
-                    }
-                    .disabled(!computer.near || !active)
-                    .accessibilityIdentifier("computer-interact")
-                    .position(x: clamped(anchor.x, safe.leading + 94, size.width - safe.trailing - 94),
-                              y: clamped(anchor.y - 28, safe.top + 70, size.height - safe.bottom - 160))
                 }
             }
             if let gym = bridge.packet?.gym, !computerOpen, gymOpen || (gym.inside && gym.visible) {

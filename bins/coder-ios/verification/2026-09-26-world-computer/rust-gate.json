@@ -1,0 +1,123 @@
+{
+  "schema": "openagents.gate-run.v1",
+  "run_id": "20260927T002552Z-7254e9",
+  "started_utc": "2026-09-27T00:25:52Z",
+  "finished_utc": "2026-09-27T00:25:57Z",
+  "elapsed_s": 6.0,
+  "tree": {
+    "head": "cfc08f81b8451e9041d20c62ffed87af20b8817e",
+    "dirty": true,
+    "diff_digest": "74f87c159034673621aa608ebaf3658fb9ba3bfe75553e18d4effa28d63466d0"
+  },
+  "requested": {
+    "mode": "development",
+    "workspace_files_changed": false,
+    "phases": "fmt clippy",
+    "crates": "coder-mobile verse",
+    "workspace_scope": false,
+    "changed_ref": null,
+    "uncovered": "",
+    "keep_going": false,
+    "retry": true,
+    "postgres": true,
+    "metal": false,
+    "soak": false
+  },
+  "phases": [
+    {
+      "slug": "fmt",
+      "name": "Selected-package formatting",
+      "command": [
+        "cargo",
+        "fmt",
+        "-p",
+        "coder-mobile",
+        "-p",
+        "verse",
+        "--check"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": -0.0,
+      "log": ".coder/verification/20260927T002552Z-7254e9/fmt.log"
+    },
+    {
+      "slug": "clippy",
+      "name": "Default workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "coder-mobile",
+        "-p",
+        "verse",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": -0.0,
+      "log": ".coder/verification/20260927T002552Z-7254e9/clippy.log"
+    }
+  ],
+  "skipped": [
+    {
+      "slug": "preflight",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "gate-tooling",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "artifacts",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "delegation",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "backup",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "clippy-features",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "tests",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "tests-features",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "deps",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "postgres",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-clippy",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-tests",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "soak",
+      "reason": "not in --phases"
+    }
+  ],
+  "result": "partial"
+}

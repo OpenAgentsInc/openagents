@@ -188,6 +188,60 @@ impl WorldRuntime {
         result
     }
 
+    /// Tests a normalized viewport point against the physical monitor.
+    /// A tap must reach the front display from a nearby player and pass the
+    /// same static and local-entity faces that hide it in the scene renderer.
+    #[must_use]
+    pub fn computer_hit(&self, aspect: f32, x: f32, y: f32) -> bool {
+        self.computer_hit_with_entities(aspect, x, y, &Mesh::default())
+    }
+
+    /// As [`Self::computer_hit`], including externally owned entity faces.
+    /// Supply the same remote-entity mesh used for the last presented frame;
+    /// picking must not advance crowd interpolation or animation on its own.
+    #[must_use]
+    pub fn computer_hit_with_entities(&self, aspect: f32, x: f32, y: f32, entities: &Mesh) -> bool {
+        if !aspect.is_finite()
+            || aspect <= 0.0
+            || !(0.0..=1.0).contains(&x)
+            || !(0.0..=1.0).contains(&y)
+            || !self.computer(aspect).near
+        {
+            return false;
+        }
+        let view = self.view(aspect);
+        // The monitor faces -Z. Reject a camera behind the display even if
+        // its projected rectangle happens to cover this viewport point.
+        if view.eye.z >= world::COMPUTER_SCREEN.z {
+            return false;
+        }
+        let far =
+            view.view_proj.inverse() * glam::Vec4::new(x * 2.0 - 1.0, 1.0 - y * 2.0, 1.0, 1.0);
+        if !far.is_finite() || far.w.abs() < f32::EPSILON {
+            return false;
+        }
+        let direction = (far.truncate() / far.w - view.eye).normalize_or_zero();
+        if direction.z <= f32::EPSILON {
+            return false;
+        }
+        let distance = (world::COMPUTER_SCREEN.z - view.eye.z) / direction.z;
+        let target = view.eye + direction * distance;
+        let offset = target - world::COMPUTER_SCREEN;
+        if !target.is_finite()
+            || offset.x.abs() > world::COMPUTER_SCREEN_HALF[0]
+            || offset.y.abs() > world::COMPUTER_SCREEN_HALF[1]
+        {
+            return false;
+        }
+        let clip = view.view_proj * target.extend(1.0);
+        if clip.w <= 0.0 || !(0.0..=1.0).contains(&(clip.z / clip.w)) {
+            return false;
+        }
+        !mesh_occludes(&self.world.mesh, view.eye, direction, distance)
+            && !mesh_occludes(&self.dynamic_mesh(), view.eye, direction, distance)
+            && !mesh_occludes(entities, view.eye, direction, distance)
+    }
+
     /// Reports occupancy and the central Gym board's normalized projection.
     /// Hosts gate Gym reads on `inside` and their own active-surface state.
     #[must_use]
@@ -218,11 +272,24 @@ impl WorldRuntime {
         result
     }
 
-    /// Local player and follower geometry. Services append remote entities.
+    /// Local geometry with a neutral monitor. Services append remote entities.
     #[must_use]
     pub fn dynamic_mesh(&self) -> Mesh {
+        self.mesh_with_computer_display(None)
+    }
+
+    /// Local geometry with the mobile computer's proximity and tap prompt.
+    /// Use only when the host implements picking and opens the computer.
+    #[must_use]
+    pub fn dynamic_mesh_with_computer_interaction(&self) -> Mesh {
+        let offset = self.player.pos - world::COMPUTER;
+        self.mesh_with_computer_display(Some(offset.x.hypot(offset.z) <= world::COMPUTER_RANGE))
+    }
+
+    fn mesh_with_computer_display(&self, interaction: Option<bool>) -> Mesh {
         let mut dynamic = avatar::mesh(&self.player, &self.gait);
         dynamic.extend(&self.agent.mesh());
+        dynamic.extend(&world::computer_display(interaction));
         dynamic
     }
 
@@ -242,6 +309,34 @@ impl WorldRuntime {
         self.gait = Gait::default();
         Ok(())
     }
+}
+
+fn mesh_occludes(mesh: &Mesh, origin: Vec3, direction: Vec3, distance: f32) -> bool {
+    // Möller–Trumbore, double-sided like the renderer's face pipeline. Ignore
+    // the destination plane itself, including its amber display strokes.
+    mesh.faces.chunks_exact(3).any(|vertices| {
+        let a = Vec3::from(vertices[0].pos);
+        let edge_ab = Vec3::from(vertices[1].pos) - a;
+        let edge_ac = Vec3::from(vertices[2].pos) - a;
+        let cross = direction.cross(edge_ac);
+        let determinant = edge_ab.dot(cross);
+        if determinant.abs() < 1e-7 {
+            return false;
+        }
+        let inverse = determinant.recip();
+        let from_a = origin - a;
+        let u = from_a.dot(cross) * inverse;
+        if !(0.0..=1.0).contains(&u) {
+            return false;
+        }
+        let cross = from_a.cross(edge_ab);
+        let v = direction.dot(cross) * inverse;
+        if v < 0.0 || u + v > 1.0 {
+            return false;
+        }
+        let hit = edge_ac.dot(cross) * inverse;
+        hit > 0.001 && hit < distance - 0.003
+    })
 }
 
 #[cfg(test)]
@@ -345,6 +440,112 @@ mod tests {
             assert!(!hidden.visible);
             assert!(hidden.screen_x.is_finite() && hidden.screen_y.is_finite());
         }
+    }
+
+    #[test]
+    fn computer_action_prompt_requires_an_interactive_host() {
+        let mut runtime = WorldRuntime::new();
+        let neutral = runtime.dynamic_mesh();
+        let distant = runtime.dynamic_mesh_with_computer_interaction();
+        assert!(distant.faces.len() > neutral.faces.len());
+        runtime.set_spawn(Vec3::new(0.0, 0.0, -7.0), 0.0).unwrap();
+        let neutral = runtime.dynamic_mesh();
+        let nearby = runtime.dynamic_mesh_with_computer_interaction();
+        assert!(nearby.faces.len() > neutral.faces.len());
+        assert_ne!(distant.faces.len(), nearby.faces.len());
+    }
+
+    #[test]
+    fn computer_picking_tracks_the_monitor_in_portrait_landscape_and_oblique_views() {
+        let mut runtime = WorldRuntime::new();
+        runtime.set_spawn(Vec3::new(0.0, 0.0, -7.0), 0.0).unwrap();
+        for aspect in [0.46, 2.0 / 3.0, 1.0, 2.2] {
+            for orbit in [-0.35, 0.0, 0.35] {
+                runtime.camera.yaw_offset = orbit;
+                let screen = runtime.computer(aspect);
+                assert!(screen.visible && screen.near);
+                assert!(
+                    runtime.computer_hit(aspect, screen.screen_x, screen.screen_y),
+                    "aspect {aspect}, orbit {orbit}"
+                );
+                // A point just outside the real monitor does not become a
+                // hittable axis-aligned native button when the camera turns.
+                let outside = world::COMPUTER_SCREEN + Vec3::new(1.4, 0.0, 0.0);
+                let clip = runtime.view(aspect).view_proj * outside.extend(1.0);
+                assert!(!runtime.computer_hit(
+                    aspect,
+                    clip.x / clip.w * 0.5 + 0.5,
+                    0.5 - clip.y / clip.w * 0.5
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn computer_picking_respects_presented_remote_geometry_without_advancing_it() {
+        let mut runtime = WorldRuntime::new();
+        runtime.set_spawn(Vec3::new(0.0, 0.0, -7.0), 0.0).unwrap();
+        let screen = runtime.computer(1.0);
+        let test = |entities: &Mesh| {
+            runtime.computer_hit_with_entities(1.0, screen.screen_x, screen.screen_y, entities)
+        };
+        assert!(test(&Mesh::default()));
+        // A remote entity's solid geometry hides the monitor even though
+        // neither its collider nor its identity belongs to this runtime.
+        let mut remote = Mesh::default();
+        remote.cube(
+            glam::Mat4::from_translation(Vec3::new(0.0, 3.0, -6.0)),
+            coder_ui::theme::Intensity::Full,
+        );
+        let before = remote.faces.clone();
+        assert!(!test(&remote));
+        assert_eq!(before, remote.faces);
+        // Geometry beyond the display does not hide or disable it.
+        for vertex in &mut remote.faces {
+            vertex.pos[2] += 3.0;
+        }
+        assert!(test(&remote));
+    }
+
+    #[test]
+    fn computer_picking_rejects_distance_back_faces_invalid_input_and_occlusion() {
+        let mut runtime = WorldRuntime::new();
+        let screen = runtime.computer(1.0);
+        assert!(!runtime.computer_hit(1.0, screen.screen_x, screen.screen_y));
+        runtime.set_spawn(Vec3::new(0.0, 0.0, -7.0), 0.0).unwrap();
+        let screen = runtime.computer(1.0);
+        for aspect in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert!(!runtime.computer_hit(aspect, screen.screen_x, screen.screen_y));
+        }
+        for (x, y) in [
+            (f32::NAN, 0.5),
+            (0.5, f32::INFINITY),
+            (-0.1, 0.5),
+            (0.5, 1.1),
+        ] {
+            assert!(!runtime.computer_hit(1.0, x, y));
+        }
+        // Insert an actual solid face in the line of sight, rather than a
+        // footprint-only blocker that would not hide a rendered display.
+        runtime.world.mesh.quad([
+            Vec3::new(-3.0, 0.0, -6.0),
+            Vec3::new(3.0, 0.0, -6.0),
+            Vec3::new(3.0, 6.0, -6.0),
+            Vec3::new(-3.0, 6.0, -6.0),
+        ]);
+        assert!(!runtime.computer_hit(1.0, screen.screen_x, screen.screen_y));
+        let mut runtime = WorldRuntime::new();
+        runtime
+            .set_spawn(Vec3::new(0.0, 0.0, -3.0), std::f32::consts::PI)
+            .unwrap();
+        let screen = runtime.computer(1.0);
+        assert!(screen.near && screen.visible);
+        assert!(!runtime.computer_hit(1.0, screen.screen_x, screen.screen_y));
+        runtime
+            .set_spawn(Vec3::new(0.0, 0.0, -7.0), std::f32::consts::PI)
+            .unwrap();
+        runtime.camera.distance = crate::camera::MIN_DISTANCE;
+        assert!(!runtime.computer_hit(1.0, 0.5, 0.5));
     }
 
     #[test]

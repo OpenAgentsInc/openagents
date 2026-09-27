@@ -19,8 +19,10 @@ pub const GRID: f32 = 4.0;
 pub const SPAWN: Vec3 = Vec3::new(0.0, 0.0, -10.0);
 /// The shared computer stands five meters in front of the initial spawn.
 pub const COMPUTER: Vec3 = Vec3::new(0.0, 0.0, -5.0);
-/// Center of the monitor's front face, used to anchor native controls.
+/// Center of the physical monitor's display and interaction plane.
 pub const COMPUTER_SCREEN: Vec3 = Vec3::new(0.0, 2.4, -5.16);
+/// Display bounds in the monitor's local horizontal and vertical axes.
+pub const COMPUTER_SCREEN_HALF: [f32; 2] = [1.2, 0.65];
 /// Maximum ground-plane distance at which the computer can be opened.
 pub const COMPUTER_RANGE: f32 = 3.0;
 /// Center of the Gym's walkable hall, east of the plaza.
@@ -131,13 +133,6 @@ fn computer(world: &mut World) {
         ],
         Intensity::Full,
     );
-    // The terminal prompt makes the front of the monitor recognizable.
-    mesh.line(face(-0.95, 0.35), face(-0.7, 0.2), Intensity::Full);
-    mesh.line(face(-0.7, 0.2), face(-0.95, 0.05), Intensity::Full);
-    mesh.line(face(-0.5, 0.03), face(-0.1, 0.03), Intensity::Full);
-    for y in [-0.2, -0.4] {
-        mesh.line(face(-0.95, y), face(0.8, y), Intensity::Quarter);
-    }
     block(
         mesh,
         Vec3::new(-0.25, 1.47, -0.5),
@@ -169,6 +164,102 @@ fn computer(world: &mut World) {
         min: [c.x - 1.8, c.z - 0.8],
         max: [c.x + 1.8, c.z + 0.8],
     });
+}
+
+/// The computer's display is world geometry, so it follows perspective and
+/// shares the monitor's occlusion. It never uses a native button or HUD atlas.
+pub(crate) fn computer_display(interaction: Option<bool>) -> Mesh {
+    let mut mesh = Mesh::default();
+    let step = if interaction == Some(true) {
+        Intensity::Full
+    } else {
+        Intensity::Half
+    };
+    computer_text(&mut mesh, "COMPUTER", 0.22, 0.25, step);
+    // Only a host with an implemented computer action advertises one. The
+    // shared desktop scene keeps its physical monitor without a dead prompt.
+    if let Some(near) = interaction {
+        computer_text(
+            &mut mesh,
+            if near { "TAP TO OPEN" } else { "WALK CLOSER" },
+            -0.24,
+            0.16,
+            step,
+        );
+    }
+    let face = |x, y| COMPUTER_SCREEN + Vec3::new(x, y, 0.0);
+    mesh.line(face(-1.04, 0.06), face(1.04, 0.06), Intensity::Quarter);
+    // Short corner marks retain the terminal appearance without adding a
+    // floating box or drawing controls outside the physical display.
+    for x in [-1.08f32, 1.08] {
+        for y in [-0.5f32, 0.5] {
+            mesh.line(face(x, y), face(x - x.signum() * 0.1, y), step);
+            mesh.line(face(x, y), face(x, y - y.signum() * 0.1), step);
+        }
+    }
+    mesh
+}
+
+fn computer_text(mesh: &mut Mesh, text: &str, baseline: f32, height: f32, step: Intensity) {
+    let width = height * 0.66;
+    let advance = height * 0.96;
+    let start = -((text.len() - 1) as f32 * advance + width) / 2.0;
+    for (index, letter) in text.bytes().enumerate() {
+        let x = start + index as f32 * advance;
+        let point = |(u, v): (f32, f32)| {
+            // A viewer faces +Z from the monitor's -Z front. Its screen-right
+            // axis is world -X, so both glyph strokes and letter order use -X.
+            COMPUTER_SCREEN + Vec3::new(-(x + u * width), baseline + v * height, 0.0)
+        };
+        for stroke in computer_glyph(letter) {
+            for pair in stroke.windows(2) {
+                let a = point(pair[0]);
+                let b = point(pair[1]);
+                let delta = b - a;
+                let normal = Vec3::new(-delta.y, delta.x, 0.0).normalize() * height * 0.038;
+                mesh.amber_quad([a - normal, b - normal, b + normal, a + normal], step);
+            }
+        }
+    }
+}
+
+fn computer_glyph(letter: u8) -> &'static [&'static [(f32, f32)]] {
+    match letter {
+        b'A' => &[
+            &[(0.0, 0.0), (0.0, 0.7), (0.5, 1.0), (1.0, 0.7), (1.0, 0.0)],
+            &[(0.0, 0.4), (1.0, 0.4)],
+        ],
+        b'C' => &[&[(1.0, 1.0), (0.0, 1.0), (0.0, 0.0), (1.0, 0.0)]],
+        b'E' => &[
+            &[(1.0, 1.0), (0.0, 1.0), (0.0, 0.0), (1.0, 0.0)],
+            &[(0.0, 0.5), (0.8, 0.5)],
+        ],
+        b'K' => &[
+            &[(0.0, 0.0), (0.0, 1.0)],
+            &[(1.0, 1.0), (0.0, 0.45), (1.0, 0.0)],
+        ],
+        b'L' => &[&[(0.0, 1.0), (0.0, 0.0), (1.0, 0.0)]],
+        b'M' => &[&[(0.0, 0.0), (0.0, 1.0), (0.5, 0.45), (1.0, 1.0), (1.0, 0.0)]],
+        b'N' => &[&[(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)]],
+        b'O' => &[&[(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)]],
+        b'P' => &[&[(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.5), (0.0, 0.5)]],
+        b'R' => &[
+            &[(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.5), (0.0, 0.5)],
+            &[(0.45, 0.5), (1.0, 0.0)],
+        ],
+        b'S' => &[&[
+            (1.0, 1.0),
+            (0.0, 1.0),
+            (0.0, 0.5),
+            (1.0, 0.5),
+            (1.0, 0.0),
+            (0.0, 0.0),
+        ]],
+        b'T' => &[&[(0.0, 1.0), (1.0, 1.0)], &[(0.5, 1.0), (0.5, 0.0)]],
+        b'U' => &[&[(0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]],
+        b'W' => &[&[(0.0, 1.0), (0.0, 0.0), (0.5, 0.45), (1.0, 0.0), (1.0, 1.0)]],
+        _ => &[],
+    }
 }
 
 fn gym(world: &mut World) {
@@ -757,9 +848,56 @@ mod tests {
             })
             .count();
         assert!(
-            screen_lines >= 18,
-            "monitor bezel and terminal prompt remain visible"
+            screen_lines >= 8,
+            "the monitor bezel remains present around its dynamic display"
         );
+    }
+
+    #[test]
+    fn computer_text_reads_left_to_right_from_the_monitors_front() {
+        let runtime = crate::runtime::WorldRuntime::new();
+        let view = runtime.view(0.46);
+        let project_x = |position: [f32; 3]| {
+            let clip = view.view_proj * Vec3::from(position).extend(1.0);
+            clip.x / clip.w
+        };
+        let mut title = Mesh::default();
+        computer_text(&mut title, "COMPUTER", 0.22, 0.25, Intensity::Full);
+        // C has three strokes and R has five. Their actual rendered vertex
+        // centroids must place the first letter to the viewer's left.
+        let average_x = |vertices: &[crate::mesh::Vertex]| {
+            vertices.iter().map(|v| project_x(v.pos)).sum::<f32>() / vertices.len() as f32
+        };
+        assert!(average_x(&title.faces[..18]) < average_x(&title.faces[title.faces.len() - 30..]));
+        // The C's top stroke goes from its open right edge to its left spine.
+        // This rejects individually mirrored letters even if order is correct.
+        assert!(project_x(title.faces[0].pos) > project_x(title.faces[1].pos));
+    }
+
+    #[test]
+    fn computer_display_stays_inside_the_physical_monitor_and_changes_with_proximity() {
+        let neutral = computer_display(None);
+        let distant = computer_display(Some(false));
+        let nearby = computer_display(Some(true));
+        assert!(neutral.faces.len() < distant.faces.len());
+        assert!(neutral.faces.len() < nearby.faces.len());
+        assert!(
+            nearby.faces.len() > 300,
+            "letters are filled world geometry"
+        );
+        assert_ne!(distant.faces, nearby.faces, "the interaction cue changes");
+        for mesh in [neutral, distant, nearby] {
+            for vertex in mesh.faces.iter().chain(&mesh.lines) {
+                let offset = Vec3::from(vertex.pos) - COMPUTER_SCREEN;
+                assert!(offset.x.abs() < COMPUTER_SCREEN_HALF[0]);
+                assert!(offset.y.abs() < COMPUTER_SCREEN_HALF[1]);
+                assert!(offset.z.abs() < 1e-6);
+                assert_eq!(vertex.fog, 1.0);
+            }
+        }
+        for letter in b"COMPUTERTAPNOWALKLS" {
+            assert!(!computer_glyph(*letter).is_empty());
+        }
     }
 
     #[test]

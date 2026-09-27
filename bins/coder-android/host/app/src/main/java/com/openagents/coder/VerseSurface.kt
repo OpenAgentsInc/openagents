@@ -5,11 +5,14 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Bundle
 import android.os.SystemClock
 import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityEvent
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.cos
@@ -33,6 +36,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     private var sensorStarted = 0L
     private var latestSensor: Pair<Long, DoubleArray>? = null
     private var sensorRunning = false
+    private var computerAccessible = false
     private val pointers = mutableSetOf<Int>()
     private val sensors = context.getSystemService(SensorManager::class.java)
     private val sensor = sensors.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
@@ -47,7 +51,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
 
     init {
         tag = "verse-surface"
-        contentDescription = "Verse world. Drag left to move and right to look around."
+        contentDescription = "Verse world. Drag left to move and right to look around. Walk to the computer and tap its screen to open your chats."
         holder.addCallback(this)
         isFocusable = true
     }
@@ -134,6 +138,11 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             require(result.getJSONArray("position").length() == 3 &&
                 result.getString("camera_mode") in listOf("touch", "motion")) { "Invalid world view." }
             snapshot = result
+            val available = computerAvailable()
+            if (available != computerAccessible) {
+                computerAccessible = available
+                sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+            }
             nativeError = null
             syncSensors(result.optBoolean("motion_needed"))
             val now = SystemClock.elapsedRealtimeNanos()
@@ -236,6 +245,28 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         }
         return true
     }
+    private fun computerAvailable(): Boolean {
+        val state = snapshot ?: return false
+        val computer = state.optJSONObject("computer") ?: return false
+        return running && computer.optBoolean("near") && computer.optBoolean("visible") &&
+            !state.optBoolean("computer_open") && !state.optBoolean("gym_open")
+    }
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        if (computerAvailable()) {
+            info.addAction(AccessibilityNodeInfo.AccessibilityAction(R.id.verse_use_computer_action, "Use computer"))
+        }
+    }
+
+    override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
+        if (action == R.id.verse_use_computer_action) {
+            if (!computerAvailable()) return false
+            return send(json("action" to "interact_computer"))?.optBoolean("computer_open") == true
+        }
+        return super.performAccessibilityAction(action, arguments)
+    }
+
     override fun performClick(): Boolean { super.performClick(); return true }
     private fun pointer(event: MotionEvent, index: Int, phase: String) {
         val density = resources.displayMetrics.density

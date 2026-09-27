@@ -12,7 +12,8 @@ implementation belongs to the reusable `rust-native` crate.
 The world fills the entire display behind the system clock and home indicator.
 Controls stay inside the safe area over the canvas. It starts offline and requires no chat pairing
 or model account. A computer sits directly ahead of the starting position.
-Walk closer and tap **Use computer** to open its controls inside the world.
+Walk closer and tap the computer's monitor to open its controls. The monitor
+shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
 
 - In **Touch look**, drag on the left half to move and on the right half to
   turn and look up or down. Releasing the left side stops movement.
@@ -41,6 +42,29 @@ The world uses a 30 Hz native display callback and a single-sample render
 target: a Metal layer on iOS and an Android native window on Android. The desktop retains its mouse/keyboard controls and supported 4× MSAA.
 Both surfaces run `verse::runtime::WorldRuntime`; mobile does not approximate
 the city with a separate scene or image.
+
+## Use the world computer
+
+The computer prompt is part of the 3D monitor. Its amber lettering and corner
+marks are Rust-rendered geometry on the display surface. They change size and
+perspective with the camera, and world geometry can obscure them. There is no
+visible SwiftUI or Android **Computer** button floating above the object.
+
+Tap the display itself. Rust traces that screen position into the world and
+accepts it only when the nearby monitor is facing the camera and the path is
+clear. Touch and motion camera modes use the same interaction. A drag, cancelled
+touch, long hold, or second finger does not open the computer. Tapping the
+monitor also avoids starting a movement or camera gesture.
+
+VoiceOver and TalkBack expose a **Use computer** action on the world surface
+when the computer is in reach. That action uses the same Rust proximity and
+visibility checks without drawing another control over the scene.
+
+Opening the computer still shows the existing native pairing, world-connection,
+and chat-reader panels over Verse. This change moves the computer prompt and
+its pointer interaction into the 3D world; it does not replace the reader,
+keyboard, QR scanner, or transcript selection with a 3D UI. Closing the panel
+returns to walking.
 
 ## Join another player
 
@@ -78,7 +102,7 @@ connection choice. A new native mount starts a new local world.
 | Component | Ownership |
 | --- | --- |
 | Validated `Surface` element, viewport, active/disposed lifecycle, frame timing | `crates/rust-native`; generic and independent of product crates |
-| Seeded geometry, movement/collision, camera, gait, follower, render pipelines | `crates/verse`; shared desktop/iOS/Android implementation |
+| Seeded geometry, movement/collision, camera, gait, follower, render pipelines, monitor lettering, and world picking | `crates/verse`; shared desktop/iOS/Android implementation |
 | Device touch interpretation, world state, connection choices, C bridge | `crates/coder-mobile` |
 | GPU surface, display callback, native controls, protected identities, scene lifecycle | Thin SwiftUI/UIKit host in `bins/coder-ios`; Android framework host in `bins/coder-android` |
 | Palette | `crates/coder-ui`; outside Rust Native |
@@ -95,10 +119,10 @@ execution grant; the chat reader remains read-only.
 The `desktop` feature is enabled by default for the Verse executable. Both mobile
 applications depend on `verse` with default features disabled: no desktop
 harnesses, local Gym result store, knowledge store, or window event loop enter
-that targets. The portable `gym-bridge` client observes a separately configured
-host; its filesystem readers and execution host are feature-gated out of both mobile targets. Native
-text and controls remain native platform widgets; the desktop glyph atlas is not used
-as the phone's text renderer.
+those targets. The portable `gym-bridge` client observes a separately configured
+host; its filesystem readers and execution host are feature-gated out of both mobile targets. Reader text, pairing controls, and other panels remain native platform widgets.
+The computer prompt is scene geometry; it uses neither native text widgets nor
+the desktop glyph atlas.
 
 ## Verification and distribution
 
@@ -109,8 +133,9 @@ See the [iOS build guide](../../bins/coder-ios/README.md),
 [QR pairing verification](../coder/verification/2026-09-26-world-pairing.md),
 [Gym verification](../coder/verification/2026-09-26-verse-gym.md),
 [full-screen and motion verification](../coder/verification/2026-09-26-fullscreen-motion.md),
-and [issue #9698](https://github.com/OpenAgentsInc/openagents/issues/9698), and
+[world-computer interaction verification](../coder/verification/2026-09-26-world-computer.md),
+[issue #9698](https://github.com/OpenAgentsInc/openagents/issues/9698), and
 [Verse-first pairing #9699](https://github.com/OpenAgentsInc/openagents/issues/9699).
 Simulator rendering and lifecycle evidence are separate from physical-device
 frame rate, thermals, and a two-device relay session. Only checks recorded in
-that verification document have been performed.
+the linked verification records have been performed.

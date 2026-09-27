@@ -48,7 +48,8 @@ class MobileAcceptanceTest {
 
     private fun capture(name: String) {
         if (scenario != null) {
-            instrumentation.waitForIdleSync()
+            // A continuously rendered world need not reach main-loop idle.
+            // Waiting for idle can exhaust the synthetic Gym snapshot's TTL.
             SystemClock.sleep(200)
             val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "acceptance")
             directory.mkdirs()
@@ -317,11 +318,55 @@ class MobileAcceptanceTest {
     private fun computer() {
         waitFor { frames() > 0 }
         for (attempt in 0..5) {
-            if (exists("computer-interact", enabled = true)) break
+            if (computerReady()) break
             walk()
         }
-        click("computer-interact")
+        waitFor { computerReady() }
+        assertFalse("The computer is drawn in the world, not as a native button", exists("computer-interact"))
+        val target = FloatArray(2)
+        onMain { activity ->
+            val surface = find(activity.window.decorView, "verse-surface") as VerseSurface
+            val monitor = surface.snapshot!!.getJSONObject("computer")
+            target[0] = monitor.getDouble("screen_x").toFloat()
+            target[1] = monitor.getDouble("screen_y").toFloat()
+            val actions = surface.createAccessibilityNodeInfo().actionList
+            assertTrue("The world retains an accessible computer action", actions.any { it.label == "Use computer" })
+        }
+        if (testName.methodName == "readerPagesStayPinnedAndExactRecordsRemainAccessible") capture("physical-world-computer")
+        val positionBeforeTap = position()
+        val yawBeforeTap = cameraYaw()
+        tapSurface(target[0], target[1])
         waitFor { exists("chat-0") || exists("back") }
+        assertTrue("Tapping the monitor does not move the player", distance(positionBeforeTap, position()) < 0.05)
+        assertEquals("Tapping the monitor does not turn the camera", yawBeforeTap, cameraYaw(), 0.001)
+        if (testName.methodName == "readerPagesStayPinnedAndExactRecordsRemainAccessible") capture("physical-world-computer-open")
+    }
+
+    private fun computerReady(): Boolean {
+        var ready = false
+        onMain { activity ->
+            val computer = (find(activity.window.decorView, "verse-surface") as VerseSurface)
+                .snapshot?.optJSONObject("computer")
+            ready = computer?.optBoolean("near") == true && computer.optBoolean("visible")
+        }
+        return ready
+    }
+
+    private fun tapSurface(x: Float, y: Float) {
+        val bounds = IntArray(4)
+        onMain { activity ->
+            val surface = find(activity.window.decorView, "verse-surface")!!
+            surface.getLocationOnScreen(bounds)
+            bounds[2] = surface.width; bounds[3] = surface.height
+        }
+        val now = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val event = MotionEvent.obtain(now, SystemClock.uptimeMillis(), action,
+                bounds[0] + bounds[2] * x, bounds[1] + bounds[3] * y, 0)
+            instrumentation.sendPointerSync(event)
+            event.recycle()
+            SystemClock.sleep(60)
+        }
     }
 
     private fun publicKey(): String {

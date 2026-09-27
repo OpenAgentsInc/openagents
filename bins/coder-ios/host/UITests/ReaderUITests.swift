@@ -60,7 +60,8 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.buttons["chat-0"].waitForExistence(timeout: 20))
         XCTAssertEqual(publicKey(), first)
         app.buttons["computer-close"].tap()
-        XCTAssertTrue(app.buttons["computer-interact"].exists)
+        XCTAssertFalse(app.buttons["computer-interact"].exists)
+        XCTAssertTrue(app.otherElements["verse-surface"].exists)
     }
 
     func testPageSelectionPinsUntilLatestIsRequested() throws {

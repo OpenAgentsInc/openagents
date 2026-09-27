@@ -43,6 +43,7 @@ final class VerseMetalView: UIView {
     private var extent: (width: UInt32, height: UInt32, scale: CGFloat)?
     private var pointers: [ObjectIdentifier: UInt64] = [:]
     private var nextPointer: UInt64 = 1
+    private var computerAccessible = false
 
     init(bridge: VerseBridge) {
         self.bridge = bridge
@@ -51,7 +52,7 @@ final class VerseMetalView: UIView {
         isOpaque = true
         isAccessibilityElement = true
         accessibilityIdentifier = "verse-surface"
-        accessibilityHint = "Drag on the left to move and on the right to look around."
+        accessibilityHint = "Drag on the left to move and on the right to look around. Walk to the computer and tap its screen to open your chats."
         accessibilityTraits = [.allowsDirectInteraction]
         bridge.bind(self)
         displayTarget.view = self
@@ -163,6 +164,7 @@ final class VerseMetalView: UIView {
         } catch { result = .failure(error) }
         if case let .success(packet) = result {
             syncMotion(packet)
+            syncAccessibility(packet)
         }
         if deferred {
             DispatchQueue.main.async { [weak self] in
@@ -171,6 +173,33 @@ final class VerseMetalView: UIView {
             }
         } else { bridge.receive(result, from: self, force: forcePublish) }
         return result
+    }
+
+    private func syncAccessibility(_ packet: VersePacket) {
+        let available = running && packet.computer.near && packet.computer.visible
+            && !packet.computer_open && !packet.gym_open
+        if available != computerAccessible {
+            computerAccessible = available
+            accessibilityCustomActions = available ? [
+                UIAccessibilityCustomAction(name: "Use computer", target: self,
+                                            selector: #selector(useComputerAccessibly))
+            ] : []
+        }
+        if bridge.synthetic {
+            // Test metadata identifies the Rust-projected monitor. Tests still
+            // send a real surface tap through the shared pointer interpreter.
+            accessibilityValue = String(format: "computer:%@:%0.6f:%0.6f",
+                available ? "ready" : "unavailable", packet.computer.screen_x, packet.computer.screen_y)
+        } else {
+            accessibilityValue = available ? "Computer in reach" : "Exploring Verse"
+        }
+    }
+
+    @objc private func useComputerAccessibly() -> Bool {
+        guard running, computerAccessible else { return false }
+        guard let result = send(["action": "interact_computer"], forcePublish: true) else { return false }
+        if case let .success(packet) = result { return packet.computer_open }
+        return false
     }
 
     private func syncMotion(_ packet: VersePacket) {

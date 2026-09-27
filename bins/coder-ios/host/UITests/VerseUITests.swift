@@ -35,7 +35,7 @@ final class VerseUITests: XCTestCase {
     func testComputerAndBackgroundResumeWithoutBreakingChats() throws {
         XCTAssertFalse(app.buttons["computer-close"].exists)
         XCTAssertFalse(app.buttons["chat-0"].exists)
-        app.openWorldComputer()
+        app.openWorldComputer { self.attach("Synthetic 3D monitor before surface tap") }
         XCTAssertTrue(app.buttons["chat-0"].waitForExistence(timeout: 10))
         app.buttons["chat-0"].tap()
         XCTAssertTrue(app.buttons["back"].waitForExistence(timeout: 10))

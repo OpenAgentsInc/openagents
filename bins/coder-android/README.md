@@ -18,7 +18,9 @@ or network implementation.
 This adapter reimplements the native Android setup inspected in the authorized
 local Coder checkout at `f2d85b120ac96b4a4be9116e823e7795472088c1`. It preserves
 `com.openagents.coder`, Android API 26 as the minimum, API 35 as the target,
-and marketing version `0.5.0`. The public replacement has version code `4`.
+and marketing version `0.5.0`. The public replacement has version code `5`.
+The computer prompt is rendered on the shared 3D monitor; approach it and tap
+its screen. See the [world-computer verification](../../docs/coder/verification/2026-09-26-world-computer.md).
 The old private GPUI runtime, sign-in, service endpoints, credentials, and
 backend are not imported. Android parity means the current iOS mobile feature
 slice, not every feature in the historical private app or desktop Verse.

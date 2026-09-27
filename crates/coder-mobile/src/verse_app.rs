@@ -245,6 +245,9 @@ struct Touch {
     origin: [f32; 2],
     latest: [f32; 2],
     movement: bool,
+    computer: bool,
+    tap_valid: bool,
+    started: Option<f64>,
 }
 
 #[derive(Default)]
@@ -298,6 +301,8 @@ pub(crate) struct Scene {
     pub world: WorldRuntime,
     pub lifecycle: SurfaceLifecycle,
     pub session: Option<Session>,
+    /// Remote geometry from the last presented frame, also used for picking.
+    pub presented_entities: verse::mesh::Mesh,
     secret: secp256k1::SecretKey,
     relay: Option<String>,
     synthetic: bool,
@@ -349,6 +354,7 @@ impl Scene {
             world,
             lifecycle,
             session: None,
+            presented_entities: verse::mesh::Mesh::default(),
             secret,
             relay: None,
             synthetic: config.synthetic,
@@ -378,6 +384,7 @@ impl Scene {
             self.frame_timestamp = None;
         }
         if !active {
+            self.presented_entities = verse::mesh::Mesh::default();
             self.touches.clear();
             self.jump = false;
             self.sprint = false;
@@ -423,13 +430,30 @@ impl Scene {
     }
 
     pub fn disconnect(&mut self) {
+        self.presented_entities = verse::mesh::Mesh::default();
         self.session = None;
         self.relay = None;
     }
 
     pub fn pointer(&mut self, id: u64, phase: PointerPhase, x: f32, y: f32) -> Result<(), String> {
         if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) {
-            self.touches.remove(&id);
+            // Always release input, including cancelled or malformed native events.
+            let touch = self.touches.remove(&id);
+            if let Some(touch) = touch
+                && matches!(phase, PointerPhase::Up)
+                && touch.computer
+                && touch.tap_valid
+                && (x - touch.origin[0]).hypot(y - touch.origin[1]) <= 12.0
+                && touch
+                    .started
+                    .zip(self.frame_timestamp)
+                    .is_some_and(|(start, end)| (0.0..=0.65).contains(&(end - start)))
+                && self.lifecycle.active()
+                && !self.panel_open()
+                && self.computer_hit(x, y)
+            {
+                self.open_computer();
+            }
             return Ok(());
         }
         if !self.lifecycle.active() || self.panel_open() {
@@ -443,6 +467,10 @@ impl Scene {
                 if self.touches.contains_key(&id) {
                     return Err("Touch identity is already active".into());
                 }
+                // A second finger makes this a movement gesture, never a tap.
+                for touch in self.touches.values_mut() {
+                    touch.tap_valid = false;
+                }
                 if self.touches.len() >= 2 {
                     return Ok(());
                 }
@@ -450,8 +478,9 @@ impl Scene {
                 if x < 0.0 || y < 0.0 || x > size[0] || y > size[1] {
                     return Ok(());
                 }
+                let computer = self.touches.is_empty() && self.computer_hit(x, y);
                 let movement = x < size[0] * 0.5;
-                if !movement && self.camera_mode == CameraMode::Motion {
+                if !computer && !movement && self.camera_mode == CameraMode::Motion {
                     return Ok(());
                 }
                 if self.touches.values().any(|p| p.movement == movement) {
@@ -463,15 +492,19 @@ impl Scene {
                         origin: [x, y],
                         latest: [x, y],
                         movement,
+                        computer,
+                        tap_valid: true,
+                        started: self.frame_timestamp,
                     },
                 );
-                if !movement {
+                if !computer && !movement {
                     self.world.apply(Action::FaceCamera)?;
                 }
             }
             PointerPhase::Move => {
                 if let Some(touch) = self.touches.get_mut(&id) {
-                    if !touch.movement && self.camera_mode == CameraMode::Touch {
+                    touch.tap_valid &= (x - touch.origin[0]).hypot(y - touch.origin[1]) <= 12.0;
+                    if !touch.computer && !touch.movement && self.camera_mode == CameraMode::Touch {
                         self.world.apply(Action::Look {
                             dx: (x - touch.latest[0]).clamp(-500.0, 500.0),
                             dy: (y - touch.latest[1]).clamp(-500.0, 500.0),
@@ -494,7 +527,7 @@ impl Scene {
             sprint: self.sprint,
             ..InputState::default()
         };
-        if let Some(touch) = self.touches.values().find(|p| p.movement) {
+        if let Some(touch) = self.touches.values().find(|p| p.movement && !p.computer) {
             let x = touch.latest[0] - touch.origin[0];
             let y = touch.latest[1] - touch.origin[1];
             input.forward = match self.camera_mode {
@@ -505,7 +538,8 @@ impl Scene {
             input.strafe_left = x < -12.0;
             input.strafe_right = x > 12.0;
         }
-        input.mouse_look = self.motion_needed() || self.touches.values().any(|p| !p.movement);
+        input.mouse_look =
+            self.motion_needed() || self.touches.values().any(|p| !p.movement && !p.computer);
         input
     }
 
@@ -616,15 +650,14 @@ impl Scene {
             }
             Request::InteractComputer => {
                 let computer = self.computer();
-                if !self.lifecycle.active() || !computer.near || !computer.visible {
+                let size = self.lifecycle.viewport().logical_size();
+                if !self.lifecycle.active()
+                    || self.spawn_pending
+                    || !self.computer_hit(computer.screen_x * size[0], computer.screen_y * size[1])
+                {
                     return Err("Walk up to the computer to open it".into());
                 }
-                self.reset_motion();
-                self.computer_open = true;
-                self.gym_open = false;
-                self.touches.clear();
-                self.jump = false;
-                self.sprint = false;
+                self.open_computer();
                 Ok(())
             }
             Request::CloseComputer => {
@@ -817,6 +850,29 @@ impl Scene {
         let viewport = self.lifecycle.viewport();
         self.world
             .gym(viewport.width() as f32 / viewport.height().max(1) as f32)
+    }
+
+    /// Called only after pointer or accessibility picking validates the target.
+    fn open_computer(&mut self) {
+        self.reset_motion();
+        self.computer_open = true;
+        self.gym_open = false;
+        self.touches.clear();
+        self.jump = false;
+        self.sprint = false;
+    }
+
+    fn computer_hit(&self, x: f32, y: f32) -> bool {
+        let size = self.lifecycle.viewport().logical_size();
+        !self.spawn_pending
+            && size[0] > 0.0
+            && size[1] > 0.0
+            && self.world.computer_hit_with_entities(
+                size[0] / size[1],
+                x / size[0],
+                y / size[1],
+                &self.presented_entities,
+            )
     }
 
     fn computer(&self) -> verse::runtime::Computer {
@@ -1032,6 +1088,97 @@ mod tests {
         assert_eq!(packet["computer_open"], false);
         assert!(packet["computer"]["screen_x"].as_f64().unwrap().is_finite());
     }
+    fn computer_scene() -> (Scene, [f32; 2]) {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        let mut spawn = verse::world::SPAWN;
+        spawn.z = -7.5;
+        scene.world.set_spawn(spawn, 0.0).unwrap();
+        scene.update(1.0).unwrap();
+        scene.update(1.01).unwrap();
+        let computer = scene.computer();
+        let size = scene.lifecycle.viewport().logical_size();
+        let point = [computer.screen_x * size[0], computer.screen_y * size[1]];
+        assert!(scene.computer_hit(point[0], point[1]));
+        (scene, point)
+    }
+
+    #[test]
+    fn physical_monitor_tap_opens_without_moving_in_both_camera_modes() {
+        for mode in [CameraMode::Touch, CameraMode::Motion] {
+            let (mut scene, [x, y]) = computer_scene();
+            scene.action(Request::CameraMode { mode }).unwrap();
+            let position = scene.world.player.pos;
+            let yaw = scene.world.player.yaw;
+            scene.pointer(1, PointerPhase::Down, x, y).unwrap();
+            scene.update(1.1).unwrap();
+            scene.pointer(1, PointerPhase::Up, x, y).unwrap();
+            assert!(scene.computer_open);
+            assert!(scene.touches.is_empty());
+            assert_eq!(scene.world.player.pos, position);
+            assert_eq!(scene.world.player.yaw, yaw);
+        }
+    }
+
+    #[test]
+    fn exposed_monitor_edge_opens_even_when_its_center_is_occluded() {
+        let (mut scene, [center_x, center_y]) = computer_scene();
+        let size = scene.lifecycle.viewport().logical_size();
+        let view = scene.world.view(size[0] / size[1]);
+        let blocker_center = (view.eye + verse::world::COMPUTER_SCREEN) * 0.5;
+        let corners = [(-0.1, -0.5), (0.1, -0.5), (0.1, 0.5), (-0.1, 0.5)].map(|(x, y)| {
+            let mut corner = blocker_center;
+            corner.x += x;
+            corner.y += y;
+            corner
+        });
+        scene.presented_entities.quad(corners);
+        assert!(!scene.computer_hit(center_x, center_y));
+        assert!(scene.action(Request::InteractComputer).is_err());
+        let mut edge = verse::world::COMPUTER_SCREEN;
+        edge.x += 0.9;
+        let clip = view.view_proj * edge.extend(1.0);
+        let x = (clip.x / clip.w * 0.5 + 0.5) * size[0];
+        let y = (0.5 - clip.y / clip.w * 0.5) * size[1];
+        assert!(scene.computer_hit(x, y));
+        scene.pointer(1, PointerPhase::Down, x, y).unwrap();
+        scene.pointer(1, PointerPhase::Up, x, y).unwrap();
+        assert!(scene.computer_open);
+    }
+
+    #[test]
+    fn monitor_gestures_reject_drag_cancel_long_hold_and_multiple_fingers() {
+        for case in 0..6 {
+            let (mut scene, [x, y]) = computer_scene();
+            scene.pointer(1, PointerPhase::Down, x, y).unwrap();
+            match case {
+                0 => {
+                    scene.pointer(1, PointerPhase::Move, x + 20.0, y).unwrap();
+                    scene.pointer(1, PointerPhase::Move, x, y).unwrap();
+                }
+                1 => scene.pointer(1, PointerPhase::Cancel, f32::NAN, y).unwrap(),
+                2 => {
+                    scene.update(2.0).unwrap();
+                }
+                3 => scene.pointer(2, PointerPhase::Down, 10.0, 300.0).unwrap(),
+                4 => {
+                    scene.pointer(1, PointerPhase::Up, f32::NAN, y).unwrap();
+                }
+                5 => {
+                    scene.world.set_spawn(verse::world::SPAWN, 0.0).unwrap();
+                }
+                _ => unreachable!(),
+            }
+            scene.pointer(1, PointerPhase::Up, x, y).unwrap();
+            assert!(!scene.computer_open, "invalid gesture {case}");
+            assert!(!scene.touches.contains_key(&1));
+        }
+        let (mut scene, [x, y]) = computer_scene();
+        scene.pointer(1, PointerPhase::Down, 10.0, 30.0).unwrap();
+        scene.pointer(1, PointerPhase::Up, x, y).unwrap();
+        assert!(!scene.computer_open, "a tap must start on the monitor");
+    }
+
     #[test]
     fn bad_and_excess_touches_do_not_poison_camera_or_keep_moving() {
         let mut scene = scene();

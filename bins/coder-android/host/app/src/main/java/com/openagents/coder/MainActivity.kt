@@ -46,7 +46,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var cameraButton: Button
     private lateinit var recenter: Button
     private lateinit var motionStatus: TextView
-    private lateinit var computerButton: Button
     private lateinit var gymButton: Button
     private lateinit var diagnostics: LinearLayout
     private lateinit var panel: LinearLayout
@@ -157,9 +156,7 @@ class MainActivity : ComponentActivity() {
         movement.addView(button("−", "verse-zoom-out") { world.send(json("action" to "zoom", "delta" to -1)) }.apply { contentDescription = "Zoom out" }, LinearLayout.LayoutParams(dp(48), -2))
         controls.addView(movement)
         safe.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
-        computerButton = button("Computer", "computer-interact") { world.send(json("action" to "interact_computer")) }.apply { visibility = View.GONE }
         gymButton = button("Gym board", "gym-interact") { world.send(json("action" to "interact_gym")) }.apply { visibility = View.GONE }
-        root.addView(computerButton, FrameLayout.LayoutParams(dp(180), -2))
         root.addView(gymButton, FrameLayout.LayoutParams(dp(190), -2))
         panel = column().apply {
             visibility = View.GONE
@@ -194,10 +191,8 @@ class MainActivity : ComponentActivity() {
                 if (opened == "computer") renderComputer(true) else mountedGymRevision = -1
             }
         }
-        placeAnchor(computerButton, packet.getJSONObject("computer"), opened.isEmpty())
         val location = packet.getJSONObject("gym")
         placeAnchor(gymButton, location, opened.isEmpty() && location.optBoolean("inside"))
-        computerButton.text = if (packet.getJSONObject("computer").optBoolean("near")) "Use computer" else "Computer"
         gymButton.text = if (location.optBoolean("near")) "Open Gym board" else "Gym board"
         cameraButton.text = if (packet.optString("camera_mode") == "motion") "Motion look" else "Touch look"
         cameraButton.isEnabled = foreground && world.motionAvailable

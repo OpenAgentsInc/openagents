@@ -1,0 +1,74 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "9E40DB42-1FDD-4F20-A40C-B81F3C938525.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic world computer after background resume_0_9D49B245-F866-479C-AA42-A29E11459133.png",
+        "timestamp" : 1790468733.892
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "D2611188-D9EE-4C29-911A-667970611C89.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic 3D monitor before surface tap_0_02B3414F-C8A5-429C-98E3-57BBF0D1AFE7.png",
+        "timestamp" : 1790468723.049
+      }
+    ],
+    "testIdentifier" : "VerseUITests/testComputerAndBackgroundResumeWithoutBreakingChats()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/VerseUITests/testComputerAndBackgroundResumeWithoutBreakingChats"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "2C5C5802-D592-4780-B9E6-80CB9553618E.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic inline pairing refusal_0_D3662D31-901A-4AE3-B5C0-FC2CDD752626.png",
+        "timestamp" : 1790468752.579
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "C9A8C2EE-1587-4440-BA73-FE83324807D5.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic inline camera fallback_0_7DC73A55-C13B-4433-8383-B300719F66A1.png",
+        "timestamp" : 1790468748.539
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "A11F1539-2F66-4452-8B6E-09B6C81CB918.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic anchored computer catalog_0_9AAB5E7D-3641-4A9A-8E9F-ACD906D8C43F.png",
+        "timestamp" : 1790468745.693
+      }
+    ],
+    "testIdentifier" : "VerseUITests/testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/VerseUITests/testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "745E63BD-631C-4651-B993-F1E2AAB3791E",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "110069B9-8338-4C1C-8F3D-763486052BAE.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthetic Verse Metal world_0_9C707251-8C18-42F3-90FF-0736351ADBA3.png",
+        "timestamp" : 1790468763.088
+      }
+    ],
+    "testIdentifier" : "VerseUITests/testMetalWorldRendersAndTouchMovementChangesPosition()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/VerseUITests/testMetalWorldRendersAndTouchMovementChangesPosition"
+  }
+]

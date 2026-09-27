@@ -1,0 +1,40 @@
+{
+  "schema": "coder.world-computer.verification.v1",
+  "recorded_at": "2026-09-27T00:27:17.133061+00:00",
+  "base_commit": "cfc08f81b8451e9041d20c62ffed87af20b8817e",
+  "source_sha256": {
+    "bins/coder-android/host/app/build.gradle.kts": "ac54b0842352503412df158b9940ef311eeff760d3ea7bd04e254a69a2019c1d",
+    "bins/coder-android/host/app/src/androidTest/java/com/openagents/coder/MobileAcceptanceTest.kt": "ff31b6fbb216c49480164aa9c72ec7a488b4f8206dac687563381841b863115e",
+    "bins/coder-android/host/app/src/main/java/com/openagents/coder/MainActivity.kt": "dbe3cebdda9e9512a2cf9f2330b4205ff49083af9c522a3b0fee53e21ace9943",
+    "bins/coder-android/host/app/src/main/java/com/openagents/coder/VerseSurface.kt": "d81ca38f3e071534f9b5c6a58361589ca4cb8b580f3fb0625c382ee48f94b6a0",
+    "bins/coder-ios/host/App/VerseScreen.swift": "19c90feac31270f044b4c29617cc7242c5337d427cd2d1fa946c7d787f909db4",
+    "bins/coder-ios/host/App/VerseSurface.swift": "fc0face7b636901d2962e061086b20b95196f18d982b200ca8e9b471ab8f7260",
+    "bins/coder-ios/host/UITests/ReaderUITests.swift": "9ac1382427b974095bc6300306b21579abd1eb7717f79a42e5b049088e90a450",
+    "bins/coder-ios/host/UITests/VerseUITests.swift": "c9535f0ceed31e210426c0871b08a3a861230a8e3ddf9a7a46ff28bd5c454cb9",
+    "bins/coder-ios/host/UITests/WorldTestSupport.swift": "4905b8dbba6213d975734346f7ab492ffa36e2e58d3a169a192070c50f82dfc3",
+    "bins/coder-ios/host/project.yml": "72e37595db007abb904f99ca3cfee10a71a90694f0b6a9be048ed0f4df256cd8",
+    "crates/coder-mobile/src/verse_app.rs": "88a9990a263ad754ef7b6d5b7f1fc5449048d4aae3d2bc878fe57fef043c171d",
+    "crates/coder-mobile/src/verse_ffi.rs": "6c3cf137050706131d8d86980f8167048ff012b6f1e8607e2ca9420e68c41831",
+    "crates/verse/src/app.rs": "650a93dc3995ea266f5d9ef28554cadec11bb7cda3439df660c4402d9f435cd1",
+    "crates/verse/src/mesh.rs": "651befdd1e003d4ca2bb8b67bc5a0e8ad1da7725eeea63aa2ea69ff51f10a68e",
+    "crates/verse/src/runtime.rs": "a95df6ad53e74f787337a5bd73f014fe4347453c724de016a090a75148d961d2",
+    "crates/verse/src/world.rs": "7d56a2d5ca78756aa0a8742c0cd98f6ce5ac1ae2a3fa06cab9a2d892272ce809",
+    "bins/coder-android/host/app/src/main/res/values/ids.xml": "017d6f1ff07a62016d43c7b49ac3190a4bd1c6aef6ec57af79d569152c99973a"
+  },
+  "rust_mobile_tests": 28,
+  "verse_no_default_library_tests": 122,
+  "formatting": "passed",
+  "clippy_default_features": "passed",
+  "ios_initial_full_suite": {
+    "passed": 12,
+    "note": "Before lettering direction, partial-occlusion tap transition, and desktop prompt capability corrections."
+  },
+  "ios_final_world_suite": {
+    "passed": 3,
+    "device": "iPhone 17 Pro / iOS 26.5 simulator",
+    "note": "Final source, monitor screenshot, actual surface tap, chat navigation, lifecycle, pairing and camera fallback."
+  },
+  "android_final_suite": "pending",
+  "physical_device_tested": false,
+  "model_or_benchmark_runs": false
+}

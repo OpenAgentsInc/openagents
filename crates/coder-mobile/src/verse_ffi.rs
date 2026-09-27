@@ -176,13 +176,19 @@ impl VerseHandle {
                     return Ok(());
                 };
                 if let Some(dt) = self.scene.update(timestamp)? {
-                    let mut mesh = self.scene.world.dynamic_mesh();
-                    if let Some(session) = &mut self.scene.session {
-                        mesh.extend(&session.crowd.mesh(std::time::Instant::now(), dt));
-                    }
+                    let mut mesh = self.scene.world.dynamic_mesh_with_computer_interaction();
+                    let entities = self
+                        .scene
+                        .session
+                        .as_mut()
+                        .map_or_else(verse::mesh::Mesh::default, |session| {
+                            session.crowd.mesh(std::time::Instant::now(), dt)
+                        });
+                    mesh.extend(&entities);
                     let view = self.scene.world.view(renderer.aspect());
                     match renderer.draw(view, &mesh, &verse::ui::UiBatch::default()) {
                         verse::render::DrawStatus::Presented => {
+                            self.scene.presented_entities = entities;
                             self.scene.frames = self.scene.frames.saturating_add(1);
                         }
                         verse::render::DrawStatus::Skipped(_) => {}

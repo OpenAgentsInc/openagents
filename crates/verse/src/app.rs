@@ -112,6 +112,7 @@ pub fn capture(
     let player = PlayerController::new(world::SPAWN, 0.0);
     let view = view(&camera, &player, width as f32 / height as f32);
     let mut dynamic = avatar::mesh(&player, &Gait::default());
+    dynamic.extend(&world::computer_display(None));
     let shown = match &shot.replay {
         Some(arg) => {
             let run = replay::find(arg)?;

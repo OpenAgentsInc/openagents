@@ -1,7 +1,9 @@
 # Coder for iOS
 
 Coder opens into **Verse**. Walk up to the computer in the world to pair by
-QR code and open the read-only **Chats** reader. These are public Rust-owned
+QR code and open the read-only **Chats** reader. Tap the physical monitor:
+Rust renders the **COMPUTER** and **TAP TO OPEN** text in the 3D scene and
+hit-tests its visible surface. There is no native Computer button. These are public Rust-owned
 surfaces under the existing Coder app identity. Rust owns
 pairing, protocol verification, synchronization, encrypted reader cache, world
 state, movement, rendering, and application projection. The thin SwiftUI host
@@ -20,6 +22,9 @@ Walk east into the [Gym](../../docs/verse/gym.md) for Microcoder and
 Terminal-Bench boards. Its observations and run recipes require a separate
 host grant. Leaving or backgrounding pauses Gym updates.
 
+Build `43` replaces the native computer button with the shared world-space
+monitor interaction. See [verification](../../docs/coder/verification/2026-09-26-world-computer.md).
+
 Build `42` fills the display behind the system clock and home indicator.
 Switch between right-side touch look and phone-motion look; use **Recenter**
 to establish a comfortable reference. In motion mode, hold the left side to
@@ -35,7 +40,7 @@ The user-authorized app metadata and icon preserve the existing Xcode setup:
 | Project, scheme, target, product | `Coder` |
 | Bundle identifier | `com.openagents.coder` |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `0.5.0` / `42` |
+| Marketing version and source build | `0.5.0` / `43` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Swift language setting | `5.10` |
 | App Store Connect app | `6807250813` |
@@ -97,7 +102,7 @@ and archived executable digest beside the archive. A nonempty workspace status
 must be reviewed rather than described as an exact committed-source build.
 Set `CODER_IOS_BUILD_NUMBER` to a new
 positive build number after checking the existing App Store Connect builds;
-the checked-in build is `40`. The `export` command produces a local
+the checked-in build is `43`. The `export` command produces a local
 distribution package using the existing export settings with destination
 changed to `export`. Upload is a separate operator action using the retained
 upload configuration and protected App Store Connect credentials. Never put

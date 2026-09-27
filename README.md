@@ -20,7 +20,7 @@ application palette lives separately in `coder-ui`, used through the terminal's
 compatibility exports. The mobile readers render Rust Native lists and transcripts
 through thin SwiftUI and Android framework controls. Its [Verse home screen](docs/verse/mobile.md) mounts the
 shared desktop world through Rust Native's generic drawing-surface contract
-and a native Metal layer. Product state and transport are Rust; native
+and native Metal (iOS) or GLES (Android) surfaces. Product state and transport are Rust; native
 glue also includes the Swift bridge for Apple's on-device model. Python and shell handle training, benchmark
 acquisition, and infrastructure.
 
@@ -47,7 +47,8 @@ maps every contract to its implemented parts and remaining work.
 Coder for iOS is available in internal TestFlight as **0.5.0 (42)**.
 [Verse fills the screen](docs/verse/mobile.md), including behind the system
 clock. Choose touch look or turn your phone to look around; in motion mode,
-hold the left side to walk. The world computer pairs by QR code or a pasted
+hold the left side to walk. The computer now renders its prompt on the physical
+3D monitor; approach it and tap its screen. The world computer pairs by QR code or a pasted
 string and opens saved Codex and Claude transcripts with follow updates and encrypted local
 caching. [Pair your computer](docs/coder/guides/mobile-readonly.md).
 The [Android app](bins/coder-android/README.md) uses the same Rust reader and
@@ -56,7 +57,8 @@ is recorded separately from TestFlight and physical-device release acceptance.
 The [Gym building](docs/verse/gym.md) loads Microcoder and Terminal-Bench boards
 only while you are inside. Inspect recorded charts and explicitly request
 host-enabled runs through a separate Gym connection.
-[Release evidence](docs/coder/verification/2026-09-26-fullscreen-motion.md).
+[World-computer verification](docs/coder/verification/2026-09-26-world-computer.md)
+and [full-screen release evidence](docs/coder/verification/2026-09-26-fullscreen-motion.md).
 
 ## Start here
 
