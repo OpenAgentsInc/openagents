@@ -74,5 +74,6 @@ WebSocket direct channels, the CAP/CJ binding of NIP-HOST, one host
 generation counter, owner-directory discovery and SSH hosts in the clients,
 an end-to-end headless approval test, Linux systemd, SSH, and PTY runs, a
 push gateway for real APNs and FCM wakes, and physical-device and
-production-relay checks. The owner-only steps are in the workspace
-`NEEDS_OWNER.md`.
+production-relay checks. Those checks need a TestFlight and Play build that
+contains the Computers screens; none has shipped yet. The steps to run on
+that build are in the [live client record](2026-09-26-computers-live.md#physical-devices-and-production-relays).
