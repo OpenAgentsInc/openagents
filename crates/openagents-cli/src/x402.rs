@@ -15,7 +15,9 @@ use openagents_x402::{
     SettlementResponse, network_id, wire,
 };
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 
+use crate::relay::{Client, relay_url, signer_for};
 use crate::{Args, Output};
 
 const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
@@ -28,14 +30,24 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           with the body on stdin and returns stdout. Each
                           invoice settles once; a replay is duplicate_settlement.
   fetch URL [--method M] [--body FILE|-] --max-msat N [--max-fee-msat F]
-        [--wait SECONDS] [--show-proof]
+        [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
                           Buy one call: read the 402, check the invoice against
                           this request, refuse above --max-msat, pay from the
-                          wallet, retry with the preimage, print the body.
+                          wallet, retry with the preimage, print the body. With
+                          --cap, resolve that NIP-CAP head first and refuse a
+                          challenge whose payTo or URL it does not advertise.
+  advertise --slug SLUG --url PUBLIC_URL --merchant ID [--summary TEXT]
+        [--dry-run] [--as PROFILE] [--relay URL]
+                          Publish (or print) the kind 30180 adapter definition
+                          that advertises PUBLIC_URL as a paid http:1 resource
+                          of this wallet (NIP-CAP feature oa-x402-v1).
 Replay records live in ~/.openagents/x402/replay. The preimage is printed
 only with --show-proof. Add --json before `x402` for one JSON document.";
 
-const SWITCHES: &[&str] = &["show-proof"];
+const SWITCHES: &[&str] = &["show-proof", "dry-run"];
+
+/// The schema both x402 adapter operations declare: opaque bytes in and out.
+const BYTES_SCHEMA: &str = r#"{"type":"string","contentEncoding":"binary"}"#;
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
@@ -48,6 +60,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         }
         "serve" => serve(output, rest),
         "fetch" => fetch(output, rest),
+        "advertise" => advertise(output, rest),
         other => output.usage("x402", &format!("unknown command `{other}`"), USAGE),
     }
 }
@@ -304,6 +317,25 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
         Err(message) => return output.usage("x402", &message, USAGE),
     };
     let show_proof = args.switch("show-proof");
+    let descriptor = match args.option("cap") {
+        None => None,
+        Some(head) => match resolve_descriptor(head, args.option("relay"), args.option("as")) {
+            Ok(descriptor) => Some(descriptor),
+            Err(Refusal::Usage(message)) => return output.usage("x402", &message, USAGE),
+            Err(Refusal::Failure(message)) => return output.fail("x402", &message),
+        },
+    };
+    if let Some((definition, _)) = &descriptor
+        && definition.endpoint != *url
+    {
+        return output.fail(
+            "x402",
+            &format!(
+                "{url} is not the advertised endpoint {} of the named capability",
+                definition.endpoint
+            ),
+        );
+    }
 
     // Bind the request we are about to send, independently of the server.
     let request_hash = match http_binding(&method, url, &body, &[]).and_then(|b| binding_hash(&b)) {
@@ -400,6 +432,23 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
             "no offered payment requirement is a valid exact/lnbtc invoice for this request",
         );
     };
+    if let Some((definition, event_id)) = &descriptor {
+        let admitted =
+            definition.x402.receivers.iter().any(|receiver| {
+                receiver.network == terms.network && receiver.pay_to == terms.pay_to
+            });
+        if !admitted {
+            return output.fail(
+                "x402",
+                &format!(
+                    "the challenge's payTo is not a receiver advertised by capability {event_id}"
+                ),
+            );
+        }
+        if !definition.x402.bindings.iter().any(|b| b == "http:1") {
+            return output.fail("x402", "the named capability does not advertise http:1");
+        }
+    }
     if invoice.amount_msat() > max_msat {
         return output.fail(
             "x402",
@@ -532,4 +581,312 @@ fn finish(
         }
     }
     if ok { 0 } else { crate::EXIT_FAILURE }
+}
+
+/// A refusal on the way to a paid capability: the caller's words, or the
+/// relay and record.
+enum Refusal {
+    Usage(String),
+    Failure(String),
+}
+
+/// A resolved `oa-x402-v1` adapter: the advertised endpoint and descriptor.
+struct PaidCapability {
+    endpoint: String,
+    x402: nostr::cap::X402Descriptor,
+}
+
+/// The x402 adapter definition for one paid `http:1` resource of `pay_to`.
+fn paid_definition(
+    publisher: &str,
+    slug: &str,
+    url: &str,
+    network: &str,
+    pay_to: &str,
+    merchant: &str,
+    summary: &str,
+) -> Value {
+    let schema = json!({
+        "digest": format!(
+            "sha256:{}",
+            Sha256::digest(BYTES_SCHEMA.as_bytes())
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        ),
+        "size": BYTES_SCHEMA.len(),
+        "media_type": "application/schema+json",
+    });
+    json!({
+        "v": 1,
+        "requires": [nostr::cap::X402_FEATURE],
+        "id": format!("{publisher}:x402/{slug}"),
+        "profile": "adapter",
+        "summary": summary,
+        "input": schema,
+        "output": schema,
+        "effects": {
+            "reads": [],
+            "writes": [],
+            "network": ["remote"],
+            "process": false,
+            "delegates": false,
+            "spend": false
+        },
+        "minimum": {},
+        "support": {
+            "bounds": {},
+            "cancellation": "unsupported",
+            "idempotency": "none",
+            "evidence": []
+        },
+        "binding_contract": {
+            "interface": "openagents.x402.http.v1",
+            "transport": "http",
+            "operations": [slug],
+            "remote": {"endpoint": url},
+            "x402": {
+                "v": "openagents.x402-discovery.v1",
+                "protocol": "x402-v2",
+                "scheme": "exact",
+                "asset": "BTC",
+                "method": "bolt11",
+                "flow": "upfront",
+                "bindings": ["http:1"],
+                "receivers": [{"network": network, "pay_to": pay_to}],
+                "merchant": merchant,
+                "recovery": "none",
+                "recovery_contract": null
+            }
+        }
+    })
+}
+
+fn advertise(output: &Output, words: &[String]) -> u8 {
+    let args = match Args::parse(words, SWITCHES) {
+        Ok(args) => args,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let Some(slug) = args.option("slug") else {
+        return output.usage("x402", "advertise needs --slug SLUG", USAGE);
+    };
+    let Some(url) = args.option("url") else {
+        return output.usage("x402", "advertise needs --url PUBLIC_URL", USAGE);
+    };
+    let Some(merchant) = args.option("merchant") else {
+        return output.usage("x402", "advertise needs --merchant ID", USAGE);
+    };
+    if http_binding("POST", url, &[], &[]).is_err() {
+        return output.usage(
+            "x402",
+            "--url must be absolute http(s) without a fragment",
+            USAGE,
+        );
+    }
+    let summary = args
+        .option("summary")
+        .unwrap_or("a paid http:1 resource (x402 exact/lnbtc)");
+    let signer = match signer_for(args.option("as")) {
+        Ok(signer) => signer,
+        Err(message) => return output.fail("x402", &message),
+    };
+    let (wallet, wallet_config) = match open_wallet() {
+        Ok(opened) => opened,
+        Err(error) => return fail_wallet(output, error),
+    };
+    let pay_to = wallet.node_id();
+    let _ = wallet.stop();
+    let Some(network) = network_id(wallet_config.network.as_str()) else {
+        return output.fail(
+            "x402",
+            &format!(
+                "wallet network `{}` has no x402 network id; use bitcoin or testnet",
+                wallet_config.network.as_str()
+            ),
+        );
+    };
+    let body = paid_definition(
+        signer.pubkey(),
+        slug,
+        url,
+        network,
+        &pay_to,
+        merchant,
+        summary,
+    );
+    let definition = match nostr::cap::parse_definition(&body) {
+        Ok(definition) => definition,
+        Err(error) => return output.usage("x402", &format!("definition: {error}"), USAGE),
+    };
+    let tags = vec![
+        nostr::domain::Tag::new(vec!["d".to_owned(), slug.to_owned()]),
+        nostr::domain::Tag::new(vec!["t".to_owned(), nostr::cap::CAP_MARKER.to_owned()]),
+        nostr::domain::Tag::new(vec!["t".to_owned(), definition.profile.tag().to_owned()]),
+        nostr::domain::Tag::new(vec![
+            "t".to_owned(),
+            format!("oa:transport:{}", definition.transport),
+        ]),
+    ];
+    let event = signer.sign(
+        crate::relay::unix_now(),
+        nostr::cap::DISCOVERY_KIND,
+        tags,
+        body.to_string(),
+    );
+    if let Err(error) = nostr::cap::check_discovery_tags(&event.tags, &definition) {
+        return output.fail("x402", &format!("discovery tags: {error}"));
+    }
+    let relay = relay_url(args.option("relay"));
+    let mut doc = json!({
+        "relay": relay,
+        "event_id": event.id,
+        "publisher": event.pubkey,
+        "slug": slug,
+        "endpoint": url,
+        "network": network,
+        "pay_to": pay_to,
+        "merchant": merchant,
+        "definition": body,
+        "published": false,
+    });
+    if args.switch("dry-run") {
+        output.emit(&doc, |value| {
+            format!(
+                "dry run: {}:{} advertises {} for payTo {} on {} (not published)",
+                value["publisher"],
+                value["slug"],
+                value["endpoint"],
+                value["pay_to"],
+                value["network"]
+            )
+        });
+        return 0;
+    }
+    let mut client = Client::connect(&relay, signer);
+    let published = client.publish(event, Duration::from_secs(20));
+    client.close();
+    match published {
+        Ok(ack) if ack.accepted => {
+            doc["published"] = Value::Bool(true);
+            output.emit(&doc, |value| {
+                format!(
+                    "published {} as {}:{} on {}\n  endpoint {}\n  payTo {} ({})",
+                    value["event_id"],
+                    value["publisher"],
+                    value["slug"],
+                    value["relay"],
+                    value["endpoint"],
+                    value["pay_to"],
+                    value["network"]
+                )
+            });
+            0
+        }
+        Ok(ack) => output.fail(
+            "x402",
+            &format!("{relay} refused the head: {}", ack.message),
+        ),
+        Err(message) => output.fail("x402", &message),
+    }
+}
+
+/// Resolve `PUBKEY:SLUG` to the newest valid kind 30180 head and its
+/// x402 descriptor. A head without `oa-x402-v1`, or with a refusal, is not
+/// a paid capability.
+fn resolve_descriptor(
+    head: &str,
+    relay: Option<&str>,
+    profile: Option<&str>,
+) -> Result<(PaidCapability, String), Refusal> {
+    let Some((author, slug)) = head.split_once(':') else {
+        return Err(Refusal::Usage("--cap takes PUBKEY:SLUG".into()));
+    };
+    let author = author.trim().to_ascii_lowercase();
+    if author.len() != 64 || !author.chars().all(|c| c.is_ascii_hexdigit()) || slug.is_empty() {
+        return Err(Refusal::Usage("--cap takes PUBKEY:SLUG".into()));
+    }
+    let signer = signer_for(profile).map_err(Refusal::Failure)?;
+    let url = relay_url(relay);
+    let mut client = Client::connect(&url, signer);
+    let mut newest: Option<nostr::domain::Event> = None;
+    let filter = json!({
+        "kinds": [nostr::cap::DISCOVERY_KIND],
+        "authors": [author],
+        "#d": [slug],
+        "#t": [nostr::cap::CAP_MARKER],
+        "limit": 8,
+    });
+    let outcome = client.subscribe(vec![filter], false, Duration::from_secs(15), |event| {
+        if newest
+            .as_ref()
+            .is_none_or(|current| event.created_at > current.created_at)
+        {
+            newest = Some(event.clone());
+        }
+    });
+    client.close();
+    outcome.map_err(Refusal::Failure)?;
+    let Some(event) = newest else {
+        return Err(Refusal::Failure(format!(
+            "{url} has no kind {} head {author}:{slug}",
+            nostr::cap::DISCOVERY_KIND
+        )));
+    };
+    event.validate_crypto().map_err(|error| {
+        Refusal::Failure(format!("capability {}: signature: {error}", event.id))
+    })?;
+    if event.is_expired(openagents_x402::unix_now()) {
+        return Err(Refusal::Failure(format!(
+            "capability {} has expired",
+            event.id
+        )));
+    }
+    let body: Value = serde_json::from_str(&event.content)
+        .map_err(|error| Refusal::Failure(format!("capability {}: {error}", event.id)))?;
+    let definition = nostr::cap::parse_definition(&body)
+        .and_then(|definition| {
+            nostr::cap::check_discovery_tags(&event.tags, &definition).map(|()| definition)
+        })
+        .map_err(|error| Refusal::Failure(format!("capability {}: {error}", event.id)))?;
+    let Some(x402) = definition.x402 else {
+        return Err(Refusal::Failure(format!(
+            "capability {} does not require {}",
+            event.id,
+            nostr::cap::X402_FEATURE
+        )));
+    };
+    let endpoint = body["binding_contract"]["remote"]["endpoint"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    if endpoint.is_empty() {
+        return Err(Refusal::Failure(format!(
+            "capability {} has no remote endpoint",
+            event.id
+        )));
+    }
+    Ok((PaidCapability { endpoint, x402 }, event.id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_advertised_definition_passes_the_cap_contract() {
+        let body = paid_definition(
+            &"a".repeat(64),
+            "echo",
+            "https://example.com/echo",
+            nostr::x402::TESTNET,
+            &format!("02{}", "b".repeat(64)),
+            "demo",
+            "echo bytes",
+        );
+        let definition = nostr::cap::parse_definition(&body).unwrap();
+        let x402 = definition.x402.unwrap();
+        assert_eq!(x402.bindings, vec!["http:1".to_owned()]);
+        assert_eq!(x402.receivers[0].network, nostr::x402::TESTNET);
+        assert_eq!(definition.transport, "http");
+    }
 }
