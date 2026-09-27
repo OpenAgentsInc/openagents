@@ -492,6 +492,32 @@ head it found is invalid. `discover` prints the agent card and agent-skills
 index this checkout serves for an origin; `--fetch` also reads both from the
 origin over HTTP and exits 1 when either differs or fails to load.
 
+## MCP server and shell completions
+
+```sh
+openagents mcp serve [--timeout SECONDS]
+openagents completions bash|zsh|fish
+```
+
+`mcp serve` speaks MCP over stdio (newline-delimited JSON-RPC 2.0:
+`initialize`, `notifications/initialized`, `tools/list`, `tools/call`). Its
+tool list is generated from the table `openagents --help` prints: one tool
+per command group except `host` (a resident server) and `mcp` itself. A
+tool takes `{"args": [...]}`, the words that would follow the group on the
+command line, runs `openagents --json GROUP ARGS...` in a child process with
+stdin closed, and returns `{exit_code, document | stdout, stderr}` as the
+structured result; a nonzero exit is an error result that still carries the
+document. Pass `["--help"]` to read a group's syntax. `--timeout` bounds one
+call (default 120 s). To register it with Claude Code:
+
+```sh
+claude mcp add openagents -- openagents mcp serve
+```
+
+`completions SHELL` prints a completion script for the same groups and
+`--json`; source it (bash), place it on `$fpath` as `_openagents` (zsh), or
+save it under `~/.config/fish/completions/openagents.fish` (fish).
+
 ## Verify
 
 ```sh

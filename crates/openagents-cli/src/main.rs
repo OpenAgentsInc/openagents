@@ -23,6 +23,7 @@ mod hosts;
 mod kb;
 mod key;
 mod labor;
+mod mcp;
 mod out;
 mod quest;
 mod reach;
@@ -40,7 +41,7 @@ mod zone;
 pub use args::Args;
 pub use out::{EXIT_FAILURE, EXIT_USAGE, Output};
 
-const USAGE: &str = "usage: openagents [--json] COMMAND [ARGS]
+pub const USAGE: &str = "usage: openagents [--json] COMMAND [ARGS]
 
 Pairing and computers (NIP-HOST, NIP-REACH):
   host         Run and administer the resident host on this machine.
@@ -79,6 +80,8 @@ Discovery (NIP-CAP, NIP-PRG, NIP-EXT), read-only:
   ext          List published extension records.
   discover     Show the well-known agent card and agent-skills index.
 
+  mcp          Serve every group as an MCP tool over stdio (mcp serve).
+  completions  Print a bash, zsh, or fish completion script.
   doctor       Show the identities, stores, and relays this command uses.
   version      Show the repository, commit, and tree state.
 
@@ -129,6 +132,8 @@ fn main() -> ExitCode {
         "prg" => catalog::prg(&output, &rest),
         "ext" => catalog::ext(&output, &rest),
         "discover" => discover::run(&output, &rest),
+        "mcp" => mcp::run(&output, &rest, USAGE),
+        "completions" => mcp::completions(&output, &rest, USAGE),
         other => {
             eprintln!("openagents: unknown command `{other}`\n\n{USAGE}");
             EXIT_USAGE
