@@ -73,18 +73,15 @@ impl Lsp {
         let (node_id, address) = text
             .split_once('@')
             .ok_or_else(|| WalletError::Invalid("LSP must be NODE_ID@HOST:PORT".to_string()))?;
-        if node_id.len() != 66 || !node_id.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(WalletError::Invalid(
-                "LSP node id must be 66 hex digits".to_string(),
-            ));
-        }
+        let node_id = parse_node_id(node_id)
+            .map_err(|_| WalletError::Invalid("LSP node id must be 66 hex digits".to_string()))?;
         if address.rsplit_once(':').is_none() {
             return Err(WalletError::Invalid(
                 "LSP address must be HOST:PORT".to_string(),
             ));
         }
         Ok(Self {
-            node_id: node_id.to_ascii_lowercase(),
+            node_id,
             address: address.to_string(),
             token: token.map(str::to_string),
         })
@@ -100,6 +97,21 @@ pub struct WalletConfig {
     pub listen: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lsp: Option<Lsp>,
+    /// Node ids (66 hex digits) allowed to open anchor channels to this
+    /// node without an on-chain anchor reserve here, such as the owner's
+    /// other nodes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trusted_peers: Vec<String>,
+}
+
+/// Validate a 66-hex-digit node id and lowercase it.
+pub fn parse_node_id(text: &str) -> Result<String, WalletError> {
+    if text.len() != 66 || !text.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(WalletError::Invalid(
+            "node id must be 66 hex digits".to_string(),
+        ));
+    }
+    Ok(text.to_ascii_lowercase())
 }
 
 impl WalletConfig {
@@ -126,6 +138,7 @@ impl WalletConfig {
             esplora_url,
             listen: None,
             lsp: None,
+            trusted_peers: Vec::new(),
         })
     }
 
@@ -224,6 +237,7 @@ mod tests {
         let mut config = WalletConfig::new(Network::Signet, None).unwrap();
         config.lsp =
             Some(Lsp::parse(&format!("{}@lsp.example:9735", "ab".repeat(33)), Some("t")).unwrap());
+        config.trusted_peers = vec!["cd".repeat(33)];
         config.save(&home).unwrap();
         assert_eq!(WalletConfig::load(&home).unwrap(), config);
         assert_eq!(config.esplora_url, "https://mempool.space/signet/api");
