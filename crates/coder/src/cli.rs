@@ -59,6 +59,7 @@ Usage:
   coder -p <PROMPT>           Run one turn, write the reply to stdout, and exit.
   coder doctor                Show what would answer a turn, and why.
   coder task --help           Manage durable queued requests; runs no agent.
+  coder host --help           Enroll devices and run the resident host.
   coder --version             Show the repository, commit, and tree state.
 
 Options:

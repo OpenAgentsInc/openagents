@@ -77,8 +77,9 @@ host.attach(device, &Attach::new(request2, terminal, Mode::Interact, 0, 64 * 102
 - **Process-local state.** Terminals, rings, and deduplication memory live in
   memory. A host restart loses every terminal, which is reported as `lost`,
   and the deduplication window restarts empty.
-- **Not wired.** No NIP-HOST grant store, NIP-REACH channel, or `3188`
-  sealing is included; the traits above are the seams.
+- **Wired elsewhere.** This crate includes no NIP-HOST grant store,
+  NIP-REACH channel, or `3188` sealing. The resident host in
+  [`coder-host`](../coder-host/README.md) fills the traits above with them.
 
 ## Tests
 

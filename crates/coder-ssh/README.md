@@ -96,9 +96,11 @@ the SSH session that started it does not reach it.
 
 The serve command must bind loopback only, stay in the foreground, and write
 `~/.openagents/host/runtime` with its own process identifier once it
-listens. The invite command must print one invitation line and exit. The
-resident host in [issue #9712](https://github.com/OpenAgentsInc/openagents/issues/9712)
-provides both; until then, the tests use a shell stand-in.
+listens. The invite command must print one invitation line and exit.
+`coder host serve --loopback --owner KEY --relay URL` and
+`coder host invite --relay URL` provide both; the
+[host serve guide](../../docs/coder/runtime/host-serve.md#reach-it-over-ssh)
+shows the runner. The tests here still use a shell stand-in.
 
 ## Tests
 

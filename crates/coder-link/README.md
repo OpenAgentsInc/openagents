@@ -138,8 +138,9 @@ one `status` string. The following mapping replaces that logic:
 
 ## Limits
 
-- Only the state machine exists. No connector, host application, or screen
-  uses it yet.
+- [`coder-host`](../coder-host/README.md) implements a real connector that
+  tries proven direct routes and falls back to the relay. No application or
+  screen uses the registry yet.
 - A server-supplied retry time, such as a rate-limit hint, has no failure
   variant. An adapter maps it to a transient failure, which follows the
   ladder instead of the server's time.

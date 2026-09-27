@@ -221,17 +221,22 @@ terminal under an old ID or present a new process as the old one.
 
 A terminal needs one of two transports:
 
-- **NIP-REACH direct channel.** Each NIP-TERM body is the JSON payload of one
-  data frame. A request travels client to host; its result and the
-  attachment's frames travel host to client. An 8,192-byte output frame
-  encodes to about 11 KiB of JSON, inside the channel's 16,384-byte data
-  limit. The host rechecks the channel's grant and generation before each
+- **NIP-REACH direct channel.** Each NIP-TERM body is one message of the
+  NIP-HOST direct-channel binding: its JSON follows a one-byte fragment flag
+  in the channel's data frames. A request travels client to host; its result
+  and the attachment's frames travel host to client. An 8,192-byte output
+  frame encodes to about 11 KiB of JSON, so it fits one 16,384-byte data
+  frame. The host rechecks the channel's grant and generation before each
   operation, as NIP-REACH requires.
 - **Private `3188` artifacts over an admitted relay.** Each body is the
   inline JSON of one artifact whose `schema` is the body's `v`, sealed to the
-  host (requests) or to the attached device (results and frames). The relay
-  restricts reads to author and recipient and excludes these events from
-  search. Clients over a relay request a lower `rate` than over a direct
+  host (requests) or to the attached device (results and frames). A request
+  and its result use the request ID as their mailbox, and an attachment's
+  frames use the attachment ID. A host answers only a device it enrolled and
+  only a request issued within 60 seconds of its clock. Retained frames can
+  return in any order after a reconnect, so a client orders them by sequence
+  number before it applies them. The relay restricts reads to author and
+  recipient and excludes these events from search. Clients over a relay request a lower `rate` than over a direct
   channel, and a host can refuse attachments over a relay above its own relay
   ceiling as `limit_exceeded`.
 
@@ -275,9 +280,11 @@ process-group ownership, the bounded replay buffer, sequence numbers, gaps,
 attach and detach bookkeeping, per-attachment byte budgets, idle expiry,
 host-shutdown cleanup, request deduplication, and the portable client state
 with a bounded plain-text screen buffer. The host takes a rights check and a
-frame sink as traits. Wiring them to NIP-HOST grants, NIP-REACH channels, and
-sealed `3188` artifacts is the resident host's work
-([#9712](https://github.com/OpenAgentsInc/openagents/issues/9712)). On
+frame sink as traits. The resident host in
+[`crates/coder-host`](../../crates/coder-host/README.md) wires them to
+NIP-HOST grants, NIP-REACH direct channels, and sealed `3188` artifacts, and
+derives each run's terminal generation from the host key and its NIP-REACH
+generation. On
 platforms without a Unix PTY the host refuses every open as `unavailable`.
 The fixtures are in
 [`crates/coder-pty/fixtures/nip-term.json`](../../crates/coder-pty/fixtures/nip-term.json).

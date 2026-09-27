@@ -1,0 +1,110 @@
+//! The resident Coder host and the client that connects to it.
+//!
+//! One host process composes the remote-access profiles:
+//!
+//! - NIP-HOST enrollment and grants from `coder-access`. The host's access
+//!   store holds the one host key; every record the host signs names it.
+//! - NIP-REACH presence, reachability hints, and the direct channel from
+//!   `coder-reach`, with the real grant store behind its grant check.
+//! - NIP-TERM terminals from `coder-pty`, with NIP-HOST rights behind its
+//!   rights check and the direct channel or relay artifacts behind its
+//!   frame sink.
+//! - Task creation, steering, and cancellation through a [`tasks::Tasks`]
+//!   owner. The `coder` binary supplies its durable task inbox.
+//! - NIP-WS activity summaries for task changes.
+//!
+//! [`serve::start`] runs the host. [`client`] reaches it over the best route
+//! a device can prove, with relay fallback, and [`client::Connector`] plugs
+//! that into a `coder-link` registry. Read `crates/coder-host/README.md` and
+//! `docs/coder/runtime/host-serve.md` before changing a binding.
+
+use std::fmt;
+
+pub mod authority;
+pub mod cli;
+pub mod client;
+pub mod config;
+pub mod mailbox;
+pub mod message;
+mod publish;
+pub mod serve;
+pub mod tasks;
+
+/// The composed profiles, re-exported so a client names one dependency.
+pub use {coder_access as access, coder_link as link, coder_pty as pty, coder_reach as reach};
+
+pub use coder_access::Code;
+pub use coder_access::protocol::TaskCreate;
+pub use config::Config;
+pub use serve::{Running, start};
+pub use tasks::{NoTasks, TaskRef, Tasks};
+
+/// The host protocol version the ready record and presence report.
+pub const PROTOCOL_VERSION: u32 = coder_reach::PROTOCOL_VERSION;
+
+/// Capability flags this host advertises in presence and its ready record.
+pub const CAPABILITIES: [&str; 6] = [
+    "activity-summary",
+    "direct-tcp",
+    "relay-control",
+    "task-control",
+    "task-create",
+    "terminal",
+];
+
+/// Why a host or client operation failed. Messages carry no key, grant,
+/// invitation, prompt, or terminal content.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Error {
+    /// The configuration or a local precondition is wrong.
+    Config(String),
+    /// A NIP-HOST refusal, or a local access-store failure.
+    Access(coder_access::Error),
+    /// A NIP-REACH refusal.
+    Reach(coder_reach::Error),
+    /// A NIP-TERM refusal.
+    Terminal(coder_pty::Refusal),
+    /// A relay or socket failure.
+    Transport(String),
+    /// The direct channel closed. The code is the one the host sent, such as
+    /// `revoked`, when it sent one after proving its key.
+    Closed(Option<String>),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Config(message) => write!(f, "configuration: {message}"),
+            Self::Access(error) => write!(f, "host access: {error}"),
+            Self::Reach(error) => write!(f, "host reach: {error}"),
+            Self::Terminal(refusal) => write!(f, "terminal: {refusal}"),
+            Self::Transport(message) => write!(f, "transport: {message}"),
+            Self::Closed(Some(code)) => write!(f, "the host closed the channel: {code}"),
+            Self::Closed(None) => f.write_str("the direct channel closed"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<coder_access::Error> for Error {
+    fn from(error: coder_access::Error) -> Self {
+        Self::Access(error)
+    }
+}
+
+impl From<coder_reach::Error> for Error {
+    fn from(error: coder_reach::Error) -> Self {
+        Self::Reach(error)
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Unix seconds from the system clock.
+pub fn unix_time() -> Result<u64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .map_err(|_| Error::Config("the system clock is before 1970".into()))
+}

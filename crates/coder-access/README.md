@@ -5,7 +5,9 @@ It implements the [NIP-HOST draft](../../nips/openagents/NIP-HOST.md): host
 invitations, reverse enrollment for a headless host, host-signed grants with
 revocation epochs, delegation, device listing and revocation, and a typed
 `task.create` operation. Requests and replies are original signed private
-`3188` artifacts over NIP-42 authenticated relay connections.
+`3188` artifacts over NIP-42 authenticated relay connections. The resident
+host in [`coder-host`](../coder-host/README.md) also carries them over direct
+channels.
 
 The host is the only issuer of access. An invitation, an approval, or relay
 delivery introduces a device. Only the host's current grant record admits an
@@ -126,9 +128,12 @@ QR rendering, and uses `coder-connect` without its host feature.
 - `client::pending_enrollments` and `OpenedEnrollment::approve` or `deny`
   build reverse-enrollment decisions.
 - `Access::from_authorization` accepts a grant envelope an approver forwarded.
-- `host::Host` owns the store. `host::Dispatch` connects `task.create` and
-  `terminal.open` to their owners; the default `Unconnected` dispatcher
-  refuses them as `unavailable`.
+- `host::Host` owns the store. `host::Dispatch` connects `task.create`,
+  `task.steer`, `task.cancel`, and `terminal.open` to their owners; the
+  default `Unconnected` dispatcher refuses them as `unavailable`. The
+  resident host in `coder-host` dispatches them to the task inbox and its
+  terminal host, and signs everything with `Host::signing_key`, so the host
+  has one identity.
 
 Offline verification of a saved access record checks identity and declared
 expiry only. It cannot establish that the host has not revoked it.

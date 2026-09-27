@@ -308,6 +308,17 @@ async fn main() -> ExitCode {
     if arguments.first().is_some_and(|argument| argument == "task") {
         return ExitCode::from(task_cli::run(&arguments[1..]).await);
     }
+    if arguments.first().is_some_and(|argument| argument == "host") {
+        // The resident host hands admitted task operations to the durable
+        // local inbox; creation stays an inert submission.
+        let open = Box::new(
+            |store: &Path, workspaces: &std::collections::BTreeMap<String, std::path::PathBuf>| {
+                let inbox = coder::task::remote::Inbox::new(store, workspaces.clone());
+                Ok(std::sync::Arc::new(inbox) as std::sync::Arc<dyn coder_host::Tasks>)
+            },
+        );
+        return ExitCode::from(coder_host::cli::run(&arguments[1..], open).await);
+    }
     match cli::parse(&arguments) {
         Ok(cli::Invocation::Help) => {
             println!("{}", cli::USAGE);

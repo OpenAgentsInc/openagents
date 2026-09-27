@@ -24,6 +24,7 @@ pub mod adapter;
 pub mod artifact;
 pub mod checks;
 pub mod owner;
+pub mod remote;
 pub mod view;
 /// The largest command, including JSON whitespace, in bytes.
 pub const MAX_COMMAND_BYTES: usize = 64 * 1024;

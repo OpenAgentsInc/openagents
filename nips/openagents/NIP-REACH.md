@@ -63,7 +63,7 @@ Each entry is `{host, label, relays, weight, added_at}`:
   never an identity.
 - `relays` lists up to eight credential-free `wss` URLs without a query or
   fragment, where the host publishes presence and accepts relay-carried
-  control.
+  control. As with relay hints, a loopback test relay may use `ws`.
 - `weight` is the owner's placement weight, 0 to 1,000. Zero keeps the host
   listed but excludes it from placement.
 - `added_at` is no later than `issued_at`.
@@ -347,13 +347,20 @@ three schemas, sealing and opening through the shared private artifact
 functions, freshness and compatibility, hint validation and selection, the
 handshake and frame format over any ordered byte stream (tested over TCP), and
 placement. Grant checks go through a trait, so the crate does not depend on a
-grant store.
+grant store. It also splits an open channel into a reader and a writer.
 
-It does not implement a WebSocket listener, relay-carried control, publication
-to relays, enrollment, a retry supervisor, or screens. The host service wires
-the real grant store and publishers. Its
-[verification record](../../docs/coder/verification/2026-09-26-host-reach.md)
-lists the checks that ran and their limits.
+[`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
+and its client. The host seals presence and hints to each enrolled device,
+serves TCP direct channels with the real NIP-HOST grant store behind the
+grant check, rechecks the grant before each message, and closes a channel
+whose grant stopped admitting it. Its client reads the owner directory and
+the host's presence and hints, and tries selected direct routes before relay
+fallback under a `coder-link` supervisor. It publishes no telemetry.
+
+Neither implements a WebSocket listener or screens. The
+[reach verification record](../../docs/coder/verification/2026-09-26-host-reach.md)
+and the [host serve record](../../docs/coder/verification/2026-09-26-host-serve.md)
+list the checks that ran and their limits.
 
 ## Conformance
 

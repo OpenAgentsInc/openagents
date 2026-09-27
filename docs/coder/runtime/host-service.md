@@ -108,12 +108,11 @@ version; change versions with an update.
 Pass `--root <dir>` before the command to use a host root other than
 `~/.openagents/host`.
 
-The default host arguments, `host serve`, name the resident host command that
-[issue #9712](https://github.com/OpenAgentsInc/openagents/issues/9712)
-adds to `coder`. Until that lands, the current `coder` binary refuses those
-arguments with a usage error, the launcher exits with that code, and the
-service manager restarts it within its limits. Pass explicit host arguments
-after `--` for any other host program.
+The default host arguments, `host serve`, run the
+[resident host](host-serve.md). Run `coder host init` first so the host has
+an owner, relays, and workspaces, and pass `--host-key "$(coder host
+public-key)"` so the descriptor names the key the host signs with. Pass
+explicit host arguments after `--` for any other host program.
 
 The service binds loopback only. Remote reach comes from the host reach and
 enrollment work, never from this service.

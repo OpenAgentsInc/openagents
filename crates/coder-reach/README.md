@@ -28,7 +28,10 @@ host service supplies the implementation and rechecks grants per operation.
 - The handshake is tested over TCP. The WebSocket mapping (one frame per
   binary message) is specified but not implemented here.
 - The crate does not publish to relays, carry relay control, enroll devices,
-  retry connections, or draw screens.
+  retry connections, or draw screens. The resident host in
+  [`coder-host`](../coder-host/README.md) does the publishing, serving, and
+  retrying, and `channel::Channel::into_split` lets it read and write one
+  channel from separate tasks.
 - Presence freshness uses the caller's clock. The caller records receipt time.
 
 ## Checks

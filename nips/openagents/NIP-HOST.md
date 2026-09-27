@@ -275,12 +275,22 @@ A request is `openagents.host-request.v1`:
 | `device.list` | `access_read` | `devices` |
 | `device.revoke` | `access_admin` | `revoked` |
 | `task.create` | `operate` | `dispatched` |
+| `task.steer` | `operate` | `dispatched` |
+| `task.cancel` | `operate` | `dispatched` |
 | `terminal.open` | `terminal` | `dispatched` |
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
 bytes, the prompt at most 16 KiB, and the workspace a host-scoped label of at
 most 128 bytes, never a path. `terminal.open` carries `{cols, rows}`, each
-1–1,000; [TERM](NIP-TERM.md) defines the session and stream. A host answers
+1–1,000; [TERM](NIP-TERM.md) defines the session and stream.
+`task.steer` carries `{task, revision, prompt}` and `task.cancel` carries
+`{task, revision, reason}`: the host-issued task ID from a `task.create`
+receipt, the task revision the device last read, and a replacement prompt of
+at most 16 KiB or a single-line reason of at most 512 bytes. They follow the
+[CTRL](NIP-CTRL.md) steer and cancel semantics of the host's task owner: a
+steer records replacement instructions and supersedes a running context, a
+cancel requests a stop, and another revision refuses as `stale`. Neither
+grants execution authority. A host answers
 either only after the effect's owner accepts it. `dispatched` returns
 `{operation, reference}`: the handling receipt, not evidence that a task ran
 or a terminal produced output. Other profiles can register further
@@ -334,6 +344,19 @@ invoke them through CJ execution v1 over `25920`/`26920`/`27020`:
 
 The CJ request carries the exact signed request artifact. Admission is
 identical in both bindings. A host advertises only the binding it serves.
+
+**Direct-channel binding.** Over an open [REACH](NIP-REACH.md) direct
+channel, a device sends `{v: "openagents.host-call.v1", event}` whose `event`
+is the exact signed request artifact of the direct artifact binding, and the
+host answers `{v: "openagents.host-answer.v1", event}` with the exact signed
+reply. The host accepts a call only when the event's signer is the device
+key the channel proved and the request names the host's primary relay.
+Admission, retention, and retries are those of the direct artifact binding.
+A message longer than one data frame is split: each data frame starts with a
+flag byte, `1` when more fragments follow and `0` for the last, and a
+message is at most 256 KiB. Before it closes a channel whose grant stopped
+admitting it, the host sends `{v: "openagents.host-closing.v1", code}` with
+`revoked`, `stale`, or `not_admitted`.
 
 ## Security considerations
 
@@ -392,6 +415,9 @@ behaviors tested, in NIP-11 `supported_extensions`, not a numeric
 
 [`crates/coder-access`](../../crates/coder-access/README.md) implements the
 host store, the direct artifact binding, the portable client, and a CLI. Its
-fixtures run over a synthetic NIP-42 relay. It does not implement the CAP/CJ
-binding, a resident host service, a task-owner or terminal dispatcher, or
-any interface screens.
+fixtures run over a synthetic NIP-42 relay.
+[`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
+(`coder host serve`): it serves the direct artifact binding and the
+direct-channel binding, and dispatches `task.create`, `task.steer`, and
+`task.cancel` to the durable task inbox and `terminal.open` to its terminal
+host. The CAP/CJ binding and interface screens are not implemented.

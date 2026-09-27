@@ -1,0 +1,31 @@
+[package]
+name = "coder-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The resident Coder host: enrollment, reach, direct channels, terminals, and tasks behind one process, plus the client that connects to it."
+
+[dependencies]
+coder-access = { path = "../coder-access" }
+coder-connect = { path = "../coder-connect", default-features = false }
+coder-link = { path = "../coder-link" }
+coder-pty = { path = "../coder-pty" }
+coder-reach = { path = "../coder-reach" }
+nostr = { path = "../nostr" }
+nostr-transport = { path = "../nostr-transport" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11.0"
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+
+[dev-dependencies]
+# The ready record test decodes with the host service's own reader.
+coder-service = { path = "../coder-service" }
+futures-util = "0.3"
+tempfile = "3"
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+
+[lints]
+workspace = true

@@ -632,6 +632,7 @@ dependencies = [
  "atif",
  "capability",
  "coder-boundary",
+ "coder-host",
  "coder-one",
  "coder-terminal",
  "coderbench",
@@ -750,6 +751,28 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+]
+
+[[package]]
+name = "coder-host"
+version = "0.1.0"
+dependencies = [
+ "coder-access",
+ "coder-connect",
+ "coder-link",
+ "coder-pty",
+ "coder-reach",
+ "coder-service",
+ "futures-util",
+ "nostr",
+ "nostr-transport",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
