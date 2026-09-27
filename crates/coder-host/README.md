@@ -12,7 +12,7 @@ operation; this README covers the crate.
 
 | Profile | Crate | How the host uses it |
 | --- | --- | --- |
-| [NIP-HOST](../../nips/openagents/NIP-HOST.md) | `coder-access` | The access store holds the one host key, the owner, and the grants. Every NIP-HOST request, on a relay or a direct channel, goes through `Host::handle`. |
+| [NIP-HOST](../../nips/openagents/NIP-HOST.md) | `coder-access` | The access store holds the one host key, the owner, and the grants. Every NIP-HOST request, as a relay artifact, on a direct channel, or inside a CJ execution request, goes through `Host::handle`. |
 | [NIP-REACH](../../nips/openagents/NIP-REACH.md) | `coder-reach` | Presence and hints are sealed to each enrolled device. The direct-channel `Acceptor` checks grants through `authority::Grants`, which reads the real store. |
 | [NIP-TERM](../../nips/openagents/NIP-TERM.md) | `coder-pty` | The terminal host asks `authority::Grants` for rights, and delivers frames into a channel queue or as sealed relay artifacts. |
 | CTRL semantics | `coder` task inbox | `tasks::Tasks` receives `task.create`, `task.steer`, and `task.cancel`. The `coder` binary supplies `coder::task::remote::Inbox`. |
@@ -23,7 +23,7 @@ operation; this README covers the crate.
 
 | Module | What it does |
 | --- | --- |
-| `serve` | `start` runs a host and returns `Running`. Submodules serve direct channels over TCP and WebSocket, the relay loops, NIP-TERM operations, and NIP-HOST dispatch. |
+| `serve` | `start` runs a host and returns `Running`. Submodules serve direct channels over TCP and WebSocket, the relay loops, the CAP/CJ binding, NIP-TERM operations, and NIP-HOST dispatch. |
 | `authority` | The grant store as the channel, terminal, and publication paths see it: serialized store access, a snapshot that reloads when the store file changes, and a device's standing. |
 | `message` | Direct-channel messages: host calls and answers, pings, the closing message, NIP-TERM bodies, and fragmentation. |
 | `mailbox` | Mailboxes derived from the host and device's NIP-44 conversation key, the terminal generation, and workspace IDs. |
@@ -108,6 +108,26 @@ The host records when it last saw each device: every admitted NIP-HOST
 request, and each direct channel at admission and then at most once a minute
 while messages arrive. `device.list` reports it as `last_seen`.
 
+## CAP/CJ binding
+
+At start the host publishes its `host-access` capability, a NIP-CAP
+`kind:30180` definition with the `d` slug `host-access`, on every relay it
+serves. It then subscribes to NIP-CJ execution requests (`kind:25920`)
+addressed to its key and answers each with a `kind:26920` result.
+`coder_access::cj::intake` checks the binding fields: the CJ signer is the
+request's signer, the target, lock, context, and requirements are the
+host's, and the input matches the pinned `openagents.host-call.v1` schema.
+The embedded request then goes to the same admission as the relay artifact
+and direct-channel bindings, so grants, epochs, rights, retained replies, and
+refusals are shared. A request ID answered through one binding returns the
+same signed reply through another.
+
+A `completed` result carries the signed reply as
+`{v: "openagents.host-answer.v1", event}`. It means the operation answered;
+the reply says whether it was admitted, and a `dispatched` reply is still
+only a handling receipt. A device sends an operation over CJ with
+`coder_access::cj::fetch_capability` and `Client::call_cj`.
+
 ## Relay binding for terminals
 
 A device seals each NIP-TERM request as a private `3188` artifact to the host,
@@ -122,8 +142,10 @@ retained frames in any order after a reconnect, so a client feeds them through
 
 - The WebSocket listener serves plain `ws`. A `wss` hint needs a forwarder
   that terminates TLS in front of it.
-- The CAP/CJ binding of NIP-HOST is not served; only the direct artifact
-  binding and the direct-channel binding run.
+- The CAP/CJ binding answers each request within the request, so it sends
+  no `accepted` or progress feedback and ignores status, replay, and cancel
+  controls. Execution kinds are ephemeral: a request sent while the host's
+  subscription reconnects is lost, and the device retries the same request.
 - Terminal state is process-local. A restart reports every terminal as
   `lost`.
 
@@ -135,7 +157,9 @@ cargo clippy -p coder-host --all-targets -- -D warnings
 cargo fmt -p coder-host --check
 ```
 
-`tests/end_to_end.rs` runs the acceptance scenario in
+`tests/cj.rs` runs the CAP/CJ binding against the relay artifact binding;
+its [verification record](../../docs/coder/verification/2026-09-27-host-cj-binding.md)
+lists what it establishes. `tests/end_to_end.rs` runs the acceptance scenario in
 `tests/support/scenario.rs` with an in-memory task owner; the `coder` crate's
 `tests/host_serve.rs` runs the same scenario with the durable task inbox.
 `tests/websocket.rs` enrolls a device, connects over a `websocket` hint, runs

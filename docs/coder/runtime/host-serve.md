@@ -2,8 +2,8 @@
 
 `coder host serve` runs one resident Coder host on a computer. It answers
 device enrollment, publishes presence and reachability hints to enrolled
-devices, accepts authenticated direct channels and relay-carried operations,
-serves terminals, hands task operations to the durable task inbox, and
+devices, accepts authenticated direct channels, relay-carried operations, and
+NIP-CJ execution requests, serves terminals, hands task operations to the durable task inbox, and
 publishes activity summaries.
 [Issue #9712](https://github.com/OpenAgentsInc/openagents/issues/9712)
 delivers it as part of the
@@ -193,6 +193,14 @@ A client uses `coder_host::client`:
 4. A `Link` carries NIP-HOST operations and NIP-TERM requests on either
    route. `fetch_summaries` reads activity summaries after a reconnect.
 
+A device can also send any NIP-HOST operation as a NIP-CJ execution job. The
+host publishes its `host-access` capability (`kind:30180`) on every relay it
+serves; `coder_access::cj::fetch_capability` reads it from the pinned host
+key, and `Client::call_cj` sends the operation. The host admits it exactly as
+a relay-carried request, so the same request ID returns the same signed reply
+through either binding. A `completed` result means the operation answered;
+the reply inside it says whether it was admitted.
+
 A handshake that the host refuses after proving its key blocks the
 connection instead of falling back: a revoked grant is revoked on every
 route. A relay link's probe fails while a direct route answers, so sending
@@ -225,5 +233,8 @@ as a QR code rendered on the device that created it.
 - Telemetry is coarse and local: CPU use is the load average per CPU, not a
   measured utilization.
 - Terminals do not survive a restart; references to them refuse as `lost`.
-- The CAP/CJ binding of NIP-HOST is not served.
+- The CAP/CJ binding sends no `accepted` or progress feedback and ignores
+  status, replay, and cancel controls; each operation answers within its
+  request. A CJ request sent while the host reconnects its subscription is
+  lost, and the device retries it.
 - Evidence is synthetic and from one machine; see the verification record.
