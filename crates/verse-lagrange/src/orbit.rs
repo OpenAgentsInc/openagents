@@ -240,6 +240,9 @@ pub struct StationOrbit {
     pub burns: u32,
     /// Mission time of the last executed burn, s.
     pub last_burn: Option<f64>,
+    /// Velocity change of the last executed burn, rotating-frame axes, m/s.
+    #[serde(default)]
+    pub last_dv: DVec3,
     next_keeping: f64,
 }
 
@@ -285,6 +288,7 @@ impl StationOrbit {
             keeping_dv: 0.0,
             burns: 0,
             last_burn: None,
+            last_dv: DVec3::ZERO,
             next_keeping: 0.0,
         }
     }
@@ -327,6 +331,7 @@ impl StationOrbit {
             return false;
         }
         self.state.vel += dv;
+        self.last_dv = dv * (AU / time_unit());
         self.keeping_dv += si;
         self.burns += 1;
         self.last_burn = Some(self.mission_seconds);

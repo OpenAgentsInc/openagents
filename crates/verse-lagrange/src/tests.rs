@@ -289,6 +289,9 @@ fn same_physics(a: &Station, b: &Station) {
     assert_eq!(a.orbit, b.orbit);
     assert_eq!(a.propellant.to_bits(), b.propellant.to_bits());
     assert_eq!(a.parts, b.parts);
+    assert_eq!(a.lines, b.lines);
+    assert_eq!(a.wings, b.wings);
+    assert_eq!(a.pulses, b.pulses);
 }
 
 #[test]
@@ -960,4 +963,319 @@ fn randomized_releases_keep_the_ledger_and_stay_out_of_structure() {
                 .all(|b| b.pos.is_finite() && b.vel.is_finite())
         );
     }
+}
+
+/// Largest distance of a rope point from the straight line between its
+/// ends, m.
+fn rope_bow(points: &[DVec3]) -> f64 {
+    let (a, b) = (points[0], points[points.len() - 1]);
+    let axis = (b - a).normalize();
+    points
+        .iter()
+        .map(|p| {
+            let d = *p - a;
+            (d - axis * d.dot(axis)).length()
+        })
+        .fold(0.0, f64::max)
+}
+
+#[test]
+fn the_safety_tether_rope_lies_straight_when_taut_and_whips_when_slack() {
+    let mut station = open_space();
+    let out = DVec3::new(0.6, 0.0, 0.8);
+    station.astronaut_mut().pos = station::AIRLOCK + out * 20.0;
+    station.settle_lines();
+    // Fly straight out: the reel pays out and the rope stays straight.
+    let away = Command {
+        direction: out,
+        yaw: station.heading_yaw(),
+        climb: false,
+    };
+    let mut paying: f64 = 0.0;
+    for _ in 0..(10 * 60) {
+        station.step(1.0 / 60.0, &away);
+        paying = paying.max(rope_bow(station.ropes()[0].points));
+    }
+    assert!(paying < 0.02, "paying out bows {paying} m");
+    // Coast out to the end of the tether: the joint arrests, the rope is
+    // taut, and it lies on the joint line.
+    station.propellant = 0.0;
+    station.astronaut_mut().pos = station::AIRLOCK + out * (station::EVA_RANGE - 1.0);
+    station.astronaut_mut().vel = out * 1.0;
+    station.settle_lines();
+    let mut straight = None;
+    for _ in 0..(3 * 60) {
+        station.step(1.0 / 60.0, &Command::default());
+        let rope = station.ropes()[0];
+        if rope.taut && rope.tension > 100.0 {
+            straight = Some(rope_bow(rope.points));
+            assert!((rope.length - station::EVA_RANGE).abs() < 1e-9);
+            break;
+        }
+    }
+    let straight = straight.expect("the tether went taut");
+    assert!(straight < 1e-6, "a taut tether bows {straight} m");
+    // Fly back toward the airlock faster than the reel takes in: slack.
+    station.propellant = station::PROPELLANT;
+    let back = Command {
+        direction: -out,
+        yaw: station.heading_yaw(),
+        climb: false,
+    };
+    let mut slack: f64 = 0.0;
+    for _ in 0..(20 * 60) {
+        station.step(1.0 / 60.0, &back);
+        let rope = station.ropes()[0];
+        assert!(rope.points.iter().all(|p| p.is_finite()));
+        slack = slack.max(rope_bow(rope.points));
+    }
+    let rope = station.ropes()[0];
+    assert!(!rope.taut);
+    assert!(rope.length > rope.points[0].distance(rope.points[rope.points.len() - 1]) + 10.0);
+    assert!(slack > 1.0, "a slack tether curves: {slack} m");
+    // Views interpolate from the previous positions.
+    let mid = rope.points.len() / 2;
+    assert_eq!(rope.point(mid, 0.0), rope.prev[mid]);
+    assert_eq!(rope.point(mid, 1.0), rope.points[mid]);
+}
+
+#[test]
+fn every_line_has_a_rope_from_its_anchor_to_its_body() {
+    let station = Station::new();
+    let ropes = station.ropes();
+    assert_eq!(ropes.len(), 1 + PartKind::ALL.len());
+    assert_eq!(ropes[0].points.len(), station::TETHER_PARTICLES);
+    assert_eq!(ropes[0].points[0], station::AIRLOCK);
+    assert_eq!(*ropes[0].points.last().unwrap(), station.astronaut().pos);
+    for (rope, part) in ropes[1..].iter().zip(&station.parts) {
+        assert_eq!(rope.points.len(), station::LINE_PARTICLES);
+        assert_eq!(rope.points[0], station::DEPOT);
+        assert_eq!(*rope.points.last().unwrap(), station.body(part).pos);
+    }
+}
+
+/// A drifting part in the plume of a firing thruster is pushed away, and
+/// the momentum it takes comes out of the exhaust's account.
+#[test]
+fn firing_near_a_free_part_moves_it_and_the_ledger_balances() {
+    let mut station = open_space();
+    let bay = PartKind::ALL
+        .iter()
+        .position(|k| *k == PartKind::AvionicsBay)
+        .unwrap();
+    // The astronaut faces -z; thrusting toward -x sends exhaust to +x.
+    let at = station.astronaut().pos + DVec3::new(2.2, 0.0, 0.0);
+    release_part(&mut station, bay, at, DVec3::ZERO, DVec3::ZERO);
+    station.reset_ledger();
+    let push = Command {
+        direction: -DVec3::X,
+        yaw: station.heading_yaw(),
+        climb: false,
+    };
+    let mut worst = physics::LedgerError {
+        linear: 0.0,
+        angular: 0.0,
+    };
+    for _ in 0..(2 * 60) {
+        station.step(1.0 / 60.0, &push);
+        let error = station.ledger.error(station.momentum());
+        worst.linear = worst.linear.max(error.linear);
+        worst.angular = worst.angular.max(error.angular);
+    }
+    let part = station.body(&station.parts[bay]);
+    assert!(part.vel.x > 1e-3, "the plume pushed the bay: {}", part.vel);
+    assert!(
+        station
+            .impingement
+            .iter()
+            .any(|s| s.body == station.parts[bay].body)
+    );
+    // Free parts are in the system, so no gas momentum left it.
+    assert!(!station.ledger.external.contains_key("impingement"));
+    assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
+}
+
+#[test]
+fn a_plume_on_the_structure_is_the_impingement_term() {
+    let mut station = Station::new();
+    station.tide = false;
+    // Outside the airlock, thrusting away from it: the exhaust hits the node.
+    station.astronaut_mut().pos = DVec3::new(0.0, 6.0, 19.0);
+    station.settle_lines();
+    station.reset_ledger();
+    let away = Command {
+        direction: DVec3::Z,
+        yaw: std::f64::consts::PI,
+        climb: false,
+    };
+    let worst = worst_error(&mut station, 2.0, &away);
+    let term = station.ledger.external["impingement"];
+    // The node took momentum toward -z from the gas.
+    assert!(term.linear.z > 1e-3, "{term:?}");
+    assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
+}
+
+#[test]
+fn a_carried_part_takes_the_plume_only_when_enabled() {
+    let run = |impinge: bool| {
+        let mut station = busy_station();
+        station.tide = false;
+        station.impinge_carried = impinge;
+        station.grab().unwrap();
+        station.reset_ledger();
+        // Back away from the rack: the jets that push the pair away from
+        // the held engine blow straight into it.
+        let away = Command {
+            direction: DVec3::X,
+            yaw: station.yaw,
+            climb: false,
+        };
+        let worst = worst_error(&mut station, 4.0, &away);
+        assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
+        station.group().vel.x
+    };
+    let clear = run(false);
+    let blocked = run(true);
+    assert!(clear > 0.05, "{clear}");
+    assert!(blocked < clear * 0.5, "{blocked} vs {clear}");
+}
+
+#[test]
+fn a_station_keeping_burn_rings_the_arrays_down() {
+    let mut station = open_space();
+    // Push toward the Earth: the pods exhaust sunward, past the array tips.
+    station.keeping_glow = station::KEEPING_BURN;
+    station.keeping_exhaust = -DVec3::Z;
+    let hold = Command::default();
+    let mut hit = false;
+    for k in 0..144 {
+        station.advance(&hold);
+        hit |= station
+            .impingement
+            .iter()
+            .any(|s| s.collider == station.wings[1].collider);
+        if k == 0 {
+            let pulses: Vec<u32> = station.plume_pulses().iter().map(|p| p.thruster).collect();
+            assert!(pulses.contains(&station::KEEPING_THRUSTER));
+            assert!(pulses.contains(&(station::KEEPING_THRUSTER + 1)));
+        }
+    }
+    assert!(hit, "the +x pod's plume reaches the +x wing");
+    let rung = [station.wings[0].energy(), station.wings[1].energy()];
+    let tip = station.array_flex(1).displacement(1.0, 0.0);
+    assert!(rung[0] > 0.0 && rung[1] > 0.0, "{rung:?}");
+    assert!(tip.abs() > 1e-3, "the tip moved {tip} m");
+    let mut peak: f64 = 0.0;
+    for _ in 0..(20 * 120) {
+        station.advance(&hold);
+        peak = peak.max(station.array_flex(1).displacement(1.0, 0.0).abs());
+    }
+    // Still ringing after 20 s, lightly damped, and decaying.
+    assert!(peak > 1e-3);
+    let after = station.wings[1].energy();
+    assert!(
+        after < rung[1] && after > rung[1] * 0.3,
+        "{after} vs {rung:?}"
+    );
+    // The flex view is interpolated and symmetric in chord for bending.
+    let flex = station.array_flex(0);
+    assert!(
+        (flex.displacement(0.0, 0.5)).abs() < 1e-12,
+        "clamped at the root"
+    );
+}
+
+#[test]
+fn a_real_station_keeping_burn_fires_the_pods() {
+    let mut station = Station::new();
+    let mut fired = false;
+    for _ in 0..(200 * 120) {
+        station.advance(&Command::default());
+        if station.orbit.burns > 0 {
+            fired = true;
+            break;
+        }
+    }
+    assert!(fired);
+    assert!((station.keeping_exhaust.length() - 1.0).abs() < 1e-9);
+    // The burn is in the orbit plane: no out-of-ecliptic (scene y) part.
+    assert!(station.keeping_exhaust.y.abs() < 1e-9);
+    assert!(
+        station
+            .plume_pulses()
+            .iter()
+            .any(|p| p.thruster >= station::KEEPING_THRUSTER)
+    );
+}
+
+#[test]
+fn pulses_mark_thruster_onsets_with_deterministic_seeds() {
+    let mut station = open_space();
+    let push = Command {
+        direction: DVec3::X,
+        yaw: station.heading_yaw(),
+        climb: false,
+    };
+    station.advance(&push);
+    let first: Vec<_> = station.plume_pulses().to_vec();
+    assert!(!first.is_empty());
+    for pulse in &first {
+        assert_eq!(pulse.tick, 0);
+        assert!(pulse.dir.x < -0.99, "exhaust toward -x");
+        assert_eq!(pulse.seed, station::pulse_seed(pulse.thruster, 0));
+    }
+    // Held thrust adds no new onsets.
+    station.advance(&push);
+    let held = station
+        .plume_pulses()
+        .iter()
+        .filter(|p| p.tick == 1)
+        .count();
+    assert!(held <= first.len());
+    // Seeds differ by thruster and tick.
+    assert_ne!(station::pulse_seed(3, 10), station::pulse_seed(4, 10));
+    assert_ne!(station::pulse_seed(3, 10), station::pulse_seed(3, 11));
+    // Pulses older than the memory are dropped.
+    for _ in 0..(2 * 120) {
+        station.advance(&Command::default());
+    }
+    let memory = (station::PULSE_MEMORY / station::PHYSICS_DT).round() as u64;
+    assert!(
+        station
+            .plume_pulses()
+            .iter()
+            .all(|p| p.tick + memory >= station.world.tick)
+    );
+}
+
+/// Two-way rope coupling, off by default: the ledger still balances with
+/// the ropes' momentum and their pull at the station, and the joint still
+/// does the arresting, but the rope is a second load path in parallel with
+/// the joint, so the arrest force exceeds the joint's cap by the rope's
+/// own pull.
+#[test]
+fn coupled_ropes_keep_the_ledger_through_an_arrest() {
+    let mut station = open_space();
+    station.rope_coupling = true;
+    station.propellant = 0.0;
+    let out = DVec3::new(0.6, 0.0, 0.8);
+    station.astronaut_mut().pos = station::AIRLOCK + out * (station::EVA_RANGE - 2.0);
+    station.astronaut_mut().vel = out * 1.5;
+    station.settle_lines();
+    station.reset_ledger();
+    let energy = |s: &Station| 0.5 * s.astronaut().mass * s.astronaut().vel.length_squared();
+    let start = energy(&station);
+    let (mut peak, mut farthest): (f64, f64) = (0.0, 0.0);
+    for _ in 0..(6 * 120) {
+        let before = station.astronaut().vel;
+        station.advance(&Command::default());
+        let change = station.astronaut().vel - before;
+        peak = peak.max(change.length() * station.astronaut().mass / station::PHYSICS_DT);
+        farthest = farthest.max(station.astronaut().pos.distance(station::AIRLOCK));
+        let error = station.ledger.error(station.momentum());
+        assert!(error.linear < 1e-9 && error.angular < 1e-6, "{error:?}");
+        assert!(energy(&station) <= start * (1.0 + 1e-9), "energy grew");
+    }
+    assert!(farthest < station::EVA_RANGE + 0.15, "{farthest} m");
+    assert!(peak > station::TETHER_TENSION && peak < station::TETHER_TENSION + 50.0);
 }

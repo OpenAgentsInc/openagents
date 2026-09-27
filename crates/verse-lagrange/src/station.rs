@@ -8,11 +8,12 @@
 use glam::{DQuat, DVec3};
 use physics::{
     Body, BodyId, BodyKind, Collider, ColliderId, Composite, DebugKind, DebugLine, Filter,
-    FixedStep, Imu, Joint, JointId, JointKind, Ledger, Material, Momentum, Shape, ThrusterSet,
-    World,
+    FixedStep, Imu, Joint, JointId, JointKind, Ledger, Material, Momentum, Plume as Exhaust,
+    Reflection, Rope, RopeSettings, Sample, Shape, ThrusterSet, World,
 };
 use serde::{Deserialize, Serialize};
 
+use crate::arrays::{ArrayFlex, Wing};
 use crate::orbit::{StationOrbit, mean_motion};
 
 /// Standard gravity, used only to convert specific impulse, m/s^2.
@@ -77,7 +78,32 @@ pub const PHYSICS_DT: f64 = 1.0 / 120.0;
 /// Most physics steps one frame may run (0.1 s); longer frames drop time.
 pub const MAX_STEPS_PER_FRAME: u32 = 12;
 /// Layout version of [`StationState`].
-pub const STATE_VERSION: u32 = 1;
+pub const STATE_VERSION: u32 = 2;
+/// Particles in the safety tether's rope and in each part line's rope.
+pub const TETHER_PARTICLES: usize = 96;
+pub const LINE_PARTICLES: usize = 48;
+/// Linear density of the safety tether and the part lines, kg/m.
+pub const LINE_DENSITY: f64 = 0.05;
+/// Speed at which a line's reel takes in slack, m/s. It pays out freely.
+pub const REEL_SPEED: f64 = 0.25;
+/// Shortest line a reel leaves out, m.
+pub const REEL_MIN: f64 = 0.5;
+/// Station-keeping thruster pods at the truss tips.
+pub const KEEPING_PODS: [DVec3; 2] = [DVec3::new(-30.8, 6.0, 0.0), DVec3::new(30.8, 6.0, 0.0)];
+/// Thrust of each station-keeping pod, N.
+pub const KEEPING_THRUST: f64 = 220.0;
+/// How long each station-keeping burn fires in local time, s (its glow).
+pub const KEEPING_BURN: f64 = 1.2;
+/// Station mass, kg, for the acceleration a station-keeping burn gives the
+/// structure (and so the solar array wings).
+pub const STATION_MASS: f64 = 60_000.0;
+/// How gas leaves the surfaces a plume strikes.
+pub const PLUME_REFLECTION: Reflection = Reflection::DIFFUSE;
+/// Plume onsets are kept this long for the renderer, s.
+pub const PULSE_MEMORY: f64 = 1.0;
+/// Index of the first station-keeping pod in [`PlumePulse::thruster`];
+/// the pack's thrusters are 0 to 23.
+pub const KEEPING_THRUSTER: u32 = 24;
 
 /// The airlock refill port.
 pub const AIRLOCK: DVec3 = DVec3::new(0.0, 6.0, 17.5);
@@ -379,6 +405,68 @@ pub struct StationState {
     pub station: Station,
 }
 
+/// A thruster that started firing: the event a renderer seeds cosmetic
+/// exhaust particles from. Pulses are deterministic, so a replay makes the
+/// same ones.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PlumePulse {
+    /// Pack thrusters are 0 to 23 in [`Station::pack`] order;
+    /// [`KEEPING_THRUSTER`] and the next are the −x and +x station-keeping
+    /// pods.
+    pub thruster: u32,
+    /// Nozzle position when the pulse began, scene coordinates, m.
+    pub pos: DVec3,
+    /// Exhaust direction, unit (opposite the thrust).
+    pub dir: DVec3,
+    /// The physics step the thruster began firing in: the pulse starts at
+    /// `tick × PHYSICS_DT`, one step before the state at that tick + 1.
+    pub tick: u64,
+    /// Thrust at onset, N.
+    pub thrust: f64,
+    /// Seed for the pulse's particles, from the thruster and the tick.
+    pub seed: u64,
+}
+
+/// A line from the station with its rope: the safety tether or a part's
+/// depot line.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Line {
+    /// The rigid tether joint, which stays authoritative for arrest,
+    /// tension, and the ledger.
+    pub joint: JointId,
+    /// The body on the line's free end.
+    pub body: BodyId,
+    /// The joint's length, m: the most the reel pays out.
+    pub max_length: f64,
+    pub rope: Rope,
+}
+
+/// A rope as drawn: particle positions from the anchor on the station to
+/// the free end, scene coordinates, m.
+#[derive(Clone, Copy, Debug)]
+pub struct RopeView<'a> {
+    /// Positions after the last physics step.
+    pub points: &'a [DVec3],
+    /// Positions before it; interpolate with [`Station::alpha`].
+    pub prev: &'a [DVec3],
+    /// The rigid tether is pulling, or the anchors are a full rope length
+    /// apart: the rope lies straight.
+    pub taut: bool,
+    /// Line tension, N: the tether joint's pull when it is taut, otherwise
+    /// the rope's own pull on its ends.
+    pub tension: f64,
+    /// Rope length the reel has paid out, m.
+    pub length: f64,
+}
+
+impl RopeView<'_> {
+    /// Particle `i` between the last two steps; `alpha` in [0, 1].
+    #[must_use]
+    pub fn point(&self, i: usize, alpha: f64) -> DVec3 {
+        self.prev[i].lerp(self.points[i], alpha.clamp(0.0, 1.0))
+    }
+}
+
 /// A visible thruster firing, for rendering only.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Plume {
@@ -470,9 +558,39 @@ pub struct Station {
     #[serde(default = "enabled")]
     pub tide: bool,
     /// External impulses since [`Station::reset_ledger`]: exhaust, contact
-    /// with fixed structure, the safety tether, tether reel-in, and latching.
+    /// with fixed structure, the safety tether, tether reel-in, latching,
+    /// and plume impingement.
     #[serde(default)]
     pub ledger: Ledger,
+    /// The safety tether's line first, then each part's depot line in
+    /// [`PartKind::ALL`] order.
+    #[serde(default)]
+    pub lines: Vec<Line>,
+    /// Solar array wings on the −x and +x sides.
+    pub wings: [Wing; 2],
+    /// Let the ropes pull the bodies they tie (two-way coupling). Off: the
+    /// rigid tether joints carry every load and the ropes only follow.
+    #[serde(default)]
+    pub rope_coupling: bool,
+    /// Let the pack's plumes push the part it carries. The forward and aft
+    /// jets then blow into a load held at arm's length, so the pack cannot
+    /// accelerate the pair away from the load or brake toward it; off by
+    /// default so carrying stays flyable. Free parts are always pushed.
+    #[serde(default)]
+    pub impinge_carried: bool,
+    /// Recent thruster onsets, oldest first.
+    #[serde(default)]
+    pub pulses: Vec<PlumePulse>,
+    /// Exhaust direction of the current station-keeping burn, unit.
+    #[serde(default)]
+    pub keeping_exhaust: DVec3,
+    /// Plume forces from the last step, on every collider they reached.
+    #[serde(skip)]
+    pub impingement: Vec<Sample>,
+    /// Thrusters that fired in the last step, as a bit per
+    /// [`PlumePulse::thruster`].
+    #[serde(default)]
+    firing: u32,
     climb: f64,
     plume_clock: f64,
 }
@@ -524,6 +642,13 @@ impl Station {
                 .with_material(SURFACE),
             );
         }
+        // Colliders 4 and 5 are the solar arrays.
+        let arrays = [ColliderId(4), ColliderId(5)];
+        let wings = arrays.map(|id| {
+            let collider = world.colliders()[id.0 as usize];
+            let side = world[collider.body].pos.x.signum();
+            Wing::new(side, id, collider.body)
+        });
         let anchor = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
         let tether = world.add_joint(
             Joint::new(
@@ -591,9 +716,38 @@ impl Station {
             tether,
             tide: true,
             ledger: Ledger::default(),
+            lines: Vec::new(),
+            wings,
+            rope_coupling: false,
+            impinge_carried: false,
+            pulses: Vec::new(),
+            keeping_exhaust: DVec3::ZERO,
+            impingement: Vec::new(),
+            firing: 0,
             climb: 0.0,
             plume_clock: 0.0,
         };
+        station.lines.push(Line {
+            joint: tether,
+            body: astronaut,
+            max_length: EVA_RANGE,
+            rope: Rope::new(AIRLOCK, SPAWN, 1.0, TETHER_PARTICLES, line_settings()),
+        });
+        for part in station.parts.clone() {
+            station.lines.push(Line {
+                joint: part.line,
+                body: part.body,
+                max_length: PART_TETHER,
+                rope: Rope::new(
+                    DEPOT,
+                    part.kind.stowage(),
+                    1.0,
+                    LINE_PARTICLES,
+                    line_settings(),
+                ),
+            });
+        }
+        station.settle_lines();
         station.face(std::f64::consts::PI);
         station.reset_ledger();
         station
@@ -905,9 +1059,15 @@ impl Station {
     /// `PHYSICS_DT * ORBIT_WARP` mission seconds.
     pub fn advance(&mut self, command: &Command) {
         let dt = PHYSICS_DT;
+        let tick = self.world.tick;
         if self.orbit.advance(dt * ORBIT_WARP) > 0 {
-            self.keeping_glow = 1.2;
+            self.keeping_glow = KEEPING_BURN;
+            let dv = self.orbit.last_dv;
+            // Rotating-frame axes (x Sun to Earth, y along track, z north)
+            // to scene axes; the exhaust leaves opposite the velocity change.
+            self.keeping_exhaust = -DVec3::new(dv.y, dv.z, dv.x).normalize_or_zero();
         }
+        let keeping = self.keeping_glow > 0.0 && self.keeping_exhaust != DVec3::ZERO;
         self.keeping_glow = (self.keeping_glow - dt).max(0.0);
         if command.yaw.is_finite() {
             self.yaw = command.yaw;
@@ -961,10 +1121,21 @@ impl Station {
         let fired = self.fire(force, torque, dt);
         let mass = self.own_mass();
         self.astronaut_mut().mass = mass;
+        self.impingement = self.impinge(&fired, keeping, dt);
         let (c2, tidal) = (self.orbit.l1.c2, self.tide);
         self.world.step(&move |p, v| {
             if tidal { tide(c2, p, v) } else { DVec3::ZERO }
         });
+        // The structure accelerates with a station-keeping burn; the wings
+        // lag it.
+        let base = if keeping {
+            -self.keeping_exhaust * (2.0 * KEEPING_THRUST / STATION_MASS)
+        } else {
+            DVec3::ZERO
+        };
+        for wing in &mut self.wings {
+            wing.step(&self.impingement, base, dt);
+        }
         self.account_contacts();
         let astronaut = *self.astronaut();
         let field = if self.tide {
@@ -1002,6 +1173,9 @@ impl Station {
             astronaut.vel *= mass / (mass + added);
             astronaut.mass = mass + added;
         }
+        self.step_lines(dt);
+        self.record_pulses(&fired, keeping, tick);
+        let fired: Vec<(DVec3, DVec3)> = fired.iter().map(|(_, f, at)| (*f, *at)).collect();
         self.emit_plumes(&fired, dt);
         self.fired = fired;
         self.settle_parts();
@@ -1078,8 +1252,8 @@ impl Station {
     /// propellant left. The gas leaves each thruster at the exhaust velocity
     /// relative to the pack; the ledger records what the system receives
     /// (the thrust impulses, minus the gas's share of the pack's momentum).
-    /// Returns each firing thruster's world force and position.
-    fn fire(&mut self, force: DVec3, torque: DVec3, dt: f64) -> Vec<(DVec3, DVec3)> {
+    /// Returns each firing thruster's index, world force, and position.
+    fn fire(&mut self, force: DVec3, torque: DVec3, dt: f64) -> Vec<(u32, DVec3, DVec3)> {
         if self.propellant <= 0.0 || (force == DVec3::ZERO && torque == DVec3::ZERO) {
             return Vec::new();
         }
@@ -1114,7 +1288,234 @@ impl Station {
         for (force, at) in &fired {
             self.ledger.add_impulse("exhaust", *force * dt, *at);
         }
-        fired
+        // `apply` returns the firing thrusters in order.
+        throttles
+            .iter()
+            .enumerate()
+            .filter(|(_, u)| **u > 0.0)
+            .zip(fired)
+            .map(|((i, _), (force, at))| (i as u32, force, at))
+            .collect()
+    }
+
+    /// Plume impingement for one step, applied before the world steps.
+    ///
+    /// Pack plumes push drifting parts (and the carried part with
+    /// [`Station::impinge_carried`]), never the astronaut they come from. Gas that strikes anything did not escape, so its
+    /// momentum is added back to `exhaust` (which is minus what the escaping
+    /// gas carries away); what it gave fixed structure leaves the free
+    /// system under `impingement`, with the matching sign. Station-keeping
+    /// plumes come from the station, so what they give the free system,
+    /// the astronaut included, enters under `impingement`. Every sample,
+    /// on any collider, is returned for the array wings.
+    fn impinge(&mut self, fired: &[(u32, DVec3, DVec3)], keeping: bool, dt: f64) -> Vec<Sample> {
+        let mut all = Vec::new();
+        let astronaut = self.astronaut;
+        let held = if self.impinge_carried {
+            None
+        } else {
+            self.carried().map(|i| self.parts[i].body)
+        };
+        for (_, force, at) in fired {
+            let thrust = force.length();
+            if thrust <= 0.0 {
+                continue;
+            }
+            let plume = Exhaust::nitrogen(*at, -*force / thrust, thrust);
+            let samples = self.world.impinge(&plume, PLUME_REFLECTION, &|c| {
+                c.body != astronaut && Some(c.body) != held
+            });
+            for sample in &samples {
+                self.ledger
+                    .add_impulse("exhaust", sample.force * dt, sample.point);
+                if self.in_system(sample.body) {
+                    self.world[sample.body].apply_force_at(sample.force, sample.point);
+                } else {
+                    self.ledger
+                        .add_impulse("impingement", -sample.force * dt, sample.point);
+                }
+            }
+            all.extend(samples);
+        }
+        if keeping {
+            for pod in KEEPING_PODS {
+                let plume = Self::keeping_plume(pod, self.keeping_exhaust);
+                let samples = self.world.impinge(&plume, PLUME_REFLECTION, &|_| true);
+                for sample in &samples {
+                    if self.in_system(sample.body) {
+                        self.world[sample.body].apply_force_at(sample.force, sample.point);
+                        self.ledger
+                            .add_impulse("impingement", sample.force * dt, sample.point);
+                    }
+                }
+                all.extend(samples);
+            }
+        }
+        all
+    }
+
+    /// A station-keeping pod's plume: hot monopropellant exhaust (γ about
+    /// 1.25, so a narrower `cos⁸` lobe) from the pod's face.
+    #[must_use]
+    pub fn keeping_plume(pod: DVec3, exhaust: DVec3) -> Exhaust {
+        Exhaust {
+            exponent: 8.0,
+            range: 60.0,
+            ..Exhaust::nitrogen(pod + exhaust * 0.35, exhaust, KEEPING_THRUST)
+        }
+    }
+
+    /// Note thrusters that began firing this step.
+    fn record_pulses(&mut self, fired: &[(u32, DVec3, DVec3)], keeping: bool, tick: u64) {
+        let mut firing = 0_u32;
+        let mut started = Vec::new();
+        for (index, force, at) in fired {
+            firing |= 1 << index;
+            let thrust = force.length();
+            if thrust > 0.0 {
+                started.push((*index, *at, -*force / thrust, thrust));
+            }
+        }
+        if keeping {
+            for (k, pod) in KEEPING_PODS.iter().enumerate() {
+                let index = KEEPING_THRUSTER + k as u32;
+                firing |= 1 << index;
+                let plume = Self::keeping_plume(*pod, self.keeping_exhaust);
+                started.push((index, plume.origin, plume.axis, plume.thrust));
+            }
+        }
+        for (index, pos, dir, thrust) in started {
+            if self.firing & (1 << index) == 0 {
+                self.pulses.push(PlumePulse {
+                    thruster: index,
+                    pos,
+                    dir,
+                    tick,
+                    thrust,
+                    seed: pulse_seed(index, tick),
+                });
+            }
+        }
+        self.firing = firing;
+        let memory = (PULSE_MEMORY / PHYSICS_DT).round() as u64;
+        let now = self.world.tick;
+        self.pulses.retain(|p| p.tick + memory >= now);
+    }
+
+    /// Recent thruster onsets, oldest first, from the last
+    /// [`PULSE_MEMORY`] seconds. The rendered instant is
+    /// `(world.tick − 1 + alpha) × PHYSICS_DT`, so a pulse's age there is
+    /// that minus `tick × PHYSICS_DT`.
+    #[must_use]
+    pub fn plume_pulses(&self) -> &[PlumePulse] {
+        &self.pulses
+    }
+
+    /// Every line's rope: the safety tether first, then each part's depot
+    /// line in [`PartKind::ALL`] order. Points run from the station anchor
+    /// (the airlock or the depot) to the free end (the astronaut's or the
+    /// part's center of mass), in scene coordinates, which the station's
+    /// physics world uses directly.
+    #[must_use]
+    pub fn ropes(&self) -> Vec<RopeView<'_>> {
+        self.lines
+            .iter()
+            .map(|line| {
+                let pulling = self
+                    .world
+                    .joint(line.joint)
+                    .map_or(0.0, |j| j.impulse.length() / PHYSICS_DT);
+                RopeView {
+                    points: &line.rope.pos,
+                    prev: &line.rope.prev,
+                    taut: pulling > 0.0 || line.rope.taut(1e-3),
+                    tension: if pulling > 0.0 {
+                        pulling
+                    } else {
+                        line.rope.tension(PHYSICS_DT)
+                    },
+                    length: line.rope.length,
+                }
+            })
+            .collect()
+    }
+
+    /// The deflected shape of solar array wing `wing`: 0 is the −x wing and
+    /// 1 the +x wing. Interpolated with [`Station::alpha`]. See
+    /// [`ArrayFlex::displacement`].
+    #[must_use]
+    pub fn array_flex(&self, wing: usize) -> ArrayFlex {
+        self.wings[wing.min(1)].flex(self.alpha())
+    }
+
+    /// Lay every line's rope straight from its anchor to its end, at rest,
+    /// with the reel taken in to the gap. For scripted setups that move
+    /// bodies directly.
+    pub fn settle_lines(&mut self) {
+        for i in 0..self.lines.len() {
+            let Some(joint) = self.world.joint(self.lines[i].joint).copied() else {
+                continue;
+            };
+            let (a, b) = joint.anchors(&self.world);
+            let line = &mut self.lines[i];
+            let length = a.distance(b).clamp(REEL_MIN, line.max_length);
+            let count = line.rope.pos.len();
+            line.rope = Rope::new(a, b, length, count, line.rope.settings);
+        }
+    }
+
+    /// After the world step: reel each line to its free end and step its
+    /// rope. With [`Station::rope_coupling`], a rope whose free end is in
+    /// the free system pulls it, the rope's momentum joins the system, and
+    /// the pull at the station anchor enters the ledger under `tether`.
+    fn step_lines(&mut self, dt: f64) {
+        let (c2, tidal) = (self.orbit.l1.c2, self.tide);
+        let field = move |p: DVec3, v: DVec3| {
+            if tidal { tide(c2, p, v) } else { DVec3::ZERO }
+        };
+        let origin = self.ledger.origin;
+        for i in 0..self.lines.len() {
+            let Some(joint) = self.world.joint(self.lines[i].joint).copied() else {
+                continue;
+            };
+            let coupled = self.rope_coupling && self.in_system(self.lines[i].body);
+            let (a, b) = joint.anchors(&self.world);
+            let line = &mut self.lines[i];
+            let before = line.rope.momentum(origin);
+            line.rope.length = if joint.impulse == DVec3::ZERO {
+                reel(line.rope.length, a.distance(b), line.max_length, dt)
+            } else {
+                line.max_length
+            };
+            // Paid-out line starts at rest on the reel.
+            let reeled = line.rope.momentum(origin) - before;
+            line.rope.coupled = coupled;
+            line.rope.step_between(
+                &mut self.world,
+                (joint.a, joint.anchor_a),
+                (joint.b, joint.anchor_b),
+                &field,
+            );
+            if self.rope_coupling {
+                let rope = &self.lines[i].rope;
+                if reeled != Momentum::ZERO {
+                    self.ledger.add("reel", reeled);
+                }
+                let mut pinned = vec![0];
+                if !coupled {
+                    pinned.push(1);
+                }
+                for end in pinned {
+                    self.ledger.add(
+                        "tether",
+                        Momentum {
+                            linear: -rope.end_impulse[end],
+                            angular: -rope.end_moment[end],
+                        },
+                    );
+                }
+            }
+        }
     }
 
     /// Momentum of the free system, about the station origin: the astronaut
@@ -1129,6 +1530,11 @@ impl Station {
                 continue;
             }
             total += Momentum::of(self.body(part), self.ledger.origin);
+        }
+        if self.rope_coupling {
+            for line in &self.lines {
+                total += line.rope.momentum(self.ledger.origin);
+            }
         }
         total
     }
@@ -1291,6 +1697,7 @@ impl Station {
             body.pos += offset;
             body.prev_pos += offset;
         }
+        self.settle_lines();
     }
 
     /// Set the velocity of the astronaut and anything it holds. For
@@ -1464,6 +1871,34 @@ pub fn tide(c2: f64, pos: DVec3, vel: DVec3) -> DVec3 {
         -n * n * c2 * pos.y,
         2.0 * n * vel.x + n * n * (1.0 + 2.0 * c2) * pos.z,
     )
+}
+
+/// Rope settings for the safety tether and the part lines: light webbing
+/// that barely stretches and hardly resists bending.
+fn line_settings() -> RopeSettings {
+    RopeSettings {
+        linear_density: LINE_DENSITY,
+        ..RopeSettings::default()
+    }
+}
+
+/// A reel's paid-out length: it pays out as fast as the end moves away,
+/// takes in slack at [`REEL_SPEED`], and holds between [`REEL_MIN`] and
+/// the line's full length.
+#[must_use]
+pub fn reel(length: f64, distance: f64, max_length: f64, dt: f64) -> f64 {
+    (length - REEL_SPEED * dt)
+        .max(distance)
+        .clamp(REEL_MIN, max_length)
+}
+
+/// A pulse's particle seed: SplitMix64 of the thruster and the tick.
+#[must_use]
+pub fn pulse_seed(thruster: u32, tick: u64) -> u64 {
+    let mut z = (u64::from(thruster) << 48 ^ tick).wrapping_add(0x9e37_79b9_7f4a_7c15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    z ^ (z >> 31)
 }
 
 /// Distance from the hands to a part's nearest envelope surface, roughly.

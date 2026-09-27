@@ -100,7 +100,10 @@ the rotating frame. At station scale the tidal field is about 10⁻¹¹ m/s², t
 microgravity, but it is integrated so free parts obey the real field.
 
 Scene axes: −Z points at the Sun, +Z at the Earth, +Y at ecliptic north, and +X
-along Earth's orbital motion.
+along Earth's orbital motion. The station's physics world uses these axes and
+the station origin directly, so body positions, rope points, plume positions,
+and array deflections are scene coordinates in meters; the renderer maps only
+rotating-frame orbit vectors.
 
 ### The astronaut and the pack
 
@@ -136,16 +139,120 @@ Each burn is momentum-exact: the spent gas leaves at the exhaust velocity
 opposite momentum. Refill gas starts at rest in the station tank, so taking it
 on slows the pack slightly.
 
+### Plume impingement
+
+Exhaust in vacuum still pushes what it hits. Each firing thruster is a
+free-molecular point source (`physics::plume`): the momentum flux falls as
+1/r² and with angle θ from the plume axis as cosⁿ θ, the angular form of
+Simons' plume model (AIAA Journal, 1972), with n = 5 for nitrogen and nothing
+beyond 90°. The flux is normalized so that the gas's momentum through any
+sphere about the nozzle equals the thrust. Each box face that faces the nozzle
+and lies within 30 m and inside the lobe (culled by bounding sphere) is
+integrated with a midpoint rule of 4 to 64 points, more on faces that are large
+compared with their distance; capsules and spheres use their projected area.
+Of the gas that strikes a surface, 10% reflects specularly, and the rest is
+absorbed and re-emitted diffusely with a quarter of its normal momentum.
+
+The pack's plumes push drifting parts at the quadrature points, never the
+astronaut. Four 10 N thrusters firing at the 90 kg avionics bay from about a
+meter away push it to about 0.5 m/s in two seconds. Plumes on fixed structure (modules, the truss, the
+arrays, the depot, and racked or latched parts) move nothing but load the
+solar array wings and enter the ledger. By default the pack's plumes skip the
+part it carries: with `Station::impinge_carried` on, the jets that push the
+pair away from a load held at arm's length blow into it, so the pack can
+neither back away from the load nor brake toward it. The station-keeping pods
+fire for 1.2 s per burn at 220 N each, opposite the burn's Δv, with a
+narrower cos⁸ θ lobe for hot monopropellant exhaust. Their plumes reach the
+array tips and push anything free, the astronaut included.
+
+`Station::plume_pulses` lists the thrusters that began firing within the last
+second: thruster index (the pack's 0 to 23, then the −x and +x pods as 24 and
+25), nozzle position, exhaust direction, onset tick, thrust, and a seed from
+SplitMix64 of the index and tick, so replays produce the same pulses.
+
+### Tethers and lines as ropes
+
+The safety tether and each part's depot line are drawn as ropes
+(`physics::Rope`): 96 particles for the tether and 48 for each line, 0.05 kg/m,
+solved with extended position-based dynamics (XPBD) in six substeps of one
+iteration each per physics step. The methods follow Jakobsen (2001), Müller
+et al. (2007), and Macklin et al. (XPBD, 2016; "Small Steps", 2019). Both
+ends are pinned to the tether joint's anchors. Long-range attachments (Kim et
+al., 2012) keep every particle within its rest path length of each end, so at
+full length the rope lies exactly on the joint line, and shorter than that it
+curves and carries transverse waves when an end moves. A reel at each anchor
+pays out as fast as the end moves away and takes in slack at 0.25 m/s, so
+flying back toward the airlock faster than that leaves a slack, whipping
+tether. The ropes are one-way by default: the rigid tether joints stay
+authoritative for arrest, tension, and the ledger. Ropes are part of
+`StationState`, so save, restore, and replay reproduce their shapes bit for
+bit.
+
+`Station::ropes` returns one `RopeView` per line, the safety tether first and
+then each part's line in `PartKind::ALL` order: the particle positions from the
+station anchor to the free end's center of mass after the last step, the
+positions before it for interpolation with `Station::alpha`, whether the line
+is taut (the joint is pulling or the rope is at full length), the tension in
+newtons (the joint's pull when taut, otherwise the rope's own pull on its
+ends), and the paid-out length.
+
+`Station::rope_coupling` turns on two-way coupling: each rope's free end joins
+the solve with its body's effective inverse mass, and the rope's pull goes to
+the body as equal and opposite impulses. It stays off. With it on, the ledger
+still balances to 10⁻¹² with the ropes' momentum included, and energy never
+grows, but the rope is a second load path in parallel with the joint, so the
+arrest force exceeds the joint's 3 kN cap by the rope's own pull (about 3,004
+N in the arrest test). Scripted setups that move a body without calling
+`Station::settle_lines` also leave a stretched coupled rope that yanks the
+body; half of the existing tests do that and fail with coupling on.
+
+### Flexible solar arrays
+
+Each solar array wing flexes in three assumed modes (`physics::Mode`, after
+Likins, 1970, and Hughes, *Spacecraft Attitude Dynamics*, 1986): first
+out-of-plane bending at 0.15 Hz, first torsion at 0.5 Hz, and second bending at
+0.94 Hz, each with 0.5% of critical damping. The wing is a uniform 300 kg
+cantilevered plate from its root at |x| = 13 m to its tip at |x| = 30 m. Bending
+uses the cantilever beam's mode shapes, and torsion is linear across the chord
+and a quarter sine along the span. Every step, the plume forces on the wing's
+collider, weighted by each mode shape at their points, and the structure's
+acceleration during a station-keeping burn (440 N on a 60 t station) drive the
+modes. The update is the exact solution of each damped oscillator under a
+force held over the step, so it is stable at any step length. A burn swings
+the wing tips about 2 cm, and the first mode takes about 3.5 minutes to lose
+two thirds of its amplitude. The rigid collider still handles contact.
+
+`Station::array_flex(wing)` returns an `ArrayFlex` for wing 0 (−x) or 1 (+x),
+interpolated with `Station::alpha`. `ArrayFlex::displacement(s, c)` gives the
+out-of-plane displacement in meters along scene z at span s from 0 at the root
+to 1 at the tip and chord c from −1 at y = −0.5 m to 1 at y = 12.5 m.
+`ArrayFlex::twist(s)` gives the chord line's twist in radians, and
+`ArrayFlex::deflect` moves an undeflected scene point on the wing.
+
 ### Momentum ledger
 
 `Station::momentum` sums the linear momentum and the angular momentum about
 the station origin of the free system: the astronaut with its propellant and
 every carried or drifting part. `Station::ledger` (a `physics::Ledger`) records
-every external impulse by name: `exhaust`, `structure` (contact with fixed
-station structure), `tether` (the safety tether and the parts' depot lines),
-`reel` (a stray part reeled in), and `latch` (a part joining the station). With the tidal field off (`Station::tide = false`),
-the momentum always equals the ledger start plus those terms, through
-grabbing, carrying, and releasing.
+every external impulse by name:
+
+- `exhaust`: minus the momentum the escaping gas carries away. It is the
+  thrust impulse and the spent gas's share of the pack's momentum, plus the
+  momentum of any gas that struck something instead of escaping.
+- `impingement`: plume momentum exchanged with fixed structure. Pack gas that
+  strikes structure enters with the opposite sign, since that momentum left
+  the gas but not for the free system. Station-keeping gas that strikes a free
+  body enters as received.
+- `structure`: contact with fixed station structure.
+- `tether`: the safety tether and the parts' depot lines, and, with rope
+  coupling on, the ropes' pull at the station anchors.
+- `reel`: a stray part reeled in, and, with rope coupling on, line paid out
+  from or taken in by a reel.
+- `latch`: a part joining the station.
+
+With the tidal field off (`Station::tide = false`), the momentum always equals
+the ledger start plus those terms, through grabbing, carrying, releasing,
+plume impingement, and rope coupling.
 
 Attitude is held automatically, so the astronaut turns only in yaw. Collisions
 treat the body as a 0.9 m sphere against the habitat, node, truss, solar arrays,
@@ -252,6 +359,18 @@ latches (yellow, magenta at their limit), and each firing thruster's force
   or on the jig, and the astronaut passes through parts in the rack or on the
   jig.
 - The grip is a single soft weld, not a model of fingers and glove friction.
+- Plume impingement ignores shadowing: a surface behind another still takes
+  the flux that reaches its position. Curved surfaces use their projected
+  area, and the gas-surface model is a fixed mix of specular reflection and
+  diffuse re-emission.
+- The pack's plumes skip the part it carries unless `impinge_carried` is on.
+- A station-keeping burn fires locally for a fixed 1.2 s whatever its Δv, and
+  only the solar array wings feel the structure's acceleration; free bodies do
+  not.
+- Ropes follow their anchors and never pull on bodies unless `rope_coupling`
+  is on, the reel is idealized, ropes do not collide with anything, and
+  paid-out line has the rope's full particle count at any length.
+- Array flex is drawn and stored but does not move the rigid array colliders.
 - Construction state is local and resets on each visit; there is no shared
   editing authority. `StationState` can be saved and restored, but the zone
   does not persist it.
@@ -270,12 +389,23 @@ independence, the frame step cap, save and restore, journal replay, and the
 momentum ledger through coasting, burns, structure contact, the tether,
 capture, and carrying, the grip slipping past its limit, attitude hold through a translation and a commanded
 turn, plumes at the firing thrusters, a spinning tank glancing off a solar
-array edge, and free parts colliding with each other.
+array edge, and free parts colliding with each other. They also cover the
+safety tether rope lying straight when taut and curving when slack, a plume
+moving a free part with the ledger balanced, plumes on structure as the
+`impingement` term, the carried-part plume setting, a station-keeping burn
+ringing the arrays down, real station-keeping burns firing the pods, plume
+pulse onsets and seeds, the array mode shapes and masses, and the coupled
+ropes' ledger through an arrest.
 `cargo run --release -p verse-lagrange --example step_budget` reports the
 physics step time for a busy scene. `cargo test -p physics` covers the shared mechanisms, including box manifolds
 through a scripted tilt, yaw, penetration, and slide sweep, friction
 breakaway, torsional friction, tunneling, momentum through collisions, and a
-small stack.
+small stack. It also covers the rope (straight when taut, curving and carrying
+a whip when slack, a hanging catenary without energy gain, bit-for-bit
+restore, and coupled momentum), the plume (the lobe carrying exactly the
+thrust, dynamic pressure on a plate, an enclosure catching the whole thrust,
+and culling), and the modes (the exact ring-down envelope, a step load, and
+stability at any step).
 `cargo test -p verse --lib zones` covers portal entry and return, flight, and
 the grab-carry-latch flow. Render the scene offline with:
 
