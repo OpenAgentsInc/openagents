@@ -19,6 +19,7 @@ mod computer;
 mod discover;
 mod hosts;
 mod key;
+mod labor;
 mod out;
 mod quest;
 mod reach;
@@ -51,6 +52,9 @@ Verse (NIP-MV):
                entities, and read quests, XP, and the board.
   zone         Drive the Lagrange 1 construction zone.
   sov          Sovereign agents under NIP-SOV: profile, spawn, status.
+
+Labor (NIP-MKT, NIP-LAB):
+  labor        Admit, negotiate, execute, deliver, and accept free labor orders.
 
 Keys and relays:
   key          Show or create Nostr identities.
@@ -99,6 +103,7 @@ fn main() -> ExitCode {
         "study" => study::run(&output, &rest),
         "session" | "sessions" => session::run(&output, &rest),
         "sov" => sov::run(&output, &rest),
+        "labor" => labor::run(&output, &rest),
         "key" => key::run(&output, &rest),
         "reach" => reach::run(&output, &rest),
         "relay" => relay::run(&output, &rest),

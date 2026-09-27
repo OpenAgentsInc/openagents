@@ -281,6 +281,35 @@ a custody adapter, a policy store, a controller, an environment lease, and
 checkpoints, and none of those exist yet; the command names exactly which
 preconditions are missing rather than starting an unbounded process.
 
+## Labor (NIP-MKT, NIP-LAB)
+
+```sh
+openagents labor offer NAME setup.json [--relay URL --timeout 10] [--as PROFILE]
+openagents labor order NAME rfq.json quote.json order.json order_ack.json
+openagents labor deliver NAME EVENT_ID --relay URL --attach artifact.json
+openagents labor accept NAME acceptance.json
+openagents labor execute NAME execute.json --grant grant.json [--tasks DIR]
+openagents labor check NAME [--reconcile]
+openagents labor list
+```
+
+`labor` exposes `crates/coder-labor`: a book is one operator-admitted setup
+(market, offering, encrypted terms, and the pinned closure) with a private
+journal under `~/.openagents/labor/NAME/` (`LABOR_HOME` overrides). `offer`
+admits the setup and, with `--relay`, publishes the signed offering. `order`
+applies NIP-MKT negotiation records, `deliver` applies NIP-LAB linkage,
+submission, delivery, verification, review, and dispute records, and `accept`
+applies the buyer's acceptance. `execute` dispatches the bound CJ request under
+the operator's local grant or reconciles the dispatch that already exists.
+Every EVENT is a file, inline JSON, `-` for stdin, or a 64-hex event ID
+fetched from `--relay` within `--timeout`.
+
+Refusals exit 1. Under `--json` the document carries `error` and a typed
+`reason`: `admission` (the setup's closure or terms differ from what this host
+admits), `transition` (a record was refused or the evidence conflicts),
+`store`, `relay`, or `execution`. Nothing in the group authors a record, widens
+a grant, or retries an execution.
+
 ## Keys and relays
 
 ```sh

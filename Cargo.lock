@@ -4311,6 +4311,7 @@ dependencies = [
  "coder-computers",
  "coder-connect",
  "coder-host",
+ "coder-labor",
  "coder-link",
  "coder-reach",
  "discovery",
