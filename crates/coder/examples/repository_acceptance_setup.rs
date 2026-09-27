@@ -74,6 +74,12 @@ fn run() -> Result<Value, String> {
                 .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|e| e.to_string()))
         })
         .transpose()?;
+    // The adapter admits only the canonical system shell; take the first one
+    // this host has.
+    let shell = ["/bin/bash", "/bin/sh"]
+        .iter()
+        .find_map(|path| Path::new(path).canonicalize().ok())
+        .ok_or("no system shell at /bin/bash or /bin/sh")?;
     let registry = root.join("registry");
     let capabilities = registry.join("capabilities");
     std::fs::create_dir_all(&capabilities).map_err(|e| e.to_string())?;
@@ -188,7 +194,7 @@ fn run() -> Result<Value, String> {
         let task = inbox.show(&task_id).map_err(|e| e.to_string())?;
         drop(inbox);
         let grant = json!({"schema":task::owner::GRANT_SCHEMA,"task_id":task_id,"intent_digest":task.intent_digest,"expected_revision":task.revision,
-            "expected_source_snapshot":Snapshot::observe(&workspace).digest(),"program":Path::new("/bin/bash").canonicalize().map_err(|e|e.to_string())?,
+            "expected_source_snapshot":Snapshot::observe(&workspace).digest(),"program":shell,
             "arguments":[],"write_workspace":true,"wall_seconds":300,"stream_bytes":65536,"memory_bytes":1073741824,"requirements":requirements,
             "adapter_configuration":{"schema":task::adapter::CONFIG_SCHEMA,"provider":provider,"model":model,"effort":effort,
             "generation_endpoint":generation_endpoint,"decision_endpoint":std::env::var("TYPESAFE_BASE_URL").unwrap_or_else(|_|"https://api.typesafe.ai".into()),
