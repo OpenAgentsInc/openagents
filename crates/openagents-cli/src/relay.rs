@@ -224,6 +224,12 @@ pub struct Client {
     auth_id: Option<String>,
     subscriptions: u32,
     connected: bool,
+    authenticated: bool,
+    /// Live subscriptions opened with [`Client::listen`], and the events
+    /// they received while another call was waiting on the relay.
+    listening: Vec<String>,
+    inbox: Vec<Event>,
+    pending: std::collections::VecDeque<In>,
 }
 
 impl Client {
@@ -234,6 +240,52 @@ impl Client {
             auth_id: None,
             subscriptions: 0,
             connected: false,
+            authenticated: false,
+            listening: Vec::new(),
+            inbox: Vec::new(),
+            pending: std::collections::VecDeque::new(),
+        }
+    }
+
+    /// Open a live subscription that stays up across publishes. Read its
+    /// events with [`Client::recv`].
+    ///
+    /// # Errors
+    /// Reports a full relay queue.
+    pub fn listen(&mut self, filters: Vec<Value>) -> Result<String, String> {
+        self.subscriptions += 1;
+        let id = format!("oa-{}", self.subscriptions);
+        if !self.link.send(Out::Subscribe {
+            id: id.clone(),
+            filters,
+            live: true,
+        }) {
+            return Err("relay queue is full".into());
+        }
+        self.listening.push(id.clone());
+        Ok(id)
+    }
+
+    /// The next event on any [`Client::listen`] subscription, or `None`
+    /// after `wait`.
+    pub fn recv(&mut self, wait: Duration) -> Option<Event> {
+        let deadline = Instant::now() + wait;
+        loop {
+            if !self.inbox.is_empty() {
+                return Some(self.inbox.remove(0));
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return None;
+            }
+            match self.next(remaining) {
+                Some(In::Notice(notice)) => eprintln!("relay: {notice}"),
+                Some(In::Closed(sub, reason)) if self.listening.contains(&sub) => {
+                    eprintln!("relay closed {sub}: {reason}");
+                    self.listening.retain(|open| *open != sub);
+                }
+                Some(_) | None => {}
+            }
         }
     }
 
@@ -254,8 +306,13 @@ impl Client {
                 self.link.send(Out::Auth(event));
                 None
             }
-            In::Ok { id, .. } if self.auth_id.as_deref() == Some(id.as_str()) => {
+            In::Ok { id, accepted, .. } if self.auth_id.as_deref() == Some(id.as_str()) => {
                 self.auth_id = None;
+                self.authenticated = accepted;
+                None
+            }
+            In::Event { sub, event } if self.listening.contains(&sub) => {
+                self.inbox.push(*event);
                 None
             }
             other => Some(other),
@@ -266,7 +323,10 @@ impl Client {
     pub fn next(&mut self, wait: Duration) -> Option<In> {
         let deadline = Instant::now() + wait;
         loop {
-            for message in self.link.drain() {
+            if self.pending.is_empty() {
+                self.pending.extend(self.link.drain());
+            }
+            while let Some(message) = self.pending.pop_front() {
                 match &message {
                     In::Connected => self.connected = true,
                     In::Disconnected(_) => self.connected = false,
@@ -351,23 +411,49 @@ impl Client {
         }
     }
 
-    /// Publish `event` and wait for the relay's `OK`.
+    /// Publish `event` and wait for the relay's `OK`. An `auth-required`
+    /// refusal that arrives while the NIP-42 answer is still in flight is
+    /// retried once after the relay accepts the answer.
     ///
     /// # Errors
     /// Reports a relay that never answered.
     pub fn publish(&mut self, event: Event, wait: Duration) -> Result<Published, String> {
+        let deadline = Instant::now() + wait;
+        let mut retried = false;
+        loop {
+            let published = self.publish_once(event.clone(), deadline)?;
+            let needs_auth = !published.accepted && published.message.starts_with("auth-required");
+            if !needs_auth || retried || !self.authenticate(deadline) {
+                return Ok(published);
+            }
+            retried = true;
+        }
+    }
+
+    /// Wait until the relay has accepted this client's NIP-42 answer, or
+    /// until `deadline`. Returns whether the client is authenticated.
+    pub fn authenticate(&mut self, deadline: Instant) -> bool {
+        while !self.authenticated {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            if let Some(In::Notice(notice)) = self.next(remaining.min(Duration::from_millis(500))) {
+                eprintln!("relay: {notice}");
+            }
+        }
+        self.authenticated
+    }
+
+    fn publish_once(&mut self, event: Event, deadline: Instant) -> Result<Published, String> {
         let id = event.id.clone();
         if !self.link.send(Out::Publish(event)) {
             return Err("relay queue is full".into());
         }
-        let deadline = Instant::now() + wait;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(format!(
-                    "{} did not acknowledge within {wait:?}",
-                    self.link.url
-                ));
+                return Err(format!("{} did not acknowledge in time", self.link.url));
             }
             match self.next(remaining) {
                 Some(In::Ok {

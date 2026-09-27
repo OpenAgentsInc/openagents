@@ -15,6 +15,7 @@
 
 pub mod facilitator;
 pub mod mcp;
+pub mod native;
 pub mod replay;
 pub mod server;
 pub mod wire;

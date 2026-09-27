@@ -64,15 +64,42 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           proof, print the result. With --cap, URI defaults to
                           the advertised endpoint and the payTo must be one it
                           advertises.
-  advertise --slug SLUG --url PUBLIC_URL --merchant ID [--binding http:1|mcp:1]
+  native-serve --slug SLUG --msat N [--timeout SECONDS] [--seconds N]
+        [--as PROFILE] [--relay URL] -- CMD [ARGS...]
+                          Sell CMD over the relay (x402 exact/lnbtc,
+                          nostr:openagents:1): every record is a private kind
+                          3188 artifact sealed to the other party. A request
+                          record gets a challenge with an invoice bound to the
+                          buyer, this key, the purchase nonce, and the request
+                          bytes; a valid claim settles once, then CMD runs with
+                          the input on stdin and its stdout is sealed back with
+                          a status chain (offered, claim_pending, admitted,
+                          running, completed or failed).
+  buy PROVIDER --slug SLUG [--input FILE|-] --max-msat N [--max-fee-msat F]
+        [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof]
+                          Buy one run: resolve PROVIDER:SLUG on the relay, seal
+                          the input and a request to PROVIDER, check the
+                          challenge against them, refuse above --max-msat, pay
+                          from the wallet, seal the claim, follow the status
+                          chain, print the output. A run that does not end
+                          within --wait leaves the purchase for `status`; it
+                          is never paid again.
+  status PROVIDER PURCHASE [--wait SECONDS] [--as PROFILE] [--relay URL]
+                          Ask PROVIDER for the status chain of PURCHASE and
+                          print the newest status and any output.
+  advertise --slug SLUG --merchant ID [--url PUBLIC_URL]
+        [--binding http:1|mcp:1|nostr:openagents:1] [--relays URL]...
         [--summary TEXT] [--dry-run] [--as PROFILE] [--relay URL]
                           Publish (or print) the kind 30180 adapter definition
-                          that advertises PUBLIC_URL as a paid resource of this
-                          wallet (NIP-CAP feature oa-x402-v1) over one binding:
-                          http:1 (default) or mcp:1, where PUBLIC_URL is the
-                          MCP server URI.
-Replay records live in ~/.openagents/x402/replay. The preimage is printed
-only with --show-proof. Add --json before `x402` for one JSON document.";
+                          that advertises a paid resource of this wallet
+                          (NIP-CAP feature oa-x402-v1) over one binding:
+                          http:1 (default) or mcp:1 at PUBLIC_URL (the MCP
+                          server URI), or nostr:openagents:1 answered by this
+                          key on --relays (default: --relay), with recovery
+                          native-record-v1.
+Replay records live in ~/.openagents/x402/replay and native purchases in
+~/.openagents/x402/native. The preimage is printed only with --show-proof.
+Add --json before `x402` for one JSON document.";
 
 const SWITCHES: &[&str] = &["show-proof", "dry-run"];
 
@@ -92,12 +119,15 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "fetch" => fetch(output, rest),
         "mcp-serve" => mcp_serve(output, rest),
         "call" => call(output, rest),
+        "native-serve" => crate::x402_native::serve(output, rest),
+        "buy" => crate::x402_native::buy(output, rest),
+        "status" => crate::x402_native::status(output, rest),
         "advertise" => advertise(output, rest),
         other => output.usage("x402", &format!("unknown command `{other}`"), USAGE),
     }
 }
 
-fn replay_dir() -> PathBuf {
+pub(crate) fn replay_dir() -> PathBuf {
     match std::env::var_os("OPENAGENTS_X402_HOME") {
         Some(home) => PathBuf::from(home),
         None => config::home()
@@ -108,7 +138,7 @@ fn replay_dir() -> PathBuf {
     .join("replay")
 }
 
-fn open_wallet() -> Result<(LdkWallet, WalletConfig), WalletError> {
+pub(crate) fn open_wallet() -> Result<(LdkWallet, WalletConfig), WalletError> {
     let home = config::home();
     let wallet_config = WalletConfig::load(&home)?;
     let (mnemonic, _) = config::load_or_create_seed(&home, false, String::new)?;
@@ -118,14 +148,14 @@ fn open_wallet() -> Result<(LdkWallet, WalletConfig), WalletError> {
     ))
 }
 
-fn fail_wallet(output: &Output, error: WalletError) -> u8 {
+pub(crate) fn fail_wallet(output: &Output, error: WalletError) -> u8 {
     match error {
         WalletError::Invalid(message) => output.usage("x402", &message, USAGE),
         other => output.fail("x402", &other.to_string()),
     }
 }
 
-struct Node(Arc<LdkWallet>);
+pub(crate) struct Node(pub(crate) Arc<LdkWallet>);
 
 impl Receiver for Node {
     fn pay_to(&self) -> String {
@@ -485,10 +515,10 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
 }
 
 /// What the buyer will spend on one call.
-struct Budget {
-    max_msat: u64,
-    max_fee: u64,
-    wait: u64,
+pub(crate) struct Budget {
+    pub(crate) max_msat: u64,
+    pub(crate) max_fee: u64,
+    pub(crate) wait: u64,
 }
 
 /// Pick the one requirement of `required` that is a valid exact/lnbtc
@@ -541,36 +571,13 @@ fn buy(
         ));
     }
 
-    let (wallet, wallet_config) = open_wallet().map_err(|error| error.to_string())?;
-    if network_id(wallet_config.network.as_str()) != Some(terms.network.as_str()) {
-        let _ = wallet.stop();
-        return Err(format!(
-            "the invoice is on {} but this wallet is on {}",
-            terms.network,
-            wallet_config.network.as_str()
-        ));
-    }
     let bolt11 = terms
         .extra
         .get("invoice")
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    let proof = wallet.pay(&bolt11, budget.max_fee, Duration::from_secs(budget.wait));
-    let stopped = wallet.stop();
-    let proof = match proof {
-        Ok(proof) => proof,
-        Err(WalletError::Pending {
-            payment_hash,
-            waited_secs,
-        }) => {
-            return Err(format!(
-                "payment {payment_hash} is still pending after {waited_secs}s; run `openagents wallet lookup {payment_hash}`, then retry to reuse the proof"
-            ));
-        }
-        Err(error) => return Err(error.to_string()),
-    };
-    stopped.map_err(|error| error.to_string())?;
+    let proof = pay_invoice(&bolt11, &terms.network, &budget)?;
 
     let mut payload = Map::new();
     payload.insert("preimage".into(), Value::String(proof.preimage.clone()));
@@ -585,6 +592,40 @@ fn buy(
         proof,
         invoice.amount_msat(),
     ))
+}
+
+/// Pay `bolt11` from the wallet within `budget`. A payment still pending
+/// after the wait is reported with its hash so the proof can be reused,
+/// never paid twice.
+pub(crate) fn pay_invoice(
+    bolt11: &str,
+    network: &str,
+    budget: &Budget,
+) -> Result<openagents_wallet::Proof, String> {
+    let (wallet, wallet_config) = open_wallet().map_err(|error| error.to_string())?;
+    if network_id(wallet_config.network.as_str()) != Some(network) {
+        let _ = wallet.stop();
+        return Err(format!(
+            "the invoice is on {network} but this wallet is on {}",
+            wallet_config.network.as_str()
+        ));
+    }
+    let proof = wallet.pay(bolt11, budget.max_fee, Duration::from_secs(budget.wait));
+    let stopped = wallet.stop();
+    let proof = match proof {
+        Ok(proof) => proof,
+        Err(WalletError::Pending {
+            payment_hash,
+            waited_secs,
+        }) => {
+            return Err(format!(
+                "payment {payment_hash} is still pending after {waited_secs}s; run `openagents wallet lookup {payment_hash}`, then retry to reuse the proof"
+            ));
+        }
+        Err(error) => return Err(error.to_string()),
+    };
+    stopped.map_err(|error| error.to_string())?;
+    Ok(proof)
 }
 
 /// The toll `openagents x402 mcp-serve` puts on every tool call.
@@ -999,9 +1040,13 @@ struct PaidCapability {
 struct Advertisement<'a> {
     publisher: &'a str,
     slug: &'a str,
+    /// The public endpoint for `http:1` and `mcp:1`; ignored for the
+    /// native binding, which is reached through `relays`.
     url: &'a str,
-    /// `http:1` or `mcp:1`.
+    /// `http:1`, `mcp:1`, or `nostr:openagents:1`.
     binding: &'a str,
+    /// The relays that carry native records; empty for HTTP and MCP.
+    relays: &'a [String],
     network: &'a str,
     pay_to: &'a str,
     merchant: &'a str,
@@ -1015,15 +1060,29 @@ fn paid_definition(ad: &Advertisement<'_>) -> Value {
         slug,
         url,
         binding,
+        relays,
         network,
         pay_to,
         merchant,
         summary,
     } = *ad;
-    let (interface, transport) = if binding == "mcp:1" {
+    let native = binding == openagents_x402::native::PROFILE;
+    let (interface, transport) = if native {
+        ("openagents.x402.native.v1", "nostr-cj")
+    } else if binding == "mcp:1" {
         ("openagents.x402.mcp.v1", "mcp")
     } else {
         ("openagents.x402.http.v1", "http")
+    };
+    let remote = if native {
+        json!({"worker": publisher, "relays": relays})
+    } else {
+        json!({"endpoint": url})
+    };
+    let recovery = if native {
+        openagents_x402::native::RECOVERY
+    } else {
+        "none"
     };
     let schema = json!({
         "digest": format!(
@@ -1063,7 +1122,7 @@ fn paid_definition(ad: &Advertisement<'_>) -> Value {
             "interface": interface,
             "transport": transport,
             "operations": [slug],
-            "remote": {"endpoint": url},
+            "remote": remote,
             "x402": {
                 "v": "openagents.x402-discovery.v1",
                 "protocol": "x402-v2",
@@ -1074,7 +1133,7 @@ fn paid_definition(ad: &Advertisement<'_>) -> Value {
                 "bindings": [binding],
                 "receivers": [{"network": network, "pay_to": pay_to}],
                 "merchant": merchant,
-                "recovery": "none",
+                "recovery": recovery,
                 "recovery_contract": null
             }
         }
@@ -1089,20 +1148,43 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
     let Some(slug) = args.option("slug") else {
         return output.usage("x402", "advertise needs --slug SLUG", USAGE);
     };
-    let Some(url) = args.option("url") else {
-        return output.usage("x402", "advertise needs --url PUBLIC_URL", USAGE);
-    };
     let Some(merchant) = args.option("merchant") else {
         return output.usage("x402", "advertise needs --merchant ID", USAGE);
     };
     let binding = args.option("binding").unwrap_or("http:1");
+    let native = binding == openagents_x402::native::PROFILE;
+    let relay = relay_url(args.option("relay"));
+    let mut relays: Vec<String> = args
+        .options("relays")
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    if relays.is_empty() {
+        relays.push(relay.clone());
+    }
+    if native
+        && (relays.len() > 8
+            || relays
+                .iter()
+                .any(|r| !(r.starts_with("ws://") || r.starts_with("wss://"))))
+    {
+        return output.usage("x402", "--relays takes one to eight ws(s):// URLs", USAGE);
+    }
+    let url = match (args.option("url"), native) {
+        (_, true) => "",
+        (Some(url), false) => url,
+        (None, false) => {
+            return output.usage("x402", "advertise needs --url PUBLIC_URL", USAGE);
+        }
+    };
     let bound = match binding {
         "http:1" => http_binding("POST", url, &[], &[]).is_ok(),
         "mcp:1" => mcp_binding(url, &json!({"name": "probe"}), &BOUND_METADATA).is_ok(),
+        openagents_x402::native::PROFILE => true,
         other => {
             return output.usage(
                 "x402",
-                &format!("--binding {other} is not http:1 or mcp:1"),
+                &format!("--binding {other} is not http:1, mcp:1, or nostr:openagents:1"),
                 USAGE,
             );
         }
@@ -1140,6 +1222,7 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
         slug,
         url,
         binding,
+        relays: &relays,
         network,
         pay_to: &pay_to,
         merchant,
@@ -1167,13 +1250,17 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
     if let Err(error) = nostr::cap::check_discovery_tags(&event.tags, &definition) {
         return output.fail("x402", &format!("discovery tags: {error}"));
     }
-    let relay = relay_url(args.option("relay"));
+    let endpoint = if native {
+        json!({"worker": event.pubkey, "relays": relays})
+    } else {
+        Value::String(url.to_owned())
+    };
     let mut doc = json!({
         "relay": relay,
         "event_id": event.id,
         "publisher": event.pubkey,
         "slug": slug,
-        "endpoint": url,
+        "endpoint": endpoint,
         "binding": binding,
         "network": network,
         "pay_to": pay_to,
@@ -1311,6 +1398,7 @@ mod tests {
             slug: "echo",
             url: "https://example.com/echo",
             binding: "http:1",
+            relays: &[],
             network: nostr::x402::TESTNET,
             pay_to: &format!("02{}", "b".repeat(64)),
             merchant: "demo",
@@ -1330,6 +1418,7 @@ mod tests {
             slug: "tools",
             url: "mcp://tools.example.com/openagents",
             binding: "mcp:1",
+            relays: &[],
             network: nostr::x402::TESTNET,
             pay_to: &format!("02{}", "b".repeat(64)),
             merchant: "demo",
@@ -1343,5 +1432,33 @@ mod tests {
             body["binding_contract"]["remote"]["endpoint"],
             "mcp://tools.example.com/openagents"
         );
+    }
+
+    #[test]
+    fn the_native_definition_names_the_worker_and_relays_over_nostr_cj() {
+        let publisher = "a".repeat(64);
+        let relays = vec!["wss://relay.openagents.com/".to_owned()];
+        let body = paid_definition(&Advertisement {
+            publisher: &publisher,
+            slug: "echo",
+            url: "",
+            binding: openagents_x402::native::PROFILE,
+            relays: &relays,
+            network: nostr::x402::TESTNET,
+            pay_to: &format!("02{}", "b".repeat(64)),
+            merchant: "demo",
+            summary: "echo bytes over Nostr",
+        });
+        let definition = nostr::cap::parse_definition(&body).unwrap();
+        let x402 = definition.x402.unwrap();
+        assert_eq!(
+            x402.bindings,
+            vec![openagents_x402::native::PROFILE.to_owned()]
+        );
+        assert_eq!(x402.recovery, openagents_x402::native::RECOVERY);
+        assert_eq!(definition.transport, "nostr-cj");
+        assert_eq!(body["binding_contract"]["remote"]["worker"], publisher);
+        assert_eq!(body["binding_contract"]["remote"]["relays"][0], relays[0]);
+        assert!(body["binding_contract"]["remote"].get("endpoint").is_none());
     }
 }

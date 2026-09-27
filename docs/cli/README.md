@@ -605,6 +605,48 @@ the URI defaults to the advertised endpoint and the receiver must be an
 advertised pair on a head that lists `mcp:1`. The profiles stay distinct:
 an `http:1` challenge is refused by `call`, and an `mcp:1` one by `fetch`.
 
+### Native Nostr (`x402 native-serve`, `x402 buy`, `x402 status`, `nostr:openagents:1`)
+
+The native binding carries a paid run over the relay alone: no HTTP endpoint
+and no MCP server. Every record between buyer and provider is a private
+kind `3188` artifact, sealed with NIP-44 v2 to the other party and published
+over a NIP-42 authenticated connection. The wire records and the ledger
+rules live in `crates/x402::native`.
+
+```sh
+openagents x402 advertise --slug echo --binding nostr:openagents:1 \
+    --merchant demo --summary "echo bytes over Nostr" --json
+openagents x402 native-serve --slug echo --msat 1000 --seconds 600 --json -- cat
+echo -n hi | openagents x402 buy PROVIDER_PUBKEY --slug echo --input - \
+    --max-msat 2000 --wait 60 --as buyer --json
+openagents x402 status PROVIDER_PUBKEY PURCHASE --as buyer --json
+```
+
+`advertise --binding nostr:openagents:1` publishes a head with transport
+`nostr-cj`, interface `openagents.x402.native.v1`, recovery
+`native-record-v1`, and `remote.worker` plus one to eight `remote.relays`
+(`--relay`, repeatable) instead of an endpoint.
+
+`native-serve` listens for `request` records addressed to its key, answers
+each with a `challenge` (an invoice whose description hash binds buyer,
+provider, purchase nonce, and the request bytes) and an `offered` status,
+and runs `CMD` only after a `claim` settles and the durable purchase store
+under `~/.openagents/x402/native` admits it. The output is sealed back as a
+bytes artifact and the status chain ends in `completed` or `failed`. The
+same purchase never runs twice: a second paid invoice is refused as
+`purchase_already_admitted`, and a repeated proof as `duplicate_settlement`.
+
+`buy` resolves the provider's head, seals the input, publishes the request,
+checks the challenge against the exact request and the advertised receiver,
+refuses above `--max-msat` or `--max-fee-msat`, pays exactly once, and
+publishes the claim only with payment evidence. It writes a receipt before
+paying, then follows the status chain and prints the output only from a
+terminal status. `status` replays that receipt: it publishes a
+`status_query`, follows the provider's answer, and exits 1 while the purchase
+is not terminal. Neither command pays or reruns on a timeout; reconcile with
+`status` first. `buy` and the paid `http:1`/`mcp:1` commands refuse each
+other's challenges.
+
 ## Keys and relays
 
 ```sh
