@@ -4,12 +4,16 @@
 //! tries the selected direct routes in order, over TCP or WebSocket as each
 //! hint names, and falls back to the relay.
 //! Selection never offers a loopback route to a device on another machine.
+//! A local route, such as the loopback port of an SSH tunnel this process
+//! owns, is tried before the hints: it is same-machine evidence for that one
+//! address, whatever the connector's locality, and it is never published.
 //! A handshake refusal the host signed after proving its key blocks the
 //! attempt instead of falling back: a revoked grant is revoked on every
 //! route. Outcomes return through a channel the application drains into
 //! `Registry::report`, because a connector must not call the registry.
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -36,6 +40,8 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
 type Links = Arc<Mutex<HashMap<(HostKey, u64), Arc<Link>>>>;
+/// Local routes by host: loopback addresses only this process can use.
+type LocalRoutes = Arc<Mutex<HashMap<HostKey, SocketAddr>>>;
 
 /// Proves routes for the hosts a registry supervises.
 pub struct Connector {
@@ -45,6 +51,7 @@ pub struct Connector {
     devices: HashMap<HostKey, Arc<Device>>,
     reports: mpsc::UnboundedSender<(HostKey, Report)>,
     links: Links,
+    local: LocalRoutes,
     attempts: HashMap<(HostKey, u64), JoinHandle<()>>,
 }
 
@@ -71,6 +78,7 @@ impl Connector {
                 devices: HashMap::new(),
                 reports,
                 links: Arc::default(),
+                local: Arc::default(),
                 attempts: HashMap::new(),
             },
             receiver,
@@ -92,6 +100,44 @@ impl Connector {
             .map_err(|_| Error::Config("the host key is not a valid registry key".into()))?;
         self.devices.insert(key.clone(), device);
         Ok(key)
+    }
+
+    /// Set or clear the local route for `host`: a loopback address on this
+    /// machine that reaches the host, such as the forwarded port of an SSH
+    /// tunnel this process runs. Each attempt tries it first, over TCP,
+    /// before the host's hints and the relay. It is same-machine evidence for
+    /// this one address only, so the connector's locality still governs the
+    /// hints. Clear it when the tunnel ends; an attempt that finds it closed
+    /// moves on to the hints and the relay.
+    ///
+    /// # Errors
+    /// Refuses an address that is not loopback: a local route never leaves
+    /// this machine.
+    pub fn set_local_route(
+        &mut self,
+        host: &HostKey,
+        address: Option<SocketAddr>,
+    ) -> crate::Result<()> {
+        let mut local = lock(&self.local);
+        match address {
+            Some(address) if !address.ip().is_loopback() => Err(Error::Config(
+                "a local route must be a loopback address".into(),
+            )),
+            Some(address) => {
+                local.insert(host.clone(), address);
+                Ok(())
+            }
+            None => {
+                local.remove(host);
+                Ok(())
+            }
+        }
+    }
+
+    /// The local route set for `host`, if any.
+    #[must_use]
+    pub fn local_route(&self, host: &HostKey) -> Option<SocketAddr> {
+        lock(&self.local).get(host).copied()
     }
 
     /// The link a registry connection names.
@@ -131,8 +177,9 @@ impl coder_link::Connector for Connector {
             self.tls.clone(),
             host.clone(),
         );
+        let local = self.local_route(host);
         self.spawn(host, attempt, async move {
-            match establish(device, locality, &tls).await {
+            match establish(device, locality, local, &tls).await {
                 Ok(link) => {
                     let link = Arc::new(link);
                     lock(&links).insert((key.clone(), attempt.0), link.clone());
@@ -162,6 +209,7 @@ impl coder_link::Connector for Connector {
             self.tls.clone(),
             host.clone(),
         );
+        let local = self.local_route(host);
         self.spawn(host, attempt, async move {
             let Some(link) = link else {
                 let _ = reports.send((key, Report::Failed(attempt, Failure::Closed)));
@@ -172,7 +220,7 @@ impl coder_link::Connector for Connector {
             // route answers, so the supervisor replaces it with that route.
             let better = matches!(link.route(), Route::Relay(_))
                 && healthy
-                && direct_answers(link.device().clone(), locality, &tls).await;
+                && direct_answers(link.device().clone(), locality, local, &tls).await;
             let report = if healthy && !better {
                 Report::Established(attempt)
             } else {
@@ -199,10 +247,12 @@ impl coder_link::Connector for Connector {
     }
 }
 
-/// Prove the best route: selected direct hints in order, then the relay.
+/// Prove the best route: the local route, selected direct hints in order,
+/// then the relay.
 async fn establish(
     device: Arc<Device>,
     locality: Locality,
+    local: Option<SocketAddr>,
     tls: &websocket::Tls,
 ) -> Result<Link, Failure> {
     let relay = device.relay().to_owned();
@@ -228,8 +278,8 @@ async fn establish(
     let now = unix_time().map_err(|_| Failure::Unreachable)?;
     let hints =
         select(&reach.hints, locality, generation, now).map_err(|_| Failure::Unreachable)?;
-    for hint in hints.iter().filter(|h| h.is_direct()) {
-        match try_direct(&device, hint, generation, tls).await {
+    for (transport, address) in direct_routes(local, &hints) {
+        match try_direct(&device, transport, address, generation, tls).await {
             Ok(link) => return Ok(link),
             Err(Some(blocked)) => return Err(blocked),
             Err(None) => {}
@@ -245,15 +295,16 @@ async fn establish(
 }
 
 /// `Err(Some)` blocks the attempt; `Err(None)` tries the next route. A
-/// `tcp` hint and a `websocket` hint run the same handshake.
+/// `tcp` route and a `websocket` route run the same handshake.
 async fn try_direct(
     device: &Arc<Device>,
-    hint: &Hint,
+    transport: Transport,
+    address: String,
     generation: u64,
     tls: &websocket::Tls,
 ) -> Result<Link, Option<Failure>> {
-    let (device, address) = (device.clone(), hint.address.clone());
-    let opened = match hint.transport {
+    let device = device.clone();
+    let opened = match transport {
         Transport::Tcp => {
             let stream = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(&address))
                 .await
@@ -289,8 +340,13 @@ async fn try_direct(
     }
 }
 
-/// Whether a direct route answers now.
-async fn direct_answers(device: Arc<Device>, locality: Locality, tls: &websocket::Tls) -> bool {
+/// Whether a direct route, the local route included, answers now.
+async fn direct_answers(
+    device: Arc<Device>,
+    locality: Locality,
+    local: Option<SocketAddr>,
+    tls: &websocket::Tls,
+) -> bool {
     let Ok(reach) = fetch_reach(&device, device.relay()).await else {
         return false;
     };
@@ -299,13 +355,28 @@ async fn direct_answers(device: Arc<Device>, locality: Locality, tls: &websocket
     let Ok(hints) = select(&reach.hints, locality, generation, now) else {
         return false;
     };
-    for hint in hints.iter().filter(|h| h.is_direct()) {
-        if let Ok(link) = try_direct(&device, hint, generation, tls).await {
+    for (transport, address) in direct_routes(local, &hints) {
+        if let Ok(link) = try_direct(&device, transport, address, generation, tls).await {
             drop(link);
             return true;
         }
     }
     false
+}
+
+/// The direct routes to try, in order: the local route over TCP, then the
+/// selected direct hints.
+fn direct_routes(local: Option<SocketAddr>, hints: &[&Hint]) -> Vec<(Transport, String)> {
+    local
+        .map(|address| (Transport::Tcp, address.to_string()))
+        .into_iter()
+        .chain(
+            hints
+                .iter()
+                .filter(|h| h.is_direct())
+                .map(|h| (h.transport, h.address.clone())),
+        )
+        .collect()
 }
 
 /// The supervisor failure for a closed direct channel.
@@ -321,4 +392,51 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use coder_reach::hints::{Class, Status};
+
+    #[test]
+    fn a_local_route_is_loopback_only_and_tried_first() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (mut connector, _reports) =
+            Connector::new(runtime.handle().clone(), Locality::OtherMachine);
+        let host = HostKey::new("ab".repeat(32)).unwrap();
+        let tunnel: SocketAddr = "127.0.0.1:40123".parse().unwrap();
+        connector.set_local_route(&host, Some(tunnel)).unwrap();
+        assert_eq!(connector.local_route(&host), Some(tunnel));
+        let lan: SocketAddr = "192.168.1.20:40123".parse().unwrap();
+        assert!(connector.set_local_route(&host, Some(lan)).is_err());
+        assert_eq!(connector.local_route(&host), Some(tunnel));
+
+        let hint = |class, transport, address: &str| Hint {
+            class,
+            transport,
+            address: address.into(),
+            status: Status::Reachable,
+            observed_at: 1,
+        };
+        let hints = [
+            hint(Class::Lan, Transport::Tcp, "192.168.1.20:4000"),
+            hint(Class::Relay, Transport::Nostr, "wss://relay.example/"),
+        ];
+        assert_eq!(
+            direct_routes(Some(tunnel), &hints.iter().collect::<Vec<_>>()),
+            vec![
+                (Transport::Tcp, "127.0.0.1:40123".to_owned()),
+                (Transport::Tcp, "192.168.1.20:4000".to_owned()),
+            ]
+        );
+        connector.set_local_route(&host, None).unwrap();
+        assert_eq!(connector.local_route(&host), None);
+        assert_eq!(
+            direct_routes(None, &hints.iter().collect::<Vec<_>>()).len(),
+            1
+        );
+    }
 }
