@@ -965,6 +965,12 @@ fn route_class(route: &Route) -> Class {
         Route::Relay(_) => return Class::Relay,
         Route::Direct(address) => address,
     };
+    // A WebSocket route is a `ws` or `wss` URL; classify its authority.
+    let address = address
+        .split_once("://")
+        .map_or(address.as_str(), |(_, rest)| {
+            rest.split(['/', '?', '#']).next().unwrap_or(rest)
+        });
     match address.parse::<SocketAddr>().map(|a| a.ip()) {
         Ok(ip) if ip.is_loopback() => Class::Loopback,
         Ok(IpAddr::V4(ip)) => {
@@ -1548,6 +1554,9 @@ mod tests {
         assert_eq!(direct("100.128.0.1:4000"), Class::Public);
         assert_eq!(direct("[fd00::1]:4000"), Class::Lan);
         assert_eq!(direct("203.0.113.9:4000"), Class::Public);
+        assert_eq!(direct("ws://127.0.0.1:4000/reach"), Class::Loopback);
+        assert_eq!(direct("wss://192.168.1.20:4443/"), Class::Lan);
+        assert_eq!(direct("wss://host.example/reach"), Class::Public);
         assert_eq!(
             route_class(&Route::Relay("wss://relay.example/".into())),
             Class::Relay
