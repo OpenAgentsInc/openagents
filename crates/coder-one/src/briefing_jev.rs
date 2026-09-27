@@ -1,23 +1,27 @@
-//! Jev decides what the delegate's briefing says (issue #9746, series 6).
+//! Jev decides what the delegate's briefing says (issue #9746, series 6
+//! and later).
 //!
 //! The host searches Coder's knowledge base with the task instruction and
 //! hands the episode every candidate it found
-//! ([`crate::briefing_knowledge`]). With `CODER_ONE_BRIEFING_JEV=on`, the
-//! episode asks Jev one request before delegation:
+//! ([`crate::briefing_knowledge`]). With `CODER_ONE_BRIEFING_JEV` set to a
+//! question set's name, the episode asks Jev one request before
+//! delegation:
 //!
-//! - one Noul per knowledge candidate: whether the entry applies to this
-//!   task and changes what a solver should do. The briefing keeps each
-//!   candidate at [`KEEP`] or above, whole, in order of Jev's probability.
+//! - one Noul per knowledge candidate, the set's entry question. The
+//!   briefing keeps each candidate at the set's `keep` threshold or above,
+//!   whole, in order of Jev's probability, up to the set's knowledge
+//!   budget when it has one.
 //! - one Noul per requirement the rule-based extraction
 //!   ([`crate::requirements::mechanical`]) found in the instruction: whether
 //!   a grader is likely to check it and a solver is likely to get it wrong
-//!   or skip it. The briefing lists each requirement at [`FLAG`] or above
-//!   under "Requirements Jev flags as easy to miss".
+//!   or skip it. The briefing lists each requirement at the set's `flag`
+//!   threshold or above under "Requirements Jev flags as easy to miss".
 //!
-//! This module holds the whole question set and both thresholds, so one
-//! file is what a reviewer reads. The record keeps every probability,
-//! kept or not. When Jev doesn't answer every question, the selection
-//! fails: the episode never falls back to the host's lexical ranking.
+//! This module holds every question set and its thresholds, so one file is
+//! what a reviewer reads: [`V1`] is series 6's and [`V2`] is series 7's.
+//! The record keeps every probability, kept or not. When Jev doesn't
+//! answer every question, the selection fails: the episode never falls
+//! back to the host's lexical ranking.
 
 use serde_json::{Value, json};
 
@@ -25,7 +29,8 @@ use crate::briefing_knowledge::{Entry, Flagged, Knowledge};
 use crate::component::jev::{Ask, Asked, JevMode};
 use crate::record::{Implementation, Recorder};
 
-/// The variable that turns the selection on: `on`.
+/// The variable that names the question set: `on` or `v1` for [`V1`],
+/// `v2` for [`V2`], and `off` or unset for none.
 pub const ENV: &str = "CODER_ONE_BRIEFING_JEV";
 
 /// The file the episode records the selection in, under its artifacts.
@@ -42,47 +47,86 @@ pub const MAX_REQUIREMENTS: usize = 12;
 /// The record's schema.
 pub const SCHEMA: &str = "openagents.coder_one.briefing_jev.v1";
 
-/// A knowledge candidate goes in the briefing when Jev's probability that
-/// it applies is at least this.
-pub const KEEP: f64 = 0.5;
-
-/// A requirement goes under "Requirements Jev flags as easy to miss" when
-/// Jev's probability is at least this.
-pub const FLAG: f64 = 0.5;
-
-/// The question asked of each knowledge candidate.
-pub const ENTRY_QUESTION: &str =
-    "Does this entry apply to this task and change what a solver should do?";
-
-/// The question asked of each requirement.
+/// The question asked of each requirement, in every set.
 pub const REQUIREMENT_QUESTION: &str = "Is this requirement one a grader is likely to check \
 and a solver is likely to get wrong or skip?";
-
-/// The sentence the knowledge section adds under the host's note when Jev
-/// chose its entries.
-pub const KEPT_NOTE: &str = "Jev, a decision model, chose these entries from the \
-candidates Coder's knowledge search found; each heading shows Jev's probability \
-that the entry applies to this task.";
 
 /// The paragraph under "Requirements Jev flags as easy to miss".
 pub const FLAG_NOTE: &str = "Jev, a decision model, judged each requirement below \
 as one a grader is likely to check and a solver is likely to get wrong or skip. \
 Verify each one before you finish.";
 
-/// Whether the environment turns the selection on.
+/// One question set: the questions, the thresholds, and how the kept
+/// entries are bounded.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct QuestionSet {
+    /// The name `CODER_ONE_BRIEFING_JEV` takes and the record carries.
+    pub name: &'static str,
+    /// The question asked of each knowledge candidate.
+    pub entry_question: &'static str,
+    /// A candidate is kept when Jev's probability is at least this.
+    pub keep: f64,
+    /// A requirement is flagged when Jev's probability is at least this.
+    pub flag: f64,
+    /// The most characters of entry text the kept entries take, in order
+    /// of Jev's probability; a kept entry that would pass it is skipped.
+    /// `None` leaves only the briefing cap.
+    pub budget: Option<usize>,
+    /// The sentence the knowledge section adds under the host's note.
+    pub kept_note: &'static str,
+}
+
+/// Series 6's set.
+pub const V1: QuestionSet = QuestionSet {
+    name: "v1",
+    entry_question: "Does this entry apply to this task and change what a solver should do?",
+    keep: 0.5,
+    flag: 0.5,
+    budget: None,
+    kept_note: "Jev, a decision model, chose these entries from the candidates Coder's \
+knowledge search found; each heading shows Jev's probability that the entry applies \
+to this task.",
+};
+
+/// Series 7's set. In series 6, [`V1`]'s question ranked two generic
+/// slips above the task's own edge case, every requirement passed its 0.5
+/// flag, and the longer briefing cost more. This set asks about what the
+/// task's outputs depend on, flags at 0.7, and holds the kept entries to
+/// series 2's 16,000-character budget.
+pub const V2: QuestionSet = QuestionSet {
+    name: "v2",
+    entry_question: "Does this entry state a method, formula, parameter, or edge case \
+that this task's required outputs depend on?",
+    keep: 0.5,
+    flag: 0.7,
+    budget: Some(16_000),
+    kept_note: "Jev, a decision model, chose these entries from the candidates Coder's \
+knowledge search found; each heading shows Jev's probability that the task's required \
+outputs depend on what the entry states.",
+};
+
+/// Every set, by name.
+pub const SETS: [QuestionSet; 2] = [V1, V2];
+
+/// The question set the environment names, if any.
 ///
 /// # Errors
 ///
-/// A message when the variable holds something other than `on` or `off`.
-pub fn from_env() -> Result<bool, String> {
+/// A message when the variable names no set.
+pub fn from_env() -> Result<Option<QuestionSet>, String> {
     match std::env::var(ENV)
         .ok()
         .map(|value| value.trim().to_ascii_lowercase())
         .as_deref()
     {
-        None | Some("" | "off") => Ok(false),
-        Some("on") => Ok(true),
-        Some(other) => Err(format!("{ENV} is {other:?}; it takes on or off")),
+        None | Some("" | "off") => Ok(None),
+        Some("on") => Ok(Some(V1)),
+        Some(name) => SETS
+            .iter()
+            .find(|set| set.name == name)
+            .copied()
+            .map(Some)
+            .ok_or_else(|| format!("{ENV} is {name:?}; it takes on, v1, v2, or off")),
     }
 }
 
@@ -143,6 +187,7 @@ pub fn front_matter_field(text: &str, key: &str) -> Option<String> {
 /// requirement (`requirement_{i}`).
 #[must_use]
 pub fn request(
+    set: &QuestionSet,
     instruction: &str,
     candidates: &[Candidate],
     requirements: &[String],
@@ -152,8 +197,8 @@ pub fn request(
         questions = questions.with(
             format!("entry_{i}"),
             jev::Noul::new(format!(
-                "Consider the knowledge entry `candidates[{i}]` (id `{}`). {ENTRY_QUESTION}",
-                candidate.id
+                "Consider the knowledge entry `candidates[{i}]` (id `{}`). {}",
+                candidate.id, set.entry_question
             )),
         );
     }
@@ -186,18 +231,21 @@ pub struct Selection {
     pub knowledge: Knowledge,
     /// Each candidate in the host's order with Jev's probability.
     pub candidates: Vec<(Entry, f64)>,
+    /// Kept candidates the set's budget left out, by id.
+    pub over_budget: Vec<String>,
     /// Each requirement with Jev's probability.
     pub requirements: Vec<(String, f64)>,
 }
 
-/// Applies [`KEEP`] and [`FLAG`] to Jev's answers. `noul` looks up an
-/// answer by question ID.
+/// Applies the set's thresholds and budget to Jev's answers. `noul` looks
+/// up an answer by question ID.
 ///
 /// # Errors
 ///
 /// A message naming the first question Jev left unanswered: the selection
 /// needs every answer, and never fills a gap from the host's ranking.
 pub fn decide(
+    set: &QuestionSet,
     host: &Knowledge,
     requirements: &[String],
     noul: impl Fn(&str) -> Option<f64>,
@@ -217,7 +265,7 @@ pub fn decide(
     let mut kept: Vec<(usize, Entry, f64)> = candidates
         .iter()
         .enumerate()
-        .filter(|(_, (_, p))| *p >= KEEP)
+        .filter(|(_, (_, p))| *p >= set.keep)
         .map(|(rank, (entry, p))| {
             let mut entry = entry.clone();
             entry.jev = Some(*p);
@@ -226,13 +274,25 @@ pub fn decide(
         .collect();
     // Jev's probability first; the host's rank breaks a tie.
     kept.sort_by(|a, b| b.2.total_cmp(&a.2).then(a.0.cmp(&b.0)));
+    let mut entries = Vec::new();
+    let mut over_budget = Vec::new();
+    let mut used = 0;
+    for (_, entry, _) in kept {
+        let size = entry.text.chars().count();
+        if set.budget.is_some_and(|budget| used + size > budget) {
+            over_budget.push(entry.id);
+            continue;
+        }
+        used += size;
+        entries.push(entry);
+    }
     let knowledge = Knowledge {
         note: host.note.clone(),
-        entries: kept.into_iter().map(|(_, entry, _)| entry).collect(),
-        chosen_from: Some(host.entries.len()),
+        entries,
+        kept_note: Some(set.kept_note),
         flagged: judged
             .iter()
-            .filter(|(_, p)| *p >= FLAG)
+            .filter(|(_, p)| *p >= set.flag)
             .map(|(text, p)| Flagged {
                 text: text.clone(),
                 p: *p,
@@ -242,15 +302,17 @@ pub fn decide(
     Ok(Selection {
         knowledge,
         candidates,
+        over_budget,
         requirements: judged,
     })
 }
 
-/// The selection's record: the thresholds, the questions, every
+/// The selection's record: the set, its thresholds and questions, every
 /// candidate and requirement with its probability and fate, and the
-/// request's key. `outcome` is `selected` or why it failed.
+/// request's key. `outcome` is `selected` or `failed`.
 #[must_use]
 pub fn record(
+    set: &QuestionSet,
     host: &Knowledge,
     requirements: &[String],
     asked: &Asked,
@@ -258,12 +320,19 @@ pub fn record(
     error: Option<&str>,
 ) -> Value {
     let p = |id: String| asked.noul(&id);
+    let fate = |entry: &Entry, p: Option<f64>| match (p, selection) {
+        (None, _) => "unanswered",
+        (Some(p), _) if p < set.keep => "below the threshold",
+        (_, Some(s)) if s.over_budget.contains(&entry.id) => "kept, past the budget",
+        _ => "kept",
+    };
     json!({
         "schema": SCHEMA,
+        "question_set": set.name,
         "outcome": if selection.is_some() { "selected" } else { "failed" },
         "error": error,
-        "thresholds": { "keep": KEEP, "flag": FLAG },
-        "questions": { "entry": ENTRY_QUESTION, "requirement": REQUIREMENT_QUESTION },
+        "thresholds": { "keep": set.keep, "flag": set.flag, "budget_chars": set.budget },
+        "questions": { "entry": set.entry_question, "requirement": REQUIREMENT_QUESTION },
         "request_key": asked.key,
         "how": asked.how,
         "input_tokens": asked.input_tokens,
@@ -279,7 +348,8 @@ pub fn record(
                 "chars": entry.text.chars().count(),
                 "title": Candidate::of(entry).title,
                 "p": p,
-                "kept": p.is_some_and(|p| p >= KEEP),
+                "kept": p.is_some_and(|p| p >= set.keep),
+                "fate": fate(entry, p),
             })
         }).collect::<Vec<_>>(),
         "kept": selection.map(|s| s.knowledge.entries.iter().map(|e| json!({
@@ -287,33 +357,38 @@ pub fn record(
         })).collect::<Vec<_>>()),
         "requirements": requirements.iter().enumerate().map(|(i, text)| {
             let p = p(format!("requirement_{i}"));
-            json!({ "text": text, "p": p, "flagged": p.is_some_and(|p| p >= FLAG) })
+            json!({ "text": text, "p": p, "flagged": p.is_some_and(|p| p >= set.flag) })
         }).collect::<Vec<_>>(),
     })
 }
 
 /// The selector's implementation record: its questions and thresholds.
 #[must_use]
-pub fn implementation() -> Implementation {
+pub fn implementation(set: &QuestionSet) -> Implementation {
     Implementation::new(
         "task.briefing_jev",
-        "Jev chooses knowledge and flags requirements",
+        &format!(
+            "Jev chooses knowledge and flags requirements ({})",
+            set.name
+        ),
         &json!({
-            "keep": KEEP,
-            "flag": FLAG,
-            "entry_question": ENTRY_QUESTION,
+            "keep": set.keep,
+            "flag": set.flag,
+            "budget_chars": set.budget,
+            "entry_question": set.entry_question,
             "requirement_question": REQUIREMENT_QUESTION,
         }),
     )
 }
 
-/// Asks Jev the one request and applies the thresholds.
+/// Asks Jev the one request and applies the set.
 ///
 /// # Errors
 ///
 /// The record of the failed selection and why it failed, when Jev didn't
 /// answer every question.
 pub async fn select(
+    set: &QuestionSet,
     mode: &JevMode,
     recorder: &Recorder,
     deadline: Option<crate::deadline::Deadline>,
@@ -322,7 +397,7 @@ pub async fn select(
     requirements: &[String],
 ) -> Result<(Selection, Value), (String, Value)> {
     let candidates: Vec<Candidate> = host.entries.iter().map(Candidate::of).collect();
-    let (state, questions) = request(instruction, &candidates, requirements);
+    let (state, questions) = request(set, instruction, &candidates, requirements);
     let asked = crate::component::jev::ask(
         mode,
         recorder,
@@ -338,7 +413,7 @@ pub async fn select(
     )
     .await;
     let decided = if asked.answered() {
-        decide(host, requirements, |id| asked.noul(id))
+        decide(set, host, requirements, |id| asked.noul(id))
     } else {
         Err(format!(
             "Jev didn't answer the briefing request: {}",
@@ -347,11 +422,11 @@ pub async fn select(
     };
     match decided {
         Ok(selection) => {
-            let record = record(host, requirements, &asked, Some(&selection), None);
+            let record = record(set, host, requirements, &asked, Some(&selection), None);
             Ok((selection, record))
         }
         Err(error) => {
-            let record = record(host, requirements, &asked, None, Some(&error));
+            let record = record(set, host, requirements, &asked, None, Some(&error));
             Err((error, record))
         }
     }
@@ -424,7 +499,7 @@ mod tests {
         let host = host();
         let candidates: Vec<Candidate> = host.entries.iter().map(Candidate::of).collect();
         assert_eq!(candidates[1].summary, "What b.second says, folded.");
-        let (state, questions) = request("Do the task.", &candidates, &requirements());
+        let (state, questions) = request(&V1, "Do the task.", &candidates, &requirements());
         assert_eq!(questions.len(), 5);
         let body = serde_json::to_value(
             jev::SystemOneRequest::new(jev::Entry::from(state.clone()), questions)
@@ -436,7 +511,7 @@ mod tests {
         assert_eq!(q["entry_0"]["type"], "noul");
         let entry = q["entry_1"]["instructions"].as_str().unwrap();
         assert!(entry.contains("`candidates[1]`") && entry.contains("b.second"));
-        assert!(entry.ends_with(ENTRY_QUESTION));
+        assert!(entry.ends_with(V1.entry_question));
         let requirement = q["requirement_1"]["instructions"].as_str().unwrap();
         assert!(requirement.contains("`requirements[1]`"));
         assert!(requirement.ends_with(REQUIREMENT_QUESTION));
@@ -458,7 +533,7 @@ mod tests {
             ("requirement_0", 0.5),
             ("requirement_1", 0.2),
         ];
-        let selection = decide(&host(), &requirements(), answers(&values)).unwrap();
+        let selection = decide(&V1, &host(), &requirements(), answers(&values)).unwrap();
         let kept: Vec<_> = selection
             .knowledge
             .entries
@@ -466,7 +541,8 @@ mod tests {
             .map(|e| (e.id.as_str(), e.jev))
             .collect();
         assert_eq!(kept, [("c.third", Some(0.91)), ("a.first", Some(0.62))]);
-        assert_eq!(selection.knowledge.chosen_from, Some(3));
+        assert_eq!(selection.knowledge.kept_note, Some(V1.kept_note));
+        assert!(selection.over_budget.is_empty());
         assert_eq!(selection.knowledge.note.as_deref(), Some("Act on these."));
         assert_eq!(
             selection.knowledge.flagged,
@@ -482,7 +558,7 @@ mod tests {
     #[test]
     fn a_missing_answer_fails_the_selection() {
         let values = [("entry_0", 0.9), ("entry_1", 0.9), ("requirement_0", 0.9)];
-        let error = decide(&host(), &requirements(), answers(&values)).unwrap_err();
+        let error = decide(&V1, &host(), &requirements(), answers(&values)).unwrap_err();
         assert!(error.contains("c.third"), "{error}");
         let values = [
             ("entry_0", 0.9),
@@ -490,7 +566,7 @@ mod tests {
             ("entry_2", 0.9),
             ("requirement_0", 0.9),
         ];
-        let error = decide(&host(), &requirements(), answers(&values)).unwrap_err();
+        let error = decide(&V1, &host(), &requirements(), answers(&values)).unwrap_err();
         assert!(error.contains("requirement 2"), "{error}");
     }
 
@@ -503,7 +579,7 @@ mod tests {
             ("requirement_0", 0.8),
             ("requirement_1", 0.3),
         ];
-        let selection = decide(&host(), &requirements(), answers(&values)).unwrap();
+        let selection = decide(&V1, &host(), &requirements(), answers(&values)).unwrap();
         let inputs = BriefingInputs {
             instruction: "Do the task.".to_string(),
             requirements: requirements().into_iter().map(|r| (r, None)).collect(),
@@ -521,7 +597,7 @@ mod tests {
         assert!(text.contains(", Jev p=0.62)\n"));
         assert!(!text.contains("b.second title"));
         assert!(text.find("c.third title").unwrap() < text.find("a.first title").unwrap());
-        assert!(text.contains(&format!("Act on these. {KEPT_NOTE}")));
+        assert!(text.contains(&format!("Act on these. {}", V1.kept_note)));
         let flagged = text
             .find("## Requirements Jev flags as easy to miss")
             .unwrap();
@@ -541,7 +617,7 @@ mod tests {
 
     fn recorded(host: &Knowledge, answers: Value) -> JevMode {
         let candidates: Vec<Candidate> = host.entries.iter().map(Candidate::of).collect();
-        let (state, questions) = request("Do the task.", &candidates, &requirements());
+        let (state, questions) = request(&V1, "Do the task.", &candidates, &requirements());
         let body = Value::Object(
             jev::SystemOneRequest::new(jev::Entry::from(state), questions)
                 .body(crate::credentials::JEV_MODEL)
@@ -576,6 +652,7 @@ mod tests {
         });
         let recorder = Recorder::default();
         let (selection, record) = select(
+            &V1,
             &recorded(&host, answers),
             &recorder,
             None,
@@ -593,7 +670,9 @@ mod tests {
             .collect();
         assert_eq!(decisions.len(), 1);
         assert_eq!(record["outcome"], "selected");
-        assert_eq!(record["thresholds"]["keep"], KEEP);
+        assert_eq!(record["thresholds"]["keep"], V1.keep);
+        assert_eq!(record["question_set"], "v1");
+        assert_eq!(candidates_fate(&record, 1), "below the threshold");
         let candidates = record["candidates"].as_array().unwrap();
         assert_eq!(candidates.len(), 3);
         assert_eq!(candidates[1]["p"], 0.2);
@@ -609,6 +688,7 @@ mod tests {
         let host = host();
         let recorder = Recorder::default();
         let (error, record) = select(
+            &V1,
             &JevMode::Off,
             &recorder,
             None,
@@ -625,6 +705,7 @@ mod tests {
         // A partial answer fails too.
         let partial = json!({ "entry_0": { "type": "noul", "noul": 0.9 } });
         let (error, _) = select(
+            &V1,
             &recorded(&host, partial),
             &Recorder::default(),
             None,
@@ -635,5 +716,65 @@ mod tests {
         .await
         .unwrap_err();
         assert!(error.contains("b.second"), "{error}");
+    }
+
+    fn candidates_fate(record: &Value, i: usize) -> &str {
+        record["candidates"][i]["fate"].as_str().unwrap()
+    }
+
+    #[test]
+    fn the_environment_names_a_question_set() {
+        assert_eq!(
+            SETS.iter().map(|s| s.name).collect::<Vec<_>>(),
+            ["v1", "v2"]
+        );
+        assert_ne!(V1.entry_question, V2.entry_question);
+        assert_eq!((V2.keep, V2.flag, V2.budget), (0.5, 0.7, Some(16_000)));
+    }
+
+    #[test]
+    fn v2_flags_at_seven_tenths_and_holds_kept_entries_to_its_budget() {
+        let big = |id: &str, chars: usize| {
+            use sha2::{Digest, Sha256};
+            let text = format!(
+                "---\nid: {id}\nversion: 1\ntitle: {id}\n---\n\n{}\n",
+                "x".repeat(chars)
+            );
+            Entry {
+                id: id.to_string(),
+                version: 1,
+                sha256: Sha256::digest(text.as_bytes())
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect(),
+                score: None,
+                text,
+                jev: None,
+            }
+        };
+        let host = Knowledge {
+            entries: vec![big("a", 9_000), big("b", 8_000), big("c", 5_000)],
+            ..Knowledge::NONE
+        };
+        // b is kept first, a would pass 16,000 characters, and c still fits.
+        let values = [
+            ("entry_0", 0.8),
+            ("entry_1", 0.9),
+            ("entry_2", 0.6),
+            ("requirement_0", 0.69),
+            ("requirement_1", 0.7),
+        ];
+        let selection = decide(&V2, &host, &requirements(), answers(&values)).unwrap();
+        let ids: Vec<_> = selection
+            .knowledge
+            .entries
+            .iter()
+            .map(|e| e.id.as_str())
+            .collect();
+        assert_eq!(ids, ["b", "c"]);
+        assert_eq!(selection.over_budget, ["a"]);
+        assert_eq!(selection.knowledge.flagged.len(), 1);
+        assert_eq!(selection.knowledge.flagged[0].text, requirements()[1]);
+        assert!(selection.knowledge.note().ends_with(V2.kept_note));
     }
 }

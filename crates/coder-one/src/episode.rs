@@ -26,7 +26,7 @@
 //! | `CODER_ONE_EXPLORE_STEPS` | The explore phase's step bound; 8 when unset. |
 //! | `CODER_ONE_BRIEFING_CAP` | The briefing's length cap in characters; 12,000 when unset. |
 //! | `CODER_ONE_BRIEFING_KNOWLEDGE` | A JSON file of knowledge-base entries the host selected; the briefing carries each one whole after the task. Unset for no such section. |
-//! | `CODER_ONE_BRIEFING_JEV` | `on` makes Jev choose which of those entries the briefing carries and flag the requirements that are easy to miss, in one request before delegation; the run fails with exit code 7 when Jev doesn't answer. Off when unset. |
+//! | `CODER_ONE_BRIEFING_JEV` | A question set, `v1` (or `on`) or `v2` (`coder_one::briefing_jev`), makes Jev choose which of those entries the briefing carries and flag the requirements that are easy to miss, in one request before delegation; the run fails with exit code 7 when Jev doesn't answer. Off when unset. |
 //! | `CODER_ONE_CLAUDE_BIN` | The `claude` binary; the first on `PATH` when unset. |
 //! | `CODER_ONE_CODEX_BIN` | The `codex` binary; the first on `PATH` when unset. |
 //! | `CLAUDE_CODE_OAUTH_TOKEN` | The Claude Code delegate's subscription token; or `ANTHROPIC_API_KEY`. |
@@ -250,12 +250,15 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
         Err(error) => problems.push(error),
     }
     match briefing_jev_switch(policy.jev()) {
-        Ok(true) => println!(
-            "briefing jev: on (keep p >= {}, flag p >= {})",
-            crate::briefing_jev::KEEP,
-            crate::briefing_jev::FLAG
+        Ok(Some(set)) => println!(
+            "briefing jev: on (question set {}, keep p >= {}, flag p >= {}, knowledge budget {})",
+            set.name,
+            set.keep,
+            set.flag,
+            set.budget
+                .map_or("none".to_string(), |chars| format!("{chars} characters"))
         ),
-        Ok(false) => {}
+        Ok(None) => {}
         Err(error) => problems.push(error),
     }
 
@@ -300,10 +303,10 @@ fn briefing_knowledge(
 /// requirements (`CODER_ONE_BRIEFING_JEV`, [`crate::briefing_jev`]). The
 /// switch needs the host's candidates and a live Jev: without them it's
 /// refused, never run as the host's lexical selection.
-fn briefing_jev_switch(jev: bool) -> Result<bool, String> {
-    if !crate::briefing_jev::from_env()? {
-        return Ok(false);
-    }
+fn briefing_jev_switch(jev: bool) -> Result<Option<crate::briefing_jev::QuestionSet>, String> {
+    let Some(set) = crate::briefing_jev::from_env()? else {
+        return Ok(None);
+    };
     if !jev {
         return Err(format!(
             "{} needs Jev, and CODER_ONE_JEV is off",
@@ -311,7 +314,7 @@ fn briefing_jev_switch(jev: bool) -> Result<bool, String> {
         ));
     }
     match crate::briefing_knowledge::from_env()? {
-        Some((_, _, knowledge)) if !knowledge.entries.is_empty() => Ok(true),
+        Some((_, _, knowledge)) if !knowledge.entries.is_empty() => Ok(Some(set)),
         _ => Err(format!(
             "{} needs the host's candidates in {}",
             crate::briefing_jev::ENV,
@@ -601,7 +604,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     // Jev chooses the knowledge and flags the requirements before
     // delegation. When it can't, the run is a fault: it never falls back
     // to the host's lexical ranking.
-    let knowledge = if briefing_jev {
+    let knowledge = if let Some(set) = briefing_jev {
         let requirements: Vec<String> = judge
             .requirements
             .requirements
@@ -610,6 +613,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             .map(|r| r.text.split_whitespace().collect::<Vec<_>>().join(" "))
             .collect();
         let selected = crate::briefing_jev::select(
+            &set,
             &judge.jev_mode(),
             &recorder,
             Some(judge.episode_deadline()),

@@ -387,6 +387,27 @@ BRIEFING_KNOWLEDGE_ENV = "CODER_ONE_BRIEFING_KNOWLEDGE"
 BRIEFING_JEV_ENV = "CODER_ONE_BRIEFING_JEV"
 
 
+BRIEFING_JEV_SETS = ("v1", "v2")
+
+
+def briefing_jev_set(value: Any) -> str | None:
+    """The ``CODER_ONE_BRIEFING_JEV`` value a ``briefing_jev`` kwarg asks
+    for: ``on`` for true, a question set's name as given, and ``None``
+    for false or unset."""
+    if value is None or value is False:
+        return None
+    word = str(value).strip().lower()
+    if word in ("", "0", "false", "off"):
+        return None
+    if word in ("1", "true", "on"):
+        return "on"
+    if word in BRIEFING_JEV_SETS:
+        return word
+    raise EpisodeContractError(
+        f"briefing_jev={value!r}: it takes true, false, or one of {', '.join(BRIEFING_JEV_SETS)}"
+    )
+
+
 def load_briefing_knowledge(value: Any) -> tuple[Path, int]:
     """Checks a ``briefing_knowledge`` kwarg on the host: a readable JSON
     file with a non-empty ``entries`` list, each entry with an ``id``, a
@@ -465,10 +486,11 @@ class CoderOneDelegate(CoderOne):
       path as ``CODER_ONE_BRIEFING_KNOWLEDGE``; the briefing then carries
       each entry whole after the task. The doctor must report the same
       number of entries.
-    - ``briefing_jev``: optional, with ``briefing_knowledge``. When true,
-      the file holds the knowledge search's candidates, and Jev decides in
-      the episode which ones the briefing carries and which requirements
-      it flags (``CODER_ONE_BRIEFING_JEV=on``). The doctor must report
+    - ``briefing_jev``: optional, with ``briefing_knowledge``. ``true`` or
+      a question set's name (``v1``, ``v2``): the file holds the knowledge
+      search's candidates, and Jev decides in the episode which ones the
+      briefing carries and which requirements it flags
+      (``CODER_ONE_BRIEFING_JEV``; ``true`` is ``on``, which is ``v1``). The doctor must report
       ``briefing jev: on``; a run where Jev doesn't answer exits 7 instead
       of falling back to the host's ranking.
     """
@@ -529,11 +551,7 @@ class CoderOneDelegate(CoderOne):
             self._briefing_knowledge, self._briefing_entries = load_briefing_knowledge(
                 knowledge
             )
-        self._briefing_jev = str(kwargs.pop("briefing_jev", "") or "").lower() in (
-            "1",
-            "true",
-            "on",
-        )
+        self._briefing_jev = briefing_jev_set(kwargs.pop("briefing_jev", None))
         if self._briefing_jev and self._briefing_knowledge is None:
             raise EpisodeContractError(
                 "briefing_jev needs briefing_knowledge: Jev chooses from its candidates"
@@ -913,7 +931,7 @@ class CoderOneDelegate(CoderOne):
         if self._briefing_knowledge is not None:
             env[BRIEFING_KNOWLEDGE_ENV] = str(BRIEFING_KNOWLEDGE_PATH)
         if self._briefing_jev:
-            env[BRIEFING_JEV_ENV] = "on"
+            env[BRIEFING_JEV_ENV] = self._briefing_jev
         return env
 
 

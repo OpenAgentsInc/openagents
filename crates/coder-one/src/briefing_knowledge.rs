@@ -89,15 +89,15 @@ pub struct Flagged {
 /// The host's selection: the entries in its order, and the paragraph
 /// that introduces them when it isn't [`NOTE`]. When Jev chose the
 /// entries ([`crate::briefing_jev`]), `entries` holds only the ones it
-/// kept, `chosen_from` counts the candidates it judged, and `flagged`
-/// holds the requirements it flagged; neither is read from the file.
+/// kept, `kept_note` says how Jev chose them, and `flagged` holds the
+/// requirements it flagged; neither is read from the file.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Knowledge {
     #[serde(default)]
     pub note: Option<String>,
     pub entries: Vec<Entry>,
     #[serde(skip)]
-    pub chosen_from: Option<usize>,
+    pub kept_note: Option<&'static str>,
     #[serde(skip)]
     pub flagged: Vec<Flagged>,
 }
@@ -107,13 +107,12 @@ impl Knowledge {
     pub const NONE: Self = Self {
         note: None,
         entries: Vec::new(),
-        chosen_from: None,
+        kept_note: None,
         flagged: Vec::new(),
     };
 
     /// The paragraph under the heading: the host's note or [`NOTE`], and
-    /// [`crate::briefing_jev::KEPT_NOTE`] after it when Jev chose the
-    /// entries.
+    /// the question set's sentence after it when Jev chose the entries.
     #[must_use]
     pub fn note(&self) -> String {
         let note = self
@@ -122,8 +121,8 @@ impl Knowledge {
             .map(str::trim)
             .filter(|note| !note.is_empty())
             .unwrap_or(NOTE);
-        match self.chosen_from {
-            Some(_) => format!("{note} {}", crate::briefing_jev::KEPT_NOTE),
+        match self.kept_note {
+            Some(kept) => format!("{note} {kept}"),
             None => note.to_string(),
         }
     }

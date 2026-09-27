@@ -780,6 +780,65 @@
       },
       "note": "coder-one-delegate-fable-low-kb-pypi-5m with Jev deciding the briefing's content (issue #9746, series 6). The briefing_knowledge file holds the knowledge search's candidates, not a selection: before delegation the episode asks Jev one request with a Noul per candidate (does it apply and change what a solver should do) and a Noul per requirement the rule-based extraction found (is it one a grader checks and a solver gets wrong or skips). Candidates at p >= 0.5 go in whole, ordered by p; requirements at p >= 0.5 go under \"Requirements Jev flags as easy to miss\". Every probability is recorded in artifacts/briefing-jev.json and the decision step. When Jev doesn't answer, the episode exits 7 and the trial is a fault, never a run on the host's ranking. Everything else is the kb-pypi-5m arm. Entries written from the same task make a run in-sample and knowledge-assisted; label it so."
     },
+    "coder-one-delegate-fable-low-kb-jev2": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneDelegate",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "delegate": "always",
+        "claude_code_version": "2.1.280",
+        "delegate_model": "claude-fable-5-1",
+        "briefing_jev": "v2"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256",
+        "briefing_knowledge"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "api.anthropic.com",
+        "downloads.claude.ai",
+        "pypi.org",
+        "files.pythonhosted.org"
+      ],
+      "agent_network": "allowlist",
+      "cost_provenance": "mixed",
+      "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL"
+      ],
+      "auth_modes": {
+        "subscription-oauth": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "note": "Generation and Jev as in coder-one; the delegate runs on a Claude subscription token from `claude setup-token` at reasoning effort low (CODER_ONE_DELEGATE_EFFORT=low, a literal). The briefing cap is 24,000 characters (CODER_ONE_BRIEFING_CAP, a literal) to hold the knowledge section beside the explorer's evidence. Claude Code writes the five-minute prompt cache (CLAUDE_CODE_PROMPT_CACHE_TTL=5m, a literal), as the public Fable 5.1 low reference runs did, instead of the subscription's one hour. The API-key variables are excluded so the CLI uses the token. The delegate's total_cost_usd is then a list-price figure, not a bill (cli_list_price).",
+          "env_overrides": {
+            "CODER_ONE_DELEGATE_EFFORT": "low",
+            "CODER_ONE_BRIEFING_CAP": "24000",
+            "CLAUDE_CODE_PROMPT_CACHE_TTL": "5m"
+          }
+        }
+      },
+      "note": "coder-one-delegate-fable-low-kb-jev on Jev question set v2 (issue #9746, series 7): each candidate's Noul asks whether the entry states a method, formula, parameter, or edge case that the task's required outputs depend on; candidates at p >= 0.5 go in whole, ordered by p, up to 16,000 characters of entry text; requirements at p >= 0.7 are flagged. The question set lives in crates/coder-one/src/briefing_jev.rs. Everything else is the kb-jev arm. Entries written from the same task make a run in-sample and knowledge-assisted; label it so."
+    },
     "coder-one-delegate-auto": {
       "role": "candidate",
       "harbor_import_path": "tbench.coder_one:CoderOneDelegate",

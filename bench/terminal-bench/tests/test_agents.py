@@ -31,6 +31,7 @@ def test_known_arms(agents):
         "coder-one-delegate-fable-low-kb-pypi",
         "coder-one-delegate-fable-low-kb-pypi-5m",
         "coder-one-delegate-fable-low-kb-jev",
+        "coder-one-delegate-fable-low-kb-jev2",
         "coder-one-delegate-auto",
         "coder-one-delegate-luna",
         "coder-one-delegate-luna-auto",
@@ -309,6 +310,16 @@ def test_fable_low_kb_jev_arm_only_lets_jev_decide_the_briefing(agents):
     assert agent_config_env(profile, auth_mode="subscription-oauth", env=env) == (
         agent_config_env(base, auth_mode="subscription-oauth", env=env)
     )
+
+
+def test_fable_low_kb_jev2_arm_only_changes_the_question_set(agents):
+    profile = agents["coder-one-delegate-fable-low-kb-jev2"]
+    base = agents["coder-one-delegate-fable-low-kb-jev"]
+    kwargs = dict(profile.kwargs)
+    assert kwargs.pop("briefing_jev") == "v2"
+    assert kwargs == {k: v for k, v in base.kwargs.items() if k != "briefing_jev"}
+    assert profile.required_kwargs == base.required_kwargs
+    assert profile.extra_allowed_hosts == base.extra_allowed_hosts
 
 
 def test_delegate_oauth_mode_forwards_the_token_by_name_only(agents):

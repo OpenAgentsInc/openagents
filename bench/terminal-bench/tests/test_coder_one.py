@@ -334,6 +334,15 @@ def test_briefing_jev_turns_on_jev_selection_and_needs_the_doctor_to_say_so(tmp_
     # It needs candidates to choose from.
     with pytest.raises(EpisodeContractError, match="needs briefing_knowledge"):
         _delegate(tmp_path, delegate="always", briefing_jev=True)
+    # A question set goes through by name; an unknown one is refused.
+    named = _delegate(
+        tmp_path, delegate="always", briefing_knowledge=str(selection), briefing_jev="v2"
+    )
+    assert named._episode_env()["CODER_ONE_BRIEFING_JEV"] == "v2"
+    with pytest.raises(EpisodeContractError, match="briefing_jev="):
+        _delegate(
+            tmp_path, delegate="always", briefing_knowledge=str(selection), briefing_jev="v9"
+        )
 
 
 LUNA_POLICY = "crates/coder-one/policies/jevprobe3-luna.json"
