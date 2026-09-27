@@ -99,6 +99,7 @@ fn config(cache: &Path, secret: &SecretKey) -> Config {
         secret_hex: secret.display_secret().to_string(),
         synthetic: true,
         loopback_test: false,
+        push: None,
     }
 }
 

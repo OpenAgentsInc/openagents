@@ -209,6 +209,7 @@ fn the_app_enrolls_watches_invites_sees_activity_and_is_revoked_against_a_real_h
         secret_hex: secret.display_secret().to_string(),
         synthetic: false,
         loopback_test: true,
+        push: None,
     })
     .unwrap();
     let device = app.call(Request::Snapshot).public_key;
@@ -362,6 +363,7 @@ fn the_app_enrolls_watches_invites_sees_activity_and_is_revoked_against_a_real_h
         secret_hex: secret.display_secret().to_string(),
         synthetic: false,
         loopback_test: true,
+        push: None,
     })
     .unwrap();
     let view = refresh(&mut reopened).computers.unwrap();

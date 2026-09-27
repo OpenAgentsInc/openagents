@@ -34,6 +34,10 @@ pub struct Config {
     /// never set it.
     #[serde(default)]
     pub loopback_test: bool,
+    /// Push wakes through a relay's PL executor and a push gateway. Absent
+    /// leaves push off; `push_token` then reports that it is off.
+    #[serde(default)]
+    pub push: Option<crate::push::PushConfig>,
 }
 
 #[derive(Deserialize)]
@@ -79,9 +83,20 @@ pub enum Request {
     Lifecycle {
         active: bool,
     },
+    /// The platform issued or reissued its push token: an APNs device token
+    /// as lowercase hexadecimal, or an FCM registration token.
+    PushToken {
+        token: String,
+    },
+    /// Stop wakes: revoke the lease and forget the token at the gateway.
+    PushDisable,
 }
 
 impl Request {
+    fn push(&self) -> bool {
+        matches!(self, Self::PushToken { .. } | Self::PushDisable)
+    }
+
     fn computers(&self) -> bool {
         matches!(
             self,
@@ -155,6 +170,10 @@ pub struct Packet {
     /// First run finished on the last call; the host returns to its
     /// existing onboarding.
     pub computers_exit: bool,
+    /// Push wake status, present once the app is configured for push or a
+    /// push request arrived.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub push: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -205,6 +224,8 @@ pub struct App {
     pub(crate) synthetic: bool,
     computers: Option<Computers>,
     computers_exit: bool,
+    push: Option<crate::push::Push>,
+    push_status: Option<String>,
 }
 
 impl App {
@@ -247,7 +268,23 @@ impl App {
             synthetic: config.synthetic,
             computers: None,
             computers_exit: false,
+            push: None,
+            push_status: None,
         };
+        if let Some(push) = config.push.clone() {
+            match crate::push::Push::open(
+                push,
+                &config.cache_dir,
+                &app.secret,
+                config.loopback_test,
+            ) {
+                Ok(push) => {
+                    app.push_status = Some(push.status.clone());
+                    app.push = Some(push);
+                }
+                Err(reason) => app.push_status = Some(format!("Wakes unavailable: {reason}")),
+            }
+        }
         // A phone never runs a host. The normal app reaches its computers
         // through the live host client; synthetic mode uses the fixture.
         // A test launch may pair the synthetic world and reader with the live
@@ -341,6 +378,10 @@ impl App {
     pub fn call(&mut self, request: Request) -> Packet {
         // Lifecycle callbacks can follow an in-flight pairing call. They must
         // not erase its failure before the user can read it and retry.
+        if request.push() {
+            self.push_request(request);
+            return self.packet();
+        }
         if request.computers() {
             // Computers refusals show on that surface; the reader's error,
             // view, and pairing state stay as they were.
@@ -361,6 +402,34 @@ impl App {
             self.current = None;
         }
         self.packet()
+    }
+
+    fn push_request(&mut self, request: Request) {
+        let Some(push) = self.push.as_mut() else {
+            // Keep a configuration refusal from startup; otherwise say push
+            // is off.
+            if self.push_status.is_none() {
+                self.push_status = Some("Push notifications are off in this build.".into());
+            }
+            return;
+        };
+        let result = match request {
+            Request::PushToken { token } => push.token(
+                &self.runtime,
+                &self.secret,
+                &self.public_key,
+                token.trim(),
+                now(),
+            ),
+            Request::PushDisable => {
+                push.disable(&self.runtime, &self.secret, &self.public_key, now())
+            }
+            _ => return,
+        };
+        self.push_status = Some(match result {
+            Ok(()) => push.status.clone(),
+            Err(reason) => format!("{}: {reason}", push.status),
+        });
     }
 
     fn computers(&mut self, request: Request) {
@@ -407,7 +476,9 @@ impl App {
             | Request::ComputersInput { .. }
             | Request::ComputersCancel { .. }
             | Request::ComputersRefresh
-            | Request::Lifecycle { .. } => Ok(()),
+            | Request::Lifecycle { .. }
+            | Request::PushToken { .. }
+            | Request::PushDisable => Ok(()),
             Request::Follow { enabled, page } => {
                 let keys = self.page_keys()?;
                 self.window = if enabled {
@@ -898,6 +969,7 @@ impl App {
                         .collect(),
                 }),
             computers_exit: self.computers_exit,
+            push: self.push_status.clone(),
         }
     }
 
