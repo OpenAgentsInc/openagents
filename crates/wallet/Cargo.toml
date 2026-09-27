@@ -1,0 +1,25 @@
+[package]
+name = "openagents-wallet"
+version = "0.1.0"
+edition = "2024"
+license = "CC-0"
+publish = false
+description = "Lightning wallet for openagents: an x402 receiver and payer on an exclusively held node key"
+
+[lib]
+name = "openagents_wallet"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+hex = "0.4"
+ldk-node = { version = "0.7.0", optional = true }
+
+[features]
+default = ["ldk"]
+ldk = ["dep:ldk-node"]
+
+[dev-dependencies]
+nostr = { path = "../nostr" }

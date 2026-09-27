@@ -35,6 +35,7 @@ mod sov_host;
 mod ssh;
 mod study;
 mod terminal;
+mod wallet;
 mod world;
 mod zone;
 
@@ -69,8 +70,9 @@ Gym (NIP-EVAL):
 Labor (NIP-MKT, NIP-LAB):
   labor        Admit, negotiate, execute, deliver, and accept free labor orders.
 
-Keys and relays:
+Keys, relays, and money:
   key          Show or create Nostr identities.
+  wallet       Lightning node for x402 (ldk-node): invoices, payments, channels.
   kb           Search, publish, and sync knowledge entries (NIP-KB).
   relay        Query, publish to, and follow a relay.
 
@@ -123,6 +125,7 @@ fn main() -> ExitCode {
         "gym" => gym::run(&output, &rest),
         "labor" => labor::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        "wallet" => wallet::run(&output, &rest),
         "kb" => kb::run(&output, &rest),
         "reach" => reach::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
@@ -185,6 +188,7 @@ fn doctor(output: &Output) -> u8 {
         ("computers", computer::store_dir(None)),
         ("tasks", openagents.join("tasks")),
         ("sov", sov::home()),
+        ("wallet", openagents_wallet::config::home()),
     ];
     let mut report = serde_json::Map::new();
     report.insert("version".into(), version_line().into());
