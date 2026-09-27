@@ -84,6 +84,37 @@ A client that does not hold the owner key cannot read the directory. It learns
 about hosts through enrollment (NIP-HOST) and can list only the hosts it was
 enrolled with.
 
+### Owner authority on a client
+
+A client reads or publishes the directory only with the owner secret key in
+its own protected store. It holds that key in one of two ways, and both are
+local to the device:
+
+1. Its device key is the owner key: a grant the client holds names the
+   client's own key as `owner`.
+2. The person enters the owner secret key on the device. The client accepts
+   it only when its public key is the `owner` of a grant the client holds,
+   so a mistyped or unrelated key is refused before it is saved.
+
+The owner key never travels in a directory, presence, hint, invitation,
+grant, or relay message. This profile defines no re-encryption of the
+directory to device keys: a device without the owner key stays limited to its
+enrolled hosts.
+
+A client that holds the owner key follows these rules:
+
+- It reads retained revisions from the relays named by the grants it holds
+  for that owner's hosts and by the entries of the last directory it
+  trusted, and selects the current revision as above. It keeps the highest
+  revision it has read or published and never replaces it with a lower one.
+- It lists a directory host it holds no grant for as not enrolled. A
+  directory entry grants nothing and carries no connection.
+- It uses each entry's `label` as the host's display text and each entry's
+  `weight` for placement.
+- It publishes a new revision only after a successful read with no conflict,
+  under the mailbox of the revision it read, or a fresh random mailbox when
+  none exists, to the same relays.
+
 ## Host presence
 
 A host publishes presence to each enrolled device as a separate artifact,
@@ -398,11 +429,17 @@ cannot read a value or its operator turns telemetry off.
 
 The [Computers screens](../../crates/coder-computers/README.md) show each
 host's supervised status, route class, and compatibility from this presence.
-The
+Their live service applies the owner-authority rules above: it holds the
+owner key only as described, lists directory hosts with their labels and
+weights beside enrolled hosts, shows an unenrolled directory host as not
+enrolled, publishes the next revision when the owner adds an enrolled host,
+and feeds directory weights to placement. The
 [reach verification record](../../docs/coder/verification/2026-09-26-host-reach.md),
 the [host serve record](../../docs/coder/verification/2026-09-26-host-serve.md),
+the
+[WebSocket channel record](../../docs/coder/verification/2026-09-27-websocket-channels.md),
 and the
-[WebSocket channel record](../../docs/coder/verification/2026-09-27-websocket-channels.md)
+[client directory and SSH record](../../docs/coder/verification/2026-09-27-client-directory-and-ssh.md)
 list the checks that ran and their limits.
 
 ## Conformance
