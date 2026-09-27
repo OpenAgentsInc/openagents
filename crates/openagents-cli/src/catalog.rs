@@ -693,6 +693,26 @@ fn render_describe(group: Group, record: &Value) -> String {
                 if body.get("binding_contract").is_some() {
                     lines.push(format!("binding     {}", body["binding_contract"]));
                 }
+                let x402 = &body["binding_contract"]["x402"];
+                if x402.is_object() {
+                    let bindings: Vec<&str> = x402["bindings"]
+                        .as_array()
+                        .map(|b| b.iter().filter_map(Value::as_str).collect())
+                        .unwrap_or_default();
+                    lines.push(format!(
+                        "x402        {} merchant {} bindings {}",
+                        x402["flow"].as_str().unwrap_or("?"),
+                        x402["merchant"].as_str().unwrap_or("?"),
+                        bindings.join(" ")
+                    ));
+                    for receiver in x402["receivers"].as_array().into_iter().flatten() {
+                        lines.push(format!(
+                            "receiver    {} on {}",
+                            receiver["pay_to"].as_str().unwrap_or("?"),
+                            receiver["network"].as_str().unwrap_or("?")
+                        ));
+                    }
+                }
             }
             Group::Prg => {
                 if let Some(steps) = body["steps"].as_array() {

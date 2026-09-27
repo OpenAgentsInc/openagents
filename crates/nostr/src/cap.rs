@@ -26,7 +26,35 @@ pub const PUBLIC_POLICY_MARKER: &str = "oa:cap-policy:public:v1";
 /// Private preference marker. The `d` tag is a random mailbox, not a machine name.
 pub const PRIVATE_POLICY_MARKER: &str = "oa:cap-policy:private:v1";
 
+/// The one optional feature this reader admits: the NIP-X402 payment
+/// descriptor on an `adapter` definition.
+pub const X402_FEATURE: &str = "oa-x402-v1";
+
 const PUBLISHER_HEX: usize = 64;
+
+/// One admitted `{network, pay_to}` receiver pair from an x402 descriptor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct X402Receiver {
+    /// Concrete `lnbtc:` network identifier.
+    pub network: String,
+    /// Compressed receiver key, lowercase hex.
+    pub pay_to: String,
+}
+
+/// The NIP-X402 payment descriptor an `oa-x402-v1` adapter carries. It
+/// advertises paid-operation support; it is not a challenge, a price, or
+/// proof that the receiver is operated correctly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct X402Descriptor {
+    /// Request binding profiles, in the order advertised.
+    pub bindings: Vec<String>,
+    /// Admitted receiver pairs.
+    pub receivers: Vec<X402Receiver>,
+    /// Provider-scoped discovery identifier.
+    pub merchant: String,
+    /// `none`, `native-record-v1`, or `provider-contract-v1`.
+    pub recovery: String,
+}
 
 /// Which implementation shape a definition describes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +137,8 @@ pub struct Definition {
     pub isolation: Vec<String>,
     /// Minimum ceilings. Each must be covered before admission.
     pub minimum: BTreeMap<String, u64>,
+    /// The x402 payment descriptor when `requires` names `oa-x402-v1`.
+    pub x402: Option<X402Descriptor>,
 }
 
 /// An operator preference. It breaks ties. It does not grant.
@@ -158,7 +188,7 @@ pub fn parse_definition(value: &Value) -> Result<Definition, ContractError> {
         ],
         "definition",
     )?;
-    version(object, "definition")?;
+    let features = definition_features(object)?;
     let id = qualified(require(object, "id", "definition")?)?;
     let component = id.split('/').nth(1).unwrap_or("").to_string();
     let profile = Profile::parse(text(require(object, "profile", "definition")?, "profile")?)?;
@@ -197,7 +227,25 @@ pub fn parse_definition(value: &Value) -> Result<Definition, ContractError> {
         require(object, "binding_contract", "definition")?,
         "binding_contract",
     )?;
-    let (transport, isolation) = binding_contract(profile, contract)?;
+    let x402_required = features.contains(&X402_FEATURE);
+    if x402_required && profile != Profile::Adapter {
+        return Err(ContractError::new(
+            RefusalCode::UnsupportedFeature,
+            "definition.requires",
+        ));
+    }
+    let (transport, isolation) = binding_contract(profile, contract, x402_required)?;
+    let x402 = match (x402_required, contract.get("x402")) {
+        (true, Some(value)) => Some(parse_x402(value, &transport)?),
+        (true, None) => return Err(malformed("binding_contract.x402")),
+        (false, Some(_)) => {
+            return Err(ContractError::new(
+                RefusalCode::UnsupportedFeature,
+                "binding_contract.x402",
+            ));
+        }
+        (false, None) => None,
+    };
     let definition = Definition {
         id,
         component,
@@ -210,8 +258,165 @@ pub fn parse_definition(value: &Value) -> Result<Definition, ContractError> {
         transport,
         isolation,
         minimum,
+        x402,
     };
     Ok(definition)
+}
+
+/// The `v` and `requires` check for a definition. Only `oa-x402-v1` is
+/// admitted, and at most once.
+fn definition_features(object: &Map<String, Value>) -> Result<Vec<&str>, ContractError> {
+    if object.get("v").and_then(Value::as_u64) != Some(1) {
+        return Err(ContractError::new(
+            RefusalCode::UnsupportedVersion,
+            "definition.v",
+        ));
+    }
+    let requires = require(object, "requires", "definition")?
+        .as_array()
+        .ok_or_else(|| malformed("definition.requires"))?;
+    let mut features = Vec::new();
+    for feature in requires {
+        let feature = text(feature, "definition.requires")?;
+        if feature != X402_FEATURE || features.contains(&feature) {
+            return Err(ContractError::new(
+                RefusalCode::UnsupportedFeature,
+                "definition.requires",
+            ));
+        }
+        features.push(feature);
+    }
+    if let Some(meta) = object.get("meta") {
+        meta.as_object()
+            .ok_or_else(|| malformed("definition.meta"))?;
+    }
+    Ok(features)
+}
+
+/// Parse the `x402` descriptor exactly as NIP-X402 states it. `transport`
+/// is the adapter transport; each binding must be compatible with it.
+fn parse_x402(value: &Value, transport: &str) -> Result<X402Descriptor, ContractError> {
+    let object = as_map(value, "x402")?;
+    reject(
+        object,
+        &[
+            "v",
+            "protocol",
+            "scheme",
+            "asset",
+            "method",
+            "flow",
+            "bindings",
+            "receivers",
+            "merchant",
+            "recovery",
+            "recovery_contract",
+        ],
+        "x402",
+    )?;
+    for (key, expected) in [
+        ("v", "openagents.x402-discovery.v1"),
+        ("protocol", "x402-v2"),
+        ("scheme", "exact"),
+        ("asset", "BTC"),
+        ("method", "bolt11"),
+        ("flow", "upfront"),
+    ] {
+        let path = format!("x402.{key}");
+        if text(require(object, key, "x402")?, &path)? != expected {
+            return Err(ContractError::new(RefusalCode::UnsupportedFeature, path));
+        }
+    }
+    let bindings = string_list(require(object, "bindings", "x402")?, "x402.bindings")?;
+    if bindings.is_empty() {
+        return Err(malformed("x402.bindings"));
+    }
+    for (index, binding) in bindings.iter().enumerate() {
+        let compatible = match binding.as_str() {
+            "http:1" => transport == "http",
+            "mcp:1" => transport == "mcp" || transport == "http",
+            "nostr:openagents:1" => transport == "nostr-cj",
+            _ => {
+                return Err(ContractError::new(
+                    RefusalCode::UnsupportedFeature,
+                    "x402.bindings",
+                ));
+            }
+        };
+        if !compatible || bindings[..index].contains(binding) {
+            return Err(ContractError::new(
+                RefusalCode::Incompatible,
+                "x402.bindings",
+            ));
+        }
+    }
+    let receivers = require(object, "receivers", "x402")?
+        .as_array()
+        .ok_or_else(|| malformed("x402.receivers"))?;
+    if receivers.is_empty() {
+        return Err(malformed("x402.receivers"));
+    }
+    let mut parsed: Vec<X402Receiver> = Vec::new();
+    for receiver in receivers {
+        let receiver = as_map(receiver, "x402.receivers")?;
+        reject(receiver, &["network", "pay_to"], "x402.receivers")?;
+        let network = text(require(receiver, "network", "x402.receivers")?, "network")?;
+        if network != crate::x402::MAINNET && network != crate::x402::TESTNET {
+            return Err(ContractError::new(
+                RefusalCode::UnsupportedFeature,
+                "x402.receivers.network",
+            ));
+        }
+        let pay_to = text(require(receiver, "pay_to", "x402.receivers")?, "pay_to")?;
+        if !is_receiver_key(pay_to) {
+            return Err(malformed("x402.receivers.pay_to"));
+        }
+        let pair = X402Receiver {
+            network: network.to_owned(),
+            pay_to: pay_to.to_owned(),
+        };
+        if parsed.contains(&pair) {
+            return Err(malformed("x402.receivers"));
+        }
+        parsed.push(pair);
+    }
+    let merchant = text(require(object, "merchant", "x402")?, "x402.merchant")?;
+    if merchant.is_empty() || merchant.len() > 128 || !merchant.is_ascii() {
+        return Err(malformed("x402.merchant"));
+    }
+    let native = bindings
+        .iter()
+        .any(|binding| binding == "nostr:openagents:1");
+    let recovery = enum_text(
+        require(object, "recovery", "x402")?,
+        if native {
+            &["native-record-v1"]
+        } else {
+            &["none", "provider-contract-v1"]
+        },
+        "x402.recovery",
+    )?;
+    let contract = require(object, "recovery_contract", "x402")?;
+    if recovery == "provider-contract-v1" {
+        let _contract = parse_artifact(contract)?;
+    } else if !contract.is_null() {
+        return Err(malformed("x402.recovery_contract"));
+    }
+    Ok(X402Descriptor {
+        bindings,
+        receivers: parsed,
+        merchant: merchant.to_owned(),
+        recovery,
+    })
+}
+
+/// A compressed secp256k1 point in lowercase hex: 66 characters, `02` or `03`.
+fn is_receiver_key(value: &str) -> bool {
+    value.len() == 66
+        && (value.starts_with("02") || value.starts_with("03"))
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 /// The support recorded for `bound`. A name the definition omits is unknown.
@@ -925,6 +1130,7 @@ pub fn check_private_policy(event: &Event) -> Result<(), ContractError> {
 fn binding_contract(
     profile: Profile,
     contract: &Map<String, Value>,
+    x402: bool,
 ) -> Result<(String, Vec<String>), ContractError> {
     match profile {
         Profile::Native => {
@@ -976,7 +1182,11 @@ fn binding_contract(
         Profile::Adapter => {
             reject(
                 contract,
-                &["interface", "transport", "operations", "remote"],
+                if x402 {
+                    &["interface", "transport", "operations", "remote", "x402"]
+                } else {
+                    &["interface", "transport", "operations", "remote"]
+                },
                 "binding_contract",
             )?;
             let transport = enum_text(
@@ -1299,6 +1509,123 @@ mod tests {
             },
             "binding_contract": contract
         })
+    }
+
+    const RECEIVER: &str = "02aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    fn x402_descriptor() -> Value {
+        json!({
+            "v": "openagents.x402-discovery.v1",
+            "protocol": "x402-v2",
+            "scheme": "exact",
+            "asset": "BTC",
+            "method": "bolt11",
+            "flow": "upfront",
+            "bindings": ["http:1"],
+            "receivers": [{"network": crate::x402::TESTNET, "pay_to": RECEIVER}],
+            "merchant": "demo",
+            "recovery": "none",
+            "recovery_contract": null
+        })
+    }
+
+    fn paid_adapter(descriptor: Value) -> Value {
+        let mut definition = definition(
+            "adapter",
+            json!({
+                "interface": "x402.v1",
+                "transport": "http",
+                "operations": ["run"],
+                "remote": {"endpoint": "https://example.com/run"},
+                "x402": descriptor
+            }),
+        );
+        definition["requires"] = json!([X402_FEATURE]);
+        definition
+    }
+
+    #[test]
+    fn an_x402_adapter_parses_and_exposes_its_receivers() {
+        let parsed = parse_definition(&paid_adapter(x402_descriptor())).unwrap();
+        let descriptor = parsed.x402.unwrap();
+        assert_eq!(descriptor.bindings, vec!["http:1".to_owned()]);
+        assert_eq!(descriptor.receivers[0].pay_to, RECEIVER);
+        assert_eq!(descriptor.receivers[0].network, crate::x402::TESTNET);
+        assert_eq!(descriptor.merchant, "demo");
+        assert_eq!(descriptor.recovery, "none");
+    }
+
+    #[test]
+    fn x402_refusals() {
+        // The feature without the field, and the field without the feature.
+        let mut missing = paid_adapter(x402_descriptor());
+        missing["binding_contract"]
+            .as_object_mut()
+            .unwrap()
+            .remove("x402");
+        assert!(parse_definition(&missing).is_err());
+        let mut unrequested = paid_adapter(x402_descriptor());
+        unrequested["requires"] = json!([]);
+        assert_eq!(
+            parse_definition(&unrequested).unwrap_err().code,
+            RefusalCode::UnsupportedFeature
+        );
+
+        // Another feature, or the feature twice.
+        let mut other = paid_adapter(x402_descriptor());
+        other["requires"] = json!(["oa-other"]);
+        assert!(parse_definition(&other).is_err());
+        other["requires"] = json!([X402_FEATURE, X402_FEATURE]);
+        assert!(parse_definition(&other).is_err());
+
+        // Not an adapter.
+        let mut native = definition(
+            "native",
+            json!({"operation": "mine", "interface": "host.v1"}),
+        );
+        native["requires"] = json!([X402_FEATURE]);
+        assert!(parse_definition(&native).is_err());
+
+        let cases: Vec<(&str, Value)> = vec![
+            ("protocol", json!("x402-v1")),
+            ("flow", json!("postpaid")),
+            ("bindings", json!([])),
+            ("bindings", json!(["http:1", "http:1"])),
+            ("bindings", json!(["nostr:openagents:1"])),
+            ("bindings", json!(["ftp:1"])),
+            ("receivers", json!([])),
+            (
+                "receivers",
+                json!([{"network": "lnbtc:00", "pay_to": RECEIVER}]),
+            ),
+            (
+                "receivers",
+                json!([{"network": crate::x402::TESTNET, "pay_to": "04ab"}]),
+            ),
+            (
+                "receivers",
+                json!([
+                    {"network": crate::x402::TESTNET, "pay_to": RECEIVER},
+                    {"network": crate::x402::TESTNET, "pay_to": RECEIVER}
+                ]),
+            ),
+            ("merchant", json!("")),
+            ("merchant", json!("é")),
+            ("recovery", json!("native-record-v1")),
+            ("recovery", json!("provider-contract-v1")),
+            ("recovery_contract", json!({"digest": SCHEMA})),
+        ];
+        for (key, value) in cases {
+            let mut descriptor = x402_descriptor();
+            descriptor[key] = value.clone();
+            assert!(
+                parse_definition(&paid_adapter(descriptor)).is_err(),
+                "{key} = {value} should refuse"
+            );
+        }
+        let mut extra = x402_descriptor();
+        extra["fee"] = json!("1");
+        assert!(parse_definition(&paid_adapter(extra)).is_err());
     }
 
     #[test]

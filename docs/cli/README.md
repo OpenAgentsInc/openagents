@@ -490,8 +490,8 @@ Files live in `~/.openagents/wallet` (`OPENAGENTS_WALLET_HOME` overrides):
 The node needs an Esplora server to start, so every command except `init`
 needs the network; `init --lsp NODE_ID@HOST:PORT` adds LSPS2 inbound
 liquidity. The x402 validator admits only mainnet and testnet invoices
-(`bc`, `tb`), so signet issues but does not validate. NIP-CAP `oa-x402-v1`
-advertising is not part of this command yet; see the NIP-X402 status section.
+(`bc`, `tb`), so signet issues but does not validate. `openagents x402
+advertise` publishes the NIP-CAP `oa-x402-v1` head for a paid endpoint.
 
 ## Paid HTTP (`openagents x402`, exact Lightning over `http:1`)
 
@@ -533,6 +533,34 @@ only a requirement whose invoice validates for that binding, refuses above
 `--max-msat` before paying, does not follow redirects, and prints the
 preimage only with `--show-proof`. Neither log line nor `--json` event on
 the seller side carries an invoice or preimage.
+
+### Discovery (`x402 advertise`, `fetch --cap`)
+
+`openagents x402 advertise` publishes the kind `30180` NIP-CAP head that
+NIP-X402 specifies for a paid `http:1` resource: an `adapter` definition
+with `requires: ["oa-x402-v1"]`, transport `http`, `remote.endpoint` set
+to the public URL, and one `binding_contract.x402` descriptor whose single
+receiver is this wallet's node id on the wallet's network. The head is
+signed by the `--as` key profile; `--dry-run` prints the definition and
+event id without publishing. A signet or regtest wallet is refused because
+those networks have no x402 network id.
+
+```sh
+openagents x402 advertise --slug echo --url https://host.example/echo \
+    --merchant host.example --summary "echo the body" --json
+openagents cap describe PUBKEY:echo        # shows x402 bindings and receivers
+echo hi | openagents x402 fetch https://host.example/echo --method POST --body - \
+    --max-msat 1000 --cap PUBKEY:echo
+```
+
+With `--cap PUBKEY:SLUG`, `fetch` resolves the newest valid head first and
+refuses before any request when the URL is not the advertised endpoint, and
+after the 402 when the challenge's `network`/`payTo` is not an advertised
+receiver pair or the head does not advertise `http:1`. The parser in
+`crates/nostr::cap` admits only `oa-x402-v1` in `requires`; any other
+feature, the `x402` field without the feature, or the feature without the
+field is still a refusal. `mcp:1`, native Nostr bindings, and recovery
+contracts other than `none` are not served yet.
 
 Both sides need a wallet on bitcoin or testnet with a usable channel; the
 local check that needs none is a `serve` on a fresh testnet wallet answered
