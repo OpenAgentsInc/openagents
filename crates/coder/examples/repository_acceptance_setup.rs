@@ -6,9 +6,13 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 fn git(root: &Path, args: &[&str]) -> Result<String, String> {
-    let output = std::process::Command::new("/usr/bin/git")
+    let git = task::owner::GIT_PATHS
+        .iter()
+        .find(|path| Path::new(path).is_file())
+        .unwrap_or(&task::owner::GIT_PATHS[0]);
+    let output = std::process::Command::new(git)
         .env_clear()
-        .env("PATH", "/usr/bin:/bin")
+        .env("PATH", task::owner::SYSTEM_PATH)
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .current_dir(root)
