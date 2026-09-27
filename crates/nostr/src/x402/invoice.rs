@@ -387,8 +387,10 @@ fn polymod(words: impl Iterator<Item = u8>) -> u32 {
     value
 }
 
-#[cfg(test)]
-pub(super) mod test_invoice {
+/// Signs BOLT11 invoices with a fixed key so tests can settle real proofs.
+/// Never enabled in a product build.
+#[cfg(any(test, feature = "test-invoice"))]
+pub mod test_invoice {
     use super::*;
     use secp256k1::SecretKey;
     pub fn words(bytes: &[u8]) -> Vec<u8> {

@@ -13,6 +13,8 @@ path = "src/lib.rs"
 default = []
 # The relay enables `server` for the signer internals it needs.
 server = []
+# Test-only BOLT11 signing for crates that exercise settlement end to end.
+test-invoice = []
 
 # Dependency allowlist carried over from immortal-core: secp256k1, sha2,
 # serde, serde_json. `ryu-js` renders finite numbers with the ECMAScript

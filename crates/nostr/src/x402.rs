@@ -7,6 +7,8 @@
 //! This module performs no payment, network request, storage, or execution.
 
 mod invoice;
+#[cfg(any(test, feature = "test-invoice"))]
+pub use invoice::test_invoice;
 pub use invoice::{Invoice, decode_invoice};
 
 use secp256k1::PublicKey;
