@@ -70,7 +70,7 @@ pub fn store_dir(flag: Option<&str>) -> PathBuf {
     })
 }
 
-fn open(args: &Args, runtime: &tokio::runtime::Runtime) -> Result<Live, String> {
+pub(crate) fn open(args: &Args, runtime: &tokio::runtime::Runtime) -> Result<Live, String> {
     let directory = store_dir(args.option("store"));
     std::fs::create_dir_all(&directory).map_err(|e| format!("{}: {e}", directory.display()))?;
     let mut settings = Settings::new(Platform::Terminal);

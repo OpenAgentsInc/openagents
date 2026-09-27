@@ -25,8 +25,10 @@ mod out;
 mod quest;
 mod reach;
 mod relay;
+mod service;
 mod session;
 mod sov;
+mod ssh;
 mod study;
 mod terminal;
 mod world;
@@ -47,6 +49,8 @@ Pairing and computers (NIP-HOST, NIP-REACH):
 
 Coder:
   task         Durable local task requests and explicit execution.
+  service      Install, update, and roll back the resident host service.
+  ssh          Start or adopt a host over SSH and tunnel to it.
 
 Verse (NIP-MV):
   verse        See who is around, listen, speak, move, gesture, drive owned
@@ -110,6 +114,8 @@ fn main() -> ExitCode {
         "kb" => kb::run(&output, &rest),
         "reach" => reach::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
+        "service" => service::run(&output, &rest),
+        "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),
         "prg" => catalog::prg(&output, &rest),
         "ext" => catalog::ext(&output, &rest),

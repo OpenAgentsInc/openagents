@@ -4314,6 +4314,8 @@ dependencies = [
  "coder-labor",
  "coder-link",
  "coder-reach",
+ "coder-service",
+ "coder-ssh",
  "discovery",
  "glam",
  "knowledge",

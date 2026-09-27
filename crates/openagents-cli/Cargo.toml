@@ -19,6 +19,8 @@ coder-host = { path = "../coder-host" }
 coder-labor = { path = "../coder-labor" }
 coder-link = { path = "../coder-link" }
 coder-reach = { path = "../coder-reach" }
+coder-service = { path = "../coder-service" }
+coder-ssh = { path = "../coder-ssh" }
 discovery = { path = "../discovery" }
 glam = "0.30.10"
 knowledge = { path = "../knowledge" }

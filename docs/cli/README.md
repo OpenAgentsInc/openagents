@@ -190,6 +190,51 @@ through `openagents computer steer` and `openagents computer cancel` under
 a NIP-HOST grant. The invitation is never printed or logged after `pair`
 redeems it.
 
+## Host service and SSH hosts
+
+`service` runs the resident host under the service manager through
+`coder-service`: a launchd agent on macOS or a systemd user unit on Linux.
+The service runs the `coder-service` launcher, which starts the host, trials
+each update, and restores its snapshot when a trial fails. Each command reads
+the host root (`--root DIR`, default `~/.openagents/host`), and `--json`
+prints the status, report, or descriptor that `coder-service` keeps there.
+
+```sh
+openagents service install --host-key HEX --launcher ~/bin/coder-service  # register and start
+openagents service status        # service manager view, committed version, descriptor
+openagents service update --to SHA256 --wait 120   # committed exits 0; rolled back or unfinished exits 1
+openagents service descriptor    # host key, generation, state, and the latest update
+openagents service restart
+openagents service uninstall     # state, bundles, and logs stay
+```
+
+`install` needs a staged bundle (`--version SHA256`, or the one
+`scripts/coder-host.py` selected) and the `coder-service` binary: `--launcher
+PATH`, or `coder-service` in the directory that holds `openagents`. Arguments
+after `--` replace the host's default `host serve`. See
+[Host service](../coder/runtime/host-service.md) for the trial and rollback
+phases.
+
+`ssh` is the launcher side of the NIP-ENV SSH-launched host profile, through
+`coder-ssh`. `add` installs the pinned `coder` release on an account you
+reach with `ssh`, starts a host or adopts one that already runs, and redeems
+its invitation on this device, so it appears in `openagents computer list`.
+
+```sh
+openagents ssh add me@box --owner OWNER_PUBKEY --archive linux/x86_64=coder-linux-x86_64.tar.gz \
+  --relay wss://relay.example/ --timeout 300
+openagents ssh tunnel me@box --for 3600   # local port to the host's loopback listener
+openagents ssh remove me@box              # stop a managed host, or detach from an external one
+```
+
+Each `--archive OS/ARCH=PATH` is pinned to its SHA-256 when `add` runs. The
+store (`--store DIR`, default `~/.openagents/coder-computers`) records the
+destination, owner, relay, and archives in `ssh-hosts.json`, so `tunnel` and
+`remove` take only the destination. The record never holds the invitation.
+`ssh` runs in batch mode and never prompts, so set up keys for the account
+first. `--timeout` bounds each command; `tunnel` prints one line when the
+tunnel opens and one when it closes, and ends on Ctrl-C.
+
 ## Reach (NIP-REACH)
 
 Read and edit the owner host directory, read a host's presence, and prove a
