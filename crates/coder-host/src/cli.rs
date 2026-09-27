@@ -137,12 +137,13 @@ struct Options {
     flags: Vec<String>,
 }
 
-const FLAGS: [&str; 6] = [
+const FLAGS: [&str; 7] = [
     "--json",
     "--loopback",
     "--loopback-test",
     "--allow-nonloopback",
     "--no-runtime",
+    "--no-telemetry",
     "--help",
 ];
 
@@ -579,5 +580,35 @@ fn retry_busy<T>(
             }
             other => return other,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serve_flags_take_no_value() {
+        let args: Vec<String> = [
+            "--loopback",
+            "--no-telemetry",
+            "--no-runtime",
+            "--allow-nonloopback",
+            "--relay",
+            "ws://127.0.0.1:9/",
+        ]
+        .map(String::from)
+        .to_vec();
+        let mut options = Options::parse(&args).unwrap();
+        for flag in [
+            "--loopback",
+            "--no-telemetry",
+            "--no-runtime",
+            "--allow-nonloopback",
+        ] {
+            assert!(options.flag(flag), "{flag}");
+        }
+        assert_eq!(options.all("--relay"), ["ws://127.0.0.1:9/"]);
+        assert!(options.finish().is_ok());
     }
 }
