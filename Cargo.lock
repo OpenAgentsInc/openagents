@@ -715,7 +715,6 @@ dependencies = [
  "coder-ssh",
  "coder-terminal",
  "coder-ui",
- "coder-vt",
  "crossterm",
  "futures-util",
  "libc",
@@ -835,7 +834,6 @@ dependencies = [
  "coder-history",
  "coder-host",
  "coder-ui",
- "coder-vt",
  "futures-util",
  "jni",
  "libc",
@@ -1015,6 +1013,21 @@ version = "0.1.0"
 dependencies = [
  "unicode-width",
  "vte",
+]
+
+[[package]]
+name = "coder-web"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "coder",
+ "coder-ui",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tower",
 ]
 
 [[package]]
