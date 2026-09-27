@@ -36,6 +36,7 @@ History:
 | 2026-09-19 | `openagents-nostr-relay-00023-kax` | `9b5bb212f1` | First image from this repository; migrations 1-8 |
 | 2026-09-26 | `openagents-nostr-relay-00025-jes` | `c1bac69fdd` | Applied migrations 9 (`nip29_groups`) and 10 (`private_protocol_search`); adds NIP-67 and NIP-77 to NIP-11 |
 | 2026-09-26 | `openagents-nostr-relay-00027-toh` | `965fa00671` | No migrations. NIP-11 `max_limit`/`default_limit` now advertise the real per-`REQ` cap (127 with defaults). Deploy and traffic shift ran as `chris@`; verified by a full `kb sync` (104 entries) on `relay.openagents.com` |
+| 2026-09-27 | `openagents-nostr-relay-00029-nar` | `24fc83269a` | Applied migration 11 (`push_executor`, new tables only; NIP-PL delivery stays off without `NOSTR_RELAY_PUSH_SECRET`). NIP-CAP heads with `requires: ["oa-x402-v1"]` are now accepted. Build ran as the automation account; deploy and traffic shift ran as `chris@` after a `--no-launch-browser` login. Verified by `openagents x402 advertise --binding mcp:1` publishing to `next` and `openagents cap describe` reading it from `relay.openagents.com` |
 
 
 ## Accounts
