@@ -197,6 +197,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-AUTO](NIP-AUTO.md) | Finite schedules, source triggers, checked continuation, durable occurrence admission, and recovery. | Shared `3188`; CAP/CJ operations and RUN/COORD admission. |
 | [NIP-ENV](NIP-ENV.md) | Environment allocation, exact materialization, bounded leases, participant admission, attachment, and cleanup. | Shared `3188`; CAP/CJ operations and RUN records. |
 | [NIP-LIVE](NIP-LIVE.md) | Media participants and consent, input/speaking floors, capture anchors, and observation-bound device input. | Shared `3188`; CAP/CJ operations and admitted media transports. |
+| [NIP-REACH](NIP-REACH.md) | Owner host directory, host presence with bounded telemetry and receipt-time freshness, reachability hints without loopback fallback, authenticated direct channels bound to a grant and host generation, and placement. Implemented in [`coder-reach`](../../crates/coder-reach/README.md) with synthetic loopback-socket tests; relay publication and WebSocket transport are not implemented. | Shared `3188`; no new kinds. |
 | [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Standalone: it depends on no other contract here. | `23300`, `23301`, `33300`, `33301`. |
 
 Discovery heads are mutable. Exact signed records and artifact digests pin

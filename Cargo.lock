@@ -814,6 +814,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-reach"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "nostr",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "coder-scheduler"
 version = "0.1.0"
 dependencies = [
