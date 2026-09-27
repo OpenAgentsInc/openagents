@@ -53,6 +53,9 @@ impl Process {
     pub(super) fn kill(&self) {
         match *self {}
     }
+    pub(super) fn group_running(&self) -> bool {
+        match *self {}
+    }
     pub(super) fn try_wait(&self) -> Option<Status> {
         match *self {}
     }
