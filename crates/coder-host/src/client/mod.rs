@@ -1,7 +1,8 @@
 //! The device side: find a host, prove a route, and operate it.
 //!
 //! - [`fetch_directory`] reads the owner's host directory with the owner
-//!   key. [`publish_directory`] is the owner's action that adds a host.
+//!   key, and [`fetch_directory_revisions`] every retained revision with its
+//!   mailbox. [`publish_directory`] is the owner's action that adds a host.
 //! - [`fetch_reach`] reads the host's presence and hints sealed to this
 //!   device, and [`fetch_summaries`] its activity summaries.
 //! - [`Link`] is one proven route: a direct channel or relay fallback. It
@@ -127,14 +128,37 @@ pub async fn fetch_directory(
     owner: &SecretKey,
     policy: RelayPolicy,
 ) -> Result<Option<Directory>> {
+    let directories: Vec<Directory> = fetch_directory_revisions(relay, owner, policy)
+        .await?
+        .into_iter()
+        .map(|(directory, _)| directory)
+        .collect();
+    Ok(Directory::current(&directories)?.cloned())
+}
+
+/// Read every retained directory revision that opens with the owner key,
+/// each with the mailbox it was published under. The owner reuses that
+/// mailbox for its next revision. Pick the current one with
+/// `Directory::current`.
+///
+/// # Errors
+/// Reports transport failures.
+pub async fn fetch_directory_revisions(
+    relay: &str,
+    owner: &SecretKey,
+    policy: RelayPolicy,
+) -> Result<Vec<(Directory, String)>> {
     let key = coder_reach::pubkey(owner);
     let filter = json!({"kinds": [3188], "authors": [key], "#p": [key]});
     let events = fetch(relay, owner, policy, filter).await?;
-    let directories: Vec<Directory> = events
+    Ok(events
         .iter()
-        .filter_map(|event| Directory::open(event, owner).ok())
-        .collect();
-    Ok(Directory::current(&directories)?.cloned())
+        .filter_map(|event| {
+            let directory = Directory::open(event, owner).ok()?;
+            let mailbox = event.tag_values("h").next()?.to_owned();
+            Some((directory, mailbox))
+        })
+        .collect())
 }
 
 /// Publish a directory revision, sealed by the owner to the owner.
