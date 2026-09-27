@@ -154,19 +154,19 @@ push wakeups. Wave 2 composes them into one resident host,
 shared Rust Native "Computers" screens,
 [#9713](https://github.com/OpenAgentsInc/openagents/issues/9713).
 
-Status: **waves 1 and 2 landed; live client wiring active.** The six drafts
-are in `nips/openagents/`, and each crate has targeted tests and a
-verification record under `docs/coder/verification/`. `coder host serve` runs
-one resident host that handles enrollment, presence and hints, direct channels
-with relay fallback, terminals, task create, steer, and cancel into the durable
-inbox, and activity summaries. A synthetic end-to-end run covers enrollment,
-discovery, a direct terminal, task creation, relay fallback, catch-up, and
-revocation. The Computers screens are Rust Native projections on iOS, Android,
-and a terminal slice. Still open: connecting those screens to the live host
-client, WebSocket framing for web clients, the CAP/CJ binding of NIP-HOST,
-host CPU and memory telemetry for placement, launchd, systemd, loopback `sshd`,
-and Linux runs, and real APNs and FCM delivery, which needs owner credentials
-and physical devices.
+Status: **implemented; physical-device and production acceptance pending.**
+The six drafts are in `nips/openagents/`, and each crate has targeted tests and
+a verification record under `docs/coder/verification/`. `coder host serve`
+runs one resident host that handles enrollment, presence with telemetry and
+hints, direct channels with relay fallback, terminals, task create, steer, and
+cancel into the durable inbox, and activity summaries. The Computers screens on
+iOS, Android, and the terminal use the live host client, show invitations as
+QR codes, and pass app foreground and background to each host's connection
+supervisor. Synthetic end-to-end runs, iOS simulator runs, and Android emulator
+runs pass. Still open: WebSocket framing for web clients, the CAP/CJ binding of
+NIP-HOST, discovery through the owner directory in the app, launchd, systemd,
+loopback `sshd`, and Linux runs, physical-device and production-relay checks,
+and real APNs and FCM delivery, which needs owner credentials.
 
 ## Complete outcome map
 
