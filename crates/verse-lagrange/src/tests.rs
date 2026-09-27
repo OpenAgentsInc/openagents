@@ -137,7 +137,7 @@ fn the_pack_obeys_the_rocket_equation_and_holds_position() {
 }
 
 #[test]
-fn carrying_mass_changes_acceleration_and_momentum_is_conserved() {
+fn carrying_mass_changes_acceleration_and_the_part_moves_with_the_grip() {
     let mut station = Station::new();
     station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
     station.face(-std::f64::consts::FRAC_PI_2);
@@ -146,23 +146,84 @@ fn carrying_mass_changes_acceleration_and_momentum_is_conserved() {
     assert_eq!(kind, PartKind::MainEngine);
     let loaded = station::THRUST / station.mass();
     assert!(loaded < empty * 0.4, "the 450 kg engine slows the pack");
-    // Release in free space: the part keeps the combined velocity and tumbles.
-    station.astronaut_mut().vel = DVec3::new(0.3, 0.0, 0.0);
-    station.release().unwrap();
-    let part = *station.body(station.parts.iter().find(|p| p.kind == kind).unwrap());
-    assert_eq!(
-        station.parts.iter().find(|p| p.kind == kind).unwrap().state,
-        PartState::Drifting
+    // Fly out of the rack with the engine: the grip drags it along.
+    let away = Command {
+        direction: DVec3::X,
+        yaw: station.yaw,
+        climb: false,
+    };
+    for _ in 0..(6 * 60) {
+        station.step(1.0 / 60.0, &away);
+    }
+    let engine = *station.body(&station.parts[0]);
+    let astronaut = *station.astronaut();
+    // Thrust through the pair's center of mass is capped by the steering
+    // torque budget, so a heavy load accelerates gently.
+    assert!(astronaut.vel.x > 0.05, "{}", astronaut.vel);
+    // The pair turns a little under the off-center load, so compare the
+    // direction of travel rather than whole velocities.
+    assert!(
+        (engine.vel.x - astronaut.vel.x).abs() < 0.01,
+        "held: {} vs {}",
+        engine.vel,
+        astronaut.vel
     );
-    assert_eq!(part.vel, DVec3::new(0.3, 0.0, 0.0));
-    // Capture: momentum before equals momentum after.
-    let mut station2 = station.clone();
-    station2.astronaut_mut().vel = DVec3::new(-0.2, 0.0, 0.0);
-    station2.astronaut_mut().pos = part.pos - station2.hands() + station2.astronaut().pos;
-    let before = station2.astronaut().vel * station2.astronaut().mass + part.vel * part.mass;
-    station2.grab().unwrap();
-    let after = station2.astronaut().vel * station2.astronaut().mass;
-    assert!((before - after).length() < 1e-9);
+    // Release in free space: the part keeps its own motion.
+    station.release().unwrap();
+    assert_eq!(station.parts[0].state, PartState::Drifting);
+    assert_eq!(station.body(&station.parts[0]).vel, engine.vel);
+}
+
+#[test]
+fn capturing_a_drifting_part_conserves_momentum() {
+    let mut station = open_space();
+    station.propellant = 0.0;
+    station.astronaut_mut().vel = DVec3::new(-0.05, 0.0, 0.0);
+    let reach = station.hands() + DVec3::new(0.0, 0.0, 1.0);
+    release_part(
+        &mut station,
+        2,
+        reach,
+        DVec3::new(0.1, 0.02, 0.0),
+        DVec3::new(0.0, 0.05, 0.02),
+    );
+    station.reset_ledger();
+    station.grab().unwrap();
+    let mut worst = worst_error(&mut station, 4.0, &Command::default());
+    let truss = *station.body(&station.parts[2]);
+    let astronaut = *station.astronaut();
+    let error = station.ledger.error(station.momentum());
+    worst.linear = worst.linear.max(error.linear);
+    worst.angular = worst.angular.max(error.angular);
+    assert!(worst.linear < 1e-10 && worst.angular < 1e-10, "{worst:?}");
+    // The pair now moves as one: the truss's velocity at the grip matches the hands.
+    let grip = station.world.joint(station.grip.unwrap()).unwrap();
+    let (hand, held) = grip.anchors(&station.world);
+    let hand_vel = astronaut.vel + astronaut.omega_world().cross(hand - astronaut.pos);
+    let held_vel = truss.vel + truss.omega_world().cross(held - truss.pos);
+    assert!(
+        (hand_vel - held_vel).length() < 1e-3,
+        "{hand_vel} vs {held_vel}"
+    );
+}
+
+#[test]
+fn a_grip_pulled_past_its_limit_slips() {
+    let mut station = busy_station();
+    station.grab().unwrap();
+    // Something yanks the engine away at 3 m/s.
+    let id = station.parts[0].body;
+    station.world[id].vel = DVec3::new(0.0, 0.0, 3.0);
+    station.step(1.0 / 60.0, &Command::default());
+    assert_eq!(station.parts[0].state, PartState::Drifting);
+    assert!(station.grip.is_none());
+    assert!(
+        station
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("slipped")
+    );
 }
 
 #[test]
@@ -173,7 +234,7 @@ fn latching_requires_position_and_low_closing_speed() {
     let kind = station.grab().unwrap();
     // Place the held part right at its slot, moving too fast.
     let offset = kind.slot() - station.body(&station.parts[0]).pos;
-    station.astronaut_mut().pos += offset;
+    station.translate(offset);
     station.step(
         1.0 / 60.0,
         &Command {
@@ -182,10 +243,10 @@ fn latching_requires_position_and_low_closing_speed() {
             climb: false,
         },
     );
-    station.astronaut_mut().vel = DVec3::new(1.0, 0.0, 0.0);
+    station.set_velocity(DVec3::new(1.0, 0.0, 0.0));
     assert!(!station.snapshot().latch_ready);
     let mut slow = station.clone();
-    slow.astronaut_mut().vel = DVec3::new(0.1, 0.0, 0.0);
+    slow.set_velocity(DVec3::new(0.1, 0.0, 0.0));
     assert!(slow.snapshot().latch_ready);
     slow.release().unwrap();
     assert_eq!(slow.parts[0].state, PartState::Installed);
@@ -424,21 +485,17 @@ fn structure_and_the_safety_tether_are_named_external_terms() {
     assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
 }
 
-/// Baseline for GP-4 (#9781): the carried part is teleported to the hands
-/// and released with a preset spin, so a carry conserves linear momentum
-/// but not angular momentum. The soft grab replaces this and flips the
-/// angular assertion.
+/// With the soft grip, carrying and releasing conserve linear and angular
+/// momentum (the rigid carry that GP-1 pinned as a baseline did not).
 #[test]
-fn the_rigid_carry_baseline_breaks_angular_momentum() {
+fn carrying_conserves_momentum() {
     let mut station = busy_station();
     station.tide = false;
     station.reset_ledger();
     station.grab().unwrap();
-    let grabbed = station.ledger.error(station.momentum());
-    assert!(grabbed.linear < 1e-12, "capture is inelastic: {grabbed:?}");
     let mut worst = worst_error(
         &mut station,
-        4.0,
+        6.0,
         &Command {
             direction: DVec3::new(0.2, 0.0, 1.0),
             yaw: 0.9,
@@ -449,8 +506,7 @@ fn the_rigid_carry_baseline_breaks_angular_momentum() {
     let released = station.ledger.error(station.momentum());
     worst.linear = worst.linear.max(released.linear);
     worst.angular = worst.angular.max(released.angular);
-    assert!(worst.linear < 1e-9, "{worst:?}");
-    assert!(worst.angular > 1e-3, "baseline violation: {worst:?}");
+    assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
 }
 
 #[test]

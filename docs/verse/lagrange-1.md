@@ -144,11 +144,8 @@ every carried or drifting part. `Station::ledger` (a `physics::Ledger`) records
 every external impulse by name: `exhaust`, `structure` (contact with fixed
 station structure), `tether`, `reel` (a stray part reeled in), and `latch` (a
 part joining the station). With the tidal field off (`Station::tide = false`),
-the momentum always equals the ledger start plus those terms. The rigid carry
-is the known exception: the held part is placed at the hands each step and
-released with a preset spin, which conserves linear but not angular momentum
-until the soft grab ([#9781](https://github.com/OpenAgentsInc/openagents/issues/9781))
-replaces it.
+the momentum always equals the ledger start plus those terms, through
+grabbing, carrying, and releasing.
 
 Attitude is held automatically, so the astronaut turns only in yaw. Collisions
 treat the body as a 0.9 m sphere against the habitat, node, truss, solar arrays,
@@ -189,10 +186,18 @@ free parts; free parts hit structure, the astronaut, each other, and parts in
 the rack or on the jig. Contacts with fixed bodies enter the momentum ledger
 as the `structure` term.
 
-Grabbing is a perfectly inelastic capture, so momentum is conserved and the
-combined mass slows the pack. Holding a part moves it rigidly with the
-astronaut. Releasing it away from its slot leaves it drifting at the release
-velocity with a small residual tumble, as real hands never let go perfectly.
+Grabbing closes the glove on the point of the part nearest the hands and holds
+it with a soft weld (`physics::Joint`): a critically damped spring at 6 rad/s
+on position and orientation, solved implicitly. Capture is therefore an
+internal impulse that conserves momentum, a heavy part drags on the astronaut,
+and a part caught while moving or spinning settles into the grip without
+ringing. The grip holds at most 400 N and 300 N m; pulled past that, it slips
+and the part floats free. While carrying, the pack treats the astronaut and
+the part as one body: it aims its thrust through their shared center of mass
+and holds attitude with their combined inertia, and it spends at most 15 N m
+of torque on that aim, so a heavy part far from the hands accelerates gently.
+Releasing a part away from its slot leaves it drifting with its own velocity
+and spin.
 Drifting parts more than 120 m from the depot are reeled back by their tethers.
 
 ## Approximations
@@ -204,12 +209,11 @@ Drifting parts more than 120 m from the depot are reeled back by their tethers.
   than flight halo control and uses a smaller orbit.
 - Local physics linearizes about L1 rather than about the moving station.
 - The attitude hold keeps the astronaut level; only heading is commanded.
-- The astronaut's inertia is a fixed 40 kg m² about every axis, and a carried
-  part does not add to it.
-- Carried parts do not collide with anything, and the astronaut passes
-  through parts in the rack or on the jig.
-- A carried part is placed at the hands each step, so carrying does not
-  conserve angular momentum.
+- The astronaut's inertia is a fixed 40 kg m² about every axis.
+- A carried part does not collide with its carrier or with parts in the rack
+  or on the jig, and the astronaut passes through parts in the rack or on the
+  jig.
+- The grip is a single soft weld, not a model of fingers and glove friction.
 - Construction state is local and resets on each visit; there is no shared
   editing authority. `StationState` can be saved and restored, but the zone
   does not persist it.
@@ -221,8 +225,8 @@ exact unstable eigenvector, Jacobi conservation and uncontrolled divergence,
 two years of controlled flight, microgravity magnitude, the rocket equation
 and position hold, inelastic capture, latch conditions, collisions, frame-rate
 independence, the frame step cap, save and restore, journal replay, and the
-momentum ledger through coasting, burns, structure contact, the tether, and
-the rigid-carry baseline, attitude hold through a translation and a commanded
+momentum ledger through coasting, burns, structure contact, the tether,
+capture, and carrying, the grip slipping past its limit, attitude hold through a translation and a commanded
 turn, plumes at the firing thrusters, a spinning tank glancing off a solar
 array edge, and free parts colliding with each other.
 `cargo test -p physics` covers the shared mechanisms, including box manifolds

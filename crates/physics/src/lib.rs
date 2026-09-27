@@ -8,6 +8,8 @@
 //!   and multi-point manifolds.
 //! - [`contact`]: a sequential-impulse solver with restitution, an elliptic
 //!   friction cone, and torsional friction.
+//! - [`joint`]: point, weld, and tether joints, hard or soft (an implicit
+//!   spring), with force and torque limits.
 //! - [`clock`]: a [`FixedStep`] accumulator that turns frame time into
 //!   whole steps and reports time it drops.
 //! - [`ledger`]: linear and angular momentum with named external impulses,
@@ -24,15 +26,17 @@ pub mod body;
 pub mod clock;
 pub mod collision;
 pub mod contact;
+pub mod joint;
 pub mod ledger;
 pub mod thrusters;
 pub mod trace;
 pub mod world;
 
-pub use body::{Body, BodyKind};
+pub use body::{Body, BodyKind, Composite};
 pub use clock::FixedStep;
 pub use collision::{Collider, ColliderId, ContactPoint, Filter, Manifold, Material, Shape};
 pub use contact::{ContactReport, SolverSettings};
+pub use joint::{Joint, JointId, JointKind, Spring};
 pub use ledger::{Ledger, LedgerError, Momentum};
 pub use thrusters::{Pid, Thruster, ThrusterSet, Wrench};
 pub use trace::{Divergence, Tolerance, Trace, attitude_difference};

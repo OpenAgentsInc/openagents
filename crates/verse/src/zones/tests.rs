@@ -207,7 +207,7 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
         let lagrange = runtime.zone_state.lagrange.as_mut().unwrap();
         let station = &mut lagrange.station;
         let part = station.body(&station.parts[0]).pos;
-        station.astronaut_mut().pos += verse_lagrange::PartKind::MainEngine.slot() - part;
+        station.translate(verse_lagrange::PartKind::MainEngine.slot() - part);
     }
     runtime.tick(&InputState::default(), 1.0 / 60.0);
     let ready = runtime.zone_snapshot(1.0);

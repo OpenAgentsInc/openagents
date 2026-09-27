@@ -1,7 +1,7 @@
 //! Rigid bodies: Newton for the center of mass, Euler's equations for
 //! rotation about principal axes, and quaternion attitude.
 
-use glam::{DQuat, DVec3, DVec4};
+use glam::{DMat3, DQuat, DVec3, DVec4};
 use serde::{Deserialize, Serialize};
 
 /// How the world moves a body.
@@ -97,6 +97,13 @@ impl Body {
     #[must_use]
     pub fn momentum(&self) -> DVec3 {
         self.vel * self.mass
+    }
+
+    /// Inertia tensor about the center of mass in the world frame, kg m^2.
+    #[must_use]
+    pub fn inertia_world(&self) -> DMat3 {
+        let r = DMat3::from_quat(self.orientation);
+        r * DMat3::from_diagonal(self.inertia) * r.transpose()
     }
 
     /// Inverse inertia tensor in the world frame applied to `v`.
@@ -214,6 +221,63 @@ impl Body {
     }
 }
 
+/// Several bodies treated as one: total mass, center of mass, its velocity,
+/// the inertia tensor about it, and the angular momentum about it. For
+/// controlling a group held together by joints.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Composite {
+    pub mass: f64,
+    pub com: DVec3,
+    pub vel: DVec3,
+    /// World frame, about `com`, kg m^2.
+    pub inertia: DMat3,
+    /// About `com`, kg m^2/s.
+    pub angular_momentum: DVec3,
+}
+
+impl Composite {
+    #[must_use]
+    pub fn of<'a>(bodies: impl IntoIterator<Item = &'a Body> + Clone) -> Self {
+        let mass: f64 = bodies.clone().into_iter().map(|b| b.mass).sum();
+        let com = bodies
+            .clone()
+            .into_iter()
+            .map(|b| b.pos * b.mass)
+            .sum::<DVec3>()
+            / mass;
+        let vel = bodies
+            .clone()
+            .into_iter()
+            .map(|b| b.vel * b.mass)
+            .sum::<DVec3>()
+            / mass;
+        let mut inertia = DMat3::ZERO;
+        let mut angular_momentum = DVec3::ZERO;
+        for b in bodies {
+            let d = b.pos - com;
+            // Parallel-axis theorem.
+            inertia += b.inertia_world()
+                + (DMat3::IDENTITY * d.length_squared()
+                    - DMat3::from_cols(d * d.x, d * d.y, d * d.z))
+                    * b.mass;
+            angular_momentum += b.angular_momentum() + d.cross((b.vel - vel) * b.mass);
+        }
+        Self {
+            mass,
+            com,
+            vel,
+            inertia,
+            angular_momentum,
+        }
+    }
+
+    /// Angular velocity of the group as if rigid, rad/s.
+    #[must_use]
+    pub fn omega(&self) -> DVec3 {
+        self.inertia.inverse() * self.angular_momentum
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,5 +314,20 @@ mod tests {
         }
         assert!(flipped, "the Dzhanibekov flip appears");
         assert!(major_drift < 1e-3);
+    }
+
+    #[test]
+    fn a_composite_of_two_bodies_uses_the_parallel_axis_theorem() {
+        let a = Body::new(2.0, DVec3::splat(1.0), DVec3::new(-1.0, 0.0, 0.0));
+        let mut b = Body::new(2.0, DVec3::splat(1.0), DVec3::new(1.0, 0.0, 0.0));
+        b.vel = DVec3::new(0.0, 0.0, 2.0);
+        let c = Composite::of([&a, &b]);
+        assert_eq!(c.mass, 4.0);
+        assert_eq!(c.com, DVec3::ZERO);
+        assert_eq!(c.vel, DVec3::new(0.0, 0.0, 1.0));
+        // About y: 1 + 1 + 2 * 2 * 1^2 = 6.
+        assert!((c.inertia.y_axis.y - 6.0).abs() < 1e-12);
+        // Each body carries 2 kg * 1 m/s at 1 m: 4 kg m^2/s about -y.
+        assert!((c.omega() - DVec3::new(0.0, -4.0 / 6.0, 0.0)).length() < 1e-12);
     }
 }

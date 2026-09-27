@@ -142,6 +142,34 @@ impl Collider {
         self
     }
 
+    /// The point of the shape nearest `x`: on its surface, or `x` itself
+    /// when `x` is inside.
+    #[must_use]
+    pub fn closest_point(&self, world: &World, x: DVec3) -> DVec3 {
+        let (pos, rotation) = self.pose(world);
+        match place(self.shape, pos, rotation) {
+            Placed::Capsule { p, q, radius } => {
+                let d = q - p;
+                let t = if d.length_squared() > 0.0 {
+                    ((x - p).dot(d) / d.length_squared()).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let core = p + d * t;
+                let offset = x - core;
+                if offset.length() <= radius {
+                    x
+                } else {
+                    core + offset.normalize() * radius
+                }
+            }
+            Placed::Cuboid { center, axes, half } => {
+                let local = axes.transpose() * (x - center);
+                center + axes * local.clamp(-half, half)
+            }
+        }
+    }
+
     /// World pose of the collider frame.
     #[must_use]
     pub fn pose(&self, world: &World) -> (DVec3, DQuat) {

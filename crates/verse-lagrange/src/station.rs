@@ -7,8 +7,8 @@
 
 use glam::{DQuat, DVec3};
 use physics::{
-    Body, BodyId, BodyKind, Collider, ColliderId, Filter, FixedStep, Ledger, Material, Momentum,
-    Shape, ThrusterSet, World,
+    Body, BodyId, BodyKind, Collider, ColliderId, Composite, Filter, FixedStep, Joint, JointId,
+    Ledger, Material, Momentum, Shape, ThrusterSet, World,
 };
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +35,10 @@ pub const ATTITUDE_DEADBAND: f64 = 0.004;
 pub const RATE_DEADBAND: f64 = 0.002;
 /// Fastest turn the attitude hold commands, rad/s.
 pub const MAX_TURN_RATE: f64 = 0.6;
+/// Torque the pack may spend steering its thrust through the center of mass
+/// of a carried load, N m. Heavier or farther loads get less thrust so the
+/// pair does not tumble.
+pub const STEERING_TORQUE: f64 = 15.0;
 /// Cold nitrogen specific impulse, s.
 pub const ISP: f64 = 70.0;
 /// Flight-control speed limit relative to the station, m/s.
@@ -84,7 +88,15 @@ pub mod layer {
     pub const ASTRONAUT: u32 = 2;
     pub const FREE: u32 = 4;
     pub const FIXED_PART: u32 = 8;
+    pub const CARRIED: u32 = 16;
 }
+
+/// The glove's grip: a soft weld at the grabbed point, critically damped at
+/// this natural frequency, rad/s.
+pub const GRIP_FREQUENCY: f64 = 6.0;
+/// Largest force and torque the grip holds before it slips, N and N m.
+pub const GRIP_FORCE: f64 = 400.0;
+pub const GRIP_TORQUE: f64 = 300.0;
 
 /// Suit fabric and aluminum hardware.
 pub const SURFACE: Material = Material {
@@ -234,26 +246,29 @@ impl PartState {
     pub const fn body_kind(self) -> BodyKind {
         match self {
             Self::Stowed | Self::Installed => BodyKind::Static,
-            Self::Carried => BodyKind::Kinematic,
-            Self::Drifting => BodyKind::Dynamic,
+            Self::Carried | Self::Drifting => BodyKind::Dynamic,
         }
     }
 
-    /// What a part in this state collides with. A carried part collides with
-    /// nothing; racked and latched parts stop free parts but not the
-    /// astronaut, who reaches in among them.
+    /// What a part in this state collides with. Racked and latched parts
+    /// stop free parts but not the astronaut, who reaches in among them; a
+    /// carried part hits structure and free parts but not its carrier or
+    /// the rack and jig it is being fitted into.
     #[must_use]
     pub const fn filter(self) -> Filter {
-        use layer::{ASTRONAUT, FIXED_PART, FREE, STRUCTURE};
+        use layer::{ASTRONAUT, CARRIED, FIXED_PART, FREE, STRUCTURE};
         match self {
             Self::Stowed | Self::Installed => Filter {
                 group: FIXED_PART,
                 mask: FREE,
             },
-            Self::Carried => Filter::NONE,
+            Self::Carried => Filter {
+                group: CARRIED,
+                mask: STRUCTURE | FREE,
+            },
             Self::Drifting => Filter {
                 group: FREE,
-                mask: STRUCTURE | ASTRONAUT | FREE | FIXED_PART,
+                mask: STRUCTURE | ASTRONAUT | FREE | FIXED_PART | CARRIED,
             },
         }
     }
@@ -403,6 +418,9 @@ pub struct Station {
     /// Inputs applied since recording started, stamped with the world tick.
     #[serde(default)]
     pub journal: Option<Vec<(u64, Input)>>,
+    /// The glove's grip on the carried part.
+    #[serde(default)]
+    pub grip: Option<JointId>,
     /// Apply the L1 tidal field to local bodies. Off only for conservation
     /// tests, since the rotating-frame field is an external force.
     #[serde(default = "enabled")]
@@ -424,7 +442,7 @@ impl Default for Station {
 impl Station {
     #[must_use]
     pub fn new() -> Self {
-        use layer::{ASTRONAUT, FREE, STRUCTURE};
+        use layer::{ASTRONAUT, CARRIED, FREE, STRUCTURE};
         let mut world = World::new(PHYSICS_DT);
         let astronaut = world.add(Body::new(DRY_MASS + PROPELLANT, DVec3::splat(40.0), SPAWN));
         world.add_collider(
@@ -435,7 +453,10 @@ impl Station {
                     half_length: ASTRONAUT_HALF_LENGTH,
                 },
             )
-            .at(DVec3::ZERO, DQuat::from_rotation_x(std::f64::consts::FRAC_PI_2))
+            .at(
+                DVec3::ZERO,
+                DQuat::from_rotation_x(std::f64::consts::FRAC_PI_2),
+            )
             .with_filter(Filter {
                 group: ASTRONAUT,
                 mask: STRUCTURE | FREE,
@@ -443,9 +464,8 @@ impl Station {
             .with_material(SURFACE),
         );
         for o in &OBSTACLES {
-            let body = world.add(
-                Body::new(1.0, DVec3::ONE, (o.min + o.max) * 0.5).with_kind(BodyKind::Static),
-            );
+            let body = world
+                .add(Body::new(1.0, DVec3::ONE, (o.min + o.max) * 0.5).with_kind(BodyKind::Static));
             world.add_collider(
                 Collider::new(
                     body,
@@ -455,7 +475,7 @@ impl Station {
                 )
                 .with_filter(Filter {
                     group: STRUCTURE,
-                    mask: ASTRONAUT | FREE,
+                    mask: ASTRONAUT | FREE | CARRIED,
                 })
                 .with_material(SURFACE),
             );
@@ -495,6 +515,7 @@ impl Station {
             refilling: false,
             pilot: Command::default(),
             journal: None,
+            grip: None,
             tide: true,
             ledger: Ledger::default(),
             climb: 0.0,
@@ -584,7 +605,8 @@ impl Station {
                 continue;
             }
             let sign = if b { 1.0 } else { -1.0 };
-            self.ledger.add_impulse("structure", c.impulse * sign, c.point);
+            self.ledger
+                .add_impulse("structure", c.impulse * sign, c.point);
             self.ledger.add(
                 "structure",
                 Momentum {
@@ -693,6 +715,12 @@ impl Station {
             .position(|p| p.state == PartState::Carried)
     }
 
+    /// The astronaut's own mass with its propellant, kg.
+    #[must_use]
+    pub fn own_mass(&self) -> f64 {
+        DRY_MASS + self.propellant
+    }
+
     /// Total mass the pack must accelerate, kg.
     #[must_use]
     pub fn mass(&self) -> f64 {
@@ -707,14 +735,6 @@ impl Station {
     #[must_use]
     pub fn hands(&self) -> DVec3 {
         self.astronaut().to_world(DVec3::new(0.0, 0.2, 1.0))
-    }
-
-    fn carry_point(&self, kind: PartKind) -> DVec3 {
-        self.astronaut().to_world(DVec3::new(
-            0.0,
-            0.2,
-            1.0 + kind.size().z.max(kind.size().x) * 0.5,
-        ))
     }
 
     /// Ideal rocket equation for the propellant left, m/s.
@@ -799,9 +819,18 @@ impl Station {
             desired.y = SPEED_LIMIT;
             self.climb -= dt;
         }
-        let mass = self.mass();
-        let accel_limit = THRUST / mass;
-        let (pos, vel) = (self.astronaut().pos, self.astronaut().vel);
+        let group = self.group();
+        let mass = group.mass;
+        // A force through the group's center of mass needs torque from the
+        // pack in proportion to the lever arm; keep that within budget.
+        let arm = (group.com - self.astronaut().pos).length();
+        let thrust = if arm > 1e-6 {
+            THRUST.min(STEERING_TORQUE / arm)
+        } else {
+            THRUST
+        };
+        let accel_limit = thrust / mass;
+        let (pos, vel) = (self.astronaut().pos, group.vel);
         if !manual && let Some(target) = self.target {
             let offset = target - pos;
             let distance = offset.length();
@@ -819,15 +848,16 @@ impl Station {
         } else {
             DVec3::ZERO
         };
-        let torque = self.attitude_torque();
+        let torque = (group.com - self.astronaut().pos).cross(force) + self.attitude_torque(&group);
         let fired = self.fire(force, torque, dt);
-        let mass = self.mass();
+        let mass = self.own_mass();
         self.astronaut_mut().mass = mass;
         let (c2, tidal) = (self.orbit.l1.c2, self.tide);
         self.world.step(&move |p, v| {
             if tidal { tide(c2, p, v) } else { DVec3::ZERO }
         });
         self.account_contacts();
+        self.check_grip();
         let before = self.momentum();
         let astronaut = &mut self.world[self.astronaut];
         let range = astronaut.pos.length();
@@ -848,7 +878,7 @@ impl Station {
         if self.refilling {
             // Gas from the station tank starts at rest, so the pack slows.
             let added = (REFILL_RATE * dt).min(PROPELLANT - self.propellant);
-            let mass = self.mass();
+            let mass = self.own_mass();
             self.propellant += added;
             let astronaut = self.astronaut_mut();
             astronaut.vel *= mass / (mass + added);
@@ -858,16 +888,26 @@ impl Station {
         self.settle_parts();
     }
 
+    /// The astronaut and anything it holds, as one body.
+    #[must_use]
+    pub fn group(&self) -> Composite {
+        let astronaut = self.astronaut();
+        match self.carried() {
+            Some(i) => Composite::of([astronaut, self.body(&self.parts[i])]),
+            None => Composite::of([astronaut]),
+        }
+    }
+
     /// World-frame torque the attitude hold wants: a critically damped
-    /// spring toward the commanded heading, level.
-    fn attitude_torque(&self) -> DVec3 {
+    /// spring toward the commanded heading, level, for the whole group.
+    fn attitude_torque(&self, group: &Composite) -> DVec3 {
         let body = self.astronaut();
         let mut error = DQuat::from_rotation_y(self.yaw) * body.orientation.inverse();
         if error.w < 0.0 {
             error = -error;
         }
         let (axis, angle) = error.to_axis_angle();
-        let rate = body.omega_world();
+        let rate = group.omega();
         if angle < ATTITUDE_DEADBAND && rate.length() < RATE_DEADBAND {
             return DVec3::ZERO;
         }
@@ -876,8 +916,7 @@ impl Station {
         let w = ATTITUDE_FREQUENCY;
         let wanted = axis * (angle * w / 2.0).min(MAX_TURN_RATE);
         let accel = (wanted - rate) * (2.0 * w);
-        let local = body.orientation.inverse() * accel;
-        body.orientation * (local * body.inertia)
+        group.inertia * accel
     }
 
     /// Fire the pack toward a world-frame `force` and `torque` within the
@@ -912,7 +951,7 @@ impl Station {
         }
         let (pos, vel) = (self.astronaut().pos, self.astronaut().vel);
         self.propellant -= used;
-        let mass = self.mass();
+        let mass = self.own_mass();
         let astronaut = self.astronaut_mut();
         astronaut.mass = mass;
         let fired = pack.apply(astronaut, &throttles);
@@ -925,20 +964,16 @@ impl Station {
 
     /// Momentum of the free system, about the station origin: the astronaut
     /// with its propellant, and every part that is not stowed or installed.
-    /// A carried part moves with the astronaut.
     #[must_use]
     pub fn momentum(&self) -> Momentum {
         let mut astronaut = *self.astronaut();
         astronaut.mass = DRY_MASS + self.propellant;
         let mut total = Momentum::of(&astronaut, self.ledger.origin);
         for part in &self.parts {
-            let mut body = *self.body(part);
-            match part.state {
-                PartState::Stowed | PartState::Installed => continue,
-                PartState::Carried => body.vel = astronaut.vel,
-                PartState::Drifting => {}
+            if matches!(part.state, PartState::Stowed | PartState::Installed) {
+                continue;
             }
-            total += Momentum::of(&body, self.ledger.origin);
+            total += Momentum::of(self.body(part), self.ledger.origin);
         }
         total
     }
@@ -979,19 +1014,8 @@ impl Station {
         }
     }
 
-    /// After a world step: hold the carried part at the hands, keep
-    /// drifting parts out of structure, and reel in any that stray.
+    /// After a world step: reel in drifting parts that stray.
     fn settle_parts(&mut self) {
-        if let Some(i) = self.carried() {
-            let kind = self.parts[i].kind;
-            let at = self.carry_point(kind);
-            let (vel, orientation) = (self.astronaut().vel, self.astronaut().orientation);
-            let body = &mut self.world[self.parts[i].body];
-            body.pos = at;
-            body.vel = vel;
-            body.orientation = orientation;
-            body.omega = DVec3::ZERO;
-        }
         for i in 0..self.parts.len() {
             if self.parts[i].state != PartState::Drifting {
                 continue;
@@ -1011,8 +1035,10 @@ impl Station {
         }
     }
 
-    /// Take the nearest free part, or the next part at the depot.
-    /// Capture is perfectly inelastic, so combined momentum is conserved.
+    /// Take the nearest free part, or the next part at the depot. The glove
+    /// closes on the point of the part nearest the hands and holds it with a
+    /// soft weld ([`GRIP_FREQUENCY`]), so capture is an internal impulse and
+    /// momentum is conserved; a heavy part drags on the astronaut.
     pub fn grab(&mut self) -> Result<PartKind, String> {
         if self.carried().is_some() {
             return Err("Hands are full".into());
@@ -1046,20 +1072,67 @@ impl Station {
             }
         };
         let kind = self.parts[index].kind;
-        let part = *self.body(&self.parts[index]);
-        let astronaut = self.astronaut_mut();
-        let m_a = astronaut.mass;
-        astronaut.vel = (astronaut.vel * m_a + part.vel * part.mass) / (m_a + part.mass);
+        let grabbed = self.world.colliders()[self.parts[index].collider.0 as usize]
+            .closest_point(&self.world, hands);
         self.set_state(index, PartState::Carried);
+        let grip = Joint::weld_here(&self.world, self.astronaut, self.parts[index].body, grabbed)
+            .soft(GRIP_FREQUENCY, 1.0)
+            .limited(GRIP_FORCE, GRIP_TORQUE);
+        self.grip = Some(self.world.add_joint(grip));
         self.target = None;
         self.message = Some(format!(
             "Holding the {} ({:.0} kg)",
             kind.name().to_lowercase(),
-            part.mass
+            kind.mass()
         ));
-        let mass = self.mass();
-        self.astronaut_mut().mass = mass;
         Ok(kind)
+    }
+
+    /// Let go of the grip, if any.
+    fn let_go(&mut self) {
+        if let Some(grip) = self.grip.take() {
+            self.world.remove_joint(grip);
+        }
+    }
+
+    /// After a world step: a grip pulled past its force or torque limit
+    /// slips, and the part floats free with the motion it has.
+    fn check_grip(&mut self) {
+        let Some(grip) = self.grip else { return };
+        if !self.world.joint(grip).is_some_and(|j| j.saturated) {
+            return;
+        }
+        self.let_go();
+        if let Some(index) = self.carried() {
+            self.set_state(index, PartState::Drifting);
+            self.message = Some(format!(
+                "The grip slipped; the {} floats free",
+                self.parts[index].kind.name().to_lowercase()
+            ));
+        }
+    }
+
+    /// Move the astronaut and anything it holds by `offset`, as one rigid
+    /// group, without changing velocities. For scripted setups.
+    pub fn translate(&mut self, offset: DVec3) {
+        let mut ids = vec![self.astronaut];
+        ids.extend(self.carried().map(|i| self.parts[i].body));
+        for id in ids {
+            let body = &mut self.world[id];
+            body.pos += offset;
+            body.prev_pos += offset;
+        }
+    }
+
+    /// Set the velocity of the astronaut and anything it holds. For
+    /// scripted setups.
+    pub fn set_velocity(&mut self, vel: DVec3) {
+        let mut ids = vec![self.astronaut];
+        ids.extend(self.carried().map(|i| self.parts[i].body));
+        for id in ids {
+            self.world[id].vel = vel;
+            self.world[id].omega = DVec3::ZERO;
+        }
     }
 
     /// Distance from the carried part to its latch, m.
@@ -1070,12 +1143,13 @@ impl Station {
     }
 
     /// Let go. Within latch range and below latch speed, the part locks
-    /// into the jig; otherwise it floats free and tumbles.
+    /// into the jig; otherwise it floats free with its own motion.
     pub fn release(&mut self) -> Result<PartKind, String> {
         let index = self.carried().ok_or("Nothing is held")?;
         let distance = self.latch_distance().unwrap_or(f64::MAX);
         let kind = self.parts[index].kind;
-        let vel = self.astronaut().vel;
+        let vel = self.world[self.parts[index].body].vel;
+        self.let_go();
         let id = self.parts[index].body;
         if distance <= LATCH_RANGE && vel.length() <= LATCH_SPEED {
             let before = self.momentum();
@@ -1101,12 +1175,9 @@ impl Station {
                 )
             });
         } else {
+            // The part keeps the motion the grip left it: its own velocity
+            // and spin.
             self.set_state(index, PartState::Drifting);
-            let body = &mut self.world[id];
-            body.vel = vel;
-            // Real hands never let go perfectly; a small residual rate
-            // shows the free rigid-body motion.
-            body.omega = DVec3::new(0.012, 0.035, -0.02);
             self.message = Some(if distance <= LATCH_RANGE {
                 format!(
                     "Too fast to latch; the {} floats free",
@@ -1116,8 +1187,6 @@ impl Station {
                 format!("The {} floats free", kind.name().to_lowercase())
             });
         }
-        let mass = self.mass();
-        self.astronaut_mut().mass = mass;
         Ok(kind)
     }
 
@@ -1152,7 +1221,9 @@ impl Station {
             next_part: self.next_part(),
             can_grab,
             latch_ready: latch_distance.is_some_and(|d| d <= LATCH_RANGE)
-                && self.astronaut().vel.length() <= LATCH_SPEED,
+                && self
+                    .carried()
+                    .is_some_and(|i| self.body(&self.parts[i]).vel.length() <= LATCH_SPEED),
             latch_distance_m: latch_distance,
             refilling: self.refilling,
             keeping_active: self.keeping_glow > 0.0,

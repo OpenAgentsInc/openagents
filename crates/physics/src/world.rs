@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::body::{Body, BodyKind};
 use crate::collision::{Collider, ColliderId};
 use crate::contact::{ContactReport, SolverSettings};
+use crate::joint::Joint;
 
 /// Index of a body in its world. Bodies are never removed, so ids stay valid.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -62,6 +63,8 @@ pub struct World {
     bodies: Vec<Body>,
     #[serde(default)]
     colliders: Vec<Collider>,
+    #[serde(default)]
+    pub(crate) joints: Vec<Option<Joint>>,
     /// What each contact point did in the last step.
     #[serde(skip)]
     pub contacts: Vec<ContactReport>,
@@ -80,6 +83,7 @@ impl World {
             solver: SolverSettings::default(),
             bodies: Vec::new(),
             colliders: Vec::new(),
+            joints: Vec::new(),
             contacts: Vec::new(),
         }
     }
@@ -136,7 +140,7 @@ impl World {
             body.force = DVec3::ZERO;
             body.torque = DVec3::ZERO;
         }
-        self.contacts = if self.colliders.is_empty() {
+        self.contacts = if self.colliders.is_empty() && self.joints.iter().all(Option::is_none) {
             Vec::new()
         } else {
             let base = self.solver.margin;
@@ -149,7 +153,7 @@ impl World {
                 };
                 base + (reach(a) + reach(b)) * dt
             });
-            self.solve_contacts(&manifolds, dt)
+            self.solve(&manifolds, dt)
         };
         for body in &mut self.bodies {
             if body.moves() {

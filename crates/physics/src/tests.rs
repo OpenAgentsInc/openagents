@@ -374,3 +374,112 @@ fn a_small_stack_settles_and_stays() {
         assert!(world[*b].pos.y > 0.1, "no sinking");
     }
 }
+
+/// The mouse-interaction grab as a soft weld: a pack grips a heavy part
+/// off-center while they move apart and spin relative to each other. The
+/// relative motion dies out without overshoot and momentum is exact.
+#[test]
+fn a_soft_grip_settles_critically_and_conserves_momentum() {
+    let mut world = World::new(1.0 / 120.0);
+    let mut pack = Body::new(250.0, DVec3::splat(40.0), DVec3::ZERO);
+    pack.vel = DVec3::new(0.3, 0.0, 0.0);
+    let pack = world.add(pack);
+    let mut part = Body::new(
+        450.0,
+        Body::box_inertia(450.0, DVec3::new(2.2, 2.2, 3.0)),
+        DVec3::new(0.0, 0.5, 2.5),
+    );
+    part.vel = DVec3::new(-0.2, 0.05, 0.1);
+    part.omega = DVec3::new(0.0, 0.3, 0.1);
+    let part = world.add(part);
+    let grip = world.add_joint(
+        crate::Joint::weld_here(&world, pack, part, DVec3::new(0.0, 0.2, 1.0))
+            .soft(6.0, 1.0)
+            .limited(2_000.0, 2_000.0),
+    );
+    let origin = DVec3::new(5.0, -3.0, 1.0);
+    let ledger = Ledger::new(origin, world.momentum(origin));
+    let relative = |world: &World| {
+        let joint = world.joint(grip).unwrap();
+        let (a, b) = joint.anchors(world);
+        let (pa, pb) = (&world[pack], &world[part]);
+        let va = pa.vel + pa.omega_world().cross(a - pa.pos);
+        let vb = pb.vel + pb.omega_world().cross(b - pb.pos);
+        (
+            (vb - va).length(),
+            (pb.omega_world() - pa.omega_world()).length(),
+        )
+    };
+    let (v0, w0) = relative(&world);
+    let mut last = (v0, w0);
+    let mut rebounds = 0;
+    for step in 0..360 {
+        world.step(&NoField);
+        let error = ledger.error(world.momentum(origin));
+        assert!(error.linear < 1e-12 && error.angular < 1e-12, "{error:?}");
+        let now = relative(&world);
+        // A critically damped response decays without ringing: after the
+        // first quarter second it never grows back by more than a sliver.
+        if step > 30 && now.0 > last.0 * 1.05 + 1e-4 {
+            rebounds += 1;
+        }
+        last = now;
+    }
+    assert_eq!(rebounds, 0, "the grip rang");
+    assert!(
+        last.0 < v0 * 1e-3 && last.1 < w0 * 1e-3,
+        "settled: {last:?}"
+    );
+    assert!(!world.joint(grip).unwrap().saturated);
+}
+
+/// Past its force limit a grip reports saturation and never transmits more.
+#[test]
+fn a_grip_saturates_at_its_limit() {
+    let mut world = World::new(1.0 / 120.0);
+    let hand = world.add(Body::new(250.0, DVec3::splat(40.0), DVec3::ZERO));
+    let mut part = Body::new(180.0, DVec3::splat(60.0), DVec3::new(0.0, 0.0, 1.5));
+    part.vel = DVec3::new(0.0, 0.0, 3.0);
+    let part = world.add(part);
+    let grip = world.add_joint(
+        crate::Joint::weld_here(&world, hand, part, DVec3::new(0.0, 0.0, 1.0))
+            .soft(6.0, 1.0)
+            .limited(400.0, 200.0),
+    );
+    world.step(&NoField);
+    let joint = world.joint(grip).unwrap();
+    assert!(joint.saturated);
+    assert!(joint.impulse.length() <= 400.0 * world.dt * (1.0 + 1e-9));
+    world.remove_joint(grip);
+    assert!(world.joint(grip).is_none());
+}
+
+/// `examples/rigid/closed_loop.py`'s connect: a hard point joint holds a
+/// pendulum's arm length under gravity.
+#[test]
+fn a_hard_point_joint_holds_a_pendulum() {
+    let mut world = World::new(0.005);
+    let pivot = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
+    let bob = world.add(Body::new(
+        2.0,
+        DVec3::splat(0.02),
+        DVec3::new(1.0, 0.0, 0.0),
+    ));
+    world.add_joint(crate::Joint::new(
+        pivot,
+        DVec3::ZERO,
+        bob,
+        DVec3::new(-1.0, 0.0, 0.0),
+        crate::JointKind::Point,
+    ));
+    let g = Uniform(DVec3::new(0.0, -G, 0.0));
+    let mut worst: f64 = 0.0;
+    for _ in 0..800 {
+        world.step(&g);
+        let joint = world.joints().next().unwrap().1;
+        let (a, b) = joint.anchors(&world);
+        worst = worst.max(a.distance(b));
+    }
+    assert!(worst < 5e-3, "anchor gap {worst} m");
+    assert!(world[bob].pos.y < -0.5, "it swung down");
+}
