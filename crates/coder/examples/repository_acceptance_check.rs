@@ -43,7 +43,7 @@ async fn bounded(
     command
         .env_clear()
         .current_dir(scratch)
-        .env("PATH", "/usr/bin:/bin")
+        .env("PATH", coder::task::owner::SYSTEM_PATH)
         .env("HOME", scratch)
         .env("TMPDIR", scratch)
         .env("RUST_TEST_THREADS", "1");
