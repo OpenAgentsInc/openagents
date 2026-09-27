@@ -1,0 +1,1 @@
+Coder wrote these entries from its earlier runs on this kind of task. They state the method, the formulas, and the edge cases. Act on them: don't re-derive what they state. You have about three minutes in all. Read the inputs once, write one script that produces every required output, run it, check the outputs against the entries' checks, and stop.

@@ -1,0 +1,301 @@
+{
+ "schema": "openagents.tb.fable_delegate_repro.tasks.v1",
+ "issue": 9776,
+ "rule": "bar_cost_usd is Fable 5.1 low's cheapest win; bar_seconds is its fastest win, whole trial; delegate_deadline_sec is floor(fastest-win seconds - 35).",
+ "tasks": [
+  {
+   "order": 1,
+   "task": "batched-eval-parity",
+   "fable_low_passes": 4,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "8e59cedd-cc64-4e93-9220-5e99504d5822",
+    "trial": "batched-eval-parity__bc86def0",
+    "cost_usd": 3.0759525,
+    "seconds": 600.5
+   },
+   "fastest_win": {
+    "id": "3ad1dd36-dc7e-4651-be29-08e48d36f191",
+    "trial": "batched-eval-parity__553aca74",
+    "cost_usd": 3.549443750000001,
+    "seconds": 517.2
+   },
+   "bar_cost_usd": 3.0759525,
+   "bar_seconds": 517.1875820159912,
+   "delegate_deadline_sec": 482
+  },
+  {
+   "order": 2,
+   "task": "coq-block-bound",
+   "fable_low_passes": 5,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "4996d3e7-806a-4b7d-86c5-584905fe52ee",
+    "trial": "coq-block-bound__90689c6e",
+    "cost_usd": 3.2750080000000006,
+    "seconds": 623.3
+   },
+   "fastest_win": {
+    "id": "4996d3e7-806a-4b7d-86c5-584905fe52ee",
+    "trial": "coq-block-bound__90689c6e",
+    "cost_usd": 3.2750080000000006,
+    "seconds": 623.3
+   },
+   "bar_cost_usd": 3.2750080000000006,
+   "bar_seconds": 623.3355131149292,
+   "delegate_deadline_sec": 588
+  },
+  {
+   "order": 3,
+   "task": "distributed-dedup",
+   "fable_low_passes": 4,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "ada4bade-1393-47e6-a07e-7b6140931fc2",
+    "trial": "distributed-dedup__15e7c694",
+    "cost_usd": 0.6013237499999999,
+    "seconds": 178.3
+   },
+   "fastest_win": {
+    "id": "ada4bade-1393-47e6-a07e-7b6140931fc2",
+    "trial": "distributed-dedup__15e7c694",
+    "cost_usd": 0.6013237499999999,
+    "seconds": 178.3
+   },
+   "bar_cost_usd": 0.6013237499999999,
+   "bar_seconds": 178.33260011672974,
+   "delegate_deadline_sec": 143
+  },
+  {
+   "order": 4,
+   "task": "embedding-drift-monitor",
+   "fable_low_passes": 5,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "71ac6665-42c4-4e4b-b471-b9dc4b1cb1b8",
+    "trial": "embedding-drift-monitor__553915f9",
+    "cost_usd": 0.73759125,
+    "seconds": 139.4
+   },
+   "fastest_win": {
+    "id": "71ac6665-42c4-4e4b-b471-b9dc4b1cb1b8",
+    "trial": "embedding-drift-monitor__553915f9",
+    "cost_usd": 0.73759125,
+    "seconds": 139.4
+   },
+   "bar_cost_usd": 0.73759125,
+   "bar_seconds": 139.35337209701538,
+   "delegate_deadline_sec": 104
+  },
+  {
+   "order": 5,
+   "task": "gsea-proteomics",
+   "fable_low_passes": 3,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "b5454ef2-e266-4350-8d0b-fffca75db607",
+    "trial": "gsea-proteomics__10522929",
+    "cost_usd": 0.69372725,
+    "seconds": 211.0
+   },
+   "fastest_win": {
+    "id": "040a697a-d1db-4026-83c2-5b082dfc6072",
+    "trial": "gsea-proteomics__e3f16aac",
+    "cost_usd": 0.7316799999999999,
+    "seconds": 172.9
+   },
+   "bar_cost_usd": 0.69372725,
+   "bar_seconds": 172.86981320381165,
+   "delegate_deadline_sec": 137
+  },
+  {
+   "order": 6,
+   "task": "hof-topology-interpenetration",
+   "fable_low_passes": 4,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "bde1c3da-c508-4e95-86a4-76e83c928fd6",
+    "trial": "hof-topology-interpenetration__4c6484ff",
+    "cost_usd": 2.5019092499999998,
+    "seconds": 1087.1
+   },
+   "fastest_win": {
+    "id": "bde1c3da-c508-4e95-86a4-76e83c928fd6",
+    "trial": "hof-topology-interpenetration__4c6484ff",
+    "cost_usd": 2.5019092499999998,
+    "seconds": 1087.1
+   },
+   "bar_cost_usd": 2.5019092499999998,
+   "bar_seconds": 1087.1315050125122,
+   "delegate_deadline_sec": 1052
+  },
+  {
+   "order": 7,
+   "task": "interleaved-vigenere",
+   "fable_low_passes": 5,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "e4da060d-3171-4536-a3b1-b2f104e3dc0c",
+    "trial": "interleaved-vigenere__395b956f",
+    "cost_usd": 1.9962594999999996,
+    "seconds": 727.6
+   },
+   "fastest_win": {
+    "id": "e4da060d-3171-4536-a3b1-b2f104e3dc0c",
+    "trial": "interleaved-vigenere__395b956f",
+    "cost_usd": 1.9962594999999996,
+    "seconds": 727.6
+   },
+   "bar_cost_usd": 1.9962594999999996,
+   "bar_seconds": 727.6048550605774,
+   "delegate_deadline_sec": 692
+  },
+  {
+   "order": 8,
+   "task": "math-eval-grader",
+   "fable_low_passes": 2,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "f65a02ac-2ba1-45df-9224-fcdd84238c6c",
+    "trial": "math-eval-grader__c59c8552",
+    "cost_usd": 4.07012675,
+    "seconds": 1013.7
+   },
+   "fastest_win": {
+    "id": "f65a02ac-2ba1-45df-9224-fcdd84238c6c",
+    "trial": "math-eval-grader__c59c8552",
+    "cost_usd": 4.07012675,
+    "seconds": 1013.7
+   },
+   "bar_cost_usd": 4.07012675,
+   "bar_seconds": 1013.7408149242401,
+   "delegate_deadline_sec": 978
+  },
+  {
+   "order": 9,
+   "task": "mp-checkpoint-consolidation",
+   "fable_low_passes": 5,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "c6997bc8-0ec1-412c-958c-e7c63d03344c",
+    "trial": "mp-checkpoint-consolidation__41bf53c5",
+    "cost_usd": 3.3127730000000004,
+    "seconds": 788.3
+   },
+   "fastest_win": {
+    "id": "c6997bc8-0ec1-412c-958c-e7c63d03344c",
+    "trial": "mp-checkpoint-consolidation__41bf53c5",
+    "cost_usd": 3.3127730000000004,
+    "seconds": 788.3
+   },
+   "bar_cost_usd": 3.3127730000000004,
+   "bar_seconds": 788.2537930011749,
+   "delegate_deadline_sec": 753
+  },
+  {
+   "order": 10,
+   "task": "production-planning",
+   "fable_low_passes": 3,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "41d999f7-3c5e-4ddb-bec8-a728f3c2c05c",
+    "trial": "production-planning__fa61521e",
+    "cost_usd": 3.1148617499999998,
+    "seconds": 450.4
+   },
+   "fastest_win": {
+    "id": "41d999f7-3c5e-4ddb-bec8-a728f3c2c05c",
+    "trial": "production-planning__fa61521e",
+    "cost_usd": 3.1148617499999998,
+    "seconds": 450.4
+   },
+   "bar_cost_usd": 3.1148617499999998,
+   "bar_seconds": 450.3561339378357,
+   "delegate_deadline_sec": 415
+  },
+  {
+   "order": 11,
+   "task": "risk-scorer-replay",
+   "fable_low_passes": 5,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "51a3ac4b-12d8-487e-a17c-c4d8650f68fa",
+    "trial": "risk-scorer-replay__dee674a6",
+    "cost_usd": 2.4217087500000005,
+    "seconds": 372.7
+   },
+   "fastest_win": {
+    "id": "51a3ac4b-12d8-487e-a17c-c4d8650f68fa",
+    "trial": "risk-scorer-replay__dee674a6",
+    "cost_usd": 2.4217087500000005,
+    "seconds": 372.7
+   },
+   "bar_cost_usd": 2.4217087500000005,
+   "bar_seconds": 372.694274187088,
+   "delegate_deadline_sec": 337
+  },
+  {
+   "order": 12,
+   "task": "shadow-relay",
+   "fable_low_passes": 5,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "56402d9b-66f3-44a1-94d1-c4c7f131f986",
+    "trial": "shadow-relay__5c7038e6",
+    "cost_usd": 0.91152575,
+    "seconds": 156.2
+   },
+   "fastest_win": {
+    "id": "56402d9b-66f3-44a1-94d1-c4c7f131f986",
+    "trial": "shadow-relay__5c7038e6",
+    "cost_usd": 0.91152575,
+    "seconds": 156.2
+   },
+   "bar_cost_usd": 0.91152575,
+   "bar_seconds": 156.2195281982422,
+   "delegate_deadline_sec": 121
+  },
+  {
+   "order": 13,
+   "task": "sound-change-cascade",
+   "fable_low_passes": 5,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "71a88a1a-756d-454d-8d2d-60fd43fe5083",
+    "trial": "sound-change-cascade__431168a0",
+    "cost_usd": 3.8524392499999998,
+    "seconds": 947.7
+   },
+   "fastest_win": {
+    "id": "6a6d89cd-f5a3-455d-9484-79f7f75c390f",
+    "trial": "sound-change-cascade__bf55434d",
+    "cost_usd": 4.145985,
+    "seconds": 878.0
+   },
+   "bar_cost_usd": 3.8524392499999998,
+   "bar_seconds": 878.0076370239258,
+   "delegate_deadline_sec": 843
+  },
+  {
+   "order": 14,
+   "task": "telecom-entity-resolution",
+   "fable_low_passes": 5,
+   "fable_low_attempts": 5,
+   "cheapest_win": {
+    "id": "5cf8a342-c204-4e73-849d-39d922468b8f",
+    "trial": "telecom-entity-resolution__f5b84f4c",
+    "cost_usd": 4.1796245,
+    "seconds": 783.2
+   },
+   "fastest_win": {
+    "id": "5cf8a342-c204-4e73-849d-39d922468b8f",
+    "trial": "telecom-entity-resolution__f5b84f4c",
+    "cost_usd": 4.1796245,
+    "seconds": 783.2
+   },
+   "bar_cost_usd": 4.1796245,
+   "bar_seconds": 783.1626260280609,
+   "delegate_deadline_sec": 748
+  }
+ ]
+}
