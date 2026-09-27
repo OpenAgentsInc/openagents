@@ -4,6 +4,14 @@ September 26, 2026. Tracking:
 [#9683](https://github.com/OpenAgentsInc/openagents/issues/9683), the
 [out-of-sample study](2026-09-26-out-of-sample-study.md).
 
+**Label added 2026-09-27: no reasoning on the Codex route.** The [route
+diff](2026-09-26-route-diff.md) found that before `ac3ee05901`, every step
+on the Codex login (`--provider codex`) asked GPT-6 Luna for a strict
+function call, and Luna answered those with zero reasoning tokens. So the
+Codex-route runs in this report ran Luna with no reasoning, whatever effort
+they name. OpenRouter-route runs, and runs on other models, are unaffected.
+The results stand as measured under that configuration.
+
 This sweep asks which settings of Microcoder's existing flags give the most
 passes per dollar, so that Round 3 can be declared with a configuration that
 was chosen on development tasks only. It changed no code.

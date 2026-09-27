@@ -4,6 +4,14 @@ Results for the [pre-registered study](2026-09-26-out-of-sample-study.md)
 (#9683). Only outcome lines are read for held-out runs; see the
 pre-registration's rules.
 
+**Label added 2026-09-27: no reasoning on the Codex route.** The [route
+diff](2026-09-26-route-diff.md) found that before `ac3ee05901`, every step
+on the Codex login (`--provider codex`) asked GPT-6 Luna for a strict
+function call, and Luna answered those with zero reasoning tokens. So the
+Codex-route runs in this report ran Luna with no reasoning, whatever effort
+they name. OpenRouter-route runs, and runs on other models, are unaffected.
+The results stand as measured under that configuration.
+
 ## Round 1 (paused)
 
 - **Configuration:** Microcoder `f2cc194b57` (binary `microcoder-study-r1` on

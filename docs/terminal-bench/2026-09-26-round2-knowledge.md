@@ -7,6 +7,14 @@ every source consulted, every entry added with its provenance, the entries
 rejected and why, and the cost. It is written so a reader can confirm that no
 held-out or Fable-fails task was touched.
 
+**Label added 2026-09-27: no reasoning on the Codex route.** The [route
+diff](2026-09-26-route-diff.md) found that before `ac3ee05901`, every step
+on the Codex login (`--provider codex`) asked GPT-6 Luna for a strict
+function call, and Luna answered those with zero reasoning tokens. So the
+Codex-route runs in this report ran Luna with no reasoning, whatever effort
+they name. OpenRouter-route runs, and runs on other models, are unaffected.
+The results stand as measured under that configuration.
+
 ## No held-out or Fable-fails task was consulted
 
 The 26 held-out tasks and the 23 Fable-fails tasks named in the
