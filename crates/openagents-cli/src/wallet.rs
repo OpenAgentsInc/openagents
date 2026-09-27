@@ -14,9 +14,11 @@ use crate::{Args, Output};
 
 const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
   init [--network NET] [--esplora URL] [--listen HOST:PORT]
-       [--lsp NODE_ID@HOST:PORT [--lsp-token TOKEN]]
+       [--lsp NODE_ID@HOST:PORT [--lsp-token TOKEN]] [--trust NODE_ID]...
                           Write config.json and a seed. NET is bitcoin,
                           testnet, signet, or regtest (default signet).
+                          --trust lets that peer open anchor channels here
+                          without an on-chain reserve (your own nodes).
                           Running init again keeps the seed.
   info                    Node id (the x402 payTo), network, balances, paths.
   status                  Chain sync state and queued node events.
@@ -164,6 +166,15 @@ fn init(args: &Args) -> Result<Value, Failure> {
         Some(text) => Some(config::Lsp::parse(text, args.option("lsp-token"))?),
         None => existing.as_ref().and_then(|c| c.lsp.clone()),
     };
+    let trusted = args.options("trust");
+    wallet_config.trusted_peers = if trusted.is_empty() {
+        existing.map(|c| c.trusted_peers).unwrap_or_default()
+    } else {
+        trusted
+            .into_iter()
+            .map(config::parse_node_id)
+            .collect::<Result<_, _>>()?
+    };
     wallet_config.save(&home)?;
     let (_, created) =
         config::load_or_create_seed(&home, true, openagents_wallet::ldk::generate_mnemonic)?;
@@ -201,6 +212,7 @@ fn info(wallet: &LdkWallet) -> Result<Value, Failure> {
         "esplora_url": wallet_config.esplora_url,
         "listen": wallet_config.listen,
         "lsp": wallet_config.lsp,
+        "trusted_peers": wallet_config.trusted_peers,
         "balance": balance,
         "channels": channels.len(),
         "usable_channels": channels.iter().filter(|c| c.usable).count(),

@@ -37,7 +37,13 @@ impl LdkWallet {
     pub fn open(home: &Path, config: &WalletConfig, mnemonic: &str) -> Result<Self, WalletError> {
         let mnemonic = ldk_node::bip39::Mnemonic::from_str(mnemonic)
             .map_err(|error| WalletError::Setup(format!("seed: {error}")))?;
-        let mut builder = Builder::new();
+        let mut node_config = ldk_node::config::Config::default();
+        if let Some(anchors) = node_config.anchor_channels_config.as_mut() {
+            for peer in &config.trusted_peers {
+                anchors.trusted_peers_no_reserve.push(pubkey(peer)?);
+            }
+        }
+        let mut builder = Builder::from_config(node_config);
         builder.set_network(network(config.network));
         builder.set_storage_dir_path(home.join(STORE_DIR).display().to_string());
         builder.set_entropy_bip39_mnemonic(mnemonic, None);
