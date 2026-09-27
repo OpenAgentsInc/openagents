@@ -593,7 +593,7 @@ first run:
 | Series | Declaration | Result |
 | --- | --- | --- |
 | 6 | [comment](https://github.com/OpenAgentsInc/openagents/issues/9746#issuecomment-5859287442) | [comment](https://github.com/OpenAgentsInc/openagents/issues/9746#issuecomment-5859424547) |
-| 7 | [comment](https://github.com/OpenAgentsInc/openagents/issues/9746#issuecomment-5859473020) | The winning attempt's evidence on the issue |
+| 7 | [comment](https://github.com/OpenAgentsInc/openagents/issues/9746#issuecomment-5859473020) | [comment](https://github.com/OpenAgentsInc/openagents/issues/9746#issuecomment-5859517429), with the winning attempt's evidence |
 
 ### Jev's role
 
