@@ -194,9 +194,9 @@ class MobileAcceptanceTest {
         click("host-0-switch")
         waitFor { text("host-0-status").contains("switched off") }
         click("tab-add")
-        waitFor { exists("ssh-connect") }
-        assertFalse("SSH is desktop and terminal only", exists("ssh-connect", enabled = true))
-        assertTrue(text("ssh-connect-reason").contains("desktop or terminal"))
+        // A phone never starts SSH, so it shows no SSH section.
+        waitFor { exists("invite-paste") }
+        assertFalse("A phone shows no SSH section", exists("ssh-connect"))
         click("invite-paste")
         waitFor { exists("computers-input") }
         onMain { (find(it.window.decorView, "computers-input") as EditText).setText("coder-host:emulator") }
@@ -206,6 +206,65 @@ class MobileAcceptanceTest {
         click("tab-activity")
         waitFor { text("activity-0-subject").contains("Build server") }
         capture("computers-activity")
+    }
+
+    /**
+     * Enter owner key over the synthetic fixture. Its owner key is a public
+     * test value, not a credential. The field must be a masked password input.
+     */
+    @Test fun ownerKeyIsMaskedAndAcceptedOnlyWhenAGrantNamesIt() {
+        val owner = "0e".repeat(32)
+        val other = "0f".repeat(32)
+        launch()
+        computer()
+        waitFor { exists("chat-0") }
+        click("computers-toggle")
+        waitFor { exists("first-run-title") }
+        click("first-run-continue")
+        waitFor { exists("chat-0") }
+        click("computers-toggle")
+        waitFor { exists("computers-title") }
+        click("directory-owner-key")
+        waitFor { exists("computers-input") }
+        onMain {
+            val field = find(it.window.decorView, "computers-input") as EditText
+            val variation = field.inputType and android.text.InputType.TYPE_MASK_VARIATION
+            assertEquals("A secret is a password input", android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD, variation)
+            assertTrue("A secret is masked", field.transformationMethod is android.text.method.PasswordTransformationMethod)
+            assertFalse("A secret is never saved with the view state", field.isSaveEnabled)
+            field.setText(other)
+        }
+        capture("owner-key-masked")
+        click("computers-submit")
+        waitFor { text("notice").contains("isn't the owner key") }
+        assertFalse("A refused key is never echoed", hasText(other))
+        waitFor { exists("computers-input") }
+        onMain { (find(it.window.decorView, "computers-input") as EditText).setText(owner) }
+        click("computers-submit")
+        waitFor { text("notice").contains("now holds your owner key") }
+        waitFor { text("directory-status").contains("Your directory is empty") }
+        assertFalse(exists("directory-owner-key"))
+        assertFalse(exists("computers-input"))
+        assertFalse("The accepted key is never echoed", hasText(owner))
+        capture("owner-key-accepted")
+    }
+
+    /**
+     * A build with google-services.json and loopback push settings (see the
+     * README) reports its wake status: Rust's after it receives the FCM token,
+     * or the native failure. Default builds skip it.
+     */
+    @Test fun pushConfiguredBuildReportsItsWakeStatus() {
+        org.junit.Assume.assumeTrue("This build is not configured for push", PushSettings.configured)
+        val intent = Intent(ApplicationProvider.getApplicationContext(), MainActivity::class.java)
+            .putExtra("synthetic", true).putExtra("loopback_test", true)
+        instrumentation.uiAutomation.grantRuntimePermission("com.openagents.coder", "android.permission.POST_NOTIFICATIONS")
+        scenario = ActivityScenario.launch(intent)
+        waitFor { frames() > 0 }
+        computer()
+        waitFor { exists("push-status") }
+        waitFor(60_000) { text("push-status").let { it.startsWith("Wakes unavailable:") || it.startsWith("Couldn't register for wakes") } }
+        capture("push-status")
     }
 
     /**

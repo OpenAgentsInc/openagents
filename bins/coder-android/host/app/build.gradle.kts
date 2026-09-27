@@ -7,6 +7,12 @@ val coderAbi = providers.gradleProperty("coderAbi").orElse("arm64-v8a").get()
 require(coderAbi in setOf("arm64-v8a", "x86_64")) { "Unsupported Coder Android ABI" }
 val nativeDirectory = providers.gradleProperty("coderNativeDir")
     .orElse(rootProject.file("../../../../target/coder-android/jniLibs").absolutePath)
+// Push is opt-in: Firebase Messaging compiles in only with google-services.json,
+// and the app registers only when the three push settings are also set.
+val firebase = file("google-services.json").exists()
+if (firebase) apply(plugin = "com.google.gms.google-services")
+fun pushSetting(name: String) = providers.gradleProperty(name).orElse("").get()
+    .also { require(!it.contains('"') && !it.contains('\\')) { "Invalid $name" } }
 
 android {
     namespace = "com.openagents.coder"
@@ -21,6 +27,10 @@ android {
         versionName = "0.5.0"
         ndk { abiFilters += coderAbi }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "CODER_PUSH_RELAY_URL", "\"${pushSetting("coderPushRelayUrl")}\"")
+        buildConfigField("String", "CODER_PUSH_GATEWAY_URL", "\"${pushSetting("coderPushGatewayUrl")}\"")
+        buildConfigField("String", "CODER_PUSH_APP_PROFILE", "\"${pushSetting("coderPushAppProfile")}\"")
+        manifestPlaceholders["coderPushEnabled"] = firebase.toString()
     }
 
     compileOptions {
@@ -30,6 +40,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { buildConfig = true }
     sourceSets.getByName("main").jniLibs.srcDir(nativeDirectory)
+    sourceSets.getByName("main").java.srcDir(if (firebase) "src/push/java" else "src/nopush/java")
     packaging { jniLibs.useLegacyPackaging = false }
     buildTypes {
         debug { isJniDebuggable = true }
@@ -48,6 +59,7 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.2")
     implementation("com.google.zxing:core:3.5.3")
     implementation("io.noties.markwon:core:4.6.2")
+    if (firebase) implementation("com.google.firebase:firebase-messaging:24.1.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test:runner:1.6.2")

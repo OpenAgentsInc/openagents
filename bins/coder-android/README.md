@@ -66,6 +66,43 @@ publish an app. A signing-key mismatch with an older installed Coder fails
 visibly; it does not trigger an automatic uninstall. The debug APK is for local
 installation, not a Google Play release.
 
+## Push wakes
+
+Push is off by default. Without `host/app/google-services.json`, Gradle
+doesn't load the Google services plugin or Firebase Messaging, compiles a
+stub from `src/nopush`, and disables the manifest's messaging service. The
+build and tests work exactly as before. The manifest declares
+`POST_NOTIFICATIONS`, but a default build never requests it.
+
+To turn push on:
+
+1. In the Firebase console, under **Project settings** > **General**, add an
+   Android app with package `com.openagents.coder`, then download
+   `google-services.json`. Put it at
+   `bins/coder-android/host/app/google-services.json`. Git ignores that path;
+   don't commit the file.
+2. Build with the push settings. The helper passes them to Gradle as the
+   `coderPushRelayUrl`, `coderPushGatewayUrl`, and `coderPushAppProfile`
+   properties:
+
+   ```sh
+   CODER_PUSH_RELAY_URL=wss://relay.example.com \
+   CODER_PUSH_GATEWAY_URL=https://push.example.com \
+   CODER_PUSH_APP_PROFILE=coder-android \
+   scripts/build-coder-android.sh package
+   ```
+
+With both, Gradle applies the Google services plugin, adds Firebase
+Messaging, and compiles `src/push`. The app requests `POST_NOTIFICATIONS` on
+Android 13 and later, fetches the FCM token at every launch, and passes it to
+Rust's `push_token`. `onNewToken` passes a rotated token the same way. Tokens
+stay in memory. A failure shows as the wake status in the Computer panel.
+The app profile must match the gateway's `PUSH_GATEWAY_FCM_APP_PROFILE`; see
+the [push gateway runbook](../../docs/deployment/push-gateway.md).
+
+`pushConfiguredBuildReportsItsWakeStatus` runs only in a push-configured build
+and is skipped otherwise.
+
 ## Use the app
 
 - The canvas paints behind the system bars; native controls respect their
