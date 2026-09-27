@@ -7,7 +7,7 @@
 //! The x axis points from the Sun toward the Earth, z is the ecliptic normal.
 
 use glam::DVec3;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Sun gravitational parameter, m^3/s^2 (IAU 2015 nominal).
 pub const GM_SUN: f64 = 1.327_124_400_18e20;
@@ -52,14 +52,14 @@ pub fn time_unit() -> f64 {
 }
 
 /// A normalized rotating-frame state: position and velocity.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct State {
     pub pos: DVec3,
     pub vel: DVec3,
 }
 
 /// Constants of the collinear point L1 and its linearized dynamics.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct L1 {
     pub mu: f64,
     /// Distance from the Earth–Moon barycenter to L1, normalized.
@@ -224,7 +224,7 @@ pub fn rk4(mu: f64, s: &State, h: f64) -> State {
 pub const MAX_STEP: f64 = 0.002;
 
 /// A station on a controlled Lissajous orbit about Sun–Earth L1.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StationOrbit {
     pub l1: L1,
     pub state: State,

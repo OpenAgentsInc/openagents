@@ -8,8 +8,10 @@ approximation is named below.
 
 Enter from the plaza's east arch (**L1 portal** on the map). Controls are in
 [the zone guide](zones.md#lagrange-1-controls). The simulation lives in
-[`verse-lagrange`](../../crates/verse-lagrange/); the scene, input mapping, and
-rendering live in [`zones/lagrange.rs`](../../crates/verse/src/zones/lagrange.rs).
+[`verse-lagrange`](../../crates/verse-lagrange/), which uses the shared
+zone-agnostic [`physics`](../../crates/physics/) crate for rigid bodies, fixed
+stepping, and restorable world state; the scene, input mapping, and rendering
+live in [`zones/lagrange.rs`](../../crates/verse/src/zones/lagrange.rs).
 
 ## Two clocks
 
@@ -21,6 +23,18 @@ rendering live in [`zones/lagrange.rs`](../../crates/verse/src/zones/lagrange.rs
 At one hour per second, one pass around the ~178-day Lissajous orbit takes
 about 71 minutes of play. The two clocks are displayed separately; speeding up
 the orbit never changes the local rigid-body step.
+
+Local physics runs in fixed steps of 1/120 s (`PHYSICS_DT`). Frame time
+accumulates and whole steps run, so the result does not depend on the frame
+rate; the renderer interpolates between the last two poses. A frame runs at
+most 12 steps (0.1 s); time beyond that is dropped and counted in
+`Station::clock.dropped`. The orbit advances by each step's 1/120 s × 3,600.
+
+`Station::save` returns a versioned `StationState` that restores and continues
+bit for bit (with `serde_json`, enable `float_roundtrip`). `Station::record`
+journals the pilot command and every action (`Input`: grab, release, fly-to,
+stop), including NIP-MV operator commands, stamped with the physics tick;
+`Station::replay` runs a journal from its start state.
 
 ## Orbit: the circular restricted three-body problem
 
@@ -149,14 +163,18 @@ Drifting parts more than 120 m from the depot are reeled back by their tethers.
 - The astronaut's attitude is held; only translation is simulated for the pack.
 - Carried parts do not collide with the station.
 - Construction state is local and resets on each visit; there is no shared
-  editing authority or save file.
+  editing authority. `StationState` can be saved and restored, but the zone
+  does not persist it.
 
 ## Tests
 
 `cargo test -p verse-lagrange` covers L1's location and linear constants, the
 exact unstable eigenvector, Jacobi conservation and uncontrolled divergence,
 two years of controlled flight, microgravity magnitude, the rocket equation
-and position hold, inelastic capture, latch conditions, and collisions.
+and position hold, inelastic capture, latch conditions, collisions, frame-rate
+independence, the frame step cap, save and restore, and journal replay.
+`cargo test -p physics` covers the shared rigid-body, clock, world, and trace
+mechanisms.
 `cargo test -p verse --lib zones` covers portal entry and return, flight, and
 the grab-carry-latch flow. Render the scene offline with:
 

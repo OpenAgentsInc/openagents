@@ -4571,6 +4571,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "physics"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6936,7 +6945,9 @@ name = "verse-lagrange"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "physics",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

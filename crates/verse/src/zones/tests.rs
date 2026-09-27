@@ -189,8 +189,8 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
         let lagrange = runtime.zone_state.lagrange.as_mut().unwrap();
         let station = &mut lagrange.station;
         station.yaw = -std::f64::consts::FRAC_PI_2;
-        station.astronaut.vel = glam::DVec3::ZERO;
-        station.astronaut.pos =
+        station.astronaut_mut().vel = glam::DVec3::ZERO;
+        station.astronaut_mut().pos =
             verse_lagrange::PartKind::MainEngine.stowage() + glam::DVec3::new(1.5, -0.2, 0.0);
     }
     runtime.player.yaw = -std::f32::consts::FRAC_PI_2;
@@ -206,8 +206,8 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
     {
         let lagrange = runtime.zone_state.lagrange.as_mut().unwrap();
         let station = &mut lagrange.station;
-        let part = station.parts[0].body.pos;
-        station.astronaut.pos += verse_lagrange::PartKind::MainEngine.slot() - part;
+        let part = station.body(&station.parts[0]).pos;
+        station.astronaut_mut().pos += verse_lagrange::PartKind::MainEngine.slot() - part;
     }
     runtime.tick(&InputState::default(), 1.0 / 60.0);
     let ready = runtime.zone_snapshot(1.0);

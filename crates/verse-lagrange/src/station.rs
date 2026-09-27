@@ -6,9 +6,9 @@
 //! the direction of Earth's orbital motion). Units are SI.
 
 use glam::{DQuat, DVec3};
-use serde::Serialize;
+use physics::{Body, BodyId, BodyKind, FixedStep, World};
+use serde::{Deserialize, Serialize};
 
-use crate::body::RigidBody;
 use crate::orbit::{StationOrbit, mean_motion};
 
 /// Standard gravity, used only to convert specific impulse, m/s^2.
@@ -40,6 +40,12 @@ pub const LATCH_SPEED: f64 = 0.35;
 pub const ORBIT_WARP: f64 = 3_600.0;
 /// Parts that drift farther than this from the depot are reeled back, m.
 pub const PART_TETHER: f64 = 120.0;
+/// Fixed local physics step, s.
+pub const PHYSICS_DT: f64 = 1.0 / 120.0;
+/// Most physics steps one frame may run (0.1 s); longer frames drop time.
+pub const MAX_STEPS_PER_FRAME: u32 = 12;
+/// Layout version of [`StationState`].
+pub const STATE_VERSION: u32 = 1;
 
 /// The airlock refill port.
 pub const AIRLOCK: DVec3 = DVec3::new(0.0, 6.0, 17.5);
@@ -53,7 +59,7 @@ pub const SPAWN: DVec3 = DVec3::new(3.0, 5.3, 21.0);
 pub const ASTRONAUT_RADIUS: f64 = 0.9;
 
 /// Ship frame components, in keel order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PartKind {
     MainEngine,
@@ -124,8 +130,8 @@ impl PartKind {
     #[must_use]
     pub fn inertia(self) -> DVec3 {
         match self {
-            Self::PropellantTank => RigidBody::shell_inertia(self.mass(), 1.3, 3.6),
-            _ => RigidBody::box_inertia(self.mass(), self.size()),
+            Self::PropellantTank => Body::shell_inertia(self.mass(), 1.3, 3.6),
+            _ => Body::box_inertia(self.mass(), self.size()),
         }
     }
 
@@ -154,7 +160,7 @@ impl PartKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PartState {
     Stowed,
@@ -163,11 +169,24 @@ pub enum PartState {
     Installed,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Part {
     pub kind: PartKind,
-    pub body: RigidBody,
+    /// The part's body in [`Station::world`].
+    pub body: BodyId,
     pub state: PartState,
+}
+
+impl PartState {
+    /// How the world moves a part in this state.
+    #[must_use]
+    pub const fn body_kind(self) -> BodyKind {
+        match self {
+            Self::Stowed | Self::Installed => BodyKind::Static,
+            Self::Carried => BodyKind::Kinematic,
+            Self::Drifting => BodyKind::Dynamic,
+        }
+    }
 }
 
 /// An axis-aligned keep-out box, m.
@@ -211,7 +230,7 @@ pub const OBSTACLES: [Obstacle; 6] = [
 ];
 
 /// One frame of pilot input, already mapped into scene axes.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct Command {
     /// Desired translation direction; zero holds position.
     pub direction: DVec3,
@@ -221,8 +240,44 @@ pub struct Command {
     pub climb: bool,
 }
 
+impl Command {
+    /// Bitwise equality, so a NaN yaw ("keep heading") compares equal to itself.
+    #[must_use]
+    pub fn same(&self, other: &Self) -> bool {
+        self.direction.to_array().map(f64::to_bits) == other.direction.to_array().map(f64::to_bits)
+            && self.yaw.to_bits() == other.yaw.to_bits()
+            && self.climb == other.climb
+    }
+}
+
+/// Everything that changes the station from outside: the pilot's held
+/// command and discrete actions from local controls or NIP-MV operators.
+/// A saved state plus a tick-stamped list of inputs replays a session.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(tag = "input", rename_all = "snake_case")]
+pub enum Input {
+    /// Hold this pilot command for the following steps.
+    Pilot {
+        command: Command,
+    },
+    Grab,
+    Release,
+    FlyTo {
+        target: DVec3,
+    },
+    /// Cancel the autopilot target.
+    Stop,
+}
+
+/// A saved station: restore it and continue, or replay inputs from it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StationState {
+    pub version: u32,
+    pub station: Station,
+}
+
 /// A visible thruster firing, for rendering only.
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Plume {
     pub pos: [f64; 3],
     /// Exhaust direction (opposite the thrust), unit.
@@ -253,11 +308,15 @@ pub struct Snapshot {
 }
 
 /// The whole L1 construction simulation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Station {
     pub orbit: StationOrbit,
-    /// The suited astronaut; `pos` is the body center, 0.9 m above the boots.
-    pub astronaut: RigidBody,
+    /// Every local rigid body: the astronaut and the parts.
+    pub world: World,
+    /// Turns frame time into fixed [`PHYSICS_DT`] steps.
+    pub clock: FixedStep,
+    /// The suited astronaut; its `pos` is the body center, 0.9 m above the boots.
+    pub astronaut: BodyId,
     pub yaw: f64,
     pub propellant: f64,
     pub parts: Vec<Part>,
@@ -267,6 +326,11 @@ pub struct Station {
     pub target: Option<DVec3>,
     pub message: Option<String>,
     pub refilling: bool,
+    /// The pilot command held between frames.
+    pub pilot: Command,
+    /// Inputs applied since recording started, stamped with the world tick.
+    #[serde(default)]
+    pub journal: Option<Vec<(u64, Input)>>,
     climb: f64,
     plume_clock: f64,
 }
@@ -280,17 +344,24 @@ impl Default for Station {
 impl Station {
     #[must_use]
     pub fn new() -> Self {
+        let mut world = World::new(PHYSICS_DT);
+        let astronaut = world.add(Body::new(DRY_MASS + PROPELLANT, DVec3::splat(40.0), SPAWN));
         let parts = PartKind::ALL
             .iter()
             .map(|&kind| Part {
                 kind,
-                body: RigidBody::new(kind.mass(), kind.inertia(), kind.stowage()),
+                body: world.add(
+                    Body::new(kind.mass(), kind.inertia(), kind.stowage())
+                        .with_kind(PartState::Stowed.body_kind()),
+                ),
                 state: PartState::Stowed,
             })
             .collect();
         Self {
             orbit: StationOrbit::new(),
-            astronaut: RigidBody::new(DRY_MASS + PROPELLANT, DVec3::splat(40.0), SPAWN),
+            world,
+            clock: FixedStep::new(PHYSICS_DT, MAX_STEPS_PER_FRAME),
+            astronaut,
             yaw: std::f64::consts::PI,
             propellant: PROPELLANT,
             parts,
@@ -299,9 +370,122 @@ impl Station {
             target: None,
             message: None,
             refilling: false,
+            pilot: Command::default(),
+            journal: None,
             climb: 0.0,
             plume_clock: 0.0,
         }
+    }
+
+    /// The astronaut's body.
+    #[must_use]
+    pub fn astronaut(&self) -> &Body {
+        &self.world[self.astronaut]
+    }
+
+    pub fn astronaut_mut(&mut self) -> &mut Body {
+        &mut self.world[self.astronaut]
+    }
+
+    /// A part's body.
+    #[must_use]
+    pub fn body(&self, part: &Part) -> &Body {
+        &self.world[part.body]
+    }
+
+    /// Fraction of a physics step accumulated since the last one, for
+    /// interpolating rendered poses with [`Body::interpolated`].
+    #[must_use]
+    pub fn alpha(&self) -> f64 {
+        self.clock.alpha()
+    }
+
+    fn set_state(&mut self, index: usize, state: PartState) {
+        self.parts[index].state = state;
+        let id = self.parts[index].body;
+        self.world[id].kind = state.body_kind();
+    }
+
+    /// Save everything needed to continue or replay from here.
+    #[must_use]
+    pub fn save(&self) -> StationState {
+        StationState {
+            version: STATE_VERSION,
+            station: self.clone(),
+        }
+    }
+
+    /// Restore a saved station.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the saved layout version is not supported.
+    pub fn restore(state: StationState) -> Result<Self, String> {
+        if state.version != STATE_VERSION {
+            return Err(format!(
+                "station state version {} is not the supported version {STATE_VERSION}",
+                state.version
+            ));
+        }
+        state.station.world.check_version()?;
+        Ok(state.station)
+    }
+
+    /// Start recording inputs for replay, from the current tick.
+    pub fn record(&mut self) {
+        self.journal = Some(vec![(
+            self.world.tick,
+            Input::Pilot {
+                command: self.pilot,
+            },
+        )]);
+    }
+
+    fn log(&mut self, input: Input) {
+        let tick = self.world.tick;
+        if let Some(journal) = &mut self.journal {
+            journal.push((tick, input));
+        }
+    }
+
+    /// Apply one input now. Actions return the part they affected.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusal message when an action is not possible.
+    pub fn apply(&mut self, input: Input) -> Result<Option<PartKind>, String> {
+        self.log(input);
+        match input {
+            Input::Pilot { command } => {
+                self.pilot = command;
+                Ok(None)
+            }
+            Input::Grab => self.grab().map(Some),
+            Input::Release => self.release().map(Some),
+            Input::FlyTo { target } => self.fly_to(target).map(|()| None),
+            Input::Stop => {
+                self.target = None;
+                Ok(None)
+            }
+        }
+    }
+
+    /// Run `journal` from `start` until the world reaches `until`: at each
+    /// tick, apply the inputs stamped with it, then take one step.
+    #[must_use]
+    pub fn replay(start: &Self, journal: &[(u64, Input)], until: u64) -> Self {
+        let mut station = start.clone();
+        station.journal = None;
+        let mut next = journal.iter().peekable();
+        while station.world.tick < until {
+            while let Some((_, input)) = next.next_if(|(tick, _)| *tick <= station.world.tick) {
+                // A refused action was refused live too; replay it the same way.
+                let _ = station.apply(*input);
+            }
+            let command = station.pilot;
+            station.advance(&command);
+        }
+        station
     }
 
     /// Relative acceleration near L1: the linearized restricted three-body
@@ -309,16 +493,11 @@ impl Station {
     /// is about 1e-11 m/s^2; it is kept so free parts obey the real field.
     #[must_use]
     pub fn field(&self, pos: DVec3, vel: DVec3) -> DVec3 {
-        let n = mean_motion();
-        let c2 = self.orbit.l1.c2;
-        DVec3::new(
-            -2.0 * n * vel.z + n * n * (1.0 - c2) * pos.x,
-            -n * n * c2 * pos.y,
-            2.0 * n * vel.x + n * n * (1.0 + 2.0 * c2) * pos.z,
-        )
+        tide(self.orbit.l1.c2, pos, vel)
     }
 
-    fn carried(&self) -> Option<usize> {
+    #[must_use]
+    pub fn carried(&self) -> Option<usize> {
         self.parts
             .iter()
             .position(|p| p.state == PartState::Carried)
@@ -327,17 +506,21 @@ impl Station {
     /// Total mass the pack must accelerate, kg.
     #[must_use]
     pub fn mass(&self) -> f64 {
-        DRY_MASS + self.propellant + self.carried().map_or(0.0, |i| self.parts[i].body.mass)
+        DRY_MASS
+            + self.propellant
+            + self
+                .carried()
+                .map_or(0.0, |i| self.body(&self.parts[i]).mass)
     }
 
     /// Where the gloves are: in front of the chest.
     #[must_use]
     pub fn hands(&self) -> DVec3 {
-        self.astronaut.pos + heading(self.yaw) * 1.0 + DVec3::Y * 0.2
+        self.astronaut().pos + heading(self.yaw) * 1.0 + DVec3::Y * 0.2
     }
 
     fn carry_point(&self, kind: PartKind) -> DVec3 {
-        self.astronaut.pos
+        self.astronaut().pos
             + heading(self.yaw) * (1.0 + kind.size().z.max(kind.size().x) * 0.5)
             + DVec3::Y * 0.2
     }
@@ -384,13 +567,23 @@ impl Station {
         Ok(())
     }
 
-    /// Advance local physics by `dt` real seconds and the orbit by
-    /// `dt * ORBIT_WARP` mission seconds.
-    pub fn step(&mut self, dt: f64, command: &Command) {
-        if !dt.is_finite() || dt <= 0.0 {
-            return;
+    /// Advance by `frame` real seconds of frame time: whole
+    /// [`PHYSICS_DT`] steps under `command`, with the remainder carried to the
+    /// next frame. At most [`MAX_STEPS_PER_FRAME`] steps run; the clock
+    /// counts time beyond them in `clock.dropped`.
+    pub fn step(&mut self, frame: f64, command: &Command) {
+        if !command.same(&self.pilot) {
+            let _ = self.apply(Input::Pilot { command: *command });
         }
-        let dt = dt.min(0.1);
+        for _ in 0..self.clock.advance(frame) {
+            self.advance(command);
+        }
+    }
+
+    /// One fixed step: local physics by [`PHYSICS_DT`] and the orbit by
+    /// `PHYSICS_DT * ORBIT_WARP` mission seconds.
+    pub fn advance(&mut self, command: &Command) {
+        let dt = PHYSICS_DT;
         if self.orbit.advance(dt * ORBIT_WARP) > 0 {
             self.keeping_glow = 1.2;
         }
@@ -416,10 +609,11 @@ impl Station {
         }
         let mass = self.mass();
         let accel_limit = THRUST / mass;
+        let (pos, vel) = (self.astronaut().pos, self.astronaut().vel);
         if !manual && let Some(target) = self.target {
-            let offset = target - self.astronaut.pos;
+            let offset = target - pos;
             let distance = offset.length();
-            if distance < 0.3 && self.astronaut.vel.length() < 0.05 {
+            if distance < 0.3 && vel.length() < 0.05 {
                 self.target = None;
             } else {
                 // Leave margin so the braking burn fits inside the thrust limit.
@@ -427,7 +621,7 @@ impl Station {
                 desired = offset.normalize_or_zero() * speed;
             }
         }
-        let error = desired - self.astronaut.vel;
+        let error = desired - vel;
         let mut thrust = DVec3::ZERO;
         if error.length() > VELOCITY_DEADBAND && self.propellant > 0.0 {
             let wanted = error / dt;
@@ -435,29 +629,32 @@ impl Station {
             let used = (thrust.length() * mass / (ISP * G0) * dt).min(self.propellant);
             self.propellant -= used;
         }
-        let field = self.field(self.astronaut.pos, self.astronaut.vel);
-        self.astronaut.vel += (thrust + field) * dt;
-        self.astronaut.pos += self.astronaut.vel * dt;
-        self.astronaut.mass = self.mass();
-        collide(&mut self.astronaut, ASTRONAUT_RADIUS);
-        let range = self.astronaut.pos.length();
+        let astronaut = self.astronaut_mut();
+        astronaut.vel += thrust * dt;
+        astronaut.mass = mass;
+        let c2 = self.orbit.l1.c2;
+        self.world.step(&move |p, v| tide(c2, p, v));
+        let astronaut = &mut self.world[self.astronaut];
+        collide(astronaut, ASTRONAUT_RADIUS);
+        let range = astronaut.pos.length();
         if range > EVA_RANGE {
-            let out = self.astronaut.pos / range;
-            self.astronaut.pos = out * EVA_RANGE;
-            let radial = self.astronaut.vel.dot(out);
+            let out = astronaut.pos / range;
+            astronaut.pos = out * EVA_RANGE;
+            let radial = astronaut.vel.dot(out);
             if radial > 0.0 {
-                self.astronaut.vel -= out * radial;
+                astronaut.vel -= out * radial;
             }
             self.message = Some("Safety tether taut".into());
         }
-        self.refilling = self.astronaut.pos.distance(AIRLOCK) <= REFILL_RANGE
-            && self.astronaut.vel.length() < 0.6
+        let (pos, vel) = (self.astronaut().pos, self.astronaut().vel);
+        self.refilling = pos.distance(AIRLOCK) <= REFILL_RANGE
+            && vel.length() < 0.6
             && self.propellant < PROPELLANT;
         if self.refilling {
             self.propellant = (self.propellant + REFILL_RATE * dt).min(PROPELLANT);
         }
         self.emit_plumes(thrust, dt);
-        self.step_parts(dt);
+        self.settle_parts();
     }
 
     fn emit_plumes(&mut self, thrust: DVec3, dt: f64) {
@@ -471,7 +668,7 @@ impl Station {
         }
         self.plume_clock = 0.03;
         let exhaust = -thrust.normalize();
-        let pack = self.astronaut.pos + DVec3::Y * 0.3 - heading(self.yaw) * 0.45;
+        let pack = self.astronaut().pos + DVec3::Y * 0.3 - heading(self.yaw) * 0.45;
         self.plumes.push(Plume {
             pos: (pack + exhaust * 0.5).to_array(),
             dir: exhaust.to_array(),
@@ -479,35 +676,32 @@ impl Station {
         });
     }
 
-    fn step_parts(&mut self, dt: f64) {
-        let carried = self.carried();
-        if let Some(i) = carried {
+    /// After a world step: hold the carried part at the hands, keep
+    /// drifting parts out of structure, and reel in any that stray.
+    fn settle_parts(&mut self) {
+        if let Some(i) = self.carried() {
             let kind = self.parts[i].kind;
             let at = self.carry_point(kind);
-            let body = &mut self.parts[i].body;
+            let (vel, yaw) = (self.astronaut().vel, self.yaw);
+            let body = &mut self.world[self.parts[i].body];
             body.pos = at;
-            body.vel = self.astronaut.vel;
-            body.orientation = DQuat::from_rotation_y(self.yaw);
+            body.vel = vel;
+            body.orientation = DQuat::from_rotation_y(yaw);
             body.omega = DVec3::ZERO;
         }
         for i in 0..self.parts.len() {
             if self.parts[i].state != PartState::Drifting {
                 continue;
             }
-            let field = self.field(self.parts[i].body.pos, self.parts[i].body.vel);
-            let part = &mut self.parts[i];
-            part.body.vel += field * dt;
-            part.body.pos += part.body.vel * dt;
-            part.body.rotate(dt);
-            let radius = part.kind.size().min_element() * 0.5;
-            collide(&mut part.body, radius);
-            if part.body.pos.distance(DEPOT) > PART_TETHER {
-                part.state = PartState::Stowed;
-                part.body =
-                    RigidBody::new(part.kind.mass(), part.kind.inertia(), part.kind.stowage());
+            let kind = self.parts[i].kind;
+            let body = &mut self.world[self.parts[i].body];
+            collide(body, kind.size().min_element() * 0.5);
+            if body.pos.distance(DEPOT) > PART_TETHER {
+                *body = Body::new(kind.mass(), kind.inertia(), kind.stowage());
+                self.set_state(i, PartState::Stowed);
                 self.message = Some(format!(
                     "Tether reeled the {} back to the depot",
-                    part.kind.name().to_lowercase()
+                    kind.name().to_lowercase()
                 ));
             }
         }
@@ -525,7 +719,7 @@ impl Station {
             .iter()
             .enumerate()
             .filter(|(_, p)| p.state == PartState::Drifting)
-            .map(|(i, p)| (i, reach(p, hands)))
+            .map(|(i, p)| (i, reach(p, self.body(p), hands)))
             .filter(|(_, d)| *d <= GRAB_RANGE)
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(i, _)| i);
@@ -537,7 +731,8 @@ impl Station {
                     .iter()
                     .position(|p| p.state == PartState::Stowed)
                     .ok_or("Every part is out of the depot")?;
-                if reach(&self.parts[next], hands) > GRAB_RANGE + 1.5 {
+                let part = &self.parts[next];
+                if reach(part, self.body(part), hands) > GRAB_RANGE + 1.5 {
                     return Err(format!(
                         "Fly to the depot for the {}",
                         self.parts[next].kind.name().to_lowercase()
@@ -546,19 +741,20 @@ impl Station {
                 next
             }
         };
-        let part = &mut self.parts[index];
-        let m_a = self.astronaut.mass;
-        let m_p = part.body.mass;
-        self.astronaut.vel = (self.astronaut.vel * m_a + part.body.vel * m_p) / (m_a + m_p);
-        part.state = PartState::Carried;
+        let kind = self.parts[index].kind;
+        let part = *self.body(&self.parts[index]);
+        let astronaut = self.astronaut_mut();
+        let m_a = astronaut.mass;
+        astronaut.vel = (astronaut.vel * m_a + part.vel * part.mass) / (m_a + part.mass);
+        self.set_state(index, PartState::Carried);
         self.target = None;
         self.message = Some(format!(
             "Holding the {} ({:.0} kg)",
-            part.kind.name().to_lowercase(),
-            m_p
+            kind.name().to_lowercase(),
+            part.mass
         ));
-        let kind = part.kind;
-        self.astronaut.mass = self.mass();
+        let mass = self.mass();
+        self.astronaut_mut().mass = mass;
         Ok(kind)
     }
 
@@ -566,7 +762,7 @@ impl Station {
     #[must_use]
     pub fn latch_distance(&self) -> Option<f64> {
         let part = &self.parts[self.carried()?];
-        Some(part.body.pos.distance(part.kind.slot()))
+        Some(self.body(part).pos.distance(part.kind.slot()))
     }
 
     /// Let go. Within latch range and below latch speed, the part locks
@@ -574,14 +770,16 @@ impl Station {
     pub fn release(&mut self) -> Result<PartKind, String> {
         let index = self.carried().ok_or("Nothing is held")?;
         let distance = self.latch_distance().unwrap_or(f64::MAX);
-        let part = &mut self.parts[index];
-        let kind = part.kind;
-        if distance <= LATCH_RANGE && self.astronaut.vel.length() <= LATCH_SPEED {
-            part.state = PartState::Installed;
-            part.body.pos = kind.slot();
-            part.body.vel = DVec3::ZERO;
-            part.body.orientation = DQuat::IDENTITY;
-            part.body.omega = DVec3::ZERO;
+        let kind = self.parts[index].kind;
+        let vel = self.astronaut().vel;
+        let id = self.parts[index].body;
+        if distance <= LATCH_RANGE && vel.length() <= LATCH_SPEED {
+            self.set_state(index, PartState::Installed);
+            let body = &mut self.world[id];
+            body.pos = kind.slot();
+            body.vel = DVec3::ZERO;
+            body.orientation = DQuat::IDENTITY;
+            body.omega = DVec3::ZERO;
             let installed = self
                 .parts
                 .iter()
@@ -597,11 +795,12 @@ impl Station {
                 )
             });
         } else {
-            part.state = PartState::Drifting;
-            part.body.vel = self.astronaut.vel;
+            self.set_state(index, PartState::Drifting);
+            let body = &mut self.world[id];
+            body.vel = vel;
             // Real hands never let go perfectly; a small residual rate
             // shows the free rigid-body motion.
-            part.body.omega = DVec3::new(0.012, 0.035, -0.02);
+            body.omega = DVec3::new(0.012, 0.035, -0.02);
             self.message = Some(if distance <= LATCH_RANGE {
                 format!(
                     "Too fast to latch; the {} floats free",
@@ -611,7 +810,8 @@ impl Station {
                 format!("The {} floats free", kind.name().to_lowercase())
             });
         }
-        self.astronaut.mass = self.mass();
+        let mass = self.mass();
+        self.astronaut_mut().mass = mass;
         Ok(kind)
     }
 
@@ -621,23 +821,21 @@ impl Station {
         let hands = self.hands();
         let latch_distance = self.latch_distance();
         let can_grab = carrying.is_none()
-            && (self
+            && (self.parts.iter().any(|p| {
+                p.state == PartState::Drifting && reach(p, self.body(p), hands) <= GRAB_RANGE
+            }) || self
                 .parts
                 .iter()
-                .any(|p| p.state == PartState::Drifting && reach(p, hands) <= GRAB_RANGE)
-                || self
-                    .parts
-                    .iter()
-                    .find(|p| p.state == PartState::Stowed)
-                    .is_some_and(|p| reach(p, hands) <= GRAB_RANGE + 1.5));
+                .find(|p| p.state == PartState::Stowed)
+                .is_some_and(|p| reach(p, self.body(p), hands) <= GRAB_RANGE + 1.5));
         Snapshot {
             orbit: self.orbit.snapshot(),
             propellant_kg: self.propellant,
             propellant_fraction: self.propellant / PROPELLANT,
             delta_v_remaining_m_s: self.delta_v_remaining(),
-            speed_m_s: self.astronaut.vel.length(),
+            speed_m_s: self.astronaut().vel.length(),
             mass_kg: self.mass(),
-            range_m: self.astronaut.pos.length(),
+            range_m: self.astronaut().pos.length(),
             carrying,
             installed: self
                 .parts
@@ -648,7 +846,7 @@ impl Station {
             next_part: self.next_part(),
             can_grab,
             latch_ready: latch_distance.is_some_and(|d| d <= LATCH_RANGE)
-                && self.astronaut.vel.length() <= LATCH_SPEED,
+                && self.astronaut().vel.length() <= LATCH_SPEED,
             latch_distance_m: latch_distance,
             refilling: self.refilling,
             keeping_active: self.keeping_glow > 0.0,
@@ -663,14 +861,26 @@ pub fn heading(yaw: f64) -> DVec3 {
     DVec3::new(yaw.sin(), 0.0, yaw.cos())
 }
 
+/// Relative acceleration near L1 for Richardson's `c2`: the linearized
+/// restricted three-body field with Coriolis terms, in scene axes.
+#[must_use]
+pub fn tide(c2: f64, pos: DVec3, vel: DVec3) -> DVec3 {
+    let n = mean_motion();
+    DVec3::new(
+        -2.0 * n * vel.z + n * n * (1.0 - c2) * pos.x,
+        -n * n * c2 * pos.y,
+        2.0 * n * vel.x + n * n * (1.0 + 2.0 * c2) * pos.z,
+    )
+}
+
 /// Distance from the hands to a part's nearest envelope surface, roughly.
-fn reach(part: &Part, hands: DVec3) -> f64 {
-    (part.body.pos.distance(hands) - part.kind.size().max_element() * 0.5).max(0.0)
+fn reach(part: &Part, body: &Body, hands: DVec3) -> f64 {
+    (body.pos.distance(hands) - part.kind.size().max_element() * 0.5).max(0.0)
 }
 
 /// Push a sphere out of solid structure and remove its closing velocity,
 /// with a soft 0.2 restitution.
-fn collide(body: &mut RigidBody, radius: f64) {
+fn collide(body: &mut Body, radius: f64) {
     for o in &OBSTACLES {
         let nearest = body.pos.clamp(o.min, o.max);
         let offset = body.pos - nearest;

@@ -1,7 +1,7 @@
 use glam::DVec3;
 
 use crate::orbit::{self, AU, L1, State, StationOrbit};
-use crate::station::{self, Command, PartKind, PartState, Station};
+use crate::station::{self, Command, Input, PartKind, PartState, Station};
 
 #[test]
 fn l1_sits_where_the_sun_earth_system_puts_it() {
@@ -109,13 +109,13 @@ fn fly(station: &mut Station, direction: DVec3, seconds: f64) {
 #[test]
 fn the_pack_obeys_the_rocket_equation_and_holds_position() {
     let mut station = Station::new();
-    station.astronaut.pos = DVec3::new(40.0, 20.0, 40.0);
+    station.astronaut_mut().pos = DVec3::new(40.0, 20.0, 40.0);
     let start_prop = station.propellant;
     let dv = station.delta_v_remaining();
     // Ideal rocket equation for 20 kg of nitrogen on 250 kg at Isp 70 s.
     assert!((dv - 70.0 * 9.806_65 * (250.0_f64 / 230.0).ln()).abs() < 1e-9);
     fly(&mut station, DVec3::X, 20.0);
-    assert!((station.astronaut.vel.x - station::SPEED_LIMIT).abs() < 0.01);
+    assert!((station.astronaut().vel.x - station::SPEED_LIMIT).abs() < 0.01);
     let used = start_prop - station.propellant;
     // Accelerating 250 kg to 2 m/s uses m dv / (Isp g0), about 0.73 kg.
     let expected = 250.0 * 2.0 / (70.0 * 9.806_65);
@@ -124,19 +124,22 @@ fn the_pack_obeys_the_rocket_equation_and_holds_position() {
         "{used} vs {expected}"
     );
     fly(&mut station, DVec3::ZERO, 20.0);
-    assert!(station.astronaut.vel.length() < 0.01, "hold nulls velocity");
+    assert!(
+        station.astronaut().vel.length() < 0.01,
+        "hold nulls velocity"
+    );
     // Out of propellant, the astronaut drifts with no friction.
     station.propellant = 0.0;
-    station.astronaut.vel = DVec3::new(0.0, 0.0, -0.5);
-    let before = station.astronaut.pos;
+    station.astronaut_mut().vel = DVec3::new(0.0, 0.0, -0.5);
+    let before = station.astronaut().pos;
     fly(&mut station, DVec3::X, 4.0);
-    assert!((station.astronaut.pos - before - DVec3::new(0.0, 0.0, -2.0)).length() < 1e-3);
+    assert!((station.astronaut().pos - before - DVec3::new(0.0, 0.0, -2.0)).length() < 1e-3);
 }
 
 #[test]
 fn carrying_mass_changes_acceleration_and_momentum_is_conserved() {
     let mut station = Station::new();
-    station.astronaut.pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
+    station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
     station.yaw = -std::f64::consts::FRAC_PI_2;
     let empty = station::THRUST / station.mass();
     let kind = station.grab().unwrap();
@@ -144,30 +147,33 @@ fn carrying_mass_changes_acceleration_and_momentum_is_conserved() {
     let loaded = station::THRUST / station.mass();
     assert!(loaded < empty * 0.4, "the 450 kg engine slows the pack");
     // Release in free space: the part keeps the combined velocity and tumbles.
-    station.astronaut.vel = DVec3::new(0.3, 0.0, 0.0);
+    station.astronaut_mut().vel = DVec3::new(0.3, 0.0, 0.0);
     station.release().unwrap();
-    let part = station.parts.iter().find(|p| p.kind == kind).unwrap();
-    assert_eq!(part.state, PartState::Drifting);
-    assert_eq!(part.body.vel, DVec3::new(0.3, 0.0, 0.0));
+    let part = *station.body(station.parts.iter().find(|p| p.kind == kind).unwrap());
+    assert_eq!(
+        station.parts.iter().find(|p| p.kind == kind).unwrap().state,
+        PartState::Drifting
+    );
+    assert_eq!(part.vel, DVec3::new(0.3, 0.0, 0.0));
     // Capture: momentum before equals momentum after.
     let mut station2 = station.clone();
-    station2.astronaut.vel = DVec3::new(-0.2, 0.0, 0.0);
-    station2.astronaut.pos = part.body.pos - station2.hands() + station2.astronaut.pos;
-    let before = station2.astronaut.vel * station2.astronaut.mass + part.body.vel * part.body.mass;
+    station2.astronaut_mut().vel = DVec3::new(-0.2, 0.0, 0.0);
+    station2.astronaut_mut().pos = part.pos - station2.hands() + station2.astronaut().pos;
+    let before = station2.astronaut().vel * station2.astronaut().mass + part.vel * part.mass;
     station2.grab().unwrap();
-    let after = station2.astronaut.vel * station2.astronaut.mass;
+    let after = station2.astronaut().vel * station2.astronaut().mass;
     assert!((before - after).length() < 1e-9);
 }
 
 #[test]
 fn latching_requires_position_and_low_closing_speed() {
     let mut station = Station::new();
-    station.astronaut.pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
+    station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
     station.yaw = -std::f64::consts::FRAC_PI_2;
     let kind = station.grab().unwrap();
     // Place the held part right at its slot, moving too fast.
-    let offset = kind.slot() - station.parts[0].body.pos;
-    station.astronaut.pos += offset;
+    let offset = kind.slot() - station.body(&station.parts[0]).pos;
+    station.astronaut_mut().pos += offset;
     station.step(
         1.0 / 60.0,
         &Command {
@@ -176,10 +182,10 @@ fn latching_requires_position_and_low_closing_speed() {
             climb: false,
         },
     );
-    station.astronaut.vel = DVec3::new(1.0, 0.0, 0.0);
+    station.astronaut_mut().vel = DVec3::new(1.0, 0.0, 0.0);
     assert!(!station.snapshot().latch_ready);
     let mut slow = station.clone();
-    slow.astronaut.vel = DVec3::new(0.1, 0.0, 0.0);
+    slow.astronaut_mut().vel = DVec3::new(0.1, 0.0, 0.0);
     assert!(slow.snapshot().latch_ready);
     slow.release().unwrap();
     assert_eq!(slow.parts[0].state, PartState::Installed);
@@ -192,7 +198,7 @@ fn latching_requires_position_and_low_closing_speed() {
 #[test]
 fn structure_blocks_the_astronaut() {
     let mut station = Station::new();
-    station.astronaut.pos = DVec3::new(0.0, 6.0, 24.0);
+    station.astronaut_mut().pos = DVec3::new(0.0, 6.0, 24.0);
     for _ in 0..(30 * 60) {
         station.step(
             1.0 / 60.0,
@@ -204,5 +210,127 @@ fn structure_blocks_the_astronaut() {
         );
     }
     // The airlock face is at z = 17; the suit stops outside it.
-    assert!(station.astronaut.pos.z >= 17.0 + station::ASTRONAUT_RADIUS - 1e-6);
+    assert!(station.astronaut().pos.z >= 17.0 + station::ASTRONAUT_RADIUS - 1e-6);
+}
+
+/// A short EVA: thrust toward the depot, grab the engine, and drift.
+fn busy_station() -> Station {
+    let mut station = Station::new();
+    station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
+    station.yaw = -std::f64::consts::FRAC_PI_2;
+    station
+}
+
+fn same_physics(a: &Station, b: &Station) {
+    assert_eq!(a.world.tick, b.world.tick);
+    assert_eq!(a.world.bodies(), b.world.bodies());
+    assert_eq!(a.orbit, b.orbit);
+    assert_eq!(a.propellant.to_bits(), b.propellant.to_bits());
+    assert_eq!(a.parts, b.parts);
+}
+
+#[test]
+fn frame_pacing_does_not_change_the_physics() {
+    let command = Command {
+        direction: DVec3::new(0.3, 0.1, 1.0),
+        yaw: 0.4,
+        climb: false,
+    };
+    let run = |fps: f64| {
+        let mut station = busy_station();
+        station.grab().unwrap();
+        while station.world.tick < 600 {
+            station.step(1.0 / fps, &command);
+        }
+        // Frames that overshoot the target tick leave the rest unrun; step
+        // back to the common tick by replaying exact steps from a fresh run.
+        let mut exact = busy_station();
+        exact.grab().unwrap();
+        for _ in 0..station.world.tick {
+            exact.advance(&command);
+        }
+        same_physics(&station, &exact);
+        exact
+    };
+    let at30 = run(30.0);
+    let at60 = run(60.0);
+    let at144 = run(144.0);
+    assert_eq!(at30.world.tick, 600);
+    same_physics(&at30, &at60);
+    // 144 fps frames end at tick 600 or just past it; compare at 600.
+    let mut fresh = busy_station();
+    fresh.grab().unwrap();
+    for _ in 0..600 {
+        fresh.advance(&command);
+    }
+    same_physics(&at30, &fresh);
+    assert!(at144.world.tick >= 600);
+}
+
+#[test]
+fn a_long_frame_is_capped_and_counted() {
+    let mut station = Station::new();
+    station.step(0.5, &Command::default());
+    assert_eq!(station.world.tick, u64::from(station::MAX_STEPS_PER_FRAME));
+    assert!((station.clock.dropped - 0.4).abs() < 1e-9);
+}
+
+#[test]
+fn a_saved_station_restores_and_continues_identically() {
+    let mut station = busy_station();
+    station.grab().unwrap();
+    let command = Command {
+        direction: DVec3::new(1.0, 0.0, 0.2),
+        yaw: 0.1,
+        climb: false,
+    };
+    for _ in 0..90 {
+        station.step(1.0 / 60.0, &command);
+    }
+    station.release().unwrap();
+    let json = serde_json::to_string(&station.save()).unwrap();
+    let mut restored = Station::restore(serde_json::from_str(&json).unwrap()).unwrap();
+    for _ in 0..240 {
+        station.step(1.0 / 60.0, &command);
+        restored.step(1.0 / 60.0, &command);
+    }
+    same_physics(&station, &restored);
+    let mut stale = station.save();
+    stale.version = 0;
+    assert!(Station::restore(stale).is_err());
+}
+
+#[test]
+fn a_recorded_session_replays_from_its_start_state() {
+    let mut live = busy_station();
+    live.record();
+    let start = live.clone();
+    let push = Command {
+        direction: DVec3::new(1.0, 0.0, 0.0),
+        yaw: 0.0,
+        climb: false,
+    };
+    // Local input, then operator actions between frames, as NIP-MV applies them.
+    live.apply(Input::Grab).unwrap();
+    for frame in 0..200 {
+        let command = if frame < 80 { push } else { Command::default() };
+        live.step(1.0 / 72.0, &command);
+        if frame == 120 {
+            live.apply(Input::FlyTo {
+                target: DVec3::new(-4.0, -6.0, 8.0),
+            })
+            .unwrap();
+        }
+        if frame == 170 {
+            live.apply(Input::Release).unwrap();
+        }
+    }
+    live.apply(Input::Stop).unwrap();
+    let journal = live.journal.clone().unwrap();
+    // The journal survives serialization with the state it started from.
+    let json = serde_json::to_string(&journal).unwrap();
+    let journal: Vec<(u64, Input)> = serde_json::from_str(&json).unwrap();
+    let replayed = Station::replay(&start, &journal, live.world.tick);
+    same_physics(&live, &replayed);
+    assert!(live.parts[0].state == PartState::Drifting);
 }

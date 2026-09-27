@@ -9,7 +9,7 @@ use crate::{
 };
 use glam::{DVec3, Vec3};
 use serde_json::{Value, json};
-use verse_lagrange::PartState;
+use verse_lagrange::{Input, PartState};
 
 impl WorldRuntime {
     pub(crate) fn update_player(&mut self, input: &InputState, dt: f32) {
@@ -215,11 +215,11 @@ impl WorldRuntime {
                     .lagrange
                     .as_mut()
                     .ok_or("Enter Lagrange 1 first")?;
-                if intent == Intent::Grab {
-                    lagrange.station.grab()?;
+                lagrange.station.apply(if intent == Intent::Grab {
+                    Input::Grab
                 } else {
-                    lagrange.station.release()?;
-                }
+                    Input::Release
+                })?;
                 lagrange.tick();
                 self.zone_state.error = None;
             }
@@ -262,16 +262,21 @@ impl WorldRuntime {
                     _ => return Err("fly takes X,Y,Z or a landmark name".into()),
                 };
                 let target = if station.snapshot().carrying.is_some() {
-                    target - (station.hands() - station.astronaut.pos)
+                    target - (station.hands() - station.astronaut().pos)
                 } else {
                     target
                 };
-                station.fly_to(target)?;
-                json!({ "flying_to": target.to_array(), "from": station.astronaut.pos.to_array() })
+                station.apply(Input::FlyTo { target })?;
+                json!({ "flying_to": target.to_array(), "from": station.astronaut().pos.to_array() })
             }
-            "grab" => json!({ "grabbed": station.grab()?.name() }),
+            "grab" => {
+                let kind = station.apply(Input::Grab)?.ok_or("nothing was grabbed")?;
+                json!({ "grabbed": kind.name() })
+            }
             "release" => {
-                let kind = station.release()?;
+                let kind = station
+                    .apply(Input::Release)?
+                    .ok_or("nothing was released")?;
                 let installed = station
                     .parts
                     .iter()
@@ -279,7 +284,7 @@ impl WorldRuntime {
                 json!({ "released": kind.name(), "installed": installed })
             }
             "stop" => {
-                station.target = None;
+                station.apply(Input::Stop)?;
                 json!({ "stopped": true })
             }
             "status" => serde_json::to_value(station.snapshot()).map_err(|e| e.to_string())?,
@@ -290,7 +295,7 @@ impl WorldRuntime {
                     .map(|part| json!({
                         "kind": part.kind.name(),
                         "state": format!("{:?}", part.state).to_lowercase(),
-                        "pos": part.body.pos.to_array(),
+                        "pos": station.body(part).pos.to_array(),
                     }))
                     .collect::<Vec<_>>()
             ),
@@ -318,12 +323,19 @@ impl WorldRuntime {
     /// Fly the EVA pack toward a map point at the current altitude.
     pub(crate) fn lagrange_fly_to(&mut self, destination: [f32; 2]) -> Option<Result<(), String>> {
         let lagrange = self.zone_state.lagrange.as_mut()?;
-        let y = lagrange.station.astronaut.pos.y;
-        Some(lagrange.station.fly_to(glam::DVec3::new(
-            f64::from(destination[0]),
-            y,
-            f64::from(destination[1]),
-        )))
+        let y = lagrange.station.astronaut().pos.y;
+        Some(
+            lagrange
+                .station
+                .apply(Input::FlyTo {
+                    target: glam::DVec3::new(
+                        f64::from(destination[0]),
+                        y,
+                        f64::from(destination[1]),
+                    ),
+                })
+                .map(|_| ()),
+        )
     }
     pub fn zone_snapshot(&self, aspect: f32) -> Snapshot {
         let portal = self.zone_portal(aspect);
@@ -711,7 +723,7 @@ mod tests {
             .as_ref()
             .unwrap()
             .station
-            .astronaut
+            .astronaut()
             .pos;
         let flown = world
             .zone_command(&command(zone, "fly", vec![Arg::Text("depot".into())]))
@@ -761,7 +773,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .station
-                .astronaut
+                .astronaut()
                 .pos
                 .is_finite(),
             "refused commands leave the station intact (started at {before})"

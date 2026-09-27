@@ -94,8 +94,9 @@ impl Lagrange {
                 climb: input.jump,
             },
         );
-        player.pos = feet(self.station.astronaut.pos);
-        player.speed = self.station.astronaut.vel.length() as f32;
+        let astronaut = self.station.astronaut();
+        player.pos = feet(astronaut.interpolated(self.station.alpha()).0);
+        player.speed = astronaut.vel.length() as f32;
         player.set_surface_height(player.pos.y);
     }
 
@@ -294,9 +295,11 @@ impl Lagrange {
             line(&mut mesh, corner, corner - v * dv * 7.0, [0.3, 0.8, 0.9]);
         }
         // Astronaut in a white suit with a maneuvering pack.
-        let astronaut = s.astronaut.pos.as_vec3();
+        let alpha = s.alpha();
+        let astronaut_pos = s.astronaut().interpolated(alpha).0;
+        let astronaut = astronaut_pos.as_vec3();
         let carrying = s.parts.iter().any(|p| p.state == PartState::Carried);
-        suit(&mut mesh, feet(s.astronaut.pos), s.yaw as f32, carrying);
+        suit(&mut mesh, feet(astronaut_pos), s.yaw as f32, carrying);
         for p in &s.plumes {
             let pos = DVec3::from(p.pos).as_vec3();
             let dir = DVec3::from(p.dir).as_vec3();
@@ -323,10 +326,8 @@ impl Lagrange {
             }
         }
         for part in &s.parts {
-            let transform = Mat4::from_rotation_translation(
-                part.body.orientation.as_quat(),
-                part.body.pos.as_vec3(),
-            );
+            let (pos, orientation) = s.body(part).interpolated(alpha);
+            let transform = Mat4::from_rotation_translation(orientation.as_quat(), pos.as_vec3());
             part_mesh(&mut mesh, part.kind, transform);
             if part.state == PartState::Carried {
                 let slot = part.kind.slot().as_vec3();
@@ -337,7 +338,7 @@ impl Lagrange {
                     [1.2, 0.7, 0.15]
                 };
                 outline(&mut mesh, slot, part.kind.size().as_vec3() * 0.5, color);
-                dashed(&mut mesh, part.body.pos.as_vec3(), slot, color);
+                dashed(&mut mesh, pos.as_vec3(), slot, color);
             }
         }
         if let Some(next) = s.next_part()

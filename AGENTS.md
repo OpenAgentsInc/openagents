@@ -449,10 +449,16 @@ uses, and marks which are implemented and which are only specified.
   modification records current; do not substitute the separate turn-based SRD
   engine for this game. Read `docs/verse/ruins-source-parity.md` before
   changing combat, movement, or scene inputs.
-- `crates/verse-lagrange` — Sun–Earth L1 physics for the Lagrange 1 zone:
+- `crates/physics` — shared, zone-agnostic rigid-body physics for Verse:
+  bodies, fixed stepping, restorable world state, and replay traces, growing
+  through the Genesis port roadmap (`docs/physics/2026-09-27-genesis-port-roadmap.md`,
+  tracking issue #9788). Put generic mechanisms here, not in a zone crate;
+  zones supply their fields, controls, and rules. No renderer, I/O, or zone
+  types.
+- `crates/verse-lagrange` — Sun–Earth L1 rules for the Lagrange 1 zone:
   the circular restricted three-body orbit with RK4 and unstable-mode
-  station-keeping, torque-free rigid bodies, and the EVA construction sandbox.
-  No renderer or I/O. Keep named constants and the approximations listed in
+  station-keeping, the L1 tidal field, and the EVA construction sandbox built
+  on `crates/physics`. No renderer or I/O. Keep named constants and the approximations listed in
   `docs/verse/lagrange-1.md` accurate; convert physics regressions into tests.
 - `crates/nostr` — pure Nostr protocol and verification primitives
   (events, filters, signatures, NIP-19/NIP-44, replacement and deletion,

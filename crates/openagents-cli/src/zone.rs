@@ -107,8 +107,8 @@ fn part_json(station: &Station) -> Vec<Value> {
                 "kind": part.kind.name(),
                 "mass_kg": part.kind.mass(),
                 "state": format!("{:?}", part.state).to_lowercase(),
-                "pos": part.body.pos.to_array(),
-                "vel": part.body.vel.to_array(),
+                "pos": station.body(part).pos.to_array(),
+                "vel": station.body(part).vel.to_array(),
                 "slot": part.kind.slot().to_array(),
                 "stowage": part.kind.stowage().to_array(),
             })
@@ -119,8 +119,8 @@ fn part_json(station: &Station) -> Vec<Value> {
 fn snapshot_json(station: &Station) -> Value {
     let snapshot = station.snapshot();
     let mut value = serde_json::to_value(&snapshot).unwrap_or(Value::Null);
-    value["pos"] = json!(station.astronaut.pos.to_array());
-    value["vel"] = json!(station.astronaut.vel.to_array());
+    value["pos"] = json!(station.astronaut().pos.to_array());
+    value["vel"] = json!(station.astronaut().vel.to_array());
     value["hands"] = json!(station.hands().to_array());
     value["target"] = json!(station.target.map(|t| t.to_array()));
     value
@@ -186,12 +186,12 @@ impl Sim {
                 .parts
                 .iter()
                 .find(|part| part.state == PartState::Carried)
-                .map(|part| (part.kind, part.body.pos))
+                .map(|part| (part.kind, station.body(part).pos))
         };
         let (kind, _) = carried(&self.station).ok_or("Nothing is held")?;
         for _ in 0..6 {
             let (_, pos) = carried(&self.station).ok_or("Nothing is held")?;
-            let offset = pos - self.station.astronaut.pos;
+            let offset = pos - self.station.astronaut().pos;
             self.station.fly_to(kind.slot() - offset)?;
             self.settle()?;
             self.idle(0.5);
@@ -230,7 +230,7 @@ impl Sim {
                 return Err(format!(
                     "did not arrive within {:.0} s (at {:?})",
                     self.timeout,
-                    self.station.astronaut.pos.to_array()
+                    self.station.astronaut().pos.to_array()
                 ));
             }
         }
@@ -262,13 +262,13 @@ impl Sim {
                 };
                 // Carry the held part onto its latch by aiming the hands, not the chest.
                 let target = if self.station.snapshot().carrying.is_some() {
-                    target - (self.station.hands() - self.station.astronaut.pos)
+                    target - (self.station.hands() - self.station.astronaut().pos)
                 } else {
                     target
                 };
                 self.station.fly_to(target)?;
                 self.settle()?;
-                Ok(json!({ "arrived": self.station.astronaut.pos.to_array() }))
+                Ok(json!({ "arrived": self.station.astronaut().pos.to_array() }))
             }
             "grab" => {
                 let kind = self.station.grab()?;

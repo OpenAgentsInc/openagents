@@ -1,14 +1,13 @@
 [package]
-name = "verse-lagrange"
+name = "physics"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Sun-Earth L1 physics for Verse: restricted three-body orbit, station-keeping, and rigid-body EVA construction."
+description = "Zone-agnostic rigid-body physics for Verse: fixed stepping, bodies, and restorable state."
 publish.workspace = true
 
 [dependencies]
-physics = { path = "../physics" }
-glam = "0.30.10"
+glam = { version = "0.30.10", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
