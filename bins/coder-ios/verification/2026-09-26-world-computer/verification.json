@@ -34,7 +34,28 @@
     "device": "iPhone 17 Pro / iOS 26.5 simulator",
     "note": "Final source, monitor screenshot, actual surface tap, chat navigation, lifecycle, pairing and camera fallback."
   },
-  "android_final_suite": "pending",
+  "android_final_suite": {
+    "passed": 11,
+    "failed": 2,
+    "failures": [
+      "motionModeRecenterAndPauseUseTheSharedController",
+      "gymHasSyntheticBoardsWithoutLaunchingWork"
+    ],
+    "focused_rerun": {
+      "passed": 0,
+      "failed": 2
+    },
+    "monitor_tap_reader_acceptance": "passed",
+    "device": "Pixel 7 / API 35 ARM64 / SwiftShader emulator",
+    "apk_version": "0.5.0 (5)",
+    "apk_sha256": "74bb3115556e680c25a69bab797af7364fdb9d44143f8b5bad28e24fe5b97d5b",
+    "native_library_sha256": "7ddd3662dee8c3b246bdaff4153357dc5d4bacd57997964fc17ebd65cfb1a099",
+    "note": "Slow-emulator motion freshness and Gym fixture timing remain unresolved; no full Android suite pass claimed.",
+    "follow_up": "https://github.com/OpenAgentsInc/openagents/issues/9714",
+    "left_installed": "0.5.0 (5), normal offline mode, no data reset"
+  },
   "physical_device_tested": false,
-  "model_or_benchmark_runs": false
+  "model_or_benchmark_runs": false,
+  "source_commit": "e1d0800a89ed76614e28d60d10ae5520006a0255",
+  "testflight_receipt": "testflight-build43.json"
 }

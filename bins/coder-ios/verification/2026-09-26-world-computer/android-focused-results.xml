@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.openagents.coder.MobileAcceptanceTest" tests="2" failures="2" errors="0" skipped="0" time="267.266" timestamp="2026-09-27T00:36:43" hostname="localhost">
+  <properties>
+    <property name="device" value="coder_mobile_api35(AVD) - 15" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="motionModeRecenterAndPauseUseTheSharedController" classname="com.openagents.coder.MobileAcceptanceTest" time="66.327">
+    <failure>java.lang.AssertionError: Timed out in motionModeRecenterAndPauseUseTheSharedController; renderer=
+at org.junit.Assert.fail(Assert.java:89)
+at com.openagents.coder.MobileAcceptanceTest.waitFor(MobileAcceptanceTest.kt:468)
+at com.openagents.coder.MobileAcceptanceTest.waitFor$default(MobileAcceptanceTest.kt:462)
+at com.openagents.coder.MobileAcceptanceTest.motionModeRecenterAndPauseUseTheSharedController(MobileAcceptanceTest.kt:192)
+</failure>
+  </testcase>
+  <testcase name="gymHasSyntheticBoardsWithoutLaunchingWork" classname="com.openagents.coder.MobileAcceptanceTest" time="199.422">
+    <failure>java.lang.AssertionError: Timed out in gymHasSyntheticBoardsWithoutLaunchingWork; renderer=
+at org.junit.Assert.fail(Assert.java:89)
+at com.openagents.coder.MobileAcceptanceTest.waitFor(MobileAcceptanceTest.kt:468)
+at com.openagents.coder.MobileAcceptanceTest.waitFor$default(MobileAcceptanceTest.kt:462)
+at com.openagents.coder.MobileAcceptanceTest.click(MobileAcceptanceTest.kt:410)
+at com.openagents.coder.MobileAcceptanceTest.gymHasSyntheticBoardsWithoutLaunchingWork(MobileAcceptanceTest.kt:232)
+</failure>
+  </testcase>
+</testsuite>

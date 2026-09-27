@@ -44,7 +44,7 @@ complete multi-operator market remain unfinished. The
 [implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
 maps every contract to its implemented parts and remaining work.
 
-Coder for iOS is available in internal TestFlight as **0.5.0 (42)**.
+Coder for iOS is available in internal TestFlight as **0.5.0 (43)**.
 [Verse fills the screen](docs/verse/mobile.md), including behind the system
 clock. Choose touch look or turn your phone to look around; in motion mode,
 hold the left side to walk. The computer now renders its prompt on the physical

@@ -13,10 +13,10 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Available in internal TestFlight:** Coder `0.5.0 (42)`, built from
-[`f7389bb05f`](https://github.com/OpenAgentsInc/openagents/commit/f7389bb05f6849d717392a310c20169f16f0390d).
+**Available in internal TestFlight:** Coder `0.5.0 (43)`, built from
+[`e1d0800a89`](https://github.com/OpenAgentsInc/openagents/commit/e1d0800a89ed76614e28d60d10ae5520006a0255).
 [Connect your phone](../../docs/coder/guides/mobile-readonly.md) and review the
-[distribution receipt](verification/2026-09-26-fullscreen-motion/testflight-build42.json).
+[distribution receipt](verification/2026-09-26-world-computer/testflight-build43.json).
 
 Walk east into the [Gym](../../docs/verse/gym.md) for Microcoder and
 Terminal-Bench boards. Its observations and run recipes require a separate

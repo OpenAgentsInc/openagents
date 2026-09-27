@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.openagents.coder.DeviceStorageTest" tests="13" failures="1" errors="0" skipped="0" time="301.788" timestamp="2026-09-27T00:24:55" hostname="localhost">
+  <properties>
+    <property name="device" value="coder_mobile_api35(AVD) - 15" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="damagedOrOversizedCiphertextDoesNotReplaceTheIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.087" />
+  <testcase name="simultaneousStorageInstancesUseOneIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.057" />
+  <testcase name="interruptedWriteRecoversBeforeCheckingTheBaseLength" classname="com.openagents.coder.DeviceStorageTest" time="0.028" />
+  <testcase name="syntheticAndNormalScopesNeverShareIdentities" classname="com.openagents.coder.DeviceStorageTest" time="0.056" />
+  <testcase name="interruptedAtomicWriteRecoversTheSameIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.027" />
+  <testcase name="readerPagesStayPinnedAndExactRecordsRemainAccessible" classname="com.openagents.coder.MobileAcceptanceTest" time="55.646" />
+  <testcase name="worldRendersFullBleedAndTouchMovesTheSharedPlayer" classname="com.openagents.coder.MobileAcceptanceTest" time="16.568" />
+  <testcase name="invalidPairingIsVisibleAndPasteRemainsAvailable" classname="com.openagents.coder.MobileAcceptanceTest" time="43.325" />
+  <testcase name="motionModeRecenterAndPauseUseTheSharedController" classname="com.openagents.coder.MobileAcceptanceTest" time="31.401" />
+  <testcase name="backgroundAndSurfaceRecreationKeepReaderIdentity" classname="com.openagents.coder.MobileAcceptanceTest" time="57.043" />
+  <testcase name="gymHasSyntheticBoardsWithoutLaunchingWork" classname="com.openagents.coder.MobileAcceptanceTest" time="95.197">
+    <failure>java.lang.AssertionError: Timed out in gymHasSyntheticBoardsWithoutLaunchingWork; renderer=
+at org.junit.Assert.fail(Assert.java:89)
+at com.openagents.coder.MobileAcceptanceTest.waitFor(MobileAcceptanceTest.kt:462)
+at com.openagents.coder.MobileAcceptanceTest.waitFor$default(MobileAcceptanceTest.kt:456)
+at com.openagents.coder.MobileAcceptanceTest.click(MobileAcceptanceTest.kt:404)
+at com.openagents.coder.MobileAcceptanceTest.gymHasSyntheticBoardsWithoutLaunchingWork(MobileAcceptanceTest.kt:232)
+</failure>
+  </testcase>
+  <testcase name="androidQrDecoderMatchesTheRetainedRustInvitation" classname="com.openagents.coder.MobileAcceptanceTest" time="1.059" />
+  <testcase name="jniRejectsMalformedAndStaleReaderHandles" classname="com.openagents.coder.MobileAcceptanceTest" time="0.218" />
+</testsuite>

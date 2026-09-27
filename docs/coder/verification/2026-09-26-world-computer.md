@@ -1,4 +1,4 @@
-# World-computer interaction — September 26, 2026
+# Computer interaction in Verse — September 26, 2026
 
 [Issue #9703](https://github.com/OpenAgentsInc/openagents/issues/9703) changes
 Coder's mobile Verse computer to present its interaction prompt on the
@@ -59,14 +59,31 @@ not run models or benchmarks.
 | Verse library without desktop features | 122 tests passed, including perspective picking, invalid coordinates, static/local/remote occlusion, lettering orientation, and desktop prompt capability. |
 | Selected-package formatting and Clippy | Passed for `coder-mobile` and `verse`, including default desktop features. |
 | iOS simulator | Initial full suite: 12 passed. After final corrections: all 3 world tests passed, covering the real monitor tap, chat navigation, background/resume, and pairing fallback. Screenshots were inspected. |
-| Android emulator | Corrected monitor screenshot and actual-tap reader acceptance passed on API 35. The final 13-test suite is still running. |
-| Signed iOS archive and TestFlight | Build 43 source prepared. Archive, upload, and Apple processing results will be recorded separately. |
+| Android emulator | Corrected monitor screenshot and actual-tap reader acceptance passed on API 35. The second full suite passed 11 of 13. The subsequent focused motion and Gym rerun failed both checks; this is not a full Android acceptance pass. |
+| Signed iOS archive and TestFlight | Build **0.5.0 (43)** is `VALID` and `IN_BETA_TESTING`, archived from clean commit `e1d0800a89`. [Distribution receipt](../../../bins/coder-ios/verification/2026-09-26-world-computer/testflight-build43.json). |
 
 The initial Android suite passed 12 of 13 checks. Its Gym check failed because
 screenshot capture waited for the continuously rendering UI to become idle,
-allowing a short-lived synthetic snapshot to expire. Removing that test-only
-idle wait preserves the app's expiry checks. The final rerun retains this
-initial failure rather than replacing its record.
+allowing a short-lived synthetic snapshot to expire. The next full suite passed
+11 of 13: GPU screenshot readback still delayed recipe selection, and the motion
+check raced sensor startup by waiting for an already-passed frame count.
+
+Test-only experiments reviewed the fresh Gym recipe before screenshots and
+waited for three new rendered frames after enabling motion. Both checks still
+failed. These experiments are retained as a patch and are not shipped as a fix.
+Product expiry rules, sensor validation, and test assertions remain intact.
+
+The motion failure image shows about 125 rendered frames over roughly one
+minute on the SwiftShader emulator. The Android adapter sends a fresh motion
+sample before advancing the Rust frame clock; Rust rejects samples more than
+250 ms from the last frame. That ordering is a plausible cause at this low frame
+rate, not a directly measured sample-to-frame clock diagnosis. The Gym check also
+remains unsuccessful under these slow-emulator conditions. Both need separate
+clock and fixture diagnostics; successful monitor-tap acceptance does not
+establish their correctness. The failed full-suite and focused records remain
+available in the evidence bundle. [Issue #9714](https://github.com/OpenAgentsInc/openagents/issues/9714)
+tracks those diagnostics. Android build **0.5.0 (5)** remains installed on the
+emulator in normal offline mode, without a data reset.
 
 The initial native suites preceded the lettering-direction and partial-occlusion
 corrections. The final native checks and images cover those corrections. Desktop

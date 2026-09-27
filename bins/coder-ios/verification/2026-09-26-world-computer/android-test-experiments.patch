@@ -1,0 +1,48 @@
+diff --git a/bins/coder-android/host/app/src/androidTest/java/com/openagents/coder/MobileAcceptanceTest.kt b/bins/coder-android/host/app/src/androidTest/java/com/openagents/coder/MobileAcceptanceTest.kt
+index 4b8c80b1a2..2c4b4aa764 100644
+--- a/bins/coder-android/host/app/src/androidTest/java/com/openagents/coder/MobileAcceptanceTest.kt
++++ b/bins/coder-android/host/app/src/androidTest/java/com/openagents/coder/MobileAcceptanceTest.kt
+@@ -181,9 +181,12 @@ class MobileAcceptanceTest {
+     @Test fun motionModeRecenterAndPauseUseTheSharedController() {
+         launch(motion = true)
+         waitFor { frames() > 2 }
++        val beforeMotion = frames()
+         click("verse-camera-mode")
+         waitFor { exists("verse-motion-sample") }
+-        waitFor { frames() > 5 }
++        // Wait for fresh motion frames, not a startup frame count that may
++        // already have passed before the native callback enables the sensor.
++        waitFor { frames() > beforeMotion + 3 }
+         val yaw = cameraYaw()
+         click("verse-motion-sample")
+         waitFor { abs(cameraYaw() - yaw) > 0.05 }
+@@ -223,6 +226,15 @@ class MobileAcceptanceTest {
+         waitFor { text("gym-interest") == "Gym listening" && exists("gym-interact", enabled = true) }
+         click("gym-interact")
+         waitFor { exists(run) }
++        // Review the fresh recipe before screenshot work. GPU readback can
++        // outlive the fixture's TTL on a busy software-rendered emulator.
++        // Product freshness checks stay intact; the test submits no work.
++        click("gym-recipe-preview-recipe")
++        waitFor { exists("gym-confirm-launch") }
++        assertTrue(hasText("No dollar limit is enforced"))
++        assertFalse(exists("gym-launch-status"))
++        capture("gym-recipe")
++        click("gym-all-runs")
+         click(run)
+         waitFor { exists("gym-run-title") }
+         assertTrue(hasText("Cost unavailable · 125 s"))
+@@ -230,13 +242,6 @@ class MobileAcceptanceTest {
+         assertTrue(hasText("Step 24: 8.0 checks"))
+         capture("gym-chart")
+         click("gym-all-runs")
+-        click("gym-recipe-preview-recipe")
+-        waitFor { exists("gym-confirm-launch") }
+-        assertTrue(hasText("No dollar limit is enforced"))
+-        assertFalse(exists("gym-launch-status"))
+-        // This test reviews the recipe without submitting any work.
+-        capture("gym-recipe")
+-        click("gym-all-runs")
+         click("gym-connection")
+         waitFor { exists("gym-code") }
+         onMain { (find(it.window.decorView, "gym-code") as EditText).setText("invalid-gym-invitation") }

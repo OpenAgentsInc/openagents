@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.openagents.coder.DeviceStorageTest" tests="13" failures="2" errors="0" skipped="0" time="290.903" timestamp="2026-09-27T00:30:50" hostname="localhost">
+  <properties>
+    <property name="device" value="coder_mobile_api35(AVD) - 15" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="damagedOrOversizedCiphertextDoesNotReplaceTheIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.172" />
+  <testcase name="simultaneousStorageInstancesUseOneIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.71" />
+  <testcase name="interruptedWriteRecoversBeforeCheckingTheBaseLength" classname="com.openagents.coder.DeviceStorageTest" time="0.276" />
+  <testcase name="syntheticAndNormalScopesNeverShareIdentities" classname="com.openagents.coder.DeviceStorageTest" time="0.082" />
+  <testcase name="interruptedAtomicWriteRecoversTheSameIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.033" />
+  <testcase name="readerPagesStayPinnedAndExactRecordsRemainAccessible" classname="com.openagents.coder.MobileAcceptanceTest" time="57.142" />
+  <testcase name="worldRendersFullBleedAndTouchMovesTheSharedPlayer" classname="com.openagents.coder.MobileAcceptanceTest" time="17.472" />
+  <testcase name="invalidPairingIsVisibleAndPasteRemainsAvailable" classname="com.openagents.coder.MobileAcceptanceTest" time="25.82" />
+  <testcase name="motionModeRecenterAndPauseUseTheSharedController" classname="com.openagents.coder.MobileAcceptanceTest" time="58.321">
+    <failure>java.lang.AssertionError: Timed out in motionModeRecenterAndPauseUseTheSharedController; renderer=
+at org.junit.Assert.fail(Assert.java:89)
+at com.openagents.coder.MobileAcceptanceTest.waitFor(MobileAcceptanceTest.kt:463)
+at com.openagents.coder.MobileAcceptanceTest.waitFor$default(MobileAcceptanceTest.kt:457)
+at com.openagents.coder.MobileAcceptanceTest.motionModeRecenterAndPauseUseTheSharedController(MobileAcceptanceTest.kt:189)
+</failure>
+  </testcase>
+  <testcase name="backgroundAndSurfaceRecreationKeepReaderIdentity" classname="com.openagents.coder.MobileAcceptanceTest" time="38.81" />
+  <testcase name="gymHasSyntheticBoardsWithoutLaunchingWork" classname="com.openagents.coder.MobileAcceptanceTest" time="89.868">
+    <failure>java.lang.AssertionError: Timed out in gymHasSyntheticBoardsWithoutLaunchingWork; renderer=
+at org.junit.Assert.fail(Assert.java:89)
+at com.openagents.coder.MobileAcceptanceTest.waitFor(MobileAcceptanceTest.kt:463)
+at com.openagents.coder.MobileAcceptanceTest.waitFor$default(MobileAcceptanceTest.kt:457)
+at com.openagents.coder.MobileAcceptanceTest.click(MobileAcceptanceTest.kt:405)
+at com.openagents.coder.MobileAcceptanceTest.gymHasSyntheticBoardsWithoutLaunchingWork(MobileAcceptanceTest.kt:233)
+</failure>
+  </testcase>
+  <testcase name="androidQrDecoderMatchesTheRetainedRustInvitation" classname="com.openagents.coder.MobileAcceptanceTest" time="0.808" />
+  <testcase name="jniRejectsMalformedAndStaleReaderHandles" classname="com.openagents.coder.MobileAcceptanceTest" time="0.334" />
+</testsuite>
