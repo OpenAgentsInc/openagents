@@ -215,6 +215,18 @@ async fn task(
         escape(&task.intent.configuration.adapter),
     );
     body.push_str(&format!("<section class=\"detail\"><h2>Transcript</h2><p class=\"hint\">Evidence: {} · {} steps</p>", escape(&view.evidence.state), view.evidence.total_steps));
+    if let Some(digest) = &view.evidence.digest {
+        body.push_str(&format!(
+            "<p class=\"hint\">Trace digest: <code>{}</code></p>",
+            escape(digest)
+        ));
+    }
+    for fault in &view.evidence.faults {
+        body.push_str(&format!(
+            "<p>Trace fault: <code>{}</code></p>",
+            escape(&fault.to_string())
+        ));
+    }
     for step in &view.evidence.steps {
         let source = step["source"].as_str().unwrap_or("event");
         let message = step["message"].as_str().unwrap_or("");
@@ -225,15 +237,10 @@ async fn task(
             escape(source),
             escape(message)
         ));
-        if step.get("tool_calls").is_some()
-            || step.get("observation").is_some()
-            || step.get("extra").is_some()
-        {
-            body.push_str(&format!(
-                "<details><summary>Step details</summary><pre>{}</pre></details>",
-                escape(&serde_json::to_string_pretty(step).unwrap_or_default())
-            ));
-        }
+        body.push_str(&format!(
+            "<details><summary>Step details</summary><pre>{}</pre></details>",
+            escape(&serde_json::to_string_pretty(step).unwrap_or_default())
+        ));
         body.push_str("</article>");
     }
     if let Some(next) = view.evidence.next.filter(|_| view.evidence.more_available) {
@@ -246,12 +253,25 @@ async fn task(
     }
     body.push_str("</section><section class=\"detail\"><h2>Artifacts</h2>");
     if let Some(manifest) = &view.artifacts {
+        body.push_str(&format!(
+            "<p class=\"hint\">Snapshot: <code>{}</code> · Complete: {} · Omitted changes: {}</p>",
+            escape(manifest.candidate_snapshot.as_deref().unwrap_or("unknown")),
+            manifest.complete,
+            manifest.omitted_changes
+        ));
         for entry in &manifest.entries {
             body.push_str(&format!(
-                "<p><code>{}</code> · {}</p>",
+                "<p><code>{}</code> · {} · <code>{}</code></p>",
                 escape(&entry.path.display().to_string()),
-                escape(&entry.state)
+                escape(&entry.state),
+                escape(entry.digest.as_deref().unwrap_or("no digest"))
             ));
+            if let Some(target) = &entry.link_target {
+                body.push_str(&format!(
+                    "<p class=\"hint\">Link target: <code>{}</code></p>",
+                    escape(&target.display().to_string())
+                ));
+            }
         }
         if manifest.entries.is_empty() {
             body.push_str("<p>No retained artifacts.</p>");
@@ -264,6 +284,9 @@ async fn task(
             "<p>Artifact state unavailable: {}</p>",
             escape(error)
         ));
+    }
+    for fault in &view.artifact_faults {
+        body.push_str(&format!("<p>Artifact fault: {}</p>", escape(fault)));
     }
     body.push_str("</section>");
     page(&task.intent.title, &body).into_response()
