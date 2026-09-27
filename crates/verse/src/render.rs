@@ -1,7 +1,10 @@
 //! The wgpu renderer: one shader, a face pipeline, and a line pipeline.
 //!
 //! Each frame clears to the active zone atmosphere, draws faces with a depth
-//! bias so coincident edges win, then draws lines on top. Static geometry uploads
+//! bias so coincident edges win, then draws lines on top. A frame whose
+//! dynamic mesh carries a [`crate::pbr::Sky`] takes the physical path in
+//! `pbr/gpu.rs` instead: lit geometry in real units, the sky at infinity,
+//! shadows, bounce light, bloom, exposure, and tone mapping. Static geometry uploads
 //! once per zone. Animated models rewrite bounded dynamic buffers each frame. [`Renderer`] presents to a window; `capture` renders the same
 //! scene to a PNG without one.
 
@@ -17,6 +20,8 @@ use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::mesh::{Mesh, Vertex};
+use crate::pbr::LitVertex;
+use crate::pbr::gpu::{Batches, Capability, Photo, PhotoTargets};
 use crate::ui::{Atlas, UiBatch, UiVertex};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -85,6 +90,15 @@ struct Scene {
     ui_bind_group: wgpu::BindGroup,
     ui_screen: wgpu::Buffer,
     ui: Batch,
+    /// The HUD pipeline for the physical path: one sample and no depth.
+    ui_photo: wgpu::RenderPipeline,
+    format: wgpu::TextureFormat,
+    capability: Capability,
+    /// Physically lit zone geometry, uploaded with the world.
+    world_lit: (wgpu::Buffer, u32),
+    /// Created on the first frame that carries a sky.
+    photo: Option<Photo>,
+    photo_failed: bool,
 }
 
 /// Color and depth attachments at one size.
@@ -92,6 +106,7 @@ struct Targets {
     msaa: Option<wgpu::TextureView>,
     depth: wgpu::TextureView,
     size: [f32; 2],
+    photo: Option<PhotoTargets>,
 }
 
 /// Bounded renderer configuration. A requested 4x sample count falls back to
@@ -346,6 +361,9 @@ impl Renderer {
                 return Err("Zone geometry exceeds its GPU bounds".into());
             }
         }
+        if lit_bytes(&world.lit).is_none_or(|n| n > LIMIT) || !lit_finite(&world.lit) {
+            return Err("Zone geometry exceeds its GPU bounds".into());
+        }
         let upload = |vertices: &[Vertex], label| {
             let bytes = bytemuck::cast_slice(vertices);
             let buffer = self
@@ -365,6 +383,7 @@ impl Renderer {
         let lines = upload(&world.lines, "verse zone lines");
         self.scene.world_faces = faces;
         self.scene.world_lines = lines;
+        self.scene.world_lit = upload_lit(&self.device, &world.lit);
         // Animated models can be much larger than plaza avatars. A return
         // releases their buffer capacity instead of retaining the largest zone.
         self.scene.dynamic_faces = dynamic_batch(&self.device, "verse dynamic faces");
@@ -419,7 +438,7 @@ impl Renderer {
             &self.queue,
             &mut encoder,
             &output,
-            &self.targets,
+            &mut self.targets,
             view,
             dynamic,
             ui,
@@ -462,7 +481,51 @@ fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String
     {
         return Err("frame exceeds retained GPU geometry or HUD capacity".into());
     }
+    if !mesh_bytes(dynamic.lit.len() * 3 / 2)
+        || !mesh_bytes(dynamic.glow.len())
+        || !lit_finite(&dynamic.lit)
+        || dynamic.glow.iter().any(|g| {
+            g.pos
+                .iter()
+                .chain(&g.radiance)
+                .chain(&g.uv)
+                .any(|x| !x.is_finite())
+        })
+    {
+        return Err("frame exceeds its physical geometry bounds".into());
+    }
     Ok(())
+}
+
+fn lit_bytes(vertices: &[LitVertex]) -> Option<usize> {
+    vertices.len().checked_mul(std::mem::size_of::<LitVertex>())
+}
+
+fn lit_finite(vertices: &[LitVertex]) -> bool {
+    vertices.iter().all(|v| {
+        v.pos
+            .iter()
+            .chain(&v.normal)
+            .chain(&v.tangent)
+            .chain(&v.local)
+            .chain(&v.color)
+            .chain(&v.params)
+            .all(|x| x.is_finite())
+    })
+}
+
+fn upload_lit(device: &wgpu::Device, vertices: &[LitVertex]) -> (wgpu::Buffer, u32) {
+    let bytes: &[u8] = if vertices.is_empty() {
+        &[0; std::mem::size_of::<LitVertex>()]
+    } else {
+        bytemuck::cast_slice(vertices)
+    };
+    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("verse world lit"),
+        contents: bytes,
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+    (buffer, vertices.len() as u32)
 }
 
 /// Renders one frame without a window and writes it to `path` as a PNG.
@@ -517,7 +580,7 @@ pub fn capture_with_atmosphere(
     validate_extent(width, height, device.limits().max_texture_dimension_2d)?;
     let mut scene = Scene::new(&device, &queue, &adapter, CAPTURE_FORMAT, world, atlas, 4);
     scene.atmosphere = atmosphere;
-    let targets = Targets::new(&device, CAPTURE_FORMAT, width, height, scene.samples);
+    let mut targets = Targets::new(&device, CAPTURE_FORMAT, width, height, scene.samples);
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("verse capture"),
         size: extent(width, height),
@@ -539,6 +602,25 @@ pub fn capture_with_atmosphere(
         mapped_at_creation: false,
     });
 
+    // A physical frame adapts its exposure over frames; settle it first.
+    if dynamic.sky.is_some() {
+        for _ in 0..3 {
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("verse capture warm-up"),
+            });
+            scene.encode(
+                &device,
+                &queue,
+                &mut encoder,
+                &output,
+                &mut targets,
+                view,
+                dynamic,
+                ui,
+            );
+            queue.submit([encoder.finish()]);
+        }
+    }
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("verse capture"),
     });
@@ -547,7 +629,7 @@ pub fn capture_with_atmosphere(
         &queue,
         &mut encoder,
         &output,
-        &targets,
+        &mut targets,
         view,
         dynamic,
         ui,
@@ -616,9 +698,12 @@ fn open(
     }))
     .map_err(|e| format!("no graphics adapter: {e}"))?;
     let required_limits = scene_limits(adapter.limits())?;
+    // The physical path prefers a compact 32-bit floating-point scene target.
+    let required_features = adapter.features() & wgpu::Features::RG11B10UFLOAT_RENDERABLE;
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("verse"),
         required_limits,
+        required_features,
         ..Default::default()
     }))
     .map_err(|e| format!("no graphics device: {e}"))?;
@@ -626,10 +711,14 @@ fn open(
 }
 
 // The world shader passes color, world position, and fog at locations 0..2;
-// the HUD shader passes only UV and color. Neither uses compute or storage.
+// the physical lit shader passes six values plus built-ins; the HUD shader passes UV and
+// color. Every downlevel adapter offers at least 15. None uses compute or
+// storage.
+const INTER_STAGE: u32 = 8;
+
 fn scene_limits(available: wgpu::Limits) -> Result<wgpu::Limits, String> {
     let mut required = wgpu::Limits::downlevel_defaults().using_resolution(available.clone());
-    required.max_inter_stage_shader_variables = 3;
+    required.max_inter_stage_shader_variables = INTER_STAGE;
     let mut unsupported = Vec::new();
     required.check_limits_with_fail_fn(&available, false, |name, requested, supported| {
         unsupported.push(format!(
@@ -776,8 +865,9 @@ impl Scene {
             count: vertices.len() as u32,
             capacity: std::mem::size_of_val(vertices) as u64,
         };
-        let (ui_pipeline, ui_bind_group, ui_screen) =
+        let (ui_pipeline, ui_photo, ui_bind_group, ui_screen) =
             ui_pipeline(device, queue, format, samples, atlas);
+        let capability = Capability::probe(adapter, device, format, requested_samples);
         let ui = Batch {
             buffer: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("verse ui"),
@@ -790,6 +880,12 @@ impl Scene {
         };
         Self {
             atmosphere: crate::zones::atmosphere(crate::zones::ZoneId::Plaza),
+            ui_photo,
+            format,
+            capability,
+            world_lit: upload_lit(device, &world.lit),
+            photo: None,
+            photo_failed: false,
             ui_pipeline,
             ui_bind_group,
             ui_screen,
@@ -813,11 +909,19 @@ impl Scene {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         output: &wgpu::TextureView,
-        targets: &Targets,
+        targets: &mut Targets,
         view: View,
         dynamic: &Mesh,
         ui: &UiBatch,
     ) {
+        if let Some(sky) = &dynamic.sky
+            && !self.photo_failed
+            && self.encode_photo(
+                device, queue, encoder, output, targets, view, dynamic, sky, ui,
+            )
+        {
+            return;
+        }
         let field = self.atmosphere.color;
         queue.write_buffer(
             &self.ui_screen,
@@ -889,6 +993,98 @@ impl Scene {
     }
 }
 
+impl Scene {
+    /// Draws a physical frame. Returns false when the physical path cannot be
+    /// created, so the caller falls back to the amber renderer.
+    #[allow(clippy::too_many_arguments)]
+    fn encode_photo(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        output: &wgpu::TextureView,
+        targets: &mut Targets,
+        view: View,
+        dynamic: &Mesh,
+        sky: &crate::pbr::Sky,
+        ui: &UiBatch,
+    ) -> bool {
+        if self.photo.is_none() {
+            // Validation failures (an adapter limit, a driver shader bug) fall
+            // back to the amber renderer instead of aborting.
+            let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+            let created = Photo::new(device, queue, self.capability, self.format);
+            let failure = pollster::block_on(scope.pop());
+            match (created, failure) {
+                (Ok(photo), None) => self.photo = Some(photo),
+                (Err(error), _) => {
+                    eprintln!("verse: physical renderer unavailable: {error}");
+                    self.capability.hdr = None;
+                    self.photo_failed = true;
+                    return false;
+                }
+                (Ok(_), Some(error)) => {
+                    eprintln!("verse: physical renderer unavailable: {error}");
+                    self.photo_failed = true;
+                    return false;
+                }
+            }
+        }
+        let Some(photo) = &mut self.photo else {
+            return false;
+        };
+        let size = [targets.size[0] as u32, targets.size[1] as u32];
+        if targets.photo.as_ref().is_none_or(|t| t.size() != size) {
+            targets.photo = Some(photo.targets(device, size[0], size[1]));
+        }
+        let Some(photo_targets) = &mut targets.photo else {
+            return false;
+        };
+        queue.write_buffer(
+            &self.ui_screen,
+            0,
+            bytemuck::cast_slice(&[targets.size[0], targets.size[1], 0.0, 0.0]),
+        );
+        let ui_bytes: &[u8] = bytemuck::cast_slice(&ui.vertices);
+        if !ui_bytes.is_empty() {
+            queue.write_buffer(&self.ui.buffer, 0, ui_bytes);
+        }
+        self.ui.count = (ui_bytes.len() / std::mem::size_of::<UiVertex>()) as u32;
+        write(device, queue, &mut self.dynamic_faces, &dynamic.faces);
+        write(device, queue, &mut self.dynamic_lines, &dynamic.lines);
+        photo.dynamic_lit.write(device, queue, &dynamic.lit);
+        photo.glow.write(device, queue, &dynamic.glow);
+        let batches = Batches {
+            lit: (&self.world_lit.0, self.world_lit.1),
+            faces: [
+                (&self.world_faces.buffer, self.world_faces.count),
+                (&self.dynamic_faces.buffer, self.dynamic_faces.count),
+            ],
+            lines: [
+                (&self.world_lines.buffer, self.world_lines.count),
+                (&self.dynamic_lines.buffer, self.dynamic_lines.count),
+            ],
+        };
+        photo.encode(
+            device,
+            queue,
+            encoder,
+            output,
+            photo_targets,
+            view,
+            sky,
+            batches,
+            Some((
+                &self.ui_photo,
+                &self.ui_bind_group,
+                &self.ui.buffer,
+                self.ui.count,
+            )),
+        );
+        true
+    }
+}
+
 impl Targets {
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -916,6 +1112,7 @@ impl Targets {
             msaa: (samples > 1).then(|| texture(format, "verse msaa")),
             depth: texture(DEPTH, "verse depth"),
             size: [width as f32, height as f32],
+            photo: None,
         }
     }
 }
@@ -928,7 +1125,12 @@ fn ui_pipeline(
     format: wgpu::TextureFormat,
     samples: u32,
     atlas: &Atlas,
-) -> (wgpu::RenderPipeline, wgpu::BindGroup, wgpu::Buffer) {
+) -> (
+    wgpu::RenderPipeline,
+    wgpu::RenderPipeline,
+    wgpu::BindGroup,
+    wgpu::Buffer,
+) {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("verse glyph atlas"),
         size: extent(atlas.width, atlas.height),
@@ -1025,49 +1227,56 @@ fn ui_pipeline(
         label: Some("verse ui"),
         source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
     });
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("verse ui"),
-        layout: Some(&pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: Some("vs"),
-            compilation_options: Default::default(),
-            buffers: &[wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<UiVertex>() as u64,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![
-                    0 => Float32x2,
-                    1 => Float32x2,
-                    2 => Float32x4,
-                ],
-            }],
-        },
-        primitive: wgpu::PrimitiveState::default(),
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: DEPTH,
-            depth_write_enabled: Some(false),
-            depth_compare: Some(wgpu::CompareFunction::Always),
-            stencil: Default::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
-        multisample: wgpu::MultisampleState {
-            count: samples,
-            ..Default::default()
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: Some("fs"),
-            compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format,
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        multiview_mask: None,
-        cache: None,
-    });
-    (pipeline, bind_group, screen)
+    let pipeline = |samples: u32, depth: bool| {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("verse ui"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<UiVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![
+                        0 => Float32x2,
+                        1 => Float32x2,
+                        2 => Float32x4,
+                    ],
+                }],
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: depth.then(|| wgpu::DepthStencilState {
+                format: DEPTH,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                stencil: Default::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: samples,
+                ..Default::default()
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    };
+    (
+        pipeline(samples, true),
+        pipeline(1, false),
+        bind_group,
+        screen,
+    )
 }
 
 fn extent(width: u32, height: u32) -> wgpu::Extent3d {
@@ -1122,10 +1331,10 @@ mod tests {
         let mut mobile = wgpu::Limits::downlevel_defaults();
         mobile.max_texture_dimension_2d = 4096;
         let required = scene_limits(mobile.clone()).unwrap();
-        assert_eq!(required.max_inter_stage_shader_variables, 3);
+        assert_eq!(required.max_inter_stage_shader_variables, INTER_STAGE);
         assert_eq!(required.max_texture_dimension_2d, 4096);
         assert!(required.check_limits(&mobile));
-        mobile.max_inter_stage_shader_variables = 2;
+        mobile.max_inter_stage_shader_variables = INTER_STAGE - 1;
         assert!(
             scene_limits(mobile)
                 .unwrap_err()

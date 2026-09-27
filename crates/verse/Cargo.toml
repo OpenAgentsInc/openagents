@@ -12,7 +12,7 @@ desktop = ["dep:winit", "model-host", "xp-host", "replay-host", "capture"]
 model-host = ["dep:coder", "dep:coder-one"]
 xp-host = ["dep:knowledge"]
 replay-host = ["dep:gym", "dep:knowledge"]
-capture = ["dep:png"]
+capture = []
 
 [dependencies]
 bytemuck = { version = "1.25", features = ["derive"] }
@@ -31,7 +31,7 @@ gym-bridge = { path = "../gym-bridge", default-features = false }
 knowledge = { path = "../knowledge", optional = true }
 libc = "0.2"
 nostr = { path = "../nostr" }
-png = { version = "0.18.1", optional = true }
+png = "0.18.1"
 pollster = "0.4"
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }

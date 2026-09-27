@@ -178,7 +178,7 @@ impl<'a> PackReader<'a> {
         }
         Ok(Mesh {
             faces,
-            lines: Vec::new(),
+            ..Mesh::default()
         })
     }
 

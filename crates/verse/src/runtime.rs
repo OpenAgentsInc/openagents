@@ -808,12 +808,20 @@ pub(crate) fn mesh_hit(mesh: &Mesh, origin: Vec3, direction: Vec3) -> Option<f32
     if !origin.is_finite() || !direction.is_finite() {
         return None;
     }
-    mesh.faces
+    let faces = mesh
+        .faces
         .chunks_exact(3)
+        .map(|v| [v[0].pos, v[1].pos, v[2].pos]);
+    let lit = mesh
+        .lit
+        .chunks_exact(3)
+        .map(|v| [v[0].pos, v[1].pos, v[2].pos]);
+    faces
+        .chain(lit)
         .filter_map(|vertices| {
-            let a = Vec3::from(vertices[0].pos);
-            let edge_ab = Vec3::from(vertices[1].pos) - a;
-            let edge_ac = Vec3::from(vertices[2].pos) - a;
+            let a = Vec3::from(vertices[0]);
+            let edge_ab = Vec3::from(vertices[1]) - a;
+            let edge_ac = Vec3::from(vertices[2]) - a;
             let cross = direction.cross(edge_ac);
             let determinant = edge_ab.dot(cross);
             if determinant.abs() < 1e-7 {

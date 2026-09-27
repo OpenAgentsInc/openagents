@@ -28,6 +28,7 @@ pub mod mv;
 pub mod nav;
 pub mod net;
 pub mod palette;
+pub mod pbr;
 pub mod render;
 pub mod replay;
 pub mod runtime;

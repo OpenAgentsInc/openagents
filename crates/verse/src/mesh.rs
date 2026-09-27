@@ -22,13 +22,20 @@ pub struct Vertex {
     pub fog: f32,
 }
 
-/// A line list and a triangle list, built together.
+/// A line list and a triangle list, built together, plus the physically lit
+/// channels a zone in real units adds (see [`crate::pbr`]).
 #[derive(Clone, Debug, Default)]
 pub struct Mesh {
     /// Pairs of vertices, one pair per line segment.
     pub lines: Vec<Vertex>,
     /// Triples of vertices, one triple per triangle.
     pub faces: Vec<Vertex>,
+    /// Physically lit triangles.
+    pub lit: Vec<crate::pbr::LitVertex>,
+    /// Additive emissive triangles in physical luminance.
+    pub glow: Vec<crate::pbr::GlowVertex>,
+    /// Present when this frame renders in physical units.
+    pub sky: Option<crate::pbr::Sky>,
 }
 
 impl Mesh {
@@ -119,6 +126,11 @@ impl Mesh {
     pub fn extend(&mut self, other: &Mesh) {
         self.lines.extend_from_slice(&other.lines);
         self.faces.extend_from_slice(&other.faces);
+        self.lit.extend_from_slice(&other.lit);
+        self.glow.extend_from_slice(&other.glow);
+        if other.sky.is_some() {
+            self.sky.clone_from(&other.sky);
+        }
     }
 }
 
