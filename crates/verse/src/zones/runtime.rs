@@ -1,10 +1,22 @@
 //! Zone transition admission and the shared forest simulation.
 
 use super::{Control, Forest, Intent, LoadState, PortalProjection, Snapshot, ZoneId, assets};
-use crate::{controller::PlayerController, runtime::WorldRuntime};
+use crate::{
+    controller::{InputState, PlayerController},
+    runtime::WorldRuntime,
+};
 use glam::Vec3;
 
 impl WorldRuntime {
+    pub(crate) fn update_player(&mut self, input: &InputState, dt: f32) {
+        if let Some(forest) = &mut self.zone_state.forest {
+            forest.move_player(&mut self.player, input, dt);
+        } else {
+            self.player
+                .update(input, dt, &self.world.blockers, self.zone_half());
+        }
+    }
+
     /// Configure a host-owned cache directory. This does not read or fetch assets.
     pub fn configure_zone_cache(&mut self, path: std::path::PathBuf) {
         self.zone_cancel_loading();
@@ -65,7 +77,14 @@ impl WorldRuntime {
             return;
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
-        let forest = Forest::new(assets);
+        let forest = match Forest::new(assets) {
+            Ok(forest) => forest,
+            Err(error) => {
+                self.zone_state.error = Some(error);
+                self.zone_state.loading = LoadState::Failed;
+                return;
+            }
+        };
         self.world = forest.world();
         self.zone_state.forest = Some(forest);
         self.zone = ZoneId::Forest;
@@ -73,7 +92,7 @@ impl WorldRuntime {
         self.zone_state.error = None;
         self.zone_state.progress = 1.0;
         self.zone_revision = self.zone_revision.saturating_add(1);
-        let _ = self.set_spawn(Vec3::new(0.0, 0.0, 8.0), std::f32::consts::PI);
+        let _ = self.set_spawn(Forest::spawn(), 0.0);
         self.camera = crate::camera::FollowCamera::default();
     }
     pub fn zone_intent(&mut self, intent: Intent) -> Result<(), String> {
@@ -123,44 +142,22 @@ impl WorldRuntime {
                 self.set_spawn(pos, yaw)?;
                 self.camera = crate::camera::FollowCamera::default();
             }
-            Intent::StartEncounter | Intent::ResetEncounter => {
+            Intent::Firebolt | Intent::MagicMissile | Intent::Fireball => {
+                let spell = match intent {
+                    Intent::Firebolt => verse_atlantis::Spell::Firebolt,
+                    Intent::MagicMissile => verse_atlantis::Spell::MagicMissile,
+                    _ => verse_atlantis::Spell::Fireball,
+                };
+                let direction = self.player.forward();
+                let origin = self.player.pos + Vec3::Y * 1.4 + direction * 0.25;
                 let forest = self
                     .zone_state
                     .forest
                     .as_mut()
                     .ok_or("Enter the forest first")?;
-                let encounter =
-                    super::rules::Encounter::new(&mut forest.dice).map_err(|e| e.to_string())?;
-                let position = encounter.snapshot().wizard.position;
-                forest.encounter = Some(encounter);
-                forest.flash = 0.0;
-                self.set_spawn(
-                    Vec3::new(position[0], 0.0, position[1]),
-                    std::f32::consts::PI,
-                )?;
-                self.zone_state.error = None;
-            }
-            Intent::Cast | Intent::EndTurn => {
-                let forest = self
-                    .zone_state
-                    .forest
-                    .as_mut()
-                    .ok_or("Enter the forest first")?;
-                let encounter = forest
-                    .encounter
-                    .as_mut()
-                    .ok_or("Begin the encounter first")?;
-                if intent == Intent::Cast {
-                    encounter
-                        .cast(&mut forest.dice)
-                        .map_err(|e| e.to_string())?;
-                    forest.flash = 0.35;
-                } else {
-                    encounter
-                        .end_turn(&mut forest.dice)
-                        .map_err(|e| e.to_string())?;
-                }
-                self.cancel_navigation();
+                forest
+                    .simulation
+                    .cast(spell, origin.to_array(), direction.to_array())?;
                 self.zone_state.error = None;
             }
         }
@@ -177,12 +174,7 @@ impl WorldRuntime {
                 enabled,
             })
         };
-        let encounter = self
-            .zone_state
-            .forest
-            .as_ref()
-            .and_then(|f| f.encounter.as_ref())
-            .map(super::rules::Encounter::snapshot);
+        let combat = self.zone_state.forest.as_ref().map(|f| f.snapshot.clone());
         let caption = if self.zone_loading() {
             add("cancel", "Cancel", Intent::Cancel, true);
             format!(
@@ -194,22 +186,32 @@ impl WorldRuntime {
             add("cancel", "Dismiss", Intent::Cancel, true);
             "Forest could not load".into()
         } else if self.zone == ZoneId::Forest {
-            if let Some(e) = &encounter {
-                let active = e.status == super::rules::EncounterStatus::Active;
-                add(
-                    "cast",
-                    "Fire Bolt",
-                    Intent::Cast,
-                    active && e.action_available,
-                );
-                add("end_turn", "End turn", Intent::EndTurn, active);
-                add("reset_encounter", "Reset", Intent::ResetEncounter, true);
+            if let Some(c) = &combat {
+                for ability in &c.abilities {
+                    let (id, label, intent) = match ability.id {
+                        verse_atlantis::Spell::Firebolt => {
+                            ("firebolt", "Firebolt", Intent::Firebolt)
+                        }
+                        verse_atlantis::Spell::MagicMissile => {
+                            ("magic_missile", "Missile", Intent::MagicMissile)
+                        }
+                        verse_atlantis::Spell::Fireball => {
+                            ("fireball", "Fireball", Intent::Fireball)
+                        }
+                    };
+                    add(id, label, intent, ability.ready);
+                }
                 add("return", "Plaza", Intent::Return, true);
-                forest_caption(e)
+                if c.player.hp <= 0 {
+                    "Defeated · return to Plaza".into()
+                } else {
+                    format!(
+                        "HP {} / {}   Mana {} / {}",
+                        c.player.hp, c.player.max_hp, c.player.mana, c.player.max_mana
+                    )
+                }
             } else {
-                add("start_encounter", "Encounter", Intent::StartEncounter, true);
-                add("return", "Plaza", Intent::Return, true);
-                "Atlantis forest · SRD 5.1".into()
+                String::new()
             }
         } else if portal.near && portal.visible {
             add(
@@ -230,7 +232,7 @@ impl WorldRuntime {
             error: self.zone_state.error.clone(),
             portal,
             controls,
-            encounter,
+            combat,
             caption,
         }
     }
@@ -242,7 +244,7 @@ impl WorldRuntime {
         let view = self.view(aspect);
         let clip = view.view_proj * anchor.extend(1.0);
         let mut p = PortalProjection {
-            near: distance <= 6.0 && self.player.pos.y < 3.0,
+            near: distance <= 6.0 && self.player.pos.y - at.y < 3.0,
             visible: false,
             screen_x: 0.5,
             screen_y: 0.5,
@@ -262,12 +264,7 @@ impl WorldRuntime {
             let direction = delta.normalize_or_zero();
             p.visible =
                 !crate::runtime::mesh_occludes(&self.world.mesh, view.eye, direction, length)
-                    && !crate::runtime::mesh_occludes(
-                        &self.dynamic_mesh(),
-                        view.eye,
-                        direction,
-                        length,
-                    );
+                    && !self.zone_dynamic_occludes(view.eye, direction, length);
         }
         p
     }
@@ -284,7 +281,10 @@ impl WorldRuntime {
         entities: &crate::mesh::Mesh,
     ) -> bool {
         let offset = self.player.pos - self.zone.portal();
-        if offset.x.hypot(offset.z) > 6.0 || self.player.pos.y >= 3.0 || self.zone_loading() {
+        if offset.x.hypot(offset.z) > 6.0
+            || self.player.pos.y - self.zone.portal().y >= 3.0
+            || self.zone_loading()
+        {
             return false;
         }
         let view = self.view(aspect);
@@ -304,247 +304,159 @@ impl WorldRuntime {
             && clip.w > 0.0
             && (0.0..=1.0).contains(&(clip.z / clip.w))
             && !crate::runtime::mesh_occludes(&self.world.mesh, eye, direction, distance)
-            && !crate::runtime::mesh_occludes(&self.dynamic_mesh(), eye, direction, distance)
+            && !self.zone_dynamic_occludes(eye, direction, distance)
             && !crate::runtime::mesh_occludes(entities, eye, direction, distance)
     }
-    pub(crate) fn forest_tick(&mut self, dt: f32, previous: PlayerController) {
+    fn zone_dynamic_occludes(&self, eye: Vec3, direction: Vec3, distance: f32) -> bool {
+        if let Some(forest) = &self.zone_state.forest {
+            crate::runtime::mesh_occludes(forest.dynamic(), eye, direction, distance)
+        } else {
+            crate::runtime::mesh_occludes(&self.dynamic_mesh(), eye, direction, distance)
+        }
+    }
+    pub(crate) fn forest_tick(&mut self, dt: f32, _previous: PlayerController) {
         self.zone_state.elapsed = (self.zone_state.elapsed + dt) % 1000.0;
-        if let Some(forest) = &mut self.zone_state.forest {
-            forest.elapsed = (forest.elapsed + dt) % 1000.0;
-            forest.flash = (forest.flash - dt).max(0.0);
-            if let Some(encounter) = &mut forest.encounter {
-                if encounter.snapshot().status != super::rules::EncounterStatus::Active {
-                    return;
-                }
-                let position = [self.player.pos.x, self.player.pos.z];
-                // An idle, jump-only, or camera-only frame must not erase a
-                // refusal or create a synthetic encounter movement revision.
-                if position != [previous.pos.x, previous.pos.z] {
-                    match encounter.move_wizard_to(position) {
-                        Ok(()) => self.zone_state.error = None,
-                        Err(error) => {
-                            self.player.pos.x = previous.pos.x;
-                            self.player.pos.z = previous.pos.z;
-                            self.player.speed = 0.0;
-                            self.navigation.stop(crate::nav::NavigationStatus::Blocked);
-                            self.zone_state.error = Some(error.to_string());
-                        }
-                    }
-                }
-            }
+        if let Some(forest) = &mut self.zone_state.forest
+            && let Err(error) = forest.tick(dt, &self.player)
+        {
+            self.zone_state.error = Some(error);
         }
     }
     pub(crate) fn zone_dynamic_mesh(&self) -> crate::mesh::Mesh {
         let elapsed = self.zone_state.elapsed;
         let mut mesh = super::portal_mesh(self.zone, elapsed);
         if let Some(forest) = &self.zone_state.forest {
-            mesh.extend(&forest.dynamic(&self.player));
+            mesh.extend(forest.dynamic());
         }
         mesh
     }
 }
 
-fn forest_caption(encounter: &super::rules::EncounterSnapshot) -> String {
-    if encounter.status != super::rules::EncounterStatus::Active {
-        return format!(
-            "You {} HP · Zombie {} HP · {}",
-            encounter.wizard.hp, encounter.zombie.hp, encounter.last_notice
-        );
-    }
-    let feet = (encounter.movement_remaining_m / super::rules::METERS_PER_FOOT).floor();
-    format!(
-        "R{} · You {} / Zombie {} HP · {feet:.0}ft · {} · {}",
-        encounter.round,
-        encounter.wizard.hp,
-        encounter.zombie.hp,
-        if encounter.action_available {
-            "Action ready"
-        } else {
-            "Action spent"
-        },
-        encounter.last_notice
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::Mesh;
-    use crate::zones::rules::{Dice, Encounter, EncounterStatus, WIZARD_SPEED_M};
-    use std::collections::VecDeque;
+    use crate::{controller::InputState, mesh::Mesh};
 
-    struct Rolls(VecDeque<u8>);
-    impl Dice for Rolls {
-        fn roll(&mut self, _sides: u8) -> u8 {
-            self.0.pop_front().expect("unexpected roll")
-        }
-    }
-    fn rolls(values: &[u8]) -> Rolls {
-        Rolls(values.iter().copied().collect())
-    }
-    fn assets() -> assets::LoadedAssets {
+    fn forest_world() -> WorldRuntime {
         let animation = || assets::AnimatedMesh {
             frames: vec![Mesh::default()],
             frame_seconds: 0.1,
         };
-        assets::LoadedAssets {
+        let mut world = WorldRuntime::new();
+        world.install_forest(assets::LoadedAssets {
             tree: Mesh::default(),
             wizard_still: Mesh::default(),
             wizard: animation(),
             zombie: animation(),
             zombie_walk: animation(),
-        }
-    }
-    fn encounter_world() -> WorldRuntime {
-        let mut world = WorldRuntime::new();
-        world.install_forest(assets());
-        world.zone_state.forest.as_mut().unwrap().encounter =
-            Some(Encounter::new(&mut rolls(&[20, 1])).unwrap());
-        world.set_spawn(Vec3::ZERO, std::f32::consts::PI).unwrap();
+        });
         world
     }
 
     #[test]
-    fn entry_resets_camera_and_duplicate_completion_preserves_return_pose() {
-        let mut world = WorldRuntime::new();
-        world.set_spawn(Vec3::new(2.0, 0.0, 3.0), 0.5).unwrap();
-        world.camera.distance = 40.0;
-        world.install_forest(assets());
-        assert_eq!(world.player.pos, Vec3::new(0.0, 0.0, 8.0));
+    fn forest_runs_immediately_and_fireball_spends_mana_while_moving() {
+        let mut world = forest_world();
+        let initial = world.zone_snapshot(1.0).combat.unwrap();
         assert_eq!(
-            world.camera.distance,
-            crate::camera::FollowCamera::default().distance
+            initial.actors.iter().filter(|a| a.kind == "zombie").count(),
+            35
         );
-        let revision = world.zone_revision;
-        world.player.pos = Vec3::new(1.0, 0.0, 2.0);
-        world.install_forest(assets());
-        assert_eq!(world.zone_revision, revision);
-        assert_eq!(world.player.pos, Vec3::new(1.0, 0.0, 2.0));
-        world.zone_intent(Intent::Return).unwrap();
-        assert_eq!(world.player.pos, Vec3::new(2.0, 0.0, 3.0));
-        assert!(world.zone_state.forest.is_none());
-    }
-
-    #[test]
-    fn refused_movement_keeps_camera_and_jump_but_shows_reason_until_valid_move() {
-        let mut world = encounter_world();
-        let previous = world.player;
-        world.player.pos = Vec3::new(10.1, 0.2, 0.0);
-        world.player.yaw = 1.0;
-        world.player.speed = 6.0;
-        world.forest_tick(0.01, previous);
-        assert_eq!(world.player.pos, Vec3::new(0.0, 0.2, 0.0));
-        assert_eq!(world.player.yaw, 1.0);
-        assert_eq!(world.player.speed, 0.0);
-        assert_eq!(
-            world.zone_snapshot(1.0).error.as_deref(),
-            Some("Stay inside the encounter circle.")
-        );
-        let paused = world.player;
-        let revision = world.zone_snapshot(1.0).encounter.unwrap().revision;
-        world.forest_tick(0.01, paused);
-        assert!(world.zone_snapshot(1.0).error.is_some());
-        assert_eq!(
-            world.zone_snapshot(1.0).encounter.unwrap().revision,
-            revision
-        );
-        world.player.pos.x = 0.25;
-        world.forest_tick(0.01, paused);
-        assert!(world.zone_snapshot(1.0).error.is_none());
-        assert_eq!(
-            world.zone_snapshot(1.0).encounter.unwrap().wizard.position,
-            [0.25, 0.0]
-        );
-    }
-
-    #[test]
-    fn caption_reports_action_movement_and_round_without_automatic_turns() {
-        let mut world = encounter_world();
-        let initial = world.zone_snapshot(1.0);
-        assert!(initial.caption.contains("R1"));
-        assert!(initial.caption.contains("30ft"));
-        assert!(initial.caption.contains("Action ready"));
-        let encounter = world
-            .zone_state
-            .forest
-            .as_mut()
-            .unwrap()
-            .encounter
-            .as_mut()
-            .unwrap();
-        encounter.cast(&mut rolls(&[10, 5])).unwrap();
-        let previous = world.player;
-        world.player.pos.x = 0.3048;
-        world.forest_tick(0.01, previous);
-        let cast = world.zone_snapshot(1.0);
-        assert!(cast.caption.contains("R1"));
-        assert!(cast.caption.contains("29ft"));
-        assert!(cast.caption.contains("Action spent"));
+        assert_eq!(world.player.pos, Forest::spawn());
+        let moving = InputState {
+            forward: true,
+            ..Default::default()
+        };
+        world.zone_intent(Intent::Fireball).unwrap();
+        world.tick(&moving, 0.05);
+        let cast = world.zone_snapshot(1.0).combat.unwrap();
+        assert!(cast.player.mana < initial.player.mana);
         assert!(
-            !cast
+            cast.abilities
+                .iter()
+                .find(|a| a.id == verse_atlantis::Spell::Fireball)
+                .unwrap()
+                .cooldown_remaining
+                > 0.0
+        );
+        assert!(world.player.pos.z > 0.0);
+        assert!(
+            cast.projectiles
+                .iter()
+                .any(|p| p.kind == verse_atlantis::Spell::Fireball)
+        );
+        for _ in 0..80 {
+            world.tick(&moving, 0.05);
+        }
+        let later = world.zone_snapshot(1.0).combat.unwrap();
+        assert!(world.player.pos.z > 20.0, "no per-turn movement allowance");
+        assert!(
+            initial
+                .actors
+                .iter()
+                .filter(|a| a.kind == "zombie")
+                .any(|a| later.actors.iter().any(|b| b.id == a.id && b.pos != a.pos))
+        );
+        assert!(
+            later
+                .abilities
+                .iter()
+                .find(|a| a.id == verse_atlantis::Spell::Fireball)
+                .unwrap()
+                .ready
+        );
+        assert!(
+            !world
+                .zone_snapshot(1.0)
                 .controls
                 .iter()
-                .find(|c| c.id == "cast")
-                .unwrap()
-                .enabled
+                .any(|c| c.id.contains("turn") && c.id != "return")
         );
+    }
+
+    #[test]
+    fn forest_uses_source_strafe_and_terrain_camera_and_stops_defeated_players() {
+        let mut world = forest_world();
+        let moving = InputState {
+            left: true,
+            mouse_look: true,
+            ..Default::default()
+        };
+        world.tick(&moving, 0.05);
+        assert!(world.player.pos.x.abs() > 0.1);
+        assert_eq!(world.player.yaw, 0.0);
+        world.camera.distance = crate::camera::MIN_DISTANCE;
+        world.camera.pitch = -0.6;
+        let view = world.view(1.0);
+        let floor = verse_atlantis::scene::Terrain::bundled().height(view.eye.x, view.eye.z);
+        assert!(view.eye.y < 0.0, "camera follows negative terrain");
+        assert!(view.eye.y >= floor + 0.399);
+        world.zone_state.forest.as_mut().unwrap().snapshot.player.hp = 0;
+        let before = world.player.pos;
+        world.update_player(&moving, 0.05);
+        assert_eq!(world.player.pos, before);
+        assert!(world.zone_snapshot(1.0).caption.contains("Defeated"));
         assert!(
-            cast.controls
+            world
+                .zone_snapshot(1.0)
+                .controls
                 .iter()
-                .find(|c| c.id == "end_turn")
+                .find(|c| c.id == "return")
                 .unwrap()
                 .enabled
         );
     }
 
     #[test]
-    fn finished_encounter_disables_combat_and_allows_exploration() {
-        let mut world = encounter_world();
-        let encounter = world
-            .zone_state
-            .forest
-            .as_mut()
-            .unwrap()
-            .encounter
-            .as_mut()
-            .unwrap();
-        encounter.cast(&mut rolls(&[20, 10, 10])).unwrap();
-        encounter.end_turn(&mut rolls(&[1])).unwrap();
-        encounter.cast(&mut rolls(&[20, 20, 10, 10])).unwrap();
-        let finished = world.zone_snapshot(1.0);
-        assert_eq!(finished.encounter.unwrap().status, EncounterStatus::Won);
-        for control in finished.controls {
-            assert_eq!(
-                control.enabled,
-                matches!(control.id, "reset_encounter" | "return")
-            );
-        }
-        let previous = world.player;
-        world.player.pos = Vec3::new(12.0, 0.0, 0.0);
-        world.forest_tick(0.01, previous);
-        assert_eq!(world.player.pos.x, 12.0);
-    }
-
-    #[test]
-    fn reset_and_return_clear_refusals_and_restore_unblocked_movement() {
-        let mut world = encounter_world();
-        world.zone_state.error = Some("Movement spent. End your turn.".into());
-        world.zone_intent(Intent::ResetEncounter).unwrap();
-        let reset = world.zone_snapshot(1.0);
-        assert!(reset.error.is_none());
-        assert_eq!(world.player.pos, Vec3::ZERO);
-        let encounter = reset.encounter.unwrap();
-        if encounter.status == EncounterStatus::Active {
-            assert_eq!(encounter.movement_remaining_m, WIZARD_SPEED_M);
-        }
-        let previous = world.player;
-        world.player.pos.x = 0.1;
-        world.forest_tick(0.01, previous);
-        assert_eq!(world.player.pos.x, 0.1);
-        world.zone_state.error = Some("Stay inside the encounter circle.".into());
+    fn return_drops_combat_and_restores_the_plaza_pose() {
+        let mut world = WorldRuntime::new();
+        let original = world.player;
+        let mut forest = forest_world();
+        world.install_forest(forest.zone_state.forest.take().unwrap().assets);
+        world.zone_intent(Intent::Firebolt).unwrap();
+        world.tick(&InputState::default(), 0.05);
         world.zone_intent(Intent::Return).unwrap();
-        assert!(world.zone_snapshot(1.0).error.is_none());
-        assert!(world.is_plaza());
+        assert_eq!(world.player, original);
+        assert!(world.zone_snapshot(1.0).combat.is_none());
         assert!(world.zone_state.forest.is_none());
     }
 }

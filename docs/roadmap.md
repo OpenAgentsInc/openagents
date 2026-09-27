@@ -103,8 +103,9 @@ services and cross-operator orchestration remain separate roadmap work.
 
 The [Atlantis forest](verse/zones.md) implements a first reviewed zone with
 runtime-only asset loading, independent presentation, isolated coordinates,
-and return to the amber plaza. Its [SRD 5.1 encounter](verse/zone-rules.md)
-implements a bounded wizard/zombie turn loop, not the full fifth-edition game.
+and return to the amber plaza. Its [source port](verse/atlantis-source-parity.md) retains the original
+Wizard Woods real-time ECS and player controller, with a bottom spell hotbar.
+A separate [fifth-edition rules profile](verse/zone-rules.md) remains design work.
 The current forest is local-only. NIP-MV's signed scene manifest is a designed
 profile; arbitrary creator worlds, shared combat authority, and published
 rule catalogs remain to be implemented.

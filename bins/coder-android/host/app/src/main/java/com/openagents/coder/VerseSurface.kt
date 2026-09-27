@@ -450,7 +450,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         val hud = snapshot?.optJSONObject("zone")?.optJSONObject("hud") ?: return emptyList()
         if (!hud.optBoolean("visible")) return emptyList()
         val buttons = hud.optJSONArray("buttons") ?: return emptyList()
-        val allowed = listOf("enter", "return", "cancel", "retry", "start_encounter", "cast", "end_turn", "reset_encounter")
+        val allowed = listOf("enter", "return", "cancel", "retry", "firebolt", "magic_missile", "fireball")
         return (0 until minOf(buttons.length(), 16)).map { buttons.getJSONObject(it) }
             .filter { it.optBoolean("enabled") && it.optString("action") in allowed }
             .map { it.getString("label") to json("action" to "zone", "intent" to it.getString("action")) }

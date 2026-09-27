@@ -1,0 +1,22 @@
+{
+  "after_all_projectiles" : 69,
+  "after_cast_requests" : 1,
+  "after_frame" : 1096,
+  "after_mana" : 16,
+  "after_position" : [
+    17.922228,
+    -3.3028285999999998,
+    5.0631479999999996e-09
+  ],
+  "before_all_projectiles" : 55,
+  "before_cast_requests" : 0,
+  "before_frame" : 1007,
+  "before_mana" : 20,
+  "before_position" : [
+    8.4277149999999992,
+    -3.3028287999999999,
+    -1.521943e-07
+  ],
+  "fireball_cooldown_seconds" : 0.71666790000000002,
+  "fireball_ready" : false
+}

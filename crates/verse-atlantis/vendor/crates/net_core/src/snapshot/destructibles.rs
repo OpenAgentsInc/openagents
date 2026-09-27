@@ -1,0 +1,1 @@
+//! Destructibles snapshot schema (scaffold).

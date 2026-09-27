@@ -1,0 +1,13 @@
+[package]
+name = "verse-atlantis"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "The retained Ruins of Atlantis real-time forest simulation for Verse"
+
+[dependencies]
+client_core = { path = "vendor/crates/client_core" }
+server_core = { path = "vendor/crates/server_core" }
+glam = "0.30"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

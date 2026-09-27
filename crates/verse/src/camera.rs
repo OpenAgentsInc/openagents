@@ -90,18 +90,26 @@ impl FollowCamera {
     /// The eye position for a player at `feet` facing `player_yaw`.
     #[must_use]
     pub fn eye(&self, feet: Vec3, player_yaw: f32) -> Vec3 {
-        let yaw = player_yaw + self.yaw_offset;
-        let back = -crate::controller::forward(yaw) * self.pitch.cos();
-        let offset = (back + Vec3::Y * self.pitch.sin()) * self.distance;
-        let mut eye = focus(feet) + offset;
+        let mut eye = self.unclamped_eye(feet, player_yaw);
         eye.y = eye.y.max(0.4);
         eye
+    }
+
+    /// Orbit position before applying the active world's ground clearance.
+    pub(crate) fn unclamped_eye(&self, feet: Vec3, player_yaw: f32) -> Vec3 {
+        let yaw = player_yaw + self.yaw_offset;
+        let back = -crate::controller::forward(yaw) * self.pitch.cos();
+        focus(feet) + (back + Vec3::Y * self.pitch.sin()) * self.distance
     }
 
     /// The combined projection and view matrix.
     #[must_use]
     pub fn view_proj(&self, feet: Vec3, player_yaw: f32, aspect: f32) -> Mat4 {
-        let eye = self.eye(feet, player_yaw);
+        self.view_proj_from_eye(self.eye(feet, player_yaw), player_yaw, aspect)
+    }
+
+    /// Project from an eye whose clearance the active scene has already checked.
+    pub(crate) fn view_proj_from_eye(&self, eye: Vec3, player_yaw: f32, aspect: f32) -> Mat4 {
         let direction = crate::controller::forward(player_yaw + self.yaw_offset) * self.pitch.cos()
             - Vec3::Y * self.pitch.sin();
         // Ground clearance changes the eye position, not the look angle.

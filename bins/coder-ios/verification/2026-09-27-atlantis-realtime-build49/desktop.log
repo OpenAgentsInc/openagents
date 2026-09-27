@@ -1,0 +1,76 @@
+    Checking mio v1.2.3
+    Checking wasmtime-internal-core v48.0.2
+    Checking secp256k1 v0.31.1
+    Checking wasmprinter v0.254.0
+    Checking regalloc2 v0.15.2
+    Checking tungstenite v0.30.0
+    Checking naga v29.0.4
+    Checking wgpu-types v29.0.4
+    Checking wasm-compose v0.254.0
+    Checking serde_yaml v0.9.34+deprecated
+    Checking wit-parser v0.254.0
+    Checking crossbeam-channel v0.5.17
+    Checking ecs_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/ecs_core)
+    Checking tracing-subscriber v0.3.23
+    Checking collision_static v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/collision_static)
+   Compiling coder v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder)
+    Checking winit v0.30.13
+    Checking tokio v1.53.1
+    Checking signal-hook-mio v0.2.5
+    Checking nostr v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr)
+    Checking crossterm v0.29.0
+    Checking cranelift-bitset v0.135.2
+    Checking wasmtime-internal-jit-icache-coherence v48.0.2
+    Checking net_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/net_core)
+    Checking cranelift-entity v0.135.2
+    Checking pulley-interpreter v48.0.2
+    Checking data_runtime v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/data_runtime)
+    Checking ratatui-crossterm v0.1.2
+    Checking cranelift-bforest v0.135.2
+    Checking ratatui v0.30.2
+    Checking wasmtime-environ v48.0.2
+    Checking server_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/server_core)
+    Checking client_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/client_core)
+    Checking verse-atlantis v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis)
+    Checking tokio-rustls v0.26.5
+    Checking hyper v1.11.1
+    Checking supervise v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/supervise)
+    Checking tower v0.5.3
+    Checking tokio-util v0.7.19
+    Checking coder-terminal v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-terminal)
+    Checking tokio-tungstenite v0.30.0
+    Checking coder-pty v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-pty)
+    Checking coder-service v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-service)
+    Checking tower-http v0.6.11
+    Checking hyper-util v0.1.20
+    Checking wgpu-naga-bridge v29.0.4
+    Checking wgpu-hal v29.0.4
+    Checking hyper-rustls v0.27.9
+    Checking reqwest v0.12.28
+    Checking cranelift-codegen v0.135.2
+    Checking microluna v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/microluna)
+    Checking openrouter v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/openrouter)
+    Checking jev v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/jev)
+    Checking wgpu-core-deps-apple v29.0.4
+    Checking wgpu-core v29.0.4
+    Checking nostr-transport v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr-transport)
+    Checking coder-reach v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-reach)
+    Checking capability v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/capability)
+    Checking coder-connect v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-connect)
+    Checking knowledge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/knowledge)
+    Checking wasmtime-internal-fiber v48.0.2
+    Checking wasmtime-internal-cache v48.0.2
+    Checking coder-access v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-access)
+    Checking gym-bridge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym-bridge)
+    Checking gym v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym)
+    Checking coder-host v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-host)
+    Checking wgpu v29.0.4
+    Checking cranelift-frontend v0.135.2
+    Checking wasmtime-internal-unwinder v48.0.2
+    Checking cranelift-native v0.135.2
+    Checking wasmtime-internal-cranelift v48.0.2
+    Checking wasmtime v48.0.2
+    Checking plugin v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/plugin)
+    Checking coder-one v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-one)
+    Checking verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 30.65s

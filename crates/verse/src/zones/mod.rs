@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 pub mod assets;
 mod forest;
 pub mod hud;
-pub mod rules;
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -15,12 +14,11 @@ pub(crate) use forest::Forest;
 
 /// Read on demand by native Settings, not repeated in each frame packet.
 pub const CREDITS: &str = concat!(
-    "Atlantis forest: a new Rust implementation using selected Ruins of Atlantis artwork.\n",
+    "Atlantis forest: the original Ruins of Atlantis Wizard Woods simulation with a mobile renderer.\n",
     "Geometry and original animation poses are baked with sampled colors and leaf cutouts.\n",
     "The original wizard/zombie upstream authors and separate asset licenses were not identified in the source.\n",
     "Source and modifications: https://github.com/OpenAgentsInc/openagents/tree/main/assets/verse/forest\n\n",
-    include_str!("../../../../docs/verse/SRD-5.1-NOTICE.md"),
-    "\n\nRetained source project notice (its revised SRD is distinct from this app's SRD 5.1 rules):\n",
+    "\n\nRetained source project notice:\n",
     include_str!("../../../../assets/verse/forest/SOURCE_NOTICE"),
     "\n\nSource repository license:\n",
     include_str!("../../../../assets/verse/forest/SOURCE_LICENSE"),
@@ -49,13 +47,17 @@ impl ZoneId {
     pub const fn half_extent(self) -> f32 {
         match self {
             Self::Plaza => crate::world::HALF,
-            Self::Forest => 64.0,
+            Self::Forest => 150.0,
         }
     }
     pub fn portal(self) -> glam::Vec3 {
         match self {
             Self::Plaza => glam::Vec3::new(-12.0, 0.0, 12.0),
-            Self::Forest => glam::Vec3::new(0.0, 0.0, 18.0),
+            Self::Forest => glam::Vec3::new(
+                0.0,
+                verse_atlantis::scene::Terrain::bundled().height(0.0, -8.0),
+                -8.0,
+            ),
         }
     }
 }
@@ -106,10 +108,9 @@ pub enum Intent {
     Return,
     Cancel,
     Retry,
-    StartEncounter,
-    Cast,
-    EndTurn,
-    ResetEncounter,
+    Firebolt,
+    MagicMissile,
+    Fireball,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -144,7 +145,7 @@ pub struct Snapshot {
     pub error: Option<String>,
     pub portal: PortalProjection,
     pub controls: Vec<Control>,
-    pub encounter: Option<rules::EncounterSnapshot>,
+    pub combat: Option<verse_atlantis::Snapshot>,
     pub caption: String,
 }
 impl Default for Snapshot {
@@ -163,7 +164,7 @@ impl Default for Snapshot {
                 distance: 0.0,
             },
             controls: vec![],
-            encounter: None,
+            combat: None,
             caption: String::new(),
         }
     }
@@ -214,8 +215,8 @@ impl Manifest {
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != "verse.zone.v1"
             || self.world != ZoneId::Forest.world_id()
-            || self.ruleset != rules::RULESET_ID
-            || self.physics != "verse.walk-flat.v1"
+            || self.ruleset != "atlantis.wizard-woods.v1"
+            || self.physics != "atlantis.heightfield.v1"
             || self.asset_sha256 != assets::PACK_SHA256
             || self.asset_bytes != assets::PACK_BYTES
         {

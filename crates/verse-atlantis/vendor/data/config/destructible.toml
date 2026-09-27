@@ -1,0 +1,10 @@
+voxel_size_m = 0.10
+chunk = [32, 32, 32]
+aabb_pad_m = 0.25
+max_remesh_per_tick = 4
+collider_budget_per_tick = 2
+max_debris = 1500
+max_carve_chunks = 64
+close_surfaces = false
+seed = 12648430
+

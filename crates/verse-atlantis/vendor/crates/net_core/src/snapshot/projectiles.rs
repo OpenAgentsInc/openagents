@@ -1,0 +1,1 @@
+//! Projectile snapshot schema (scaffold).

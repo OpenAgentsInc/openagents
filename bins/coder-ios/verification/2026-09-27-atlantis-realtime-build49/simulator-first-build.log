@@ -1,0 +1,560 @@
+   Compiling serde_core v1.0.229
+   Compiling syn v2.0.119
+   Compiling log v0.4.34
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.151
+   Compiling zerocopy-derive v0.8.57
+   Compiling zerocopy v0.8.57
+   Compiling indexmap v2.14.2
+   Compiling tracing-core v0.1.36
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.5
+   Compiling tungstenite v0.30.0
+   Compiling secp256k1 v0.31.1
+   Compiling nostr v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling tracing-attributes v0.1.31
+   Compiling anyhow v1.0.104
+   Compiling core_units v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/core_units)
+   Compiling rustversion v1.0.23
+   Compiling core_materials v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/core_materials)
+   Compiling tracing v0.1.44
+   Compiling glam v0.30.10
+   Compiling crossbeam-utils v0.8.23
+   Compiling voxel_proxy v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/voxel_proxy)
+   Compiling nostr-transport v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr-transport)
+   Compiling half v2.7.1
+   Compiling winnow v1.0.4
+   Compiling naga v29.0.4
+   Compiling wgpu-types v29.0.4
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling rapidhash v4.5.1
+   Compiling coder-history v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-history)
+   Compiling toml_datetime v0.7.5+spec-1.1.0
+   Compiling serde_spanned v1.1.1
+   Compiling winnow v0.7.15
+   Compiling unsafe-libyaml v0.2.11
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling toml v0.9.12+spec-1.1.0
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-connect)
+   Compiling crossbeam-channel v0.5.17
+   Compiling metrics v0.24.6
+   Compiling wgpu-naga-bridge v29.0.4
+   Compiling lazy_static v1.5.0
+   Compiling sharded-slab v0.1.7
+   Compiling wgpu-hal v29.0.4
+   Compiling hyper-util v0.1.20
+   Compiling net_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/net_core)
+   Compiling data_runtime v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/data_runtime)
+   Compiling ecs_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/ecs_core)
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling nu-ansi-term v0.50.3
+   Compiling tracing-subscriber v0.3.23
+   Compiling hyper-rustls v0.27.9
+   Compiling wgpu-core-deps-apple v29.0.4
+   Compiling voxel_mesh v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/voxel_mesh)
+   Compiling collision_static v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/collision_static)
+   Compiling serde_urlencoded v0.7.1
+   Compiling rust-native v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/rust-native)
+   Compiling coder-ui v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-ui)
+   Compiling reqwest v0.12.28
+   Compiling server_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/server_core)
+   Compiling wgpu-core v29.0.4
+   Compiling client_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/client_core)
+   Compiling coder-access v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-access)
+   Compiling coder-reach v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-reach)
+   Compiling coder-pty v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-pty)
+   Compiling coder-host v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-host)
+   Compiling wgpu v29.0.4
+   Compiling verse-atlantis v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis)
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym-bridge)
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+   Compiling coder-computers v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-computers)
+   Compiling push-gateway v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/push-gateway)
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-mobile)
+    Finished `release` profile [optimized] target(s) in 1m 29s
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj -scheme Coder -configuration Release -destination "generic/platform=iOS Simulator" -derivedDataPath /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData CODER_RUST_LIBRARY_DIR=/Users/christopherdavid/work/openagents-mobile45-target/aarch64-apple-ios-sim/release CURRENT_PROJECT_VERSION=49 CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= build
+
+Build settings from command line:
+    CODE_SIGN_IDENTITY = -
+    CODER_RUST_LIBRARY_DIR = /Users/christopherdavid/work/openagents-mobile45-target/aarch64-apple-ios-sim/release
+    CURRENT_PROJECT_VERSION = 49
+    PROVISIONING_PROFILE_SPECIFIER = 
+
+note: Using codesigning identity override: -
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'Coder' in project 'Coder' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: a6f1b9c5a1125af44f338d8a45a10b5c
+Build description path: /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/XCBuildData/a6f1b9c5a1125af44f338d8a45a10b5c.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache
+
+CreateBuildDirectory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj
+    builtin-create-build-directory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products
+
+CreateBuildDirectory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj
+    builtin-create-build-directory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex
+
+CreateBuildDirectory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj
+    builtin-create-build-directory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj
+    builtin-create-build-directory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj
+    builtin-create-build-directory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator
+
+CreateBuildDirectory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphonesimulator
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj
+    builtin-create-build-directory /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphonesimulator
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder-0a8fb30bf82122cd5e5381c3d4eb2762-VFS-iphonesimulator/all-product-headers.yaml
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder-0a8fb30bf82122cd5e5381c3d4eb2762-VFS-iphonesimulator/all-product-headers.yaml
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-own-target-headers.hmap (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-own-target-headers.hmap
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-generated-files.hmap (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-generated-files.hmap
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-project-headers.hmap (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-project-headers.hmap
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.DependencyStaticMetadataFileList (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-all-target-headers.hmap (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-all-target-headers.hmap
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-all-non-framework-target-headers.hmap (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-all-non-framework-target-headers.hmap
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.DependencyMetadataFileList (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.DependencyMetadataFileList
+
+MkDir /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /bin/mkdir -p /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.hmap (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.hmap
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/Entitlements-Simulated.plist (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/Entitlements-Simulated.plist
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-OutputFileMap.json (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-OutputFileMap.json
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_const_extract_protocols.json (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_const_extract_protocols.json
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftFileList (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftFileList
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.LinkFileList (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.LinkFileList
+
+WriteAuxiliaryFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftConstValuesFileList (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    write-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftConstValuesFileList
+
+ProcessProductPackaging "" /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    
+    Entitlements:
+    
+    {
+    "application-identifier" = "HQWSG26L43.com.openagents.coder";
+}
+    
+    builtin-productPackagingUtility -entitlements -format xml -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent
+
+ProcessProductPackagingDER /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent.der (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /usr/bin/derq query -f xml -i /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent.der --raw
+
+GenerateAssetSymbols /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Assets.xcassets (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Assets.xcassets --compile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app --output-format human-readable-text --notices --warnings --export-dependency-info /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_dependencies --output-partial-info-plist /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist --app-icon AppIcon --compress-pngs --enable-on-demand-resources YES --development-region en --target-device iphone --minimum-deployment-target 17.0 --platform iphonesimulator --bundle-identifier com.openagents.coder --generate-swift-asset-symbol-extensions NO --generate-swift-asset-symbols /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/GeneratedAssetSymbols.swift --generate-objc-asset-symbols /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/GeneratedAssetSymbols.h --generate-asset-symbol-index /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/GeneratedAssetSymbols-Index.plist
+/* com.apple.actool.compilation-results */
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/GeneratedAssetSymbols-Index.plist
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/GeneratedAssetSymbols.h
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/GeneratedAssetSymbols.swift
+
+
+CpResource /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/PrivacyInfo.xcprivacy /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/PrivacyInfo.xcprivacy (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/PrivacyInfo.xcprivacy /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app
+
+MkDir /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /bin/mkdir -p /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned
+
+MkDir /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/unthinned (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /bin/mkdir -p /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/unthinned
+
+CompileAssetCatalogVariant thinned /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Assets.xcassets (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Assets.xcassets --compile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned --output-format human-readable-text --notices --warnings --export-dependency-info /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_dependencies_thinned --output-partial-info-plist /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist_thinned --app-icon AppIcon --compress-pngs --enable-on-demand-resources YES --development-region en --target-device iphone --minimum-deployment-target 17.0 --platform iphonesimulator
+/* com.apple.actool.compilation-results */
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist_thinned
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned/AppIcon60x60@2x.png
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned/AppIcon76x76@2x~ipad.png
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned/Assets.car
+
+
+SwiftDriver Coder normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Coder -O -whole-module-optimization @/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftFileList -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator -F /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator -c -num-threads 18 -Xcc -ivfsstatcache -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_const_extract_protocols.json -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-generated-files.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-own-target-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-all-target-headers.hmap -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-project-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/include -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources-normal/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-Swift.h -import-objc-header /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/CoderMobile.h -working-directory /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host -no-emit-module-separately-wmo
+
+SwiftDriver\ Compilation Coder normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Coder -O -whole-module-optimization @/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftFileList -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator -F /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator -c -num-threads 18 -Xcc -ivfsstatcache -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_const_extract_protocols.json -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-generated-files.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-own-target-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-all-target-headers.hmap -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-project-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/include -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources-normal/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-Swift.h -import-objc-header /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/CoderMobile.h -working-directory /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host -no-emit-module-separately-wmo
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_float-ENNYXVG9MXI5K4K79ADWAIHPW.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/ptrauth-9KMP5VENERXNSI9US9R7VBM6M.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/DeveloperToolsSupport-BGHU0A3GJ88WMLGSDAHR73Q5T.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_stdbool-99PZZR8AYEMEMFKPLRAEDH1BN.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_SwiftConcurrencyShims-70OYQY3YH0CUTHVQOCVHPY9SQ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/SwiftShims-5LPMBZJI2M6MN3TXBWI7QEHMM.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_AvailabilityInternal-BQLINGEBA2LSOS7EBII1P4N9.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/ptrcheck-DE382FPRTSYET5NEZ9R2M3YRP.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_stdarg-DL1Z8JEBM6ZCPAUJSKC7Y7I4T.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_stddef-1GHMCVHT1MK78NR7X6286OSW5.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_DarwinFoundation1-90C2C5RF87P3XXB6UXWBEL9EN.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_limits-B0563TEM1TQ2J2FE6G098JLA3.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_DarwinFoundation2-76NTBXFJ49W2VADTBFV8L0FGA.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_stdint-46QJ1P46ODKMNOP49F6VX9Q6D.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/sys_types-ERZ5RUKRV9J3C7333J8ZLGMES.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_tgmath-3BVUOJ7SHKLQ5NSBBFJFM1A1J.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_DarwinFoundation3-3DSY0ER76JO28KUEAEUTH39A7.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_stdatomic-2PC2VRILDZJHFOC8PT8UC4VOD.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_intrinsics-39AO1V7HYL8LV22BVSTOQBZBT.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_inttypes-4WE2PIXHVB3XFNU1FOA3PGMKI.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Darwin-1JEQLXIWUSU3BLASFBUN7XKF7.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/simd-3ZT30RLTUCQ06VUW6SBQP2VYE.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/MachO-4HDFEBQJ7R11DRAONWQKEA7M7.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/ObjectiveC-CO8B8YJ5UC3WXCAH1F159DHTC.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/os_object-37BAG3TF00I2GBWZSLU8A7HXD.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/os_workgroup-A9YM7UY8Z15MQHEV3A8Y65TON.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Spatial-D77YAHI8C2RVA7N5UGXQL829O.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Dispatch-1Y03KUC9NZVLWJODHIJ5OS3HN.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreFoundation-12J3JWQBY3LY611PS0JYJWQ7E.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/XPC-EDZ5OMLX909EYXKWH9ZLJS0Q4.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/dnssd-DRML9TZH9OOFIDD70GOZ8PNYE.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/os-3OF27K07Q0QEXRX4ZAE16TUWF.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreGraphics-9QWH0SENDSKI39CEEMAYNMBRV.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CFNetwork-5JQZ14Q2PKSCRNMF7VG3M6R2B.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Security-AKJFI77D8XFLPMB1SJHPXKW9V.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreAudioTypes-948PGRZYOPVPPF4QLDYU3P2EE.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreAudio-16X47BT0X1J4RS0CAMFKU5298.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Foundation-D6B53Q5PKS1M08Z2ZA2AY8F69.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/ImageIO-1V0V2OQJMUIV0YZR07PDSMU8Z.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreText-2KKXP02ANGYV6UKHOP380HBJ2.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Network-B8UEZBJKX9X30SI7QGR2ZMWT2.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreTransferable-A4GBWB98OQ77SCF45ZC9N7DA9.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Symbols-3M00XISZ0H8BB6RF1QZVK5VX8.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/UserNotifications-9GUICLAV7PDP26IIB5WCXT69T.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/OSLog-6LD93PYHSO82J4V97YH3UQYLM.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreMIDI-4OQWU5U58WT85F8VDI56HL6W0.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/UIUtilities-44RLPHQRVKLRD6V9AAZIW1H7Q.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreData-BT4KZ5IW5KZNVIU1QT2KXLTEJ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/FileProvider-E9EQQ6PEMC7T7U70U5PDRK10D.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/IOSurface-DGUAO2M6Z60Z6VALX11CHG55H.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/DataDetection-A2M1BE7IWRGZIZJSOKTC5BKDV.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Accessibility-51OTTIY46O0O41WW9631NH4SY.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_LocationEssentials-ACDH57FOOJ3RAYDHKS7L30YJV.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/UniformTypeIdentifiers-H0J84QRKT72FTVWY81H8YZK7.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/OpenGLES-3Q1DL2R6XR0RX9I94T8J54873.pcm
+
+LinkAssetCatalog /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Assets.xcassets (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-linkAssetCatalog --thinned /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned --thinned-dependencies /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_dependencies_thinned --thinned-info-plist-content /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist_thinned --unthinned /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/unthinned --unthinned-dependencies /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_dependencies_unthinned --unthinned-info-plist-content /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist_unthinned --output /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app --plist-output /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist
+note: Emplaced /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/AppIcon76x76@2x~ipad.png (in target 'Coder' from project 'Coder')
+note: Emplaced /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/AppIcon60x60@2x.png (in target 'Coder' from project 'Coder')
+note: Emplaced /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Assets.car (in target 'Coder' from project 'Coder')
+
+ProcessInfoPlistFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Info.plist /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Info.plist (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-infoPlistUtility /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Info.plist
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreLocation-EXXV97JXNT98IASVXM6JNMZ6F.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Metal-E7CXQJEEKNFR42WY86V2UCV1N.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/AudioToolbox-4J5VKCCLC21QTL7NSTYVROZS5.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/AVRouting-6DYYEHG95264QB63ZMM511VEC.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreMotion-DL2OSVWCWR81E08HQO3YE72KJ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreVideo-6N6LHYTOJ8M129GANCFJX82CH.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreImage-5B7NUHHD9WMP6Q2P4YG8JDKWK.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreML-CWYERX1U202RVNWLOZRSLSHX9.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreMedia-3C86C0Y6LXQ9E9YMAIYQD2XG.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/QuartzCore-DC5KRVFA9MPPY7BXUAGTIQZMR.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Accelerate-6LYXGU6VRHP0D2YECG46M3N5O.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/SwiftUICore-DY7UDW2ZQTJ4TWOBGT387GVJB.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/MediaToolbox-6057JKH3U2889ONMD8Q2BULOW.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/AVFAudio-ANO8QKMBKPIQJ43M67T1YI2WP.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Vision-12WCQXFC1CP2QK2I3AZPWKUOJ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/UIKit-7V95F46ETPS736G5I04SSSE3C.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/AVFoundation-4B28UDF45NHCH7KRT72S07S5Z.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/SwiftUI-8UKQ1K40MRZHJSX452JL8EO0G.pcm
+
+SwiftGeneratePch normal arm64 Compiling\ bridging\ header (in target 'Coder' from project 'Coder')
+
+SwiftDriverJobDiscovery normal arm64 Compiling bridging header (in target 'Coder' from project 'Coder')
+
+SwiftCompile normal arm64 Compiling\ CoderApp.swift,\ ComputerPanel.swift,\ DeviceIdentity.swift,\ DeviceMotion.swift,\ DoorPreferences.swift,\ DoorView.swift,\ GymConnection.swift,\ GymPanel.swift,\ InvitationQRCode.swift,\ MobileBridge.swift,\ NativeView.swift,\ PinchAdmission.swift,\ PushRegistration.swift,\ QRDecoder.swift,\ QRScanner.swift,\ SecretInputField.swift,\ VerseBridge.swift,\ VerseScreen.swift,\ VerseSurface.swift,\ WorldConnection.swift,\ ZoneView.swift,\ GeneratedAssetSymbols.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/CoderApp.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/ComputerPanel.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/DeviceIdentity.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/DeviceMotion.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/DoorPreferences.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/DoorView.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/GymConnection.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/GymPanel.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/InvitationQRCode.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/MobileBridge.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/NativeView.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/PinchAdmission.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/PushRegistration.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/QRDecoder.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/QRScanner.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/SecretInputField.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/VerseBridge.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/VerseScreen.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/VerseSurface.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/WorldConnection.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/ZoneView.swift /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/GeneratedAssetSymbols.swift /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_StringProcessing.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Synchronization.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/UIKit.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/SwiftUI.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreImage.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Foundation.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/XPC.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_Builtin_float.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreML.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreGraphics.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/DataDetection.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Swift.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreLocation.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/UniformTypeIdentifiers.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/QuartzCore.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Accelerate.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreMotion.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Charts.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/DeveloperToolsSupport.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/FileProvider.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreVideo.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/simd.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/System.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Observation.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_Concurrency.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Dispatch.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/AVFoundation.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_DarwinFoundation3.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreText.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/os.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreMedia.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_DarwinFoundation2.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreData.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreTransferable.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreFoundation.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/AudioToolbox.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/AVFAudio.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_DarwinFoundation1.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Vision.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/SwiftUICore.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Metal.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreMIDI.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Symbols.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Spatial.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/ObjectiveC.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Darwin.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/OSLog.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/SwiftOnoneSupport.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreAudio.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Combine.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Accessibility.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_stddef-1GHMCVHT1MK78NR7X6286OSW5.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreMotion-DL2OSVWCWR81E08HQO3YE72KJ.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreImage-5B7NUHHD9WMP6Q2P4YG8JDKWK.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/UIKit-7V95F46ETPS736G5I04SSSE3C.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Spatial-D77YAHI8C2RVA7N5UGXQL829O.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Vision-12WCQXFC1CP2QK2I3AZPWKUOJ.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/IOSurface-DGUAO2M6Z60Z6VALX11CHG55H.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_stdarg-DL1Z8JEBM6ZCPAUJSKC7Y7I4T.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_limits-B0563TEM1TQ2J2FE6G098JLA3.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/MachO-4HDFEBQJ7R11DRAONWQKEA7M7.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_float-ENNYXVG9MXI5K4K79ADWAIHPW.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/OpenGLES-3Q1DL2R6XR0RX9I94T8J54873.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/os_workgroup-A9YM7UY8Z15MQHEV3A8Y65TON.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreMedia-3C86C0Y6LXQ9E9YMAIYQD2XG.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/ptrcheck-DE382FPRTSYET5NEZ9R2M3YRP.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/dnssd-DRML9TZH9OOFIDD70GOZ8PNYE.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreFoundation-12J3JWQBY3LY611PS0JYJWQ7E.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/AVRouting-6DYYEHG95264QB63ZMM511VEC.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/ObjectiveC-CO8B8YJ5UC3WXCAH1F159DHTC.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/AVFAudio-ANO8QKMBKPIQJ43M67T1YI2WP.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/SwiftUICore-DY7UDW2ZQTJ4TWOBGT387GVJB.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_DarwinFoundation1-90C2C5RF87P3XXB6UXWBEL9EN.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Accelerate-6LYXGU6VRHP0D2YECG46M3N5O.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreLocation-EXXV97JXNT98IASVXM6JNMZ6F.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_intrinsics-39AO1V7HYL8LV22BVSTOQBZBT.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreAudioTypes-948PGRZYOPVPPF4QLDYU3P2EE.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreText-2KKXP02ANGYV6UKHOP380HBJ2.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/UniformTypeIdentifiers-H0J84QRKT72FTVWY81H8YZK7.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/os_object-37BAG3TF00I2GBWZSLU8A7HXD.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/XPC-EDZ5OMLX909EYXKWH9ZLJS0Q4.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_stdatomic-2PC2VRILDZJHFOC8PT8UC4VOD.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/SwiftShims-5LPMBZJI2M6MN3TXBWI7QEHMM.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/MediaToolbox-6057JKH3U2889ONMD8Q2BULOW.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreGraphics-9QWH0SENDSKI39CEEMAYNMBRV.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Accessibility-51OTTIY46O0O41WW9631NH4SY.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_tgmath-3BVUOJ7SHKLQ5NSBBFJFM1A1J.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_DarwinFoundation3-3DSY0ER76JO28KUEAEUTH39A7.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreML-CWYERX1U202RVNWLOZRSLSHX9.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/AudioToolbox-4J5VKCCLC21QTL7NSTYVROZS5.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_DarwinFoundation2-76NTBXFJ49W2VADTBFV8L0FGA.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreVideo-6N6LHYTOJ8M129GANCFJX82CH.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/AVFoundation-4B28UDF45NHCH7KRT72S07S5Z.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Network-B8UEZBJKX9X30SI7QGR2ZMWT2.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Dispatch-1Y03KUC9NZVLWJODHIJ5OS3HN.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/FileProvider-E9EQQ6PEMC7T7U70U5PDRK10D.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/ImageIO-1V0V2OQJMUIV0YZR07PDSMU8Z.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreAudio-16X47BT0X1J4RS0CAMFKU5298.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_stdbool-99PZZR8AYEMEMFKPLRAEDH1BN.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CFNetwork-5JQZ14Q2PKSCRNMF7VG3M6R2B.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/UserNotifications-9GUICLAV7PDP26IIB5WCXT69T.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Foundation-D6B53Q5PKS1M08Z2ZA2AY8F69.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/DataDetection-A2M1BE7IWRGZIZJSOKTC5BKDV.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Metal-E7CXQJEEKNFR42WY86V2UCV1N.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/os-3OF27K07Q0QEXRX4ZAE16TUWF.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Symbols-3M00XISZ0H8BB6RF1QZVK5VX8.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_stdint-46QJ1P46ODKMNOP49F6VX9Q6D.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/simd-3ZT30RLTUCQ06VUW6SBQP2VYE.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/sys_types-ERZ5RUKRV9J3C7333J8ZLGMES.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Darwin-1JEQLXIWUSU3BLASFBUN7XKF7.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreMIDI-4OQWU5U58WT85F8VDI56HL6W0.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/ptrauth-9KMP5VENERXNSI9US9R7VBM6M.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreTransferable-A4GBWB98OQ77SCF45ZC9N7DA9.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/OSLog-6LD93PYHSO82J4V97YH3UQYLM.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_LocationEssentials-ACDH57FOOJ3RAYDHKS7L30YJV.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_AvailabilityInternal-BQLINGEBA2LSOS7EBII1P4N9.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/UIUtilities-44RLPHQRVKLRD6V9AAZIW1H7Q.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Security-AKJFI77D8XFLPMB1SJHPXKW9V.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/DeveloperToolsSupport-BGHU0A3GJ88WMLGSDAHR73Q5T.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_SwiftConcurrencyShims-70OYQY3YH0CUTHVQOCVHPY9SQ.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/SwiftUI-8UKQ1K40MRZHJSX452JL8EO0G.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/QuartzCore-DC5KRVFA9MPPY7BXUAGTIQZMR.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/_Builtin_inttypes-4WE2PIXHVB3XFNU1FOA3PGMKI.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/CoreData-BT4KZ5IW5KZNVIU1QT2KXLTEJ.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-dependencies-1.json /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-primary-Bridging-header.pch (in target 'Coder' from project 'Coder')
+
+CompileSwift normal arm64 (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling CoderApp.swift, ComputerPanel.swift, DeviceIdentity.swift, DeviceMotion.swift, DoorPreferences.swift, DoorView.swift, GymConnection.swift, GymPanel.swift, InvitationQRCode.swift, MobileBridge.swift, NativeView.swift, PinchAdmission.swift, PushRegistration.swift, QRDecoder.swift, QRScanner.swift, SecretInputField.swift, VerseBridge.swift, VerseScreen.swift, VerseSurface.swift, WorldConnection.swift, ZoneView.swift, GeneratedAssetSymbols.swift (in target 'Coder' from project 'Coder')
+
+SwiftDriver\ Compilation\ Requirements Coder normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Coder -O -whole-module-optimization @/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftFileList -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator -F /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator -c -num-threads 18 -Xcc -ivfsstatcache -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_const_extract_protocols.json -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-generated-files.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-own-target-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-all-target-headers.hmap -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder-project-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/include -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources-normal/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-Swift.h -import-objc-header /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/CoderMobile.h -working-directory /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host -no-emit-module-separately-wmo
+
+SwiftMergeGeneratedHeaders /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/Coder-Swift.h /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-Swift.h (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-swiftHeaderTool -arch arm64 /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-Swift.h -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/DerivedSources/Coder-Swift.h
+
+Copy /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftmodule (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftmodule /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.swiftmodule/arm64-apple-ios-simulator.swiftmodule
+
+Copy /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.swiftmodule/arm64-apple-ios-simulator.swiftdoc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftdoc (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftdoc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.swiftmodule/arm64-apple-ios-simulator.swiftdoc
+
+Copy /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.swiftmodule/arm64-apple-ios-simulator.abi.json /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.abi.json (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.abi.json /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+Copy /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftsourceinfo (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftsourceinfo /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo
+
+Ld /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder normal (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -Os -L/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphonesimulator -L/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator -L/Users/christopherdavid/work/openagents-mobile45-target/aarch64-apple-ios-sim/release -F/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphonesimulator -F/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator -filelist /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -dead_strip -Xlinker -object_path_lto -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_lto.o -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -dependency_info -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftmodule @/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-linker-args.resp /Users/christopherdavid/work/openagents-mobile45-target/aarch64-apple-ios-sim/release/libcoder_mobile.a -framework Metal -liconv -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __ents_der -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent.der -Xlinker -no_adhoc_codesign -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder
+
+CopySwiftLibs /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Frameworks --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/PlugIns --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/SystemExtensions --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Extensions --platform iphonesimulator --toolchain /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.VdpV4P/Metal.xctoolchain --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os --back-deploy-swift-span
+
+ExtractAppIntentsMetadata (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.VdpV4P/Metal.xctoolchain --module-name Coder --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.openagents.coder --output /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app --target-triple arm64-apple-ios17.0-simulator --binary-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder --dependency-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_dependency_info.dat --stringsdata-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftFileList --metadata-file-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.DependencyMetadataFileList --static-metadata-file-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.DependencyStaticMetadataFileList --swift-const-vals-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-27 07:48:09.733 appintentsmetadataprocessor[97693:99885696] Starting appintentsmetadataprocessor export
+2026-09-27 07:48:09.736 appintentsmetadataprocessor[97693:99885696] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+GenerateDSYMFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app.dSYM /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app.dSYM
+
+AppIntentsSSUTraining (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsnltrainingprocessor --infoplist-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Info.plist --temp-dir-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/ssu --bundle-id com.openagents.coder --product-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app --extracted-metadata-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Metadata.appintents --metadata-file-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.DependencyMetadataFileList --source-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Info.plist --archive-ssu-assets
+2026-09-27 07:48:09.748 appintentsnltrainingprocessor[97695:99885698] Parsing options for appintentsnltrainingprocessor
+2026-09-27 07:48:09.748 appintentsnltrainingprocessor[97695:99885698] Starting AppIntents SSU YAML Generation
+2026-09-27 07:48:09.749 appintentsnltrainingprocessor[97695:99885698] No AppShortcuts found - Skipping.
+
+CodeSign /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app
+
+RegisterExecutionPolicyException /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-RegisterExecutionPolicyException /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app
+
+Validate /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-validationUtility /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app -shallow-bundle -infoplist-subpath Info.plist
+
+Touch /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /usr/bin/touch -c /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app
+
+** BUILD SUCCEEDED **
+
+{
+  "schema": "coder.ios.bundle-verification.v1",
+  "bundle_id": "com.openagents.coder",
+  "version": "0.5.0",
+  "build": "49",
+  "status": "passed",
+  "images": [
+    {
+      "path": "Coder",
+      "dependencies": [
+        "/System/Library/Frameworks/Metal.framework/Metal",
+        "/usr/lib/libiconv.2.dylib",
+        "/System/Library/Frameworks/Foundation.framework/Foundation",
+        "/usr/lib/libobjc.A.dylib",
+        "/usr/lib/libSystem.B.dylib",
+        "/System/Library/Frameworks/AVFoundation.framework/AVFoundation",
+        "/System/Library/Frameworks/Charts.framework/Charts",
+        "/System/Library/Frameworks/Combine.framework/Combine",
+        "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation",
+        "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
+        "/System/Library/Frameworks/CoreMotion.framework/CoreMotion",
+        "/System/Library/Frameworks/QuartzCore.framework/QuartzCore",
+        "/System/Library/Frameworks/Security.framework/Security",
+        "/System/Library/Frameworks/SwiftUI.framework/SwiftUI",
+        "/System/Library/Frameworks/UIKit.framework/UIKit",
+        "/System/Library/Frameworks/UserNotifications.framework/UserNotifications",
+        "/usr/lib/swift/libswiftAVFoundation.dylib",
+        "/usr/lib/swift/libswiftAccelerate.dylib",
+        "/usr/lib/swift/libswiftCore.dylib",
+        "/usr/lib/swift/libswiftCoreAudio.dylib",
+        "/usr/lib/swift/libswiftCoreFoundation.dylib",
+        "/usr/lib/swift/libswiftCoreImage.dylib",
+        "/usr/lib/swift/libswiftCoreLocation.dylib",
+        "/usr/lib/swift/libswiftCoreMIDI.dylib",
+        "/usr/lib/swift/libswiftCoreMedia.dylib",
+        "/usr/lib/swift/libswiftDarwin.dylib",
+        "/usr/lib/swift/libswiftDispatch.dylib",
+        "/usr/lib/swift/libswiftMetal.dylib",
+        "/usr/lib/swift/libswiftOSLog.dylib",
+        "/usr/lib/swift/libswiftObjectiveC.dylib",
+        "/usr/lib/swift/libswiftQuartzCore.dylib",
+        "/usr/lib/swift/libswiftSpatial.dylib",
+        "/usr/lib/swift/libswiftUniformTypeIdentifiers.dylib",
+        "/usr/lib/swift/libswiftXPC.dylib",
+        "/usr/lib/swift/libswift_Concurrency.dylib",
+        "/usr/lib/swift/libswiftos.dylib",
+        "/usr/lib/swift/libswiftsimd.dylib"
+      ]
+    }
+  ]
+}
+Built /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build49-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app

@@ -2,7 +2,7 @@
 
 Verse opens in the shared amber plaza. A separate forest portal loads
 **Atlantis forest**, a local scene with its own green and earth-tone appearance,
-animated wizards and zombies, and an optional fifth-edition encounter. The
+the original real-time Wizard Woods simulation, wizards, and zombies. The
 forest's heavy geometry is fetched and decoded only when the player enters.
 
 This page describes the source implementation. Release and device acceptance
@@ -21,20 +21,28 @@ scene until the pack passes content and decode checks. A failed load leaves it
 available and offers **Retry** or **Dismiss**. Entry never runs a model or starts
 a benchmark. Walking past a portal does not fetch the forest pack.
 
-Inside the forest, explore with the usual movement, camera, and map controls.
-Wizards and zombies use sampled animations from the original Ruins of Atlantis
-models. The optional **Encounter** control starts the local rules demo;
-**Fire Bolt**, **End turn**, and **Reset** operate it. **Plaza** returns without
-requiring an encounter win. The return portal supplies the same destination.
-Return restores the saved plaza position and releases the forest's decoded
-geometry and active GPU buffers. The verified asset file can stay in the disk
-cache for the next visit.
+Inside the forest, movement and combat run together. Monsters approach targets,
+NPC wizards cast, and projectiles travel while the world is active. The bottom
+hotbar supplies **Firebolt**, **Missile**, and **Fireball**, replacing the source
+game's keys 1, 2, and 3 on a phone. The same keys remain available on desktop.
+HP, mana, and cooldowns come from the original simulation. There is no round,
+movement budget, or **End turn** control.
 
-The forest is a new Verse rendition of the source artwork, not the entire Ruins
-of Atlantis executable or its original terrain and combat engine. It uses a
-flat walking world, a clear encounter area, trees, and a small group of animated
-characters. Per-pixel textures, normal maps, full skeletal interpolation,
-terrain physics, and the source game's wider systems are not imported.
+**Plaza** returns without requiring a combat win; the return portal supplies the
+same destination. Return restores the saved plaza position and releases the
+forest's decoded geometry, simulation, and active GPU buffers. The verified
+asset file can stay in the disk cache for the next visit. Reentering creates a
+fresh local simulation.
+
+The game logic is retained Ruins of Atlantis `server_core` source, composed
+through a portable Rust adapter. The terrain is the source's exact 129-by-129
+heightfield, spanning 300 meters. Its authoritative snapshot currently has no
+trees. The pack retains the tree model for future authored placement; this
+version does not invent a ring of trees and call it the original scene.
+[The source audit](atlantis-source-parity.md) identifies the precise runtime,
+original behaviors, adaptations, and remaining rendering differences. Mobile
+presentation uses sampled mesh animations and colors rather than the original
+full texture and skeletal renderer.
 
 ## Zone identity, appearance, and simulation
 
@@ -46,9 +54,9 @@ world ID even if no relay is connected.
 | --- | --- | --- |
 | World ID | `verse-plaza` | `atlantis-forest-v1` |
 | Presentation | Coder's four amber intensities on near-black | Forest colors, baked model colors, and independent fog |
-| Geometry | Built by the shared Rust world | Reviewed on-demand pack plus a Rust-authored clearing and trees |
-| Physics | Shared flat-ground walking, collision, and jump controller | `verse.walk-flat.v1`; the same controller with forest bounds and tree footprints |
-| Rules | Exploration and existing product interactions | Exploration, plus optional `srd-5.1-encounter-v1` |
+| Geometry | Built by the shared Rust world | Reviewed on-demand models, retained heightfield, and original voxel ruins |
+| Physics | Shared flat-ground walking, collision, and jump controller | `atlantis.heightfield.v1`; shared controller on the retained heightfield |
+| Rules | Exploration and existing product interactions | `atlantis.wizard-woods.v1`; retained real-time ECS simulation |
 | Network | Existing NIP-MV plaza presence; separate Gym connection | Local-only; no shared combat, presence, or forest chat |
 
 The amber palette rule belongs to the plaza and Coder application UI. It does
@@ -56,10 +64,10 @@ not apply to every world asset. Forest colors and atmosphere belong to Verse's
 zone implementation. Rust Native remains a product-independent surface and UI
 foundation; it gains no forest, Coder colors, or game rules.
 
-The [encounter rules](zone-rules.md) pin SRD **5.1**, distinguish the authored
-wizard statistics from the Zombie reference, and list the implemented subset.
-The full fifth-edition game is not implemented. A scene's appearance, its
-physics, and its game rules remain separate choices for future creators.
+The [rules roadmap](zone-rules.md) separates the original real-time game from
+future creator-selected fifth-edition profiles. The source's spell names and
+SRD references do not establish full Dungeons & Dragons compatibility. Scene
+appearance, physics, and game rules remain independent choices.
 
 ## Asset loading and cache
 
@@ -123,7 +131,7 @@ flowchart TD
     Prepare["Suspend plaza observation; verify cache or download"]
     Decode["Check digest, sizes, format, and decoded limits"]
     Replace["Replace world and GPU geometry"]
-    Forest["Local forest; optional encounter"]
+    Forest["Local forest; real-time Wizard Woods"]
     Return["Release forest; restore plaza position"]
     Failed["Keep plaza; Retry or Dismiss"]
     Plaza --> Entry
@@ -142,7 +150,8 @@ Scene transition clears movement/navigation and transient interaction state.
 The loader's generation is separate from the active scene. The renderer replaces
 its world buffers when the zone revision changes instead of keeping every
 zone's geometry resident. Shared native surface activation and disposal still
-control rendering; a background interval does not advance encounter turns.
+control rendering. A suspended surface does not catch up combat by simulating
+the time spent in the background.
 
 ## Nostr scope and current limits
 
@@ -159,7 +168,7 @@ The current app does not discover, publish, or load arbitrary signed scene
 definitions. The curated forest catalog is a local implementation, not evidence
 that the proposed Nostr authoring contract is complete.
 
-The forest is also not a multiplayer combat server. Its local dice, HP, turns,
+The forest is also not a multiplayer combat server. Its local HP, mana, projectiles,
 and NPCs are not shared authoritative state. A future shared rules profile
 needs admitted actors, sequence and replay semantics, exact rules versions,
 recovery, and explicit authority. Signing a pose is insufficient.
@@ -172,8 +181,8 @@ The current Rust `Manifest` admits exactly this six-field document:
 {
   "schema": "verse.zone.v1",
   "world": "atlantis-forest-v1",
-  "ruleset": "srd-5.1-encounter-v1",
-  "physics": "verse.walk-flat.v1",
+  "ruleset": "atlantis.wizard-woods.v1",
+  "physics": "atlantis.heightfield.v1",
   "asset_sha256": "7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7",
   "asset_bytes": 6629578
 }

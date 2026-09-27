@@ -80,6 +80,7 @@ pub struct PlayerController {
     /// Facing in radians, counterclockwise-positive around +Y.
     pub yaw: f32,
     vel_y: f32,
+    ground_y: f32,
     /// Horizontal speed this frame, in meters per second, for animation.
     pub speed: f32,
 }
@@ -92,6 +93,7 @@ impl PlayerController {
             pos,
             yaw,
             vel_y: 0.0,
+            ground_y: 0.0,
             speed: 0.0,
         }
     }
@@ -105,7 +107,12 @@ impl PlayerController {
     /// True while the character is off the ground.
     #[must_use]
     pub fn airborne(&self) -> bool {
-        self.pos.y > 0.0 || self.vel_y > 0.0
+        self.pos.y > self.ground_y + 0.0001 || self.vel_y > 0.0
+    }
+
+    /// Set the ground reference when an external zone controller owns vertical motion.
+    pub(crate) fn set_surface_height(&mut self, height: f32) {
+        self.ground_y = height;
     }
 
     /// Advances the character by `dt` seconds, then pushes it out of every

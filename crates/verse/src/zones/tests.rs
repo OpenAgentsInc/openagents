@@ -59,7 +59,7 @@ fn entering_and_returning_replace_only_the_zone_and_preserve_plaza_choices() {
             .iter()
             .any(|v| v.color[1] > v.color[0])
     );
-    runtime.zone_intent(Intent::StartEncounter).unwrap();
+    runtime.zone_intent(Intent::Fireball).unwrap();
     runtime.tick(
         &InputState {
             forward: true,

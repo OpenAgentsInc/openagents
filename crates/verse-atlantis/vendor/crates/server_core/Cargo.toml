@@ -1,0 +1,27 @@
+[package]
+name = "server_core"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[features]
+# Mirror render_wgpu's destructible logging gate
+destruct_debug = []
+
+[dependencies]
+core_materials = { version = "0.1.0", path = "../core_materials" }
+core_units = { version = "0.1.0", path = "../core_units" }
+glam = "0.30"
+rand = "0.9.2"
+voxel_proxy = { version = "0.1.0", path = "../voxel_proxy" }
+data_runtime = { version = "0.1.0", path = "../data_runtime" }
+log = "0.4.28"
+voxel_mesh = { version = "0.1.0", path = "../voxel_mesh" }
+ecs_core = { version = "0.1.0", path = "../ecs_core" }
+tracing = "0.1.41"
+metrics = "0.24.2"
+collision_static = { version = "0.1.0", path = "../collision_static" }
+net_core = { version = "0.1.0", path = "../net_core" }
+
+[target.wasm32-unknown-unknown.dependencies]
+web-time = "1.1.0"

@@ -1,0 +1,81 @@
+{
+  "recorded_at": "2026-09-27T12:55:21.566013+00:00",
+  "toolchain": "1.97.1",
+  "checks": [
+    {
+      "name": "shared-rust",
+      "command": "cargo test -p verse -p coder-mobile --no-default-features --lib",
+      "exit_code": 0,
+      "counts": {
+        "verse_passed": 186,
+        "coder_mobile_passed": 68,
+        "coder_mobile_ignored": 1
+      },
+      "log": "shared-rust.log",
+      "sha256": "35b5363768f3c4f766eb34a89f7365a977fd10538fbc8d680c8ca76b561212f1"
+    },
+    {
+      "name": "atlantis-adapter",
+      "command": "cargo test -p verse-atlantis",
+      "exit_code": 0,
+      "counts": {
+        "passed": 12
+      },
+      "log": "atlantis-adapter.log",
+      "sha256": "c6ad132220b8cbd9e8b6437be3946e441a6ecfe6e12cc67bb8d0e01bec8db64b"
+    },
+    {
+      "name": "upstream-combat",
+      "command": "cargo test -p server_core --test arming_delay_prevents_early_detonation --test cast_acceptance --test effects_and_lifecycle --test fireball_aoe_hits_hostiles --test firebolt_hits_hostile --test npc_caster_spell_choice_fireball --test pc_mana_regen --test pc_no_ai_autocast",
+      "exit_code": 0,
+      "counts": {
+        "passed": 12,
+        "ignored": 1
+      },
+      "log": "upstream-combat.log",
+      "sha256": "5d34eb7105134ad44059ed7d91775235a0c30d54161440c4ffb25fde8e61fc37"
+    },
+    {
+      "name": "upstream-controller",
+      "command": "cargo test -p client_core --test jump --test pc_controller_resolve --test sprint",
+      "exit_code": 0,
+      "counts": {
+        "passed": 7
+      },
+      "log": "upstream-controller.log",
+      "sha256": "c555ac3011a6a2fa9684474243406330c0960b9f06f9deb8f91934925147d9fd"
+    },
+    {
+      "name": "focused-clippy",
+      "command": "cargo clippy -p verse -p coder-mobile --no-default-features --lib --no-deps -- -D warnings",
+      "exit_code": 0,
+      "counts": {},
+      "log": "focused-clippy.log",
+      "sha256": "4d31ca19d297a66c1a95af23131a12663ee946f5cadeab3bc162e907398bbe75"
+    },
+    {
+      "name": "adapter-clippy",
+      "command": "cargo clippy -p verse-atlantis --all-targets --no-deps -- -D warnings",
+      "exit_code": 0,
+      "counts": {},
+      "log": "adapter-clippy.log",
+      "sha256": "460be6b7493a3d0d43cfcc9f3d29b1d9838e5d97a7d7b170eefce78d7b806abf"
+    },
+    {
+      "name": "desktop",
+      "command": "cargo check -p verse --bin verse",
+      "exit_code": 0,
+      "counts": {},
+      "log": "desktop.log",
+      "sha256": "02ef513f1c8f06516ebdbfc689600764b431dc842e12fbb1a3fa8f72ae163785"
+    }
+  ],
+  "source_files_verified_against_original": 198,
+  "full_workspace_release_gate_run": false,
+  "limits": [
+    "Upstream combat checks cover selected supported tests; one remains ignored.",
+    "The coder-mobile opt-in environment test remains ignored.",
+    "Unchanged source vendor code has existing Clippy warnings; --no-deps checks first-party adapters.",
+    "Simulator acceptance does not establish physical-device acceptance."
+  ]
+}

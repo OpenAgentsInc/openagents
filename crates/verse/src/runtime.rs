@@ -236,8 +236,7 @@ impl WorldRuntime {
         if self.navigation.is_active() {
             self.walk_route(dt);
         } else {
-            self.player
-                .update(input, dt, &self.world.blockers, self.zone_half());
+            self.update_player(input, dt);
         }
         if self.player.speed > 0.1
             && !orbiting
@@ -266,22 +265,12 @@ impl WorldRuntime {
         }
         let Some(&next) = self.navigation.waypoints().first() else {
             self.navigation.stop(NavigationStatus::Arrived);
-            self.player.update(
-                &InputState::default(),
-                dt,
-                &self.world.blockers,
-                self.zone_half(),
-            );
+            self.update_player(&InputState::default(), dt);
             return;
         };
         if !nav::segment_clear(at, next, &self.world.blockers, self.zone_half()) {
             self.navigation.stop(NavigationStatus::Blocked);
-            self.player.update(
-                &InputState::default(),
-                dt,
-                &self.world.blockers,
-                self.zone_half(),
-            );
+            self.update_player(&InputState::default(), dt);
             return;
         }
         let dx = next[0] - at[0];
@@ -291,23 +280,16 @@ impl WorldRuntime {
         self.player.yaw = dx.atan2(dz);
         self.camera.yaw_offset = wrap(view_yaw - self.player.yaw);
         let step = dt.min(distance / crate::controller::RUN_SPEED);
-        self.player.update(
+        self.update_player(
             &InputState {
                 forward: true,
                 mouse_look: true,
                 ..InputState::default()
             },
             step,
-            &self.world.blockers,
-            self.zone_half(),
         );
         if step < dt {
-            self.player.update(
-                &InputState::default(),
-                dt - step,
-                &self.world.blockers,
-                self.zone_half(),
-            );
+            self.update_player(&InputState::default(), dt - step);
         }
         let progress = (self.player.pos.x - at[0]).hypot(self.player.pos.z - at[1]);
         self.navigation.stalled = if progress < 0.0001 {
@@ -332,11 +314,16 @@ impl WorldRuntime {
         } else {
             1.0
         };
+        let mut eye = self.camera.eye(self.player.pos, self.player.yaw);
+        if !self.is_plaza() {
+            eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
+            eye.y = eye
+                .y
+                .max(verse_atlantis::scene::Terrain::bundled().height(eye.x, eye.z) + 0.4);
+        }
         View {
-            view_proj: self
-                .camera
-                .view_proj(self.player.pos, self.player.yaw, aspect),
-            eye: self.camera.eye(self.player.pos, self.player.yaw),
+            view_proj: self.camera.view_proj_from_eye(eye, self.player.yaw, aspect),
+            eye,
         }
     }
 
@@ -771,7 +758,7 @@ impl WorldRuntime {
             || !yaw.is_finite()
             || position.x.abs() >= self.zone_half()
             || position.z.abs() >= self.zone_half()
-            || position.y < 0.0
+            || position.y < if self.is_plaza() { 0.0 } else { -100.0 }
             || position.y > 100.0
         {
             return Err("spawn is nonfinite or outside the world".into());

@@ -1,0 +1,62 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName" : "Coder Launch 45",
+        "exportedFileName" : "20DDFE61-22FD-467A-BDDE-FF049E92B205.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Returned to the amber plaza_0_E8E4F8E2-C3CF-4C25-89B3-508D1FA872C1.png",
+        "timestamp" : 1790513574.106
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName" : "Coder Launch 45",
+        "exportedFileName" : "4593EEC8-5A2E-4137-8936-C89F681C6D2B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Real-time combat after Fireball_0_59FA4111-8847-4FE0-B117-FC47A536409C.txt",
+        "timestamp" : 1790513572.603
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName" : "Coder Launch 45",
+        "exportedFileName" : "E966D0B8-A3F2-4B93-B346-0864ED909425.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Real-time forest and GPU ability hotbar_0_FD0CACB4-8233-4E12-A934-7DE0BE11C532.png",
+        "timestamp" : 1790513572.596
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName" : "Coder Launch 45",
+        "exportedFileName" : "E21B8DAC-1D86-496B-AF60-7501F2DB2874.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Fireball hotbar during cooldown_0_4B1EE180-B257-4FE9-9762-BDD57EED5CB7.png",
+        "timestamp" : 1790513570.36
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName" : "Coder Launch 45",
+        "exportedFileName" : "EBB23932-8399-4521-A872-9B069A3B828B.json",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Player Fireball input, mana, and cooldown receipt_0_57071627-F0E2-4C7B-8808-DDD3C08AA642.json",
+        "timestamp" : 1790513570.288
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName" : "Coder Launch 45",
+        "exportedFileName" : "EF3426C8-CD5E-4A7E-9EA6-B18BA8C65291.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Runtime-loaded Atlantis forest_0_1B213E2E-DED9-4761-8067-A64B0E00C13F.png",
+        "timestamp" : 1790513564.687
+      }
+    ],
+    "testIdentifier" : "ZoneUITests/testPortalLoadsRealtimeForestAndHotbarThenReturnsToPlaza()",
+    "testIdentifierURL" : "test://com.apple.xcode/Coder/CoderUITests/ZoneUITests/testPortalLoadsRealtimeForestAndHotbarThenReturnsToPlaza"
+  }
+]

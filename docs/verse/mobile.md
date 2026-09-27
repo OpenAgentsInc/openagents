@@ -85,12 +85,12 @@ asset download; normal plaza startup and walking near the arch do not download
 the pack. Loading shows progress and **Cancel**. A failure keeps the plaza
 available with **Retry** or **Dismiss**.
 
-Atlantis forest has its own green and earth-tone palette, trees, wizards, and
-zombies drawn from the reviewed asset pack. Touch movement, motion look, pinch,
-and the map still use the shared Rust controls. Choose **Encounter** for a local
-turn-based wizard-versus-zombie demo. **Fire Bolt** spends an action;
-**End turn** lets the zombie act once; **Reset** restarts. The rules and movement
-budget are enforced in Rust. They do not depend on the display's frame rate.
+Atlantis forest uses its own colors and the original Wizard Woods real-time
+simulation. Touch movement, motion look, pinch, and the map use shared Rust
+controls on the retained source heightfield. Monsters chase targets and NPC
+wizards cast as the foreground world updates. Tap **Firebolt**, **Missile**, or
+**Fireball** on the bottom hotbar while moving. HP, mana, and cooldowns reflect
+the original game state. There is no turn or movement-budget control.
 
 Choose **Plaza** to leave, including during a fight, or use the return portal.
 The app restores the saved plaza position and releases active forest geometry.
@@ -102,7 +102,7 @@ then resume the configured plaza behavior on return. The forest is local-only;
 this does not join another relay or publish its coordinates as plaza movement.
 Pairing and retained-chat grants remain separate. See
 [zone architecture and limits](zones.md) and
-[the exact SRD 5.1 subset](zone-rules.md).
+[source mechanics and parity](atlantis-source-parity.md).
 
 ## Use the world computer
 

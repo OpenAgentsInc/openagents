@@ -1,0 +1,1202 @@
+{
+  "source_repository": "https://github.com/OpenAgentsInc/ruinsofatlantis",
+  "source_commit": "daeb5d0895270159ec8c18341b4adb84bf7a4346",
+  "files": [
+    {
+      "source": "crates/server_core/Cargo.toml",
+      "destination": "vendor/crates/server_core/Cargo.toml",
+      "source_sha256": "3e9a90286672611b94bcb12b97e098886fec8c1b9edcdb01e82d05556cca181f",
+      "vendored_sha256": "955e0787bb2c3d598ce3553d4ac0ee37e8b14df57144abd1afa30dbe4f8e0f63",
+      "adaptation": "Remove unused tracing-subscriber and metrics-exporter-prometheus dependencies; their telemetry module is not part of the retained core."
+    },
+    {
+      "source": "crates/server_core/src/actor.rs",
+      "destination": "vendor/crates/server_core/src/actor.rs",
+      "source_sha256": "984dbbc75826c010a6e59ecff3c9953139e8a9e235e2d4394a6b9cb01f17415a",
+      "vendored_sha256": "984dbbc75826c010a6e59ecff3c9953139e8a9e235e2d4394a6b9cb01f17415a"
+    },
+    {
+      "source": "crates/server_core/src/combat.rs",
+      "destination": "vendor/crates/server_core/src/combat.rs",
+      "source_sha256": "8b5f2b20f31bb7067fc79a606b5ec5bc9535bbe6f1900220fdd21f8cad4862b7",
+      "vendored_sha256": "8b5f2b20f31bb7067fc79a606b5ec5bc9535bbe6f1900220fdd21f8cad4862b7"
+    },
+    {
+      "source": "crates/server_core/src/destructible/mod.rs",
+      "destination": "vendor/crates/server_core/src/destructible/mod.rs",
+      "source_sha256": "47a34dbf22824f39560ce85f794bdc1853e7ffbdb855853716ed825285df7c5c",
+      "vendored_sha256": "47a34dbf22824f39560ce85f794bdc1853e7ffbdb855853716ed825285df7c5c"
+    },
+    {
+      "source": "crates/server_core/src/destructible/state.rs",
+      "destination": "vendor/crates/server_core/src/destructible/state.rs",
+      "source_sha256": "ba9dcbeb3b4f1616e3f4256e6146cd9ddb1b0157db740e49a584383dd7401661",
+      "vendored_sha256": "ba9dcbeb3b4f1616e3f4256e6146cd9ddb1b0157db740e49a584383dd7401661"
+    },
+    {
+      "source": "crates/server_core/src/ecs/geom.rs",
+      "destination": "vendor/crates/server_core/src/ecs/geom.rs",
+      "source_sha256": "dcc384f87fa0f41aa1ff70a247c21c2bcc075e7f0c9fe8bdcda086052eeb6dfb",
+      "vendored_sha256": "dcc384f87fa0f41aa1ff70a247c21c2bcc075e7f0c9fe8bdcda086052eeb6dfb"
+    },
+    {
+      "source": "crates/server_core/src/ecs/mod.rs",
+      "destination": "vendor/crates/server_core/src/ecs/mod.rs",
+      "source_sha256": "f115ccd9d3a3b82dd18faed6144b633b7f4907ecc272623ee124b9ea21f938ee",
+      "vendored_sha256": "f115ccd9d3a3b82dd18faed6144b633b7f4907ecc272623ee124b9ea21f938ee"
+    },
+    {
+      "source": "crates/server_core/src/ecs/schedule/schedule_stages/mod.rs",
+      "destination": "vendor/crates/server_core/src/ecs/schedule/schedule_stages/mod.rs",
+      "source_sha256": "8d1cd5c23427e72caab29b872e35dfd41c4af6a7cc08fe97e36bb1e918d17476",
+      "vendored_sha256": "8d1cd5c23427e72caab29b872e35dfd41c4af6a7cc08fe97e36bb1e918d17476"
+    },
+    {
+      "source": "crates/server_core/src/ecs/schedule/schedule_stages/stage_ai.rs",
+      "destination": "vendor/crates/server_core/src/ecs/schedule/schedule_stages/stage_ai.rs",
+      "source_sha256": "d75da4e459627a968dc7581c87aced6c482f48603efa9b0001329ad21147b598",
+      "vendored_sha256": "d75da4e459627a968dc7581c87aced6c482f48603efa9b0001329ad21147b598"
+    },
+    {
+      "source": "crates/server_core/src/ecs/schedule/schedule_stages/stage_cleanup.rs",
+      "destination": "vendor/crates/server_core/src/ecs/schedule/schedule_stages/stage_cleanup.rs",
+      "source_sha256": "f47ba4a78f291d118a9f89baaa5283ba7497757105ba2573ba4285712b301542",
+      "vendored_sha256": "f47ba4a78f291d118a9f89baaa5283ba7497757105ba2573ba4285712b301542"
+    },
+    {
+      "source": "crates/server_core/src/ecs/schedule/schedule_stages/stage_combat.rs",
+      "destination": "vendor/crates/server_core/src/ecs/schedule/schedule_stages/stage_combat.rs",
+      "source_sha256": "c1011282156a8e85e400d561e85bf6f898dc2fbd59efcc25c7d5202b81f0b3e0",
+      "vendored_sha256": "c1011282156a8e85e400d561e85bf6f898dc2fbd59efcc25c7d5202b81f0b3e0"
+    },
+    {
+      "source": "crates/server_core/src/ecs/schedule/schedule_stages/stage_input.rs",
+      "destination": "vendor/crates/server_core/src/ecs/schedule/schedule_stages/stage_input.rs",
+      "source_sha256": "5fcbf507c9e6d921023479b11635d67ee2fed335b604d4b19e61298e5fac59c8",
+      "vendored_sha256": "5fcbf507c9e6d921023479b11635d67ee2fed335b604d4b19e61298e5fac59c8"
+    },
+    {
+      "source": "crates/server_core/src/ecs/schedule/schedule_stages/stage_move.rs",
+      "destination": "vendor/crates/server_core/src/ecs/schedule/schedule_stages/stage_move.rs",
+      "source_sha256": "947e4cd67470165e845535db16d970222fa4844edf881f94bbe213d2401a8ab1",
+      "vendored_sha256": "947e4cd67470165e845535db16d970222fa4844edf881f94bbe213d2401a8ab1"
+    },
+    {
+      "source": "crates/server_core/src/ecs/schedule.rs",
+      "destination": "vendor/crates/server_core/src/ecs/schedule.rs",
+      "source_sha256": "c26f77587a23150daea0e2d1050b8ead1847844fd8ff4b0a321f6bdf548e3d7b",
+      "vendored_sha256": "c26f77587a23150daea0e2d1050b8ead1847844fd8ff4b0a321f6bdf548e3d7b"
+    },
+    {
+      "source": "crates/server_core/src/ecs/schedule_stages/mod.rs",
+      "destination": "vendor/crates/server_core/src/ecs/schedule_stages/mod.rs",
+      "source_sha256": "50a0acbd06204287bebeb4db975fbcb98bfee1d4b2de1b226f998ba31d768d96",
+      "vendored_sha256": "50a0acbd06204287bebeb4db975fbcb98bfee1d4b2de1b226f998ba31d768d96"
+    },
+    {
+      "source": "crates/server_core/src/ecs/world.rs",
+      "destination": "vendor/crates/server_core/src/ecs/world.rs",
+      "source_sha256": "65c20f3f50a7fe2c85e7adf1c90fc3ad6fbb170413b96caad76b4a4e855eba2f",
+      "vendored_sha256": "65c20f3f50a7fe2c85e7adf1c90fc3ad6fbb170413b96caad76b4a4e855eba2f"
+    },
+    {
+      "source": "crates/server_core/src/jobs/mod.rs",
+      "destination": "vendor/crates/server_core/src/jobs/mod.rs",
+      "source_sha256": "e97a52c63b0849947345ed3bb2deda0af50cc9b883cecf9b73d8bec50268cb16",
+      "vendored_sha256": "e97a52c63b0849947345ed3bb2deda0af50cc9b883cecf9b73d8bec50268cb16"
+    },
+    {
+      "source": "crates/server_core/src/lib.rs",
+      "destination": "vendor/crates/server_core/src/lib.rs",
+      "source_sha256": "848e809aadbf465ca17b67fc321ec80cb3cdf52488dfcb3f81905170c0af83fd",
+      "vendored_sha256": "848e809aadbf465ca17b67fc321ec80cb3cdf52488dfcb3f81905170c0af83fd"
+    },
+    {
+      "source": "crates/server_core/src/scene_build.rs",
+      "destination": "vendor/crates/server_core/src/scene_build.rs",
+      "source_sha256": "afaf1aa91d5944eaa2496771ebded60f10d5ed77b1cbdbc3b7e93bce0ddaea98",
+      "vendored_sha256": "afaf1aa91d5944eaa2496771ebded60f10d5ed77b1cbdbc3b7e93bce0ddaea98"
+    },
+    {
+      "source": "crates/server_core/src/systems/destructible.rs",
+      "destination": "vendor/crates/server_core/src/systems/destructible.rs",
+      "source_sha256": "5f556ee32161698f25b2dbc9ee57b81dd8181baaf4937d2605e7615a1a4b2bdf",
+      "vendored_sha256": "5f556ee32161698f25b2dbc9ee57b81dd8181baaf4937d2605e7615a1a4b2bdf"
+    },
+    {
+      "source": "crates/server_core/src/systems/mod.rs",
+      "destination": "vendor/crates/server_core/src/systems/mod.rs",
+      "source_sha256": "3cb2e7ad914fc72512b629c094efd76241be8a5181988d9d8472497e33d4c7bd",
+      "vendored_sha256": "3cb2e7ad914fc72512b629c094efd76241be8a5181988d9d8472497e33d4c7bd"
+    },
+    {
+      "source": "crates/server_core/src/systems/npc.rs",
+      "destination": "vendor/crates/server_core/src/systems/npc.rs",
+      "source_sha256": "930f3e81ba8809d778746c3d314b836e7d6c5d622ab11a488429dd0bf9a60e67",
+      "vendored_sha256": "930f3e81ba8809d778746c3d314b836e7d6c5d622ab11a488429dd0bf9a60e67"
+    },
+    {
+      "source": "crates/server_core/src/systems/projectiles.rs",
+      "destination": "vendor/crates/server_core/src/systems/projectiles.rs",
+      "source_sha256": "237c85b9ba687db717f9acfc514eb75cd84441319c96b3d5991d8156319f4c3e",
+      "vendored_sha256": "237c85b9ba687db717f9acfc514eb75cd84441319c96b3d5991d8156319f4c3e"
+    },
+    {
+      "source": "crates/server_core/src/telemetry.rs",
+      "destination": "vendor/crates/server_core/src/telemetry.rs",
+      "source_sha256": "34af02717fda8eb25d9aade0261d8cb59d4c208abf34d19b7d4efcac5cc20408",
+      "vendored_sha256": "34af02717fda8eb25d9aade0261d8cb59d4c208abf34d19b7d4efcac5cc20408"
+    },
+    {
+      "source": "crates/server_core/src/tick.rs",
+      "destination": "vendor/crates/server_core/src/tick.rs",
+      "source_sha256": "6b49f607dd89c4d2c82647786f7b582ee9f81eb531859c8873bb3d375662e817",
+      "vendored_sha256": "6b49f607dd89c4d2c82647786f7b582ee9f81eb531859c8873bb3d375662e817"
+    },
+    {
+      "source": "crates/server_core/src/zones/mod.rs",
+      "destination": "vendor/crates/server_core/src/zones/mod.rs",
+      "source_sha256": "dcc76400b3460bfcb1367b468a0325e3c7a8ccfe419dedaff529f4d1e7dee741",
+      "vendored_sha256": "dcc76400b3460bfcb1367b468a0325e3c7a8ccfe419dedaff529f4d1e7dee741"
+    },
+    {
+      "source": "crates/server_core/tests/ai_caster_respects_spellbook.rs",
+      "destination": "vendor/crates/server_core/tests/ai_caster_respects_spellbook.rs",
+      "source_sha256": "9340b9eeecd561e956ed3ffec7d1c5fd24b0e30d657846679638cff2f6eef4ee",
+      "vendored_sha256": "9340b9eeecd561e956ed3ffec7d1c5fd24b0e30d657846679638cff2f6eef4ee"
+    },
+    {
+      "source": "crates/server_core/tests/ai_wizard_kills_undead.rs",
+      "destination": "vendor/crates/server_core/tests/ai_wizard_kills_undead.rs",
+      "source_sha256": "4f2dc2bc93120dfd107ac60e60b0bf2ef9e5731e1fd0c441989f4f69d23810f2",
+      "vendored_sha256": "4f2dc2bc93120dfd107ac60e60b0bf2ef9e5731e1fd0c441989f4f69d23810f2"
+    },
+    {
+      "source": "crates/server_core/tests/aoe_capsule_edge.rs",
+      "destination": "vendor/crates/server_core/tests/aoe_capsule_edge.rs",
+      "source_sha256": "47cc7d4f36b7a1932a20aff499a3be06db3baa20c79bd88d90d8a54cfed46447",
+      "vendored_sha256": "47cc7d4f36b7a1932a20aff499a3be06db3baa20c79bd88d90d8a54cfed46447"
+    },
+    {
+      "source": "crates/server_core/tests/arming_delay_prevents_early_detonation.rs",
+      "destination": "vendor/crates/server_core/tests/arming_delay_prevents_early_detonation.rs",
+      "source_sha256": "1a6e789889801f71c842a06cca23998686c0bf13a8ad2df5cc4ec19642509ef6",
+      "vendored_sha256": "1a6e789889801f71c842a06cca23998686c0bf13a8ad2df5cc4ec19642509ef6"
+    },
+    {
+      "source": "crates/server_core/tests/boss_moves_and_casts.rs",
+      "destination": "vendor/crates/server_core/tests/boss_moves_and_casts.rs",
+      "source_sha256": "bf1fea8f58abf4f3022a7d3270777870fbc08f600113063abf547514cec86c89",
+      "vendored_sha256": "bf1fea8f58abf4f3022a7d3270777870fbc08f600113063abf547514cec86c89"
+    },
+    {
+      "source": "crates/server_core/tests/cast_acceptance.rs",
+      "destination": "vendor/crates/server_core/tests/cast_acceptance.rs",
+      "source_sha256": "f360e73e43cddd64b68efb2face0e712d9535a26077860ab71a74af48dfb71ae",
+      "vendored_sha256": "f360e73e43cddd64b68efb2face0e712d9535a26077860ab71a74af48dfb71ae"
+    },
+    {
+      "source": "crates/server_core/tests/cast_cooldown_and_mana.rs",
+      "destination": "vendor/crates/server_core/tests/cast_cooldown_and_mana.rs",
+      "source_sha256": "b928c679e4110cb0f6b38ae768689fffa6f2038c3bd31a5619af500856777de6",
+      "vendored_sha256": "b928c679e4110cb0f6b38ae768689fffa6f2038c3bd31a5619af500856777de6"
+    },
+    {
+      "source": "crates/server_core/tests/cast_cooldown_rejection.rs",
+      "destination": "vendor/crates/server_core/tests/cast_cooldown_rejection.rs",
+      "source_sha256": "46456f61172a9c00ce997dccf875ef677374e3b7ed05039dc2814497f0c6187c",
+      "vendored_sha256": "46456f61172a9c00ce997dccf875ef677374e3b7ed05039dc2814497f0c6187c"
+    },
+    {
+      "source": "crates/server_core/tests/cast_queue_and_spawns.rs",
+      "destination": "vendor/crates/server_core/tests/cast_queue_and_spawns.rs",
+      "source_sha256": "0f87b6ee7f8aeef0dd7c147b7933f2d5037934e86b6890311f153fe2b2b7751b",
+      "vendored_sha256": "0f87b6ee7f8aeef0dd7c147b7933f2d5037934e86b6890311f153fe2b2b7751b"
+    },
+    {
+      "source": "crates/server_core/tests/cast_reject_toast.rs",
+      "destination": "vendor/crates/server_core/tests/cast_reject_toast.rs",
+      "source_sha256": "1d2d96999ebd42f1a2040d8bc0f4d7e35a56af99a9573b68f3e48e086126f0c2",
+      "vendored_sha256": "1d2d96999ebd42f1a2040d8bc0f4d7e35a56af99a9573b68f3e48e086126f0c2"
+    },
+    {
+      "source": "crates/server_core/tests/cast_spawns_projectiles.rs",
+      "destination": "vendor/crates/server_core/tests/cast_spawns_projectiles.rs",
+      "source_sha256": "6a41a6382c8ca0a8e41ead4cb17f5e7e29dbed1af35dad8ed7295c8283a33152",
+      "vendored_sha256": "6a41a6382c8ca0a8e41ead4cb17f5e7e29dbed1af35dad8ed7295c8283a33152"
+    },
+    {
+      "source": "crates/server_core/tests/collider_refresh_touched_budget.rs",
+      "destination": "vendor/crates/server_core/tests/collider_refresh_touched_budget.rs",
+      "source_sha256": "7110bd86e8c2a8254d5231fd1ebf6fb9ad7ac9fa5446c561d47bfd11bf05dd3d",
+      "vendored_sha256": "7110bd86e8c2a8254d5231fd1ebf6fb9ad7ac9fa5446c561d47bfd11bf05dd3d"
+    },
+    {
+      "source": "crates/server_core/tests/death_and_despawn_timer.rs",
+      "destination": "vendor/crates/server_core/tests/death_and_despawn_timer.rs",
+      "source_sha256": "d05d22891b13e0d5834682b97dc9034585c3e08c303d0a686ad1ae92b978461a",
+      "vendored_sha256": "d05d22891b13e0d5834682b97dc9034585c3e08c303d0a686ad1ae92b978461a"
+    },
+    {
+      "source": "crates/server_core/tests/death_knight_engages.rs",
+      "destination": "vendor/crates/server_core/tests/death_knight_engages.rs",
+      "source_sha256": "120c66523b486b5b830ed587571a8825c43a1746208c6609dae5153252da7b77",
+      "vendored_sha256": "120c66523b486b5b830ed587571a8825c43a1746208c6609dae5153252da7b77"
+    },
+    {
+      "source": "crates/server_core/tests/despawn_timer_ticks.rs",
+      "destination": "vendor/crates/server_core/tests/despawn_timer_ticks.rs",
+      "source_sha256": "4418b2e407030a7f2bfaca1355d9a571a2f2f6075c8fc551010f47404b85829f",
+      "vendored_sha256": "4418b2e407030a7f2bfaca1355d9a571a2f2f6075c8fc551010f47404b85829f"
+    },
+    {
+      "source": "crates/server_core/tests/destructible_carve_bus_cap.rs",
+      "destination": "vendor/crates/server_core/tests/destructible_carve_bus_cap.rs",
+      "source_sha256": "603a868a38843836f72984e53f92ddb76a8ad7dc27a8de0fe57e1e52c7b4bd17",
+      "vendored_sha256": "603a868a38843836f72984e53f92ddb76a8ad7dc27a8de0fe57e1e52c7b4bd17"
+    },
+    {
+      "source": "crates/server_core/tests/destructible_colliders_budget.rs",
+      "destination": "vendor/crates/server_core/tests/destructible_colliders_budget.rs",
+      "source_sha256": "39a0a9c9aa0b8cf1869216923502d6d8c27cf826ee05730cf2dd686e6f2e79f5",
+      "vendored_sha256": "39a0a9c9aa0b8cf1869216923502d6d8c27cf826ee05730cf2dd686e6f2e79f5"
+    },
+    {
+      "source": "crates/server_core/tests/destructible_delta_in_bounds.rs",
+      "destination": "vendor/crates/server_core/tests/destructible_delta_in_bounds.rs",
+      "source_sha256": "cf8b8d7d07b5e6c8fe6ff6691141047e529c8bc0b5793a97413d25e8a263061a",
+      "vendored_sha256": "cf8b8d7d07b5e6c8fe6ff6691141047e529c8bc0b5793a97413d25e8a263061a"
+    },
+    {
+      "source": "crates/server_core/tests/destructible_distance_guard.rs",
+      "destination": "vendor/crates/server_core/tests/destructible_distance_guard.rs",
+      "source_sha256": "aee014898554bec0bfdf6bb2f5833e0c46e99cca6d22f50d59b542c3ca481388",
+      "vendored_sha256": "aee014898554bec0bfdf6bb2f5833e0c46e99cca6d22f50d59b542c3ca481388"
+    },
+    {
+      "source": "crates/server_core/tests/destructible_from_projectiles_segments.rs",
+      "destination": "vendor/crates/server_core/tests/destructible_from_projectiles_segments.rs",
+      "source_sha256": "30ea85185327d5e2492f48ffa2c9b7e57d29132f6aadcedfaa0270911db461ea",
+      "vendored_sha256": "30ea85185327d5e2492f48ffa2c9b7e57d29132f6aadcedfaa0270911db461ea"
+    },
+    {
+      "source": "crates/server_core/tests/destructible_initial_mesh.rs",
+      "destination": "vendor/crates/server_core/tests/destructible_initial_mesh.rs",
+      "source_sha256": "43b941a474d0e4edaf6353da4571109e5c546a819f9ed6fb8d99117a338764e1",
+      "vendored_sha256": "43b941a474d0e4edaf6353da4571109e5c546a819f9ed6fb8d99117a338764e1"
+    },
+    {
+      "source": "crates/server_core/tests/destructible_integration.rs",
+      "destination": "vendor/crates/server_core/tests/destructible_integration.rs",
+      "source_sha256": "3e2fa78cf440425522d0270dd7614305b97e1dd3059dba9f0d0f6d699a601919",
+      "vendored_sha256": "3e2fa78cf440425522d0270dd7614305b97e1dd3059dba9f0d0f6d699a601919"
+    },
+    {
+      "source": "crates/server_core/tests/destructible_primitives.rs",
+      "destination": "vendor/crates/server_core/tests/destructible_primitives.rs",
+      "source_sha256": "132ce8ed40add5337c923078da42591c0f88c4f241f7c660478c3acf2f199b68",
+      "vendored_sha256": "132ce8ed40add5337c923078da42591c0f88c4f241f7c660478c3acf2f199b68"
+    },
+    {
+      "source": "crates/server_core/tests/destructible_registry_broadphase.rs",
+      "destination": "vendor/crates/server_core/tests/destructible_registry_broadphase.rs",
+      "source_sha256": "16b85562ae1a367b4e01d0a1a64f51852006d71be040804066074f91c474cf4e",
+      "vendored_sha256": "16b85562ae1a367b4e01d0a1a64f51852006d71be040804066074f91c474cf4e"
+    },
+    {
+      "source": "crates/server_core/tests/dk_not_stacked_on_spawn.rs",
+      "destination": "vendor/crates/server_core/tests/dk_not_stacked_on_spawn.rs",
+      "source_sha256": "87c531e4734bb3fb4ed3f17c96daf2f13f4219b7df75521d894c540788372640",
+      "vendored_sha256": "87c531e4734bb3fb4ed3f17c96daf2f13f4219b7df75521d894c540788372640"
+    },
+    {
+      "source": "crates/server_core/tests/effects_and_lifecycle.rs",
+      "destination": "vendor/crates/server_core/tests/effects_and_lifecycle.rs",
+      "source_sha256": "83b4467dc1c847568c16a56a04a9827f580fdfaeea706a833e233d01027f5c93",
+      "vendored_sha256": "83b4467dc1c847568c16a56a04a9827f580fdfaeea706a833e233d01027f5c93"
+    },
+    {
+      "source": "crates/server_core/tests/explosion_surface_pick.rs",
+      "destination": "vendor/crates/server_core/tests/explosion_surface_pick.rs",
+      "source_sha256": "e3c0e934bd6422bbe2be08e8d7511d27d5c3d44ea591a24b26487146079cc526",
+      "vendored_sha256": "e3c0e934bd6422bbe2be08e8d7511d27d5c3d44ea591a24b26487146079cc526"
+    },
+    {
+      "source": "crates/server_core/tests/explosion_vs_actor_damage_order.rs",
+      "destination": "vendor/crates/server_core/tests/explosion_vs_actor_damage_order.rs",
+      "source_sha256": "a8e819e601826bce7d44185e841cb1f46ceaea1715b25a2529fac105c9a558f4",
+      "vendored_sha256": "a8e819e601826bce7d44185e841cb1f46ceaea1715b25a2529fac105c9a558f4"
+    },
+    {
+      "source": "crates/server_core/tests/faction_flip_on_pc_hostile_damage.rs",
+      "destination": "vendor/crates/server_core/tests/faction_flip_on_pc_hostile_damage.rs",
+      "source_sha256": "630223dbd4f3d8d9b6f7b8f9337f420517ebd2e87dc275b9cb65c979917cc920",
+      "vendored_sha256": "630223dbd4f3d8d9b6f7b8f9337f420517ebd2e87dc275b9cb65c979917cc920"
+    },
+    {
+      "source": "crates/server_core/tests/faction_vs_kind_independence.rs",
+      "destination": "vendor/crates/server_core/tests/faction_vs_kind_independence.rs",
+      "source_sha256": "bb1b3365b5329b89b5efa2e680ede100844f52337bb7e4a8f85bd5b77c6b2b92",
+      "vendored_sha256": "bb1b3365b5329b89b5efa2e680ede100844f52337bb7e4a8f85bd5b77c6b2b92"
+    },
+    {
+      "source": "crates/server_core/tests/factions_wizards_vs_undead_stays_hostile.rs",
+      "destination": "vendor/crates/server_core/tests/factions_wizards_vs_undead_stays_hostile.rs",
+      "source_sha256": "9538acfd364c3a68fbe8f20594ae51ae04a3c0331c7c65a3327b3c01c8d4a395",
+      "vendored_sha256": "9538acfd364c3a68fbe8f20594ae51ae04a3c0331c7c65a3327b3c01c8d4a395"
+    },
+    {
+      "source": "crates/server_core/tests/fireball_aoe_hits_hostiles.rs",
+      "destination": "vendor/crates/server_core/tests/fireball_aoe_hits_hostiles.rs",
+      "source_sha256": "a2c71336adb59fd0b8ed4c7ae127c3b479e1233a7d9229c176d6f8c52dfc9af4",
+      "vendored_sha256": "a2c71336adb59fd0b8ed4c7ae127c3b479e1233a7d9229c176d6f8c52dfc9af4"
+    },
+    {
+      "source": "crates/server_core/tests/fireball_aoe_radius_pad_hits_thin_target.rs",
+      "destination": "vendor/crates/server_core/tests/fireball_aoe_radius_pad_hits_thin_target.rs",
+      "source_sha256": "b4001234b088c95750a5eb831ac2d7c21e60c893c7db62e5adb7b2ba5a01ed52",
+      "vendored_sha256": "b4001234b088c95750a5eb831ac2d7c21e60c893c7db62e5adb7b2ba5a01ed52"
+    },
+    {
+      "source": "crates/server_core/tests/fireball_carves_ruins_e2e.rs",
+      "destination": "vendor/crates/server_core/tests/fireball_carves_ruins_e2e.rs",
+      "source_sha256": "b99db5dcc186ed7b7196445bec6d12e38307c1f9cbb1619bf730eb35ae4c8ad6",
+      "vendored_sha256": "b99db5dcc186ed7b7196445bec6d12e38307c1f9cbb1619bf730eb35ae4c8ad6"
+    },
+    {
+      "source": "crates/server_core/tests/firebolt_hits_hostile.rs",
+      "destination": "vendor/crates/server_core/tests/firebolt_hits_hostile.rs",
+      "source_sha256": "f72a11433e015f34393cfe99accefdc93b9b6bf8a29e69e5a065ee99a7ecba7d",
+      "vendored_sha256": "f72a11433e015f34393cfe99accefdc93b9b6bf8a29e69e5a065ee99a7ecba7d"
+    },
+    {
+      "source": "crates/server_core/tests/geom_segment_aabb.rs",
+      "destination": "vendor/crates/server_core/tests/geom_segment_aabb.rs",
+      "source_sha256": "a12d6587e2288d013532b56f47d78f3b4b109e3c34841a44f817b6c4ab93ff9b",
+      "vendored_sha256": "a12d6587e2288d013532b56f47d78f3b4b109e3c34841a44f817b6c4ab93ff9b"
+    },
+    {
+      "source": "crates/server_core/tests/grid_before_collision.rs",
+      "destination": "vendor/crates/server_core/tests/grid_before_collision.rs",
+      "source_sha256": "ca656fdbaa596a6f334ba72442a436b29bb2e8e70fd9e69f3de514cf13f48c8d",
+      "vendored_sha256": "ca656fdbaa596a6f334ba72442a436b29bb2e8e70fd9e69f3de514cf13f48c8d"
+    },
+    {
+      "source": "crates/server_core/tests/hitfx_ctx_bus.rs",
+      "destination": "vendor/crates/server_core/tests/hitfx_ctx_bus.rs",
+      "source_sha256": "cb675d73f418aebb2a369706438e2f88af752d8a27ce3168a923f0d1803979f1",
+      "vendored_sha256": "cb675d73f418aebb2a369706438e2f88af752d8a27ce3168a923f0d1803979f1"
+    },
+    {
+      "source": "crates/server_core/tests/integration_combat_loop.rs",
+      "destination": "vendor/crates/server_core/tests/integration_combat_loop.rs",
+      "source_sha256": "9987454ae76d63d6f580f01e1d2c4db08725d727206dd82eafb7bf12ef308c6c",
+      "vendored_sha256": "9987454ae76d63d6f580f01e1d2c4db08725d727206dd82eafb7bf12ef308c6c"
+    },
+    {
+      "source": "crates/server_core/tests/magic_missile_slow.rs",
+      "destination": "vendor/crates/server_core/tests/magic_missile_slow.rs",
+      "source_sha256": "c7665c387399ee325faa2fd8386369519e4e33f56f4fd2f9de6e7bcad3fbead8",
+      "vendored_sha256": "c7665c387399ee325faa2fd8386369519e4e33f56f4fd2f9de6e7bcad3fbead8"
+    },
+    {
+      "source": "crates/server_core/tests/melee_hostile_hits_caster.rs",
+      "destination": "vendor/crates/server_core/tests/melee_hostile_hits_caster.rs",
+      "source_sha256": "ba7cd4daad33bf28b7cc0b4ac3a0711bebb5f34ecc538c400108cc4b4a008957",
+      "vendored_sha256": "ba7cd4daad33bf28b7cc0b4ac3a0711bebb5f34ecc538c400108cc4b4a008957"
+    },
+    {
+      "source": "crates/server_core/tests/mm_damages_undead.rs",
+      "destination": "vendor/crates/server_core/tests/mm_damages_undead.rs",
+      "source_sha256": "a0a3604ab4685d6f54638a829a3135bafeff7eed441ec32404eb87ac09e6d90a",
+      "vendored_sha256": "a0a3604ab4685d6f54638a829a3135bafeff7eed441ec32404eb87ac09e6d90a"
+    },
+    {
+      "source": "crates/server_core/tests/mm_homing_cast.rs",
+      "destination": "vendor/crates/server_core/tests/mm_homing_cast.rs",
+      "source_sha256": "1e768a279432fc7297e5ae1f5f22784263bb1997eb2299e4cf83429ba1afff16",
+      "vendored_sha256": "1e768a279432fc7297e5ae1f5f22784263bb1997eb2299e4cf83429ba1afff16"
+    },
+    {
+      "source": "crates/server_core/tests/nivita_spawn_unique.rs",
+      "destination": "vendor/crates/server_core/tests/nivita_spawn_unique.rs",
+      "source_sha256": "c38fedd5fcf318eddeafa9b47e934e2d67a46ac83a00830520889c40b0ba4c07",
+      "vendored_sha256": "c38fedd5fcf318eddeafa9b47e934e2d67a46ac83a00830520889c40b0ba4c07"
+    },
+    {
+      "source": "crates/server_core/tests/nivita_status_values.rs",
+      "destination": "vendor/crates/server_core/tests/nivita_status_values.rs",
+      "source_sha256": "d92f8cd01e3b1863e268b3e64df88af9d5edc1263d35e33cbb3496df1099e011",
+      "vendored_sha256": "d92f8cd01e3b1863e268b3e64df88af9d5edc1263d35e33cbb3496df1099e011"
+    },
+    {
+      "source": "crates/server_core/tests/npc_caster_spell_choice_fireball.rs",
+      "destination": "vendor/crates/server_core/tests/npc_caster_spell_choice_fireball.rs",
+      "source_sha256": "f06be6ee3fb6df2f7189a0ab3c18becc2b3204d5bf68bdc9a8c00d9676884b60",
+      "vendored_sha256": "f06be6ee3fb6df2f7189a0ab3c18becc2b3204d5bf68bdc9a8c00d9676884b60"
+    },
+    {
+      "source": "crates/server_core/tests/object_space_scale_warn.rs",
+      "destination": "vendor/crates/server_core/tests/object_space_scale_warn.rs",
+      "source_sha256": "75f20a49108c98062c45d86c24d9d5d3637fcbc979dbfa6f97ec41ea7c39a917",
+      "vendored_sha256": "75f20a49108c98062c45d86c24d9d5d3637fcbc979dbfa6f97ec41ea7c39a917"
+    },
+    {
+      "source": "crates/server_core/tests/only_one_demo_ruin.rs",
+      "destination": "vendor/crates/server_core/tests/only_one_demo_ruin.rs",
+      "source_sha256": "46d3740e8935b95d53a1875ac11e3064547212791c2599f8ada30f0d7e8d5343",
+      "vendored_sha256": "46d3740e8935b95d53a1875ac11e3064547212791c2599f8ada30f0d7e8d5343"
+    },
+    {
+      "source": "crates/server_core/tests/pc_and_boss_die_despawn.rs",
+      "destination": "vendor/crates/server_core/tests/pc_and_boss_die_despawn.rs",
+      "source_sha256": "878b2b451d326bc61ae33b081da5d2a7051859b7ffde0667725093cb30c93a25",
+      "vendored_sha256": "878b2b451d326bc61ae33b081da5d2a7051859b7ffde0667725093cb30c93a25"
+    },
+    {
+      "source": "crates/server_core/tests/pc_firebolt_hits_hostile.rs",
+      "destination": "vendor/crates/server_core/tests/pc_firebolt_hits_hostile.rs",
+      "source_sha256": "7782aee9137e55a24c6b0ecac754c43afcd8306d9d9cf5aef8cf5e2f26b147ba",
+      "vendored_sha256": "7782aee9137e55a24c6b0ecac754c43afcd8306d9d9cf5aef8cf5e2f26b147ba"
+    },
+    {
+      "source": "crates/server_core/tests/pc_mana_regen.rs",
+      "destination": "vendor/crates/server_core/tests/pc_mana_regen.rs",
+      "source_sha256": "884eb5cce88fe81af5c76ab4c3103532911ae06bc821bce12ece04f06f4b5580",
+      "vendored_sha256": "884eb5cce88fe81af5c76ab4c3103532911ae06bc821bce12ece04f06f4b5580"
+    },
+    {
+      "source": "crates/server_core/tests/pc_no_ai_autocast.rs",
+      "destination": "vendor/crates/server_core/tests/pc_no_ai_autocast.rs",
+      "source_sha256": "f4f1f5c43594eb154895d739294c0e1ca22adda035219f97470099b667b99d94",
+      "vendored_sha256": "f4f1f5c43594eb154895d739294c0e1ca22adda035219f97470099b667b99d94"
+    },
+    {
+      "source": "crates/server_core/tests/proj_broadphase_grid.rs",
+      "destination": "vendor/crates/server_core/tests/proj_broadphase_grid.rs",
+      "source_sha256": "665acf16b12f5d7012d376097c3917c86791cf53a4cefc6a7ac46e50737d777c",
+      "vendored_sha256": "665acf16b12f5d7012d376097c3917c86791cf53a4cefc6a7ac46e50737d777c"
+    },
+    {
+      "source": "crates/server_core/tests/projectile_collision_damages_undead.rs",
+      "destination": "vendor/crates/server_core/tests/projectile_collision_damages_undead.rs",
+      "source_sha256": "25f9453dbfd7ea515f5be96d4d02146163755be23356ca8f56844e27ae777a37",
+      "vendored_sha256": "25f9453dbfd7ea515f5be96d4d02146163755be23356ca8f56844e27ae777a37"
+    },
+    {
+      "source": "crates/server_core/tests/projectile_gating_carves.rs",
+      "destination": "vendor/crates/server_core/tests/projectile_gating_carves.rs",
+      "source_sha256": "16c41c35b4a3bda9ee3d5f80316dc367cbd1b781a694e141e9754492b3de22e7",
+      "vendored_sha256": "16c41c35b4a3bda9ee3d5f80316dc367cbd1b781a694e141e9754492b3de22e7"
+    },
+    {
+      "source": "crates/server_core/tests/projectile_owner_caster.rs",
+      "destination": "vendor/crates/server_core/tests/projectile_owner_caster.rs",
+      "source_sha256": "e330c3c5bd5f161eb7e942fd595a57de3b5a6e580592e94bd16450d1821f529c",
+      "vendored_sha256": "e330c3c5bd5f161eb7e942fd595a57de3b5a6e580592e94bd16450d1821f529c"
+    },
+    {
+      "source": "crates/server_core/tests/projectiles_not_in_actor_snapshot.rs",
+      "destination": "vendor/crates/server_core/tests/projectiles_not_in_actor_snapshot.rs",
+      "source_sha256": "0dc64fde87e9dd1a95be4a94c262b5cf870cbcbdd1041944ffd92cc146eacbd1",
+      "vendored_sha256": "0dc64fde87e9dd1a95be4a94c262b5cf870cbcbdd1041944ffd92cc146eacbd1"
+    },
+    {
+      "source": "crates/server_core/tests/spawn_not_inside_destructible.rs",
+      "destination": "vendor/crates/server_core/tests/spawn_not_inside_destructible.rs",
+      "source_sha256": "85c88efe39b44e54c8de2e6bf5ecfca562f91f8df8b62c1097631f7988cfaf6e",
+      "vendored_sha256": "85c88efe39b44e54c8de2e6bf5ecfca562f91f8df8b62c1097631f7988cfaf6e"
+    },
+    {
+      "source": "crates/server_core/tests/spawn_safety.rs",
+      "destination": "vendor/crates/server_core/tests/spawn_safety.rs",
+      "source_sha256": "fc639ca57393162d163fc12c88de3b34487fe17eb906ea130d78fb88d61f4261",
+      "vendored_sha256": "fc639ca57393162d163fc12c88de3b34487fe17eb906ea130d78fb88d61f4261"
+    },
+    {
+      "source": "crates/server_core/tests/stun_blocks_move_and_melee.rs",
+      "destination": "vendor/crates/server_core/tests/stun_blocks_move_and_melee.rs",
+      "source_sha256": "dae57e277499cff486cb05c8fa0b6d0da0aa34384ed9b8a59beda93947b30b79",
+      "vendored_sha256": "dae57e277499cff486cb05c8fa0b6d0da0aa34384ed9b8a59beda93947b30b79"
+    },
+    {
+      "source": "crates/server_core/tests/undead_separation.rs",
+      "destination": "vendor/crates/server_core/tests/undead_separation.rs",
+      "source_sha256": "6e067c36786d0a6dc93d435a08d5caf3af74473abcb888d4e8b999a9c4e5737d",
+      "vendored_sha256": "6e067c36786d0a6dc93d435a08d5caf3af74473abcb888d4e8b999a9c4e5737d"
+    },
+    {
+      "source": "crates/server_core/tests/unique_spawn_safety.rs",
+      "destination": "vendor/crates/server_core/tests/unique_spawn_safety.rs",
+      "source_sha256": "9c8ccf52cab4255da665b5099b8a340ce359210b119e15a2b7abe7bc3995e8cd",
+      "vendored_sha256": "9c8ccf52cab4255da665b5099b8a340ce359210b119e15a2b7abe7bc3995e8cd"
+    },
+    {
+      "source": "crates/server_core/tests/zones_boot_tests.rs",
+      "destination": "vendor/crates/server_core/tests/zones_boot_tests.rs",
+      "source_sha256": "fe8bf70bc439ff2d9d183d7287fb8ae4d7e2d01233ac6ba870c422d33068885d",
+      "vendored_sha256": "fe8bf70bc439ff2d9d183d7287fb8ae4d7e2d01233ac6ba870c422d33068885d"
+    },
+    {
+      "source": "crates/core_materials/Cargo.toml",
+      "destination": "vendor/crates/core_materials/Cargo.toml",
+      "source_sha256": "f9361f3fa9fc7a4c613f45e71e7e97981b873364b20f9d309f1127e95420cf6c",
+      "vendored_sha256": "f9361f3fa9fc7a4c613f45e71e7e97981b873364b20f9d309f1127e95420cf6c"
+    },
+    {
+      "source": "crates/core_materials/src/lib.rs",
+      "destination": "vendor/crates/core_materials/src/lib.rs",
+      "source_sha256": "c283c47faf93c8ce219477e45e4c9597c8037e3d7eb3bc32b8cce07c11f8abb7",
+      "vendored_sha256": "c283c47faf93c8ce219477e45e4c9597c8037e3d7eb3bc32b8cce07c11f8abb7"
+    },
+    {
+      "source": "crates/core_units/Cargo.toml",
+      "destination": "vendor/crates/core_units/Cargo.toml",
+      "source_sha256": "cf6e79294a0f15c5b3b2f3ad4e684d31c83b992e9901a5b0eaae2601a27f4a5d",
+      "vendored_sha256": "cf6e79294a0f15c5b3b2f3ad4e684d31c83b992e9901a5b0eaae2601a27f4a5d"
+    },
+    {
+      "source": "crates/core_units/src/lib.rs",
+      "destination": "vendor/crates/core_units/src/lib.rs",
+      "source_sha256": "6037114dcc6cd263458392b55711fc3f63f7d5e9eec1078ad3a93a21e6045368",
+      "vendored_sha256": "6037114dcc6cd263458392b55711fc3f63f7d5e9eec1078ad3a93a21e6045368"
+    },
+    {
+      "source": "crates/voxel_proxy/Cargo.toml",
+      "destination": "vendor/crates/voxel_proxy/Cargo.toml",
+      "source_sha256": "34838fd2760b860ff44db21f280807b1859279eac18c86845616ccc986af88ae",
+      "vendored_sha256": "34838fd2760b860ff44db21f280807b1859279eac18c86845616ccc986af88ae"
+    },
+    {
+      "source": "crates/voxel_proxy/src/lib.rs",
+      "destination": "vendor/crates/voxel_proxy/src/lib.rs",
+      "source_sha256": "12921e9dcb04c96779f5a451922744e592ee722780ccd95a3ba99dfc9ab419b3",
+      "vendored_sha256": "12921e9dcb04c96779f5a451922744e592ee722780ccd95a3ba99dfc9ab419b3"
+    },
+    {
+      "source": "crates/data_runtime/Cargo.toml",
+      "destination": "vendor/crates/data_runtime/Cargo.toml",
+      "source_sha256": "370b5a150c9d8b65dd6635681b95197ac6815fd9b0cbfd84ba6122975d20d3a7",
+      "vendored_sha256": "370b5a150c9d8b65dd6635681b95197ac6815fd9b0cbfd84ba6122975d20d3a7"
+    },
+    {
+      "source": "crates/data_runtime/src/ability.rs",
+      "destination": "vendor/crates/data_runtime/src/ability.rs",
+      "source_sha256": "4d9629bdc6947eee32718b9f605b311301d3991ab6d949afd4503f6ec761a791",
+      "vendored_sha256": "4d9629bdc6947eee32718b9f605b311301d3991ab6d949afd4503f6ec761a791"
+    },
+    {
+      "source": "crates/data_runtime/src/class.rs",
+      "destination": "vendor/crates/data_runtime/src/class.rs",
+      "source_sha256": "db1094d347243e737bd3dbca7aca64f1b8ccb341e71a2ccb01b110e5fb71612a",
+      "vendored_sha256": "db1094d347243e737bd3dbca7aca64f1b8ccb341e71a2ccb01b110e5fb71612a"
+    },
+    {
+      "source": "crates/data_runtime/src/configs/destructible.rs",
+      "destination": "vendor/crates/data_runtime/src/configs/destructible.rs",
+      "source_sha256": "0a29c5e20031979fea479d918e504445de591613ad2e1768c4d97b5f93c00ddc",
+      "vendored_sha256": "994600d5e5b36deaf2b67c2178a72ec5912d6f8c0bb26acd35b88c6509e388b2",
+      "adaptation": "Embed the pinned destructible.toml instead of probing a host filesystem; keep original parsing and clamps."
+    },
+    {
+      "source": "crates/data_runtime/src/configs/input_camera.rs",
+      "destination": "vendor/crates/data_runtime/src/configs/input_camera.rs",
+      "source_sha256": "cf6f9782224a0a2d4480df22e2a1fdfeb508c626b18f6b342f2a99f68cd480ed",
+      "vendored_sha256": "cf6f9782224a0a2d4480df22e2a1fdfeb508c626b18f6b342f2a99f68cd480ed"
+    },
+    {
+      "source": "crates/data_runtime/src/configs/npc_unique.rs",
+      "destination": "vendor/crates/data_runtime/src/configs/npc_unique.rs",
+      "source_sha256": "d4352d5b08dfb387f6f7620f3dd39777da58e97a96eb3cac973aff1011d96e92",
+      "vendored_sha256": "fb57784d8b0b34fcc472404c3af197741021689a4a87fa67ee1b50e87c34b8da",
+      "adaptation": "Embed the pinned nivita.toml instead of probing a host filesystem; keep original parsing and validation."
+    },
+    {
+      "source": "crates/data_runtime/src/configs/pc_animations.rs",
+      "destination": "vendor/crates/data_runtime/src/configs/pc_animations.rs",
+      "source_sha256": "41817a343a2a1c30a61854d55f21c0c26eb827890c88e4c9931d34d53e32b402",
+      "vendored_sha256": "41817a343a2a1c30a61854d55f21c0c26eb827890c88e4c9931d34d53e32b402"
+    },
+    {
+      "source": "crates/data_runtime/src/configs/sorceress.rs",
+      "destination": "vendor/crates/data_runtime/src/configs/sorceress.rs",
+      "source_sha256": "80c6232db90e57cb2bab4b6877f670e949349e1b18202debaebfc492b08eaa04",
+      "vendored_sha256": "80c6232db90e57cb2bab4b6877f670e949349e1b18202debaebfc492b08eaa04"
+    },
+    {
+      "source": "crates/data_runtime/src/configs/telemetry.rs",
+      "destination": "vendor/crates/data_runtime/src/configs/telemetry.rs",
+      "source_sha256": "0db6f886cd130d5a4c61add60dea09faa623b398b938bb23d1c9fcbd75041849",
+      "vendored_sha256": "0db6f886cd130d5a4c61add60dea09faa623b398b938bb23d1c9fcbd75041849"
+    },
+    {
+      "source": "crates/data_runtime/src/encounter.rs",
+      "destination": "vendor/crates/data_runtime/src/encounter.rs",
+      "source_sha256": "ca5df1afd782224470583eae9b36465ec579bf4b9b7197354edb7a7aa2790e51",
+      "vendored_sha256": "ca5df1afd782224470583eae9b36465ec579bf4b9b7197354edb7a7aa2790e51"
+    },
+    {
+      "source": "crates/data_runtime/src/ids.rs",
+      "destination": "vendor/crates/data_runtime/src/ids.rs",
+      "source_sha256": "2d77bca6ad758bed74405ec9106ab9f8130d65d41470110fd5936b9335449cd3",
+      "vendored_sha256": "2d77bca6ad758bed74405ec9106ab9f8130d65d41470110fd5936b9335449cd3"
+    },
+    {
+      "source": "crates/data_runtime/src/lib.rs",
+      "destination": "vendor/crates/data_runtime/src/lib.rs",
+      "source_sha256": "e9af309eb9e85ce937c526a6cd18b048cf5f645699c562a6cf0ec8475a9f3bfe",
+      "vendored_sha256": "e9af309eb9e85ce937c526a6cd18b048cf5f645699c562a6cf0ec8475a9f3bfe"
+    },
+    {
+      "source": "crates/data_runtime/src/loader.rs",
+      "destination": "vendor/crates/data_runtime/src/loader.rs",
+      "source_sha256": "addd3e424562d3a5a6a224d62d8cd62a505d963fd42c852829882357b0f7349e",
+      "vendored_sha256": "addd3e424562d3a5a6a224d62d8cd62a505d963fd42c852829882357b0f7349e"
+    },
+    {
+      "source": "crates/data_runtime/src/monster.rs",
+      "destination": "vendor/crates/data_runtime/src/monster.rs",
+      "source_sha256": "288f876f4dc8974fdc102eb06409cbbeb23309cd039be4f7db166fde99323afc",
+      "vendored_sha256": "288f876f4dc8974fdc102eb06409cbbeb23309cd039be4f7db166fde99323afc"
+    },
+    {
+      "source": "crates/data_runtime/src/scenario.rs",
+      "destination": "vendor/crates/data_runtime/src/scenario.rs",
+      "source_sha256": "19e2c9dd5f2fc34f60d956901ffa74739adf64c750cc2e37d0f21a1278b45f82",
+      "vendored_sha256": "19e2c9dd5f2fc34f60d956901ffa74739adf64c750cc2e37d0f21a1278b45f82"
+    },
+    {
+      "source": "crates/data_runtime/src/scene/destructibles.rs",
+      "destination": "vendor/crates/data_runtime/src/scene/destructibles.rs",
+      "source_sha256": "9f28ce7fc573d37d3bc9c4c4452c06b09b3f5d9384de4e4b54eb3212753a827f",
+      "vendored_sha256": "9f28ce7fc573d37d3bc9c4c4452c06b09b3f5d9384de4e4b54eb3212753a827f"
+    },
+    {
+      "source": "crates/data_runtime/src/scene/mod.rs",
+      "destination": "vendor/crates/data_runtime/src/scene/mod.rs",
+      "source_sha256": "63e5a68243e6f7ac397e62ca028826092410e7fbdb5d70530aa52c76bbe72f04",
+      "vendored_sha256": "63e5a68243e6f7ac397e62ca028826092410e7fbdb5d70530aa52c76bbe72f04"
+    },
+    {
+      "source": "crates/data_runtime/src/specdb.rs",
+      "destination": "vendor/crates/data_runtime/src/specdb.rs",
+      "source_sha256": "3619b328cc2f9210cc51988cfdd9113b6abd879a8cab2b5f83c2c5dad1c356f5",
+      "vendored_sha256": "3619b328cc2f9210cc51988cfdd9113b6abd879a8cab2b5f83c2c5dad1c356f5"
+    },
+    {
+      "source": "crates/data_runtime/src/specs/archetypes.rs",
+      "destination": "vendor/crates/data_runtime/src/specs/archetypes.rs",
+      "source_sha256": "77e6e82798cda83879514d5ddf5c0fb25cc284637dca088271400358b0848412",
+      "vendored_sha256": "a90bdc6b4a66381e70a5a4d043f72fd5c7f97c623e5cef0c72877a9bf4438509",
+      "adaptation": "Use the original hardcoded fallback because the pinned source contains no archetypes.toml; remove host filesystem discovery."
+    },
+    {
+      "source": "crates/data_runtime/src/specs/projectiles.rs",
+      "destination": "vendor/crates/data_runtime/src/specs/projectiles.rs",
+      "source_sha256": "7ae4252bd1f1e6f038da9f4bc9bb6b57a7799440ff56ab199da05d450194ab45",
+      "vendored_sha256": "cfd0cc925bab57062e699642c29aab1056d6252025d6b13c39ff80f133f19a5e",
+      "adaptation": "Embed the pinned projectiles.toml instead of probing the process working directory or ROA_DATA_ROOT; keep source configuration values."
+    },
+    {
+      "source": "crates/data_runtime/src/spell.rs",
+      "destination": "vendor/crates/data_runtime/src/spell.rs",
+      "source_sha256": "c539a0cf511833c03a056bede4a6469970631c6be2633421be1729cb684e45f6",
+      "vendored_sha256": "c539a0cf511833c03a056bede4a6469970631c6be2633421be1729cb684e45f6"
+    },
+    {
+      "source": "crates/data_runtime/src/zone.rs",
+      "destination": "vendor/crates/data_runtime/src/zone.rs",
+      "source_sha256": "5a4fd1be49e7bbfdea8f79791892475b27fada868a9cfcd3220a718ac0654e69",
+      "vendored_sha256": "5a4fd1be49e7bbfdea8f79791892475b27fada868a9cfcd3220a718ac0654e69"
+    },
+    {
+      "source": "crates/data_runtime/src/zone_scene.rs",
+      "destination": "vendor/crates/data_runtime/src/zone_scene.rs",
+      "source_sha256": "7b1311961ccfa1f5f36c567af629db44e49f1fad510ada66f3e8767799aff3ae",
+      "vendored_sha256": "7b1311961ccfa1f5f36c567af629db44e49f1fad510ada66f3e8767799aff3ae"
+    },
+    {
+      "source": "crates/data_runtime/src/zone_snapshot.rs",
+      "destination": "vendor/crates/data_runtime/src/zone_snapshot.rs",
+      "source_sha256": "25a478e031d56ea51cf94ae933d08fbbc57fb04f856ad52beb90b70dd583a8fc",
+      "vendored_sha256": "25a478e031d56ea51cf94ae933d08fbbc57fb04f856ad52beb90b70dd583a8fc"
+    },
+    {
+      "source": "crates/data_runtime/tests/archetypes_defaults.rs",
+      "destination": "vendor/crates/data_runtime/tests/archetypes_defaults.rs",
+      "source_sha256": "1ec5c7481d716f585d16cc5878443fa029e3214e50d15d7fedd4d09ce11da604",
+      "vendored_sha256": "1ec5c7481d716f585d16cc5878443fa029e3214e50d15d7fedd4d09ce11da604"
+    },
+    {
+      "source": "crates/data_runtime/tests/input_camera_cfg.rs",
+      "destination": "vendor/crates/data_runtime/tests/input_camera_cfg.rs",
+      "source_sha256": "941d63a4f7e84d83c62be2f6703c9cafd17192213b37be279df4c42c4b81cf90",
+      "vendored_sha256": "941d63a4f7e84d83c62be2f6703c9cafd17192213b37be279df4c42c4b81cf90"
+    },
+    {
+      "source": "crates/data_runtime/tests/telemetry_cfg.rs",
+      "destination": "vendor/crates/data_runtime/tests/telemetry_cfg.rs",
+      "source_sha256": "c0c89d936ca8ae70d5da93145b1224b12782f3c3e01f6acd52c5649866751cf8",
+      "vendored_sha256": "c0c89d936ca8ae70d5da93145b1224b12782f3c3e01f6acd52c5649866751cf8"
+    },
+    {
+      "source": "crates/data_runtime/tests/zone_scene_schema_tests.rs",
+      "destination": "vendor/crates/data_runtime/tests/zone_scene_schema_tests.rs",
+      "source_sha256": "04bfdd446ae0f995cb6a0892c9edcf4062ef187c56bacbdf8b2aeb6e92b73a5e",
+      "vendored_sha256": "04bfdd446ae0f995cb6a0892c9edcf4062ef187c56bacbdf8b2aeb6e92b73a5e"
+    },
+    {
+      "source": "crates/data_runtime/tests/zone_trees_snapshot_tests.rs",
+      "destination": "vendor/crates/data_runtime/tests/zone_trees_snapshot_tests.rs",
+      "source_sha256": "aceb9333e2a1a50ddf581f8f80e30c451882344500ea2c96d4acdea331454771",
+      "vendored_sha256": "aceb9333e2a1a50ddf581f8f80e30c451882344500ea2c96d4acdea331454771"
+    },
+    {
+      "source": "crates/voxel_mesh/Cargo.toml",
+      "destination": "vendor/crates/voxel_mesh/Cargo.toml",
+      "source_sha256": "d8c7b31770806bc69f3325fac8a556faa1abaefcb711c7fc3bceb31900d2a120",
+      "vendored_sha256": "d8c7b31770806bc69f3325fac8a556faa1abaefcb711c7fc3bceb31900d2a120"
+    },
+    {
+      "source": "crates/voxel_mesh/src/lib.rs",
+      "destination": "vendor/crates/voxel_mesh/src/lib.rs",
+      "source_sha256": "769f12148359d903b78181487c6dd059646d5a4f00c6c1bbca54f4a0f526d3e1",
+      "vendored_sha256": "769f12148359d903b78181487c6dd059646d5a4f00c6c1bbca54f4a0f526d3e1"
+    },
+    {
+      "source": "crates/ecs_core/Cargo.toml",
+      "destination": "vendor/crates/ecs_core/Cargo.toml",
+      "source_sha256": "5ce35c7c63e32f98b2c057364565e5107cde21995b2f2d7a4df794ab6ddf3052",
+      "vendored_sha256": "5ce35c7c63e32f98b2c057364565e5107cde21995b2f2d7a4df794ab6ddf3052"
+    },
+    {
+      "source": "crates/ecs_core/src/components.rs",
+      "destination": "vendor/crates/ecs_core/src/components.rs",
+      "source_sha256": "59c85daa2751aa95ac01e1f60df876582835e7edd799cab97c53d3db3ff09744",
+      "vendored_sha256": "59c85daa2751aa95ac01e1f60df876582835e7edd799cab97c53d3db3ff09744"
+    },
+    {
+      "source": "crates/ecs_core/src/lib.rs",
+      "destination": "vendor/crates/ecs_core/src/lib.rs",
+      "source_sha256": "f04df90a8d2cad34036343c85b6175b29fd1bef676cbaf7bf09ca307cec730aa",
+      "vendored_sha256": "f04df90a8d2cad34036343c85b6175b29fd1bef676cbaf7bf09ca307cec730aa"
+    },
+    {
+      "source": "crates/ecs_core/src/parse.rs",
+      "destination": "vendor/crates/ecs_core/src/parse.rs",
+      "source_sha256": "13ec91a02346d6150493e55392d629172128630cbc442c9af5fae1e7a59f3ac8",
+      "vendored_sha256": "13ec91a02346d6150493e55392d629172128630cbc442c9af5fae1e7a59f3ac8"
+    },
+    {
+      "source": "crates/collision_static/Cargo.toml",
+      "destination": "vendor/crates/collision_static/Cargo.toml",
+      "source_sha256": "8af93093100595cdd86a9083e86d82b97b59a46e1adf253abfc2ca9f0f566bc4",
+      "vendored_sha256": "8af93093100595cdd86a9083e86d82b97b59a46e1adf253abfc2ca9f0f566bc4"
+    },
+    {
+      "source": "crates/collision_static/src/chunks.rs",
+      "destination": "vendor/crates/collision_static/src/chunks.rs",
+      "source_sha256": "85b4979cb554368d3a3c3ec61a87be9a316018f2aa40fff339446520c5b49d3c",
+      "vendored_sha256": "85b4979cb554368d3a3c3ec61a87be9a316018f2aa40fff339446520c5b49d3c"
+    },
+    {
+      "source": "crates/collision_static/src/lib.rs",
+      "destination": "vendor/crates/collision_static/src/lib.rs",
+      "source_sha256": "e154385c95b1936a32244fd07d04bbe7670882a968b123a0d17bbea3a9f3f3b7",
+      "vendored_sha256": "e154385c95b1936a32244fd07d04bbe7670882a968b123a0d17bbea3a9f3f3b7"
+    },
+    {
+      "source": "crates/net_core/Cargo.toml",
+      "destination": "vendor/crates/net_core/Cargo.toml",
+      "source_sha256": "6b225114b01cb63c5f239854dfbde191d9f02c147ca20a5822cb3bce5022de81",
+      "vendored_sha256": "6b225114b01cb63c5f239854dfbde191d9f02c147ca20a5822cb3bce5022de81"
+    },
+    {
+      "source": "crates/net_core/src/apply.rs",
+      "destination": "vendor/crates/net_core/src/apply.rs",
+      "source_sha256": "fed7dc3ad2d9a8034b8608e2b88a420f1f4a705b1e2aa9b31280e04530272e84",
+      "vendored_sha256": "fed7dc3ad2d9a8034b8608e2b88a420f1f4a705b1e2aa9b31280e04530272e84"
+    },
+    {
+      "source": "crates/net_core/src/channel.rs",
+      "destination": "vendor/crates/net_core/src/channel.rs",
+      "source_sha256": "c7e1916ab643bf86cc898733beb47d7b310ae8d87d85fb6897e4f6c3ac2abc09",
+      "vendored_sha256": "c7e1916ab643bf86cc898733beb47d7b310ae8d87d85fb6897e4f6c3ac2abc09"
+    },
+    {
+      "source": "crates/net_core/src/command.rs",
+      "destination": "vendor/crates/net_core/src/command.rs",
+      "source_sha256": "c30aefd5df1bda48ca97abea7fad09fa34f9a330aaaa642e7ec3f53ebad21ea4",
+      "vendored_sha256": "c30aefd5df1bda48ca97abea7fad09fa34f9a330aaaa642e7ec3f53ebad21ea4"
+    },
+    {
+      "source": "crates/net_core/src/frame.rs",
+      "destination": "vendor/crates/net_core/src/frame.rs",
+      "source_sha256": "1cd90bee813705a0c4ccfce6b86422595e2de3309d5cc8021e92ebf897926228",
+      "vendored_sha256": "1cd90bee813705a0c4ccfce6b86422595e2de3309d5cc8021e92ebf897926228"
+    },
+    {
+      "source": "crates/net_core/src/interest.rs",
+      "destination": "vendor/crates/net_core/src/interest.rs",
+      "source_sha256": "fe1fb8a32117b864aa176f75bff66c816831baf6ca3f17689613f054227c5ee7",
+      "vendored_sha256": "fe1fb8a32117b864aa176f75bff66c816831baf6ca3f17689613f054227c5ee7"
+    },
+    {
+      "source": "crates/net_core/src/lib.rs",
+      "destination": "vendor/crates/net_core/src/lib.rs",
+      "source_sha256": "76dacde9457c1aa88ec792cd5c5267f0b9755b8a797c38b5beaa79398d9e71d7",
+      "vendored_sha256": "76dacde9457c1aa88ec792cd5c5267f0b9755b8a797c38b5beaa79398d9e71d7"
+    },
+    {
+      "source": "crates/net_core/src/snapshot/actors.rs",
+      "destination": "vendor/crates/net_core/src/snapshot/actors.rs",
+      "source_sha256": "3675b26da876ec628f46007989670fec31525906be929a1ff419e35e048fdcd0",
+      "vendored_sha256": "3675b26da876ec628f46007989670fec31525906be929a1ff419e35e048fdcd0"
+    },
+    {
+      "source": "crates/net_core/src/snapshot/destructibles.rs",
+      "destination": "vendor/crates/net_core/src/snapshot/destructibles.rs",
+      "source_sha256": "1de9d96e35d4fa3af2b6d9574ac912fe4973ce77fce543fc89b2127854008e69",
+      "vendored_sha256": "1de9d96e35d4fa3af2b6d9574ac912fe4973ce77fce543fc89b2127854008e69"
+    },
+    {
+      "source": "crates/net_core/src/snapshot/encode.rs",
+      "destination": "vendor/crates/net_core/src/snapshot/encode.rs",
+      "source_sha256": "0d6f18a0c733f03200ddad2621313ecbb797fef7c1c0181c1352edbfefab8dcd",
+      "vendored_sha256": "0d6f18a0c733f03200ddad2621313ecbb797fef7c1c0181c1352edbfefab8dcd"
+    },
+    {
+      "source": "crates/net_core/src/snapshot/hud.rs",
+      "destination": "vendor/crates/net_core/src/snapshot/hud.rs",
+      "source_sha256": "7e847ace50f1ff8d5a2a9e1d566c4c7fb94fab4a8fcc86d51bb6530234d18593",
+      "vendored_sha256": "7e847ace50f1ff8d5a2a9e1d566c4c7fb94fab4a8fcc86d51bb6530234d18593"
+    },
+    {
+      "source": "crates/net_core/src/snapshot/mod.rs",
+      "destination": "vendor/crates/net_core/src/snapshot/mod.rs",
+      "source_sha256": "112c2b1a641556720e97ff0135e419d82388a912c7ce1cb32b3ce24bac7c1ca0",
+      "vendored_sha256": "112c2b1a641556720e97ff0135e419d82388a912c7ce1cb32b3ce24bac7c1ca0"
+    },
+    {
+      "source": "crates/net_core/src/snapshot/projectiles.rs",
+      "destination": "vendor/crates/net_core/src/snapshot/projectiles.rs",
+      "source_sha256": "c4de0b0b26cc7ccfde480c4179a1dbcab1241516c315088368f5e5abc096dafb",
+      "vendored_sha256": "c4de0b0b26cc7ccfde480c4179a1dbcab1241516c315088368f5e5abc096dafb"
+    },
+    {
+      "source": "crates/net_core/src/snapshot_body.rs",
+      "destination": "vendor/crates/net_core/src/snapshot_body.rs",
+      "source_sha256": "a80f30bceb92fe5dc7327c85b03170885b1d656096f0a95c5de14d61306b1091",
+      "vendored_sha256": "a80f30bceb92fe5dc7327c85b03170885b1d656096f0a95c5de14d61306b1091"
+    },
+    {
+      "source": "crates/net_core/src/transport.rs",
+      "destination": "vendor/crates/net_core/src/transport.rs",
+      "source_sha256": "d37bb1000fcdfd818561d072920ce8983e063c83c1c7e5dc3274bf62d0da2160",
+      "vendored_sha256": "d37bb1000fcdfd818561d072920ce8983e063c83c1c7e5dc3274bf62d0da2160"
+    },
+    {
+      "source": "crates/net_core/tests/actorrep_v4_roundtrip.rs",
+      "destination": "vendor/crates/net_core/tests/actorrep_v4_roundtrip.rs",
+      "source_sha256": "73e849735a4c4f89551395bf47c0e14bc24fcb466cd9ceac38486cc267e3458e",
+      "vendored_sha256": "73e849735a4c4f89551395bf47c0e14bc24fcb466cd9ceac38486cc267e3458e"
+    },
+    {
+      "source": "crates/net_core/tests/destructible_roundtrips.rs",
+      "destination": "vendor/crates/net_core/tests/destructible_roundtrips.rs",
+      "source_sha256": "2c82a6ec223c9fa48bc3bfd1b29c023f3fc7a1523fbb19eb531dd67267e31325",
+      "vendored_sha256": "2c82a6ec223c9fa48bc3bfd1b29c023f3fc7a1523fbb19eb531dd67267e31325"
+    },
+    {
+      "source": "crates/net_core/tests/hitfx_roundtrip.rs",
+      "destination": "vendor/crates/net_core/tests/hitfx_roundtrip.rs",
+      "source_sha256": "0ceacb00a18f6a7fb6b8632c9576b1609e37fca81fae552290c3dbcf45d8f81c",
+      "vendored_sha256": "0ceacb00a18f6a7fb6b8632c9576b1609e37fca81fae552290c3dbcf45d8f81c"
+    },
+    {
+      "source": "data/config/destructible.toml",
+      "destination": "vendor/data/config/destructible.toml",
+      "source_sha256": "28bbf11360ef5928ee91cbcb8a31b04b0f92f2547884a2901b501d49992368e3",
+      "vendored_sha256": "28bbf11360ef5928ee91cbcb8a31b04b0f92f2547884a2901b501d49992368e3"
+    },
+    {
+      "source": "data/config/nivita.toml",
+      "destination": "vendor/data/config/nivita.toml",
+      "source_sha256": "456a481ef7b15e2620099f8e1ccaf5c778929284f05d417a9dc9358d4577e7e9",
+      "vendored_sha256": "456a481ef7b15e2620099f8e1ccaf5c778929284f05d417a9dc9358d4577e7e9"
+    },
+    {
+      "source": "data/config/pc_animations.toml",
+      "destination": "vendor/data/config/pc_animations.toml",
+      "source_sha256": "1122a7c5f904534e0148e2ebd96344135bba9143a35adab07bbae9324c5ffcfb",
+      "vendored_sha256": "1122a7c5f904534e0148e2ebd96344135bba9143a35adab07bbae9324c5ffcfb"
+    },
+    {
+      "source": "data/config/projectiles.toml",
+      "destination": "vendor/data/config/projectiles.toml",
+      "source_sha256": "f6d0925dbddd03412ced13ac90d8d9c9b80e7b625838a004af9f24ba15e95151",
+      "vendored_sha256": "f6d0925dbddd03412ced13ac90d8d9c9b80e7b625838a004af9f24ba15e95151"
+    },
+    {
+      "source": "data/config/sorceress.toml",
+      "destination": "vendor/data/config/sorceress.toml",
+      "source_sha256": "e531acf6ae1535ea76fb4b169bf586e1190aa718ff443276047ea5037161efd9",
+      "vendored_sha256": "e531acf6ae1535ea76fb4b169bf586e1190aa718ff443276047ea5037161efd9"
+    },
+    {
+      "source": "data/config/telemetry.toml",
+      "destination": "vendor/data/config/telemetry.toml",
+      "source_sha256": "3718e243be5222e71d4f61f9be96f18674ea51052f500a49ece607448c0d0289",
+      "vendored_sha256": "3718e243be5222e71d4f61f9be96f18674ea51052f500a49ece607448c0d0289"
+    },
+    {
+      "source": "crates/client_core/Cargo.toml",
+      "destination": "vendor/crates/client_core/Cargo.toml",
+      "source_sha256": "86a39ec80071707dd08dbe41cd4ddea5101255baf13c5ac8ae063821f1209d32",
+      "vendored_sha256": "86a39ec80071707dd08dbe41cd4ddea5101255baf13c5ac8ae063821f1209d32"
+    },
+    {
+      "source": "crates/client_core/src/facade/controller.rs",
+      "destination": "vendor/crates/client_core/src/facade/controller.rs",
+      "source_sha256": "689f7456dc00ddfd2535bc84c5378be3abd43a0be55f97f5136739abed350eb0",
+      "vendored_sha256": "689f7456dc00ddfd2535bc84c5378be3abd43a0be55f97f5136739abed350eb0"
+    },
+    {
+      "source": "crates/client_core/src/lib.rs",
+      "destination": "vendor/crates/client_core/src/lib.rs",
+      "source_sha256": "d12421408311bd3790c8b961bcd5e0fb64272a55a7a0d68c776c3e39c3f3fcab",
+      "vendored_sha256": "d12421408311bd3790c8b961bcd5e0fb64272a55a7a0d68c776c3e39c3f3fcab"
+    },
+    {
+      "source": "crates/client_core/src/replication.rs",
+      "destination": "vendor/crates/client_core/src/replication.rs",
+      "source_sha256": "87d191fc4fd8a9f84130d3a91a4707d3bd717fb9253b73432cc2a4f7aad24829",
+      "vendored_sha256": "87d191fc4fd8a9f84130d3a91a4707d3bd717fb9253b73432cc2a4f7aad24829"
+    },
+    {
+      "source": "crates/client_core/src/systems/action_bindings.rs",
+      "destination": "vendor/crates/client_core/src/systems/action_bindings.rs",
+      "source_sha256": "640dc9f5f122c967ef74ac3962789fac01fbeb84ea2440f5769d983db2a6a2c8",
+      "vendored_sha256": "640dc9f5f122c967ef74ac3962789fac01fbeb84ea2440f5769d983db2a6a2c8"
+    },
+    {
+      "source": "crates/client_core/src/systems/auto_face.rs",
+      "destination": "vendor/crates/client_core/src/systems/auto_face.rs",
+      "source_sha256": "85328c545d8976311def298fd68698fa1a23c3b56f27419b3cbecede6a4afe8b",
+      "vendored_sha256": "85328c545d8976311def298fd68698fa1a23c3b56f27419b3cbecede6a4afe8b"
+    },
+    {
+      "source": "crates/client_core/src/systems/camera.rs",
+      "destination": "vendor/crates/client_core/src/systems/camera.rs",
+      "source_sha256": "265ea7212a675830dc97cd3d8d081676af5dba1e5aa9b7d5a8b0aef586fddc8c",
+      "vendored_sha256": "265ea7212a675830dc97cd3d8d081676af5dba1e5aa9b7d5a8b0aef586fddc8c"
+    },
+    {
+      "source": "crates/client_core/src/systems/controller.rs",
+      "destination": "vendor/crates/client_core/src/systems/controller.rs",
+      "source_sha256": "01ffb14626ed2763c145c53cb1b27beadcbbb580a28f3005b7168c5c5e871317",
+      "vendored_sha256": "01ffb14626ed2763c145c53cb1b27beadcbbb580a28f3005b7168c5c5e871317"
+    },
+    {
+      "source": "crates/client_core/src/systems/cursor.rs",
+      "destination": "vendor/crates/client_core/src/systems/cursor.rs",
+      "source_sha256": "a21b87f732022654b868af13d57e3a090683c973ffd902e82aa12e7acb273252",
+      "vendored_sha256": "a21b87f732022654b868af13d57e3a090683c973ffd902e82aa12e7acb273252"
+    },
+    {
+      "source": "crates/client_core/src/systems/mod.rs",
+      "destination": "vendor/crates/client_core/src/systems/mod.rs",
+      "source_sha256": "c6e8289887ff3ec88cb0a2c92cf43a6ec4a9ca31570658aa95086184e1daeb78",
+      "vendored_sha256": "c6e8289887ff3ec88cb0a2c92cf43a6ec4a9ca31570658aa95086184e1daeb78"
+    },
+    {
+      "source": "crates/client_core/src/systems/mouselook.rs",
+      "destination": "vendor/crates/client_core/src/systems/mouselook.rs",
+      "source_sha256": "7cd98b81129518a01283b8a9196a90603c7e21fd5285de08f194dfa56bd0bbb3",
+      "vendored_sha256": "7cd98b81129518a01283b8a9196a90603c7e21fd5285de08f194dfa56bd0bbb3"
+    },
+    {
+      "source": "crates/client_core/src/systems/move_intent.rs",
+      "destination": "vendor/crates/client_core/src/systems/move_intent.rs",
+      "source_sha256": "c9ad020461007f376ece2634058ba29709aeb6e73a01858ec4d544494e6f0ba9",
+      "vendored_sha256": "c9ad020461007f376ece2634058ba29709aeb6e73a01858ec4d544494e6f0ba9"
+    },
+    {
+      "source": "crates/client_core/src/systems/pc_controller.rs",
+      "destination": "vendor/crates/client_core/src/systems/pc_controller.rs",
+      "source_sha256": "7e8284a2f9bc77eca990e33e26e9f523fcf983a1486189d6c3df64e81bb3d519",
+      "vendored_sha256": "7e8284a2f9bc77eca990e33e26e9f523fcf983a1486189d6c3df64e81bb3d519"
+    },
+    {
+      "source": "crates/client_core/src/telemetry.rs",
+      "destination": "vendor/crates/client_core/src/telemetry.rs",
+      "source_sha256": "7d42b061fa092b71ef426ab3191cfe88f6affb9b48e8c22ab87e7a9ec1bb934a",
+      "vendored_sha256": "7d42b061fa092b71ef426ab3191cfe88f6affb9b48e8c22ab87e7a9ec1bb934a"
+    },
+    {
+      "source": "crates/client_core/src/upload.rs",
+      "destination": "vendor/crates/client_core/src/upload.rs",
+      "source_sha256": "8a925d62ce31a64acede62cf0ed895836e299faa76e8876cf0b5a97d54fe2e81",
+      "vendored_sha256": "8a925d62ce31a64acede62cf0ed895836e299faa76e8876cf0b5a97d54fe2e81"
+    },
+    {
+      "source": "crates/client_core/src/zone_client.rs",
+      "destination": "vendor/crates/client_core/src/zone_client.rs",
+      "source_sha256": "5ddd952826fed52cf872f31a95623bb7851dc200354e4bd38fe0fde554da9637",
+      "vendored_sha256": "5ddd952826fed52cf872f31a95623bb7851dc200354e4bd38fe0fde554da9637"
+    },
+    {
+      "source": "crates/client_core/tests/anim_state_from_delta.rs",
+      "destination": "vendor/crates/client_core/tests/anim_state_from_delta.rs",
+      "source_sha256": "79a6a1b08e6aa49286bf3faf7b50c0621b3f67af15f49b745122fa776939b97e",
+      "vendored_sha256": "79a6a1b08e6aa49286bf3faf7b50c0621b3f67af15f49b745122fa776939b97e"
+    },
+    {
+      "source": "crates/client_core/tests/archetype_maps_model.rs",
+      "destination": "vendor/crates/client_core/tests/archetype_maps_model.rs",
+      "source_sha256": "8560a533f4be88563f97701c6f98955f76610725a3ec7200752582364a8f7025",
+      "vendored_sha256": "8560a533f4be88563f97701c6f98955f76610725a3ec7200752582364a8f7025"
+    },
+    {
+      "source": "crates/client_core/tests/auto_face_finish.rs",
+      "destination": "vendor/crates/client_core/tests/auto_face_finish.rs",
+      "source_sha256": "4e34e30e3fffcc4531872748b30e933c89d80bb8ab9690eb5f4e7feb0cd43197",
+      "vendored_sha256": "4e34e30e3fffcc4531872748b30e933c89d80bb8ab9690eb5f4e7feb0cd43197"
+    },
+    {
+      "source": "crates/client_core/tests/boss_status_from_actor_delta.rs",
+      "destination": "vendor/crates/client_core/tests/boss_status_from_actor_delta.rs",
+      "source_sha256": "bea694e285f30d2153ec4b622e230e91c209702c8655c92dcb0e7bd56db4c610",
+      "vendored_sha256": "bea694e285f30d2153ec4b622e230e91c209702c8655c92dcb0e7bd56db4c610"
+    },
+    {
+      "source": "crates/client_core/tests/camera.rs",
+      "destination": "vendor/crates/client_core/tests/camera.rs",
+      "source_sha256": "4fc886644cee066ba2f4fac382a3612d38d856cab257826f2fd1b604dd2f3456",
+      "vendored_sha256": "4fc886644cee066ba2f4fac382a3612d38d856cab257826f2fd1b604dd2f3456"
+    },
+    {
+      "source": "crates/client_core/tests/cursor.rs",
+      "destination": "vendor/crates/client_core/tests/cursor.rs",
+      "source_sha256": "b2ca111d4fd25223d78e3757a955e5693f44a3f7806da5767238d33b3cb64f1c",
+      "vendored_sha256": "b2ca111d4fd25223d78e3757a955e5693f44a3f7806da5767238d33b3cb64f1c"
+    },
+    {
+      "source": "crates/client_core/tests/destructible_defer_multiple_dids.rs",
+      "destination": "vendor/crates/client_core/tests/destructible_defer_multiple_dids.rs",
+      "source_sha256": "4a94d50b3878eb16b303019d1baa69ddad7c852c7efc133f72982cc7f11c340c",
+      "vendored_sha256": "4a94d50b3878eb16b303019d1baa69ddad7c852c7efc133f72982cc7f11c340c"
+    },
+    {
+      "source": "crates/client_core/tests/destructible_delta_aabb_guard.rs",
+      "destination": "vendor/crates/client_core/tests/destructible_delta_aabb_guard.rs",
+      "source_sha256": "d98be70887e0a004466f17c84e0d8fd667f24c4bea25ffb5103abcda9c6dee87",
+      "vendored_sha256": "d98be70887e0a004466f17c84e0d8fd667f24c4bea25ffb5103abcda9c6dee87"
+    },
+    {
+      "source": "crates/client_core/tests/destructible_delta_validation_strict.rs",
+      "destination": "vendor/crates/client_core/tests/destructible_delta_validation_strict.rs",
+      "source_sha256": "b50248e0ce54a66a52c7d3558e494d3ac38f842eb440e59fec6bc3994224b809",
+      "vendored_sha256": "b50248e0ce54a66a52c7d3558e494d3ac38f842eb440e59fec6bc3994224b809"
+    },
+    {
+      "source": "crates/client_core/tests/destructible_instance_before_delta.rs",
+      "destination": "vendor/crates/client_core/tests/destructible_instance_before_delta.rs",
+      "source_sha256": "f78635085ceff41facc210567b790e23aa54f44502159af5bbf1f9d93d833581",
+      "vendored_sha256": "f78635085ceff41facc210567b790e23aa54f44502159af5bbf1f9d93d833581"
+    },
+    {
+      "source": "crates/client_core/tests/hud_decode.rs",
+      "destination": "vendor/crates/client_core/tests/hud_decode.rs",
+      "source_sha256": "27250a177b7541993e92a7b86f3d25a774845e27d88dfe3fc70748da9b3993bc",
+      "vendored_sha256": "27250a177b7541993e92a7b86f3d25a774845e27d88dfe3fc70748da9b3993bc"
+    },
+    {
+      "source": "crates/client_core/tests/hud_toast_decode.rs",
+      "destination": "vendor/crates/client_core/tests/hud_toast_decode.rs",
+      "source_sha256": "e35872a1ed3a1d74aca04c8df89448d05cdd15a6ebe98e985635a05bec655fa0",
+      "vendored_sha256": "e35872a1ed3a1d74aca04c8df89448d05cdd15a6ebe98e985635a05bec655fa0"
+    },
+    {
+      "source": "crates/client_core/tests/jump.rs",
+      "destination": "vendor/crates/client_core/tests/jump.rs",
+      "source_sha256": "b6245fd191de5817e459c4d1a4d15d3be368efb133f5912768f4569528bb8bae",
+      "vendored_sha256": "b6245fd191de5817e459c4d1a4d15d3be368efb133f5912768f4569528bb8bae"
+    },
+    {
+      "source": "crates/client_core/tests/mouselook.rs",
+      "destination": "vendor/crates/client_core/tests/mouselook.rs",
+      "source_sha256": "d05c9db4e082bfecec5453d80148c3ac7ceebcafe0e1ca14b02de2c157527f04",
+      "vendored_sha256": "d05c9db4e082bfecec5453d80148c3ac7ceebcafe0e1ca14b02de2c157527f04"
+    },
+    {
+      "source": "crates/client_core/tests/move_intent_pack.rs",
+      "destination": "vendor/crates/client_core/tests/move_intent_pack.rs",
+      "source_sha256": "45472fb9cfb0b96e3f674a75d74195f829b9ae59a61d79dbff93102adacae91b",
+      "vendored_sha256": "45472fb9cfb0b96e3f674a75d74195f829b9ae59a61d79dbff93102adacae91b"
+    },
+    {
+      "source": "crates/client_core/tests/pc_controller_resolve.rs",
+      "destination": "vendor/crates/client_core/tests/pc_controller_resolve.rs",
+      "source_sha256": "709e12e97a19f5f4d62c198d11ce902adbbd131bb10ace70f48943bb00a4ac76",
+      "vendored_sha256": "709e12e97a19f5f4d62c198d11ce902adbbd131bb10ace70f48943bb00a4ac76"
+    },
+    {
+      "source": "crates/client_core/tests/projectiles_do_not_mutate_npcs.rs",
+      "destination": "vendor/crates/client_core/tests/projectiles_do_not_mutate_npcs.rs",
+      "source_sha256": "df0b3cebd11d589b1a1d1dd452a51b68eed7fdc8135d19c1a142cc3980bba7d2",
+      "vendored_sha256": "df0b3cebd11d589b1a1d1dd452a51b68eed7fdc8135d19c1a142cc3980bba7d2"
+    },
+    {
+      "source": "crates/client_core/tests/projectiles_do_not_spawn_npcs.rs",
+      "destination": "vendor/crates/client_core/tests/projectiles_do_not_spawn_npcs.rs",
+      "source_sha256": "8445105526f4b60b27edef7de3a359ef1738f927080dca9bccda349fb1f6ab63",
+      "vendored_sha256": "8445105526f4b60b27edef7de3a359ef1738f927080dca9bccda349fb1f6ab63"
+    },
+    {
+      "source": "crates/client_core/tests/replication_local.rs",
+      "destination": "vendor/crates/client_core/tests/replication_local.rs",
+      "source_sha256": "e888bd61442cb1f17326149ddd410fbc4c221d1ebffbaf92a3920c88e9f17231",
+      "vendored_sha256": "e888bd61442cb1f17326149ddd410fbc4c221d1ebffbaf92a3920c88e9f17231"
+    },
+    {
+      "source": "crates/client_core/tests/replication_rejects_non_delta_as_delta.rs",
+      "destination": "vendor/crates/client_core/tests/replication_rejects_non_delta_as_delta.rs",
+      "source_sha256": "864544b05b26e2ffa6ce0e062e8b60a08f4211ede972d34b9b3082b0296beea6",
+      "vendored_sha256": "864544b05b26e2ffa6ce0e062e8b60a08f4211ede972d34b9b3082b0296beea6"
+    },
+    {
+      "source": "crates/client_core/tests/replication_sparse_ids.rs",
+      "destination": "vendor/crates/client_core/tests/replication_sparse_ids.rs",
+      "source_sha256": "c1ebcb99439bdb1c501266edc891949bf9a6d5953819ba4c235074354f88d90f",
+      "vendored_sha256": "c1ebcb99439bdb1c501266edc891949bf9a6d5953819ba4c235074354f88d90f"
+    },
+    {
+      "source": "crates/client_core/tests/sprint.rs",
+      "destination": "vendor/crates/client_core/tests/sprint.rs",
+      "source_sha256": "32bb52d47da9cb87c74539cdfdf4868f7ec6f832f95f02b19fc88e8d2e9ad276",
+      "vendored_sha256": "32bb52d47da9cb87c74539cdfdf4868f7ec6f832f95f02b19fc88e8d2e9ad276"
+    },
+    {
+      "source": "crates/client_core/tests/v4_updates_drive_views.rs",
+      "destination": "vendor/crates/client_core/tests/v4_updates_drive_views.rs",
+      "source_sha256": "4aeb9e697b9fc1606003b2fb9818036e1f3339ad1beda6b7124f669ed546f159",
+      "vendored_sha256": "4aeb9e697b9fc1606003b2fb9818036e1f3339ad1beda6b7124f669ed546f159"
+    },
+    {
+      "source": "crates/client_core/tests/wizard_is_pc_flag.rs",
+      "destination": "vendor/crates/client_core/tests/wizard_is_pc_flag.rs",
+      "source_sha256": "531f3cccd3ec8bab693b4fbeda42b8429ea7842263b7958972d70df1df037db9",
+      "vendored_sha256": "531f3cccd3ec8bab693b4fbeda42b8429ea7842263b7958972d70df1df037db9"
+    },
+    {
+      "source": "crates/client_core/tests/zone_client_tests.rs",
+      "destination": "vendor/crates/client_core/tests/zone_client_tests.rs",
+      "source_sha256": "7b0936a7052011ebb788abd863813deb0132e705e872bc76d54394ff18d05a23",
+      "vendored_sha256": "7b0936a7052011ebb788abd863813deb0132e705e872bc76d54394ff18d05a23"
+    }
+  ],
+  "license": "Apache-2.0",
+  "notice": "NOTICE",
+  "verification": "python3 crates/verse-atlantis/verify-source.py [--source-root /path/to/ruinsofatlantis]"
+}

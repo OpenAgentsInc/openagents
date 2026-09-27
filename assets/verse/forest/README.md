@@ -50,6 +50,23 @@ color channels. Each animation has a little-endian `u16` frame count, an `f32`
 frame duration, and its meshes. The decoder rejects extra data, invalid floats,
 unsupported timing, oversized allocations, and any content identity mismatch.
 
+## Simulation and scene provenance
+
+The pack contains geometry and sampled animation, not gameplay. The current
+forest uses the original Wizard Woods ECS schedule retained in
+[`crates/verse-atlantis`](../../../crates/verse-atlantis/), with separately pinned
+[scene JSON](../../../crates/verse-atlantis/data/wizard_woods/provenance.json).
+The 129-by-129 terrain is the source's active workspace snapshot. Its tree list
+is empty; retaining the tree mesh here does not imply that the original active
+scene places trees. The old Verse clearing and turn-based demo are superseded.
+
+The shared mobile/desktop adapter maps the source's keys 1, 2, and 3 to Firebolt,
+Magic Missile, and Fireball. The original simulation owns monster movement,
+NPC casting, mana, cooldowns, hits, and destructible ruins. Mobile rendering and
+touch input are adapters, with the differences documented in the
+[source parity audit](../../../docs/verse/atlantis-source-parity.md). This is not
+a claim that every original renderer feature or the complete game is imported.
+
 ## Source notices and provenance limits
 
 [SOURCE_LICENSE](SOURCE_LICENSE) and [SOURCE_NOTICE](SOURCE_NOTICE) preserve the

@@ -1515,12 +1515,7 @@ impl Scene {
         self.world.zone_intent(intent)?;
         if matches!(
             intent,
-            ZoneIntent::Enter
-                | ZoneIntent::Return
-                | ZoneIntent::Cancel
-                | ZoneIntent::Retry
-                | ZoneIntent::StartEncounter
-                | ZoneIntent::ResetEncounter
+            ZoneIntent::Enter | ZoneIntent::Return | ZoneIntent::Cancel | ZoneIntent::Retry
         ) {
             self.reset_zone_inputs();
         }
@@ -1922,6 +1917,51 @@ mod tests {
             .set_spawn([-12.0, 0.0, 8.0].into(), 0.0)
             .unwrap();
         (scene, cache)
+    }
+
+    #[test]
+    fn forest_hotbar_cast_keeps_a_held_movement_pointer() {
+        let (mut scene, _cache) = cached_zone_scene();
+        let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/verse/forest/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp");
+        scene
+            .world
+            .install_forest(verse::zones::assets::LoadedAssets::load_local(&pack).unwrap());
+        scene.reset_zone_inputs();
+        scene.update(1.0).unwrap();
+        scene.pointer(1, PointerPhase::Down, 50.0, 200.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 50.0, 150.0).unwrap();
+        scene.update(1.05).unwrap();
+        let before = scene.world.player.pos;
+        let before_mana = scene.zone_snapshot().combat.unwrap().player.mana;
+        let hud = scene.zone_hud_snapshot();
+        let fireball = hud.buttons.iter().find(|b| b.id == "fireball").unwrap();
+        assert!(fireball.enabled);
+        let [x, y, w, h] = fireball.frame;
+        scene
+            .pointer(2, PointerPhase::Down, x + w / 2.0, y + h / 2.0)
+            .unwrap();
+        scene
+            .pointer(2, PointerPhase::Up, x + w / 2.0, y + h / 2.0)
+            .unwrap();
+        assert!(scene.touches.contains_key(&1));
+        scene.update(1.10).unwrap();
+        let after = scene.zone_snapshot().combat.unwrap();
+        assert!(scene.world.player.pos.distance(before) > 0.1);
+        assert_eq!(after.counters.casts, 1);
+        assert!(after.player.mana < before_mana);
+        assert!(
+            after
+                .abilities
+                .iter()
+                .find(|a| serde_json::to_value(a.id).unwrap() == "fireball")
+                .unwrap()
+                .cooldown_remaining
+                > 0.0
+        );
+        scene.pointer(1, PointerPhase::Up, 50.0, 150.0).unwrap();
+        assert!(scene.touches.is_empty());
+        assert!(serde_json::to_vec(&scene.packet()).unwrap().len() < 64 * 1024);
     }
 
     #[test]

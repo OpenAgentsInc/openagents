@@ -1,0 +1,17 @@
+[package]
+name = "ecs_core"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = "1.0.100"
+core_materials = { version = "0.1.0", path = "../core_materials" }
+glam = "0.30"
+serde = { version = "1.0.228", features = ["derive"] }
+voxel_proxy = { version = "0.1.0", path = "../voxel_proxy" }
+
+[features]
+default = []
+# Enable serde derives for replication payloads
+replication = []

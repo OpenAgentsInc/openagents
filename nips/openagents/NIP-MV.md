@@ -170,7 +170,7 @@ its own fields or exact, reviewed host profile IDs:
 The current Verse `verse.zone.v1` schema is intentionally narrower than a
 general authoring format. It has exactly `schema`, `world`, `ruleset`,
 `physics`, `asset_sha256`, and `asset_bytes`. The host admits one reviewed forest
-world, the `srd-5.1-encounter-v1` rules subset, `verse.walk-flat.v1` physics, and
+world, the original `atlantis.wizard-woods.v1` real-time simulation, `atlantis.heightfield.v1` terrain, and
 one pinned asset pack. Its palette, bounds, and arrivals are compiled host
 values. Its local world name is not a published `33300` address, so this local
 catalog does not yet satisfy signed scene admission. A future authoring schema

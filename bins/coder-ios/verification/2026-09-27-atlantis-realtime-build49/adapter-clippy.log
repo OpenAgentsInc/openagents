@@ -1,0 +1,6 @@
+    Blocking waiting for file lock on build directory
+    Checking data_runtime v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/data_runtime)
+    Checking server_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/server_core)
+    Checking client_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/client_core)
+    Checking verse-atlantis v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.12s

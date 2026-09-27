@@ -1,0 +1,58 @@
+id = "boss_nivita"
+name = "Nivita, Lady of Undertide"
+kind = "boss"
+team = "enemy_raid"
+level = 10
+hp_range = [200, 250]
+speed_mps = 1.2
+radius_m = 0.9
+height_m = 1.9
+
+[abilities]
+str = 8
+dex = 12
+con = 10
+int = 20
+wis = 18
+cha = 16
+proficiency = 4
+
+[defenses]
+ac = 18
+resistances = ["necrotic", "psychic"]
+immunities  = ["charm", "fear"]
+
+# Optional explicit save overrides (if omitted, derive from abilities + proficiency)
+[saves]
+str = -1
+dex = 1
+con = 0
+int = 5
+wis = 4
+cha = 3
+
+[legendary]
+resist_per_day = 3
+resets = "long_rest"
+
+[spellbook]
+cantrips = ["chill_touch", "eldritch_blast", "minor_illusion", "toll_the_dead"]
+level_1_3 = ["counterspell", "fireball", "animate_dead", "fear", "fly"]
+level_4_5 = ["blight", "greater_invisibility", "wall_of_force", "dominate_person"]
+signature = ["circle_of_death", "finger_of_death", "soul_flay"]
+
+[[legendary_actions]]
+id = "grave_pulse"
+cost = 1
+
+[[legendary_actions]]
+id = "command_undead"
+cost = 1
+
+[[legendary_actions]]
+id = "shatter_reality"
+cost = 2
+
+[[legendary_actions]]
+id = "soul_drain"
+cost = 3

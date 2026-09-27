@@ -33,7 +33,9 @@ runtime-loaded artwork, separate forest palette, local SRD 5.1 encounter, and
 return to the saved plaza position. Its [acceptance](verification/2026-09-27-forest-zones/README.md)
 retains normal optimized launch, an empty-cache HTTPS download, native
 portal/encounter/return controls, cached reentry, and signed packaging checks.
-These features remain in build 48.
+Build 48 retains that historical implementation. The current source replaces
+the turn-based demo with the original Wizard Woods real-time simulation; see
+[the source audit](../../docs/verse/atlantis-source-parity.md).
 
 Build 46 adds the [expandable map, companion reactions, and
 Spark/Halo gates](../../docs/verse/world-interactions.md). Select a
@@ -223,7 +225,9 @@ The new **Forest portal** on the expanded map leads to the
 [Atlantis forest](../../docs/verse/zones.md). Entry downloads its reviewed
 6.6 MB asset pack only when requested; later visits use the verified cache.
 The forest has its own colors, original animated wizard/zombie models, and a
-local [SRD 5.1 encounter](../../docs/verse/zone-rules.md). **Plaza** returns to
+[original real-time combat](../../docs/verse/atlantis-source-parity.md).
+Use the bottom hotbar to cast Firebolt, Magic Missile, and Fireball while
+monsters move and attack. **Plaza** returns to
 your saved position at any time. Plaza presence and Gym observation pause
 throughout loading and the forest visit. Rules and artwork notices are in
 **Computer > Settings > About Verse**. Build 47 acceptance and its release receipt are retained in the
@@ -231,7 +235,7 @@ throughout loading and the forest visit. Rules and artwork notices are in
 
 
 The app launches into the same Rust world used by the desktop app. It starts
-offline, facing the computer, with no title banner or idle-status labels over
+in the public plaza unless you saved an offline choice, facing the computer, with no title banner or idle-status labels over
 the world. Drag in the left half of the surface to move and in the right half
 to look around. **Motion look** uses the phone's orientation instead; hold the
 left half to walk and use the crosshair to return the camera behind your character.

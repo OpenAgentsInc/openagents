@@ -1,0 +1,91 @@
+   Compiling core_units v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/core_units)
+   Compiling unsafe-libyaml v0.2.11
+   Compiling glam v0.30.10
+   Compiling libc v0.2.189
+   Compiling zerocopy v0.8.57
+   Compiling anyhow v1.0.104
+   Compiling indexmap v2.14.2
+   Compiling crossbeam-utils v0.8.23
+   Compiling smallvec v1.16.1
+   Compiling rapidhash v4.5.1
+   Compiling serde_json v1.0.151
+   Compiling serde v1.0.229
+   Compiling tracing v0.1.44
+   Compiling core_materials v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/core_materials)
+   Compiling metrics v0.24.6
+   Compiling crossbeam-channel v0.5.17
+   Compiling getrandom v0.3.4
+   Compiling rand_core v0.9.5
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling net_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/net_core)
+   Compiling data_runtime v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/data_runtime)
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.5
+   Compiling voxel_proxy v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/voxel_proxy)
+   Compiling voxel_mesh v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/voxel_mesh)
+   Compiling collision_static v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/collision_static)
+   Compiling ecs_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/ecs_core)
+   Compiling server_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/server_core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.28s
+     Running tests/arming_delay_prevents_early_detonation.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/arming_delay_prevents_early_detonation-1425afdacb3908fb)
+
+running 1 test
+test arming_delay_prevents_early_hit ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cast_acceptance.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/cast_acceptance-27262a3aee8f0698)
+
+running 3 tests
+test pc_firebolt_twice_after_gcd ... ok
+test pc_fireball_cd_and_mana ... ok
+test pc_magic_missile_cd_and_mana ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/effects_and_lifecycle.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/effects_and_lifecycle-a0c8e7916931b7db)
+
+running 4 tests
+test stun_blocks_cast ... ok
+test death_sets_despawn_or_removes_entity ... ok
+test burning_ticks_damage_and_expires ... ok
+test slow_scales_effective_speed ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fireball_aoe_hits_hostiles.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/fireball_aoe_hits_hostiles-5af597ff1c224594)
+
+running 1 test
+test fireball_aoe_hits_hostiles ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/firebolt_hits_hostile.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/firebolt_hits_hostile-cde4630b6e82585a)
+
+running 1 test
+test firebolt_hits_hostile_reliably ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/npc_caster_spell_choice_fireball.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/npc_caster_spell_choice_fireball-eb5e0281a99b0b89)
+
+running 1 test
+test npc_caster_casts_at_clustered_targets ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pc_mana_regen.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/pc_mana_regen-eec51a3ead9e517a)
+
+running 1 test
+test pc_mana_regen_is_one_per_second ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pc_no_ai_autocast.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/pc_no_ai_autocast-ec04bdfc4f3d7fd5)
+
+running 1 test
+test pc_does_not_autocast_or_consume_mana ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -602,7 +602,8 @@ files are included below.
 | --- | --- | --- |
 | [verse/README.md](verse/README.md) | Index | Verse |
 | [verse/zones.md](verse/zones.md) | Reference / roadmap | Runtime-loaded Atlantis forest and creator zones |
-| [verse/zone-rules.md](verse/zone-rules.md) | Reference / design | SRD 5.1 encounter and future L1 physics |
+| [verse/atlantis-source-parity.md](verse/atlantis-source-parity.md) | Audit | Original Wizard Woods source, mechanics, scene, and inherited defects |
+| [verse/zone-rules.md](verse/zone-rules.md) | Reference / design | Real-time Atlantis gameplay, future D&D rules, and L1 physics |
 | [verse/SRD-5.1-NOTICE.md](verse/SRD-5.1-NOTICE.md) | Attribution | SRD 5.1 license notice |
 | [verse/gym.md](verse/gym.md) | Guide | Spatial Gym observation and launch recipes |
 | [verse/mobile.md](verse/mobile.md) | Guide | Verse in Coder for iOS |

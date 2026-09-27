@@ -64,7 +64,10 @@ independent peer. [Relay evidence](bins/coder-ios/verification/2026-09-27-relay-
 retains signed presence and cleanup. Physical-device acceptance is separate.
 
 The [Atlantis forest portal](docs/verse/zones.md) retains runtime-loaded artwork,
-a separate palette, and a local [SRD 5.1 encounter](docs/verse/zone-rules.md).
+a separate palette, and the [original real-time Wizard Woods simulation](docs/verse/atlantis-source-parity.md).
+Zombies pursue continuously; the bottom hotbar casts Firebolt, Magic Missile,
+and Fireball with the original mana, cooldowns, projectiles, and damage.
+The turn-based demo has been removed from the current source.
 Use **Map → Forest portal**, tap the arch, and select **Plaza** to return to your
 saved position. The [map, companion, and Spark/Halo gates](docs/verse/world-interactions.md)
 remain available in the amber plaza. Shared forest combat, creator publishing,

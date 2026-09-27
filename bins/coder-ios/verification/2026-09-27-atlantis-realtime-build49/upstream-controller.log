@@ -1,0 +1,42 @@
+ Downloading crates ...
+  Downloaded serial_test v3.5.0
+  Downloaded serial_test_derive v3.5.0
+   Compiling getrandom v0.4.3
+   Compiling futures-core v0.3.34
+   Compiling errno v0.3.14
+   Compiling parking_lot_core v0.9.12
+   Compiling serial_test_derive v3.5.0
+   Compiling data_runtime v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/data_runtime)
+   Compiling rustix v1.1.5
+   Compiling futures-util v0.3.34
+   Compiling parking_lot v0.12.5
+   Compiling client_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/client_core)
+   Compiling tempfile v3.27.0
+   Compiling futures-executor v0.3.34
+   Compiling serial_test v3.5.0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.69s
+     Running tests/jump.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/jump-8266b5dff2eb076c)
+
+running 1 test
+test jump_rises_and_lands ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pc_controller_resolve.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/pc_controller_resolve-b9ce2b7763688e74)
+
+running 4 tests
+test ad_become_strafes_when_rmb_held ... ok
+test click_move_requires_both_buttons ... ok
+test ad_swing_camera_not_strafe_or_turn ... ok
+test sprint_requires_forward_only ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/sprint.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/sprint-740b4d96c9d8401e)
+
+running 2 tests
+test sprint_increases_forward_speed ... ok
+test walk_overrides_sprint ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

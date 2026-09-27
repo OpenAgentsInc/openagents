@@ -1,4 +1,4 @@
-//! Small in-world loading and encounter controls, with matching native semantics.
+//! In-world loading controls and a real-time spell hotbar, with matching native semantics.
 
 use super::Intent;
 use crate::ui::{self, Atlas, UiBatch};
@@ -12,6 +12,7 @@ pub struct Button {
     pub action: Intent,
     pub enabled: bool,
     pub frame: [f32; 4],
+    pub cooldown: f32,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct Snapshot {
@@ -83,6 +84,20 @@ impl Hud {
                 label: c.label.clone(),
                 action: c.action,
                 enabled: visible && c.enabled,
+                cooldown: zone
+                    .combat
+                    .as_ref()
+                    .and_then(|combat| {
+                        combat.abilities.iter().find(|a| {
+                            matches!(
+                                (a.id, c.action),
+                                (verse_atlantis::Spell::Firebolt, Intent::Firebolt)
+                                    | (verse_atlantis::Spell::MagicMissile, Intent::MagicMissile)
+                                    | (verse_atlantis::Spell::Fireball, Intent::Fireball)
+                            )
+                        })
+                    })
+                    .map_or(0.0, |a| a.cooldown_remaining),
                 frame: [
                     x + 6.0 + i as f32 * (width - 12.0) / count,
                     y + 52.0,
@@ -178,15 +193,39 @@ impl Hud {
         for b in &snapshot.buttons {
             let [bx, by, bw, bh] = b.frame;
             let color = if b.enabled { full } else { half };
+            if b.cooldown > 0.0 {
+                let duration = match b.action {
+                    Intent::Fireball => 2.0,
+                    Intent::MagicMissile => 1.5,
+                    _ => 0.5,
+                };
+                ui.rect(
+                    atlas,
+                    bx + 1.0,
+                    by + 1.0,
+                    (bw - 4.0) * (b.cooldown / duration).clamp(0.0, 1.0),
+                    bh - 2.0,
+                    ui::amber(Intensity::Half, 0.25),
+                );
+            }
             ui.frame(atlas, bx, by, bw - 2.0, bh, 1.0, color);
             let limit = ((bw - 8.0) / atlas.advance).floor().max(1.0) as usize;
             ui.text(
                 atlas,
                 bx + 4.0,
-                by + 15.0,
+                by + if b.cooldown > 0.0 { 6.0 } else { 15.0 },
                 &b.label.chars().take(limit).collect::<String>(),
                 color,
             );
+            if b.cooldown > 0.0 {
+                ui.text(
+                    atlas,
+                    bx + 4.0,
+                    by + 25.0,
+                    &format!("{:.1}s", b.cooldown),
+                    half,
+                );
+            }
         }
         for v in &mut ui.vertices {
             v.pos[0] *= scale;
@@ -236,6 +275,7 @@ mod tests {
                 action: Intent::Enter,
                 enabled: true,
                 frame: [0.0, 0.0, 100.0, 50.0],
+                cooldown: 0.0,
             }],
             progress: None,
             captured_pointers: vec![],

@@ -15,7 +15,7 @@ final class ZoneUITests: XCTestCase {
         waitFor { $0.frames > 0 && $0.map.visible }
     }
 
-    func testPortalLoadsForestAndEncounterThenReturnsToPlaza() throws {
+    func testPortalLoadsRealtimeForestAndHotbarThenReturnsToPlaza() throws {
         let initial = try observation()
         XCTAssertEqual(initial.zone.id, "plaza")
         XCTAssertEqual(initial.zone.state, "idle")
@@ -34,28 +34,73 @@ final class ZoneUITests: XCTestCase {
         XCTAssertFalse(forest.doors.hud.visible)
         XCTAssertFalse(forest.map.landmarks.contains { $0.id == "gym" })
         XCTAssertTrue(forest.map.landmarks.contains { $0.id == "return" })
-        XCTAssertTrue(forest.map.landmarks.allSatisfy { abs($0.x) <= 64 && abs($0.z) <= 64 })
+        XCTAssertTrue(forest.map.landmarks.allSatisfy { abs($0.x) <= forest.map.half_extent && abs($0.z) <= forest.map.half_extent })
         XCTAssertNil(forest.zone.error)
         attach("Runtime-loaded Atlantis forest")
 
-        try tapAction("start_encounter")
-        waitFor { $0.zone.encounter != nil }
-        let encounter = try XCTUnwrap(observation().zone.encounter)
-        XCTAssertTrue(encounter.ruleset.contains("5"))
-        XCTAssertGreaterThanOrEqual(encounter.round, 1)
-        if encounter.turn == "wizard" && encounter.action_available {
-            try tapAction("cast")
-            waitFor { ($0.zone.encounter?.revision ?? 0) > encounter.revision }
-            XCTAssertFalse(try XCTUnwrap(observation().zone.encounter).action_available)
+        let initialCombat = try XCTUnwrap(forest.zone.combat)
+        XCTAssertEqual(Set(initialCombat.abilities.map(\.id)), Set(["firebolt", "magic_missile", "fireball"]))
+        XCTAssertFalse(forest.zone.hud.buttons.contains { ["start_encounter", "cast", "end_turn", "reset_encounter"].contains($0.action) })
+        XCTAssertTrue(initialCombat.actors.contains { $0.kind == "zombie" })
+        XCTAssertTrue(initialCombat.actors.contains { $0.kind == "wizard" && $0.faction != "player" })
+        let positions = Dictionary(uniqueKeysWithValues: initialCombat.actors.filter { $0.faction != "player" }.map { ($0.id, $0.pos) })
+        waitFor { value in
+            guard let combat = value.zone.combat, combat.elapsed > initialCombat.elapsed + 0.5 else { return false }
+            return combat.actors.contains { actor in
+                guard let old = positions[actor.id] else { return false }
+                return hypot(actor.pos[0] - old[0], actor.pos[2] - old[2]) > 0.1
+            }
         }
-        attach("Forest 5e encounter controls")
+
+        // Walking and casting share the Rust simulation. The route remains
+        // active while this test taps the rendered ability, with no turn gate.
+        try walkToLandmark("grove")
+        let beforeCast = try observation()
+        let beforeCombat = try XCTUnwrap(beforeCast.zone.combat)
+        XCTAssertGreaterThanOrEqual(beforeCombat.player.mana, 5)
+        var firedObservation: VerseTestObservation?
+        try tapAction("fireball")
+        waitFor(timeout: 4) { value in
+            guard let combat = value.zone.combat,
+                  let ability = combat.abilities.first(where: { $0.id == "fireball" }) else { return false }
+            let fired = combat.counters.casts > beforeCombat.counters.casts &&
+                combat.player.mana < beforeCombat.player.mana && ability.cooldown_remaining > 0 && !ability.ready
+            if fired { firedObservation = value }
+            return fired
+        }
+        let observedFireball = try XCTUnwrap(firedObservation)
+        let fired = try XCTUnwrap(observedFireball.zone.combat)
+        XCTAssertGreaterThan(fired.counters.projectiles, beforeCombat.counters.projectiles)
+        let fireball = try XCTUnwrap(fired.abilities.first { $0.id == "fireball" })
+        let receipt: [String: Any] = [
+            "before_frame": beforeCast.frames, "after_frame": observedFireball.frames,
+            "before_position": beforeCast.position, "after_position": observedFireball.position,
+            "before_mana": beforeCombat.player.mana, "after_mana": fired.player.mana,
+            "before_cast_requests": beforeCombat.counters.casts, "after_cast_requests": fired.counters.casts,
+            "before_all_projectiles": beforeCombat.counters.projectiles, "after_all_projectiles": fired.counters.projectiles,
+            "fireball_cooldown_seconds": fireball.cooldown_remaining, "fireball_ready": fireball.ready,
+        ]
+        let receiptData = try JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])
+        let receiptAttachment = XCTAttachment(data: receiptData, uniformTypeIdentifier: "public.json")
+        receiptAttachment.name = "Player Fireball input, mana, and cooldown receipt"
+        receiptAttachment.lifetime = .keepAlways
+        add(receiptAttachment)
+        attach("Fireball hotbar during cooldown")
+        waitFor { value in
+            hypot(value.position[0] - beforeCast.position[0], value.position[2] - beforeCast.position[2]) > 0.5
+        }
+        waitFor { value in
+            value.zone.combat?.abilities.first(where: { $0.id == "fireball" })?.ready == true
+        }
+        attach("Real-time forest and GPU ability hotbar")
+        attachObservation("Real-time combat after Fireball")
         try tapAction("return")
         waitFor { $0.zone.id == "plaza" && $0.zone.state == "idle" }
         let returned = try observation()
         XCTAssertEqual(returned.position[0], plaza.position[0], accuracy: 0.1)
         XCTAssertEqual(returned.position[2], plaza.position[2], accuracy: 0.1)
         XCTAssertTrue(returned.map.landmarks.contains { $0.id == "gym" })
-        XCTAssertNil(returned.zone.encounter)
+        XCTAssertNil(returned.zone.combat)
         XCTAssertFalse(app.staticTexts["verse-error"].exists)
         attach("Returned to the amber plaza")
     }
@@ -100,6 +145,25 @@ final class ZoneUITests: XCTestCase {
                         withVelocity: .slow, thenHoldForDuration: 0)
         }
         waitFor { $0.zone.portal.near && $0.zone.portal.visible && $0.zone.hud.visible }
+    }
+
+    private func walkToLandmark(_ id: String) throws {
+        let compact = try observation().map
+        tap(compact.frame[0] + compact.frame[2] / 2, compact.frame[1] + 12)
+        waitFor { $0.map.expanded }
+        let map = try observation().map
+        let destination = try XCTUnwrap(map.landmarks.first { $0.id == id })
+        tap(map.plot[0] + ((destination.x - map.center[0]) / map.half_extent + 1) * map.plot[2] / 2,
+            map.plot[1] + (1 - (destination.z - map.center[1]) / map.half_extent) * map.plot[3] / 2)
+        waitFor { $0.map.destination != nil }
+    }
+
+    private func attachObservation(_ name: String) {
+        guard let value = surface.value as? String else { return }
+        let attachment = XCTAttachment(string: value)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func tapAction(_ action: String) throws {

@@ -1,0 +1,27 @@
+   Compiling server_core v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis/vendor/crates/server_core)
+   Compiling verse-atlantis v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse-atlantis)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.55s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse_atlantis-ac832b6408843914)
+
+running 12 tests
+test tests::controller_uses_original_run_sprint_and_jump_constants ... ok
+test tests::boot_retains_original_population_and_stats ... ok
+test tests::magic_missile_retains_three_projectiles ... ok
+test tests::invalid_inputs_do_not_mutate_the_simulation ... ok
+test tests::player_death_does_not_trigger_legacy_auto_respawn ... ok
+test tests::fireball_uses_source_mana_cooldown_and_damage ... ok
+test scene::tests::source_snapshot_has_original_dimensions_and_spawn_height ... ok
+test scene::tests::finite_outside_samples_clamp_and_nonfinite_inputs_remain_finite ... ok
+test tests::terrain_height_cast_hits_source_placeholder_height_via_xz_collision ... ok
+test tests::ruin_chunks_are_original_finite_meshes_under_source_budget ... ok
+test scene::tests::every_mesh_vertex_matches_the_ground_sampler ... ok
+test tests::original_npcs_move_and_cast_without_player_requests ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+   Doc-tests verse_atlantis
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

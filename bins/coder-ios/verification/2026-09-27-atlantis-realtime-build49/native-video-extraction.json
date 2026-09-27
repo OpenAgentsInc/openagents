@@ -1,0 +1,33 @@
+{
+  "schema": "coder.ios.video-extraction.v1",
+  "build": 49,
+  "simulator": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+  "source": "/tmp/coder-build49-final-forest.mp4",
+  "source_sha256": "111fcd9f0b5a803f008177a4e81a9cd71990e1f0315608c1a953abbc0000926e",
+  "source_bytes": 40969336,
+  "source_creation_time": "2026-09-27T12:52:25Z",
+  "source_duration_seconds": 39.933333,
+  "frames": [
+    {
+      "file": "native-fireball-launch.png",
+      "offset_seconds": 23.8
+    },
+    {
+      "file": "native-fireball-flight.png",
+      "offset_seconds": 24.0
+    },
+    {
+      "file": "native-fireball-impact.png",
+      "offset_seconds": 24.2
+    }
+  ],
+  "frame_extraction": "ffmpeg -ss OFFSET -i SOURCE -frames:v 1 OUTPUT.png",
+  "clip": {
+    "file": "native-combat-clip.mp4",
+    "offset_seconds": 19,
+    "duration_seconds": 12,
+    "filter": "scale=604:-2",
+    "encoding": "libx264 preset=fast crf=25; no audio; faststart"
+  },
+  "method": "Native simulator recording during the final XCTest. Frame pixels were decoded from the recording; no annotations or scene edits."
+}

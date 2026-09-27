@@ -1,0 +1,6 @@
+# Sorceress NPC model configuration
+# Set to a path under the repo, e.g.:
+# model = "assets/models/sorceress.glb"
+
+[sorceress]
+model = "assets/models/sorceror.glb"

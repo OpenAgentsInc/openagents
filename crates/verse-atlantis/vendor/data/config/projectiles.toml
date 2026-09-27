@@ -1,0 +1,10 @@
+# Projectile action specs used by the server to spawn authoritative projectiles.
+# These map from InputCommand-style action names to speed/radius/damage/life.
+
+[actions]
+AtWillLMB = { speed_mps = 40.0, radius_m = 0.20, damage = 10, life_s = 1.5 }
+AtWillRMB = { speed_mps = 35.0, radius_m = 0.25, damage =  8, life_s = 1.5 }
+# Fireball (EncounterQ): larger AoE to ensure proximity/TTL explosions are impactful
+EncounterQ = { speed_mps = 30.0, radius_m = 6.00, damage = 28, life_s = 1.5, arming_delay_s = 0.10, carves_destructibles = true, carve_radius_m = 2.0 }
+EncounterE = { speed_mps = 28.0, radius_m = 0.50, damage = 18, life_s = 1.5 }
+EncounterR = { speed_mps = 26.0, radius_m = 0.45, damage = 16, life_s = 1.5 }

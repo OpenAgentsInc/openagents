@@ -17,8 +17,8 @@ visits to the workbench, oracle, library, and proving ground, beside a
 ghost of Fable 5.1 low's cheapest winning run. The [Gym building](gym.md) observes host-selected Microcoder and Terminal-Bench
 records while the player is inside and supports explicitly confirmed recipes.
 The [Atlantis forest](zones.md) is a separate local zone: its models load on
-entry, its palette is independent, and its optional
-[SRD 5.1 encounter](zone-rules.md) implements a small turn-based rules subset.
+entry, its palette is independent, and its retained
+[Wizard Woods simulation](atlantis-source-parity.md) runs real-time combat.
 Arbitrary creator worlds, signed scene discovery, forest multiplayer, live
 Pylon state, and payment state remain unimplemented.
 
@@ -62,15 +62,17 @@ source grants, recorded charts, and bounded launch recipes.
 
 Choose **Forest portal** on the expanded map, approach the arch, and select
 **Enter forest**. Entry downloads and verifies the forest pack only when
-needed; later visits can use its disk cache. The forest has original Ruins of
-Atlantis wizard, zombie, and tree geometry in a bounded format, with a new flat
-clearing and its own colors. **Plaza** returns and releases the active forest
-geometry. The portal is separate from the Spark and Halo local route demos.
+needed; later visits can use its disk cache. The forest runs the original Ruins of
+Atlantis Wizard Woods combat schedule on its retained heightfield. Models load
+in a bounded format with sampled source animations and independent colors.
+**Plaza** returns and releases the active forest geometry and simulation.
+The portal is separate from the Spark and Halo local route demos.
 
-Select **Encounter** to try the local fifth-edition rules subset. **Fire Bolt**,
-**End turn**, and **Reset** are explicit actions; waiting does not trigger NPC
-attacks. See [zone loading and architecture](zones.md),
-[rules coverage and attribution](zone-rules.md), and
+Monsters approach, NPC wizards cast, and projectiles fly as the world updates.
+The phone's bottom hotbar supplies **Firebolt**, **Missile**, and **Fireball**;
+desktop retains keys 1, 2, and 3. See [zone loading and architecture](zones.md),
+[source provenance and parity](atlantis-source-parity.md),
+[future creator rules](zone-rules.md), and
 [mobile controls](mobile.md#enter-the-forest).
 
 ## Multiplayer
@@ -97,7 +99,7 @@ each other.
 **What goes over the wire.** Implemented shared presence is in world
 `verse-plaza`. Loading or visiting the local forest suspends plaza presence
 and observation; returning resumes the configured plaza behavior. Forest
-coordinates and encounter state are not published under the plaza identity.
+coordinates and combat state are not published under the plaza identity.
 
 | Event | Kind | Stored | When |
 | --- | --- | --- | --- |
@@ -463,7 +465,7 @@ The character collides with building footprints and the world edge.
 | [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
 | [`src/palette.rs`](../../crates/verse/src/palette.rs) | The amber ladder in linear light. |
 | [`src/zones/`](../../crates/verse/src/zones/mod.rs) | Curated zone identities, manifest admission, lazy forest loading, palette/fog, portals, and the local encounter. |
-| [`src/zones/rules.rs`](../../crates/verse/src/zones/rules.rs) | The bounded SRD 5.1 turn reducer, dice, attack/save semantics, and encounter movement budget. |
+| [`verse-atlantis`](../../crates/verse-atlantis/) | Retained Wizard Woods ECS simulation, exact source terrain, and portable host adapter. |
 | [`src/render.rs`](../../crates/verse/src/render.rs), [`src/shader.wgsl`](../../crates/verse/src/shader.wgsl) | Pipelines, fog, the window renderer, and PNG capture. |
 
 Test the crate with `cargo test -p verse`. Tests cover the controller rules,

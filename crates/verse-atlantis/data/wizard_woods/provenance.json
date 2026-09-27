@@ -1,0 +1,27 @@
+{
+  "source_repository": "https://github.com/OpenAgentsInc/ruinsofatlantis",
+  "source_commit": "daeb5d0895270159ec8c18341b4adb84bf7a4346",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "source": "data/zones/wizard_woods/manifest.json",
+      "destination": "manifest.json",
+      "sha256": "b67db7611da51f2826438b70d7678dfd2a24740f075e355d06175c2fa93ca17e"
+    },
+    {
+      "source": "data/zones/wizard_woods/snapshot.v1/zone_meta.json",
+      "destination": "zone_meta.json",
+      "sha256": "b3e10f4f21ac69674e40511b8af61a67bf864084749ef27e4ac328856da86350"
+    },
+    {
+      "source": "data/zones/wizard_woods/snapshot.v1/terrain.json",
+      "destination": "terrain.json",
+      "sha256": "8e98fd37897ad046a8319ca144090416b52a04dd7e7476f66337fdc2dc0b9f2f"
+    },
+    {
+      "source": "data/zones/wizard_woods/snapshot.v1/trees.json",
+      "destination": "trees.json",
+      "sha256": "7c0017bc1da451aaea52c69fba370b12a99a0a94337c3a4f6f3e17c46a890efe"
+    }
+  ]
+}

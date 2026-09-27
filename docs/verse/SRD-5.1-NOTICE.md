@@ -6,9 +6,11 @@ https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is
 licensed under the Creative Commons Attribution 4.0 International License
 available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
-The `srd-5.1-encounter-v1` profile adapts a limited part of those rules into
-new Rust code. It changes presentation and supplies an authored demonstration
-character and encounter. [Zone rules](zone-rules.md) identifies the supported
-subset and omissions. This is not the full game.
+This attribution is retained for the earlier `srd-5.1-encounter-v1` demo and its
+historical verification records. That demo is removed from the current forest
+runtime, which now uses the original real-time Wizard Woods simulation. See
+[zone rules and future profiles](zone-rules.md) for the current boundary. The
+earlier demo adapted a limited subset and an authored character; it was not
+the full game.
 
 Source: [SRD 5.1 Creative Commons PDF](https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf).

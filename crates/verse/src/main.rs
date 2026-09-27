@@ -15,7 +15,7 @@
 //! is read only after entering the Gym; `G` opens its board while inside.
 //! The forest portal loads its verified artwork only on explicit entry. Click
 //! the portal or press `F` nearby; inside, `1` through `4` activate the displayed
-//! encounter and return controls. Plaza subscriptions pause until you return.
+//! spell hotbar and return controls. Plaza subscriptions pause until you return.
 //!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
