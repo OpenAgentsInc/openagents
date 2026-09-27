@@ -17,8 +17,12 @@ const USAGE: &str = "usage: openagents study COMMAND HOST DIR [OPTIONS]
   run HOST DIR TASK ARM N [--runner SCRIPT]
                             Start `SCRIPT TASK ARM N` in DIR on the host, detached;
                             prints its pid. SCRIPT defaults to ./one.sh.
-  status HOST DIR           Each run's last logged step, whether its runner is
-                            alive, and the finished lines from outcomes.txt.
+  status HOST DIR [--until-done SECONDS]
+                            Each run's last logged step, the pid and name of each
+                            live microcoder process, and the finished lines from
+                            outcomes.txt. With --until-done, the host waits up to
+                            SECONDS (at most 1500, inside the terminal's idle
+                            life) for every run to end before it reports.
   outcomes HOST DIR         One row per runs/*/summary.json: task, arm, steps,
                             reward, dollars, model, and how it ended.
   faults HOST DIR           Steps whose model call failed, from each run's events.jsonl.
@@ -33,7 +37,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         println!("{USAGE}");
         return 0;
     }
-    let args = match Args::parse(rest, &["same-machine"]) {
+    let args = match Args::parse(rest, &["same-machine"]).and_then(|args| covering(args, rest)) {
         Ok(args) => args,
         Err(message) => return output.usage("study", &message, USAGE),
     };
@@ -75,6 +79,19 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     u8::try_from(result["exit"].as_i64().unwrap_or(1)).unwrap_or(255)
 }
 
+/// `args`, with the exec `--timeout` raised to cover `--until-done` plus a
+/// minute for the report, so a long host-side wait is not cut off here.
+fn covering(args: Args, words: &[String]) -> Result<Args, String> {
+    let until: u64 = args.number::<u64>("until-done", 0)?.min(1500);
+    let timeout: u64 = args.number("timeout", 600)?;
+    if until + 60 <= timeout {
+        return Ok(args);
+    }
+    let mut words = words.to_vec();
+    words.extend(["--timeout".to_owned(), (until + 60).to_string()]);
+    Args::parse(&words, &["same-machine"])
+}
+
 /// The shell script one command sends, or `None` when its arguments are short.
 fn script(command: &str, args: &Args) -> Option<String> {
     let positional = args.positional();
@@ -101,11 +118,12 @@ fn script(command: &str, args: &Args) -> Option<String> {
             )
         }
         "status" => format!(
-            "cd {dir} && for f in logs/*.log; do n=${{f#logs/}}; n=${{n%.log}}; \
+            "cd {dir} && {wait}for f in logs/*.log; do n=${{f#logs/}}; n=${{n%.log}}; \
              echo \"== $n\"; grep -o '^\\[[0-9:]*\\] [a-z ]*step [0-9]*' \"$f\" | tail -1; \
              test -f \"runs/$n/summary.json\" && echo done; done; \
              echo '== outcomes'; cat outcomes.txt 2>/dev/null; \
-             echo '== running'; pgrep -af 'microcoder' | grep -v pgrep; true"
+             echo '== running'; pgrep -l 'microcoder'; true",
+            wait = until_done(args.option("until-done"))?,
         ),
         "outcomes" => format!("cd {dir} && {each}cat \"$d/summary.json\" 2>/dev/null; echo; done"),
         "faults" => format!(
@@ -114,6 +132,21 @@ fn script(command: &str, args: &Args) -> Option<String> {
         ),
         _ => return None,
     })
+}
+
+/// A host-side loop that polls once a second until no `microcoder` process
+/// remains or `seconds` pass, so one command can cover a long run without
+/// blind sleeps here. `None` when the option is not a whole number.
+fn until_done(seconds: Option<&str>) -> Option<String> {
+    match seconds {
+        None => Some(String::new()),
+        Some(text) => {
+            let seconds: u64 = text.parse::<u64>().ok()?.min(1500);
+            Some(format!(
+                "i=0; while pgrep microcoder >/dev/null && [ $i -lt {seconds} ]; do sleep 1; i=$((i+1)); done; "
+            ))
+        }
+    }
 }
 
 /// `path` quoted for the host's shell, with a leading `~/` left to the
@@ -319,6 +352,26 @@ fn ending(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_waits_on_the_host_and_covers_the_wait_here() {
+        let words: Vec<String> = ["c", "~/s", "--until-done", "900"]
+            .map(String::from)
+            .to_vec();
+        let args = covering(Args::parse(&words, &[]).unwrap(), &words).unwrap();
+        assert_eq!(args.option("timeout"), Some("960"));
+        let text = script("status", &args).unwrap();
+        assert!(text.contains("[ $i -lt 900 ]"));
+        assert!(text.contains("pgrep -l 'microcoder'"));
+        assert!(!text.contains("pgrep -af"));
+        assert_eq!(
+            until_done(Some("9000")).unwrap(),
+            until_done(Some("1500")).unwrap()
+        );
+        assert!(until_done(Some("soon")).is_none());
+        let plain = Args::parse(&words[..2], &[]).unwrap();
+        assert!(!script("status", &plain).unwrap().contains("while"));
+    }
 
     #[test]
     fn status_reads_steps_and_finished_runs() {
