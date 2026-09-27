@@ -1,0 +1,132 @@
+    Finished `test` profile [unoptimized] target(s) in 4.48s
+     Running unittests src/lib.rs (/tmp/oa-9719-linux-d941997a/target/debug/deps/coder_pty-2ba6becb690bb56d)
+
+running 19 tests
+test client::tests::a_character_split_across_frames_is_kept_whole ... ok
+test client::tests::a_frame_for_another_terminal_is_refused ... ok
+test client::tests::a_frame_ahead_of_the_expected_one_is_held_back ... ok
+test client::tests::a_gap_frame_is_recorded_and_advances_the_resume_point ... ok
+test client::tests::exit_is_sequenced_like_output ... ok
+test client::tests::output_applies_in_order_and_duplicates_are_ignored ... ok
+test client::tests::the_screen_drops_escape_sequences_and_applies_carriage_returns ... ok
+test client::tests::the_screen_is_bounded_in_lines_and_columns ... ok
+test ring::tests::a_full_ring_discards_the_oldest_and_reports_what_was_missed ... ok
+test ring::tests::sequence_numbers_start_at_one_and_increase ... ok
+test ring::tests::the_frame_ceiling_also_discards ... ok
+test wire::tests::a_directory_that_leaves_the_root_is_refused ... ok
+test wire::tests::a_relative_program_is_refused ... ok
+test wire::tests::a_valid_open_request_checks ... ok
+test wire::tests::an_unknown_feature_and_version_refuse_distinctly ... ok
+test wire::tests::oversized_input_is_refused ... ok
+test wire::tests::frames_round_trip_with_base64_data ... ok
+test wire::tests::unknown_fields_are_refused ... ok
+test wire::tests::the_largest_frame_fits_one_direct_channel_data_frame ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pty.rs (/tmp/oa-9719-linux-d941997a/target/debug/deps/pty-d60713a4dda7464d)
+
+running 20 tests
+test a_detached_client_reattaches_and_replays_what_it_missed ... FAILED
+test a_terminal_from_an_earlier_host_generation_is_lost ... FAILED
+test a_revoked_attachment_is_ended_on_the_next_tick ... FAILED
+test an_idle_terminal_expires ... FAILED
+test echo_round_trips_through_a_real_pty ... FAILED
+test an_exact_input_retry_is_typed_once ... FAILED
+test close_ends_the_terminal_and_reports_why ... FAILED
+test process_exit_is_reported_with_its_status ... ok
+test input_without_the_terminal_right_is_refused ... FAILED
+test the_working_directory_and_environment_are_admitted_by_the_host ... ok
+test observers_read_only_when_the_host_allows_it ... FAILED
+test replay_after_the_ring_wrapped_reports_a_gap ... ok
+test resize_reaches_the_process ... ok
+test two_attached_readers_see_the_same_frames ... FAILED
+test the_process_sees_a_terminal_and_its_workspace ... ok
+test a_wrapped_terminal_writes_only_where_its_boundary_allows ... ok
+test host_shutdown_kills_the_process_group ... FAILED
+test dropping_the_host_kills_the_process_group ... ok
+test a_slow_attachment_is_held_to_its_rate ... ok
+test a_signal_reaches_the_foreground_process ... FAILED
+
+failures:
+
+---- a_detached_client_reattaches_and_replays_what_it_missed stdout ----
+
+thread 'a_detached_client_reattaches_and_replays_what_it_missed' (665410) panicked at crates/coder-pty/tests/pty.rs:108:18:
+open: Err(Refusal { reason: Unavailable, detail: "the terminal did not start: spawn: No such file or directory (os error 2)" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- a_terminal_from_an_earlier_host_generation_is_lost stdout ----
+
+thread 'a_terminal_from_an_earlier_host_generation_is_lost' (665414) panicked at crates/coder-pty/tests/pty.rs:108:18:
+open: Err(Refusal { reason: Unavailable, detail: "the terminal did not start: spawn: No such file or directory (os error 2)" })
+
+---- a_revoked_attachment_is_ended_on_the_next_tick stdout ----
+
+thread 'a_revoked_attachment_is_ended_on_the_next_tick' (665411) panicked at crates/coder-pty/tests/pty.rs:108:18:
+open: Err(Refusal { reason: Unavailable, detail: "the terminal did not start: spawn: No such file or directory (os error 2)" })
+
+---- an_idle_terminal_expires stdout ----
+
+thread 'an_idle_terminal_expires' (665417) panicked at crates/coder-pty/tests/pty.rs:108:18:
+open: Err(Refusal { reason: Unavailable, detail: "the terminal did not start: spawn: No such file or directory (os error 2)" })
+
+---- echo_round_trips_through_a_real_pty stdout ----
+
+thread 'echo_round_trips_through_a_real_pty' (665425) panicked at crates/coder-pty/tests/pty.rs:108:18:
+open: Err(Refusal { reason: Unavailable, detail: "the terminal did not start: spawn: No such file or directory (os error 2)" })
+
+---- an_exact_input_retry_is_typed_once stdout ----
+
+thread 'an_exact_input_retry_is_typed_once' (665416) panicked at crates/coder-pty/tests/pty.rs:108:18:
+open: Err(Refusal { reason: Unavailable, detail: "the terminal did not start: spawn: No such file or directory (os error 2)" })
+
+---- close_ends_the_terminal_and_reports_why stdout ----
+
+thread 'close_ends_the_terminal_and_reports_why' (665420) panicked at crates/coder-pty/tests/pty.rs:108:18:
+open: Err(Refusal { reason: Unavailable, detail: "the terminal did not start: spawn: No such file or directory (os error 2)" })
+
+---- input_without_the_terminal_right_is_refused stdout ----
+
+thread 'input_without_the_terminal_right_is_refused' (665430) panicked at crates/coder-pty/tests/pty.rs:108:18:
+open: Err(Refusal { reason: Unavailable, detail: "the terminal did not start: spawn: No such file or directory (os error 2)" })
+
+---- observers_read_only_when_the_host_allows_it stdout ----
+
+thread 'observers_read_only_when_the_host_allows_it' (665433) panicked at crates/coder-pty/tests/pty.rs:108:18:
+open: Err(Refusal { reason: Unavailable, detail: "the terminal did not start: spawn: No such file or directory (os error 2)" })
+
+---- two_attached_readers_see_the_same_frames stdout ----
+
+thread 'two_attached_readers_see_the_same_frames' (665447) panicked at crates/coder-pty/tests/pty.rs:108:18:
+open: Err(Refusal { reason: Unavailable, detail: "the terminal did not start: spawn: No such file or directory (os error 2)" })
+
+---- host_shutdown_kills_the_process_group stdout ----
+
+thread 'host_shutdown_kills_the_process_group' (665428) panicked at crates/coder-pty/tests/pty.rs:510:5:
+the terminal's process group outlived the host
+
+---- a_signal_reaches_the_foreground_process stdout ----
+
+thread 'a_signal_reaches_the_foreground_process' (665412) panicked at crates/coder-pty/tests/pty.rs:470:5:
+armed
+
+
+
+failures:
+    a_detached_client_reattaches_and_replays_what_it_missed
+    a_revoked_attachment_is_ended_on_the_next_tick
+    a_signal_reaches_the_foreground_process
+    a_terminal_from_an_earlier_host_generation_is_lost
+    an_exact_input_retry_is_typed_once
+    an_idle_terminal_expires
+    close_ends_the_terminal_and_reports_why
+    echo_round_trips_through_a_real_pty
+    host_shutdown_kills_the_process_group
+    input_without_the_terminal_right_is_refused
+    observers_read_only_when_the_host_allows_it
+    two_attached_readers_see_the_same_frames
+
+test result: FAILED. 8 passed; 12 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.03s
+
+error: test failed, to rerun pass `-p coder-pty --test pty`

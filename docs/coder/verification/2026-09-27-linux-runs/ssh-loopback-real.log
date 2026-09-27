@@ -1,0 +1,32 @@
+     Running tests/remote.rs (/tmp/oa-9719-linux-d941997a/target/debug/deps/remote-ff11470452f74c57)
+
+running 1 test
+resolved: christopherdavid@127.0.0.1:48219
+up: Fresh Started Managed pid=753732 port=45557 os=linux arch=x86_64
+remote process: 753732       1  753732  753732 /tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/versions/42c07c6d175ec807c8d629b8ce567144427e16e02fe65fdcd56355f0c265dd1b/coder host serve --loopback --loopback-test --no-telemetry --owner 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798 --relay ws://127.0.0.1:9/
+up again: Reused Reused
+tunnel: 127.0.0.1:41593 -> remote 127.0.0.1:45557 (ssh pid 754216)
+invite: one line, Invitation(redacted)
+after tunnel death: Reused pid=753732
+remove: stopped 753732
+external pid=754478: Adopted External
+remove: detached from 754478; it still runs
+remote files after the run:
+/tmp/oa-9719-linux-d941997a/rhome/.openagents
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/coder-access
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/coder-access/access.json
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/coder-access/access.lock
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/coder-access/host.key
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/host
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/host/generation
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/host.log
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/uploads
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/versions
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/versions/42c07c6d175ec807c8d629b8ce567144427e16e02fe65fdcd56355f0c265dd1b
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/versions/42c07c6d175ec807c8d629b8ce567144427e16e02fe65fdcd56355f0c265dd1b/coder
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/versions/42c07c6d175ec807c8d629b8ce567144427e16e02fe65fdcd56355f0c265dd1b/manifest
+test real_sshd_lifecycle ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 29.28s
+
