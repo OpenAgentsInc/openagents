@@ -131,6 +131,26 @@ uses `libc` 0.2 directly — `openpty`, `setsid`, `TIOCSCTTY`, `TIOCSWINSZ`,
   calls failed during testing. The crate serializes PTY allocation and
   spawning within the process.
 
+## Host TLS dependencies
+
+`crates/coder-host` terminates TLS on its WebSocket listener so a `wss` hint
+needs no forwarder. It depends directly on `rustls` 0.23 (with only the
+`ring`, `std`, and `tls12` features) and `tokio-rustls` 0.26 (without
+default features, and only in the optional `host` feature). Reviewed on
+2026-09-27:
+
+- Both crates were already in the resolved graph through
+  `tokio-tungstenite`'s `rustls-tls-webpki-roots` feature, at the locked
+  `rustls` 0.23.45 and `tokio-rustls` 0.26.5, so the graph gains no new
+  registry package. The only `Cargo.lock` change is the two new edges from
+  `coder-host`.
+- The features match `nostr-transport` and `verse`: the `ring` provider,
+  never `aws-lc-rs`, so no C toolchain or prebuilt native library is added.
+- PEM parsing uses `rustls-pki-types`, which `rustls` re-exports; no
+  `rustls-pemfile` crate is added. No ACME client or certificate generator
+  is added: the operator supplies the files, and the tests use checked-in,
+  test-only PEM fixtures instead of `rcgen`.
+
 ## Verification record
 
 On 2026-09-20, `./scripts/check-dependencies.sh` passed advisory, license, and

@@ -30,13 +30,14 @@ operation; this README covers the crate.
 | `client` | `Device`, directory and reach fetches, summaries, `Link`, `Connector`, `Ordered` frame ordering, and the `websocket` hint dialer. |
 | `tasks` | The task-owner trait and `NoTasks`. |
 | `config` | The host configuration. |
+| `tls` | Loads and checks the operator's certificate chain and key for the WebSocket listener. |
 | `telemetry` | Coarse CPU and memory samples for presence. |
 | `generation` | Which NIP-REACH generation `serve` runs as, from the host root's one counter in `coder_service::generation`. |
 | `enroll` | Reverse enrollment for a host without a screen: publish a request, show its code, and read the outcome the running host recorded. |
 | `cli` | `coder host init`, `public-key`, `invite`, `request`, `list`, `revoke`, and `serve`. |
 
 The default `host` feature builds the host: `serve`, `cli`, `authority`,
-`config`, `telemetry`, `generation`, and `enroll`. A client, such as the mobile library through
+`config`, `telemetry`, `generation`, `enroll`, and `tls`. A client, such as the mobile library through
 [`coder-computers`](../coder-computers/README.md), disables default features
 and keeps `client`, `mailbox`, `message`, and `tasks`, with the portable
 halves of `coder-access` and `coder-pty`.
@@ -91,9 +92,33 @@ binding as a TCP channel, carried one frame per binary message as
 [NIP-REACH](../../nips/openagents/NIP-REACH.md#websocket-mapping) maps it.
 The upgrade must finish within the handshake timeout.
 
+`Config::websocket_tls` (`--websocket-tls-cert FILE --websocket-tls-key
+FILE --websocket-name NAME`) makes the WebSocket listener terminate TLS
+itself, so a `wss` hint needs no forwarder. The operator supplies the
+certificate chain and private key as PEM files, for example from `tailscale
+cert` or an ACME client; the host never obtains or renews a certificate. The
+listener's hint becomes `wss://NAME:PORT/`, and the listener no longer serves
+plain `ws`. The `tls` module reads both files once at start and refuses to
+serve when the key file is missing, is not a regular file, is not owned by
+this user, or is open to group or others; when either file holds no usable
+PEM item; when the key does not match the leaf certificate; or when the leaf
+certificate is not valid for `NAME`. When `NAME` and the bound address
+disagree about loopback, as for a loopback listener behind a TCP forwarder,
+the listener's own hint is left out, and the operator advertises the
+forwarded endpoint with `--advertise`. To rotate the files, replace them and
+restart the host.
+
+TLS adds clients that accept only `wss`, and it hides the channel
+handshake's plaintext fields from observers on the path. It does not replace
+the channel's own authentication or encryption, and a certificate proves
+nothing about the host key.
+
 The client's `Connector` tries every selected direct hint in order: a `tcp`
 hint over TCP, a `websocket` hint through `client::WebSocketStream`, over TLS
-for a `wss` URL. `Link::direct` takes either stream.
+for a `wss` URL. `Link::direct` takes either stream. A `wss` certificate is
+verified against the bundled WebPKI roots; `client::WebSocketTls::test_roots`
+and `Connector::set_websocket_tls` replace those roots for tests only.
+`client::connect_websocket` dials one URL the same way.
 
 ## Presence telemetry and last seen
 
@@ -140,8 +165,9 @@ retained frames in any order after a reconnect, so a client feeds them through
 
 ## Limits
 
-- The WebSocket listener serves plain `ws`. A `wss` hint needs a forwarder
-  that terminates TLS in front of it.
+- The host reads its TLS certificate and key only at start. It does not
+  reload rotated files, check the chain against a root, or warn before the
+  certificate expires.
 - The CAP/CJ binding answers each request within the request, so it sends
   no `accepted` or progress feedback and ignores status, replay, and cancel
   controls. Execution kinds are ephemeral: a request sent while the host's
@@ -164,9 +190,14 @@ lists what it establishes. `tests/end_to_end.rs` runs the acceptance scenario in
 `tests/host_serve.rs` runs the same scenario with the durable task inbox.
 `tests/websocket.rs` enrolls a device, connects over a `websocket` hint, runs
 a terminal command, and sees revocation close the channel.
-The [verification record](../../docs/coder/verification/2026-09-26-host-serve.md)
-and the
-[WebSocket channel record](../../docs/coder/verification/2026-09-27-websocket-channels.md)
+`tests/wss.rs` does the same over `wss` that the host terminates, checks the
+listener's `wss` hint, refuses an untrusted issuer, a wrong name, and plain
+`ws`, and refuses to start with unusable TLS files. Its certificates and keys
+in `tests/fixtures/tls` are test-only.
+The [verification record](../../docs/coder/verification/2026-09-26-host-serve.md),
+the
+[WebSocket channel record](../../docs/coder/verification/2026-09-27-websocket-channels.md),
+and the [host `wss` record](../../docs/coder/verification/2026-09-27-host-wss.md)
 list what they establish.
 
 `tests/headless.rs` runs reverse enrollment of a headless host through the
