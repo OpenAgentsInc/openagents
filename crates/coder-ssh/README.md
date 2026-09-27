@@ -110,7 +110,9 @@ cargo test -p coder-ssh
 
 The integration tests in `tests/remote.rs` use a fake `ssh` program and a
 temporary remote home. They never read or write the real `~/.ssh` or
-`~/.openagents`. A test against a real loopback `sshd` is skipped unless you
+`~/.openagents`. The fake `ssh` and the archive packer live in
+`tests/support/fake_ssh.rs`, which a client's tests include with `#[path]`;
+the Computers screens' live test drives an SSH setup through it. A test against a real loopback `sshd` is skipped unless you
 set `CODER_SSH_LOOPBACK_DESTINATION` to a disposable account.
 
 ## Limits
@@ -125,3 +127,6 @@ set `CODER_SSH_LOOPBACK_DESTINATION` to a disposable account.
   identifier alone.
 - The launcher returns typed local results. It does not yet sign NIP-ENV
   request, lease, or cleanup artifacts, and it does not redeem invitations.
+  The [Computers screens](../coder-computers/README.md) redeem them: their
+  **Connect over SSH** runs `up` and `invite`, then redeems the invitation
+  with the device key.
