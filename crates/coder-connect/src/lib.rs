@@ -9,7 +9,7 @@ pub mod host;
 pub mod pairing;
 pub mod protocol;
 #[cfg(feature = "host")]
-mod store;
+pub mod store;
 pub mod transport;
 pub use client::Client;
 pub use coder_history;

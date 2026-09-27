@@ -1,0 +1,33 @@
+[package]
+name = "coder-access"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Host-wide Coder device enrollment and scoped access rights over private Nostr artifacts."
+
+[features]
+default = ["host"]
+host = ["coder-connect/host"]
+
+[[bin]]
+name = "coder-access"
+required-features = ["host"]
+
+[dependencies]
+coder-connect = { path = "../coder-connect", default-features = false }
+nostr = { path = "../nostr" }
+nostr-transport = { path = "../nostr-transport" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+
+[dev-dependencies]
+tempfile = "3"
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+tokio = { version = "1", features = ["net", "sync", "process"] }
+
+[lints]
+workspace = true

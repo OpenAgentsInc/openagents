@@ -1,4 +1,5 @@
 //! Private short-lived store locks let local revocation serialize with reads.
+//! Other host crates reuse this store under their own file name.
 use crate::{Error, ErrorCode, Result};
 use serde::{Serialize, de::DeserializeOwned};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -9,8 +10,9 @@ use std::{
 };
 
 const MAX_STORE: usize = 64 * 1024 * 1024;
-pub(crate) struct Store {
+pub struct Store {
     directory: PathBuf,
+    name: &'static str,
     _lock: File,
     poisoned: bool,
 }
@@ -42,6 +44,10 @@ pub(crate) fn private(path: &Path, create: bool) -> Result<File> {
 }
 impl Store {
     pub fn open(directory: &Path, create: bool) -> Result<Self> {
+        Self::open_named(directory, "observer", create)
+    }
+    /// Open a private store whose state, lock, and pending files use `name`.
+    pub fn open_named(directory: &Path, name: &'static str, create: bool) -> Result<Self> {
         let fresh = if create {
             match std::fs::DirBuilder::new().mode(0o700).create(directory) {
                 Ok(()) => true,
@@ -61,7 +67,7 @@ impl Store {
             ));
         }
         let directory = directory.canonicalize().map_err(io)?;
-        let lock = private(&directory.join("observer.lock"), fresh)?;
+        let lock = private(&directory.join(format!("{name}.lock")), fresh)?;
         lock.try_lock().map_err(|_| {
             Error::new(
                 ErrorCode::Conflict,
@@ -70,13 +76,14 @@ impl Store {
         })?;
         Ok(Self {
             directory,
+            name,
             _lock: lock,
             poisoned: false,
         })
     }
     pub fn key(&self, initialize: bool) -> Result<secp256k1::SecretKey> {
         let path = self.directory.join("host.key");
-        if !path.exists() && initialize && !self.directory.join("observer.json").exists() {
+        if !path.exists() && initialize && !self.state_path().exists() {
             let key = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
             let mut file = private(&path, true)?;
             file.write_all(&key.secret_bytes())
@@ -97,7 +104,7 @@ impl Store {
             .map_err(|_| Error::new(ErrorCode::Forbidden, "observer key file is invalid"))
     }
     pub fn load<T: DeserializeOwned>(&self) -> Result<Option<T>> {
-        let path = self.directory.join("observer.json");
+        let path = self.state_path();
         if !path.exists() {
             return Ok(None);
         }
@@ -134,7 +141,7 @@ impl Store {
                 "observer store retention limit exceeded",
             ));
         }
-        let pending = self.directory.join(".observer.pending");
+        let pending = self.directory.join(format!(".{}.pending", self.name));
         if pending.exists() {
             let _checked = private(&pending, false)?;
             std::fs::remove_file(&pending).map_err(io)?;
@@ -143,10 +150,13 @@ impl Store {
         file.write_all(&bytes)
             .and_then(|_| file.sync_all())
             .map_err(io)?;
-        std::fs::rename(pending, self.directory.join("observer.json")).map_err(io)?;
+        std::fs::rename(pending, self.state_path()).map_err(io)?;
         self.sync()?;
         self.poisoned = false;
         Ok(())
+    }
+    fn state_path(&self) -> PathBuf {
+        self.directory.join(format!("{}.json", self.name))
     }
     fn sync(&self) -> Result<()> {
         File::open(&self.directory)

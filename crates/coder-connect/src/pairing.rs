@@ -24,6 +24,11 @@ pub struct Invitation {
 }
 impl Invitation {
     pub fn parse(code: &str, now: u64, policy: RelayPolicy) -> Result<Self> {
+        Self::parse_prefixed(PREFIX, code, now, policy)
+    }
+    /// Parse the same binary layout under another profile's prefix. A distinct
+    /// prefix keeps one profile's invitation from being redeemed as another's.
+    pub fn parse_prefixed(prefix: &str, code: &str, now: u64, policy: RelayPolicy) -> Result<Self> {
         if code.len() > MAX_CODE_BYTES {
             return fail(
                 ErrorCode::Bounds,
@@ -31,7 +36,7 @@ impl Invitation {
             );
         }
         let encoded = code
-            .strip_prefix(PREFIX)
+            .strip_prefix(prefix)
             .ok_or_else(|| Error::new(ErrorCode::Malformed, "not a computer pairing invitation"))?;
         let bytes = URL_SAFE_NO_PAD
             .decode(encoded)
@@ -73,8 +78,30 @@ impl Invitation {
         }
         fresh(self.issued_at, self.expires_at, now)
     }
+    /// Create an unsaved invitation with a fresh random ID and capability.
+    /// The caller persists its digest before displaying the encoded string.
+    pub fn issue(host: &str, relay: &str, now: u64) -> Result<Self> {
+        let invitation = Self {
+            host: host.into(),
+            id: random_id(),
+            capability: random_id(),
+            relay: relay.into(),
+            issued_at: now,
+            expires_at: now
+                .checked_add(LIFETIME)
+                .ok_or_else(|| Error::new(ErrorCode::Malformed, "invitation lifetime overflow"))?,
+        };
+        Ok(invitation)
+    }
+    /// The temporary capability. Never log or display it outside the invitation.
+    pub fn capability(&self) -> &str {
+        &self.capability
+    }
     #[cfg(feature = "host")]
     pub(crate) fn encode(&self) -> Result<String> {
+        self.encode_prefixed(PREFIX)
+    }
+    pub fn encode_prefixed(&self, prefix: &str) -> Result<String> {
         let mut bytes = vec![1];
         bytes.extend(unhex(&self.host)?);
         bytes.extend(unhex(&self.id)?);
@@ -83,7 +110,7 @@ impl Invitation {
         bytes.extend(self.expires_at.to_be_bytes());
         bytes.extend((self.relay.len() as u16).to_be_bytes());
         bytes.extend(self.relay.as_bytes());
-        let code = format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes));
+        let code = format!("{prefix}{}", URL_SAFE_NO_PAD.encode(bytes));
         if code.len() > MAX_CODE_BYTES {
             return fail(
                 ErrorCode::Bounds,
@@ -96,7 +123,6 @@ impl Invitation {
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
-#[cfg(feature = "host")]
 fn unhex(text: &str) -> Result<[u8; 32]> {
     identity(text)?;
     let mut result = [0; 32];
@@ -250,7 +276,7 @@ pub async fn redeem(code: &str, secret: &SecretKey, policy: RelayPolicy) -> Resu
 /// Render locally. The code is never sent to a QR-generation service.
 #[cfg(feature = "host")]
 pub fn qr_svg(code: &str) -> Result<String> {
-    let qr = qr(code)?;
+    let qr = qr(PREFIX, code)?;
     let side = qr.size() + 8;
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {side} {side}\" width=\"600\" height=\"600\" shape-rendering=\"crispEdges\"><rect width=\"100%\" height=\"100%\" fill=\"white\"/><path fill=\"black\" d=\""
@@ -267,7 +293,12 @@ pub fn qr_svg(code: &str) -> Result<String> {
 }
 #[cfg(feature = "host")]
 pub fn terminal_qr(code: &str) -> Result<String> {
-    let qr = qr(code)?;
+    terminal_qr_prefixed(PREFIX, code)
+}
+/// Render a terminal QR code for an invitation that uses another profile's prefix.
+#[cfg(feature = "host")]
+pub fn terminal_qr_prefixed(prefix: &str, code: &str) -> Result<String> {
+    let qr = qr(prefix, code)?;
     let side = qr.size() + 8;
     let dark = |x, y| qr.get_module(x - 4, y - 4);
     let mut output = String::new();
@@ -286,11 +317,11 @@ pub fn terminal_qr(code: &str) -> Result<String> {
     Ok(output)
 }
 #[cfg(feature = "host")]
-fn qr(code: &str) -> Result<qrcodegen::QrCode> {
-    if !code.starts_with(PREFIX)
+fn qr(prefix: &str, code: &str) -> Result<qrcodegen::QrCode> {
+    if !code.starts_with(prefix)
         || code.len() > MAX_CODE_BYTES
         || !code.is_ascii()
-        || !code[PREFIX.len()..]
+        || !code[prefix.len()..]
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
     {

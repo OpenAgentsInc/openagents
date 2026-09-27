@@ -72,7 +72,7 @@ impl Session {
         )
         .await
     }
-    pub(crate) async fn exchange_event(
+    pub async fn exchange_event(
         &mut self,
         event: &Event,
         subscription: &str,

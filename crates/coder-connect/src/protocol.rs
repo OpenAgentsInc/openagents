@@ -276,13 +276,13 @@ pub fn identity(id: &str) -> Result<()> {
     }
     Ok(())
 }
-pub(crate) fn public(id: &str) -> Result<()> {
+pub fn public(id: &str) -> Result<()> {
     identity(id)?;
     XOnlyPublicKey::from_str(id)
         .map(|_| ())
         .map_err(|_| Error::new(ErrorCode::Malformed, "invalid public key"))
 }
-pub(crate) fn schema(actual: &str, expected: &str, requires: &[String]) -> Result<()> {
+pub fn schema(actual: &str, expected: &str, requires: &[String]) -> Result<()> {
     if actual != expected || !requires.is_empty() {
         return fail(
             ErrorCode::Unsupported,
@@ -291,19 +291,19 @@ pub(crate) fn schema(actual: &str, expected: &str, requires: &[String]) -> Resul
     }
     Ok(())
 }
-pub(crate) fn window(issued: u64, expires: u64, max: u64) -> Result<()> {
+pub fn window(issued: u64, expires: u64, max: u64) -> Result<()> {
     if issued >= expires || expires > 9_007_199_254_740_991 || expires - issued > max {
         return fail(ErrorCode::Malformed, "invalid observer lifetime");
     }
     Ok(())
 }
-pub(crate) fn fresh(issued: u64, expires: u64, now: u64) -> Result<()> {
+pub fn fresh(issued: u64, expires: u64, now: u64) -> Result<()> {
     if issued > now || expires <= now {
         return fail(ErrorCode::Expired, "observer artifact is not current");
     }
     Ok(())
 }
-pub(crate) fn encoded(value: &impl Serialize) -> Result<Vec<u8>> {
+pub fn encoded(value: &impl Serialize) -> Result<Vec<u8>> {
     let value = serde_json::to_value(value)
         .map_err(|_| Error::new(ErrorCode::Malformed, "observer serialization failed"))?;
     let bytes = contracts::jcs(&value).map_err(|_| {
@@ -317,7 +317,7 @@ pub(crate) fn encoded(value: &impl Serialize) -> Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-pub(crate) fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
+pub fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
     let value = contracts::parse_strict_bounded(bytes, MAX_BODY)
         .map_err(|_| Error::new(ErrorCode::Malformed, "invalid bounded observer JSON"))?;
     serde_json::from_value(value).map_err(|_| {
@@ -327,7 +327,7 @@ pub(crate) fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
         )
     })
 }
-pub(crate) fn seal(
+pub fn seal(
     value: &impl Serialize,
     schema: &str,
     secret: &SecretKey,
@@ -345,7 +345,7 @@ pub(crate) fn seal(
     nostr::private_artifact::seal(&body, secret, &recipient, mailbox, issued, random_bytes())
         .map_err(|_| Error::new(ErrorCode::Malformed, "observer envelope cannot be sealed"))
 }
-pub(crate) fn open<T: DeserializeOwned>(
+pub fn open<T: DeserializeOwned>(
     event: &Event,
     secret: &SecretKey,
     signer: &str,

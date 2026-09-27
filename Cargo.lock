@@ -659,6 +659,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-access"
+version = "0.1.0"
+dependencies = [
+ "coder-connect",
+ "futures-util",
+ "nostr",
+ "nostr-transport",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
 name = "coder-boundary"
 version = "0.1.0"
 dependencies = [
