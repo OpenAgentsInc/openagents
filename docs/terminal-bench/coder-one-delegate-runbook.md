@@ -227,6 +227,20 @@ record any change in the analysis. The task's agent timeout is 900 seconds,
 so the explore phase and the 600-second delegate deadline must fit inside
 it.
 
+A third optional kwarg adds a knowledge section to the briefing:
+`--agent-kwarg briefing_knowledge=<file>` names a JSON file on the host
+with the knowledge-base entries you selected, and the
+`coder-one-delegate-fable-low-kb` arm requires it. To write the file, run
+`experiments/2026-09-27-fable-delegate/select_knowledge.py`. It runs
+`microcoder kb search` over the task instruction and keeps whole entries by
+a stated score floor, entry limit, and character budget. The adapter
+uploads the file and sets `CODER_ONE_BRIEFING_KNOWLEDGE`. The doctor
+reports the entry count, and the briefing carries each entry after the
+task under "What Coder's knowledge base says". The briefing record names
+each entry by ID, version, and digest, and the bundle keeps the file as
+`artifacts/briefing-knowledge.json`. An entry written from the task you run
+makes the run in-sample, so label it knowledge-assisted.
+
 ## Where each trial's evidence lives
 
 A job directory is `~/.openagents/terminal-bench/jobs/<job>/`, and each

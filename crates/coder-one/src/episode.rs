@@ -25,6 +25,7 @@
 //! | `CODER_ONE_DELEGATE_TIMEOUT` | Seconds the delegate may run; 600 when unset. |
 //! | `CODER_ONE_EXPLORE_STEPS` | The explore phase's step bound; 8 when unset. |
 //! | `CODER_ONE_BRIEFING_CAP` | The briefing's length cap in characters; 12,000 when unset. |
+//! | `CODER_ONE_BRIEFING_KNOWLEDGE` | A JSON file of knowledge-base entries the host selected; the briefing carries each one whole after the task. Unset for no such section. |
 //! | `CODER_ONE_CLAUDE_BIN` | The `claude` binary; the first on `PATH` when unset. |
 //! | `CODER_ONE_CODEX_BIN` | The `codex` binary; the first on `PATH` when unset. |
 //! | `CLAUDE_CODE_OAUTH_TOKEN` | The Claude Code delegate's subscription token; or `ANTHROPIC_API_KEY`. |
@@ -242,12 +243,65 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
         }
     }
 
+    match doctor_knowledge() {
+        Ok(Some(line)) => println!("{line}"),
+        Ok(None) => {}
+        Err(error) => problems.push(error),
+    }
+
     if problems.is_empty() {
         println!("ok");
         Ok(())
     } else {
         Err(problems.join("; "))
     }
+}
+
+/// Reads the knowledge-base entries the host selected for the briefing
+/// (`CODER_ONE_BRIEFING_KNOWLEDGE`, [`crate::briefing_knowledge`]) and
+/// keeps a copy of the selection under the bundle's artifacts. None when
+/// the variable is unset. Only the sections packer in a single delegation
+/// adds the section, so any other policy is refused rather than run
+/// without it.
+fn briefing_knowledge(
+    policy: &Manifest,
+    output_dir: &Path,
+) -> Result<Vec<crate::briefing_knowledge::Entry>, String> {
+    let Some((path, json, entries)) = crate::briefing_knowledge::from_env()? else {
+        return Ok(Vec::new());
+    };
+    if policy.mode() == Mode::Off
+        || crate::compose::composes(policy)
+        || policy.policy.brief.packer != crate::policy::Packer::Sections
+    {
+        return Err(format!(
+            "{} adds a briefing section only in a single delegation with the sections packer",
+            crate::briefing_knowledge::ENV
+        ));
+    }
+    let artifacts = output_dir.join("artifacts");
+    std::fs::create_dir_all(&artifacts)
+        .and_then(|()| std::fs::write(artifacts.join(crate::briefing_knowledge::ARTIFACT), json))
+        .map_err(|error| format!("cannot keep a copy of {}: {error}", path.display()))?;
+    Ok(entries)
+}
+
+/// The doctor's line for the briefing knowledge, or the problem with it.
+fn doctor_knowledge() -> Result<Option<String>, String> {
+    Ok(
+        crate::briefing_knowledge::from_env()?.map(|(path, _, entries)| {
+            format!(
+                "briefing knowledge: {} entries from {} ({})",
+                entries.len(),
+                path.display(),
+                entries
+                    .iter()
+                    .map(|entry| format!("{} v{}", entry.id, entry.version))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }),
+    )
 }
 
 /// The oldest Claude Code the delegate accepts: the API refuses Opus 5.5
@@ -414,6 +468,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     }
     let instruction = std::fs::read_to_string(&args.instruction_file)
         .map_err(|error| format!("cannot read {}: {error}", args.instruction_file.display()))?;
+    let knowledge = briefing_knowledge(&policy, &args.output_dir)?;
     let workdir = std::env::current_dir().map_err(|error| error.to_string())?;
     let mut bundle = Bundle::create(&args.output_dir, &settings, &workdir, deadline.clone())?;
 
@@ -606,6 +661,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             pack: policy.policy.brief.pack_params(),
             isolation: "none",
             base: bundle.base.as_deref(),
+            knowledge: &knowledge,
         };
         let bundle_ref = &bundle;
         let steps_recorder = recorder.clone();

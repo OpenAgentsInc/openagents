@@ -27,6 +27,7 @@ def test_known_arms(agents):
         "coder-one-no-jev",
         "coder-one-delegate-opus",
         "coder-one-delegate-fable-low",
+        "coder-one-delegate-fable-low-kb",
         "coder-one-delegate-auto",
         "coder-one-delegate-luna",
         "coder-one-delegate-luna-auto",
@@ -247,6 +248,21 @@ def test_fable_low_delegate_arm_sets_effort_as_a_literal(agents):
     out = agent_config_env(profile, auth_mode="subscription-oauth", env=env)
     assert out["CODER_ONE_DELEGATE_EFFORT"] == "low"
     assert out["CLAUDE_CODE_OAUTH_TOKEN"] == "${CLAUDE_CODE_OAUTH_TOKEN}"
+
+
+def test_fable_low_kb_arm_needs_the_knowledge_file_and_raises_the_cap(agents):
+    profile = agents["coder-one-delegate-fable-low-kb"]
+    base = agents["coder-one-delegate-fable-low"]
+    assert profile.kwargs == base.kwargs
+    assert "briefing_knowledge" in profile.required_kwargs
+    assert "briefing_knowledge" not in base.required_kwargs
+    env = {"OPENAGENTS_API_KEY": "a", "TYPESAFE_API_KEY": "b", "CLAUDE_CODE_OAUTH_TOKEN": "c"}
+    out = agent_config_env(profile, auth_mode="subscription-oauth", env=env)
+    assert out["CODER_ONE_DELEGATE_EFFORT"] == "low"
+    assert out["CODER_ONE_BRIEFING_CAP"] == "24000"
+    assert "CODER_ONE_BRIEFING_CAP" not in agent_config_env(
+        base, auth_mode="subscription-oauth", env=env
+    )
 
 
 def test_delegate_oauth_mode_forwards_the_token_by_name_only(agents):

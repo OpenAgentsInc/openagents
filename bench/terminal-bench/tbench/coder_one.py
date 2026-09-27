@@ -377,6 +377,41 @@ TAKE_LOGIN_LINE = "microluna login: take"
 _TRUTHY = ("1", "true", "yes", "on")
 TOOLCHAIN_MODES = ("prebuilt", "network")
 
+# The knowledge-base entries the operator selected for a delegate's
+# briefing (issue #9746): where the episode reads them, and the variable
+# that names that place.
+BRIEFING_KNOWLEDGE_PATH = INSTALL_ROOT / "briefing-knowledge.json"
+BRIEFING_KNOWLEDGE_ENV = "CODER_ONE_BRIEFING_KNOWLEDGE"
+
+
+def load_briefing_knowledge(value: Any) -> tuple[Path, int]:
+    """Checks a ``briefing_knowledge`` kwarg on the host: a readable JSON
+    file with a non-empty ``entries`` list, each entry with an ``id``, a
+    ``version``, a ``sha256``, and its ``text``. Returns the file and the
+    entry count. The episode checks each digest again before it trusts
+    one."""
+    path = Path(str(value)).expanduser()
+    try:
+        doc = json.loads(path.read_text())
+    except (OSError, ValueError) as error:
+        raise EpisodeContractError(
+            f"briefing_knowledge {path} isn't a readable JSON file: {error}"
+        ) from error
+    entries = doc.get("entries") if isinstance(doc, dict) else None
+    if not isinstance(entries, list) or not entries:
+        raise EpisodeContractError(f"briefing_knowledge {path} has no entries")
+    for entry in entries:
+        missing = [
+            key
+            for key in ("id", "version", "sha256", "text")
+            if not isinstance(entry, dict) or entry.get(key) in (None, "")
+        ]
+        if missing:
+            raise EpisodeContractError(
+                f"briefing_knowledge {path}: an entry lacks {', '.join(missing)}"
+            )
+    return path, len(entries)
+
 # Network installs share one guard per process: Harbor runs a job's
 # trials as tasks in one event loop, and eight concurrent bootstrap
 # downloads caused the 2026-09-22 setup timeouts.
@@ -420,6 +455,13 @@ class CoderOneDelegate(CoderOne):
     - ``toolchain``: ``prebuilt`` (the default) or ``network``.
     - ``install_concurrency``: the most network installs at once, 2 by
       default.
+    - ``briefing_knowledge``: optional. A JSON file on the host with the
+      knowledge-base entries the operator selected for the briefing
+      (issue #9746), ``{"entries": [{"id", "version", "sha256", "text"}]}``.
+      The adapter uploads it to ``BRIEFING_KNOWLEDGE_PATH`` and passes that
+      path as ``CODER_ONE_BRIEFING_KNOWLEDGE``; the briefing then carries
+      each entry whole after the task. The doctor must report the same
+      number of entries.
     """
 
     EPISODE_ENV: ClassVar[tuple[str, ...]] = CoderOne.EPISODE_ENV + (
@@ -471,6 +513,13 @@ class CoderOneDelegate(CoderOne):
         self._explore_steps = kwargs.pop("explore_steps", None)
         self._toolchain = kwargs.pop("toolchain", None) or "prebuilt"
         self._install_concurrency = int(kwargs.pop("install_concurrency", None) or 2)
+        self._briefing_knowledge: Path | None = None
+        self._briefing_entries = 0
+        knowledge = kwargs.pop("briefing_knowledge", None)
+        if knowledge:
+            self._briefing_knowledge, self._briefing_entries = load_briefing_knowledge(
+                knowledge
+            )
         self._claude_bin: str | None = None
         self._codex_bin: str | None = None
         policy = kwargs.get("policy")
@@ -738,6 +787,7 @@ class CoderOneDelegate(CoderOne):
 
     async def install(self, environment: BaseEnvironment) -> None:
         """Install the pinned delegate CLI, then Coder One and its doctor."""
+        await self._place_briefing_knowledge(environment)
         if self._delegate_agent == "codex":
             await self._install_codex(environment)
             await super().install(environment)
@@ -747,6 +797,38 @@ class CoderOneDelegate(CoderOne):
         # The episode doctor then checks `claude --version` and the
         # credential from inside the episode's own environment.
         await super().install(environment)
+
+    async def _place_briefing_knowledge(self, environment: BaseEnvironment) -> None:
+        """Upload the selected knowledge before the doctor reads it, and
+        keep the host's copy beside the agent's logs."""
+        if self._briefing_knowledge is None:
+            return
+        await self.exec_as_root(environment, command=f"mkdir -p {INSTALL_ROOT}")
+        await environment.upload_file(
+            str(self._briefing_knowledge), str(BRIEFING_KNOWLEDGE_PATH)
+        )
+        await self.exec_as_root(
+            environment, command=f"chmod 0644 {BRIEFING_KNOWLEDGE_PATH}"
+        )
+        try:
+            (self.logs_dir / BRIEFING_KNOWLEDGE_PATH.name).write_bytes(
+                self._briefing_knowledge.read_bytes()
+            )
+        except OSError:
+            pass
+
+    def _check_doctor_report(self, report: str) -> None:
+        """Refuses an artifact that ignores the briefing knowledge."""
+        super()._check_doctor_report(report)
+        if self._briefing_knowledge is None:
+            return
+        line = f"briefing knowledge: {self._briefing_entries} entries from "
+        if not any(entry.strip().startswith(line) for entry in report.splitlines()):
+            raise EpisodeContractError(
+                "the artifact's doctor didn't report the briefing knowledge's "
+                f"{self._briefing_entries} entries; it predates "
+                "CODER_ONE_BRIEFING_KNOWLEDGE or couldn't read the file"
+            )
 
     async def _check_claude(self, environment: BaseEnvironment) -> None:
         """Check the installed Claude Code and remember its path."""
@@ -803,6 +885,8 @@ class CoderOneDelegate(CoderOne):
         # Zero is a real bound: it skips the explore phase entirely.
         if self._explore_steps is not None:
             env["CODER_ONE_EXPLORE_STEPS"] = str(int(self._explore_steps))
+        if self._briefing_knowledge is not None:
+            env[BRIEFING_KNOWLEDGE_ENV] = str(BRIEFING_KNOWLEDGE_PATH)
         return env
 
 

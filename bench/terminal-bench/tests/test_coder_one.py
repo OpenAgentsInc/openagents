@@ -237,6 +237,79 @@ def test_an_explore_bound_of_zero_reaches_the_episode(tmp_path):
     assert agent._episode_env()["CODER_ONE_EXPLORE_STEPS"] == "0"
 
 
+def _knowledge(tmp_path, entries=None):
+    import json
+
+    text = "---\nid: finance.method\nversion: 3\n---\n\nEAD is alpha times RC plus PFE.\n"
+    entries = entries if entries is not None else [
+        {
+            "id": "finance.method",
+            "version": 3,
+            "sha256": hashlib.sha256(text.encode()).hexdigest(),
+            "score": 1.0,
+            "text": text,
+        }
+    ]
+    path = tmp_path / "selection.json"
+    path.write_text(json.dumps({"command": ["kb", "search"], "entries": entries}))
+    return path
+
+
+def test_briefing_knowledge_is_uploaded_before_the_doctor_and_named_to_the_episode(
+    tmp_path,
+):
+    selection = _knowledge(tmp_path)
+    agent = _delegate(tmp_path, delegate="always", briefing_knowledge=str(selection))
+    agent._claude_bin = "/root/.local/share/claude/versions/2.1.280"
+    env = agent._episode_env()
+    assert env["CODER_ONE_BRIEFING_KNOWLEDGE"] == "/opt/openagents/briefing-knowledge.json"
+
+    uploads = []
+
+    class Env(_Environment):
+        async def upload_file(self, source, target):
+            uploads.append((source, target))
+
+    environment = Env("")
+    asyncio.run(agent._place_briefing_knowledge(environment))
+    assert uploads == [(str(selection), "/opt/openagents/briefing-knowledge.json")]
+    assert any("chmod 0644 /opt/openagents/briefing-knowledge.json" in c for c in environment.commands)
+    # The host's copy stays beside the agent's logs.
+    assert (tmp_path / "briefing-knowledge.json").read_bytes() == selection.read_bytes()
+
+    agent._check_doctor_report(
+        "briefing knowledge: 1 entries from /opt/openagents/briefing-knowledge.json "
+        "(finance.method v3)\nok\n"
+    )
+    with pytest.raises(EpisodeContractError, match="briefing knowledge"):
+        agent._check_doctor_report("delegate: always to claude-code\nok\n")
+
+
+def test_an_arm_without_briefing_knowledge_is_unchanged(tmp_path):
+    agent = _delegate(tmp_path, delegate="always")
+    agent._claude_bin = "/root/.local/share/claude/versions/2.1.280"
+    assert "CODER_ONE_BRIEFING_KNOWLEDGE" not in agent._episode_env()
+    agent._check_doctor_report("ok\n")
+    environment = _Environment("")
+    asyncio.run(agent._place_briefing_knowledge(environment))
+    assert environment.commands == []
+
+
+def test_a_bad_briefing_knowledge_file_is_refused_on_the_host(tmp_path):
+    with pytest.raises(EpisodeContractError, match="readable JSON"):
+        _delegate(tmp_path, delegate="always", briefing_knowledge=str(tmp_path / "none.json"))
+    with pytest.raises(EpisodeContractError, match="no entries"):
+        _delegate(
+            tmp_path, delegate="always", briefing_knowledge=str(_knowledge(tmp_path, []))
+        )
+    with pytest.raises(EpisodeContractError, match="lacks sha256"):
+        _delegate(
+            tmp_path,
+            delegate="always",
+            briefing_knowledge=str(_knowledge(tmp_path, [{"id": "a", "version": 1, "text": "t"}])),
+        )
+
+
 LUNA_POLICY = "crates/coder-one/policies/jevprobe3-luna.json"
 OPUS_POLICY = "crates/coder-one/policies/jevprobe2-opus-lean-low-5m.json"
 

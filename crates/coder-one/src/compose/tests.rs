@@ -218,6 +218,7 @@ async fn compose_task(
         pack: brief.pack_params(),
         isolation: "a scratch directory",
         base: None,
+        knowledge: &[],
     };
     let setup = Setup {
         manifest,

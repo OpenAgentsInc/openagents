@@ -2592,6 +2592,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
             pack: manifest.policy.brief.pack_params(),
             isolation: "none",
             base: None,
+            knowledge: &[],
         };
         let mut generator = Counting(0, output.is_some());
         let mut shell = Echo(output.unwrap_or("").to_string());

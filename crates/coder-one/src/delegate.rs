@@ -686,6 +686,35 @@ impl Briefing {
     /// toward the cap like the rest.
     #[must_use]
     pub fn build_under(head: &str, inputs: &BriefingInputs, cap: usize) -> Self {
+        Self::build_under_knowing(head, inputs, &[], cap)
+    }
+
+    /// [`Briefing::build`] with the knowledge-base entries the host
+    /// selected ([`crate::briefing_knowledge`]). They go right after the
+    /// task, under "What Coder's knowledge base says", in the host's
+    /// order, before the requirements and the explorer's evidence. Each
+    /// entry goes in whole or not at all. Each one left out is named in
+    /// [`Briefing::omitted`], and the section tells the delegate which
+    /// ones it didn't get. With no entries, the briefing is exactly
+    /// [`Briefing::build`]'s.
+    #[must_use]
+    pub fn build_knowing(
+        inputs: &BriefingInputs,
+        knowledge: &[crate::briefing_knowledge::Entry],
+        cap: usize,
+    ) -> Self {
+        Self::build_under_knowing(head_for(inputs), inputs, knowledge, cap)
+    }
+
+    /// [`Briefing::build_under`] with knowledge-base entries, as in
+    /// [`Briefing::build_knowing`].
+    #[must_use]
+    pub fn build_under_knowing(
+        head: &str,
+        inputs: &BriefingInputs,
+        knowledge: &[crate::briefing_knowledge::Entry],
+        cap: usize,
+    ) -> Self {
         let directions = format!("\n## What to do\n\n{}\n", inputs.directions);
         let fixed = head.chars().count() + directions.chars().count() + 32;
         let room = cap.saturating_sub(fixed);
@@ -742,11 +771,34 @@ impl Briefing {
                 if is_environment {
                     reserved = 0;
                 }
+                true
             } else {
                 omitted.push(format!("{name} ({} characters)", section.chars().count()));
+                false
             }
         };
 
+        if !knowledge.is_empty() {
+            let heading = format!(
+                "{}\n\n{}",
+                crate::briefing_knowledge::HEADING,
+                crate::briefing_knowledge::NOTE
+            );
+            let mut left_out = Vec::new();
+            for entry in knowledge {
+                if !add(entry.label(), &heading, entry.section(), &mut body) {
+                    left_out.push(format!("{} v{}", entry.id, entry.version));
+                }
+            }
+            if !left_out.is_empty() {
+                add(
+                    "knowledge omission note".to_string(),
+                    &heading,
+                    format!("Left out for length: {}.\n", left_out.join(", ")),
+                    &mut body,
+                );
+            }
+        }
         for (i, (requirement, p)) in inputs.requirements.iter().enumerate() {
             let p = p.map_or("not judged".to_string(), |p| format!("p={p:.2}"));
             add(
@@ -2519,6 +2571,9 @@ pub struct Plan<'a> {
     pub isolation: &'a str,
     /// The Git commit the closing check diffs against, when known.
     pub base: Option<&'a str>,
+    /// The knowledge-base entries the host selected for the briefing
+    /// (`CODER_ONE_BRIEFING_KNOWLEDGE`); empty for every other run.
+    pub knowledge: &'a [crate::briefing_knowledge::Entry],
 }
 
 /// What a delegated run leaves for the record.
@@ -2679,7 +2734,10 @@ where
         });
         (packed.briefing, Some(record))
     } else {
-        (Briefing::build(&inputs, plan.cap), None)
+        (
+            Briefing::build_knowing(&inputs, plan.knowledge, plan.cap),
+            None,
+        )
     };
     recorder.end(
         &pack,
@@ -3765,6 +3823,7 @@ pub(crate) mod tests {
             pack: crate::pack::Params::default(),
             isolation: "none",
             base: None,
+            knowledge: &[],
         };
         let (ended, delegated) = explore_then_delegate(
             &mut state,
