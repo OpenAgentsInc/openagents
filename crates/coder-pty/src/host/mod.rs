@@ -180,6 +180,8 @@ pub struct Config {
     pub rate_max: u64,
     /// How long a terminal lives with no attachment and no input.
     pub idle: Duration,
+    /// The most terminals whose process is still running. Ended terminals
+    /// stay for replay until the idle period passes and do not count.
     pub terminals_max: usize,
     /// Attachments per terminal.
     pub attachments_max: usize,
@@ -812,7 +814,12 @@ impl Inner {
                 "the host is shutting down",
             ));
         }
-        if self.terminals().len() >= self.config.terminals_max {
+        let running = self
+            .terminals()
+            .values()
+            .filter(|terminal| !terminal.ended())
+            .count();
+        if running >= self.config.terminals_max {
             return Err(Refusal::new(
                 Reason::LimitExceeded,
                 "the host has its most terminals",

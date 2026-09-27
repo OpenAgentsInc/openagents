@@ -15,10 +15,12 @@ use std::process::ExitCode;
 
 mod args;
 mod computer;
+mod hosts;
 mod key;
 mod out;
 mod relay;
 mod sov;
+mod study;
 mod terminal;
 mod world;
 mod zone;
@@ -31,7 +33,8 @@ const USAGE: &str = "usage: openagents [--json] COMMAND [ARGS]
 Pairing and computers (NIP-HOST, NIP-REACH):
   host         Run and administer the resident host on this machine.
   pair         Show a QR code to read this computer's chats on a phone.
-  computer     Enroll with hosts, list them, order and steer work.
+  computer     Enroll with hosts, list them, run commands, order and steer work.
+  study        Launch and read Microcoder study runs on a host.
 
 Coder:
   task         Durable local task requests and explicit execution.
@@ -79,6 +82,7 @@ fn main() -> ExitCode {
         "computer" | "computers" => computer::run(&output, &rest),
         "verse" => world::run(&output, &rest),
         "zone" => zone::run(&output, &rest),
+        "study" => study::run(&output, &rest),
         "sov" => sov::run(&output, &rest),
         "key" => key::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
