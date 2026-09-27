@@ -241,14 +241,24 @@ uses, and marks which are implemented and which are only specified.
   `docs/coder/runtime/host-service.md` before changing a state transition.
 - `crates/coder-computers` — Coder's Computers screens (host status, add a
   computer, access, first run, activity) as Rust Native projections with typed
-  intents and one shared authority check. `ComputersService` is the seam for the
-  resident host client; keep grants, connections, and relays out of this crate.
+  intents and one shared authority check. Its `live` service owns the client's
+  grants, owner-directory reads under the NIP-REACH owner-authority rule, and,
+  with the `ssh` feature, SSH host setup through `coder-ssh`. Read its README
+  before changing owner-key handling.
 - `crates/coder-host` — the resident Coder host (`coder host serve`) and its
   client. It composes `coder-access`, `coder-reach`, `coder-pty`, and the task
   inbox behind one host key and rechecks the grant on every channel message.
+  It also answers NIP-HOST over CJ execution through the same admission and
+  publishes its `host-access` capability.
   `task.create` is an inert inbox submission and grants no execution authority.
   Read its README and `docs/coder/runtime/host-serve.md` before changing a
   binding or its authority.
+- `crates/push-gateway` — the NIP-PL push gateway: holds APNs and FCM
+  credentials for the relay's PL executor, resolves relay-presented delivery
+  grants to sealed device tokens, and sends only the registered wake constants.
+  Its `client` feature is the device side `coder-mobile` uses to register a
+  token and manage its lease. Read `docs/deployment/push-gateway.md` before
+  changing a route, a result code, or token custody.
 - `crates/coder-mobile` — Rust-owned iOS/Android reader state, encrypted cache, paging,
   synchronization, and C ABI, plus a separate main-thread Verse render handle
   using the shared `verse::runtime::WorldRuntime`. SwiftUI and Android widgets

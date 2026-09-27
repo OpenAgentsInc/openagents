@@ -166,10 +166,14 @@ cancel into the durable inbox, and activity summaries. The Computers screens on
 iOS, Android, and the terminal use the live host client, show invitations as
 QR codes, and pass app foreground and background to each host's connection
 supervisor. Synthetic end-to-end runs, iOS simulator runs, and Android emulator
-runs pass. Still open, in #9719: WebSocket framing for web clients, the CAP/CJ binding of
-NIP-HOST, discovery through the owner directory in the app, launchd, systemd,
-loopback `sshd`, and Linux runs, physical-device and production-relay checks,
-and real APNs and FCM delivery, which needs owner credentials.
+runs pass. The follow-up, [#9719](https://github.com/OpenAgentsInc/openagents/issues/9719),
+then added WebSocket direct channels, the CAP/CJ binding of NIP-HOST, one host
+generation counter, headless enrollment through the resident host, the owner
+directory and SSH setup in the Computers screens, a push gateway for APNs and
+FCM, and Linux runs on NixOS: real PTYs, SSH against a real `sshd`, and the
+systemd user service with commit and rollback. Still waiting on the owner:
+iPhone and production-relay checks, an Android distribution channel, APNs and
+FCM credentials for real wakes, and a reboot to prove service recovery.
 
 ## Complete outcome map
 
