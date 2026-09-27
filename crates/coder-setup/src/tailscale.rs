@@ -133,27 +133,18 @@ pub fn node(program: &Path) -> Result<Node> {
 }
 
 /// Get or renew this machine's certificate with `tailscale cert`, writing
-/// the chain and key to `cert` and `key`, and make the key `0600`.
+/// the chain to `cert` and the key to `key`, mode `0600`.
+///
+/// `tailscale cert` prints both to its standard output (`--cert-file -
+/// --key-file -`), and this process writes the files: the sandboxed macOS
+/// app cannot write outside its own container.
 ///
 /// # Errors
 /// Reports a refusal, such as a tailnet without HTTPS certificates or a
 /// user who may not fetch them. The caller falls back to plain `ws`.
 pub fn cert(program: &Path, name: &str, cert: &Path, key: &Path) -> Result<()> {
-    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-    if let Some(parent) = cert.parent() {
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(parent)
-            .map_err(|_| Error::new("cannot create the certificate directory"))?;
-    }
     let output = Command::new(program)
-        .arg("cert")
-        .arg("--cert-file")
-        .arg(cert)
-        .arg("--key-file")
-        .arg(key)
-        .arg(name)
+        .args(["cert", "--cert-file", "-", "--key-file", "-", name])
         .output()
         .map_err(|_| Error::new("cannot run tailscale cert"))?;
     if !output.status.success() {
@@ -161,9 +152,66 @@ pub fn cert(program: &Path, name: &str, cert: &Path, key: &Path) -> Result<()> {
         let why = why.lines().next().unwrap_or("").trim();
         return Err(Error::new(format!("tailscale cert failed: {why}")));
     }
-    std::fs::set_permissions(key, std::fs::Permissions::from_mode(0o600))
-        .map_err(|_| Error::new("cannot make the certificate key private"))?;
-    Ok(())
+    let (chain, private) = split_pem(&String::from_utf8_lossy(&output.stdout))?;
+    write_private(cert, chain.as_bytes())?;
+    write_private(key, private.as_bytes())
+}
+
+/// Split `tailscale cert` output into the certificate chain and the key.
+///
+/// # Errors
+/// Refuses output without a certificate or without exactly one key.
+fn split_pem(text: &str) -> Result<(String, String)> {
+    let mut chain = String::new();
+    let mut keys = Vec::new();
+    let mut block: Option<String> = None;
+    for line in text.lines() {
+        if line.starts_with("-----BEGIN ") {
+            block = Some(String::new());
+        }
+        if let Some(current) = &mut block {
+            current.push_str(line);
+            current.push('\n');
+        }
+        if line.starts_with("-----END ") {
+            let done = block.take().unwrap_or_default();
+            if line.contains("PRIVATE KEY") {
+                keys.push(done);
+            } else if line.contains("CERTIFICATE") {
+                chain.push_str(&done);
+            }
+        }
+    }
+    if chain.is_empty() || keys.len() != 1 {
+        return Err(Error::new(
+            "tailscale cert printed no usable certificate and key",
+        ));
+    }
+    Ok((chain, keys.remove(0)))
+}
+
+fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    let failed = || Error::new(format!("cannot write {}", path.display()));
+    let parent = path.parent().ok_or_else(failed)?;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(parent)
+        .map_err(|_| failed())?;
+    let temporary = path.with_extension("tmp");
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&temporary)
+        .map_err(|_| failed())?;
+    file.write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .map_err(|_| failed())?;
+    std::fs::rename(&temporary, path).map_err(|_| failed())
 }
 
 #[cfg(test)]
@@ -191,5 +239,17 @@ mod tests {
         let no_ipv4 = br#"{"Self":{"DNSName":"a.b.","TailscaleIPs":["fd7a::1"]}}"#;
         assert!(parse_status(no_ipv4).is_err());
         assert!(parse_status(b"{}").is_err());
+    }
+
+    #[test]
+    fn certificate_output_splits_into_chain_and_key() {
+        let text = "-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n\
+                    -----BEGIN CERTIFICATE-----\nBBB\n-----END CERTIFICATE-----\n\
+                    -----BEGIN EC PRIVATE KEY-----\nKKK\n-----END EC PRIVATE KEY-----\n";
+        let (chain, key) = split_pem(text).unwrap();
+        assert_eq!(chain.matches("BEGIN CERTIFICATE").count(), 2);
+        assert!(key.contains("KKK") && !chain.contains("KKK"));
+        assert!(split_pem("-----BEGIN CERTIFICATE-----\nA\n-----END CERTIFICATE-----\n").is_err());
+        assert!(split_pem("").is_err());
     }
 }

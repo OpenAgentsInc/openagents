@@ -508,6 +508,17 @@ impl Live {
         &self.shared.key
     }
 
+    /// The supervised link to `host` while it is connected, direct or relay,
+    /// for NIP-TERM requests (`Link::terminal`, `Link::next_frame`) and any
+    /// NIP-HOST call. The host checks this device's grant on every message.
+    ///
+    /// # Errors
+    /// Refuses a host this device does not supervise or that is not
+    /// connected now.
+    pub fn host_link(&self, host: &str) -> Result<Arc<Link>> {
+        self.shared.link(host).map(|(_, _, link)| link)
+    }
+
     /// Run one access operation over the host's current link.
     fn call(&self, host: &str, op: Operation) -> Result<Outcome> {
         let (key, connection, link) = self.shared.link(host)?;
