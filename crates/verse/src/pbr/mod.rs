@@ -240,6 +240,49 @@ pub struct Body {
     pub axes: Mat3,
 }
 
+/// A neon stage: the amber plaza drawn through the physical path. Lines are
+/// emissive in their palette colors, the floor is polished black glass that
+/// mirrors the city with Fresnel reflectance, fog fades toward the field, and
+/// a hue-preserving tone curve keeps every amber step on its own hue.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Neon {
+    /// The near-black field: floor, fog, and faces.
+    pub field: [f32; 3],
+    /// Distance where fog starts and where it is total, meters.
+    pub fog_start: f32,
+    pub fog_end: f32,
+    /// Emission multiplier for lines, so their cores bloom.
+    pub line_gain: f32,
+    /// Line width in pixels.
+    pub line_width: f32,
+    /// Reflectance of the floor at grazing incidence, 0 to 1.
+    pub reflectivity: f32,
+    /// Fraction of bloom energy added back.
+    pub bloom: f32,
+    /// Natural vignetting strength.
+    pub vignette: f32,
+    /// Seconds, for animated effects.
+    pub time: f32,
+}
+
+impl Neon {
+    /// The plaza's stage, with the amber world's own field and fog.
+    #[must_use]
+    pub fn plaza(time: f32) -> Self {
+        Self {
+            field: crate::palette::field(),
+            fog_start: crate::render::FOG_START,
+            fog_end: crate::render::FOG_END,
+            line_gain: 1.8,
+            line_width: 1.6,
+            reflectivity: 0.4,
+            bloom: 0.07,
+            vignette: 0.2,
+            time,
+        }
+    }
+}
+
 /// Everything the physical renderer needs about light and sky for one frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sky {

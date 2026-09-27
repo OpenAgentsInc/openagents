@@ -413,6 +413,20 @@ only lines. Buildings are solid near-black boxes with amber edges, so nearer
 buildings hide farther lines. Fog fades distant lines into the field. A
 ridge line at 900 m ignores the fog and marks the horizon.
 
+**Neon stage.** The plaza draws through the renderer's physical path
+([`pbr`](../../crates/verse/src/pbr/mod.rs), `Neon`) without changing a
+color. Lines are emissive in their ladder colors, 1.8 times brighter at
+the core, so they glow through energy-conserving bloom, and they are
+antialiased screen-space strips instead of one-pixel hardware lines. The
+floor is polished black glass: the city is drawn mirrored beneath it and
+shows through with Schlick Fresnel reflectance, strongest at grazing angles
+and fading with height above the floor and into the fog. A hue-preserving
+tone curve compresses bright cores along their own hue, so every step stays
+amber. Adapters without a floating-point target draw the same stage with the
+curve applied per draw and no bloom. `VERSE_PLAZA_LEGACY=1 verse --capture`
+renders the flat amber path for comparison; captures are in
+[`captures/plaza-neon/`](captures/plaza-neon/README.md).
+
 **Palette.** The global plaza uses Coder's four
 [`coder_ui::theme::Intensity`](../../crates/coder-ui/src/theme.rs) steps over
 one amber, plus `NEAR_BLACK` for its clear color, fog, and faces. `palette.rs`
@@ -435,7 +449,8 @@ keeps its application palette. Neither palette belongs to Rust Native.
 
 - `wgpu` 29 and `winit` 0.30, with no engine framework.
 - A custom renderer: one WGSL shader with a face pipeline and a line
-  pipeline, 4× MSAA when the adapter supports it, and an sRGB surface.
+  pipeline, 4× MSAA when the adapter supports it, and an sRGB surface, plus
+  the physical path (`pbr`) that draws the plaza's neon stage and Lagrange 1.
 - `glam` for math.
 
 The winit `wayland-csd-adwaita` feature is off because it pulls

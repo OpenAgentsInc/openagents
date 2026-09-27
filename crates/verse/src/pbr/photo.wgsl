@@ -45,6 +45,11 @@ struct Frame {
     params: vec4<f32>,
     // x metering target; y, z gain bounds; w 1 when exposure adapts.
     metering: vec4<f32>,
+    // Neon stage: x fog start, y fog end (m), z line width (px), w mode
+    // (0 space, 1 neon, 2 neon mirror pass).
+    neon: vec4<f32>,
+    // rgb field color; w floor reflectance at grazing incidence.
+    field: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -103,12 +108,51 @@ fn neutral(color: vec3<f32>) -> vec3<f32> {
     return mix(c, vec3<f32>(new_peak), g);
 }
 
+// Hue-preserving shoulder: scales a color by its peak, so an amber line stays
+// on the amber hue however bright its core.
+fn hue_shoulder(color: vec3<f32>) -> vec3<f32> {
+    let peak = max(color.r, max(color.g, color.b));
+    let start = 0.76;
+    if peak < start {
+        return color;
+    }
+    let d = 1.0 - start;
+    return color * ((1.0 - d * d / (peak + d - start)) / peak);
+}
+
 fn expose(luminance: vec3<f32>) -> vec3<f32> {
     let signal = min(luminance * f.eye.w, vec3<f32>(MAX_SIGNAL));
     if DIRECT {
+        if f.neon.w > 0.5 {
+            return hue_shoulder(max(signal, vec3<f32>(0.0)));
+        }
         return neutral(max(signal, vec3<f32>(0.0)));
     }
     return signal;
+}
+
+// Distance fog toward the field, as the amber world's own shader applies it.
+fn neon_fog(color: vec3<f32>, world: vec3<f32>, weight: f32) -> vec3<f32> {
+    if f.neon.w < 0.5 {
+        return color;
+    }
+    let d = distance(world.xz, f.eye.xz);
+    let t = clamp((d - f.neon.x) / max(f.neon.y - f.neon.x, 1e-3), 0.0, 1.0);
+    return mix(color, f.field.rgb, t * t * weight);
+}
+
+// The mirror pass reflects only what stands above the floor.
+fn mirror_skips(world: vec3<f32>) -> bool {
+    return f.neon.w > 1.5 && world.y < 0.05;
+}
+
+// A polished floor is not a perfect mirror: its micro-roughness spreads the
+// reflection of anything far above it, so reflections fade with height.
+fn mirror_fade(world: vec3<f32>) -> f32 {
+    if f.neon.w > 1.5 {
+        return exp(-world.y / 14.0);
+    }
+    return 1.0;
 }
 
 fn hash3(p: vec3<f32>) -> vec3<f32> {
@@ -840,19 +884,61 @@ struct LegacyIn {
 struct LegacyOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) color: vec3<f32>,
+    @location(1) world: vec3<f32>,
+    @location(2) fog: f32,
 };
 
 @vertex
 fn vs_legacy(v: LegacyIn) -> LegacyOut {
     var o: LegacyOut;
     o.clip = f.view_proj * vec4<f32>(v.pos, 1.0);
-    o.color = v.color * guide_scale();
+    // Faces keep the field color; only lines carry the emission gain.
+    o.color = v.color;
+    o.world = v.pos;
+    o.fog = v.fog;
     return o;
 }
 
 @fragment
 fn fs_legacy(i: LegacyOut) -> @location(0) vec4<f32> {
-    return vec4<f32>(i.color, 1.0);
+    if mirror_skips(i.world) {
+        discard;
+    }
+    var c = i.color;
+    if f.neon.w < 0.5 {
+        c = c * guide_scale();
+    }
+    return vec4<f32>(neon_fog(c * mirror_fade(i.world), i.world, i.fog), 1.0);
+}
+
+// The polished floor of the neon stage: black glass whose Fresnel
+// reflectance reveals the mirrored city drawn beneath it (Schlick 1994).
+struct FloorOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) world: vec3<f32>,
+};
+
+@vertex
+fn vs_floor(@builtin(vertex_index) index: u32) -> FloorOut {
+    let k = QUAD[index];
+    let p = vec3<f32>(k.x * 1200.0, -0.02, k.y * 1200.0);
+    var o: FloorOut;
+    o.clip = f.view_proj * vec4<f32>(p, 1.0);
+    o.world = p;
+    return o;
+}
+
+@fragment
+fn fs_floor(i: FloorOut) -> @location(0) vec4<f32> {
+    let v = normalize(f.eye.xyz - i.world);
+    let cos_v = clamp(abs(v.y), 0.0, 1.0);
+    let fresnel = 0.04 + 0.96 * pow(1.0 - cos_v, 5.0);
+    // Reflections fade into the fog with the floor itself.
+    let d = distance(i.world.xz, f.eye.xz);
+    let t = clamp((d - f.neon.x) / max(f.neon.y - f.neon.x, 1e-3), 0.0, 1.0);
+    let reflect = clamp(fresnel * f.field.w * (1.0 - t * t), 0.0, 1.0);
+    let cover = 1.0 - reflect;
+    return vec4<f32>(expose(f.field.rgb) * cover, cover);
 }
 
 // Guide lines as antialiased screen-space quads (Chan and Durand 2005).
@@ -860,15 +946,17 @@ struct WideIn {
     @location(0) a: vec3<f32>,
     @location(1) color: vec3<f32>,
     @location(2) b: vec3<f32>,
+    @location(3) fog: f32,
 };
 
 struct WideOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) color: vec3<f32>,
     @location(1) across: f32,
+    @location(2) world: vec3<f32>,
+    @location(3) fog: f32,
+    @location(4) width: f32,
 };
-
-const LINE_WIDTH: f32 = 1.6;
 
 @vertex
 fn vs_wide(w: WideIn, @builtin(vertex_index) index: u32) -> WideOut {
@@ -898,18 +986,29 @@ fn vs_wide(w: WideIn, @builtin(vertex_index) index: u32) -> WideOut {
     let end = ends[index];
     let side = sides[index];
     var c = mix(ca, cb, end);
-    let extent = LINE_WIDTH * 0.5 + 1.0;
+    let width = max(f.neon.z, 1.0);
+    let extent = width * 0.5 + 1.0;
     c.x += normal.x * side * extent * 2.0 * f.viewport.z * c.w;
     c.y += normal.y * side * extent * 2.0 * f.viewport.w * c.w;
     var o: WideOut;
     o.clip = c;
     o.color = w.color * guide_scale();
     o.across = side * extent;
+    o.world = mix(w.a, w.b, end);
+    o.fog = w.fog;
+    o.width = width;
     return o;
 }
 
 @fragment
 fn fs_wide(i: WideOut) -> @location(0) vec4<f32> {
-    let coverage = clamp(LINE_WIDTH * 0.5 + 0.5 - abs(i.across), 0.0, 1.0);
-    return vec4<f32>(i.color * coverage, coverage);
+    if mirror_skips(i.world) {
+        discard;
+    }
+    let coverage = clamp(i.width * 0.5 + 0.5 - abs(i.across), 0.0, 1.0);
+    var c = i.color;
+    if f.neon.w > 0.5 {
+        c = expose(neon_fog(c * mirror_fade(i.world), i.world, i.fog));
+    }
+    return vec4<f32>(c * coverage, coverage);
 }

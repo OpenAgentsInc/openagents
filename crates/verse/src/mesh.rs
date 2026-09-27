@@ -36,6 +36,8 @@ pub struct Mesh {
     pub glow: Vec<crate::pbr::GlowVertex>,
     /// Present when this frame renders in physical units.
     pub sky: Option<crate::pbr::Sky>,
+    /// Present when this frame renders the amber world as a neon stage.
+    pub neon: Option<crate::pbr::Neon>,
 }
 
 impl Mesh {
@@ -130,6 +132,9 @@ impl Mesh {
         self.glow.extend_from_slice(&other.glow);
         if other.sky.is_some() {
             self.sky.clone_from(&other.sky);
+        }
+        if other.neon.is_some() {
+            self.neon = other.neon;
         }
     }
 }

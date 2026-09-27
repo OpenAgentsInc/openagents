@@ -279,3 +279,19 @@ fn only_lagrange_frames_carry_a_physical_sky_in_real_units() {
     runtime.zone_intent(Intent::Return).unwrap();
     assert!(runtime.dynamic_mesh().sky.is_none());
 }
+
+#[test]
+fn the_plaza_renders_as_a_neon_stage_in_its_own_palette() {
+    let mut runtime = at_l1_portal();
+    let plaza = runtime.dynamic_mesh();
+    let neon = plaza.neon.expect("plaza frames carry the neon stage");
+    assert!(plaza.sky.is_none());
+    // The stage keeps the amber world's field and fog.
+    assert_eq!(neon.field, crate::palette::field());
+    assert_eq!(neon.fog_start, crate::render::FOG_START);
+    assert_eq!(neon.fog_end, crate::render::FOG_END);
+    assert!((0.0..1.0).contains(&neon.reflectivity) && neon.line_gain >= 1.0);
+    runtime.zone_intent(Intent::Enter).unwrap();
+    let station = runtime.dynamic_mesh();
+    assert!(station.neon.is_none() && station.sky.is_some());
+}

@@ -118,6 +118,10 @@ pub fn capture(
     let view = view(&camera, &player, width as f32 / height as f32);
     let mut dynamic = avatar::mesh(&player, &Gait::default());
     dynamic.extend(&world::computer_display(None));
+    // `VERSE_PLAZA_LEGACY` renders the flat amber path for comparisons.
+    if std::env::var_os("VERSE_PLAZA_LEGACY").is_none() {
+        dynamic.neon = Some(crate::pbr::Neon::plaza(0.0));
+    }
     let shown = match &shot.replay {
         Some(arg) => {
             let run = replay::find(arg)?;

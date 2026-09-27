@@ -21,7 +21,7 @@ use winit::window::Window;
 
 use crate::mesh::{Mesh, Vertex};
 use crate::pbr::LitVertex;
-use crate::pbr::gpu::{Batches, Capability, Photo, PhotoTargets};
+use crate::pbr::gpu::{Batches, Capability, Photo, PhotoTargets, Stage};
 use crate::ui::{Atlas, UiBatch, UiVertex};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -914,10 +914,15 @@ impl Scene {
         dynamic: &Mesh,
         ui: &UiBatch,
     ) {
-        if let Some(sky) = &dynamic.sky
+        let stage = match (&dynamic.sky, &dynamic.neon) {
+            (Some(sky), _) => Some(Stage::Space(sky)),
+            (None, Some(neon)) => Some(Stage::Neon(neon)),
+            (None, None) => None,
+        };
+        if let Some(stage) = stage
             && !self.photo_failed
             && self.encode_photo(
-                device, queue, encoder, output, targets, view, dynamic, sky, ui,
+                device, queue, encoder, output, targets, view, dynamic, stage, ui,
             )
         {
             return;
@@ -1006,7 +1011,7 @@ impl Scene {
         targets: &mut Targets,
         view: View,
         dynamic: &Mesh,
-        sky: &crate::pbr::Sky,
+        stage: Stage<'_>,
         ui: &UiBatch,
     ) -> bool {
         if self.photo.is_none() {
@@ -1033,6 +1038,13 @@ impl Scene {
         let Some(photo) = &mut self.photo else {
             return false;
         };
+        if matches!(stage, Stage::Space(_))
+            && let Err(error) = photo.prepare_space(device, queue)
+        {
+            eprintln!("verse: space sky data unavailable: {error}");
+            self.photo_failed = true;
+            return false;
+        }
         let size = [targets.size[0] as u32, targets.size[1] as u32];
         if targets.photo.as_ref().is_none_or(|t| t.size() != size) {
             targets.photo = Some(photo.targets(device, size[0], size[1]));
@@ -1072,7 +1084,7 @@ impl Scene {
             output,
             photo_targets,
             view,
-            sky,
+            stage,
             batches,
             Some((
                 &self.ui_photo,

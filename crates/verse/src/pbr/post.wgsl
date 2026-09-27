@@ -17,7 +17,8 @@ struct Post {
     lens: vec4<f32>,
     // rgb white-balance gains; w adaptation blend this frame.
     balance: vec4<f32>,
-    // x target signal for auto exposure; y min gain; z max gain; w unused.
+    // x target signal for auto exposure; y min gain; z max gain; w 1 for the
+    // hue-preserving output curve.
     adapt: vec4<f32>,
 };
 
@@ -155,6 +156,18 @@ fn neutral(color: vec3<f32>) -> vec3<f32> {
     return mix(c, vec3<f32>(new_peak), g);
 }
 
+// Hue-preserving shoulder for the neon stage: a bright amber core compresses
+// along its own hue instead of washing toward white.
+fn hue_shoulder(color: vec3<f32>) -> vec3<f32> {
+    let peak = max(color.r, max(color.g, color.b));
+    let start = 0.76;
+    if peak < start {
+        return color;
+    }
+    let d = 1.0 - start;
+    return color * ((1.0 - d * d / (peak + d - start)) / peak);
+}
+
 fn hash(q: vec2<f32>) -> f32 {
     var r = fract(q * vec2<f32>(123.34, 456.21));
     r += dot(r, r + 45.32);
@@ -208,7 +221,12 @@ fn fs_output(i: Out) -> @location(0) vec4<f32> {
     // Natural vignetting, cos⁴ of the field angle.
     let r2 = dot(from_center, from_center) * 2.0;
     c *= mix(1.0, pow(1.0 / (1.0 + r2), 2.0), p.look.w);
-    var o = neutral(max(c, vec3<f32>(0.0)));
+    var o: vec3<f32>;
+    if p.adapt.w > 0.5 {
+        o = hue_shoulder(max(c, vec3<f32>(0.0)));
+    } else {
+        o = neutral(max(c, vec3<f32>(0.0)));
+    }
     // Sensor grain, stronger in shadows, applied in display space.
     if p.look.z > 0.0 {
         let n = hash(i.clip.xy + fract(p.lens.z) * 97.0) - 0.5;

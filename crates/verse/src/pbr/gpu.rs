@@ -11,7 +11,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
-use super::{GlowVertex, LitVertex, ProbeGrid, Sky, sky};
+use super::{GlowVertex, LitVertex, Neon, ProbeGrid, Sky, sky};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const SHADOW_SIZE: u32 = 2048;
@@ -43,6 +43,8 @@ struct Frame {
     probe_dims: [f32; 4],
     params: [f32; 4],
     metering: [f32; 4],
+    neon: [f32; 4],
+    field: [f32; 4],
 }
 
 #[repr(C)]
@@ -168,6 +170,7 @@ struct Pipelines {
     glow: wgpu::RenderPipeline,
     legacy: wgpu::RenderPipeline,
     wide: wgpu::RenderPipeline,
+    floor: wgpu::RenderPipeline,
 }
 
 struct PostPipelines {
@@ -210,6 +213,11 @@ pub(crate) struct Photo {
     capability: Capability,
     output_format: wgpu::TextureFormat,
     frame: wgpu::Buffer,
+    /// The frame seen through the floor, for the neon stage's reflection.
+    mirror_frame: wgpu::Buffer,
+    mirror_group: wgpu::BindGroup,
+    /// Whether the Sun, Earth, Moon, and star data are uploaded.
+    space_ready: bool,
     guide_layout: wgpu::BindGroupLayout,
     scene_layout: wgpu::BindGroupLayout,
     scene_group: wgpu::BindGroup,
@@ -394,11 +402,30 @@ impl Photo {
         let linear_clamp = linear(wgpu::AddressMode::ClampToEdge, "verse linear clamp");
         let linear_repeat = linear(wgpu::AddressMode::Repeat, "verse linear repeat");
         let probes = empty_probes(device, queue);
-        let sky_textures = load_sky(device, queue)?;
+        // The Sun, Earth, Moon, and stars load on the first space frame; the
+        // neon stage never needs them.
+        let sky_textures = placeholder_sky(device, queue);
         let scene_group = scene_group(
             device,
             &scene_layout,
             &frame,
+            &shadow,
+            &shadow_compare,
+            &probes,
+            &linear_clamp,
+            &sky_textures,
+            &linear_repeat,
+        );
+        let mirror_frame = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("verse photo mirror frame"),
+            size: std::mem::size_of::<Frame>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mirror_group = self::scene_group(
+            device,
+            &scene_layout,
+            &mirror_frame,
             &shadow,
             &shadow_compare,
             &probes,
@@ -437,7 +464,7 @@ impl Photo {
             label: Some("verse photo guides"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                 ty: wgpu::BindingType::Texture {
                     sample_type: wgpu::TextureSampleType::Float { filterable: true },
                     view_dimension: wgpu::TextureViewDimension::D2,
@@ -530,8 +557,7 @@ impl Photo {
             wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
         const LEGACY: [wgpu::VertexAttribute; 3] =
             wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32];
-        const WIDE: [wgpu::VertexAttribute; 3] =
-            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3];
+        const WIDE: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x3];
         let legacy_size = std::mem::size_of::<crate::mesh::Vertex>() as u64;
         let pipelines = Pipelines {
             shadow: make(
@@ -654,10 +680,26 @@ impl Photo {
                             offset: legacy_size,
                             shader_location: 2,
                         },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32,
+                            offset: 24,
+                            shader_location: 3,
+                        },
                     ],
                 }],
                 triangles,
                 depth_state(false, wgpu::CompareFunction::GreaterEqual),
+                Some(PREMULTIPLIED),
+                samples,
+            ),
+            floor: make(
+                &layout,
+                "verse neon floor",
+                "vs_floor",
+                Some("fs_floor"),
+                &[],
+                triangles,
+                depth_state(true, wgpu::CompareFunction::GreaterEqual),
                 Some(PREMULTIPLIED),
                 samples,
             ),
@@ -666,24 +708,19 @@ impl Photo {
         let post = capability
             .hdr
             .map(|hdr| post_pipelines(device, hdr, output_format));
-        let stars = sky::parse_stars(include_bytes!("../../assets/lagrange/stars.bin"))?;
-        let instances: Vec<StarInstance> = stars
-            .iter()
-            .map(|s| StarInstance {
-                dir: s.dir.to_array(),
-                illuminance: s.illuminance,
-                color: s.color,
-            })
-            .collect();
-        let star_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let star_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse stars"),
-            contents: bytemuck::cast_slice(&instances),
+            size: std::mem::size_of::<StarInstance>() as u64,
             usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: false,
         });
         Ok(Self {
             capability,
             output_format,
             frame,
+            mirror_frame,
+            mirror_group,
+            space_ready: false,
             guide_layout,
             scene_layout,
             scene_group,
@@ -698,11 +735,62 @@ impl Photo {
             pipelines,
             post,
             stars: star_buffer,
-            star_count: instances.len() as u32,
+            star_count: 0,
             dynamic_lit: Stream::new(device, "verse dynamic lit"),
             glow: Stream::new(device, "verse glow"),
             last_time: None,
         })
+    }
+
+    /// Uploads the Sun, Earth, Moon, Milky Way, and star data once.
+    pub fn prepare_space(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(), String> {
+        if self.space_ready {
+            return Ok(());
+        }
+        self.sky_textures = load_sky(device, queue)?;
+        let stars = sky::parse_stars(include_bytes!("../../assets/lagrange/stars.bin"))?;
+        let instances: Vec<StarInstance> = stars
+            .iter()
+            .map(|s| StarInstance {
+                dir: s.dir.to_array(),
+                illuminance: s.illuminance,
+                color: s.color,
+            })
+            .collect();
+        self.stars = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("verse stars"),
+            contents: bytemuck::cast_slice(&instances),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        self.star_count = instances.len() as u32;
+        self.space_ready = true;
+        self.rebuild_groups(device);
+        Ok(())
+    }
+
+    fn rebuild_groups(&mut self, device: &wgpu::Device) {
+        for (frame, space) in [(&self.frame, true), (&self.mirror_frame, false)] {
+            let group = scene_group(
+                device,
+                &self.scene_layout,
+                frame,
+                &self.shadow,
+                &self.shadow_compare,
+                &self.probes,
+                &self.linear_clamp,
+                &self.sky_textures,
+                &self.linear_repeat,
+            );
+            if space {
+                self.scene_group = group;
+            } else {
+                self.mirror_group = group;
+            }
+        }
     }
 
     fn update_probes(
@@ -720,17 +808,7 @@ impl Photo {
             Some(grid) => probe_textures(device, queue, grid),
             None => empty_probes(device, queue),
         };
-        self.scene_group = scene_group(
-            device,
-            &self.scene_layout,
-            &self.frame,
-            &self.shadow,
-            &self.shadow_compare,
-            &self.probes,
-            &self.linear_clamp,
-            &self.sky_textures,
-            &self.linear_repeat,
-        );
+        self.rebuild_groups(device);
     }
 
     /// Size-dependent targets, rebuilt when the size changes.
@@ -943,9 +1021,55 @@ impl Photo {
         output: &wgpu::TextureView,
         targets: &mut PhotoTargets,
         view: crate::render::View,
-        sky: &Sky,
+        stage: Stage<'_>,
         world: Batches<'_>,
         ui: Option<(&wgpu::RenderPipeline, &wgpu::BindGroup, &wgpu::Buffer, u32)>,
+    ) {
+        match stage {
+            Stage::Space(sky) => {
+                self.encode_space(device, queue, encoder, output, targets, view, sky, world)
+            }
+            Stage::Neon(neon) => {
+                self.encode_neon(queue, encoder, output, targets, view, neon, world)
+            }
+        }
+        if let Some((pipeline, group, buffer, count)) = ui
+            && count > 0
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("verse photo hud"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: output,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, group, &[]);
+            pass.set_vertex_buffer(0, buffer.slice(..));
+            pass.draw(0..count, 0..1);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn encode_space(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        output: &wgpu::TextureView,
+        targets: &mut PhotoTargets,
+        view: crate::render::View,
+        sky: &Sky,
+        world: Batches<'_>,
     ) {
         self.update_probes(device, queue, sky.probes.as_deref());
         let [width, height] = targets.size;
@@ -985,12 +1109,7 @@ impl Photo {
         // Reversed depth (Reed 2015): map depth d to 1 − d so a float buffer
         // keeps micrometer precision across the station. Solar cells sit a
         // millimeter proud of their panel.
-        let reversed = Mat4::from_cols(
-            glam::Vec4::X,
-            glam::Vec4::Y,
-            glam::Vec4::new(0.0, 0.0, -1.0, 0.0),
-            glam::Vec4::new(0.0, 0.0, 1.0, 1.0),
-        ) * view.view_proj;
+        let reversed = reversed_depth() * view.view_proj;
         let probe = sky.probes.as_deref();
         let axes = |m: glam::Mat3, w: f32| {
             [
@@ -1045,6 +1164,8 @@ impl Photo {
                 2f32.powf(camera.ev100 - camera.ev_min),
                 f32::from(u8::from(camera.auto_exposure && self.post.is_some())),
             ],
+            neon: [0.0, 0.0, 1.6, 0.0],
+            field: [0.0; 4],
         };
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
 
@@ -1164,14 +1285,200 @@ impl Photo {
             }
         }
 
+        let camera = sky.camera;
+        self.post_chain(
+            queue,
+            encoder,
+            output,
+            targets,
+            &Look {
+                bloom: camera.bloom,
+                local: camera.local_exposure,
+                grain: camera.grain,
+                vignette: camera.vignette,
+                fringe: camera.fringe,
+                ghosts: camera.ghosts,
+                auto: camera.auto_exposure,
+                balance: white_balance(camera.white_balance),
+                gain_min: 2f32.powf(camera.ev100 - camera.ev_max),
+                gain_max: 2f32.powf(camera.ev100 - camera.ev_min),
+                hue_preserving: false,
+                time: sky.time,
+            },
+        );
+    }
+
+    /// The neon stage: the city mirrored in a polished floor, the floor,
+    /// faces, emissive lines, and the post chain with a hue-preserving curve.
+    #[allow(clippy::too_many_arguments)]
+    fn encode_neon(
+        &mut self,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        output: &wgpu::TextureView,
+        targets: &mut PhotoTargets,
+        view: crate::render::View,
+        neon: &Neon,
+        world: Batches<'_>,
+    ) {
+        let [width, height] = targets.size;
+        let reversed = reversed_depth() * view.view_proj;
+        let mirror = reversed * Mat4::from_scale(Vec3::new(1.0, -1.0, 1.0));
+        let frame = |view_proj: Mat4, width_px: f32, mode: f32| Frame {
+            view_proj: view_proj.to_cols_array_2d(),
+            inv_view_proj: view_proj.inverse().to_cols_array_2d(),
+            light: Mat4::IDENTITY.to_cols_array_2d(),
+            eye: view.eye.extend(1.0).to_array(),
+            sun: [0.0, 1.0, 0.0, 0.0],
+            sun_disc: [0.0; 4],
+            earth: [0.0, 0.0, 1.0, 0.0],
+            earth_x: [1.0, 0.0, 0.0, 0.0],
+            earth_y: [0.0, 1.0, 0.0, 0.0],
+            earth_z: [0.0, 0.0, 1.0, 1.0],
+            moon: [0.0, 0.0, 1.0, 0.0],
+            moon_x: [1.0, 0.0, 0.0, 0.0],
+            moon_y: [0.0, 1.0, 0.0, 0.0],
+            moon_z: [0.0, 0.0, 1.0, 1.0],
+            celestial_x: [1.0, 0.0, 0.0, 0.0],
+            celestial_y: [0.0, 1.0, 0.0, 0.0],
+            celestial_z: [0.0, 0.0, 1.0, 0.0],
+            earth_light: [0.0, 0.0, 0.0, 1.0],
+            viewport: [
+                width as f32,
+                height as f32,
+                1.0 / width as f32,
+                1.0 / height as f32,
+            ],
+            probe_origin: [0.0, 0.0, 0.0, 1.0],
+            probe_dims: [1.0, 1.0, 1.0, 0.0],
+            params: [0.0, neon.time, 0.0, neon.line_gain],
+            metering: [0.18, 1.0, 1.0, 0.0],
+            neon: [neon.fog_start, neon.fog_end, width_px, mode],
+            field: [
+                neon.field[0],
+                neon.field[1],
+                neon.field[2],
+                neon.reflectivity,
+            ],
+        };
+        queue.write_buffer(
+            &self.frame,
+            0,
+            bytemuck::bytes_of(&frame(reversed, neon.line_width, 1.0)),
+        );
+        // Reflections are softer: the floor's micro-roughness spreads them.
+        queue.write_buffer(
+            &self.mirror_frame,
+            0,
+            bytemuck::bytes_of(&frame(mirror, neon.line_width * 2.2, 2.0)),
+        );
+        let direct = self.post.is_none();
+        let (target, resolve) = match (&targets.msaa, direct) {
+            (Some(msaa), false) => (msaa, Some(&targets.scene)),
+            (None, false) => (&targets.scene, None),
+            (Some(msaa), true) => (msaa, Some(output)),
+            (None, true) => (output, None),
+        };
+        {
+            let field = neon.field.map(f64::from);
+            let clear = wgpu::Color {
+                r: field[0],
+                g: field[1],
+                b: field[2],
+                a: 1.0,
+            };
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("verse neon scene"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: resolve,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(clear),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &targets.depth,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            let draw_world = |pass: &mut wgpu::RenderPass<'_>| {
+                pass.set_pipeline(&self.pipelines.legacy);
+                for (buffer, count) in world.faces {
+                    if count > 0 {
+                        pass.set_vertex_buffer(0, buffer.slice(..));
+                        pass.draw(0..count, 0..1);
+                    }
+                }
+                pass.set_pipeline(&self.pipelines.wide);
+                for (buffer, count) in world.lines {
+                    if count >= 2 {
+                        pass.set_vertex_buffer(0, buffer.slice(..));
+                        pass.draw(0..6, 0..count / 2);
+                    }
+                }
+            };
+            pass.set_bind_group(1, &targets.guide_groups[0], &[]);
+            if neon.reflectivity > 0.0 {
+                pass.set_bind_group(0, &self.mirror_group, &[]);
+                draw_world(&mut pass);
+            }
+            pass.set_bind_group(0, &self.scene_group, &[]);
+            pass.set_pipeline(&self.pipelines.floor);
+            pass.draw(0..6, 0..1);
+            draw_world(&mut pass);
+            if self.glow.count > 0 {
+                pass.set_pipeline(&self.pipelines.glow);
+                pass.set_vertex_buffer(0, self.glow.buffer.slice(..));
+                pass.draw(0..self.glow.count, 0..1);
+            }
+        }
+        self.post_chain(
+            queue,
+            encoder,
+            output,
+            targets,
+            &Look {
+                bloom: neon.bloom,
+                local: 0.0,
+                grain: 0.0,
+                vignette: neon.vignette,
+                fringe: 0.0,
+                ghosts: 0.0,
+                auto: false,
+                balance: [1.0; 3],
+                gain_min: 1.0,
+                gain_max: 1.0,
+                hue_preserving: true,
+                time: neon.time,
+            },
+        );
+    }
+
+    /// Bloom, exposure adaptation, and the output transform into `output`.
+    fn post_chain(
+        &mut self,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        output: &wgpu::TextureView,
+        targets: &mut PhotoTargets,
+        look: &Look,
+    ) {
+        let [width, height] = targets.size;
         if let Some(post) = &self.post {
             let dt = self
                 .last_time
-                .map_or(0.0, |last| (sky.time - last).clamp(0.0, 0.5));
-            self.last_time = Some(sky.time);
+                .map_or(0.0, |last| (look.time - last).clamp(0.0, 0.5));
+            self.last_time = Some(look.time);
             let levels = targets.bloom_views.len();
-            let balance = white_balance(camera.white_balance);
-            let base = camera.ev100;
             let uniform = Post {
                 source: [
                     1.0 / width as f32,
@@ -1179,24 +1486,24 @@ impl Photo {
                     0.0,
                     1.0 / levels as f32,
                 ],
-                look: [
-                    camera.bloom,
-                    camera.local_exposure,
-                    camera.grain,
-                    camera.vignette,
-                ],
+                look: [look.bloom, look.local, look.grain, look.vignette],
                 lens: [
-                    camera.fringe,
-                    camera.ghosts,
-                    sky.time,
-                    f32::from(u8::from(camera.auto_exposure)),
+                    look.fringe,
+                    look.ghosts,
+                    look.time,
+                    f32::from(u8::from(look.auto)),
                 ],
-                balance: [balance[0], balance[1], balance[2], 1.0 - (-dt * 1.5).exp()],
+                balance: [
+                    look.balance[0],
+                    look.balance[1],
+                    look.balance[2],
+                    1.0 - (-dt * 1.5).exp(),
+                ],
                 adapt: [
                     0.18,
-                    2f32.powf(base - camera.ev_max),
-                    2f32.powf(base - camera.ev_min),
-                    0.0,
+                    look.gain_min,
+                    look.gain_max,
+                    f32::from(u8::from(look.hue_preserving)),
                 ],
             };
             queue.write_buffer(&targets.frame_post, 0, bytemuck::bytes_of(&uniform));
@@ -1263,32 +1570,41 @@ impl Photo {
             targets.parity ^= 1;
         }
         let _ = &targets.bloom_all;
-
-        if let Some((pipeline, group, buffer, count)) = ui
-            && count > 0
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("verse photo hud"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: output,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, group, &[]);
-            pass.set_vertex_buffer(0, buffer.slice(..));
-            pass.draw(0..count, 0..1);
-        }
     }
+}
+
+/// What the post chain does to one frame.
+struct Look {
+    bloom: f32,
+    local: f32,
+    grain: f32,
+    vignette: f32,
+    fringe: f32,
+    ghosts: f32,
+    auto: bool,
+    balance: [f32; 3],
+    gain_min: f32,
+    gain_max: f32,
+    hue_preserving: bool,
+    time: f32,
+}
+
+/// The scene a physical frame shows.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Stage<'a> {
+    Space(&'a Sky),
+    Neon(&'a Neon),
+}
+
+/// Reversed depth (Reed 2015): map depth d to 1 − d so a float buffer keeps
+/// micrometer precision near the camera and across the scene.
+fn reversed_depth() -> Mat4 {
+    Mat4::from_cols(
+        glam::Vec4::X,
+        glam::Vec4::Y,
+        glam::Vec4::new(0.0, 0.0, -1.0, 0.0),
+        glam::Vec4::new(0.0, 0.0, 1.0, 1.0),
+    )
 }
 
 /// The retained geometry a physical frame draws.
@@ -1637,6 +1953,25 @@ fn upload_mipped(
         h = nh;
     }
     texture.create_view(&Default::default())
+}
+
+/// One-texel stand-ins until a space frame loads the real data.
+fn placeholder_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> [wgpu::TextureView; 5] {
+    let srgb = wgpu::TextureFormat::Rgba8UnormSrgb;
+    let r8 = wgpu::TextureFormat::R8Unorm;
+    [
+        upload_mipped(device, queue, "earth day", (1, 1, vec![0, 0, 0, 255]), srgb),
+        upload_mipped(device, queue, "earth clouds", (1, 1, vec![0]), r8),
+        upload_mipped(device, queue, "earth water", (1, 1, vec![0]), r8),
+        upload_mipped(
+            device,
+            queue,
+            "moon albedo",
+            (1, 1, vec![0, 0, 0, 255]),
+            srgb,
+        ),
+        upload_mipped(device, queue, "milky way", (1, 1, vec![0, 0, 0, 255]), srgb),
+    ]
 }
 
 fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::TextureView; 5], String> {

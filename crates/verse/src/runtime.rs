@@ -756,6 +756,7 @@ impl WorldRuntime {
                 computer.then_some(offset.x.hypot(offset.z) <= world::COMPUTER_RANGE),
             ));
             dynamic.extend(&world::gym_display(gym.then_some(self.gym(1.0).near)));
+            dynamic.neon = Some(crate::pbr::Neon::plaza(0.0));
         }
         dynamic
     }
