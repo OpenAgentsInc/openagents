@@ -151,6 +151,43 @@ impl Directory {
         Ok(next)
     }
 
+    /// The next revision with a listed host's entry replaced by `entry`, as
+    /// when the owner changes its label or weight. Editing is an owner
+    /// action.
+    ///
+    /// # Errors
+    /// Refuses a host that is not listed or an invalid result.
+    pub fn with_entry(&self, entry: HostEntry, issued_at: u64) -> Result<Self> {
+        if self.entry(&entry.host).is_none() {
+            return fail(Refusal::NotAdmitted, "host not listed");
+        }
+        let mut next = self.next(issued_at)?;
+        for listed in &mut next.hosts {
+            if listed.host == entry.host {
+                listed.clone_from(&entry);
+            }
+        }
+        next.validate()?;
+        Ok(next)
+    }
+
+    /// This body republished above `conflict`, the revision at which two
+    /// different directories were found. The owner chooses it to end the
+    /// conflict; readers select it because its revision is higher.
+    ///
+    /// # Errors
+    /// Refuses a revision overflow, an issue time before this body's, or an
+    /// invalid result.
+    pub fn superseding(&self, conflict: u64, issued_at: u64) -> Result<Self> {
+        let base = Self {
+            revision: conflict.max(self.revision),
+            ..self.clone()
+        };
+        let next = base.next(issued_at)?;
+        next.validate()?;
+        Ok(next)
+    }
+
     fn next(&self, issued_at: u64) -> Result<Self> {
         if issued_at < self.issued_at {
             return fail(Refusal::Malformed, "a revision cannot predate its parent");
@@ -363,5 +400,65 @@ mod tests {
             Some(&a)
         );
         assert_eq!(Directory::current(&[]).unwrap(), None);
+    }
+
+    #[test]
+    fn edits_and_conflict_resolution_produce_the_next_revision() {
+        let owner = pubkey(&key(1));
+        let first = Directory::empty(&owner, 100)
+            .with_host(entry(2), 110)
+            .unwrap();
+        let edited = first
+            .with_entry(
+                HostEntry {
+                    label: "renamed".into(),
+                    weight: 0,
+                    ..entry(2)
+                },
+                120,
+            )
+            .unwrap();
+        assert_eq!(edited.revision, first.revision + 1);
+        assert_eq!(edited.hosts.len(), 1);
+        assert_eq!(edited.entry(&entry(2).host).unwrap().label, "renamed");
+        assert_eq!(edited.entry(&entry(2).host).unwrap().weight, 0);
+        // Only a listed host can be edited, and the result stays valid.
+        assert_eq!(
+            first.with_entry(entry(3), 120).unwrap_err().code,
+            Refusal::NotAdmitted
+        );
+        assert!(
+            first
+                .with_entry(
+                    HostEntry {
+                        weight: MAX_WEIGHT + 1,
+                        ..entry(2)
+                    },
+                    120
+                )
+                .is_err()
+        );
+        assert!(first.with_entry(entry(2), 90).is_err());
+        let removed = edited.without_host(&entry(2).host, 130).unwrap();
+        assert_eq!(removed.revision, edited.revision + 1);
+        assert!(removed.hosts.is_empty());
+
+        // Two bodies at revision 2; the owner keeps one above both.
+        let other = first.with_host(entry(3), 120).unwrap();
+        assert_eq!(
+            Directory::current(&[edited.clone(), other.clone()])
+                .unwrap_err()
+                .code,
+            Refusal::Conflict
+        );
+        let kept = edited.superseding(2, 140).unwrap();
+        assert_eq!(kept.revision, 3);
+        assert_eq!(kept.hosts, edited.hosts);
+        assert_eq!(
+            Directory::current(&[edited, other, kept.clone()]).unwrap(),
+            Some(&kept)
+        );
+        // A held body older than the conflict still lands above it.
+        assert_eq!(first.superseding(5, 140).unwrap().revision, 6);
     }
 }

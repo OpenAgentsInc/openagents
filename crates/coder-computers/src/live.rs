@@ -25,16 +25,20 @@
 //!   device holds no grant for shows as not enrolled. Adding an enrolled host
 //!   to the directory publishes the next revision. See [`Saved::owner`] for
 //!   how a device holds the owner key.
+//!   The owner can also relabel, reweigh, or remove a listed host, and
+//!   settle a conflict by republishing the version this device trusted.
 //! - With the `ssh` feature, [`ComputersService::connect_ssh`] installs,
-//!   starts or adopts a host with `coder-ssh`, and redeems its invitation.
+//!   starts or adopts a host with `coder-ssh`, redeems its invitation, and
+//!   opens an SSH tunnel whose loopback port the connector tries first.
+//!   [`ComputersService::remove_ssh`] runs `coder-ssh`'s explicit remove.
 //!
 //! The device key never leaves this process. The saved grants are private:
 //! the mobile store encrypts them under the device key, and [`FileStore`]
 //! writes them owner-only.
 use crate::model::{
     Compatibility, CreatedInvitation, DeviceList, DeviceRow, DirectoryState, Enrollment,
-    HostRecord, LOCAL_WEIGHT, Listing, LocalHost, PendingEnrollment, Platform, ServiceState,
-    Snapshot, SshAttempt,
+    HostRecord, Listing, LocalHost, PendingEnrollment, Platform, ServiceState, Snapshot,
+    SshAttempt,
 };
 use crate::service::{ComputersService, Result};
 use coder_access::client::{OpenedEnrollment, pending_enrollments, redeem};
@@ -42,13 +46,13 @@ use coder_access::protocol::DeviceEntry;
 use coder_access::{Access, Code, Error, Operation, Outcome, RelayPolicy, Right, Rights};
 use coder_host::client::{
     Connector, Device, Link, Reports, Route, fetch_directory_revisions, fetch_reach,
-    fetch_summaries, publish_directory,
+    fetch_summaries,
 };
 use coder_link::{
     BlockReason, ConnectionId, Failure, HostKey, Phase, Policy, Registry, Report, Signal,
     SystemClock,
 };
-use coder_reach::directory::{Directory, HostEntry};
+use coder_reach::directory::Directory;
 use coder_reach::hints::Class;
 pub use coder_reach::hints::Locality;
 use coder_reach::presence::{ClientProfile, Received, VersionRange};
@@ -145,6 +149,10 @@ pub struct SavedHost {
     /// The SSH destination this device set the host up through, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh: Option<String>,
+    /// The owner removed the host from the directory. It stays reachable
+    /// with its grant and leaves placement.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub delisted: bool,
 }
 
 /// Where a platform keeps [`Saved`].
@@ -400,11 +408,19 @@ struct State {
     hosts: BTreeMap<String, HostLive>,
     directory: DirectoryLive,
     ssh: Option<SshAttempt>,
-    /// The SSH prompt waiting for an answer, and where the answer goes.
+    /// The SSH prompt waiting for an answer, where the answer goes, and the
+    /// stage to resume once it is answered.
     #[cfg(feature = "ssh")]
-    prompt: Option<(u64, std::sync::mpsc::Sender<Option<coder_ssh::Secret>>)>,
+    prompt: Option<(
+        u64,
+        std::sync::mpsc::Sender<Option<coder_ssh::Secret>>,
+        crate::model::SshStage,
+    )>,
     #[cfg(feature = "ssh")]
     prompts: u64,
+    /// SSH tunnels by host key. Each lives only in this process.
+    #[cfg(feature = "ssh")]
+    tunnels: BTreeMap<String, ssh::TunnelLive>,
 }
 
 /// State the service and its pump share. Lock order: registry, state,
@@ -467,6 +483,8 @@ impl Live {
                 prompt: None,
                 #[cfg(feature = "ssh")]
                 prompts: 0,
+                #[cfg(feature = "ssh")]
+                tunnels: BTreeMap::new(),
             }),
             store: Mutex::new(store),
         });
@@ -519,6 +537,7 @@ impl Live {
     }
 }
 
+mod directory;
 #[cfg(feature = "ssh")]
 mod ssh;
 
@@ -544,6 +563,8 @@ async fn pump(shared: Arc<Shared>, mut reports: Reports) {
             _ = ticker.tick() => lock(&shared.registry).tick(),
         }
         shared.schedule();
+        #[cfg(feature = "ssh")]
+        ssh::watch(&shared);
     }
 }
 
@@ -582,6 +603,23 @@ impl Shared {
             }
         }
         lock(&self.state).hosts.insert(name, live);
+    }
+
+    /// Stop connecting to a host and drop it from this device's list. The
+    /// host keeps this device's grant, and an SSH host keeps running.
+    fn forget(&self, host: &str) -> Result<()> {
+        #[cfg(feature = "ssh")]
+        ssh::close_tunnel(self, host);
+        self.unsupervise(host);
+        let saved = {
+            let mut state = lock(&self.state);
+            state
+                .saved
+                .hosts
+                .retain(|saved| saved.access.grant.host != host);
+            state.saved.clone()
+        };
+        self.save(&saved)
     }
 
     /// Stop supervising a host and drop what this client knows about it.
@@ -760,6 +798,7 @@ impl Shared {
                 label,
                 enabled: true,
                 revoked: false,
+                delisted: previous.as_ref().is_some_and(|saved| saved.delisted),
                 ssh: ssh.or_else(|| previous.and_then(|saved| saved.ssh)),
             };
             state.saved.hosts.push(saved.clone());
@@ -869,6 +908,7 @@ async fn read_directory(shared: Arc<Shared>, owner: SecretKey, relays: Vec<Strin
         .iter()
         .find(|(directory, _)| *directory == current)
         .map(|(_, mailbox)| mailbox.clone());
+    directory::mark_delisted(&mut state.saved, held.as_ref(), &current);
     let record = state.saved.owner.get_or_insert_with(SavedOwner::default);
     if mailbox.is_some() {
         record.mailbox = mailbox;
@@ -1026,6 +1066,8 @@ impl ComputersService for Live {
         let registry = lock(&self.shared.registry);
         let mut state = lock(&self.shared.state);
         let owner = owner_key(&state.saved, &self.shared.secret);
+        #[cfg(feature = "ssh")]
+        let tunnels = ssh::tunnels(&state);
         if owner.is_some()
             && state
                 .directory
@@ -1070,10 +1112,19 @@ impl ComputersService for Live {
                     let connection = link
                         .filter(|status| status.phase == Phase::Connected)?
                         .connection?;
-                    Some(route_class(
-                        registry.connector().link(key, connection)?.route(),
-                    ))
+                    Some(registry.connector().link(key, connection)?.route().clone())
                 });
+                #[cfg(feature = "ssh")]
+                let tunnel = tunnels
+                    .get(&host)
+                    .map(|(open, address)| crate::model::Tunnel {
+                        open: *open,
+                        in_use: *open
+                            && route.as_ref() == Some(&Route::Direct(address.to_string())),
+                    });
+                #[cfg(not(feature = "ssh"))]
+                let tunnel = None;
+                let route = route.as_ref().map(route_class);
                 // A screen that polls asks for fresher data without waiting
                 // for the background period.
                 if live
@@ -1103,8 +1154,10 @@ impl ComputersService for Live {
                     label: listed
                         .as_ref()
                         .map_or_else(|| saved.label.clone(), |(label, _)| label.clone()),
+                    delisted: saved.delisted && listed.is_none(),
                     listing: listed.map(|(_, listing)| listing),
                     ssh: saved.ssh.clone(),
+                    tunnel,
                     enrollment,
                     link,
                     route,
@@ -1143,7 +1196,9 @@ impl ComputersService for Live {
                         weight: entry.weight,
                         added_at: entry.added_at,
                     }),
+                    delisted: false,
                     ssh: None,
+                    tunnel: None,
                     enrollment: Enrollment::NotEnrolled,
                     link: None,
                     route: None,
@@ -1223,12 +1278,7 @@ impl ComputersService for Live {
     }
 
     fn forget(&mut self, host: &str) -> Result<()> {
-        self.shared.unsupervise(host);
-        lock(&self.shared.state)
-            .saved
-            .hosts
-            .retain(|saved| saved.access.grant.host != host);
-        self.save()
+        self.shared.forget(host)
     }
 
     fn redeem_invitation(&mut self, invitation: &str) -> Result<String> {
@@ -1352,91 +1402,49 @@ impl ComputersService for Live {
     }
 
     fn list_in_directory(&mut self, host: &str, label: &str) -> Result<()> {
-        let now = (self.shared.settings.now)();
-        let (owner, current, mailbox, entry, relays) = {
-            let state = lock(&self.shared.state);
-            let owner = owner_key(&state.saved, &self.shared.secret)
-                .ok_or_else(|| Error::new(Code::Forbidden, "this device holds no owner key"))?;
-            if !state.directory.state.writable() {
-                return Err(Error::new(Code::Stale, "the directory was not read"));
-            }
-            let saved = state
-                .saved
-                .hosts
-                .iter()
-                .find(|saved| saved.access.grant.host == host)
-                .ok_or_else(|| Error::new(Code::Stale, "unknown computer"))?;
-            if saved.access.grant.owner != coder_reach::pubkey(&owner) {
-                return Err(Error::new(
-                    Code::Forbidden,
-                    "the computer names another owner",
-                ));
-            }
-            let record = state.saved.owner.as_ref();
-            let current = record
-                .and_then(|record| record.directory.clone())
-                .unwrap_or_else(|| Directory::empty(&coder_reach::pubkey(&owner), now));
-            let mailbox = record
-                .and_then(|record| record.mailbox.clone())
-                .unwrap_or_else(coder_reach::new_id);
-            let entry = HostEntry {
-                host: host.to_owned(),
-                label: label.to_owned(),
-                relays: vec![saved.access.grant.relay.clone()],
-                weight: LOCAL_WEIGHT,
-                added_at: now,
-            };
-            let mut relays = self.shared.directory_relays(&state.saved, &owner);
-            if !relays.contains(&saved.access.grant.relay) {
-                relays.push(saved.access.grant.relay.clone());
-            }
-            (owner, current, mailbox, entry, relays)
-        };
-        let issued_at = now.max(current.issued_at);
-        let next = current
-            .with_host(entry, issued_at)
-            .map_err(|error| Error::new(Code::Malformed, error.to_string()))?;
-        let retain_until = issued_at.saturating_add(DIRECTORY_RETENTION);
-        // Publish to every directory relay; one that accepts is enough.
-        let mut published = false;
-        for relay in &relays {
-            published |= self
-                .runtime
-                .block_on(publish_directory(
-                    relay,
-                    &owner,
-                    &next,
-                    &mailbox,
-                    retain_until,
-                    self.shared.settings.policy,
-                ))
-                .is_ok();
-        }
-        if !published {
-            return Err(Error::new(
-                Code::Transport,
-                "no relay accepted the directory",
-            ));
-        }
-        {
-            let mut state = lock(&self.shared.state);
-            let record = state.saved.owner.get_or_insert_with(SavedOwner::default);
-            record.mailbox = Some(mailbox);
-            record.directory = Some(next.clone());
-            state.directory.state = DirectoryState::Current {
-                revision: Some(next.revision),
-                as_of: now,
-            };
-            if let Some(saved) = state
-                .saved
-                .hosts
-                .iter_mut()
-                .find(|saved| saved.access.grant.host == host)
-            {
-                label.clone_into(&mut saved.label);
-            }
-        }
-        self.save()
+        directory::publish(
+            &self.shared,
+            &self.runtime,
+            &directory::Edit::Add { host, label },
+        )
+    }
+
+    fn edit_listing(
+        &mut self,
+        host: &str,
+        revision: u64,
+        change: &crate::model::ListingChange,
+    ) -> Result<()> {
+        directory::publish(
+            &self.shared,
+            &self.runtime,
+            &directory::Edit::Change {
+                host,
+                revision,
+                change,
+            },
+        )
+    }
+
+    fn remove_from_directory(&mut self, host: &str, revision: u64) -> Result<()> {
+        directory::publish(
+            &self.shared,
+            &self.runtime,
+            &directory::Edit::Remove { host, revision },
+        )
+    }
+
+    fn keep_directory(&mut self, revision: u64) -> Result<()> {
+        directory::publish(
+            &self.shared,
+            &self.runtime,
+            &directory::Edit::Keep { revision },
+        )
+    }
+
+    #[cfg(feature = "ssh")]
+    fn remove_ssh(&mut self, host: &str) -> Result<()> {
+        ssh::remove(&self.shared, host)
     }
 
     fn run_without_local_host(&mut self) -> Result<()> {

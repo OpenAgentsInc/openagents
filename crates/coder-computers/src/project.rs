@@ -9,7 +9,7 @@ use crate::intent::{Intent, Screen};
 use crate::model::{
     Capabilities, DataState, DeviceList, DeviceRow, DirectoryState, HostRecord, HostStatus,
     LocalHost, NotEnrolledCause, OfflineCause, OutOfDate, Platform, ServiceState, Snapshot,
-    SshStage, right_label,
+    SshRemoval, SshStage, right_label,
 };
 use coder_access::Right;
 use coder_access::protocol::{DeviceState, OriginKind};
@@ -149,9 +149,13 @@ fn route_label(class: Class) -> &'static str {
 pub fn status_line(host: &HostRecord, now: u64) -> String {
     match HostStatus::derive(host, now) {
         HostStatus::Online { data } => {
-            let route = host.route.map_or(String::new(), |class| {
-                format!(" {}", route_label(class))
-            });
+            let route = if host.tunnel.is_some_and(|tunnel| tunnel.in_use) {
+                " through the SSH tunnel".to_owned()
+            } else {
+                host.route.map_or(String::new(), |class| {
+                    format!(" {}", route_label(class))
+                })
+            };
             let data = match data {
                 DataState::Current => "Up to date.",
                 DataState::CatchingUp => "Catching up.",
@@ -341,10 +345,28 @@ fn computers(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
                 TextRole::Status,
             ));
         }
+        if host.listing.is_none() && host.delisted {
+            row.push(text(
+                format!("{prefix}-directory"),
+                "Removed from your directory. This device can still reach it; it gets no new work.",
+                TextRole::Status,
+            ));
+        }
         if let Some(destination) = &host.ssh {
             row.push(text(
                 format!("{prefix}-ssh"),
                 format!("Set up over SSH on {destination}."),
+                TextRole::Status,
+            ));
+        }
+        if let Some(tunnel) = host.tunnel {
+            row.push(text(
+                format!("{prefix}-tunnel"),
+                if tunnel.open {
+                    "SSH tunnel open. This device connects through it."
+                } else {
+                    "SSH tunnel closed. This device uses the relay; the computer keeps running."
+                },
                 TextRole::Status,
             ));
         }
@@ -362,12 +384,14 @@ fn computers(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
                 },
                 Ok(()),
             );
+            listing_controls(&mut actions, &prefix, host, snapshot, caps);
             row.push(stack(
                 format!("{prefix}-actions"),
                 Axis::Horizontal,
                 Space::Md,
                 actions,
             ));
+            confirmations(&mut row, &prefix, host, snapshot, caps, ui);
             nodes.push(section(prefix, row));
             continue;
         }
@@ -424,12 +448,26 @@ fn computers(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
                 check(snapshot, caps, Action::ListInDirectory { host: &host.key }),
             );
         }
+        listing_controls(&mut actions, &prefix, host, snapshot, caps);
+        // Only a client that can run ssh offers the explicit remove.
+        if host.ssh.is_some() && caps.ssh() {
+            control(
+                &mut actions,
+                format!("{prefix}-ssh-remove"),
+                "Remove over SSH",
+                Intent::RemoveSshHost {
+                    host: host.key.clone(),
+                },
+                check(snapshot, caps, Action::RemoveSsh { host: &host.key }),
+            );
+        }
         row.push(stack(
             format!("{prefix}-actions"),
             Axis::Horizontal,
             Space::Md,
             actions,
         ));
+        confirmations(&mut row, &prefix, host, snapshot, caps, ui);
         if ui.confirm == Some(Confirm::Forget(host.key.clone())) {
             row.push(text(
                 format!("{prefix}-forget-confirm"),
@@ -464,6 +502,13 @@ fn computers(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
             ));
         }
         nodes.push(section(prefix, row));
+    }
+    if let Some(line) = snapshot
+        .ssh
+        .as_ref()
+        .and_then(|attempt| removal_line(&attempt.destination, &attempt.stage))
+    {
+        nodes.push(text("computers-ssh", line, TextRole::Status));
     }
     let mut end = Vec::new();
     control(
@@ -517,6 +562,15 @@ fn directory(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
         text("directory-title", "Your directory", TextRole::Heading),
         text("directory-status", line, TextRole::Status),
     ];
+    if let DirectoryState::Conflict { revision } = snapshot.directory {
+        control(
+            &mut children,
+            "directory-keep",
+            "Keep this device's version",
+            Intent::KeepDirectory { revision },
+            check(snapshot, caps, Action::KeepDirectory { revision }),
+        );
+    }
     if snapshot.directory == DirectoryState::NoOwnerKey {
         control(
             &mut children,
@@ -662,6 +716,7 @@ fn add(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilities) {
                 SshStage::Failed { reason } => {
                     format!("Couldn't set up a host on {destination}: {reason}")
                 }
+                stage => removal_line(destination, stage).unwrap_or_default(),
             };
             ssh.push(text("ssh-status", line, TextRole::Status));
         }
@@ -698,6 +753,172 @@ fn add(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilities) {
         check(snapshot, caps, Action::RunWithoutHost),
     );
     nodes.push(section("local", local));
+}
+
+/// The owner's controls for a listed host's directory entry. A device
+/// without the owner key shows none.
+fn listing_controls(
+    actions: &mut Vec<Node<Intent>>,
+    prefix: &str,
+    host: &HostRecord,
+    snapshot: &Snapshot,
+    caps: Capabilities,
+) {
+    if host.listing.is_none() || snapshot.directory == DirectoryState::NoOwnerKey {
+        return;
+    }
+    let revision = snapshot.directory.revision().unwrap_or(0);
+    let allowed = check(
+        snapshot,
+        caps,
+        Action::EditListing {
+            host: &host.key,
+            revision,
+        },
+    );
+    for (key, label, intent) in [
+        (
+            "rename",
+            "Rename",
+            Intent::EditLabel {
+                host: host.key.clone(),
+                revision,
+            },
+        ),
+        (
+            "weight",
+            "Change weight",
+            Intent::EditWeight {
+                host: host.key.clone(),
+                revision,
+            },
+        ),
+        (
+            "delist",
+            "Remove from directory",
+            Intent::RemoveFromDirectory {
+                host: host.key.clone(),
+                revision,
+            },
+        ),
+    ] {
+        control(
+            actions,
+            format!("{prefix}-{key}"),
+            label,
+            intent,
+            allowed.clone(),
+        );
+    }
+}
+
+/// The confirmation a row asks for before removing a host from the
+/// directory or over SSH.
+fn confirmations(
+    row: &mut Vec<Node<Intent>>,
+    prefix: &str,
+    host: &HostRecord,
+    snapshot: &Snapshot,
+    caps: Capabilities,
+    ui: &UiState,
+) {
+    let (key, question, yes, intent, allowed) = match &ui.confirm {
+        Some(Confirm::Delist(key, revision)) if *key == host.key => (
+            "delist",
+            if host.enrollment.rights(snapshot.now).is_some() {
+                format!(
+                    "Remove {} from your directory? It gets no new work. This device keeps its access, and the computer keeps running.",
+                    host.label
+                )
+            } else {
+                format!(
+                    "Remove {} from your directory? This device has no access to it, so it leaves this list.",
+                    host.label
+                )
+            },
+            "Remove from directory",
+            Intent::ConfirmRemoveFromDirectory {
+                host: host.key.clone(),
+                revision: *revision,
+            },
+            check(
+                snapshot,
+                caps,
+                Action::EditListing {
+                    host: &host.key,
+                    revision: *revision,
+                },
+            ),
+        ),
+        Some(Confirm::RemoveSsh(key)) if *key == host.key => (
+            "ssh-remove",
+            format!(
+                "Remove {} from {}? If this app's setup started its host, the host stops. If the host was already running, it keeps running and this device detaches. Then this device forgets the computer.",
+                host.label,
+                host.ssh.as_deref().unwrap_or("its SSH destination")
+            ),
+            "Remove computer",
+            Intent::ConfirmRemoveSshHost {
+                host: host.key.clone(),
+            },
+            check(snapshot, caps, Action::RemoveSsh { host: &host.key }),
+        ),
+        _ => return,
+    };
+    row.push(text(
+        format!("{prefix}-{key}-confirm"),
+        question,
+        TextRole::Body,
+    ));
+    let mut confirm = Vec::new();
+    control(
+        &mut confirm,
+        format!("{prefix}-{key}-yes"),
+        yes,
+        intent,
+        allowed,
+    );
+    control(
+        &mut confirm,
+        format!("{prefix}-{key}-no"),
+        "Keep",
+        Intent::Cancel,
+        Ok(()),
+    );
+    row.push(stack(
+        format!("{prefix}-{key}-actions"),
+        Axis::Horizontal,
+        Space::Md,
+        confirm,
+    ));
+}
+
+/// The line for an explicit SSH remove, or `None` for a setup stage.
+fn removal_line(destination: &str, stage: &SshStage) -> Option<String> {
+    Some(match stage {
+        SshStage::Removing { label } => format!("Removing {label} from {destination}."),
+        SshStage::Removed { label, removal } => match removal {
+            SshRemoval::Stopped => {
+                format!(
+                    "Removed {label}. Its host on {destination} stopped, and this device forgot it."
+                )
+            }
+            SshRemoval::Detached => format!(
+                "Removed {label}. Its host on {destination} was already running before setup, so it keeps running; this device detached and forgot it."
+            ),
+            SshRemoval::Absent => format!(
+                "Removed {label}. No host was running on {destination}; this device forgot it."
+            ),
+        },
+        SshStage::RemoveFailed { label, reason } => {
+            format!("Couldn't remove {label} from {destination}: {reason} It stays in your list.")
+        }
+        SshStage::Starting
+        | SshStage::Prompt { .. }
+        | SshStage::Enrolling
+        | SshStage::Added { .. }
+        | SshStage::Failed { .. } => return None,
+    })
 }
 
 fn capitalize(value: &str) -> String {

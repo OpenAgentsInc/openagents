@@ -12,3 +12,6 @@ mc-bridge/target/
 
 # Local release packaging output
 /dist/
+
+# Firebase configuration for an opt-in push build; never committed.
+bins/coder-android/host/app/google-services.json

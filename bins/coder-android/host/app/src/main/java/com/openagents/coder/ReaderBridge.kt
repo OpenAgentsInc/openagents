@@ -34,6 +34,9 @@ class ReaderBridge(private val storage: DeviceStorage, synthetic: Boolean,
     private var pendingForeground: Boolean? = null
     private var pendingLifecycle: Boolean? = null
     private var pendingFollow: JSONObject? = null
+    private var pendingPushToken: String? = null
+    /** Why this device couldn't obtain a push token, if it couldn't. */
+    var pushFailure: String? = null; private set
     var snapshot: JSONObject? = null; private set
     var error: String? = null; private set
     var busy = true; private set
@@ -41,9 +44,12 @@ class ReaderBridge(private val storage: DeviceStorage, synthetic: Boolean,
     init {
         worker.execute {
             val result = runCatching {
-                handle = CoderNative.createReader(json("cache_dir" to storage.cacheDirectory().path,
+                val config = json("cache_dir" to storage.cacheDirectory().path,
                     "secret_hex" to storage.identity("reader"), "synthetic" to synthetic,
-                    "loopback_test" to loopbackTest).toString())
+                    "loopback_test" to loopbackTest)
+                // Push stays off unless configured; synthetic launches leave it off, except a loopback test.
+                if (PushSettings.configured && (!synthetic || loopbackTest)) config.put("push", PushSettings.rust())
+                handle = CoderNative.createReader(config.toString())
                 check(handle != 0L) { "The reader could not open its protected local state." }
                 call(json("op" to "snapshot"))
             }
@@ -74,6 +80,14 @@ class ReaderBridge(private val storage: DeviceStorage, synthetic: Boolean,
     fun pollComputers() {
         if (!busy) request(json("op" to "computers_refresh"))
     }
+    /** The platform issued an FCM token. Rust registers it. */
+    fun pushToken(token: String) {
+        pushFailure = null
+        if (busy) pendingPushToken = token else request(json("op" to "push_token", "token" to token))
+    }
+    fun pushFailed(reason: String) { pushFailure = reason; changed() }
+    /** Push wake status: the native failure, or Rust's. */
+    val pushStatus: String? get() = pushFailure ?: snapshot?.textOrNull("push")
     fun refresh(force: Boolean = false) {
         if (wantedForeground && !busy) request(json("op" to if (force) "refresh_now" else "refresh"))
     }
@@ -98,6 +112,7 @@ class ReaderBridge(private val storage: DeviceStorage, synthetic: Boolean,
         changed()
         pendingForeground?.let { pendingForeground = null; foreground(it); return }
         pendingLifecycle?.let { pendingLifecycle = null; lifecycle(it); return }
-        pendingFollow?.let { pendingFollow = null; request(it) }
+        pendingFollow?.let { pendingFollow = null; request(it); return }
+        pendingPushToken?.let { pendingPushToken = null; pushToken(it) }
     }
 }

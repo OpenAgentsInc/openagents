@@ -94,4 +94,41 @@ pub enum Intent {
     ListInDirectory {
         host: String,
     },
+    /// Ask for a new directory label for a listed host. `revision` is the
+    /// directory revision the screen showed; an edit against another
+    /// revision is refused as stale.
+    EditLabel {
+        host: String,
+        revision: u64,
+    },
+    /// Ask for a new placement weight for a listed host.
+    EditWeight {
+        host: String,
+        revision: u64,
+    },
+    /// Ask to confirm removing a host from the owner directory.
+    RemoveFromDirectory {
+        host: String,
+        revision: u64,
+    },
+    /// Publish the next revision without the host. A grant this device holds
+    /// keeps the host reachable; it leaves the directory and placement.
+    ConfirmRemoveFromDirectory {
+        host: String,
+        revision: u64,
+    },
+    /// End a directory conflict at `revision` by publishing this device's
+    /// last trusted version above it.
+    KeepDirectory {
+        revision: u64,
+    },
+    /// Ask to confirm removing a host this device set up over SSH.
+    RemoveSshHost {
+        host: String,
+    },
+    /// Run `coder-ssh`'s explicit remove, which stops only a host its setup
+    /// started, then forget the computer on this device.
+    ConfirmRemoveSshHost {
+        host: String,
+    },
 }

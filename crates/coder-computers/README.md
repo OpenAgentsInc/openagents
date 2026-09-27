@@ -16,7 +16,7 @@ connects them to real hosts, within the
 | Screen | What it shows | Intents |
 | --- | --- | --- |
 | First run | The ways to add a computer and a **Continue** control that stays disabled until one computer has a current grant. | Every **Add a computer** intent, `continue_onboarding`. |
-| Computers | One row per host: label, status, route in use, the reason when blocked, and the owner directory's weight for a listed host. Your directory's state follows the rows. | `set_enabled` (switch off without forgetting), `retry_now`, `forget` and `confirm_forget`, `show` the host's access, `list_in_directory`, `import_owner_key`. |
+| Computers | One row per host: label, status, route in use (including the SSH tunnel), the reason when blocked, the owner directory's weight for a listed host or that the owner removed it, and an SSH host's tunnel. Your directory's state follows the rows, and the outcome of a remove over SSH. | `set_enabled` (switch off without forgetting), `retry_now`, `forget` and `confirm_forget`, `show` the host's access, `list_in_directory`, `edit_label`, `edit_weight`, `remove_from_directory` and `confirm_remove_from_directory`, `keep_directory`, `remove_ssh_host` and `confirm_remove_ssh_host`, `import_owner_key`. |
 | Add a computer | Scan or paste a `coder-host:` invitation, approve a headless host's 8-character code, connect over SSH with its progress, and run with no local host. A phone doesn't show SSH. | `scan_invitation`, `paste_invitation`, `enter_code`, `deny`, `connect_ssh`, `run_without_host`. |
 | Access | This device's rights on the host, the enrolled devices with rights, origin, and the time the host last saw each, and a new invitation with a chosen subset of rights, shown as its string and a QR code. | `refresh_devices`, `toggle_right`, `create_invitation`, `cancel_invitation`, `dismiss_invitation`, `revoke` and `confirm_revoke`. |
 | Activity | The newest activity summary per task or session, attention first, marked when its host is not online. | `refresh`. |
@@ -104,21 +104,47 @@ grants, connections, and relay traffic. Three services implement it:
   grant here shows as not enrolled, with no controls that need a connection.
   **Add to directory** on an enrolled host asks for a label and publishes the
   next revision with weight 100.
+- **Directory editing.** On a listed host, **Rename**, **Change weight** (0 to
+  1,000), and **Remove from directory** each publish the next revision. Each
+  intent carries the revision the screen showed; the controls are disabled
+  without the owner key, before a successful read, and during a conflict,
+  and both the controller and the service refuse an edit made against
+  another revision as stale. Two different bodies at the top revision stay a
+  visible conflict: the list keeps the version this device trusted, and
+  **Keep this device's version** publishes that version one revision above
+  the conflict, without merging. A removed host this device holds a grant
+  for stays in the list and reachable, says it was removed, and leaves
+  placement; **Add to directory** lists it again. A removed host with no
+  grant here leaves the list.
 - **Placement.** `Snapshot::place` and `Snapshot::assess_placement` apply the
-  NIP-REACH placement rule to the snapshot: directory weights, or weight 100
-  for an unlisted host, the newest accepted presence, and admission only for
-  an online host this device may operate.
+  NIP-REACH placement rule to the snapshot: directory weights, weight 0 for a
+  host the owner removed from the directory, or weight 100 for a host it never
+  listed, the newest accepted presence, and admission only for an online host
+  this device may operate.
 - **SSH.** With the `ssh` feature and `Settings::ssh`, **Connect over SSH**
   asks for a destination, then runs `coder-ssh` on a thread: install or reuse
   the pinned release, start or adopt the host, and redeem the invitation
   `coder host invite` prints. `ssh` prompts reach the screen through
   `Snapshot::ssh` and become masked input requests; closing one refuses it.
-  Forgetting the computer never stops the remote host: only `coder-ssh`'s
-  explicit remove does, and these screens don't offer it yet.
+  The setup then opens a `coder-ssh` tunnel and gives its forwarded loopback
+  port to the connector as a local route, tried before the host's hints and
+  the relay. The route exists only in this process: it is same-machine
+  evidence for that one address under NIP-REACH, so it is never saved,
+  published, or offered to another device. When the tunnel's `ssh` process
+  ends, the route is cleared and the host is reached through its relay; the
+  row says so. Nothing stops the host because a tunnel ended, and forgetting
+  the computer never stops it either. **Remove over SSH** asks first, then runs
+  `coder-ssh`'s explicit remove, which stops a host this app's setup started
+  and detaches from one that was already running, forgets the computer, and
+  shows which happened. A failed remove keeps the computer in the list.
 - **Limits.** A phone claims another machine's locality, so it uses LAN,
-  tailnet, or public hints and the relay, never loopback. The screens don't edit a listed host's label or weight, or remove it from
-  the directory. An SSH host is reached through its relay; the `coder-ssh`
-  loopback tunnel isn't a route yet.
+  tailnet, or public hints and the relay, never loopback. A tunnel opens only
+  during **Connect over SSH**; after the app restarts, or once the tunnel
+  closes, the host stays on its other routes until you connect it over SSH
+  again. An attempt reads presence from the relay before it tries the
+  tunnel, so the tunnel doesn't help while the relay is down. **Remove over
+  SSH** doesn't change the owner directory; remove the host there
+  separately.
 
 ## QR codes
 
@@ -138,8 +164,10 @@ whether the value is a secret to mask. The platform shows its native field or
 scanner and returns the value with the token. A secret request, such as an
 SSH password or the owner key, gets a masked field: a SwiftUI `SecureField`
 on iOS and a password-type field on Android. **Enter owner key** is offered
-on every platform, phones included. Rust validates it: the `coder-host:` prefix, the approval code's shape,
-an SSH destination that cannot be an option, and a directory label's bounds.
+on every platform, phones included. Rust validates each value: the
+`coder-host:` prefix, the approval code's shape, an SSH destination that
+cannot be an option, a directory label's bounds, and a weight from 0 to
+1,000.
 An SSH password or passphrase passes exactly as typed.
 
 ## Try it
@@ -172,4 +200,8 @@ cargo fmt -p coder-computers -- --check
 the synthetic relay: the owner directory, and an SSH setup through the fake
 `ssh` harness in `crates/coder-ssh/tests/support/fake_ssh.rs`. The
 [verification record](../../docs/coder/verification/2026-09-27-client-directory-and-ssh.md)
-lists what it establishes.
+lists what it establishes. `tests/edits.rs` adds directory editing, removal,
+conflict, and stale refusal, and the SSH tunnel route, relay fallback, and
+both remove outcomes; its
+[verification record](../../docs/coder/verification/2026-09-27-directory-edit-and-ssh-routes.md)
+lists them.

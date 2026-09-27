@@ -68,12 +68,15 @@ Each entry is `{host, label, relays, weight, added_at}`:
   listed but excludes it from placement.
 - `added_at` is no later than `issued_at`.
 
-Adding or removing a host is an owner action that produces the next revision.
+Adding or removing a host, or changing its label or weight, is an owner action
+that produces the next revision.
 A host cannot add itself: a reader opens a directory only when the owner key
 signed it to itself and the body names that owner. A host-signed copy refuses
 as `identity_mismatch`, whatever its body lists. Two different bodies at the
 highest revision are a `conflict`; the client shows the conflict and waits for
-the owner to publish a higher revision rather than merging them.
+the owner to publish a higher revision rather than merging them. An owner
+device may end the conflict by publishing one body it trusted above the
+conflicting revision.
 
 The owner reuses one random mailbox for its directory revisions so its own
 devices can filter by `#h`. A holder of the owner key sees every retained
@@ -230,6 +233,14 @@ shareable route exists; the client reports that instead of trying a local
 address. A client claims to be on the same machine only from local evidence,
 such as a local socket that its own user owns. A matching address is not
 evidence.
+
+A client may also hold a local route: a loopback address on its own machine
+that reaches the host through a forwarder the client itself runs, such as the
+local port of an SSH tunnel. Its own forwarder is the local evidence, for that
+one address only. The client may try it before the selected hints, proves it
+with the same handshake, never publishes it or shares it with another device,
+and drops it when the forwarder ends. The host's loopback hints still follow
+the rules above.
 
 ## Direct channel
 

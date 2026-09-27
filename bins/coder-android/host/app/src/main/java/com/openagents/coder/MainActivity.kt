@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
     private var readerContent: LinearLayout? = null
     private var readerError: TextView? = null
     private var readerStatus: TextView? = null
+    private var pushStatus: TextView? = null
     private var scannerContainer: LinearLayout? = null
     // The Computers surface: its own Rust Native tree and input requests.
     private var computers = false
@@ -104,6 +105,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Push builds only: wakes still register when notifications are declined.
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
+        if (!allowed) reader.pushFailed("Notifications are off for Coder. Turn them on in Settings to see wakes.")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         synthetic = BuildConfig.DEBUG && intent.getBooleanExtra("synthetic", false)
@@ -138,6 +144,7 @@ class MainActivity : ComponentActivity() {
         gym = GymPanel(this, world)
         reader = ReaderBridge(storage, synthetic, loopbackTest) { if (opened == "computer") renderComputer() }
         setContentView(root)
+        if (!synthetic || loopbackTest) PushSettings.start(this, reader, notificationPermission)
         ViewCompat.setOnApplyWindowInsetsListener(safe) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
@@ -320,12 +327,16 @@ class MainActivity : ComponentActivity() {
             worldConnectionStatus = null; worldConnectionError = null
             readerError = label("", "reader-error"); panelBody.addView(readerError)
             readerStatus = label("", "reader-status", 11f); panelBody.addView(readerStatus)
+            pushStatus = null
             when (mode) { "computers" -> buildComputers(); "settings" -> buildSettings(paired); "pair" -> buildPairing(paired); else -> buildChats() }
         }
         val error = reader.error ?: packet?.textOrNull("error")
         readerError?.text = error.orEmpty(); readerError?.visibility = if (error == null) View.GONE else View.VISIBLE
         readerStatus?.text = "Updating…"
         readerStatus?.visibility = if (reader.busy) View.VISIBLE else View.GONE
+        // Only builds configured for push have a wake status, in Device details.
+        val wakes = reader.pushStatus
+        pushStatus?.text = wakes.orEmpty(); pushStatus?.visibility = if (wakes == null) View.GONE else View.VISIBLE
         layoutPanel()
         if (mode == "chats" && packet != null) {
             try { readerContent?.let { renderer.mount(it, packet) } }
@@ -386,6 +397,7 @@ class MainActivity : ComponentActivity() {
             })
             scannerContainer = column(); box.addView(scannerContainer)
         }
+        // A secret is masked, single-line, and never saved, suggested, or autofilled.
         val secret = input.optBoolean("secret", false)
         val field = EditText(this).apply {
             hint = input.optString("label"); contentDescription = input.optString("label"); tag = "computers-input"
@@ -462,6 +474,7 @@ class MainActivity : ComponentActivity() {
         if (details) {
             body.addView(label(reader.snapshot?.optString("public_key").orEmpty(), "reader-public-key", 11f))
             body.addView(label(reader.snapshot?.optString("status").orEmpty(), "reader-connection-status", 11f))
+            pushStatus = label("", "push-status", 11f).also { body.addView(it) }
             if (paired) body.addView(button("Disconnect computer", "reader-disconnect") {
                 val confirm = column()
                 confirm.addView(label("Erase cached chats on this phone?"))
@@ -552,6 +565,7 @@ class MainActivity : ComponentActivity() {
         if (::scanner.isInitialized) scanner.dispose()
         if (::world.isInitialized) world.release()
         if (::reader.isInitialized) reader.dispose()
+        PushPlatform.stop()
         super.onDestroy()
     }
 }

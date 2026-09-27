@@ -215,6 +215,50 @@ impl DirectoryState {
     pub fn writable(self) -> bool {
         matches!(self, Self::Current { .. })
     }
+
+    /// The revision the screens show. An owner edit carries it, so an edit
+    /// made against an older revision is refused as stale.
+    pub fn revision(self) -> Option<u64> {
+        match self {
+            Self::Current { revision, .. } | Self::Failed { revision } => revision,
+            Self::Conflict { revision } => Some(revision),
+            Self::NoOwnerKey | Self::Loading => None,
+        }
+    }
+}
+
+/// A change to one listed host's directory entry. Each publishes the next
+/// directory revision.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ListingChange {
+    /// New display text, 1 to 64 bytes without control characters.
+    Label(String),
+    /// A new placement weight, 0 to 1,000. Zero keeps the host listed and
+    /// excludes it from placement.
+    Weight(u32),
+}
+
+/// What an explicit SSH remove did on the remote machine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SshRemoval {
+    /// This app's setup started the host, and the remove stopped it.
+    Stopped,
+    /// The host was already running before the setup. It keeps running;
+    /// this device detached from it.
+    Detached,
+    /// No host was running there.
+    Absent,
+}
+
+/// This client's SSH tunnel to a host it set up over SSH. The tunnel is
+/// only a route: when it closes, the host keeps running and the client uses
+/// the relay.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Tunnel {
+    /// The tunnel's forwarded loopback port accepts connections.
+    pub open: bool,
+    /// The live connection runs through the tunnel.
+    pub in_use: bool,
 }
 
 /// A host SSH setup in progress or just finished.
@@ -238,12 +282,30 @@ pub enum SshStage {
     Added { host: String },
     /// The setup stopped. `reason` is user-facing copy.
     Failed { reason: String },
+    /// Running `coder-ssh`'s explicit remove on the destination.
+    Removing { label: String },
+    /// The remove finished and this device forgot the computer.
+    Removed { label: String, removal: SshRemoval },
+    /// The remove failed. The computer stays in the list. `reason` is
+    /// user-facing copy.
+    RemoveFailed { label: String, reason: String },
 }
 
 impl SshStage {
-    /// Whether the setup still runs.
+    /// Whether the setup or remove still runs.
     pub fn running(&self) -> bool {
-        matches!(self, Self::Starting | Self::Prompt { .. } | Self::Enrolling)
+        matches!(
+            self,
+            Self::Starting | Self::Prompt { .. } | Self::Enrolling | Self::Removing { .. }
+        )
+    }
+
+    /// Whether this stage belongs to an explicit remove.
+    pub fn removal(&self) -> bool {
+        matches!(
+            self,
+            Self::Removing { .. } | Self::Removed { .. } | Self::RemoveFailed { .. }
+        )
     }
 }
 
@@ -258,8 +320,14 @@ pub struct HostRecord {
     /// The owner directory's entry, when this device can read the directory
     /// and it lists the host.
     pub listing: Option<Listing>,
+    /// The owner removed the host from the directory, and this device still
+    /// holds its grant. It stays reachable and leaves placement. Adding it to
+    /// the directory again clears this.
+    pub delisted: bool,
     /// The SSH destination this device set the host up through, if any.
     pub ssh: Option<String>,
+    /// This client's SSH tunnel to the host, when it opened one.
+    pub tunnel: Option<Tunnel>,
     pub enrollment: Enrollment,
     /// The connection supervisor's status. `None` when no supervisor runs
     /// for this host, for example before enrollment.
@@ -274,10 +342,15 @@ pub struct HostRecord {
 }
 
 impl HostRecord {
-    /// The weight placement uses: the owner directory's, or
-    /// [`LOCAL_WEIGHT`] for a host the directory does not list.
+    /// The weight placement uses: the owner directory's, zero for a host the
+    /// owner removed from the directory, or [`LOCAL_WEIGHT`] for a host the
+    /// directory never listed.
     pub fn weight(&self) -> u32 {
-        self.listing.map_or(LOCAL_WEIGHT, |listing| listing.weight)
+        match self.listing {
+            Some(listing) => listing.weight,
+            None if self.delisted => 0,
+            None => LOCAL_WEIGHT,
+        }
     }
 
     /// The owner directory lists the host and this device holds no grant

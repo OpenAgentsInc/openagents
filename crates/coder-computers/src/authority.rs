@@ -56,6 +56,21 @@ pub enum Action<'a> {
     ListInDirectory {
         host: &'a str,
     },
+    /// Change or remove a listed host's directory entry, against the
+    /// directory revision the screen showed. An owner action.
+    EditListing {
+        host: &'a str,
+        revision: u64,
+    },
+    /// Publish this device's version above a directory conflict at
+    /// `revision`. An owner action.
+    KeepDirectory {
+        revision: u64,
+    },
+    /// Remove a host this device set up over SSH.
+    RemoveSsh {
+        host: &'a str,
+    },
 }
 
 /// Why a control is unavailable.
@@ -88,6 +103,10 @@ pub enum Denial {
     DirectoryNotRead,
     DirectoryConflict,
     AlreadyListed,
+    NotListed,
+    StaleDirectory,
+    NoConflict,
+    NotSetUpOverSsh,
 }
 
 impl Denial {
@@ -141,6 +160,14 @@ impl Denial {
                 "Your directory has two different versions at one revision. Publish a newer one from the device that made the change.".into()
             }
             Self::AlreadyListed => "Your directory already lists this computer.".into(),
+            Self::NotListed => "Your directory doesn't list this computer.".into(),
+            Self::StaleDirectory => {
+                "Your directory changed since this screen was drawn. Check it, then try again.".into()
+            }
+            Self::NoConflict => "Your directory has no conflict to settle.".into(),
+            Self::NotSetUpOverSsh => {
+                "This device didn't set up this computer over SSH. Stop its host on the computer.".into()
+            }
         }
     }
 }
@@ -293,6 +320,54 @@ pub fn check(snapshot: &Snapshot, caps: Capabilities, action: Action<'_>) -> Res
                 .any(|host| matches!(host.enrollment, Enrollment::Enrolled { .. }))
             {
                 Err(Denial::OwnerKeyNeedsComputer)
+            } else {
+                Ok(())
+            }
+        }
+        Action::EditListing {
+            host: key,
+            revision,
+        } => {
+            let record = host(snapshot, key)?;
+            match snapshot.directory {
+                DirectoryState::NoOwnerKey => return Err(Denial::NotOwner),
+                DirectoryState::Conflict { .. } => return Err(Denial::DirectoryConflict),
+                DirectoryState::Loading | DirectoryState::Failed { .. } => {
+                    return Err(Denial::DirectoryNotRead);
+                }
+                DirectoryState::Current {
+                    revision: shown, ..
+                } if shown != Some(revision) => {
+                    return Err(Denial::StaleDirectory);
+                }
+                DirectoryState::Current { .. } => {}
+            }
+            if record.listing.is_some() {
+                Ok(())
+            } else {
+                Err(Denial::NotListed)
+            }
+        }
+        Action::KeepDirectory { revision } => match snapshot.directory {
+            DirectoryState::NoOwnerKey => Err(Denial::NotOwner),
+            DirectoryState::Conflict { revision: shown } if shown == revision => Ok(()),
+            DirectoryState::Conflict { .. } => Err(Denial::StaleDirectory),
+            _ => Err(Denial::NoConflict),
+        },
+        Action::RemoveSsh { host: key } => {
+            let record = host(snapshot, key)?;
+            if !caps.ssh() {
+                Err(Denial::SshNeedsComputer)
+            } else if record.ssh.is_none() {
+                Err(Denial::NotSetUpOverSsh)
+            } else if !snapshot.ssh_ready {
+                Err(Denial::SshNotSetUp)
+            } else if snapshot
+                .ssh
+                .as_ref()
+                .is_some_and(|attempt| attempt.stage.running())
+            {
+                Err(Denial::SshRunning)
             } else {
                 Ok(())
             }

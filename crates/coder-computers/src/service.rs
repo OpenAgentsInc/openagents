@@ -11,7 +11,7 @@
 //! Every method is an effect request. The host still authorizes each one
 //! against its own grant records; the screens' checks only avoid offering a
 //! control that cannot work.
-use crate::model::{CreatedInvitation, LocalHost, ServiceState, Snapshot};
+use crate::model::{CreatedInvitation, ListingChange, LocalHost, ServiceState, Snapshot};
 use coder_access::{Code, Error, Rights};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -95,6 +95,48 @@ pub trait ComputersService {
         Err(Error::new(
             Code::Unavailable,
             "this client can't change the directory",
+        ))
+    }
+    /// Publish the next directory revision with `host`'s entry changed. An
+    /// owner action. `revision` is the revision the screen showed: the
+    /// service refuses the edit as stale when the directory it holds has
+    /// another revision.
+    fn edit_listing(&mut self, host: &str, revision: u64, change: &ListingChange) -> Result<()> {
+        let _ = (host, revision, change);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't change the directory",
+        ))
+    }
+    /// Publish the next directory revision without `host`. An owner action,
+    /// bound to `revision` as [`ComputersService::edit_listing`] is. A grant
+    /// this device holds keeps the host reachable; it leaves placement.
+    fn remove_from_directory(&mut self, host: &str, revision: u64) -> Result<()> {
+        let _ = (host, revision);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't change the directory",
+        ))
+    }
+    /// End a directory conflict at `revision` by publishing the version this
+    /// device last trusted above it. An owner action.
+    fn keep_directory(&mut self, revision: u64) -> Result<()> {
+        let _ = revision;
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't change the directory",
+        ))
+    }
+    /// Start `coder-ssh`'s explicit remove on the destination `host` was set
+    /// up through: it stops a host the setup started and detaches from one
+    /// that was already running. When it finishes, the service forgets the
+    /// computer. Desktop and terminal only. It may return before the remove
+    /// finishes; [`Snapshot::ssh`] reports prompts and the outcome.
+    fn remove_ssh(&mut self, host: &str) -> Result<()> {
+        let _ = host;
+        Err(Error::new(
+            Code::Unavailable,
+            "this client does not reach hosts over SSH",
         ))
     }
 }

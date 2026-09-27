@@ -486,6 +486,9 @@ fn add_a_computer_over_ssh_enrolls_through_its_invitation() {
         .unwrap();
     std::fs::write(home.join("invitation"), format!("{}\n", invitation.code)).unwrap();
     std::fs::write(dir.join("password"), PASSWORD).unwrap();
+    // The tunnel route is covered in `tests/edits.rs`; here port forwarding
+    // is refused, and the host stays on its other routes.
+    std::fs::write(dir.join("no-tunnel"), "").unwrap();
     let archive = fake_ssh::archive(&dir, FAKE_CODER, "coder.tar.gz");
     let program = fake_ssh::shim(&dir, &home, "sh");
     let (os, arch) = match (std::env::consts::OS, std::env::consts::ARCH) {
@@ -530,6 +533,7 @@ fn add_a_computer_over_ssh_enrolls_through_its_invitation() {
                 answered += 1;
             }
             SshStage::Starting | SshStage::Enrolling => {}
+            stage => panic!("a setup never reaches {stage:?}"),
         }
         assert!(
             Instant::now() < deadline,

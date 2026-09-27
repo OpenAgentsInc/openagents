@@ -14,6 +14,9 @@ if [[ "${CODER_ANDROID_SANITIZED:-}" != 1 ]]; then
     CODER_ANDROID_ABI="${CODER_ANDROID_ABI:-arm64-v8a}" \
     CODER_ANDROID_SERIAL="${CODER_ANDROID_SERIAL:-}" \
     CODER_ANDROID_PROFILE="${CODER_ANDROID_PROFILE:-dev}" \
+    CODER_PUSH_RELAY_URL="${CODER_PUSH_RELAY_URL:-}" \
+    CODER_PUSH_GATEWAY_URL="${CODER_PUSH_GATEWAY_URL:-}" \
+    CODER_PUSH_APP_PROFILE="${CODER_PUSH_APP_PROFILE:-}" \
     CODER_ANDROID_SANITIZED=1 /bin/bash "$root/scripts/build-coder-android.sh" "$@"
 fi
 
@@ -30,6 +33,8 @@ Set CODER_ANDROID_SERIAL explicitly for install, launch, run, or test.
 Set CODER_ANDROID_ABI to arm64-v8a (default) or x86_64.
 --synthetic launches the isolated test identity/cache instead of saved pairing.
 No command creates, resets, or launches an emulator, or publishes an app.
+Push is off unless host/app/google-services.json exists and CODER_PUSH_RELAY_URL,
+CODER_PUSH_GATEWAY_URL, and CODER_PUSH_APP_PROFILE are set.
 USAGE
 }
 
@@ -72,12 +77,16 @@ require_device() {
 }
 
 gradle_() {
+  local push=()
+  [[ -z "$CODER_PUSH_RELAY_URL" ]] || push+=("-PcoderPushRelayUrl=$CODER_PUSH_RELAY_URL")
+  [[ -z "$CODER_PUSH_GATEWAY_URL" ]] || push+=("-PcoderPushGatewayUrl=$CODER_PUSH_GATEWAY_URL")
+  [[ -z "$CODER_PUSH_APP_PROFILE" ]] || push+=("-PcoderPushAppProfile=$CODER_PUSH_APP_PROFILE")
   "$host/gradlew" --no-daemon --console=plain -p "$host" \
     --project-cache-dir "$output/project-cache" \
     -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
     -Pandroid.experimental.testOptions.uninstallIncompatibleApks=false \
     "-PcoderOutputDir=$output/gradle" "-PcoderNativeDir=$native" \
-    "-PcoderAbi=$CODER_ANDROID_ABI" "$@"
+    "-PcoderAbi=$CODER_ANDROID_ABI" ${push[@]+"${push[@]}"} "$@"
 }
 
 rust() {
