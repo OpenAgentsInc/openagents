@@ -537,10 +537,13 @@ the seller side carries an invoice or preimage.
 ### Discovery (`x402 advertise`, `fetch --cap`)
 
 `openagents x402 advertise` publishes the kind `30180` NIP-CAP head that
-NIP-X402 specifies for a paid `http:1` resource: an `adapter` definition
-with `requires: ["oa-x402-v1"]`, transport `http`, `remote.endpoint` set
-to the public URL, and one `binding_contract.x402` descriptor whose single
-receiver is this wallet's node id on the wallet's network. The head is
+NIP-X402 specifies for a paid resource: an `adapter` definition with
+`requires: ["oa-x402-v1"]`, `remote.endpoint` set to the public URL, and
+one `binding_contract.x402` descriptor whose single receiver is this
+wallet's node id on the wallet's network. `--binding http:1` (the default)
+uses transport `http` and interface `openagents.x402.http.v1`;
+`--binding mcp:1` uses transport `mcp`, interface
+`openagents.x402.mcp.v1`, and the MCP server URI as the endpoint. The head is
 signed by the `--as` key profile; `--dry-run` prints the definition and
 event id without publishing. A signet or regtest wallet is refused because
 those networks have no x402 network id.
@@ -559,13 +562,48 @@ after the 402 when the challenge's `network`/`payTo` is not an advertised
 receiver pair or the head does not advertise `http:1`. The parser in
 `crates/nostr::cap` admits only `oa-x402-v1` in `requires`; any other
 feature, the `x402` field without the feature, or the feature without the
-field is still a refusal. `mcp:1`, native Nostr bindings, and recovery
-contracts other than `none` are not served yet.
+field is still a refusal. Native Nostr bindings and recovery contracts
+other than `none` are not served yet.
 
 Both sides need a wallet on bitcoin or testnet with a usable channel; the
 local check that needs none is a `serve` on a fresh testnet wallet answered
 by `curl -X POST` (402 with a bound invoice) and by a forged
 `PAYMENT-SIGNATURE` (402, `network_mismatch`).
+
+### Paid MCP (`x402 mcp-serve`, `x402 call`, `mcp:1`)
+
+`openagents x402 mcp-serve` is `openagents mcp serve` with a toll on every
+`tools/call`, following the upstream x402 MCP transport unchanged. A call
+without `_meta["x402/payment"]` gets a tool result with `isError: true`
+whose `structuredContent` is the `PaymentRequired` document and whose
+`content[0].text` is the same document as JSON; its one requirement binds
+the configured server URI, `tools/call`, the tool name, and the arguments
+(`mcp:1`, no bound metadata) into the invoice's `h`. A call carrying a
+`PaymentPayload` under that key is settled through the same facilitator and
+replay store as `http:1`, runs only after settlement, and returns its result
+with the `SettlementResponse` under `_meta["x402/payment-response"]`; a
+refused payment is an error result carrying the settlement and no output.
+
+```sh
+# Seller: every tool call costs 1000 msat; only the version group is served.
+openagents x402 mcp-serve --server mcp://host.example/openagents --msat 1000 \
+    --tool version
+
+# Buyer: start the server as a child, buy one `version` call.
+openagents x402 call version --max-msat 1000 \
+    --server mcp://host.example/openagents -- ssh host.example openagents x402 \
+    mcp-serve --server mcp://host.example/openagents --msat 1000
+```
+
+`--server` is the URI both sides bind to; neither connects to it. `call`
+starts `CMD` as a stdio MCP server, sends the unpaid call, checks that the
+challenge's resource is that URI and its invoice validates for this call,
+refuses above `--max-msat`, pays, retries with the proof, and prints the
+result with `paid`, `amount_msat`, and `settlement`. A server without a
+toll answers the first call and `paid` is `false`. With `--cap PUBKEY:SLUG`
+the URI defaults to the advertised endpoint and the receiver must be an
+advertised pair on a head that lists `mcp:1`. The profiles stay distinct:
+an `http:1` challenge is refused by `call`, and an `mcp:1` one by `fetch`.
 
 ## Keys and relays
 

@@ -1,4 +1,5 @@
-//! x402 v2 `exact` Lightning over HTTP (`http:1`) for openagents.
+//! x402 v2 `exact` Lightning over HTTP (`http:1`) and MCP (`mcp:1`) for
+//! openagents.
 //!
 //! `crates/nostr::x402` verifies terms, invoices, and preimages without state.
 //! This crate adds the two things a paid service needs around it: a
@@ -8,9 +9,12 @@
 //! `PaymentPayload`, and `SettlementResponse` shapes and the base64 header
 //! codecs pinned to x402 commit `4fcf836cc393174130e1358577ce5d37356da1c3`.
 //! `server` binds one paid resource: challenge, reconstruct, settle, execute,
-//! over the smallest HTTP/1.1 loop. Nothing here pays.
+//! over the smallest HTTP/1.1 loop; `mcp` is the same toll on one MCP
+//! server's `tools/call`, over the upstream MCP transport's `_meta` names.
+//! Nothing here pays.
 
 pub mod facilitator;
+pub mod mcp;
 pub mod replay;
 pub mod server;
 pub mod wire;

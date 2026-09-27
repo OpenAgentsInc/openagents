@@ -12,11 +12,18 @@
 //! `initialize`, `notifications/initialized`, then `tools/list` and
 //! `tools/call`. Reimplemented from `oak::mcp`'s shape without sharing its
 //! code, which is bound to the decision API.
+//!
+//! A server may carry a [`Toll`]: `openagents x402 mcp-serve` sets one so
+//! every `tools/call` is challenged, settled, and run over the upstream x402
+//! MCP transport (`mcp:1`). A tolled call is still validated first, so a
+//! buyer never pays for a call the server would refuse as invalid.
 
 use std::io::{BufRead, Read, Write};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 
+use openagents_x402::mcp::{Gate, with_settlement};
 use serde_json::{Value, json};
 
 use crate::{Args, Output};
@@ -79,12 +86,20 @@ pub fn groups(usage: &str) -> Vec<Group> {
 }
 
 /// The groups a tool call may run: everything in the table except the
-/// resident `host`, which is a long-running server, and `mcp` itself.
-fn callable(usage: &str) -> Vec<Group> {
+/// resident `host`, which is a long-running server, and `mcp` itself,
+/// narrowed to `only` when that names any group.
+fn callable(usage: &str, only: &[String]) -> Vec<Group> {
     groups(usage)
         .into_iter()
         .filter(|group| !matches!(group.name.as_str(), "host" | "mcp" | "completions"))
+        .filter(|group| only.is_empty() || only.contains(&group.name))
         .collect()
+}
+
+/// Decides whether one validated `tools/call` may run, and on what terms.
+pub trait Toll: Send + Sync {
+    /// `params` is the call's `params` object as received, `_meta` included.
+    fn gate(&self, params: &Value) -> Result<Gate, &'static str>;
 }
 
 pub fn run(output: &Output, words: &[String], usage: &str) -> u8 {
@@ -114,6 +129,8 @@ pub fn run(output: &Output, words: &[String], usage: &str) -> u8 {
             let server = Server {
                 usage: usage.to_owned(),
                 timeout: Duration::from_secs(timeout),
+                tools: Vec::new(),
+                toll: None,
             };
             let stdin = std::io::stdin();
             let stdout = std::io::stdout();
@@ -197,6 +214,10 @@ pub enum Phase {
 pub struct Server {
     pub usage: String,
     pub timeout: Duration,
+    /// The groups served, or every callable group when empty.
+    pub tools: Vec<String>,
+    /// The payment gate on every call, when the server is paid.
+    pub toll: Option<Arc<dyn Toll>>,
 }
 
 impl Server {
@@ -337,7 +358,7 @@ impl Server {
     /// One tool per callable group. The description is the row from the
     /// help table; the syntax is one `--help` call away.
     pub fn tool_list(&self) -> Value {
-        let tools: Vec<Value> = callable(&self.usage)
+        let tools: Vec<Value> = callable(&self.usage, &self.tools)
             .into_iter()
             .map(|group| {
                 json!({
@@ -380,7 +401,10 @@ impl Server {
                 "`tools/call` params must include a tool `name`",
             );
         };
-        if !callable(&self.usage).iter().any(|g| g.name == name) {
+        if !callable(&self.usage, &self.tools)
+            .iter()
+            .any(|g| g.name == name)
+        {
             return error(
                 id.clone(),
                 INVALID_PARAMS,
@@ -423,16 +447,29 @@ impl Server {
                 );
             }
         };
-        match self.exec(name, &args) {
-            Ok(outcome) => result(id, tool_outcome(&outcome)),
-            Err(message) => result(
-                id,
-                json!({
-                    "content": [{ "type": "text", "text": message }],
-                    "structuredContent": { "exit_code": crate::EXIT_FAILURE, "stderr": message },
-                    "isError": true,
-                }),
-            ),
+        let settlement = match &self.toll {
+            None => None,
+            Some(toll) => match toll.gate(params.unwrap_or(&Value::Null)) {
+                Ok(Gate::Challenge(answer)) | Ok(Gate::Refused(answer)) => {
+                    return result(id, answer);
+                }
+                Ok(Gate::Admitted { settlement, .. }) => Some(settlement),
+                Err(message) => return error(id.clone(), INVALID_PARAMS, message),
+            },
+        };
+        let outcome = match self.exec(name, &args) {
+            Ok(outcome) => tool_outcome(&outcome),
+            // After a settlement the claim is consumed; the buyer holds a
+            // settlement that bought a failed run, and the result says so.
+            Err(message) => json!({
+                "content": [{ "type": "text", "text": message }],
+                "structuredContent": { "exit_code": crate::EXIT_FAILURE, "stderr": message },
+                "isError": true,
+            }),
+        };
+        match settlement {
+            Some(settlement) => result(id, with_settlement(outcome, settlement)),
+            None => result(id, outcome),
         }
     }
 
@@ -583,6 +620,8 @@ Exit codes: 0 success, 1 refused or failed, 64 invalid usage.";
         let server = Server {
             usage: TABLE.to_owned(),
             timeout: Duration::from_secs(1),
+            tools: Vec::new(),
+            toll: None,
         };
         let mut phase = Phase::Start;
         let early = server
@@ -628,6 +667,78 @@ Exit codes: 0 success, 1 refused or failed, 64 invalid usage.";
             .handle(&mut phase, &json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "zone", "arguments": { "args": "fly" } } }))
             .unwrap();
         assert_eq!(bad_args["error"]["code"], INVALID_PARAMS);
+    }
+
+    struct FixedToll(Gate);
+
+    impl Toll for FixedToll {
+        fn gate(&self, _: &Value) -> Result<Gate, &'static str> {
+            Ok(self.0.clone())
+        }
+    }
+
+    fn ready(server: &Server) -> Phase {
+        let mut phase = Phase::Start;
+        server.handle(
+            &mut phase,
+            &json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
+        );
+        server.handle(
+            &mut phase,
+            &json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+        );
+        phase
+    }
+
+    #[test]
+    fn a_toll_answers_before_the_tool_runs_and_narrows_the_list() {
+        let challenge =
+            json!({ "isError": true, "structuredContent": { "x402Version": 2 }, "content": [] });
+        let server = Server {
+            usage: TABLE.to_owned(),
+            timeout: Duration::from_secs(1),
+            tools: vec!["version".into()],
+            toll: Some(Arc::new(FixedToll(Gate::Challenge(challenge.clone())))),
+        };
+        let mut phase = ready(&server);
+        let list = server
+            .handle(
+                &mut phase,
+                &json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }),
+            )
+            .unwrap();
+        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 1);
+        let zone = server
+            .handle(&mut phase, &json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "zone" } }))
+            .unwrap();
+        assert_eq!(
+            zone["error"]["code"], INVALID_PARAMS,
+            "not served, so not sold"
+        );
+        let unpaid = server
+            .handle(&mut phase, &json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "version" } }))
+            .unwrap();
+        assert_eq!(unpaid["result"], challenge);
+
+        let server = Server {
+            usage: TABLE.to_owned(),
+            timeout: Duration::from_secs(20),
+            tools: Vec::new(),
+            toll: Some(Arc::new(FixedToll(Gate::Admitted {
+                request_hash: "00".repeat(32),
+                payment_hash: "11".repeat(32),
+                settlement: json!({ "success": true, "transaction": "11".repeat(32) }),
+            }))),
+        };
+        let mut phase = ready(&server);
+        let paid = server
+            .handle(&mut phase, &json!({ "jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": { "name": "version", "arguments": { "args": [] } } }))
+            .unwrap();
+        assert_eq!(
+            paid["result"]["_meta"][openagents_x402::mcp::PAYMENT_RESPONSE_META]["success"],
+            json!(true)
+        );
+        assert!(paid["result"]["structuredContent"]["exit_code"].is_number());
     }
 
     #[test]
