@@ -180,11 +180,22 @@ partial configuration refuses at startup. See
   `/v1/deliveries/fcm` under the configured gateway URL. The gateway holds the
   platform credentials and sends the registered wake constant. A test
   transport records requests for local runs and tests.
+- **Application profiles.** One executor serves several application profiles
+  at once, such as an APNs profile for iPhones and an FCM profile for Android
+  phones. NIP-11 advertises each in `push.app_profiles`. An active lease must
+  name a configured profile with that profile's transport, or it receives
+  `invalid: transport mismatch`. Each job keeps the profile it matched under
+  and is sent through that profile's transport, with that profile's retry
+  bounds and optional per-author lease quota. Jobs for a profile that is no
+  longer configured are suppressed, and revocation never checks profiles.
 
-The push gateway itself, including enrollment, delegation, renewal, recovery,
-and provider credentials, is not part of this repository. No real APNs or FCM
-delivery has run; see the
-[verification record](../coder/verification/2026-09-26-push-leases-and-activity-summaries.md).
+The push gateway, including enrollment, delegation, renewal, and provider
+credentials, is [`push-gateway`](../../crates/push-gateway); see
+[Push gateway](../deployment/push-gateway.md). No real APNs or FCM delivery
+has run; see the verification records for
+[push leases](../coder/verification/2026-09-26-push-leases-and-activity-summaries.md),
+[the gateway](../coder/verification/2026-09-27-push-gateway.md), and
+[push profiles](../coder/verification/2026-09-27-relay-push-profiles.md).
 
 ### NIP-FI: offline policy primitives
 

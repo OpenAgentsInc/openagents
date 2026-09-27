@@ -119,13 +119,13 @@ is [`deploy/push-gateway.env.example`](../../deploy/push-gateway.env.example).
 | `PUSH_GATEWAY_STATE_DIR` | yes | — | Directory for `state.json`. The file is replaced atomically with mode `0600`. |
 | `PUSH_GATEWAY_STATE_KEY_FILE` | yes | — | File holding 64 hexadecimal characters. Tokens are sealed with AES-256-GCM under this key, and grants are stored as keyed digests. Losing the key makes every held token unreadable; devices then register again. |
 | `PUSH_GATEWAY_RELAY_PUBKEYS` | yes | — | Comma-separated relay signing keys (the public key of each relay's `NOSTR_RELAY_SECRET_KEY`), 1–16. |
-| `PUSH_GATEWAY_APNS_APP_PROFILE` | for APNs | — | The profile devices register under; equal to the relay's `NOSTR_RELAY_PUSH_APP_PROFILE`. Setting it requires the four APNs settings below. |
+| `PUSH_GATEWAY_APNS_APP_PROFILE` | for APNs | — | The profile devices register under; equal to the relay's APNs profile id. Setting it requires the four APNs settings below. |
 | `PUSH_GATEWAY_APNS_KEY_FILE` | for APNs | — | The `.p8` APNs authentication key. |
 | `PUSH_GATEWAY_APNS_KEY_ID` | for APNs | — | That key's key ID. |
 | `PUSH_GATEWAY_APNS_TEAM_ID` | for APNs | — | The Apple Developer team ID. |
 | `PUSH_GATEWAY_APNS_TOPIC` | for APNs | — | The app's bundle ID. |
 | `PUSH_GATEWAY_APNS_ENVIRONMENT` | no | `production` | `production` for TestFlight and App Store builds, `development` for builds signed with a development profile. |
-| `PUSH_GATEWAY_FCM_APP_PROFILE` | for FCM | — | The FCM profile; must differ from the APNs profile. |
+| `PUSH_GATEWAY_FCM_APP_PROFILE` | for FCM | — | The FCM profile; must differ from the APNs profile and equal the relay's FCM profile id. |
 | `PUSH_GATEWAY_FCM_SERVICE_ACCOUNT_FILE` | for FCM | — | The service account key JSON with permission to send messages. |
 | `PUSH_GATEWAY_FCM_PROJECT_ID` | no | the key file's `project_id` | The Firebase project ID. |
 | `PUSH_GATEWAY_MAX_INSTALLATION_SECONDS` | no | `7776000` | Longest installation lifetime (90 days). |
@@ -156,10 +156,16 @@ whose profile is unset refuses startup.
    the service account JSON. Copy the environment template to
    `/etc/push-gateway/push-gateway.env` and fill in the placeholders.
 4. Start the unit and read its log: it prints the two bound addresses.
-5. In the relay's protected environment file, set
-   `NOSTR_RELAY_PUSH_GATEWAY=http://127.0.0.1:8090`, the transport, and the
-   same app profile, then restart the relay. The relay's systemd unit already
+5. In the relay's protected environment file, point each relay profile at
+   the gateway, then restart the relay. The relay's systemd unit already
    allows loopback connections.
+   - For one platform, set `NOSTR_RELAY_PUSH_GATEWAY=http://127.0.0.1:8090`,
+     the transport, and the same app profile.
+   - For both platforms, set `NOSTR_RELAY_PUSH_PROFILES=IOS,ANDROID` and, for
+     each label, `NOSTR_RELAY_PUSH_PROFILE_<LABEL>_APP_PROFILE` (the
+     gateway's APNs or FCM profile), `_TRANSPORT` (`apns` or `fcm`), and
+     `_GATEWAY=http://127.0.0.1:8090`. See
+     [Push application profiles](configuration.md#push-application-profiles).
 6. Publish the registration listener. With Caddy, add a site such as:
 
    ```
@@ -186,9 +192,6 @@ registers again.
 - Registration trusts the device key that signs it. The gateway does not
   attest the app; a key can register only tokens that no other live owner
   holds, and can only wake with the fixed constant.
-- The relay executor serves one app profile and so one transport. To wake
-  iOS and Android devices from one relay, the relay needs a second executor,
-  which it does not support yet; the gateway already serves both.
 - Replay protection keeps authorization event IDs in memory. After a restart,
   a captured delivery authorization can be replayed for up to 60 seconds, but
   a finished `request_id` still replays its recorded outcome without a send.
