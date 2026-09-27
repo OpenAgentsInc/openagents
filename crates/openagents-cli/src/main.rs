@@ -20,14 +20,17 @@ mod discover;
 mod eval;
 mod gym;
 mod hosts;
+mod kb;
 mod key;
 mod labor;
 mod out;
 mod quest;
 mod reach;
 mod relay;
+mod service;
 mod session;
 mod sov;
+mod ssh;
 mod study;
 mod terminal;
 mod world;
@@ -48,6 +51,8 @@ Pairing and computers (NIP-HOST, NIP-REACH):
 
 Coder:
   task         Durable local task requests and explicit execution.
+  service      Install, update, and roll back the resident host service.
+  ssh          Start or adopt a host over SSH and tunnel to it.
 
 Verse (NIP-MV):
   verse        See who is around, listen, speak, move, gesture, drive owned
@@ -64,6 +69,7 @@ Labor (NIP-MKT, NIP-LAB):
 
 Keys and relays:
   key          Show or create Nostr identities.
+  kb           Search, publish, and sync knowledge entries (NIP-KB).
   relay        Query, publish to, and follow a relay.
 
 Discovery (NIP-CAP, NIP-PRG, NIP-EXT), read-only:
@@ -113,8 +119,11 @@ fn main() -> ExitCode {
         "gym" => gym::run(&output, &rest),
         "labor" => labor::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        "kb" => kb::run(&output, &rest),
         "reach" => reach::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
+        "service" => service::run(&output, &rest),
+        "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),
         "prg" => catalog::prg(&output, &rest),
         "ext" => catalog::ext(&output, &rest),
