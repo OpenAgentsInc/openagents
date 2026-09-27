@@ -23,8 +23,11 @@ const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
   info                    Node id (the x402 payTo), network, balances, paths.
   status                  Chain sync state and queued node events.
   fund                    Print a fresh on-chain funding address.
-  channel open NODE_ID@HOST:PORT --sats N [--announce]
-                          Open a channel funded from the on-chain balance.
+  channel open NODE_ID@HOST:PORT --sats N [--announce] [--wait SECONDS]
+                          Open a channel funded from the on-chain balance
+                          and stay online until the funding transaction is
+                          broadcast (state `pending`), up to --wait
+                          (default 60).
   channel list            List channels with capacity and readiness.
   invoice --msat N --request-hash HEX64 [--expiry SECONDS]
                           Issue an exact-amount BOLT11 whose description
@@ -265,15 +268,38 @@ fn channel(args: &Args) -> Result<Value, Failure> {
                 return Err("channel open needs --sats N".to_string().into());
             }
             let announce = args.switch("announce");
+            let wait: u64 = args.number("wait", 60)?;
             with_node(|wallet| {
                 let user_channel_id = wallet.open_channel(node_id, address, sats, announce)?;
+                let deadline = std::time::Instant::now() + Duration::from_secs(wait);
+                let mut state = "negotiating";
+                let mut events = Vec::new();
+                while std::time::Instant::now() < deadline {
+                    match wallet.next_event()? {
+                        Some(event) => {
+                            let kind = event["event"].as_str().unwrap_or("");
+                            let done = match kind {
+                                "channel_pending" => Some("pending"),
+                                "channel_closed" => Some("closed"),
+                                _ => None,
+                            };
+                            events.push(event);
+                            if let Some(done) = done {
+                                state = done;
+                                break;
+                            }
+                        }
+                        None => std::thread::sleep(Duration::from_millis(200)),
+                    }
+                }
                 Ok(json!({
                     "user_channel_id": user_channel_id,
                     "counterparty": node_id,
                     "address": address,
                     "sats": sats,
                     "announced": announce,
-                    "state": "pending",
+                    "state": state,
+                    "events": events,
                 }))
             })
         }
