@@ -40,6 +40,15 @@ const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
                             Run a command in a shell on the host (NIP-TERM) and
                             return its output and exit code.
   shell HOST                An interactive shell on the host. Ctrl-] detaches.
+  watch HOST [--every S] [--for S] [--until TEXT | --until-exit] -- CMD [ARGS...]
+                            Rerun a command until its output contains TEXT (or it
+                            exits 0), printing every result; --json is NDJSON.
+  tail HOST PATH [--lines N] [--follow]
+                            The end of a file on the host; --json is one line each.
+  alias NAME HOST           Name a host; every HOST above accepts a name, a key,
+                            or a unique key prefix. `alias --list`, `alias --remove NAME`.
+  journal [HOST] [--lines N]
+                            What exec, watch, and tail ran, from this device's log.
   client-only               Record that this machine runs no local host.
 Options: --store DIR (default ~/.openagents/coder-computers), --wait SECONDS
 (how long to wait for the host's link; default 15), --same-machine
@@ -110,9 +119,14 @@ fn enrollment_json(enrollment: &Enrollment) -> Value {
     }
 }
 
-fn host_json(snapshot: &Snapshot, host: &coder_computers::model::HostRecord) -> Value {
+fn host_json(
+    snapshot: &Snapshot,
+    host: &coder_computers::model::HostRecord,
+    store: &std::path::Path,
+) -> Value {
     json!({
         "key": host.key,
+        "alias": crate::hosts::alias_of(store, &host.key),
         "label": host.label,
         "listed": host.listing.is_some(),
         "delisted": host.delisted,
@@ -149,7 +163,7 @@ fn host_json(snapshot: &Snapshot, host: &coder_computers::model::HostRecord) -> 
     })
 }
 
-fn snapshot_json(snapshot: &Snapshot) -> Value {
+fn snapshot_json(snapshot: &Snapshot, store: &std::path::Path) -> Value {
     json!({
         "now": snapshot.now,
         "device": snapshot.device,
@@ -163,12 +177,13 @@ fn snapshot_json(snapshot: &Snapshot) -> Value {
             other => json!(format!("{other:?}").to_lowercase()),
         },
         "ssh_ready": snapshot.ssh_ready,
-        "hosts": snapshot.hosts.iter().map(|h| host_json(snapshot, h)).collect::<Vec<_>>(),
+        "hosts": snapshot.hosts.iter().map(|h| host_json(snapshot, h, store)).collect::<Vec<_>>(),
     })
 }
 
 fn render_hosts(value: &Value) -> String {
     let mut rows = vec![vec![
+        "alias".to_owned(),
         "label".to_owned(),
         "link".to_owned(),
         "rights".to_owned(),
@@ -177,6 +192,7 @@ fn render_hosts(value: &Value) -> String {
     ]];
     for host in value["hosts"].as_array().into_iter().flatten() {
         rows.push(vec![
+            host["alias"].as_str().unwrap_or("-").to_owned(),
             host["label"].as_str().unwrap_or("").to_owned(),
             host["link"]["phase"]
                 .as_str()
@@ -215,7 +231,16 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         println!("{USAGE}");
         return 0;
     }
-    let args = match Args::parse(rest, &["same-machine", "loopback-test"]) {
+    let args = match Args::parse(
+        rest,
+        &[
+            "same-machine",
+            "loopback-test",
+            "until-exit",
+            "follow",
+            "list",
+        ],
+    ) {
         Ok(args) => args,
         Err(message) => return output.usage("computer", &message, USAGE),
     };
@@ -233,11 +258,46 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     }
 }
 
+/// Run `words` on the host `text` names and return the run as the JSON
+/// `computer exec --json` prints, journaled the same way. For commands
+/// built on top of `exec`.
+pub fn exec_json(args: &Args, text: &str, words: &[String]) -> Result<Value, String> {
+    let runtime = crate::runtime();
+    let mut live = open(args, &runtime)?;
+    let result = (|| {
+        let host = host_arg_text(&mut live, args, text)?;
+        connected(&mut live, &host, args)?;
+        let run = crate::terminal::run(&live, runtime.handle(), &host, words, args, &mut |_| {})?;
+        crate::hosts::journal(args, "exec", &host, words, &run);
+        Ok(run.json(&host, words))
+    })();
+    drop(live);
+    runtime.shutdown_timeout(Duration::from_secs(2));
+    result
+}
+
 fn positional<'a>(args: &'a Args, index: usize, name: &str) -> Result<&'a str, String> {
     args.positional()
         .get(index)
         .map(String::as_str)
         .ok_or_else(|| format!("{name} is required"))
+}
+
+/// The host key the positional at `index` names: an alias, a key, or a
+/// unique prefix of a host this device knows.
+fn host_arg(live: &mut Live, args: &Args, index: usize) -> Result<String, String> {
+    host_arg_text(live, args, positional(args, index, "HOST")?)
+}
+
+fn host_arg_text(live: &mut Live, args: &Args, text: &str) -> Result<String, String> {
+    let known: Vec<String> = live
+        .snapshot()
+        .map_err(|e| e.to_string())?
+        .hosts
+        .iter()
+        .map(|h| h.key.clone())
+        .collect();
+    crate::hosts::resolve(&store_dir(args.option("store")), &known, text)
 }
 
 fn settle(live: &mut Live, seconds: u64) -> Result<Snapshot, String> {
@@ -300,19 +360,20 @@ fn dispatch(
         });
         Ok(0)
     };
+    let store = store_dir(args.option("store"));
     match command {
         "list" | "ls" => {
             let snapshot = settle(live, args.number("wait", 3)?)?;
-            output.emit(&snapshot_json(&snapshot), render_hosts);
+            output.emit(&snapshot_json(&snapshot, &store), render_hosts);
             Ok(0)
         }
         "show" => {
-            let key = positional(args, 0, "HOST")?;
+            let key = host_arg(live, args, 0)?;
             let snapshot = settle(live, args.number("wait", 3)?)?;
             let host = snapshot
-                .host(key)
+                .host(&key)
                 .ok_or_else(|| format!("this device knows no host {key}"))?;
-            output.emit(&host_json(&snapshot, host), |v| {
+            output.emit(&host_json(&snapshot, host, &store), |v| {
                 serde_json::to_string_pretty(v).unwrap_or_default()
             });
             Ok(0)
@@ -335,7 +396,7 @@ fn dispatch(
                     }
                     if !stage.starts_with("Starting") {
                         output.emit(
-                            &json!({ "destination": destination, "stage": stage, "hosts": snapshot_json(&snapshot)["hosts"] }),
+                            &json!({ "destination": destination, "stage": stage, "hosts": snapshot_json(&snapshot, &store)["hosts"] }),
                             |v| format!("ssh {}: {}", v["destination"].as_str().unwrap_or(""), v["stage"]),
                         );
                         return Ok(if stage.starts_with("Failed") {
@@ -367,14 +428,17 @@ fn dispatch(
                 .redeem_invitation(&invitation)
                 .map_err(|e| e.to_string())?;
             let snapshot = settle(live, 5)?;
-            let record = snapshot.host(&host).map(|h| host_json(&snapshot, h));
+            let record = snapshot
+                .host(&host)
+                .map(|h| host_json(&snapshot, h, &store));
             output.emit(&json!({ "host": host, "record": record }), |v| {
                 format!("linked host {}", v["host"].as_str().unwrap_or(""))
             });
             Ok(0)
         }
         "approve" => {
-            let host = positional(args, 0, "HOST")?;
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             let enrollment = positional(args, 1, "ENROLLMENT")?;
             let code = args.option("code").ok_or("--code CODE is required")?;
             let (rights, expires) = rights_from(args)?;
@@ -387,14 +451,16 @@ fn dispatch(
             )
         }
         "deny" => {
-            let host = positional(args, 0, "HOST")?;
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             connected(live, host, args)?;
             live.deny_enrollment(host, positional(args, 1, "ENROLLMENT")?)
                 .map_err(|e| e.to_string())?;
             ok(output, json!({}))
         }
         "invite" => {
-            let host = positional(args, 0, "HOST")?;
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             let (rights, expires) = rights_from(args)?;
             connected(live, host, args)?;
             let created = live
@@ -409,12 +475,13 @@ fn dispatch(
             Ok(0)
         }
         "devices" => {
-            let host = positional(args, 0, "HOST")?;
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             connected(live, host, args)?;
             live.refresh_devices(host).map_err(|e| e.to_string())?;
             let snapshot = live.snapshot().map_err(|e| e.to_string())?;
             let record = snapshot.host(host).ok_or("unknown host")?;
-            let value = host_json(&snapshot, record);
+            let value = host_json(&snapshot, record, &store);
             output.emit(&value["devices"], |v| {
                 let mut rows = vec![vec![
                     "device".to_owned(),
@@ -435,29 +502,32 @@ fn dispatch(
             Ok(0)
         }
         "revoke" => {
-            let host = positional(args, 0, "HOST")?;
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             connected(live, host, args)?;
             live.revoke(host, positional(args, 1, "DEVICE")?)
                 .map_err(|e| e.to_string())?;
             ok(output, json!({}))
         }
         "forget" => {
-            live.forget(positional(args, 0, "HOST")?)
-                .map_err(|e| e.to_string())?;
+            let host = host_arg(live, args, 0)?;
+            live.forget(&host).map_err(|e| e.to_string())?;
             ok(output, json!({}))
         }
         "enable" | "disable" => {
-            live.set_enabled(positional(args, 0, "HOST")?, command == "enable")
+            let host = host_arg(live, args, 0)?;
+            live.set_enabled(&host, command == "enable")
                 .map_err(|e| e.to_string())?;
             ok(output, json!({}))
         }
         "retry" => {
-            live.retry_now(positional(args, 0, "HOST")?)
-                .map_err(|e| e.to_string())?;
+            let host = host_arg(live, args, 0)?;
+            live.retry_now(&host).map_err(|e| e.to_string())?;
             ok(output, json!({}))
         }
         "workspaces" => {
-            let host = positional(args, 0, "HOST")?;
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             connected(live, host, args)?;
             live.refresh_workspaces(host).map_err(|e| e.to_string())?;
             let snapshot = live.snapshot().map_err(|e| e.to_string())?;
@@ -479,7 +549,8 @@ fn dispatch(
             Ok(0)
         }
         "task" | "order" => {
-            let host = positional(args, 0, "HOST")?;
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             let prompt = args.positional()[1..].join(" ");
             if prompt.trim().is_empty() {
                 return Err("PROMPT is required".into());
@@ -502,7 +573,8 @@ fn dispatch(
             Ok(0)
         }
         "steer" => {
-            let host = positional(args, 0, "HOST")?;
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             let task = positional(args, 1, "TASK")?;
             let revision: u64 = args.number("revision", 0)?;
             let prompt = args.positional()[2..].join(" ");
@@ -512,7 +584,8 @@ fn dispatch(
             ok(output, json!({ "task": task }))
         }
         "cancel" => {
-            let host = positional(args, 0, "HOST")?;
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             let task = positional(args, 1, "TASK")?;
             let revision: u64 = args.number("revision", 0)?;
             connected(live, host, args)?;
@@ -526,8 +599,9 @@ fn dispatch(
             .map_err(|e| e.to_string())?;
             ok(output, json!({ "task": task }))
         }
-        "exec" | "run" => {
-            let host = positional(args, 0, "HOST")?;
+        "exec" | "run" | "watch" => {
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             if args.positional().len() < 2 {
                 return Ok(output.usage(
                     "computer",
@@ -536,12 +610,82 @@ fn dispatch(
                 ));
             }
             connected(live, host, args)?;
-            crate::terminal::exec(*output, live, runtime, host, &args.positional()[1..], args)
+            let words = &args.positional()[1..];
+            if command == "watch" {
+                crate::terminal::watch(*output, live, runtime, host, words, args)
+            } else {
+                crate::terminal::exec(*output, live, runtime, host, words, args)
+            }
+        }
+        "tail" => {
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
+            let path = positional(args, 1, "PATH")?;
+            connected(live, host, args)?;
+            crate::terminal::tail(*output, live, runtime, host, path, args)
         }
         "shell" | "sh" => {
-            let host = positional(args, 0, "HOST")?;
+            let host = host_arg(live, args, 0)?;
+            let host = host.as_str();
             connected(live, host, args)?;
             crate::terminal::shell(*output, live, runtime, host, args)
+        }
+        "alias" => {
+            if let Some(name) = args.option("remove") {
+                let removed = crate::hosts::remove_alias(&store, name)?;
+                return ok(
+                    output,
+                    json!({ "alias": name, "removed": removed, "message": if removed { "removed" } else { "no such alias" } }),
+                );
+            }
+            if args.switch("list") || args.positional().is_empty() {
+                let aliases = crate::hosts::aliases(&store);
+                output.emit(&json!({ "aliases": aliases }), |v| {
+                    let rows: Vec<Vec<String>> = v["aliases"]
+                        .as_object()
+                        .into_iter()
+                        .flatten()
+                        .map(|(name, key)| {
+                            vec![name.clone(), key.as_str().unwrap_or("").to_owned()]
+                        })
+                        .collect();
+                    if rows.is_empty() {
+                        "no aliases; `openagents computer alias NAME HOST`".to_owned()
+                    } else {
+                        out::table(&rows)
+                    }
+                });
+                return Ok(0);
+            }
+            let name = positional(args, 0, "NAME")?;
+            let host = host_arg(live, args, 1)?;
+            crate::hosts::set_alias(&store, name, &host)?;
+            ok(
+                output,
+                json!({ "alias": name, "host": host, "message": format!("{name} -> {host}") }),
+            )
+        }
+        "journal" => {
+            let host = match args.positional().first() {
+                Some(_) => Some(host_arg(live, args, 0)?),
+                None => None,
+            };
+            let lines: usize = args.number("lines", 50)?;
+            let entries = crate::hosts::journal_entries(&store, host.as_deref(), lines);
+            output.emit(&json!({ "entries": entries }), |v| {
+                let lines: Vec<String> = v["entries"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(crate::hosts::render_entry)
+                    .collect();
+                if lines.is_empty() {
+                    "nothing has run yet".to_owned()
+                } else {
+                    lines.join("\n")
+                }
+            });
+            Ok(0)
         }
         "client-only" => {
             live.run_without_local_host().map_err(|e| e.to_string())?;

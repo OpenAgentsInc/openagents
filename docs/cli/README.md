@@ -80,6 +80,45 @@ openagents computer shell HOST              # Ctrl-] detaches; the shell keeps r
 it prints `{"output", "exit", "timed_out", "shell", "route"}` instead of
 streaming.
 
+### Watching a host (aliases, watch, tail, journal)
+
+Every command that names a `HOST` accepts an alias or a unique prefix of
+the host key as well as the full key. Aliases live in `aliases.json` in
+the computer store.
+
+```sh
+openagents computer alias coderos 93235bef…        # name a host
+openagents computer alias --list
+openagents computer watch coderos --every 30 --until "reward" -- tail -1 ~/runs/x.log
+openagents computer tail coderos ~/runs/x.log --lines 20 --follow
+openagents computer journal [HOST] [--lines N] [--json]
+```
+
+`watch` reruns a command every `--every` seconds until its output
+contains `--until TEXT`, it exits 0 with `--until-exit`, or `--for
+SECONDS` passes; with `--json` each iteration is one NDJSON record. `tail`
+runs `tail -n N [-F]` on the host and, with `--json`, prints one
+`{"path", "when", "line"}` record per line. Every `exec`, `watch`, and
+`tail` appends one line to `exec.jsonl` in the store: when, host, the
+command, exit code, seconds, output size, and a SHA-256 of the output, but
+not the output itself. `journal` reads it back.
+
+### Study runs on a host (`openagents study`)
+
+`study` drives Microcoder study runs in a directory on a host: `run`
+starts one detached through the directory's runner script, and the reads
+parse the logs, `summary.json`, `outcomes.txt`, and `events.jsonl`
+there.
+
+```sh
+openagents study run coderos ~/gates-reasoning-runs sound-change-cascade full 1 --runner ./one-claude.sh
+openagents study status coderos ~/gates-reasoning-runs     # step and state per run
+openagents study outcomes coderos ~/gates-reasoning-runs   # reward, steps, time, usd, ending
+openagents study faults coderos ~/gates-reasoning-runs     # steps whose model call failed
+```
+
+Each goes through `computer exec`, so the journal records it too.
+
 `openagents task` is the durable local queue (`coder task`), and
 `openagents pair` shows the QR code that reads this computer's chats on a
 phone.

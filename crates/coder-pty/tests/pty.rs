@@ -467,6 +467,26 @@ fn process_exit_is_reported_with_its_status() {
 }
 
 #[test]
+fn ended_terminals_do_not_count_toward_the_ceiling() {
+    let fixture = fixture_with(|config| config.terminals_max = 1);
+    let terminal = open(&fixture.host, sh("exit 0"));
+    let mut reader = Reader::attach(&fixture.host, OWNER, &terminal, Mode::Observe, 0);
+    assert!(reader.exits());
+    // The ended terminal stays for replay, and a new one still opens.
+    assert_eq!(fixture.host.terminals(), 1);
+    let next = open(&fixture.host, sh(&cat()));
+    let refused = fixture
+        .host
+        .open(
+            OWNER,
+            &Open::new(id(), WORKSPACE, "", sh(&cat()), Size::new(24, 80)),
+        )
+        .unwrap_err();
+    assert_eq!(refused.reason, Reason::LimitExceeded);
+    fixture.host.close(OWNER, &Close::new(id(), next)).unwrap();
+}
+
+#[test]
 fn a_signal_reaches_the_foreground_process() {
     let fixture = fixture();
     let terminal = open(

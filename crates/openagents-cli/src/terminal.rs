@@ -36,7 +36,7 @@ fn phase_json(phase: &Phase) -> serde_json::Value {
 }
 
 /// Quote `word` for a POSIX shell.
-fn quote(word: &str) -> String {
+pub fn quote(word: &str) -> String {
     if !word.is_empty()
         && word
             .bytes()
@@ -100,19 +100,44 @@ fn start(
     (Session::start(runtime, links, model), output)
 }
 
-/// Run `words` on `host` and report its output and exit code.
-pub fn exec(
-    output: Output,
+/// One command's run on a host: what it wrote, how it ended, and the route.
+pub struct Run {
+    pub output: String,
+    pub exit: i32,
+    pub timed_out: bool,
+    pub phase: Phase,
+    pub route: Option<String>,
+    pub seconds: f64,
+}
+
+impl Run {
+    pub fn json(&self, host: &str, words: &[String]) -> serde_json::Value {
+        json!({
+            "host": host, "command": words, "output": self.output, "exit": self.exit,
+            "timed_out": self.timed_out, "shell": phase_json(&self.phase),
+            "route": self.route, "seconds": self.seconds,
+        })
+    }
+}
+
+/// Run `words` on `host`, handing each output chunk to `sink` as it
+/// arrives, and return the whole run once the command ends.
+///
+/// The command replaces the remote shell, so the shell's exit is the
+/// command's exit. `--timeout` closes the shell and reports exit 124.
+pub fn run(
     live: &Live,
     runtime: &tokio::runtime::Handle,
     host: &str,
     words: &[String],
     args: &Args,
-) -> Result<u8, String> {
+    sink: &mut dyn FnMut(&[u8]),
+) -> Result<Run, String> {
     let wait: u64 = args.number("wait", 15)?;
     let timeout: u64 = args.number("timeout", 600)?;
     let rows: u16 = args.number("rows", 50)?;
     let cols: u16 = args.number("cols", 200)?;
+    let began = Instant::now();
     let (session, frames) = start(live, runtime, host, rows, cols);
     if let Err(phase) = attached(&session, Instant::now() + Duration::from_secs(wait)) {
         return Err(phase.describe());
@@ -128,7 +153,6 @@ pub fn exec(
     let mut bytes = Vec::new();
     let mut started = false;
     let mut timed_out = false;
-    let mut stdout = std::io::stdout();
     loop {
         match frames.recv_timeout(Duration::from_millis(100)) {
             Ok(chunk) => {
@@ -140,10 +164,7 @@ pub fn exec(
                 } else {
                     continue;
                 };
-                if !output.json() {
-                    let _ = stdout.write_all(&chunk);
-                    let _ = stdout.flush();
-                }
+                sink(&chunk);
                 bytes.extend(chunk);
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -153,9 +174,7 @@ pub fn exec(
         if phase.ended() {
             // Frames in flight arrive before the exit frame is applied.
             while let Ok(chunk) = frames.try_recv() {
-                if !output.json() {
-                    let _ = stdout.write_all(&chunk);
-                }
+                sink(&chunk);
                 bytes.extend(chunk);
             }
             break;
@@ -167,30 +186,159 @@ pub fn exec(
         }
     }
     let phase = session.model().phase.clone();
-    let (code, ended) = match &phase {
-        Phase::Exited { code, signal, .. } => (
-            code.or_else(|| signal.map(|s| 128 + s)).unwrap_or(1),
-            phase_json(&phase),
-        ),
-        other => (crate::EXIT_FAILURE.into(), phase_json(other)),
+    let exit = match &phase {
+        Phase::Exited { code, signal, .. } => code.or_else(|| signal.map(|s| 128 + s)).unwrap_or(1),
+        _ => crate::EXIT_FAILURE.into(),
     };
-    let code = if timed_out { 124 } else { code };
-    let text = String::from_utf8_lossy(&bytes).replace("\r\n", "\n");
+    let route = session.model().route.clone();
+    Ok(Run {
+        output: String::from_utf8_lossy(&bytes).replace("\r\n", "\n"),
+        exit: if timed_out { 124 } else { exit },
+        timed_out,
+        phase,
+        route,
+        seconds: began.elapsed().as_secs_f64(),
+    })
+}
+
+/// Run `words` on `host` and report its output and exit code.
+pub fn exec(
+    output: Output,
+    live: &Live,
+    runtime: &tokio::runtime::Handle,
+    host: &str,
+    words: &[String],
+    args: &Args,
+) -> Result<u8, String> {
+    let mut stdout = std::io::stdout();
+    let mut sink = |chunk: &[u8]| {
+        if !output.json() {
+            let _ = stdout.write_all(chunk);
+            let _ = stdout.flush();
+        }
+    };
+    let run = run(live, runtime, host, words, args, &mut sink)?;
+    crate::hosts::journal(args, "exec", host, words, &run);
     if output.json() {
-        output.emit(
-            &json!({
-                "host": host, "command": words, "output": text, "exit": code,
-                "timed_out": timed_out, "shell": ended,
-                "route": session.model().route,
-            }),
-            |_| String::new(),
+        output.emit(&run.json(host, words), |_| String::new());
+    } else if run.timed_out {
+        eprintln!(
+            "openagents computer exec: timed out after {}s",
+            args.number("timeout", 600).unwrap_or(600)
         );
-    } else if timed_out {
-        eprintln!("openagents computer exec: timed out after {timeout}s");
-    } else if !matches!(phase, Phase::Exited { .. }) {
-        eprintln!("openagents computer exec: {}", phase.describe());
+    } else if !matches!(run.phase, Phase::Exited { .. }) {
+        eprintln!("openagents computer exec: {}", run.phase.describe());
     }
-    Ok(u8::try_from(code).unwrap_or(255))
+    Ok(u8::try_from(run.exit).unwrap_or(255))
+}
+
+/// Rerun `words` on `host` every `--every` seconds, printing each result as
+/// it lands, until `--until TEXT` appears in the output, `--for` seconds
+/// pass, or (with `--until-exit`) the command exits 0.
+///
+/// One long-lived command whose output is a record of what was seen, in
+/// place of a sleep-and-look loop. `--json` prints one object per line.
+pub fn watch(
+    output: Output,
+    live: &Live,
+    runtime: &tokio::runtime::Handle,
+    host: &str,
+    words: &[String],
+    args: &Args,
+) -> Result<u8, String> {
+    let every: u64 = args.number("every", 30)?;
+    let limit: u64 = args.number("for", 3600)?;
+    let until = args.option("until");
+    let until_exit = args.switch("until-exit");
+    let deadline = Instant::now() + Duration::from_secs(limit);
+    let mut iteration = 0u64;
+    loop {
+        iteration += 1;
+        let run = run(live, runtime, host, words, args, &mut |_| {})?;
+        crate::hosts::journal(args, "watch", host, words, &run);
+        let matched =
+            until.is_some_and(|text| run.output.contains(text)) || (until_exit && run.exit == 0);
+        let when = crate::hosts::now();
+        if output.json() {
+            let mut value = run.json(host, words);
+            value["when"] = json!(when);
+            value["iteration"] = json!(iteration);
+            value["matched"] = json!(matched);
+            println!("{value}");
+        } else {
+            println!(
+                "--- {} #{iteration} exit {}{}",
+                crate::hosts::clock(when),
+                run.exit,
+                if matched { " (matched)" } else { "" }
+            );
+            print!("{}", run.output);
+            if !run.output.ends_with('\n') {
+                println!();
+            }
+        }
+        if matched {
+            return Ok(0);
+        }
+        if Instant::now() + Duration::from_secs(every) >= deadline {
+            if output.json() {
+                println!(
+                    "{}",
+                    json!({ "host": host, "watch": "ended", "iterations": iteration, "matched": false })
+                );
+            } else {
+                eprintln!("openagents computer watch: {limit}s passed without a match");
+            }
+            return Ok(crate::EXIT_FAILURE);
+        }
+        std::thread::sleep(Duration::from_secs(every));
+    }
+}
+
+/// Print the last `--lines` lines of `path` on `host`, and with `--follow`
+/// keep printing as the file grows (`tail -F`), one line per record.
+pub fn tail(
+    output: Output,
+    live: &Live,
+    runtime: &tokio::runtime::Handle,
+    host: &str,
+    path: &str,
+    args: &Args,
+) -> Result<u8, String> {
+    let lines: u64 = args.number("lines", 20)?;
+    let mut words = vec!["tail".to_owned(), "-n".to_owned(), lines.to_string()];
+    if args.switch("follow") {
+        words.push("-F".to_owned());
+    }
+    words.push("--".to_owned());
+    words.push(path.to_owned());
+    let mut stdout = std::io::stdout();
+    let mut pending: Vec<u8> = Vec::new();
+    let mut sink = |chunk: &[u8]| {
+        if !output.json() {
+            let _ = stdout.write_all(chunk);
+            let _ = stdout.flush();
+            return;
+        }
+        pending.extend_from_slice(chunk);
+        while let Some(at) = pending.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = pending.drain(..=at).collect();
+            let text = String::from_utf8_lossy(&line).trim_end().to_owned();
+            println!(
+                "{}",
+                json!({ "host": host, "path": path, "when": crate::hosts::now(), "line": text })
+            );
+        }
+    };
+    let run = run(live, runtime, host, &words, args, &mut sink)?;
+    crate::hosts::journal(args, "tail", host, &words, &run);
+    if output.json() {
+        println!(
+            "{}",
+            json!({ "host": host, "path": path, "exit": run.exit, "timed_out": run.timed_out, "shell": phase_json(&run.phase) })
+        );
+    }
+    Ok(u8::try_from(run.exit).unwrap_or(255))
 }
 
 /// An interactive shell on `host`, in raw mode on this terminal.
