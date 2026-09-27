@@ -33,6 +33,15 @@ relays and workspaces go to `~/.openagents/host/serve.json`, mode `0600`, so
 A workspace label is what devices name. A device never sends a path: a task
 names the label, and a terminal names the workspace ID derived from it.
 
+`init` also records a WebSocket listener, and the host service serves it with
+no arguments: `--listen-websocket ADDR`, `--allow-nonloopback`,
+`--advertise CLASS=HOST:PORT|URL`, and the three `--websocket-tls-*` options
+take the values `serve` takes, and `init` refuses a combination `serve` would
+refuse. [`coder link setup`](../guides/link-devices.md) writes these for a
+tailnet listener. A `serve` option replaces the recorded value for that
+start; `--listen-websocket` and the TLS options replace the recorded
+listener together.
+
 ## Run it
 
 ```sh
@@ -47,7 +56,7 @@ coder host serve
 | `--listen-websocket ADDR` | None | Also listen for WebSocket direct channels, and advertise the listener as a `websocket` hint. |
 | `--websocket-tls-cert FILE`, `--websocket-tls-key FILE`, `--websocket-name NAME` | None | Terminate TLS on the WebSocket listener with this PEM certificate chain and private key, and advertise it as `wss://NAME:PORT/`. Give all three or none. See [Serve `wss` without a forwarder](#serve-wss-without-a-forwarder). |
 | `--allow-nonloopback` | Off | Permit a listener on a LAN or tailnet address. |
-| `--advertise CLASS=HOST:PORT` or `CLASS=URL` | None | Advertise another `lan`, `tailnet`, or `public` endpoint, such as a forwarder. A `ws` or `wss` URL is a WebSocket endpoint. |
+| `--advertise CLASS=HOST:PORT` or `CLASS=URL` | None | Advertise another `lan`, `tailnet`, or `public` endpoint, such as a forwarder. A `ws` or `wss` URL is a WebSocket endpoint. An endpoint that repeats a listener's own address replaces that listener's hint, so the class you state wins. |
 | `--generation N` | `OPENAGENTS_HOST_GENERATION`, else the next counter value | The NIP-REACH host generation. See [Host generation](#host-generation). |
 | `--runtime FILE`, `--no-runtime` | `~/.openagents/host/runtime` | The runtime record SSH launchers read. |
 | `--tasks DIR` | `~/.openagents/tasks` | The durable task inbox. |
@@ -271,7 +280,10 @@ as a QR code rendered on the device that created it.
 
 - Creating a task is an inert submission to the task inbox. It records
   intent and starts nothing; the local owner still needs its own execution
-  grant. Pairing and enrollment never grant execution authority.
+  grant. Pairing and enrollment never grant execution authority. The one
+  exception is the owner's [auto-start policy](host-autostart.md), which only
+  a command on the host turns on, is off by default, and starts eligible
+  tasks within its workspace, concurrency, and engine bounds.
 - `task.steer` records a correction and `task.cancel` requests a
   cancellation, with the semantics of the [task owner](task-owner.md). Each
   names the revision the device last read; another revision refuses as

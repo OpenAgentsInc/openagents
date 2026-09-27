@@ -41,6 +41,7 @@ beats Fable 5.1 low, with the Gym's labels, and how to join.
 | --- | --- |
 | Install or run a turn | [Install](guides/install.md), [headless mode](guides/headless.md), [shared turn contract](runtime/shell-loop.md) |
 | Submit and inspect durable work | [Task commands](guides/tasks.md), [execution owner](runtime/task-owner.md), [frozen context](runtime/frozen-task-context.md) |
+| Link your computers and phone | [Link your devices](guides/link-devices.md), [host serve](runtime/host-serve.md), [host auto-start](runtime/host-autostart.md) |
 | Use Microcoder outside the benchmark harness | [Repository adapter](runtime/microcoder-repository.md), including admitted configurations and incomplete live acceptance |
 | Inspect runs and evidence | [Traces](runtime/traces.md), [artifact verification](guides/artifact-verification.md), [Terminal-Bench index](../terminal-bench/README.md) |
 | Reuse or share knowledge | [Knowledge guide](guides/knowledge-base.md), [private bundles](runtime/knowledge-bundles.md), [evidence integrity](runtime/knowledge-evidence.md) |
