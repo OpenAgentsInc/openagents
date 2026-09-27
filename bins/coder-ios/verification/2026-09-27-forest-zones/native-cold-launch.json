@@ -1,0 +1,16 @@
+{
+  "build": "47",
+  "checked_at": "2026-09-27T05:27:08.553632+00:00",
+  "launch_arguments": [],
+  "synthetic": false,
+  "launch_exit": 0,
+  "alive_after_seconds": 10,
+  "pid": 31810,
+  "external_rust_dylibs_hidden": 2,
+  "rust_profile": "release",
+  "swift_configuration": "Release",
+  "screenshot": "coder-build47-cold-launch.png",
+  "zone_cache_created": false,
+  "bundled_zone_packs": 0,
+  "physical_device_acceptance": false
+}

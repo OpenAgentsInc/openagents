@@ -209,7 +209,7 @@ impl WorldRuntime {
             } else {
                 add("start_encounter", "Encounter", Intent::StartEncounter, true);
                 add("return", "Plaza", Intent::Return, true);
-                "Atlantis forest · explore or try the 5e encounter".into()
+                "Atlantis forest · SRD 5.1".into()
             }
         } else if portal.near && portal.visible {
             add(

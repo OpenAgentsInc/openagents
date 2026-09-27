@@ -1,0 +1,7 @@
+{
+  "started_at": "2026-09-27T05:27:14.132295+00:00",
+  "cache_path": "/Users/christopherdavid/Library/Developer/CoreSimulator/Devices/80A56DD2-8E81-4037-B560-2BEDBB61CAF2/data/Containers/Data/Application/A365AED1-9D2A-4F8C-BE4F-169D20B22CC1/Library/Caches/VerseZones",
+  "cache_absent_before_tests": true,
+  "seeded_backup_path": "/Users/christopherdavid/Library/Developer/CoreSimulator/Devices/80A56DD2-8E81-4037-B560-2BEDBB61CAF2/data/Containers/Data/Application/A365AED1-9D2A-4F8C-BE4F-169D20B22CC1/Library/Caches/VerseZones.seeded-fixture-backup47",
+  "source_url": "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/assets/verse/forest/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp"
+}

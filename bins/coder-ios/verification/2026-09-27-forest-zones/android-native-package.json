@@ -1,0 +1,22 @@
+{
+  "schema": "coder-android-native-package-verification-v1",
+  "verified_at": "2026-09-27T05:26:56.292694+00:00",
+  "source_commit": "15f1c90cc3984f07271feacff571cf1405bf6d4a",
+  "command": "scripts/build-coder-android.sh package",
+  "profile": "dev",
+  "abi": "arm64-v8a",
+  "exit_code": 0,
+  "apk": "/Users/christopherdavid/work/openagents-mobile45-target/coder-android/gradle/app/outputs/apk/debug/app-debug.apk",
+  "apk_bytes": 37745925,
+  "apk_sha256": "679f8f4747160e4f92ed40b205b4f646f4eab84b1f66f20c1a36f3ae1a39d9fa",
+  "elf_load_alignment_bytes": [
+    16384,
+    16384,
+    16384,
+    16384
+  ],
+  "zipalign_16k_exit_code": 0,
+  "limitations": [
+    "Package and native compile only; no new Android emulator or physical-device session."
+  ]
+}

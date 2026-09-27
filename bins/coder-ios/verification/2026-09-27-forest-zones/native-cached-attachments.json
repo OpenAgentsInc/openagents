@@ -1,0 +1,38 @@
+[
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "1E77CB1C-BD35-4552-9030-1AF48760724F.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Returned to the amber plaza_0_A2F2C98D-C44A-4989-AB0C-12BE290E90C4.png",
+        "timestamp": 1790487109.217,
+        "retainedFileName": "native-return-final.png"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "2FE57548-C89D-45E8-AFF4-6F6D8804DAA3.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Forest 5e encounter controls_0_DC4F7842-5604-4210-B033-1A0CF7D6F908.png",
+        "timestamp": 1790487107.715,
+        "retainedFileName": "native-encounter-final.png"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "6A4A2C00-80D2-4A06-B397-88716024C63F.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Runtime-loaded Atlantis forest_0_F40DBAE0-6C3F-4508-AC9E-07CBFD5B70E7.png",
+        "timestamp": 1790487104.792,
+        "retainedFileName": "native-forest-final.png"
+      }
+    ],
+    "testIdentifier": "ZoneUITests/testPortalLoadsForestAndEncounterThenReturnsToPlaza()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ZoneUITests/testPortalLoadsForestAndEncounterThenReturnsToPlaza"
+  }
+]

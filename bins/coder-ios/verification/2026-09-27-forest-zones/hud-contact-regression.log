@@ -1,0 +1,10 @@
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.76s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-233034e7de5e1a19)
+
+running 2 tests
+test zones::hud::tests::cancelled_or_multitouch_buttons_do_not_activate ... ok
+test zones::hud::tests::unchanged_frame_layout_keeps_a_pressed_button ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 207 filtered out; finished in 0.00s
+

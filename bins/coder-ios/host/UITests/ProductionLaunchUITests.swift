@@ -72,7 +72,7 @@ final class ProductionLaunchUITests: XCTestCase {
         guard app.state == .runningForeground else { return false }
         let surface = app.otherElements["verse-surface"]
         guard surface.exists, let value = surface.value as? String else { return false }
-        return value == "Exploring Verse" || value == "Computer in reach"
+        return value == "Exploring Amber plaza" || value == "Computer in reach"
     }
 
     private func wait(_ condition: @escaping () -> Bool) -> Bool {

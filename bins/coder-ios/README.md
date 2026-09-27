@@ -67,7 +67,7 @@ The user-authorized app metadata and icon preserve the existing Xcode setup:
 | Project, scheme, target, product | `Coder` |
 | Bundle identifier | `com.openagents.coder` |
 | Development team | `HQWSG26L43` |
-| Marketing version and source build | `0.5.0` / `46` |
+| Marketing version and source build | `0.5.0` / `47` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Swift language setting | `5.10` |
 | App Store Connect app | `6807250813` |
@@ -136,7 +136,7 @@ and archived executable digest beside the archive. A nonempty workspace status
 must be reviewed rather than described as an exact committed-source build.
 Set `CODER_IOS_BUILD_NUMBER` to a new
 positive build number after checking the existing App Store Connect builds;
-the checked-in and confirmed internal TestFlight build is `46`.
+the checked-in source build is `47`; the last confirmed internal TestFlight build is `46`.
 The `export` command produces a local
 distribution package using the existing export settings with destination
 changed to `export`. Upload is a separate operator action using the retained
@@ -205,6 +205,17 @@ The manifest is not an App Store privacy-label review or a declaration that
 relay transport has no visible metadata.
 
 ## Explore Verse
+
+The new **Forest portal** on the expanded map leads to the
+[Atlantis forest](../../docs/verse/zones.md). Entry downloads its reviewed
+6.6 MB asset pack only when requested; later visits use the verified cache.
+The forest has its own colors, original animated wizard/zombie models, and a
+local [SRD 5.1 encounter](../../docs/verse/zone-rules.md). **Plaza** returns to
+your saved position at any time. Plaza presence and Gym observation pause
+throughout loading and the forest visit. Rules and artwork notices are in
+**Computer > Settings > About Verse**. Build 47 acceptance is tracked in the
+[forest verification record](verification/2026-09-27-forest-zones/README.md).
+
 
 The app launches into the same Rust world used by the desktop app. It starts
 offline, facing the computer, with no title banner or idle-status labels over

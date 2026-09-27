@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 460 documents plus itself as of September 27, 2026.
+This catalog lists 492 documents plus itself as of September 27, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -147,6 +147,8 @@ files are included below.
 | [coder/runtime/delegate.md](coder/runtime/delegate.md) | Guide / contract | Delegation |
 | [coder/runtime/free-labor.md](coder/runtime/free-labor.md) | Guide / contract | Recoverable free coding orders |
 | [coder/runtime/frozen-task-context.md](coder/runtime/frozen-task-context.md) | Guide / contract | Frozen task knowledge and check lineage |
+| [coder/runtime/host-serve.md](coder/runtime/host-serve.md) | Guide / contract | Host serve |
+| [coder/runtime/host-service.md](coder/runtime/host-service.md) | Guide / contract | Host service |
 | [coder/runtime/knowledge-bundles.md](coder/runtime/knowledge-bundles.md) | Guide / contract | Pinned knowledge snapshots and private delivery |
 | [coder/runtime/knowledge-evidence.md](coder/runtime/knowledge-evidence.md) | Guide / contract | Knowledge evidence intake |
 | [coder/runtime/knowledge-studies.md](coder/runtime/knowledge-studies.md) | Guide / contract | Frozen knowledge comparisons |
@@ -175,24 +177,46 @@ files are included below.
 | [coder/verification/2026-09-21-project-supervisor.md](coder/verification/2026-09-21-project-supervisor.md) | Retained evidence / audit | Project supervisor verification, 2026-09-21 |
 | [coder/verification/2026-09-22-relay-interoperability.md](coder/verification/2026-09-22-relay-interoperability.md) | Retained evidence / audit | Relay, worker, and program interoperability |
 | [coder/verification/2026-09-25-issue-eval-read-isolation.md](coder/verification/2026-09-25-issue-eval-read-isolation.md) | Retained evidence / audit | Confine issue-evaluation reads |
+| [coder/verification/2026-09-26-computers-live.md](coder/verification/2026-09-26-computers-live.md) | Verification | Computers screens on live hosts verification |
+| [coder/verification/2026-09-26-computers-screens.md](coder/verification/2026-09-26-computers-screens.md) | Verification | Computers screens verification |
 | [coder/verification/2026-09-26-connection-supervisor.md](coder/verification/2026-09-26-connection-supervisor.md) | Verification | Per-host connection supervisor and transition tests |
 | [coder/verification/2026-09-26-free-labor/README.md](coder/verification/2026-09-26-free-labor/README.md) | Evidence index | Free labor acceptance evidence |
 | [coder/verification/2026-09-26-frozen-context/README.md](coder/verification/2026-09-26-frozen-context/README.md) | Evidence index | Frozen context and shared transport acceptance |
+| [coder/verification/2026-09-26-host-access.md](coder/verification/2026-09-26-host-access.md) | Verification | Host access verification — September 26, 2026 |
+| [coder/verification/2026-09-26-host-reach.md](coder/verification/2026-09-26-host-reach.md) | Verification | Host reach verification — September 26, 2026 |
+| [coder/verification/2026-09-26-host-serve.md](coder/verification/2026-09-26-host-serve.md) | Verification | Host serve verification — September 26, 2026 |
+| [coder/verification/2026-09-26-host-service.md](coder/verification/2026-09-26-host-service.md) | Verification | Host service verification |
 | [coder/verification/2026-09-26-knowledge/README.md](coder/verification/2026-09-26-knowledge/README.md) | Evidence index | Knowledge integrity and permissioned input verification |
 | [coder/verification/2026-09-26-android-mobile.md](coder/verification/2026-09-26-android-mobile.md) | Verification | Coder Android reader, shared Verse, native lifecycle, and emulator acceptance |
+| [coder/verification/2026-09-27-android-slow-frames.md](coder/verification/2026-09-27-android-slow-frames.md) | Retained evidence / audit | Android slow-frame acceptance — September 27, 2026 |
 | [coder/verification/2026-09-26-android-mobile/README.md](coder/verification/2026-09-26-android-mobile/README.md) | Evidence index | Android native acceptance artifacts and screenshots |
 | [coder/verification/2026-09-26-mobile-reader.md](coder/verification/2026-09-26-mobile-reader.md) | Retained evidence / audit | Coder iOS reader verification — September 26, 2026 |
 | [coder/verification/2026-09-26-mobile-connections.md](coder/verification/2026-09-26-mobile-connections.md) | Verification | Immediate chat loading, saved world relay, concise panels, and combined mobile controls |
 | [coder/verification/2026-09-26-ios-static-link.md](coder/verification/2026-09-26-ios-static-link.md) | Verification | iOS startup crash, static Rust linkage, and build 45 acceptance |
 | [coder/verification/2026-09-26-motion-camera.md](coder/verification/2026-09-26-motion-camera.md) | Verification | Body-turn motion, upward look, smoothing, and iOS build 44 |
 | [coder/verification/2026-09-26-fullscreen-motion.md](coder/verification/2026-09-26-fullscreen-motion.md) | Verification | Full-screen Verse and phone-motion camera |
+| [coder/verification/2026-09-26-push-leases-and-activity-summaries.md](coder/verification/2026-09-26-push-leases-and-activity-summaries.md) | Verification | Push leases and activity summaries verification — September 26, 2026 |
+| [coder/verification/2026-09-26-ssh-hosts.md](coder/verification/2026-09-26-ssh-hosts.md) | Verification | SSH-launched hosts verification |
+| [coder/verification/2026-09-26-terminal-sessions.md](coder/verification/2026-09-26-terminal-sessions.md) | Verification | Terminal sessions verification — September 26, 2026 |
 | [coder/verification/2026-09-26-verse-mobile.md](coder/verification/2026-09-26-verse-mobile.md) | Verification | Shared Verse desktop/iOS delivery |
 | [coder/verification/2026-09-26-verse-gym.md](coder/verification/2026-09-26-verse-gym.md) | Verification | Verse Gym building and scoped observation |
+| [coder/verification/2026-09-26-world-computer.md](coder/verification/2026-09-26-world-computer.md) | Verification | Computer interaction in Verse — September 26, 2026 |
 | [coder/verification/2026-09-26-world-pairing.md](coder/verification/2026-09-26-world-pairing.md) | Verification | Verse home and QR pairing delivery |
 | [coder/verification/2026-09-26-portable-host/README.md](coder/verification/2026-09-26-portable-host/README.md) | Evidence index | Portable host packaging evidence |
 | [coder/verification/2026-09-26-repository-adapter/README.md](coder/verification/2026-09-26-repository-adapter/README.md) | Evidence index | Repository adapter acceptance, 2026-09-26 |
 | [coder/verification/2026-09-26-task-inbox.md](coder/verification/2026-09-26-task-inbox.md) | Retained evidence / audit | Durable local task inbox verification |
 | [coder/verification/2026-09-26-task-owner.md](coder/verification/2026-09-26-task-owner.md) | Retained evidence / audit | Local task ownership and evidence verification |
+| [coder/verification/2026-09-27-client-directory-and-ssh.md](coder/verification/2026-09-27-client-directory-and-ssh.md) | Verification | Client directory and SSH verification — September 27, 2026 |
+| [coder/verification/2026-09-27-directory-edit-and-ssh-routes.md](coder/verification/2026-09-27-directory-edit-and-ssh-routes.md) | Verification | Directory editing and SSH routes verification — September 27, 2026 |
+| [coder/verification/2026-09-27-host-cj-binding.md](coder/verification/2026-09-27-host-cj-binding.md) | Verification | Host CAP/CJ binding verification — September 27, 2026 |
+| [coder/verification/2026-09-27-host-generation-and-headless.md](coder/verification/2026-09-27-host-generation-and-headless.md) | Verification | Host generation and headless approval verification — September 27, 2026 |
+| [coder/verification/2026-09-27-host-wss.md](coder/verification/2026-09-27-host-wss.md) | Verification | Host `wss` verification — September 27, 2026 |
+| [coder/verification/2026-09-27-linux-runs.md](coder/verification/2026-09-27-linux-runs.md) | Verification | Linux runs of the host service, SSH launcher, and terminals |
+| [coder/verification/2026-09-27-owner-key-and-push-tokens.md](coder/verification/2026-09-27-owner-key-and-push-tokens.md) | Verification | Owner key entry and native push tokens — September 27, 2026 |
+| [coder/verification/2026-09-27-push-gateway.md](coder/verification/2026-09-27-push-gateway.md) | Verification | Push gateway verification — September 27, 2026 |
+| [coder/verification/2026-09-27-relay-push-profiles.md](coder/verification/2026-09-27-relay-push-profiles.md) | Verification | Relay push profiles verification — September 27, 2026 |
+| [coder/verification/2026-09-27-remote-access-closure.md](coder/verification/2026-09-27-remote-access-closure.md) | Verification | Remote access closure verification — September 27, 2026 |
+| [coder/verification/2026-09-27-websocket-channels.md](coder/verification/2026-09-27-websocket-channels.md) | Verification | WebSocket direct channels verification — September 27, 2026 |
 | [coder/verification/gates.md](coder/verification/gates.md) | Retained evidence / audit | Verification gates and what they cost |
 | [coder/verification/2026-09-26-task-control/README.md](coder/verification/2026-09-26-task-control/README.md) | Evidence index | Scoped task control: code verification |
 
@@ -281,6 +305,7 @@ files are included below.
 | [deployment/configuration.md](deployment/configuration.md) | Operations | Relay configuration contract |
 | [deployment/database.md](deployment/database.md) | Operations | Postgres store and roles |
 | [deployment/import-jsonl.md](deployment/import-jsonl.md) | Operations | Signed-event JSONL import |
+| [deployment/push-gateway.md](deployment/push-gateway.md) | Operations | Push gateway |
 | [deployment/runbook-cloud-run.md](deployment/runbook-cloud-run.md) | Operations | Runbook: production relay on Cloud Run |
 | [deployment/runbook-debian-vps.md](deployment/runbook-debian-vps.md) | Operations | Debian VPS relay deployment |
 | [deployment/runbook-local-dev.md](deployment/runbook-local-dev.md) | Operations | Local relay development |
@@ -480,6 +505,8 @@ files are included below.
 | [terminal-bench/2026-09-26-config-sweep.md](terminal-bench/2026-09-26-config-sweep.md) | Retained evidence / assessment | Microcoder configuration sweep for Round 3 |
 | [terminal-bench/2026-09-26-kb-154-check.md](terminal-bench/2026-09-26-kb-154-check.md) | Retained evidence / assessment | Did the Round 3 knowledge entries hurt Microcoder? Check blocked by Jev credit |
 | [terminal-bench/2026-09-26-round2-loop.md](terminal-bench/2026-09-26-round2-loop.md) | Retained evidence / assessment | Round 2 loop work: ending a green run, and models to run it on |
+| [terminal-bench/2026-09-26-route-diff.md](terminal-bench/2026-09-26-route-diff.md) | Retained evidence / assessment | Why Microcoder did worse on the Codex login than on OpenRouter |
+| [terminal-bench/2026-09-26-tb21-oos-results.md](terminal-bench/2026-09-26-tb21-oos-results.md) | Retained evidence / assessment | Terminal-Bench 2.1 out-of-sample study: results |
 | [terminal-bench/2026-09-26-tb21-oos-study.md](terminal-bench/2026-09-26-tb21-oos-study.md) | Retained evidence / assessment | Terminal-Bench 2.1 out-of-sample study, knowledge off (pre-registration) |
 | [terminal-bench/2026-09-26-tb21-sweep.md](terminal-bench/2026-09-26-tb21-sweep.md) | Retained evidence / assessment | Terminal-Bench 2.1 configuration sweep: step cap and model |
 | [terminal-bench/tb21-dev-set.md](terminal-bench/tb21-dev-set.md) | Retained evidence / assessment | Terminal-Bench 2.1 development set |

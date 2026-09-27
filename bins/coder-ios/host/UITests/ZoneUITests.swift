@@ -1,5 +1,5 @@
-// Native portal taps load the reviewed pack from the app's separately populated
-// cache. The test runner seeds that cache; artwork is never an app resource.
+// Native portal taps load the reviewed pack over HTTPS or from the verified
+// device cache. Artwork is never an app resource.
 import XCTest
 
 final class ZoneUITests: XCTestCase {
@@ -34,7 +34,7 @@ final class ZoneUITests: XCTestCase {
         XCTAssertFalse(forest.doors.hud.visible)
         XCTAssertFalse(forest.map.landmarks.contains { $0.id == "gym" })
         XCTAssertTrue(forest.map.landmarks.contains { $0.id == "return" })
-        XCTAssertLessThan(forest.map.half_extent, plaza.map.half_extent)
+        XCTAssertTrue(forest.map.landmarks.allSatisfy { abs($0.x) <= 64 && abs($0.z) <= 64 })
         XCTAssertNil(forest.zone.error)
         attach("Runtime-loaded Atlantis forest")
 

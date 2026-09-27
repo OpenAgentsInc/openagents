@@ -1,0 +1,61 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "modelName": "iPhone 17 Pro",
+        "osBuildNumber": "23F77",
+        "osVersion": "26.5",
+        "platform": "iOS Simulator"
+      },
+      "expectedFailures": 0,
+      "failedTests": 3,
+      "passedTests": 2,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "Coder \u00b7 Built with macOS 26.4",
+  "expectedFailures": 0,
+  "failedTests": 3,
+  "finishTime": 1790486703.653,
+  "passedTests": 2,
+  "result": "Failed",
+  "skippedTests": 0,
+  "startTime": 1790486596.908,
+  "statistics": [],
+  "testFailures": [
+    {
+      "failureText": "XCTAssertLessThan failed: (\"58.0\") is not less than (\"58.0\")",
+      "targetName": "CoderUITests",
+      "testIdentifier": 4,
+      "testIdentifierString": "ZoneUITests/testPortalLoadsForestAndEncounterThenReturnsToPlaza()",
+      "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ZoneUITests/testPortalLoadsForestAndEncounterThenReturnsToPlaza",
+      "testName": "testPortalLoadsForestAndEncounterThenReturnsToPlaza()"
+    },
+    {
+      "failureText": "XCTAssertTrue failed - Normal startup must mount the Metal world and publish active Rust state.",
+      "targetName": "CoderUITests",
+      "testIdentifier": 3,
+      "testIdentifierString": "ProductionLaunchUITests/testProductionWorldLoadsResumesAndRelaunches()",
+      "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ProductionLaunchUITests/testProductionWorldLoadsResumesAndRelaunches",
+      "testName": "testProductionWorldLoadsResumesAndRelaunches()"
+    },
+    {
+      "failureText": "XCTAssertTrue failed",
+      "targetName": "CoderUITests",
+      "testIdentifier": 5,
+      "testIdentifierString": "ZoneUITests/testRulesAndArtworkNoticesShipWithoutLoadingForest()",
+      "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ZoneUITests/testRulesAndArtworkNoticesShipWithoutLoadingForest",
+      "testName": "testRulesAndArtworkNoticesShipWithoutLoadingForest()"
+    }
+  ],
+  "title": "Test - Coder",
+  "topInsights": [],
+  "totalTestCount": 5
+}

@@ -1,0 +1,18 @@
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.21s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-233034e7de5e1a19)
+
+running 10 tests
+test zones::assets::tests::malformed_geometry_and_allocation_bounds_are_refused_before_allocation ... ok
+test zones::assets::tests::cache_symlinks_are_refused ... ok
+test zones::assets::tests::canceled_generation_discards_late_results_without_overlapping_workers ... ok
+test zones::assets::tests::canceled_cache_install_does_not_publish_an_entry ... ok
+test zones::assets::tests::cache_directory_symlink_is_not_followed_by_loader_or_pruner ... ok
+test zones::assets::tests::altered_hash_truncation_and_growth_are_refused ... ok
+test zones::assets::tests::original_models_decode_with_distinct_animated_poses_and_leaf_geometry ... ok
+test zones::assets::tests::pruning_keeps_unknown_files_links_active_temps_and_the_current_pack ... ok
+test zones::assets::tests::cached_entry_uses_worker_and_duplicate_requests_are_refused ... ok
+test zones::assets::tests::construction_is_inert_and_cache_install_is_atomic_and_verified ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 198 filtered out; finished in 1.19s
+

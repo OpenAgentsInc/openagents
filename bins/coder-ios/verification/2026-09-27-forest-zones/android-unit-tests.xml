@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.openagents.coder.PinchAdmissionTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-27T05:09:02.849Z" hostname="ChristohersMBP2.lan" time="0.005">
+  <properties/>
+  <testcase name="aFreshPinchKeepsRemainingFingersOutOfMovementUntilReleased" classname="com.openagents.coder.PinchAdmissionTest" time="0.004"/>
+  <testcase name="movementAndHeldControlsDoNotBecomePinches" classname="com.openagents.coder.PinchAdmissionTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

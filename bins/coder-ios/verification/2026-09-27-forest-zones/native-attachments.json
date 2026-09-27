@@ -1,0 +1,122 @@
+[
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "5233A89C-A8F6-441D-A0DE-F864C6AEFC47.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Map drag remains a HUD gesture_0_5C916C24-933E-4B43-AE8E-4B25C4D3406F.png",
+        "timestamp": 1790486846.255,
+        "retainedFileName": "native-map-drag.png"
+      }
+    ],
+    "testIdentifier": "MapUITests/testDraggingTheMapCannotMoveThePlayerOrTurnTheCamera()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/MapUITests/testDraggingTheMapCannotMoveThePlayerOrTurnTheCamera"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "D1382141-01C1-4685-BA8A-AA7E29533E0A.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Map destination and manual walking cancellation_0_C1B6D9EC-51B3-45D0-888E-EA4F5FDA750F.png",
+        "timestamp": 1790486857.726,
+        "retainedFileName": "native-map-walk.png"
+      }
+    ],
+    "testIdentifier": "MapUITests/testMapTapStartsWalkingAndManualMovementStopsIt()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/MapUITests/testMapTapStartsWalkingAndManualMovementStopsIt"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "539FD011-8C4B-4FEC-83A2-095EF20B1D30.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Production Verse after cold relaunch_0_DAD0CF68-2C08-4918-BB04-4072586D239B.png",
+        "timestamp": 1790486887.328,
+        "retainedFileName": "native-production-relaunch.png"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "6DBC0FED-F1DF-4495-833C-24BFBF4FE869.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Production Verse after background resume_0_D129EE9D-E8BD-4616-8C74-26375E79139A.png",
+        "timestamp": 1790486877.097,
+        "retainedFileName": "native-production-resume.png"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "F89D311A-00BD-4F86-BA16-52ECF58057F8.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Production Verse after normal launch_0_3CA10312-1826-469A-9178-71B9E3982641.png",
+        "timestamp": 1790486868.272,
+        "retainedFileName": "native-production-launch.png"
+      }
+    ],
+    "testIdentifier": "ProductionLaunchUITests/testProductionWorldLoadsResumesAndRelaunches()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ProductionLaunchUITests/testProductionWorldLoadsResumesAndRelaunches"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "BB540474-DFEE-42F6-B0CC-0E85B5B5AF00.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Returned to the amber plaza_0_68A7FDCA-00A1-43AB-B59F-97A76FDD260C.png",
+        "timestamp": 1790486906.587,
+        "retainedFileName": "native-return.png"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "9DEA49D8-3154-4F45-B955-B93A93103A68.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Forest 5e encounter controls_0_E2220432-8D9D-4600-80AA-53885BFE7B3A.png",
+        "timestamp": 1790486905.1,
+        "retainedFileName": "native-encounter.png"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "957C59E3-C121-4E2E-8B3B-E9E8B715BCD8.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Runtime-loaded Atlantis forest_0_A14F65CB-5C1B-4C4F-944D-DEA889754613.png",
+        "timestamp": 1790486902.21,
+        "retainedFileName": "native-forest.png"
+      }
+    ],
+    "testIdentifier": "ZoneUITests/testPortalLoadsForestAndEncounterThenReturnsToPlaza()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ZoneUITests/testPortalLoadsForestAndEncounterThenReturnsToPlaza"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "A5C2DFE9-C3FE-4057-B735-0BB89CA9129C.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Bundled Verse rules and artwork notices_0_3BC8432C-4A47-4E0C-85C0-4C9D02EF1A0F.png",
+        "timestamp": 1790486921.268,
+        "retainedFileName": "native-notices.png"
+      }
+    ],
+    "testIdentifier": "ZoneUITests/testRulesAndArtworkNoticesShipWithoutLoadingForest()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/ZoneUITests/testRulesAndArtworkNoticesShipWithoutLoadingForest"
+  }
+]

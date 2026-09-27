@@ -157,16 +157,13 @@ impl Hud {
         let half = ui::amber(Intensity::Half, 1.0);
         ui.rect(atlas, x, y, w, h, ui::field(0.95));
         ui.frame(atlas, x, y, w, h, 1.0, half);
-        let chars = ((w - 16.0) / atlas.advance).floor().max(1.0) as usize;
-        let words: Vec<char> = snapshot.caption.chars().take(chars * 2).collect();
-        for (row, line) in words.chunks(chars).enumerate() {
-            ui.text(
-                atlas,
-                x + 8.0,
-                y + 7.0 + row as f32 * 16.0,
-                &line.iter().collect::<String>(),
-                full,
-            );
+        for (row, line) in atlas
+            .wrap(&snapshot.caption, w - 16.0)
+            .iter()
+            .take(2)
+            .enumerate()
+        {
+            ui.text(atlas, x + 8.0, y + 7.0 + row as f32 * 16.0, line, full);
         }
         if let Some(progress) = snapshot.progress {
             ui.rect(

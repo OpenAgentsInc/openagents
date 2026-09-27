@@ -145,12 +145,13 @@ struct ComputerPanel: View {
                     Text("Shares your avatar and movement.").font(.caption2).foregroundStyle(.secondary)
                 }
                 Divider()
-                DisclosureGroup("About Verse", isExpanded: $aboutVerse) {
+                DisclosureGroup(isExpanded: $aboutVerse) {
                     Text(worldCredits ?? "Loading notices…")
                         .font(.caption2).textSelection(.enabled)
                         .accessibilityIdentifier("verse-credits")
+                } label: {
+                    Text("About Verse").accessibilityIdentifier("verse-about")
                 }
-                .accessibilityIdentifier("verse-about")
                 .onChange(of: aboutVerse) { _, expanded in
                     if expanded && worldCredits == nil { worldAction(["action": "zone_credits"]) }
                 }
