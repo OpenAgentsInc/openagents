@@ -264,13 +264,15 @@ two years of controlled flight, microgravity magnitude, the rocket equation
 and position hold, inelastic capture, latch conditions (position, speed,
 spin, and alignment), a latched part under impact, the safety tether's arrest, latched parts
 sleeping while free parts never do, the HUD's sensors, the grab point,
+randomized releases against the ledger and the structure,
 collisions, frame-rate
 independence, the frame step cap, save and restore, journal replay, and the
 momentum ledger through coasting, burns, structure contact, the tether,
 capture, and carrying, the grip slipping past its limit, attitude hold through a translation and a commanded
 turn, plumes at the firing thrusters, a spinning tank glancing off a solar
 array edge, and free parts colliding with each other.
-`cargo test -p physics` covers the shared mechanisms, including box manifolds
+`cargo run --release -p verse-lagrange --example step_budget` reports the
+physics step time for a busy scene. `cargo test -p physics` covers the shared mechanisms, including box manifolds
 through a scripted tilt, yaw, penetration, and slide sweep, friction
 breakaway, torsional friction, tunneling, momentum through collisions, and a
 small stack.

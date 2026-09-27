@@ -83,6 +83,24 @@ impl Trace {
         });
     }
 
+    /// Largest difference per quantity over matching samples and bodies
+    /// (by tick), for reporting how far two runs drift apart.
+    #[must_use]
+    pub fn max_difference(&self, other: &Self) -> Tolerance {
+        let mut worst = Tolerance::EXACT;
+        for (a, b) in self.samples.iter().zip(&other.samples) {
+            for (x, y) in a.bodies.iter().zip(&b.bodies) {
+                worst.pos = worst.pos.max(x.pos.distance(y.pos));
+                worst.vel = worst.vel.max(x.vel.distance(y.vel));
+                worst.angle = worst
+                    .angle
+                    .max(attitude_difference(x.orientation, y.orientation));
+                worst.omega = worst.omega.max(x.omega.distance(y.omega));
+            }
+        }
+        worst
+    }
+
     /// Compare sample by sample.
     ///
     /// # Errors

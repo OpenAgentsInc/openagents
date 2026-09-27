@@ -236,6 +236,7 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
             .any(|c| c.label == "Hide forces")
     );
     assert!(runtime.zone_snapshot(1.0).caption.contains(" g · spin "));
+    assert!(runtime.zone_snapshot(1.0).caption.contains(" ms · "));
     // Map taps become autopilot targets rather than ground routes.
     runtime.navigate_to([0.0, 10.0]).unwrap();
     assert!(!runtime.navigation().is_active());

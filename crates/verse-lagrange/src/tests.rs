@@ -907,3 +907,57 @@ fn grabbing_closes_on_the_part_surface_facing_the_hands() {
     let local = engine.orientation.inverse() * (held - engine.pos);
     assert!((local.x - 1.1).abs() < 1e-6, "{local}");
 }
+
+/// Randomized releases (GP-8): parts thrown at random speeds and spins
+/// toward the station structure and each other. The ledger balances, no
+/// part passes through structure, and nothing goes non-finite.
+#[test]
+fn randomized_releases_keep_the_ledger_and_stay_out_of_structure() {
+    let mut seed: u64 = 0x1a9_2a9e;
+    let mut next = || {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 11) as f64 / (1u64 << 53) as f64
+    };
+    for case in 0..8 {
+        let mut station = open_space();
+        station.propellant = 0.0;
+        for index in 0..PartKind::ALL.len() {
+            // Spaced 7 m apart so the parts start clear of each other.
+            let at = DVec3::new(
+                index as f64 * 7.0 - 17.5,
+                next() * 8.0 + 14.0,
+                next() * 20.0 - 10.0,
+            );
+            // Toward the truss and habitat, at up to the pack's top speed.
+            let toward = (DVec3::new(next() * 20.0 - 10.0, 6.0, next() * 10.0) - at).normalize();
+            let vel = toward * next() * station::SPEED_LIMIT;
+            let spin = DVec3::new(next() - 0.5, next() - 0.5, next() - 0.5) * 0.8;
+            release_part(&mut station, index, at, vel, spin);
+        }
+        station.reset_ledger();
+        for _ in 0..(15 * 60) {
+            station.step(1.0 / 60.0, &Command::default());
+            let error = station.ledger.error(station.momentum());
+            assert!(
+                error.linear < 1e-9 && error.angular < 1e-9,
+                "case {case}: {error:?}"
+            );
+            for c in &station.world.contacts {
+                assert!(
+                    c.separation > -0.05,
+                    "case {case}: penetrated {} m",
+                    c.separation
+                );
+            }
+        }
+        assert!(
+            station
+                .world
+                .bodies()
+                .iter()
+                .all(|b| b.pos.is_finite() && b.vel.is_finite())
+        );
+    }
+}

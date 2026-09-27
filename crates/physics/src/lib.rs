@@ -16,6 +16,7 @@
 //!   whole steps and reports time it drops.
 //! - [`ledger`]: linear and angular momentum with named external impulses,
 //!   for conservation tests.
+//! - [`oracle`]: scenes shared with the offline Genesis oracle.
 //! - [`sensors`]: raycasts, per-body contact force, an IMU, and debug lines
 //!   for contacts and joints.
 //! - [`thrusters`]: body-mounted thrusters, a bounded allocator from a wanted
@@ -32,6 +33,7 @@ pub mod collision;
 pub mod contact;
 pub mod joint;
 pub mod ledger;
+pub mod oracle;
 pub mod sensors;
 pub mod thrusters;
 pub mod trace;

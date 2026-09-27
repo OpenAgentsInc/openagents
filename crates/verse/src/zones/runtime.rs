@@ -440,6 +440,12 @@ impl WorldRuntime {
             if let Some(ahead) = s.proximity_m {
                 sensed.push_str(&format!(" · {ahead:.1} m ahead"));
             }
+            if lagrange.overlay {
+                sensed.push_str(&format!(
+                    " · step {:.2} ms · {} awake",
+                    s.step_ms, s.awake_bodies
+                ));
+            }
             if s.impact_n > 1.0 {
                 sensed.push_str(&format!(" · impact {:.0} N", s.impact_n));
             }

@@ -6,6 +6,30 @@ Porting means **reimplementing the mechanism in Rust in the shared, zone-agnosti
 
 Reference: [Genesis `236719768c72e8d0cefb1607565885fd2c1bab6b`](https://github.com/Genesis-Embodied-AI/Genesis/tree/236719768c72e8d0cefb1607565885fd2c1bab6b) (v1.4.2 + 20, Apache-2.0), cloned read-only at `projects/repos/Genesis` in the workspace. All 123 files under `examples/` were surveyed.
 
+## Progress
+
+All nine phases landed on 2026-09-27, in the shared
+[`physics`](../../crates/physics/src/lib.rs) crate with Lagrange 1 as the first
+consumer: GP-0 `ade3d61631`, GP-1 `56a2664a94`, GP-2 `e098cd7363`, GP-3
+`b52b5ea804`, GP-4 `c1e93251b8`, GP-5 `136f756f4c`, GP-6 `eb9c42383c`, GP-7
+`8e2a99608f`, and GP-8 (this change).
+
+- **Budget.** `cargo run --release -p verse-lagrange --example step_budget`
+  runs 30 s of a busy scene: the astronaut carrying the engine under thrust
+  and attitude control while five parts strike the station. On an Apple M5 Max
+  a step takes 0.018 ms on average and 0.054 ms at worst. The budget is 1 ms
+  per step on the slowest supported phone; the phone measurement is pending
+  with the owner (the **Forces** overlay shows the step time on device).
+- **Randomized invariants.** Seeded tests vary mass, inertia, shape, center
+  of mass offset, friction, restitution, joint stiffness, and tether length:
+  momentum is exact through collisions and joints, loads below the Coulomb
+  limit hold and past it slip, and tethers never add energy. A Lagrange test
+  throws every part at the station at random speeds and spins.
+- **Genesis oracle.** [`crates/physics/oracle/`](../../crates/physics/oracle/README.md)
+  replays the tank-into-panel scene in Genesis. Approach matches to rounding
+  and post-impact spin within about 5%, but the rebound differs because the
+  restitution models differ, so no fidelity is claimed yet.
+
 ## Selection
 
 Lagrange 1 is a six-part EVA assembly in microgravity at Sun–Earth L1: one astronaut with a thruster pack, drifting parts, a fixed station, a jig with slots, and a tether range. An example is worth porting when it demonstrates a mechanism that scene lacks today (see the gap table in the [audit](2026-09-27-genesis-for-verse-zones.md#what-exists-in-verse)): contact with torque, force at a point, constraint-based grasp/latch/tether, sleep, telemetry, or a conservation test.

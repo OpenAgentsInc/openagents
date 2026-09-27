@@ -881,3 +881,230 @@ fn debug_lines_show_contacts_and_joints() {
     assert_eq!(count(crate::DebugKind::ContactNormal), 4);
     assert_eq!(count(crate::DebugKind::Joint), 3);
 }
+
+/// Deterministic pseudo-random numbers for randomized tests (SplitMix64),
+/// after the per-environment variation in Genesis
+/// `examples/rigid/domain_randomization.py` and `set_phys_attr.py`.
+struct Rng(u64);
+
+impl Rng {
+    fn next(&mut self) -> f64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        (z ^ (z >> 31)) as f64 / u64::MAX as f64
+    }
+
+    fn range(&mut self, lo: f64, hi: f64) -> f64 {
+        lo + (hi - lo) * self.next()
+    }
+
+    fn vec(&mut self, size: f64) -> DVec3 {
+        DVec3::new(
+            self.range(-size, size),
+            self.range(-size, size),
+            self.range(-size, size),
+        )
+    }
+
+    fn material(&mut self) -> Material {
+        Material {
+            friction: self.range(0.0, 1.0),
+            torsional: self.range(0.0, 0.05),
+            restitution: self.range(0.0, 1.0),
+        }
+    }
+
+    /// A random shape with a random collider offset from the center of mass.
+    fn collider(&mut self, body: crate::BodyId) -> Collider {
+        let shape = match (self.next() * 3.0) as u32 {
+            0 => Shape::Sphere {
+                radius: self.range(0.1, 1.0),
+            },
+            1 => Shape::Capsule {
+                radius: self.range(0.1, 0.8),
+                half_length: self.range(0.1, 1.5),
+            },
+            _ => Shape::Cuboid {
+                half: DVec3::new(
+                    self.range(0.1, 1.5),
+                    self.range(0.1, 1.5),
+                    self.range(0.1, 1.5),
+                ),
+            },
+        };
+        Collider::new(body, shape)
+            .at(self.vec(0.3), DQuat::from_scaled_axis(self.vec(1.5)))
+            .with_material(self.material())
+    }
+
+    fn body(&mut self, pos: DVec3) -> Body {
+        let mass = self.range(1.0, 500.0);
+        let size = DVec3::new(
+            self.range(0.2, 3.0),
+            self.range(0.2, 3.0),
+            self.range(0.2, 3.0),
+        );
+        let mut body = Body::new(mass, Body::box_inertia(mass, size), pos);
+        body.orientation = DQuat::from_scaled_axis(self.vec(3.0));
+        body.vel = self.vec(2.0);
+        body.omega = self.vec(1.0);
+        body
+    }
+}
+
+/// Randomized zero-g scenes: bodies of random mass, inertia, shape, center
+/// of mass offset, friction, and restitution thrown together. Momentum is
+/// exact, nothing goes non-finite, and restitution never adds energy beyond
+/// what the position correction can inject in a crowded pile.
+#[test]
+fn randomized_collisions_conserve_momentum() {
+    let mut rng = Rng(0x5eed_0001);
+    for case in 0..24 {
+        let mut world = World::new(1.0 / 120.0);
+        let n = 2 + (rng.next() * 5.0) as usize;
+        for i in 0..n {
+            let at = DVec3::new(
+                i as f64 * 2.5 - n as f64,
+                rng.range(-0.5, 0.5),
+                rng.range(-0.5, 0.5),
+            );
+            let mut body = rng.body(at);
+            // Aim everything at the middle so they meet.
+            body.vel = -at.normalize_or_zero() * rng.range(0.2, 2.0) + rng.vec(0.2);
+            let id = world.add(body);
+            let collider = rng.collider(id);
+            world.add_collider(collider);
+        }
+        let origin = rng.vec(5.0);
+        let ledger = Ledger::new(origin, world.momentum(origin));
+        let mut touched = false;
+        for _ in 0..360 {
+            world.step(&NoField);
+            touched |= !world.contacts.is_empty();
+            let error = ledger.error(world.momentum(origin));
+            assert!(
+                error.linear < 1e-9 && error.angular < 1e-9,
+                "case {case}: {error:?}"
+            );
+            assert!(
+                world
+                    .bodies()
+                    .iter()
+                    .all(|b| b.pos.is_finite() && b.vel.is_finite())
+            );
+        }
+        assert!(touched, "case {case} never collided");
+    }
+}
+
+/// Randomized friction: across random masses and coefficients, loads below
+/// the Coulomb limit hold and loads past it slip.
+#[test]
+fn randomized_friction_obeys_the_coulomb_limit() {
+    let mut rng = Rng(0x5eed_0002);
+    for case in 0..12 {
+        let material = Material {
+            friction: rng.range(0.2, 1.0),
+            torsional: 0.0,
+            restitution: 0.0,
+        };
+        let mass = rng.range(0.5, 200.0);
+        // Wide and low enough that even 1.1 of the limit at the center of
+        // mass cannot tip it (1.1 mu h < half width), so drift is sliding.
+        let half = DVec3::new(
+            rng.range(0.3, 0.5),
+            rng.range(0.05, 0.25),
+            rng.range(0.3, 0.5),
+        );
+        let drift = |load: f64| {
+            let mut world = World::new(0.01);
+            world.sleep.enabled = false;
+            ground(&mut world, material);
+            let block = world.add(Body::new(
+                mass,
+                Body::box_inertia(mass, half * 2.0),
+                DVec3::new(0.0, half.y, 0.0),
+            ));
+            world
+                .add_collider(Collider::new(block, Shape::Cuboid { half }).with_material(material));
+            let g = Uniform(DVec3::new(0.0, -G, 0.0));
+            for _ in 0..50 {
+                world.step(&g);
+            }
+            let start = world[block].pos;
+            for _ in 0..200 {
+                world[block].apply_force(DVec3::X * (load * material.friction * mass * G));
+                world.step(&g);
+            }
+            (world[block].pos - start).length()
+        };
+        assert!(
+            drift(0.9) < 5e-3,
+            "case {case}: held load slid {} (mu {:.3}, m {mass:.1}, half {half})",
+            drift(0.9),
+            material.friction
+        );
+        assert!(
+            drift(1.1) > 2e-2,
+            "case {case}: past the limit held {}",
+            drift(1.1)
+        );
+    }
+}
+
+/// Randomized soft grips and tethers: a grip at random stiffness and
+/// damping ratio at or above critical never rings and keeps momentum; a
+/// tether at random length never adds energy.
+#[test]
+fn randomized_joints_keep_their_invariants() {
+    let mut rng = Rng(0x5eed_0003);
+    for case in 0..16 {
+        let mut world = World::new(1.0 / 120.0);
+        let a = rng.body(DVec3::ZERO);
+        let a = world.add(a);
+        let gap = rng.range(1.0, 3.0);
+        let b = rng.body(DVec3::new(gap, 0.0, 0.0));
+        let b = world.add(b);
+        let at = DVec3::new(rng.range(0.0, 1.0), rng.range(-0.3, 0.3), 0.0);
+        let frequency = rng.range(2.0, 20.0);
+        world.add_joint(
+            crate::Joint::weld_here(&world, a, b, at).soft(frequency, rng.range(1.0, 2.0)),
+        );
+        let origin = rng.vec(3.0);
+        let ledger = Ledger::new(origin, world.momentum(origin));
+        for _ in 0..240 {
+            world.step(&NoField);
+            let error = ledger.error(world.momentum(origin));
+            assert!(
+                error.linear < 1e-9 && error.angular < 1e-9,
+                "case {case}: {error:?}"
+            );
+        }
+        let mut world = World::new(1.0 / 120.0);
+        let anchor = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
+        let start_at = rng.range(1.0, 5.0);
+        let mut body = rng.body(DVec3::new(start_at, 0.0, 0.0));
+        body.omega = DVec3::ZERO;
+        let body = world.add(body);
+        world.add_joint(crate::Joint::new(
+            anchor,
+            DVec3::ZERO,
+            body,
+            DVec3::ZERO,
+            crate::JointKind::Tether {
+                length: rng.range(5.0, 8.0),
+            },
+        ));
+        let energy = |w: &World| 0.5 * w[body].mass * w[body].vel.length_squared();
+        let start = energy(&world);
+        for _ in 0..480 {
+            world.step(&NoField);
+            assert!(
+                energy(&world) <= start * (1.0 + 1e-9),
+                "case {case}: tether added energy"
+            );
+        }
+    }
+}
