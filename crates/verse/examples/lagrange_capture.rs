@@ -1,5 +1,10 @@
 //! Offline visual acceptance of the Lagrange 1 station with the shared renderer.
-//! Usage: lagrange_capture OUTPUT.png [spawn|jig|carry|sun]
+//! Usage: lagrange_capture OUTPUT.png [VIEW]
+//!
+//! Player views: spawn, jig, carry, sun, earth. Fixed cameras: sunside (the
+//! station from the sunward side with the Earth behind), wide (a three-quarter
+//! view of the whole station), and telephoto views earthzoom, moonzoom, and
+//! sunzoom, which frame each body at a narrow field of view.
 use std::path::PathBuf;
 use verse::{
     controller::InputState,
@@ -57,24 +62,48 @@ fn main() -> Result<(), String> {
             runtime.apply(Action::Look { dx: 0.0, dy: -40.0 })?;
             runtime.apply(Action::Zoom { lines: 8.0 })?;
         }
-        _ => runtime.apply(Action::Orbit { dx: 90.0, dy: 0.0 })?,
+        "spawn" => runtime.apply(Action::Orbit { dx: 90.0, dy: 0.0 })?,
+        _ => {}
     }
     for _ in 0..4 {
         runtime.tick(&idle, 0.05);
     }
+    runtime.settle_zone_light();
     let atlas = verse::ui::Atlas::new(16.0);
     let mut hud = zones::hud::Hud::default();
     hud.set_bottom_clearance(0.0)?;
     let snapshot = runtime.zone_snapshot(1.6);
     eprintln!("{}", snapshot.caption);
     let ui = hud.draw(&atlas, &hud.snapshot([1280.0, 800.0], &snapshot, true), 1.0);
+    let dynamic = runtime.dynamic_mesh();
+    let player = runtime.view(1.6);
+    let fixed = |eye: glam::Vec3, dir: glam::Vec3, fov: f32| verse::render::View {
+        view_proj: glam::Mat4::perspective_rh(fov, 1.6, 0.1, 2000.0)
+            * glam::Mat4::look_to_rh(eye, dir.normalize(), glam::Vec3::Y),
+        eye,
+    };
+    let sky = dynamic.sky.as_ref();
+    let view = match (view.as_str(), sky) {
+        ("sunside", _) => {
+            let eye = glam::Vec3::new(-14.0, 14.0, -34.0);
+            fixed(eye, glam::Vec3::new(2.0, 0.0, 6.0) - eye, 1.0)
+        }
+        ("wide", _) => {
+            let eye = glam::Vec3::new(46.0, 26.0, -22.0);
+            fixed(eye, glam::Vec3::new(0.0, 2.0, 4.0) - eye, 1.0)
+        }
+        ("earthzoom", Some(sky)) => fixed(player.eye, sky.earth.dir, 0.03),
+        ("moonzoom", Some(sky)) => fixed(player.eye, sky.moon.dir, 0.012),
+        ("sunzoom", Some(sky)) => fixed(player.eye, sky.sun_dir, 0.03),
+        _ => player,
+    };
     verse::render::capture_with_atmosphere(
         &output,
         1280,
         800,
         &runtime.world.mesh,
-        runtime.view(1.6),
-        &runtime.dynamic_mesh(),
+        view,
+        &dynamic,
         &ui,
         &atlas,
         zones::atmosphere(runtime.zone),

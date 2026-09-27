@@ -34,7 +34,7 @@ belong in the [iOS](../../bins/coder-ios/README.md) and
 | Rules | Exploration and product interactions | `ruins.wizard-woods.v1`: retained real-time ECS | Construction sandbox: grab, carry, latch | Sandbox: choose a scenario and turn knobs |
 | Assets | Built in | 6.6 MB verified pack, cached on disk | None | None |
 | Network | NIP-MV plaza presence; Gym connection | Local-only | Local-only | Local-only |
-| Code | [`world.rs`](../../crates/verse/src/world.rs) | [`zones/ruins.rs`](../../crates/verse/src/zones/ruins.rs), [`verse-ruins`](../../crates/verse-ruins/) | [`zones/lagrange.rs`](../../crates/verse/src/zones/lagrange.rs), [`verse-lagrange`](../../crates/verse-lagrange/) | [`zones/lab/`](../../crates/verse/src/zones/lab/mod.rs), [`physics`](../../crates/physics/) |
+| Code | [`world.rs`](../../crates/verse/src/world.rs) | [`zones/ruins.rs`](../../crates/verse/src/zones/ruins.rs), [`verse-ruins`](../../crates/verse-ruins/) | [`zones/lagrange/`](../../crates/verse/src/zones/lagrange/mod.rs), [`pbr`](../../crates/verse/src/pbr/mod.rs), [`verse-lagrange`](../../crates/verse-lagrange/) | [`zones/lab/`](../../crates/verse/src/zones/lab/mod.rs), [`physics`](../../crates/physics/) |
 
 The amber palette rule belongs to the plaza and Coder application UI, not to
 every world. Zone colors belong to Verse's zone implementation. Rust Native

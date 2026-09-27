@@ -174,9 +174,10 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
         runtime.tick(&forward, 1.0 / 60.0);
     }
     let moved = runtime.player.pos - start;
-    // Yaw pi faces -Z, toward the station.
+    // The spawn heading faces the station, a little off the Sun line.
+    let ahead = moved.dot(crate::controller::forward(super::Lagrange::spawn_yaw()));
     assert!(
-        moved.z < -6.0 && moved.z > -9.0,
+        ahead > 6.0 && ahead < 9.0 && (moved.length() - ahead) < 0.5,
         "thrust moves the astronaut: {moved}"
     );
     let speed = runtime.zone_snapshot(1.0).station.unwrap().speed_m_s;
@@ -250,4 +251,27 @@ fn spells_and_construction_are_scoped_to_their_zones() {
     runtime.zone_intent(Intent::Enter).unwrap();
     assert!(runtime.zone_intent(Intent::Fireball).is_err());
     assert!(runtime.zone_intent(Intent::Enter).is_err());
+}
+
+#[test]
+fn only_lagrange_frames_carry_a_physical_sky_in_real_units() {
+    let mut runtime = at_l1_portal();
+    assert!(runtime.dynamic_mesh().sky.is_none());
+    assert!(runtime.world.mesh.lit.is_empty());
+    runtime.zone_intent(Intent::Enter).unwrap();
+    let mesh = runtime.dynamic_mesh();
+    let sky = mesh.sky.clone().expect("Lagrange frames carry a sky");
+    assert!(!mesh.lit.is_empty() && !runtime.world.mesh.lit.is_empty());
+    // The station pitches 30° about its truss: the Sun stands 30° above −Z.
+    let expected = glam::Vec3::new(0.0, 0.5, -(3f32.sqrt() / 2.0));
+    assert!(sky.sun_dir.angle_between(expected) < 0.01, "{}", sky.sun_dir);
+    // About 130,000 lux at 0.99 AU, and the true angular sizes.
+    assert!((125_000.0..135_000.0).contains(&sky.sun_illuminance));
+    assert!((sky.sun_angular_radius.to_degrees() - 0.269).abs() < 0.005);
+    assert!((sky.earth.angular_radius.to_degrees() - 0.243).abs() < 0.01);
+    assert!(sky.earth.dir.angle_between(-sky.sun_dir) < 0.05);
+    // The celestial basis stays a rotation.
+    assert!((sky.celestial.determinant() - 1.0).abs() < 1e-4);
+    runtime.zone_intent(Intent::Return).unwrap();
+    assert!(runtime.dynamic_mesh().sky.is_none());
 }

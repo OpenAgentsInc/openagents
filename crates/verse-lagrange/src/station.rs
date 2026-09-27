@@ -1861,12 +1861,30 @@ pub fn heading(yaw: f64) -> DVec3 {
     DVec3::new(yaw.sin(), 0.0, yaw.cos())
 }
 
+/// The station's attitude: pitched 30° about its truss (x) axis so the Sun
+/// stands 30° above the −z axis. Radiators on ±x stay edge-on to the Sun and
+/// the fixed arrays still see cos 30° of full sunlight, while module sides and
+/// the truss catch light instead of standing exactly along the Sun line.
+pub const PITCH: f64 = 30.0 * std::f64::consts::PI / 180.0;
+
+/// Maps a vector from rotating-frame scene axes (`y`, `z`, `x` of the
+/// rotating frame: along-track, north, Sun to Earth) into the station body
+/// axes that the scene, the physics world, and the renderer use.
+#[must_use]
+pub fn attitude() -> DQuat {
+    DQuat::from_rotation_x(PITCH)
+}
+
 /// Relative acceleration near L1 for Richardson's `c2`: the linearized
-/// restricted three-body field with Coriolis terms, in scene axes.
+/// restricted three-body field with Coriolis terms. Positions, velocities,
+/// and the result are in station body axes; the field is evaluated in the
+/// rotating frame's axes through [`attitude`].
 #[must_use]
 pub fn tide(c2: f64, pos: DVec3, vel: DVec3) -> DVec3 {
     let n = mean_motion();
-    DVec3::new(
+    let q = attitude();
+    let (pos, vel) = (q.inverse() * pos, q.inverse() * vel);
+    q * DVec3::new(
         -2.0 * n * vel.z + n * n * (1.0 - c2) * pos.x,
         -n * n * c2 * pos.y,
         2.0 * n * vel.x + n * n * (1.0 + 2.0 * c2) * pos.z,

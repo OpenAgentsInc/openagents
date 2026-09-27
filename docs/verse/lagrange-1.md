@@ -11,7 +11,8 @@ Enter from the plaza's east arch (**L1 portal** on the map). Controls are in
 [`verse-lagrange`](../../crates/verse-lagrange/), which uses the shared
 zone-agnostic [`physics`](../../crates/physics/) crate for rigid bodies, fixed
 stepping, and restorable world state; the scene, input mapping, and rendering
-live in [`zones/lagrange.rs`](../../crates/verse/src/zones/lagrange.rs).
+live in [`zones/lagrange/`](../../crates/verse/src/zones/lagrange/), drawn by
+the renderer's physical path ([`pbr`](../../crates/verse/src/pbr/mod.rs)).
 
 ## Two clocks
 
@@ -79,18 +80,60 @@ appear as brief glows on the truss-tip thruster pods and in the HUD.
 
 ### What you see in the sky
 
-- The **Sun** is at −Z with its true angular diameter (~0.54°). Structures are
-  lit from that side; the solar arrays face it and the radiators stand edge-on.
-- The **Earth** is at +Z, about 0.49° across, fully lit because L1 sees its day
-  side. A cyan reticle marks it. As the station moves around its orbit, the
-  Earth drifts a few degrees across the sky, following the Sun–Earth–vehicle
-  angle.
+- The **Sun** stands 30° above the −Z axis (see [Station attitude](#station-attitude))
+  with its true angular diameter (~0.54°), in physical luminance with limb
+  darkening. The fixed solar arrays face −Z and the radiators stay edge-on.
+- The **Earth** is 30° below +Z, about 0.49° across and nearly full because L1
+  sees its day side. It is a textured globe (Blue Marble surface and clouds)
+  that turns once per day of mission time, lit at the true phase, with
+  Rayleigh haze, ocean glint, and the Moon's shadow during a solar eclipse. A
+  cyan reticle marks it. As the station moves around its orbit, the Earth
+  drifts a few degrees across the sky, following the Sun–Earth–vehicle angle.
 - The **Moon** circles the Earth once per synodic month (29.53 days), inclined
-  5.1° to the ecliptic, and appears within about 15° of the Earth.
+  5.1° to the ecliptic, appears within about 15° of the Earth, and always
+  shows a nearly full disc from L1. It is tidally locked, textured from the
+  LRO maps, and shaded with lunar-Lambert reflectance and an opposition surge.
+- **Stars** are the Yale Bright Star Catalogue to magnitude 6.5 with the Milky
+  Way behind them, at their real positions and colors. At a sunlit exposure
+  they are far below black, as in every photograph taken in sunlight; the art
+  camera preset raises them.
 
 The Earth's position includes the Moon's reflex motion about the barycenter.
-Bodies are drawn on a 1.85 km sky shell at their true angular sizes, inside the
-camera's 2 km far plane. Stars are a fixed decorative field, not a catalog.
+The sky is drawn at infinity before the station, in explicit distance order,
+so the Moon can pass in front of the Earth. The mission epoch is 2026
+September 27, 12:00 UTC; the star field and the Earth's rotation and axial tilt
+follow low-precision ephemerides (Meeus) from it. Data sources and licenses are
+in [`assets/lagrange/PROVENANCE.md`](../../crates/verse/assets/lagrange/PROVENANCE.md).
+
+### Light and camera
+
+Sunlight at L1 is about 130,000 lux. Earthshine is about 5 × 10⁻⁶ of that, so a
+face turned from the Sun is lit almost only by sunlight bounced off the
+station itself. The renderer works in physical units:
+
+- **Materials:** white thermal paint, bare and brushed aluminium, crinkled
+  aluminized-Kapton insulation, solar cells under a thin-film coated cover
+  glass, a gold visor, suit fabric with sheen, a silvered radiator plate, and
+  safety paint, with albedos from measured solar absorptance.
+- **Shadows:** a sun shadow map whose penumbra follows the Sun's 0.27°
+  radius, so edges are sharp at contact and soften with distance.
+- **Bounce light:** irradiance probes baked on a worker thread from one diffuse
+  bounce of sunlight, baked again when parts rest in the rack or latch in the
+  jig, plus baked ambient occlusion.
+- **Camera:** a helmet camera at a sunny-16 exposure (EV 15) with the clamped
+  automatic exposure of a small action camera, local exposure that lifts
+  shadows, energy-conserving bloom, a six-blade diffraction pattern around
+  the Sun, faint lens ghosts, vignetting, and grain. The art preset brightens
+  shadows and stars.
+- **Effects:** tethers and depot lines are tubes along their ropes; the solar
+  wings bend with their structural modes; cold-gas plumes show only a brief
+  glint of sunlit condensate; ice flakes from the habitat vent drift
+  anti-sunward under radiation pressure and glint as they tumble. Every effect
+  follows from the physics tick, so a replay shows the same frames.
+
+Guides (latch outlines, routes, the refill ring, the reticle, and the forces
+overlay) keep their display colors. Adapters that cannot render a
+floating-point target tone-map each draw directly and skip post-processing.
 
 ## Local physics
 
@@ -99,11 +142,23 @@ uses the CR3BP linearized about L1 in SI units, including the Coriolis terms of
 the rotating frame. At station scale the tidal field is about 10⁻¹¹ m/s², true
 microgravity, but it is integrated so free parts obey the real field.
 
-Scene axes: −Z points at the Sun, +Z at the Earth, +Y at ecliptic north, and +X
+Scene axes are the station's body axes. With the attitude below, the Sun is
+30° above −Z and the Earth 30° below +Z. Before that pitch, −Z points at the
+Sun, +Z at the Earth, +Y at ecliptic north, and +X
 along Earth's orbital motion. The station's physics world uses these axes and
 the station origin directly, so body positions, rope points, plume positions,
 and array deflections are scene coordinates in meters; the renderer maps only
 rotating-frame orbit vectors.
+
+### Station attitude
+
+The station holds a fixed attitude pitched 30° about its truss (x) axis, so
+the Sun stands 30° above −Z. The radiators on ±x stay edge-on to the Sun, the
+fixed arrays still collect cos 30° (87 %) of full sunlight, and module sides
+and the truss catch light instead of lying exactly along the Sun line.
+`verse_lagrange::station::attitude()` maps rotating-frame vectors into body
+axes; the tidal and Coriolis field is evaluated in the rotating frame's axes
+through it.
 
 ### The astronaut and the pack
 
@@ -371,6 +426,17 @@ latches (yellow, magenta at their limit), and each firing thruster's force
   is on, the reel is idealized, ropes do not collide with anything, and
   paid-out line has the rope's full particle count at any length.
 - Array flex is drawn and stored but does not move the rigid array colliders.
+- The station attitude is fixed; real arrays would track the Sun with
+  gimbals.
+- The Earth's rotation and axial tilt and the star field use low-precision
+  ephemerides from the mission epoch; the rotating frame turns at the mean
+  motion, so the Earth's longitude drifts slowly from the true date. The
+  Moon's phase comes from the simulated synodic month, not an ephemeris.
+- Bounce light is one diffuse bounce baked into a 3 m probe grid from the
+  structure and resting parts; moving parts and the astronaut receive it but
+  do not cast it. Earthshine is included as a dim directional disc.
+- The Earth's atmosphere is single-scattered Rayleigh haze in a flat-layer
+  approximation; the limb is sub-pixel at L1.
 - Construction state is local and resets on each visit; there is no shared
   editing authority. `StationState` can be saved and restored, but the zone
   does not persist it.
@@ -407,8 +473,22 @@ thrust, dynamic pressure on a plate, an enclosure catching the whole thrust,
 and culling), and the modes (the exact ring-down envelope, a step load, and
 stability at any step).
 `cargo test -p verse --lib zones` covers portal entry and return, flight, and
-the grab-carry-latch flow. Render the scene offline with:
+the grab-carry-latch flow, and that only Lagrange frames carry a physical sky
+with the Sun, Earth, and illuminance at their true values.
+`cargo test -p verse --lib pbr` covers the ephemeris (epoch, the Sun on the
+scene axis, the ecliptic pole), star colors and magnitudes, catalogue and
+texture decoding, the ray-cast hierarchy, baked occlusion, a probe's bounce
+from a sunlit floor, Earthshine as a few millionths of sunlight, and the
+half-float conversion. Render the scene offline with:
 
 ```sh
-cargo run -p verse --all-features --example lagrange_capture -- out.png [spawn|jig|carry|sun|earth]
+cargo run --release -p verse --example lagrange_capture -- out.png [VIEW]
 ```
+
+Views are the player's `spawn`, `jig`, `carry`, `sun`, and `earth`, fixed
+cameras `sunside` and `wide`, and telephoto `earthzoom`, `moonzoom`, and
+`sunzoom`. The capture waits for the light bake and runs a few frames so the
+exposure settles. Set `VERSE_PHOTO_DEBUG` to 1 (direct light), 2 (probe
+diffuse), 3 (probe specular), 4 (ambient occlusion), 5 (sun shadow), or 6
+(N·V, N·L, N·H) to inspect one term, and `VERSE_PHOTO_RGBA16` to force a
+16-bit float scene target.

@@ -103,6 +103,13 @@ impl WorldRuntime {
         self.camera = crate::camera::FollowCamera::default();
     }
     /// Enter the procedurally built L1 station. Nothing is downloaded.
+    /// Finishes any pending zone light bake (offline captures).
+    pub fn settle_zone_light(&mut self) {
+        if let Some(lagrange) = &mut self.zone_state.lagrange {
+            lagrange.settle_light();
+        }
+    }
+
     pub fn install_lagrange(&mut self) {
         if !self.is_plaza() {
             return;
