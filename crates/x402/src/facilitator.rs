@@ -109,11 +109,14 @@ fn preimage_reason(preimage: Option<&str>) -> Result<&str, &'static str> {
 
 /// Stateless verification: the proof is cryptographically sound for these
 /// exact terms. This is not consumption; call [`settle`] before execution.
+/// `profiles` names the request-binding profiles this server implements; the
+/// requirements' profile must be one of them.
 pub fn verify(
     requirements: &PaymentRequirements,
     payload: &PaymentPayload,
     now: u64,
     skew: u64,
+    profiles: SupportedProfiles,
 ) -> Result<ValidatedPaymentProof, &'static str> {
     if let Some(reason) = field_mismatch(requirements, &payload.accepted) {
         return Err(reason);
@@ -125,11 +128,7 @@ pub fn verify(
         preimage,
         now,
         skew,
-        SupportedProfiles {
-            http: true,
-            mcp: false,
-            native: false,
-        },
+        profiles,
     )
     .map_err(error_reason)
 }
@@ -151,8 +150,9 @@ pub fn settle<S: ReplayStore + ?Sized>(
     purchase: &str,
     now: u64,
     skew: u64,
+    profiles: SupportedProfiles,
 ) -> Result<Admission, SettlementResponse> {
-    let proof = verify(requirements, payload, now, skew)
+    let proof = verify(requirements, payload, now, skew, profiles)
         .map_err(|reason| SettlementResponse::failed(&requirements.network, reason))?;
     let entry = ReplayEntry {
         key: proof.consumption_key.clone(),
@@ -188,15 +188,40 @@ pub fn settle<S: ReplayStore + ?Sized>(
     Ok(Admission { proof, response })
 }
 
-/// A facilitator bound to one store and clock-skew allowance.
+/// The profiles a server that binds only HTTP requests admits.
+pub const HTTP_ONLY: SupportedProfiles = SupportedProfiles {
+    http: true,
+    mcp: false,
+    native: false,
+};
+
+/// The profiles a server that binds only MCP tool calls admits.
+pub const MCP_ONLY: SupportedProfiles = SupportedProfiles {
+    http: false,
+    mcp: true,
+    native: false,
+};
+
+/// A facilitator bound to one store, clock-skew allowance, and the binding
+/// profiles its server implements.
 pub struct Facilitator<S: ReplayStore> {
     store: S,
     skew: u64,
+    profiles: SupportedProfiles,
 }
 
 impl<S: ReplayStore> Facilitator<S> {
+    /// A facilitator for an `http:1` server.
     pub fn new(store: S, skew: u64) -> Self {
-        Self { store, skew }
+        Self::with_profiles(store, skew, HTTP_ONLY)
+    }
+
+    pub fn with_profiles(store: S, skew: u64, profiles: SupportedProfiles) -> Self {
+        Self {
+            store,
+            skew,
+            profiles,
+        }
     }
 
     pub fn store(&self) -> &S {
@@ -210,7 +235,15 @@ impl<S: ReplayStore> Facilitator<S> {
         purchase: &str,
         now: u64,
     ) -> Result<Admission, SettlementResponse> {
-        settle(&self.store, requirements, payload, purchase, now, self.skew)
+        settle(
+            &self.store,
+            requirements,
+            payload,
+            purchase,
+            now,
+            self.skew,
+            self.profiles,
+        )
     }
 }
 
@@ -263,14 +296,14 @@ mod tests {
         let (store, dir) = store();
         let req = requirements();
         let pay = payload(req.clone(), Some(PREIMAGE));
-        let admitted = settle(&store, &req, &pay, "purchase-1", NOW, 60).unwrap();
+        let admitted = settle(&store, &req, &pay, "purchase-1", NOW, 60, HTTP_ONLY).unwrap();
         assert!(admitted.response.success);
         assert_eq!(admitted.response.network, MAINNET);
         assert_eq!(admitted.response.transaction, admitted.proof.payment_hash);
         assert_eq!(admitted.response.amount.as_deref(), Some("25000"));
         assert_eq!(admitted.proof.retain_until, NOW + 300 + 60 + 3600);
 
-        let again = settle(&store, &req, &pay, "purchase-2", NOW + 1, 60).unwrap_err();
+        let again = settle(&store, &req, &pay, "purchase-2", NOW + 1, 60, HTTP_ONLY).unwrap_err();
         assert!(!again.success);
         assert_eq!(again.error_reason.as_deref(), Some(DUPLICATE_SETTLEMENT));
         assert_eq!(
@@ -341,7 +374,7 @@ mod tests {
         ));
 
         for (pay, reason) in cases {
-            assert_eq!(verify(&req, &pay, NOW, 60).unwrap_err(), reason);
+            assert_eq!(verify(&req, &pay, NOW, 60, HTTP_ONLY).unwrap_err(), reason);
         }
 
         // The server-side expected hash differs from the signed one.
@@ -351,15 +384,15 @@ mod tests {
             .insert("requestHash".into(), Value::String("11".repeat(32)));
         let pay = payload(moved.clone(), Some(PREIMAGE));
         assert_eq!(
-            verify(&moved, &pay, NOW, 60).unwrap_err(),
+            verify(&moved, &pay, NOW, 60, HTTP_ONLY).unwrap_err(),
             "invalid_exact_lnbtc_invoice_request_mismatch"
         );
 
         let pay = payload(req.clone(), Some(PREIMAGE));
         assert_eq!(
-            verify(&req, &pay, NOW + 300 + 61, 60).unwrap_err(),
+            verify(&req, &pay, NOW + 300 + 61, 60, HTTP_ONLY).unwrap_err(),
             "invalid_exact_lnbtc_invoice_expired"
         );
-        assert!(verify(&req, &pay, NOW + 300 + 60, 60).is_ok());
+        assert!(verify(&req, &pay, NOW + 300 + 60, 60, HTTP_ONLY).is_ok());
     }
 }

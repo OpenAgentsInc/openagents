@@ -1,14 +1,22 @@
-//! `openagents x402`: sell one operation over HTTP for an exact Lightning
-//! payment, or buy one. Both roles use the wallet under `openagents wallet`.
+//! `openagents x402`: sell one operation over HTTP or MCP for an exact
+//! Lightning payment, or buy one. Both roles use the wallet under
+//! `openagents wallet`.
 
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+use std::process::{Child, ChildStdin, ChildStdout, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use nostr::x402::{SupportedProfiles, binding_hash, http_binding, validate_challenge};
+use nostr::x402::{SupportedProfiles, binding_hash, http_binding, mcp_binding, validate_challenge};
 use openagents_wallet::ldk::LdkWallet;
 use openagents_wallet::{LightningWallet, WalletConfig, WalletError, config};
+use openagents_x402::facilitator::{HTTP_ONLY, MCP_ONLY};
+use openagents_x402::mcp::{
+    BOUND_METADATA, Gate, PAYMENT_RESPONSE_META, PaidTools, payment_required_from_result,
+    with_payment,
+};
 use openagents_x402::server::{Executor, Receiver, Resource};
 use openagents_x402::{
     FileReplayStore, PAYMENT_REQUIRED, PAYMENT_RESPONSE, PAYMENT_SIGNATURE, PaymentPayload,
@@ -17,6 +25,7 @@ use openagents_x402::{
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
+use crate::mcp::{Server, Toll};
 use crate::relay::{Client, relay_url, signer_for};
 use crate::{Args, Output};
 
@@ -36,11 +45,32 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           wallet, retry with the preimage, print the body. With
                           --cap, resolve that NIP-CAP head first and refuse a
                           challenge whose payTo or URL it does not advertise.
-  advertise --slug SLUG --url PUBLIC_URL --merchant ID [--summary TEXT]
-        [--dry-run] [--as PROFILE] [--relay URL]
+  mcp-serve --server URI --msat N [--tool GROUP]... [--timeout SECONDS]
+                          Serve `openagents mcp serve` over stdio with a toll
+                          (x402 exact/lnbtc, mcp:1): a tools/call without
+                          _meta[\"x402/payment\"] gets an error result carrying
+                          PaymentRequired with an invoice bound to URI, the
+                          tool name, and its arguments; a paid call runs and
+                          returns its result with _meta[\"x402/payment-response\"].
+                          --tool narrows the served groups. URI is the name
+                          the buyer must bind to; it is not connected to.
+  call TOOL [--arg WORD]... --max-msat N [--max-fee-msat F] [--wait SECONDS]
+        [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
+        -- CMD [ARGS...]
+                          Buy one tools/call: start CMD as a stdio MCP server,
+                          call TOOL with {\"args\": [WORD...]}, check the
+                          challenge's invoice against this call and URI, refuse
+                          above --max-msat, pay from the wallet, retry with the
+                          proof, print the result. With --cap, URI defaults to
+                          the advertised endpoint and the payTo must be one it
+                          advertises.
+  advertise --slug SLUG --url PUBLIC_URL --merchant ID [--binding http:1|mcp:1]
+        [--summary TEXT] [--dry-run] [--as PROFILE] [--relay URL]
                           Publish (or print) the kind 30180 adapter definition
-                          that advertises PUBLIC_URL as a paid http:1 resource
-                          of this wallet (NIP-CAP feature oa-x402-v1).
+                          that advertises PUBLIC_URL as a paid resource of this
+                          wallet (NIP-CAP feature oa-x402-v1) over one binding:
+                          http:1 (default) or mcp:1, where PUBLIC_URL is the
+                          MCP server URI.
 Replay records live in ~/.openagents/x402/replay. The preimage is printed
 only with --show-proof. Add --json before `x402` for one JSON document.";
 
@@ -60,6 +90,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         }
         "serve" => serve(output, rest),
         "fetch" => fetch(output, rest),
+        "mcp-serve" => mcp_serve(output, rest),
+        "call" => call(output, rest),
         "advertise" => advertise(output, rest),
         other => output.usage("x402", &format!("unknown command `{other}`"), USAGE),
     }
@@ -410,106 +442,22 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
             "the challenge names a different resource URL than the one requested",
         );
     }
-    let now = openagents_x402::unix_now();
-    let profiles = SupportedProfiles {
-        http: true,
-        mcp: false,
-        native: false,
+    let (payload, proof, amount) = match buy(
+        &required,
+        &request_hash,
+        HTTP_ONLY,
+        "http:1",
+        descriptor.as_ref(),
+        Budget {
+            max_msat,
+            max_fee,
+            wait,
+        },
+    ) {
+        Ok(bought) => bought,
+        Err(message) => return output.fail("x402", &message),
     };
-    let Some((terms, invoice)) = required.accepts.iter().find_map(|terms| {
-        validate_challenge(
-            terms,
-            &request_hash,
-            now,
-            nostr::x402::DEFAULT_CLOCK_SKEW,
-            profiles,
-        )
-        .ok()
-        .map(|invoice| (terms, invoice))
-    }) else {
-        return output.fail(
-            "x402",
-            "no offered payment requirement is a valid exact/lnbtc invoice for this request",
-        );
-    };
-    if let Some((definition, event_id)) = &descriptor {
-        let admitted =
-            definition.x402.receivers.iter().any(|receiver| {
-                receiver.network == terms.network && receiver.pay_to == terms.pay_to
-            });
-        if !admitted {
-            return output.fail(
-                "x402",
-                &format!(
-                    "the challenge's payTo is not a receiver advertised by capability {event_id}"
-                ),
-            );
-        }
-        if !definition.x402.bindings.iter().any(|b| b == "http:1") {
-            return output.fail("x402", "the named capability does not advertise http:1");
-        }
-    }
-    if invoice.amount_msat() > max_msat {
-        return output.fail(
-            "x402",
-            &format!(
-                "the resource costs {} msat, above --max-msat {max_msat}",
-                invoice.amount_msat()
-            ),
-        );
-    }
-
-    let (wallet, wallet_config) = match open_wallet() {
-        Ok(opened) => opened,
-        Err(error) => return fail_wallet(output, error),
-    };
-    if network_id(wallet_config.network.as_str()) != Some(terms.network.as_str()) {
-        let _ = wallet.stop();
-        return output.fail(
-            "x402",
-            &format!(
-                "the invoice is on {} but this wallet is on {}",
-                terms.network,
-                wallet_config.network.as_str()
-            ),
-        );
-    }
-    let bolt11 = terms
-        .extra
-        .get("invoice")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let proof = wallet.pay(&bolt11, max_fee, Duration::from_secs(wait));
-    let stopped = wallet.stop();
-    let proof = match proof {
-        Ok(proof) => proof,
-        Err(WalletError::Pending {
-            payment_hash,
-            waited_secs,
-        }) => {
-            return output.fail(
-                "x402",
-                &format!(
-                    "payment {payment_hash} is still pending after {waited_secs}s; run `openagents wallet lookup {payment_hash}`, then retry this fetch to reuse the proof"
-                ),
-            );
-        }
-        Err(error) => return fail_wallet(output, error),
-    };
-    if let Err(error) = stopped {
-        return output.fail("x402", &error.to_string());
-    }
-
-    let mut payload = Map::new();
-    payload.insert("preimage".into(), Value::String(proof.preimage.clone()));
-    let signature = match wire::encode_header(&PaymentPayload {
-        x402_version: 2,
-        resource: Some(required.resource.clone()),
-        accepted: terms.clone(),
-        payload,
-        extensions: None,
-    }) {
+    let signature = match wire::encode_header(&payload) {
         Ok(signature) => signature,
         Err(error) => return output.fail("x402", &error.to_string()),
     };
@@ -531,9 +479,460 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
         &headers,
         &paid_body,
         Some(&proof),
-        Some(invoice.amount_msat()),
+        Some(amount),
         show_proof,
     )
+}
+
+/// What the buyer will spend on one call.
+struct Budget {
+    max_msat: u64,
+    max_fee: u64,
+    wait: u64,
+}
+
+/// Pick the one requirement of `required` that is a valid exact/lnbtc
+/// invoice for `request_hash` under `profiles`, pin it to the capability if
+/// one was named, and pay it from the wallet. Returns the payload to retry
+/// with, the proof, and the amount paid.
+fn buy(
+    required: &openagents_x402::PaymentRequired,
+    request_hash: &str,
+    profiles: SupportedProfiles,
+    binding: &str,
+    descriptor: Option<&(PaidCapability, String)>,
+    budget: Budget,
+) -> Result<(PaymentPayload, openagents_wallet::Proof, u64), String> {
+    let now = openagents_x402::unix_now();
+    let Some((terms, invoice)) = required.accepts.iter().find_map(|terms| {
+        validate_challenge(
+            terms,
+            request_hash,
+            now,
+            nostr::x402::DEFAULT_CLOCK_SKEW,
+            profiles,
+        )
+        .ok()
+        .map(|invoice| (terms, invoice))
+    }) else {
+        return Err(
+            "no offered payment requirement is a valid exact/lnbtc invoice for this request".into(),
+        );
+    };
+    if let Some((definition, event_id)) = descriptor {
+        let admitted =
+            definition.x402.receivers.iter().any(|receiver| {
+                receiver.network == terms.network && receiver.pay_to == terms.pay_to
+            });
+        if !admitted {
+            return Err(format!(
+                "the challenge's payTo is not a receiver advertised by capability {event_id}"
+            ));
+        }
+        if !definition.x402.bindings.iter().any(|b| b == binding) {
+            return Err(format!("the named capability does not advertise {binding}"));
+        }
+    }
+    if invoice.amount_msat() > budget.max_msat {
+        return Err(format!(
+            "the resource costs {} msat, above --max-msat {}",
+            invoice.amount_msat(),
+            budget.max_msat
+        ));
+    }
+
+    let (wallet, wallet_config) = open_wallet().map_err(|error| error.to_string())?;
+    if network_id(wallet_config.network.as_str()) != Some(terms.network.as_str()) {
+        let _ = wallet.stop();
+        return Err(format!(
+            "the invoice is on {} but this wallet is on {}",
+            terms.network,
+            wallet_config.network.as_str()
+        ));
+    }
+    let bolt11 = terms
+        .extra
+        .get("invoice")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let proof = wallet.pay(&bolt11, budget.max_fee, Duration::from_secs(budget.wait));
+    let stopped = wallet.stop();
+    let proof = match proof {
+        Ok(proof) => proof,
+        Err(WalletError::Pending {
+            payment_hash,
+            waited_secs,
+        }) => {
+            return Err(format!(
+                "payment {payment_hash} is still pending after {waited_secs}s; run `openagents wallet lookup {payment_hash}`, then retry to reuse the proof"
+            ));
+        }
+        Err(error) => return Err(error.to_string()),
+    };
+    stopped.map_err(|error| error.to_string())?;
+
+    let mut payload = Map::new();
+    payload.insert("preimage".into(), Value::String(proof.preimage.clone()));
+    Ok((
+        PaymentPayload {
+            x402_version: 2,
+            resource: Some(required.resource.clone()),
+            accepted: terms.clone(),
+            payload,
+            extensions: None,
+        },
+        proof,
+        invoice.amount_msat(),
+    ))
+}
+
+/// The toll `openagents x402 mcp-serve` puts on every tool call.
+struct McpToll(PaidTools<FileReplayStore>);
+
+impl Toll for McpToll {
+    fn gate(&self, params: &Value) -> Result<Gate, &'static str> {
+        self.0.gate(params, openagents_x402::unix_now())
+    }
+}
+
+fn mcp_serve(output: &Output, words: &[String]) -> u8 {
+    let args = match Args::parse(words, SWITCHES) {
+        Ok(args) => args,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let Some(server) = args.option("server") else {
+        return output.usage("x402", "mcp-serve needs --server URI", USAGE);
+    };
+    if mcp_binding(server, &json!({"name": "probe"}), &BOUND_METADATA).is_err() {
+        return output.usage("x402", "--server must be an absolute URI", USAGE);
+    }
+    let msat: u64 = match args.number("msat", 0) {
+        Ok(0) => return output.usage("x402", "mcp-serve needs --msat N (positive)", USAGE),
+        Ok(msat) => msat,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let timeout: u32 = match args.number("timeout", 300) {
+        Ok(0) => return output.usage("x402", "--timeout must be positive", USAGE),
+        Ok(timeout) => timeout,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let tools: Vec<String> = args
+        .options("tool")
+        .iter()
+        .map(|t| (*t).to_owned())
+        .collect();
+    let known: Vec<String> = crate::mcp::groups(crate::USAGE)
+        .into_iter()
+        .map(|g| g.name)
+        .collect();
+    if let Some(unknown) = tools.iter().find(|t| !known.contains(t)) {
+        return output.usage("x402", &format!("--tool {unknown} is not a group"), USAGE);
+    }
+
+    let (wallet, wallet_config) = match open_wallet() {
+        Ok(opened) => opened,
+        Err(error) => return fail_wallet(output, error),
+    };
+    let Some(network) = network_id(wallet_config.network.as_str()) else {
+        let _ = wallet.stop();
+        return output.fail(
+            "x402",
+            &format!(
+                "x402 exact/lnbtc has no network for {}; init the wallet on bitcoin or testnet",
+                wallet_config.network.as_str()
+            ),
+        );
+    };
+    let store = match FileReplayStore::open(&replay_dir()) {
+        Ok(store) => store,
+        Err(error) => {
+            let _ = wallet.stop();
+            return output.fail("x402", &error.to_string());
+        }
+    };
+    let wallet = Arc::new(wallet);
+    let toll = McpToll(PaidTools {
+        server: server.to_owned(),
+        network,
+        amount_msat: msat,
+        timeout_secs: timeout,
+        description: "openagents over MCP".into(),
+        receiver: Arc::new(Node(wallet.clone())),
+        facilitator: openagents_x402::Facilitator::with_profiles(
+            store,
+            nostr::x402::DEFAULT_CLOCK_SKEW,
+            MCP_ONLY,
+        ),
+    });
+    // stdout is the MCP wire, so the banner goes to stderr in both modes.
+    let banner = json!({
+        "event": "serving",
+        "server": server,
+        "pay_to": wallet.node_id(),
+        "network": network,
+        "amount_msat": msat,
+        "timeout_secs": timeout,
+        "tools": tools,
+        "replay_dir": replay_dir().display().to_string(),
+    });
+    eprintln!("{banner}");
+    let mcp = Server {
+        usage: crate::USAGE.to_owned(),
+        timeout: Duration::from_secs(u64::from(timeout)),
+        tools,
+        toll: Some(Arc::new(toll)),
+    };
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    let served = mcp.serve(stdin.lock(), stdout.lock(), std::io::stderr());
+    match wallet.stop() {
+        Ok(()) => served,
+        Err(error) => output.fail("x402", &error.to_string()),
+    }
+}
+
+/// One stdio MCP server started for a single call.
+struct StdioClient {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+    next_id: u64,
+}
+
+impl StdioClient {
+    fn start(program: &str, args: &[String]) -> Result<Self, String> {
+        let mut child = std::process::Command::new(program)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|error| format!("spawn {program}: {error}"))?;
+        let stdin = child.stdin.take().ok_or("no stdin")?;
+        let stdout = BufReader::new(child.stdout.take().ok_or("no stdout")?);
+        let mut client = Self {
+            child,
+            stdin,
+            stdout,
+            next_id: 1,
+        };
+        let init = client.request(
+            "initialize",
+            json!({
+                "protocolVersion": crate::mcp::PROTOCOL_VERSIONS[0],
+                "capabilities": {},
+                "clientInfo": { "name": "openagents x402 call", "version": env!("CARGO_PKG_VERSION") },
+            }),
+        )?;
+        if init.get("protocolVersion").is_none() {
+            return Err(format!(
+                "initialize did not return a protocol version: {init}"
+            ));
+        }
+        client.send(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))?;
+        Ok(client)
+    }
+
+    fn send(&mut self, message: &Value) -> Result<(), String> {
+        let mut bytes = serde_json::to_vec(message).map_err(|e| e.to_string())?;
+        bytes.push(b'\n');
+        self.stdin
+            .write_all(&bytes)
+            .and_then(|()| self.stdin.flush())
+            .map_err(|error| format!("write to the MCP server: {error}"))
+    }
+
+    /// Send one request and return its `result`, or the server's error text.
+    fn request(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))?;
+        loop {
+            let mut line = String::new();
+            let read = self
+                .stdout
+                .read_line(&mut line)
+                .map_err(|error| format!("read from the MCP server: {error}"))?;
+            if read == 0 {
+                return Err(format!("the MCP server closed before answering {method}"));
+            }
+            let Ok(message) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            if message.get("id") != Some(&json!(id)) {
+                continue;
+            }
+            if let Some(error) = message.get("error") {
+                return Err(format!(
+                    "{method}: {} (code {})",
+                    error["message"].as_str().unwrap_or("error"),
+                    error["code"]
+                ));
+            }
+            return Ok(message.get("result").cloned().unwrap_or(Value::Null));
+        }
+    }
+}
+
+impl Drop for StdioClient {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+fn call(output: &Output, words: &[String]) -> u8 {
+    let (options, command) = match words.iter().position(|w| w == "--") {
+        Some(index) => (&words[..index], &words[index + 1..]),
+        None => return output.usage("x402", "call needs `-- CMD [ARGS...]`", USAGE),
+    };
+    let Some((program, program_args)) = command.split_first() else {
+        return output.usage("x402", "call needs a command after `--`", USAGE);
+    };
+    let args = match Args::parse(options, SWITCHES) {
+        Ok(args) => args,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let Some(tool) = args.positional().first() else {
+        return output.usage("x402", "call needs a TOOL", USAGE);
+    };
+    let tool_args: Vec<&str> = args.options("arg");
+    let max_msat: u64 = match args.number("max-msat", 0) {
+        Ok(0) => return output.usage("x402", "call needs --max-msat N (positive)", USAGE),
+        Ok(max) => max,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let max_fee: u64 = match args.number("max-fee-msat", 0) {
+        Ok(fee) => fee,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let wait: u64 = match args.number("wait", 60) {
+        Ok(wait) => wait,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let show_proof = args.switch("show-proof");
+    let descriptor = match args.option("cap") {
+        None => None,
+        Some(head) => match resolve_descriptor(head, args.option("relay"), args.option("as")) {
+            Ok(descriptor) => Some(descriptor),
+            Err(Refusal::Usage(message)) => return output.usage("x402", &message, USAGE),
+            Err(Refusal::Failure(message)) => return output.fail("x402", &message),
+        },
+    };
+    let server = match (args.option("server"), &descriptor) {
+        (Some(server), Some((definition, _))) if definition.endpoint != server => {
+            return output.fail(
+                "x402",
+                &format!(
+                    "{server} is not the advertised endpoint {} of the named capability",
+                    definition.endpoint
+                ),
+            );
+        }
+        (Some(server), _) => server.to_owned(),
+        (None, Some((definition, _))) => definition.endpoint.clone(),
+        (None, None) => return output.usage("x402", "call needs --server URI or --cap", USAGE),
+    };
+    let params = json!({ "name": tool, "arguments": { "args": tool_args } });
+    let request_hash =
+        match mcp_binding(&server, &params, &BOUND_METADATA).and_then(|b| binding_hash(&b)) {
+            Ok(hash) => hash,
+            Err(_) => return output.usage("x402", "--server must be an absolute URI", USAGE),
+        };
+
+    let mut client = match StdioClient::start(program, program_args) {
+        Ok(client) => client,
+        Err(message) => return output.fail("x402", &message),
+    };
+    let first = match client.request("tools/call", params.clone()) {
+        Ok(result) => result,
+        Err(message) => return output.fail("x402", &message),
+    };
+    let Some(required) = payment_required_from_result(&first) else {
+        return finish_call(output, &first, None, None, show_proof);
+    };
+    if required.resource.url != server {
+        return output.fail(
+            "x402",
+            "the challenge names a different server URI than the one bound",
+        );
+    }
+    let (payload, proof, amount) = match buy(
+        &required,
+        &request_hash,
+        MCP_ONLY,
+        "mcp:1",
+        descriptor.as_ref(),
+        Budget {
+            max_msat,
+            max_fee,
+            wait,
+        },
+    ) {
+        Ok(bought) => bought,
+        Err(message) => return output.fail("x402", &message),
+    };
+    let paid = match with_payment(params, &payload) {
+        Ok(paid) => paid,
+        Err(message) => return output.fail("x402", message),
+    };
+    match client.request("tools/call", paid) {
+        Ok(result) => finish_call(output, &result, Some(&proof), Some(amount), show_proof),
+        Err(message) => output.fail(
+            "x402",
+            &format!(
+                "paid retry failed: {message}; proof for payment {} is in `openagents wallet lookup`",
+                proof.payment_hash
+            ),
+        ),
+    }
+}
+
+fn finish_call(
+    output: &Output,
+    result: &Value,
+    proof: Option<&openagents_wallet::Proof>,
+    amount_msat: Option<u64>,
+    show_proof: bool,
+) -> u8 {
+    let settlement = result
+        .get("_meta")
+        .and_then(|meta| meta.get(PAYMENT_RESPONSE_META))
+        .cloned();
+    let is_error = result["isError"].as_bool().unwrap_or(false);
+    let mut value = json!({
+        "paid": proof.is_some(),
+        "amount_msat": amount_msat,
+        "fee_msat": proof.map(|p| p.fee_msat),
+        "payment_hash": proof.map(|p| p.payment_hash.clone()),
+        "settlement": settlement,
+        "is_error": is_error,
+        "result": result,
+    });
+    if show_proof && let Some(proof) = proof {
+        value["preimage"] = Value::String(proof.preimage.clone());
+        value["bolt11"] = Value::String(proof.bolt11.clone());
+    }
+    output.emit(&value, |value| {
+        let text = value["result"]["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|c| c["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        match proof {
+            Some(proof) => format!(
+                "{text}\nopenagents x402: paid {} msat (+{} fee), payment {}",
+                amount_msat.unwrap_or_default(),
+                proof.fee_msat,
+                proof.payment_hash
+            ),
+            None => text,
+        }
+    });
+    if is_error { crate::EXIT_FAILURE } else { 0 }
 }
 
 fn finish(
@@ -596,16 +995,36 @@ struct PaidCapability {
     x402: nostr::cap::X402Descriptor,
 }
 
-/// The x402 adapter definition for one paid `http:1` resource of `pay_to`.
-fn paid_definition(
-    publisher: &str,
-    slug: &str,
-    url: &str,
-    network: &str,
-    pay_to: &str,
-    merchant: &str,
-    summary: &str,
-) -> Value {
+/// What one `oa-x402-v1` advertisement says.
+struct Advertisement<'a> {
+    publisher: &'a str,
+    slug: &'a str,
+    url: &'a str,
+    /// `http:1` or `mcp:1`.
+    binding: &'a str,
+    network: &'a str,
+    pay_to: &'a str,
+    merchant: &'a str,
+    summary: &'a str,
+}
+
+/// The x402 adapter definition for one paid resource.
+fn paid_definition(ad: &Advertisement<'_>) -> Value {
+    let Advertisement {
+        publisher,
+        slug,
+        url,
+        binding,
+        network,
+        pay_to,
+        merchant,
+        summary,
+    } = *ad;
+    let (interface, transport) = if binding == "mcp:1" {
+        ("openagents.x402.mcp.v1", "mcp")
+    } else {
+        ("openagents.x402.http.v1", "http")
+    };
     let schema = json!({
         "digest": format!(
             "sha256:{}",
@@ -641,8 +1060,8 @@ fn paid_definition(
             "evidence": []
         },
         "binding_contract": {
-            "interface": "openagents.x402.http.v1",
-            "transport": "http",
+            "interface": interface,
+            "transport": transport,
             "operations": [slug],
             "remote": {"endpoint": url},
             "x402": {
@@ -652,7 +1071,7 @@ fn paid_definition(
                 "asset": "BTC",
                 "method": "bolt11",
                 "flow": "upfront",
-                "bindings": ["http:1"],
+                "bindings": [binding],
                 "receivers": [{"network": network, "pay_to": pay_to}],
                 "merchant": merchant,
                 "recovery": "none",
@@ -676,16 +1095,27 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
     let Some(merchant) = args.option("merchant") else {
         return output.usage("x402", "advertise needs --merchant ID", USAGE);
     };
-    if http_binding("POST", url, &[], &[]).is_err() {
+    let binding = args.option("binding").unwrap_or("http:1");
+    let bound = match binding {
+        "http:1" => http_binding("POST", url, &[], &[]).is_ok(),
+        "mcp:1" => mcp_binding(url, &json!({"name": "probe"}), &BOUND_METADATA).is_ok(),
+        other => {
+            return output.usage(
+                "x402",
+                &format!("--binding {other} is not http:1 or mcp:1"),
+                USAGE,
+            );
+        }
+    };
+    if !bound {
         return output.usage(
             "x402",
-            "--url must be absolute http(s) without a fragment",
+            "--url must be an absolute URI (http(s) without a fragment for http:1)",
             USAGE,
         );
     }
-    let summary = args
-        .option("summary")
-        .unwrap_or("a paid http:1 resource (x402 exact/lnbtc)");
+    let default_summary = format!("a paid {binding} resource (x402 exact/lnbtc)");
+    let summary = args.option("summary").unwrap_or(&default_summary);
     let signer = match signer_for(args.option("as")) {
         Ok(signer) => signer,
         Err(message) => return output.fail("x402", &message),
@@ -705,15 +1135,16 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
             ),
         );
     };
-    let body = paid_definition(
-        signer.pubkey(),
+    let body = paid_definition(&Advertisement {
+        publisher: signer.pubkey(),
         slug,
         url,
+        binding,
         network,
-        &pay_to,
+        pay_to: &pay_to,
         merchant,
         summary,
-    );
+    });
     let definition = match nostr::cap::parse_definition(&body) {
         Ok(definition) => definition,
         Err(error) => return output.usage("x402", &format!("definition: {error}"), USAGE),
@@ -743,6 +1174,7 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
         "publisher": event.pubkey,
         "slug": slug,
         "endpoint": url,
+        "binding": binding,
         "network": network,
         "pay_to": pay_to,
         "merchant": merchant,
@@ -874,19 +1306,42 @@ mod tests {
 
     #[test]
     fn the_advertised_definition_passes_the_cap_contract() {
-        let body = paid_definition(
-            &"a".repeat(64),
-            "echo",
-            "https://example.com/echo",
-            nostr::x402::TESTNET,
-            &format!("02{}", "b".repeat(64)),
-            "demo",
-            "echo bytes",
-        );
+        let body = paid_definition(&Advertisement {
+            publisher: &"a".repeat(64),
+            slug: "echo",
+            url: "https://example.com/echo",
+            binding: "http:1",
+            network: nostr::x402::TESTNET,
+            pay_to: &format!("02{}", "b".repeat(64)),
+            merchant: "demo",
+            summary: "echo bytes",
+        });
         let definition = nostr::cap::parse_definition(&body).unwrap();
         let x402 = definition.x402.unwrap();
         assert_eq!(x402.bindings, vec!["http:1".to_owned()]);
         assert_eq!(x402.receivers[0].network, nostr::x402::TESTNET);
         assert_eq!(definition.transport, "http");
+    }
+
+    #[test]
+    fn the_mcp_definition_names_the_server_over_mcp() {
+        let body = paid_definition(&Advertisement {
+            publisher: &"a".repeat(64),
+            slug: "tools",
+            url: "mcp://tools.example.com/openagents",
+            binding: "mcp:1",
+            network: nostr::x402::TESTNET,
+            pay_to: &format!("02{}", "b".repeat(64)),
+            merchant: "demo",
+            summary: "openagents over MCP",
+        });
+        let definition = nostr::cap::parse_definition(&body).unwrap();
+        let x402 = definition.x402.unwrap();
+        assert_eq!(x402.bindings, vec!["mcp:1".to_owned()]);
+        assert_eq!(definition.transport, "mcp");
+        assert_eq!(
+            body["binding_contract"]["remote"]["endpoint"],
+            "mcp://tools.example.com/openagents"
+        );
     }
 }
