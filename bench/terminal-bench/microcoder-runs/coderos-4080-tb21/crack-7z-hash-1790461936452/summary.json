@@ -1,0 +1,81 @@
+{
+  "task": "crack-7z-hash",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 13,
+    "seconds": 92.401101169,
+    "model_usd": 0.0054827,
+    "jev_usd": 0.00164619,
+    "embedding_usd": 0.0,
+    "usd": 0.007128890000000001,
+    "known_usd": 0.007128890000000001,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease\nHit:2 http://archive.ubuntu.com/ubuntu noble-updates InRelease\nHit:3 http://archive.ubuntu.com/ubuntu noble-backports InRelease\nHit:4 http://security.ubuntu.com/ubuntu noble-security InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  libcurl3t64-gnutls libcurl4t64\nThe following NEW packages will be installed:\n  curl libcurl4t64\nThe following packages will be upgraded:\n  libcurl3t64-gnutls\n1 upgraded, 2 newly installed, 0 to remove and 117 not upgraded.\nNeed to get 906 kB of archives.\nAfter this operation, 1487 kB of additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libcurl4t64 amd64 8.5.0-2ubuntu10.15 [343 kB]\nGet:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 curl amd64 8.5.0-2ubuntu10.15 [227 kB]\nGet:3 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libcurl3t64-gnutls amd64 8.5.0-2ubuntu10.15 [336 kB]\ndebconf: delaying package configuration, since apt-utils is not installed\nFetched 906 kB in 2s (588 kB/s)\nSelecting previously unselected package libcurl4t64:amd64.\r\n(Reading database ... \r(Reading database ... 5%\r(Reading database ... 10%\r(Reading database ... 15%\r(Reading database ... 20%\r(Reading database ... 25%\r(Reading database ... 30%\r(Reading database ... 35%\r(Reading database ... 40%\r(Reading database ... 45%\r(Reading database ... 50%\r(Reading database ... 55%\r(Reading database ... 60%\r(Reading database ... 65%\r(Reading database ... 70%\r(Reading database ... 75%\r(Reading database ... 80%\r(Reading database ... 85%\r(Reading database ... 90%\r(Reading database ... 95%\r(Reading database ... 100%\r(Reading database ... 15750 files and directories currently installed.)\r\nPreparing to unpack .../libcurl4t64_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...\r\nSelecting previously unselected package curl.\r\nPreparing to unpack .../curl_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking curl (8.5.0-2ubuntu10.15) ...\r\nPreparing to unpack .../libcurl3t64-gnutls_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking libcurl3t64-gnutls:amd64 (8.5.0-2ubuntu10.15) over (8.5.0-2ubuntu10.6) ...\r\nSetting up libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...\r\nSetting up libcurl3t64-gnutls:amd64 (8.5.0-2ubuntu10.15) ...\r\nSetting up curl (8.5.0-2ubuntu10.15) ...\r\nProcessing triggers for libc-bin (2.39-0ubuntu8.6) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading cpython-3.13.9-linux-x86_64-gnu (download) (32.0MiB)\n Downloading cpython-3.13.9-linux-x86_64-gnu (download)\nDownloading pygments (1.2MiB)\n Downloading pygments\nInstalled 6 packages in 20ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.9, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 2 items\n\n../tests/test_outputs.py ..                                              [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_solution_file\nPASSED ../tests/test_outputs.py::test_solution_content\n============================== 2 passed in 0.03s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-crack-7z-hash-2508428",
+  "image": "alexgshaw/crack-7z-hash:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "solution.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\n[ -f /app/solution.txt ]\ngrep -Eq '^[[:alnum:]_-]+$' /app/solution.txt\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 2,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "solution.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.041820717,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "task": "fix-git",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 6,
+    "seconds": 66.615163668,
+    "model_usd": 0.0024933000000000004,
+    "jev_usd": 0.000807954,
+    "embedding_usd": 0.0,
+    "usd": 0.0033012540000000004,
+    "known_usd": 0.0033012540000000004,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]\nGet:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]\nGet:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]\nGet:5 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [345 kB]\nFetched 9376 kB in 1s (8256 kB/s)\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  libcurl3-gnutls libcurl4\nThe following NEW packages will be installed:\n  curl libcurl4\nThe following packages will be upgraded:\n  libcurl3-gnutls\n1 upgraded, 2 newly installed, 0 to remove and 26 not upgraded.\nNeed to get 1094 kB of archives.\nAfter this operation, 1361 kB of additional disk space will be used.\nGet:1 http://deb.debian.org/debian bookworm/main amd64 libcurl4 amd64 7.88.1-10+deb12u15 [392 kB]\nGet:2 http://deb.debian.org/debian bookworm/main amd64 curl amd64 7.88.1-10+deb12u15 [316 kB]\nGet:3 http://deb.debian.org/debian bookworm/main amd64 libcurl3-gnutls amd64 7.88.1-10+deb12u15 [386 kB]\ndebconf: delaying package configuration, since apt-utils is not installed\nFetched 1094 kB in 0s (3908 kB/s)\nSelecting previously unselected package libcurl4:amd64.\r\n(Reading database ... \r(Reading database ... 5%\r(Reading database ... 10%\r(Reading database ... 15%\r(Reading database ... 20%\r(Reading database ... 25%\r(Reading database ... 30%\r(Reading database ... 35%\r(Reading database ... 40%\r(Reading database ... 45%\r(Reading database ... 50%\r(Reading database ... 55%\r(Reading database ... 60%\r(Reading database ... 65%\r(Reading database ... 70%\r(Reading database ... 75%\r(Reading database ... 80%\r(Reading database ... 85%\r(Reading database ... 90%\r(Reading database ... 95%\r(Reading database ... 100%\r(Reading database ... 10329 files and directories currently installed.)\r\nPreparing to unpack .../libcurl4_7.88.1-10+deb12u15_amd64.deb ...\r\nUnpacking libcurl4:amd64 (7.88.1-10+deb12u15) ...\r\nSelecting previously unselected package curl.\r\nPreparing to unpack .../curl_7.88.1-10+deb12u15_amd64.deb ...\r\nUnpacking curl (7.88.1-10+deb12u15) ...\r\nPreparing to unpack .../libcurl3-gnutls_7.88.1-10+deb12u15_amd64.deb ...\r\nUnpacking libcurl3-gnutls:amd64 (7.88.1-10+deb12u15) over (7.88.1-10+deb12u14) ...\r\nSetting up libcurl3-gnutls:amd64 (7.88.1-10+deb12u15) ...\r\nSetting up libcurl4:amd64 (7.88.1-10+deb12u15) ...\r\nSetting up curl (7.88.1-10+deb12u15) ...\r\nProcessing triggers for libc-bin (2.36-9+deb12u13) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading pygments (1.2MiB)\n Downloading pygments\nInstalled 6 packages in 15ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.12, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 2 items\n\n../../tests/test_outputs.py ..                                           [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../../tests/test_outputs.py::test_about_file\nPASSED ../../tests/test_outputs.py::test_layout_file\n============================== 2 passed in 0.01s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-fix-git-2684545",
+  "image": "alexgshaw/fix-git:20260403",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "recovered_changes.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app/personal-site\n# Master must include recovered work: ensure it is no longer missing from the current checkout.\ntest -z \"$(git status --porcelain)\"\ntest \"$(git branch --show-current)\" = master\n",
+      "passed_at_freeze": true
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "recovered_changes.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.034958184,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

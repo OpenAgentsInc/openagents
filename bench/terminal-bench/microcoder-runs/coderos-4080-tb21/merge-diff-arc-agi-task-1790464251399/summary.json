@@ -1,0 +1,93 @@
+{
+  "task": "merge-diff-arc-agi-task",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 13,
+    "seconds": 128.58703875,
+    "model_usd": 0.0079597,
+    "jev_usd": 0.002003232,
+    "embedding_usd": 0.0,
+    "usd": 0.009962932,
+    "known_usd": 0.009962932,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease\nHit:2 http://security.ubuntu.com/ubuntu noble-security InRelease\nHit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease\nHit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\ngit is already the newest version (1:2.43.0-1ubuntu7.3).\nThe following NEW packages will be installed:\n  curl libcurl4t64\n0 upgraded, 2 newly installed, 0 to remove and 43 not upgraded.\nNeed to get 570 kB of archives.\nAfter this operation, 1485 kB of additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libcurl4t64 amd64 8.5.0-2ubuntu10.15 [343 kB]\nGet:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 curl amd64 8.5.0-2ubuntu10.15 [227 kB]\ndebconf: delaying package configuration, since apt-utils is not installed\nFetched 570 kB in 2s (325 kB/s)\nSelecting previously unselected package libcurl4t64:amd64.\r\n(Reading database ... \r(Reading database ... 5%\r(Reading database ... 10%\r(Reading database ... 15%\r(Reading database ... 20%\r(Reading database ... 25%\r(Reading database ... 30%\r(Reading database ... 35%\r(Reading database ... 40%\r(Reading database ... 45%\r(Reading database ... 50%\r(Reading database ... 55%\r(Reading database ... 60%\r(Reading database ... 65%\r(Reading database ... 70%\r(Reading database ... 75%\r(Reading database ... 80%\r(Reading database ... 85%\r(Reading database ... 90%\r(Reading database ... 95%\r(Reading database ... 100%\r(Reading database ... 9864 files and directories currently installed.)\r\nPreparing to unpack .../libcurl4t64_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...\r\nSelecting previously unselected package curl.\r\nPreparing to unpack .../curl_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking curl (8.5.0-2ubuntu10.15) ...\r\nSetting up libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...\r\nSetting up curl (8.5.0-2ubuntu10.15) ...\r\nProcessing triggers for libc-bin (2.39-0ubuntu8.6) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading cpython-3.13.9-linux-x86_64-gnu (download) (32.0MiB)\n Downloading cpython-3.13.9-linux-x86_64-gnu (download)\nDownloading pygments (1.2MiB)\n Downloading pygments\nInstalled 6 packages in 4ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.9, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 5 items\n\n../tests/test_outputs.py .....                                           [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_git_repo_init\nPASSED ../tests/test_outputs.py::test_both_bundles_fetched\nPASSED ../tests/test_outputs.py::test_algo_py_exists\nPASSED ../tests/test_outputs.py::test_algo_py_has_map_function\nPASSED ../tests/test_outputs.py::test_algo_map_function_with_test_input\n============================== 5 passed in 0.04s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-merge-diff-arc-agi-task-3110530",
+  "image": "alexgshaw/merge-diff-arc-agi-task:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "map_examples.sh",
+      "script": "#!/bin/bash\nset -e\ncd /app/repo\npython3 - <<'PY'\nimport json, importlib.util\ns=importlib.util.spec_from_file_location('algo','algo.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)\nfor case in json.load(open('/app/examples.json')):\n    assert m.map(case['input']) == case['output'], case\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "repo_branches_merge.sh",
+      "script": "#!/bin/bash\nset -e\ncd /app/repo\ntest \"$(git rev-parse --is-inside-work-tree)\" = true\ngit show-ref --verify --quiet refs/heads/branch1\ngit show-ref --verify --quiet refs/heads/branch2\ntest \"$(git branch --show-current)\" = branch1\ngit merge-base --is-ancestor branch2 branch1\ntest -f algo.py\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 5,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "map_examples.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.055614901,
+      "output": ""
+    },
+    {
+      "command": "repo_branches_merge.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.050406964,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "task": "pytorch-model-recovery",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 5,
+    "seconds": 94.749582056,
+    "model_usd": 0.0063342,
+    "jev_usd": 0.0009045120000000001,
+    "embedding_usd": 0.0,
+    "usd": 0.007238712,
+    "known_usd": 0.007238712,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]\nGet:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]\nGet:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]\nGet:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]\nGet:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [345 kB]\nFetched 9383 kB in 1s (7842 kB/s)\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  krb5-locales libbrotli1 libcurl4 libgssapi-krb5-2 libk5crypto3 libkeyutils1\n  libkrb5-3 libkrb5support0 libldap-2.5-0 libldap-common libnghttp2-14 libpsl5\n  librtmp1 libsasl2-2 libsasl2-modules libsasl2-modules-db libssh2-1\n  publicsuffix\nSuggested packages:\n  krb5-doc krb5-user libsasl2-modules-gssapi-mit\n  | libsasl2-modules-gssapi-heimdal libsasl2-modules-ldap libsasl2-modules-otp\n  libsasl2-modules-sql\nThe following NEW packages will be installed:\n  curl krb5-locales libbrotli1 libcurl4 libgssapi-krb5-2 libk5crypto3\n  libkeyutils1 libkrb5-3 libkrb5support0 libldap-2.5-0 libldap-common\n  libnghttp2-14 libpsl5 librtmp1 libsasl2-2 libsasl2-modules\n  libsasl2-modules-db libssh2-1 publicsuffix\n0 upgraded, 19 newly installed, 0 to remove and 17 not upgraded.\nNeed to get 2489 kB of archives.\nAfter this operation, 6809 kB of addition\n[… 7362 characters left out …]\n   source $HOME/.local/bin/env.fish (fish)\nDownloading sympy (6.0MiB)\nDownloading networkx (2.0MiB)\nDownloading pygments (1.2MiB)\nDownloading nvidia-cufile-cu12 (1.1MiB)\nDownloading nvidia-nvjitlink-cu12 (18.8MiB)\nDownloading nvidia-cusparselt-cu12 (149.5MiB)\nDownloading nvidia-cufft-cu12 (190.9MiB)\nDownloading nvidia-cuda-nvrtc-cu12 (22.6MiB)\nDownloading triton (148.5MiB)\nDownloading nvidia-curand-cu12 (53.7MiB)\nDownloading nvidia-cusparse-cu12 (206.5MiB)\nDownloading nvidia-cublas-cu12 (374.9MiB)\nDownloading nvidia-cusolver-cu12 (150.9MiB)\nDownloading torch (783.0MiB)\nDownloading nvidia-cudnn-cu12 (544.5MiB)\nDownloading nvidia-cuda-cupti-cu12 (8.5MiB)\nDownloading nvidia-nccl-cu12 (192.0MiB)\n Downloading nvidia-cufile-cu12\n Downloading pygments\n Downloading networkx\n Downloading sympy\n Downloading nvidia-cuda-cupti-cu12\n Downloading nvidia-nvjitlink-cu12\n Downloading nvidia-cuda-nvrtc-cu12\n Downloading nvidia-curand-cu12\n Downloading triton\n Downloading nvidia-cusparselt-cu12\n Downloading nvidia-cusolver-cu12\n Downloading nvidia-cufft-cu12\n Downloading nvidia-nccl-cu12\n Downloading nvidia-cusparse-cu12\n Downloading nvidia-cublas-cu12\n Downloading nvidia-cudnn-cu12\n Downloading torch\nInstalled 31 packages in 100ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.12, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 5 items\n\n../tests/test_outputs.py .....                                           [100%]\n\n=============================== warnings summary ===============================\n../root/.cache/uv/archive-v0/yxN8jEojWd54UKMhy08vS/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276\n  /root/.cache/uv/archive-v0/yxN8jEojWd54UKMhy08vS/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n    cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n\ntest_outputs.py::test_model_loss\n  /root/.cache/uv/archive-v0/yxN8jEojWd54UKMhy08vS/lib/python3.13/site-packages/torch/nn/modules/transformer.py:382: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.self_attn.batch_first was not True(use batch_first for better inference performance)\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_weights_file_unchanged\nPASSED ../tests/test_outputs.py::test_model_file_exists\nPASSED ../tests/test_outputs.py::test_model_loads_weights\nPASSED ../tests/test_outputs.py::test_state_dicts_match\nPASSED ../tests/test_outputs.py::test_model_loss\n======================== 5 passed, 2 warnings in 2.08s =========================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-pytorch-model-recovery-3968579",
+  "image": "alexgshaw/pytorch-model-recovery:20260430",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "artifact.sh",
+      "script": "#!/bin/bash\nset -e\n[ -f /app/model.pt ]\npython3 - <<'PY'\nimport torch\nm=torch.jit.load('/app/model.pt', map_location='cpu')\nassert m is not None\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "weights_and_loss.sh",
+      "script": "#!/bin/bash\nset -e\npython3 - <<'PY'\nimport torch\np='/app'\na=torch.load(p+'/weights.pt',map_location='cpu',weights_only=False)\nm=torch.jit.load(p+'/model.pt',map_location='cpu')\ns=m.state_dict()\nassert set(s)==set(a)\nassert any(not torch.equal(s[k],a[k]) for k in a if k.startswith('output_layer.'))\nassert all(torch.equal(s[k],a[k]) for k in a if not k.startswith('output_layer.'))\nd=torch.load(p+'/dataset.pt',map_location='cpu',weights_only=False)\nprint(type(d), (list(d.keys()) if isinstance(d,dict) else type(d)))\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "checkpoint_unchanged.sh",
+      "script": "#!/bin/bash\nset -e\npython3 - <<'PY'\nimport hashlib\np='/app/weights.pt'\nwith open(p,'rb') as f: print('weights.pt SHA256:',hashlib.sha256(f.read()).hexdigest())\nPY\n",
+      "passed_at_freeze": null
+    },
+    {
+      "name": "strict_load_and_loss.sh",
+      "script": "#!/bin/bash\nset -e\npython3 - <<'PY'\nimport torch\nfrom recover import RecoveredModel\np='/app'\nw=torch.load(p+'/weights.pt',map_location='cpu',weights_only=False)\nd=torch.load(p+'/dataset.pt',map_location='cpu',weights_only=False)\nreference=RecoveredModel()\nresult=reference.load_state_dict(w,strict=True)\nassert not result.missing_keys and not result.unexpected_keys\nreference.eval()\nwith torch.no_grad(): base=((reference(d['src_sequences'],d['tgt_sequences'])-d['tgt_sequences'])**2).mean().item()\nsaved=torch.jit.load(p+'/model.pt',map_location='cpu').eval()\nwith torch.no_grad(): tuned=((saved(d['src_sequences'],d['tgt_sequences'])-d['tgt_sequences'])**2).mean().item()\nprint('baseline MSE:',base,'saved model MSE:',tuned)\nassert tuned < base\nPY\n",
+      "passed_at_freeze": null
+    },
+    {
+      "name": "exact_state_dict.sh",
+      "script": "#!/bin/bash\nset -e\npython3 - <<'PY'\nimport torch\np='/app'\noriginal=torch.load(p+'/weights.pt',map_location='cpu',weights_only=False)\nsaved=torch.jit.load(p+'/model.pt',map_location='cpu').state_dict()\nassert set(saved)==set(original), (set(saved)^set(original))\nfor k,v in original.items():\n    assert saved[k].shape==v.shape, k\n    assert saved[k].dtype==v.dtype, k\n    if not k.startswith('output_layer.'):\n        assert torch.equal(saved[k],v), k\nassert any(not torch.equal(saved[k],v) for k,v in original.items() if k.startswith('output_layer.'))\nprint('all non-output tensors exactly unchanged; output_layer was tuned')\nPY\n",
+      "passed_at_freeze": null
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "artifact.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.860975584,
+      "output": "/usr/local/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n"
+    },
+    {
+      "command": "weights_and_loss.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.843142806,
+      "output": "<class 'dict'> ['src_sequences', 'tgt_sequences']\n/usr/local/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n"
+    },
+    {
+      "command": "checkpoint_unchanged.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.050026533,
+      "output": "weights.pt SHA256: 71471e71c5a311a897362dd5b77413e7ca2ca59abd00a110bdc2cd3f8584d080\n"
+    },
+    {
+      "command": "strict_load_and_loss.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 4.999545358,
+      "output": "<All keys matched successfully>\nshape torch.Size([20, 20, 64]) torch.Size([20, 20, 64]) initial 1.5517076253890991\nbest 0.02065800502896309\nbaseline MSE: 1.5517076253890991 saved model MSE: 0.02065800502896309\n/usr/local/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n"
+    },
+    {
+      "command": "exact_state_dict.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.82584472,
+      "output": "all non-output tensors exactly unchanged; output_layer was tuned\n/usr/local/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n"
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "task": "financial-document-processor",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 26,
+    "seconds": 296.080846989,
+    "model_usd": 0.0170361,
+    "jev_usd": 0.005214678000000001,
+    "embedding_usd": 0.0,
+    "usd": 0.022250778,
+    "known_usd": 0.022250778,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease\nHit:2 http://archive.ubuntu.com/ubuntu noble InRelease\nHit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease\nHit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following NEW packages will be installed:\n  curl\n0 upgraded, 1 newly installed, 0 to remove and 33 not upgraded.\nNeed to get 227 kB of archives.\nAfter this operation, 536 kB of additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 curl amd64 8.5.0-2ubuntu10.15 [227 kB]\ndebconf: delaying package configuration, since apt-utils is not installed\nFetched 227 kB in 1s (259 kB/s)\nSelecting previously unselected package curl.\r\n(Reading database ... \r(Reading database ... 5%\r(Reading database ... 10%\r(Reading database ... 15%\r(Reading database ... 20%\r(Reading database ... 25%\r(Reading database ... 30%\r(Reading database ... 35%\r(Reading database ... 40%\r(Reading database ... 45%\r(Reading database ... 50%\r(Reading database ... 55%\r(Reading database ... 60%\r(Reading database ... 65%\r(Reading database ... 70%\r(Reading database ... 75%\r(Reading database ... 80%\r(Reading database ... 85%\r(Reading database ... 90%\r(Reading database ... 95%\r(Reading database ... 100%\r(Reading database ... 20666 files and directories currently installed.)\r\nPreparing to unpack .../curl_8.5.0-2ubuntu10.15_amd64.de\n[… 7969 characters left out …]\nff5c13866c40c5faf6bc29ec0f91ec92e4bacfa76be324f35bb3a03e67b94b2f8a5013bd680c9aaf94406e909978\": {  # noqa: E501\n                \"total_amount\": 4031.0,\n                \"vat_amount\": \"\",\n            },\n            \"3159e2fefed42edc038cc02b88944941f0a985ada0cd5907c9bc6368798760b8e40ffa164b5d6cc7d895bc7918bc43046b3363e21585e1a84d4d36a77b5fc7d3\": {  # noqa: E501\n                \"total_amount\": 896.0,\n                \"vat_amount\": \"\",\n            },\n            \"total\": {\"total_amount\": 81315.20, \"vat_amount\": 5402.48},\n        }\n    \n        # Check we have 11 rows (10 invoices + 1 total)\n        assert len(df) == len(expected_data), (\n            f\"Expected 11 rows (10 invoices + 1 total), got {len(df)}\"\n        )\n    \n        # Verify each invoice row matches expected data\n        for _, row in df.iterrows():\n            filename = row[\"filename\"]\n    \n            # Get file hash for comparison (except for \"total\")\n            if filename == \"total\":\n                file_identifier = filename\n            else:\n                # Compute hash of the file to identify it\n                file_path = Path(\"/app/invoices\") / filename\n                file_identifier = compute_file_hash(file_path)\n    \n            assert file_identifier in expected_data, (\n                f\"Unexpected file {file_identifier} in summary\"\n            )\n    \n            expected = expected_data[file_identifier]\n    \n            # Handle empty VAT amounts for comparison\n            expected_vat = expected[\"vat_amount\"] if expected[\"vat_amount\"] != \"\" else 0\n            actual_vat = (\n                row[\"vat_amount\"]\n                if pd.notna(row[\"vat_amount\"]) and row[\"vat_amount\"] != \"\"\n                else 0\n            )\n    \n>           assert abs(float(row[\"total_amount\"]) - expected[\"total_amount\"]) < 0.01, (\n                f\"Wrong total_amount for {file_identifier[:16]}...: \"\n                + f\"expected {expected['total_amount']}, got {row['total_amount']}\"\n            )\nE           AssertionError: Wrong total_amount for d08feffaf8a3f774...: expected 6860.45, got 6850.48\nE           assert 9.970000000000255 < 0.01\nE            +  where 9.970000000000255 = abs((6850.48 - 6860.45))\nE            +    where 6850.48 = float(6850.48)\n\n/tests/test_outputs.py:208: AssertionError\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_directories_created\nPASSED ../tests/test_outputs.py::test_invoices_moved_correctly\nPASSED ../tests/test_outputs.py::test_summary_csv_exists\nPASSED ../tests/test_outputs.py::test_summary_csv_structure\nPASSED ../tests/test_outputs.py::test_original_documents_dir_empty\nFAILED ../tests/test_outputs.py::test_other_documents_moved_correctly - Asser...\nFAILED ../tests/test_outputs.py::test_summary_csv_content - AssertionError: W...\n========================= 2 failed, 5 passed in 0.78s ==========================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-financial-document-processor-2674448",
+  "image": "alexgshaw/financial-document-processor:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "moved_and_classified.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\n[ -d /app/invoices ] && [ -d /app/other ]\n[ -z \"$(find /app/documents -maxdepth 1 -type f -print -quit)\" ]\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "no_invoices_elsewhere.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\n[ -d /app/other ]\n[ -z \"$(find /app/other -maxdepth 1 -type f \\( -iname '*.pdf' -o -iname '*.jpg' -o -iname '*.jpeg' \\) -print -quit | while read f; do grep -aEqi 'invoice|amount due|vat' \"$f\" && echo \"$f\"; done)\" ]\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "summary_schema_and_reconciliation.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\nf=/app/invoices/summary.csv\n[ -f \"$f\" ]\npython3 - \"$f\" <<'PY'\nimport csv,sys\np=sys.argv[1]\nwith open(p,newline='') as h: rows=list(csv.reader(h))\nassert rows and rows[0]==['filename','total_amount','vat_amount'], rows[:1]\nassert len(rows)>=2\nassert rows[-1][0]=='total'\nfor row in rows[1:]: assert len(row)==3\nfor i in (1,2):\n vals=[float(r[i].replace(',','')) for r in rows[1:-1]]\n assert abs(float(rows[-1][i].replace(',',''))-sum(vals))<0.011\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "task_requirements.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\n[ -d /app/documents ] && [ -z \"$(find /app/documents -mindepth 1 -maxdepth 1 -print -quit)\" ]\n[ -d /app/invoices ] && [ -d /app/other ]\npython3 - <<'PY'\nimport csv\nfrom pathlib import Path\np=Path('/app/invoices/summary.csv')\nwith p.open(newline='') as f: rows=list(csv.reader(f))\nassert rows[0] == ['filename','total_amount','vat_amount']\nassert rows[-1][0]=='total'\nfiles={r[0] for r in rows[1:-1]}\nassert files == {x.name for x in Path('/app/invoices').iterdir() if x.is_file() and x.name!='summary.csv'}\nassert not (Path('/app/invoices')/'total').exists()\nfor r in rows[1:-1]:\n assert r[0].lower().endswith(('.jpg','.pdf'))\n assert float(r[1].replace(',','')) >= 0\n assert float(r[2].replace(',','')) >= 0\nfor i in (1,2):\n vals=[float(r[i].replace(',','')) for r in rows[1:-1]]\n assert abs(float(rows[-1][i].replace(',',''))-sum(vals)) < .011\nPY\n\n",
+      "passed_at_freeze": null
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "moved_and_classified.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.044388602,
+      "output": ""
+    },
+    {
+      "command": "no_invoices_elsewhere.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.045008223,
+      "output": ""
+    },
+    {
+      "command": "summary_schema_and_reconciliation.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.053418796,
+      "output": ""
+    },
+    {
+      "command": "task_requirements.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.066879619,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

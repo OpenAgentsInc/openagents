@@ -1,0 +1,117 @@
+{
+  "task": "headless-terminal",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 5,
+    "seconds": 80.344070406,
+    "model_usd": 0.0030242000000000003,
+    "jev_usd": 0.0005525940000000001,
+    "embedding_usd": 0.0,
+    "usd": 0.0035767940000000003,
+    "known_usd": 0.0035767940000000003,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]\nGet:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]\nGet:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]\nGet:5 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [345 kB]\nFetched 9376 kB in 4s (2279 kB/s)\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  libgpm2 libsodium23 vim-common vim-runtime xxd\nSuggested packages:\n  gpm ctags vim-doc vim-scripts\nThe following NEW packages will be installed:\n  libgpm2 libsodium23 vim vim-common vim-runtime xxd\n0 upgraded, 6 newly installed, 0 to remove and 33 not upgraded.\nNeed to get 8980 kB of archives.\nAfter this operation, 41.9 MB of additional disk space will be used.\nGet:1 http://deb.debian.org/debian bookworm/main amd64 vim-common all 2:9.0.1378-2+deb12u2 [125 kB]\nGet:2 http://deb.debian.org/debian bookworm/main amd64 libgpm2 amd64 1.20.7-10+b1 [14.2 kB]\nGet:3 http://deb.debian.org/debian bookworm/main amd64 libsodium23 amd64 1.0.18-1+deb12u1 [162 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 vim-runtime all 2:9.0.1378-2+deb12u2 [7027 kB]\nGet:5 http://deb.debian.org/debian bookworm/main amd64 vim amd64 2:9.0.1378-2+deb12u2 [1568 kB]\nGet:6 http://deb.debian.org/debian bookworm/main amd64 xxd amd64 2:9.\n[… 9967 characters left out …]\nm requests==2.32.5)\n  Downloading charset_normalizer-3.5.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (45 kB)\nCollecting idna<4,>=2.5 (from requests==2.32.5)\n  Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)\nCollecting urllib3<3,>=1.21.1 (from requests==2.32.5)\n  Downloading urllib3-2.8.0-py3-none-any.whl.metadata (7.4 kB)\nCollecting certifi>=2017.4.17 (from requests==2.32.5)\n  Downloading certifi-2026.7.22-py3-none-any.whl.metadata (2.5 kB)\nDownloading pytest-8.4.1-py3-none-any.whl (365 kB)\nDownloading requests-2.32.5-py3-none-any.whl (64 kB)\nDownloading pytest_json_ctrf-0.3.5-py3-none-any.whl (6.8 kB)\nDownloading charset_normalizer-3.5.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (250 kB)\nDownloading idna-3.20-py3-none-any.whl (69 kB)\nDownloading pluggy-1.6.0-py3-none-any.whl (20 kB)\nDownloading urllib3-2.8.0-py3-none-any.whl (135 kB)\nDownloading certifi-2026.7.22-py3-none-any.whl (136 kB)\nDownloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)\nDownloading packaging-26.3-py3-none-any.whl (129 kB)\nDownloading pygments-2.21.0-py3-none-any.whl (1.3 MB)\n   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 6.3 MB/s  0:00:00\nInstalling collected packages: urllib3, pygments, pluggy, packaging, iniconfig, idna, charset_normalizer, certifi, requests, pytest, pytest-json-ctrf\n\nSuccessfully installed certifi-2026.7.22 charset_normalizer-3.5.1 idna-3.20 iniconfig-2.3.0 packaging-26.3 pluggy-1.6.0 pygments-2.21.0 pytest-8.4.1 pytest-json-ctrf-0.3.5 requests-2.32.5 urllib3-2.8.0\nWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.\n\n[notice] A new release of pip is available: 25.2 -> 26.2.1\n[notice] To update, run: pip install --upgrade pip\n============================= test session starts ==============================\nplatform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 7 items\n\n../tests/test_outputs.py .......                                         [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_import\nPASSED ../tests/test_outputs.py::test_send_non_interactive_command\nPASSED ../tests/test_outputs.py::test_send_interactive_command\nPASSED ../tests/test_outputs.py::test_cancel_command\nPASSED ../tests/test_outputs.py::test_startup_files\nPASSED ../tests/test_outputs.py::test_shell_state_persists_between_commands\nPASSED ../tests/test_outputs.py::test_background_commands\n============================== 7 passed in 13.07s ==============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-headless-terminal-2779091",
+  "image": "alexgshaw/headless-terminal:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "interface.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app\npython3 - <<'PY'\nimport inspect\nfrom base_terminal import BaseTerminal\nfrom headless_terminal import HeadlessTerminal\nassert issubclass(HeadlessTerminal, BaseTerminal)\nassert inspect.isclass(HeadlessTerminal)\nPY\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "interrupt.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app\npython3 - <<'PY'\nimport time\nfrom headless_terminal import HeadlessTerminal\nt=HeadlessTerminal()\ntry:\n    send=next((getattr(t,n) for n in ('send','write','type','send_keys') if hasattr(t,n)),None)\n    assert send, 'no send method'\n    send('sleep 30\\n'); time.sleep(.2); send('\\x03'); time.sleep(.2)\n    send('printf \"AFTER_INTERRUPT_OK\\\\n\"\\n'); time.sleep(.3)\n    out=''\n    for n in ('read','get_output','output','read_output'):\n        if hasattr(t,n):\n            x=getattr(t,n); out+=str(x() if callable(x) else x)\n    assert 'AFTER_INTERRUPT_OK' in out,repr(out)\nfinally:\n    try:t.close()\n    except:pass\nPY\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "shell.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app\npython3 - <<'PY'\nimport time\nfrom headless_terminal import HeadlessTerminal\n\nt = HeadlessTerminal()\ntry:\n    # Common terminal interface accepts typed command and returns observable output.\n    for name in ('send', 'write', 'type', 'send_keys'):\n        if hasattr(t, name):\n            getattr(t, name)('printf \"HEADLESS_OK\\\\n\"\\n')\n            break\n    else:\n        raise AssertionError('no key input method')\n    out = ''\n    for name in ('read', 'get_output', 'output', 'read_output'):\n        if hasattr(t, name):\n            value = getattr(t, name)\n            out += str(value() if callable(value) else value)\n    time.sleep(.2)\n    for name in ('read', 'get_output', 'output', 'read_output'):\n        if hasattr(t, name):\n            value = getattr(t, name)\n            out += str(value() if callable(value) else value)\n    assert 'HEADLESS_OK' in out, repr(out)\nfinally:\n    for name in ('close', 'terminate'):\n        if hasattr(t, name):\n            getattr(t, name)()\n            break\nPY\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "startup.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app\npython3 - <<'PY'\nimport os, tempfile, pathlib, subprocess, sys\nwith tempfile.TemporaryDirectory() as d:\n    home=pathlib.Path(d)\n    (home/'.bashrc').write_text('echo STARTUP_FILE_MARKER\\n')\n    env=os.environ.copy(); env['HOME']=d\n    code='''import time\\nfrom headless_terminal import HeadlessTerminal\\nt=HeadlessTerminal()\\ntime.sleep(.3)\\ns=''\\nfor n in (\"read\",\"get_output\",\"output\",\"read_output\"):\\n if hasattr(t,n):\\n  x=getattr(t,n); s+=str(x() if callable(x) else x)\\nprint(s)\\ntry:t.close()\\nexcept:pass\\nassert \"STARTUP_FILE_MARKER\" in s,repr(s)'''\n    subprocess.run([sys.executable,'-c',code],env=env,check=True,timeout=10)\nPY\n",
+      "passed_at_freeze": true
+    }
+  ],
+  "frozen_at": 2,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "interface.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.081968142,
+      "output": ""
+    },
+    {
+      "command": "interrupt.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 1.776994228,
+      "output": ""
+    },
+    {
+      "command": "shell.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 1.268112253,
+      "output": ""
+    },
+    {
+      "command": "startup.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 1.430676593,
+      "output": "STARTUP_FILE_MARKER\r\n\u001b[?2004hroot@e111deb8765d:/app# STARTUP_FILE_MARKER\r\n\u001b[?2004hroot@e111deb8765d:/app# STARTUP_FILE_MARKER\r\n\u001b[?2004hroot@e111deb8765d:/app# STARTUP_FILE_MARKER\r\n\u001b[?2004hroot@e111deb8765d:/app# \n"
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

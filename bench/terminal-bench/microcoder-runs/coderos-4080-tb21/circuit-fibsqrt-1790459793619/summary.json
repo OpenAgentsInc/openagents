@@ -1,0 +1,129 @@
+{
+  "task": "circuit-fibsqrt",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "tests_held"
+    },
+    "steps": 101,
+    "seconds": 2243.226342719,
+    "model_usd": 0.2123259,
+    "jev_usd": 0.025222596000000007,
+    "embedding_usd": 0.0,
+    "usd": 0.23754849600000003,
+    "known_usd": 0.23754849600000003,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Hit:1 http://deb.debian.org/debian bookworm InRelease\nHit:2 http://deb.debian.org/debian bookworm-updates InRelease\nHit:3 http://deb.debian.org/debian-security bookworm-security InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  libcurl4 libldap-2.5-0 libldap-common libnghttp2-14 libpsl5 librtmp1\n  libsasl2-2 libsasl2-modules libsasl2-modules-db libssh2-1 publicsuffix\nSuggested packages:\n  libsasl2-modules-gssapi-mit | libsasl2-modules-gssapi-heimdal\n  libsasl2-modules-ldap libsasl2-modules-otp libsasl2-modules-sql\nThe following NEW packages will be installed:\n  curl libcurl4 libldap-2.5-0 libldap-common libnghttp2-14 libpsl5 librtmp1\n  libsasl2-2 libsasl2-modules libsasl2-modules-db libssh2-1 publicsuffix\n0 upgraded, 12 newly installed, 0 to remove and 45 not upgraded.\nNeed to get 1561 kB of archives.\nAfter this operation, 3744 kB of additional disk space will be used.\nGet:1 http://deb.debian.org/debian bookworm/main amd64 libsasl2-modules-db amd64 2.1.28+dfsg-10 [20.3 kB]\nGet:2 http://deb.debian.org/debian bookworm/main amd64 libsasl2-2 amd64 2.1.28+dfsg-10 [59.7 kB]\nGet:3 http://deb.debian.org/debian bookworm/main amd64 libldap-2.5-0 amd64 2.5.13+dfsg-5 [183 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 libnghttp2-14 amd64 1.52.0-1+deb12u3 [72.4 kB]\nGet:5 http://deb.debian.org/debian bookworm/main amd64 libpsl5 amd64 0.21.2-1 [58.7 kB]\nGet:6\n[… 8358 characters left out …]\n    1 |            1 |            1 |     PASS\n   8 |                    1 |               1 |            1 |            1 |     PASS\n  12 |                    2 |               2 |            2 |            0 |     FAIL\n  41 |                    8 |               8 |            8 |            0 |     FAIL\n  42 |                    8 |               8 |            8 |            0 |     FAIL\n 107 |                   55 |              55 |           55 |            0 |     FAIL\n 220 |                  377 |             377 |          377 |            0 |     FAIL\n 209 |                  377 |             377 |          377 |            0 |     FAIL\n 366 |                 4181 |            4181 |         4181 |            0 |     FAIL\n 144 |                  144 |             144 |          144 |            0 |     FAIL\n1681 |            165580141 |       165580141 |    165580141 |            0 |     FAIL\n1764 |            267914296 |       267914296 |    267914296 |            0 |     FAIL\n11449 | 10284720757613717413913 |      2214125593 |   2214125593 |            0 |     FAIL\n48400 | 4244200115309993198876969489421897548446236915 |      3361931507 |   3361931507 |            0 |     FAIL\n43681 | 21327100234463183349497947550385773274930109 |      1510415293 |   1510415293 |            0 |     FAIL\n 143 |                   89 |              89 |           89 |            0 |     FAIL\n1680 |            102334155 |       102334155 |    102334155 |            0 |     FAIL\n1763 |            165580141 |       165580141 |    165580141 |            0 |     FAIL\n11448 | 6356306993006846248183 |      1617528055 |   1617528055 |            0 |     FAIL\n48399 | 2623059926317798754175087863660165740874359106 |       791601474 |    791601474 |            0 |     FAIL\n43680 | 13180872826374098837632191485015125807374171 |       537698139 |    537698139 |            0 |     FAIL\n 145 |                  144 |             144 |          144 |            0 |     FAIL\n1682 |            165580141 |       165580141 |    165580141 |            0 |     FAIL\n1765 |            267914296 |       267914296 |    267914296 |            0 |     FAIL\n11450 | 10284720757613717413913 |      2214125593 |   2214125593 |            0 |     FAIL\n48401 | 4244200115309993198876969489421897548446236915 |      3361931507 |   3361931507 |            0 |     FAIL\n43682 | 21327100234463183349497947550385773274930109 |      1510415293 |   1510415293 |            0 |     FAIL\n--------------------------------------------------------------------------------\n\nOverall: SOME TESTS FAILED\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_gates_file_exists\nPASSED ../tests/test_outputs.py::test_gates_file_size\nFAILED ../tests/test_outputs.py::test_sqrt_fib - assert False\n========================= 1 failed, 2 passed in 0.33s ==========================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-circuit-fibsqrt-1882193",
+  "image": "alexgshaw/circuit-fibsqrt:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "examples.sh",
+      "script": "#!/bin/bash\nset -e\n[ \"$(/app/sim 208)\" = 377 ]\n[ \"$(/app/sim 20000)\" = 1407432322 ]\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "fib_sqrt_values.sh",
+      "script": "#!/bin/bash\nset -e\npython3 - <<'PY'\nimport subprocess\nfor n in [0,1,2,3,4,8,15,16,24,25,35,36,63,64,99,100,255,256,999,1000,65535,65536,1000000,2147483647,4294967295]:\n    k=__import__('math').isqrt(n)\n    a,b=0,1\n    for _ in range(k): a,b=b,(a+b)&0xffffffff\n    got=int(subprocess.check_output(['/app/sim',str(n)]))\n    assert got==a,(n,k,a,got)\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "gate_count.sh",
+      "script": "#!/bin/bash\nset -e\n[ -f /app/gates.txt ]\n[ \"$(wc -l < /app/gates.txt)\" -lt 32000 ]\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "general_case.sh",
+      "script": "#!/bin/bash\nset -e\n[ \"$(/app/sim 5)\" = 1 ]\n",
+      "passed_at_freeze": null
+    },
+    {
+      "name": "arbitrary_domain.sh",
+      "script": "#!/bin/bash\nset -e\n[ \"$(/app/sim 6)\" = 1 ]\n",
+      "passed_at_freeze": null
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "examples.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.047438872,
+      "output": ""
+    },
+    {
+      "command": "fib_sqrt_values.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.159812161,
+      "output": ""
+    },
+    {
+      "command": "gate_count.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.039806793,
+      "output": ""
+    },
+    {
+      "command": "general_case.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.039956134,
+      "output": ""
+    },
+    {
+      "command": "arbitrary_domain.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.044058062,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

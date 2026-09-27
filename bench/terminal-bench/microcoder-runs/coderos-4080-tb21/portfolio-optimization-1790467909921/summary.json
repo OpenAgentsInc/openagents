@@ -1,0 +1,141 @@
+{
+  "task": "portfolio-optimization",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 16,
+    "seconds": 975.917299906,
+    "model_usd": 0.010528299999999999,
+    "jev_usd": 0.002594634,
+    "embedding_usd": 0.0,
+    "usd": 0.013122934,
+    "known_usd": 0.013122934,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]\nGet:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]\nGet:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]\nGet:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]\nGet:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [345 kB]\nFetched 9383 kB in 5s (1997 kB/s)\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  libcurl4 libnghttp2-14 libpsl5 librtmp1 libssh2-1 publicsuffix\nThe following NEW packages will be installed:\n  curl libcurl4 libnghttp2-14 libpsl5 librtmp1 libssh2-1 publicsuffix\n0 upgraded, 7 newly installed, 0 to remove and 59 not upgraded.\nNeed to get 1202 kB of archives.\nAfter this operation, 2543 kB of additional disk space will be used.\nGet:1 http://deb.debian.org/debian bookworm/main amd64 libnghttp2-14 amd64 1.52.0-1+deb12u3 [72.4 kB]\nGet:2 http://deb.debian.org/debian bookworm/main amd64 libpsl5 amd64 0.21.2-1 [58.7 kB]\nGet:3 http://deb.debian.org/debian bookworm/main amd64 librtmp1 amd64 2.4+20151223.gitfa8646d.1-2+b2 [60.8 kB]\nGet:4 http://deb.debian.org/debian-security bookworm-security/main amd64 libssh2-1 amd64 1.10.0-3+deb12u1 [176 kB]\nGet:5 http://deb.debian.org/debian bookworm/main amd64 libcurl4 amd64 7.88.1-10+\n[… 2557 characters left out …]\n\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading pygments (1.2MiB)\nDownloading setuptools (1.2MiB)\nDownloading numpy (15.9MiB)\n Downloading setuptools\n Downloading pygments\n Downloading numpy\nInstalled 8 packages in 11ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 6 items\n\n../tests/test_outputs.py ...F..                                          [100%]\n\n=================================== FAILURES ===================================\n____________________ test_performance_and_scalability[5000] ____________________\n\nn = 5000\n\n    @pytest.mark.parametrize(\"n\", [5000, 6000, 8000])\n    def test_performance_and_scalability(n):\n        \"\"\"Test performance and scalability requirements for large portfolios\"\"\"\n        sys.path.append(\"/app\")\n        from portfolio_optimized import portfolio_return_c, portfolio_risk_c\n    \n        weights, cov, returns = generate_test_data(n)\n    \n        # Test correctness first using protected baseline\n        risk_python = portfolio_risk_python(weights, cov)\n        return_python = portfolio_return_python(weights, returns)\n    \n        risk_c = portfolio_risk_c(weights, cov)\n        return_c = portfolio_return_c(weights, returns)\n    \n        assert abs(risk_python - risk_c) < 1e-10, f\"Risk mismatch at N={n}\"\n        assert abs(return_python - return_c) < 1e-10, f\"Return mismatch at N={n}\"\n    \n        # Test performance against protected baseline\n        python_time, _ = time_function(portfolio_risk_python, weights, cov)\n        c_time, _ = time_function(portfolio_risk_c, weights, cov)\n        speedup = python_time / c_time\n    \n        required_speedup = 1.2\n>       assert speedup >= required_speedup, (\n            f\"Performance requirement not met: {speedup:.2f}x < {required_speedup}x \"\n            f\"for N={n}\"\n        )\nE       AssertionError: Performance requirement not met: 1.16x < 1.2x for N=5000\nE       assert 1.1608859165749248 >= 1.2\n\n/tests/test_outputs.py:129: AssertionError\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_c_extension_exists\nPASSED ../tests/test_outputs.py::test_baseline_functionality\nPASSED ../tests/test_outputs.py::test_correctness_small\nPASSED ../tests/test_outputs.py::test_performance_and_scalability[6000]\nPASSED ../tests/test_outputs.py::test_performance_and_scalability[8000]\nFAILED ../tests/test_outputs.py::test_performance_and_scalability[5000] - Ass...\n========================= 1 failed, 5 passed in 43.53s =========================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-portfolio-optimization-3776726",
+  "image": "alexgshaw/portfolio-optimization:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "correctness.sh",
+      "script": "#!/bin/bash\nset -e\ncd /app\npython3 setup.py build_ext --inplace >/dev/null\npython3 - <<'PY'\nfrom portfolio_baseline import *\nfrom portfolio_optimized import *\nw,c,r=generate_test_data(100)\nassert abs(portfolio_risk_python(w,c)-portfolio_risk_c(w,c)) < 1e-10\nassert abs(portfolio_return_python(w,r)-portfolio_return_c(w,r)) < 1e-10\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "large.sh",
+      "script": "#!/bin/bash\nset -e\ncd /app\npython3 setup.py build_ext --inplace >/dev/null\npython3 - <<'PY'\nfrom portfolio_baseline import generate_test_data\nfrom portfolio_optimized import portfolio_risk_c, portfolio_return_c\nw,c,r=generate_test_data(8000)\nassert portfolio_risk_c(w,c)>0\nassert portfolio_return_c(w,r)>0\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "performance.sh",
+      "script": "#!/bin/bash\nset -e\ncd /app\npython3 setup.py build_ext --inplace >/dev/null\npython3 benchmark.py | tee /tmp/portfolio-benchmark.log\ngrep -q 'ALL TESTS PASSED' /tmp/portfolio-benchmark.log\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "edge_cases.sh",
+      "script": "#!/bin/bash\nset -e\ncd /app\npython3 setup.py build_ext --inplace >/dev/null\npython3 - <<'PY'\nimport numpy as np\nfrom portfolio_optimized import portfolio_risk_c, portfolio_return_c\nw=np.array([.2,.3,.5],dtype=np.float64)\nc=np.array([[1.,.1,.2],[.1,2.,.3],[.2,.3,3.]])\nr=np.array([.01,.02,.03])\nassert abs(portfolio_risk_c(w,c)-np.sqrt(w @ c @ w)) < 1e-10\nassert abs(portfolio_return_c(w,r)-w @ r) < 1e-10\n# Wrapper accepts array-like and strided views.\nassert abs(portfolio_return_c(w[::2],r[::2])-np.dot(w[::2],r[::2])) < 1e-10\ntry:\n    portfolio_risk_c(w, np.ones((2,2)))\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('dimension mismatch should raise ValueError')\nPY\n",
+      "passed_at_freeze": null
+    },
+    {
+      "name": "api_edges.sh",
+      "script": "#!/bin/bash\nset -e\ncd /app\npython3 setup.py build_ext --inplace >/dev/null\npython3 - <<'PY'\nimport numpy as np\nfrom portfolio_optimized import portfolio_risk_c, portfolio_return_c\nassert portfolio_risk_c([], np.empty((0,0))) == 0.0\nassert portfolio_return_c([], []) == 0.0\nw=[0.25,0.75]\nc=np.array([[1,0],[0,4]],dtype=np.float32)\nr=np.array([0.1,0.2],dtype=np.float32)\nassert abs(portfolio_risk_c(w,c)-np.sqrt(2.3125)) < 1e-10\nassert abs(portfolio_return_c(w,r)-0.175) < 1e-10\nfrom portfolio_optimized_c import portfolio_risk_c as rawrisk, portfolio_return_c as rawreturn\nfor fn,args in ((rawrisk,(np.ones(2),np.ones((3,3)))),(rawreturn,(np.ones(2),np.ones(3)))):\n try: fn(*args)\n except ValueError: pass\n else: raise AssertionError('dimension mismatch must raise ValueError')\nPY\n/tmp/acceptance/correctness.sh\n/tmp/acceptance/large.sh\n/tmp/acceptance/performance.sh\n/tmp/acceptance/edge_cases.sh\n\n",
+      "passed_at_freeze": null
+    },
+    {
+      "name": "task_smoke.sh",
+      "script": "#!/bin/bash\nset -e\ncd /app\npython3 setup.py build_ext --inplace >/dev/null\npython3 - <<'PY'\nfrom portfolio_baseline import portfolio_risk_python, portfolio_return_python\nfrom portfolio_optimized import portfolio_risk_c, portfolio_return_c\nw=[.2,.3,.5]; cov=[[.2,.01,.03],[.01,.4,.02],[.03,.02,.6]]; r=[.1,.2,.3]\nassert abs(portfolio_risk_c(w,cov)-portfolio_risk_python(w,cov)) < 1e-10\nassert abs(portfolio_return_c(w,r)-portfolio_return_python(w,r)) < 1e-10\nPY\n",
+      "passed_at_freeze": null
+    }
+  ],
+  "frozen_at": 2,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "correctness.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.321834838,
+      "output": ""
+    },
+    {
+      "command": "large.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 6.093979523,
+      "output": ""
+    },
+    {
+      "command": "performance.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 34.495091423,
+      "output": "Portfolio Optimization Benchmark\n========================================\n\nTesting portfolio size: 5000 assets\n------------------------------\nPython baseline time: 946.5 ms\nRisk - Python: 0.022532625110, C: 0.022532625110, diff: 3.47e-18\nReturn - Python: 0.100448895074, C: 0.100448895074, diff: 5.55e-17\nCorrectness test PASSED\nC optimized time: 630.1 ms\nSpeedup: 1.5x\nPerformance requirement met! (1.5x >= 1.2x)\n\nTesting portfolio size: 8000 assets\n------------------------------\nPython baseline time: 3580.4 ms\nRisk - Python: 0.022465880336, C: 0.022465880336, diff: 6.94e-18\nReturn - Python: 0.099218237386, C: 0.099218237386, diff: 3.33e-16\nCorrectness test PASSED\nC optimized time: 1697.2 ms\nSpeedup: 2.1x\nPerformance requirement met! (2.1x >= 1.2x)\n\n========================================\nBENCHMARK SUMMARY\n========================================\nALL TESTS PASSED!\n"
+    },
+    {
+      "command": "edge_cases.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.320207167,
+      "output": ""
+    },
+    {
+      "command": "api_edges.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 45.849148553,
+      "output": "Portfolio Optimization Benchmark\n========================================\n\nTesting portfolio size: 5000 assets\n------------------------------\nPython baseline time: 1517.8 ms\nRisk - Python: 0.022532625110, C: 0.022532625110, diff: 3.47e-18\nReturn - Python: 0.100448895074, C: 0.100448895074, diff: 5.55e-17\nCorrectness test PASSED\nC optimized time: 680.3 ms\nSpeedup: 2.2x\nPerformance requirement met! (2.2x >= 1.2x)\n\nTesting portfolio size: 8000 assets\n------------------------------\nPython baseline time: 3567.7 ms\nRisk - Python: 0.022465880336, C: 0.022465880336, diff: 6.94e-18\nReturn - Python: 0.099218237386, C: 0.099218237386, diff: 3.33e-16\nCorrectness test PASSED\nC optimized time: 1755.5 ms\nSpeedup: 2.0x\nPerformance requirement met! (2.0x >= 1.2x)\n\n========================================\nBENCHMARK SUMMARY\n========================================\nALL TESTS PASSED!\n"
+    },
+    {
+      "command": "task_smoke.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.30979862,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

@@ -20,7 +20,9 @@ enforces this. From the round directory it takes the outcome lines, the
 `<round>.meta`, `queue-<round>.txt`, `burned.txt`, and `notes.txt`. From each
 log it takes only the record path on a `Record:` line among the last 8 lines.
 If there's no such line, it matches the record directory by name and start
-time. From each `summary.json` it takes only reward, why the reward is
+time. Two runs started in the same millisecond write one log; every other
+record directory for that task that started within 10 s of the log is then
+its own run, graded from its own `summary.json`. From each `summary.json` it takes only reward, why the reward is
 unknown, steps, seconds, cost fields, how the run ended, cost basis, provider,
 model, kb, and the IDs and digests of the entries used. For a record whose
 cost is partly unknown and that has no `usd_upper` (made before Microcoder

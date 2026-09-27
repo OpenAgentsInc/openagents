@@ -425,6 +425,45 @@ class Tb21Tests(unittest.TestCase):
         self.assertEqual(len(self.rep["not_run"]), 61)
 
 
+class SharedLogTests(unittest.TestCase):
+    """Two confirmation runs started in the same millisecond share one log.
+    Each is its own run, read from its own record, and counted once."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        f = Fixture(Path(self.tmp.name))
+        s = summary("build-pmars", 1.0, 8, 86.0, 0.0065, basis="list_price")
+        f.run("build-pmars", "off", s, reward_line("build-pmars", 1, 8, "01:26", 0.0065, billed=False))
+        # The pair: one log, two records; the log's tail names only one.
+        f.ms += 1000
+        log = f.rdir / f"build-pmars.off.{f.ms}.log"
+        recs = []
+        for offset, (reward, steps, secs, usd) in ((10, (1.0, 34, 324.0, 0.0507)), (11, (0.0, 3, 28.0, 0.0017))):
+            rec = f.runs / f"build-pmars-{f.ms + offset}"
+            rec.mkdir()
+            (rec / "summary.json").write_text(json.dumps(
+                summary("build-pmars", reward, steps, secs, usd, basis="list_price")))
+            recs.append(rec)
+        log.write_text(f"Record: {recs[0]}\n")
+        # The failing run's line lost its result; the passing run's line has it.
+        f.lines.append(f"2026-09-26T13:{len(f.lines):02d}:00-05:00 build-pmars off rc=1 ")
+        f.lines.append(f"2026-09-26T13:{len(f.lines):02d}:00-05:00 build-pmars off rc=0 "
+                       + reward_line("build-pmars", 1, 34, "05:24", 0.0507, billed=False))
+        (f.rdir / "outcomes.txt").write_text("\n".join(f.lines) + "\n")
+        self.rep = report.build_tb21(study.collect(str(f.study), "r9", str(f.runs)))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_each_record_is_one_run(self):
+        runs = [r for r in self.rep["runs"] if r["task"] == "build-pmars"]
+        self.assertEqual(sorted((r["kind"], r["steps"]) for r in runs), [("fail", 3), ("pass", 8), ("pass", 34)])
+        self.assertEqual(len({r["record"] for r in runs}), 3)
+        self.assertEqual(self.rep["totals"]["faults"], 0)
+        v = {x["task"]: x for x in self.rep["verdicts"]}
+        self.assertEqual(v["build-pmars"]["verdict"], "Confirmed out-of-sample win")
+
+
 class ConfirmTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

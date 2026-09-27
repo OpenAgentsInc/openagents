@@ -1,0 +1,93 @@
+{
+  "task": "sam-cell-seg",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 18,
+    "seconds": 440.679124946,
+    "model_usd": 0.0170219,
+    "jev_usd": 0.004788378,
+    "embedding_usd": 0.0,
+    "usd": 0.021810278,
+    "known_usd": 0.021810278,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Hit:1 http://deb.debian.org/debian trixie InRelease\nHit:2 http://deb.debian.org/debian trixie-updates InRelease\nHit:3 http://deb.debian.org/debian-security trixie-security InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\ngit is already the newest version (1:2.47.3-0+deb13u1).\nlibgl1 is already the newest version (1.7.0-1+b2).\nThe following additional packages will be installed:\n  libcurl3t64-gnutls libcurl4-openssl-dev libcurl4t64\nThe following packages will be upgraded:\n  curl libcurl3t64-gnutls libcurl4-openssl-dev libcurl4t64\n4 upgraded, 0 newly installed, 0 to remove and 166 not upgraded.\nNeed to get 1557 kB of archives.\nAfter this operation, 10.2 kB of additional disk space will be used.\nGet:1 http://deb.debian.org/debian trixie/main amd64 libcurl4-openssl-dev amd64 8.14.1-2+deb13u5 [511 kB]\nGet:2 http://deb.debian.org/debian trixie/main amd64 curl amd64 8.14.1-2+deb13u5 [270 kB]\nGet:3 http://deb.debian.org/debian trixie/main amd64 libcurl4t64 amd64 8.14.1-2+deb13u5 [391 kB]\nGet:4 http://deb.debian.org/debian trixie/main amd64 libcurl3t64-gnutls amd64 8.14.1-2+deb13u5 [384 kB]\ndebconf: unable to initialize frontend: Dialog\ndebconf: (TERM is not set, so the dialog frontend is not usable.)\ndebconf: falling back to frontend: Readline\ndebconf: unable to initialize frontend: Readline\ndebconf: (This frontend requires a controlling tty.)\ndebconf: falling back to frontend: Teletype\ndebconf: unable to initialize \n[… 5415 characters left out …]\nny_vit_sam.tiny_vit_11m_224. This is because the name being registered conflicts with an existing name. Please check if this is not expected.\n  return register_model(fn_wrapper)\n/root/.cache/uv/archive-v0/ciyauBB5HYiUVBaLO9Avs/lib/python3.11/site-packages/mobile_sam/modeling/tiny_vit_sam.py:656: UserWarning: Overwriting tiny_vit_21m_224 in registry with mobile_sam.modeling.tiny_vit_sam.tiny_vit_21m_224. This is because the name being registered conflicts with an existing name. Please check if this is not expected.\n  return register_model(fn_wrapper)\n/root/.cache/uv/archive-v0/ciyauBB5HYiUVBaLO9Avs/lib/python3.11/site-packages/mobile_sam/modeling/tiny_vit_sam.py:656: UserWarning: Overwriting tiny_vit_21m_384 in registry with mobile_sam.modeling.tiny_vit_sam.tiny_vit_21m_384. This is because the name being registered conflicts with an existing name. Please check if this is not expected.\n  return register_model(fn_wrapper)\n/root/.cache/uv/archive-v0/ciyauBB5HYiUVBaLO9Avs/lib/python3.11/site-packages/mobile_sam/modeling/tiny_vit_sam.py:656: UserWarning: Overwriting tiny_vit_21m_512 in registry with mobile_sam.modeling.tiny_vit_sam.tiny_vit_21m_512. This is because the name being registered conflicts with an existing name. Please check if this is not expected.\n  return register_model(fn_wrapper)\n/root/.cache/uv/archive-v0/ciyauBB5HYiUVBaLO9Avs/lib/python3.11/site-packages/mobile_sam/build_sam.py:91: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.\n  state_dict = torch.load(f)\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_python_file_exists\nPASSED ../tests/test_outputs.py::test_run_script\nPASSED ../tests/test_outputs.py::test_csv_output_exists\nPASSED ../tests/test_outputs.py::test_csv_shape_cols\nPASSED ../tests/test_outputs.py::test_masks_are_no_longer_rect\nPASSED ../tests/test_outputs.py::test_mask_alignment\nPASSED ../tests/test_outputs.py::test_no_polyline_overlaps\nPASSED ../tests/test_outputs.py::test_single_contiguous_mask_per_cell\nPASSED ../tests/test_outputs.py::test_coords_are_flat_lists\n============================== 9 passed in 13.47s ==============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-sam-cell-seg-110361",
+  "image": "alexgshaw/sam-cell-seg:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "output_contract.sh",
+      "script": "#!/bin/bash\nset -e\n[ -f /app/convert_masks.py ]\npython3 - <<'PY'\nimport ast\np='/app/convert_masks.py'\ns=open(p).read()\nfor c in ['xmin','xmax','ymin','ymax','coords_x','coords_y']:\n assert c in s\nassert 'torch.device' in s or 'cpu' in s.lower()\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "script_exists.sh",
+      "script": "#!/bin/bash\nset -e\n[ -f /app/convert_masks.py ]\npython3 /app/convert_masks.py --help | grep -q -- '--weights_path'\npython3 /app/convert_masks.py --help | grep -q -- '--output_path'\npython3 /app/convert_masks.py --help | grep -q -- '--rgb_path'\npython3 /app/convert_masks.py --help | grep -q -- '--csv_path'\ngrep -qi 'mobile_sam\\|MobileSAM' /app/convert_masks.py\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "output_contract.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.078944857,
+      "output": ""
+    },
+    {
+      "command": "script_exists.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.223364699,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

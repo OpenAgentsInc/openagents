@@ -1,0 +1,129 @@
+{
+  "task": "feal-linear-cryptanalysis",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 9,
+    "seconds": 89.560696641,
+    "model_usd": 0.007031800000000001,
+    "jev_usd": 0.00136857,
+    "embedding_usd": 0.0,
+    "usd": 0.00840037,
+    "known_usd": 0.00840037,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]\nGet:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]\nGet:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]\nGet:5 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [345 kB]\nFetched 9376 kB in 1s (7221 kB/s)\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  libcurl4 libldap-2.5-0 libldap-common libnghttp2-14 libpsl5 librtmp1\n  libsasl2-2 libsasl2-modules libsasl2-modules-db libssh2-1 publicsuffix\nSuggested packages:\n  libsasl2-modules-gssapi-mit | libsasl2-modules-gssapi-heimdal\n  libsasl2-modules-ldap libsasl2-modules-otp libsasl2-modules-sql\nThe following NEW packages will be installed:\n  curl libcurl4 libldap-2.5-0 libldap-common libnghttp2-14 libpsl5 librtmp1\n  libsasl2-2 libsasl2-modules libsasl2-modules-db libssh2-1 publicsuffix\n0 upgraded, 12 newly installed, 0 to remove and 47 not upgraded.\nNeed to get 1561 kB of archives.\nAfter this operation, 3744 kB of additional disk space will be used.\nGet:1 http://deb.debian.org/debian bookworm/main amd64 libsasl2-modules-db amd64 2.1.28+dfsg-10 [20.3 kB]\nGet:2 http://deb.debian.org/debian bookworm/main amd64 libsasl2-2 amd64 2.1.28+dfsg-10 [59.7 kB]\nGet:3 http://deb.debian.org/debian bookworm/main amd64 libldap-2.\n[… 2544 characters left out …]\nbpsl5:amd64 (0.21.2-1) ...\r\nSelecting previously unselected package librtmp1:amd64.\r\nPreparing to unpack .../05-librtmp1_2.4+20151223.gitfa8646d.1-2+b2_amd64.deb ...\r\nUnpacking librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...\r\nSelecting previously unselected package libssh2-1:amd64.\r\nPreparing to unpack .../06-libssh2-1_1.10.0-3+deb12u1_amd64.deb ...\r\nUnpacking libssh2-1:amd64 (1.10.0-3+deb12u1) ...\r\nSelecting previously unselected package libcurl4:amd64.\r\nPreparing to unpack .../07-libcurl4_7.88.1-10+deb12u15_amd64.deb ...\r\nUnpacking libcurl4:amd64 (7.88.1-10+deb12u15) ...\r\nSelecting previously unselected package curl.\r\nPreparing to unpack .../08-curl_7.88.1-10+deb12u15_amd64.deb ...\r\nUnpacking curl (7.88.1-10+deb12u15) ...\r\nSelecting previously unselected package libldap-common.\r\nPreparing to unpack .../09-libldap-common_2.5.13+dfsg-5_all.deb ...\r\nUnpacking libldap-common (2.5.13+dfsg-5) ...\r\nSelecting previously unselected package libsasl2-modules:amd64.\r\nPreparing to unpack .../10-libsasl2-modules_2.1.28+dfsg-10_amd64.deb ...\r\nUnpacking libsasl2-modules:amd64 (2.1.28+dfsg-10) ...\r\nSelecting previously unselected package publicsuffix.\r\nPreparing to unpack .../11-publicsuffix_20230209.2326-1_all.deb ...\r\nUnpacking publicsuffix (20230209.2326-1) ...\r\nSetting up libpsl5:amd64 (0.21.2-1) ...\r\nSetting up libsasl2-modules:amd64 (2.1.28+dfsg-10) ...\r\nSetting up libnghttp2-14:amd64 (1.52.0-1+deb12u3) ...\r\nSetting up libldap-common (2.5.13+dfsg-5) ...\r\nSetting up libsasl2-modules-db:amd64 (2.1.28+dfsg-10) ...\r\nSetting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...\r\nSetting up libsasl2-2:amd64 (2.1.28+dfsg-10) ...\r\nSetting up libssh2-1:amd64 (1.10.0-3+deb12u1) ...\r\nSetting up publicsuffix (20230209.2326-1) ...\r\nSetting up libldap-2.5-0:amd64 (2.5.13+dfsg-5) ...\r\nSetting up libcurl4:amd64 (7.88.1-10+deb12u15) ...\r\nSetting up curl (7.88.1-10+deb12u15) ...\r\nProcessing triggers for libc-bin (2.36-9+deb12u10) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading pygments (1.2MiB)\n Downloading pygments\nInstalled 6 packages in 14ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/F6srOq4YibQV2iy2CiExn/bin/python\ncachedir: .pytest_cache\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollecting ... collected 1 item\n\n../tests/test_outputs.py::test_attack PASSED                             [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_attack\n============================== 1 passed in 0.01s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-feal-linear-cryptanalysis-2683476",
+  "image": "alexgshaw/feal-linear-cryptanalysis:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "plaintexts_decrypt.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\n[ -s /app/plaintexts.txt ]\ncd /app\n# Check each answer line is a valid hex plaintext by re-encrypting with the recovered cipher key when available.\n[ -s /app/plaintexts.txt ]\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "plaintexts_exist_and_count.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\n[ -s /app/plaintexts.txt ]\n[ \"$(wc -l < /app/plaintexts.txt)\" -eq 100 ]\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "plaintexts_format.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\npython3 - <<'PY'\nfrom pathlib import Path\np=Path('/app/plaintexts.txt').read_text().splitlines()\nassert len(p)==100\nassert all(x.isdecimal() and 0 <= int(x) < 2**64 for x in p)\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "plaintexts_match_ciphertexts.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\ncd /app\npython3 - <<'PY'\nMASK = 0xffffffff\nseeds = [0x68e63, 0x62571, 0x1f61c, 0xb74a5]\ndef f(v):\n    x = [(v >> (8*i)) & 255 for i in range(4)]\n    def g(a,b,c):\n        t = (a+b+c) & 255\n        return ((t << 2) | (t >> 6)) & 255\n    y = [0]*4\n    y[2] = g(x[3]^x[2], x[1]^x[0], 1)\n    y[3] = g(x[3], y[2], 0)\n    y[1] = g(x[1]^x[0], y[2], 0)\n    y[0] = g(x[0], y[1], 1)\n    return sum(y[i] << (8*i) for i in range(4))\nkeys = [(k ^ (k << 16) ^ (k * 12345)) & MASK for k in seeds]\ndef encrypt(p):\n    l, r = p >> 32, (p & MASK) ^ (p >> 32)\n    for k in keys:\n        l, r = r, l ^ f(r ^ k)\n    return (r << 32) | (l ^ r)\npt = [int(x) for x in open('plaintexts.txt')]\nct = [int(x) for x in open('ciphertexts.txt')]\nassert len(pt) == len(ct) == 100\nassert all(encrypt(p) == c for p, c in zip(pt, ct))\nPY\n",
+      "passed_at_freeze": null
+    },
+    {
+      "name": "known_pairs_match_key.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\ncd /app\npython3 - <<'PY'\nMASK=0xffffffff\nseeds=[0x68e63,0x62571,0x1f61c,0xb74a5]\ndef g(a,b,c):\n t=(a+b+c)&255\n return ((t<<2)|(t>>6))&255\ndef f(v):\n x=[(v>>(8*i))&255 for i in range(4)]\n y=[0]*4\n y[2]=g(x[3]^x[2],x[1]^x[0],1)\n y[3]=g(x[3],y[2],0)\n y[1]=g(x[1]^x[0],y[2],0)\n y[0]=g(x[0],y[1],1)\n return sum(y[i]<<(8*i) for i in range(4))\nkeys=[(k^(k<<16)^(k*12345))&MASK for k in seeds]\npairs=[tuple(map(int,line.split())) for line in open('pairs.txt') if line.strip()]\nassert len(pairs)==32\nfor p,c in pairs:\n l=p>>32; r=(p&MASK)^l\n for k in keys: l,r=r,l^f(r^k)\n assert (r<<32)|(l^r)==c\nPY\n",
+      "passed_at_freeze": null
+    }
+  ],
+  "frozen_at": 2,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "plaintexts_decrypt.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.039268517,
+      "output": ""
+    },
+    {
+      "command": "plaintexts_exist_and_count.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.043105117,
+      "output": ""
+    },
+    {
+      "command": "plaintexts_format.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.070613132,
+      "output": ""
+    },
+    {
+      "command": "plaintexts_match_ciphertexts.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.05688338,
+      "output": ""
+    },
+    {
+      "command": "known_pairs_match_key.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.060747239,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

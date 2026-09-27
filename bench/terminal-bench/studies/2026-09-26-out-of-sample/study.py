@@ -183,6 +183,20 @@ def collect(study_dir: str, round_name: str, runs_dir: str | None = None) -> dic
                 log["record_matched_by"] = "start time"
         else:
             log["record_matched_by"] = "log tail"
+    # Two runs started in the same millisecond share one log name, so one
+    # log stands for both (the confirmation driver starts runs in pairs).
+    # Every record directory for the same task that started within ten
+    # seconds after such a log, and that no log names, is its own run.
+    claimed = {Path(l["record"]).name for l in logs if l["record"]}
+    extra = []
+    for log in logs:
+        for name in sorted(record_dirs):
+            task, ms = name.rsplit("-", 1)
+            if task == log["task"] and name not in claimed and 0 <= int(ms) - log["ms"] <= 10_000:
+                claimed.add(name)
+                extra.append({**{k: log[k] for k in ("name", "task", "arm", "ms")},
+                              "record": str(runs / name), "record_matched_by": "start time (shared log)"})
+    logs += extra
     summaries = {}
     for log in logs:
         rec = log.get("record")
@@ -380,6 +394,9 @@ def classify(run: dict) -> dict:
     if "needs several services" in rest:
         run.update(kind="not_supported", ending="Compose task refused by this build")
         return run
+    if "reward" not in o and "reward" in s:
+        # A shared log lost this run's result line; its own record has it.
+        o = {**o, "reward": s["reward"]}
     if "reward" not in o:
         if "Interrupted" in rest:
             run.update(kind="interrupted", ending="Interrupted")
@@ -541,29 +558,40 @@ FAULT_KINDS = ("provider_fault", "grade_unknown", "not_supported", "crashed", "i
 
 def assemble(collected: dict) -> list[dict]:
     """One entry per run: its log, outcome line, and summary, classified."""
-    logs = sorted(collected["logs"], key=lambda l: l["ms"])
+    logs = sorted(collected["logs"], key=lambda l: (l["ms"], l.get("record") or ""))
     summaries = collected["summaries"]
     runs = [{"task": l["task"], "arm": l["arm"], "ms": l["ms"], "log": l["name"],
              "record": l.get("record"), "summary": summaries.get(l.get("record") or ""),
              "outcome": None} for l in logs]
-    by_log = {r["log"]: r for r in runs}
+    shared = {name for name in (r["log"] for r in runs) if sum(x["log"] == name for x in runs) > 1}
+    by_log = {r["log"]: r for r in runs if r["log"] not in shared}
+
+    def matches(r, o):
+        s = r["summary"]
+        return bool(s) and s.get("steps") == o.get("steps") and (
+            o.get("seconds") is None or s.get("seconds") is None or abs(s["seconds"] - o["seconds"]) < 2)
+
+    # Lines whose numbers match a record claim it first, so that a line
+    # from a shared log (which may carry no result) can't take another's.
+    parsed = [o for o in (parse_outcome(line) for line in collected["outcomes"]) if o is not None]
+    first = [o for o in parsed if "reward" in o and not (o["log"] and o["log"] in by_log)]
+    placed = set()
+    for o in first:
+        for r in runs:
+            if r["task"] == o["task"] and r["arm"] == o["arm"] and r["outcome"] is None and matches(r, o):
+                r["outcome"] = o
+                placed.add(id(o))
+                break
     orphans = []
-    for line in collected["outcomes"]:
-        o = parse_outcome(line)
-        if o is None:
+    for o in parsed:
+        if id(o) in placed:
             continue
         target = by_log.get(o["log"]) if o["log"] else None
         if target is None or target["outcome"] is not None:
             cands = [r for r in runs if r["task"] == o["task"] and r["arm"] == o["arm"] and r["outcome"] is None]
             target = None
             if "reward" in o:
-                for r in cands:
-                    s = r["summary"]
-                    if s and s.get("steps") == o.get("steps") and (
-                            o.get("seconds") is None or s.get("seconds") is None
-                            or abs(s["seconds"] - o["seconds"]) < 2):
-                        target = r
-                        break
+                target = next((r for r in cands if matches(r, o)), None)
             if target is None:
                 ts = _ts(o["ts"])
                 early = [r for r in cands if ts is None or r["ms"] / 1000 <= ts + 1]

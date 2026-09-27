@@ -1,0 +1,153 @@
+{
+  "task": "hf-model-inference",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 9,
+    "seconds": 372.987288186,
+    "model_usd": 0.0070031,
+    "jev_usd": 0.0018336780000000005,
+    "embedding_usd": 0.0,
+    "usd": 0.008836778,
+    "known_usd": 0.008836778,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Collecting pytest==8.4.1\n  Downloading pytest-8.4.1-py3-none-any.whl.metadata (7.7 kB)\nCollecting psutil==7.0.0\n  Downloading psutil-7.0.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (22 kB)\nCollecting requests==2.32.4\n  Downloading requests-2.32.4-py3-none-any.whl.metadata (4.9 kB)\nCollecting pytest-json-ctrf==0.3.5\n  Downloading pytest_json_ctrf-0.3.5-py3-none-any.whl.metadata (3.3 kB)\nCollecting iniconfig>=1 (from pytest==8.4.1)\n  Downloading iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)\nRequirement already satisfied: packaging>=20 in /usr/local/lib/python3.13/site-packages (from pytest==8.4.1) (26.2)\nCollecting pluggy<2,>=1.5 (from pytest==8.4.1)\n  Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)\nCollecting pygments>=2.7.2 (from pytest==8.4.1)\n  Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)\nRequirement already satisfied: charset_normalizer<4,>=2 in /usr/local/lib/python3.13/site-packages (from requests==2.32.4) (3.4.7)\nRequirement already satisfied: idna<4,>=2.5 in /usr/local/lib/python3.13/site-packages (from requests==2.32.4) (3.13)\nRequirement already satisfied: urllib3<3,>=1.21.1 in /usr/local/lib/python3.13/site-packages (from requests==2.32.4) (2.6.3)\nRequirement already satisfied: certifi>=2017.4.17 in /usr/local/lib/python3.13/site-packages (from requests==2.32.4) (2026.4.22)\nDownloading pytest-8.4.1-py3-none-any.whl (365 kB)\nDownloading psutil-7.0.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (277 kB)\nDownloading requests-2.32.4-py3-none-any.whl (64 kB)\nDownloading pytest_json_ctrf-0.3.5-py3-none-any.whl (6.8 kB)\nDownloading pluggy-1.6.0-py3-none-any.whl (20 kB)\nDownloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)\nDownloading pygments-2.21.0-py3-none-any.whl (1.3 MB)\n   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 8.4 MB/s  0:00:00\nInstalling collected packages: requests, pygments, psutil, pluggy, iniconfig, pytest, pytest-json-ctrf\n  Attempting uninstall: requests\n    Found existing installation: requests 2.33.1\n    Uninstalling requests-2.33.1:\n      Successfully uninstalled requests-2.33.1\n\nSuccessfully installed iniconfig-2.3.0 pluggy-1.6.0 psutil-7.0.0 pygments-2.21.0 pytest-8.4.1 pytest-json-ctrf-0.3.5 requests-2.32.4\nWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.\n\n[notice] A new release of pip is available: 25.3 -> 26.2.1\n[notice] To update, run: pip install --upgrade pip\n============================= test session starts ==============================\nplatform linux -- Python 3.13.12, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 4 items\n\n../tests/test_outputs.py ....                                            [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_model_downloaded\nPASSED ../tests/test_outputs.py::test_flask_api_running\nPASSED ../tests/test_outputs.py::test_sentiment_endpoint\nPASSED ../tests/test_outputs.py::test_api_error_handling\n============================== 4 passed in 2.60s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-hf-model-inference-2834423",
+  "image": "alexgshaw/hf-model-inference:20260430",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "api_errors.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\npython3 - <<'PY'\nimport json, urllib.error, urllib.request\nfor body in ({}, {'text':123}):\n req=urllib.request.Request('http://127.0.0.1:5000/sentiment', data=json.dumps(body).encode(), headers={'Content-Type':'application/json'}, method='POST')\n try: urllib.request.urlopen(req, timeout=10)\n except urllib.error.HTTPError as e:\n  assert e.code==400\n  x=json.loads(e.read()); assert isinstance(x.get('error'), str) and x['error']\n else: raise AssertionError('expected 400')\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "api_negative.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\npython3 - <<'PY'\nimport json, urllib.error, urllib.request\nreq=urllib.request.Request('http://127.0.0.1:5000/sentiment', data=json.dumps({'text':'This is terrible and I hate it'}).encode(), headers={'Content-Type':'application/json'}, method='POST')\nwith urllib.request.urlopen(req, timeout=20) as r:\n x=json.load(r); assert x['sentiment']=='negative'; assert x['confidence']['negative'] > x['confidence']['positive']\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "api_service.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\npython3 - <<'PY'\nimport json, urllib.request\nreq=urllib.request.Request('http://127.0.0.1:5000/sentiment', data=json.dumps({'text':'I love this wonderful product'}).encode(), headers={'Content-Type':'application/json'}, method='POST')\nwith urllib.request.urlopen(req, timeout=20) as r:\n assert r.status==200\n x=json.load(r)\n assert x['sentiment']=='positive'\n assert set(x['confidence'])=={'positive','negative'}\n assert all(isinstance(x['confidence'][k], (int,float)) and 0 <= x['confidence'][k] <= 1 for k in x['confidence'])\n assert x['confidence']['positive'] > x['confidence']['negative']\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "model_downloaded.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\ntest -d /app/model_cache/sentiment_model\nfind /app/model_cache/sentiment_model -maxdepth 1 -type f | grep -q .\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "service_bound.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\nss -ltn | grep -Eq '0\\.0\\.0\\.0:5000|\\*:5000'\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "model_identity.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\npython3 - <<'PY'\nimport json\np='/app/model_cache/sentiment_model/config.json'\nc=json.load(open(p))\nassert c.get('model_type') == 'distilbert'\nassert c.get('num_labels') == 2\nassert c.get('id2label') == {'0':'NEGATIVE','1':'POSITIVE'} or c.get('id2label') == {0:'NEGATIVE',1:'POSITIVE'}\nassert __import__('os').path.isfile('/app/model_cache/sentiment_model/model.safetensors')\nPY\n",
+      "passed_at_freeze": null
+    },
+    {
+      "name": "service_background.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\ntest -s /app/service.pid\npid=$(cat /app/service.pid)\nkill -0 \"$pid\"\nss -ltn | grep -Eq '0\\.0\\.0\\.0:5000|\\*:5000'\n",
+      "passed_at_freeze": null
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "api_errors.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.111643592,
+      "output": ""
+    },
+    {
+      "command": "api_negative.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.100677407,
+      "output": ""
+    },
+    {
+      "command": "api_service.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.097691161,
+      "output": ""
+    },
+    {
+      "command": "model_downloaded.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.040105394,
+      "output": ""
+    },
+    {
+      "command": "service_bound.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.058371715,
+      "output": ""
+    },
+    {
+      "command": "model_identity.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.056816998,
+      "output": ""
+    },
+    {
+      "command": "service_background.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.061701446,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

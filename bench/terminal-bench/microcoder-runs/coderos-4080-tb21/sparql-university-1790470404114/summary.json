@@ -1,0 +1,105 @@
+{
+  "task": "sparql-university",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 11,
+    "seconds": 85.179569303,
+    "model_usd": 0.0075785,
+    "jev_usd": 0.0019186860000000004,
+    "embedding_usd": 0.0,
+    "usd": 0.009497186000000001,
+    "known_usd": 0.009497186000000001,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Get:1 http://archive.ubuntu.com/ubuntu noble InRelease [256 kB]\nGet:2 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]\nGet:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]\nGet:4 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [1299 kB]\nGet:5 http://archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]\nGet:6 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages [19.3 MB]\nGet:7 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1905 kB]\nGet:8 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1547 kB]\nGet:9 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [50.0 kB]\nGet:10 http://archive.ubuntu.com/ubuntu noble/multiverse amd64 Packages [331 kB]\nGet:11 http://archive.ubuntu.com/ubuntu noble/restricted amd64 Packages [117 kB]\nGet:12 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages [1808 kB]\nGet:13 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1633 kB]\nGet:14 http://archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [2048 kB]\nGet:15 http://archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Packages [56.2 kB]\nGet:16 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [2160 kB]\nGet:17 http://archive.ubuntu.com/ubuntu noble-backports/universe amd64 Packages [36.0 kB]\nGet:18 http://archive.ubuntu.com/ubuntu noble-backports/multiverse amd64 Packages [671 B]\nGet:19 http\n[… 25146 characters left out …]\n_sparql_runs_without_error\n  /root/.cache/uv/archive-v0/AJy5V8Ftiw7kPtD3ybiVu/lib/python3.13/site-packages/rdflib/plugins/sparql/parser.py:576: PyparsingDeprecationWarning: 'setParseAction' deprecated - use 'set_parse_action'\n    BlankNodePropertyList.setParseAction(expandBNodeTriples)\n\ntest_outputs.py::test_sparql_runs_without_error\n  /root/.cache/uv/archive-v0/AJy5V8Ftiw7kPtD3ybiVu/lib/python3.13/site-packages/rdflib/plugins/sparql/parser.py:582: PyparsingDeprecationWarning: 'setParseAction' deprecated - use 'set_parse_action'\n    BlankNodePropertyListPath.setParseAction(expandBNodeTriples)\n\ntest_outputs.py::test_sparql_runs_without_error\n  /root/.cache/uv/archive-v0/AJy5V8Ftiw7kPtD3ybiVu/lib/python3.13/site-packages/rdflib/plugins/sparql/parser.py:592: PyparsingDeprecationWarning: 'setParseAction' deprecated - use 'set_parse_action'\n    TriplesSameSubject.setParseAction(expandTriples)\n\ntest_outputs.py::test_sparql_runs_without_error\n  /root/.cache/uv/archive-v0/AJy5V8Ftiw7kPtD3ybiVu/lib/python3.13/site-packages/rdflib/plugins/sparql/parser.py:632: PyparsingDeprecationWarning: 'setParseAction' deprecated - use 'set_parse_action'\n    TriplesSameSubjectPath.setParseAction(expandTriples)\n\ntest_outputs.py::test_sparql_runs_without_error\n  /root/.cache/uv/archive-v0/AJy5V8Ftiw7kPtD3ybiVu/lib/python3.13/site-packages/rdflib/plugins/sparql/parser.py:657: PyparsingDeprecationWarning: 'delimitedList' deprecated - use 'DelimitedList'\n    ExpressionList = NIL | Group(Suppress(\"(\") + delimitedList(Expression) + Suppress(\")\"))\n\ntest_outputs.py::test_sparql_runs_without_error\n  /root/.cache/uv/archive-v0/AJy5V8Ftiw7kPtD3ybiVu/lib/python3.13/site-packages/rdflib/plugins/sparql/parser.py:1018: PyparsingDeprecationWarning: 'delimitedList' deprecated - use 'DelimitedList'\n    + delimitedList(ParamList(\"expr\", Expression))\n\ntest_outputs.py::test_sparql_runs_without_error\ntest_outputs.py::test_sparql_query_results\n  /root/.cache/uv/archive-v0/AJy5V8Ftiw7kPtD3ybiVu/lib/python3.13/site-packages/rdflib/plugins/sparql/parser.py:1553: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'\n    return Query.parseString(q, parseAll=True)\n\ntest_outputs.py::test_sparql_runs_without_error\ntest_outputs.py::test_sparql_query_results\n  /root/.cache/uv/archive-v0/AJy5V8Ftiw7kPtD3ybiVu/lib/python3.13/site-packages/pyparsing/util.py:466: PyparsingDeprecationWarning: 'parseAll' argument is deprecated, use 'parse_all'\n    return fn(self, *args, **kwargs)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_sparql_file_exists\nPASSED ../tests/test_outputs.py::test_sparql_runs_without_error\nFAILED ../tests/test_outputs.py::test_sparql_query_results - AssertionError: ...\n================== 1 failed, 2 passed, 581 warnings in 0.66s ===================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-sparql-university-108075",
+  "image": "alexgshaw/sparql-university:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "criteria.sh",
+      "script": "#!/bin/bash\nset -e\nq=/app/solution.sparql\n# Require explicit ontology terms and the strict >10 count condition.\ngrep -Eiq 'FullProfessor|Full_Professor|full professor' \"$q\"\ngrep -Eiq 'COUNT[[:space:]]*\\(' \"$q\"\ngrep -Eq '> *10' \"$q\"\n# Require the complete EU country-code set and a reference-date boundary.\nfor code in AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE; do grep -Fq \"\\\"$code\\\"\" \"$q\"; done\ngrep -Fq '2025-08-16' \"$q\"\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "query_exists.sh",
+      "script": "#!/bin/bash\nset -e\n[ -s /app/solution.sparql ]\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "query_shape.sh",
+      "script": "#!/bin/bash\nset -e\ngrep -Eiq 'SELECT[[:space:]]+\\?professorName' /app/solution.sparql\ngrep -Eiq 'GROUP_CONCAT[[:space:]]*\\([[:space:]]*DISTINCT[[:space:]]+\\?country[[:space:]]*;[[:space:]]*separator=\"[, ]+\"[[:space:]]*\\)[[:space:]]+AS[[:space:]]+\\?countries' /app/solution.sparql\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "criteria.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.096154832,
+      "output": ""
+    },
+    {
+      "command": "query_exists.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.068175965,
+      "output": ""
+    },
+    {
+      "command": "query_shape.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.063477197,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

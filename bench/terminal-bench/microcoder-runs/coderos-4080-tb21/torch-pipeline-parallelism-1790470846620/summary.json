@@ -1,0 +1,93 @@
+{
+  "task": "torch-pipeline-parallelism",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 30,
+    "seconds": 302.494559499,
+    "model_usd": 0.022698600000000003,
+    "jev_usd": 0.005433204000000001,
+    "embedding_usd": 0.0,
+    "usd": 0.028131804000000003,
+    "known_usd": 0.028131804000000003,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease\nHit:2 http://archive.ubuntu.com/ubuntu noble InRelease\nHit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease\nHit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  krb5-locales libbrotli1 libcurl4t64 libgssapi-krb5-2 libk5crypto3\n  libkeyutils1 libkrb5-3 libkrb5support0 libldap-common libldap2 libnghttp2-14\n  libpsl5t64 librtmp1 libsasl2-2 libsasl2-modules libsasl2-modules-db libssh-4\n  publicsuffix\nSuggested packages:\n  krb5-doc krb5-user libsasl2-modules-gssapi-mit\n  | libsasl2-modules-gssapi-heimdal libsasl2-modules-ldap libsasl2-modules-otp\n  libsasl2-modules-sql\nThe following NEW packages will be installed:\n  curl krb5-locales libbrotli1 libcurl4t64 libgssapi-krb5-2 libk5crypto3\n  libkeyutils1 libkrb5-3 libkrb5support0 libldap-common libldap2 libnghttp2-14\n  libpsl5t64 librtmp1 libsasl2-2 libsasl2-modules libsasl2-modules-db libssh-4\n  publicsuffix\n0 upgraded, 19 newly installed, 0 to remove and 44 not upgraded.\nNeed to get 2415 kB of archives.\nAfter this operation, 6898 kB of additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 krb5-locales all 1.20.1-6ubuntu2.10 [15.3 kB]\nGet:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libkrb5support0 amd64 1.20.1-6ubuntu2.10 [34.9 \n[… 20030 characters left out …]\n process %s via SIGTERM , forcefully exiting via SIGKILL\",\n                    process.pid,\n                )\n                process.kill()\n            process.join()\n    \n        # The file will only be created if the process crashed.\n        failed_process = self.processes[error_index]\n        if not os.access(self.error_files[error_index], os.R_OK):\n            exitcode = self.processes[error_index].exitcode\n            if exitcode < 0:\n                try:\n                    name = signal.Signals(-exitcode).name\n                except ValueError:\n                    name = f\"<Unknown signal {-exitcode}>\"\n                raise ProcessExitedException(\n                    f\"process {error_index:d} terminated with signal {name}\",\n                    error_index=error_index,\n                    error_pid=failed_process.pid,\n                    exit_code=exitcode,\n                    signal_name=name,\n                )\n            else:\n                raise ProcessExitedException(\n                    f\"process {error_index:d} terminated with exit code {exitcode:d}\",\n                    error_index=error_index,\n                    error_pid=failed_process.pid,\n                    exit_code=exitcode,\n                )\n    \n        with open(self.error_files[error_index], \"rb\") as fh:\n            original_trace = pickle.load(fh)\n        msg = f\"\\n\\n-- Process {error_index:d} terminated with the following error:\\n\"\n        msg += original_trace\n>       raise ProcessRaisedException(msg, error_index, failed_process.pid)\nE       torch.multiprocessing.spawn.ProcessRaisedException: \nE       \nE       -- Process 1 terminated with the following error:\nE       Traceback (most recent call last):\nE         File \"/root/.cache/uv/archive-v0/dErpuCFGLqPGHj8OT7U-T/lib/python3.13/site-packages/torch/multiprocessing/spawn.py\", line 90, in _wrap\nE           fn(i, *args)\nE           ~~^^^^^^^^^^\nE         File \"/tests/test_outputs.py\", line 163, in _test_pipeline_parallel\nE           assert False, (\nE                  ^^^^^\nE       AssertionError: Rank 1 mismatch at model.norm.fwd, microbatch 0, max diff=5.190534591674805\n\n/root/.cache/uv/archive-v0/dErpuCFGLqPGHj8OT7U-T/lib/python3.13/site-packages/torch/multiprocessing/spawn.py:215: ProcessRaisedException\n----------------------------- Captured stderr call -----------------------------\nW0927 01:08:56.511000 4007 torch/multiprocessing/spawn.py:169] Terminating process 4089 via signal SIGTERM\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_pipeline_parallel_exists\nPASSED ../tests/test_outputs.py::test_no_hooks_in_pipeline_parallel\nFAILED ../tests/test_outputs.py::test_pipeline_parallel[1] - torch.multiproce...\nFAILED ../tests/test_outputs.py::test_pipeline_parallel[2] - torch.multiproce...\n========================= 2 failed, 2 passed in 37.17s =========================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-torch-pipeline-parallelism-195320",
+  "image": "alexgshaw/torch-pipeline-parallelism:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "pipeline_file_api.sh",
+      "script": "#!/usr/bin/env bash\nset -e\n[ -f /app/pipeline_parallel.py ]\npython - <<'PY'\nimport ast\np='/app/pipeline_parallel.py'\nt=ast.parse(open(p).read())\nf=[n for n in t.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name=='train_step_pipeline_afab']\nassert len(f)==1\nassert [a.arg for a in f[0].args.args] == ['model','inputs','targets','device','dtype']\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "pipeline_scheduling_source.sh",
+      "script": "#!/usr/bin/env bash\nset -e\n[ -f /app/pipeline_parallel.py ]\ngrep -Eq 'get_rank|get_world_size' /app/pipeline_parallel.py\ngrep -Eq 'backward|autograd' /app/pipeline_parallel.py\n",
+      "passed_at_freeze": true
+    }
+  ],
+  "frozen_at": 4,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "pipeline_file_api.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.060027215,
+      "output": ""
+    },
+    {
+      "command": "pipeline_scheduling_source.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.049278999,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

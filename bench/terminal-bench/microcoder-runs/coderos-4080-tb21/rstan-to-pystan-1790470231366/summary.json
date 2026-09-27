@@ -1,0 +1,117 @@
+{
+  "task": "rstan-to-pystan",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 15,
+    "seconds": 893.321221902,
+    "model_usd": 0.013674200000000001,
+    "jev_usd": 0.00404502,
+    "embedding_usd": 0.0,
+    "usd": 0.01771922,
+    "known_usd": 0.01771922,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease\nHit:2 http://archive.ubuntu.com/ubuntu noble-updates InRelease\nHit:3 http://archive.ubuntu.com/ubuntu noble-backports InRelease\nHit:4 http://security.ubuntu.com/ubuntu noble-security InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  krb5-locales libcurl4t64 libgssapi-krb5-2 libk5crypto3 libkeyutils1\n  libkrb5-3 libkrb5support0 libnghttp2-14 libpsl5t64 librtmp1 libssh-4\n  publicsuffix\nSuggested packages:\n  krb5-doc krb5-user\nThe following NEW packages will be installed:\n  curl krb5-locales libcurl4t64 libgssapi-krb5-2 libk5crypto3 libkeyutils1\n  libkrb5-3 libkrb5support0 libnghttp2-14 libpsl5t64 librtmp1 libssh-4\n  publicsuffix\n0 upgraded, 13 newly installed, 0 to remove and 49 not upgraded.\nNeed to get 1710 kB of archives.\nAfter this operation, 4854 kB of additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 krb5-locales all 1.20.1-6ubuntu2.10 [15.3 kB]\nGet:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libkrb5support0 amd64 1.20.1-6ubuntu2.10 [34.9 kB]\nGet:3 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libk5crypto3 amd64 1.20.1-6ubuntu2.10 [81.9 kB]\nGet:4 http://archive.ubuntu.com/ubuntu noble/main amd64 libkeyutils1 amd64 1.6.3-3build1 [9490 B]\nGet:5 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libkrb5-3 amd64 1.20.1\n[… 3108 characters left out …]\n\nSelecting previously unselected package publicsuffix.\r\nPreparing to unpack .../08-publicsuffix_20231001.0357-0.1_all.deb ...\r\nUnpacking publicsuffix (20231001.0357-0.1) ...\r\nSelecting previously unselected package librtmp1:amd64.\r\nPreparing to unpack .../09-librtmp1_2.4+20151223.gitfa8646d.1-2build7_amd64.deb ...\r\nUnpacking librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2build7) ...\r\nSelecting previously unselected package libssh-4:amd64.\r\nPreparing to unpack .../10-libssh-4_0.10.6-2ubuntu0.5_amd64.deb ...\r\nUnpacking libssh-4:amd64 (0.10.6-2ubuntu0.5) ...\r\nSelecting previously unselected package libcurl4t64:amd64.\r\nPreparing to unpack .../11-libcurl4t64_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...\r\nSelecting previously unselected package curl.\r\nPreparing to unpack .../12-curl_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking curl (8.5.0-2ubuntu10.15) ...\r\nSetting up libkeyutils1:amd64 (1.6.3-3build1) ...\r\nSetting up libpsl5t64:amd64 (0.21.2-1.1build1) ...\r\nSetting up libnghttp2-14:amd64 (1.59.0-1ubuntu0.4) ...\r\nSetting up krb5-locales (1.20.1-6ubuntu2.10) ...\r\nSetting up libkrb5support0:amd64 (1.20.1-6ubuntu2.10) ...\r\nSetting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2build7) ...\r\nSetting up libk5crypto3:amd64 (1.20.1-6ubuntu2.10) ...\r\nSetting up libkrb5-3:amd64 (1.20.1-6ubuntu2.10) ...\r\nSetting up publicsuffix (20231001.0357-0.1) ...\r\nSetting up libgssapi-krb5-2:amd64 (1.20.1-6ubuntu2.10) ...\r\nSetting up libssh-4:amd64 (0.10.6-2ubuntu0.5) ...\r\nSetting up libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...\r\nSetting up curl (8.5.0-2ubuntu10.15) ...\r\nProcessing triggers for libc-bin (2.39-0ubuntu8.9) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading cpython-3.13.9-linux-x86_64-gnu (download) (32.0MiB)\n Downloading cpython-3.13.9-linux-x86_64-gnu (download)\nDownloading pygments (1.2MiB)\n Downloading pygments\nInstalled 6 packages in 7ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.9, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 6 items\n\ntest_outputs.py ......                                                   [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED test_outputs.py::test_r_rstan_not_installed\nPASSED test_outputs.py::test_output_files_exist\nPASSED test_outputs.py::test_alpha_estimation_accuracy\nPASSED test_outputs.py::test_sigma_estimation_accuracy\nPASSED test_outputs.py::test_rho_estimation_accuracy\nPASSED test_outputs.py::test_beta_estimation_accuracy\n============================== 6 passed in 0.04s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-rstan-to-pystan-80419",
+  "image": "alexgshaw/rstan-to-pystan:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "posterior_outputs.sh",
+      "script": "python3 - <<'PY'\nimport os, numpy as np\nfor name,n in [('alpha_est.csv',1),('sigma_est.csv',1),('rho_est.csv',3),('beta_est.csv',3)]:\n p='/app/'+name\n assert os.path.isfile(p) and os.path.getsize(p)>0\n a=np.loadtxt(p,delimiter=','); assert np.asarray(a).size==n and np.isfinite(a).all()\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "pystan_version.sh",
+      "script": "python3 -c 'import stan; assert stan.__version__ == \"3.10.0\"'\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "python_model.sh",
+      "script": "test -s /app/pystan_analysis.py && grep -q 'stan.build' /app/pystan_analysis.py && grep -q 'random_seed=1' /app/pystan_analysis.py && grep -q '/app/train_X.csv' /app/pystan_analysis.py && grep -q '/app/train_y.csv' /app/pystan_analysis.py && grep -q '/app/test_X.csv' /app/pystan_analysis.py && grep -q '/app/meta_public.json' /app/pystan_analysis.py\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "task_requirements.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\npython3 - <<'PY'\nimport csv, json, pathlib, re, subprocess, sys\nimport numpy as np, stan\nassert stan.__version__ == '3.10.0', stan.__version__\np=pathlib.Path('/app/pystan_analysis.py')\ns=p.read_text()\nassert \"stan.build(MODEL, data=data, random_seed=1)\" in s\nfor f in ('train_X.csv','train_y.csv','test_X.csv','meta_public.json'):\n    assert f'/app/{f}' in s, f\nfor token in ('alpha ~ normal(0,1.5)', 'rho ~ lognormal(0,1)', 'sigma ~ normal(0,0.5)', 'beta ~ normal(0,1)', 'num_chains=4', 'num_samples=500', 'num_warmup=1000', 'delta=0.93', 'max_depth=14'):\n    assert token in s, token\nmeta=json.load(open('/app/meta_public.json'))\nfor n, count in [('alpha',1),('sigma',1),('rho',3),('beta',3)]:\n    path=pathlib.Path(f'/app/{n}_est.csv')\n    assert path.is_file()\n    text=path.read_text()\n    assert not re.search(r'[A-Za-z]', text), (n,text)\n    vals=np.loadtxt(path, delimiter=',', ndmin=1)\n    assert vals.shape == (count,), (n,vals.shape)\n    assert np.isfinite(vals).all(), n\nprint('all task-specific requirements pass')\nPY\n",
+      "passed_at_freeze": null
+    }
+  ],
+  "frozen_at": 7,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "posterior_outputs.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.118801101,
+      "output": ""
+    },
+    {
+      "command": "pystan_version.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.377981979,
+      "output": ""
+    },
+    {
+      "command": "python_model.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.04186991,
+      "output": ""
+    },
+    {
+      "command": "task_requirements.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.362965389,
+      "output": "all task-specific requirements pass\n"
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

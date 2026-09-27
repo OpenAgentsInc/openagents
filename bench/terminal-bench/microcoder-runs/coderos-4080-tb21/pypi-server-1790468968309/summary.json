@@ -1,0 +1,105 @@
+{
+  "task": "pypi-server",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 3,
+    "seconds": 40.488483902,
+    "model_usd": 0.0013079,
+    "jev_usd": 0.00022919400000000003,
+    "embedding_usd": 0.0,
+    "usd": 0.0015370940000000001,
+    "known_usd": 0.0015370940000000001,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]\nGet:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]\nGet:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]\nGet:5 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [345 kB]\nFetched 9376 kB in 4s (2171 kB/s)\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  libcurl4\nThe following packages will be upgraded:\n  curl libcurl4\n2 upgraded, 0 newly installed, 0 to remove and 40 not upgraded.\nNeed to get 708 kB of archives.\nAfter this operation, 0 B of additional disk space will be used.\nGet:1 http://deb.debian.org/debian bookworm/main amd64 curl amd64 7.88.1-10+deb12u15 [316 kB]\nGet:2 http://deb.debian.org/debian bookworm/main amd64 libcurl4 amd64 7.88.1-10+deb12u15 [392 kB]\ndebconf: delaying package configuration, since apt-utils is not installed\nFetched 708 kB in 0s (2713 kB/s)\n(Reading database ... \r(Reading database ... 5%\r(Reading database ... 10%\r(Reading database ... 15%\r(Reading database ... 20%\r(Reading database ... 25%\r(Reading database ... 30%\r(Reading database ... 35%\r(Reading database ... 40%\r(Reading database ... 45%\r(Reading database ... 50%\r(Reading database ... 55%\r(Reading database ... 60%\r(Reading database ... 65%\r(Reading database ... 70%\r(Reading database ... 75%\r(Reading database ... 80%\r(Reading database ... 85%\r(Reading database ... 90%\r(Reading database ... 95%\r(Reading database ... 100%\r(Reading database ... 8965 files and directories currently installed.)\r\nPreparing to unpack .../curl_7.88.1-10+deb12u15_amd64.deb ...\r\nUnpacking curl (7.88.1-10+deb12u15) over (7.88.1-10+deb12u14) ...\r\nPreparing to unpack .../libcurl4_7.88.1-10+deb12u15_amd64.deb ...\r\nUnpacking libcurl4:amd64 (7.88.1-10+deb12u15) over (7.88.1-10+deb12u14) ...\r\nSetting up libcurl4:amd64 (7.88.1-10+deb12u15) ...\r\nSetting up curl (7.88.1-10+deb12u15) ...\r\nProcessing triggers for libc-bin (2.36-9+deb12u10) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading pygments (1.2MiB)\nDownloading pip (1.7MiB)\n Downloading pygments\n Downloading pip\nInstalled 7 packages in 7ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 1 item\n\n../tests/test_outputs.py .                                               [100%]\n\n==================================== PASSES ====================================\n___________________________________ test_api ___________________________________\n----------------------------- Captured stdout call -----------------------------\nUninstalling any existing vectorops package...\nSuccessfully uninstalled existing vectorops package\nUninstall output: \nInstalling vectorops==0.1.0 from local PyPI server...\nSuccessfully installed vectorops from local PyPI server\nInstall output: Looking in indexes: http://localhost:8080/simple\nCollecting vectorops==0.1.0\n  Downloading http://localhost:8080/simple/vectorops/vectorops-0.1.0-py3-none-any.whl (1.3 kB)\nInstalling collected packages: vectorops\nSuccessfully installed vectorops-0.1.0\n\nPackage info: Name: vectorops\nVersion: 0.1.0\nSummary: Basic vector operations\nHome-page: \nAuthor: \nAuthor-email: \nLicense: \nLocation: /root/.cache/uv/archive-v0/zfJSU1dKh9BUXFRovOUPP/lib/python3.13/site-packages\nRequires: \nRequired-by: \n\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_api\n============================== 1 passed in 0.88s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-pypi-server-3970143",
+  "image": "alexgshaw/pypi-server:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "build_and_index.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app\n[ -d dist ] && compgen -G 'dist/vectorops-0.1.0*' >/dev/null\ncurl -fsS http://localhost:8080/simple/vectorops/ | grep -q 'vectorops-0.1.0'\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "package_api.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app\npython3 - <<'PY'\nfrom pathlib import Path\nimport tomllib\np=Path('pyproject.toml')\nassert p.exists()\ndata=tomllib.loads(p.read_text())\nassert data['project']['name']=='vectorops'\nassert data['project']['version']=='0.1.0'\nPY\npython3 - <<'PY'\nfrom vectorops import dotproduct\nassert dotproduct([1,1],[0,1]) == 1\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "pip_install.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\npython3 -m venv /tmp/vectorops-acceptance-venv\n/tmp/vectorops-acceptance-venv/bin/pip install --disable-pip-version-check --index-url http://localhost:8080/simple vectorops==0.1.0\n/tmp/vectorops-acceptance-venv/bin/python -c 'from vectorops import dotproduct; assert dotproduct([1,1],[0,1]) == 1'\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "build_and_index.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.046136967,
+      "output": ""
+    },
+    {
+      "command": "package_api.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.069406933,
+      "output": ""
+    },
+    {
+      "command": "pip_install.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 1.15728993,
+      "output": "Looking in indexes: http://localhost:8080/simple\nRequirement already satisfied: vectorops==0.1.0 in /tmp/vectorops-acceptance-venv/lib/python3.13/site-packages (0.1.0)\n"
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

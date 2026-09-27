@@ -1,0 +1,105 @@
+{
+  "task": "reshard-c4-data",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 11,
+    "seconds": 256.422702538,
+    "model_usd": 0.00978376,
+    "jev_usd": 0.0021033180000000003,
+    "embedding_usd": 0.0,
+    "usd": 0.011887078,
+    "known_usd": 0.011887078,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Downloading aiohttp (1.7MiB)\nDownloading pandas (10.3MiB)\nDownloading numpy (15.9MiB)\nDownloading pygments (1.2MiB)\nDownloading hf-xet (4.3MiB)\nDownloading pyarrow (47.8MiB)\n Downloading pygments\n Downloading aiohttp\n Downloading hf-xet\n Downloading pandas\n Downloading numpy\n Downloading pyarrow\nInstalled 41 packages in 1.08s\n============================= test session starts ==============================\nplatform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5, anyio-4.15.1\ncollected 1 item\n\n../tests/test_outputs.py .                                               [100%]\n\n==================================== PASSES ====================================\n______________________ test_compress_decompress_workflow _______________________\n---------------------------- Captured stdout setup -----------------------------\nGenerating test data.\nGenerated mini-shard 1/10000\nGenerated mini-shard 101/10000\nGenerated mini-shard 201/10000\nGenerated mini-shard 301/10000\nGenerated mini-shard 401/10000\nGenerated mini-shard 501/10000\nGenerated mini-shard 601/10000\nGenerated mini-shard 701/10000\nGenerated mini-shard 801/10000\nGenerated mini-shard 901/10000\nGenerated mini-shard 1001/10000\nGenerated mini-shard 1101/10000\nGenerated mini-shard 1201/10000\nGenerated mini-shard 1301/10000\nGenerated mini-shard 1401/10000\nGenerated mini-shard 1501/10000\nGenerated mini-shard 1601/10000\nGenerated mini-shard 1701/10000\nGenerated mini-shard 1801/10000\nGenerated mini-s\n[… 2279 characters left out …]\n01/10000\nGenerated mini-shard 9101/10000\nGenerated mini-shard 9201/10000\nGenerated mini-shard 9301/10000\nGenerated mini-shard 9401/10000\nGenerated mini-shard 9501/10000\nGenerated mini-shard 9601/10000\nGenerated mini-shard 9701/10000\nGenerated mini-shard 9801/10000\nGenerated 9898 test files\n---------------------------- Captured stderr setup -----------------------------\nWarning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n\rGenerating train split: 0 examples [00:00, ? examples/s]\rGenerating train split: 14037 examples [00:00, 107305.94 examples/s]\rGenerating train split: 32060 examples [00:00, 116010.08 examples/s]\rGenerating train split: 50561 examples [00:00, 119379.16 examples/s]\rGenerating train split: 68767 examples [00:00, 120996.99 examples/s]\rGenerating train split: 87212 examples [00:00, 120907.44 examples/s]\rGenerating train split: 100921 examples [00:00, 108957.66 examples/s]\rGenerating train split: 119080 examples [00:01, 108517.69 examples/s]\rGenerating train split: 137465 examples [00:01, 110631.45 examples/s]\rGenerating train split: 155695 examples [00:01, 114735.00 examples/s]\rGenerating train split: 174224 examples [00:01, 118072.53 examples/s]\rGenerating train split: 192291 examples [00:01, 119884.80 examples/s]\rGenerating train split: 210384 examples [00:01, 119017.46 examples/s]\rGenerating train split: 228662 examples [00:01, 120918.70 examples/s]\rGenerating train split: 242080 examples [00:02, 112911.78 examples/s]\rGenerating train split: 260334 examples [00:02, 114608.85 examples/s]\rGenerating train split: 278833 examples [00:02, 116545.00 examples/s]\rGenerating train split: 297116 examples [00:02, 117566.39 examples/s]\rGenerating train split: 315368 examples [00:02, 117932.11 examples/s]\rGenerating train split: 333564 examples [00:02, 119504.33 examples/s]\rGenerating train split: 351738 examples [00:03, 120744.33 examples/s]\rGenerating train split: 356318 examples [00:03, 117039.10 examples/s]\n------------------------------ Captured log setup ------------------------------\nWARNING  huggingface_hub.utils._http:_http.py:993 Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n----------------------------- Captured stdout call -----------------------------\nInstalling dependencies with uv sync...\nRunning compress script: /app/compress.py /app/c4_test_7b32f763-5c6c-46fa-b76b-a9f1366b2ed2/ /app/c4_test_7d92a235-da0d-4091-992f-abd186a0b773/\nCompression test passed. Now testing decompression.\nRunning decompress script: /app/decompress.py /app/c4_test_7d92a235-da0d-4091-992f-abd186a0b773/\nSuccessfully verified 9898 files match original hashes\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_compress_decompress_workflow\n============================== 1 passed in 30.80s ==============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-reshard-c4-data-22399",
+  "image": "alexgshaw/reshard-c4-data:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "limits.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app\nwork=$(mktemp -d)\ntrap 'rm -rf \"$work\"' EXIT\nmkdir -p \"$work/in\"\npython - \"$work/in\" <<'PY'\nimport pathlib,sys\np=pathlib.Path(sys.argv[1])\nfor i in range(67): (p/f'f{i:03}').write_bytes(b'x')\nPY\npython compress.py \"$work/in\" \"$work/out\"\npython - \"$work/out\" <<'PY'\nimport os,pathlib,sys\nroot=pathlib.Path(sys.argv[1])\nfor p,dirs,files in os.walk(root):\n assert len(dirs)+len(files)<=30, (p,len(dirs)+len(files))\nfor p in root.rglob('*'):\n if p.is_file(): assert p.stat().st_size<=15*1024*1024\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "project.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ntest -f /app/compress.py && test -f /app/decompress.py && test -f /app/pyproject.toml && test -f /app/uv.lock\ncd /app\nuv sync --offline\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "roundtrip.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app\nwork=$(mktemp -d)\ntrap 'rm -rf \"$work\"' EXIT\nmkdir -p \"$work/in/nested\"\nprintf 'alpha\\0beta\\n' > \"$work/in/a.bin\"\nprintf 'nested text\\n' > \"$work/in/nested/b.txt\"\npython compress.py \"$work/in\" \"$work/sharded\"\npython decompress.py \"$work/sharded\"\ncmp \"$work/in/a.bin\" \"$work/sharded/a.bin\"\ncmp \"$work/in/nested/b.txt\" \"$work/sharded/nested/b.txt\"\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "limits.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.105040772,
+      "output": ""
+    },
+    {
+      "command": "project.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.039412082,
+      "output": "Resolved 1 package in 0.60ms\nAudited in 0.00ms\n"
+    },
+    {
+      "command": "roundtrip.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.07909956,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

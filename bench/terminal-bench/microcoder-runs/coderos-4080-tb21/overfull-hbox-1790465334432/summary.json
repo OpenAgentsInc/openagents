@@ -1,0 +1,81 @@
+{
+  "task": "overfull-hbox",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 31,
+    "seconds": 269.587115241,
+    "model_usd": 0.028451300000000002,
+    "jev_usd": 0.0063913500000000005,
+    "embedding_usd": 0.0,
+    "usd": 0.03484265,
+    "known_usd": 0.03484265,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Get:1 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]\nGet:2 http://archive.ubuntu.com/ubuntu noble InRelease [256 kB]\nGet:3 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1547 kB]\nGet:4 http://archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]\nGet:5 http://archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]\nGet:6 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages [1808 kB]\nGet:7 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1905 kB]\nGet:8 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [50.0 kB]\nGet:9 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [1299 kB]\nGet:10 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages [19.3 MB]\nGet:11 http://archive.ubuntu.com/ubuntu noble/multiverse amd64 Packages [331 kB]\nGet:12 http://archive.ubuntu.com/ubuntu noble/restricted amd64 Packages [117 kB]\nGet:13 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [2160 kB]\nGet:14 http://archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Packages [56.2 kB]\nGet:15 http://archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [2048 kB]\nGet:16 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1633 kB]\nGet:17 http://archive.ubuntu.com/ubuntu noble-backports/multiverse amd64 Packages [671 B]\nGet:18 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 Packages [49.0 kB]\nGet:19 http://a\n[… 13548 characters left out …]\nof additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble/universe amd64 texlive-latex-base all 2023.20240207-1 [1238 kB]\nFetched 1238 kB in 1s (892 kB/s)\n(Reading database ... \r(Reading database ... 5%\r(Reading database ... 10%\r(Reading database ... 15%\r(Reading database ... 20%\r(Reading database ... 25%\r(Reading database ... 30%\r(Reading database ... 35%\r(Reading database ... 40%\r(Reading database ... 45%\r(Reading database ... 50%\r(Reading database ... 55%\r(Reading database ... 60%\r(Reading database ... 65%\r(Reading database ... 70%\r(Reading database ... 75%\r(Reading database ... 80%\r(Reading database ... 85%\r(Reading database ... 90%\r(Reading database ... 95%\r(Reading database ... 100%\r(Reading database ... 13672 files and directories currently installed.)\r\nPreparing to unpack .../texlive-latex-base_2023.20240207-1_all.deb ...\r\nUnpacking texlive-latex-base (2023.20240207-1) over (2023.20240207-1) ...\r\nSetting up texlive-latex-base (2023.20240207-1) ...\r\nProcessing triggers for tex-common (6.18) ...\r\ndebconf: unable to initialize frontend: Dialog\r\ndebconf: (TERM is not set, so the dialog frontend is not usable.)\r\ndebconf: falling back to frontend: Readline\r\ndebconf: unable to initialize frontend: Readline\r\ndebconf: (This frontend requires a controlling tty.)\r\ndebconf: falling back to frontend: Teletype\r\nRunning mktexlsr. This may take some time... done.\r\nRunning updmap-sys. This may take some time... done.\r\nRunning mktexlsr /var/lib/texmf ... done.\r\nBuilding format(s) --all.\r\n\tThis may take some time... done.\r\nThis is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n(./main_original.tex\nLaTeX2e <2023-11-01> patch level 1\nL3 programming layer <2024-01-22>\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2023/05/17 v1.4n Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def)\n(./main.aux) (./input.tex [1{/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}\n] [2] [3] [4]) [5] (./main.aux) )</usr/share/texlive/texmf-dist/fonts/type1/pub\nlic/amsfonts/cm/cmr10.pfb>\nOutput written on main.pdf (5 pages, 29522 bytes).\nTranscript written on main.log.\n---------------------------- Captured stderr setup -----------------------------\n\nWARNING: apt does not have a stable CLI interface. Use with caution in scripts.\n\ndebconf: delaying package configuration, since apt-utils is not installed\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_main_synonyms_not_modified\nPASSED ../tests/test_outputs.py::test_compilation_successful\nPASSED ../tests/test_outputs.py::test_no_overfull_hboxes\nFAILED ../tests/test_outputs.py::test_input_file_matches - AssertionError: mo...\n========================= 1 failed, 3 passed in 24.99s =========================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-overfull-hbox-3374862",
+  "image": "alexgshaw/overfull-hbox:20260403",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "latex_compile_no_overfull.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app\ncommand -v pdflatex >/dev/null\nout=$(mktemp -d)\ntrap 'rm -rf \"$out\"' EXIT\npdflatex -interaction=nonstopmode -halt-on-error -output-directory=\"$out\" main.tex >\"$out/run.log\" 2>&1\ntest -s \"$out/main.pdf\"\n! grep -E 'Overfull \\\\hbox' \"$out/run.log\" \"$out\"/*.log\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "latex_compile_no_overfull.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.115052933,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

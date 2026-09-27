@@ -1,0 +1,93 @@
+{
+  "task": "largest-eigenval",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 10,
+    "seconds": 92.684679612,
+    "model_usd": 0.0052036999999999995,
+    "jev_usd": 0.0010902779999999999,
+    "embedding_usd": 0.0,
+    "usd": 0.0062939779999999996,
+    "known_usd": 0.0062939779999999996,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Collecting pytest==8.4.1\n  Downloading pytest-8.4.1-py3-none-any.whl.metadata (7.7 kB)\nCollecting pytest-json-ctrf==0.3.5\n  Downloading pytest_json_ctrf-0.3.5-py3-none-any.whl.metadata (3.3 kB)\nCollecting iniconfig>=1 (from pytest==8.4.1)\n  Downloading iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)\nCollecting packaging>=20 (from pytest==8.4.1)\n  Downloading packaging-26.3-py3-none-any.whl.metadata (3.5 kB)\nCollecting pluggy<2,>=1.5 (from pytest==8.4.1)\n  Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)\nCollecting pygments>=2.7.2 (from pytest==8.4.1)\n  Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)\nDownloading pytest-8.4.1-py3-none-any.whl (365 kB)\nDownloading pytest_json_ctrf-0.3.5-py3-none-any.whl (6.8 kB)\nDownloading pluggy-1.6.0-py3-none-any.whl (20 kB)\nDownloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)\nDownloading packaging-26.3-py3-none-any.whl (129 kB)\nDownloading pygments-2.21.0-py3-none-any.whl (1.3 MB)\n   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 4.1 MB/s  0:00:00\nInstalling collected packages: pygments, pluggy, packaging, iniconfig, pytest, pytest-json-ctrf\n\nSuccessfully installed iniconfig-2.3.0 packaging-26.3 pluggy-1.6.0 pygments-2.21.0 pytest-8.4.1 pytest-json-ctrf-0.3.5\nWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/war\n[… 7104 characters left out …]\n====================\n_______________________________ test_speedup[2] ________________________________\n----------------------------- Captured stdout call -----------------------------\nMedian time for 2x2 (ref): 0.000010 seconds\nMedian time for 2x2: 0.000005 seconds\n_______________________________ test_speedup[3] ________________________________\n----------------------------- Captured stdout call -----------------------------\nMedian time for 3x3 (ref): 0.000011 seconds\nMedian time for 3x3: 0.000008 seconds\n_______________________________ test_speedup[5] ________________________________\n----------------------------- Captured stdout call -----------------------------\nMedian time for 5x5 (ref): 0.000037 seconds\nMedian time for 5x5: 0.000030 seconds\n_______________________________ test_speedup[6] ________________________________\n----------------------------- Captured stdout call -----------------------------\nMedian time for 6x6 (ref): 0.000042 seconds\nMedian time for 6x6: 0.000032 seconds\n_______________________________ test_speedup[9] ________________________________\n----------------------------- Captured stdout call -----------------------------\nMedian time for 9x9 (ref): 0.000020 seconds\nMedian time for 9x9: 0.000018 seconds\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_eigen_pair[2]\nPASSED ../tests/test_outputs.py::test_eigen_pair[3]\nPASSED ../tests/test_outputs.py::test_eigen_pair[4]\nPASSED ../tests/test_outputs.py::test_eigen_pair[5]\nPASSED ../tests/test_outputs.py::test_eigen_pair[6]\nPASSED ../tests/test_outputs.py::test_eigen_pair[7]\nPASSED ../tests/test_outputs.py::test_eigen_pair[8]\nPASSED ../tests/test_outputs.py::test_eigen_pair[9]\nPASSED ../tests/test_outputs.py::test_eigen_pair[10]\nPASSED ../tests/test_outputs.py::test_dominance_eigenvalue[2]\nPASSED ../tests/test_outputs.py::test_dominance_eigenvalue[3]\nPASSED ../tests/test_outputs.py::test_dominance_eigenvalue[4]\nPASSED ../tests/test_outputs.py::test_dominance_eigenvalue[5]\nPASSED ../tests/test_outputs.py::test_dominance_eigenvalue[6]\nPASSED ../tests/test_outputs.py::test_dominance_eigenvalue[7]\nPASSED ../tests/test_outputs.py::test_dominance_eigenvalue[8]\nPASSED ../tests/test_outputs.py::test_dominance_eigenvalue[9]\nPASSED ../tests/test_outputs.py::test_dominance_eigenvalue[10]\nPASSED ../tests/test_outputs.py::test_speedup[2]\nPASSED ../tests/test_outputs.py::test_speedup[3]\nPASSED ../tests/test_outputs.py::test_speedup[5]\nPASSED ../tests/test_outputs.py::test_speedup[6]\nPASSED ../tests/test_outputs.py::test_speedup[9]\nFAILED ../tests/test_outputs.py::test_speedup[4] - AssertionError: 0.000026 s...\nFAILED ../tests/test_outputs.py::test_speedup[7] - AssertionError: 0.000034 s...\nFAILED ../tests/test_outputs.py::test_speedup[8] - AssertionError: 0.000037 s...\nFAILED ../tests/test_outputs.py::test_speedup[10] - AssertionError: 0.000044 ...\n========================= 4 failed, 23 passed in 0.31s =========================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-largest-eigenval-2909282",
+  "image": "alexgshaw/largest-eigenval:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "correctness.sh",
+      "script": "#!/usr/bin/env bash\nset -e\ncd /app\npython3 - <<'PY'\nimport numpy as np\nfrom eigen import find_dominant_eigenvalue_and_eigenvector\ncases = [\n np.array([[2.,1.],[0.,-3.]]),\n np.array([[0.,-1.],[1.,0.]]),\n np.array([[1.,2.,0.],[0.,3.,4.],[0.,0.,-5.]]),\n np.eye(1)*7,\n]\nfor A in cases:\n    val, vec = find_dominant_eigenvalue_and_eigenvector(A)\n    assert np.ndim(val) == 0 and np.shape(vec) == (len(A),)\n    assert np.allclose(A @ vec, val * vec, rtol=1e-7, atol=1e-8), (A,val,vec)\n    vals = np.linalg.eigvals(A)\n    assert abs(abs(val)-max(abs(vals))) < 1e-6\nPY\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "performance.sh",
+      "script": "#!/usr/bin/env bash\nset -e\ncd /app\npython3 - <<'PY'\nimport time, numpy as np\nfrom eigen import find_dominant_eigenvalue_and_eigenvector\n# Benchmark warmed repeated small dense nonsymmetric inputs versus the reference's numpy eig path.\nrng=np.random.default_rng(91)\nAs=[rng.normal(size=(n,n)) for n in (2,3,5,8,10)]\nfor A in As:\n    for _ in range(3): find_dominant_eigenvalue_and_eigenvector(A)\n    t=time.perf_counter()\n    for _ in range(100): find_dominant_eigenvalue_and_eigenvector(A)\n    ours=(time.perf_counter()-t)/100\n    t=time.perf_counter()\n    for _ in range(100):\n        vals, vecs=np.linalg.eig(A); i=np.argmax(np.abs(vals)); vals[i],vecs[:,i]\n    ref=(time.perf_counter()-t)/100\n    assert ours < ref, (A.shape, ours, ref)\nPY\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "correctness.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.286539114,
+      "output": ""
+    },
+    {
+      "command": "performance.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.286257156,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

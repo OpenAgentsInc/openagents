@@ -1,0 +1,129 @@
+{
+  "task": "caffe-cifar-10",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 43,
+    "seconds": 1997.409131943,
+    "model_usd": 0.04413430000000001,
+    "jev_usd": 0.011333112000000001,
+    "embedding_usd": 0.0,
+    "usd": 0.05546741200000001,
+    "known_usd": 0.05546741200000001,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease\nHit:2 http://archive.ubuntu.com/ubuntu noble InRelease\nHit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease\nHit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\ncurl is already the newest version (8.5.0-2ubuntu10.15).\n0 upgraded, 0 newly installed, 0 to remove and 53 not upgraded.\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading cpython-3.13.9-linux-x86_64-gnu (download) (32.0MiB)\n Downloading cpython-3.13.9-linux-x86_64-gnu (download)\nDownloading pygments (1.2MiB)\n Downloading pygments\nInstalled 6 packages in 5ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.9, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 6 items\n\n../tests/test_outputs.py F....F                                          [100%]\n\n=================================== FAILURES ===================================\n________________________ test_caffe_version_and_source _________________________\n\n    def test_caffe_version_and_source():\n        \"\"\"Test that Caffe version is 1.0.0 and was cloned from BVLC\"\"\"\n>       caffe_path = _find_caffe_binary()\n                     ^^^^^^^^^^^^^^^^^^^^\n\n/tests/test_outputs.py:28: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\n    def _find_caffe_binary():\n        \"\"\"Find caffe binary — supports both make (.build_release/) and cmake (build/) paths.\"\"\"\n        caffe_base = Path(\"/app/caffe\")\n        candidates = [\n            caffe_base / \".build_release/tools/caffe.bin\",  # make\n            caffe_base / \"build/tools/caffe\",  # cmake\n        ]\n        for path in candidates:\n            if path.exists():\n                return path\n>       assert False, (\n            f\"Caffe binary not found at any expected location: \"\n            f\"{[str(c) for c in candidates]}\"\n        )\nE       AssertionError: Caffe binary not found at any expected location: ['/app/caffe/.build_release/tools/caffe.bin', '/app/caffe/build/tools/caffe']\nE       assert False\n\n/tests/test_outputs.py:20: AssertionError\n_______________________ test_model_accuracy_verification _______________________\n\n    def test_model_accuracy_verification():\n        \"\"\"Test that model accuracy meets threshold and training output exists\"\"\"\n        caffe_base = Path(\"/app/caffe\")\n>       caffe_bin = _find_caffe_binary()\n                    ^^^^^^^^^^^^^^^^^^^^\n\n/tests/test_outputs.py:158: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\n    def _find_caffe_binary():\n        \"\"\"Find caffe binary — supports both make (.build_release/) and cmake (build/) paths.\"\"\"\n        caffe_base = Path(\"/app/caffe\")\n        candidates = [\n            caffe_base / \".build_release/tools/caffe.bin\",  # make\n            caffe_base / \"build/tools/caffe\",  # cmake\n        ]\n        for path in candidates:\n            if path.exists():\n                return path\n>       assert False, (\n            f\"Caffe binary not found at any expected location: \"\n            f\"{[str(c) for c in candidates]}\"\n        )\nE       AssertionError: Caffe binary not found at any expected location: ['/app/caffe/.build_release/tools/caffe.bin', '/app/caffe/build/tools/caffe']\nE       assert False\n\n/tests/test_outputs.py:20: AssertionError\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_cifar10_model_exists\nPASSED ../tests/test_outputs.py::test_prototxt_files_exist\nPASSED ../tests/test_outputs.py::test_cpu_only_training_configured\nPASSED ../tests/test_outputs.py::test_training_completed_500_iterations\nFAILED ../tests/test_outputs.py::test_caffe_version_and_source - AssertionErr...\nFAILED ../tests/test_outputs.py::test_model_accuracy_verification - Assertion...\n========================= 2 failed, 4 passed in 0.06s ==========================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-caffe-cifar-10-1873789",
+  "image": "alexgshaw/caffe-cifar-10:20260403",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "accuracy.sh",
+      "script": "#!/bin/bash\npython3 - <<'PY'\nimport re\np='/app/caffe/training_output.txt'\ns=open(p,errors='ignore').read()\n# recognize standard Caffe test accuracy and final training accuracy records\nvals=[float(x) for x in re.findall(r'Test net output #\\d+: accuracy = ([0-9.eE+-]+)',s)]\ntrain=[float(x) for x in re.findall(r'(?:train(?:ing)?[^\\n]*accuracy|accuracy[^\\n]*train)[^\\n]*?([0-9]*\\.?[0-9]+)',s,re.I)]\nif len(vals)<1 or not train: raise SystemExit(1)\ntest=vals[-1]; tr=train[-1]\nraise SystemExit(0 if test>.45 and test>=tr-.05 else 1)\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "log.sh",
+      "script": "#!/bin/bash\n[ -s /app/caffe/training_output.txt ] && grep -q 'Iteration 500' /app/caffe/training_output.txt\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "model.sh",
+      "script": "#!/bin/bash\n[ -s /app/caffe/examples/cifar10/cifar10_quick_iter_500.caffemodel ]\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "repo.sh",
+      "script": "#!/bin/bash\n[ -d /app/caffe/.git ] && git -C /app/caffe describe --tags --exact-match 2>/dev/null | grep -qx '1.0'\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "solver.sh",
+      "script": "#!/bin/bash\nf=/app/caffe/examples/cifar10/cifar10_quick_solver.prototxt\n[ -f \"$f\" ] && grep -Eq '^max_iter:[[:space:]]*500([[:space:]]|$)' \"$f\"\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "accuracy.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.056712145,
+      "output": ""
+    },
+    {
+      "command": "log.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.045882323,
+      "output": ""
+    },
+    {
+      "command": "model.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.043940644,
+      "output": ""
+    },
+    {
+      "command": "repo.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.054613105,
+      "output": ""
+    },
+    {
+      "command": "solver.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.050420683,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "task": "reshard-c4-data",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 12,
+    "seconds": 210.898416802,
+    "model_usd": 0.010639699999999998,
+    "jev_usd": 0.0024869040000000003,
+    "embedding_usd": 0.0,
+    "usd": 0.013126603999999998,
+    "known_usd": 0.013126603999999998,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Downloading pyarrow (47.8MiB)\nDownloading pandas (10.3MiB)\nDownloading aiohttp (1.7MiB)\nDownloading pygments (1.2MiB)\nDownloading hf-xet (4.3MiB)\nDownloading numpy (15.9MiB)\n Downloading pygments\n Downloading aiohttp\n Downloading hf-xet\n Downloading pandas\n Downloading numpy\n Downloading pyarrow\nInstalled 41 packages in 993ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5, anyio-4.15.1\ncollected 1 item\n\n../tests/test_outputs.py .                                               [100%]\n\n==================================== PASSES ====================================\n______________________ test_compress_decompress_workflow _______________________\n---------------------------- Captured stdout setup -----------------------------\nGenerating test data.\nGenerated mini-shard 1/10000\nGenerated mini-shard 101/10000\nGenerated mini-shard 201/10000\nGenerated mini-shard 301/10000\nGenerated mini-shard 401/10000\nGenerated mini-shard 501/10000\nGenerated mini-shard 601/10000\nGenerated mini-shard 701/10000\nGenerated mini-shard 801/10000\nGenerated mini-shard 901/10000\nGenerated mini-shard 1001/10000\nGenerated mini-shard 1101/10000\nGenerated mini-shard 1201/10000\nGenerated mini-shard 1301/10000\nGenerated mini-shard 1401/10000\nGenerated mini-shard 1501/10000\nGenerated mini-shard 1601/10000\nGenerated mini-shard 1701/10000\nGenerated mini-shard 1801/10000\nGenerated mini-s\n[… 2279 characters left out …]\n01/10000\nGenerated mini-shard 9101/10000\nGenerated mini-shard 9201/10000\nGenerated mini-shard 9301/10000\nGenerated mini-shard 9401/10000\nGenerated mini-shard 9501/10000\nGenerated mini-shard 9601/10000\nGenerated mini-shard 9701/10000\nGenerated mini-shard 9801/10000\nGenerated 9898 test files\n---------------------------- Captured stderr setup -----------------------------\nWarning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n\rGenerating train split: 0 examples [00:00, ? examples/s]\rGenerating train split: 14037 examples [00:00, 111333.62 examples/s]\rGenerating train split: 32060 examples [00:00, 117034.97 examples/s]\rGenerating train split: 50561 examples [00:00, 117583.44 examples/s]\rGenerating train split: 68767 examples [00:00, 117571.30 examples/s]\rGenerating train split: 87212 examples [00:00, 118755.03 examples/s]\rGenerating train split: 105527 examples [00:00, 120637.55 examples/s]\rGenerating train split: 123717 examples [00:01, 121532.48 examples/s]\rGenerating train split: 142093 examples [00:01, 120788.97 examples/s]\rGenerating train split: 160125 examples [00:01, 121077.01 examples/s]\rGenerating train split: 178721 examples [00:01, 116347.30 examples/s]\rGenerating train split: 196759 examples [00:01, 115977.16 examples/s]\rGenerating train split: 215024 examples [00:01, 119130.26 examples/s]\rGenerating train split: 233020 examples [00:01, 119498.80 examples/s]\rGenerating train split: 251191 examples [00:02, 120761.26 examples/s]\rGenerating train split: 269418 examples [00:02, 121877.23 examples/s]\rGenerating train split: 287951 examples [00:02, 123357.18 examples/s]\rGenerating train split: 306036 examples [00:02, 114073.14 examples/s]\rGenerating train split: 324228 examples [00:02, 113979.89 examples/s]\rGenerating train split: 342797 examples [00:02, 116919.36 examples/s]\rGenerating train split: 356318 examples [00:03, 117837.10 examples/s]\rGenerating train split: 356318 examples [00:03, 118470.28 examples/s]\n------------------------------ Captured log setup ------------------------------\nWARNING  huggingface_hub.utils._http:_http.py:993 Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n----------------------------- Captured stdout call -----------------------------\nInstalling dependencies with uv sync...\nRunning compress script: /app/compress.py /app/c4_test_7a0363a4-fac6-4c5a-b9ee-43947c127bd5/ /app/c4_test_c15d3485-a5b3-4d6f-84ee-6d9f719ca672/\nCompression test passed. Now testing decompression.\nRunning decompress script: /app/decompress.py /app/c4_test_c15d3485-a5b3-4d6f-84ee-6d9f719ca672/\nSuccessfully verified 9898 files match original hashes\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_compress_decompress_workflow\n============================== 1 passed in 38.57s ==============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-reshard-c4-data-4119907",
+  "image": "alexgshaw/reshard-c4-data:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "limits.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\nt=$(mktemp -d); trap 'rm -rf \"$t\"' EXIT\nmkdir \"$t/in\"\nfor i in $(seq -w 1 67); do printf '%s' \"$i\" > \"$t/in/$i\"; done\npython /app/compress.py \"$t/in\" \"$t/out\"\npython3 - \"$t/out\" <<'PY'\nimport pathlib,sys\nroot=pathlib.Path(sys.argv[1])\nfor d,dirs,files in __import__('os').walk(root): assert len(dirs)+len(files)<=30,(d,len(dirs)+len(files))\nfor f in root.rglob('*'):\n if f.is_file(): assert f.stat().st_size<=15*1024*1024\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "oversize.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\nt=$(mktemp -d); trap 'rm -rf \"$t\"' EXIT\nmkdir \"$t/in\"; truncate -s $((15*1024*1024+1)) \"$t/in/huge\"\nif python /app/compress.py \"$t/in\" \"$t/out\" >/dev/null 2>&1; then exit 1; fi\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "roundtrip.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\nt=$(mktemp -d)\ntrap 'rm -rf \"$t\"' EXIT\nmkdir -p \"$t/in/nested/deep\" \"$t/in/empty\"\nprintf 'alpha\\0beta\\n' > \"$t/in/nested/a.bin\"\nprintf 'text\\n' > \"$t/in/root.txt\"\npython /app/compress.py \"$t/in\" \"$t/shards\"\npython /app/decompress.py \"$t/shards\"\npython3 - \"$t\" <<'PY'\nimport pathlib,sys\np=pathlib.Path(sys.argv[1]); a=p/'in'; b=p/'shards'\ndef snap(root):\n return {str(x.relative_to(root)): ('dir',) if x.is_dir() else ('file',x.read_bytes()) for x in root.rglob('*')}\nassert snap(a)==snap(b), (snap(a),snap(b))\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "uv_project.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ntest -f /app/pyproject.toml\ntest -f /app/uv.lock\n(cd /app && uv sync --offline >/dev/null)\n(cd /app && uv run --offline python compress.py --help >/dev/null)\n(cd /app && uv run --offline python decompress.py --help >/dev/null)\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "sample_and_existing_output.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\nt=$(mktemp -d); trap 'rm -rf \"$t\"' EXIT\nmkdir \"$t/out\"\npython /app/compress.py /app/c4_sample \"$t/out\"\npython3 - \"$t/out\" <<'PY'\nimport hashlib, os, pathlib, sys\nroot=pathlib.Path(sys.argv[1])\nfor d,dirs,files in os.walk(root):\n    assert len(dirs)+len(files) <= 30, (d, len(dirs)+len(files))\nfor f in root.rglob('*'):\n    if f.is_file(): assert f.stat().st_size <= 15*1024*1024\nPY\npython /app/decompress.py \"$t/out\"\npython3 - \"$t/out\" <<'PY'\nimport hashlib, pathlib, sys\nsource=pathlib.Path('/app/c4_sample'); restored=pathlib.Path(sys.argv[1])\ndef files(root): return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).digest() for p in root.rglob('*') if p.is_file()}\nassert files(source)==files(restored)\nPY\n",
+      "passed_at_freeze": null
+    }
+  ],
+  "frozen_at": 2,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "limits.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.089400241,
+      "output": ""
+    },
+    {
+      "command": "oversize.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.057303072,
+      "output": ""
+    },
+    {
+      "command": "roundtrip.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.099660802,
+      "output": ""
+    },
+    {
+      "command": "uv_project.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.094694793,
+      "output": "Resolved 1 package in 0.45ms\nAudited in 0.00ms\n"
+    },
+    {
+      "command": "sample_and_existing_output.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 3.125493915,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

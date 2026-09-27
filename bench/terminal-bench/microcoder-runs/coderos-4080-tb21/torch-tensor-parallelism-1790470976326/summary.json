@@ -1,0 +1,81 @@
+{
+  "task": "torch-tensor-parallelism",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "unaccepted"
+    },
+    "steps": 26,
+    "seconds": 430.730912298,
+    "model_usd": 0.018716899999999998,
+    "jev_usd": 0.004928363999999999,
+    "embedding_usd": 0.0,
+    "usd": 0.023645264,
+    "known_usd": 0.023645264,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease\nHit:2 http://archive.ubuntu.com/ubuntu noble-updates InRelease\nHit:3 http://security.ubuntu.com/ubuntu noble-security InRelease\nHit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  krb5-locales libcurl4t64 libgssapi-krb5-2 libk5crypto3 libkeyutils1\n  libkrb5-3 libkrb5support0 libnghttp2-14 libpsl5t64 librtmp1 libssh-4\n  publicsuffix\nSuggested packages:\n  krb5-doc krb5-user\nThe following NEW packages will be installed:\n  curl krb5-locales libcurl4t64 libgssapi-krb5-2 libk5crypto3 libkeyutils1\n  libkrb5-3 libkrb5support0 libnghttp2-14 libpsl5t64 librtmp1 libssh-4\n  publicsuffix\n0 upgraded, 13 newly installed, 0 to remove and 33 not upgraded.\nNeed to get 1710 kB of archives.\nAfter this operation, 4854 kB of additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 krb5-locales all 1.20.1-6ubuntu2.10 [15.3 kB]\nGet:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libkrb5support0 amd64 1.20.1-6ubuntu2.10 [34.9 kB]\nGet:3 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libk5crypto3 amd64 1.20.1-6ubuntu2.10 [81.9 kB]\nGet:4 http://archive.ubuntu.com/ubuntu noble/main amd64 libkeyutils1 amd64 1.6.3-3build1 [9490 B]\nGet:5 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libkrb5-3 amd64 1.20.1\n[… 43751 characters left out …]\nggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n/root/.cache/uv/archive-v0/dslbhW7YVf808Cd0zpmWB/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n______________________ test_row_parallel_linear[4-False] _______________________\n----------------------------- Captured stderr call -----------------------------\n/root/.cache/uv/archive-v0/dslbhW7YVf808Cd0zpmWB/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n/root/.cache/uv/archive-v0/dslbhW7YVf808Cd0zpmWB/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n/root/.cache/uv/archive-v0/dslbhW7YVf808Cd0zpmWB/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n/root/.cache/uv/archive-v0/dslbhW7YVf808Cd0zpmWB/lib/python3.13/site-packages/torch/_subclasses/functional_tensor.py:276: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:81.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_parallel_linear_exists\nPASSED ../tests/test_outputs.py::test_column_parallel_linear[1-True]\nPASSED ../tests/test_outputs.py::test_column_parallel_linear[1-False]\nPASSED ../tests/test_outputs.py::test_row_parallel_linear[1-True]\nPASSED ../tests/test_outputs.py::test_row_parallel_linear[1-False]\nPASSED ../tests/test_outputs.py::test_row_parallel_linear[2-True]\nPASSED ../tests/test_outputs.py::test_row_parallel_linear[2-False]\nPASSED ../tests/test_outputs.py::test_row_parallel_linear[4-True]\nPASSED ../tests/test_outputs.py::test_row_parallel_linear[4-False]\nFAILED ../tests/test_outputs.py::test_column_parallel_linear[2-True] - torch....\nFAILED ../tests/test_outputs.py::test_column_parallel_linear[2-False] - torch...\nFAILED ../tests/test_outputs.py::test_column_parallel_linear[4-True] - torch....\nFAILED ../tests/test_outputs.py::test_column_parallel_linear[4-False] - torch...\n=================== 4 failed, 9 passed, 1 warning in 21.72s ====================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-torch-tensor-parallelism-221071",
+  "image": "alexgshaw/torch-tensor-parallelism:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "parallel_linear.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app\npython - <<'PY'\nimport os, tempfile, subprocess, sys\nscript = r'''\nimport torch, torch.distributed as dist, torch.multiprocessing as mp\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\n\ndef worker(rank, world, init):\n    dist.init_process_group('gloo', init_method='file://' + init, rank=rank, world_size=world)\n    try:\n        torch.manual_seed(17)\n        w = torch.arange(24., dtype=torch.float32).reshape(6,4)\n        c = ColumnParallelLinear(4,6,True,w)\n        assert torch.equal(c.weight, w[rank*3:(rank+1)*3])\n        assert torch.equal(c.bias, torch.zeros(3))\n        x = torch.arange(8.,dtype=torch.float32).reshape(2,4).requires_grad_()\n        y = c(x)\n        gathered=[torch.empty_like(y) for _ in range(world)]\n        dist.all_gather(gathered,y)\n        full=torch.cat(gathered,dim=-1)\n        ref=x.detach() @ w.T\n        assert torch.allclose(full, ref)\n        full.sum().backward()\n        assert torch.allclose(c.weight.grad, torch.ones_like(c.weight) * x.detach().sum(0))\n        assert torch.equal(c.bias.grad, torch.full_like(c.bias, 2.))\n        r = RowParallelLinear(4,6,True,w)\n        assert torch.equal(r.weight, w[:,rank* (4//world):(rank+1)*(4//world)])\n        assert torch.equal(r.bias, torch.zeros(6))\n        z=torch.arange(8.,dtype=torch.float32).reshape(2,4)\n        zs=z[:,rank*(4//world):(rank+1)*(4//world)].clone().requires_grad_()\n        out=r(zs)\n        assert torch.allclose(out, z @ w.T)\n        out.sum().backward()\n        assert torch.allclose(r.weight.grad, torch.ones_like(r.weight) * zs.detach().sum(0))\n        assert torch.equal(r.bias.grad, torch.full_like(r.bias,2.))\n    finally: dist.destroy_process_group()\n\ndef run(world):\n    fd,path=tempfile.mkstemp(); os.close(fd); os.unlink(path)\n    mp.spawn(worker,args=(world,path),nprocs=world,join=True)\nfor n in (1,2,4): run(n)\n'''\nwith tempfile.NamedTemporaryFile('w', suffix='.py', delete=False) as f: f.write(script); name=f.name\ntry: subprocess.run([sys.executable,name],check=True,timeout=55)\nfinally: os.unlink(name)\nPY\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "parallel_linear.sh",
+      "exit": 1,
+      "timed_out": false,
+      "seconds": 0.096823799,
+      "output": "Traceback (most recent call last):\n  File \"/tmp/tmpbbfcldkz.py\", line 2, in <module>\n    import torch, torch.distributed as dist, torch.multiprocessing as mp\nModuleNotFoundError: No module named 'torch'\nTraceback (most recent call last):\n  File \"<stdin>\", line 42, in <module>\n  File \"/usr/lib/python3.12/subprocess.py\", line 571, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['/usr/local/bin/python', '/tmp/tmpbbfcldkz.py']' returned non-zero exit status 1.\n"
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

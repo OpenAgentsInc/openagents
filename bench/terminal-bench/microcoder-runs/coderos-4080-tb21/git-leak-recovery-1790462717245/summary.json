@@ -1,0 +1,105 @@
+{
+  "task": "git-leak-recovery",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 5,
+    "seconds": 39.019544631,
+    "model_usd": 0.0017146,
+    "jev_usd": 0.00043167600000000003,
+    "embedding_usd": 0.0,
+    "usd": 0.002146276,
+    "known_usd": 0.002146276,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease\nGet:2 http://archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]\nGet:3 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]\nGet:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]\nGet:5 http://archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Packages [56.2 kB]\nGet:6 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1633 kB]\nGet:7 http://archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [2048 kB]\nGet:8 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [2160 kB]\nGet:9 http://archive.ubuntu.com/ubuntu noble-backports/multiverse amd64 Packages [671 B]\nGet:10 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 Packages [49.0 kB]\nGet:11 http://archive.ubuntu.com/ubuntu noble-backports/universe amd64 Packages [36.0 kB]\nGet:12 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [1299 kB]\nGet:13 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1905 kB]\nGet:14 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [50.0 kB]\nGet:15 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1547 kB]\nFetched 11.2 MB in 2s (4949 kB/s)\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  libcurl3t64-gnutls libcurl4t64\nThe following NEW package\n[… 692 characters left out …]\n(1253 kB/s)\nSelecting previously unselected package libcurl4t64:amd64.\r\n(Reading database ... \r(Reading database ... 5%\r(Reading database ... 10%\r(Reading database ... 15%\r(Reading database ... 20%\r(Reading database ... 25%\r(Reading database ... 30%\r(Reading database ... 35%\r(Reading database ... 40%\r(Reading database ... 45%\r(Reading database ... 50%\r(Reading database ... 55%\r(Reading database ... 60%\r(Reading database ... 65%\r(Reading database ... 70%\r(Reading database ... 75%\r(Reading database ... 80%\r(Reading database ... 85%\r(Reading database ... 90%\r(Reading database ... 95%\r(Reading database ... 100%\r(Reading database ... 8558 files and directories currently installed.)\r\nPreparing to unpack .../libcurl4t64_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...\r\nSelecting previously unselected package curl.\r\nPreparing to unpack .../curl_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking curl (8.5.0-2ubuntu10.15) ...\r\nPreparing to unpack .../libcurl3t64-gnutls_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking libcurl3t64-gnutls:amd64 (8.5.0-2ubuntu10.15) over (8.5.0-2ubuntu10.6) ...\r\nSetting up libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...\r\nSetting up libcurl3t64-gnutls:amd64 (8.5.0-2ubuntu10.15) ...\r\nSetting up curl (8.5.0-2ubuntu10.15) ...\r\nProcessing triggers for libc-bin (2.39-0ubuntu8.6) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading cpython-3.13.9-linux-x86_64-gnu (download) (32.0MiB)\n Downloading cpython-3.13.9-linux-x86_64-gnu (download)\nDownloading pygments (1.2MiB)\n Downloading pygments\nInstalled 6 packages in 6ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.9, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 5 items\n\n../tests/test_outputs.py .....                                           [100%]\n\n=============================== warnings summary ===============================\n../tests/test_outputs.py:101\n  /tests/test_outputs.py:101: SyntaxWarning: invalid escape sequence '\\.'\n    \"find /app/repo -type f -not -path '*/\\.*' \"\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_flag_file_exists_and_correct\nPASSED ../tests/test_outputs.py::test_no_secrets_in_commits\nPASSED ../tests/test_outputs.py::test_good_commits_preserved\nPASSED ../tests/test_outputs.py::test_no_secrets_in_unreachable_objects\nPASSED ../tests/test_outputs.py::test_repository_contents_checksum\n========================= 5 passed, 1 warning in 0.05s =========================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-git-leak-recovery-2764489",
+  "image": "alexgshaw/git-leak-recovery:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "recovered_file.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\n[[ -f /app/secret.txt ]]\ngrep -Eq '^secret\\[.*\\]$' /app/secret.txt\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "repo_scrubbed.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app/repo\n! git rev-list --all --objects | git cat-file --batch-check='%(objectname) %(objecttype)' >/dev/null 2>&1 # sanity command\n! git log --all -p --format= | grep -E 'secret\\[[^]]*\\]'\n! grep -RIE --exclude-dir=.git 'secret\\[[^]]*\\]' .\nfor ref in $(git for-each-ref --format='%(refname)'); do\n  ! git rev-list \"$ref\" --objects | while read -r oid rest; do git cat-file -p \"$oid\" 2>/dev/null || :; done | grep -E 'secret\\[[^]]*\\]'\ndone\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "preserved_state.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /app/repo\n[[ \"$(git log --format='%H %s' --all)\" == $'c6d99979c3ef74db39532137fb89516c2d707785 chore: init e665d1a2-04a7-4e61-b523-e897e231d9cc\\n7a2420e3c1c0ae6c5c4f91e3f83ceba8078e22e8 chore: init e665d1a2-04a7-4e61-b523-e897e231d9cc' ]] || {\n  [[ \"$(git log --format='%s' --all)\" == $'chore: init e665d1a2-04a7-4e61-b523-e897e231d9cc\\nchore: init e665d1a2-04a7-4e61-b523-e897e231d9cc' ]]\n}\n[[ -z \"$(git status --porcelain)\" ]]\n[[ -f README.md ]]\n",
+      "passed_at_freeze": null
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "recovered_file.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.036891547,
+      "output": ""
+    },
+    {
+      "command": "repo_scrubbed.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.051897474,
+      "output": ""
+    },
+    {
+      "command": "preserved_state.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.038566237,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

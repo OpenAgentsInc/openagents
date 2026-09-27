@@ -1,0 +1,105 @@
+{
+  "task": "git-multibranch",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "unaccepted"
+    },
+    "steps": 18,
+    "seconds": 467.449702028,
+    "model_usd": 0.010438500000000002,
+    "jev_usd": 0.0029813279999999992,
+    "embedding_usd": 0.0,
+    "usd": 0.013419828000000002,
+    "known_usd": 0.013419828000000002,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Get:1 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]\nGet:2 http://archive.ubuntu.com/ubuntu noble InRelease [256 kB]\nGet:3 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1905 kB]\nGet:4 http://archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]\nGet:5 http://archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]\nGet:6 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [50.0 kB]\nGet:7 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1547 kB]\nGet:8 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [1299 kB]\nGet:9 http://archive.ubuntu.com/ubuntu noble/restricted amd64 Packages [117 kB]\nGet:10 http://archive.ubuntu.com/ubuntu noble/multiverse amd64 Packages [331 kB]\nGet:11 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages [1808 kB]\nGet:12 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages [19.3 MB]\nGet:13 http://archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Packages [56.2 kB]\nGet:14 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [2160 kB]\nGet:15 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1633 kB]\nGet:16 http://archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [2048 kB]\nGet:17 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 Packages [49.0 kB]\nGet:18 http://archive.ubuntu.com/ubuntu noble-backports/universe amd64 Packages [36.0 kB]\nGet:19 http://a\n[… 8286 characters left out …]\nct is already the newest version (5.45.4-3).\ngit is already the newest version (1:2.43.0-1ubuntu7.3).\nThe following additional packages will be installed:\n  openssh-server openssh-sftp-server\nSuggested packages:\n  keychain libpam-ssh monkeysphere ssh-askpass molly-guard ufw\nThe following packages will be upgraded:\n  openssh-client openssh-server openssh-sftp-server\n3 upgraded, 0 newly installed, 0 to remove and 156 not upgraded.\nNeed to get 1456 kB of archives.\nAfter this operation, 5120 B of additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 openssh-sftp-server amd64 1:9.6p1-3ubuntu13.19 [37.1 kB]\nGet:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 openssh-server amd64 1:9.6p1-3ubuntu13.19 [511 kB]\nGet:3 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 openssh-client amd64 1:9.6p1-3ubuntu13.19 [908 kB]\nFetched 1456 kB in 1s (1903 kB/s)\n(Reading database ... \n(Reading database ... 5%\n(Reading database ... 10%\n(Reading database ... 15%\n(Reading database ... 20%\n(Reading database ... 25%\n(Reading database ... 30%\n(Reading database ... 35%\n(Reading database ... 40%\n(Reading database ... 45%\n(Reading database ... 50%\n(Reading database ... 55%\n(Reading database ... 60%\n(Reading database ... 65%\n(Reading database ... 70%\n(Reading database ... 75%\n(Reading database ... 80%\n(Reading database ... 85%\n(Reading database ... 90%\n(Reading database ... 95%\n(Reading database ... 100%\n(Reading database ... 23913 files and directories currently installed.)\nPreparing to unpack .../openssh-sftp-server_1%3a9.6p1-3ubuntu13.19_amd64.deb ...\nUnpacking openssh-sftp-server (1:9.6p1-3ubuntu13.19) over (1:9.6p1-3ubuntu13.14) ...\nPreparing to unpack .../openssh-server_1%3a9.6p1-3ubuntu13.19_amd64.deb ...\nUnpacking openssh-server (1:9.6p1-3ubuntu13.19) over (1:9.6p1-3ubuntu13.14) ...\nPreparing to unpack .../openssh-client_1%3a9.6p1-3ubuntu13.19_amd64.deb ...\nUnpacking openssh-client (1:9.6p1-3ubuntu13.19) over (1:9.6p1-3ubuntu13.14) ...\nSetting up openssh-client (1:9.6p1-3ubuntu13.19) ...\nSetting up openssh-sftp-server (1:9.6p1-3ubuntu13.19) ...\nSetting up openssh-server (1:9.6p1-3ubuntu13.19) ...\ninvoke-rc.d: could not determine current runlevel\ninvoke-rc.d: policy-rc.d denied execution of restart.\nspawn git clone git@localhost:/git/project project-test\nCloning into 'project-test'...\nWarning: Permanently added 'localhost' (ED25519) to the list of known hosts.\n\nwarning: You appear to have cloned an empty repository.\n\n----------------------------- Captured stderr call -----------------------------\ndebconf: delaying package configuration, since apt-utils is not installed\nexpect: spawn id exp3 not open\n    while executing\n\"expect eof\"\n    (file \"./git_push.exp\" line 9)\r\n=========================== short test summary info ============================\nFAILED ../tests/test_outputs.py::test_multi_branch_https_deploy - AssertionEr...\n============================== 1 failed in 5.21s ===============================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-git-multibranch-2749756",
+  "image": "alexgshaw/git-multibranch:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "deployment-hook.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\n# Verify bare repository has a receive hook and deployment artifacts reflect pushed refs.\ntest -x /git/project/hooks/post-receive\ntest -f /var/www/html/index.html\ntest -f /var/www/html/dev/index.html\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "git-ssh.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\nGIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=password -o PubkeyAuthentication=no' git ls-remote git@localhost:/git/project >/dev/null 2>&1\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "https-content.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\nmain=$(curl -kfsS --max-time 5 https://localhost:8443/index.html)\ndev=$(curl -kfsS --max-time 5 https://localhost:8443/dev/index.html)\ntest \"$main\" = 'main branch content'\ntest \"$dev\" = 'dev branch content'\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "deployment-hook.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.048383188,
+      "output": ""
+    },
+    {
+      "command": "git-ssh.sh",
+      "exit": 128,
+      "timed_out": false,
+      "seconds": 0.195803471,
+      "output": ""
+    },
+    {
+      "command": "https-content.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.064732844,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

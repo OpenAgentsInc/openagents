@@ -1,0 +1,105 @@
+{
+  "task": "distribution-search",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 16,
+    "seconds": 206.537649933,
+    "model_usd": 0.012820900000000001,
+    "jev_usd": 0.0029719200000000003,
+    "embedding_usd": 0.0,
+    "usd": 0.015792820000000003,
+    "known_usd": 0.015792820000000003,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]\nGet:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]\nGet:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]\nGet:5 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [345 kB]\nFetched 9376 kB in 4s (2353 kB/s)\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  krb5-locales libbrotli1 libcurl4 libgssapi-krb5-2 libk5crypto3 libkeyutils1\n  libkrb5-3 libkrb5support0 libldap-2.5-0 libldap-common libnghttp2-14 libpsl5\n  librtmp1 libsasl2-2 libsasl2-modules libsasl2-modules-db libssh2-1\n  publicsuffix\nSuggested packages:\n  krb5-doc krb5-user libsasl2-modules-gssapi-mit\n  | libsasl2-modules-gssapi-heimdal libsasl2-modules-ldap libsasl2-modules-otp\n  libsasl2-modules-sql\nThe following NEW packages will be installed:\n  curl krb5-locales libbrotli1 libcurl4 libgssapi-krb5-2 libk5crypto3\n  libkeyutils1 libkrb5-3 libkrb5support0 libldap-2.5-0 libldap-common\n  libnghttp2-14 libpsl5 librtmp1 libsasl2-2 libsasl2-modules\n  libsasl2-modules-db libssh2-1 publicsuffix\n0 upgraded, 19 newly installed, 0 to remove and 32 not upgraded.\nNeed to get 2489 kB of archives.\nAfter this operation, 6809 kB of additional disk space will be used.\nGet:1 http://deb.debian.org/debian bookworm/main amd6\n[… 5552 characters left out …]\non_2.5.13+dfsg-5_all.deb ...\r\nUnpacking libldap-common (2.5.13+dfsg-5) ...\r\nSelecting previously unselected package libsasl2-modules:amd64.\r\nPreparing to unpack .../17-libsasl2-modules_2.1.28+dfsg-10_amd64.deb ...\r\nUnpacking libsasl2-modules:amd64 (2.1.28+dfsg-10) ...\r\nSelecting previously unselected package publicsuffix.\r\nPreparing to unpack .../18-publicsuffix_20230209.2326-1_all.deb ...\r\nUnpacking publicsuffix (20230209.2326-1) ...\r\nSetting up libkeyutils1:amd64 (1.6.3-2) ...\r\nSetting up libpsl5:amd64 (0.21.2-1) ...\r\nSetting up libbrotli1:amd64 (1.0.9-2+b6) ...\r\nSetting up libsasl2-modules:amd64 (2.1.28+dfsg-10) ...\r\nSetting up libnghttp2-14:amd64 (1.52.0-1+deb12u3) ...\r\nSetting up krb5-locales (1.20.1-2+deb12u5) ...\r\nSetting up libldap-common (2.5.13+dfsg-5) ...\r\nSetting up libkrb5support0:amd64 (1.20.1-2+deb12u5) ...\r\nSetting up libsasl2-modules-db:amd64 (2.1.28+dfsg-10) ...\r\nSetting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...\r\nSetting up libk5crypto3:amd64 (1.20.1-2+deb12u5) ...\r\nSetting up libsasl2-2:amd64 (2.1.28+dfsg-10) ...\r\nSetting up libssh2-1:amd64 (1.10.0-3+deb12u1) ...\r\nSetting up libkrb5-3:amd64 (1.20.1-2+deb12u5) ...\r\nSetting up publicsuffix (20230209.2326-1) ...\r\nSetting up libldap-2.5-0:amd64 (2.5.13+dfsg-5) ...\r\nSetting up libgssapi-krb5-2:amd64 (1.20.1-2+deb12u5) ...\r\nSetting up libcurl4:amd64 (7.88.1-10+deb12u15) ...\r\nSetting up curl (7.88.1-10+deb12u15) ...\r\nProcessing triggers for libc-bin (2.36-9+deb12u10) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading pygments (1.2MiB)\nDownloading numpy (15.9MiB)\n Downloading pygments\n Downloading numpy\nInstalled 7 packages in 12ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/szWOiQsw9sXkihAxn3jr3/bin/python\ncachedir: .pytest_cache\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollecting ... collected 4 items\n\n../tests/test_outputs.py::test_distribution_file_exists PASSED           [ 25%]\n../tests/test_outputs.py::test_distribution_shape PASSED                 [ 50%]\n../tests/test_outputs.py::test_distribution_validity PASSED              [ 75%]\n../tests/test_outputs.py::test_kl_divergences PASSED                     [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_distribution_file_exists\nPASSED ../tests/test_outputs.py::test_distribution_shape\nPASSED ../tests/test_outputs.py::test_distribution_validity\nPASSED ../tests/test_outputs.py::test_kl_divergences\n============================== 4 passed in 0.17s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-distribution-search-2494269",
+  "image": "alexgshaw/distribution-search:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "dist_exists.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ntest -s /app/dist.npy\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "dist_valid.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\npython3 - <<'PY'\nimport numpy as np\np=np.load('/app/dist.npy')\nassert p.shape == (150000,), p.shape\nassert np.isfinite(p).all()\nassert (p >= 0).all()\nassert abs(float(p.sum())-1) <= 1e-10\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "kl_targets.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\npython3 - <<'PY'\nimport numpy as np\np=np.load('/app/dist.npy').astype(np.float64)\nn=p.size\nu=1.0/n\nf=float(np.sum(p[p>0]*np.log(p[p>0]/u)))\nassert (p>0).all(), 'backward KL requires positive probabilities'\nb=float(np.sum(u*np.log(u/p)))\nassert abs(f-10.0) <= .001, f'forward KL={f}'\nassert abs(b-10.0) <= .001, f'backward KL={b}'\nPY\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "dist_exists.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.030810168,
+      "output": ""
+    },
+    {
+      "command": "dist_valid.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.129500244,
+      "output": ""
+    },
+    {
+      "command": "kl_targets.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.105857394,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

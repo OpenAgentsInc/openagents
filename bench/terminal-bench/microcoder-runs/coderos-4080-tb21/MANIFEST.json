@@ -1,0 +1,1153 @@
+{
+ "schema": "openagents.gym.microcoder-retained.v1",
+ "host": "coderos-4080",
+ "source": "~/.openagents/microcoder/runs on coderos-4080",
+ "copied_at": "2026-09-27T01:48:46+00:00",
+ "files": "summary.json and events.jsonl only; artifacts/ is not retained",
+ "commit_rule": "attributed, not recorded: the last commit to crates/microcoder on main at or before the run's start",
+ "runs": [
+  {
+   "name": "adaptive-rejection-sampler-1790459651305",
+   "files": {
+    "summary.json": "sha256:c85d84ea58a020ab797abdd627f2abe1905864ad2677f33c8b676ed9b217e59f",
+    "events.jsonl": "sha256:e558d60e9087cbc84628034e934928fcf60fccc741dad2e1cd9d41375e5d071c"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "bn-fit-modify-1790459651308",
+   "files": {
+    "summary.json": "sha256:371a7e2e995c1d649c3d5d3827f9a68e01310014689ffc9eb898e93316801942",
+    "events.jsonl": "sha256:92c8187b3620afd4627dce266afabdfbd9092cc9e269a4f900377ccad619cb3d"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "build-pmars-1790459651308",
+   "files": {
+    "summary.json": "sha256:df732208137b76f97bd1b7616a2d26d58157bc2672628e91dcbcdaf2565a940c",
+    "events.jsonl": "sha256:9ab4070b8cde0294a464ca308f45bc638deb5d89628522e27e9dbbcceb22d482"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "build-pmars-1790459775046",
+   "files": {
+    "summary.json": "sha256:0c5e0306b1e2a8f31548879426e6a7497d75a936b9449c5cc73ff2cbd549300c",
+    "events.jsonl": "sha256:a9694b1cd83b669af1e4532c72b746c6ffd6d718e86a1a11ee93ca7d6ddf2d5c"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "build-pmars-1790459775047",
+   "files": {
+    "summary.json": "sha256:79564e8072f5f82c50d198f633777e1713e944ddc820b17882e968ec7224621d",
+    "events.jsonl": "sha256:badbedcbb3e9e418a1914175582367e2c099c9ebb121611d23af4548a7ce2c28"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "caffe-cifar-10-1790459766031",
+   "files": {
+    "summary.json": "sha256:d50ebb7398368b74f91c5a0d0ae756f347703caeba5353826db67e46aac37f3e",
+    "events.jsonl": "sha256:c73ee0c1e585c4bf883c07fc40de9e1e90762802fa804670fef7824fe24146e2"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "circuit-fibsqrt-1790459793619",
+   "files": {
+    "summary.json": "sha256:d7d18c296a6412e142bd29c2951bbfaf0c73318fa9b6cbb55840dd02b35dfa8d",
+    "events.jsonl": "sha256:b4ec11c0d32d6d9edaf1e465fee556ae09afe4d7fbb525effd7f2760717d2415"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "cobol-modernization-1790460460311",
+   "files": {
+    "summary.json": "sha256:57ab1a7c1ccb9237d2f6a2b20f3eb187c86f4d408f4bda84d8a5925266f4baa5",
+    "events.jsonl": "sha256:2bdcbf2a8c9f7acc4e80c60c0b04f09735a96187bbbf3fa2ecfb067064624e41"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "cobol-modernization-1790460675552",
+   "files": {
+    "summary.json": "sha256:306092a4baa4af32c810fab07d66130a144ef873696c3c2ae7170942df8cdc2d",
+    "events.jsonl": "sha256:26e1ef3fb200e114ff0bb357463a4beac381aec42f74d5310556491c0e32f465"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "cobol-modernization-1790460675553",
+   "files": {
+    "summary.json": "sha256:80ad5f242281d9ccf80260f56cd0fff6829b3d6df054d00655f76f3485ec94dd",
+    "events.jsonl": "sha256:7f5fe7d4c13c8a59cb2567db83d4207ca61d8e3d61f76c620b7b77f4db55bfd7"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "code-from-image-1790460664730",
+   "files": {
+    "summary.json": "sha256:30606c75585c4a33e1edabd4796e7b9136f03761a81594d54760edc93f1c3146",
+    "events.jsonl": "sha256:49f5a6d645abe2076bdac94aca75c8b65fd75d4fa6ae37ba9857fee9bf07320e"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "compile-compcert-1790460946135",
+   "files": {
+    "summary.json": "sha256:56e993e3a7141d8740508b16dc9fd3bc5c580e01e77567f59df963070816d14b",
+    "events.jsonl": "sha256:bc94e1140a6a98c8f1d57a7dddb430fe49b1abcf74575bd6731a2a92e61095ca"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "constraints-scheduling-1790461665720",
+   "files": {
+    "summary.json": "sha256:29c82aa7078621085f1bcfc35579664d4d6530dc8510f4a740173bb93b1ca96d",
+    "events.jsonl": "sha256:8171ff67e28a0020d759308fb3ca433a1f4a1273982ab6c1ab318de9d31f4876"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "constraints-scheduling-1790461816359",
+   "files": {
+    "summary.json": "sha256:fe6a5c31f4c5960a278261b6802b9eabccd0eb608931542c78a68d3aad933185",
+    "events.jsonl": "sha256:1e3a6bbec611918efd01f74b4bb1b5b5dd0a4698d0594af8aff8355a79df2c6c"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "constraints-scheduling-1790461816360",
+   "files": {
+    "summary.json": "sha256:d67b62d5f4a1efed94396e3a601715c30c2d0805da663eb843b06331f8402075",
+    "events.jsonl": "sha256:ab188cf3c32da918aac6fc6fafc6ed2f98455e3a53b473487fc5cb21975af8a6"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "count-dataset-tokens-1790461791313",
+   "files": {
+    "summary.json": "sha256:13a9fe854533c5a918f13adb74261cfb757b31b947ebfe7bc33183b7954d717c",
+    "events.jsonl": "sha256:392cc3e4719ca592529578a3d2540a7b2c4d9485ce0c5445aea086504e0701c3"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "crack-7z-hash-1790461798918",
+   "files": {
+    "summary.json": "sha256:2ce16ead3be7f1ca4eea5cf4698c227b5d644b395507a66c9efc3f88a1af3171",
+    "events.jsonl": "sha256:24dd23e1cf6d65e9c6127c88a17c39734c82d40294938e8e17f997da9bdc6ce0"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "crack-7z-hash-1790461936452",
+   "files": {
+    "summary.json": "sha256:981be59340b25b19f2c6db93700928d4ec405610f0b09941217eaadf1f5a7008",
+    "events.jsonl": "sha256:38e6ab00db76af72f24141e1135499e9784556d773c3f61376d07e6ced05690c"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "crack-7z-hash-1790461936453",
+   "files": {
+    "summary.json": "sha256:1abd63bbb1c1bb1536437042a19f90dc11b786d5432f4848ffd114651d6fff1c",
+    "events.jsonl": "sha256:58984dc0aec60237c7788ed4b94dbb43f4b8ddf547d4e96cf854c19bec489b47"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "distribution-search-1790461893052",
+   "files": {
+    "summary.json": "sha256:8ce35427b67026fab8771497e79908ba35cb424b2f610a5bce98d9bbc96213c9",
+    "events.jsonl": "sha256:279ba1bf71d22465751774ebf859ee16712c273d4eb8d7e1c038698ae11957bf"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "distribution-search-1790462176660",
+   "files": {
+    "summary.json": "sha256:22993d0c8cb46e3cfd8a6d0129b1e094f0fd2fcbdc7c9b6eb5a6e6e7f4fea7d5",
+    "events.jsonl": "sha256:aac13687964dab8f2e9c5d88c1ac6251447cfa30961c895498432e736ab5189a"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "distribution-search-1790462176663",
+   "files": {
+    "summary.json": "sha256:2c4acf9fec122587dd03b81e216609051ee1124ac43f3e3d7f2345d729ef0b3e",
+    "events.jsonl": "sha256:8beafdba0ef6922e2441db8debfb2fa81b85154b3ecf7e2555edadff98b70048"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "dna-assembly-1790461896930",
+   "files": {
+    "summary.json": "sha256:66256681578873652d43657e96f9a99d91bc20522228d4b88838cc90ef2fac77",
+    "events.jsonl": "sha256:ea0e4c06aeb70ba27ba0caa9f6c79223042dcd5f31b82a49c360b43231c9d3d6"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "extract-elf-1790462059855",
+   "files": {
+    "summary.json": "sha256:d5b39adb9aa02f0d7e6b560cb2a567cb5432f10a03b265685f7b6940de264309",
+    "events.jsonl": "sha256:e072e1d932b58ed3eb15fa63a3ceeaf8b57709e91741eea661b39d8e8168e8e6"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "extract-elf-1790462176667",
+   "files": {
+    "summary.json": "sha256:2dc4713075781aa04e8edd2d880a6f3b25600dbd13ea6e499f26eace4ff3b090",
+    "events.jsonl": "sha256:bc19ad180746ba80556e79512e8302f5974752828cf270dbbac4f435982f32e7"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "extract-elf-1790462176668",
+   "files": {
+    "summary.json": "sha256:2f0e0e3299c9b39b926e017fdfb2e941749bf270fb4e13056be0cabfcbbdf15e",
+    "events.jsonl": "sha256:59ae60c57f460af2b4015f92ffd30d1a9fb8b7da128ec5ccbbb4f5caddceb91b"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "extract-moves-from-video-1790462127573",
+   "files": {
+    "summary.json": "sha256:24be66a7ae1f249519da722029db8a98e0bad476cb54bc4753a508b3a8918b69",
+    "events.jsonl": "sha256:ba3d0d0f4afcf55e4e9f30ddf617a2cadd6a167bd47cb815fe26580226b072d9"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "feal-differential-cryptanalysis-1790462127844",
+   "files": {
+    "summary.json": "sha256:c9de25dc435caabd71d0c34a8fec7fa24c07cb2dbb9ef39f31d3d5481a70b50b",
+    "events.jsonl": "sha256:02f9c85cf4b4cc9a52040f6242358138f6d4a5031d672895e7ba0c9b4cb472d2"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "feal-linear-cryptanalysis-1790462209713",
+   "files": {
+    "summary.json": "sha256:e05a1877e87a9dc0e0cee2b224eb17d615b2dc36d87feac31f9748e7eb2b297f",
+    "events.jsonl": "sha256:a5a71835e669b3c6c0b5b9b73ddb37e0224abac9e53e8a13586cda3151aab99e"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "feal-linear-cryptanalysis-1790462476918",
+   "files": {
+    "summary.json": "sha256:33315fe2dd64633014e605bf8b875f5f8b4cd697b36daf2bd88a2f91333c74e5",
+    "events.jsonl": "sha256:fedc9330587696f4ecff1b9eb6f04012b6a7401101a13bbea86bb53e08b9249a"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "feal-linear-cryptanalysis-1790462476919",
+   "files": {
+    "summary.json": "sha256:b5647eb52983bb2b10dbdfc4fa72581edd9a030bdba61cb32bfc552f8cf6f8e6",
+    "events.jsonl": "sha256:84a8dff9dcf58564812ceec56bbdce2dcdbaf491185891ba0eeb96ff43eb7292"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "financial-document-processor-1790462450637",
+   "files": {
+    "summary.json": "sha256:43f37c149647101eaf13d894d02ad97114dc200ed03a947b661d47f51b5d5023",
+    "events.jsonl": "sha256:ac973e7d6332eef78d53cdb9edbe66918aeb771c13d6d766e3143a61256860ab"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "fix-code-vulnerability-1790462473042",
+   "files": {
+    "summary.json": "sha256:b774b0ab1c46268e235ddc65924c541863bb3c835ea477cad79d40a76ffaba89",
+    "events.jsonl": "sha256:bdf7067c6c9ed0691a954a550ec4b3e8efa294441041b34db7c9ae80b3fe038f"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "fix-code-vulnerability-1790462657141",
+   "files": {
+    "summary.json": "sha256:d938c079438d32b4abc71663360d6920bd94996568e10050bb00dd868a00df78",
+    "events.jsonl": "sha256:66f606a79708adb233a0196b00d925d13b3b529bb0e07c8b82f0d9351b2d3fad"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "fix-code-vulnerability-1790462657142",
+   "files": {
+    "summary.json": "sha256:afe3aaf802dbb38f8dfa880545d78d3630b0bee9c744e34b62985e69bab004da",
+    "events.jsonl": "sha256:c49bc42f087d5ea006387a39d2f95530695050be85e82d9efbbd80e2e8e17f47"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "fix-git-1790462479328",
+   "files": {
+    "summary.json": "sha256:7b49958026e697b95efb7d69ce650047ae6f14c0873d8828cecece26f567f88f",
+    "events.jsonl": "sha256:6fa92d1d6fa02de0604cf318ec0b04833389151618ff945f35f0dac67bc4edeb"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "fix-git-1790462597081",
+   "files": {
+    "summary.json": "sha256:ef979de23467e8cf09de587a052dc95d7668c2f70b8cdee139420f30726497e9",
+    "events.jsonl": "sha256:20b1ef298aec2549d1c81e0281ff17bcb10692e422c069323e6385a2c47985cd"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "fix-git-1790462597086",
+   "files": {
+    "summary.json": "sha256:a6172d18ba5c0aecc253e24c1ec3dd47a9b5a9dd85b2c4da1d11f4435ae17141",
+    "events.jsonl": "sha256:5a7384fe330e109596b4de76f1ad42b298efbc12ab319bbc3accb5be23a9f275"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "fix-ocaml-gc-1790462564311",
+   "files": {
+    "summary.json": "sha256:38511318939a67e5708bd1dd66c8c88d2203b204123195f90d553c31cbc41a77",
+    "events.jsonl": "sha256:e26da635d13455755f3ff47d104b1e4ea79d98c055da60b4379badf71d6a5a78"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "fix-ocaml-gc-1790463678654",
+   "files": {
+    "summary.json": "sha256:db5e70e8d77288ff53d1bd5b21f3295269765897728a59fca03a7bb15b75c2be",
+    "events.jsonl": "sha256:3d376050b1fe099b76c90c1a3fe5c180bd3b8ce5eb54d254e60221b5c6f8cfc3"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "fix-ocaml-gc-1790463678655",
+   "files": {
+    "summary.json": "sha256:c945a6b29b886177fa068aa335c5d31e99ae3cd19bdf36976ff077b2c56bedbd",
+    "events.jsonl": "sha256:6d1fd1715ad397391db72654d5084897ecf88743cd3b9d815e5a8cdf7562bb7a"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "git-leak-recovery-1790462614279",
+   "files": {
+    "summary.json": "sha256:62a85c3bbe891fa1963c30e03f09a51be978644e706cb342cc51a3759445c0ec",
+    "events.jsonl": "sha256:5c051188134e4f77be8b61bd50b1d9889c940c126c79faae2aefbac094aa768b"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "git-leak-recovery-1790462717244",
+   "files": {
+    "summary.json": "sha256:62bf936e51a1335ff4349c3bff41b6717aa72b34de6dea3a95fa00e9a9abfe49",
+    "events.jsonl": "sha256:a72091610a75c11345daf314d91b37115de464151e73080d7b08e017ad1adde1"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "git-leak-recovery-1790462717245",
+   "files": {
+    "summary.json": "sha256:bcad0eaf871bf0e4da7c327d3cbfed55a278be8aa3a91599001fb1124dcf4705",
+    "events.jsonl": "sha256:3257c4e7b0bbb8f1868dfc23bc874ee9c5cd1dc9f62510e3bf14c8b9c1238970"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "git-multibranch-1790462672954",
+   "files": {
+    "summary.json": "sha256:352921c6061aead681f8dd7e08f9c27fa40837dec171c8c3891e89476e3a94ea",
+    "events.jsonl": "sha256:35c0b72bb88554d5049da55f78d21f157d57b2a14a49ac75fb76f3c819e6208c"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "headless-terminal-1790462771138",
+   "files": {
+    "summary.json": "sha256:2c40b53ef1288ecd4c81711f8f74615b87d0a8fdec37d22abcbc1179d8faf3d6",
+    "events.jsonl": "sha256:72a133b6d01173f7824c41c6dcf6edd22b754bffee18b09aa32b8ac0aae6ede6"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "headless-terminal-1790462897490",
+   "files": {
+    "summary.json": "sha256:3fb59dd5198148894fcfa7dda09e77bfb95ac9489013fe6ecb64fd5ebe668e38",
+    "events.jsonl": "sha256:c975a37e10cb7da868b08ebdd152048ab72c3944ad008bae28aae886a27b9a75"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "headless-terminal-1790462897495",
+   "files": {
+    "summary.json": "sha256:393368fabdb11f85ed45174d16daf7068651643e4b2847879e16fce297797880",
+    "events.jsonl": "sha256:89de22cceffa36049ffcd2e871f9d86aac6c1ad55f17a274e553e62df29f2398"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "hf-model-inference-1790462888657",
+   "files": {
+    "summary.json": "sha256:1bec68f21c6a8eba9514f764606ff7215355991472bb2d3fde0f257f2e183496",
+    "events.jsonl": "sha256:143c6c10f7e86c8c48f8997ca9a7bb15a09d319266df613e4140e7f3be395c18"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "hf-model-inference-1790463017669",
+   "files": {
+    "summary.json": "sha256:b65115b37b29a4b737d82eb0ad7fca44a2309bb17c0cf3be06c912f04e493612",
+    "events.jsonl": "sha256:02869a1cdd28119e11ae3567f4f363e97a19617a30da1f135307a2a6a5cbd539"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "hf-model-inference-1790463017670",
+   "files": {
+    "summary.json": "sha256:ba3fe9c1cc95d296c4060c02ada88b7a7015d57b2797046d4c8f50f18582de68",
+    "events.jsonl": "sha256:336aed52aab212aa3cb65e11b7273791e282db248b662f2dd3187dc386cb20d0"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "install-windows-3.11-1790462996302",
+   "files": {
+    "summary.json": "sha256:3ee3a0aeadaadd6f090400e4eed3fb9537d32e2856bd74bd536e40a7e3824b92",
+    "events.jsonl": "sha256:08e90dc487686b378c32f011030b6e3e85694db0a5e816b11e660893c977405b"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "large-scale-text-editing-1790463189300",
+   "files": {
+    "summary.json": "sha256:0699e0d638607505f8a5e554ec5846af367336209cc5b88d5cb120b2a794ef9e",
+    "events.jsonl": "sha256:61ad3fea28f32b95f9c5a5d67360eff9e601523a18a19763afbfcf5c01090f2b"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "largest-eigenval-1790463310937",
+   "files": {
+    "summary.json": "sha256:937e6e9fff772a109dff11a61dd4ae5a9be53ae19e8acdb24df4336200971a1f",
+    "events.jsonl": "sha256:8dad8839afa39b4eb119f33ba0a46aeee222e81e04d559f54b07396c55507b26"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "llm-inference-batching-scheduler-1790463418612",
+   "files": {
+    "summary.json": "sha256:7eed8f10a6d62bae627a5e4fe36b692935d260bc1608824dde10d5875776c4e1",
+    "events.jsonl": "sha256:221ea259702b38e3bf60aa716013fea3b450bca9c95c4875f53ac5c7e6fe410f"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "log-summary-date-ranges-1790463659367",
+   "files": {
+    "summary.json": "sha256:2305be3b12c3475995069a2c7b84349997fbfa1bb7c35df30045980a1cf9d9d9",
+    "events.jsonl": "sha256:6d89f1aa6a06eaece0e613a55e999d693bd091e8095f3cbdc6ffb6353abb7630"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "mailman-1790463724201",
+   "files": {
+    "summary.json": "sha256:a22e570f240fa8a6b8902909cb50d6560f0fac840fde5314a64d2301039c200f",
+    "events.jsonl": "sha256:2353e15bca3bc0c5530709c72e32e254508b4949957523d50f774be490303c6b"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "mailman-1790464279711",
+   "files": {
+    "summary.json": "sha256:686d450af09925a6ebcf54e55b1941adf2e814aa46108ac6f4baefdd5b30f060",
+    "events.jsonl": "sha256:4af3a458270560ed3d60c54681c14eae62b4d30ec62bf0d456da323721aaa7d9"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "mailman-1790464279713",
+   "files": {
+    "summary.json": "sha256:17bee83ae76b43d563fad1de3cb8b79e69d4727134aec6bdfe5c9a82b096c21c",
+    "events.jsonl": "sha256:6ac8eacc7baedca186c520fe33d84d244f0252b120b44e7cb7f5db9714dc7a71"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "make-mips-interpreter-1790464236072",
+   "files": {
+    "summary.json": "sha256:c21cbf2ad93cdd9b3e4a4cd799f6e2444b067c863c1257df959706d06d11df03",
+    "events.jsonl": "sha256:ff2ed96a63c44297ad2e54b3d77fa051dfc463b029230142311f34168e281948"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "merge-diff-arc-agi-task-1790464251399",
+   "files": {
+    "summary.json": "sha256:3f24ee490b8c861f0fcb93ead883aa5ca32791ccebce50d7f3b9dc72511e5d56",
+    "events.jsonl": "sha256:41f0497a34b2ad28eb574d06e4fa75f1a748df57c9db5ccf4a5efcb5be4158cb"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "merge-diff-arc-agi-task-1790464459999",
+   "files": {
+    "summary.json": "sha256:f83c7bf46cc67065bc5125dfd4f5b776239f85736bcd1f03732688f1519a3892",
+    "events.jsonl": "sha256:93a4716c7488fcda87a1e25f4879cdb95eb29977acfd3919fbdceeadd2a38ee0"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "merge-diff-arc-agi-task-1790464460003",
+   "files": {
+    "summary.json": "sha256:0b234c3fbdb9c6671c98ca79edc2df60f303229ea822183fcdc9ff6ddfab592a",
+    "events.jsonl": "sha256:7f9f61d3306c20764218abd45e90b3540b473e2b6a51b286f53e3e75fa746938"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "modernize-scientific-stack-1790464402509",
+   "files": {
+    "summary.json": "sha256:f3509a2662848f426b2b529fe4ae24bc1670470434fc083b38734972149f349d",
+    "events.jsonl": "sha256:23e7b487bd49bdf0ed3b8e0a8786673429f3868326342f598faded2d8947daf9"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "modernize-scientific-stack-1790464580212",
+   "files": {
+    "summary.json": "sha256:edd804035f80b2560ca9f838a5b4bf904c56b995595b7be9929a25ad49060e47",
+    "events.jsonl": "sha256:fe786233cb7ef8b0de77186fde0f7a9844fe829d0e10490a5a457c54a2950077"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "modernize-scientific-stack-1790464580214",
+   "files": {
+    "summary.json": "sha256:85e20ab0ebb7cc142a0b879b7d571d2e39278a3cac2f2d3ebd3b658aff03d368",
+    "events.jsonl": "sha256:96a9b2b9c0d754fd22519769cf3f73be2d6ebdd22067ef8b4823b0f53155d86e"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "mteb-leaderboard-1790464530813",
+   "files": {
+    "summary.json": "sha256:cbd494816994ed38998eaedceffbdacc57fe808999a5e9eda568c3b0fc43e2ea",
+    "events.jsonl": "sha256:318d7e05ed28568c3226fe5a60079882333a75f9c1d7d22b6e0e40ca4bc60dc5"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "multi-source-data-merger-1790464807966",
+   "files": {
+    "summary.json": "sha256:e5e810c46318419586cb5e5f5ca7d55c58506b3baddd9af93012f4ea49073d9b",
+    "events.jsonl": "sha256:806f668f468d4edb5daeb249f1f0aa2cd3237c91fe3252a05f5ca7da43af37bb"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "multi-source-data-merger-1790465000960",
+   "files": {
+    "summary.json": "sha256:1fb2c1d76273af3a7d6b36240ed19a43320f8fa20bbc45990a7edbc90b017790",
+    "events.jsonl": "sha256:262fecfc73593c3c0f74eb9d769573ce755c5e1f7c092fa3d2b6b0a3d55f881e"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "multi-source-data-merger-1790465000962",
+   "files": {
+    "summary.json": "sha256:6f1fd1e7a025115a55755bdca02386eba801e30186c59d18ab1015abec89bd6d",
+    "events.jsonl": "sha256:63361bb09e0f80bb5baff7263f66d6bf116daa3f69c047aa9ddc06566ce7859b"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "nginx-request-logging-1790464946338",
+   "files": {
+    "summary.json": "sha256:4e7cf8dcc2c08e6da33a2fbd605282d2a84b9d315f2b332c1130def0b97c414e",
+    "events.jsonl": "sha256:661cbba859121dfc2fbad24e13b9164561f0623e6bcdec2276cde407ae838ca4"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "nginx-request-logging-1790465181277",
+   "files": {
+    "summary.json": "sha256:6f8981f3094a913a42f9c3e3df69b2e2afe861ced1ec936a4aeb75297deebe2d",
+    "events.jsonl": "sha256:5a28d88bc31d90f56ce2ef37952a4d210f3ea510c361633927f144163655b606"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "nginx-request-logging-1790465181282",
+   "files": {
+    "summary.json": "sha256:103e499b159b333a1af0b27c5142365352161961d31cad2dfa49ef7360c8e753",
+    "events.jsonl": "sha256:d06e8c1a07d95b2b7ade9ed4d5cf958d855cdee03b0722bda57f5b509efd99dc"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "openssl-selfsigned-cert-1790465139801",
+   "files": {
+    "summary.json": "sha256:bbf5c5e68c0612b6e116fbbb8c88898c80a5318d7e5a4ddb7d039cb8e55cf1a8",
+    "events.jsonl": "sha256:e6ac3d95589d83d8aa4de80ece4ad047372d81abf0a7e1dd8a2e93dd1e11aa2a"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "openssl-selfsigned-cert-1790465361588",
+   "files": {
+    "summary.json": "sha256:a76d9a2daa9b6d0a7e279080147d322d0ce190e9d7423d49a107b8b1ffe98a68",
+    "events.jsonl": "sha256:140cf1321cf94c8971475464a1c5ca03acb9a74ce01194382e138902aefcb5f2"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "openssl-selfsigned-cert-1790465361591",
+   "files": {
+    "summary.json": "sha256:d59340c96dd7879e6a071084aa69659611b4c93d39aeb1fba67c082c23a1b6d5",
+    "events.jsonl": "sha256:afff18121b4a2b581f1ca27943b0a4510818fea4e3cc8728210c098eb6d65f98"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "overfull-hbox-1790465334432",
+   "files": {
+    "summary.json": "sha256:896dc1ff25e0737f4f1d8290c6c6863dcb436dfd911fc7d66de154bcb5ca6d76",
+    "events.jsonl": "sha256:0724b7c83245ffa770354dfc72499083b80c3005c5ea3e1799e38cda0d89ff2e"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "password-recovery-1790465656944",
+   "files": {
+    "summary.json": "sha256:0ff23b7b51bf9f7f50388e277916688a7beec2e0f3b33a40fc35b7110341cbdf",
+    "events.jsonl": "sha256:e5b0f48b1939bcd6d35533754af733d5097f34185fea65eb723e4f6fd99a364a"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "path-tracing-1790465974086",
+   "files": {
+    "summary.json": "sha256:8da24528281b05f47b0c7639d62da6387f19fbe3c81e31a9638d452b1b57c47e",
+    "events.jsonl": "sha256:2f37c1d59c7c1e0c91e2c865afd6c0d1c0d6bc9f30da8e198019e38e9f4a1302"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "path-tracing-reverse-1790467048910",
+   "files": {
+    "summary.json": "sha256:585bd68ab11fbd253ae9c7497c976c05bc8c8f94dcac8cc1655bc74796a4acf0",
+    "events.jsonl": "sha256:a091615b019254cfc0e5e0583f8cc39e551e2f302aa5ef2fcbbf66b3b23e79ad"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "polyglot-c-py-1790467199897",
+   "files": {
+    "summary.json": "sha256:b1ca728b021cdc978dad4c417d6de050cfd3a17320836f0933bca0ec6f8a2fe2",
+    "events.jsonl": "sha256:e819ed43dabc0d8f982f4c8e863c983caba2713e903ace9fff6e464a5620c01b"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "polyglot-c-py-1790467345102",
+   "files": {
+    "summary.json": "sha256:489e447d34442da28d29369bf341b2722683a3a572cf00d0e719cf781d437360",
+    "events.jsonl": "sha256:ba8cdee188c1100aeff6d95dcca0eeeb4f0b286434c695545a63139053be50f6"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "polyglot-c-py-1790467345103",
+   "files": {
+    "summary.json": "sha256:87fa9c92166a4260613e711753a95cbbdffaac1b54f95a51cfd27dc99d439a81",
+    "events.jsonl": "sha256:c9e6e97877e332f49ae8f262e0145b121c3bbb6c2fda60b51ee2ae7587589a0d"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "polyglot-rust-c-1790467342419",
+   "files": {
+    "summary.json": "sha256:3817f5588f06ca525645c7fa7b86555eee592faf63212e547839d59420d20b2d",
+    "events.jsonl": "sha256:040958192eaf53ea2f3d509031106d362231c19ea4238fef88eef4b1fec53959"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "portfolio-optimization-1790467909921",
+   "files": {
+    "summary.json": "sha256:c0cbfc6f29c91f3d65e5209eeb10453f7e9fc2936dec8c389e955d6851b943e9",
+    "events.jsonl": "sha256:e49f6a94b00a22351dde227faf7bf5c01015410a1263bd59a097277c4d145d23"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "prove-plus-comm-1790468849833",
+   "files": {
+    "summary.json": "sha256:33a779aa0aee4caddcfb397d8bb8952fd9fabf380438149d1f96f8801dd59031",
+    "events.jsonl": "sha256:01e7c8e0d208e9d696023f20c64727eb7b4b4007c604c1f01bdf395801d80f46"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "prove-plus-comm-1790468908164",
+   "files": {
+    "summary.json": "sha256:978aab3269f0e9044e53e2f11cabfa16dcb1a4f489975625d2133d23527b78eb",
+    "events.jsonl": "sha256:6faf4cc705a2f30a2c9285d019ee791c2c3420b9b447232bf75e1dc619762305"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "prove-plus-comm-1790468908165",
+   "files": {
+    "summary.json": "sha256:87a45361e109ade9af26e15b2b693a0553a0c567fbd734bac59d813940da9c01",
+    "events.jsonl": "sha256:813351559239a21b7179b29fb612817376a91cb279ab6249b8e11b77b70f9d58"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "pypi-server-1790468900079",
+   "files": {
+    "summary.json": "sha256:b7b597aadd2c34520ed6e3bbfd52432049ee72354b2c2dd9764b139f2ec194d6",
+    "events.jsonl": "sha256:00e71c69bd601bbda2d7c97d46ee402fd9f19f0b5c1d5bd6b379acf10c1df51c"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "pypi-server-1790468968309",
+   "files": {
+    "summary.json": "sha256:b96ecba383872cc1695ffad31fed01ca900617152c32b55bf6fecee83ace27cd",
+    "events.jsonl": "sha256:4670f6e6c554ee19f80ddf86586e6a730970f39ed0c82da46457414950748a40"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "pypi-server-1790468968317",
+   "files": {
+    "summary.json": "sha256:7063c99addf973b85aadece17b017e1a762728e1f5624c2029ee08532038529b",
+    "events.jsonl": "sha256:964dde266fd0fe3cadac0bce98931d90b126702d80fa48127d38e49692d5f3b3"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "pytorch-model-cli-1790468958289",
+   "files": {
+    "summary.json": "sha256:8ea72639fdf0133a62ea1b6feec84bd356c8a5e361d901636a87b576d77cf070",
+    "events.jsonl": "sha256:45e754686afa5bd2c783a355388428cfbcb607114c3ed5305058c0ccfbbc195b"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "pytorch-model-cli-1790469268915",
+   "files": {
+    "summary.json": "sha256:29374ff7506e88b765748ccc18cb2aaab0f14fcd8bacc8e9b8c3d3f2646f341e",
+    "events.jsonl": "sha256:b009fccc1234d2fb8cdb8c2937cb605b953bc62656e436a7736ee9aded30aba0"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "pytorch-model-cli-1790469268916",
+   "files": {
+    "summary.json": "sha256:28e4ee51601b227d83e818a89df98efd5c9a520a76795361292b634269549a7c",
+    "events.jsonl": "sha256:aa60eebb40db6ce2d69ff29ac2fc08538248b433440fd892bb85aa1940f45e8f"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "pytorch-model-recovery-1790468962971",
+   "files": {
+    "summary.json": "sha256:52d73059f360e83ac2a233c4087d891441a5b77a4898ad270382169994b1bda5",
+    "events.jsonl": "sha256:135fedc8233b621ab7998dbf343ebb4a202b81c2486f1e17fce848f2f6333366"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "pytorch-model-recovery-1790469268916",
+   "files": {
+    "summary.json": "sha256:9c607e86c43581d0118f84c089925bcc750050bf316c50ce68169d5329012107",
+    "events.jsonl": "sha256:7b980272cbd4f2ca62f754a8e740a274da25422d583d0face36c10afbb95e419"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "pytorch-model-recovery-1790469268921",
+   "files": {
+    "summary.json": "sha256:4ac3ed2c0dbb6877e48610350bbce428148c4b696cc0a09673636e02142e5e4a",
+    "events.jsonl": "sha256:9df48d41a1f5cb9d8e86bd53f4770298ef010f048cecf0fad8d36750132aa17e"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "query-optimize-1790469244903",
+   "files": {
+    "summary.json": "sha256:476cad10045c0ddc76ca2705d14a39a4e59decffdd80d65fbf6fd018ffe226b5",
+    "events.jsonl": "sha256:01ef22a0da107561b409322b7932e10d43c4f8ac2ba3334114061a82a536e6be"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "regex-chess-1790469258713",
+   "files": {
+    "summary.json": "sha256:797520879f72e6123d5fc61bf209cb0cff6fc086b6caef47a7a8df5184007359",
+    "events.jsonl": "sha256:c65cd0e5dc10ef8cb4efd864b7c452696be4ee13371db53a5b55fe0c812d0fb4"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "regex-log-1790469395553",
+   "files": {
+    "summary.json": "sha256:ae42fd5b133cd5e400ae9d54a618c4d780d6565d418ed0390e4d0eb57721c423",
+    "events.jsonl": "sha256:e127e2094f8ed02b75dc645fcceeaf9cd4a3c8aa2e53b33c75cd660c7b7c6395"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "regex-log-1790469629726",
+   "files": {
+    "summary.json": "sha256:a8060b082a3beb7169eb31fc867566f45bfd6bfcbeb958dc232e409c9f391fb6",
+    "events.jsonl": "sha256:b4d2e2919b248d60b3e276829c17ff42aabbce8c2b5109810fde130809b61f5e"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "regex-log-1790469629731",
+   "files": {
+    "summary.json": "sha256:bab273e05928feb9bc4c54317a7fe076797f172bfcffc8f38a42be14db566ff6",
+    "events.jsonl": "sha256:249708bf69f40d13f65ab0ef890007f9c1ca8176bbb47ca670862f097d0e84f9"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "reshard-c4-data-1790469615537",
+   "files": {
+    "summary.json": "sha256:aa2ccf2cb9573826019e82d3f813019d651793d03478812b652ce580ec31c984",
+    "events.jsonl": "sha256:8da5a236bba012d125e65e301bc4cae0353e5955b8324dd7792681397a83898b"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "reshard-c4-data-1790469930442",
+   "files": {
+    "summary.json": "sha256:b118bfa9e8bc26d2cbc78fdae9b42f2b4386e3f582db1a7b3d04394ed5a48939",
+    "events.jsonl": "sha256:fb068c046394166faa012c700b2895347610f3d5cf021d228a325666012178a9"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "reshard-c4-data-1790469930443",
+   "files": {
+    "summary.json": "sha256:aca28836ad4d4ec2e9ff659cb89a9a346a4a685c69557f68759e407953ce59d0",
+    "events.jsonl": "sha256:464a12dff13f256ecbd0a0574d2bd078ebd25fb978054f62afc61f8247832f2c"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "rstan-to-pystan-1790469885461",
+   "files": {
+    "summary.json": "sha256:1999a52f4113a5792b17c9934ac676af7c6e9af60a2eb39afc5f2f519db0a00f",
+    "events.jsonl": "sha256:726320ff8f77a701cde54c23a69c60ae7fcb766ea4284f5b4f3353d60b77192a"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "rstan-to-pystan-1790470231365",
+   "files": {
+    "summary.json": "sha256:29377fb89a9c5d0ce76dd40af2712b6844939d78df0f48f5989d1f09aa5f91dd",
+    "events.jsonl": "sha256:a96515693a7e11a8028e3c78304e2ced07cf9d180c5dd99c03a74480cc114004"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "rstan-to-pystan-1790470231366",
+   "files": {
+    "summary.json": "sha256:1cb6dd0d7cb33d611c869dc4a719a6cc92f8d28e08b53eff3b009595e91f01ff",
+    "events.jsonl": "sha256:98dcd30ddb02eaa6073a7a0976d78c10aba48af25f71ebdd90d1ecaf47206a08"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "sam-cell-seg-1790470186805",
+   "files": {
+    "summary.json": "sha256:f1e46d5a406535a211fddf0f166216f1d93c4c040f055e3e54758ea6076201fc",
+    "events.jsonl": "sha256:e20b6c10a5c61f8bdd23a7ca50b54285385d5129931610773734720e8445824e"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "sam-cell-seg-1790470411804",
+   "files": {
+    "summary.json": "sha256:35e901ec4c0d52488e89d93672468ba6fd9a8cdde545a976e520db75a5531c29",
+    "events.jsonl": "sha256:33363eb163d286dcfc4fdb3bb19a262364673e7fe0cf1d345d9dcfe4de81467a"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "sam-cell-seg-1790470411805",
+   "files": {
+    "summary.json": "sha256:57b93183e1482c177e51c4856d0c0e1453ded4d7100b253a3d157f659023a025",
+    "events.jsonl": "sha256:dd53f3e709fd850669c0ffc8a0341436be56bd85555b3de2f5be98418ed2905b"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "schemelike-metacircular-eval-1790470391484",
+   "files": {
+    "summary.json": "sha256:ff7ca9df15f9843ec3fcf6c6caaf55247330a12101c83b4d6da7f90a67b287bf",
+    "events.jsonl": "sha256:c7719f6454e0999d5a61e9c7d146bb05cf355b6fca20f327998a9c5251edad55"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "sparql-university-1790470404114",
+   "files": {
+    "summary.json": "sha256:f5c1203771eb042a90e3a298b4f1dbfcc5fafe77f5ecf5c0bfd1ae8f886085ec",
+    "events.jsonl": "sha256:2568c0a20aae055eb002461009d015e684d43ed64f0a00960e18ae97d6857e81"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "sqlite-db-truncate-1790470547404",
+   "files": {
+    "summary.json": "sha256:cb4e7861a13dc8510fdf5ade4e75cd0a651a25254b2d9f0efa89d0db982f675b",
+    "events.jsonl": "sha256:d734e3d94c73a0381ee4a42ca405d6c668c8bb1c8b69638cad74dd19fa6303ba"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "sqlite-db-truncate-1790470893658",
+   "files": {
+    "summary.json": "sha256:eed337b4081970357018ec949735d1cb962154cbc1d49a0a7c221e1c1a56634c",
+    "events.jsonl": "sha256:3e4e5e2874d69e5e27e825d629acb0188203aef05f162068d33e3fcfd541d632"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "sqlite-db-truncate-1790470893659",
+   "files": {
+    "summary.json": "sha256:a758ebf95c75e91679dfc269883aa38aea55f03323d90b3f352338c379ef1a46",
+    "events.jsonl": "sha256:8b96b692353172f5cca92bad818f10f85b9c8f474edde412fb4b59b4aa568beb"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "sqlite-with-gcov-1790470750825",
+   "files": {
+    "summary.json": "sha256:c8928f71bff9d25bb0e93caa1c4e40ce0315c321ca6d5ec5e053be372c5fe660",
+    "events.jsonl": "sha256:28a4efbc32598106ab288eb4e0db4a8a94e1c84ae81f435bb637d5165203db7d"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "torch-pipeline-parallelism-1790470846620",
+   "files": {
+    "summary.json": "sha256:4356eaa1f09d5e889c28ce7e3262f0b863a9e39d0fc8e7961b5d6f1ebef4c77a",
+    "events.jsonl": "sha256:1fb85f87d97834e6a2bfcbf5b87475569f06ce36cbb6fc373d95117c5fe24f9e"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "torch-tensor-parallelism-1790470976326",
+   "files": {
+    "summary.json": "sha256:45a3b6847459230c79a88f9786d6e8b5ecfff493886e8bcfc8ceb2383024f897",
+    "events.jsonl": "sha256:143239239449688211bf9ccb21cb110bc7a26b2c0312de1e31310f8340c4cdd2"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "train-fasttext-1790471051961",
+   "files": {
+    "summary.json": "sha256:40cbe8cc91831407e37705bb12ebdeea35055e0fd609a59629490a99a05f7b4f",
+    "events.jsonl": "sha256:d7110e714f9730532bf4cdf68e3537429ae104d0be4a674f5a6c3c9199af7517"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "tune-mjcf-1790471349629",
+   "files": {
+    "summary.json": "sha256:cf73b77e88a214d44aca7b7ad30b1a77669783c6991075c7f15fc87c6c6a1317",
+    "events.jsonl": "sha256:c2b29fe0adea18d6553bbd3e010e4802de7dffd07986cd2b886f8b6004337b63"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "tune-mjcf-1790472518955",
+   "files": {
+    "summary.json": "sha256:e5b308e187a2bfd41f56e27fde6730e38118cab40e1df9f933ae11eb9fc21dc8",
+    "events.jsonl": "sha256:a256bd0123fdc27a3ef1a52bc7161fe70a7115a030cf9aee21542e38d56422b6"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "tune-mjcf-1790472518956",
+   "files": {
+    "summary.json": "sha256:459cbac01fd2f16e6a8f921da4257add44593b754614318ec00d5c7a9cc5b871",
+    "events.jsonl": "sha256:4f6922e4147b971257cbb2e1b64a774f0c6ac00b5da6a4ac23613f519608abd0"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "vulnerable-secret-1790471533583",
+   "files": {
+    "summary.json": "sha256:562e415625432f4a042471d14157b41893fb36a0c9b9404b4e2f60fbd55202ad",
+    "events.jsonl": "sha256:d7a12451af861c93707f9d38a84aadaea367b74b35827113f28ba589bb9a46c7"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "vulnerable-secret-1790471616351",
+   "files": {
+    "summary.json": "sha256:029b0ab87f328dff8f47a06c60a71f643aec6623dfdf10280f15e2d4024d1970",
+    "events.jsonl": "sha256:99822e356d06f45061eb3d51aa7da8af578524111390254d648103b3dee4ae96"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "vulnerable-secret-1790471616352",
+   "files": {
+    "summary.json": "sha256:d49210e28de56091224bfe2f07bdf82bc1fdc6bc5e4a4545a55e684d9fc3acbc",
+    "events.jsonl": "sha256:3ea54e8940350172c8c238b60b2e75bd4cb4a9c21cec1ff31df14ad6584466be"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  },
+  {
+   "name": "write-compressor-1790471597732",
+   "files": {
+    "summary.json": "sha256:976a037fa87051895d89c6d4dd261ecd2c59655664b1d3cc227686daea9c3aca",
+    "events.jsonl": "sha256:2a2d55504c0e7d924800f05338b9141157f9fe6ddda252848ba4c7a06cbe6776"
+   },
+   "commit": "ea9c973576",
+   "commit_source": "the pinned study binary microcoder-study-t1, built from ea9c973576 (t1.meta)"
+  }
+ ]
+}

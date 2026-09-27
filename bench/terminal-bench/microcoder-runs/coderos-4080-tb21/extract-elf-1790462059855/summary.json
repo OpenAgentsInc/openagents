@@ -1,0 +1,93 @@
+{
+  "task": "extract-elf",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 3,
+    "seconds": 38.041815792,
+    "model_usd": 0.0024046000000000002,
+    "jev_usd": 0.00032361,
+    "embedding_usd": 0.0,
+    "usd": 0.00272821,
+    "known_usd": 0.00272821,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease\nGet:2 http://archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]\nGet:3 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]\nGet:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]\nGet:5 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1547 kB]\nGet:6 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [2160 kB]\nGet:7 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1633 kB]\nGet:8 http://archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [2048 kB]\nGet:9 http://archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Packages [56.2 kB]\nGet:10 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [1299 kB]\nGet:11 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1905 kB]\nGet:12 http://archive.ubuntu.com/ubuntu noble-backports/universe amd64 Packages [36.0 kB]\nGet:13 http://archive.ubuntu.com/ubuntu noble-backports/multiverse amd64 Packages [671 B]\nGet:14 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 Packages [49.0 kB]\nGet:15 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [50.0 kB]\nFetched 11.2 MB in 2s (5026 kB/s)\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\ngcc is already the newest version (4:13.2.0-7ubuntu1).\nThe following additional packages will be installed:\n  l\n[… 235 characters left out …]\n06 kB of archives.\nAfter this operation, 1487 kB of additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libcurl4t64 amd64 8.5.0-2ubuntu10.15 [343 kB]\nGet:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 curl amd64 8.5.0-2ubuntu10.15 [227 kB]\nGet:3 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libcurl3t64-gnutls amd64 8.5.0-2ubuntu10.15 [336 kB]\ndebconf: delaying package configuration, since apt-utils is not installed\nFetched 906 kB in 1s (1309 kB/s)\nSelecting previously unselected package libcurl4t64:amd64.\r\n(Reading database ... \r(Reading database ... 5%\r(Reading database ... 10%\r(Reading database ... 15%\r(Reading database ... 20%\r(Reading database ... 25%\r(Reading database ... 30%\r(Reading database ... 35%\r(Reading database ... 40%\r(Reading database ... 45%\r(Reading database ... 50%\r(Reading database ... 55%\r(Reading database ... 60%\r(Reading database ... 65%\r(Reading database ... 70%\r(Reading database ... 75%\r(Reading database ... 80%\r(Reading database ... 85%\r(Reading database ... 90%\r(Reading database ... 95%\r(Reading database ... 100%\r(Reading database ... 49547 files and directories currently installed.)\r\nPreparing to unpack .../libcurl4t64_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...\r\nSelecting previously unselected package curl.\r\nPreparing to unpack .../curl_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking curl (8.5.0-2ubuntu10.15) ...\r\nPreparing to unpack .../libcurl3t64-gnutls_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking libcurl3t64-gnutls:amd64 (8.5.0-2ubuntu10.15) over (8.5.0-2ubuntu10.6) ...\r\nSetting up libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...\r\nSetting up libcurl3t64-gnutls:amd64 (8.5.0-2ubuntu10.15) ...\r\nSetting up curl (8.5.0-2ubuntu10.15) ...\r\nProcessing triggers for libc-bin (2.39-0ubuntu8.6) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading cpython-3.13.9-linux-x86_64-gnu (download) (32.0MiB)\n Downloading cpython-3.13.9-linux-x86_64-gnu (download)\nDownloading pygments (1.2MiB)\n Downloading pygments\nInstalled 6 packages in 7ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.9, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 2 items\n\n../tests/test_outputs.py ..                                              [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_extract_js_exists\nPASSED ../tests/test_outputs.py::test_output_matches_reference\n============================== 2 passed in 0.23s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-extract-elf-2554116",
+  "image": "alexgshaw/extract-elf:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "extract-coverage.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\ncd /app\nnode extract.js /app/a.out > /tmp/extract-output.json\npython3 - <<'PY'\nimport json,struct\np='/app/a.out'; b=open(p,'rb').read()\n# ELF file: assess loadable initialized file bytes at aligned 4-byte virtual addresses.\nassert b[:4]==b'\\x7fELF'\ncls=b[4]; endian='<' if b[5]==1 else '>'\nif cls==2:\n h=struct.unpack_from(endian+'HHIQQQIHHHHHH',b,16); phoff,entsize,num=h[4],h[8],h[9]\n fmt=endian+'IIQQQQQQ'\nelse:\n h=struct.unpack_from(endian+'HHIIIIIHHHHHH',b,16); phoff,entsize,num=h[4],h[8],h[9]\n fmt=endian+'IIIIIIII'\nrefs={}\nfor i in range(num):\n vals=struct.unpack_from(fmt,b,phoff+i*entsize)\n if cls==2: typ,flags,off,va,pa,fs,ms,al=vals\n else: typ,off,va,pa,fs,ms,flags,al=vals\n if typ!=1: continue\n # words available in initialized segment, preserving natural 4-byte alignment\n start=(va+3)&~3; end=(va+fs)&~3\n for a in range(start,end,4):\n  pos=off+(a-va)\n  if pos>=off and pos+4<=off+fs: refs[str(a)]=struct.unpack_from(endian+'I',b,pos)[0]\nout=json.load(open('/tmp/extract-output.json'))\ncommon=sum(k in out and out[k]==v for k,v in refs.items())\nassert refs and common/len(refs)>=.75,(common,len(refs),common/len(refs))\nPY\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "extract_runs.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\ncd /app\nnode extract.js /app/a.out > /tmp/extract-output.json\nnode -e 'const x=require(\"/tmp/extract-output.json\"); if(!x || typeof x!==\"object\" || Array.isArray(x)) process.exit(1); for(const [k,v] of Object.entries(x)) if(!/^\\d+$/.test(k) || !Number.isInteger(v)) process.exit(1); if(!Object.keys(x).length) process.exit(1)'\n",
+      "passed_at_freeze": true
+    }
+  ],
+  "frozen_at": 2,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "extract-coverage.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.129664996,
+      "output": ""
+    },
+    {
+      "command": "extract_runs.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.158580902,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

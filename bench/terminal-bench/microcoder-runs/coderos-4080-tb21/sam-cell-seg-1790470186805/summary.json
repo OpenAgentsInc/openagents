@@ -1,0 +1,105 @@
+{
+  "task": "sam-cell-seg",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 9,
+    "seconds": 109.120485447,
+    "model_usd": 0.0069951,
+    "jev_usd": 0.001448244,
+    "embedding_usd": 0.0,
+    "usd": 0.008443344,
+    "known_usd": 0.008443344,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Get:1 http://deb.debian.org/debian trixie InRelease [140 kB]\nGet:2 http://deb.debian.org/debian trixie-updates InRelease [47.3 kB]\nGet:3 http://deb.debian.org/debian-security trixie-security InRelease [43.4 kB]\nGet:4 http://deb.debian.org/debian trixie/main amd64 Packages [9678 kB]\nGet:5 http://deb.debian.org/debian trixie-updates/main amd64 Packages [4412 B]\nGet:6 http://deb.debian.org/debian-security trixie-security/main amd64 Packages [263 kB]\nFetched 10.2 MB in 12s (841 kB/s)\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\ngit is already the newest version (1:2.47.3-0+deb13u1).\nThe following additional packages will be installed:\n  libcurl3t64-gnutls libcurl4-openssl-dev libcurl4t64 libdrm-amdgpu1\n  libdrm-common libdrm-intel1 libdrm2 libgbm1 libgl1-mesa-dri libglvnd0\n  libglx-mesa0 libglx0 libllvm19 libpciaccess0 libsensors-config libsensors5\n  libvulkan1 libwayland-client0 libwayland-server0 libx11-xcb1 libxcb-dri3-0\n  libxcb-glx0 libxcb-present0 libxcb-randr0 libxcb-sync1 libxcb-xfixes0\n  libxshmfence1 libxxf86vm1 libz3-4 mesa-libgallium mesa-vulkan-drivers\nSuggested packages:\n  pciutils lm-sensors\nThe following NEW packages will be installed:\n  libdrm-amdgpu1 libdrm-common libdrm-intel1 libdrm2 libgbm1 libgl1\n  libgl1-mesa-dri libglvnd0 libglx-mesa0 libglx0 libllvm19 libpciaccess0\n  libsensors-config libsensors5 libvulkan1 libwayland-client0\n  libwayland-server0 libx11-xcb1 libxcb-dri3-0 libxcb-glx0 libxcb-pre\n[… 15632 characters left out …]\nny_vit_sam.tiny_vit_11m_224. This is because the name being registered conflicts with an existing name. Please check if this is not expected.\n  return register_model(fn_wrapper)\n/root/.cache/uv/archive-v0/kxFFA2BMifv6hWb9xFoUJ/lib/python3.11/site-packages/mobile_sam/modeling/tiny_vit_sam.py:656: UserWarning: Overwriting tiny_vit_21m_224 in registry with mobile_sam.modeling.tiny_vit_sam.tiny_vit_21m_224. This is because the name being registered conflicts with an existing name. Please check if this is not expected.\n  return register_model(fn_wrapper)\n/root/.cache/uv/archive-v0/kxFFA2BMifv6hWb9xFoUJ/lib/python3.11/site-packages/mobile_sam/modeling/tiny_vit_sam.py:656: UserWarning: Overwriting tiny_vit_21m_384 in registry with mobile_sam.modeling.tiny_vit_sam.tiny_vit_21m_384. This is because the name being registered conflicts with an existing name. Please check if this is not expected.\n  return register_model(fn_wrapper)\n/root/.cache/uv/archive-v0/kxFFA2BMifv6hWb9xFoUJ/lib/python3.11/site-packages/mobile_sam/modeling/tiny_vit_sam.py:656: UserWarning: Overwriting tiny_vit_21m_512 in registry with mobile_sam.modeling.tiny_vit_sam.tiny_vit_21m_512. This is because the name being registered conflicts with an existing name. Please check if this is not expected.\n  return register_model(fn_wrapper)\n/root/.cache/uv/archive-v0/kxFFA2BMifv6hWb9xFoUJ/lib/python3.11/site-packages/mobile_sam/build_sam.py:91: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.\n  state_dict = torch.load(f)\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_python_file_exists\nPASSED ../tests/test_outputs.py::test_run_script\nPASSED ../tests/test_outputs.py::test_csv_output_exists\nPASSED ../tests/test_outputs.py::test_csv_shape_cols\nPASSED ../tests/test_outputs.py::test_masks_are_no_longer_rect\nPASSED ../tests/test_outputs.py::test_mask_alignment\nPASSED ../tests/test_outputs.py::test_no_polyline_overlaps\nPASSED ../tests/test_outputs.py::test_single_contiguous_mask_per_cell\nPASSED ../tests/test_outputs.py::test_coords_are_flat_lists\n============================== 9 passed in 8.16s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-sam-cell-seg-73495",
+  "image": "alexgshaw/sam-cell-seg:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "mobile_sam_usage.sh",
+      "script": "#!/usr/bin/env bash\nset -e\ngrep -q 'mobile_sam' /app/convert_masks.py\ngrep -q 'SamPredictor\\|SamAutomaticMaskGenerator' /app/convert_masks.py\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "outputs.sh",
+      "script": "#!/usr/bin/env bash\nset -e\n test -f /app/convert_masks.py\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "script_interface.sh",
+      "script": "#!/usr/bin/env bash\nset -e\n test -f /app/convert_masks.py\n python3 /app/convert_masks.py --help >/dev/null\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "mobile_sam_usage.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.04234636,
+      "output": ""
+    },
+    {
+      "command": "outputs.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.03863169,
+      "output": ""
+    },
+    {
+      "command": "script_interface.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.061243427,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

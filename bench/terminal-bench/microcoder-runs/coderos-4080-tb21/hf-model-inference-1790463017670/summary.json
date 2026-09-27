@@ -1,0 +1,117 @@
+{
+  "task": "hf-model-inference",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 6,
+    "seconds": 96.180240907,
+    "model_usd": 0.0038459,
+    "jev_usd": 0.000936222,
+    "embedding_usd": 0.0,
+    "usd": 0.004782122,
+    "known_usd": 0.004782122,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Collecting pytest==8.4.1\n  Downloading pytest-8.4.1-py3-none-any.whl.metadata (7.7 kB)\nCollecting psutil==7.0.0\n  Downloading psutil-7.0.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (22 kB)\nCollecting requests==2.32.4\n  Downloading requests-2.32.4-py3-none-any.whl.metadata (4.9 kB)\nCollecting pytest-json-ctrf==0.3.5\n  Downloading pytest_json_ctrf-0.3.5-py3-none-any.whl.metadata (3.3 kB)\nCollecting iniconfig>=1 (from pytest==8.4.1)\n  Downloading iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)\nRequirement already satisfied: packaging>=20 in /usr/local/lib/python3.13/site-packages (from pytest==8.4.1) (26.2)\nCollecting pluggy<2,>=1.5 (from pytest==8.4.1)\n  Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)\nCollecting pygments>=2.7.2 (from pytest==8.4.1)\n  Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)\nRequirement already satisfied: charset_normalizer<4,>=2 in /usr/local/lib/python3.13/site-packages (from requests==2.32.4) (3.4.7)\nRequirement already satisfied: idna<4,>=2.5 in /usr/local/lib/python3.13/site-packages (from requests==2.32.4) (3.13)\nRequirement already satisfied: urllib3<3,>=1.21.1 in /usr/local/lib/python3.13/site-packages (from requests==2.32.4) (2.6.3)\nRequirement already satisfied: certifi>=2017.4.17 in /usr/local/lib/python3.13/site-packages (from requests==2.32.4) (2026.4.22)\nDownloading pytest-8.4.1-py3-none-any.whl (365 kB)\nDownloading psutil-7.0.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (277 kB)\nDownloading requests-2.32.4-py3-none-any.whl (64 kB)\nDownloading pytest_json_ctrf-0.3.5-py3-none-any.whl (6.8 kB)\nDownloading pluggy-1.6.0-py3-none-any.whl (20 kB)\nDownloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)\nDownloading pygments-2.21.0-py3-none-any.whl (1.3 MB)\n   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 999.6 kB/s  0:00:01\nInstalling collected packages: requests, pygments, psutil, pluggy, iniconfig, pytest, pytest-json-ctrf\n  Attempting uninstall: requests\n    Found existing installation: requests 2.33.1\n    Uninstalling requests-2.33.1:\n      Successfully uninstalled requests-2.33.1\n\nSuccessfully installed iniconfig-2.3.0 pluggy-1.6.0 psutil-7.0.0 pygments-2.21.0 pytest-8.4.1 pytest-json-ctrf-0.3.5 requests-2.32.4\nWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.\n\n[notice] A new release of pip is available: 25.3 -> 26.2.1\n[notice] To update, run: pip install --upgrade pip\n============================= test session starts ==============================\nplatform linux -- Python 3.13.12, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 4 items\n\n../tests/test_outputs.py ....                                            [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_model_downloaded\nPASSED ../tests/test_outputs.py::test_flask_api_running\nPASSED ../tests/test_outputs.py::test_sentiment_endpoint\nPASSED ../tests/test_outputs.py::test_api_error_handling\n============================== 4 passed in 2.55s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-hf-model-inference-2834424",
+  "image": "alexgshaw/hf-model-inference:20260430",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "flask_api.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\npython3 - <<'PY'\nimport requests\nurl='http://127.0.0.1:5000/sentiment'\nr=requests.post(url,json={'text':'I love this wonderful product'},timeout=10)\nassert r.status_code==200, r.text\nd=r.json(); assert d['sentiment'] in ('positive','negative')\nassert set(d['confidence'])=={'positive','negative'}\nassert all(isinstance(d['confidence'][x],(int,float)) and 0 <= d['confidence'][x] <= 1 for x in d['confidence'])\nassert abs(sum(d['confidence'].values())-1)<0.02\nbad=requests.post(url,json={},timeout=10)\nassert bad.status_code==400 and isinstance(bad.json().get('error'),str)\nPY\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "model_download.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ntest -d /app/model_cache/sentiment_model\nfind /app/model_cache/sentiment_model -maxdepth 1 -type f | grep -Eq '(config.json|model.safetensors|pytorch_model.bin|tf_model.h5)'\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "service_background.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\ncurl --fail --silent http://127.0.0.1:5000/ >/dev/null || test \"$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/)\" = 404\nss -ltn | grep -Eq '0\\.0\\.0\\.0:5000|\\*:5000'\npgrep -af 'python.*(app|sentiment)' >/dev/null\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "task_details.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\npython3 - <<'PY'\nimport json, os, requests\np='/app/model_cache/sentiment_model'\nwith open(os.path.join(p,'config.json')) as f: config=json.load(f)\nassert config.get('_name_or_path','').endswith('distilbert-base-uncased-finetuned-sst-2-english') or config.get('model_type') == 'distilbert'\nurl='http://127.0.0.1:5000/sentiment'\nfor text, expected in [('This is absolutely wonderful and delightful.', 'positive'), ('This is awful, terrible, and disappointing.', 'negative')]:\n r=requests.post(url,json={'text':text},timeout=20); assert r.status_code==200, r.text\n d=r.json(); assert d['sentiment']==expected, d\n c=d['confidence']; assert set(c)=={'positive','negative'} and all(isinstance(v,(int,float)) and 0<=v<=1 for v in c.values()) and abs(sum(c.values())-1)<1e-6\nfor kwargs in ({'data':'not json'}, {'json':{'text':3}}, {'json':{'text':'   '}}):\n r=requests.post(url,timeout=10,**kwargs); assert r.status_code==400 and isinstance(r.json().get('error'),str), (r.status_code,r.text)\nPY\nss -ltn | grep -Eq '0\\.0\\.0\\.0:5000|\\*:5000'\n",
+      "passed_at_freeze": null
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "flask_api.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.149191125,
+      "output": ""
+    },
+    {
+      "command": "model_download.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.045920059,
+      "output": ""
+    },
+    {
+      "command": "service_background.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.083013706,
+      "output": ""
+    },
+    {
+      "command": "task_details.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.27366493,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

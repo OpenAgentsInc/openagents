@@ -1,0 +1,93 @@
+{
+  "task": "extract-moves-from-video",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 17,
+    "seconds": 316.759049878,
+    "model_usd": 0.012452000000000001,
+    "jev_usd": 0.0037327080000000004,
+    "embedding_usd": 0.0,
+    "usd": 0.016184708000000003,
+    "known_usd": 0.016184708000000003,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease\nHit:2 http://archive.ubuntu.com/ubuntu noble InRelease\nHit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease\nHit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following NEW packages will be installed:\n  curl\n0 upgraded, 1 newly installed, 0 to remove and 31 not upgraded.\nNeed to get 227 kB of archives.\nAfter this operation, 536 kB of additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 curl amd64 8.5.0-2ubuntu10.15 [227 kB]\ndebconf: delaying package configuration, since apt-utils is not installed\nFetched 227 kB in 1s (452 kB/s)\nSelecting previously unselected package curl.\r\n(Reading database ... \r(Reading database ... 5%\r(Reading database ... 10%\r(Reading database ... 15%\r(Reading database ... 20%\r(Reading database ... 25%\r(Reading database ... 30%\r(Reading database ... 35%\r(Reading database ... 40%\r(Reading database ... 45%\r(Reading database ... 50%\r(Reading database ... 55%\r(Reading database ... 60%\r(Reading database ... 65%\r(Reading database ... 70%\r(Reading database ... 75%\r(Reading database ... 80%\r(Reading database ... 85%\r(Reading database ... 90%\r(Reading database ... 95%\r(Reading database ... 100%\r(Reading database ... 23889 files and directories currently installed.)\r\nPreparing to unpack .../curl_8.5.0-2ubuntu10.15_amd64.deb ...\r\nUnpacking curl (8.5.0-2ubuntu10.15) ...\r\nSetting up curl (8.5.0-2ubuntu10.15) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading cpython-3.13.9-linux-x86_64-gnu (download) (32.0MiB)\n Downloading cpython-3.13.9-linux-x86_64-gnu (download)\nDownloading pygments (1.2MiB)\n Downloading pygments\nInstalled 6 packages in 5ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.9, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 2 items\n\n../tests/test_outputs.py .F                                              [100%]\n\n=================================== FAILURES ===================================\n_______________________ test_solution_content_similarity _______________________\n\n    def test_solution_content_similarity():\n        \"\"\"\n        Test that the solution file content is similar to the expected solution\n        \"\"\"\n        # Reference the directory the agent operated in (the WORKDIR in the Docker env)\n        solution_path = Path(\"/app/solution.txt\")\n    \n        # Read the content of the solution file\n        with open(solution_path, \"r\") as file:\n            actual_solution = file.read()\n    \n        # Calculate Levenshtein distance between actual and expected solutions\n        distance = levenshtein_distance(actual_solution, SOLUTION)\n    \n        # Calculate similarity as a percentage (100% means identical)\n        max_length = max(len(actual_solution), len(SOLUTION))\n        if max_length == 0:  # Handle empty string case\n            similarity = 100.0\n        else:\n            similarity = 100.0 * (1 - distance / max_length)\n    \n>       assert similarity >= 90.0, (\n            f\"Solution similarity is {similarity:.2f}%, which is below the required 90%\"\n        )\nE       AssertionError: Solution similarity is 33.22%, which is below the required 90%\nE       assert 33.22077922077922 >= 90.0\n\n/tests/test_outputs.py:358: AssertionError\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_solution_file_exists\nFAILED ../tests/test_outputs.py::test_solution_content_similarity - Assertion...\n========================= 1 failed, 1 passed in 0.42s ==========================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-extract-moves-from-video-2577026",
+  "image": "alexgshaw/extract-moves-from-video:20260403",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "move_format.sh",
+      "script": "#!/bin/bash\ntest -s /app/solution.txt && ! grep -nEv '^[[:space:]]*(n|s|e|w|u|d|ne|nw|se|sw|[a-z][a-z0-9 -]*)[[:space:]]*$' /app/solution.txt\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "solution_exists.sh",
+      "script": "#!/bin/bash\ntest -s /app/solution.txt\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "move_format.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.033455996,
+      "output": ""
+    },
+    {
+      "command": "solution_exists.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.035726171,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

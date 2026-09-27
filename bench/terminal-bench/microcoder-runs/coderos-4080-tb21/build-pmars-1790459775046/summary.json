@@ -1,0 +1,141 @@
+{
+  "task": "build-pmars",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "finished"
+    },
+    "steps": 34,
+    "seconds": 324.347251292,
+    "model_usd": 0.0424838,
+    "jev_usd": 0.008236116000000002,
+    "embedding_usd": 0.0,
+    "usd": 0.050719916000000004,
+    "known_usd": 0.050719916000000004,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 1.0,
+  "verifier_output": "Hit:1 http://deb.debian.org/debian trixie InRelease\nHit:2 http://deb.debian.org/debian trixie-updates InRelease\nHit:3 http://deb.debian.org/debian-security trixie-security InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  bash-completion libcurl4t64\nThe following NEW packages will be installed:\n  bash-completion curl libcurl4t64\n0 upgraded, 3 newly installed, 0 to remove and 29 not upgraded.\nNeed to get 981 kB of archives.\nAfter this operation, 3543 kB of additional disk space will be used.\nGet:1 http://deb.debian.org/debian trixie/main amd64 bash-completion all 1:2.16.0-7 [319 kB]\nGet:2 http://deb.debian.org/debian trixie/main amd64 libcurl4t64 amd64 8.14.1-2+deb13u5 [391 kB]\nGet:3 http://deb.debian.org/debian trixie/main amd64 curl amd64 8.14.1-2+deb13u5 [270 kB]\ndebconf: unable to initialize frontend: Dialog\ndebconf: (TERM is not set, so the dialog frontend is not usable.)\ndebconf: falling back to frontend: Readline\ndebconf: unable to initialize frontend: Readline\ndebconf: (This frontend requires a controlling tty.)\ndebconf: falling back to frontend: Teletype\ndebconf: unable to initialize frontend: Teletype\ndebconf: (This frontend requires a controlling tty.)\ndebconf: falling back to frontend: Noninteractive\nFetched 981 kB in 0s (3965 kB/s)\nSelecting previously unselected package bash-completion.\r\n(Reading database ... \r(Reading database ... 5%\r(Reading database ... 10%\r(Reading database ... 15%\r(Reading database ... 20%\r(Reading database ... 25%\r(Reading database ... 30%\r(Reading database ... 35%\r(Reading database ... 40%\r(Reading database ... 45%\r(Reading database ... 50%\r(Reading database ... 55%\r(Reading database ... 60%\r(Reading database ... 65%\r(Reading database ... 70%\r(Reading database ... 75%\r(Reading database ... 80%\r(Reading database ... 85%\r(Reading database ... 90%\r(Reading database ... 95%\r(Reading database ... 100%\r(Reading database ... 19090 files and directories currently installed.)\r\nPreparing to unpack .../bash-completion_1%3a2.16.0-7_all.deb ...\r\nUnpacking bash-completion (1:2.16.0-7) ...\r\nSelecting previously unselected package libcurl4t64:amd64.\r\nPreparing to unpack .../libcurl4t64_8.14.1-2+deb13u5_amd64.deb ...\r\nUnpacking libcurl4t64:amd64 (8.14.1-2+deb13u5) ...\r\nSelecting previously unselected package curl.\r\nPreparing to unpack .../curl_8.14.1-2+deb13u5_amd64.deb ...\r\nUnpacking curl (8.14.1-2+deb13u5) ...\r\nSetting up libcurl4t64:amd64 (8.14.1-2+deb13u5) ...\r\nSetting up bash-completion (1:2.16.0-7) ...\r\nSetting up curl (8.14.1-2+deb13u5) ...\r\nProcessing triggers for libc-bin (2.41-12+deb13u4) ...\r\ndownloading uv 0.9.5 x86_64-unknown-linux-gnu\nno checksums to verify\ninstalling to /root/.local/bin\n  uv\n  uvx\neverything's installed!\n\nTo add $HOME/.local/bin to your PATH, either restart your shell or run:\n\n    source $HOME/.local/bin/env (sh, bash, zsh)\n    source $HOME/.local/bin/env.fish (fish)\nDownloading pygments (1.2MiB)\n Downloading pygments\nInstalled 6 packages in 7ms\n============================= test session starts ==============================\nplatform linux -- Python 3.13.5, pytest-8.4.1, pluggy-1.6.0\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollected 4 items\n\n../tests/test_outputs.py ....                                            [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_outputs.py::test_pmars_works\nPASSED ../tests/test_outputs.py::test_headless_no_x11\nPASSED ../tests/test_outputs.py::test_debian_source_used\nPASSED ../tests/test_outputs.py::test_built_from_source\n============================== 4 passed in 0.10s ===============================\n",
+  "rewards": {
+    "reward": 1.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-build-pmars-1875981",
+  "image": "alexgshaw/build-pmars:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "binary_installed.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\ntest -x /usr/local/bin/pmars\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "debian_source.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\nfind /app/pmars-* -type f \\( -iname '*copyright*' -o -iname '*changelog*' \\) -print0 | xargs -0 grep -qiE 'Debian|debian' \n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "debugger.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\n/usr/local/bin/pmars -h 2>&1 | grep -qiE 'debug|usage|pmars'\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "no_x11.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\nldd /usr/local/bin/pmars | grep -Eqi 'libX11|libXt|libXext|libICE|libSM' && exit 1\nexit 0\n",
+      "passed_at_freeze": true
+    },
+    {
+      "name": "simulation.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\ncd /app\nout=$(/usr/local/bin/pmars -b -r 50 -f flashpaper.red rave.red | tail -n 1)\n[[ \"$out\" =~ ^Results:[[:space:]][0-9]+[[:space:]][0-9]+[[:space:]][0-9]+$ ]]\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "source_tree.sh",
+      "script": "#!/bin/bash\nset -euo pipefail\nshopt -s nullglob\nfound=(/app/pmars-*)\n((${#found[@]} > 0)) || exit 1\nfor d in \"${found[@]}\"; do [[ -d \"$d\" && -f \"$d/Makefile\" ]] && exit 0; done\nexit 1\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 1,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "binary_installed.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.044656199,
+      "output": ""
+    },
+    {
+      "command": "debian_source.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.038760774,
+      "output": ""
+    },
+    {
+      "command": "debugger.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.043686117,
+      "output": ""
+    },
+    {
+      "command": "no_x11.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.039172162,
+      "output": ""
+    },
+    {
+      "command": "simulation.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.110089702,
+      "output": ""
+    },
+    {
+      "command": "source_tree.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.038734305,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}

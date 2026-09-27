@@ -1,0 +1,93 @@
+{
+  "task": "sqlite-with-gcov",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "outcome": {
+    "ending": {
+      "reason": "unaccepted"
+    },
+    "steps": 30,
+    "seconds": 266.480706461,
+    "model_usd": 0.014803599999999998,
+    "jev_usd": 0.0043475879999999995,
+    "embedding_usd": 0.0,
+    "usd": 0.019151188,
+    "known_usd": 0.019151188,
+    "cost_unknown": [],
+    "embedding_searches": 0,
+    "lexical_searches": 0,
+    "lexical_reasons": [],
+    "knowledge": [],
+    "knowledge_assisted": false
+  },
+  "reward": 0.0,
+  "verifier_output": "Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease\nHit:2 http://security.ubuntu.com/ubuntu noble-security InRelease\nHit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease\nHit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease\nReading package lists...\nReading package lists...\nBuilding dependency tree...\nReading state information...\nThe following additional packages will be installed:\n  ca-certificates krb5-locales libcurl4t64 libgssapi-krb5-2 libk5crypto3\n  libkeyutils1 libkrb5-3 libkrb5support0 libnghttp2-14 libpsl5t64 librtmp1\n  libssh-4 libssl3t64 openssl publicsuffix\nSuggested packages:\n  krb5-doc krb5-user\nThe following NEW packages will be installed:\n  ca-certificates curl krb5-locales libcurl4t64 libgssapi-krb5-2 libk5crypto3\n  libkeyutils1 libkrb5-3 libkrb5support0 libnghttp2-14 libpsl5t64 librtmp1\n  libssh-4 openssl publicsuffix\nThe following packages will be upgraded:\n  libssl3t64\n1 upgraded, 15 newly installed, 0 to remove and 34 not upgraded.\nNeed to get 4797 kB of archives.\nAfter this operation, 7132 kB of additional disk space will be used.\nGet:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libssl3t64 amd64 3.0.13-0ubuntu3.15 [1944 kB]\nGet:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 openssl amd64 3.0.13-0ubuntu3.15 [1003 kB]\nGet:3 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 ca-certificates all 20260601~24.04.1 [139 kB]\nGet:4 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 krb5-locales all \n[… 23114 characters left out …]\n what\n                os.close(errpipe_write)\n    \n            self._close_pipe_fds(p2cread, p2cwrite,\n                                 c2pread, c2pwrite,\n                                 errread, errwrite)\n    \n            # Wait for exec to fail or succeed; possibly raising an\n            # exception (limited in size)\n            errpipe_data = bytearray()\n            while True:\n                part = os.read(errpipe_read, 50000)\n                errpipe_data += part\n                if not part or len(errpipe_data) > 50000:\n                    break\n        finally:\n            # be sure the FD is closed no matter what\n            os.close(errpipe_read)\n    \n        if errpipe_data:\n            try:\n                pid, sts = os.waitpid(self.pid, 0)\n                if pid == self.pid:\n                    self._handle_exitstatus(sts)\n                else:\n                    self.returncode = sys.maxsize\n            except ChildProcessError:\n                pass\n    \n            try:\n                exception_name, hex_errno, err_msg = (\n                        errpipe_data.split(b':', 2))\n                # The encoding here should match the encoding\n                # written in by the subprocess implementations\n                # like _posixsubprocess\n                err_msg = err_msg.decode()\n            except ValueError:\n                exception_name = b'SubprocessError'\n                hex_errno = b'0'\n                err_msg = 'Bad exception data from child: {!r}'.format(\n                              bytes(errpipe_data))\n            child_exception_type = getattr(\n                    builtins, exception_name.decode('ascii'),\n                    SubprocessError)\n            if issubclass(child_exception_type, OSError) and hex_errno:\n                errno_num = int(hex_errno, 16)\n                if err_msg == \"noexec:chdir\":\n                    err_msg = \"\"\n                    # The error must be from chdir(cwd).\n                    err_filename = cwd\n                elif err_msg == \"noexec\":\n                    err_msg = \"\"\n                    err_filename = None\n                else:\n                    err_filename = orig_executable\n                if errno_num != 0:\n                    err_msg = os.strerror(errno_num)\n                if err_filename is not None:\n>                   raise child_exception_type(errno_num, err_msg, err_filename)\nE                   FileNotFoundError: [Errno 2] No such file or directory: 'sqlite3'\n\n/root/.local/share/uv/python/cpython-3.13.9-linux-x86_64-gnu/lib/python3.13/subprocess.py:1972: FileNotFoundError\n=========================== short test summary info ============================\nFAILED ../tests/test_outputs.py::test_sqlite_compiled - FileNotFoundError: [E...\nFAILED ../tests/test_outputs.py::test_sqlite_in_path - AssertionError: sqlite...\nFAILED ../tests/test_outputs.py::test_gcov_enabled - FileNotFoundError: [Errn...\n============================== 3 failed in 0.14s ===============================\n",
+  "rewards": {
+    "reward": 0.0
+  },
+  "reward_unknown_because": null,
+  "container": "microcoder-sqlite-with-gcov-177603",
+  "image": "alexgshaw/sqlite-with-gcov:20251031",
+  "compose": false,
+  "verifier": "shared",
+  "acceptance_tests": [
+    {
+      "name": "gcov_instrumented.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\n[ -d /app/sqlite ]\nfind /app/sqlite -type f \\( -name '*.gcno' -o -name '*.gcda' \\) -print -quit | grep -q .\n",
+      "passed_at_freeze": false
+    },
+    {
+      "name": "sqlite_available.sh",
+      "script": "#!/usr/bin/env bash\nset -euo pipefail\n[ -x /app/sqlite/bin/sqlite3 ]\n/app/sqlite/bin/sqlite3 :memory: 'select 1;' | grep -qx 1\ncommand -v sqlite3 >/dev/null\n[ \"$(command -v sqlite3)\" = /app/sqlite/bin/sqlite3 ]\n",
+      "passed_at_freeze": false
+    }
+  ],
+  "frozen_at": 2,
+  "gates": {
+    "requirements": false,
+    "target": false,
+    "credible": false,
+    "doubt": 0.9,
+    "adversarial": 0,
+    "budget_fraction": 0.5,
+    "oracle": false,
+    "oracle_steps": 8
+  },
+  "oracle_checks": [],
+  "test_results": [
+    {
+      "command": "gcov_instrumented.sh",
+      "exit": 0,
+      "timed_out": false,
+      "seconds": 0.079451851,
+      "output": ""
+    },
+    {
+      "command": "sqlite_available.sh",
+      "exit": 1,
+      "timed_out": false,
+      "seconds": 0.077562979,
+      "output": ""
+    }
+  ],
+  "dropped_tests": [],
+  "kb": "off",
+  "kb_trust": "own",
+  "knowledge_source": null,
+  "retrieval_mode": "off",
+  "decision": {
+    "base_url": "https://api.typesafe.ai",
+    "model": "jev-latest"
+  },
+  "knowledge_assisted": false,
+  "provider": "codex",
+  "cost_basis": "list_price",
+  "cost_bases": {
+    "model": "list_price",
+    "jev": "list_price",
+    "embeddings": null
+  },
+  "retrieval": {
+    "mode": "off"
+  }
+}
