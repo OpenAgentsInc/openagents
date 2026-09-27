@@ -188,3 +188,22 @@ Cargo metadata and the lockfile can include packages that are not reachable
 in the inspected graph. Do not add license exceptions solely because an
 unused package appears there. The gate's resolved graph and diagnostics are
 the evidence for which dependency licenses need review.
+
+## Terminal emulator parser
+
+`crates/coder-vt`, the terminal emulator behind the Coder mobile terminal
+screen, parses output with `vte` 0.15 (Alacritty's escape-sequence state
+machine, `Apache-2.0 OR MIT`, from crates.io) and measures character widths
+with `unicode-width` 0.2. Reviewed on 2026-09-27:
+
+- `vte` builds with default features off and only `std`: no `ansi` feature,
+  so no `log`, `bitflags`, `cursor-icon`, or `serde`. Its two dependencies,
+  `arrayvec` and `memchr`, were already in the resolved graph; `vte` is the
+  one new registry package. `unicode-width` 0.2.0 was already resolved.
+- `vte` is a pure parser. It decodes UTF-8 across calls and dispatches
+  printable characters and control, escape, CSI, OSC, and DCS sequences; it
+  keeps no grid, runs no command, and reads no clipboard. The grid, modes,
+  and replies are `coder-vt`'s own, with every string and count bounded.
+- Writing a parser here would duplicate a small, well-tested state machine
+  used by a widely deployed terminal. A full emulator crate such as
+  `alacritty_terminal` would bring its own event loop, PTY, and configuration.

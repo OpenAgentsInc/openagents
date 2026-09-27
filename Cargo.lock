@@ -715,6 +715,7 @@ dependencies = [
  "coder-ssh",
  "coder-terminal",
  "coder-ui",
+ "coder-vt",
  "crossterm",
  "futures-util",
  "libc",
@@ -834,6 +835,7 @@ dependencies = [
  "coder-history",
  "coder-host",
  "coder-ui",
+ "coder-vt",
  "futures-util",
  "jni",
  "libc",
@@ -1005,6 +1007,14 @@ version = "0.1.0"
 dependencies = [
  "rust-native",
  "serde",
+]
+
+[[package]]
+name = "coder-vt"
+version = "0.1.0"
+dependencies = [
+ "unicode-width",
+ "vte",
 ]
 
 [[package]]
@@ -6932,6 +6942,16 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tungstenite",
+]
+
+[[package]]
+name = "vte"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
+dependencies = [
+ "arrayvec",
+ "memchr",
 ]
 
 [[package]]
