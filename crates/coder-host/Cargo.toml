@@ -27,13 +27,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11.0"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+# WebSocket direct channels: the host's listener and the client's dialer.
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
 # The ready record test decodes with the host service's own reader.
 coder-service = { path = "../coder-service" }
 futures-util = "0.3"
 tempfile = "3"
-tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 
 [[test]]
 name = "end_to_end"
@@ -41,6 +42,10 @@ required-features = ["host"]
 
 [[test]]
 name = "serve"
+required-features = ["host"]
+
+[[test]]
+name = "websocket"
 required-features = ["host"]
 
 [lints]

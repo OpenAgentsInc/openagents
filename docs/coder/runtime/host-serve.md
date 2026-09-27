@@ -9,8 +9,9 @@ publishes activity summaries.
 delivers it as part of the
 [remote access program](https://github.com/OpenAgentsInc/openagents/issues/9704).
 The implementation is [`crates/coder-host`](../../../crates/coder-host/README.md),
-and the [verification record](../verification/2026-09-26-host-serve.md) holds
-the evidence.
+and the [verification record](../verification/2026-09-26-host-serve.md) and
+the [WebSocket channel record](../verification/2026-09-27-websocket-channels.md)
+hold the evidence.
 
 ## Set up the host
 
@@ -41,9 +42,10 @@ coder host serve
 | --- | --- | --- |
 | `--relay URL` | The settings from `init` | A relay to serve. Repeat for more. The first is the primary relay. |
 | `--workspace LABEL=PATH` | The settings from `init` | An admitted workspace. |
-| `--listen ADDR` | `OPENAGENTS_HOST_LISTEN`, else `127.0.0.1:0` | The direct-channel listener. |
+| `--listen ADDR` | `OPENAGENTS_HOST_LISTEN`, else `127.0.0.1:0` | The TCP direct-channel listener. |
+| `--listen-websocket ADDR` | None | Also listen for WebSocket direct channels, and advertise the listener as a `websocket` hint. |
 | `--allow-nonloopback` | Off | Permit a listener on a LAN or tailnet address. |
-| `--advertise CLASS=HOST:PORT` | None | Advertise another `lan`, `tailnet`, or `public` address, such as a forwarder. |
+| `--advertise CLASS=HOST:PORT` or `CLASS=URL` | None | Advertise another `lan`, `tailnet`, or `public` endpoint, such as a forwarder. A `ws` or `wss` URL is a WebSocket endpoint. |
 | `--generation N` | `OPENAGENTS_HOST_GENERATION`, else the next counter value | The NIP-REACH host generation. |
 | `--runtime FILE`, `--no-runtime` | `~/.openagents/host/runtime` | The runtime record SSH launchers read. |
 | `--tasks DIR` | `~/.openagents/tasks` | The durable task inbox. |
@@ -56,6 +58,25 @@ Every `coder host` command also takes `--state DIR` for the access store,
 
 `SIGTERM` or `SIGINT` stops the host: every terminal's process tree ends, and
 the runtime record is removed.
+
+## Serve WebSocket direct channels
+
+A client that cannot open a raw TCP connection, such as a web client, uses a
+WebSocket direct channel. Start the host with a WebSocket listener:
+
+```sh
+coder host serve --listen-websocket 127.0.0.1:0
+```
+
+The host logs the bound address and advertises it as a hint of the form
+`ws://127.0.0.1:PORT/`. The channel runs the same handshake as over TCP: both
+keys are proved, the grant is checked, every frame is encrypted and
+sequenced, and a revoked grant closes the channel. To reach it from another
+machine, bind a LAN or tailnet address with `--allow-nonloopback`, or put a
+forwarder in front of it and advertise the forwarder's URL, for example
+`--advertise public=wss://host.example/reach`. The host serves every path,
+so the forwarder may rewrite the path. The listener itself does not terminate
+TLS.
 
 ## Enroll a device
 
@@ -116,8 +137,9 @@ A client uses `coder_host::client`:
 1. With the owner key, `fetch_directory` reads the owner's host directory.
 2. `fetch_reach` reads the host's presence and hints sealed to the device.
 3. `client::Connector` plugs into a `coder_link::Registry`. Each attempt
-   tries the selected direct routes, then falls back to the relay.
-   Selection never offers a loopback address to another machine.
+   tries the selected direct routes, `tcp` and `websocket` hints alike in
+   the selected order, then falls back to the relay. Selection never offers
+   a loopback address to another machine.
 4. A `Link` carries NIP-HOST operations and NIP-TERM requests on either
    route. `fetch_summaries` reads activity summaries after a reconnect.
 
@@ -148,8 +170,8 @@ as a QR code rendered on the device that created it.
 
 ## Limits
 
-- The direct listener speaks TCP only; the WebSocket mapping is not
-  implemented.
+- The WebSocket listener serves plain `ws`; a `wss` endpoint needs a
+  forwarder that terminates TLS.
 - Telemetry is coarse and local: CPU use is the load average per CPU, not a
   measured utilization.
 - Terminals do not survive a restart; references to them refuse as `lost`.

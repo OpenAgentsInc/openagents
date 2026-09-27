@@ -12,7 +12,8 @@ use std::sync::Arc;
 use coder_pty::host::{FrameSink, SinkError};
 use coder_pty::wire::{Frame, TerminalResult};
 use coder_reach::channel::{Acceptor, Binding, GrantRefusal};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
 use super::{Shared, relay::host_request, terminal};
@@ -36,7 +37,12 @@ pub(super) async fn listen(
     }
 }
 
-async fn session(shared: Arc<Shared>, acceptor: Arc<Acceptor<Grants>>, stream: TcpStream) {
+/// Serve one direct channel over any ordered byte stream: a TCP connection,
+/// or a WebSocket connection seen through `coder_reach::websocket`.
+pub(super) async fn session<S>(shared: Arc<Shared>, acceptor: Arc<Acceptor<Grants>>, stream: S)
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let Ok(now) = unix_time() else { return };
     let Ok(channel) = acceptor.accept(stream, now).await else {
         return;

@@ -7,8 +7,8 @@
 //! - [`Link`] is one proven route: a direct channel or relay fallback. It
 //!   carries NIP-HOST operations and NIP-TERM requests over either.
 //! - [`Connector`] implements the `coder-link` connector, so a `Registry`
-//!   decides when to connect and each attempt tries proven direct routes
-//!   before the relay.
+//!   decides when to connect and each attempt tries direct routes, over TCP
+//!   or WebSocket, before the relay.
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -29,10 +29,12 @@ use crate::{Error, Result, unix_time};
 mod connector;
 mod link;
 mod order;
+mod websocket;
 
 pub use connector::{Connector, Reports};
 pub use link::{Link, Route};
 pub use order::Ordered;
+pub use websocket::Stream as WebSocketStream;
 
 /// How long one relay fetch may take.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);

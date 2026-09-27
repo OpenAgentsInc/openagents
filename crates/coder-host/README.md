@@ -23,11 +23,11 @@ operation; this README covers the crate.
 
 | Module | What it does |
 | --- | --- |
-| `serve` | `start` runs a host and returns `Running`. Submodules serve direct channels, the relay loops, NIP-TERM operations, and NIP-HOST dispatch. |
+| `serve` | `start` runs a host and returns `Running`. Submodules serve direct channels over TCP and WebSocket, the relay loops, NIP-TERM operations, and NIP-HOST dispatch. |
 | `authority` | The grant store as the channel, terminal, and publication paths see it: serialized store access, a snapshot that reloads when the store file changes, and a device's standing. |
 | `message` | Direct-channel messages: host calls and answers, pings, the closing message, NIP-TERM bodies, and fragmentation. |
 | `mailbox` | Mailboxes derived from the host and device's NIP-44 conversation key, the terminal generation, and workspace IDs. |
-| `client` | `Device`, directory and reach fetches, summaries, `Link`, `Connector`, and `Ordered` frame ordering. |
+| `client` | `Device`, directory and reach fetches, summaries, `Link`, `Connector`, `Ordered` frame ordering, and the `websocket` hint dialer. |
 | `tasks` | The task-owner trait and `NoTasks`. |
 | `config` | The host configuration. |
 | `telemetry` | Coarse CPU and memory samples for presence. |
@@ -76,6 +76,23 @@ the channel proved, and only for requests that name the host's primary relay.
 The host rechecks the channel's grant before each message and every
 `recheck_every` (500 milliseconds by default).
 
+## WebSocket direct channels
+
+`Config::listen_websocket` (`--listen-websocket ADDR`) adds a WebSocket
+listener beside the TCP listener. It follows the same loopback rule, and the
+host advertises it as a `websocket` hint, `ws://ADDR/`, in the same class as
+the TCP listener's hint. An `Advertised` address that is a `ws` or `wss` URL
+is a `websocket` hint for a forwarder in front of that listener. Both
+listeners hand their connections to the same session, so a WebSocket channel
+runs the same handshake, grant check, recheck, closing message, and message
+binding as a TCP channel, carried one frame per binary message as
+[NIP-REACH](../../nips/openagents/NIP-REACH.md#websocket-mapping) maps it.
+The upgrade must finish within the handshake timeout.
+
+The client's `Connector` tries every selected direct hint in order: a `tcp`
+hint over TCP, a `websocket` hint through `client::WebSocketStream`, over TLS
+for a `wss` URL. `Link::direct` takes either stream.
+
 ## Presence telemetry and last seen
 
 Presence carries NIP-REACH telemetry so placement can rank the host: the
@@ -101,8 +118,8 @@ retained frames in any order after a reconnect, so a client feeds them through
 
 ## Limits
 
-- The direct listener speaks TCP only. The WebSocket mapping in NIP-REACH is
-  not implemented.
+- The WebSocket listener serves plain `ws`. A `wss` hint needs a forwarder
+  that terminates TLS in front of it.
 - A standalone host takes its generation from a counter file with a clock
   floor; the host service passes its own generation. Switching between the
   two can make presence readers refuse the lower generation.
@@ -122,5 +139,9 @@ cargo fmt -p coder-host --check
 `tests/end_to_end.rs` runs the acceptance scenario in
 `tests/support/scenario.rs` with an in-memory task owner; the `coder` crate's
 `tests/host_serve.rs` runs the same scenario with the durable task inbox.
+`tests/websocket.rs` enrolls a device, connects over a `websocket` hint, runs
+a terminal command, and sees revocation close the channel.
 The [verification record](../../docs/coder/verification/2026-09-26-host-serve.md)
-lists what they establish.
+and the
+[WebSocket channel record](../../docs/coder/verification/2026-09-27-websocket-channels.md)
+list what they establish.

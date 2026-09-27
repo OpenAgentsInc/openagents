@@ -1,7 +1,8 @@
 //! A `coder-link` connector that proves routes to Coder hosts.
 //!
 //! Each attempt reads the host's presence and hints from the device's relay,
-//! tries the selected direct routes in order, and falls back to the relay.
+//! tries the selected direct routes in order, over TCP or WebSocket as each
+//! hint names, and falls back to the relay.
 //! Selection never offers a loopback route to a device on another machine.
 //! A handshake refusal the host signed after proving its key blocks the
 //! attempt instead of falling back: a revoked grant is revoked on every
@@ -14,7 +15,7 @@ use std::time::Duration;
 
 use coder_link::{AttemptId, BlockReason, ConnectionId, Failure, HostKey, Report, Stage};
 use coder_reach::channel::UNAUTHENTICATED;
-use coder_reach::hints::{Locality, Transport, select};
+use coder_reach::hints::{Hint, Locality, Transport, select};
 use coder_reach::presence::{ClientProfile, VersionRange};
 use coder_reach::{PROTOCOL_VERSION, Refusal};
 use nostr_transport::Connection;
@@ -23,13 +24,13 @@ use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use super::{Device, Link, Route, fetch_reach};
+use super::{Device, Link, Route, fetch_reach, websocket};
 use crate::{Error, unix_time};
 
 /// Outcomes for the application to pass to `Registry::report`.
 pub type Reports = mpsc::UnboundedReceiver<(HostKey, Report)>;
 
-/// How long one TCP connect may take.
+/// How long one TCP connect, or one WebSocket connect and upgrade, may take.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// How long one handshake may take.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -209,8 +210,8 @@ async fn establish(device: Arc<Device>, locality: Locality) -> Result<Link, Fail
     let now = unix_time().map_err(|_| Failure::Unreachable)?;
     let hints =
         select(&reach.hints, locality, generation, now).map_err(|_| Failure::Unreachable)?;
-    for hint in hints.iter().filter(|h| h.transport == Transport::Tcp) {
-        match try_direct(&device, &hint.address, generation).await {
+    for hint in hints.iter().filter(|h| h.is_direct()) {
+        match try_direct(&device, hint, generation).await {
             Ok(link) => return Ok(link),
             Err(Some(blocked)) => return Err(blocked),
             Err(None) => {}
@@ -225,25 +226,31 @@ async fn establish(device: Arc<Device>, locality: Locality) -> Result<Link, Fail
     Ok(Link::relay(device, relay))
 }
 
-/// `Err(Some)` blocks the attempt; `Err(None)` tries the next route.
+/// `Err(Some)` blocks the attempt; `Err(None)` tries the next route. A
+/// `tcp` hint and a `websocket` hint run the same handshake.
 async fn try_direct(
     device: &Arc<Device>,
-    address: &str,
+    hint: &Hint,
     generation: u64,
 ) -> Result<Link, Option<Failure>> {
-    let stream = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(address))
-        .await
-        .map_err(|_| None)?
-        .map_err(|_| None)?;
-    match Link::direct(
-        device.clone(),
-        stream,
-        address.to_owned(),
-        generation,
-        HANDSHAKE_TIMEOUT,
-    )
-    .await
-    {
+    let (device, address) = (device.clone(), hint.address.clone());
+    let opened = match hint.transport {
+        Transport::Tcp => {
+            let stream = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(&address))
+                .await
+                .map_err(|_| None)?
+                .map_err(|_| None)?;
+            Link::direct(device, stream, address, generation, HANDSHAKE_TIMEOUT).await
+        }
+        Transport::Websocket => {
+            let stream = websocket::dial(&address, CONNECT_TIMEOUT)
+                .await
+                .ok_or(None)?;
+            Link::direct(device, stream, address, generation, HANDSHAKE_TIMEOUT).await
+        }
+        Transport::Nostr => return Err(None),
+    };
+    match opened {
         Ok(link) => Ok(link),
         Err(Error::Reach(refusal)) if refusal.detail != UNAUTHENTICATED => {
             Err(match refusal.code {
@@ -273,8 +280,8 @@ async fn direct_answers(device: Arc<Device>, locality: Locality) -> bool {
     let Ok(hints) = select(&reach.hints, locality, generation, now) else {
         return false;
     };
-    for hint in hints.iter().filter(|h| h.transport == Transport::Tcp) {
-        if let Ok(link) = try_direct(&device, &hint.address, generation).await {
+    for hint in hints.iter().filter(|h| h.is_direct()) {
+        if let Ok(link) = try_direct(&device, hint, generation).await {
             drop(link);
             return true;
         }

@@ -31,7 +31,8 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   list [--json]
   revoke --device KEY
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
-        [--allow-nonloopback] [--advertise lan|tailnet|public=HOST:PORT]...
+        [--listen-websocket ADDR] [--allow-nonloopback]
+        [--advertise lan|tailnet|public=HOST:PORT|URL]...
         [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback]
         [--no-telemetry]
 Every command also takes --state DIR (the access store, default
@@ -401,13 +402,20 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
             .map_err(|_| usage(" --listen takes HOST:PORT"))?,
         None => SocketAddr::from(([127, 0, 0, 1], 0)),
     };
+    let listen_websocket = options
+        .one("--listen-websocket")?
+        .map(|text| {
+            text.parse::<SocketAddr>()
+                .map_err(|_| usage(" --listen-websocket takes HOST:PORT"))
+        })
+        .transpose()?;
     let allow_nonloopback = options.flag("--allow-nonloopback");
     let telemetry = !options.flag("--no-telemetry");
     let mut advertise = Vec::new();
     for entry in options.all("--advertise") {
         let (class, address) = entry
             .split_once('=')
-            .ok_or_else(|| usage(" --advertise takes CLASS=HOST:PORT"))?;
+            .ok_or_else(|| usage(" --advertise takes CLASS=HOST:PORT or CLASS=URL"))?;
         let class = match class {
             "lan" => Class::Lan,
             "tailnet" => Class::Tailnet,
@@ -456,6 +464,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     let mut config = Config::new(state, relays, generation);
     config.policy = policy;
     config.listen = listen;
+    config.listen_websocket = listen_websocket;
     config.allow_nonloopback = allow_nonloopback;
     config.telemetry = telemetry;
     config.advertise = advertise;
@@ -470,6 +479,9 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         running.generation(),
         running.local_addr()
     );
+    if let Some(address) = running.websocket_addr() {
+        eprintln!("coder host: WebSocket direct channels on {address}");
+    }
     wait_for_stop().await;
     running.shutdown().await;
     Ok(())
