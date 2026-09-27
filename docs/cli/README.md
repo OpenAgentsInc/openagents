@@ -355,6 +355,53 @@ a custody adapter, a policy store, a controller, an environment lease, and
 checkpoints, and none of those exist yet; the command names exactly which
 preconditions are missing rather than starting an unbounded process.
 
+## Gym (NIP-EVAL)
+
+`eval` is a view over `crates/gym`: it scores doors against a pinned suite,
+reads a receipt-chained store back as a record, and judges the store's sides
+under a gate. It changes no suite, gate, or row schema.
+
+```sh
+openagents --json eval run --door lev=http://127.0.0.1:8081 --timeout 30 --record rows.jsonl
+openagents --json eval report --store rows.jsonl --suite suite.json
+openagents --json eval compare --store rows.jsonl --baseline lev --gate probability-v2
+```
+
+`run` asks every door each item of the calibration and development
+partitions; `--partition` narrows to one. The locked partition is never
+scored by a flag. `--timeout` bounds each door call and is required. An
+item a door fails to answer leaves no row and is listed under `lost`, never
+scored as wrong; a run with lost items reports `"complete": false` and
+exits 1. `report` refuses a broken receipt chain and says when
+coverage is undeclared (no `--suite`). `compare` refuses to judge two sides
+that did not score the same items.
+
+`gym` is the client half of `crates/gym-bridge`: a separately granted
+connection to a private Gym host. Observing never starts work, and a launch
+sends only an admitted recipe id, its exact revision, and a durable request
+id.
+
+```sh
+openagents gym connect --file connection.txt --as default
+openagents --json gym status
+openagents --json gym observe --relay wss://relay.example --timeout 20
+openagents --json gym launch RECIPE_ID --confirm --relay wss://relay.example --timeout 20
+openagents gym forget
+```
+
+`connect` verifies the `gym-connect:` code against the profile's key
+without touching the network and keeps it at
+`~/.openagents/gym/PROFILE.connection` with mode `0600`
+(`OPENAGENTS_GYM_HOME` overrides the directory). The code is never printed.
+`--relay` is required for `observe` and `launch` and must equal the relay
+the grant names; a different relay is refused rather than substituted.
+`--timeout` bounds the whole exchange; the bridge itself bounds each relay
+round trip to eight seconds. `launch` without `--confirm` prints the recipe
+and exits 1 with nothing sent. A recipe or revision outside the grant is
+refused before anything reaches the relay. When a launch gets no confirmed
+reply, the JSON carries `"disposition": "unknown"` and the `request_id` to
+retry with `--request-id`, so the host cannot be asked twice by accident.
+
 ## Labor (NIP-MKT, NIP-LAB)
 
 ```sh

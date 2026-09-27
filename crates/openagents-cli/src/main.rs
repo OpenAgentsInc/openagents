@@ -17,6 +17,8 @@ mod args;
 mod catalog;
 mod computer;
 mod discover;
+mod eval;
+mod gym;
 mod hosts;
 mod kb;
 mod key;
@@ -57,6 +59,10 @@ Verse (NIP-MV):
                entities, and read quests, XP, and the board.
   zone         Drive the Lagrange 1 construction zone.
   sov          Sovereign agents under NIP-SOV: profile, spawn, status.
+
+Gym (NIP-EVAL):
+  eval         Score doors against a suite, report a store, compare its sides.
+  gym          Connect to a granted Gym host, observe it, launch admitted recipes.
 
 Labor (NIP-MKT, NIP-LAB):
   labor        Admit, negotiate, execute, deliver, and accept free labor orders.
@@ -109,6 +115,8 @@ fn main() -> ExitCode {
         "study" => study::run(&output, &rest),
         "session" | "sessions" => session::run(&output, &rest),
         "sov" => sov::run(&output, &rest),
+        "eval" => eval::run(&output, &rest),
+        "gym" => gym::run(&output, &rest),
         "labor" => labor::run(&output, &rest),
         "key" => key::run(&output, &rest),
         "kb" => kb::run(&output, &rest),

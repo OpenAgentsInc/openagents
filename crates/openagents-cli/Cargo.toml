@@ -23,6 +23,9 @@ coder-service = { path = "../coder-service" }
 coder-ssh = { path = "../coder-ssh" }
 discovery = { path = "../discovery" }
 glam = "0.30.10"
+gym = { path = "../gym" }
+gym-bridge = { path = "../gym-bridge", default-features = false }
+jev = { path = "../jev" }
 knowledge = { path = "../knowledge" }
 libc = "0.2"
 microcoder = { path = "../microcoder" }
