@@ -435,15 +435,19 @@ impl World {
             }
         }
         for (index, row) in &tethers {
+            let point = self.bodies()[row.b].pos + row.rb;
             if let Some(joint) = self.joints[*index].as_mut() {
                 joint.impulse = row.dir * row.impulse;
+                joint.point = point;
                 joint.angular_impulse = DVec3::ZERO;
                 joint.saturated = row.lower.is_finite() && row.impulse <= row.lower * (1.0 - 1e-9);
             }
         }
         for block in &blocks {
+            let point = self.bodies()[block.b].pos + block.rb;
             if let Some(joint) = self.joints[block.joint].as_mut() {
                 joint.impulse = DVec3::new(block.impulse[0], block.impulse[1], block.impulse[2]);
+                joint.point = point;
                 joint.angular_impulse =
                     DVec3::new(block.impulse[3], block.impulse[4], block.impulse[5]);
                 joint.saturated = block.saturated();
@@ -477,6 +481,10 @@ impl World {
         for (index, joint) in self.joints.iter().enumerate() {
             let Some(joint) = joint else { continue };
             let (a, b) = (joint.a.0 as usize, joint.b.0 as usize);
+            if motions[a].inverse_mass == 0.0 && motions[b].inverse_mass == 0.0 {
+                // Neither side can move: nothing to solve.
+                continue;
+            }
             let (pa, pb) = joint.anchors(self);
             // Point and weld impulses act at the anchors' midpoint, so the
             // pair is equal, opposite, and collinear: momentum is exact even

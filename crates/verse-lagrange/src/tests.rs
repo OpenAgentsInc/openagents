@@ -473,7 +473,7 @@ fn structure_and_the_safety_tether_are_named_external_terms() {
     assert!(station.ledger.external["structure"].linear.length() > 1.0);
     assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
     let mut station = open_space();
-    station.astronaut_mut().pos = DVec3::new(0.0, 0.0, station::EVA_RANGE - 1.0);
+    station.astronaut_mut().pos = station::AIRLOCK + DVec3::new(0.0, 0.0, station::EVA_RANGE - 1.0);
     station.reset_ledger();
     let outward = Command {
         direction: DVec3::Z,
@@ -657,4 +657,126 @@ fn free_parts_collide_with_each_other_and_conserve_momentum() {
         (station.body(&station.parts[5]).vel - before).length() > 0.5,
         "the truss struck the avionics bay"
     );
+}
+
+/// A held part at its slot, at rest, in `station`.
+fn at_slot() -> Station {
+    let mut station = busy_station();
+    let kind = station.grab().unwrap();
+    let offset = kind.slot() - station.body(&station.parts[0]).pos;
+    station.translate(offset);
+    station.set_velocity(DVec3::ZERO);
+    station
+}
+
+#[test]
+fn misaligned_or_spinning_docks_are_refused() {
+    let ready = at_slot();
+    assert!(ready.latch_ready());
+    // Half a turn about the keel still fits; a quarter turn does not.
+    for (turn, fits) in [
+        (std::f64::consts::PI, true),
+        (std::f64::consts::FRAC_PI_2, false),
+    ] {
+        let mut station = ready.clone();
+        let id = station.parts[0].body;
+        station.world[id].orientation = glam::DQuat::from_rotation_z(turn);
+        assert_eq!(station.latch_ready(), fits, "turned {turn} rad");
+    }
+    let mut tilted = ready.clone();
+    let id = tilted.parts[0].body;
+    tilted.world[id].orientation = glam::DQuat::from_rotation_x(20f64.to_radians());
+    tilted.release().unwrap();
+    assert_eq!(tilted.parts[0].state, PartState::Drifting);
+    assert!(
+        tilted
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("Misaligned by 20")
+    );
+    let mut spinning = ready.clone();
+    let id = spinning.parts[0].body;
+    spinning.world[id].omega = DVec3::new(0.0, 0.0, 0.2);
+    spinning.release().unwrap();
+    assert_eq!(spinning.parts[0].state, PartState::Drifting);
+    assert!(
+        spinning
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("Spinning")
+    );
+}
+
+#[test]
+fn a_latched_part_stays_welded_under_impact() {
+    let mut station = at_slot();
+    station.release().unwrap();
+    assert_eq!(station.parts[0].state, PartState::Installed);
+    let slot = PartKind::MainEngine.slot();
+    // Fly clear and let the weld settle the engine onto its seat.
+    station.translate(DVec3::new(0.0, 0.0, 30.0));
+    for _ in 0..60 {
+        station.step(1.0 / 60.0, &Command::default());
+    }
+    // Throw the aft keel truss into the engine at the pack's top speed.
+    release_part(
+        &mut station,
+        2,
+        slot + DVec3::new(4.0, 0.3, 0.0),
+        DVec3::new(-station::SPEED_LIMIT, 0.0, 0.0),
+        DVec3::new(0.0, 0.3, 0.0),
+    );
+    let mut worst: (f64, f64) = (0.0, 0.0);
+    for _ in 0..(4 * 60) {
+        station.step(1.0 / 60.0, &Command::default());
+        let engine = station.body(&station.parts[0]);
+        worst.0 = worst.0.max(engine.pos.distance(slot));
+        worst.1 = worst
+            .1
+            .max(engine.orientation.angle_between(glam::DQuat::IDENTITY));
+    }
+    assert!(
+        station.body(&station.parts[2]).vel.x > 0.0,
+        "the truss bounced off"
+    );
+    assert!(worst.0 < 0.01 && worst.1.to_degrees() < 0.5, "{worst:?}");
+}
+
+#[test]
+fn the_safety_tether_stops_the_astronaut_without_a_jump_or_energy() {
+    let mut station = open_space();
+    station.propellant = 0.0;
+    let out = DVec3::new(0.6, 0.0, 0.8);
+    station.astronaut_mut().pos = station::AIRLOCK + out * (station::EVA_RANGE - 2.0);
+    station.astronaut_mut().vel = out * 1.5;
+    station.reset_ledger();
+    let energy = |s: &Station| 0.5 * s.astronaut().mass * s.astronaut().vel.length_squared();
+    let start = energy(&station);
+    let momentum = station.momentum();
+    let mut last = station.astronaut().pos;
+    let mut farthest: f64 = 0.0;
+    for _ in 0..(6 * 60) {
+        station.step(1.0 / 60.0, &Command::default());
+        let pos = station.astronaut().pos;
+        // No teleport: each frame moves no farther than the speed allows.
+        assert!(
+            pos.distance(last) <= 1.5 / 60.0 + 1e-9,
+            "jumped {} m",
+            pos.distance(last)
+        );
+        last = pos;
+        farthest = farthest.max(pos.distance(station::AIRLOCK));
+        assert!(energy(&station) <= start * (1.0 + 1e-9), "energy grew");
+    }
+    // The tether arrests at most TETHER_TENSION, so a fast arrival
+    // stretches it a little rather than stopping in one step.
+    assert!(farthest < station::EVA_RANGE + 0.15, "{farthest} m");
+    let tension = station.ledger.external["tether"];
+    assert!(tension.linear.length() > 100.0);
+    // The recorded tension is the whole momentum change.
+    let change = station.momentum() - momentum;
+    assert!((change.linear - tension.linear).length() < 1e-9);
+    assert_eq!(station.message.as_deref(), Some("Safety tether taut"));
 }

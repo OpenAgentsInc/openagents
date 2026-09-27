@@ -114,7 +114,7 @@ along Earth's orbital motion.
 | Specific impulse (cold N₂) | 70 s |
 | Flight-control speed limit | 2 m/s relative to the station |
 | Minimum-impulse deadband | 4 mm/s |
-| Safety tether range | 140 m from the station's center |
+| Safety tether | 140 m from the airlock, holds 3 kN |
 
 The pack is a hypothetical construction unit comparable to the Manned
 Maneuvering Unit, not a model of a specific flight article. Its fly-by-wire
@@ -142,8 +142,8 @@ on slows the pack slightly.
 the station origin of the free system: the astronaut with its propellant and
 every carried or drifting part. `Station::ledger` (a `physics::Ledger`) records
 every external impulse by name: `exhaust`, `structure` (contact with fixed
-station structure), `tether`, `reel` (a stray part reeled in), and `latch` (a
-part joining the station). With the tidal field off (`Station::tide = false`),
+station structure), `tether` (the safety tether and the parts' depot lines),
+`reel` (a stray part reeled in), and `latch` (a part joining the station). With the tidal field off (`Station::tide = false`),
 the momentum always equals the ledger start plus those terms, through
 grabbing, carrying, and releasing.
 
@@ -198,7 +198,19 @@ and holds attitude with their combined inertia, and it spends at most 15 N m
 of torque on that aim, so a heavy part far from the hands accelerates gently.
 Releasing a part away from its slot leaves it drifting with its own velocity
 and spin.
-Drifting parts more than 120 m from the depot are reeled back by their tethers.
+Each part has a 120 m line from the depot, and the astronaut a 140 m safety
+tether from the airlock. Both are tether joints: slack inside their length,
+they pull only, arrest at most 3 kN, and never add energy, so a fast arrival
+stretches the line a few centimeters rather than stopping in one step. Past
+the length plus 2 m, an emergency boundary still returns the astronaut or
+reels the part back to the rack.
+
+Releasing a part latches it when it is within 1.6 m of its slot, within 15
+degrees of the slot's orientation (or of that orientation turned half a turn
+about the keel), moving below 0.35 m/s, and turning below 0.05 rad/s. The
+latch is a hard weld from the jig to the part, so the part settles onto its
+seat and stays there when something strikes it. Otherwise the release message
+names the first condition that failed.
 
 ## Approximations
 
@@ -223,7 +235,9 @@ Drifting parts more than 120 m from the depot are reeled back by their tethers.
 `cargo test -p verse-lagrange` covers L1's location and linear constants, the
 exact unstable eigenvector, Jacobi conservation and uncontrolled divergence,
 two years of controlled flight, microgravity magnitude, the rocket equation
-and position hold, inelastic capture, latch conditions, collisions, frame-rate
+and position hold, inelastic capture, latch conditions (position, speed,
+spin, and alignment), a latched part under impact, the safety tether's arrest,
+collisions, frame-rate
 independence, the frame step cap, save and restore, journal replay, and the
 momentum ledger through coasting, burns, structure contact, the tether,
 capture, and carrying, the grip slipping past its limit, attitude hold through a translation and a commanded

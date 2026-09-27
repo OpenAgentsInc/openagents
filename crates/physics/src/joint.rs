@@ -66,6 +66,9 @@ pub struct Joint {
     /// Impulse on `b` in the last step, N s; `a` received the opposite.
     #[serde(default)]
     pub impulse: DVec3,
+    /// World point where `impulse` acted on `b`, m.
+    #[serde(default)]
+    pub point: DVec3,
     /// Angular impulse on `b` in the last step, N m s.
     #[serde(default)]
     pub angular_impulse: DVec3,
@@ -88,6 +91,7 @@ impl Joint {
             max_force: f64::INFINITY,
             max_torque: f64::INFINITY,
             impulse: DVec3::ZERO,
+            point: DVec3::ZERO,
             angular_impulse: DVec3::ZERO,
             saturated: false,
         }

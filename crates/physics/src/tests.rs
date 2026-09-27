@@ -483,3 +483,89 @@ fn a_hard_point_joint_holds_a_pendulum() {
     assert!(worst < 5e-3, "anchor gap {worst} m");
     assert!(world[bob].pos.y < -0.5, "it swung down");
 }
+
+/// A tether to a fixed anchor catches a body flying outward: it stops at the
+/// length, gains no energy, and the reported tension is the momentum change.
+#[test]
+fn a_tether_catches_without_adding_energy() {
+    let mut world = World::new(1.0 / 120.0);
+    let anchor = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
+    let mut body = Body::new(250.0, DVec3::splat(40.0), DVec3::new(9.0, 0.0, 0.0));
+    body.vel = DVec3::new(3.0, 0.5, 0.0);
+    let body = world.add(body);
+    let tether = world.add_joint(crate::Joint::new(
+        anchor,
+        DVec3::ZERO,
+        body,
+        DVec3::ZERO,
+        crate::JointKind::Tether { length: 10.0 },
+    ));
+    let energy = |w: &World| 0.5 * w[body].mass * w[body].vel.length_squared();
+    let start = energy(&world);
+    let mut received = DVec3::ZERO;
+    let mut farthest: f64 = 0.0;
+    let momentum = world[body].momentum();
+    for _ in 0..240 {
+        world.step(&NoField);
+        received += world.joint(tether).unwrap().impulse;
+        farthest = farthest.max(world[body].pos.length());
+        assert!(energy(&world) <= start * (1.0 + 1e-9), "energy grew");
+    }
+    assert!(farthest < 10.01, "stretched to {farthest} m");
+    assert!(received.length() > 100.0, "the tether pulled");
+    assert!((world[body].momentum() - momentum - received).length() < 1e-9);
+}
+
+/// A hard weld to a fixed anchor holds a body in place when something
+/// strikes it.
+#[test]
+fn a_hard_weld_holds_under_impact() {
+    let mut world = World::new(1.0 / 120.0);
+    let anchor = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
+    let held = world.add(Body::new(
+        450.0,
+        Body::box_inertia(450.0, DVec3::new(2.2, 2.2, 3.0)),
+        DVec3::new(0.0, 0.0, 5.0),
+    ));
+    world.add_collider(Collider::new(
+        held,
+        Shape::Cuboid {
+            half: DVec3::new(1.1, 1.1, 1.5),
+        },
+    ));
+    world.add_joint(crate::Joint::new(
+        anchor,
+        DVec3::new(0.0, 0.0, 5.0),
+        held,
+        DVec3::ZERO,
+        crate::JointKind::Weld {
+            relative: DQuat::IDENTITY,
+        },
+    ));
+    let mut hammer = Body::new(
+        180.0,
+        Body::box_inertia(180.0, DVec3::new(1.2, 1.2, 4.0)),
+        DVec3::new(4.0, 0.8, 5.0),
+    );
+    hammer.vel = DVec3::new(-2.0, 0.0, 0.0);
+    hammer.omega = DVec3::new(0.0, 0.5, 0.0);
+    let hammer = world.add(hammer);
+    world.add_collider(Collider::new(
+        hammer,
+        Shape::Cuboid {
+            half: DVec3::new(0.6, 0.6, 2.0),
+        },
+    ));
+    let mut worst: (f64, f64) = (0.0, 0.0);
+    for _ in 0..360 {
+        world.step(&NoField);
+        worst.0 = worst
+            .0
+            .max(world[held].pos.distance(DVec3::new(0.0, 0.0, 5.0)));
+        worst.1 = worst
+            .1
+            .max(world[held].orientation.angle_between(DQuat::IDENTITY));
+    }
+    assert!(world[hammer].vel.x > 0.0, "the hammer bounced off");
+    assert!(worst.0 < 0.01 && worst.1 < 0.5f64.to_radians(), "{worst:?}");
+}

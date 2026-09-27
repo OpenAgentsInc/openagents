@@ -73,8 +73,9 @@ two-thirds. Propellant refills at the airlock ring.
 
 **Grab** takes the next part at the depot or a free-floating part within reach.
 Carry it to its outlined slot on the keel jig. When the part is within 1.6 m of
-the slot and closing below 0.35 m/s, the control reads **Latch** and releasing
-locks it in. Releasing elsewhere lets it drift and tumble as a free rigid body.
+the slot, aligned within 15 degrees, moving below 0.35 m/s, and turning below
+0.05 rad/s, the control reads **Latch** and releasing welds it to the jig.
+Releasing elsewhere lets it drift and tumble as a free rigid body.
 Six parts complete the keel: main engine, propellant tank, two keel trusses, RCS
 pod, and avionics bay. [Lagrange 1](lagrange-1.md) documents the physics.
 
