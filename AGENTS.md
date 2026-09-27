@@ -259,6 +259,9 @@ uses, and marks which are implemented and which are only specified.
   Its `client` feature is the device side `coder-mobile` uses to register a
   token and manage its lease. Read `docs/deployment/push-gateway.md` before
   changing a route, a result code, or token custody.
+  Never commit `bins/coder-android/host/app/google-services.json`, and keep
+  `CODER_IOS_PUSH` unset for TestFlight archives until the App ID has Push
+  Notifications; both switch on native push tokens.
 - `crates/coder-mobile` — Rust-owned iOS/Android reader state, encrypted cache, paging,
   synchronization, and C ABI, plus a separate main-thread Verse render handle
   using the shared `verse::runtime::WorldRuntime`. SwiftUI and Android widgets

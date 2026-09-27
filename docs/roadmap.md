@@ -171,7 +171,12 @@ then added WebSocket direct channels, the CAP/CJ binding of NIP-HOST, one host
 generation counter, headless enrollment through the resident host, the owner
 directory and SSH setup in the Computers screens, a push gateway for APNs and
 FCM, and Linux runs on NixOS: real PTYs, SSH against a real `sshd`, and the
-systemd user service with commit and rollback. Still waiting on the owner:
+systemd user service with commit and rollback. [#9723](https://github.com/OpenAgentsInc/openagents/issues/9723) added the
+client polish: one relay waking iPhones and Android phones through separate
+app profiles, `wss` terminated by the host itself, owner-directory editing,
+**Remove over SSH**, the SSH tunnel as a local route, a masked owner-key entry
+on phones, and native push-token plumbing that stays off until credentials
+exist. Still waiting on the owner:
 iPhone and production-relay checks, an Android distribution channel, APNs and
 FCM credentials for real wakes, and a reboot to prove service recovery.
 
