@@ -1,0 +1,14 @@
+[package]
+name = "verse-lagrange"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Sun-Earth L1 physics for Verse: restricted three-body orbit, station-keeping, and rigid-body EVA construction."
+publish.workspace = true
+
+[dependencies]
+glam = "0.30.10"
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true
