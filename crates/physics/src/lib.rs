@@ -19,6 +19,9 @@
 //! - [`oracle`]: scenes shared with the offline Genesis oracle.
 //! - [`sensors`]: raycasts, per-body contact force, an IMU, and debug lines
 //!   for contacts and joints.
+//! - [`rope`]: a deterministic XPBD rope pinned at both ends, with
+//!   long-range limits from each end, one-way by default or coupled to its
+//!   end bodies.
 //! - [`thrusters`]: body-mounted thrusters, a bounded allocator from a wanted
 //!   force and torque to throttles, and a vector PID controller.
 //! - [`trace`]: sampled states and a tolerance comparison for replay tests.
@@ -34,6 +37,7 @@ pub mod contact;
 pub mod joint;
 pub mod ledger;
 pub mod oracle;
+pub mod rope;
 pub mod sensors;
 pub mod thrusters;
 pub mod trace;
@@ -45,6 +49,7 @@ pub use collision::{Collider, ColliderId, ContactPoint, Filter, Manifold, Materi
 pub use contact::{ContactReport, SolverSettings};
 pub use joint::{Joint, JointId, JointKind, Spring};
 pub use ledger::{Ledger, LedgerError, Momentum};
+pub use rope::{Rope, RopeSettings};
 pub use sensors::{DebugKind, DebugLine, Imu, ImuReading, RayHit};
 pub use thrusters::{Pid, Thruster, ThrusterSet, Wrench};
 pub use trace::{Divergence, Tolerance, Trace, attitude_difference};
