@@ -19,6 +19,7 @@ implied, and publication is disabled while the API is experimental.
 | Views | Serializable `View<I>` and keyed `Node<I>` trees with stacks, bounded lists, text, buttons, and locally registered native drawing surfaces. Validation checks schema, identities, labels, and resource limits. |
 | Drawing surfaces | Opaque local renderer resource IDs, bounded physical viewports, explicit activation/disposal, and monotonic frame timing that excludes background time. GPU ownership, scenes, and input gestures belong to adapters and applications. |
 | Intents | An `Activation` names a surface instance, revision, and node. Only a current enabled button resolves to the application's stored typed intent. Resolving an intent neither authenticates a caller nor performs an effect. |
+| Input requests | `InputRequest<P>` asks the adapter for one value a view can't collect, with the application's purpose type. A `secret` request gets a masked native field whose value the adapter never echoes, logs, or keeps. Validation checks the token, label, text bounds, and value bound; `accept` checks an answer's token and length. See the [spec](docs/spec.md#input-requests). |
 | Styles | Named declarations with ordered leaf-property composition and explicit `Unset`, `Set`, and `Reset`. Colors are generic sRGB RGBA values; spacing and text properties use typed values. |
 | Examples | A product-neutral [settings view](examples/settings.rs) emits JSON only. |
 
