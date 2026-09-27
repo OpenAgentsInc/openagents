@@ -58,6 +58,11 @@ terminal slice: the initial vocabulary drawn on the ladder, reported
 unsupported properties, and keyboard activation. Values a tree cannot collect,
 such as a scanned invitation, travel through a typed input request that Rust
 validates. See its [verification record](../verification/2026-09-26-computers-screens.md).
+[Issue #9715](https://github.com/OpenAgentsInc/openagents/issues/9715)
+connects the same projection to real hosts through a live service over the
+resident host client, adds a locally rendered invitation QR code, and passes
+application foreground and background to each host supervisor. See the
+[live verification record](../verification/2026-09-26-computers-live.md).
 
 This delivers portions of RN1, RN3, RN4, and RN5 for read-only saved history.
 The initial terminal/HTML demonstration, terminal Gym replay pane, general
