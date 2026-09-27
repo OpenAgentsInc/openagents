@@ -30,6 +30,7 @@ mod relay;
 mod service;
 mod session;
 mod sov;
+mod sov_host;
 mod ssh;
 mod study;
 mod terminal;
