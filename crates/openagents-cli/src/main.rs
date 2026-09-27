@@ -18,6 +18,7 @@ mod computer;
 mod hosts;
 mod key;
 mod out;
+mod quest;
 mod relay;
 mod sov;
 mod study;
@@ -40,7 +41,8 @@ Coder:
   task         Durable local task requests and explicit execution.
 
 Verse (NIP-MV):
-  verse        See who is around, listen, speak, move, and gesture.
+  verse        See who is around, listen, speak, move, gesture, drive owned
+               entities, and read quests, XP, and the board.
   zone         Drive the Lagrange 1 construction zone.
   sov          Sovereign agents under NIP-SOV: profile, spawn, status.
 

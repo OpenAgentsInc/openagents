@@ -144,6 +144,39 @@ openagents verse leave
 `--relay` defaults to `wss://relay.openagents.com`, `--world` to
 `verse-plaza`, and `--as` names the profile key (default `default`).
 
+### Driving owned entities (`verse control`)
+
+NIP-MV entities belong to the key that signs them, so `control` drives
+only entities this identity publishes — for example an agent it spawned.
+It sends the same state, frame, and gesture events as `move`, `gesture`,
+and `leave`, under the given entity id and role (default `agent`).
+
+```sh
+openagents verse control scout-1 move 4,0,4 --yaw 45 --name Scout
+openagents verse control scout-1 gesture greet --to PUBKEY,avatar
+openagents verse control scout-1 leave
+```
+
+### Quests, XP, and the board (NIP-XP)
+
+Read-only. The reader gathers quests (`30193`), awards (`3193`),
+revocations (`3194`), and labels (`1985`), fetches the events trusted awards
+name, and derives the ledger under the reader's trust list — the same rule
+the desktop client's quest board uses. Awards from untrusted referees show
+but do not count.
+
+```sh
+openagents verse quests --json          # every quest, trusted referees first
+openagents verse xp                     # this identity's XP, level, titles
+openagents verse xp --pubkey npub1...   # another key's ledger
+openagents verse board                  # counts, standings, my level, quests
+```
+
+`--xp-relay` chooses the XP relay (default `VERSE_XP_RELAY`, then the world
+relay); `--referee KEY` trusts another referee for this reading only.
+Portals, replays, and captures stay desktop-only: they are local
+demonstrations with no event on the wire to drive.
+
 ## Zone (Lagrange construction)
 
 The Lagrange zone is a pure simulation (`crates/verse-lagrange`), so the

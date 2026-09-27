@@ -55,6 +55,17 @@ impl Args {
         &self.positional
     }
 
+    /// The same options and switches as `from`, with `positional` as the
+    /// remaining words, for a command that nests another.
+    #[must_use]
+    pub fn from_positional(positional: &[String], from: &Self) -> Self {
+        Self {
+            positional: positional.to_vec(),
+            options: from.options.clone(),
+            switches: from.switches.clone(),
+        }
+    }
+
     pub fn option(&self, name: &str) -> Option<&str> {
         self.options
             .get(name)
