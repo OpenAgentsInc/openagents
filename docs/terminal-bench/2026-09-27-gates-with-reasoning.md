@@ -63,3 +63,36 @@ TB4 Round 4 at `xhigh` most likely used the week's allowance. The
 declaration above stands unchanged. Run it after the reset, or earlier if
 another route to GPT-6 Luna gets credit. A different route is a
 configuration change and must be recorded here before it runs.
+
+## Configuration change: Claude in place of GPT-6 Luna
+
+Recorded and pushed before any run of the second attempt started. The
+Codex login stays out of quota until 2026-10-03, and no other route to
+GPT-6 Luna has credit, so the second attempt changes the model. It
+therefore answers a different question from the declaration: whether the
+end-of-run checks raise Claude's pass rate on these four tasks, with
+reasoning on. It says nothing about Luna. Everything not listed here stands
+as declared.
+
+- **Binary:** `microcoder-study-claude` on coderos-4080, built from
+  `b7238446f4`: `main` at `4865afd687` plus the `claude` provider
+  (`crates/microcoder/src/claude.rs`). The provider runs the `claude`
+  binary once per step in print mode with every tool off, one turn, no
+  settings files, and no saved session, and asks for the same `next_action`
+  JSON schema the Codex route sends as its output format.
+- **Model:** Claude through the operator's Claude Code login on
+  coderos-4080 (`--provider claude --model opus`, alias for the canonical
+  `claude-opus-5-5` the binary reported in a smoke test), `--effort xhigh`,
+  which Claude Code accepts as an effort level.
+- **Cost:** Claude Code's `total_cost_usd`, its list-price figure for the
+  call, recorded as `list_price`. The $2.00 cap applies to that figure plus
+  Jev and embeddings, as before. Because each step is a new process, no
+  prompt cache carries between steps; cache-creation tokens count as input
+  tokens. Opus costs more per step at list price than Luna, so the cap may
+  end runs earlier than in Round 4; the cap stands, and a run it ends is
+  reported as ended by cost.
+- **Runs, arms, tasks, caps, knowledge, records, reporting:** as declared.
+  The records go under `~/gates-reasoning-runs/runs/` on coderos-4080 next
+  to the kept first-attempt faults.
+- **Reading the result:** a step that fails because Claude Code refuses or
+  rate-limits the login is a provider fault, reported as such, not a result.

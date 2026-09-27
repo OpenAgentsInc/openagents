@@ -31,8 +31,13 @@ Options:
                      --model google/gemini-3.8-flash), or vertex (Vertex AI's
                      OpenAI-compatible endpoint on the token in
                      ~/.openagents/vertex-token; name a model such as
-                     --model qwen/qwen3-coder-480b-a35b-instruct-maas)
-  --effort LEVEL     low, medium, or high (default medium)
+                     --model qwen/qwen3-coder-480b-a35b-instruct-maas), or
+                     claude (the operator's Claude Code login through the
+                     claude binary on PATH or CLAUDE_BIN; name an alias such
+                     as --model opus or sonnet, or a full model name; the
+                     default model names map to opus)
+  --effort LEVEL     low, medium, or high (default medium); claude also takes
+                     xhigh and max
   --strong-model SLUG  the model that writes the acceptance tests on
                      a task Jev judges hard (default gpt-6-sol)
   --route WHEN       when the stronger model writes the tests: auto (when Jev
@@ -104,7 +109,7 @@ struct Options {
     run_dir: Option<std::path::PathBuf>,
     container_name: Option<String>,
     model: String,
-    /// `codex`, `openrouter`, `door`, or `vertex`.
+    /// `codex`, `openrouter`, `door`, `vertex`, or `claude`.
     provider: String,
     strong_model: String,
     effort: Option<String>,
@@ -180,9 +185,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--model" => options.model = value()?,
             "--provider" => {
                 options.provider = value()?;
-                if !["codex", "openrouter", "door", "vertex"].contains(&options.provider.as_str()) {
+                if !["codex", "openrouter", "door", "vertex", "claude"]
+                    .contains(&options.provider.as_str())
+                {
                     return Err(format!(
-                        "--provider wants codex, openrouter, door, or vertex, not {}",
+                        "--provider wants codex, openrouter, door, vertex, or claude, not {}",
                         options.provider
                     ));
                 }
@@ -355,6 +362,12 @@ async fn go(options: Options) -> Result<u8, String> {
                 microcoder::vertex::VertexGenerator::from_env(model, options.effort.clone())?;
             let recipient = format!("vertex:{}#{}", generator.base_url, generator.model);
             return Ok((AnyGenerator::Vertex(generator), recipient));
+        }
+        if options.provider == "claude" {
+            let generator =
+                microcoder::claude::ClaudeGenerator::from_env(model, options.effort.clone())?;
+            let recipient = format!("claude:{}#{}", generator.binary.display(), generator.model);
+            return Ok((AnyGenerator::Claude(generator), recipient));
         }
         if options.provider == "door" {
             let session = format!("microcoder-{}-{}", options.task, std::process::id());
@@ -683,7 +696,7 @@ async fn go(options: Options) -> Result<u8, String> {
     println!("{}", indent_block(&tail));
     let passed = verdict.reward.is_some_and(|r| r >= 1.0);
     let total = microcoder::run::total_text(&outcome);
-    let basis = if options.provider == "codex" || options.provider == "vertex" {
+    let basis = if ["codex", "vertex", "claude"].contains(&options.provider.as_str()) {
         Basis::ListPrice
     } else {
         Basis::Billed
