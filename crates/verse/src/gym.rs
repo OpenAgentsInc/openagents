@@ -269,6 +269,21 @@ impl Board {
         if !self.state.active {
             return;
         }
+        // The synthetic preview stands in for a host whose worker refreshes
+        // every `REFRESH` while the player is inside. Refreshing on the same
+        // interval keeps a slow session fresh; the staleness check below still
+        // applies to every snapshot, synthetic or real.
+        if self.synthetic
+            && self.state.observed_at.is_some_and(|at| {
+                gym_bridge::unix_time()
+                    .unwrap_or(u64::MAX)
+                    .saturating_sub(at)
+                    >= REFRESH.as_secs()
+            })
+        {
+            self.apply_snapshot(fixture());
+            self.changed();
+        }
         if self.state.observed_at.is_some_and(|at| {
             gym_bridge::unix_time()
                 .unwrap_or(u64::MAX)
@@ -624,6 +639,34 @@ mod tests {
         assert!(board.worker.is_none());
         assert!(board.view().selected_recipe.is_none());
         assert!(board.confirm_launch().is_err());
+    }
+
+    #[test]
+    fn the_synthetic_preview_refreshes_like_a_host_while_inside() {
+        let mut board = board();
+        board.set_active(true);
+        board.select_recipe("preview-recipe").unwrap();
+        // A slow session: no poll ran for longer than the staleness bound.
+        let now = gym_bridge::unix_time().unwrap();
+        board.state.observed_at = Some(now - 31);
+        board.poll();
+        let view = board.view();
+        assert!(!view.stale, "{}", view.status);
+        assert!(view.observed_at.unwrap() >= now);
+        assert!(view.selected_recipe.is_some());
+        assert!(board.select_recipe("preview-recipe").is_ok());
+    }
+
+    #[test]
+    fn a_real_board_without_fresh_snapshots_goes_stale() {
+        let mut board = Board::new(SecretKey::new(&mut secp256k1::rand::rng()), false);
+        board.state.active = true;
+        board.apply_snapshot(fixture());
+        board.state.observed_at = Some(gym_bridge::unix_time().unwrap() - 31);
+        board.poll();
+        assert!(board.view().stale);
+        assert_eq!(board.view().status, "Gym observations are stale.");
+        assert!(board.select_recipe("preview-recipe").is_err());
     }
 
     #[test]
