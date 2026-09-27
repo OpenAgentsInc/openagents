@@ -4,6 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
+use nostr::kb;
+use serde_json::{Value, json};
+
 use crate::evidence::{self, Evaluator, Verdict};
 use crate::harvest::{self, AnyProposer, CodexProposer, OpenRouterProposer, Propose, Written};
 use crate::lint::{Corpus, default_corpora, lint};
@@ -135,6 +138,7 @@ pub struct Options {
     pub trust: Option<String>,
     pub remote: Option<PathBuf>,
     pub relay: Option<String>,
+    pub timeout: Option<u64>,
     pub authors: Vec<String>,
     pub output: Option<PathBuf>,
     pub package: Option<String>,
@@ -237,6 +241,10 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
             "--trust" => o.trust = Some(value()?),
             "--remote" => o.remote = Some(PathBuf::from(value()?)),
             "--relay" => o.relay = Some(value()?),
+            "--timeout" => {
+                let text = value()?;
+                o.timeout = Some(text.parse().map_err(|_| "--timeout needs seconds")?);
+            }
             "--output" => o.output = Some(PathBuf::from(value()?)),
             "--package" => o.package = Some(value()?),
             "--snapshot-version" => o.snapshot_version = Some(value()?),
@@ -272,6 +280,88 @@ pub async fn main(args: &[String]) -> u8 {
             2
         }
     }
+}
+
+/// Runs the local knowledge commands and returns a structured result.
+pub async fn result(args: &[String]) -> Result<(u8, Value), (u8, String)> {
+    let value = async {
+        let command = args
+            .first()
+            .ok_or((64, "a kb command is required".to_string()))?;
+        let o = parse(&args[1..]).map_err(|error| (64, error))?;
+        match command.as_str() {
+            "search" => search_json(&o).await,
+            "show" => show_json(&o),
+            "withdraw" => withdraw_json(&o),
+            _ => Err((64, format!("unknown kb command `{command}`"))),
+        }
+    }
+    .await;
+    value.map(|value| (0, value))
+}
+
+async fn search_json(o: &Options) -> Result<Value, (u8, String)> {
+    if o.words.is_empty() {
+        return Err((64, "kb search needs text to search for".to_string()));
+    }
+    let own = remote::key_file().and_then(|path| remote::own_pubkey(&path));
+    let remote_dir = o.remote.clone().or_else(remote::default_dir);
+    let (base, loaded) = remote::load(
+        &o.dir,
+        remote_dir.as_deref(),
+        &o.trust().map_err(|error| (64, error))?,
+        own.as_deref(),
+        o.candidates,
+    )
+    .map_err(|error| (1, error))?;
+    let retriever = if o.lexical {
+        Retriever::lexical(base, "--lexical was given")
+    } else {
+        match Embedder::chosen(o.embeddings.as_deref()) {
+            Ok(embedder) => Retriever::new(base, embedder, default_cache()),
+            Err(error) => Retriever::lexical(base, &error),
+        }
+    };
+    let query = o.words.join(" ");
+    let search = retriever.search(&query, o.limit).await;
+    let hits = search
+        .hits
+        .iter()
+        .map(|hit| {
+            let entry = retriever.base.get(&hit.id);
+            json!({ "id": hit.id, "score": hit.score, "lexical": hit.lexical,
+            "semantic": hit.semantic, "entry": entry })
+        })
+        .collect::<Vec<_>>();
+    Ok(
+        json!({ "query": query, "hits": hits, "lexical_only": search.lexical_only,
+        "usd": search.usd, "provider": retriever.embedder().map(|e| e.provider.to_string()),
+        "local": loaded.local, "remote": loaded.remote }),
+    )
+}
+
+fn show_json(o: &Options) -> Result<Value, (u8, String)> {
+    let id = one_id(o, "show").map_err(|error| (64, error))?;
+    if !kb::valid_entry_id(id) {
+        return Err((64, "kb show needs a valid entry ID".to_string()));
+    }
+    let (_, document, entry) = read_entry(&o.dir, id).map_err(|error| (1, error))?;
+    let pending = pending(&o.dir, id, entry.version)
+        .map(|(path, next)| json!({ "path": path, "version": next.version }));
+    Ok(json!({ "entry": entry, "document": document, "pending": pending }))
+}
+
+fn withdraw_json(o: &Options) -> Result<Value, (u8, String)> {
+    let id = one_id(o, "withdraw").map_err(|error| (64, error))?;
+    if !kb::valid_entry_id(id) {
+        return Err((64, "kb withdraw needs a valid entry ID".to_string()));
+    }
+    let (_, _, before) = read_entry(&o.dir, id).map_err(|error| (1, error))?;
+    let entry = withdraw_entry(o).map_err(|error| (1, error))?;
+    Ok(
+        json!({ "id": id, "version": entry.version, "status": entry.status,
+        "previous_status": before.status, "digest": entry.digest }),
+    )
 }
 
 async fn run(args: &[String]) -> Result<u8, String> {
@@ -776,6 +866,16 @@ fn admit(o: &Options) -> Result<u8, String> {
 }
 
 fn withdraw(o: &Options) -> Result<u8, String> {
+    let entry = withdraw_entry(o)?;
+    println!(
+        "{} v{} is withdrawn: it's never shown, and its file stays. \
+microcoder kb publish sends the withdrawal to a relay it was published to.",
+        entry.id, entry.version
+    );
+    Ok(0)
+}
+
+fn withdraw_entry(o: &Options) -> Result<Entry, String> {
     let id = one_id(o, "withdraw")?;
     let (path, text, entry) = read_entry(&o.dir, id)?;
     let reason = o
@@ -786,12 +886,7 @@ fn withdraw(o: &Options) -> Result<u8, String> {
     lines.push(format!("withdrawn {}: {reason}", today()));
     let updated = set_evidence(&set_status(&text, Status::Withdrawn)?, &lines)?;
     std::fs::write(&path, updated).map_err(|e| e.to_string())?;
-    println!(
-        "{id} v{} is withdrawn: it's never shown, and its file stays. \
-microcoder kb publish sends the withdrawal to a relay it was published to.",
-        entry.version
-    );
-    Ok(0)
+    Entry::parse(&std::fs::read_to_string(&path).map_err(|e| e.to_string())?)
 }
 
 fn review(o: &Options) -> Result<u8, String> {

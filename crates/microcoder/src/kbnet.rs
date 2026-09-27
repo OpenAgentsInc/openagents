@@ -39,6 +39,7 @@ pub struct Relay {
     socket: Socket,
     next: u32,
     incomplete: usize,
+    wait: Duration,
 }
 
 /// What a relay's EOSE said about the stored events it matched (NIP-67).
@@ -90,13 +91,22 @@ impl Relay {
     ///
     /// When the connection or authentication fails.
     pub async fn open(url: &str, identity: &Identity) -> Result<Self, String> {
+        Self::open_with_wait(url, identity, WAIT).await
+    }
+
+    async fn open_with_wait(
+        url: &str,
+        identity: &Identity,
+        wait: Duration,
+    ) -> Result<Self, String> {
         let socket = connect(url, identity)
             .await
-            .map_err(|e| format!("{url}: {e}"))?;
+            .map_err(|e| format!("the relay connection failed: {e}"))?;
         Ok(Relay {
             socket,
             next: 0,
             incomplete: 0,
+            wait,
         })
     }
 
@@ -109,7 +119,7 @@ impl Relay {
                 Err(_) => {
                     return Err(format!(
                         "the relay didn't answer within {} seconds",
-                        WAIT.as_secs()
+                        self.wait.as_secs()
                     ));
                 }
             };
@@ -207,7 +217,7 @@ is incomplete"
         send(&mut self.socket, json!(["REQ", id, filter]))
             .await
             .map_err(|e| e.to_string())?;
-        let deadline = tokio::time::Instant::now() + WAIT;
+        let deadline = tokio::time::Instant::now() + self.wait;
         let mut events = Vec::new();
         let end = loop {
             let frame = self.frame(deadline).await?;
@@ -251,7 +261,7 @@ is incomplete"
         send(&mut self.socket, json!(["EVENT", event]))
             .await
             .map_err(|e| e.to_string())?;
-        let deadline = tokio::time::Instant::now() + WAIT;
+        let deadline = tokio::time::Instant::now() + self.wait;
         loop {
             let frame = self.frame(deadline).await?;
             if frame[0] != "OK" || frame[1].as_str() != Some(event.id.as_str()) {
@@ -317,6 +327,138 @@ pub async fn main(args: &[String]) -> u8 {
             2
         }
     }
+}
+
+/// Runs the relay-backed KB commands and returns a structured result.
+pub async fn result(args: &[String]) -> Result<(u8, Value), (u8, String)> {
+    async {
+        let command = args
+            .first()
+            .ok_or((64, "a kb command is required".to_string()))?;
+        let o = knowledge::cli::parse(&args[1..]).map_err(|error| (64, error))?;
+        if !matches!(command.as_str(), "publish" | "sync" | "head") {
+            return Err((64, format!("unknown kb command `{command}`")));
+        }
+        if command == "head" && (o.words.len() != 1 || !kb::valid_entry_id(&o.words[0])) {
+            return Err((64, "kb head needs one valid entry ID".to_string()));
+        }
+        if command == "sync" && !o.words.is_empty() {
+            return Err((64, "kb sync does not take entry IDs".to_string()));
+        }
+        if command == "publish" && o.words.iter().any(|id| !kb::valid_entry_id(id)) {
+            return Err((64, "kb publish needs valid entry IDs".to_string()));
+        }
+        if command == "head" && o.authors.len() > 1 {
+            return Err((64, "kb head takes at most one --author".to_string()));
+        }
+        if matches!(command.as_str(), "head" | "sync")
+            && o.authors
+                .iter()
+                .any(|author| remote::parse_author(author).is_none())
+        {
+            return Err((64, "--author needs an npub or a hex public key".to_string()));
+        }
+        relay_url(&o).map_err(|error| (64, error))?;
+        let timeout = o
+            .timeout
+            .filter(|seconds| *seconds > 0)
+            .ok_or((64, "a positive --timeout SECONDS is required".to_string()))?;
+        let key = o
+            .key_file
+            .clone()
+            .map_or_else(default_key, Ok)
+            .map_err(|error| (1, error))?;
+        let result = tokio::time::timeout(Duration::from_secs(timeout), async {
+            match command.as_str() {
+                "publish" => publish_result(&o, &key, false).await,
+                "sync" => {
+                    let dir = o
+                        .remote
+                        .clone()
+                        .or_else(remote::default_dir)
+                        .ok_or("no cache directory: pass --remote".to_string())?;
+                    sync_result(&o, &key, &dir, false).await
+                }
+                "head" => head(&o, &key).await,
+                _ => Err(format!("unknown kb command `{command}`")),
+            }
+        })
+        .await
+        .map_err(|_| (1, format!("no relay answer within {timeout} seconds")))?;
+        result.map_err(|error| (1, error))
+    }
+    .await
+}
+
+/// Reads an author's current head, checking its exact entry and withdrawals.
+pub async fn head(o: &Options, key: &Path) -> Result<(u8, Value), String> {
+    let [id] = o.words.as_slice() else {
+        return Err("kb head needs one entry ID".to_string());
+    };
+    if !kb::valid_entry_id(id) {
+        return Err("kb head needs a valid entry ID".to_string());
+    }
+    let url = relay_url(o)?;
+    let identity = Identity::load_from(key)?;
+    let author = match o.author.as_deref() {
+        Some(value) => remote::parse_author(value)
+            .ok_or("--author needs an npub or a hex public key".to_string())?,
+        None => identity.pubkey().to_string(),
+    };
+    let mut relay = Relay::open_with_wait(
+        url,
+        &identity,
+        Duration::from_secs(o.timeout.unwrap_or(WAIT.as_secs())),
+    )
+    .await?;
+    let events = relay
+        .query(json!({"kinds": [kb::ENTRY_KIND, kb::HEAD_KIND,
+        kb::WITHDRAWAL_KIND], "authors": [&author], "#d": [id], "limit": LIMIT}))
+        .await?;
+    if relay.incomplete() > 0 {
+        return Err("the relay returned an incomplete head query".to_string());
+    }
+    let Some(head_event) = events
+        .iter()
+        .filter(|event| event.kind == kb::HEAD_KIND && event.pubkey == author)
+        .max_by_key(|event| (event.created_at, &event.id))
+    else {
+        return Err(format!("no head for {id} by {author}"));
+    };
+    let pointer = kb::parse_head(head_event).map_err(|error| format!("invalid head: {error}"))?;
+    if &pointer.id != id {
+        return Err(format!("the head does not name {id}"));
+    }
+    let event = events
+        .iter()
+        .find(|event| event.id == pointer.entry.id)
+        .ok_or(format!("the head for {id} points to an absent entry"))?;
+    let version = kb::bind(&pointer.entry, id, pointer.version, event)
+        .map_err(|error| format!("invalid head for {id}: {error}"))?;
+    for other in events.iter().filter(|candidate| {
+        candidate.kind == kb::ENTRY_KIND && candidate.pubkey == author && candidate.id != event.id
+    }) {
+        if let Ok(candidate) = kb::parse_entry(other) {
+            kb::equivocation(&version, &candidate)
+                .map_err(|error| format!("conflicting versions for {id}: {error}"))?;
+        }
+    }
+    if events
+        .iter()
+        .filter(|candidate| candidate.kind == kb::WITHDRAWAL_KIND && candidate.pubkey == author)
+        .filter_map(|candidate| kb::parse_withdrawal(candidate).ok())
+        .any(|withdrawal| {
+            withdrawal.entry.id == event.id
+                && kb::bind(&withdrawal.entry, &withdrawal.id, withdrawal.version, event).is_ok()
+        })
+    {
+        return Err(format!("the head for {id} points to a withdrawn entry"));
+    }
+    Ok((
+        0,
+        json!({"id": id, "version": version.version, "author": author,
+        "event": event.id, "digest": version.digest}),
+    ))
 }
 
 fn relay_url(o: &Options) -> Result<&str, String> {
@@ -421,14 +563,33 @@ fn hex_digest(text: &str) -> String {
 ///
 /// A bad usage, key, or relay.
 pub async fn publish(o: &Options, key: &Path) -> Result<u8, String> {
+    publish_result(o, key, true).await.map(|(code, _)| code)
+}
+
+async fn publish_result(o: &Options, key: &Path, human: bool) -> Result<(u8, Value), String> {
     let url = relay_url(o)?;
-    let identity = load_key(key, "signing as")?;
+    let identity = if human {
+        load_key(key, "signing as")?
+    } else {
+        Identity::load_from(key)?
+    };
     let chosen = entries(o)?;
     let ids: Vec<String> = chosen.iter().map(|(e, _)| e.id.clone()).collect();
-    let mut relay = Relay::open(url, &identity).await?;
-    println!("connected to {url}");
+    let mut relay = Relay::open_with_wait(
+        url,
+        &identity,
+        Duration::from_secs(o.timeout.unwrap_or(WAIT.as_secs())),
+    )
+    .await?;
+    if human {
+        println!("connected to {url}");
+    }
     let found = mine(&mut relay, identity.pubkey(), &ids).await?;
+    if relay.incomplete() > 0 {
+        return Err("the relay returned an incomplete publish query".to_string());
+    }
     let (mut published, mut present, mut withdrawals, mut refused) = (0, 0, 0, 0);
+    let mut items = Vec::new();
     for (entry, text) in &chosen {
         let id = &entry.id;
         if entry.status == Status::Withdrawn {
@@ -445,7 +606,10 @@ pub async fn publish(o: &Options, key: &Path) -> Result<u8, String> {
                 .filter(|(v, e)| &v.id == id && !found.withdrawn.contains(&e.id))
                 .collect();
             if targets.is_empty() {
-                println!("{id}: withdrawn here, with no published version to withdraw");
+                if human {
+                    println!("{id}: withdrawn here, with no published version to withdraw");
+                }
+                items.push(json!({"id": id, "status": "withdrawn_locally"}));
             }
             for (version, event) in targets {
                 let parts = kb::withdrawal(event, &reason).map_err(|e| e.to_string())?;
@@ -453,15 +617,21 @@ pub async fn publish(o: &Options, key: &Path) -> Result<u8, String> {
                 match relay.publish(&withdrawal).await {
                     Ok(()) => {
                         withdrawals += 1;
-                        println!(
-                            "{id} v{}: withdrawal {} published",
-                            version.version,
-                            short(&withdrawal.id)
-                        );
+                        if human {
+                            println!(
+                                "{id} v{}: withdrawal {} published",
+                                version.version,
+                                short(&withdrawal.id)
+                            );
+                        }
+                        items.push(json!({"id": id, "version": version.version, "status": "withdrawn", "event": withdrawal.id}));
                     }
                     Err(error) => {
                         refused += 1;
-                        println!("{id} v{}: {error}", version.version);
+                        if human {
+                            println!("{id} v{}: {error}", version.version);
+                        }
+                        items.push(json!({"id": id, "version": version.version, "status": "refused", "error": error}));
                     }
                 }
             }
@@ -475,11 +645,14 @@ pub async fn publish(o: &Options, key: &Path) -> Result<u8, String> {
         let event = match same_version {
             Some((v, _)) if v.digest != digest => {
                 refused += 1;
-                println!(
-                    "{id} v{}: this version is already published with other content; raise its \
+                if human {
+                    println!(
+                        "{id} v{}: this version is already published with other content; raise its \
 version and publish again",
-                    entry.version
-                );
+                        entry.version
+                    );
+                }
+                items.push(json!({"id": id, "version": entry.version, "status": "refused", "error": "this version has different published content"}));
                 continue;
             }
             Some((_, event)) => {
@@ -489,7 +662,10 @@ version and publish again",
                     .iter()
                     .any(|(head_id, at)| head_id == id && at == &event.id)
                 {
-                    println!("{id} v{}: already published", entry.version);
+                    if human {
+                        println!("{id} v{}: already published", entry.version);
+                    }
+                    items.push(json!({"id": id, "version": entry.version, "status": "present", "event": event.id}));
                     continue;
                 }
                 event.clone()
@@ -499,14 +675,20 @@ version and publish again",
                     Ok(parts) => parts,
                     Err(error) => {
                         refused += 1;
-                        println!("{id}: {error}");
+                        if human {
+                            println!("{id}: {error}");
+                        }
+                        items.push(json!({"id": id, "status": "refused", "error": error}));
                         continue;
                     }
                 };
                 let event = sign(&identity, parts);
                 if let Err(error) = relay.publish(&event).await {
                     refused += 1;
-                    println!("{id} v{}: {error}", entry.version);
+                    if human {
+                        println!("{id} v{}: {error}", entry.version);
+                    }
+                    items.push(json!({"id": id, "version": entry.version, "status": "refused", "error": error}));
                     continue;
                 }
                 published += 1;
@@ -515,25 +697,40 @@ version and publish again",
         };
         let head = sign(&identity, kb::head(&event).map_err(|e| e.to_string())?);
         match relay.publish(&head).await {
-            Ok(()) => println!(
-                "{id} v{} [{}]: entry {} and head {} published",
-                entry.version,
-                entry.status,
-                short(&event.id),
-                short(&head.id)
-            ),
+            Ok(()) => {
+                if human {
+                    println!(
+                        "{id} v{} [{}]: entry {} and head {} published",
+                        entry.version,
+                        entry.status,
+                        short(&event.id),
+                        short(&head.id)
+                    );
+                }
+                items.push(json!({"id": id, "version": entry.version, "status": "published", "event": event.id, "head": head.id}));
+            }
             Err(error) => {
                 refused += 1;
-                println!("{id} v{}: the head: {error}", entry.version);
+                if human {
+                    println!("{id} v{}: the head: {error}", entry.version);
+                }
+                items.push(json!({"id": id, "version": entry.version, "status": "refused", "error": error}));
             }
         }
     }
-    println!(
-        "{} published, {present} already there, {}, {refused} refused",
-        evidence::count(published, "entry"),
-        evidence::count(withdrawals, "withdrawal")
-    );
-    Ok(u8::from(refused > 0))
+    if human {
+        println!(
+            "{} published, {present} already there, {}, {refused} refused",
+            evidence::count(published, "entry"),
+            evidence::count(withdrawals, "withdrawal")
+        );
+    }
+    Ok((
+        u8::from(refused > 0),
+        json!({"author": identity.pubkey(),
+        "published": published, "present": present, "withdrawals": withdrawals,
+        "refused": refused, "items": items}),
+    ))
 }
 
 /// `kb sync`: fetches entry versions, heads, and withdrawals from the
@@ -545,17 +742,36 @@ version and publish again",
 ///
 /// A bad usage, key, author, or relay.
 pub async fn sync(o: &Options, key: &Path, dir: &Path) -> Result<u8, String> {
+    sync_result(o, key, dir, true).await.map(|(code, _)| code)
+}
+
+async fn sync_result(
+    o: &Options,
+    key: &Path,
+    dir: &Path,
+    human: bool,
+) -> Result<(u8, Value), String> {
     let url = relay_url(o)?;
     let mut authors = Vec::new();
     for author in &o.authors {
         authors.push(
-            remote::parse_author(author)
-                .ok_or(format!("{author} isn't an npub or a hex public key"))?,
+            remote::parse_author(author).ok_or("--author needs an npub or a hex public key")?,
         );
     }
-    let identity = load_key(key, "authenticating to the relay as")?;
-    let mut relay = Relay::open(url, &identity).await?;
-    println!("connected to {url}");
+    let identity = if human {
+        load_key(key, "authenticating to the relay as")?
+    } else {
+        Identity::load_from(key)?
+    };
+    let mut relay = Relay::open_with_wait(
+        url,
+        &identity,
+        Duration::from_secs(o.timeout.unwrap_or(WAIT.as_secs())),
+    )
+    .await?;
+    if human {
+        println!("connected to {url}");
+    }
     let mut filter = json!({
         "kinds": [kb::ENTRY_KIND, kb::WITHDRAWAL_KIND, kb::HEAD_KIND], "limit": LIMIT,
     });
@@ -576,40 +792,49 @@ pub async fn sync(o: &Options, key: &Path, dir: &Path) -> Result<u8, String> {
         .map(|a| &a.author)
         .collect::<std::collections::BTreeSet<_>>()
         .len();
-    println!(
-        "{} events; {} entries accepted from {authors} {}",
-        events.len(),
-        result.accepted.len(),
-        if authors == 1 { "author" } else { "authors" }
-    );
+    if human {
+        println!(
+            "{} events; {} entries accepted from {authors} {}",
+            events.len(),
+            result.accepted.len(),
+            if authors == 1 { "author" } else { "authors" }
+        );
+    }
     for accepted in &result.accepted {
         let status = Entry::parse(&accepted.version.document)
             .map(|e| e.status.to_string())
             .unwrap_or_default();
-        println!(
-            "- {} v{} by {} (its author says {status})",
-            accepted.version.id,
-            accepted.version.version,
-            npub(&accepted.author)
-        );
+        if human {
+            println!(
+                "- {} v{} by {} (its author says {status})",
+                accepted.version.id,
+                accepted.version.version,
+                npub(&accepted.author)
+            );
+        }
     }
     for (author, id) in &result.withdrawn {
-        println!("- {id} by {}: withdrawn", npub(author));
+        if human {
+            println!("- {id} by {}: withdrawn", npub(author));
+        }
     }
     for refusal in &result.refused {
-        println!("- refused: {refusal}");
+        if human {
+            println!("- refused: {refusal}");
+        }
     }
     let cited: Vec<&str> = result
         .accepted
         .iter()
         .map(|a| a.event.id.as_str())
         .collect();
+    let mut kept = 0;
+    let mut refused_evidence = Vec::new();
     if !cited.is_empty() {
         let events = relay
             .query(json!({"kinds": [kb::EVIDENCE_KIND], "#e": cited, "limit": LIMIT}))
             .await?;
         let store = dir.join("evidence");
-        let mut kept = 0;
         for event in &events {
             match kb::parse_evidence(event) {
                 Ok(_) => {
@@ -619,25 +844,49 @@ pub async fn sync(o: &Options, key: &Path, dir: &Path) -> Result<u8, String> {
                         .map_err(|e| e.to_string())?;
                     kept += 1;
                 }
-                Err(error) => println!("- refused evidence {}: {error}", short(&event.id)),
+                Err(error) => {
+                    if human {
+                        println!("- refused evidence {}: {error}", short(&event.id));
+                    }
+                    refused_evidence.push(json!({"event": event.id, "error": error.to_string()}));
+                }
             }
         }
-        println!("{kept} evidence reports cite these entries");
+        if human {
+            println!("{kept} evidence reports cite these entries");
+        }
     }
-    println!(
-        "cached in {}. Runs include other authors' entries with --kb-trust listed (for the \
+    if human {
+        println!(
+            "cached in {}. Runs include other authors' entries with --kb-trust listed (for the \
 authors in the trust file) or --kb-trust all (as candidates).",
-        dir.display()
-    );
+            dir.display()
+        );
+    }
     let incomplete = relay.incomplete();
-    if incomplete > 0 {
+    if incomplete > 0 && human {
         println!(
             "incomplete: the relay didn't return everything for {incomplete} {}; see the \
 warnings above",
             if incomplete == 1 { "query" } else { "queries" }
         );
     }
-    Ok(u8::from(!result.refused.is_empty() || incomplete > 0))
+    let accepted = result
+        .accepted
+        .iter()
+        .map(|item| {
+            json!({"id": item.version.id,
+        "version": item.version.version, "author": item.author, "event": item.event.id})
+        })
+        .collect::<Vec<_>>();
+    Ok((
+        u8::from(!result.refused.is_empty() || incomplete > 0),
+        json!({
+        "events": events.len(), "authors": authors, "accepted": accepted,
+        "withdrawn": result.withdrawn, "refused": result.refused,
+        "evidence_kept": kept, "evidence_refused": refused_evidence,
+        "incomplete": incomplete, "cache": dir}),
+    ))
 }
 
 /// `kb publish-evidence`: for each published entry with paired runs, a

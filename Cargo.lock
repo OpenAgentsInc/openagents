@@ -4318,6 +4318,7 @@ dependencies = [
  "glam",
  "knowledge",
  "libc",
+ "microcoder",
  "nostr",
  "reqwest",
  "secp256k1",

@@ -18,6 +18,7 @@ mod catalog;
 mod computer;
 mod discover;
 mod hosts;
+mod kb;
 mod key;
 mod labor;
 mod out;
@@ -58,6 +59,7 @@ Labor (NIP-MKT, NIP-LAB):
 
 Keys and relays:
   key          Show or create Nostr identities.
+  kb           Search, publish, and sync knowledge entries (NIP-KB).
   relay        Query, publish to, and follow a relay.
 
 Discovery (NIP-CAP, NIP-PRG, NIP-EXT), read-only:
@@ -105,6 +107,7 @@ fn main() -> ExitCode {
         "sov" => sov::run(&output, &rest),
         "labor" => labor::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        "kb" => kb::run(&output, &rest),
         "reach" => reach::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),
