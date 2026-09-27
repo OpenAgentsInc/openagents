@@ -29,6 +29,7 @@ def test_known_arms(agents):
         "coder-one-delegate-fable-low",
         "coder-one-delegate-fable-low-kb",
         "coder-one-delegate-fable-low-kb-pypi",
+        "coder-one-delegate-fable-low-kb-pypi-5m",
         "coder-one-delegate-auto",
         "coder-one-delegate-luna",
         "coder-one-delegate-luna-auto",
@@ -280,6 +281,19 @@ def test_fable_low_kb_pypi_arm_adds_only_the_package_index(agents):
     assert agent_config_env(profile, auth_mode="subscription-oauth", env=env) == agent_config_env(
         kb, auth_mode="subscription-oauth", env=env
     )
+
+
+def test_fable_low_kb_pypi_5m_arm_only_shortens_the_prompt_cache(agents):
+    profile = agents["coder-one-delegate-fable-low-kb-pypi-5m"]
+    base = agents["coder-one-delegate-fable-low-kb-pypi"]
+    assert profile.kwargs == base.kwargs
+    assert profile.required_kwargs == base.required_kwargs
+    assert profile.extra_allowed_hosts == base.extra_allowed_hosts
+    env = {"OPENAGENTS_API_KEY": "a", "TYPESAFE_API_KEY": "b", "CLAUDE_CODE_OAUTH_TOKEN": "c"}
+    out = agent_config_env(profile, auth_mode="subscription-oauth", env=env)
+    before = agent_config_env(base, auth_mode="subscription-oauth", env=env)
+    assert out.pop("CLAUDE_CODE_PROMPT_CACHE_TTL") == "5m"
+    assert out == before
 
 
 def test_delegate_oauth_mode_forwards_the_token_by_name_only(agents):
