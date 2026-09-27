@@ -1,9 +1,10 @@
-//! NIP-SOV, step one of its implementation order: the pure contracts. A
-//! sovereign profile is drafted, validated, and kept under
-//! `~/.openagents/sov/`; `spawn` checks every precondition the NIP puts
-//! before an activation and refuses, naming each missing piece, until a
-//! host supplies them. Nothing here grants an agent authority: a profile on
-//! disk is a draft until an admitting host authenticates it.
+//! NIP-SOV, steps one and two of its implementation order: the pure
+//! contracts and a bounded local lifecycle. A sovereign profile is drafted,
+//! validated, and kept under `~/.openagents/sov/`; `admit` authenticates it
+//! with the authority's key; `spawn` binds a finite activation and runs it
+//! (see `sov_host`). Every precondition is checked in order and the first
+//! refusal stops the command, naming what is missing. A profile on disk is
+//! a draft until an admitting authority authenticates it.
 
 use std::path::{Path, PathBuf};
 
@@ -18,11 +19,25 @@ const USAGE: &str = "usage: openagents sov COMMAND [OPTIONS]
   profile validate FILE     Check a profile body against the SOV rules.
   profile show NAME         Print a stored profile.
   profile list              List stored profile drafts.
-  spawn NAME [--host URL]   Activate the agent NAME: refuses until every SOV
-                            precondition is met, and names what is missing.
-  status                    What this machine can and cannot do for SOV.
+  admit NAME [--as PROFILE] Admit the profile NAME with the authority's key
+                            (the key profile whose pubkey is the profile's
+                            authority). Writes NAME.admission.json.
+  spawn NAME --seconds N [--ticks N] [--tick S] [--key PROFILE] [--name TEXT]
+        [--relay URL] [--world ID] [--foreground]
+                            Activate the admitted agent NAME for a finite
+                            budget: it stands in Verse as an agent, one
+                            state and checkpoint per tick, then ends.
+                            Refuses, naming the check, until every SOV
+                            precondition is met.
+  status [NAME]             What this machine can do for SOV, or NAME's
+                            admission, activation, and checkpoints.
+  stop NAME [--timeout S]   End NAME's running activation at its next tick.
+  list                      Names with a profile, admission, or activation.
 REF is an ArtifactRef as sha256:HEX,SIZE,MEDIA_TYPE[,SCHEMA]. Profiles live
-in ~/.openagents/sov/ (SOV_HOME overrides).";
+in ~/.openagents/sov/ (SOV_HOME overrides). The only custody adapter this
+host enforces is openagents.local-key.v1: the agent key in a local key
+profile (openagents key show --as NAME). Treasury and guardians are
+unsupported; a profile that names them is refused at admission.";
 
 pub const PROFILE_VERSION: &str = "openagents.sovereign-profile.v1";
 const MAX_EVIDENCE: usize = 64;
@@ -235,39 +250,62 @@ fn load(name: &str) -> Result<Profile, String> {
 
 /// The pieces an activation needs and whether this machine has them.
 fn capabilities() -> Vec<Value> {
-    let missing = |name: &str, contract: &str, why: &str| json!({ "capability": name, "contract": contract, "present": false, "why": why });
+    let cap = |name: &str, contract: &str, present: bool, why: &str| json!({ "capability": name, "contract": contract, "present": present, "why": why });
     vec![
-        json!({ "capability": "profile-contract", "contract": "NIP-SOV", "present": true,
-                "why": "openagents.sovereign-profile.v1 is validated by this program" }),
-        missing(
+        cap(
+            "profile-contract",
+            "NIP-SOV",
+            true,
+            "openagents.sovereign-profile.v1 is validated by this program",
+        ),
+        cap(
             "admitting-authority",
             "NIP-SOV",
-            "no host has authenticated an authority for a profile; self-publication cannot",
+            true,
+            "`sov admit` signs the exact profile bytes with the authority's local key",
         ),
-        missing(
+        cap(
             "custody-adapter",
             "NIP-CAP / NIP-46",
-            "no supported custody adapter holds the agent's signing identity",
+            true,
+            "openagents.local-key.v1 only: the agent key in a local key profile; no NIP-46, threshold, or hardware custody",
         ),
-        missing(
+        cap(
             "policy-store",
             "NIP-POL",
-            "no admitted POL governance, custody, or disclosure policy is retained locally",
+            true,
+            "no-spend and no guardian only; a profile naming a treasury or guardian policy is refused",
         ),
-        missing(
+        cap(
             "controller",
             "NIP-AUTO / NIP-COORD",
-            "no controller issues generations, claims, or fencing for an activation",
+            true,
+            "one lifecycle process per agent at generation 1; the activation file is the exclusive claim",
         ),
-        missing(
+        cap(
             "environment",
             "NIP-ENV",
-            "no host materializes an environment lease for an activation",
+            true,
+            "this machine; no lease or materialization is admitted elsewhere",
         ),
-        missing(
+        cap(
             "checkpoints",
             "NIP-RUN",
-            "no durable checkpoint and recovery store exists",
+            true,
+            "one checkpoint revision per tick under NAME.checkpoints/; no recovery into a new activation",
+        ),
+        cap(
+            "treasury",
+            "NIP-X402 / NIP-LAB",
+            false,
+            "no wallet adapter; agents cannot earn or spend",
+        ),
+        cap("guardians", "NIP-SOV", false, "no quorum admission store"),
+        cap(
+            "portable-recovery",
+            "NIP-RUN / NIP-REACH",
+            false,
+            "no second host, fencing authority, or controller transfer",
         ),
     ]
 }
@@ -282,15 +320,46 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             Ok(0)
         }
         "profile" => profile(output, rest),
-        "spawn" | "activate" => spawn(output, rest),
-        "status" => {
-            let caps = capabilities();
-            output.emit(
-                &json!({ "home": home(), "capabilities": caps }),
-                render_caps,
-            );
+        "admit" => named(rest)
+            .and_then(|(name, args)| crate::sov_host::admit_command(output, &home(), &name, &args)),
+        "spawn" | "activate" => named(rest)
+            .and_then(|(name, args)| crate::sov_host::spawn_command(output, &home(), &name, &args)),
+        "stop" => named(rest)
+            .and_then(|(name, args)| crate::sov_host::stop_command(output, &home(), &name, &args)),
+        "host" => match rest.split_first() {
+            Some((sub, rest)) if sub == "run" => named(rest).and_then(|(name, args)| {
+                crate::sov_host::run_command(output, &home(), &name, &args)
+            }),
+            _ => Err("host takes run NAME".into()),
+        },
+        "list" => {
+            let names = crate::sov_host::names(&home());
+            output.emit(&json!({ "home": home(), "names": names }), |value| {
+                value["names"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            });
             Ok(0)
         }
+        "status" => match named(rest) {
+            Ok((name, _)) => {
+                let value = crate::sov_host::status_value(&home(), &name);
+                output.emit(&value, render_status);
+                Ok(0)
+            }
+            Err(_) => {
+                let caps = capabilities();
+                output.emit(
+                    &json!({ "home": home(), "capabilities": caps }),
+                    render_caps,
+                );
+                Ok(0)
+            }
+        },
         other => return output.usage("sov", &format!("unknown command `{other}`"), USAGE),
     };
     match result {
@@ -451,70 +520,52 @@ fn profile(output: &Output, words: &[String]) -> Result<u8, String> {
     }
 }
 
-/// Activation, fail closed: every precondition the NIP names is checked in
-/// order and the first refusal stops the command. Today the profile
-/// contract is the only precondition this machine can satisfy.
-fn spawn(output: &Output, words: &[String]) -> Result<u8, String> {
-    let args = Args::parse(words, &[])?;
+/// `NAME [OPTIONS]`: the validated name and the remaining arguments.
+fn named(words: &[String]) -> Result<(String, Args), String> {
+    let args = Args::parse(words, &["foreground"])?;
     let Some(name) = args.positional().first() else {
         return Err("NAME is required".into());
     };
-    let profile = load(name)?;
-    let mut checks = vec![match profile.validate() {
-        Ok(()) => json!({ "check": "profile-contract", "ok": true }),
-        Err(error) => json!({ "check": "profile-contract", "ok": false, "why": error }),
-    }];
-    for cap in capabilities().into_iter().skip(1) {
-        checks.push(json!({
-            "check": cap["capability"],
-            "ok": cap["present"],
-            "why": cap["why"],
-        }));
-    }
-    let refused = checks
-        .iter()
-        .find(|check| !check["ok"].as_bool().unwrap_or(false))
-        .cloned();
-    output.emit(
-        &json!({
-            "agent": profile.agent,
-            "revision": profile.revision,
-            "activated": refused.is_none(),
-            "refused_by": refused.as_ref().map(|c| c["check"].clone()),
-            "checks": checks,
-        }),
-        |value| {
-            let lines: Vec<String> = value["checks"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|check| {
-                    format!(
-                        "{} {}{}",
-                        if check["ok"].as_bool().unwrap_or(false) {
-                            "ok     "
-                        } else {
-                            "refused"
-                        },
-                        check["check"].as_str().unwrap_or(""),
-                        check["why"]
-                            .as_str()
-                            .map(|w| format!(": {w}"))
-                            .unwrap_or_default()
-                    )
-                })
-                .collect();
-            format!(
-                "{}\nspawn refused: an activation needs every check above; nothing was started",
-                lines.join("\n")
-            )
-        },
-    );
-    Ok(if refused.is_some() {
-        crate::EXIT_FAILURE
+    profile_path(name)?;
+    Ok((name.clone(), args))
+}
+
+fn render_status(value: &Value) -> String {
+    let mut lines = vec![format!(
+        "{}: {}",
+        value["name"].as_str().unwrap_or(""),
+        match value["admitted"].as_object() {
+            Some(a) => format!(
+                "admitted revision {} by {}…",
+                a["revision"],
+                &a["authority"].as_str().unwrap_or("")[..8]
+            ),
+            None => format!(
+                "not admitted ({})",
+                value["admission_error"].as_str().unwrap_or("")
+            ),
+        }
+    )];
+    if let Some(activation) = value["activation"].as_object() {
+        lines.push(format!(
+            "activation {} pid {} {}; {} checkpoints",
+            activation["activation"].as_str().unwrap_or(""),
+            activation["pid"],
+            match activation["ended"].as_object() {
+                Some(ended) => format!(
+                    "ended: {} after {} ticks",
+                    ended["reason"].as_str().unwrap_or(""),
+                    ended["ticks"]
+                ),
+                None if value["running"].as_bool().unwrap_or(false) => "running".to_owned(),
+                None => "not running (process gone before it recorded an end)".to_owned(),
+            },
+            value["checkpoints"]
+        ));
     } else {
-        0
-    })
+        lines.push("no activation".to_owned());
+    }
+    lines.join("\n")
 }
 
 #[cfg(test)]

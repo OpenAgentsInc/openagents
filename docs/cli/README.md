@@ -353,15 +353,34 @@ refused without touching the simulation.
 
 ```sh
 openagents sov status
-openagents sov profile new NAME --agent PUBKEY --authority PUBKEY --policy REF ...
-openagents sov profile validate profile.json
-openagents sov spawn NAME
+openagents sov profile new NAME --agent PUBKEY --authority PUBKEY --policy REF \
+  --custody-adapter openagents.local-key.v1 --custody-adapter-artifact REF \
+  --custody-policy REF --state-schema REF --disclosure REF
+openagents sov admit NAME --as AUTHORITY_PROFILE
+openagents sov spawn NAME --seconds 600 [--tick 5] [--ticks N] [--key PROFILE] [--name TEXT]
+openagents sov status NAME
+openagents sov stop NAME
+openagents sov list
 ```
 
-`spawn` fails closed. NIP-SOV binds activation to an admitted authority,
-a custody adapter, a policy store, a controller, an environment lease, and
-checkpoints, and none of those exist yet; the command names exactly which
-preconditions are missing rather than starting an unbounded process.
+`sov` implements the first two steps of NIP-SOV's implementation order: the
+pure contracts and a bounded local lifecycle under a no-spend, explicitly
+trusted local custody profile. `admit` signs the exact profile bytes with
+the authority's key (a local key profile whose pubkey is the profile's
+`authority`) and writes the record beside the profile; the profile must pin
+the `openagents.local-key.v1` custody adapter and name no treasury and no
+guardian policy. `spawn` checks, in order, the profile, the admission, the
+agent key (the key profile named by `--key`, default `NAME`, must hold the
+profile's `agent` key), the policy, the finite budget (`--seconds` is
+required), the exclusive controller claim, the environment, and the
+checkpoint store; the first refusal stops it with nothing started. When all
+pass it writes `NAME.activation.json` and starts the lifecycle in its own
+process: each tick publishes the agent's NIP-MV state, so it appears in
+`openagents verse who` with role `agent`, and writes one checkpoint revision
+under `NAME.checkpoints/`. The plan ends at its budget, on `sov stop`, or
+when the relay refuses, publishes the agent offline, and records the reason
+in the activation. Treasury, guardians, and portable recovery are not
+implemented; `sov status` lists them as missing.
 
 ## Gym (NIP-EVAL)
 
