@@ -11,7 +11,14 @@ default = ["host"]
 # The resident host: `serve`, the `coder host` commands, the grant authority,
 # and presence telemetry. A client build, such as the mobile library,
 # disables default features and keeps `client`, `mailbox`, and `message`.
-host = ["coder-access/host", "coder-pty/host", "tokio/signal", "dep:libc", "dep:coder-service"]
+host = [
+    "coder-access/host",
+    "coder-pty/host",
+    "tokio/signal",
+    "dep:libc",
+    "dep:coder-service",
+    "dep:tokio-rustls",
+]
 
 [dependencies]
 coder-access = { path = "../coder-access", default-features = false }
@@ -31,6 +38,11 @@ sha2 = "0.11.0"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 # WebSocket direct channels: the host's listener and the client's dialer.
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+# TLS for `wss` hints: the client's test-only roots and the host's
+# certificate checks, with the ring provider the graph already uses.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# The host's TLS-terminating WebSocket listener.
+tokio-rustls = { version = "0.26", default-features = false, optional = true }
 
 [dev-dependencies]
 # The ready record test decodes with the host service's own reader.
@@ -52,6 +64,10 @@ required-features = ["host"]
 
 [[test]]
 name = "websocket"
+required-features = ["host"]
+
+[[test]]
+name = "wss"
 required-features = ["host"]
 
 [[test]]

@@ -41,6 +41,7 @@ type Links = Arc<Mutex<HashMap<(HostKey, u64), Arc<Link>>>>;
 pub struct Connector {
     runtime: Handle,
     locality: Locality,
+    tls: websocket::Tls,
     devices: HashMap<HostKey, Arc<Device>>,
     reports: mpsc::UnboundedSender<(HostKey, Report)>,
     links: Links,
@@ -66,6 +67,7 @@ impl Connector {
             Self {
                 runtime,
                 locality,
+                tls: websocket::Tls::webpki(),
                 devices: HashMap::new(),
                 reports,
                 links: Arc::default(),
@@ -73,6 +75,12 @@ impl Connector {
             },
             receiver,
         )
+    }
+
+    /// Verify `wss` hints as `tls` says instead of against the WebPKI roots.
+    /// Only a test replaces the roots.
+    pub fn set_websocket_tls(&mut self, tls: websocket::Tls) {
+        self.tls = tls;
     }
 
     /// Add an enrolled device's host and return the key to register.
@@ -116,14 +124,15 @@ impl coder_link::Connector for Connector {
             ));
             return;
         };
-        let (reports, links, locality, key) = (
+        let (reports, links, locality, tls, key) = (
             self.reports.clone(),
             self.links.clone(),
             self.locality,
+            self.tls.clone(),
             host.clone(),
         );
         self.spawn(host, attempt, async move {
-            match establish(device, locality).await {
+            match establish(device, locality, &tls).await {
                 Ok(link) => {
                     let link = Arc::new(link);
                     lock(&links).insert((key.clone(), attempt.0), link.clone());
@@ -147,7 +156,12 @@ impl coder_link::Connector for Connector {
 
     fn probe(&mut self, host: &HostKey, attempt: AttemptId, connection: ConnectionId) {
         let link = self.link(host, connection);
-        let (reports, locality, key) = (self.reports.clone(), self.locality, host.clone());
+        let (reports, locality, tls, key) = (
+            self.reports.clone(),
+            self.locality,
+            self.tls.clone(),
+            host.clone(),
+        );
         self.spawn(host, attempt, async move {
             let Some(link) = link else {
                 let _ = reports.send((key, Report::Failed(attempt, Failure::Closed)));
@@ -158,7 +172,7 @@ impl coder_link::Connector for Connector {
             // route answers, so the supervisor replaces it with that route.
             let better = matches!(link.route(), Route::Relay(_))
                 && healthy
-                && direct_answers(link.device().clone(), locality).await;
+                && direct_answers(link.device().clone(), locality, &tls).await;
             let report = if healthy && !better {
                 Report::Established(attempt)
             } else {
@@ -186,7 +200,11 @@ impl coder_link::Connector for Connector {
 }
 
 /// Prove the best route: selected direct hints in order, then the relay.
-async fn establish(device: Arc<Device>, locality: Locality) -> Result<Link, Failure> {
+async fn establish(
+    device: Arc<Device>,
+    locality: Locality,
+    tls: &websocket::Tls,
+) -> Result<Link, Failure> {
     let relay = device.relay().to_owned();
     let reach = fetch_reach(&device, &relay)
         .await
@@ -211,7 +229,7 @@ async fn establish(device: Arc<Device>, locality: Locality) -> Result<Link, Fail
     let hints =
         select(&reach.hints, locality, generation, now).map_err(|_| Failure::Unreachable)?;
     for hint in hints.iter().filter(|h| h.is_direct()) {
-        match try_direct(&device, hint, generation).await {
+        match try_direct(&device, hint, generation, tls).await {
             Ok(link) => return Ok(link),
             Err(Some(blocked)) => return Err(blocked),
             Err(None) => {}
@@ -232,6 +250,7 @@ async fn try_direct(
     device: &Arc<Device>,
     hint: &Hint,
     generation: u64,
+    tls: &websocket::Tls,
 ) -> Result<Link, Option<Failure>> {
     let (device, address) = (device.clone(), hint.address.clone());
     let opened = match hint.transport {
@@ -243,7 +262,7 @@ async fn try_direct(
             Link::direct(device, stream, address, generation, HANDSHAKE_TIMEOUT).await
         }
         Transport::Websocket => {
-            let stream = websocket::dial(&address, CONNECT_TIMEOUT)
+            let stream = websocket::dial(&address, tls, CONNECT_TIMEOUT)
                 .await
                 .ok_or(None)?;
             Link::direct(device, stream, address, generation, HANDSHAKE_TIMEOUT).await
@@ -271,7 +290,7 @@ async fn try_direct(
 }
 
 /// Whether a direct route answers now.
-async fn direct_answers(device: Arc<Device>, locality: Locality) -> bool {
+async fn direct_answers(device: Arc<Device>, locality: Locality, tls: &websocket::Tls) -> bool {
     let Ok(reach) = fetch_reach(&device, device.relay()).await else {
         return false;
     };
@@ -281,7 +300,7 @@ async fn direct_answers(device: Arc<Device>, locality: Locality) -> bool {
         return false;
     };
     for hint in hints.iter().filter(|h| h.is_direct()) {
-        if let Ok(link) = try_direct(&device, hint, generation).await {
+        if let Ok(link) = try_direct(&device, hint, generation, tls).await {
             drop(link);
             return true;
         }

@@ -12,7 +12,10 @@ use std::{
     fmt,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
@@ -238,6 +241,7 @@ struct GatewayClient {
     url: String,
     signer: RelaySigner,
     timeout: Duration,
+    attempts: AtomicU64,
 }
 
 impl GatewayClient {
@@ -296,6 +300,7 @@ impl GatewayClient {
             path,
             signer,
             timeout: Duration::from_secs(5),
+            attempts: AtomicU64::new(0),
         })
     }
 
@@ -320,7 +325,20 @@ impl GatewayClient {
         }
     }
 
+    /// A NIP-98 authorization for one attempt. Signing is deterministic,
+    /// and a retry of the same job carries the same body, so an `attempt`
+    /// tag makes each authorization distinct. Without it, a retry signed in
+    /// the same second as the previous attempt repeats that event ID, which
+    /// the gateway burns, and the retry fails as `invalid_grant`.
     fn authorization(&self, body: &[u8], now: u64) -> String {
+        let attempt = format!(
+            "{:x}-{:x}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            self.attempts.fetch_add(1, Ordering::Relaxed)
+        );
         let event = self.signer.sign(
             now,
             HTTP_AUTH_KIND,
@@ -328,6 +346,7 @@ impl GatewayClient {
                 Tag::new(vec!["u".into(), self.url.clone()]),
                 Tag::new(vec!["method".into(), "POST".into()]),
                 Tag::new(vec!["payload".into(), hex(&Sha256::digest(body))]),
+                Tag::new(vec!["attempt".into(), attempt]),
             ],
             String::new(),
         );
@@ -548,6 +567,27 @@ mod tests {
         );
         let received = String::from_utf8(server.await.unwrap()).unwrap();
         assert!(received.starts_with("POST /push/v1/deliveries/fcm HTTP/1.1\r\n"));
+    }
+
+    #[test]
+    fn retries_in_one_second_get_distinct_authorizations() {
+        let client = GatewayClient::new("http://gateway.test", signer(), Platform::Fcm).unwrap();
+        let body = br#"{"v":1}"#;
+        let first = client.authorization(body, 1_000);
+        let second = client.authorization(body, 1_000);
+        assert_ne!(first, second);
+        for header in [&first, &second] {
+            assert!(
+                crate::domain::parse_http_authorization(
+                    header,
+                    "POST",
+                    "http://gateway.test/v1/deliveries/fcm",
+                    body,
+                    1_000,
+                )
+                .is_ok()
+            );
+        }
     }
 
     #[test]

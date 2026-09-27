@@ -150,6 +150,10 @@ struct ComputerPanel: View {
                             .accessibilityIdentifier("reader-public-key")
                         Text(reader.packet?.status ?? "Opening…")
                             .font(.caption2).accessibilityIdentifier("reader-status")
+                        if let wakes = reader.pushStatus {
+                            Text(wakes).font(.caption2).foregroundStyle(.secondary)
+                                .accessibilityIdentifier("push-status")
+                        }
                         if paired {
                             if disconnecting {
                                 Text("Erase cached chats on this phone?").font(.caption)
@@ -215,18 +219,15 @@ struct ComputerPanel: View {
                         .accessibilityIdentifier("computers-scan")
                 }
             }
-            Group {
-                if input.secret {
-                    SecureField(input.label, text: $computersValue)
-                        .textContentType(nil)
-                        .privacySensitive()
-                } else {
-                    TextField(input.label, text: $computersValue, axis: .vertical)
-                        .lineLimit(1...4)
-                }
+            if input.secret {
+                SecretInputField(label: input.label, value: $computersValue)
+                    .textContentType(nil)
+            } else {
+                TextField(input.label, text: $computersValue, axis: .vertical)
+                    .lineLimit(1...4)
+                    .autocorrectionDisabled().textInputAutocapitalization(.never)
+                    .accessibilityLabel(input.label).accessibilityIdentifier("computers-input")
             }
-            .autocorrectionDisabled().textInputAutocapitalization(.never)
-            .accessibilityLabel(input.label).accessibilityIdentifier("computers-input")
             HStack {
                 Button("Submit") { submitComputers(input, computersValue) }
                     .disabled(reader.busy || computersValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

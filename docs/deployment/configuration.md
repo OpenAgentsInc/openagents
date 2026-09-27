@@ -68,12 +68,46 @@ exception or absent DigitalOcean runbook that changes this behavior.
 | `NOSTR_RELAY_OPENAGENTS_PROFILES` | no | `false` | Advertise the implemented CAP/PRG/EXT/RUN relay roles in NIP-11. This does not run programs, decrypt private artifacts, or enable a task owner; see [retention](../protocol/openagents-retention.md). |
 | `NOSTR_RELAY_READ_STATE_COMMUNITY` | for the optional NIP-RS snapshot | — | Canonical lowercase UUID. With `NOSTR_RELAY_URL`, enables the writer-database snapshot for the exact configured HTTP Host. Discovery advertises the community and snapshot limits only for that Host. No relay signing key is required. |
 | `NOSTR_RELAY_PUSH_SECRET` | to enable NIP-PL | — | Executor encryption secret as 64 lowercase hexadecimal characters. Leases are encrypted to its public key. Setting it turns delivery on and makes every setting below required, except the optional ones; without it, delivery is off and any other push variable refuses startup. Requires `NOSTR_RELAY_URL`, which becomes the push origin, and `NOSTR_RELAY_SECRET_KEY`, which signs gateway requests. Protected runtime environment only. |
-| `NOSTR_RELAY_PUSH_TRANSPORT` | with the secret | — | `apns` or `fcm`. |
-| `NOSTR_RELAY_PUSH_APP_PROFILE` | with the secret | — | The one application profile this executor serves, 1–512 bytes. |
-| `NOSTR_RELAY_PUSH_GATEWAY` | with the secret | — | `http://` base URL of the push gateway that holds the platform credentials, with no query or fragment. The relay posts to `/v1/deliveries/apns` or `/v1/deliveries/fcm` beneath it. The relay does not speak TLS, so place the gateway on loopback or a private link. The in-repository gateway is `push-gateway`; see [Push gateway](push-gateway.md). |
+| `NOSTR_RELAY_PUSH_TRANSPORT` | single-profile form | — | `apns` or `fcm`. |
+| `NOSTR_RELAY_PUSH_APP_PROFILE` | single-profile form | — | The application profile this executor serves, 1–512 bytes. |
+| `NOSTR_RELAY_PUSH_GATEWAY` | single-profile form | — | `http://` base URL of the push gateway that holds the platform credentials, with no query or fragment. The relay posts to `/v1/deliveries/apns` or `/v1/deliveries/fcm` beneath it. The relay does not speak TLS, so place the gateway on loopback or a private link. The in-repository gateway is `push-gateway`; see [Push gateway](push-gateway.md). |
+| `NOSTR_RELAY_PUSH_PROFILES` | multi-profile form | — | Comma-separated labels, 1–16, each 1–32 uppercase letters and digits, such as `IOS,ANDROID`. Each label names one application profile configured by the `NOSTR_RELAY_PUSH_PROFILE_<LABEL>_*` settings below. Setting it together with any single-profile setting refuses startup. |
+| `NOSTR_RELAY_PUSH_PROFILE_<LABEL>_APP_PROFILE` | for each label | — | The profile id that leases name in `app_profile`, 1–512 bytes. Ids must be unique across labels. |
+| `NOSTR_RELAY_PUSH_PROFILE_<LABEL>_TRANSPORT` | for each label | — | `apns` or `fcm`. Several profiles may share a transport. |
+| `NOSTR_RELAY_PUSH_PROFILE_<LABEL>_GATEWAY` | for each label | — | The gateway base URL for this profile, with the same rules as `NOSTR_RELAY_PUSH_GATEWAY`. Profiles may share one gateway or use separate ones. |
+| `NOSTR_RELAY_PUSH_PROFILE_<LABEL>_MAX_LEASES` | no | none | Active leases per author for this profile, from 1 to the origin-wide 16. The origin-wide quota still applies. |
+| `NOSTR_RELAY_PUSH_PROFILE_<LABEL>_MAX_ATTEMPTS`, `_RETRY_BASE_SECONDS`, `_RETRY_MAX_SECONDS` | no | the executor values | This profile's retry bounds, with the same ranges as the executor-wide settings. A value left unset takes the executor-wide value. |
 | `NOSTR_RELAY_PUSH_KINDS` | no | `1,7,9,1059,3188` | Comma-separated kinds a lease may name. Ephemeral, presence, and relay-signed snapshot kinds refuse. |
-| `NOSTR_RELAY_PUSH_MAX_ATTEMPTS` | no | `5` | Attempts per wake, including the first (1–20). |
-| `NOSTR_RELAY_PUSH_RETRY_BASE_SECONDS`, `NOSTR_RELAY_PUSH_RETRY_MAX_SECONDS` | no | `10`, `600` | Exponential backoff start and ceiling. The ceiling is at most 86,400. |
+| `NOSTR_RELAY_PUSH_MAX_ATTEMPTS` | no | `5` | Attempts per wake, including the first (1–20), for profiles without their own value. |
+| `NOSTR_RELAY_PUSH_RETRY_BASE_SECONDS`, `NOSTR_RELAY_PUSH_RETRY_MAX_SECONDS` | no | `10`, `600` | Exponential backoff start and ceiling for profiles without their own values. The ceiling is at most 86,400. |
+
+#### Push application profiles
+
+One relay can wake iPhones and Android phones at once. Name the profiles in
+one of two forms:
+
+- **Single-profile form.** Set `NOSTR_RELAY_PUSH_APP_PROFILE`,
+  `NOSTR_RELAY_PUSH_TRANSPORT`, and `NOSTR_RELAY_PUSH_GATEWAY`. Existing
+  installations keep working without a change.
+- **Multi-profile form.** List labels in `NOSTR_RELAY_PUSH_PROFILES` and set
+  the three required `NOSTR_RELAY_PUSH_PROFILE_<LABEL>_*` settings for each.
+
+To move from the single-profile form to the multi-profile form, rename the
+three settings under one label and keep the same profile id, for example
+`NOSTR_RELAY_PUSH_PROFILES=IOS` and
+`NOSTR_RELAY_PUSH_PROFILE_IOS_APP_PROFILE=<the old NOSTR_RELAY_PUSH_APP_PROFILE>`.
+Stored leases and wake jobs record their profile id and transport, so they
+carry over. Then add the second label.
+
+The relay advertises every profile in NIP-11 `push.app_profiles` and accepts
+an active lease only when its `app_profile` is configured with the same
+`transport`; any other lease receives `invalid: transport mismatch`. Each
+wake job keeps the profile chosen when it matched, and the worker sends it
+through that profile's gateway with that profile's retry bounds. If you remove
+a profile, its pending jobs are suppressed as `profile_withdrawn`, and its
+leases can still be revoked. Startup refuses a listed label with a missing
+setting, a setting for an unlisted label, an unknown push setting, a repeated
+profile id, and a transport other than `apns` or `fcm`.
 
 ### Media
 

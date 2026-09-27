@@ -830,8 +830,7 @@ mod tests {
             origin: relay.origin.clone(),
             key_id: "current".into(),
             pubkey: relay.executor_pubkey.clone(),
-            app_profile: "app.test/ios".into(),
-            transport: "apns".into(),
+            app_profiles: vec![nostr::push_lease::AppProfile::new("app.test/ios", "apns")],
             push_kinds: vec![3188],
             limits: nostr::push_lease::LeaseLimits::default(),
         };

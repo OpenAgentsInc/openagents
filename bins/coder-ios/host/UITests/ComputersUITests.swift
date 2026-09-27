@@ -55,6 +55,7 @@ final class ComputersUITests: XCTestCase {
         tap("tab-add")
         // The shared Phone projection omits SSH instead of offering a
         // disabled control. Invitation enrollment remains available.
+        XCTAssertTrue(app.buttons["invite-paste"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["ssh-connect"].exists)
         XCTAssertFalse(app.staticTexts["ssh-title"].exists)
         tap("invite-paste")

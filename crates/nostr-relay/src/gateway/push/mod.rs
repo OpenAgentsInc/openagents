@@ -5,7 +5,10 @@
 //! watermark. A background worker matches newly stored events against active
 //! leases from a durable cursor, inserts one idempotent wake job per
 //! `(origin, app profile, transport, endpoint hash, event)`, and delivers due
-//! jobs through a [`WakeTransport`]. Before every send the worker rechecks
+//! jobs through the [`WakeTransport`] of the job's application profile.
+//! One executor serves several profiles at once, such as an APNs profile
+//! and an FCM profile; each has its own transport, retry policy, and
+//! optional lease quota. Before every send the worker rechecks
 //! the lease's current generation, expiry, and endpoint, and the author's
 //! current read access to the event. Transient failures retry with bounded
 //! exponential backoff; exhausted, expired, and permanently refused jobs
@@ -29,7 +32,8 @@ use crate::{
     },
 };
 use nostr::push_lease::{
-    self, AcceptedLease, LeaseLimits, PushDescriptor, endpoint_digest, subscriptions_from_json,
+    self, AcceptedLease, AppProfile, LeaseLimits, PushDescriptor, endpoint_digest,
+    subscriptions_from_json,
 };
 
 pub use transport::{
@@ -53,6 +57,8 @@ pub const FINISHED_RETENTION_SECONDS: u64 = 604_800;
 const MATCH_BATCH: usize = 256;
 const DELIVERY_BATCH: usize = 32;
 const SWEEP_INTERVAL_SECONDS: u64 = 300;
+/// Most application profiles one executor serves.
+pub const MAX_PROFILES: usize = 16;
 
 /// Bounded retry for transient transport failures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,6 +134,40 @@ impl RetryPolicy {
     }
 }
 
+/// One application profile the executor serves.
+#[derive(Clone)]
+pub struct PushProfile {
+    /// Profile id that leases name in `app_profile`.
+    pub id: String,
+    /// The profile's transport. Its platform is the profile's transport.
+    pub transport: Arc<dyn WakeTransport>,
+    /// Retry bounds for this profile. `None` uses the executor default.
+    pub retry: Option<RetryPolicy>,
+    /// Active leases per author for this profile. `None` leaves only the
+    /// origin-wide `max_leases_per_pubkey`.
+    pub max_leases_per_pubkey: Option<usize>,
+}
+
+impl PushProfile {
+    /// A profile with the executor's default retry policy and no quota of
+    /// its own.
+    #[must_use]
+    pub fn new(id: impl Into<String>, transport: Arc<dyn WakeTransport>) -> Self {
+        Self {
+            id: id.into(),
+            transport,
+            retry: None,
+            max_leases_per_pubkey: None,
+        }
+    }
+
+    /// The lease `transport` value of this profile.
+    #[must_use]
+    pub fn platform(&self) -> Platform {
+        self.transport.platform()
+    }
+}
+
 /// A configured NIP-PL executor.
 #[derive(Clone)]
 pub struct PushExecutor {
@@ -139,20 +179,19 @@ pub struct PushExecutor {
     pub key_id: String,
     /// Canonical origin, byte for byte the relay URL.
     pub origin: String,
-    /// The one application profile this executor serves.
-    pub app_profile: String,
+    /// The application profiles this executor serves. Ids are unique.
+    pub profiles: Vec<PushProfile>,
     /// Kinds a lease may name.
     pub push_kinds: Vec<u16>,
     /// Advertised lease limits.
     pub limits: LeaseLimits,
-    /// Retry bounds.
+    /// Default retry bounds for profiles without their own.
     pub retry: RetryPolicy,
-    /// The platform transport. Its platform is the profile's transport.
-    pub transport: Arc<dyn WakeTransport>,
 }
 
 impl PushExecutor {
-    /// An executor with default kinds, limits, and retry policy.
+    /// An executor for one application profile, with default kinds,
+    /// limits, and retry policy.
     #[must_use]
     pub fn new(
         secret: SecretKey,
@@ -160,6 +199,17 @@ impl PushExecutor {
         app_profile: String,
         transport: Arc<dyn WakeTransport>,
     ) -> Self {
+        Self::with_profiles(
+            secret,
+            origin,
+            vec![PushProfile::new(app_profile, transport)],
+        )
+    }
+
+    /// An executor for several application profiles, with default kinds,
+    /// limits, and retry policy.
+    #[must_use]
+    pub fn with_profiles(secret: SecretKey, origin: String, profiles: Vec<PushProfile>) -> Self {
         let pubkey = Keypair::from_secret_key(&Secp256k1::new(), &secret)
             .x_only_public_key()
             .0
@@ -169,12 +219,25 @@ impl PushExecutor {
             pubkey,
             key_id: "current".to_owned(),
             origin,
-            app_profile,
+            profiles,
             push_kinds: DEFAULT_PUSH_KINDS.to_vec(),
             limits: LeaseLimits::default(),
             retry: RetryPolicy::default(),
-            transport,
         }
+    }
+
+    /// The configured profile with this id and transport, if any.
+    #[must_use]
+    pub fn profile(&self, id: &str, transport: &str) -> Option<&PushProfile> {
+        self.profiles
+            .iter()
+            .find(|profile| profile.id == id && profile.platform().as_str() == transport)
+    }
+
+    /// The retry policy that applies to `profile`.
+    #[must_use]
+    pub fn retry_for(&self, profile: &PushProfile) -> RetryPolicy {
+        profile.retry.unwrap_or(self.retry)
     }
 
     /// The descriptor that NIP-11 advertises and leases are checked against.
@@ -184,8 +247,11 @@ impl PushExecutor {
             origin: self.origin.clone(),
             key_id: self.key_id.clone(),
             pubkey: self.pubkey.clone(),
-            app_profile: self.app_profile.clone(),
-            transport: self.transport.platform().as_str().to_owned(),
+            app_profiles: self
+                .profiles
+                .iter()
+                .map(|profile| AppProfile::new(profile.id.clone(), profile.platform().as_str()))
+                .collect(),
             push_kinds: self.push_kinds.clone(),
             limits: self.limits.clone(),
         }
@@ -204,8 +270,38 @@ impl PushExecutor {
         if derived != self.pubkey {
             return Err("the push executor pubkey does not match its secret".to_owned());
         }
-        if self.app_profile.is_empty() || self.app_profile.len() > self.limits.max_string_len {
-            return Err("NOSTR_RELAY_PUSH_APP_PROFILE must be 1 to 512 bytes".to_owned());
+        if self.profiles.is_empty() || self.profiles.len() > MAX_PROFILES {
+            return Err(format!(
+                "the push executor needs between 1 and {MAX_PROFILES} application profiles"
+            ));
+        }
+        for (index, profile) in self.profiles.iter().enumerate() {
+            if profile.id.is_empty() || profile.id.len() > self.limits.max_string_len {
+                return Err("every push application profile must be 1 to 512 bytes".to_owned());
+            }
+            if self.profiles[..index]
+                .iter()
+                .any(|earlier| earlier.id == profile.id)
+            {
+                return Err(format!(
+                    "the push application profile {} is configured twice",
+                    profile.id
+                ));
+            }
+            if let Some(retry) = profile.retry {
+                retry
+                    .validate()
+                    .map_err(|reason| format!("profile {}: {reason}", profile.id))?;
+            }
+            if profile
+                .max_leases_per_pubkey
+                .is_some_and(|quota| quota == 0 || quota > self.limits.max_leases_per_pubkey)
+            {
+                return Err(format!(
+                    "profile {}: the lease quota must be between 1 and the origin quota of {}",
+                    profile.id, self.limits.max_leases_per_pubkey
+                ));
+            }
         }
         push_lease::validate_descriptor(&self.descriptor())
             .map_err(|reason| format!("the push descriptor is not valid: {reason}"))?;
@@ -242,6 +338,26 @@ pub fn lease_write(
     let plaintext = executor.open(event)?;
     let accepted =
         push_lease::accept_lease(event, &plaintext, now, &executor.descriptor(), None, &[], 0)?;
+    // Acceptance checked the named profile against the descriptor, so an
+    // active lease always names a configured profile here.
+    let profile = if accepted.active {
+        let value: serde_json::Value = serde_json::from_str(&plaintext)
+            .map_err(|_| "lease plaintext is not JSON".to_owned())?;
+        let field = |name: &str| {
+            value
+                .get(name)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        Some(
+            executor
+                .profile(&field("app_profile"), &field("transport"))
+                .ok_or_else(|| "transport mismatch".to_owned())?,
+        )
+    } else {
+        None
+    };
     let subscriptions = accepted.active.then(|| {
         serde_json::Value::Array(
             accepted
@@ -258,13 +374,12 @@ pub fn lease_write(
         generation: accepted.generation,
         active: accepted.active,
         expires_at: accepted.expiration,
-        app_profile: accepted.active.then(|| executor.app_profile.clone()),
-        transport: accepted
-            .active
-            .then(|| executor.transport.platform().as_str().to_owned()),
+        app_profile: profile.map(|profile| profile.id.clone()),
+        transport: profile.map(|profile| profile.platform().as_str().to_owned()),
         endpoint_hash: accepted.endpoint.as_deref().map(endpoint_digest),
         subscriptions,
         max_active_leases: executor.limits.max_leases_per_pubkey,
+        max_profile_leases: profile.and_then(|profile| profile.max_leases_per_pubkey),
         max_lease_ttl: executor.limits.max_lease_ttl,
     })
 }
@@ -380,10 +495,12 @@ async fn attempt(
     job: &PushJob,
     now: u64,
 ) -> Result<PushDisposition, StoreError> {
-    let platform = executor.transport.platform();
-    if job.transport != platform.as_str() || job.app_profile != executor.app_profile {
+    // The job keeps the profile and transport chosen at match time. A
+    // profile no longer configured, or configured with another transport,
+    // has been withdrawn.
+    let Some(profile) = executor.profile(&job.app_profile, &job.transport) else {
         return Ok(PushDisposition::Suppressed("profile_withdrawn"));
-    }
+    };
     let (lease_event, event) = match store.push_delivery_check(job, now).await? {
         PushDeliveryCheck::Suppress(reason) => return Ok(PushDisposition::Suppressed(reason)),
         PushDeliveryCheck::Send { lease_event, event } => (lease_event, event),
@@ -404,8 +521,10 @@ async fn attempt(
         endpoint,
         expires_at: job.expires_at,
     };
-    let outcome = executor.transport.deliver(&request).await;
-    Ok(executor.retry.disposition(job.attempts, outcome, now))
+    let outcome = profile.transport.deliver(&request).await;
+    Ok(executor
+        .retry_for(profile)
+        .disposition(job.attempts, outcome, now))
 }
 
 fn endpoint_of(executor: &PushExecutor, lease_event: &Event) -> Option<String> {
@@ -424,8 +543,9 @@ fn lease_matches(
     now: u64,
 ) -> bool {
     if !executor.push_kinds.contains(&event.kind)
-        || lease.app_profile != executor.app_profile
-        || lease.transport != executor.transport.platform().as_str()
+        || executor
+            .profile(&lease.app_profile, &lease.transport)
+            .is_none()
     {
         return false;
     }
@@ -601,11 +721,49 @@ mod tests {
         assert!(matches!(&first[19..20], "8" | "9" | "a" | "b"));
         assert!(executor.validate().is_ok());
         let mut fcm = executor.clone();
-        fcm.transport = TestTransport::new(Platform::Fcm);
-        assert_eq!(fcm.descriptor().transport, "fcm");
+        fcm.profiles[0].transport = TestTransport::new(Platform::Fcm);
+        assert_eq!(fcm.descriptor().app_profiles[0].transport, "fcm");
         assert!(fcm.validate().is_ok());
-        let mut empty = executor;
-        empty.app_profile.clear();
+        let mut empty = executor.clone();
+        empty.profiles[0].id.clear();
         assert!(empty.validate().is_err());
+        let mut none = executor.clone();
+        none.profiles.clear();
+        assert!(none.validate().is_err());
+        // Two platforms at once; the job id separates their profiles.
+        let mut both = executor.clone();
+        both.profiles.push(PushProfile::new(
+            "app.test/android",
+            TestTransport::new(Platform::Fcm),
+        ));
+        assert!(both.validate().is_ok());
+        assert!(both.profile("app.test/android", "fcm").is_some());
+        assert!(both.profile("app.test/android", "apns").is_none());
+        assert!(both.profile("app.test/other", "apns").is_none());
+        let android = ActivePushLease {
+            app_profile: "app.test/android".into(),
+            transport: "fcm".into(),
+            ..lease.clone()
+        };
+        assert_ne!(first, job_id(&both, &android, &"1".repeat(64)));
+        let mut twice = both.clone();
+        twice.profiles.push(PushProfile::new(
+            "app.test/android",
+            TestTransport::new(Platform::Fcm),
+        ));
+        assert!(twice.validate().is_err());
+        let mut quota = both.clone();
+        quota.profiles[1].max_leases_per_pubkey = Some(0);
+        assert!(quota.validate().is_err());
+        quota.profiles[1].max_leases_per_pubkey = Some(quota.limits.max_leases_per_pubkey + 1);
+        assert!(quota.validate().is_err());
+        quota.profiles[1].max_leases_per_pubkey = Some(1);
+        assert!(quota.validate().is_ok());
+        let mut retry = both;
+        retry.profiles[1].retry = Some(RetryPolicy {
+            max_attempts: 0,
+            ..RetryPolicy::default()
+        });
+        assert!(retry.validate().is_err());
     }
 }

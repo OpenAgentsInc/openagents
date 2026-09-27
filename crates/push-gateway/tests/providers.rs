@@ -138,13 +138,8 @@ async fn apns_delivery_is_fixed_idempotent_bounded_and_typed() {
             ..
         }
     ));
-    // The relay retries after its backoff, with a fresh authorization; an
-    // identical authorization is a replay.
-    assert_eq!(
-        transport.deliver(&transient).await,
-        WakeOutcome::Rejected("invalid_grant")
-    );
-    tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+    // Each relay attempt signs a distinct authorization, so a retry in the
+    // same second is not mistaken for a replay.
     assert_eq!(transport.deliver(&transient).await, WakeOutcome::Accepted);
     assert_eq!(apns.received().len(), 3);
 

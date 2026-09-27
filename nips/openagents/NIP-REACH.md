@@ -276,10 +276,23 @@ frames differs:
 
 - The client opens the hint URL exactly as written. A `ws` URL uses a plain
   connection and a `wss` URL uses TLS. The channel authenticates and encrypts
-  itself either way, so a `ws` hint is valid in every direct class; TLS lets a
-  channel pass through a forwarder that terminates TLS. A host serves the
-  channel on every path of its WebSocket listener, so a forwarder may rewrite
-  the path.
+  itself either way, so a `ws` hint is valid in every direct class. A host
+  serves the channel on every path of its WebSocket listener, so a forwarder
+  may rewrite the path.
+- A `wss` endpoint is either the host's own listener, which terminates TLS
+  with a certificate for the URL's host name, or a forwarder that terminates
+  TLS in front of it. The client verifies the certificate as any TLS client
+  does: the chain leads to a root it trusts, and the certificate is valid
+  for the URL's host name and at the current time. A failed verification
+  fails that route, and the client tries the next hint.
+- TLS does not replace the channel's authentication. The host and device
+  keys, the grant check, and the channel encryption are the same under TLS,
+  and a certificate proves nothing about the host key. TLS adds two things:
+  clients that accept only `wss`, such as a browser page served over
+  `https`, can connect; and observers on the path no longer see the
+  handshake's plaintext fields, such as the device key, host key, and grant
+  ID in the client hello. They still see the endpoint's address, the TLS
+  server name, and the timing and approximate sizes of messages.
 - Neither side offers or selects a subprotocol or an extension. A host
   ignores an offered subprotocol.
 - Each binary message carries exactly one frame, length prefix included. A
@@ -417,12 +430,14 @@ on a grant store. It also splits an open channel into a reader and a writer.
 
 [`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
 and its client. The host seals presence and hints to each enrolled device,
-serves TCP direct channels and, when configured, WebSocket direct channels
-with the real NIP-HOST grant store behind the grant check, rechecks the grant
+serves TCP direct channels and, when configured, WebSocket direct channels,
+as `ws` or as `wss` with the operator's certificate and key, with the real
+NIP-HOST grant store behind the grant check, rechecks the grant
 before each message, and closes a channel whose grant stopped admitting it.
 Its client reads the owner directory and the host's presence and hints, and
 tries selected `tcp` and `websocket` routes before relay fallback under a
-`coder-link` supervisor. It reports telemetry: the logical
+`coder-link` supervisor, verifying a `wss` certificate against the bundled
+WebPKI roots. It reports telemetry: the logical
 CPU count, the one-minute load average per CPU as CPU use, and the kernel's
 share of available memory, each as a whole number, or `null` when the host
 cannot read a value or its operator turns telemetry off.
@@ -438,6 +453,7 @@ and feeds directory weights to placement. The
 the [host serve record](../../docs/coder/verification/2026-09-26-host-serve.md),
 the
 [WebSocket channel record](../../docs/coder/verification/2026-09-27-websocket-channels.md),
+the [host `wss` record](../../docs/coder/verification/2026-09-27-host-wss.md),
 and the
 [client directory and SSH record](../../docs/coder/verification/2026-09-27-client-directory-and-ssh.md)
 list the checks that ran and their limits.

@@ -18,6 +18,8 @@ struct MobilePacket: Decodable {
     let computers_input: ComputersInput?
     let computers_qr: ComputersQR?
     let computers_exit: Bool?
+    /// Push wake status, present once push is configured or requested.
+    let push: String?
 }
 
 /// An invitation QR code Rust rendered on this device: one string of `1`
@@ -34,6 +36,7 @@ struct ComputersInput: Decodable, Equatable {
     let label: String
     let prompt: String
     let scan: Bool
+    /// Mask the field and never echo, log, or keep the value.
     let secret: Bool
     let max_bytes: Int
 
@@ -63,12 +66,18 @@ private final class RustWorker {
             do {
                 let secret = try DeviceIdentity.loadOrCreate(synthetic: synthetic)
                 let directory = try DeviceIdentity.cacheDirectory(synthetic: synthetic)
-                let configuration = try JSONSerialization.data(withJSONObject: [
+                var settings: [String: Any] = [
                     "cache_dir": directory.path,
                     "secret_hex": secret.map { String(format: "%02x", $0) }.joined(),
                     "synthetic": synthetic,
                     "loopback_test": loopbackTest,
-                ])
+                ]
+                // Push stays off unless this build names a relay and gateway.
+                // Synthetic launches leave it off, except a loopback test.
+                if !synthetic || loopbackTest, let push = PushSettings.configured {
+                    settings["push"] = push.rust
+                }
+                let configuration = try JSONSerialization.data(withJSONObject: settings)
                 self.handle = configuration.withUnsafeBytes {
                     coder_mobile_create($0.bindMemory(to: UInt8.self).baseAddress, $0.count)
                 }
@@ -119,11 +128,14 @@ final class MobileBridge: ObservableObject {
     @Published private(set) var packet: MobilePacket?
     @Published private(set) var busy = true
     @Published private(set) var nativeError: String?
+    /// Why this device couldn't obtain a push token, if it couldn't.
+    @Published private(set) var pushFailure: String?
     private let worker = RustWorker()
     private var foreground = false
     private var pendingForeground: Bool?
     private var pendingLifecycle: Bool?
     private var pendingFollow: (enabled: Bool, page: String?)?
+    private var pendingPushToken: String?
 
     /// `loopbackTest` is for test launches only: the Computers surface then
     /// admits a `ws://` loopback relay and a host on this machine.
@@ -161,6 +173,18 @@ final class MobileBridge: ObservableObject {
     }
 
     func refreshComputers() { request(["op": "computers_refresh"]) }
+
+    /// Push wake status for the device details: Rust's, or the native failure.
+    var pushStatus: String? { pushFailure ?? packet?.push }
+
+    func pushFailed(_ reason: String) { pushFailure = reason }
+
+    /// The platform issued a push token, as lowercase hex. Rust registers it.
+    func pushToken(_ token: String) {
+        pushFailure = nil
+        if busy { pendingPushToken = token; return }
+        request(["op": "push_token", "token": token])
+    }
 
     /// Poll the Computers surface while it is visible; skipped while busy.
     func pollComputers() {
@@ -221,6 +245,9 @@ final class MobileBridge: ObservableObject {
         } else if let follow = pendingFollow {
             pendingFollow = nil
             setFollowing(follow.enabled, page: follow.page)
+        } else if let token = pendingPushToken {
+            pendingPushToken = nil
+            pushToken(token)
         }
     }
 }

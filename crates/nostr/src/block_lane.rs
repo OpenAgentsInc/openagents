@@ -48,7 +48,7 @@ mod tests {
     use crate::git_sign::{sign_git_object, verify_git_object};
     use crate::nip44::{conversation_key, encrypt};
     use crate::push_lease::{
-        LeaseLimits, PushDescriptor, accept_lease, application_body, author_may_read,
+        AppProfile, LeaseLimits, PushDescriptor, accept_lease, application_body, author_may_read,
         descriptor_document, lease_matches, open_lease, validate_descriptor,
     };
     use crate::run::validate_block_refs;
@@ -330,8 +330,7 @@ mod tests {
             origin: "ws://127.0.0.1:7447".into(),
             key_id: "current".into(),
             pubkey: executor.pubkey().to_owned(),
-            app_profile: "com.openagents.relay/ios".into(),
-            transport: "apns".into(),
+            app_profiles: vec![AppProfile::new("com.openagents.relay/ios", "apns")],
             push_kinds: vec![1],
             limits: LeaseLimits::default(),
         };
@@ -345,7 +344,7 @@ mod tests {
         let plaintext = json!({
             "v": 1,
             "origin": descriptor.origin,
-            "app_profile": descriptor.app_profile,
+            "app_profile": descriptor.app_profiles[0].id,
             "transport": "apns",
             "endpoint": "token",
             "generation": 2,

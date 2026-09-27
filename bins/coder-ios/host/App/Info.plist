@@ -35,6 +35,12 @@
 	<string>Scan the invitation displayed on your computer to connect its saved chats.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Use the phone's orientation to look around the world when you turn on motion look.</string>
+	<key>CoderPushAppProfile</key>
+	<string>$(CODER_PUSH_APP_PROFILE)</string>
+	<key>CoderPushGatewayURL</key>
+	<string>$(CODER_PUSH_GATEWAY_URL)</string>
+	<key>CoderPushRelayURL</key>
+	<string>$(CODER_PUSH_RELAY_URL)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UILaunchScreen</key>

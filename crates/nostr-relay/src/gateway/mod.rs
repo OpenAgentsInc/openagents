@@ -16,5 +16,5 @@ mod wire;
 
 pub use config::{GatewayConfig, GatewayLimits, MediaConfig, RelayIdentity};
 pub use error::GatewayError;
-pub use push::{PushExecutor, RetryPolicy};
+pub use push::{PushExecutor, PushProfile, RetryPolicy};
 pub use server::{GIFT_WRAP_RECIPIENT_RATE_EXCEEDED, Gateway, ShutdownHandle};

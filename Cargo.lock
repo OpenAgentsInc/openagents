@@ -777,12 +777,14 @@ dependencies = [
  "libc",
  "nostr",
  "nostr-transport",
+ "rustls",
  "secp256k1",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
  "tokio",
+ "tokio-rustls",
  "tokio-tungstenite",
 ]
 

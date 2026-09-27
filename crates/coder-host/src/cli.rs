@@ -15,7 +15,7 @@ use coder_access::{RelayPolicy, Rights};
 use coder_reach::hints::Class;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{Advertised, Config, Ready};
+use crate::config::{Advertised, Config, Ready, WebsocketTls};
 use crate::tasks::Tasks;
 use crate::{Error, Result, generation};
 
@@ -33,6 +33,7 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   revoke --device KEY
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
         [--listen-websocket ADDR] [--allow-nonloopback]
+        [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]
         [--advertise lan|tailnet|public=HOST:PORT|URL]...
         [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback]
         [--no-telemetry]
@@ -455,6 +456,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
                 .map_err(|_| usage(" --listen-websocket takes HOST:PORT"))
         })
         .transpose()?;
+    let websocket_tls = websocket_tls(options)?;
     let allow_nonloopback = options.flag("--allow-nonloopback");
     let telemetry = !options.flag("--no-telemetry");
     let mut advertise = Vec::new();
@@ -514,6 +516,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     config.policy = policy;
     config.listen = listen;
     config.listen_websocket = listen_websocket;
+    config.websocket_tls = websocket_tls;
     config.allow_nonloopback = allow_nonloopback;
     config.telemetry = telemetry;
     config.advertise = advertise;
@@ -528,12 +531,31 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         running.generation(),
         running.local_addr()
     );
-    if let Some(address) = running.websocket_addr() {
-        eprintln!("coder host: WebSocket direct channels on {address}");
+    if let (Some(address), Some(url)) = (running.websocket_addr(), running.websocket_url()) {
+        eprintln!("coder host: WebSocket direct channels on {address} as {url}");
     }
     wait_for_stop().await;
     running.shutdown().await;
     Ok(())
+}
+
+/// `--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME`:
+/// all three or none. The files are read and checked when the host starts.
+fn websocket_tls(options: &mut Options) -> Result<Option<WebsocketTls>> {
+    let cert = options.one("--websocket-tls-cert")?;
+    let key = options.one("--websocket-tls-key")?;
+    let name = options.one("--websocket-name")?;
+    match (cert, key, name) {
+        (None, None, None) => Ok(None),
+        (Some(cert), Some(key), Some(name)) => Ok(Some(WebsocketTls {
+            cert: PathBuf::from(cert),
+            key: PathBuf::from(key),
+            name,
+        })),
+        _ => Err(usage(
+            " --websocket-tls-cert, --websocket-tls-key, and --websocket-name go together",
+        )),
+    }
 }
 
 /// Wait for `SIGTERM` or `SIGINT`.
@@ -610,5 +632,40 @@ mod tests {
         }
         assert_eq!(options.all("--relay"), ["ws://127.0.0.1:9/"]);
         assert!(options.finish().is_ok());
+    }
+
+    #[test]
+    fn websocket_tls_flags_go_together() {
+        let parse = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
+            websocket_tls(&mut Options::parse(&args).unwrap())
+        };
+        assert_eq!(parse(&[]).unwrap(), None);
+        let tls = parse(&[
+            "--websocket-tls-cert",
+            "/tls/chain.pem",
+            "--websocket-tls-key",
+            "/tls/key.pem",
+            "--websocket-name",
+            "box.example.net",
+        ])
+        .unwrap()
+        .unwrap();
+        assert_eq!(tls.cert, PathBuf::from("/tls/chain.pem"));
+        assert_eq!(tls.key, PathBuf::from("/tls/key.pem"));
+        assert_eq!(tls.name, "box.example.net");
+        for partial in [
+            &["--websocket-tls-cert", "/tls/chain.pem"][..],
+            &["--websocket-tls-key", "/tls/key.pem"][..],
+            &["--websocket-name", "box.example.net"][..],
+            &[
+                "--websocket-tls-cert",
+                "/tls/chain.pem",
+                "--websocket-tls-key",
+                "/tls/key.pem",
+            ][..],
+        ] {
+            assert!(parse(partial).is_err(), "{partial:?}");
+        }
     }
 }
