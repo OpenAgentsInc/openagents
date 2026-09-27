@@ -2,6 +2,8 @@
 
 Results for the [pre-registration](2026-09-26-tb21-oos-study.md), including its amendments. Configuration: Microcoder `ea9c973576`, GPT-6 Luna at medium effort through the Codex login (`list_price`), **knowledge base off**, Jev on, 200 steps, $2.00, 60 minutes, 3 runs at a time. Run 2026-09-26 on coderos-4080.
 
+**Label added 2026-09-27: no reasoning.** These runs were made before `ac3ee05901`. On the Codex login, GPT-6 Luna did no reasoning on any step, so the wins below came from Luna without reasoning ([route diff](2026-09-26-route-diff.md)).
+
 ## Result
 
 - **30 confirmed out-of-sample wins.** On 30 of the 65 tasks, at least 2 of 3 runs passed for less than Fable 5 xhigh's cost per trial on that task. Confirmations were queued automatically for every task whose screen passed.
