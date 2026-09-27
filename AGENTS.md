@@ -239,6 +239,10 @@ uses, and marks which are implemented and which are only specified.
   unit, with trial updates against state snapshots, rollback, and the host
   descriptor. `scripts/coder-host.py` still stages bundles. Read
   `docs/coder/runtime/host-service.md` before changing a state transition.
+- `crates/coder-computers` — Coder's Computers screens (host status, add a
+  computer, access, first run, activity) as Rust Native projections with typed
+  intents and one shared authority check. `ComputersService` is the seam for the
+  resident host client; keep grants, connections, and relays out of this crate.
 - `crates/coder-mobile` — Rust-owned iOS/Android reader state, encrypted cache, paging,
   synchronization, and C ABI, plus a separate main-thread Verse render handle
   using the shared `verse::runtime::WorldRuntime`. SwiftUI and Android widgets
