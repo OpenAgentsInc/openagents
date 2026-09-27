@@ -39,6 +39,10 @@ pub const POLICY_SCHEMA: &str = "openagents.coder.host-autostart.v1";
 pub const ENTRY_SCHEMA: &str = "openagents.coder.host-autostart-entry.v1";
 /// The most tasks a policy may run at once.
 pub const MAX_RUNNING: u32 = 8;
+/// The decision model a new policy names. The engine refuses a Jev reply
+/// whose model differs from the admitted one, so this is an exact version,
+/// never an alias such as `jev-latest`.
+pub const DEFAULT_DECISION_MODEL: &str = "jev-1.13.0";
 /// How long a started task may stay queued, waiting for its owner process
 /// to admit it, before it stops counting against the concurrency bound.
 const PENDING_GRACE: u64 = 120;
@@ -176,8 +180,8 @@ impl Policy {
 pub struct Entry {
     pub schema: String,
     pub at: u64,
-    /// `eligible`, `started`, `skipped`, `refused`, `policy_on`, or
-    /// `policy_off`.
+    /// `eligible`, `started`, `skipped`, `refused`, `unadmitted`,
+    /// `policy_on`, or `policy_off`.
     pub event: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<String>,
@@ -432,6 +436,7 @@ impl Autostart {
         let mut waiting: Vec<Entry> = Vec::new();
         let mut decided: BTreeSet<String> = BTreeSet::new();
         let mut started: Vec<(String, u64)> = Vec::new();
+        let mut unadmitted: BTreeSet<String> = BTreeSet::new();
         for entry in history {
             let Some(task) = entry.task.clone() else {
                 continue;
@@ -444,6 +449,9 @@ impl Autostart {
                     started.push((task.clone(), entry.at));
                     decided.insert(task);
                 }
+                "unadmitted" => {
+                    unadmitted.insert(task);
+                }
                 "skipped" | "refused" => {
                     decided.insert(task);
                 }
@@ -451,7 +459,7 @@ impl Autostart {
             }
         }
         waiting.retain(|entry| entry.task.as_ref().is_some_and(|t| !decided.contains(t)));
-        if waiting.is_empty() {
+        if waiting.is_empty() && started.iter().all(|(task, _)| unadmitted.contains(task)) {
             return Vec::new();
         }
         let mut written = Vec::new();
@@ -484,6 +492,20 @@ impl Autostart {
                     Err(_) => false,
                 })
                 .count();
+            // A started task still queued after the grace was never admitted
+            // by its owner process; say so once, so the journal shows it.
+            for (id, at) in &started {
+                let stalled = store.show(id).is_ok_and(|task| {
+                    task.status == Status::Queued
+                        && task.run.is_none()
+                        && now.saturating_sub(*at) >= PENDING_GRACE
+                });
+                if stalled && !unadmitted.contains(id) {
+                    write(Entry::new(now, "unadmitted").task(id).detail(
+                        "the owner process did not admit the task; read its launch diagnostic in the task store",
+                    ));
+                }
+            }
             let mut plans = Vec::new();
             for entry in &waiting {
                 let id = entry.task.clone().unwrap_or_default();
@@ -758,7 +780,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                 decision_endpoint: take_one(&mut values, "--decision-endpoint")?
                     .unwrap_or_else(|| "https://api.typesafe.ai".into()),
                 decision_model: take_one(&mut values, "--decision-model")?
-                    .unwrap_or_else(|| "jev-latest".into()),
+                    .unwrap_or_else(|| DEFAULT_DECISION_MODEL.into()),
             };
             if let Some(name) = values.keys().next() {
                 return Err(format!("usage: {name} does not apply to on"));
@@ -1024,12 +1046,17 @@ mod tests {
                 ("eligible".into(), Some(first.clone())),
                 ("started".into(), Some(first.clone())),
                 ("eligible".into(), Some(second.clone())),
+                // The fake owner never admits, so the first is reported once.
+                ("unadmitted".into(), Some(first.clone())),
                 ("started".into(), Some(second.clone())),
             ]
         );
         assert_eq!(journal(&s.root)[0].device.as_deref(), Some("phone"));
         assert_eq!(journal(&s.root)[1].owner_process, Some(4242));
-        assert!(s.autostart.sweep().is_empty(), "nothing starts twice");
+        assert!(
+            s.autostart.sweep().iter().all(|e| e.event != "started"),
+            "nothing starts twice"
+        );
     }
 
     #[test]
@@ -1071,6 +1098,7 @@ mod tests {
         assert_eq!(
             written,
             [
+                ("unadmitted".into(), Some(first.clone())),
                 ("skipped".into(), Some(second.clone())),
                 ("started".into(), Some(third.clone())),
             ]

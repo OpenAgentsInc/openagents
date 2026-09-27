@@ -525,6 +525,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     config.ready = ready;
     config.runtime = runtime;
 
+    raise_open_file_limit();
     let running = crate::serve::start(config, tasks).await?;
     eprintln!(
         "coder host: serving {} at generation {} on {}",
@@ -556,6 +557,32 @@ fn websocket_tls(options: &mut Options) -> Result<Option<WebsocketTls>> {
         _ => Err(usage(
             " --websocket-tls-cert, --websocket-tls-key, and --websocket-name go together",
         )),
+    }
+}
+
+/// The most open files the host asks for. macOS refuses a soft limit above
+/// its per-process maximum, 10,240 by default.
+const OPEN_FILES: u64 = 10_240;
+
+/// Raise the soft open-file limit toward the hard limit. A launchd agent
+/// starts with a soft limit of 256, too few for the terminals, channels, and
+/// task owners the host starts, which inherit it: a task owner's workspace
+/// snapshot of a full checkout failed with `Too many open files`.
+fn raise_open_file_limit() {
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: `getrlimit` and `setrlimit` read or write only `limit`.
+    unsafe {
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &raw mut limit) != 0 {
+            return;
+        }
+        let wanted = limit.rlim_max.min(OPEN_FILES as libc::rlim_t);
+        if limit.rlim_cur < wanted {
+            limit.rlim_cur = wanted;
+            let _ = libc::setrlimit(libc::RLIMIT_NOFILE, &raw const limit);
+        }
     }
 }
 
@@ -697,6 +724,35 @@ mod tests {
         let mut other = args(&[]);
         other[2] = coder_reach::pubkey(&secp256k1::SecretKey::new(&mut secp256k1::rand::rng()));
         assert_eq!(run(&other, no_tasks()).await, EXIT_FAILED);
+    }
+
+    #[test]
+    fn serve_raises_a_launchd_sized_open_file_limit() {
+        let read = || {
+            let mut limit = libc::rlimit {
+                rlim_cur: 0,
+                rlim_max: 0,
+            };
+            // SAFETY: reads into `limit` only.
+            assert_eq!(
+                unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &raw mut limit) },
+                0
+            );
+            limit
+        };
+        let mut low = read();
+        low.rlim_cur = 256.min(low.rlim_max);
+        // SAFETY: lowers this test process's own soft limit.
+        assert_eq!(
+            unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const low) },
+            0
+        );
+        raise_open_file_limit();
+        let raised = read();
+        assert_eq!(
+            raised.rlim_cur,
+            raised.rlim_max.min(OPEN_FILES as libc::rlim_t)
+        );
     }
 
     #[test]
