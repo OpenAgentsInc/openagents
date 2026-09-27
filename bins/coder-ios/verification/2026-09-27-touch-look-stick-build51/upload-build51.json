@@ -1,0 +1,10 @@
+{
+  "schema": "coder.ios.upload.v1",
+  "build": "51",
+  "version": "0.5.0",
+  "source_commit": "63fe7dbd5ab516433edda2a06f96e385e8e5eb4d",
+  "checked_at": "2026-09-27T19:39:39.586775+00:00",
+  "upload_exit": 0,
+  "distribution_confirmed": false,
+  "note": "Upload succeeded. App Store Connect processing is recorded separately."
+}
