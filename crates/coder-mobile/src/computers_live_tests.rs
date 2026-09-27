@@ -37,6 +37,20 @@ fn step(name: &str) {
     println!("step: {name}");
 }
 
+/// Run a local access-store operation, waiting while the running host holds
+/// the store's lock, as the `coder host` commands do.
+fn when_free<T>(mut operation: impl FnMut() -> coder_host::access::Result<T>) -> T {
+    let started = Instant::now();
+    loop {
+        match operation() {
+            Err(error) if error.code == Code::Conflict && started.elapsed() < WAIT => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            other => return other.unwrap(),
+        }
+    }
+}
+
 /// Tasks by ID. Creating one records it queued; nothing runs.
 #[derive(Default)]
 struct Memory(Mutex<BTreeMap<String, String>>);
@@ -327,9 +341,7 @@ fn the_app_enrolls_watches_invites_sees_activity_and_is_revoked_against_a_real_h
 
     step("another device revokes this one");
     let admin = key();
-    let admin_invitation = store
-        .invite(&relay, Rights::all(), now(), now() + 3600)
-        .unwrap();
+    let admin_invitation = when_free(|| store.invite(&relay, Rights::all(), now(), now() + 3600));
     let admin_access = runtime
         .block_on(redeem(&admin_invitation.code, &admin, POLICY))
         .unwrap();
@@ -474,7 +486,7 @@ fn serve_a_host_for_a_device_run() {
 
     let mut helpers = Vec::new();
     let app = loop {
-        let devices = store.devices(now()).unwrap();
+        let devices = when_free(|| store.devices(now()));
         if let Some(entry) = devices
             .iter()
             .find(|entry| !helpers.contains(&entry.device))
