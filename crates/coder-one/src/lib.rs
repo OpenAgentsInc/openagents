@@ -24,6 +24,7 @@ pub mod adapter;
 pub mod agent;
 pub mod ask;
 pub mod baseline;
+pub mod briefing_jev;
 pub mod briefing_knowledge;
 pub mod capabilities;
 pub mod capture;

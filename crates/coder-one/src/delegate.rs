@@ -783,6 +783,20 @@ impl Briefing {
             }
         };
 
+        // Requirements Jev flagged as easy to miss go first: they're short,
+        // and the delegate checks each one before it stops.
+        let flagged_heading = format!(
+            "## Requirements Jev flags as easy to miss\n\n{}",
+            crate::briefing_jev::FLAG_NOTE
+        );
+        for (i, flagged) in knowledge.flagged.iter().enumerate() {
+            add(
+                format!("flagged requirement {}", i + 1),
+                &flagged_heading,
+                format!("- {} (Jev p={:.2})\n", flagged.text, flagged.p),
+                &mut body,
+            );
+        }
         if !knowledge.entries.is_empty() {
             let heading = format!(
                 "{}\n\n{}",

@@ -255,6 +255,20 @@ pub fn replay_tree(traces: &Path, params: Params) -> Report {
             coverage_packed += 1;
             continue;
         }
+        // A briefing with the host's knowledge section or Jev's flagged
+        // requirements (issue #9746) has sections the replayed packer
+        // doesn't place, so it stays out.
+        let knowing = manifest
+            .pointer("/delegate/delegation/briefing/included")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items.iter().filter_map(Value::as_str).any(|item| {
+                    item.starts_with("knowledge ") || item.starts_with("flagged requirement ")
+                })
+            });
+        if knowing {
+            continue;
+        }
         briefings += 1;
         match replay_episode(dir, params) {
             Ok(one) => replayed.push(one),

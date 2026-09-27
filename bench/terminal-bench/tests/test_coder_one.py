@@ -310,6 +310,32 @@ def test_a_bad_briefing_knowledge_file_is_refused_on_the_host(tmp_path):
         )
 
 
+def test_briefing_jev_turns_on_jev_selection_and_needs_the_doctor_to_say_so(tmp_path):
+    selection = _knowledge(tmp_path)
+    agent = _delegate(
+        tmp_path, delegate="always", briefing_knowledge=str(selection), briefing_jev=True
+    )
+    agent._claude_bin = "/root/.local/share/claude/versions/2.1.280"
+    env = agent._episode_env()
+    assert env["CODER_ONE_BRIEFING_JEV"] == "on"
+    assert env["CODER_ONE_BRIEFING_KNOWLEDGE"] == "/opt/openagents/briefing-knowledge.json"
+    knowledge_line = (
+        "briefing knowledge: 1 entries from /opt/openagents/briefing-knowledge.json "
+        "(finance.method v3)\n"
+    )
+    agent._check_doctor_report(
+        knowledge_line + "briefing jev: on (keep p >= 0.5, flag p >= 0.5)\nok\n"
+    )
+    with pytest.raises(EpisodeContractError, match="briefing jev: on"):
+        agent._check_doctor_report(knowledge_line + "ok\n")
+    # Without it, nothing changes.
+    plain = _delegate(tmp_path, delegate="always", briefing_knowledge=str(selection))
+    assert "CODER_ONE_BRIEFING_JEV" not in plain._episode_env()
+    # It needs candidates to choose from.
+    with pytest.raises(EpisodeContractError, match="needs briefing_knowledge"):
+        _delegate(tmp_path, delegate="always", briefing_jev=True)
+
+
 LUNA_POLICY = "crates/coder-one/policies/jevprobe3-luna.json"
 OPUS_POLICY = "crates/coder-one/policies/jevprobe2-opus-lean-low-5m.json"
 

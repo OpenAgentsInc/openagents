@@ -15,9 +15,15 @@ section's heading in place of Coder One's default. The output is the JSON file t
 kwarg takes. It records the exact command, the search's full output, the
 rule, and every hit's fate.
 
+With ``--for-jev`` (series 6), the rule is only the search's top
+``--limit`` hits (12 unless given), with no score floor, entry limit, or
+budget: the file holds candidates, and Jev decides in the episode which
+ones the briefing carries (``coder-one-delegate-fable-low-kb-jev``).
+
 Usage::
 
     python3 select_knowledge.py --instruction TASK/instruction.md --out FILE
+    python3 select_knowledge.py --for-jev --instruction TASK/instruction.md --out FILE
 """
 
 from __future__ import annotations
@@ -113,7 +119,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-entries", type=int, default=6)
     parser.add_argument("--budget", type=int, default=16_000)
     parser.add_argument("--note", help="the paragraph under the section's heading, in place of the default")
+    parser.add_argument("--for-jev", action="store_true",
+                        help="write the top hits as candidates for Jev to choose from in the episode")
     args = parser.parse_args(argv)
+    if args.for_jev:
+        if "--limit" not in (argv if argv is not None else sys.argv[1:]):
+            args.limit = 12
+        args.min_score, args.max_entries, args.budget = float("-inf"), args.limit, 10**9
 
     instruction = args.instruction.read_text()
     command = [
@@ -148,6 +160,10 @@ def main(argv: list[str] | None = None) -> int:
         "command": shown,
         "search_output": done.stdout,
         "rule": {
+            "candidates_for_jev": True,
+            "limit": args.limit,
+            "order": "search rank, no score floor; Jev chooses in the episode",
+        } if args.for_jev else {
             "min_score": args.min_score,
             "max_entries": args.max_entries,
             "budget_chars": args.budget,

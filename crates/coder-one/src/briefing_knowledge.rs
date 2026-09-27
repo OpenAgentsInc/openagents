@@ -45,6 +45,10 @@ pub struct Entry {
     pub score: Option<f64>,
     /// The entry file's text, verbatim.
     pub text: String,
+    /// Jev's probability that the entry applies, when Jev chose it
+    /// ([`crate::briefing_jev`]). Never read from the host's file.
+    #[serde(skip)]
+    pub jev: Option<f64>,
 }
 
 impl Entry {
@@ -61,8 +65,11 @@ impl Entry {
     /// The entry as the briefing carries it.
     #[must_use]
     pub fn section(&self) -> String {
+        let jev = self
+            .jev
+            .map_or(String::new(), |p| format!(", Jev p={p:.2}"));
         format!(
-            "### {} (version {}, sha256 {})\n\n{}\n",
+            "### {} (version {}, sha256 {}{jev})\n\n{}\n",
             self.id,
             self.version,
             &self.sha256[..self.sha256.len().min(12)],
@@ -71,13 +78,28 @@ impl Entry {
     }
 }
 
+/// A requirement Jev flagged as easy to miss, with its probability
+/// ([`crate::briefing_jev`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Flagged {
+    pub text: String,
+    pub p: f64,
+}
+
 /// The host's selection: the entries in its order, and the paragraph
-/// that introduces them when it isn't [`NOTE`].
+/// that introduces them when it isn't [`NOTE`]. When Jev chose the
+/// entries ([`crate::briefing_jev`]), `entries` holds only the ones it
+/// kept, `chosen_from` counts the candidates it judged, and `flagged`
+/// holds the requirements it flagged; neither is read from the file.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Knowledge {
     #[serde(default)]
     pub note: Option<String>,
     pub entries: Vec<Entry>,
+    #[serde(skip)]
+    pub chosen_from: Option<usize>,
+    #[serde(skip)]
+    pub flagged: Vec<Flagged>,
 }
 
 impl Knowledge {
@@ -85,16 +107,25 @@ impl Knowledge {
     pub const NONE: Self = Self {
         note: None,
         entries: Vec::new(),
+        chosen_from: None,
+        flagged: Vec::new(),
     };
 
-    /// The paragraph under the heading.
+    /// The paragraph under the heading: the host's note or [`NOTE`], and
+    /// [`crate::briefing_jev::KEPT_NOTE`] after it when Jev chose the
+    /// entries.
     #[must_use]
-    pub fn note(&self) -> &str {
-        self.note
+    pub fn note(&self) -> String {
+        let note = self
+            .note
             .as_deref()
             .map(str::trim)
             .filter(|note| !note.is_empty())
-            .unwrap_or(NOTE)
+            .unwrap_or(NOTE);
+        match self.chosen_from {
+            Some(_) => format!("{note} {}", crate::briefing_jev::KEPT_NOTE),
+            None => note.to_string(),
+        }
     }
 }
 
@@ -148,7 +179,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::delegate::{BRIEFING_CAP, Briefing, BriefingInputs};
 
@@ -160,6 +191,7 @@ mod tests {
             sha256: hex(&Sha256::digest(text.as_bytes())),
             score: Some(0.9),
             text,
+            jev: None,
         }
     }
 
@@ -167,6 +199,7 @@ mod tests {
         Knowledge {
             note: None,
             entries: entries.to_vec(),
+            ..Knowledge::NONE
         }
     }
 

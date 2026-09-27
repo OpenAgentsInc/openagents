@@ -382,6 +382,9 @@ TOOLCHAIN_MODES = ("prebuilt", "network")
 # that names that place.
 BRIEFING_KNOWLEDGE_PATH = INSTALL_ROOT / "briefing-knowledge.json"
 BRIEFING_KNOWLEDGE_ENV = "CODER_ONE_BRIEFING_KNOWLEDGE"
+# With it, Jev chooses which of those entries the briefing carries and
+# flags the requirements that are easy to miss (issue #9746, series 6).
+BRIEFING_JEV_ENV = "CODER_ONE_BRIEFING_JEV"
 
 
 def load_briefing_knowledge(value: Any) -> tuple[Path, int]:
@@ -462,6 +465,12 @@ class CoderOneDelegate(CoderOne):
       path as ``CODER_ONE_BRIEFING_KNOWLEDGE``; the briefing then carries
       each entry whole after the task. The doctor must report the same
       number of entries.
+    - ``briefing_jev``: optional, with ``briefing_knowledge``. When true,
+      the file holds the knowledge search's candidates, and Jev decides in
+      the episode which ones the briefing carries and which requirements
+      it flags (``CODER_ONE_BRIEFING_JEV=on``). The doctor must report
+      ``briefing jev: on``; a run where Jev doesn't answer exits 7 instead
+      of falling back to the host's ranking.
     """
 
     EPISODE_ENV: ClassVar[tuple[str, ...]] = CoderOne.EPISODE_ENV + (
@@ -519,6 +528,15 @@ class CoderOneDelegate(CoderOne):
         if knowledge:
             self._briefing_knowledge, self._briefing_entries = load_briefing_knowledge(
                 knowledge
+            )
+        self._briefing_jev = str(kwargs.pop("briefing_jev", "") or "").lower() in (
+            "1",
+            "true",
+            "on",
+        )
+        if self._briefing_jev and self._briefing_knowledge is None:
+            raise EpisodeContractError(
+                "briefing_jev needs briefing_knowledge: Jev chooses from its candidates"
             )
         self._claude_bin: str | None = None
         self._codex_bin: str | None = None
@@ -829,6 +847,13 @@ class CoderOneDelegate(CoderOne):
                 f"{self._briefing_entries} entries; it predates "
                 "CODER_ONE_BRIEFING_KNOWLEDGE or couldn't read the file"
             )
+        if self._briefing_jev and not any(
+            entry.strip().startswith("briefing jev: on") for entry in report.splitlines()
+        ):
+            raise EpisodeContractError(
+                "the artifact's doctor didn't report `briefing jev: on`; it "
+                f"predates {BRIEFING_JEV_ENV} or refused it"
+            )
 
     async def _check_claude(self, environment: BaseEnvironment) -> None:
         """Check the installed Claude Code and remember its path."""
@@ -887,6 +912,8 @@ class CoderOneDelegate(CoderOne):
             env["CODER_ONE_EXPLORE_STEPS"] = str(int(self._explore_steps))
         if self._briefing_knowledge is not None:
             env[BRIEFING_KNOWLEDGE_ENV] = str(BRIEFING_KNOWLEDGE_PATH)
+        if self._briefing_jev:
+            env[BRIEFING_JEV_ENV] = "on"
         return env
 
 

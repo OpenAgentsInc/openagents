@@ -26,6 +26,7 @@
 //! | `CODER_ONE_EXPLORE_STEPS` | The explore phase's step bound; 8 when unset. |
 //! | `CODER_ONE_BRIEFING_CAP` | The briefing's length cap in characters; 12,000 when unset. |
 //! | `CODER_ONE_BRIEFING_KNOWLEDGE` | A JSON file of knowledge-base entries the host selected; the briefing carries each one whole after the task. Unset for no such section. |
+//! | `CODER_ONE_BRIEFING_JEV` | `on` makes Jev choose which of those entries the briefing carries and flag the requirements that are easy to miss, in one request before delegation; the run fails with exit code 7 when Jev doesn't answer. Off when unset. |
 //! | `CODER_ONE_CLAUDE_BIN` | The `claude` binary; the first on `PATH` when unset. |
 //! | `CODER_ONE_CODEX_BIN` | The `codex` binary; the first on `PATH` when unset. |
 //! | `CLAUDE_CODE_OAUTH_TOKEN` | The Claude Code delegate's subscription token; or `ANTHROPIC_API_KEY`. |
@@ -248,6 +249,15 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
         Ok(None) => {}
         Err(error) => problems.push(error),
     }
+    match briefing_jev_switch(policy.jev()) {
+        Ok(true) => println!(
+            "briefing jev: on (keep p >= {}, flag p >= {})",
+            crate::briefing_jev::KEEP,
+            crate::briefing_jev::FLAG
+        ),
+        Ok(false) => {}
+        Err(error) => problems.push(error),
+    }
 
     if problems.is_empty() {
         println!("ok");
@@ -284,6 +294,30 @@ fn briefing_knowledge(
         .and_then(|()| std::fs::write(artifacts.join(crate::briefing_knowledge::ARTIFACT), json))
         .map_err(|error| format!("cannot keep a copy of {}: {error}", path.display()))?;
     Ok(knowledge)
+}
+
+/// Whether Jev chooses the briefing's knowledge and flags its
+/// requirements (`CODER_ONE_BRIEFING_JEV`, [`crate::briefing_jev`]). The
+/// switch needs the host's candidates and a live Jev: without them it's
+/// refused, never run as the host's lexical selection.
+fn briefing_jev_switch(jev: bool) -> Result<bool, String> {
+    if !crate::briefing_jev::from_env()? {
+        return Ok(false);
+    }
+    if !jev {
+        return Err(format!(
+            "{} needs Jev, and CODER_ONE_JEV is off",
+            crate::briefing_jev::ENV
+        ));
+    }
+    match crate::briefing_knowledge::from_env()? {
+        Some((_, _, knowledge)) if !knowledge.entries.is_empty() => Ok(true),
+        _ => Err(format!(
+            "{} needs the host's candidates in {}",
+            crate::briefing_jev::ENV,
+            crate::briefing_knowledge::ENV
+        )),
+    }
 }
 
 /// The doctor's line for the briefing knowledge, or the problem with it.
@@ -470,6 +504,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     let instruction = std::fs::read_to_string(&args.instruction_file)
         .map_err(|error| format!("cannot read {}: {error}", args.instruction_file.display()))?;
     let knowledge = briefing_knowledge(&policy, &args.output_dir)?;
+    let briefing_jev = briefing_jev_switch(policy.jev())?;
     let workdir = std::env::current_dir().map_err(|error| error.to_string())?;
     let mut bundle = Bundle::create(&args.output_dir, &settings, &workdir, deadline.clone())?;
 
@@ -563,6 +598,67 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         "artifacts/requirements.json",
         judge.requirements.record(),
     );
+    // Jev chooses the knowledge and flags the requirements before
+    // delegation. When it can't, the run is a fault: it never falls back
+    // to the host's lexical ranking.
+    let knowledge = if briefing_jev {
+        let requirements: Vec<String> = judge
+            .requirements
+            .requirements
+            .iter()
+            .take(crate::briefing_jev::MAX_REQUIREMENTS)
+            .map(|r| r.text.split_whitespace().collect::<Vec<_>>().join(" "))
+            .collect();
+        let selected = crate::briefing_jev::select(
+            &judge.jev_mode(),
+            &recorder,
+            Some(judge.episode_deadline()),
+            &instruction,
+            &knowledge,
+            &requirements,
+        )
+        .await;
+        let relative = format!("artifacts/{}", crate::briefing_jev::ARTIFACT);
+        match selected {
+            Ok((selection, record)) => {
+                bundle.attach("briefing_jev", &relative, record);
+                crate::say::say!(
+                    "  briefing ▸ Jev kept {} of {} knowledge entries and flagged {} of {} requirements",
+                    selection.knowledge.entries.len(),
+                    selection.candidates.len(),
+                    selection.knowledge.flagged.len(),
+                    selection.requirements.len()
+                );
+                selection.knowledge
+            }
+            Err((error, record)) => {
+                bundle.attach("briefing_jev", &relative, record);
+                println!(
+                    "\n  briefing ▸ {error}\n\n── {} ──",
+                    crate::briefing_jev::OUTCOME
+                );
+                recorder.end(
+                    &episode,
+                    Finish::new(RecordOutcome::Failed).summary(json!({
+                        "outcome": crate::briefing_jev::OUTCOME,
+                        "exit_code": crate::briefing_jev::EXIT_CODE,
+                        "error": error,
+                    })),
+                );
+                recorder.finish(atif::log::ENDED);
+                bundle.write(
+                    &state,
+                    &recorder.steps(),
+                    crate::briefing_jev::OUTCOME,
+                    None,
+                    None,
+                )?;
+                return Ok(crate::briefing_jev::EXIT_CODE);
+            }
+        }
+    } else {
+        knowledge
+    };
     let mut judge = Snapshots {
         inner: judge,
         bundle: &bundle,
