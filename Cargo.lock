@@ -814,6 +814,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-pty"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "coder-boundary",
+ "libc",
+ "serde",
+ "serde_json",
+ "supervise",
+ "tempfile",
+]
+
+[[package]]
 name = "coder-reach"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,206 @@
+{
+  "valid": {
+    "open": {
+      "v": "openagents.terminal-open.v1",
+      "requires": [],
+      "request": "1111111111111111111111111111111111111111111111111111111111111111",
+      "workspace": "5757575757575757575757575757575757575757575757575757575757575757",
+      "dir": "crates/coder-pty",
+      "launch": { "kind": "command", "program": "/bin/ls", "args": ["-la"] },
+      "size": { "rows": 24, "cols": 80 },
+      "env": [{ "name": "RUST_LOG", "value": "info" }]
+    },
+    "open_shell": {
+      "v": "openagents.terminal-open.v1",
+      "requires": [],
+      "request": "1212121212121212121212121212121212121212121212121212121212121212",
+      "workspace": "5757575757575757575757575757575757575757575757575757575757575757",
+      "dir": "",
+      "launch": { "kind": "shell" },
+      "size": { "rows": 50, "cols": 132 },
+      "env": []
+    },
+    "attach": {
+      "v": "openagents.terminal-attach.v1",
+      "requires": [],
+      "request": "2222222222222222222222222222222222222222222222222222222222222222",
+      "terminal": {
+        "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      },
+      "mode": "interact",
+      "after": 41,
+      "rate": 65536
+    },
+    "detach": {
+      "v": "openagents.terminal-detach.v1",
+      "requires": [],
+      "request": "3333333333333333333333333333333333333333333333333333333333333333",
+      "terminal": {
+        "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      },
+      "attachment": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+    },
+    "input": {
+      "v": "openagents.terminal-input.v1",
+      "requires": [],
+      "request": "4444444444444444444444444444444444444444444444444444444444444444",
+      "terminal": {
+        "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      },
+      "data": "bHMgLWxhCg=="
+    },
+    "resize": {
+      "v": "openagents.terminal-resize.v1",
+      "requires": [],
+      "request": "5555555555555555555555555555555555555555555555555555555555555555",
+      "terminal": {
+        "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      },
+      "size": { "rows": 40, "cols": 100 }
+    },
+    "signal": {
+      "v": "openagents.terminal-signal.v1",
+      "requires": [],
+      "request": "6666666666666666666666666666666666666666666666666666666666666666",
+      "terminal": {
+        "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      },
+      "signal": "interrupt"
+    },
+    "close": {
+      "v": "openagents.terminal-close.v1",
+      "requires": [],
+      "request": "7777777777777777777777777777777777777777777777777777777777777777",
+      "terminal": {
+        "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      }
+    },
+    "result_attached": {
+      "v": "openagents.terminal-result.v1",
+      "requires": [],
+      "request": "2222222222222222222222222222222222222222222222222222222222222222",
+      "status": "accepted",
+      "reason": null,
+      "value": {
+        "kind": "attached",
+        "attachment": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+        "head": 57,
+        "size": { "rows": 24, "cols": 80 },
+        "running": true
+      }
+    },
+    "result_lost": {
+      "v": "openagents.terminal-result.v1",
+      "requires": [],
+      "request": "2222222222222222222222222222222222222222222222222222222222222222",
+      "status": "refused",
+      "reason": "lost",
+      "value": null
+    },
+    "frame_gap": {
+      "v": "openagents.terminal-frame.v1",
+      "terminal": {
+        "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      },
+      "attachment": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "body": { "type": "gap", "from": 42, "to": 49, "bytes": 81920 }
+    },
+    "frame_output": {
+      "v": "openagents.terminal-frame.v1",
+      "terminal": {
+        "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      },
+      "attachment": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "body": { "type": "output", "seq": 50, "data": "dG90YWwgMTIK" }
+    },
+    "frame_exit": {
+      "v": "openagents.terminal-frame.v1",
+      "terminal": {
+        "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      },
+      "attachment": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "body": { "type": "exit", "seq": 51, "exit": { "cause": "exited", "code": 0, "signal": null } }
+    },
+    "frame_detached": {
+      "v": "openagents.terminal-frame.v1",
+      "terminal": {
+        "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      },
+      "attachment": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "body": { "type": "detached", "reason": "revoked" }
+    }
+  },
+  "invalid": [
+    {
+      "schema": "open",
+      "reason": "malformed",
+      "why": "the program is not an absolute path",
+      "body": {
+        "v": "openagents.terminal-open.v1",
+        "requires": [],
+        "request": "1111111111111111111111111111111111111111111111111111111111111111",
+        "workspace": "5757575757575757575757575757575757575757575757575757575757575757",
+        "dir": "",
+        "launch": { "kind": "command", "program": "cargo", "args": [] },
+        "size": { "rows": 24, "cols": 80 },
+        "env": []
+      }
+    },
+    {
+      "schema": "open",
+      "reason": "malformed",
+      "why": "the directory leaves the workspace root",
+      "body": {
+        "v": "openagents.terminal-open.v1",
+        "requires": [],
+        "request": "1111111111111111111111111111111111111111111111111111111111111111",
+        "workspace": "5757575757575757575757575757575757575757575757575757575757575757",
+        "dir": "../other",
+        "launch": { "kind": "shell" },
+        "size": { "rows": 24, "cols": 80 },
+        "env": []
+      }
+    },
+    {
+      "schema": "attach",
+      "reason": "unsupported_feature",
+      "why": "an unknown required feature",
+      "body": {
+        "v": "openagents.terminal-attach.v1",
+        "requires": ["openagents.terminal-compression.v1"],
+        "request": "2222222222222222222222222222222222222222222222222222222222222222",
+        "terminal": {
+          "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+        },
+        "mode": "observe",
+        "after": 0,
+        "rate": 1024
+      }
+    },
+    {
+      "schema": "frame",
+      "reason": "malformed",
+      "why": "sequence numbers start at one",
+      "body": {
+        "v": "openagents.terminal-frame.v1",
+        "terminal": {
+          "generation": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "terminal": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+        },
+        "attachment": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+        "body": { "type": "output", "seq": 0, "data": "" }
+      }
+    }
+  ]
+}

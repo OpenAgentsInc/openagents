@@ -106,6 +106,31 @@ license classification while keeping their dependencies under review. A passing
 dependency check does not validate the repository's own distribution metadata
 or assemble the required notices.
 
+## Terminal PTY dependency
+
+`crates/coder-pty` (NIP-TERM terminal sessions) needs a pseudo-terminal. It
+uses `libc` 0.2 directly — `openpty`, `setsid`, `TIOCSCTTY`, `TIOCSWINSZ`,
+`tcgetpgrp`, `poll`, and `killpg` — and adds no PTY crate. Reviewed on
+2026-09-26:
+
+- `libc` is already in the graph through `crates/supervise` and
+  `crates/coder-boundary`, so the resolved graph gains no new registry
+  package. The crate's other dependencies (`base64` 0.22, `serde`,
+  `serde_json`, and `tempfile` for tests) were already resolved as well.
+- A PTY crate such as `portable-pty` would add a second process-spawning path
+  beside the supervisor's process-group conventions, plus Windows console
+  support this crate refuses to use. The system calls above are the whole
+  requirement.
+- The host half is Unix only. `libc` and `supervise` are target-gated
+  dependencies of the optional `host` feature; on another platform the host
+  compiles and refuses every open as `unavailable`. The client half builds
+  without them.
+- On glibc the crate links `libutil`, which holds `openpty` before glibc 2.34
+  and remains as an empty compatibility library afterwards.
+- macOS implements `openpty` with the non-reentrant `ptsname`, and concurrent
+  calls failed during testing. The crate serializes PTY allocation and
+  spawning within the process.
+
 ## Verification record
 
 On 2026-09-20, `./scripts/check-dependencies.sh` passed advisory, license, and

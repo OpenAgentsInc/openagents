@@ -1,0 +1,38 @@
+[package]
+name = "coder-pty"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Host terminal sessions over a real PTY with bounded replay, and the portable client state that applies their frames (NIP-TERM)."
+
+[features]
+default = ["host"]
+# The host half: real PTYs, process groups, and the replay ring. Unix only;
+# elsewhere it compiles to a host that refuses every open. A client build
+# (mobile, a renderer) disables default features and keeps the portable
+# wire types and client state.
+host = ["dep:libc", "dep:supervise"]
+
+[dependencies]
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", optional = true }
+supervise = { path = "../supervise", default-features = false, optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+# One test runs a terminal inside the write boundary, through `Wrap`.
+[target.'cfg(unix)'.dev-dependencies]
+coder-boundary = { path = "../coder-boundary" }
+
+[[test]]
+name = "pty"
+required-features = ["host"]
+
+[lints]
+workspace = true
