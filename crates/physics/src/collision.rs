@@ -652,7 +652,9 @@ impl World {
                 if a.body == b.body || !a.filter.allows(b.filter) {
                     continue;
                 }
-                if self[a.body].inverse_mass() == 0.0 && self[b.body].inverse_mass() == 0.0 {
+                // Two bodies that cannot respond (fixed, kinematic, or asleep)
+                // need no contacts.
+                if !self[a.body].responds() && !self[b.body].responds() {
                     continue;
                 }
                 let m = margin(a, b);

@@ -212,6 +212,18 @@ latch is a hard weld from the jig to the part, so the part settles onto its
 seat and stays there when something strikes it. Otherwise the release message
 names the first condition that failed.
 
+### Sleep
+
+Settled groups sleep: a group of bodies joined by contact, welds, or taut
+tethers falls asleep after half a second below 1 cm/s and 0.02 rad/s, but only
+while it rests on something fixed or already asleep. Latched parts, welded to
+the jig, sleep and cost nothing until something strikes them. A free part
+never sleeps, however slowly it drifts, because nothing in microgravity lets
+it settle; a slack tether does not count as resting. A sleeping body wakes when
+a moving body touches it, a force acts on it, a joint on it changes, or its
+owner sets it moving. The snapshot reports the awake body count and the last
+step's wall-clock time.
+
 ## Approximations
 
 - The Sun and the EMB move on circular orbits (no eccentricity), the Moon is a
@@ -236,7 +248,8 @@ names the first condition that failed.
 exact unstable eigenvector, Jacobi conservation and uncontrolled divergence,
 two years of controlled flight, microgravity magnitude, the rocket equation
 and position hold, inelastic capture, latch conditions (position, speed,
-spin, and alignment), a latched part under impact, the safety tether's arrest,
+spin, and alignment), a latched part under impact, the safety tether's arrest, latched parts
+sleeping while free parts never do,
 collisions, frame-rate
 independence, the frame step cap, save and restore, journal replay, and the
 momentum ledger through coasting, burns, structure contact, the tether,

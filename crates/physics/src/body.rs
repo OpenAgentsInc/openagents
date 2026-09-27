@@ -43,6 +43,13 @@ pub struct Body {
     /// world frame, N m. Cleared by the step.
     #[serde(default)]
     pub torque: DVec3,
+    /// Asleep: at rest in a settled island, skipped by integration and
+    /// treated as fixed until woken.
+    #[serde(default)]
+    pub sleeping: bool,
+    /// How long the body has been slow enough to sleep, s.
+    #[serde(default)]
+    pub sleep_time: f64,
 }
 
 impl Body {
@@ -61,6 +68,8 @@ impl Body {
             prev_orientation: DQuat::IDENTITY,
             force: DVec3::ZERO,
             torque: DVec3::ZERO,
+            sleeping: false,
+            sleep_time: 0.0,
         }
     }
 
@@ -77,10 +86,23 @@ impl Body {
         self.kind != BodyKind::Static
     }
 
-    /// Inverse mass seen by contacts and joints; zero unless dynamic.
+    /// Whether contacts and joints can move this body: dynamic and awake.
+    #[must_use]
+    pub fn responds(&self) -> bool {
+        self.kind == BodyKind::Dynamic && !self.sleeping
+    }
+
+    /// Wake the body and restart its sleep timer.
+    pub fn wake(&mut self) {
+        self.sleeping = false;
+        self.sleep_time = 0.0;
+    }
+
+    /// Inverse mass seen by contacts and joints; zero unless dynamic and
+    /// awake.
     #[must_use]
     pub fn inverse_mass(&self) -> f64 {
-        if self.kind == BodyKind::Dynamic && self.mass > 0.0 {
+        if self.responds() && self.mass > 0.0 {
             1.0 / self.mass
         } else {
             0.0
@@ -109,7 +131,7 @@ impl Body {
     /// Inverse inertia tensor in the world frame applied to `v`.
     #[must_use]
     pub fn inverse_inertia_world(&self, v: DVec3) -> DVec3 {
-        if self.kind != BodyKind::Dynamic {
+        if !self.responds() {
             return DVec3::ZERO;
         }
         let local = self.orientation.inverse() * v;
@@ -118,6 +140,7 @@ impl Body {
 
     /// Add a force, N, through the center of mass for the next step.
     pub fn apply_force(&mut self, force: DVec3) {
+        self.wake();
         self.force += force;
     }
 
@@ -125,12 +148,14 @@ impl Body {
     /// force plus its torque about the center of mass (Genesis
     /// `apply_links_external_wrench`).
     pub fn apply_force_at(&mut self, force: DVec3, at: DVec3) {
+        self.wake();
         self.force += force;
         self.torque += (at - self.pos).cross(force);
     }
 
     /// Add a torque, N m, world frame, for the next step.
     pub fn apply_torque(&mut self, torque: DVec3) {
+        self.wake();
         self.torque += torque;
     }
 
@@ -146,6 +171,7 @@ impl Body {
         if self.kind != BodyKind::Dynamic {
             return;
         }
+        self.wake();
         self.vel += impulse * self.inverse_mass();
         self.apply_angular_impulse((at - self.pos).cross(impulse));
     }
@@ -155,6 +181,7 @@ impl Body {
         if self.kind != BodyKind::Dynamic {
             return;
         }
+        self.wake();
         self.omega += (self.orientation.inverse() * impulse) / self.inertia;
     }
 

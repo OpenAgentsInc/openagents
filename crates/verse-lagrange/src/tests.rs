@@ -729,18 +729,17 @@ fn a_latched_part_stays_welded_under_impact() {
         DVec3::new(0.0, 0.3, 0.0),
     );
     let mut worst: (f64, f64) = (0.0, 0.0);
+    let mut rebound: f64 = f64::NEG_INFINITY;
     for _ in 0..(4 * 60) {
         station.step(1.0 / 60.0, &Command::default());
+        rebound = rebound.max(station.body(&station.parts[2]).vel.x);
         let engine = station.body(&station.parts[0]);
         worst.0 = worst.0.max(engine.pos.distance(slot));
         worst.1 = worst
             .1
             .max(engine.orientation.angle_between(glam::DQuat::IDENTITY));
     }
-    assert!(
-        station.body(&station.parts[2]).vel.x > 0.0,
-        "the truss bounced off"
-    );
+    assert!(rebound > 0.0, "the truss bounced off");
     assert!(worst.0 < 0.01 && worst.1.to_degrees() < 0.5, "{worst:?}");
 }
 
@@ -779,4 +778,52 @@ fn the_safety_tether_stops_the_astronaut_without_a_jump_or_energy() {
     let change = station.momentum() - momentum;
     assert!((change.linear - tension.linear).length() < 1e-9);
     assert_eq!(station.message.as_deref(), Some("Safety tether taut"));
+}
+
+#[test]
+fn latched_parts_sleep_and_free_parts_never_do() {
+    let mut station = at_slot();
+    station.release().unwrap();
+    station.translate(DVec3::new(0.0, 0.0, 30.0));
+    // A free part drifting away slowly, nowhere near structure.
+    release_part(
+        &mut station,
+        3,
+        DVec3::new(-40.0, 30.0, 40.0),
+        DVec3::new(0.002, 0.0, 0.0),
+        DVec3::ZERO,
+    );
+    for _ in 0..(5 * 60) {
+        station.step(1.0 / 60.0, &Command::default());
+        assert!(
+            !station.body(&station.parts[3]).sleeping,
+            "a free part slept"
+        );
+    }
+    assert!(
+        station.body(&station.parts[0]).sleeping,
+        "the latched engine sleeps"
+    );
+    assert!(station.snapshot().awake_bodies < station.world.bodies().len());
+    // Striking the sleeping engine wakes it; the weld still holds it.
+    release_part(
+        &mut station,
+        2,
+        PartKind::MainEngine.slot() + DVec3::new(4.0, 0.3, 0.0),
+        DVec3::new(-station::SPEED_LIMIT, 0.0, 0.0),
+        DVec3::ZERO,
+    );
+    let mut woke = false;
+    for _ in 0..(3 * 60) {
+        station.step(1.0 / 60.0, &Command::default());
+        woke |= !station.body(&station.parts[0]).sleeping;
+    }
+    assert!(woke);
+    assert!(
+        station
+            .body(&station.parts[0])
+            .pos
+            .distance(PartKind::MainEngine.slot())
+            < 0.01
+    );
 }

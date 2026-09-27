@@ -161,14 +161,20 @@ impl Joint {
 pub struct JointId(pub u32);
 
 impl World {
+    /// Add a joint, waking both bodies.
     pub fn add_joint(&mut self, joint: Joint) -> JointId {
+        self.wake(joint.a);
+        self.wake(joint.b);
         self.joints.push(Some(joint));
         JointId(u32::try_from(self.joints.len() - 1).expect("fewer than 2^32 joints"))
     }
 
-    /// Remove a joint; returns it if it was present.
+    /// Remove a joint, waking both bodies; returns it if it was present.
     pub fn remove_joint(&mut self, id: JointId) -> Option<Joint> {
-        self.joints.get_mut(id.0 as usize)?.take()
+        let joint = self.joints.get_mut(id.0 as usize)?.take()?;
+        self.wake(joint.a);
+        self.wake(joint.b);
+        Some(joint)
     }
 
     #[must_use]

@@ -405,6 +405,10 @@ pub struct Snapshot {
     pub latch_distance_m: Option<f64>,
     /// Alignment error of the carried part from its latch, degrees.
     pub latch_angle_deg: Option<f64>,
+    /// Bodies the physics world is simulating (not asleep or fixed).
+    pub awake_bodies: usize,
+    /// Wall-clock time of the last physics step, ms, for profiling.
+    pub step_ms: f64,
     pub refilling: bool,
     /// A station-keeping burn fired within the last second.
     pub keeping_active: bool,
@@ -672,6 +676,19 @@ impl Station {
     /// Record contact impulses between the free system and fixed bodies
     /// (station structure, racked and latched parts) as the `structure` term.
     fn account_contacts(&mut self) {
+        // A system body put to sleep against fixed structure gave its last
+        // trace of momentum to that structure.
+        for (id, removed) in self.world.slept.clone() {
+            if self.in_system(id) && removed != Momentum::ZERO {
+                self.ledger.add(
+                    "structure",
+                    Momentum {
+                        linear: -removed.linear,
+                        angular: -removed.angular,
+                    },
+                );
+            }
+        }
         let contacts = std::mem::take(&mut self.world.contacts);
         for c in &contacts {
             let (a, b) = (self.in_system(c.body_a), self.in_system(c.body_b));
@@ -1341,6 +1358,8 @@ impl Station {
             can_grab,
             latch_ready: self.latch_ready(),
             latch_angle_deg: self.latch_error().map(|e| e.1.to_degrees()),
+            awake_bodies: self.world.stats.awake,
+            step_ms: self.world.stats.total.as_secs_f64() * 1_000.0,
             latch_distance_m: latch_distance,
             refilling: self.refilling,
             keeping_active: self.keeping_glow > 0.0,

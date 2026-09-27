@@ -9,6 +9,7 @@ use crate::body::{Body, BodyKind};
 use crate::collision::{Collider, ColliderId};
 use crate::contact::{ContactReport, SolverSettings};
 use crate::joint::Joint;
+use crate::ledger::Momentum;
 
 /// Index of a body in its world. Bodies are never removed, so ids stay valid.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -65,9 +66,65 @@ pub struct World {
     colliders: Vec<Collider>,
     #[serde(default)]
     pub(crate) joints: Vec<Option<Joint>>,
+    /// When bodies fall asleep.
+    #[serde(default)]
+    pub sleep: SleepSettings,
     /// What each contact point did in the last step.
     #[serde(skip)]
     pub contacts: Vec<ContactReport>,
+    /// Bodies put to sleep in the last step, with the momentum about the
+    /// world origin that stopping them removed (tiny, and taken up by the
+    /// fixed bodies the island rests on).
+    #[serde(skip)]
+    pub slept: Vec<(BodyId, Momentum)>,
+    /// Counts and timings of the last step, for profiling.
+    #[serde(skip)]
+    pub stats: StepStats,
+}
+
+/// Island sleep, after Genesis `examples/rigid/hibernation.py`, with a
+/// microgravity rule: an island sleeps only while it touches a fixed or
+/// sleeping body. A body drifting free is still moving, however slowly, so
+/// it never sleeps.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SleepSettings {
+    pub enabled: bool,
+    /// Speeds below which a body counts as at rest, m/s and rad/s.
+    pub linear: f64,
+    pub angular: f64,
+    /// Rest time before an island sleeps, s.
+    pub time: f64,
+}
+
+impl PartialEq for StepStats {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Default for SleepSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            linear: 0.01,
+            angular: 0.02,
+            time: 0.5,
+        }
+    }
+}
+
+/// What the last step did and how long it took. Timings are wall-clock and
+/// only for profiling; they never affect the simulation, and two worlds
+/// compare equal whatever their stats.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StepStats {
+    pub awake: usize,
+    pub asleep: usize,
+    pub manifolds: usize,
+    pub contact_points: usize,
+    pub detect: std::time::Duration,
+    pub solve: std::time::Duration,
+    pub total: std::time::Duration,
 }
 
 impl World {
@@ -84,7 +141,10 @@ impl World {
             bodies: Vec::new(),
             colliders: Vec::new(),
             joints: Vec::new(),
+            sleep: SleepSettings::default(),
             contacts: Vec::new(),
+            slept: Vec::new(),
+            stats: StepStats::default(),
         }
     }
 
@@ -128,24 +188,33 @@ impl World {
     /// current poses correct velocities; then positions advance by
     /// semi-implicit Euler and rotation by the torque-free [`Body::rotate`].
     pub fn step(&mut self, field: &impl Field) {
+        let started = std::time::Instant::now();
         let dt = self.dt;
+        self.slept.clear();
         for body in &mut self.bodies {
             body.prev_pos = body.pos;
             body.prev_orientation = body.orientation;
-            if body.kind == BodyKind::Dynamic {
+            // An owner that set a sleeper moving has woken it.
+            if body.sleeping && (body.vel != DVec3::ZERO || body.omega != DVec3::ZERO) {
+                body.wake();
+            }
+            if body.responds() {
                 body.vel +=
                     (field.accel(body.pos, body.vel) + body.force * body.inverse_mass()) * dt;
-                body.apply_angular_impulse(body.torque * dt);
+                if body.torque != DVec3::ZERO {
+                    body.apply_angular_impulse(body.torque * dt);
+                }
             }
             body.force = DVec3::ZERO;
             body.torque = DVec3::ZERO;
         }
+        let mut manifolds = Vec::new();
         self.contacts = if self.colliders.is_empty() && self.joints.iter().all(Option::is_none) {
             Vec::new()
         } else {
             let base = self.solver.margin;
             let bodies = &self.bodies;
-            let manifolds = self.detect(&|a, b| {
+            manifolds = self.detect(&|a, b| {
                 let reach = |c: &Collider| {
                     let body = &bodies[c.body.0 as usize];
                     body.vel.length()
@@ -153,15 +222,161 @@ impl World {
                 };
                 base + (reach(a) + reach(b)) * dt
             });
-            self.solve(&manifolds, dt)
+            self.stats.detect = started.elapsed();
+            self.wake_touched(&manifolds);
+            let solving = std::time::Instant::now();
+            let contacts = self.solve(&manifolds, dt);
+            self.stats.solve = solving.elapsed();
+            contacts
         };
         for body in &mut self.bodies {
-            if body.moves() {
+            if body.moves() && !body.sleeping {
                 body.pos += body.vel * dt;
                 body.rotate(dt);
             }
         }
+        if self.sleep.enabled {
+            self.settle(&manifolds);
+        }
         self.tick += 1;
+        self.stats.manifolds = manifolds.len();
+        self.stats.contact_points = self.contacts.len();
+        self.stats.asleep = self.bodies.iter().filter(|b| b.sleeping).count();
+        self.stats.awake = self
+            .bodies
+            .iter()
+            .filter(|b| b.kind == BodyKind::Dynamic && !b.sleeping)
+            .count();
+        self.stats.total = started.elapsed();
+    }
+
+    /// Wake a body.
+    pub fn wake(&mut self, id: BodyId) {
+        self[id].wake();
+    }
+
+    fn moving(&self, body: &Body) -> bool {
+        body.vel.length() >= self.sleep.linear || body.omega_world().length() >= self.sleep.angular
+    }
+
+    /// A moving body that touches or is joined to a sleeper wakes it.
+    fn wake_touched(&mut self, manifolds: &[crate::collision::Manifold]) {
+        let mut pairs: Vec<(usize, usize)> = manifolds
+            .iter()
+            .map(|m| {
+                (
+                    self.colliders[m.a.0 as usize].body.0 as usize,
+                    self.colliders[m.b.0 as usize].body.0 as usize,
+                )
+            })
+            .collect();
+        pairs.extend(
+            self.joints
+                .iter()
+                .flatten()
+                .map(|j| (j.a.0 as usize, j.b.0 as usize)),
+        );
+        for (a, b) in pairs {
+            for (sleeper, other) in [(a, b), (b, a)] {
+                let other_body = &self.bodies[other];
+                if self.bodies[sleeper].sleeping && other_body.responds() && self.moving(other_body)
+                {
+                    self.bodies[sleeper].wake();
+                }
+            }
+        }
+    }
+
+    /// Advance sleep timers and put settled islands to sleep.
+    fn settle(&mut self, manifolds: &[crate::collision::Manifold]) {
+        let n = self.bodies.len();
+        let mut parent: Vec<usize> = (0..n).collect();
+        fn root(parent: &mut [usize], mut i: usize) -> usize {
+            while parent[i] != i {
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+            i
+        }
+        let mut grounded_bodies = vec![false; n];
+        let touching = |m: &crate::collision::Manifold| {
+            m.points
+                .iter()
+                .any(|p| p.separation <= self.solver.slop * 2.0)
+        };
+        let mut links: Vec<(usize, usize)> = manifolds
+            .iter()
+            .filter(|m| touching(m))
+            .map(|m| {
+                (
+                    self.colliders[m.a.0 as usize].body.0 as usize,
+                    self.colliders[m.b.0 as usize].body.0 as usize,
+                )
+            })
+            .collect();
+        // Welds and point joints always connect; a tether only while taut,
+        // so a slack line to the station does not ground a drifting body.
+        links.extend(
+            self.joints
+                .iter()
+                .flatten()
+                .filter(|j| {
+                    !matches!(j.kind, crate::joint::JointKind::Tether { .. })
+                        || j.impulse != DVec3::ZERO
+                })
+                .map(|j| (j.a.0 as usize, j.b.0 as usize)),
+        );
+        for (a, b) in links {
+            let (ra, rb) = (self.bodies[a].responds(), self.bodies[b].responds());
+            match (ra, rb) {
+                (true, true) => {
+                    let (x, y) = (root(&mut parent, a), root(&mut parent, b));
+                    parent[x] = y;
+                }
+                // Resting on something fixed or asleep (a moving kinematic
+                // body does not count).
+                (true, false) if self.rests_on(b) => grounded_bodies[a] = true,
+                (false, true) if self.rests_on(a) => grounded_bodies[b] = true,
+                _ => {}
+            }
+        }
+        let dt = self.dt;
+        let mut island_time = vec![f64::INFINITY; n];
+        let mut island_grounded = vec![false; n];
+        for (i, grounded) in grounded_bodies.iter().enumerate() {
+            if !self.bodies[i].responds() {
+                continue;
+            }
+            let slow = !self.moving(&self.bodies[i]);
+            let body = &mut self.bodies[i];
+            body.sleep_time = if slow { body.sleep_time + dt } else { 0.0 };
+            let r = root(&mut parent, i);
+            island_time[r] = island_time[r].min(self.bodies[i].sleep_time);
+            island_grounded[r] |= *grounded;
+        }
+        for i in 0..n {
+            if !self.bodies[i].responds() {
+                continue;
+            }
+            let r = root(&mut parent, i);
+            if island_grounded[r] && island_time[r] >= self.sleep.time {
+                let removed = Momentum::of(&self.bodies[i], DVec3::ZERO);
+                let body = &mut self.bodies[i];
+                body.vel = DVec3::ZERO;
+                body.omega = DVec3::ZERO;
+                body.sleeping = true;
+                self.slept.push((BodyId(i as u32), removed));
+            }
+        }
+    }
+
+    fn rests_on(&self, i: usize) -> bool {
+        let body = &self.bodies[i];
+        body.kind == BodyKind::Static
+            || body.sleeping
+            || (body.kind == BodyKind::Kinematic
+                && body.vel == DVec3::ZERO
+                && body.omega == DVec3::ZERO)
     }
 
     /// Restore a serialized world, refusing another layout version.

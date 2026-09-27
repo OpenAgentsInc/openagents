@@ -10,6 +10,8 @@
 //!   friction cone, and torsional friction.
 //! - [`joint`]: point, weld, and tether joints, hard or soft (an implicit
 //!   spring), with force and torque limits.
+//! - Island sleep ([`SleepSettings`]): settled groups resting on fixed
+//!   bodies stop costing anything until something touches them.
 //! - [`clock`]: a [`FixedStep`] accumulator that turns frame time into
 //!   whole steps and reports time it drops.
 //! - [`ledger`]: linear and angular momentum with named external impulses,
@@ -40,7 +42,7 @@ pub use joint::{Joint, JointId, JointKind, Spring};
 pub use ledger::{Ledger, LedgerError, Momentum};
 pub use thrusters::{Pid, Thruster, ThrusterSet, Wrench};
 pub use trace::{Divergence, Tolerance, Trace, attitude_difference};
-pub use world::{BodyId, Field, NoField, Uniform, World};
+pub use world::{BodyId, Field, NoField, SleepSettings, StepStats, Uniform, World};
 
 #[cfg(test)]
 mod tests;

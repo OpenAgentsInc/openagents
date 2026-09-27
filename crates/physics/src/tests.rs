@@ -557,8 +557,10 @@ fn a_hard_weld_holds_under_impact() {
         },
     ));
     let mut worst: (f64, f64) = (0.0, 0.0);
+    let mut rebound: f64 = f64::NEG_INFINITY;
     for _ in 0..360 {
         world.step(&NoField);
+        rebound = rebound.max(world[hammer].vel.x);
         worst.0 = worst
             .0
             .max(world[held].pos.distance(DVec3::new(0.0, 0.0, 5.0)));
@@ -566,6 +568,143 @@ fn a_hard_weld_holds_under_impact() {
             .1
             .max(world[held].orientation.angle_between(DQuat::IDENTITY));
     }
-    assert!(world[hammer].vel.x > 0.0, "the hammer bounced off");
+    assert!(rebound > 0.0, "the hammer bounced off");
     assert!(worst.0 < 0.01 && worst.1 < 0.5f64.to_radians(), "{worst:?}");
+}
+
+/// The microgravity rule: a body drifting free at a millimeter per second is
+/// still moving, so it never sleeps.
+#[test]
+fn a_slowly_drifting_body_never_sleeps() {
+    let mut world = World::new(1.0 / 120.0);
+    let mut body = Body::new(180.0, DVec3::splat(60.0), DVec3::ZERO);
+    body.vel = DVec3::new(0.001, 0.0, 0.0);
+    let id = world.add(body);
+    world.add_collider(Collider::new(
+        id,
+        Shape::Cuboid {
+            half: DVec3::splat(0.5),
+        },
+    ));
+    for _ in 0..(120 * 60) {
+        world.step(&NoField);
+        assert!(!world[id].sleeping);
+    }
+    assert!((world[id].pos.x - 0.06).abs() < 1e-9);
+}
+
+/// `examples/rigid/hibernation.py`: a settled body sleeps and holds its
+/// pose exactly; a moving body striking it, a force, or a new joint wakes it.
+#[test]
+fn a_settled_body_sleeps_and_wakes_on_contact_force_or_joint() {
+    let mut world = World::new(0.01);
+    ground(&mut world, Material::default());
+    let half = DVec3::splat(0.2);
+    let block = world.add(Body::new(
+        5.0,
+        Body::box_inertia(5.0, half * 2.0),
+        DVec3::new(0.0, 0.2, 0.0),
+    ));
+    world.add_collider(Collider::new(block, Shape::Cuboid { half }));
+    let g = Uniform(DVec3::new(0.0, -G, 0.0));
+    let mut slept_at = None;
+    for step in 0..300 {
+        world.step(&g);
+        if world[block].sleeping && slept_at.is_none() {
+            slept_at = Some(step);
+        }
+    }
+    assert!(slept_at.is_some_and(|s| s < 150), "slept at {slept_at:?}");
+    assert!(world.slept.is_empty() || world.slept.iter().all(|(_, m)| m.linear.length() < 1.0));
+    let resting = world[block];
+    for _ in 0..100 {
+        world.step(&g);
+    }
+    assert_eq!(world[block].pos, resting.pos, "asleep, the pose is exact");
+    assert_eq!(world.stats.awake, 0);
+    // A force wakes it.
+    world[block].apply_force(DVec3::X * 200.0);
+    world.step(&g);
+    assert!(!world[block].sleeping && world[block].vel.x > 0.0);
+    for _ in 0..300 {
+        world.step(&g);
+    }
+    assert!(world[block].sleeping, "settled again");
+    // A moving body striking it wakes it.
+    let mut ball = Body::new(
+        2.0,
+        DVec3::splat(0.02),
+        DVec3::new(-1.0, 0.2, 0.0) + DVec3::X * world[block].pos.x,
+    );
+    ball.vel = DVec3::new(3.0, 0.0, 0.0);
+    let ball = world.add(ball);
+    world.add_collider(Collider::new(ball, Shape::Sphere { radius: 0.1 }));
+    let mut woke = false;
+    for _ in 0..60 {
+        world.step(&g);
+        woke |= !world[block].sleeping;
+    }
+    assert!(woke, "the strike woke it");
+    // A new joint wakes both bodies.
+    for _ in 0..400 {
+        world.step(&g);
+    }
+    assert!(world[block].sleeping);
+    let anchor = world
+        .add(Body::new(1.0, DVec3::ONE, DVec3::new(0.0, 3.0, 0.0)).with_kind(BodyKind::Static));
+    world.add_joint(crate::Joint::new(
+        anchor,
+        DVec3::ZERO,
+        block,
+        DVec3::ZERO,
+        crate::JointKind::Tether { length: 1.0 },
+    ));
+    assert!(!world[block].sleeping);
+}
+
+/// Fifty boxes dropped onto the ground settle and sleep, and a settled step
+/// costs a fraction of an awake one.
+#[test]
+fn a_settled_pile_sleeps_and_steps_cheaply() {
+    let mut world = World::new(0.01);
+    ground(&mut world, Material::default());
+    let half = DVec3::splat(0.1);
+    for i in 0..50 {
+        let (x, z) = (
+            f64::from(i % 10) * 0.5 - 2.25,
+            f64::from(i / 10) * 0.5 - 1.0,
+        );
+        let id = world.add(Body::new(
+            1.0,
+            Body::box_inertia(1.0, half * 2.0),
+            DVec3::new(x, 0.3, z),
+        ));
+        world.add_collider(Collider::new(id, Shape::Cuboid { half }));
+    }
+    let g = Uniform(DVec3::new(0.0, -G, 0.0));
+    let mut awake_time = Vec::new();
+    for _ in 0..40 {
+        world.step(&g);
+        awake_time.push(world.stats.total);
+    }
+    for _ in 0..300 {
+        world.step(&g);
+    }
+    assert_eq!(world.stats.awake, 0, "all fifty asleep");
+    let mut asleep_time = Vec::new();
+    for _ in 0..40 {
+        world.step(&g);
+        asleep_time.push(world.stats.total);
+    }
+    awake_time.sort();
+    asleep_time.sort();
+    let (awake, asleep) = (awake_time[20], asleep_time[20]);
+    assert!(
+        asleep * 2 < awake,
+        "median step {asleep:?} asleep vs {awake:?} awake"
+    );
+    assert_eq!(
+        world.stats.contact_points, 0,
+        "no contacts solved while asleep"
+    );
 }
