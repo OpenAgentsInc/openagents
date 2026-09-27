@@ -45,8 +45,11 @@ termination request. That run is not counted as a passing motion check.
 The final run uses a dedicated simulator to avoid concurrent installations
 and test-runner replacement. Its device ID is
 `A0B00847-76AC-472F-A90F-B008FEFF390B`; the local result bundle is
-`/tmp/coder-motion44-final.xcresult`. The signed TestFlight receipt is added
-after processing completes.
+`/tmp/coder-motion44-final.xcresult`. The temporary simulator was shut down
+and removed after capture; its result bundle and exported evidence remain.
+[Build 44's distribution receipt](testflight-build44.json) confirms a clean
+source archive, successful signature verification and upload, and Apple states
+`VALID` and `IN_BETA_TESTING`. Release notes are saved for internal testers.
 
 The [structured UI summary](ios-ui-summary.json) and
 [native source hashes](native-source.sha256) identify the tested app boundary.

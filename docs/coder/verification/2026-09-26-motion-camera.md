@@ -62,9 +62,16 @@ records the focused checks and release receipt. The current source build is
 Clippy, desktop compilation, native Swift checks, Android Kotlin compilation,
 and all three focused iOS integration tests passed. The first simulator run
 was interrupted by another test session replacing its runner; the retained
-evidence explains the failure and the final isolated run. Availability is
-recorded only after App Store Connect confirms processing and internal
-distribution.
+evidence explains the failure and the final isolated run.
+
+Build **0.5.0 (44)** is `VALID` and `IN_BETA_TESTING` in App Store Connect. It
+was archived from clean commit
+[`c888f72e1f`](https://github.com/OpenAgentsInc/openagents/commit/c888f72e1f5679491121ebc113a424a497f9d35f),
+passed signature verification, and uploaded successfully. The
+[distribution receipt](../../../bins/coder-ios/verification/2026-09-26-motion-camera/testflight-build44.json)
+records the executable digest, source identity, and distribution state. Test
+notes are saved. This is an internal TestFlight delivery, not an App Store
+production submission.
 
 Physical-device comfort, sensor noise, frame rate, and thermals require testing
 on a phone. Simulator and deterministic native checks establish the corrected

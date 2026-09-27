@@ -49,10 +49,10 @@ design as a Designed profile for durable identity, bounded initiative,
 custody, guardians, and market participation. It composes the current NIPs;
 custody, sovereign lifecycle, and treasury adapters remain to be built.
 
-Coder for iOS is available in internal TestFlight as **0.5.0 (43)**.
+Coder for iOS is available in internal TestFlight as **0.5.0 (44)**.
 [Verse fills the screen](docs/verse/mobile.md), including behind the system
-clock. Choose touch look or turn your phone to look around; in motion mode,
-hold the left side to walk. The computer now renders its prompt on the physical
+clock. Motion look follows body turns and upward tilt with interpolated camera
+movement; hold the left side to walk. Touch look remains available. The computer now renders its prompt on the physical
 3D monitor; approach it and tap its screen. The world computer pairs by QR code or a pasted
 string and opens saved Codex and Claude transcripts with follow updates and encrypted local
 caching. [Pair your computer](docs/coder/guides/mobile-readonly.md).
@@ -62,7 +62,8 @@ is recorded separately from TestFlight and physical-device release acceptance.
 The [Gym building](docs/verse/gym.md) loads Microcoder and Terminal-Bench boards
 only while you are inside. Inspect recorded charts and explicitly request
 host-enabled runs through a separate Gym connection.
-[World-computer verification](docs/coder/verification/2026-09-26-world-computer.md)
+[Motion-camera and build 44 verification](docs/coder/verification/2026-09-26-motion-camera.md),
+[world-computer verification](docs/coder/verification/2026-09-26-world-computer.md),
 and [full-screen release evidence](docs/coder/verification/2026-09-26-fullscreen-motion.md).
 
 ## Start here

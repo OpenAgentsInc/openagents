@@ -13,14 +13,19 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Available in internal TestFlight:** Coder `0.5.0 (43)`, built from
-[`e1d0800a89`](https://github.com/OpenAgentsInc/openagents/commit/e1d0800a89ed76614e28d60d10ae5520006a0255).
+**Available in internal TestFlight:** Coder `0.5.0 (44)`, built from
+[`c888f72e1f`](https://github.com/OpenAgentsInc/openagents/commit/c888f72e1f5679491121ebc113a424a497f9d35f).
 [Connect your phone](../../docs/coder/guides/mobile-readonly.md) and review the
-[distribution receipt](verification/2026-09-26-world-computer/testflight-build43.json).
+[distribution receipt](verification/2026-09-26-motion-camera/testflight-build44.json).
 
 Walk east into the [Gym](../../docs/verse/gym.md) for Microcoder and
 Terminal-Bench boards. Its observations and run recipes require a separate
 host grant. Leaving or backgrounding pauses Gym updates.
+
+Build `44` corrects motion look for left and right body turns, enables upward
+look, and interpolates camera movement. Native updates request 60 Hz; fresh
+samples remain valid after a slow frame. See the
+[motion-camera verification](../../docs/coder/verification/2026-09-26-motion-camera.md).
 
 Build `43` replaces the native computer button with the shared world-space
 monitor interaction. See [verification](../../docs/coder/verification/2026-09-26-world-computer.md).
