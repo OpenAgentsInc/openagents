@@ -424,3 +424,74 @@ fn failed_trials_roll_back_to_the_previous_version_and_snapshot() {
     stop.store(true, Ordering::SeqCst);
     assert_eq!(handle.join().unwrap().unwrap(), 0);
 }
+
+#[test]
+fn standalone_and_service_hosts_share_one_generation_counter() {
+    let fixture = fixture(5);
+    let root = fixture.layout.root().to_path_buf();
+    // A standalone `coder host serve` ran from this root first.
+    let standalone = generation::advance(&root).unwrap();
+
+    let mut launcher = reopen(&fixture);
+    launcher.recover().unwrap();
+    launcher.start_committed().unwrap();
+    let service = launcher.state().generation;
+    assert!(service > standalone, "{service} <= {standalone}");
+    wait_until("the service host to report ready", || {
+        launcher.read_ready(service, &fixture.v1).is_some()
+    });
+    // The host the launcher started claims the generation it was given.
+    generation::claim(&root, service).unwrap();
+    assert!(generation::claim(&root, service).is_err());
+    assert_eq!(
+        launcher.descriptor(HostState::Ready).host_generation,
+        service
+    );
+
+    // An update's trial takes the next value from the same counter.
+    let request = request_update(&fixture.layout, &fixture.v2).unwrap();
+    launcher.stop_host();
+    launcher.prepare(&request).unwrap();
+    launcher.start_trial().unwrap();
+    let trial = launcher.state().generation;
+    assert!(trial > service);
+    wait_until("the trial to report ready", || {
+        launcher.read_ready(trial, &fixture.v2).is_some()
+    });
+    launcher.stop_host();
+    launcher.save().unwrap();
+    drop(launcher);
+
+    // Back to a standalone host, then the service again: still increasing.
+    let again = generation::advance(&root).unwrap();
+    assert!(again > trial);
+    let mut launcher = reopen(&fixture);
+    launcher.recover().unwrap();
+    launcher.start_committed().unwrap();
+    assert!(launcher.state().generation > again);
+    launcher.stop_host();
+    launcher.save().unwrap();
+}
+
+#[test]
+fn a_launcher_crash_before_its_host_claims_skips_the_generation() {
+    let fixture = fixture(5);
+    let root = fixture.layout.root().to_path_buf();
+    let mut launcher = reopen(&fixture);
+    launcher.recover().unwrap();
+    launcher.start_committed().unwrap();
+    let lost = launcher.state().generation;
+    let reaper = reap(launcher.crash());
+
+    let mut launcher = reopen(&fixture);
+    launcher.recover().unwrap();
+    reaper.join().unwrap();
+    launcher.start_committed().unwrap();
+    let next = launcher.state().generation;
+    assert!(next > lost);
+    // A host still holding the lost value cannot serve with it.
+    assert!(generation::claim(&root, lost).is_err());
+    generation::claim(&root, next).unwrap();
+    launcher.stop_host();
+    launcher.save().unwrap();
+}

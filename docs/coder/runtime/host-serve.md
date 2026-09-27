@@ -46,7 +46,7 @@ coder host serve
 | `--listen-websocket ADDR` | None | Also listen for WebSocket direct channels, and advertise the listener as a `websocket` hint. |
 | `--allow-nonloopback` | Off | Permit a listener on a LAN or tailnet address. |
 | `--advertise CLASS=HOST:PORT` or `CLASS=URL` | None | Advertise another `lan`, `tailnet`, or `public` endpoint, such as a forwarder. A `ws` or `wss` URL is a WebSocket endpoint. |
-| `--generation N` | `OPENAGENTS_HOST_GENERATION`, else the next counter value | The NIP-REACH host generation. |
+| `--generation N` | `OPENAGENTS_HOST_GENERATION`, else the next counter value | The NIP-REACH host generation. See [Host generation](#host-generation). |
 | `--runtime FILE`, `--no-runtime` | `~/.openagents/host/runtime` | The runtime record SSH launchers read. |
 | `--tasks DIR` | `~/.openagents/tasks` | The durable task inbox. |
 | `--owner KEY` | None | Establish the owner on first start; the same owner is a no-op. |
@@ -58,6 +58,29 @@ Every `coder host` command also takes `--state DIR` for the access store,
 
 `SIGTERM` or `SIGINT` stops the host: every terminal's process tree ends, and
 the runtime record is removed.
+
+### Host generation
+
+Clients refuse a host generation lower than one they already hold, so a
+host root keeps one generation counter, `~/.openagents/host/generation`,
+for every way the host starts:
+
+- A standalone `coder host serve` advances the counter and serves as the
+  new value.
+- The host service launcher advances the same counter, passes the value in
+  `OPENAGENTS_HOST_GENERATION`, and names its root in
+  `OPENAGENTS_HOST_GENERATION_ROOT`. The host claims that value in that
+  root before it serves.
+- `--generation N` is claimed the same way.
+
+A claim refuses a value lower than the counter, or one another start
+already used, and the host exits before it binds anything. Each change
+holds a lock and replaces the record atomically, so concurrent starts get
+distinct values, and a crash after the counter advanced skips that value
+instead of reusing it. The next value is at least the Unix time in
+seconds, so a lost record still yields a higher generation. A damaged
+record refuses to start; it is never reset automatically. `coder-service`
+owns the counter's rules in `coder_service::generation`.
 
 ## Serve WebSocket direct channels
 
@@ -106,8 +129,9 @@ host descriptor and every record the host signs name the same identity:
 coder-service service install --host-key "$(coder host public-key)"
 ```
 
-Under the service, the host reads `OPENAGENTS_HOST_LISTEN` and
-`OPENAGENTS_HOST_GENERATION`, and writes the ready record to
+Under the service, the host reads `OPENAGENTS_HOST_LISTEN`, claims the
+generation from `OPENAGENTS_HOST_GENERATION` in the counter that
+`OPENAGENTS_HOST_GENERATION_ROOT` names, and writes the ready record to
 `OPENAGENTS_HOST_READY_FILE` with the version from
 `OPENAGENTS_HOST_VERSION` once it serves: the listener is bound and the first
 relay subscription is up, or its 10-second wait has ended.

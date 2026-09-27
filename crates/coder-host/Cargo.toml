@@ -11,13 +11,15 @@ default = ["host"]
 # The resident host: `serve`, the `coder host` commands, the grant authority,
 # and presence telemetry. A client build, such as the mobile library,
 # disables default features and keeps `client`, `mailbox`, and `message`.
-host = ["coder-access/host", "coder-pty/host", "tokio/signal", "dep:libc"]
+host = ["coder-access/host", "coder-pty/host", "tokio/signal", "dep:libc", "dep:coder-service"]
 
 [dependencies]
 coder-access = { path = "../coder-access", default-features = false }
 coder-connect = { path = "../coder-connect", default-features = false }
 coder-link = { path = "../coder-link" }
 coder-pty = { path = "../coder-pty", default-features = false }
+# The host root's one generation counter, shared with the service launcher.
+coder-service = { path = "../coder-service", optional = true }
 libc = { version = "0.2", optional = true }
 coder-reach = { path = "../coder-reach" }
 nostr = { path = "../nostr" }

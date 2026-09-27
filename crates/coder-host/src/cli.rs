@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{Advertised, Config, Ready};
 use crate::tasks::Tasks;
-use crate::{Error, Result, unix_time};
+use crate::{Error, Result, generation};
 
 /// Exit code for a usage error.
 pub const EXIT_USAGE: u8 = 2;
@@ -431,10 +431,11 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         .one("--generation")?
         .or_else(|| std::env::var("OPENAGENTS_HOST_GENERATION").ok())
     {
-        Some(text) => text
-            .parse::<u64>()
-            .map_err(|_| usage(" --generation takes a whole number"))?,
-        None => next_generation(root)?,
+        Some(text) => generation::Source::Given(
+            text.parse::<u64>()
+                .map_err(|_| usage(" --generation takes a whole number"))?,
+        ),
+        None => generation::Source::Next,
     };
     let runtime = if options.flag("--no-runtime") {
         None
@@ -461,6 +462,8 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         _ => None,
     };
     let tasks = open_tasks(&tasks_dir, &workspaces).map_err(Error::Config)?;
+    // The last step before serving, so a refused start uses no generation.
+    let generation = generation::resolve(&generation::counter_root(root), generation)?;
     let mut config = Config::new(state, relays, generation);
     config.policy = policy;
     config.listen = listen;
@@ -501,21 +504,6 @@ async fn wait_for_stop() {
         _ = term.recv() => {},
         _ = interrupt.recv() => {},
     }
-}
-
-/// A standalone host takes the next generation from a counter it keeps. The
-/// host service passes its own in `OPENAGENTS_HOST_GENERATION`.
-fn next_generation(root: &Path) -> Result<u64> {
-    let path = root.join("generation");
-    let current = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|text| text.trim().parse::<u64>().ok())
-        .unwrap_or(0);
-    // A clock-derived floor keeps generations increasing if the counter is
-    // lost; presence readers refuse a generation that goes backward.
-    let next = current.max(unix_time()?).saturating_add(1);
-    crate::serve::write_private(&path, format!("{next}\n").as_bytes())?;
-    Ok(next)
 }
 
 fn public_key_text(text: &str) -> Result<String> {

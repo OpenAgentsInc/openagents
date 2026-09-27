@@ -32,7 +32,11 @@
 //!
 //! - `OPENAGENTS_HOST_READY_FILE`: where the host writes its ready record.
 //! - `OPENAGENTS_HOST_GENERATION` and `OPENAGENTS_HOST_VERSION`: the values
-//!   the ready record must repeat.
+//!   the ready record must repeat. The launcher reserves the generation from
+//!   the host root's one counter, [`crate::generation`], which a standalone
+//!   host advances too, so the two never hand out the same or a lower value.
+//! - `OPENAGENTS_HOST_GENERATION_ROOT`: the launcher's host root, which
+//!   holds that counter, so the host claims its generation there.
 //! - `OPENAGENTS_HOST_LISTEN`: the loopback address to bind.
 //! - `OPENAGENTS_HOST_TRIAL`: `1` during a trial, else `0`.
 //!
@@ -54,7 +58,7 @@ use crate::descriptor::{
     UpdateView,
 };
 use crate::service::Platform;
-use crate::{Error, Result, bundle, fsx, snapshot};
+use crate::{Error, Result, bundle, fsx, generation, snapshot};
 
 /// The service configuration schema.
 pub const CONFIG_SCHEMA: &str = "openagents.coder.host-service.v1";
@@ -291,7 +295,8 @@ pub struct LauncherState {
     pub committed: String,
     /// The version committed before it.
     pub previous: Option<String>,
-    /// The generation of the host last started.
+    /// The generation of the host last started, as reserved from the host
+    /// root's counter.
     pub generation: u64,
     /// Where an update is.
     pub phase: Phase,
@@ -626,7 +631,7 @@ impl Launcher {
         else {
             return Err(Error::refused("no prepared update"));
         };
-        let generation = self.state.generation + 1;
+        let generation = generation::reserve(self.layout.root(), self.state.generation)?;
         let timeout_ms = self.config.ready_timeout_secs.saturating_mul(1000);
         self.state.generation = generation;
         self.state.phase = Phase::Trial {
@@ -787,7 +792,7 @@ impl Launcher {
 
     /// Starts the committed version as a new generation.
     fn start_committed(&mut self) -> Result<()> {
-        self.state.generation += 1;
+        self.state.generation = generation::reserve(self.layout.root(), self.state.generation)?;
         self.save()?;
         let version = self.state.committed.clone();
         self.spawn(&version, self.state.generation, false)?;
@@ -812,6 +817,7 @@ impl Launcher {
             .env("HOME", std::env::var_os("HOME").unwrap_or_default())
             .env("OPENAGENTS_HOST_READY_FILE", &ready)
             .env("OPENAGENTS_HOST_GENERATION", generation.to_string())
+            .env("OPENAGENTS_HOST_GENERATION_ROOT", self.layout.root())
             .env("OPENAGENTS_HOST_VERSION", version)
             .env("OPENAGENTS_HOST_LISTEN", &self.config.listen)
             .env("OPENAGENTS_HOST_TRIAL", if trial { "1" } else { "0" })

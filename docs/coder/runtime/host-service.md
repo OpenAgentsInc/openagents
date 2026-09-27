@@ -48,6 +48,7 @@ Everything the service writes for you lives under `~/.openagents`:
 | `~/.openagents/tasks/` | The default state directory a trial snapshots. |
 | `~/.openagents/host/service.json` | The service configuration. |
 | `~/.openagents/host/launcher.json` | The launcher's durable record: committed version, generation, update phase. |
+| `~/.openagents/host/generation` | The host root's one generation counter, which the launcher and a standalone `coder host serve` both advance. |
 | `~/.openagents/host/descriptor.json` | The host descriptor. |
 | `~/.openagents/host/update-request.json` | A pending update request. |
 | `~/.openagents/host/snapshots/` | The snapshot of a trial in progress. |
@@ -224,7 +225,8 @@ these variables:
 | Variable | Meaning |
 | --- | --- |
 | `OPENAGENTS_HOST_READY_FILE` | Where the host writes its ready record. |
-| `OPENAGENTS_HOST_GENERATION` | The generation the ready record repeats. |
+| `OPENAGENTS_HOST_GENERATION` | The generation the ready record repeats. The launcher reserves it from the host root's counter. |
+| `OPENAGENTS_HOST_GENERATION_ROOT` | The host root whose counter holds that reservation. The host claims the generation there before it serves. |
 | `OPENAGENTS_HOST_VERSION` | The bundle identity the ready record repeats. |
 | `OPENAGENTS_HOST_LISTEN` | The loopback address to bind. |
 | `OPENAGENTS_HOST_TRIAL` | `1` during a trial, else `0`. |
@@ -254,7 +256,7 @@ it assumes anything about the host.
 | `schema` | `openagents.coder.host-descriptor.v1`. A client refuses any other value. |
 | `host_key` | The host's x-only Nostr public key. |
 | `protocol_version` | The host protocol the running host reported, or `null` before it is ready. |
-| `host_generation` | Increases every time the launcher starts a host. A different generation means the host restarted. |
+| `host_generation` | Increases every time the launcher starts a host, and never falls below a generation a standalone `coder host serve` used from the same root. A different generation means the host restarted. |
 | `capabilities` | Sorted, unique flags: `host-rollback` and `host-trial-update` from the launcher, plus the flags the ready host reported. |
 | `listen` | The loopback address. |
 | `state` | `starting`, `ready`, `updating`, or `stopped`. |

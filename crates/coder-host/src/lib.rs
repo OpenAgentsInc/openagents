@@ -28,6 +28,8 @@ pub mod cli;
 pub mod client;
 #[cfg(feature = "host")]
 pub mod config;
+#[cfg(feature = "host")]
+pub mod generation;
 pub mod mailbox;
 pub mod message;
 #[cfg(feature = "host")]
