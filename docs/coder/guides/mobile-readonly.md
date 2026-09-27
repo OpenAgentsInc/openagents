@@ -94,6 +94,12 @@ their status, **Add a computer**, **Access**, and **Activity**. Select
 `coder-host:` invitation grants host access; a `coder-pair:` code still only
 reads saved chats.
 
+To see every computer in your owner directory, select **Enter owner key**
+under **Your directory** and enter the secret key your computers name as their
+owner, as hex or `nsec`. The field is masked. The app accepts the key only when
+a computer this phone was added to names it as owner, and it keeps the key in
+the same encrypted store as the phone's grants.
+
 This build has no host client yet, so the normal app shows every Computers
 action as unavailable with its reason. The synthetic build (`--synthetic`)
 uses an offline fixture that contacts no host.
@@ -116,9 +122,11 @@ revokes the lease and asks the gateway to forget the token. The packet's
 `push` field reports the status.
 
 A wake carries only a fixed reconnect message. The app then reconnects and
-reads its activity summaries over the relay. The iOS and Android shells do not
-yet request a platform token; see the
-[push gateway verification record](../verification/2026-09-27-push-gateway.md).
+reads its activity summaries over the relay. The iOS and Android shells ask
+for a platform token only in a build configured for push. A default build
+never asks. The [iOS](../../../bins/coder-ios/README.md#push-wakes) and
+[Android](../../../bins/coder-android/README.md#push-wakes) READMEs describe
+how to turn it on.
 
 ## Cache, reconnect, and revocation
 

@@ -230,6 +230,56 @@ not port the desktop's chat composer, model-backed agent conversations, quest
 board, or retained-run replay picker. Those desktop paths remain available
 in the desktop app.
 
+## Push wakes
+
+Push is off by default. A default build asks for no notification permission,
+never calls `registerForRemoteNotifications`, and signs without the
+`aps-environment` entitlement, so it keeps signing with the existing
+`OpenAgents Coder App Store` profile, which doesn't include Push
+Notifications yet.
+
+A push build needs two switches. Both are build settings, and neither is in
+`project.yml`:
+
+- **Push settings.** `CODER_PUSH_RELAY_URL` (`wss://`),
+  `CODER_PUSH_GATEWAY_URL` (`https://`), and `CODER_PUSH_APP_PROFILE` reach
+  the app's `Info.plist` as `CoderPushRelayURL`, `CoderPushGatewayURL`, and
+  `CoderPushAppProfile`. When all three are set, the app passes them to Rust,
+  asks for notification permission, and registers for remote notifications.
+  It passes the APNs token to Rust's `push_token` as lowercase hexadecimal at
+  every launch. A declined permission or a failed registration shows as the
+  wake status under the Computer panel's status line.
+- **Entitlement.** `CODER_IOS_PUSH=development` or `production` signs with
+  `host/Push/Coder-Push.entitlements`, which sets `aps-environment` to that
+  value. An archive for TestFlight needs `production`.
+
+Before you use the entitlement switch, the owner does the following:
+
+1. In the Apple Developer portal, under **Certificates, Identifiers &
+   Profiles** > **Identifiers**, open `com.openagents.coder` and turn on
+   **Push Notifications**. Save.
+2. Under **Profiles**, open **OpenAgents Coder App Store**, select **Edit**,
+   then **Save**, and download it so the profile includes the push
+   capability. Regenerate any development profile you use the same way.
+3. Build with the switches:
+
+   ```sh
+   CODER_IOS_PUSH=production \
+   CODER_PUSH_RELAY_URL=wss://relay.example.com \
+   CODER_PUSH_GATEWAY_URL=https://push.example.com \
+   CODER_PUSH_APP_PROFILE=coder-ios \
+   scripts/build-coder-mobile.sh archive
+   ```
+
+Set the gateway's `PUSH_GATEWAY_APNS_ENVIRONMENT` to match: `production` for
+TestFlight and App Store builds, `development` for development-signed builds.
+See the [push gateway runbook](../../docs/deployment/push-gateway.md).
+
+`PushRegistrationUITests` checks the handoff in a simulator. It runs only
+with `TEST_RUNNER_CODER_PUSH_TEST=1` against a build made with
+`CODER_IOS_PUSH=development` and loopback push settings
+(`ws://127.0.0.1:9`, `http://127.0.0.1:9`), and is skipped otherwise.
+
 ## Verification boundaries
 
 The [world-first pairing receipt](verification/2026-09-26-world-pairing/README.md)
