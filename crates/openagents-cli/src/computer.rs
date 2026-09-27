@@ -36,8 +36,13 @@ const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
                             Order work on the host; prints the task id.
   steer HOST TASK --revision N PROMPT...
   cancel HOST TASK --revision N [--reason TEXT]
+  exec HOST [--timeout S] [--rows N --cols N] -- CMD [ARGS...]
+                            Run a command in a shell on the host (NIP-TERM) and
+                            return its output and exit code.
+  shell HOST                An interactive shell on the host. Ctrl-] detaches.
   client-only               Record that this machine runs no local host.
-Options: --store DIR (default ~/.openagents/coder-computers), --same-machine
+Options: --store DIR (default ~/.openagents/coder-computers), --wait SECONDS
+(how long to wait for the host's link; default 15), --same-machine
 (hosts run on this computer; allows loopback routes), --loopback-test.";
 
 fn now() -> u64 {
@@ -219,7 +224,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         Ok(live) => live,
         Err(message) => return output.fail("computer", &message),
     };
-    let result = dispatch(output, &mut live, command, &args);
+    let result = dispatch(output, &mut live, runtime.handle(), command, &args);
     drop(live);
     runtime.shutdown_timeout(Duration::from_secs(2));
     match result {
@@ -280,7 +285,13 @@ fn connected(live: &mut Live, host: &str, args: &Args) -> Result<(), String> {
     }
 }
 
-fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Result<u8, String> {
+fn dispatch(
+    output: &Output,
+    live: &mut Live,
+    runtime: &tokio::runtime::Handle,
+    command: &str,
+    args: &Args,
+) -> Result<u8, String> {
     let ok = |output: &Output, value: Value| {
         output.emit(&value, |v| {
             v.get("message")
@@ -514,6 +525,23 @@ fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Res
             )
             .map_err(|e| e.to_string())?;
             ok(output, json!({ "task": task }))
+        }
+        "exec" | "run" => {
+            let host = positional(args, 0, "HOST")?;
+            if args.positional().len() < 2 {
+                return Ok(output.usage(
+                    "computer",
+                    "a command is required after HOST (put `--` before it)",
+                    USAGE,
+                ));
+            }
+            connected(live, host, args)?;
+            crate::terminal::exec(*output, live, runtime, host, &args.positional()[1..], args)
+        }
+        "shell" | "sh" => {
+            let host = positional(args, 0, "HOST")?;
+            connected(live, host, args)?;
+            crate::terminal::shell(*output, live, runtime, host, args)
         }
         "client-only" => {
             live.run_without_local_host().map_err(|e| e.to_string())?;

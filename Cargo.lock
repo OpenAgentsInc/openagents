@@ -4314,6 +4314,7 @@ dependencies = [
  "coder-link",
  "coder-reach",
  "glam",
+ "libc",
  "nostr",
  "secp256k1",
  "serde",

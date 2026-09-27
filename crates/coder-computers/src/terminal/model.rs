@@ -102,6 +102,9 @@ pub struct Model {
     pub notice: Option<String>,
     /// Changes whenever anything here changes.
     pub revision: u64,
+    /// Receives every output byte the host sends, before the emulator draws
+    /// it, for a reader that wants the stream rather than the grid.
+    pub tap: Option<std::sync::mpsc::Sender<Vec<u8>>>,
 }
 
 impl Model {
@@ -120,12 +123,24 @@ impl Model {
             ctrl: false,
             notice: None,
             revision: 1,
+            tap: None,
         }
     }
 
     /// Record a change.
     pub fn touch(&mut self) {
         self.revision += 1;
+    }
+
+    /// Draw output the host sent, and pass it to the tap when one is set.
+    pub fn output(&mut self, data: &[u8]) {
+        if let Some(tap) = &self.tap
+            && tap.send(data.to_vec()).is_err()
+        {
+            self.tap = None;
+        }
+        self.vt.feed(data);
+        self.touch();
     }
 
     pub fn set_phase(&mut self, phase: Phase) {

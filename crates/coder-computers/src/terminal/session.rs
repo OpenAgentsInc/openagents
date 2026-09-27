@@ -516,8 +516,7 @@ fn apply(
         match applied {
             Applied::Output { .. } => {
                 if let Body::Output { data, .. } = &frame.body {
-                    model.vt.feed(data);
-                    model.touch();
+                    model.output(data);
                 }
             }
             Applied::Gap { bytes, .. } => model.gap(bytes),
