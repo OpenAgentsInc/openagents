@@ -1,5 +1,5 @@
 {
-  "description": "NIP-REACH wire fixtures. Keys are the x-only public keys of secp256k1 scalars 1 (host), 2 (owner), 3 (device), 4 (second host), and 5 (third host). Times are Unix seconds. Valid bodies validate and round-trip exactly; invalid bodies refuse with the stated code when parsed or validated. Placement vectors give each candidate's presence and receipt time, the expected host (null for none), and each candidate's assessment. The transcript vector gives the SHA-256 channel transcript both proofs sign; the proof signature is a placeholder and does not enter the transcript.",
+  "description": "NIP-REACH wire fixtures. Keys are the x-only public keys of secp256k1 scalars 1 (host), 2 (owner), 3 (device), 4 (second host), and 5 (third host). Times are Unix seconds. Valid bodies validate and round-trip exactly; invalid bodies refuse with the stated code when parsed or validated. Placement vectors give each candidate's presence and receipt time, the expected host (null for none), and each candidate's assessment. The transcript vector gives the SHA-256 channel transcript both proofs sign; the proof signature is a placeholder and does not enter the transcript. WebSocket message vectors give one binary message in hex and the code the receiver refuses it with (null when it carries exactly one frame).",
   "valid": {
     "directory": {
       "v": "openagents.host-directory.v1",
@@ -1185,5 +1185,47 @@
       "signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
     },
     "sha256": "85f2f49ace8973cbfef9b2682488987cba2e98d3f314031e83f00efd0f2526ec"
-  }
+  },
+  "websocket_messages": [
+    {
+      "name": "one hello frame",
+      "message": "0000000b0100000000000000007b7d",
+      "code": null
+    },
+    {
+      "name": "one data frame",
+      "message": "0000000f1000000000000000027365616c6564",
+      "code": null
+    },
+    {
+      "name": "two frames in one message",
+      "message": "0000000b0100000000000000007b7d0000000b0100000000000000007b7d",
+      "code": "malformed"
+    },
+    {
+      "name": "frame cut short",
+      "message": "0000000b0100000000000000007b",
+      "code": "malformed"
+    },
+    {
+      "name": "trailing byte after the frame",
+      "message": "0000000b0100000000000000007b7d00",
+      "code": "malformed"
+    },
+    {
+      "name": "prefix shorter than a header",
+      "message": "000000080000000000000000",
+      "code": "malformed"
+    },
+    {
+      "name": "message shorter than a prefix",
+      "message": "000009",
+      "code": "malformed"
+    },
+    {
+      "name": "prefix over the frame bound",
+      "message": "00010001",
+      "code": "limit_exceeded"
+    }
+  ]
 }

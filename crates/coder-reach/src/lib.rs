@@ -2,8 +2,8 @@
 //!
 //! The crate implements the owner host directory, host presence with bounded
 //! telemetry, reachability hints, the direct-channel handshake and frame
-//! format, and the placement rule. Every record here is a private `3188`
-//! artifact; none grants access. Grant checks go through
+//! format over TCP and WebSocket, and the placement rule. Every record here
+//! is a private `3188` artifact; none grants access. Grant checks go through
 //! [`channel::GrantCheck`] so the host can wire its own grant store.
 //!
 //! Read `nips/openagents/NIP-REACH.md` before changing a schema, a bound, or
@@ -16,6 +16,7 @@ pub mod hints;
 pub mod placement;
 pub mod presence;
 pub mod split;
+pub mod websocket;
 
 use std::fmt;
 use std::str::FromStr;

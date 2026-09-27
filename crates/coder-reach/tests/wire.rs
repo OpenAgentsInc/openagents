@@ -1,13 +1,15 @@
 //! The NIP-REACH fixtures: bodies validate and round-trip exactly, invalid
 //! bodies refuse with the stated code, placement vectors pick the stated
-//! host for the stated reasons, and the transcript vector pins the digest
-//! both channel proofs sign.
+//! host for the stated reasons, the transcript vector pins the digest both
+//! channel proofs sign, and WebSocket message vectors refuse with the stated
+//! code.
 
 use coder_reach::channel::{ClientHello, HostProof, transcript};
 use coder_reach::directory::Directory;
 use coder_reach::hints::Hints;
 use coder_reach::placement::{Assessment, Candidate, Limits, Skip, assess, place};
 use coder_reach::presence::{ClientProfile, Freshness, Presence, Received, VersionRange};
+use coder_reach::websocket::check_message;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -160,4 +162,19 @@ fn the_transcript_vector_matches() {
     let digest = transcript(&hello, &proof).expect("transcript");
     let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
     assert_eq!(hex, vector["sha256"].as_str().expect("sha256"));
+}
+
+#[test]
+fn every_websocket_message_vector_is_judged_as_stated() {
+    let all = fixtures();
+    for vector in all["websocket_messages"].as_array().expect("message list") {
+        let name = vector["name"].as_str().expect("name");
+        let text = vector["message"].as_str().expect("message");
+        let bytes: Vec<u8> = (0..text.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&text[i..i + 2], 16).expect("hex"))
+            .collect();
+        let code = check_message(&bytes).err().map(|e| e.code.as_str());
+        assert_eq!(code, vector["code"].as_str(), "{name}");
+    }
 }

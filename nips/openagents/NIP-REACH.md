@@ -220,7 +220,8 @@ The length counts the kind, sequence number, and body. A frame longer than
 65,536 bytes, or shorter than 9, refuses before its body is read. Each
 direction numbers its frames from 0 and increases by one; a gap, repeat, or
 reordering refuses and closes the channel. Over WebSocket, each binary message
-carries exactly one frame, length prefix included.
+carries exactly one frame, length prefix included; the
+[WebSocket mapping](#websocket-mapping) gives the rules.
 
 | Kind | Name | Body |
 | --- | --- | --- |
@@ -234,6 +235,39 @@ carries exactly one frame, length prefix included.
 
 Unknown kinds refuse. Handshake messages are strict JSON of at most 4,096
 bytes.
+
+### WebSocket mapping
+
+A `websocket` hint carries the same direct channel over a WebSocket
+connection (RFC 6455). The handshake, transcript, encryption, sequence
+numbers, frame kinds, and bounds are the ones TCP uses. Only the carriage of
+frames differs:
+
+- The client opens the hint URL exactly as written. A `ws` URL uses a plain
+  connection and a `wss` URL uses TLS. The channel authenticates and encrypts
+  itself either way, so a `ws` hint is valid in every direct class; TLS lets a
+  channel pass through a forwarder that terminates TLS. A host serves the
+  channel on every path of its WebSocket listener, so a forwarder may rewrite
+  the path.
+- Neither side offers or selects a subprotocol or an extension. A host
+  ignores an offered subprotocol.
+- Each binary message carries exactly one frame, length prefix included. A
+  message whose size is not 4 plus its prefix refuses as `malformed`: a frame
+  never spans messages, and a message never carries two frames. The prefix
+  rules still apply: a prefix over 65,536 refuses as `limit_exceeded`, and one
+  under 9 as `malformed`.
+- A message over 65,540 bytes, one largest frame and its prefix, refuses as
+  `limit_exceeded`. A receiver applies this bound to each WebSocket frame
+  header and to the running size of a fragmented message, so an oversized
+  message refuses before its payload is read.
+- A text message refuses as `malformed`. Ping and pong messages carry no
+  channel data and advance no sequence number.
+- A WebSocket close ends the transport, as end of stream does over TCP. Only
+  an encrypted close frame (kind 17) shows that the peer closed the channel;
+  a WebSocket close without one is a transport failure. An endpoint sends its
+  close frame before it closes the WebSocket connection.
+- The host's handshake time limit covers the WebSocket upgrade as well as the
+  channel handshake.
 
 ### Handshake
 
@@ -345,26 +379,30 @@ replaceable private kind and check the OpenAgents kind table for collisions.
 [`crates/coder-reach`](../../crates/coder-reach/README.md) implements the
 three schemas, sealing and opening through the shared private artifact
 functions, freshness and compatibility, hint validation and selection, the
-handshake and frame format over any ordered byte stream (tested over TCP), and
-placement. Grant checks go through a trait, so the crate does not depend on a
-grant store. It also splits an open channel into a reader and a writer.
+handshake and frame format over any ordered byte stream, the WebSocket
+mapping, and placement. The same handshake and frame tests run over TCP and
+over WebSocket. Grant checks go through a trait, so the crate does not depend
+on a grant store. It also splits an open channel into a reader and a writer.
 
 [`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
 and its client. The host seals presence and hints to each enrolled device,
-serves TCP direct channels with the real NIP-HOST grant store behind the
-grant check, rechecks the grant before each message, and closes a channel
-whose grant stopped admitting it. Its client reads the owner directory and
-the host's presence and hints, and tries selected direct routes before relay
-fallback under a `coder-link` supervisor. It reports telemetry: the logical
+serves TCP direct channels and, when configured, WebSocket direct channels
+with the real NIP-HOST grant store behind the grant check, rechecks the grant
+before each message, and closes a channel whose grant stopped admitting it.
+Its client reads the owner directory and the host's presence and hints, and
+tries selected `tcp` and `websocket` routes before relay fallback under a
+`coder-link` supervisor. It reports telemetry: the logical
 CPU count, the one-minute load average per CPU as CPU use, and the kernel's
 share of available memory, each as a whole number, or `null` when the host
 cannot read a value or its operator turns telemetry off.
 
 The [Computers screens](../../crates/coder-computers/README.md) show each
 host's supervised status, route class, and compatibility from this presence.
-Neither crate implements a WebSocket listener. The
-[reach verification record](../../docs/coder/verification/2026-09-26-host-reach.md)
-and the [host serve record](../../docs/coder/verification/2026-09-26-host-serve.md)
+The
+[reach verification record](../../docs/coder/verification/2026-09-26-host-reach.md),
+the [host serve record](../../docs/coder/verification/2026-09-26-host-serve.md),
+and the
+[WebSocket channel record](../../docs/coder/verification/2026-09-27-websocket-channels.md)
 list the checks that ran and their limits.
 
 ## Conformance
@@ -376,15 +414,18 @@ version ranges that do not overlap, mislabeled loopback hints, hints with
 credentials in URLs, selection with and without shareable endpoints, placement
 edge cases, and handshakes with a wrong host key, an impersonating host, a
 replayed nonce, a revoked grant, a wrong epoch, a stale host generation, a
-stale hello time, and an oversized frame.
+stale hello time, and an oversized frame. A WebSocket implementation runs
+the handshake cases over WebSocket too, and adds a message that carries two
+frames, a message cut short, and a message over the message bound.
 
 The wire fixtures in
 [`crates/coder-reach/fixtures/nip-reach.json`](../../crates/coder-reach/fixtures/nip-reach.json)
 give valid directory, presence, and hint bodies; invalid bodies with the
 refusal code each must produce; placement vectors with each candidate's
-assessment and the chosen host; and a transcript vector with the exact
-SHA-256 both channel proofs sign. `crates/coder-reach/tests/wire.rs` checks
-them. The transcript vector was also computed independently of the crate
+assessment and the chosen host; a transcript vector with the exact SHA-256
+both channel proofs sign; and WebSocket message vectors, each one binary
+message with the code a receiver refuses it with, or `null` when it carries
+exactly one frame. `crates/coder-reach/tests/wire.rs` checks them. The transcript vector was also computed independently of the crate
 from this section's construction.
 
 Advertise `nip-reach-v1` in NIP-11 `supported_extensions` only for a relay

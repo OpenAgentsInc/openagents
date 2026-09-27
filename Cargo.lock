@@ -894,12 +894,14 @@ name = "coder-reach"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "futures-util",
  "nostr",
  "secp256k1",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tokio",
+ "tokio-tungstenite",
  "url",
 ]
 
