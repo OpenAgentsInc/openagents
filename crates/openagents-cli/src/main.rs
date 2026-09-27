@@ -66,7 +66,9 @@ fn main() -> ExitCode {
             0
         }
         "version" | "--version" => {
-            println!("{}", version_line());
+            output.emit(&serde_json::json!({ "version": version_line() }), |value| {
+                value["version"].as_str().unwrap_or("").to_owned()
+            });
             0
         }
         "doctor" => doctor(&output),
@@ -127,7 +129,7 @@ fn doctor(output: &Output) -> u8 {
         ("verse_keys", ::verse::identity::home()),
         ("coder_access", openagents.join("coder-access")),
         ("host_root", openagents.join("host")),
-        ("computers", openagents.join("coder-computers")),
+        ("computers", computer::store_dir(None)),
         ("tasks", openagents.join("tasks")),
         ("sov", sov::home()),
     ];

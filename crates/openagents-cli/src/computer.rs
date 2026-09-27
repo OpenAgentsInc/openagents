@@ -252,6 +252,34 @@ fn settle(live: &mut Live, seconds: u64) -> Result<Snapshot, String> {
     }
 }
 
+/// Wait until the supervisor reports the host's link connected, so a call
+/// over it is not refused while the first attempt is still in flight.
+fn connected(live: &mut Live, host: &str, args: &Args) -> Result<(), String> {
+    let seconds: u64 = args.number("wait", 15)?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(seconds);
+    let mut last = String::from("no link");
+    loop {
+        let snapshot = live.snapshot().map_err(|e| e.to_string())?;
+        let record = snapshot
+            .host(host)
+            .ok_or_else(|| format!("this device knows no host {host}"))?;
+        match record.link.as_ref().map(|link| &link.phase) {
+            Some(coder_link::Phase::Connected) => return Ok(()),
+            Some(coder_link::Phase::Blocked(reason)) => {
+                return Err(format!("the link to {host} is blocked: {reason:?}"));
+            }
+            Some(phase) => last = format!("{phase:?}"),
+            None => {}
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(format!(
+                "{host} did not connect within {seconds}s (link {last}); pass --wait SECONDS to wait longer"
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
 fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Result<u8, String> {
     let ok = |output: &Output, value: Value| {
         output.emit(&value, |v| {
@@ -339,6 +367,7 @@ fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Res
             let enrollment = positional(args, 1, "ENROLLMENT")?;
             let code = args.option("code").ok_or("--code CODE is required")?;
             let (rights, expires) = rights_from(args)?;
+            connected(live, host, args)?;
             live.approve_enrollment(host, enrollment, code, &rights, expires)
                 .map_err(|e| e.to_string())?;
             ok(
@@ -347,16 +376,16 @@ fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Res
             )
         }
         "deny" => {
-            live.deny_enrollment(
-                positional(args, 0, "HOST")?,
-                positional(args, 1, "ENROLLMENT")?,
-            )
-            .map_err(|e| e.to_string())?;
+            let host = positional(args, 0, "HOST")?;
+            connected(live, host, args)?;
+            live.deny_enrollment(host, positional(args, 1, "ENROLLMENT")?)
+                .map_err(|e| e.to_string())?;
             ok(output, json!({}))
         }
         "invite" => {
             let host = positional(args, 0, "HOST")?;
             let (rights, expires) = rights_from(args)?;
+            connected(live, host, args)?;
             let created = live
                 .create_invitation(host, &rights, expires)
                 .map_err(|e| e.to_string())?;
@@ -370,6 +399,7 @@ fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Res
         }
         "devices" => {
             let host = positional(args, 0, "HOST")?;
+            connected(live, host, args)?;
             live.refresh_devices(host).map_err(|e| e.to_string())?;
             let snapshot = live.snapshot().map_err(|e| e.to_string())?;
             let record = snapshot.host(host).ok_or("unknown host")?;
@@ -394,7 +424,9 @@ fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Res
             Ok(0)
         }
         "revoke" => {
-            live.revoke(positional(args, 0, "HOST")?, positional(args, 1, "DEVICE")?)
+            let host = positional(args, 0, "HOST")?;
+            connected(live, host, args)?;
+            live.revoke(host, positional(args, 1, "DEVICE")?)
                 .map_err(|e| e.to_string())?;
             ok(output, json!({}))
         }
@@ -415,6 +447,7 @@ fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Res
         }
         "workspaces" => {
             let host = positional(args, 0, "HOST")?;
+            connected(live, host, args)?;
             live.refresh_workspaces(host).map_err(|e| e.to_string())?;
             let snapshot = live.snapshot().map_err(|e| e.to_string())?;
             let record = snapshot.host(host).ok_or("unknown host")?;
@@ -450,6 +483,7 @@ fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Res
                     .ok_or("--workspace LABEL is required")?
                     .to_owned(),
             };
+            connected(live, host, args)?;
             let id = live.create_task(host, &task).map_err(|e| e.to_string())?;
             output.emit(&json!({ "host": host, "task": id }), |v| {
                 v["task"].as_str().unwrap_or("").to_owned()
@@ -461,6 +495,7 @@ fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Res
             let task = positional(args, 1, "TASK")?;
             let revision: u64 = args.number("revision", 0)?;
             let prompt = args.positional()[2..].join(" ");
+            connected(live, host, args)?;
             live.steer_task(host, task, revision, &prompt)
                 .map_err(|e| e.to_string())?;
             ok(output, json!({ "task": task }))
@@ -469,6 +504,7 @@ fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Res
             let host = positional(args, 0, "HOST")?;
             let task = positional(args, 1, "TASK")?;
             let revision: u64 = args.number("revision", 0)?;
+            connected(live, host, args)?;
             live.cancel_task(
                 host,
                 task,
@@ -484,6 +520,6 @@ fn dispatch(output: &Output, live: &mut Live, command: &str, args: &Args) -> Res
             live.complete_first_run().map_err(|e| e.to_string())?;
             ok(output, json!({}))
         }
-        other => Err(format!("unknown command `{other}`\n\n{USAGE}")),
+        other => Ok(output.usage("computer", &format!("unknown command `{other}`"), USAGE)),
     }
 }

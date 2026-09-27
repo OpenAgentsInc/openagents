@@ -17,14 +17,18 @@ use crate::{Args, Output};
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(8);
 /// How often the drain loop polls the worker.
 const POLL: Duration = Duration::from_millis(15);
+/// How long a connected relay may stay quiet before a one-shot query is
+/// taken as complete when its end-of-stored-events marker never arrives.
+const SETTLE: Duration = Duration::from_millis(1500);
 
 const USAGE: &str = "usage: openagents relay COMMAND [OPTIONS]
   req FILTER_JSON [--relay URL] [--wait SECONDS] [--as PROFILE]
         Print stored events matching one NIP-01 filter, then stop.
   tail FILTER_JSON [--relay URL] [--wait SECONDS] [--as PROFILE]
         Print stored and then live events until SECONDS pass (default 30).
-  publish EVENT_JSON|- [--relay URL] [--as PROFILE]
-        Send a signed event and report the relay's OK.
+  publish EVENT_JSON|FILE|- [--relay URL] [--as PROFILE]
+        Send a signed event (inline, from a file, or from stdin) and report
+        the relay's OK.
   sign KIND CONTENT [--tag NAME=VALUE]... [--as PROFILE] [--relay URL]
         Sign an event with PROFILE's key and publish it.
 --relay defaults to wss://relay.openagents.com. --as names the Verse
@@ -86,8 +90,15 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                     return output.fail("relay", &format!("cannot read stdin: {error}"));
                 }
                 text
-            } else {
+            } else if source.trim_start().starts_with('{') {
                 source.clone()
+            } else {
+                match std::fs::read_to_string(source) {
+                    Ok(text) => text,
+                    Err(error) => {
+                        return output.fail("relay", &format!("cannot read {source}: {error}"));
+                    }
+                }
             };
             let event: Event = match serde_json::from_str(&text) {
                 Ok(event) => event,
@@ -212,6 +223,7 @@ pub struct Client {
     signer: RelaySigner,
     auth_id: Option<String>,
     subscriptions: u32,
+    connected: bool,
 }
 
 impl Client {
@@ -221,6 +233,7 @@ impl Client {
             signer,
             auth_id: None,
             subscriptions: 0,
+            connected: false,
         }
     }
 
@@ -254,6 +267,11 @@ impl Client {
         let deadline = Instant::now() + wait;
         loop {
             for message in self.link.drain() {
+                match &message {
+                    In::Connected => self.connected = true,
+                    In::Disconnected(_) => self.connected = false,
+                    _ => {}
+                }
                 if let Some(message) = self.intercept(message) {
                     return Some(message);
                 }
@@ -266,8 +284,9 @@ impl Client {
     }
 
     /// Run `filters` as one subscription. Stored events are handed to
-    /// `on_event` until the relay's end-of-stored-events marker; with `live`
-    /// the subscription stays open until `wait` passes.
+    /// `on_event` until the relay's end-of-stored-events marker, or until
+    /// the relay has stayed quiet for `SETTLE` after its last event; with
+    /// `live` the subscription stays open until `wait` passes.
     ///
     /// # Errors
     /// Reports a relay that closed the subscription or never answered.
@@ -288,19 +307,33 @@ impl Client {
             return Err("relay queue is full".into());
         }
         let deadline = Instant::now() + wait;
-        let mut connected = false;
+        let mut settled_by: Option<Instant> = None;
         loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
+            let now = Instant::now();
+            if let Some(settle) = settled_by
+                && !live
+                && now >= settle
+            {
+                self.link.send(Out::Close(id));
+                return Ok(());
+            }
+            let mut remaining = deadline.saturating_duration_since(now);
             if remaining.is_zero() {
                 self.link.send(Out::Close(id));
-                return if connected || live {
+                return if self.connected || live {
                     Ok(())
                 } else {
                     Err(format!("{} did not answer within {wait:?}", self.link.url))
                 };
             }
-            match self.next(remaining) {
-                Some(In::Connected) => connected = true,
+            if let Some(settle) = settled_by {
+                remaining = remaining.min(settle.saturating_duration_since(now));
+            }
+            let message = self.next(remaining);
+            if self.connected && !live && (message.is_some() || settled_by.is_none()) {
+                settled_by = Some(Instant::now() + SETTLE);
+            }
+            match message {
                 Some(In::Event { sub, event }) if sub == id => on_event(&event),
                 Some(In::Eose(sub)) if sub == id && !live => {
                     self.link.send(Out::Close(id));
@@ -310,7 +343,7 @@ impl Client {
                     return Err(format!("relay closed the subscription: {reason}"));
                 }
                 Some(In::Notice(notice)) => eprintln!("relay: {notice}"),
-                Some(In::Disconnected(reason)) if !connected => {
+                Some(In::Disconnected(reason)) if !self.connected => {
                     eprintln!("relay: {reason}");
                 }
                 Some(_) | None => {}

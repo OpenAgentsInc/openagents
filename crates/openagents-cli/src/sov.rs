@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use crate::{Args, Output};
 
 const USAGE: &str = "usage: openagents sov COMMAND [OPTIONS]
-  profile new NAME --agent PUBKEY --authority PUBKEY --policy REF --custody-adapter ID --custody-policy REF --state-schema REF --disclosure REF [--guardian REF] [--treasury REF] [--evidence REF]...
+  profile new NAME --agent PUBKEY --authority PUBKEY --policy REF --custody-adapter ID --custody-adapter-artifact REF --custody-policy REF --state-schema REF --disclosure REF [--guardian REF] [--treasury REF] [--evidence REF]...
                             Draft revision 0 of a sovereign profile.
   profile validate FILE     Check a profile body against the SOV rules.
   profile show NAME         Print a stored profile.

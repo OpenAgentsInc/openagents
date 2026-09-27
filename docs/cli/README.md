@@ -91,7 +91,7 @@ command runs it headlessly and applies verbs in order:
 ```sh
 openagents zone info                     # landmarks, parts, slots, limits
 openagents zone run fly depot grab install status
-openagents zone run fly -12,-6,4 grab fly jig release wait 2 --trace
+openagents zone run fly depot grab fly jig release wait 2 --trace
 openagents zone build --json             # every part from depot to jig slot
 ```
 
@@ -129,7 +129,7 @@ openagents key list
 openagents relay req '{"kinds":[33301],"#w":["verse-plaza"],"limit":20}'
 openagents relay tail '{"kinds":[9],"#w":["verse-plaza"]}' --wait 60
 openagents relay sign 1 "hello" --tag t=test
-openagents relay publish event.json
+openagents relay publish event.json      # a file, inline JSON, or - for stdin
 ```
 
 `relay` answers NIP-42 challenges with the `--as` profile key.
