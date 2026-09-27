@@ -243,6 +243,12 @@ uses, and marks which are implemented and which are only specified.
   computer, access, first run, activity) as Rust Native projections with typed
   intents and one shared authority check. `ComputersService` is the seam for the
   resident host client; keep grants, connections, and relays out of this crate.
+- `crates/coder-host` — the resident Coder host (`coder host serve`) and its
+  client. It composes `coder-access`, `coder-reach`, `coder-pty`, and the task
+  inbox behind one host key and rechecks the grant on every channel message.
+  `task.create` is an inert inbox submission and grants no execution authority.
+  Read its README and `docs/coder/runtime/host-serve.md` before changing a
+  binding or its authority.
 - `crates/coder-mobile` — Rust-owned iOS/Android reader state, encrypted cache, paging,
   synchronization, and C ABI, plus a separate main-thread Verse render handle
   using the shared `verse::runtime::WorldRuntime`. SwiftUI and Android widgets

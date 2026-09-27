@@ -154,19 +154,19 @@ push wakeups. Wave 2 composes them into one resident host,
 shared Rust Native "Computers" screens,
 [#9713](https://github.com/OpenAgentsInc/openagents/issues/9713).
 
-Status: **wave 1 landed, wave 2 active.** The six drafts are in
-`nips/openagents/`, and each wave 1 crate has targeted tests and a
-verification record under `docs/coder/verification/`: `coder-access`
-(enrollment over a synthetic authenticated relay), `coder-reach` (loopback TCP
-direct channels), `coder-link` (table-driven supervisor transitions),
-`coder-pty` (real PTYs on macOS), `coder-ssh` (a fake `ssh` and a temporary
-remote home), `coder-service` (unit tests and a macOS launchd run), and the
-relay's push lease executor (disposable Postgres). The Computers screens (#9713) landed as Rust Native
-projections on iOS, Android, and a terminal slice, with simulator and emulator
-evidence. Still open: the resident host that wires everything together and
-feeds the screens, WebSocket framing, a Linux
-systemd run, loopback `sshd` and Linux SSH runs, and real APNs and FCM
-delivery, which needs owner credentials and physical devices.
+Status: **waves 1 and 2 landed; live client wiring active.** The six drafts
+are in `nips/openagents/`, and each crate has targeted tests and a
+verification record under `docs/coder/verification/`. `coder host serve` runs
+one resident host that handles enrollment, presence and hints, direct channels
+with relay fallback, terminals, task create, steer, and cancel into the durable
+inbox, and activity summaries. A synthetic end-to-end run covers enrollment,
+discovery, a direct terminal, task creation, relay fallback, catch-up, and
+revocation. The Computers screens are Rust Native projections on iOS, Android,
+and a terminal slice. Still open: connecting those screens to the live host
+client, WebSocket framing for web clients, the CAP/CJ binding of NIP-HOST,
+host CPU and memory telemetry for placement, launchd, systemd, loopback `sshd`,
+and Linux runs, and real APNs and FCM delivery, which needs owner credentials
+and physical devices.
 
 ## Complete outcome map
 
