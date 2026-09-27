@@ -28,8 +28,8 @@ The short version:
   Fable 5.1 low's cheapest winning run cost. The deciding entry was written
   from the task it helped.
 - **Held out, on Terminal-Bench 4:** no pass yet. The pre-registered TB4
-  study's Round 3 is running, with 0 held-out passes so far and one pass on
-  a task Fable 5.1 low never passed, awaiting confirmation. One
+  study ended Round 3 with 0 held-out passes in 24. One pass on a task
+  Fable 5.1 low never passed (`session-window-debug`) didn't confirm (1 of 3). One
   **retrospective** out-of-sample TB4 pass exists, on one run.
 
 ## Out of sample: Terminal-Bench 2.1, knowledge off
@@ -252,9 +252,9 @@ after [Round 2's additions](../terminal-bench/2026-09-26-round2-knowledge.md).
 in this section needs to change. Take every number from
 2026-09-26-out-of-sample-study-results.md. -->
 
-**Status (2026-09-26): on TB4, Round 3 is running. No TB4 out-of-sample
-win is claimed. 0 held-out passes so far; one pass on a Fable-fails task is
-awaiting its confirming run.** The TB2.1 result
+**Status (2026-09-27): TB4 Round 3 is complete. No TB4 out-of-sample
+win is claimed: 0 held-out passes in 24, and the one Fable-fails pass didn't
+confirm (1 of 3).** The TB2.1 result
 [above](#out-of-sample-terminal-bench-21-knowledge-off) is a separate,
 pre-registered study, on an older benchmark with the knowledge base off.
 
@@ -282,14 +282,13 @@ entries. **0 passes in 24 graded held-out runs, and 0 in the Fable-fails
 pool.** The 60-step limit ended 15 of the 24 held-out runs, usually well
 inside the time and cost caps, so Round 3 raised the limits.
 
-**Round 3 (running):** Microcoder `ea9c973576` (the same build as the TB2.1
-study), GPT-6 Luna through the Codex login (list price), 200 steps, $2.00.
-Counts as of 2026-09-27 01:51 UTC:
+**Round 3 (complete):** Microcoder `ea9c973576` (the same build as the TB2.1
+study), GPT-6 Luna through the Codex login (list price), 200 steps, $2.00:
 
-| Pool | Graded runs so far | Passes | Cost wins | Confirmed out-of-sample wins |
+| Pool | Graded runs | Passes | Cost wins | Confirmed out-of-sample wins |
 | --- | --- | --- | --- | --- |
 | Held-out | 24 | 0 | 0 | 0 |
-| Fable-fails | 23 | 1, awaiting a confirming pass | n/a | *pending: beats Fable outright if confirmed* |
+| Fable-fails | 25 (23 + 2 confirming) | 1 (`session-window-debug`); both confirming runs failed | n/a | 0 |
 
 On TB4, the retrospective `react-lead-form` pass is still the only
 out-of-sample pass. It rests on one run. The TB2.1 result shows the loop
@@ -404,9 +403,8 @@ but not removed.
    came over Nostr, harvested by contrasting failed runs with public Fable
    wins.
 6. The limit: in-sample means the entry came from the task it helped. On
-   TB4's pre-registered held-out tasks: 0 passes so far. Round 3 is running,
-   with one pass on a task Fable 5.1 low never passed awaiting its
-   confirming run.
+   TB4's pre-registered held-out tasks: 0 passes in three rounds. TB4 is
+   still open.
 7. The base is as wide as the people who write it. 11 open quests on
    relay.openagents.com: find the detail Microcoder misses, publish it under
    your key, and let someone else's runs measure it. XP per accepted

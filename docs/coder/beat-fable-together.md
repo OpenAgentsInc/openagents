@@ -160,9 +160,9 @@ Status, 2026-09-26: two pre-registered studies run under #9683.
 - **TB4 ([pre-registration](../terminal-bench/2026-09-26-out-of-sample-study.md),
   [results](../terminal-bench/2026-09-26-out-of-sample-study-results.md)).**
   Round 1 closed as partial, and Round 2 ended with 0 passes in 24 graded
-  held-out runs. Round 3 is running: 0 held-out passes so far, and one
-  pass on a Fable-fails task awaiting its confirming run. No TB4
-  out-of-sample win yet.
+  held-out runs. Round 3 (200 steps, Jev on) also ended with 0 of 24; its
+  one pass on a Fable-fails task (`session-window-debug`) failed both
+  confirming runs. No TB4 out-of-sample win.
 - **TB2.1, knowledge off ([pre-registration](../terminal-bench/2026-09-26-tb21-oos-study.md),
   [results](../terminal-bench/2026-09-26-tb21-oos-results.md)).** Complete.
   On 65 TB2.1 tasks Microcoder was never tuned on, with the knowledge base
