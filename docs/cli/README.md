@@ -124,6 +124,43 @@ Each goes through `computer exec`, so the journal records it too.
 `openagents pair` shows the QR code that reads this computer's chats on a
 phone.
 
+### Paired chats (`openagents session`, NIP-SESS)
+
+`session` is the other end of `openagents pair`: it redeems a `coder-pair:`
+invitation with the `--as` profile key, keeps the public connection code
+under `~/.openagents/session/` (`OPENAGENTS_SESSION_HOME` or `--store PATH`
+overrides it), and reads the retained Codex and Claude chats the computer
+disclosed, through `coder-connect`'s history-observer client. The
+`coder-connect` binary keeps working as before; it is the host side.
+
+```sh
+openagents session pair 'coder-pair:...' --timeout 20     # the invitation's relay; --relay must match
+openagents session connections                             # saved grants, hosts, relays, sources
+openagents session list --json                             # every chat each paired computer discloses
+openagents session read CHAT --limit 50                    # records from the start of one chat
+openagents session tail CHAT --timeout 120                 # records as the chat grows, one line each
+openagents session steer CHAT "prefer the smaller change"  # refused: exit 1
+openagents session interrupt CHAT                          # refused: exit 1
+openagents session forget GRANT                            # drop the saved connection; the host still holds the grant
+```
+
+`CHAT` is the chat ID that `list` prints, or its source ID. `read` pages
+through the transcript until it has `--limit` records (default 200) or the
+source ends; with `--json` it prints one document with the chat, the
+records (raw bytes as `raw_base64`, the reader's `readable` projection
+when there is one), `has_more`, and the next cursor. `tail` polls with the
+retained cursor every two seconds until `--timeout` (default 30) passes and
+prints one record per line. Every request has the observer's bounds: 32 KiB
+of raw bytes per page, 240 reads per minute per grant.
+
+`steer` and `interrupt` exist so an agent learns the answer from the grant
+rather than from a missing command. The observer profile's
+`openagents.history-observer-grant.v1` admits observation only, so both read
+the saved grants and exit `1` with the reason; control of a task goes
+through `openagents computer steer` and `openagents computer cancel` under
+a NIP-HOST grant. The invitation is never printed or logged after `pair`
+redeems it.
+
 ## Host service and SSH hosts
 
 `service` runs the resident host under the service manager through
@@ -169,6 +206,34 @@ destination, owner, relay, and archives in `ssh-hosts.json`, so `tunnel` and
 first. `--timeout` bounds each command; `tunnel` prints one line when the
 tunnel opens and one when it closes, and ends on Ctrl-C.
 
+## Reach (NIP-REACH)
+
+Read and edit the owner host directory, read a host's presence, and prove a
+route to it. Every command runs through the same live service the Computers
+screens use, so the owner authority rule, the freshness verdict, and route
+selection match the phone.
+
+```sh
+openagents reach directory list --json
+openagents reach directory add HOST --label "studio box"
+openagents reach directory remove HOST
+openagents reach presence HOST            # the sample and its freshness verdict
+openagents reach probe HOST               # the encrypted handshake and route class
+openagents reach probe HOST --same-machine
+```
+
+`directory add` and `directory remove` publish the next directory revision
+against the one this device last read. They refuse without the owner key, when
+the last read failed, or when two directories share the highest revision.
+`presence` exits 1 when the sample is stale or from the future. `probe`
+reports the route class: `loopback`, `lan`, `tailnet`, `public`, or `relay`.
+It refuses loopback hints unless you pass `--same-machine`, because a host on
+another machine cannot be reached at loopback.
+
+`--relay URL` must name a relay one of this device's grants uses; the command
+refuses any other relay instead of ignoring it. `--timeout SECONDS` bounds the
+relay read and the handshake (default 15).
+
 ## Verse (NIP-MV)
 
 Headless presence: see who is around, listen, speak, move, and gesture.
@@ -188,6 +253,39 @@ openagents verse leave
 
 `--relay` defaults to `wss://relay.openagents.com`, `--world` to
 `verse-plaza`, and `--as` names the profile key (default `default`).
+
+### Driving owned entities (`verse control`)
+
+NIP-MV entities belong to the key that signs them, so `control` drives
+only entities this identity publishes — for example an agent it spawned.
+It sends the same state, frame, and gesture events as `move`, `gesture`,
+and `leave`, under the given entity id and role (default `agent`).
+
+```sh
+openagents verse control scout-1 move 4,0,4 --yaw 45 --name Scout
+openagents verse control scout-1 gesture greet --to PUBKEY,avatar
+openagents verse control scout-1 leave
+```
+
+### Quests, XP, and the board (NIP-XP)
+
+Read-only. The reader gathers quests (`30193`), awards (`3193`),
+revocations (`3194`), and labels (`1985`), fetches the events trusted awards
+name, and derives the ledger under the reader's trust list — the same rule
+the desktop client's quest board uses. Awards from untrusted referees show
+but do not count.
+
+```sh
+openagents verse quests --json          # every quest, trusted referees first
+openagents verse xp                     # this identity's XP, level, titles
+openagents verse xp --pubkey npub1...   # another key's ledger
+openagents verse board                  # counts, standings, my level, quests
+```
+
+`--xp-relay` chooses the XP relay (default `VERSE_XP_RELAY`, then the world
+relay); `--referee KEY` trusts another referee for this reading only.
+Portals, replays, and captures stay desktop-only: they are local
+demonstrations with no event on the wire to drive.
 
 ## Zone (Lagrange construction)
 
@@ -228,6 +326,35 @@ a custody adapter, a policy store, a controller, an environment lease, and
 checkpoints, and none of those exist yet; the command names exactly which
 preconditions are missing rather than starting an unbounded process.
 
+## Labor (NIP-MKT, NIP-LAB)
+
+```sh
+openagents labor offer NAME setup.json [--relay URL --timeout 10] [--as PROFILE]
+openagents labor order NAME rfq.json quote.json order.json order_ack.json
+openagents labor deliver NAME EVENT_ID --relay URL --attach artifact.json
+openagents labor accept NAME acceptance.json
+openagents labor execute NAME execute.json --grant grant.json [--tasks DIR]
+openagents labor check NAME [--reconcile]
+openagents labor list
+```
+
+`labor` exposes `crates/coder-labor`: a book is one operator-admitted setup
+(market, offering, encrypted terms, and the pinned closure) with a private
+journal under `~/.openagents/labor/NAME/` (`LABOR_HOME` overrides). `offer`
+admits the setup and, with `--relay`, publishes the signed offering. `order`
+applies NIP-MKT negotiation records, `deliver` applies NIP-LAB linkage,
+submission, delivery, verification, review, and dispute records, and `accept`
+applies the buyer's acceptance. `execute` dispatches the bound CJ request under
+the operator's local grant or reconciles the dispatch that already exists.
+Every EVENT is a file, inline JSON, `-` for stdin, or a 64-hex event ID
+fetched from `--relay` within `--timeout`.
+
+Refusals exit 1. Under `--json` the document carries `error` and a typed
+`reason`: `admission` (the setup's closure or terms differ from what this host
+admits), `transition` (a record was refused or the evidence conflicts),
+`store`, `relay`, or `execution`. Nothing in the group authors a record, widens
+a grant, or retries an execution.
+
 ## Keys and relays
 
 ```sh
@@ -239,6 +366,28 @@ openagents relay publish event.json      # a file, inline JSON, or - for stdin
 ```
 
 `relay` answers NIP-42 challenges with the `--as` profile key.
+
+## Discovery (NIP-CAP, NIP-PRG, NIP-EXT)
+
+```sh
+openagents cap list --profile executor --limit 20
+openagents cap describe PUBKEY:SLUG
+openagents prg list --step delegate
+openagents prg describe --author PUBKEY SLUG
+openagents ext list                        # listings; --type release|revocation|migration|checkpoint
+openagents ext list --package ROOT_PUBKEY:SLUG
+openagents discover --origin https://openagents.com
+openagents discover --fetch --timeout 5    # compare what the origin serves
+```
+
+`cap`, `prg`, and `ext` read published heads from one relay (`--relay`,
+`--timeout`, and `--as` for NIP-42) and never run a probe, install a
+package, or mint a grant. Every record carries `valid` and, when the
+signature, kind, marker, or body fails the contract, a `refusal`, so a
+malformed head shows up instead of vanishing. `describe` exits 1 when the
+head it found is invalid. `discover` prints the agent card and agent-skills
+index this checkout serves for an origin; `--fetch` also reads both from the
+origin over HTTP and exits 1 when either differs or fails to load.
 
 ## Verify
 

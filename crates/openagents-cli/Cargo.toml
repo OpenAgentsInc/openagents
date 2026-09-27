@@ -16,19 +16,23 @@ coder-access = { path = "../coder-access", default-features = false }
 coder-computers = { path = "../coder-computers" }
 coder-connect = { path = "../coder-connect" }
 coder-host = { path = "../coder-host" }
+coder-labor = { path = "../coder-labor" }
 coder-link = { path = "../coder-link" }
 coder-reach = { path = "../coder-reach" }
 coder-service = { path = "../coder-service" }
 coder-ssh = { path = "../coder-ssh" }
+discovery = { path = "../discovery" }
 glam = "0.30.10"
 libc = "0.2"
 nostr = { path = "../nostr" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
-verse = { path = "../verse", default-features = false }
+verse = { path = "../verse", default-features = false, features = ["xp-host"] }
+knowledge = { path = "../knowledge" }
 verse-lagrange = { path = "../verse-lagrange" }
 
 [lints]
