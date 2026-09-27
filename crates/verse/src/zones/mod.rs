@@ -20,6 +20,10 @@ pub(crate) use ruins::Ruins;
 
 /// Read on demand by native Settings, not repeated in each frame packet.
 pub const CREDITS: &str = concat!(
+    "Lagrange 1: Earth imagery from NASA Earth Observatory / NASA GSFC (Blue Marble Next Generation), ",
+    "bathymetry from GEBCO; Moon maps from NASA SVS CGI Moon Kit (LRO LROC and LOLA); Milky Way from ",
+    "NASA SVS Deep Star Maps 2020; stars from the Yale Bright Star Catalogue (Hoffleit and Warren, ",
+    "NASA ADC / CDS). Sources: https://github.com/OpenAgentsInc/openagents/tree/main/crates/verse/assets/lagrange\n\n",
     "Ruins: the original Ruins of Atlantis Wizard Woods simulation with a mobile renderer.\n",
     "Geometry and original animation poses are baked with sampled colors and leaf cutouts.\n",
     "The original wizard/zombie upstream authors and separate asset licenses were not identified in the source.\n",
