@@ -812,6 +812,19 @@ fn access(
     if let Some(created) = ui.invitations.get(&host.key) {
         invite.push(text("share-code-title", "Invitation", TextRole::Heading));
         invite.push(text("share-code", &created.code, TextRole::Code));
+        // A phone draws the same locally rendered code natively beside the
+        // tree; a terminal or desktop adapter draws it here as text.
+        match (caps.platform, crate::qr::modules(&created.code)) {
+            (Platform::Phone, Some(_)) => invite.push(text(
+                "share-qr-hint",
+                "The new device can scan the QR code below instead.",
+                TextRole::Status,
+            )),
+            (_, Some(modules)) => {
+                invite.push(text("share-qr", crate::qr::text(&modules), TextRole::Code));
+            }
+            (_, None) => {}
+        }
         invite.push(text(
             "share-code-detail",
             format!(

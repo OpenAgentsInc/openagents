@@ -274,7 +274,7 @@ pub async fn redeem(code: &str, secret: &SecretKey, policy: RelayPolicy) -> Resu
 }
 
 /// Render locally. The code is never sent to a QR-generation service.
-#[cfg(feature = "host")]
+#[cfg(feature = "qr")]
 pub fn qr_svg(code: &str) -> Result<String> {
     let qr = qr(PREFIX, code)?;
     let side = qr.size() + 8;
@@ -291,12 +291,12 @@ pub fn qr_svg(code: &str) -> Result<String> {
     svg.push_str("\"/></svg>");
     Ok(svg)
 }
-#[cfg(feature = "host")]
+#[cfg(feature = "qr")]
 pub fn terminal_qr(code: &str) -> Result<String> {
     terminal_qr_prefixed(PREFIX, code)
 }
 /// Render a terminal QR code for an invitation that uses another profile's prefix.
-#[cfg(feature = "host")]
+#[cfg(feature = "qr")]
 pub fn terminal_qr_prefixed(prefix: &str, code: &str) -> Result<String> {
     let qr = qr(prefix, code)?;
     let side = qr.size() + 8;
@@ -316,7 +316,18 @@ pub fn terminal_qr_prefixed(prefix: &str, code: &str) -> Result<String> {
     }
     Ok(output)
 }
-#[cfg(feature = "host")]
+/// The modules of an invitation's QR code, row by row, with the standard
+/// four-module quiet zone on every side; `true` is a dark module. A native
+/// host draws these itself, so the code never leaves the device.
+#[cfg(feature = "qr")]
+pub fn qr_modules_prefixed(prefix: &str, code: &str) -> Result<Vec<Vec<bool>>> {
+    let qr = qr(prefix, code)?;
+    let side = qr.size() + 8;
+    Ok((0..side)
+        .map(|y| (0..side).map(|x| qr.get_module(x - 4, y - 4)).collect())
+        .collect())
+}
+#[cfg(feature = "qr")]
 fn qr(prefix: &str, code: &str) -> Result<qrcodegen::QrCode> {
     if !code.starts_with(prefix)
         || code.len() > MAX_CODE_BYTES

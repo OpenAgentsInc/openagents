@@ -8,7 +8,9 @@ description = "Explicitly paired read-only encrypted access to retained coding h
 
 [features]
 default = ["host"]
-host = ["coder-history/host", "dep:libc", "dep:qrcodegen"]
+host = ["coder-history/host", "dep:libc", "qr"]
+# Local QR rendering of invitation strings, without the host store.
+qr = ["dep:qrcodegen"]
 
 [[bin]]
 name = "coder-connect"

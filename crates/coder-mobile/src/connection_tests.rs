@@ -15,7 +15,7 @@ use std::{
 };
 
 #[path = "../../coder-control/src/tests/relay.rs"]
-mod relay;
+pub(crate) mod relay;
 
 struct Server {
     relay: String,
@@ -98,6 +98,7 @@ fn config(cache: &Path, secret: &SecretKey) -> Config {
         cache_dir: cache.into(),
         secret_hex: secret.display_secret().to_string(),
         synthetic: true,
+        loopback_test: false,
     }
 }
 

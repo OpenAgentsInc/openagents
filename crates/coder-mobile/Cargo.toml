@@ -31,6 +31,8 @@ ndk-sys = "0.6"
 [dev-dependencies]
 tempfile = "3"
 coder-connect = { path = "../coder-connect", features = ["host"] }
+# The Computers acceptance run serves a real host on a local relay.
+coder-host = { path = "../coder-host" }
 coder-history = { path = "../coder-history", features = ["host"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["macros", "sync"] }

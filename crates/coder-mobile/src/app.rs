@@ -1,4 +1,5 @@
 use crate::cache::Cache;
+use coder_computers::live::{Live, Settings as LiveSettings, Store as LiveStore};
 use coder_computers::{
     Capabilities, Computers, InputRequest, LocalHost, Outcome, Platform, synthetic::Synthetic,
 };
@@ -25,6 +26,14 @@ pub struct Config {
     pub secret_hex: String,
     #[serde(default)]
     pub synthetic: bool,
+    /// Test launches only: admit `ws://` loopback relays for the Computers
+    /// surface and treat its hosts as running on this machine, so a
+    /// simulator or test reaches a host on the same computer. With
+    /// `synthetic`, the reader and world stay synthetic and the Computers
+    /// surface still uses the live service. A scanned or pasted value can
+    /// never set it.
+    #[serde(default)]
+    pub loopback_test: bool,
 }
 
 #[derive(Deserialize)]
@@ -64,6 +73,12 @@ pub enum Request {
         token: String,
     },
     ComputersRefresh,
+    /// The application became active or moved to the background. Each host
+    /// supervisor probes after a short absence and replaces its connection
+    /// after a long one.
+    Lifecycle {
+        active: bool,
+    },
 }
 
 impl Request {
@@ -74,7 +89,30 @@ impl Request {
                 | Self::ComputersInput { .. }
                 | Self::ComputersCancel { .. }
                 | Self::ComputersRefresh
+                | Self::Lifecycle { .. }
         )
+    }
+}
+
+/// The QR code of the invitation the Computers surface shows, rendered in
+/// Rust for the native host to draw: one string of `1` (dark) and `0`
+/// (light) per module row, quiet zone included.
+#[derive(Serialize)]
+pub struct QrModules {
+    pub size: usize,
+    pub rows: Vec<String>,
+}
+
+/// The encrypted cache that holds the Computers record. Its key comes from
+/// the device identity in the platform's protected store.
+struct ComputersCache(Cache);
+
+impl LiveStore for ComputersCache {
+    fn load(&mut self) -> Result<Option<coder_computers::live::Saved>, String> {
+        self.0.read("computers")
+    }
+    fn save(&mut self, saved: &coder_computers::live::Saved) -> Result<(), String> {
+        self.0.write("computers", saved)
     }
 }
 
@@ -112,6 +150,8 @@ pub struct Packet {
     pub computers: Option<serde_json::Value>,
     /// A value the Computers surface asks the native host to collect.
     pub computers_input: Option<InputRequest>,
+    /// The invitation QR code the Computers surface shows, if any.
+    pub computers_qr: Option<QrModules>,
     /// First run finished on the last call; the host returns to its
     /// existing onboarding.
     pub computers_exit: bool,
@@ -208,17 +248,26 @@ impl App {
             computers: None,
             computers_exit: false,
         };
-        // A phone never runs a host. Until the resident host client lands,
-        // the normal app offers these screens with every effect unavailable.
-        let service: Box<dyn coder_computers::ComputersService + Send> = if config.synthetic {
-            Box::new(Synthetic::fixture(Platform::Phone, now))
-        } else {
-            Box::new(coder_computers::Unavailable::new(
-                app.public_key.clone(),
-                LocalHost::NotSupported,
-                now,
-            ))
-        };
+        // A phone never runs a host. The normal app reaches its computers
+        // through the live host client; synthetic mode uses the fixture.
+        // A test launch may pair the synthetic world and reader with the live
+        // Computers service over loopback relays.
+        let service: Box<dyn coder_computers::ComputersService + Send> =
+            if config.synthetic && !config.loopback_test {
+                Box::new(Synthetic::fixture(Platform::Phone, now))
+            } else {
+                match app.live_computers(&config) {
+                    Ok(live) => Box::new(live),
+                    Err(reason) => {
+                        app.notices.push(format!("Computers unavailable: {reason}"));
+                        Box::new(coder_computers::Unavailable::new(
+                            app.public_key.clone(),
+                            LocalHost::NotSupported,
+                            now,
+                        ))
+                    }
+                }
+            };
         let capabilities = Capabilities {
             platform: Platform::Phone,
             camera: true,
@@ -257,6 +306,25 @@ impl App {
         }
         app.rebuild()?;
         Ok(app)
+    }
+
+    /// The live Computers service. Its grants live in their own encrypted
+    /// cache directory, so erasing the chats pairing never erases them.
+    fn live_computers(&self, config: &Config) -> Result<Live, String> {
+        let cache = Cache::open(&config.cache_dir.join("computers"), &self.secret)?;
+        let mut settings = LiveSettings::new(Platform::Phone);
+        settings.now = now;
+        if config.loopback_test {
+            settings.policy = RelayPolicy::LoopbackTest;
+            settings.locality = coder_computers::live::Locality::SameMachine;
+        }
+        Live::open(
+            settings,
+            self.secret,
+            Box::new(ComputersCache(cache)),
+            self.runtime.handle().clone(),
+        )
+        .map_err(|error| coder_computers::describe(&error))
     }
 
     fn policy(&self) -> RelayPolicy {
@@ -316,6 +384,10 @@ impl App {
                 .refresh()
                 .map(|()| Outcome::Updated)
                 .map_err(coder_computers::Refusal::Failed),
+            Request::Lifecycle { active } => computers
+                .set_active(active)
+                .map(|()| Outcome::Updated)
+                .map_err(coder_computers::Refusal::Failed),
             _ => return,
         };
         self.computers_exit = outcome == Ok(Outcome::ContinueOnboarding);
@@ -334,7 +406,8 @@ impl App {
             Request::ComputersActivate { .. }
             | Request::ComputersInput { .. }
             | Request::ComputersCancel { .. }
-            | Request::ComputersRefresh => Ok(()),
+            | Request::ComputersRefresh
+            | Request::Lifecycle { .. } => Ok(()),
             Request::Follow { enabled, page } => {
                 let keys = self.page_keys()?;
                 self.window = if enabled {
@@ -809,6 +882,21 @@ impl App {
                 .and_then(Computers::view)
                 .and_then(|v| serde_json::to_value(v.view()).ok()),
             computers_input: self.computers.as_ref().and_then(Computers::input).cloned(),
+            computers_qr: self
+                .computers
+                .as_ref()
+                .and_then(Computers::invitation_qr)
+                .map(|modules| QrModules {
+                    size: modules.len(),
+                    rows: modules
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .map(|dark| if *dark { '1' } else { '0' })
+                                .collect()
+                        })
+                        .collect(),
+                }),
             computers_exit: self.computers_exit,
         }
     }

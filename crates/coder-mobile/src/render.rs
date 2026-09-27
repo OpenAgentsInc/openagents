@@ -580,6 +580,7 @@ mod tests {
             cache_dir: root.join("cache"),
             secret_hex: "01".repeat(32),
             synthetic: false,
+            loopback_test: false,
         })
         .unwrap();
         app.selected = history

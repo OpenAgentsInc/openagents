@@ -1242,3 +1242,55 @@ fn the_terminal_adapter_draws_and_activates_the_same_tree() {
     );
     assert!(drawn.unsupported.contains("style.background"));
 }
+
+#[test]
+fn a_created_invitation_shows_as_a_locally_rendered_qr_code() {
+    for platform in [Platform::Phone, Platform::Terminal] {
+        let mut computers = open(platform);
+        press(&mut computers, "first-run-continue").unwrap();
+        assert_eq!(computers.invitation_qr(), None);
+        press(&mut computers, "host-0-access").unwrap();
+        press(&mut computers, "share-create").unwrap();
+        let modules = computers.invitation_qr().expect("a QR code");
+        assert_eq!(
+            modules,
+            crate::qr::modules(&text_of(&computers, "share-code")).unwrap()
+        );
+        match platform {
+            // A phone draws the modules natively and the tree says so.
+            Platform::Phone => {
+                assert!(find(&computers, "share-qr").is_none());
+                assert!(find(&computers, "share-qr-hint").is_some());
+            }
+            // A terminal draws the code in the tree.
+            _ => assert_eq!(text_of(&computers, "share-qr"), crate::qr::text(&modules)),
+        }
+        press(&mut computers, "share-done").unwrap();
+        assert_eq!(computers.invitation_qr(), None);
+    }
+}
+
+#[test]
+fn application_lifecycle_reaches_every_supervisor() {
+    let mut service = Synthetic::fixture(Platform::Phone, now);
+    service.application(false).unwrap();
+    service.application(true).unwrap();
+    assert_eq!(
+        service.calls,
+        vec![
+            "application false".to_owned(),
+            "application true".to_owned()
+        ]
+    );
+    // The connected host probed its connection on return from a short
+    // background, and the fixture's probe answered at once.
+    let snapshot = service.snapshot().unwrap();
+    let studio = snapshot.host(&crate::synthetic::key(0xa1)).unwrap();
+    assert_eq!(
+        studio.link.map(|status| status.phase),
+        Some(Phase::Connected)
+    );
+    let mut computers = open(Platform::Phone);
+    computers.set_active(false).unwrap();
+    computers.set_active(true).unwrap();
+}

@@ -6,21 +6,35 @@ rust-version.workspace = true
 publish.workspace = true
 description = "Coder's Computers screens: host status, enrollment, access, and activity as Rust Native projections."
 
+[features]
+default = ["live"]
+# The live service over the resident host client.
+live = ["dep:coder-host", "dep:tokio"]
+
 [dependencies]
 coder-access = { path = "../coder-access", default-features = false }
+# Local QR rendering only; no host store.
+coder-connect = { path = "../coder-connect", default-features = false, features = ["qr"] }
+coder-host = { path = "../coder-host", default-features = false, optional = true }
 coder-link = { path = "../coder-link" }
 coder-reach = { path = "../coder-reach" }
 coder-ui = { path = "../coder-ui" }
 nostr = { path = "../nostr" }
 rust-native = { path = "../rust-native" }
-secp256k1 = "0.31.1"
+secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"], optional = true }
 
 [dev-dependencies]
 coder-terminal = { path = "../coder-terminal" }
 crossterm = "0.29"
 ratatui = "0.30"
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "terminal"
+required-features = ["live"]

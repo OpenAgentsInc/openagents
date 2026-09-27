@@ -2,10 +2,11 @@
 //!
 //! [`ComputersService`] is the application-level seam between these screens
 //! and a client that owns grants, connections, and relay traffic. The
-//! resident host client (issue #9712) implements it over `coder-access`,
-//! `coder-reach`, and a `coder-link` registry. Until that client exists,
-//! [`Unavailable`] keeps every screen honest, and
-//! [`crate::synthetic::Synthetic`] drives tests and simulator checks.
+//! live service in `crate::live` implements it over the resident host client
+//! (`coder_host::client`), `coder-access`, `coder-reach`, and a `coder-link`
+//! registry. [`Unavailable`] keeps every screen honest in a build without
+//! that client, and [`crate::synthetic::Synthetic`] drives tests and
+//! simulator checks.
 //!
 //! Every method is an effect request. The host still authorizes each one
 //! against its own grant records; the screens' checks only avoid offering a
@@ -61,6 +62,13 @@ pub trait ComputersService {
     fn revoke(&mut self, host: &str, device: &str) -> Result<()>;
     /// Record that first run finished.
     fn complete_first_run(&mut self) -> Result<()>;
+    /// The application became active (`true`) or moved to the background
+    /// (`false`). Each host supervisor probes its connection after a short
+    /// absence and replaces it after a long one.
+    fn application(&mut self, active: bool) -> Result<()> {
+        let _ = active;
+        Ok(())
+    }
 }
 
 /// A service for a build with no host client. It reports an empty list and

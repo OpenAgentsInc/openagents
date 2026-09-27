@@ -512,4 +512,31 @@ impl ComputersService for Synthetic {
         self.first_run_complete = true;
         Ok(())
     }
+    fn application(&mut self, active: bool) -> Result<()> {
+        self.calls.push(format!("application {active}"));
+        let at = Moment(if active { 3_000 } else { 2_500 });
+        let signal = if active {
+            Signal::ApplicationActive
+        } else {
+            Signal::ApplicationBackground
+        };
+        for host in &mut self.hosts {
+            // Scripted phases stay as scripted: only a connected host sees
+            // the signal. The fixture has no transport, so the probe or
+            // replacement it asks for succeeds at once.
+            let Some(supervisor) = host
+                .supervisor
+                .as_mut()
+                .filter(|supervisor| supervisor.status().phase == coder_link::Phase::Connected)
+            else {
+                continue;
+            };
+            for command in supervisor.signal(at, signal) {
+                if let Command::Probe { attempt, .. } | Command::Open { attempt, .. } = command {
+                    let _ = supervisor.report(at, Report::Established(attempt));
+                }
+            }
+        }
+        Ok(())
+    }
 }

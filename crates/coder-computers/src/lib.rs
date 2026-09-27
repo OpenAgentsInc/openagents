@@ -16,8 +16,11 @@
 pub mod authority;
 mod controller;
 pub mod intent;
+#[cfg(feature = "live")]
+pub mod live;
 pub mod model;
 pub mod project;
+pub mod qr;
 pub mod service;
 pub mod synthetic;
 

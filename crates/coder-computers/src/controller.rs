@@ -237,6 +237,24 @@ impl Computers {
         self.ui.input.as_ref().map(|input| &input.request)
     }
 
+    /// The QR modules of the invitation the current Access screen shows, for
+    /// a platform host that draws the code itself. Rendered locally; `true`
+    /// is a dark module.
+    pub fn invitation_qr(&self) -> Option<Vec<Vec<bool>>> {
+        let Screen::Access { host } = &self.ui.screen else {
+            return None;
+        };
+        crate::qr::modules(&self.ui.invitations.get(host)?.code)
+    }
+
+    /// Pass an application lifecycle change to the service's supervisors,
+    /// then reload. `active` is `false` when the application moves to the
+    /// background.
+    pub fn set_active(&mut self, active: bool) -> Result<(), Error> {
+        self.service.application(active)?;
+        self.refresh()
+    }
+
     /// Reload the snapshot and draw a new revision.
     pub fn refresh(&mut self) -> Result<(), Error> {
         self.reload();

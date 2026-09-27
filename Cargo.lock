@@ -692,6 +692,8 @@ name = "coder-computers"
 version = "0.1.0"
 dependencies = [
  "coder-access",
+ "coder-connect",
+ "coder-host",
  "coder-link",
  "coder-reach",
  "coder-terminal",
@@ -703,6 +705,7 @@ dependencies = [
  "secp256k1",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -764,6 +767,7 @@ dependencies = [
  "coder-reach",
  "coder-service",
  "futures-util",
+ "libc",
  "nostr",
  "nostr-transport",
  "secp256k1",
@@ -804,6 +808,7 @@ dependencies = [
  "coder-computers",
  "coder-connect",
  "coder-history",
+ "coder-host",
  "coder-ui",
  "futures-util",
  "jni",

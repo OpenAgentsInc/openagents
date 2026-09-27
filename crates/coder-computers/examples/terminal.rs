@@ -1,15 +1,23 @@
-//! The Computers screens on the terminal adapter, over the offline fixture.
+//! The Computers screens on the terminal adapter.
 //!
 //! ```sh
-//! cargo run -p coder-computers --example terminal            # interactive
+//! cargo run -p coder-computers --example terminal            # interactive fixture
 //! cargo run -p coder-computers --example terminal -- --print # each screen as text
+//! cargo run -p coder-computers --example terminal -- --live ~/.openagents/coder-computers
 //! ```
 //!
 //! Tab and the arrow keys move focus, Enter or Space activates, and `q` or
 //! Esc quits. When a screen asks for input, type it and press Enter; Esc
-//! cancels. The fixture contacts no host, relay, or SSH server.
+//! cancels. By default the offline fixture contacts no host, relay, or SSH
+//! server. `--live DIR` uses the live service: it keeps this client's
+//! device key and grants owner-only in `DIR` and reaches real hosts.
+//! `--loopback-test` admits a `ws://` loopback relay for a local test, and
+//! `--same-machine` states that the hosts run on this computer, which
+//! allows loopback routes.
+use coder_computers::live::{FileStore, Live, Settings, load_or_create_key};
 use coder_computers::synthetic::Synthetic;
-use coder_computers::{Capabilities, Computers, Platform};
+use coder_computers::{Capabilities, Computers, ComputersService, Platform};
+use coder_reach::hints::Locality;
 use coder_terminal::native::{Focus, render};
 use coder_terminal::{Guard, Ladder};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
@@ -25,9 +33,34 @@ fn now() -> u64 {
         .map_or(0, |elapsed| elapsed.as_secs())
 }
 
-fn open() -> Result<Computers, String> {
+/// The service the flags select. The runtime must outlive a live service.
+fn service(runtime: &tokio::runtime::Runtime) -> Result<Box<dyn ComputersService + Send>, String> {
+    let args: Vec<String> = std::env::args().collect();
+    let Some(directory) = args
+        .iter()
+        .position(|arg| arg == "--live")
+        .and_then(|index| args.get(index + 1))
+    else {
+        return Ok(Box::new(Synthetic::fixture(Platform::Terminal, now)));
+    };
+    let directory = std::path::Path::new(directory);
+    let mut settings = Settings::new(Platform::Terminal);
+    if args.iter().any(|arg| arg == "--loopback-test") {
+        settings.policy = coder_access::RelayPolicy::LoopbackTest;
+    }
+    if args.iter().any(|arg| arg == "--same-machine") {
+        settings.locality = Locality::SameMachine;
+    }
+    let secret = load_or_create_key(directory)?;
+    let store = FileStore::open(directory)?;
+    let live = Live::open(settings, secret, Box::new(store), runtime.handle().clone())
+        .map_err(|error| error.to_string())?;
+    Ok(Box::new(live))
+}
+
+fn open(runtime: &tokio::runtime::Runtime) -> Result<Computers, String> {
     Computers::new(
-        Box::new(Synthetic::fixture(Platform::Terminal, now)),
+        service(runtime)?,
         Capabilities {
             platform: Platform::Terminal,
             camera: false,
@@ -37,8 +70,8 @@ fn open() -> Result<Computers, String> {
     .map_err(|error| error.to_string())
 }
 
-fn print() -> Result<(), String> {
-    let mut computers = open()?;
+fn print(runtime: &tokio::runtime::Runtime) -> Result<(), String> {
+    let mut computers = open(runtime)?;
     let ladder = Ladder::new(coder_terminal::Colors::None);
     for press in [
         None,
@@ -77,8 +110,8 @@ fn print() -> Result<(), String> {
     Ok(())
 }
 
-fn interactive() -> Result<(), String> {
-    let mut computers = open()?;
+fn interactive(runtime: &tokio::runtime::Runtime) -> Result<(), String> {
+    let mut computers = open(runtime)?;
     let guard = Guard::full_screen().map_err(|error| error.to_string())?;
     guard.arm_panic_hook();
     let mut terminal =
@@ -108,6 +141,11 @@ fn interactive() -> Result<(), String> {
                 );
             })
             .map_err(|error| error.to_string())?;
+        // Redraw every second so a host's status moves without a key press.
+        if !event::poll(std::time::Duration::from_secs(1)).map_err(|error| error.to_string())? {
+            let _ = computers.refresh();
+            continue;
+        }
         let Event::Key(key) = event::read().map_err(|error| error.to_string())? else {
             continue;
         };
@@ -146,10 +184,21 @@ fn interactive() -> Result<(), String> {
 }
 
 fn main() {
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("terminal example: {error}");
+            std::process::exit(1);
+        }
+    };
     let result = if std::env::args().any(|arg| arg == "--print") {
-        print()
+        print(&runtime)
     } else {
-        interactive()
+        interactive(&runtime)
     };
     if let Err(error) = result {
         eprintln!("terminal example: {error}");

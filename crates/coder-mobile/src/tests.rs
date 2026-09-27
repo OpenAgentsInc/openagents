@@ -6,6 +6,7 @@ fn app(root: &std::path::Path) -> App {
         cache_dir: root.into(),
         secret_hex: "01".repeat(32),
         synthetic: true,
+        loopback_test: false,
     })
     .unwrap()
 }
@@ -313,31 +314,53 @@ fn the_computers_surface_is_separate_from_the_reader() {
 }
 
 #[test]
-fn the_normal_app_offers_computers_with_every_effect_unavailable() {
+fn the_normal_app_offers_live_computers_and_validates_what_it_is_given() {
     let dir = tempfile::tempdir().unwrap();
     let mut app = App::new(Config {
         cache_dir: dir.path().into(),
         secret_hex: "02".repeat(32),
         synthetic: false,
+        loopback_test: false,
     })
     .unwrap();
     let packet = app.call(Request::Snapshot);
     let computers = packet.computers.unwrap();
     let text = computers.to_string();
-    assert!(text.contains("This build can't reach computers yet"));
+    assert!(!text.contains("This build can't reach computers yet"));
+    assert!(packet.computers_qr.is_none());
     let paste = find_button(&computers["root"], "Paste invitation");
     let request = Request::ComputersActivate {
         instance: computers["instance"].as_str().unwrap().into(),
         revision: computers["revision"].as_u64().unwrap(),
         node: paste,
     };
-    let refused = app.call(request);
-    assert!(refused.computers_input.is_none());
+    let asked = app.call(request);
+    let input = asked.computers_input.unwrap();
+    // A Chats pairing code is refused before any network use.
+    let refused = app.call(Request::ComputersInput {
+        token: input.token.clone(),
+        value: "coder-pair:AAAA".into(),
+    });
     assert!(
         refused
             .computers
             .unwrap()
             .to_string()
-            .contains("That control isn't available.")
+            .contains("This is a Chats pairing code")
     );
+    // A malformed invitation is refused by the invitation parser; nothing is
+    // saved, and the list stays empty.
+    let refused = app.call(Request::ComputersInput {
+        token: input.token,
+        value: "coder-host:AAAA".into(),
+    });
+    let view = refused.computers.unwrap().to_string();
+    assert!(view.contains("couldn't accept this"), "{view}");
+    assert!(!dir.path().join("computers/computers.cache").exists());
+    // Lifecycle signals reach the Computers surface without disturbing the
+    // reader.
+    let resumed = app.call(Request::Lifecycle { active: false });
+    assert!(resumed.error.is_none());
+    let resumed = app.call(Request::Lifecycle { active: true });
+    assert!(resumed.error.is_none() && resumed.computers.is_some());
 }

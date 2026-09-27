@@ -314,6 +314,23 @@ async fn production_bootstrap_reads_only_generated_history() {
     );
 }
 #[test]
+fn qr_modules_are_a_square_with_a_quiet_zone_and_finder_patterns() {
+    let f = Fixture::new("wss://relay.example/");
+    let code = invite(&f);
+    let rows = pairing::qr_modules_prefixed(pairing::PREFIX, &code).unwrap();
+    let side = rows.len();
+    assert!(rows.iter().all(|row| row.len() == side));
+    // Version sizes are 21 + 4k modules, plus four quiet modules per side.
+    assert_eq!((side - 8 - 21) % 4, 0);
+    assert!(rows[..4].iter().flatten().all(|dark| !dark));
+    assert!(rows.iter().all(|row| row[..4].iter().all(|dark| !dark)));
+    // Each finder pattern's outer ring starts dark at its corner.
+    assert!(rows[4][4] && rows[4][side - 5] && rows[side - 5][4]);
+    // Another profile's prefix is refused, as the other renderers refuse it.
+    assert!(pairing::qr_modules_prefixed("coder-host:", &code).is_err());
+}
+
+#[test]
 #[ignore = "writes a synthetic invitation SVG and exact payload for an independent native QR decoder"]
 fn export_synthetic_qr_fixture() {
     let dir = std::env::var_os("CODER_CONNECT_QR_FIXTURE_DIR")
