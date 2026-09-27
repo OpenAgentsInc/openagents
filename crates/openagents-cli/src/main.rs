@@ -15,6 +15,8 @@ use std::process::ExitCode;
 
 mod args;
 mod computer;
+mod eval;
+mod gym;
 mod hosts;
 mod key;
 mod out;
@@ -43,6 +45,10 @@ Verse (NIP-MV):
   verse        See who is around, listen, speak, move, and gesture.
   zone         Drive the Lagrange 1 construction zone.
   sov          Sovereign agents under NIP-SOV: profile, spawn, status.
+
+Gym (NIP-EVAL):
+  eval         Score doors against a suite, report a store, compare its sides.
+  gym          Connect to a granted Gym host, observe it, launch admitted recipes.
 
 Keys and relays:
   key          Show or create Nostr identities.
@@ -84,6 +90,8 @@ fn main() -> ExitCode {
         "zone" => zone::run(&output, &rest),
         "study" => study::run(&output, &rest),
         "sov" => sov::run(&output, &rest),
+        "eval" => eval::run(&output, &rest),
+        "gym" => gym::run(&output, &rest),
         "key" => key::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
         other => {
