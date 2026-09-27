@@ -737,7 +737,14 @@ impl Computers {
                 }
                 self.service
                     .import_owner_key(value)
-                    .map_err(Refusal::Failed)?;
+                    .map_err(|error| match error.code {
+                        // Not a key, or not the owner a held grant names.
+                        Code::Malformed => Refusal::Input(
+                            "That isn't the owner key your computers name. Check it and try again."
+                                .into(),
+                        ),
+                        _ => Refusal::Failed(error),
+                    })?;
                 self.ui.input = None;
                 self.done("This device now holds your owner key. It reads your directory.")
             }

@@ -1601,7 +1601,7 @@ fn a_phone_enters_the_owner_key_the_fixture_grants_name() {
     // A key no held grant names is refused, and the refusal never echoes it.
     let other = "0f".repeat(32);
     let refused = phone.submit(&asked.token, &other).unwrap_err();
-    assert!(matches!(refused, Refusal::Failed(_)));
+    assert!(matches!(&refused, Refusal::Input(reason) if reason.contains("isn't the owner key")));
     assert!(!refused.reason().contains(&other));
     assert!(!phone.notice().unwrap().text.contains(&other));
     // A stale token and an oversized value are refused before the service.
