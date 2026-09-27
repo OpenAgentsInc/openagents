@@ -1,0 +1,46 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.46s
+     Running unittests src/lib.rs (target/debug/deps/coder_service-06f461883388b001)
+
+running 27 tests
+test descriptor::tests::ipv6_loopback_is_accepted_and_other_addresses_are_not ... ok
+test service::tests::labels_are_checked ... ok
+test service::tests::launchd_disabled_parsing_accepts_both_spellings ... ok
+test descriptor::tests::encoding_is_canonical_and_round_trips ... ok
+test service::tests::systemd_quoting_escapes_specifiers_and_refuses_newlines ... ok
+test descriptor::tests::decoding_refuses_what_a_client_must_not_assume ... ok
+test service::tests::install_creates_the_log_directory_privately_before_launchd_can ... ok
+test service::tests::launchd_plist_renders_a_login_agent_that_restarts_on_failure ... ok
+test service::tests::plutil_accepts_the_plist_when_available ... ok
+test service::tests::systemd_unit_renders_a_restarting_user_service ... ok
+test service::tests::install_refuses_a_registration_that_belongs_to_something_else ... ok
+test service::tests::systemd_install_status_restart_and_uninstall_run_the_expected_commands ... ok
+test launcher::tests::a_second_launcher_is_refused ... ok
+test snapshot::tests::links_and_oversized_state_refuse ... ok
+test service::tests::launchd_install_status_restart_and_uninstall_run_the_expected_commands ... ok
+test snapshot::tests::an_interrupted_snapshot_leaves_only_staging ... ok
+test snapshot::tests::an_interrupted_restore_completes_when_it_runs_again ... ok
+test launcher::tests::crash_while_staging_the_snapshot_keeps_the_committed_version_and_the_request ... ok
+test snapshot::tests::restore_returns_changed_added_and_removed_state ... ok
+test launcher::tests::a_refused_update_is_answered_and_the_committed_version_runs ... ok
+test launcher::tests::crash_in_prepared_rolls_back ... ok
+test launcher::tests::crash_after_the_commit_record_keeps_the_commit_and_removes_the_snapshot ... ok
+test launcher::tests::crash_in_trial_before_ready_stops_the_orphan_and_restores_the_snapshot ... ok
+test launcher::tests::crash_in_trial_after_ready_commits ... ok
+test launcher::tests::a_client_asks_for_an_update_and_observes_committed_on_reconnect ... ok
+test launcher::tests::crash_in_rolling_back_finishes_the_restore ... ok
+test launcher::tests::failed_trials_roll_back_to_the_previous_version_and_snapshot ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.18s
+
+     Running unittests src/main.rs (target/debug/deps/coder_service-fa8b7456226b49d9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests coder_service
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

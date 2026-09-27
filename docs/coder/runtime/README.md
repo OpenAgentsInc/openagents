@@ -23,4 +23,5 @@ and unfinished suite acceptance, use the [migration tracker](../migration-status
 | [Free agent labor](free-labor.md) | Recoverable free orders, bounded provider execution, separate buyer checks, and acceptance |
 | [Frozen task context](frozen-task-context.md) | Exact knowledge bytes, source lineage, scoped instructions, and protected independent checks |
 | [Portable host](portable-host.md) | Digest-pinned installation, rollback, and one-shot task service packaging |
+| [Host service](host-service.md) | The resident host as a launchd agent or systemd user unit, trial updates with snapshot rollback, and the host descriptor |
 | [Nostr task control](nostr-task-control.md) | Owner-installed task mapping, scoped pairing and commands, bounded private views, and replay |

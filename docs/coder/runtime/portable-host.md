@@ -13,6 +13,27 @@ includes real macOS launchd tasks and a separately labeled Linux systemd
 service fixture. It does not complete the M11 clean-host matrix or the M12
 bootable CoderOS release in the [migration tracker](../migration-status.md).
 
+## What this helper owns and what the host service owns
+
+The helper and the Rust [host service](host-service.md) split the work:
+
+| Work | Owner |
+| --- | --- |
+| Staging, digest checks, and task-interface health checks for bundles | This helper |
+| The helper's bundle selection in `active.json`, and its `rollback` | This helper |
+| One-shot services that run one explicitly granted task | This helper |
+| The resident host's launchd agent or systemd user unit, with linger checks | `coder-service` |
+| Which bundle the resident host runs, trial updates, snapshots, and rollback | `coder-service` |
+| The host descriptor | `coder-service` |
+
+`coder-service` reads bundles from the same root and verifies each one again
+before it runs it, but it never stages a binary. Its first committed version
+defaults to the bundle this helper selected. After that, the helper's
+`install` and `rollback` change only the helper's selection; they never
+replace the running host. Change the resident host's version with
+`coder-service update --to <sha256>`, which trials the bundle and rolls back
+on failure.
+
 ## Install and inspect
 
 Build Coder with the repository's pinned toolchain, then supply the exact
@@ -62,6 +83,10 @@ model request, task execution, device access, or wallet operation. An install
 root missing its journal or stable lock refuses instead of recreating history.
 
 ## Explicit one-shot services
+
+These services run one granted task and exit. They are separate from the
+resident host service, which `coder-service` installs; see the
+[host service guide](host-service.md).
 
 Submit a task and prepare its separate operator grant using the
 [task-owner guide](task-owner.md). Generate a service only after reviewing that
@@ -150,10 +175,13 @@ invocation across duplicate starts while active, and stops/unlinks it. It
 proves service-manager wiring only, not a Rust task-owner result on Linux.
 No benchmark jobs or existing services were modified.
 
-A complete portable-host release still needs an accepted Linux owner binary,
-admitted system-tool resolution on NixOS, clean Linux/macOS installation tests,
-resource/capability admission beyond the selected task's grant, update and
-state-migration policies across actual releases, and service recovery on host
+The [host service](host-service.md) adds a resident service that starts at
+login, or at boot with systemd linger, and trial updates that restore a state
+snapshot on failure. A complete portable-host release still needs an accepted
+Linux owner binary, admitted system-tool resolution on NixOS, clean
+Linux/macOS installation tests, resource/capability admission beyond the
+selected task's grant, state migration across actual releases, a real
+systemd run of the host service, and recovery evidence across a host
 reboot. A complete CoderOS profile additionally needs pinned OS packages,
 installation and boot proof, hardware absence behavior, and staged system
 update/rollback acceptance. Those remain explicit M11/M12 work.

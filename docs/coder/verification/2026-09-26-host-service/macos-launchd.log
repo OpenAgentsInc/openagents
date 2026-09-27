@@ -1,0 +1,169 @@
+base=/private/tmp/claude-501/-Users-christopherdavid-work-openagents/803a9035-5d7c-415b-8a0b-435e9f5fbcb5/scratchpad/coder-service-check.SZwqDS label=org.openagents.test.coder-service-1790470027
+v1=f030a87eec03ed7165accead809d15c68f5caf4c4e88221db866a22b60f65a7c v2=9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30 bad=5c6b374d2d3cf649f91ca78b72b951afd6e0175ee8c1dce559e62ad3412ef1a2 silent=092174ab5409b8c97b51f6902e357eb75f877824ce63249bbe355506fe5f24df
+--- install
+{
+  "definition": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/803a9035-5d7c-415b-8a0b-435e9f5fbcb5/scratchpad/coder-service-check.SZwqDS/host/service/org.openagents.test.coder-service-1790470027.plist",
+  "registration": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/803a9035-5d7c-415b-8a0b-435e9f5fbcb5/scratchpad/coder-service-check.SZwqDS/LaunchAgents/org.openagents.test.coder-service-1790470027.plist",
+  "started": true,
+  "linger_enabled": false
+}
+--- status after install
+{
+  "platform": "macos",
+  "label": "org.openagents.test.coder-service-1790470027",
+  "definition_current": true,
+  "registered": true,
+  "loaded": true,
+  "running": true,
+  "pid": 49099,
+  "enabled": true,
+  "starts_at": "login",
+  "survives_logout": false,
+  "linger": null,
+  "pending_restart": false,
+  "pending_reasons": [],
+  "committed": "f030a87eec03ed7165accead809d15c68f5caf4c4e88221db866a22b60f65a7c",
+  "descriptor": {
+    "capabilities": [
+      "fixture-one",
+      "host-rollback",
+      "host-trial-update"
+    ],
+    "host_generation": 1,
+    "host_key": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "listen": "127.0.0.1:47100",
+    "protocol_version": 1,
+    "schema": "openagents.coder.host-descriptor.v1",
+    "state": "ready",
+    "update": {
+      "from": null,
+      "reason": null,
+      "request": null,
+      "state": "none",
+      "target": null
+    },
+    "version": "f030a87eec03ed7165accead809d15c68f5caf4c4e88221db866a22b60f65a7c"
+  }
+}
+--- update to v2
+{
+  "capabilities": [
+    "fixture-two",
+    "host-rollback",
+    "host-trial-update"
+  ],
+  "host_generation": 2,
+  "host_key": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "listen": "127.0.0.1:47100",
+  "protocol_version": 1,
+  "schema": "openagents.coder.host-descriptor.v1",
+  "state": "ready",
+  "update": {
+    "from": "f030a87eec03ed7165accead809d15c68f5caf4c4e88221db866a22b60f65a7c",
+    "reason": null,
+    "request": "u1790470031769-49185",
+    "state": "committed",
+    "target": "9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30"
+  },
+  "version": "9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30"
+}
+exit=0
+marker=9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30
+--- update to failing build
+{
+  "capabilities": [
+    "fixture-two",
+    "host-rollback",
+    "host-trial-update"
+  ],
+  "host_generation": 4,
+  "host_key": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "listen": "127.0.0.1:47100",
+  "protocol_version": 1,
+  "schema": "openagents.coder.host-descriptor.v1",
+  "state": "ready",
+  "update": {
+    "from": "9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30",
+    "reason": "the trial host exited with code 3 before it reported ready",
+    "request": "u1790470032424-49192",
+    "state": "rolled-back",
+    "target": "5c6b374d2d3cf649f91ca78b72b951afd6e0175ee8c1dce559e62ad3412ef1a2"
+  },
+  "version": "9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30"
+}
+exit=2
+marker=9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30 tasks={"schema":"openagents.coder.task-store.v2","evidence":"before"}
+--- restart
+{
+  "label": "org.openagents.test.coder-service-1790470027",
+  "result": "restarted"
+}
+{
+  "capabilities": [
+    "fixture-two",
+    "host-rollback",
+    "host-trial-update"
+  ],
+  "host_generation": 5,
+  "host_key": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "listen": "127.0.0.1:47100",
+  "protocol_version": 1,
+  "schema": "openagents.coder.host-descriptor.v1",
+  "state": "ready",
+  "update": {
+    "from": "9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30",
+    "reason": "the trial host exited with code 3 before it reported ready",
+    "request": "u1790470032424-49192",
+    "state": "rolled-back",
+    "target": "5c6b374d2d3cf649f91ca78b72b951afd6e0175ee8c1dce559e62ad3412ef1a2"
+  },
+  "version": "9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30"
+}
+--- launcher SIGKILL during a trial
+trial in progress; sending SIGKILL to launcher pid 49829 (trial host group 49940)
+{
+  "capabilities": [
+    "fixture-two",
+    "host-rollback",
+    "host-trial-update"
+  ],
+  "host_generation": 7,
+  "host_key": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "listen": "127.0.0.1:47100",
+  "protocol_version": 1,
+  "schema": "openagents.coder.host-descriptor.v1",
+  "state": "ready",
+  "update": {
+    "from": "9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30",
+    "reason": "the launcher stopped during the trial, before the host reported ready",
+    "request": "u1790470043040-49930",
+    "state": "rolled-back",
+    "target": "092174ab5409b8c97b51f6902e357eb75f877824ce63249bbe355506fe5f24df"
+  },
+  "version": "9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30"
+}
+processes left in trial group 49940: 
+new launcher pid: 50828
+marker=9e627cba89f72b23bb9af37f42b9c49c67d3d03a7f9c592d6bed51b59e8c9e30 tasks={"schema":"openagents.coder.task-store.v2","evidence":"before"}
+--- status before uninstall
+  "registered": true,
+  "loaded": true,
+  "running": true,
+  "enabled": true,
+  "starts_at": "login",
+  "survives_logout": false,
+  "pending_restart": false,
+--- cleanup
+{
+  "stopped": true,
+  "registration_removed": true,
+  "definition_removed": true,
+  "preserved": [
+    "host state directories",
+    "staged bundles",
+    "launcher record and descriptor",
+    "logs"
+  ]
+}
+unloaded: launchctl print fails as expected
+no process references /private/tmp/claude-501/-Users-christopherdavid-work-openagents/803a9035-5d7c-415b-8a0b-435e9f5fbcb5/scratchpad/coder-service-check.SZwqDS
