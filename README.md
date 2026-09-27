@@ -49,29 +49,29 @@ design as a Designed profile for durable identity, bounded initiative,
 custody, guardians, and market participation. It composes the current NIPs;
 custody, sovereign lifecycle, and treasury adapters remain to be built.
 
-Coder iOS **0.5.0 (48)** is available in internal TestFlight. New or unconfigured
-installs join `wss://relay.openagents.com` automatically, with shared Nostr
-multiplayer presence. Custom relays and an explicit **Leave** choice survive
-relaunch. Tap the physical **GYM** board to open it; its entry prompt is now
-world-rendered instead of a floating native button. Detailed Gym records still
-require a separate host grant.
+Coder iOS **0.5.0 (49)** is available in internal TestFlight. The
+[Atlantis forest](docs/verse/zones.md) now runs the original Wizard Woods
+real-time combat and player controller. Zombies pursue continuously, wizards
+cast, and the bottom GPU hotbar activates Firebolt, Magic Missile, and Fireball
+with the original mana, cooldowns, projectiles, and damage. The turn-based demo
+is removed. Use **Map → Forest portal** to enter and **Plaza** to return.
 
-The [release receipt](bins/coder-ios/verification/2026-09-27-world-gym-build48/testflight-build48.json)
-confirms `VALID` and `IN_BETA_TESTING`.
-[Native verification](bins/coder-ios/verification/2026-09-27-world-gym-build48/native-verification.md)
-covers the board, saved relay choices, default public connection, and a visible
-independent peer. [Relay evidence](bins/coder-ios/verification/2026-09-27-relay-presence/README.md)
-retains signed presence and cleanup. Physical-device acceptance is separate.
+The [release receipt](bins/coder-ios/verification/2026-09-27-atlantis-realtime-build49/testflight-build49.json)
+confirms `VALID` and `IN_BETA_TESTING`. The
+[simulator recording and acceptance](bins/coder-ios/verification/2026-09-27-atlantis-realtime-build49/native-verification.md)
+show autonomous combat, Fireball launch/flight/burst while moving, cooldowns,
+and return. The [source audit](docs/verse/atlantis-source-parity.md) identifies
+retained code, scene data, host adaptations, and inherited limits. Physical-device
+acceptance is separate.
 
-The [Atlantis forest portal](docs/verse/zones.md) retains runtime-loaded artwork,
-a separate palette, and the [original real-time Wizard Woods simulation](docs/verse/atlantis-source-parity.md).
-Zombies pursue continuously; the bottom hotbar casts Firebolt, Magic Missile,
-and Fireball with the original mana, cooldowns, projectiles, and damage.
-The turn-based demo has been removed from the current source.
-Use **Map → Forest portal**, tap the arch, and select **Plaza** to return to your
-saved position. The [map, companion, and Spark/Halo gates](docs/verse/world-interactions.md)
-remain available in the amber plaza. Shared forest combat, creator publishing,
-and the future L1 construction/physics zone remain roadmap work.
+New or unconfigured installs still join `wss://relay.openagents.com`
+automatically for shared plaza presence. Custom relays and an explicit **Leave**
+choice persist. Tap the physical **GYM** board to open its world-rendered entry;
+detailed Gym records require a separate host grant. The
+[build 48 connection and Gym evidence](bins/coder-ios/verification/2026-09-27-world-gym-build48/native-verification.md)
+and [signed relay receipts](bins/coder-ios/verification/2026-09-27-relay-presence/README.md)
+remain available. Shared forest combat, creator publishing, and the future L1
+construction/physics zone remain roadmap work.
 
 Computer setup uses `./pair` or installed `coder pair`. Chats load after
 pairing, the world relay choice persists, and movement combines with looking

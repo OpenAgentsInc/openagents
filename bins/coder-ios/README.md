@@ -13,28 +13,35 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Latest internal TestFlight: 0.5.0 (48).** App Store Connect confirms `VALID`
-and `IN_BETA_TESTING`. The [distribution receipt](verification/2026-09-27-world-gym-build48/testflight-build48.json)
-binds it to clean source commit `cb655ee1ff`. New or unconfigured installs join
-`wss://relay.openagents.com` automatically. Custom relays and explicit **Leave**
-choices survive relaunch; synthetic previews stay offline. The Gym entry is a
-world-rendered sign on the physical board, activated by a depth-checked tap.
-Its detailed run and connection panels remain native controls.
+**Latest internal TestFlight: 0.5.0 (49).** App Store Connect confirms `VALID`
+and `IN_BETA_TESTING`. The [distribution receipt](verification/2026-09-27-atlantis-realtime-build49/testflight-build49.json)
+binds it to clean source commit `07bf4c2188`. Atlantis now runs the original
+Wizard Woods real-time combat and player controller. The GPU hotbar casts
+Firebolt, Magic Missile, and Fireball while monsters pursue and NPC wizards
+cast. Mana, cooldowns, projectiles, damage, statuses, and destructible ruins use
+the retained simulation. The turn-based encounter is removed.
 
-[Native acceptance](verification/2026-09-27-world-gym-build48/native-verification.md)
-checks the physical board, custom and offline choices, automatic connection,
-and real remote geometry. A separate peer is visible in the retained screenshot;
-[signed relay evidence](verification/2026-09-27-relay-presence/README.md)
-records exchanged presence and cleanup. Physical-device acceptance remains
-separate. Notification wakes remain unconfigured.
+[Native acceptance and recording](verification/2026-09-27-atlantis-realtime-build49/native-verification.md)
+show production startup, autonomous combat, Fireball launch/flight/burst during
+movement, cooldown recovery, and return to the plaza. The
+[source audit](../../docs/verse/atlantis-source-parity.md) records fidelity and
+inherited limits. Physical-device acceptance remains separate.
+
+Build 48's default public relay and world-rendered Gym entry remain. New or
+unconfigured installs join `wss://relay.openagents.com` automatically; custom
+relays and explicit **Leave** choices survive relaunch. Synthetic previews stay
+offline. Gym records require their separate host grant. The
+[connection/Gym acceptance](verification/2026-09-27-world-gym-build48/native-verification.md)
+and [signed relay evidence](verification/2026-09-27-relay-presence/README.md)
+remain retained. Notification wakes remain unconfigured.
 
 Build 47 adds the [Atlantis forest portal](../../docs/verse/zones.md), original
 runtime-loaded artwork, separate forest palette, local SRD 5.1 encounter, and
 return to the saved plaza position. Its [acceptance](verification/2026-09-27-forest-zones/README.md)
 retains normal optimized launch, an empty-cache HTTPS download, native
 portal/encounter/return controls, cached reentry, and signed packaging checks.
-Build 48 retains that historical implementation. The current source replaces
-the turn-based demo with the original Wizard Woods real-time simulation; see
+Build 49 replaces that historical turn-based demo with the original Wizard
+Woods real-time simulation; see
 [the source audit](../../docs/verse/atlantis-source-parity.md).
 
 Build 46 adds the [expandable map, companion reactions, and
@@ -82,7 +89,7 @@ The user-authorized app metadata and icon preserve the existing Xcode setup:
 | Project, scheme, target, product | `Coder` |
 | Bundle identifier | `com.openagents.coder` |
 | Development team | `HQWSG26L43` |
-| Marketing version and source build | `0.5.0` / `48` |
+| Marketing version and source build | `0.5.0` / `49` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Swift language setting | `5.10` |
 | App Store Connect app | `6807250813` |
