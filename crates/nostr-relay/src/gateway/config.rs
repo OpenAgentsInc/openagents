@@ -6,7 +6,10 @@ use crate::domain::RelaySigner;
 
 use super::{
     GatewayError,
-    push::{ApnsGateway, FcmGateway, PushExecutor, RetryPolicy, WakeTransport},
+    push::{
+        ApnsGateway, FcmGateway, MAX_PROFILES, PushExecutor, PushProfile, RetryPolicy,
+        WakeTransport,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -548,36 +551,110 @@ impl GatewayConfig {
     }
 }
 
+/// Prefix of every push setting.
+const PUSH_PREFIX: &str = "NOSTR_RELAY_PUSH_";
+/// Prefix of per-profile settings: `NOSTR_RELAY_PUSH_PROFILE_<LABEL>_<FIELD>`.
+const PROFILE_PREFIX: &str = "NOSTR_RELAY_PUSH_PROFILE_";
+/// Settings of the single-profile form.
+const SINGLE_PROFILE_NAMES: [&str; 3] = [
+    "NOSTR_RELAY_PUSH_GATEWAY",
+    "NOSTR_RELAY_PUSH_TRANSPORT",
+    "NOSTR_RELAY_PUSH_APP_PROFILE",
+];
+/// Executor-wide settings.
+const EXECUTOR_NAMES: [&str; 6] = [
+    "NOSTR_RELAY_PUSH_SECRET",
+    "NOSTR_RELAY_PUSH_KINDS",
+    "NOSTR_RELAY_PUSH_MAX_ATTEMPTS",
+    "NOSTR_RELAY_PUSH_RETRY_BASE_SECONDS",
+    "NOSTR_RELAY_PUSH_RETRY_MAX_SECONDS",
+    "NOSTR_RELAY_PUSH_PROFILES",
+];
+/// Per-profile fields. The first three are required.
+const PROFILE_FIELDS: [&str; 7] = [
+    "APP_PROFILE",
+    "TRANSPORT",
+    "GATEWAY",
+    "MAX_LEASES",
+    "MAX_ATTEMPTS",
+    "RETRY_BASE_SECONDS",
+    "RETRY_MAX_SECONDS",
+];
+
 /// Delivery stays off unless `NOSTR_RELAY_PUSH_SECRET` is set. Once it is,
 /// every other push setting is required; a partial configuration refuses.
 fn push_from_env(config: &GatewayConfig) -> Result<Option<PushExecutor>, GatewayError> {
-    let Some(secret) = optional_string("NOSTR_RELAY_PUSH_SECRET")? else {
-        for name in [
-            "NOSTR_RELAY_PUSH_GATEWAY",
-            "NOSTR_RELAY_PUSH_TRANSPORT",
-            "NOSTR_RELAY_PUSH_APP_PROFILE",
-            "NOSTR_RELAY_PUSH_KINDS",
-        ] {
-            if optional_string(name)?.is_some() {
-                return Err(GatewayError::Config(format!(
-                    "{name} requires NOSTR_RELAY_PUSH_SECRET; push delivery is off without it"
-                )));
-            }
+    let mut vars = std::collections::BTreeMap::new();
+    for (name, value) in env::vars_os() {
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !name.starts_with(PUSH_PREFIX) {
+            continue;
+        }
+        let value = value
+            .into_string()
+            .map_err(|_| config_error(&format!("{name} is not valid UTF-8")))?;
+        if !value.is_empty() {
+            vars.insert(name.to_owned(), value);
+        }
+    }
+    push_from_vars(
+        &vars,
+        config.relay_url.as_ref(),
+        config.relay_signer.as_ref(),
+    )
+}
+
+/// Build the executor from the `NOSTR_RELAY_PUSH_*` settings in `vars`.
+///
+/// Two forms name the application profiles. The single-profile form sets
+/// `NOSTR_RELAY_PUSH_APP_PROFILE`, `NOSTR_RELAY_PUSH_TRANSPORT`, and
+/// `NOSTR_RELAY_PUSH_GATEWAY`. The multi-profile form lists labels in
+/// `NOSTR_RELAY_PUSH_PROFILES` and sets
+/// `NOSTR_RELAY_PUSH_PROFILE_<LABEL>_{APP_PROFILE,TRANSPORT,GATEWAY}` for
+/// each, plus optional `MAX_LEASES`, `MAX_ATTEMPTS`, `RETRY_BASE_SECONDS`,
+/// and `RETRY_MAX_SECONDS`. Setting both forms, an unknown push setting, or
+/// a setting for an unlisted label refuses.
+fn push_from_vars(
+    vars: &std::collections::BTreeMap<String, String>,
+    relay_url: Option<&String>,
+    relay_signer: Option<&RelaySigner>,
+) -> Result<Option<PushExecutor>, GatewayError> {
+    let get = |name: &str| vars.get(name).cloned();
+    let Some(secret) = get("NOSTR_RELAY_PUSH_SECRET") else {
+        if let Some(name) = vars.keys().next() {
+            return Err(GatewayError::Config(format!(
+                "{name} requires NOSTR_RELAY_PUSH_SECRET; push delivery is off without it"
+            )));
         }
         return Ok(None);
     };
-    let required = |name: &str| -> Result<String, GatewayError> {
-        optional_string(name)?.ok_or_else(|| {
-            GatewayError::Config(format!("{name} is required with NOSTR_RELAY_PUSH_SECRET"))
-        })
-    };
-    let gateway = required("NOSTR_RELAY_PUSH_GATEWAY")?;
-    let transport_name = required("NOSTR_RELAY_PUSH_TRANSPORT")?;
-    let app_profile = required("NOSTR_RELAY_PUSH_APP_PROFILE")?;
-    let origin = config.relay_url.clone().ok_or_else(|| {
+    let listed = get("NOSTR_RELAY_PUSH_PROFILES")
+        .map(|value| parse_profile_labels(&value))
+        .transpose()?;
+    for name in vars.keys() {
+        let known = if let Some(rest) = name.strip_prefix(PROFILE_PREFIX) {
+            listed.as_ref().is_some_and(|labels| {
+                labels.iter().any(|label| {
+                    rest.strip_prefix(label.as_str())
+                        .and_then(|field| field.strip_prefix('_'))
+                        .is_some_and(|field| PROFILE_FIELDS.contains(&field))
+                })
+            })
+        } else {
+            EXECUTOR_NAMES.contains(&name.as_str()) || SINGLE_PROFILE_NAMES.contains(&name.as_str())
+        };
+        if !known {
+            return Err(GatewayError::Config(format!(
+                "{name} is not a push setting, or names a profile missing from NOSTR_RELAY_PUSH_PROFILES"
+            )));
+        }
+    }
+    let origin = relay_url.cloned().ok_or_else(|| {
         GatewayError::Config("NOSTR_RELAY_URL is required with NOSTR_RELAY_PUSH_SECRET".to_owned())
     })?;
-    let signer = config.relay_signer.clone().ok_or_else(|| {
+    let signer = relay_signer.cloned().ok_or_else(|| {
         GatewayError::Config(
             "NOSTR_RELAY_SECRET_KEY is required with NOSTR_RELAY_PUSH_SECRET".to_owned(),
         )
@@ -585,25 +662,147 @@ fn push_from_env(config: &GatewayConfig) -> Result<Option<PushExecutor>, Gateway
     let key = SecretKey::from_byte_array(decode_secret(&secret)?).map_err(|_| {
         GatewayError::Config("NOSTR_RELAY_PUSH_SECRET is not a valid Nostr secret key".to_owned())
     })?;
-    let transport: Arc<dyn WakeTransport> = match transport_name.as_str() {
-        "apns" => Arc::new(ApnsGateway::new(&gateway, signer).map_err(GatewayError::Config)?),
-        "fcm" => Arc::new(FcmGateway::new(&gateway, signer).map_err(GatewayError::Config)?),
-        _ => {
+    let retry = RetryPolicy {
+        max_attempts: parse_var(vars, "NOSTR_RELAY_PUSH_MAX_ATTEMPTS", 5)?,
+        base_delay_seconds: parse_var(vars, "NOSTR_RELAY_PUSH_RETRY_BASE_SECONDS", 10)?,
+        max_delay_seconds: parse_var(vars, "NOSTR_RELAY_PUSH_RETRY_MAX_SECONDS", 600)?,
+    };
+    let single = SINGLE_PROFILE_NAMES
+        .iter()
+        .any(|name| vars.contains_key(*name));
+    let profiles = match (listed, single) {
+        (Some(_), true) => {
             return Err(config_error(
-                "NOSTR_RELAY_PUSH_TRANSPORT must be apns or fcm",
+                "set either NOSTR_RELAY_PUSH_PROFILES or the single-profile NOSTR_RELAY_PUSH_APP_PROFILE, NOSTR_RELAY_PUSH_TRANSPORT, and NOSTR_RELAY_PUSH_GATEWAY, not both",
             ));
         }
+        (None, _) => {
+            let required = |name: &str| -> Result<String, GatewayError> {
+                get(name).ok_or_else(|| {
+                    GatewayError::Config(format!(
+                        "{name} is required with NOSTR_RELAY_PUSH_SECRET unless NOSTR_RELAY_PUSH_PROFILES is set"
+                    ))
+                })
+            };
+            let app_profile = required("NOSTR_RELAY_PUSH_APP_PROFILE")?;
+            let transport = required("NOSTR_RELAY_PUSH_TRANSPORT")?;
+            let gateway = required("NOSTR_RELAY_PUSH_GATEWAY")?;
+            vec![PushProfile::new(
+                app_profile,
+                push_transport("NOSTR_RELAY_PUSH_TRANSPORT", &transport, &gateway, &signer)?,
+            )]
+        }
+        (Some(labels), false) => labels
+            .iter()
+            .map(|label| profile_from_vars(vars, label, retry, &signer))
+            .collect::<Result<Vec<_>, _>>()?,
     };
-    let mut executor = PushExecutor::new(key, origin, app_profile, transport);
-    if let Some(kinds) = optional_string("NOSTR_RELAY_PUSH_KINDS")? {
+    let mut executor = PushExecutor::with_profiles(key, origin, profiles);
+    if let Some(kinds) = get("NOSTR_RELAY_PUSH_KINDS") {
         executor.push_kinds = parse_push_kinds(&kinds)?;
     }
-    executor.retry = RetryPolicy {
-        max_attempts: parse_or("NOSTR_RELAY_PUSH_MAX_ATTEMPTS", "5")?,
-        base_delay_seconds: parse_or("NOSTR_RELAY_PUSH_RETRY_BASE_SECONDS", "10")?,
-        max_delay_seconds: parse_or("NOSTR_RELAY_PUSH_RETRY_MAX_SECONDS", "600")?,
-    };
+    executor.retry = retry;
     Ok(Some(executor))
+}
+
+fn profile_from_vars(
+    vars: &std::collections::BTreeMap<String, String>,
+    label: &str,
+    default_retry: RetryPolicy,
+    signer: &RelaySigner,
+) -> Result<PushProfile, GatewayError> {
+    let name = |field: &str| format!("{PROFILE_PREFIX}{label}_{field}");
+    let required = |field: &str| -> Result<String, GatewayError> {
+        let name = name(field);
+        vars.get(&name).cloned().ok_or_else(|| {
+            GatewayError::Config(format!(
+                "{name} is required because NOSTR_RELAY_PUSH_PROFILES lists {label}"
+            ))
+        })
+    };
+    let app_profile = required("APP_PROFILE")?;
+    let transport = required("TRANSPORT")?;
+    let gateway = required("GATEWAY")?;
+    let mut profile = PushProfile::new(
+        app_profile,
+        push_transport(&name("TRANSPORT"), &transport, &gateway, signer)?,
+    );
+    if ["MAX_ATTEMPTS", "RETRY_BASE_SECONDS", "RETRY_MAX_SECONDS"]
+        .iter()
+        .any(|field| vars.contains_key(&name(field)))
+    {
+        profile.retry = Some(RetryPolicy {
+            max_attempts: parse_var(vars, &name("MAX_ATTEMPTS"), default_retry.max_attempts)?,
+            base_delay_seconds: parse_var(
+                vars,
+                &name("RETRY_BASE_SECONDS"),
+                default_retry.base_delay_seconds,
+            )?,
+            max_delay_seconds: parse_var(
+                vars,
+                &name("RETRY_MAX_SECONDS"),
+                default_retry.max_delay_seconds,
+            )?,
+        });
+    }
+    if vars.contains_key(&name("MAX_LEASES")) {
+        profile.max_leases_per_pubkey = Some(parse_var(vars, &name("MAX_LEASES"), 0_usize)?);
+    }
+    Ok(profile)
+}
+
+fn push_transport(
+    name: &str,
+    transport: &str,
+    gateway: &str,
+    signer: &RelaySigner,
+) -> Result<Arc<dyn WakeTransport>, GatewayError> {
+    match transport {
+        "apns" => Ok(Arc::new(
+            ApnsGateway::new(gateway, signer.clone()).map_err(GatewayError::Config)?,
+        )),
+        "fcm" => Ok(Arc::new(
+            FcmGateway::new(gateway, signer.clone()).map_err(GatewayError::Config)?,
+        )),
+        _ => Err(GatewayError::Config(format!("{name} must be apns or fcm"))),
+    }
+}
+
+fn parse_profile_labels(value: &str) -> Result<Vec<String>, GatewayError> {
+    let labels = value.split(',').map(str::to_owned).collect::<Vec<_>>();
+    let valid = |label: &String| {
+        (1..=32).contains(&label.len())
+            && label
+                .bytes()
+                .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+    };
+    if labels.len() > MAX_PROFILES || !labels.iter().all(valid) {
+        return Err(config_error(&format!(
+            "NOSTR_RELAY_PUSH_PROFILES must list 1 to {MAX_PROFILES} comma-separated labels of uppercase letters and digits"
+        )));
+    }
+    if labels
+        .iter()
+        .enumerate()
+        .any(|(index, label)| labels[..index].contains(label))
+    {
+        return Err(config_error(
+            "NOSTR_RELAY_PUSH_PROFILES lists a label twice",
+        ));
+    }
+    Ok(labels)
+}
+
+fn parse_var<T>(
+    vars: &std::collections::BTreeMap<String, String>,
+    name: &str,
+    default: T,
+) -> Result<T, GatewayError>
+where
+    T: FromStr,
+{
+    vars.get(name)
+        .map_or(Ok(default), |value| parse_value(name, value))
 }
 
 fn parse_push_kinds(value: &str) -> Result<Vec<u16>, GatewayError> {
@@ -759,7 +958,7 @@ fn config(reason: impl Into<String>) -> GatewayError {
 
 #[cfg(test)]
 mod tests {
-    use super::{GatewayConfig, parse_push_kinds, parse_supported_nips};
+    use super::{GatewayConfig, parse_push_kinds, parse_supported_nips, push_from_vars};
     use crate::{
         domain::RelaySigner,
         gateway::push::{Platform, PushExecutor, TestTransport},
@@ -795,6 +994,120 @@ mod tests {
         assert_eq!(parse_push_kinds("1,3188").unwrap(), [1, 3_188]);
         assert!(parse_push_kinds("1, 2").is_err());
         assert!(parse_push_kinds("").is_err());
+    }
+
+    fn vars(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn push_settings_name_one_profile_or_several_and_refuse_partial_forms() {
+        let url = "ws://relay.test".to_owned();
+        let signer = RelaySigner::from_secret_hex(&"08".repeat(32)).unwrap();
+        let secret = "09".repeat(32);
+        let parse =
+            |pairs: &[(&str, &str)]| push_from_vars(&vars(pairs), Some(&url), Some(&signer));
+
+        // Off by default, and no push setting without the secret.
+        assert!(parse(&[]).unwrap().is_none());
+        assert!(parse(&[("NOSTR_RELAY_PUSH_PROFILES", "IOS")]).is_err());
+        assert!(parse(&[("NOSTR_RELAY_PUSH_PROFILE_IOS_GATEWAY", "http://g")]).is_err());
+
+        // The single-profile form keeps working unchanged.
+        let single = [
+            ("NOSTR_RELAY_PUSH_SECRET", secret.as_str()),
+            ("NOSTR_RELAY_PUSH_APP_PROFILE", "app.test/ios"),
+            ("NOSTR_RELAY_PUSH_TRANSPORT", "apns"),
+            ("NOSTR_RELAY_PUSH_GATEWAY", "http://127.0.0.1:8446"),
+            ("NOSTR_RELAY_PUSH_MAX_ATTEMPTS", "3"),
+        ];
+        let executor = parse(&single).unwrap().unwrap();
+        assert_eq!(executor.profiles.len(), 1);
+        assert_eq!(executor.profiles[0].id, "app.test/ios");
+        assert_eq!(executor.profiles[0].platform().as_str(), "apns");
+        assert_eq!(executor.retry.max_attempts, 3);
+        assert!(executor.validate().is_ok());
+        assert!(parse(&single[..3]).is_err(), "a missing gateway refuses");
+
+        // The multi-profile form: one APNs and one FCM profile.
+        let multi = [
+            ("NOSTR_RELAY_PUSH_SECRET", secret.as_str()),
+            ("NOSTR_RELAY_PUSH_PROFILES", "IOS,ANDROID"),
+            ("NOSTR_RELAY_PUSH_PROFILE_IOS_APP_PROFILE", "app.test/ios"),
+            ("NOSTR_RELAY_PUSH_PROFILE_IOS_TRANSPORT", "apns"),
+            (
+                "NOSTR_RELAY_PUSH_PROFILE_IOS_GATEWAY",
+                "http://127.0.0.1:8446",
+            ),
+            (
+                "NOSTR_RELAY_PUSH_PROFILE_ANDROID_APP_PROFILE",
+                "app.test/android",
+            ),
+            ("NOSTR_RELAY_PUSH_PROFILE_ANDROID_TRANSPORT", "fcm"),
+            (
+                "NOSTR_RELAY_PUSH_PROFILE_ANDROID_GATEWAY",
+                "http://127.0.0.1:8447",
+            ),
+            ("NOSTR_RELAY_PUSH_PROFILE_ANDROID_MAX_ATTEMPTS", "2"),
+            ("NOSTR_RELAY_PUSH_PROFILE_ANDROID_MAX_LEASES", "4"),
+        ];
+        let executor = parse(&multi).unwrap().unwrap();
+        assert_eq!(executor.profiles.len(), 2);
+        assert!(executor.profile("app.test/ios", "apns").is_some());
+        let android = executor.profile("app.test/android", "fcm").unwrap();
+        assert_eq!(android.retry.unwrap().max_attempts, 2);
+        assert_eq!(android.retry.unwrap().base_delay_seconds, 10);
+        assert_eq!(android.max_leases_per_pubkey, Some(4));
+        assert!(executor.profiles[0].retry.is_none());
+        assert!(executor.validate().is_ok());
+        let document = nostr::push_lease::descriptor_document(&executor.descriptor());
+        assert_eq!(document["app_profiles"].as_array().unwrap().len(), 2);
+
+        // Each refusal: a missing field, a stray label, an unknown field,
+        // both forms at once, a bad transport, a bad or repeated label.
+        let without = |name: &str| {
+            multi
+                .iter()
+                .copied()
+                .filter(|(key, _)| *key != name)
+                .collect::<Vec<_>>()
+        };
+        assert!(parse(&without("NOSTR_RELAY_PUSH_PROFILE_ANDROID_GATEWAY")).is_err());
+        assert!(parse(&without("NOSTR_RELAY_PUSH_PROFILE_IOS_TRANSPORT")).is_err());
+        let with = |extra: (&'static str, &'static str)| {
+            let mut all = multi.to_vec();
+            all.push(extra);
+            all
+        };
+        assert!(parse(&with(("NOSTR_RELAY_PUSH_PROFILE_WEB_GATEWAY", "http://g"))).is_err());
+        assert!(parse(&with(("NOSTR_RELAY_PUSH_PROFILE_IOS_TOPIC", "x"))).is_err());
+        assert!(parse(&with(("NOSTR_RELAY_PUSH_APP_PROFILE", "app.test/ios"))).is_err());
+        assert!(parse(&with(("NOSTR_RELAY_PUSH_UNKNOWN", "1"))).is_err());
+        let mut unifiedpush = without("NOSTR_RELAY_PUSH_PROFILE_ANDROID_TRANSPORT");
+        unifiedpush.push(("NOSTR_RELAY_PUSH_PROFILE_ANDROID_TRANSPORT", "unifiedpush"));
+        assert!(parse(&unifiedpush).is_err());
+        for labels in ["ios,ANDROID", "IOS,IOS", "", "IOS,,ANDROID", "IOS_1"] {
+            let mut listed = without("NOSTR_RELAY_PUSH_PROFILES");
+            listed.push(("NOSTR_RELAY_PUSH_PROFILES", labels));
+            assert!(parse(&listed).is_err(), "{labels:?}");
+        }
+        // Two labels naming one profile id refuse at validation.
+        let mut same = without("NOSTR_RELAY_PUSH_PROFILE_ANDROID_APP_PROFILE");
+        same.push((
+            "NOSTR_RELAY_PUSH_PROFILE_ANDROID_APP_PROFILE",
+            "app.test/ios",
+        ));
+        assert!(parse(&same).unwrap().unwrap().validate().is_err());
+        // A profile quota above the origin quota refuses at validation.
+        let mut quota = without("NOSTR_RELAY_PUSH_PROFILE_ANDROID_MAX_LEASES");
+        quota.push(("NOSTR_RELAY_PUSH_PROFILE_ANDROID_MAX_LEASES", "17"));
+        assert!(parse(&quota).unwrap().unwrap().validate().is_err());
+        // The relay URL and signing key stay required.
+        assert!(push_from_vars(&vars(&multi), None, Some(&signer)).is_err());
+        assert!(push_from_vars(&vars(&multi), Some(&url), None).is_err());
     }
 
     #[test]

@@ -3,7 +3,8 @@
 //! Covers lease create, renew, expire, and revoke; a delivery job that
 //! survives a restart and is claimed once; retries and the dead-letter
 //! state; a revoked device and a removed group member that get no further
-//! wakes; and one end-to-end wake through a running gateway. Set
+//! wakes; one executor serving an APNs profile and an FCM profile at once;
+//! and one end-to-end wake through a running gateway. Set
 //! `NOSTR_RELAY_TEST_DATABASE_URL` and `NOSTR_RELAY_TEST_ALLOW_DESTRUCTIVE=1`,
 //! or run `scripts/test-postgres.sh`.
 
@@ -18,7 +19,7 @@ use nostr::nip44::{conversation_key, encrypt};
 use nostr_relay::{
     domain::{Event, RelaySigner, Tag},
     gateway::{
-        Gateway, GatewayConfig, PushExecutor, RetryPolicy,
+        Gateway, GatewayConfig, PushExecutor, PushProfile, RetryPolicy,
         push::{self, Platform, TestTransport, WakeOutcome},
     },
     store::{AdmissionOutcome, AdmissionRejection, PushDeliveryCheck, PushDisposition, Store},
@@ -33,6 +34,8 @@ const EXECUTOR: u8 = 0x42;
 const STORE_ORIGIN: &str = "ws://store.test";
 const GATEWAY_ORIGIN: &str = "ws://relay.test";
 const PROFILE: &str = "app.test/ios";
+const ANDROID_PROFILE: &str = "app.test/android";
+const PROFILES_ORIGIN: &str = "ws://profiles.test";
 const ROOM: &str = "5c4b1d2e-7f3a-4b6c-9d8e-0f1a2b3c4d5e";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -63,6 +66,7 @@ async fn push_executor_contract_against_postgres() {
     revoked_devices_get_no_further_wakes(&mut store, &executor, &transport, t0).await;
     removed_members_get_no_further_wakes(&database_url, &mut store, &executor, &transport, t0)
         .await;
+    one_executor_serves_both_platforms(&mut store, t0).await;
     drop(store);
     gateway_wakes_end_to_end(&database_url).await;
 }
@@ -728,6 +732,246 @@ async fn gateway_wakes_end_to_end(database_url: &str) {
         .unwrap()
         .unwrap()
         .unwrap();
+}
+
+/// One executor with an APNs profile and an FCM profile. Each lease wakes
+/// through its own profile's transport; an unknown profile refuses; each
+/// profile keeps its own quota, retry bounds, and dead-letter state; and
+/// jobs for a withdrawn profile are suppressed.
+async fn one_executor_serves_both_platforms(store: &mut Store, t0: u64) {
+    let apns = TestTransport::new(Platform::Apns);
+    let fcm = TestTransport::new(Platform::Fcm);
+    let mut ios = PushProfile::new(PROFILE, apns.clone());
+    ios.retry = Some(RetryPolicy {
+        max_attempts: 2,
+        base_delay_seconds: 10,
+        max_delay_seconds: 600,
+    });
+    let mut android = PushProfile::new(ANDROID_PROFILE, fcm.clone());
+    android.retry = Some(RetryPolicy {
+        max_attempts: 4,
+        base_delay_seconds: 5,
+        max_delay_seconds: 600,
+    });
+    android.max_leases_per_pubkey = Some(1);
+    let executor = PushExecutor::with_profiles(
+        SecretKey::from_byte_array([EXECUTOR; 32]).unwrap(),
+        PROFILES_ORIGIN.to_owned(),
+        vec![ios, android],
+    );
+    executor.validate().unwrap();
+    let document = nostr::push_lease::descriptor_document(&executor.descriptor());
+    assert_eq!(
+        document["app_profiles"],
+        json!([
+            { "id": PROFILE, "transport": "apns" },
+            { "id": ANDROID_PROFILE, "transport": "fcm" },
+        ])
+    );
+    // Fix this origin's cursor before its first event.
+    push::match_events(store, &executor, t0 + 100)
+        .await
+        .unwrap();
+
+    let author = pubkey(0x71);
+    let subs = json!([{ "filter": { "kinds": [1], "#p": [author] }, "class": "default" }]);
+    let at = |profile: &str, transport: &str, generation: u64, endpoint: &str| {
+        json!({
+            "v": 1,
+            "origin": PROFILES_ORIGIN,
+            "app_profile": profile,
+            "transport": transport,
+            "endpoint": endpoint,
+            "generation": generation,
+            "active": true,
+            "subscriptions": subs,
+        })
+    };
+    let iphone = lease(
+        0x71,
+        "iphone",
+        t0 + 100,
+        t0 + 3_600,
+        at(PROFILE, "apns", 1, "grant-ios"),
+    );
+    let pixel = lease(
+        0x71,
+        "pixel",
+        t0 + 100,
+        t0 + 3_600,
+        at(ANDROID_PROFILE, "fcm", 1, "grant-android"),
+    );
+    assert_stored(admit(store, &executor, &iphone, t0 + 100).await);
+    assert_stored(admit(store, &executor, &pixel, t0 + 100).await);
+
+    // A profile the executor does not serve, and a served profile named
+    // with the other transport, both refuse before any state changes.
+    for plaintext in [
+        at("app.test/web", "apns", 1, "grant-web"),
+        at("app.test/web", "fcm", 1, "grant-web"),
+        at(ANDROID_PROFILE, "apns", 1, "grant-crossed"),
+        at(PROFILE, "fcm", 1, "grant-crossed"),
+    ] {
+        let refused = lease(0x71, "other", t0 + 101, t0 + 3_600, plaintext);
+        assert_eq!(
+            push::lease_write(&executor, &refused, t0 + 101).unwrap_err(),
+            "transport mismatch"
+        );
+    }
+    // The FCM profile's own quota of one refuses a second Android lease,
+    // while the APNs profile still takes a second device.
+    let tablet = lease(
+        0x71,
+        "tablet",
+        t0 + 101,
+        t0 + 3_600,
+        at(ANDROID_PROFILE, "fcm", 1, "grant-tablet"),
+    );
+    assert_eq!(
+        admit(store, &executor, &tablet, t0 + 101).await,
+        AdmissionOutcome::Rejected(AdmissionRejection::PushLease("lease quota exceeded"))
+    );
+    let ipad = lease(
+        0x71,
+        "ipad",
+        t0 + 101,
+        t0 + 3_600,
+        at(PROFILE, "apns", 1, "grant-ipad"),
+    );
+    assert_stored(admit(store, &executor, &ipad, t0 + 101).await);
+    let revoke_ipad = lease(
+        0x71,
+        "ipad",
+        t0 + 102,
+        t0 + 3_600,
+        tombstone_at(PROFILES_ORIGIN, 2),
+    );
+    assert_stored(admit(store, &executor, &revoke_ipad, t0 + 102).await);
+
+    // One mention wakes the iPhone through APNs and the Pixel through FCM.
+    let first = mention(0x74, &author, t0 + 103, "both platforms");
+    assert_stored(store.admit(&first, t0 + 103).await.unwrap());
+    assert_eq!(
+        push::match_events(store, &executor, t0 + 103)
+            .await
+            .unwrap()
+            .jobs,
+        2
+    );
+    let report = push::deliver_due(store, &executor, "w", t0 + 103)
+        .await
+        .unwrap();
+    assert_eq!((report.claimed, report.delivered), (2, 2));
+    let apns_sent = apns.sent();
+    let fcm_sent = fcm.sent();
+    assert_eq!(apns_sent.len(), 1);
+    assert_eq!(fcm_sent.len(), 1);
+    assert_eq!(apns_sent[0].endpoint, "grant-ios");
+    assert_eq!(fcm_sent[0].endpoint, "grant-android");
+    assert_ne!(apns_sent[0].request_id, fcm_sent[0].request_id);
+    let jobs = jobs_at(store, PROFILES_ORIGIN, &first.id).await;
+    assert_eq!(jobs.len(), 2);
+    assert!(jobs.iter().all(|job| job.state == "delivered"));
+    // A second pass claims nothing: each job was claimed once.
+    assert_eq!(
+        push::deliver_due(store, &executor, "w", t0 + 104)
+            .await
+            .unwrap()
+            .claimed,
+        0
+    );
+
+    // Both gateways fail. APNs allows two attempts and FCM four, with
+    // their own backoff, so the APNs job reaches the dead-letter state
+    // while the FCM job keeps retrying and then succeeds.
+    let retry = WakeOutcome::Retry {
+        after_seconds: None,
+        reason: "gateway_unavailable",
+    };
+    apns.script([retry, retry]);
+    fcm.script([retry, retry]);
+    let second = mention(0x74, &author, t0 + 110, "retry both");
+    assert_stored(store.admit(&second, t0 + 110).await.unwrap());
+    push::match_events(store, &executor, t0 + 110)
+        .await
+        .unwrap();
+    let report = push::deliver_due(store, &executor, "w", t0 + 110)
+        .await
+        .unwrap();
+    assert_eq!(report.retried, 2);
+    // FCM retries after 5 seconds, APNs after 10.
+    let report = push::deliver_due(store, &executor, "w", t0 + 115)
+        .await
+        .unwrap();
+    assert_eq!((report.claimed, report.retried), (1, 1));
+    let report = push::deliver_due(store, &executor, "w", t0 + 120)
+        .await
+        .unwrap();
+    assert_eq!((report.claimed, report.dead), (1, 1));
+    let report = push::deliver_due(store, &executor, "w", t0 + 125)
+        .await
+        .unwrap();
+    assert_eq!((report.claimed, report.delivered), (1, 1));
+    let jobs = jobs_at(store, PROFILES_ORIGIN, &second.id).await;
+    let ios_job = jobs
+        .iter()
+        .find(|job| job.installation == "iphone")
+        .unwrap();
+    let android_job = jobs.iter().find(|job| job.installation == "pixel").unwrap();
+    assert_eq!(ios_job.state, "dead");
+    assert_eq!(ios_job.last_error.as_deref(), Some("retries_exhausted"));
+    assert_eq!(ios_job.attempts, 2);
+    assert_eq!(android_job.state, "delivered");
+    assert_eq!(android_job.attempts, 3);
+    assert_eq!(apns.sent().len(), 3);
+    assert_eq!(fcm.sent().len(), 4);
+
+    // A restart without the FCM profile suppresses its pending job rather
+    // than sending it through the wrong transport, and still wakes iOS.
+    let third = mention(0x74, &author, t0 + 130, "withdrawn");
+    assert_stored(store.admit(&third, t0 + 130).await.unwrap());
+    assert_eq!(
+        push::match_events(store, &executor, t0 + 130)
+            .await
+            .unwrap()
+            .jobs,
+        2
+    );
+    let mut ios_only = executor.clone();
+    ios_only.profiles.truncate(1);
+    ios_only.validate().unwrap();
+    let report = push::deliver_due(store, &ios_only, "w", t0 + 130)
+        .await
+        .unwrap();
+    assert_eq!((report.delivered, report.suppressed), (1, 1));
+    assert_eq!(fcm.sent().len(), 4);
+    assert_eq!(apns.sent().len(), 4);
+    let jobs = jobs_at(store, PROFILES_ORIGIN, &third.id).await;
+    let android_job = jobs.iter().find(|job| job.installation == "pixel").unwrap();
+    assert_eq!(android_job.last_error.as_deref(), Some("profile_withdrawn"));
+    // Revoking the withdrawn profile's lease still succeeds.
+    let revoke_pixel = lease(
+        0x71,
+        "pixel",
+        t0 + 131,
+        t0 + 3_600,
+        tombstone_at(PROFILES_ORIGIN, 2),
+    );
+    assert_stored(admit(store, &ios_only, &revoke_pixel, t0 + 131).await);
+}
+
+async fn jobs_at(
+    store: &Store,
+    origin: &str,
+    event_id: &str,
+) -> Vec<nostr_relay::store::PushJobRecord> {
+    store
+        .push_jobs(origin, 1_000)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|job| job.event_id == event_id)
+        .collect()
 }
 
 fn executor(origin: &str, transport: Arc<TestTransport>) -> PushExecutor {

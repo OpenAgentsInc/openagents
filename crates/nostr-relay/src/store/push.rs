@@ -41,6 +41,10 @@ const ACTIVE_OTHERS_SQL: &str = r#"
 SELECT count(*) FROM push_lease
 WHERE origin = $1 AND author = $2 AND active AND installation <> $3
 "#;
+const ACTIVE_PROFILE_OTHERS_SQL: &str = r#"
+SELECT count(*) FROM push_lease
+WHERE origin = $1 AND author = $2 AND active AND installation <> $3 AND app_profile = $4
+"#;
 const UPSERT_LEASE_SQL: &str = r#"
 INSERT INTO push_lease (
     origin, author, installation, event_id, created_at, expires_at, generation,
@@ -191,6 +195,9 @@ pub struct PushLeaseWrite {
     pub subscriptions: Option<Value>,
     /// Active lease addresses per author at this origin.
     pub max_active_leases: usize,
+    /// Active lease addresses per author for this lease's application
+    /// profile, when the profile sets its own quota.
+    pub max_profile_leases: Option<usize>,
     /// Advertised maximum lease lifetime, used for watermark retention.
     pub max_lease_ttl: u64,
 }
@@ -399,6 +406,23 @@ pub(super) async fn check_lease(
         .get::<_, i64>(0);
     if usize::try_from(others).unwrap_or(usize::MAX) >= lease.max_active_leases {
         return Ok(Some("lease quota exceeded"));
+    }
+    if let Some(quota) = lease.max_profile_leases {
+        let others = transaction
+            .query_one(
+                ACTIVE_PROFILE_OTHERS_SQL,
+                &[
+                    &lease.origin,
+                    &lease.author,
+                    &lease.installation,
+                    &lease.app_profile,
+                ],
+            )
+            .await?
+            .get::<_, i64>(0);
+        if usize::try_from(others).unwrap_or(usize::MAX) >= quota {
+            return Ok(Some("lease quota exceeded"));
+        }
     }
     Ok(None)
 }

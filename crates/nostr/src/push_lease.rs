@@ -80,14 +80,53 @@ pub struct PushDescriptor {
     pub key_id: String,
     /// Current encryption pubkey, 64 lowercase hex characters.
     pub pubkey: String,
-    /// Application profile id.
-    pub app_profile: String,
-    /// Transport of that profile: `apns` or `fcm`.
-    pub transport: String,
+    /// Application profiles the executor serves, each with its transport.
+    /// Ids are unique; several profiles may share a transport.
+    pub app_profiles: Vec<AppProfile>,
     /// Kinds a lease may name.
     pub push_kinds: Vec<u16>,
     /// Limits.
     pub limits: LeaseLimits,
+}
+
+/// One advertised application profile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppProfile {
+    /// Profile id that leases name in `app_profile`.
+    pub id: String,
+    /// Transport of that profile: `apns` or `fcm`.
+    pub transport: String,
+}
+
+impl AppProfile {
+    /// A profile with this id and transport.
+    #[must_use]
+    pub fn new(id: impl Into<String>, transport: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            transport: transport.into(),
+        }
+    }
+}
+
+impl PushDescriptor {
+    /// The advertised profile with this id.
+    #[must_use]
+    pub fn app_profile(&self, id: &str) -> Option<&AppProfile> {
+        self.app_profiles.iter().find(|profile| profile.id == id)
+    }
+
+    /// Distinct advertised transports, in first-advertised order.
+    #[must_use]
+    pub fn transports(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for profile in &self.app_profiles {
+            if !out.contains(&profile.transport.as_str()) {
+                out.push(&profile.transport);
+            }
+        }
+        out
+    }
 }
 
 /// One accepted lease. Inactive leases do not match.
@@ -221,7 +260,9 @@ pub fn endpoint_digest(endpoint: &str) -> String {
 
 /// Validate a descriptor this process is willing to advertise.
 ///
-/// The transport must have a registered wake constant: `apns` or `fcm`.
+/// At least one application profile is required. Profile ids are unique
+/// and every profile's transport has a registered wake constant: `apns` or
+/// `fcm`.
 ///
 /// # Errors
 ///
@@ -235,8 +276,26 @@ pub fn validate_descriptor(descriptor: &PushDescriptor) -> Result<(), &'static s
     {
         return Err("key");
     }
-    if application_body(&descriptor.transport).is_err() || descriptor.app_profile.is_empty() {
+    if descriptor.app_profiles.is_empty()
+        || descriptor.app_profiles.iter().any(|profile| {
+            profile.id.is_empty()
+                || profile.id.len() > descriptor.limits.max_string_len
+                || application_body(&profile.transport).is_err()
+        })
+    {
         return Err("transport");
+    }
+    if descriptor
+        .app_profiles
+        .iter()
+        .enumerate()
+        .any(|(index, profile)| {
+            descriptor.app_profiles[..index]
+                .iter()
+                .any(|earlier| earlier.id == profile.id)
+        })
+    {
+        return Err("app_profiles");
     }
     if descriptor.push_kinds.is_empty()
         || descriptor.push_kinds.iter().any(|kind| {
@@ -255,14 +314,29 @@ pub fn validate_descriptor(descriptor: &PushDescriptor) -> Result<(), &'static s
 /// NIP-11 `push` object for a valid descriptor.
 #[must_use]
 pub fn descriptor_document(descriptor: &PushDescriptor) -> serde_json::Value {
+    let app_profiles = descriptor
+        .app_profiles
+        .iter()
+        .map(|profile| serde_json::json!({ "id": profile.id, "transport": profile.transport }))
+        .collect::<Vec<_>>();
+    let class_support = descriptor
+        .transports()
+        .into_iter()
+        .map(|transport| {
+            (
+                transport.to_owned(),
+                serde_json::json!(["silent", "default", "time_sensitive"]),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
     serde_json::json!({
         "origin": descriptor.origin,
         "keys": [{ "id": descriptor.key_id, "pubkey": descriptor.pubkey, "current": true }],
-        "app_profiles": [{ "id": descriptor.app_profile, "transport": descriptor.transport }],
+        "app_profiles": app_profiles,
         "push_kinds": descriptor.push_kinds,
         "urgent_kinds": [],
         "h_grammar": "uuid-v4-lowercase",
-        "class_support": { descriptor.transport.clone(): ["silent", "default", "time_sensitive"] },
+        "class_support": class_support,
         "limitation": {
             "max_lease_ttl": descriptor.limits.max_lease_ttl,
             "max_leases_per_pubkey": descriptor.limits.max_leases_per_pubkey,
@@ -366,7 +440,12 @@ pub fn accept_lease(
     let (endpoint, subscriptions) = if active {
         let profile = text_field(object, "app_profile", descriptor.limits.max_string_len)?;
         let transport = text_field(object, "transport", descriptor.limits.max_string_len)?;
-        if profile != descriptor.app_profile || transport != descriptor.transport {
+        // An unadvertised profile and a profile named with another
+        // transport are both a transport mismatch.
+        if descriptor
+            .app_profile(&profile)
+            .is_none_or(|advertised| advertised.transport != transport)
+        {
             return Err("transport mismatch".to_owned());
         }
         let endpoint = text_field(object, "endpoint", descriptor.limits.max_endpoint_len)?;
@@ -887,8 +966,7 @@ mod tests {
             origin: "ws://127.0.0.1:7447".into(),
             key_id: "current".into(),
             pubkey: pubkey.to_owned(),
-            app_profile: "com.openagents.relay/ios".into(),
-            transport: "apns".into(),
+            app_profiles: vec![AppProfile::new("com.openagents.relay/ios", "apns")],
             push_kinds: vec![1, 7, 9],
             limits: LeaseLimits::default(),
         }
@@ -908,7 +986,7 @@ mod tests {
         let plaintext = json!({
             "v": 1,
             "origin": descriptor.origin,
-            "app_profile": descriptor.app_profile,
+            "app_profile": descriptor.app_profiles[0].id,
             "transport": "apns",
             "endpoint": "abc123",
             "generation": 1,
@@ -965,15 +1043,61 @@ mod tests {
         );
         assert_eq!(endpoint_digest("abc123").len(), 64);
         let mut fcm = descriptor.clone();
-        fcm.transport = "fcm".into();
+        fcm.app_profiles[0].transport = "fcm".into();
         assert!(validate_descriptor(&fcm).is_ok());
         assert_eq!(
             descriptor_document(&fcm)["class_support"]["fcm"][0],
             "silent"
         );
         let mut unknown = descriptor.clone();
-        unknown.transport = "unifiedpush".into();
+        unknown.app_profiles[0].transport = "unifiedpush".into();
         assert!(validate_descriptor(&unknown).is_err());
+        let mut none = descriptor.clone();
+        none.app_profiles.clear();
+        assert!(validate_descriptor(&none).is_err());
+        let mut duplicate = descriptor.clone();
+        duplicate
+            .app_profiles
+            .push(AppProfile::new("com.openagents.relay/ios", "fcm"));
+        assert!(validate_descriptor(&duplicate).is_err());
+        // Both transports at once: each profile accepts only its own.
+        let mut both = descriptor.clone();
+        both.app_profiles
+            .push(AppProfile::new("com.openagents.relay/android", "fcm"));
+        assert!(validate_descriptor(&both).is_ok());
+        let document = descriptor_document(&both);
+        assert_eq!(document["app_profiles"][1]["transport"], "fcm");
+        assert_eq!(document["class_support"]["apns"][0], "silent");
+        assert_eq!(document["class_support"]["fcm"][0], "silent");
+        let lease_with = |profile: &str, transport: &str| {
+            let plaintext = json!({
+                "v": 1,
+                "origin": both.origin,
+                "app_profile": profile,
+                "transport": transport,
+                "endpoint": "abc123",
+                "generation": 1,
+                "active": true,
+                "subscriptions": [{
+                    "filter": {"kinds": [1], "#p": [author.pubkey()]},
+                    "class": "default"
+                }]
+            })
+            .to_string();
+            accept_lease(&lease_event, &plaintext, 1_100, &both, None, &[], 0)
+        };
+        assert!(lease_with("com.openagents.relay/android", "fcm").is_ok());
+        assert!(lease_with("com.openagents.relay/ios", "apns").is_ok());
+        for (profile, transport) in [
+            ("com.openagents.relay/android", "apns"),
+            ("com.openagents.relay/ios", "fcm"),
+            ("com.example.unknown/ios", "apns"),
+        ] {
+            assert_eq!(
+                lease_with(profile, transport).unwrap_err(),
+                "transport mismatch"
+            );
+        }
         let newer = author.sign(
             1_300,
             30_350,
