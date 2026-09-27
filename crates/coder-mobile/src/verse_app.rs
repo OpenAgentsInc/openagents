@@ -484,6 +484,14 @@ struct WorldTap {
 
 const TAP_DRIFT_POINTS: f32 = 12.0;
 const WORLD_TAP_SECONDS: f64 = 0.25;
+/// Radius of the movement stick's drawn base, in logical points.
+const STICK_RADIUS_POINTS: f32 = 56.0;
+/// Gap between the stick's base and the safe area, in logical points.
+const STICK_MARGIN_POINTS: f32 = 24.0;
+/// Touches this far from the stick's center take the stick.
+const STICK_GRAB_POINTS: f32 = STICK_RADIUS_POINTS * 1.25;
+/// Stick deflection that starts movement along an axis.
+const STICK_DEAD_POINTS: f32 = 12.0;
 const DOUBLE_TAP_SECONDS: f64 = 0.35;
 const DOUBLE_TAP_DISTANCE_POINTS: f32 = 32.0;
 
@@ -560,6 +568,8 @@ pub(crate) struct Scene {
     motion: Motion,
     frame_timestamp: Option<f64>,
     touches: BTreeMap<u64, Touch>,
+    /// Safe-area insets in logical points: top, right, bottom, left.
+    insets: [f32; 4],
     pointer_clock: Instant,
     last_world_tap: Option<WorldTap>,
     jump: bool,
@@ -654,6 +664,7 @@ impl Scene {
             motion: Motion::default(),
             frame_timestamp: None,
             touches: BTreeMap::new(),
+            insets: [0.0; 4],
             pointer_clock: Instant::now(),
             last_world_tap: None,
             jump: false,
@@ -943,8 +954,8 @@ impl Scene {
                 }
                 let single_touch = self.touches.is_empty();
                 let size = self.lifecycle.viewport().logical_size();
-                let movement = x < size[0] * 0.5;
-                // A right-side tap is independent from an established movement
+                let movement = self.on_stick(x, y);
+                // A tap off the stick is independent from an established movement
                 // hold. Near-simultaneous contacts still cancel taps for pinch.
                 let beside_movement = !movement
                     && self.touches.values().all(|other| {
@@ -988,7 +999,7 @@ impl Scene {
                     touch.tap_valid &= !dragged;
                     if dragged {
                         // World objects capture a tap, not the rest of a drag.
-                        // Continue with the control chosen by the starting side.
+                        // Continue with the control chosen at the touch's start.
                         touch.target = None;
                     }
                     if !touch.tap_valid
@@ -1015,6 +1026,71 @@ impl Scene {
             PointerPhase::Up | PointerPhase::Cancel => {}
         }
         Ok(())
+    }
+
+    /// Center of the movement stick, above the bottom-left safe area.
+    fn stick_center(&self) -> [f32; 2] {
+        let size = self.lifecycle.viewport().logical_size();
+        [
+            self.insets[3] + STICK_MARGIN_POINTS + STICK_RADIUS_POINTS,
+            size[1] - self.insets[2] - STICK_MARGIN_POINTS - STICK_RADIUS_POINTS,
+        ]
+    }
+
+    fn on_stick(&self, x: f32, y: f32) -> bool {
+        let center = self.stick_center();
+        (x - center[0]).hypot(y - center[1]) <= STICK_GRAB_POINTS
+    }
+
+    /// A held stick touch's offset from the stick's center, clamped to its base.
+    fn stick_deflection(&self, point: [f32; 2]) -> [f32; 2] {
+        let center = self.stick_center();
+        let dx = point[0] - center[0];
+        let dy = point[1] - center[1];
+        let length = dx.hypot(dy);
+        if length > STICK_RADIUS_POINTS {
+            let k = STICK_RADIUS_POINTS / length;
+            [dx * k, dy * k]
+        } else {
+            [dx, dy]
+        }
+    }
+
+    fn stick_ui(&self) -> verse::ui::UiBatch {
+        let mut ui = verse::ui::UiBatch::default();
+        if !self.lifecycle.active() || self.panel_open() || self.spawn_pending {
+            return ui;
+        }
+        let scale = self.lifecycle.viewport().scale();
+        let center = self.stick_center();
+        let held = self
+            .touches
+            .values()
+            .find(|p| p.movement && p.target.is_none());
+        let knob = held.map_or([0.0, 0.0], |touch| self.stick_deflection(touch.latest));
+        let base = STICK_RADIUS_POINTS * scale;
+        let alpha = if held.is_some() { 0.55 } else { 0.3 };
+        let x = center[0] * scale;
+        let y = center[1] * scale;
+        ui.frame(
+            &self.atlas,
+            x - base,
+            y - base,
+            base * 2.0,
+            base * 2.0,
+            2.0 * scale,
+            [1.0, 1.0, 1.0, alpha],
+        );
+        let knob_half = base * 0.35;
+        ui.rect(
+            &self.atlas,
+            x + knob[0] * scale - knob_half,
+            y + knob[1] * scale - knob_half,
+            knob_half * 2.0,
+            knob_half * 2.0,
+            [1.0, 1.0, 1.0, alpha + 0.25],
+        );
+        ui
     }
 
     fn cancel_taps(&mut self) {
@@ -1055,15 +1131,14 @@ impl Scene {
             .values()
             .find(|p| p.movement && p.target.is_none())
         {
-            let x = touch.latest[0] - touch.origin[0];
-            let y = touch.latest[1] - touch.origin[1];
+            let [x, y] = self.stick_deflection(touch.latest);
             input.forward = match self.camera_mode {
-                CameraMode::Touch => y < -12.0,
-                CameraMode::Motion => y <= 12.0,
+                CameraMode::Touch => y < -STICK_DEAD_POINTS,
+                CameraMode::Motion => y <= STICK_DEAD_POINTS,
             };
-            input.backward = y > 12.0;
-            input.strafe_left = x < -12.0;
-            input.strafe_right = x > 12.0;
+            input.backward = y > STICK_DEAD_POINTS;
+            input.strafe_left = x < -STICK_DEAD_POINTS;
+            input.strafe_right = x > STICK_DEAD_POINTS;
         }
         input.mouse_look = self.motion_needed()
             || self
@@ -1161,7 +1236,9 @@ impl Scene {
                 self.map.set_insets([top, right, bottom, left])?;
                 self.door_hud.set_insets([top, right, bottom, left])?;
                 self.computer_hud.set_insets([top, right, bottom, left]);
-                self.zone_hud.set_insets([top, right, bottom, left])
+                self.zone_hud.set_insets([top, right, bottom, left])?;
+                self.insets = [top, right, bottom, left];
+                Ok(())
             }
             Request::MapToggle => self.map_action(verse::minimap::MapAction::Toggle),
             Request::MapCancel => self.map_action(verse::minimap::MapAction::Cancel),
@@ -1527,6 +1604,7 @@ impl Scene {
             self.lifecycle.viewport().scale(),
         );
         ui.vertices.extend(zone_ui.vertices);
+        ui.vertices.extend(self.stick_ui().vertices);
         if self.computer_open && self.computer_hud.drawn() {
             let size = self.lifecycle.viewport().logical_size();
             let computer = self.computer();
@@ -2064,8 +2142,8 @@ mod tests {
             .install_ruins(verse::zones::assets::LoadedAssets::load_local(&pack).unwrap());
         scene.reset_zone_inputs();
         scene.update(1.0).unwrap();
-        scene.pointer(1, PointerPhase::Down, 50.0, 200.0).unwrap();
-        scene.pointer(1, PointerPhase::Move, 50.0, 150.0).unwrap();
+        scene.pointer(1, PointerPhase::Down, 60.0, 520.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 60.0, 470.0).unwrap();
         scene.update(1.05).unwrap();
         let before = scene.world.player.pos;
         let before_mana = scene.zone_snapshot().combat.unwrap().player.mana;
@@ -2094,7 +2172,7 @@ mod tests {
                 .cooldown_remaining
                 > 0.0
         );
-        scene.pointer(1, PointerPhase::Up, 50.0, 150.0).unwrap();
+        scene.pointer(1, PointerPhase::Up, 60.0, 470.0).unwrap();
         assert!(scene.touches.is_empty());
         assert!(serde_json::to_vec(&scene.packet()).unwrap().len() < 64 * 1024);
     }
@@ -2579,8 +2657,8 @@ mod tests {
     fn held_manual_movement_keeps_priority_over_a_new_map_route() {
         let mut scene = scene();
         scene.activate(true).unwrap();
-        scene.pointer(1, PointerPhase::Down, 50.0, 350.0).unwrap();
-        scene.pointer(1, PointerPhase::Move, 50.0, 300.0).unwrap();
+        scene.pointer(1, PointerPhase::Down, 60.0, 530.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 60.0, 480.0).unwrap();
         scene
             .action(Request::MapWalk { x: -5.0, z: -10.0 })
             .unwrap();
@@ -2661,8 +2739,8 @@ mod tests {
         assert!(!scene.gym_board.view().active);
         assert!(scene.gym_board.view().runs.is_empty());
         assert!(scene.action(Request::GymLaunch).is_err());
-        scene.pointer(1, PointerPhase::Down, 100.0, 300.0).unwrap();
-        scene.pointer(1, PointerPhase::Move, 100.0, 200.0).unwrap();
+        scene.pointer(1, PointerPhase::Down, 80.0, 520.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 80.0, 420.0).unwrap();
         for frame in 1..=160 {
             scene.update(1.0 + frame as f64 / 30.0).unwrap();
         }
@@ -2882,8 +2960,8 @@ mod tests {
         let mut scene = scene();
         scene.activate(true).unwrap();
         scene.update(1.0).unwrap();
-        scene.pointer(1, PointerPhase::Down, 100.0, 300.0).unwrap();
-        scene.pointer(1, PointerPhase::Move, 100.0, 200.0).unwrap();
+        scene.pointer(1, PointerPhase::Down, 80.0, 520.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 80.0, 420.0).unwrap();
         let start = scene.world.player.pos;
         for i in 1..=30 {
             scene.update(1.0 + i as f64 / 30.0).unwrap();
@@ -2909,8 +2987,8 @@ mod tests {
         scene.activate(true).unwrap();
         assert!(scene.action(Request::InteractComputer).is_err());
         scene.update(1.0).unwrap();
-        scene.pointer(1, PointerPhase::Down, 100.0, 300.0).unwrap();
-        scene.pointer(1, PointerPhase::Move, 100.0, 200.0).unwrap();
+        scene.pointer(1, PointerPhase::Down, 80.0, 520.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 80.0, 420.0).unwrap();
         for frame in 1..=20 {
             scene.update(1.0 + frame as f64 / 30.0).unwrap();
         }
@@ -2920,8 +2998,8 @@ mod tests {
         assert!(scene.packet().computer_open);
         assert!(scene.touches.is_empty());
         let stopped = scene.world.player.pos;
-        scene.pointer(2, PointerPhase::Down, 100.0, 300.0).unwrap();
-        scene.pointer(2, PointerPhase::Move, 100.0, 200.0).unwrap();
+        scene.pointer(2, PointerPhase::Down, 80.0, 520.0).unwrap();
+        scene.pointer(2, PointerPhase::Move, 80.0, 420.0).unwrap();
         scene.action(Request::Jump).unwrap();
         scene.action(Request::Sprint { enabled: true }).unwrap();
         scene.update(2.0).unwrap();
@@ -3009,11 +3087,11 @@ mod tests {
             .clone();
         // A drag on the left half does not walk while the computer is open.
         let position = scene.world.player.pos;
-        scene.pointer(2, PointerPhase::Down, 40.0, 600.0).unwrap();
-        scene.pointer(2, PointerPhase::Move, 40.0, 400.0).unwrap();
+        scene.pointer(2, PointerPhase::Down, 40.0, 540.0).unwrap();
+        scene.pointer(2, PointerPhase::Move, 40.0, 440.0).unwrap();
         scene.update(1.2).unwrap();
         scene.update(1.4).unwrap();
-        scene.pointer(2, PointerPhase::Up, 40.0, 400.0).unwrap();
+        scene.pointer(2, PointerPhase::Up, 40.0, 440.0).unwrap();
         assert_eq!(scene.world.player.pos, position);
         assert!(scene.touches.is_empty());
         // A tap on a laid-out control names the node of the current view.
@@ -3106,6 +3184,7 @@ mod tests {
             assert!(scene.computer_hit(x, y));
             let position = scene.world.player.pos;
             let yaw = scene.world.player.yaw;
+            let pitch = scene.world.camera.pitch;
             scene.pointer_at(1, PointerPhase::Down, x, y, 1.02).unwrap();
             scene.update(1.04).unwrap();
             assert_eq!(scene.world.player.pos, position);
@@ -3120,13 +3199,16 @@ mod tests {
                     scene.world.player.yaw, yaw,
                     "Monitor-started drag must look"
                 );
-                assert_eq!(scene.world.player.pos, position);
             } else {
                 assert_ne!(
-                    scene.world.player.pos, position,
-                    "Monitor-started drag must move"
+                    scene.world.camera.pitch, pitch,
+                    "Monitor-started drag must look"
                 );
             }
+            assert_eq!(
+                scene.world.player.pos, position,
+                "A drag off the stick must not move"
+            );
             scene
                 .pointer_at(1, PointerPhase::Up, end[0], end[1], 1.1)
                 .unwrap();
@@ -3176,7 +3258,7 @@ mod tests {
                     let touch = scene.touches.get_mut(&1).unwrap();
                     touch.started -= 1.0;
                 }
-                3 => scene.pointer(2, PointerPhase::Down, 10.0, 300.0).unwrap(),
+                3 => scene.pointer(2, PointerPhase::Down, 60.0, 560.0).unwrap(),
                 4 => {
                     scene.pointer(1, PointerPhase::Up, f32::NAN, y).unwrap();
                 }
@@ -3190,9 +3272,48 @@ mod tests {
             assert!(!scene.touches.contains_key(&1));
         }
         let (mut scene, [x, y]) = computer_scene();
-        scene.pointer(1, PointerPhase::Down, 10.0, 30.0).unwrap();
+        scene.pointer(1, PointerPhase::Down, 70.0, 530.0).unwrap();
         scene.pointer(1, PointerPhase::Up, x, y).unwrap();
         assert!(!scene.computer_open, "a tap must start on the monitor");
+    }
+
+    #[test]
+    fn whole_screen_looks_and_only_the_bottom_stick_moves() {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        scene.update(1.0).unwrap();
+        assert_eq!(scene.stick_center(), [80.0, 520.0]);
+        let yaw = scene.world.player.yaw;
+        // A left-side drag away from the stick looks instead of walking.
+        scene.pointer(1, PointerPhase::Down, 60.0, 200.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 120.0, 200.0).unwrap();
+        assert!(!scene.input().forward && !scene.input().backward);
+        assert_ne!(scene.world.player.yaw, yaw);
+        scene.pointer(1, PointerPhase::Up, 120.0, 200.0).unwrap();
+        // Holding the stick's center with touch look stays still; pushing past
+        // its base clamps to one axis's full deflection.
+        scene.pointer(2, PointerPhase::Down, 80.0, 520.0).unwrap();
+        assert!(!scene.input().forward);
+        scene.pointer(2, PointerPhase::Move, 80.0, 300.0).unwrap();
+        assert!(scene.input().forward && !scene.input().strafe_right);
+        assert_eq!(
+            scene.stick_deflection([80.0, 300.0]),
+            [0.0, -STICK_RADIUS_POINTS]
+        );
+        assert!(!scene.stick_ui().vertices.is_empty());
+        scene.pointer(2, PointerPhase::Up, 80.0, 300.0).unwrap();
+        // Safe-area insets lift the stick.
+        scene
+            .action(Request::HudInsets {
+                top: 0.0,
+                right: 0.0,
+                bottom: 34.0,
+                left: 10.0,
+            })
+            .unwrap();
+        assert_eq!(scene.stick_center(), [90.0, 486.0]);
+        scene.open_computer();
+        assert!(scene.stick_ui().vertices.is_empty());
     }
 
     fn world_tap(scene: &mut Scene, x: f32, timestamp: f64) {
@@ -3513,9 +3634,9 @@ mod tests {
     fn bad_and_excess_touches_do_not_poison_camera_or_keep_moving() {
         let mut scene = scene();
         scene.activate(true).unwrap();
-        scene.pointer(1, PointerPhase::Down, 100.0, 300.0).unwrap();
+        scene.pointer(1, PointerPhase::Down, 80.0, 520.0).unwrap();
         scene.pointer(2, PointerPhase::Down, 300.0, 300.0).unwrap();
-        scene.pointer(3, PointerPhase::Down, 50.0, 100.0).unwrap();
+        scene.pointer(3, PointerPhase::Down, 50.0, 500.0).unwrap();
         assert_eq!(scene.touches.len(), 2);
         assert!(scene.pointer(2, PointerPhase::Move, f32::NAN, 0.0).is_err());
         scene.pointer(2, PointerPhase::Move, 320.0, 320.0).unwrap();
@@ -3692,7 +3813,7 @@ mod tests {
     fn motion_left_hold_follows_the_smoothed_view_and_right_drag_does_not_look() {
         let mut scene = motion_scene();
         sample(&mut scene, attitude(0.0, 0.0, 0.0), 1.01);
-        scene.pointer(1, PointerPhase::Down, 100.0, 300.0).unwrap();
+        scene.pointer(1, PointerPhase::Down, 80.0, 520.0).unwrap();
         assert!(scene.input().forward);
         scene.pointer(2, PointerPhase::Down, 300.0, 300.0).unwrap();
         scene.pointer(2, PointerPhase::Move, 390.0, 390.0).unwrap();
@@ -3713,10 +3834,10 @@ mod tests {
         }
         assert!(scene.world.player.pos.x > start.x + 1.0);
         assert!(scene.world.player.pos.z > start.z);
-        scene.pointer(1, PointerPhase::Move, 130.0, 350.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 130.0, 570.0).unwrap();
         let input = scene.input();
         assert!(input.backward && input.strafe_right && !input.forward);
-        scene.pointer(1, PointerPhase::Up, 130.0, 350.0).unwrap();
+        scene.pointer(1, PointerPhase::Up, 130.0, 570.0).unwrap();
         assert!(!scene.input().forward && !scene.input().backward);
         let yaw = scene.world.player.yaw;
         scene
@@ -3725,9 +3846,9 @@ mod tests {
             })
             .unwrap();
         assert!(scene.motion.target.is_none());
-        scene.pointer(3, PointerPhase::Down, 100.0, 300.0).unwrap();
+        scene.pointer(3, PointerPhase::Down, 80.0, 520.0).unwrap();
         assert!(!scene.input().forward, "touch mode requires joystick drag");
-        scene.pointer(3, PointerPhase::Move, 100.0, 270.0).unwrap();
+        scene.pointer(3, PointerPhase::Move, 80.0, 490.0).unwrap();
         assert!(scene.input().forward);
         scene.pointer(4, PointerPhase::Down, 300.0, 300.0).unwrap();
         scene.pointer(4, PointerPhase::Move, 320.0, 300.0).unwrap();

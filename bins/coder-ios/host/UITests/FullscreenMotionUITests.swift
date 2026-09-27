@@ -69,7 +69,7 @@ final class FullscreenMotionUITests: XCTestCase {
         XCTAssertEqual(camera()[0], afterMotion[0], accuracy: 0.01, "Right drag cannot compete with motion control.")
         XCTAssertEqual(camera()[1], afterMotion[1], accuracy: 0.01, "Right drag cannot change motion-controlled pitch.")
         let beforeMove = position()
-        app.otherElements["verse-surface"].coordinate(withNormalizedOffset: CGVector(dx: 0.16, dy: 0.43)).press(forDuration: 0.9)
+        app.otherElements["verse-surface"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.87)).press(forDuration: 0.9)
         XCTAssertTrue(wait { self.distance(self.position(), beforeMove) > 0.1 }, "Holding the left side moves in motion mode.")
         app.buttons["verse-motion-recenter"].tap()
         XCTAssertTrue(wait { self.camera()[1] > 0.1 }, "Recenter visibly restores the camera's default pitch.")
