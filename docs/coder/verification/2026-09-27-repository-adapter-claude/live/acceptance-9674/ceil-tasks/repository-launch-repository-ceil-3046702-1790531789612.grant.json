@@ -1,0 +1,81 @@
+{
+  "schema": "openagents.coder.task-execution-grant.v1",
+  "task_id": "repository-ceil",
+  "intent_digest": "sha256:138c5197cf0c00bb92f67051ed6e87202244df1cf9acac42d8ececa882738a81",
+  "expected_revision": 1,
+  "expected_source_snapshot": "078341cd49b6ceca42ae24af9669fb8e5d4ca1cacc37133e4ca5c1905fffc14c",
+  "program": "/nix/store/yisa2lg79zcvgk4ck4yr6r0lz6j63hs3-bash-interactive-5.3p9/bin/bash",
+  "arguments": [],
+  "write_workspace": true,
+  "wall_seconds": 300,
+  "stream_bytes": 65536,
+  "memory_bytes": 1073741824,
+  "requirements": {
+    "schema": "openagents.coder.task-requirements.v2",
+    "version": 1,
+    "requirements": [
+      {
+        "id": "contract",
+        "statement": "Fix ceil_div in lib.rs for the documented contract over all u64 inputs. Preserve the public signature.",
+        "checks": [
+          "independent-rust"
+        ]
+      }
+    ],
+    "plan": {
+      "schema": "openagents.verification.v1",
+      "input_digest": "{candidate_digest}",
+      "seconds": 50,
+      "allow_unrestricted_reads": true,
+      "allow_network": true,
+      "checks": [
+        {
+          "id": "independent-rust",
+          "manifest": "/home/christopherdavid/acceptance-9674/registry/capabilities/repository-check-ceil.json",
+          "manifest_digest": "fa5866db6339c594f8e25e44a6b40114b8dac82ca9afce6c30de88cf2b41ad36",
+          "arguments": [
+            "{candidate_digest}"
+          ],
+          "seconds": 45,
+          "output_bytes": 65536,
+          "acceptance": {
+            "kind": "suite",
+            "suite_digest": "sha256:3b3b9871f8058a2f6d9c44c1f662ede0e47295abd6811c10dba3ccc443936e4b",
+            "input_digest": "{candidate_digest}"
+          }
+        }
+      ]
+    },
+    "instruction_targets": [],
+    "source_exclusions": [
+      "repository-task-ceil"
+    ],
+    "task_sources": [
+      "repository-task-ceil"
+    ],
+    "check_lineage": [
+      {
+        "check": "independent-rust",
+        "sources": [
+          "public-integer-contract-ceil"
+        ]
+      }
+    ]
+  },
+  "adapter_configuration": {
+    "schema": "openagents.microcoder.repository-config.v1",
+    "provider": "claude",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "generation_endpoint": "https://api.anthropic.com",
+    "decision_endpoint": "https://api.typesafe.ai",
+    "decision_model": "jev-1.13.0",
+    "max_steps": 8,
+    "acceptance": false,
+    "route": "never",
+    "knowledge": "off",
+    "dollar_limit_micros": null,
+    "expected_controller_digest": "sha256:2fc6cafeea94d295d97cefbbe5911d2b6a8966bf33c18ebe516d53bedafc312a",
+    "container": null
+  }
+}
