@@ -1,0 +1,13 @@
+Test Suite 'Selected tests' started at 2026-09-27 10:06:14.756.
+Test Suite 'CoderUITests.xctest' started at 2026-09-27 10:06:14.757.
+Test Suite 'TerminalUITests' started at 2026-09-27 10:06:14.757.
+Test Case '-[CoderUITests.TerminalUITests testOpenAShellRunCommandsRotateAndSeeLostAfterRestart]' started.
+Test Case '-[CoderUITests.TerminalUITests testOpenAShellRunCommandsRotateAndSeeLostAfterRestart]' passed (45.096 seconds).
+Test Suite 'TerminalUITests' passed at 2026-09-27 10:06:59.853.
+	 Executed 1 test, with 0 failures (0 unexpected) in 45.096 (45.097) seconds
+Test Suite 'CoderUITests.xctest' passed at 2026-09-27 10:06:59.854.
+	 Executed 1 test, with 0 failures (0 unexpected) in 45.096 (45.097) seconds
+Test Suite 'Selected tests' passed at 2026-09-27 10:06:59.854.
+	 Executed 1 test, with 0 failures (0 unexpected) in 45.096 (45.098) seconds
+** TEST SUCCEEDED **
+exit: 0

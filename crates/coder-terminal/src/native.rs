@@ -113,7 +113,7 @@ impl Draw<'_> {
                 let style = match role {
                     TextRole::Heading => self.style(Intensity::Full).add_modifier(Modifier::BOLD),
                     TextRole::Status => self.style(Intensity::Half),
-                    TextRole::Body | TextRole::Code | TextRole::Markdown => {
+                    TextRole::Body | TextRole::Code | TextRole::Markdown | TextRole::Terminal => {
                         self.style(Intensity::ThreeQuarters)
                     }
                 };

@@ -49,6 +49,8 @@ final class VerseMetalView: UIView {
     private var hudPointers = Set<UInt64>()
     /// The world computer's HUD takes every touch while it shows.
     private var computerHudVisible = false
+    /// How far the software keyboard covers this view, in points.
+    private var keyboardOverlap: CGFloat = 0
     private var hudInsets = EdgeInsets()
     private var zoneState: VerseZone?
     private var mapState: VerseMap?
@@ -70,6 +72,24 @@ final class VerseMetalView: UIView {
         accessibilityTraits = [.allowsDirectInteraction]
         bridge.bind(self)
         displayTarget.view = self
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
+                                               name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
+                                               name: UIResponder.keyboardWillHideNotification, object: nil)
+    }
+
+    /// Rust keeps the terminal page's grid and key row above the keyboard.
+    @objc private func keyboardChanged(_ notification: Notification) {
+        var overlap: CGFloat = 0
+        if notification.name != UIResponder.keyboardWillHideNotification,
+           let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+           let window {
+            let mine = convert(bounds, to: window)
+            overlap = max(0, mine.maxY - frame.minY)
+        }
+        guard overlap != keyboardOverlap else { return }
+        keyboardOverlap = overlap
+        send(["action": "computer_keyboard", "bottom": Double(overlap)], forcePublish: true, deferred: true)
     }
 
     required init?(coder: NSCoder) { nil }

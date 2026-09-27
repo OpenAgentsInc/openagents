@@ -219,7 +219,7 @@ pub extern "system" fn Java_com_openagents_coder_CoderNative_readerCall<'local>(
                 let app = readers
                     .get_mut(&handle)
                     .ok_or_else(|| error("Reader handle is stale or belongs to another thread"))?;
-                let text = serde_json::to_string(&app.call(request))
+                let text = serde_json::to_string(&app.respond(request))
                     .map_err(|_| error("Cannot encode native reader state"))?;
                 if text.len() > 1024 * 1024 {
                     return Err(error("Native reader state exceeds its size limit"));

@@ -23,6 +23,7 @@ pub mod project;
 pub mod qr;
 pub mod service;
 pub mod synthetic;
+pub mod terminal;
 
 pub use authority::{Action, Denial};
 pub use controller::{

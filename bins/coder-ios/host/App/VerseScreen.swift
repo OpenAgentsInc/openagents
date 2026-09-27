@@ -11,6 +11,8 @@ struct VerseScreen: View {
     /// The input request the HUD asked the keyboard or scanner for.
     @State private var inputToken: String?
     @State private var scanning = false
+    /// The terminal keyboard has focus.
+    @State private var typing = false
     let synthetic: Bool
 
     init(reader: MobileBridge, synthetic: Bool) {
@@ -23,6 +25,7 @@ struct VerseScreen: View {
     private var computerOpen: Bool { bridge.packet?.computer_open == true }
     private var chatsOpen: Bool { computerOpen && bridge.packet?.computer_page == "chats" }
     private var hudOpen: Bool { computerOpen && bridge.packet?.computer_hud.visible == true }
+    private var terminalOpen: Bool { hudOpen && bridge.packet?.computer_page == "terminal" }
     private var gymOpen: Bool { bridge.packet?.gym_open == true }
     /// A native control covers the world: the world surface takes no touches.
     private var nativeOpen: Bool { chatsOpen || gymOpen || currentInput != nil }
@@ -60,6 +63,34 @@ struct VerseScreen: View {
                                  stopScanning: { scanning = false })
                     .id("\(input.token)-\(scanning)")
                     .padding(.horizontal, 12).padding(.bottom, 8)
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if terminalOpen {
+                // The keyboard target for the terminal: Rust encodes every key.
+                TerminalKeyInput(focused: $typing,
+                                 text: { reader.terminal(["op": "terminal_text", "text": $0]) },
+                                 key: { name, ctrl, alt, shift in
+                                     reader.terminal(["op": "terminal_key", "key": name,
+                                                      "ctrl": ctrl, "alt": alt, "shift": shift])
+                                 },
+                                 paste: { reader.terminal(["op": "terminal_paste", "text": $0]) })
+                    .frame(width: 1, height: 1).opacity(0.02)
+            }
+        }
+        .onChange(of: terminalOpen) { _, open in
+            if !open { typing = false }
+            TerminalOrientation.allow(open)
+        }
+        .onChange(of: reader.terminalPaste) { _, asked in
+            if asked { reader.terminal(["op": "terminal_paste", "text": UIPasteboard.general.string ?? ""]) }
+        }
+        // The terminal streams: poll it quickly while its page shows.
+        .task(id: terminalOpen && active) {
+            guard terminalOpen && active else { return }
+            while !Task.isCancelled {
+                reader.pollTerminal()
+                try? await Task.sleep(for: .milliseconds(120))
             }
         }
         .onChange(of: active) { _, enabled in reader.setLifecycle(enabled) }
@@ -106,6 +137,11 @@ struct VerseScreen: View {
             inputToken = nil; scanning = false
         case "refresh":
             reader.refreshComputers()
+        case "terminal_resize":
+            guard let rows = command.rows, let cols = command.cols else { return }
+            reader.terminal(["op": "terminal_resize", "rows": rows, "cols": cols])
+        case "terminal_keyboard":
+            typing = true
         default: break
         }
     }

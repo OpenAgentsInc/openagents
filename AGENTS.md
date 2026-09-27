@@ -230,6 +230,11 @@ uses, and marks which are implemented and which are only specified.
   process groups, bounded replay with explicit gaps, idle expiry, and shutdown
   cleanup, plus portable client state. Rights and frame delivery are traits the
   resident host wires. Read `nips/openagents/NIP-TERM.md` before changing framing.
+- `crates/coder-vt` — a small terminal emulator: the VT100/xterm subset a
+  shell and common full-screen programs use, applied to a character grid, with
+  xterm key and paste encoding. `vte` parses; the grid, modes, and replies are
+  its own. The mobile terminal screen in `coder-computers::terminal` draws it.
+  Read its README before adding a sequence or a reply.
 - `crates/coder-ssh` — installs, starts or adopts, and reaches a Coder host over
   the system `ssh` binary with a fixed POSIX `sh` script and SHA-256-pinned
   archives. Only an explicit remove, or a launch with a changed release or

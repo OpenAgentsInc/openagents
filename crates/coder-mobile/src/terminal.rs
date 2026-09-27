@@ -1,62 +1,176 @@
-//! The terminal screen a linked host's **Terminal** control opens.
+//! The terminal screen a linked host's **Terminal** control opens (NIP-TERM).
 //!
-//! This is the entry point for the NIP-TERM terminal screen
-//! ([#9733](https://github.com/OpenAgentsInc/openagents/issues/9733)). The
-//! Computers surface resolves **Terminal** on a host only after the shared
-//! authority check passes (the host is online and this device holds the
-//! `terminal` right), then [`crate::App`] calls [`Terminal::open`] with the
-//! host key and label. The screen is a Rust Native view with its own
-//! instance and revisions. The world computer's HUD draws it on its
-//! **Terminal** page and routes taps back through
-//! `Request::TerminalActivate`; a native keyboard answers its input
-//! requests the same way the Computers surface's are answered.
+//! The Computers surface resolves **Terminal** on a host only after the
+//! shared authority check passes (the host is online and this device holds
+//! the `terminal` right), then [`crate::App`] calls [`Terminal::open`] with
+//! the host key and label. The screen is a Rust Native view with its own
+//! instance and revisions, drawn by the world computer's HUD on its
+//! **Terminal** page; taps return through `Request::TerminalActivate`.
 //!
-//! Until the NIP-TERM client lands, the screen names the host and offers
-//! only **Back**. Replace [`Terminal::view`] and [`Terminal::activate`] with
-//! the terminal emulator; keep the entry point and the close path.
-use rust_native::style::{Color, Style, TextWeight};
-use rust_native::{Activation, Axis, Element, Node, TextRole, ValidatedView, View};
-use serde::{Deserialize, Serialize};
+//! Rust owns the session, the emulator, the modifier latch, and every byte
+//! sent. The native host reports the grid the HUD fits, forwards keystrokes
+//! and the clipboard, and polls with `terminal_poll`, whose smaller packet
+//! carries the view only when it changed. The session starts once the host
+//! reports a size, so the shell opens at the size it is shown at.
 
-/// What a terminal control asks for. Resolved only from the current view.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Intent {
-    /// Leave the terminal and return to the host's Computers screen.
-    Close,
-}
+use coder_computers::live::Terminals;
+use coder_computers::terminal::session::Session;
+use coder_computers::terminal::{Model, Phase, TerminalIntent, view};
+use coder_vt::{Key, Modifiers};
+use rust_native::{Activation, ValidatedView};
+use serde::Serialize;
+use tokio::runtime::Handle;
 
-/// What an accepted activation did. The terminal screen adds its own
-/// outcomes, such as an updated screen, beside `Closed`.
+/// What an accepted activation did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Outcome {
+    /// The screen changed or a key was sent.
+    Updated,
     /// Return to the Computers surface.
     Closed,
+}
+
+/// The terminal screen's reply to a terminal request.
+#[derive(Serialize)]
+pub struct TerminalPacket {
+    pub schema: &'static str,
+    /// A terminal screen is open.
+    pub open: bool,
+    /// The current view's revision.
+    pub revision: u64,
+    /// The view, when newer than the revision the host said it has.
+    pub view: Option<serde_json::Value>,
+    /// The person asked to paste: the host reads its clipboard and sends
+    /// the text with `terminal_paste`.
+    pub paste: bool,
+}
+
+impl TerminalPacket {
+    pub(crate) fn closed() -> Self {
+        TerminalPacket {
+            schema: "coder.mobile.terminal.v1",
+            open: false,
+            revision: 0,
+            view: None,
+            paste: false,
+        }
+    }
 }
 
 /// One terminal screen for one host.
 pub(crate) struct Terminal {
     host: String,
     label: String,
+    terminals: Option<Terminals>,
+    runtime: Handle,
+    /// The model before the host reported a size.
+    idle: Option<Model>,
+    session: Option<Session>,
     instance: String,
     revision: u64,
-    current: Option<ValidatedView<Intent>>,
+    drawn: u64,
+    current: Option<ValidatedView<TerminalIntent>>,
+    paste: bool,
+}
+
+/// A key the native host names: an editing key's name or one character.
+fn named_key(name: &str) -> Option<Key> {
+    Some(match name {
+        "enter" => Key::Enter,
+        "backspace" => Key::Backspace,
+        "tab" => Key::Tab,
+        "backtab" => Key::BackTab,
+        "escape" => Key::Escape,
+        "up" => Key::Up,
+        "down" => Key::Down,
+        "left" => Key::Left,
+        "right" => Key::Right,
+        "home" => Key::Home,
+        "end" => Key::End,
+        "page_up" => Key::PageUp,
+        "page_down" => Key::PageDown,
+        "insert" => Key::Insert,
+        "delete" => Key::Delete,
+        _ => {
+            if let Some(number) = name.strip_prefix('f')
+                && let Ok(number @ 1..=12) = number.parse::<u8>()
+            {
+                return Some(Key::F(number));
+            }
+            let mut characters = name.chars();
+            let character = characters.next()?;
+            if characters.next().is_some() || character.is_control() {
+                return None;
+            }
+            Key::Char(character)
+        }
+    })
 }
 
 impl Terminal {
     /// Open the terminal screen for `host`. The caller has already checked
     /// the host's `terminal` right; the host checks it again on
-    /// `terminal.open`.
-    pub(crate) fn open(host: String, label: String) -> Result<Self, String> {
-        let mut terminal = Self {
+    /// `terminal.open`. Without `terminals` (a build with no live service)
+    /// the screen says it can't open one.
+    pub(crate) fn open(
+        host: String,
+        label: String,
+        terminals: Option<Terminals>,
+        runtime: Handle,
+    ) -> Result<Self, String> {
+        let mut idle = Model::new(host.clone(), label.clone(), 24, 80);
+        if terminals.is_none() {
+            idle.phase = Phase::Refused(
+                "This build can't reach computers, so it can't open a terminal.".into(),
+            );
+        }
+        let mut terminal = Terminal {
             host,
             label,
+            terminals,
+            runtime,
+            idle: Some(idle),
+            session: None,
             instance: format!("terminal:{}", coder_connect::protocol::random_id()),
             revision: 0,
+            drawn: 0,
             current: None,
+            paste: false,
         };
-        terminal.rebuild()?;
+        terminal.redraw();
+        if terminal.current.is_none() {
+            return Err("The terminal screen could not be drawn.".into());
+        }
         Ok(terminal)
+    }
+
+    fn with_model<T>(&mut self, work: impl FnOnce(&mut Model) -> T) -> T {
+        match (&self.session, &mut self.idle) {
+            (Some(session), _) => work(&mut session.model()),
+            (None, Some(model)) => work(model),
+            (None, None) => {
+                let mut model = Model::new(self.host.clone(), self.label.clone(), 24, 80);
+                let result = work(&mut model);
+                self.idle = Some(model);
+                result
+            }
+        }
+    }
+
+    /// Draw a new revision when the model changed.
+    pub(crate) fn redraw(&mut self) {
+        let instance = self.instance.clone();
+        let model_revision = self.with_model(|model| model.revision);
+        if self.current.is_some() && model_revision == self.drawn {
+            return;
+        }
+        let next = self.revision + 1;
+        let validated = self.with_model(|model| view(model, &instance, next).validate());
+        if let Ok(validated) = validated {
+            self.revision = next;
+            self.drawn = model_revision;
+            self.current = Some(validated);
+        }
     }
 
     /// The current view, as JSON for the native host and the world HUD.
@@ -64,6 +178,61 @@ impl Terminal {
         self.current
             .as_ref()
             .and_then(|view| serde_json::to_value(view.view()).ok())
+    }
+
+    /// Whether the screen asked the native host for the clipboard.
+    pub(crate) fn wants_paste(&self) -> bool {
+        self.paste
+    }
+
+    /// Start the session at the reported size, or resize it.
+    pub(crate) fn resize(&mut self, rows: u16, cols: u16) {
+        if let Some(session) = &self.session {
+            session.resize(rows, cols);
+            return;
+        }
+        let Some(mut model) = self.idle.take() else {
+            return;
+        };
+        model.resize(rows, cols);
+        match &self.terminals {
+            Some(terminals) if !model.phase.ended() => {
+                let links = terminals.links(&self.host);
+                self.session = Some(Session::start(&self.runtime, links, model));
+            }
+            _ => self.idle = Some(model),
+        }
+    }
+
+    fn send(&mut self, bytes: Vec<u8>) {
+        match &self.session {
+            Some(session) => session.send(bytes),
+            None => self.with_model(|model| {
+                model.notice = Some("Not connected. What you typed wasn't sent.".into());
+                model.touch();
+            }),
+        }
+    }
+
+    pub(crate) fn text(&mut self, text: &str) {
+        let bytes = self.with_model(|model| model.text(text));
+        self.send(bytes);
+    }
+
+    pub(crate) fn key(&mut self, name: &str, modifiers: Modifiers) {
+        let Some(key) = named_key(name) else {
+            return;
+        };
+        let bytes = self.with_model(|model| model.key(key, modifiers));
+        self.send(bytes);
+    }
+
+    pub(crate) fn paste(&mut self, text: &str) {
+        self.paste = false;
+        let bytes = self.with_model(|model| model.vt.paste(text));
+        if !bytes.is_empty() {
+            self.send(bytes);
+        }
     }
 
     /// Resolve a tap against the current view.
@@ -76,74 +245,54 @@ impl Terminal {
             .map_err(|_| "The terminal screen changed. Try again.".to_owned())?
             .clone();
         match intent {
-            Intent::Close => Ok(Outcome::Closed),
+            TerminalIntent::Key { key } => {
+                let bytes = self.with_model(|model| model.key(key.key(), Modifiers::NONE));
+                self.send(bytes);
+            }
+            TerminalIntent::Ctrl => self.with_model(|model| {
+                model.ctrl = !model.ctrl;
+                model.touch();
+            }),
+            TerminalIntent::Interrupt => {
+                let bytes = self.with_model(|model| {
+                    model.ctrl = false;
+                    model.vt.key(Key::Char('c'), Modifiers::CTRL)
+                });
+                self.send(bytes);
+            }
+            TerminalIntent::Paste => self.paste = true,
+            TerminalIntent::Close => {
+                if let Some(session) = &self.session {
+                    session.close();
+                }
+            }
+            TerminalIntent::Reopen => {
+                let size = self.with_model(|model| model.size());
+                self.session = None;
+                self.idle = Some(Model::new(self.host.clone(), self.label.clone(), 24, 80));
+                self.resize(size.0, size.1);
+            }
+            TerminalIntent::Leave => return Ok(Outcome::Closed),
         }
+        self.redraw();
+        Ok(Outcome::Updated)
     }
 
-    fn rebuild(&mut self) -> Result<(), String> {
-        self.revision += 1;
-        let amber = |intensity: coder_ui::theme::Intensity| {
-            let rgb = intensity.color();
-            Color::rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
+    /// The reply to a terminal request, with the view when it is newer than
+    /// `known`.
+    pub(crate) fn packet(&mut self, known: Option<u64>) -> TerminalPacket {
+        self.redraw();
+        let view = match known {
+            Some(known) if known >= self.revision => None,
+            _ => self.view(),
         };
-        let text = |key: &str, value: String, role: TextRole| Node {
-            key: key.into(),
-            style: Style {
-                foreground: Some(amber(if role == TextRole::Heading {
-                    coder_ui::theme::Intensity::Full
-                } else {
-                    coder_ui::theme::Intensity::Half
-                })),
-                weight: (role == TextRole::Heading).then_some(TextWeight::Bold),
-                ..Style::default()
-            },
-            element: Element::Text { value, role },
-        };
-        let root = Node {
-            key: "terminal-screen".into(),
-            style: Style::default(),
-            element: Element::Stack {
-                axis: Axis::Vertical,
-                children: vec![
-                    text(
-                        "terminal-title",
-                        format!("Terminal on {}", self.label),
-                        TextRole::Heading,
-                    ),
-                    text(
-                        "terminal-host",
-                        format!(
-                            "Computer key {}.",
-                            self.host.get(..16).unwrap_or(&self.host)
-                        ),
-                        TextRole::Status,
-                    ),
-                    text(
-                        "terminal-status",
-                        "This build can't show terminals yet. Order work from the host's screen instead.".into(),
-                        TextRole::Status,
-                    ),
-                    Node {
-                        key: "terminal-close".into(),
-                        style: Style {
-                            foreground: Some(amber(coder_ui::theme::Intensity::Full)),
-                            ..Style::default()
-                        },
-                        element: Element::Button {
-                            label: "Back".into(),
-                            enabled: true,
-                            intent: Intent::Close,
-                        },
-                    },
-                ],
-            },
-        };
-        self.current = Some(
-            View::new(self.instance.clone(), self.revision, root)
-                .validate()
-                .map_err(|error| error.to_string())?,
-        );
-        Ok(())
+        TerminalPacket {
+            schema: "coder.mobile.terminal.v1",
+            open: true,
+            revision: self.revision,
+            view,
+            paste: self.paste,
+        }
     }
 }
 
@@ -152,11 +301,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_entry_point_names_the_host_and_closes() {
-        let mut terminal = Terminal::open("ab".repeat(32), "Studio".into()).unwrap();
+    fn named_keys_and_characters() {
+        assert_eq!(named_key("enter"), Some(Key::Enter));
+        assert_eq!(named_key("page_down"), Some(Key::PageDown));
+        assert_eq!(named_key("f12"), Some(Key::F(12)));
+        assert_eq!(named_key("f"), Some(Key::Char('f')));
+        assert_eq!(named_key("é"), Some(Key::Char('é')));
+        assert_eq!(named_key("f13"), None);
+        assert_eq!(named_key("ab"), None);
+        assert_eq!(named_key("\u{7}"), None);
+        assert_eq!(named_key(""), None);
+    }
+
+    #[test]
+    fn a_build_without_the_live_service_refuses_clearly_and_closes() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let mut terminal = Terminal::open(
+            "ab".repeat(32),
+            "Studio".into(),
+            None,
+            runtime.handle().clone(),
+        )
+        .unwrap();
+        terminal.resize(20, 40);
+        terminal.text("ls\n");
+        let packet = terminal.packet(None);
+        let text = serde_json::to_string(&packet.view).unwrap();
+        assert!(text.contains("Terminal on Studio"));
+        assert!(text.contains("can't open a terminal"));
+        assert!(packet.open);
+        // Nothing newer than what the host already has.
+        let revision = packet.revision;
+        assert!(terminal.packet(Some(revision)).view.is_none());
         let view = terminal.view().unwrap();
-        assert!(view.to_string().contains("Terminal on Studio"));
-        assert!(view.to_string().contains(&"ab".repeat(8)));
         let event = Activation {
             instance: view["instance"].as_str().unwrap().into(),
             revision: view["revision"].as_u64().unwrap(),

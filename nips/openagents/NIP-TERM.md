@@ -284,7 +284,13 @@ frame sink as traits. The resident host in
 [`crates/coder-host`](../../crates/coder-host/README.md) wires them to
 NIP-HOST grants, NIP-REACH direct channels, and sealed `3188` artifacts, and
 derives each run's terminal generation from the host key and its NIP-REACH
-generation. On
+generation. The
+Coder mobile terminal screen
+([`coder-computers::terminal`](../../crates/coder-computers/README.md#terminal))
+is a client: it opens with NIP-HOST `terminal.open`, attaches in `interact`
+mode, orders frames, shows gaps, reattaches after a lost frame or a new
+route, and reports `lost` after a host restart, drawing output with the
+[`coder-vt`](../../crates/coder-vt/README.md) emulator. On
 platforms without a Unix PTY the host refuses every open as `unavailable`.
 The fixtures are in
 [`crates/coder-pty/fixtures/nip-term.json`](../../crates/coder-pty/fixtures/nip-term.json).

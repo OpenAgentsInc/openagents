@@ -88,6 +88,16 @@ struct NativeView: Decodable {
     let root: NativeNode
 }
 
+/// The cell font for Rust Native's terminal text role. The terminal screen
+/// sizes its grid from these metrics.
+enum TerminalMetrics {
+    static let font = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    static var cell: CGSize {
+        let width = ("M" as NSString).size(withAttributes: [.font: font]).width
+        return CGSize(width: ceil(width * 100) / 100, height: ceil(font.lineHeight))
+    }
+}
+
 struct NativeRenderer: View {
     let node: NativeNode
     let revision: UInt64
@@ -124,6 +134,11 @@ struct NativeRenderer: View {
                                      surface: surface, activate: activate))
         case let .button(label, enabled):
             return AnyView(Button(label) { activate(node.key) }.disabled(!enabled)
+                .accessibilityIdentifier(node.key))
+        case let .text(value, "terminal"):
+            // One row or run of a fixed-cell grid: one line, never wrapped.
+            return AnyView(Text(verbatim: value).font(Font(TerminalMetrics.font))
+                .lineLimit(1).fixedSize(horizontal: true, vertical: true)
                 .accessibilityIdentifier(node.key))
         case let .text(value, role):
             return AnyView(NativeText(key: node.key, value: value, role: role))

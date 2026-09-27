@@ -23,6 +23,8 @@ coder-link = { path = "../coder-link" }
 coder-ssh = { path = "../coder-ssh", optional = true }
 coder-reach = { path = "../coder-reach" }
 coder-ui = { path = "../coder-ui" }
+# The terminal screen's emulator.
+coder-vt = { path = "../coder-vt" }
 nostr = { path = "../nostr" }
 rust-native = { path = "../rust-native" }
 secp256k1 = { version = "0.31.1", features = ["rand"] }

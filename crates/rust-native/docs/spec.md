@@ -14,7 +14,7 @@ not mount them or provide an application runtime.
 | --- | --- |
 | `Stack` | Ordered children on a horizontal or vertical axis. |
 | `List` | A labeled bounded window of stable rows. Paging and access to original data remain application responsibilities. |
-| `Text` | Unicode text with a body, heading, code, status, or Markdown role. A Markdown role conveys selectable document meaning; links and embedded content remain inert unless separately admitted by the application. It does not itself parse or render Markdown. |
+| `Text` | Unicode text with a body, heading, code, status, Markdown, or terminal role. A Markdown role conveys selectable document meaning; links and embedded content remain inert unless separately admitted by the application. It does not itself parse or render Markdown. A terminal role is one row, or one run of a row, of a fixed-cell character grid: adapters draw it monospaced on a single line, never wrap it, and keep every space. The application sizes the grid from the cell size its adapter reports. |
 | `Button` | A nonempty visible label, an enabled state, and the application's typed intent. |
 | `Surface` | A nonempty accessibility label and an opaque local resource ID. An adapter explicitly registers the renderer; the tree cannot name a URL, library, executable, or shader to load. |
 

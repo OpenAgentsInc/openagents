@@ -64,8 +64,8 @@ pub unsafe extern "C" fn coder_mobile_call(
                 Ok(request) => request,
                 Err(_) => return failure(),
             };
-        let packet = unsafe { &mut *handle }.call(request);
-        match serde_json::to_vec(&packet) {
+        let reply = unsafe { &mut *handle }.respond(request);
+        match serde_json::to_vec(&reply) {
             Ok(bytes) if bytes.len() <= 1024 * 1024 => buffer(bytes),
             _ => failure(),
         }

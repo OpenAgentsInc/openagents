@@ -36,6 +36,11 @@ pub enum TextRole {
     /// Selectable Markdown. Links and embedded content remain inert unless
     /// the application separately admits an interaction.
     Markdown,
+    /// One row, or one run within a row, of a fixed-cell character grid such
+    /// as a terminal screen. Adapters draw it monospaced on one line without
+    /// wrapping and keep every space. The application sizes its grid from the
+    /// cell size the adapter reports.
+    Terminal,
 }
 
 /// The initial primitive set. Other native controls need their own contracts

@@ -519,6 +519,15 @@ impl Live {
         self.shared.link(host).map(|(_, _, link)| link)
     }
 
+    /// A handle that reads each host's current link, for terminal sessions.
+    /// It stays valid while the service runs and keeps no link alive.
+    #[must_use]
+    pub fn terminals(&self) -> Terminals {
+        Terminals {
+            shared: self.shared.clone(),
+        }
+    }
+
     /// Run one access operation over the host's current link.
     fn call(&self, host: &str, op: Operation) -> Result<Outcome> {
         let (key, connection, link) = self.shared.link(host)?;
@@ -563,6 +572,30 @@ impl Live {
         {
             false
         }
+    }
+}
+
+/// Reads the current link to each host the live service supervises, so a
+/// terminal session follows the supervisor's reconnects and route changes.
+#[derive(Clone)]
+pub struct Terminals {
+    shared: Arc<Shared>,
+}
+
+impl std::fmt::Debug for Terminals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Terminals").finish_non_exhaustive()
+    }
+}
+
+impl Terminals {
+    /// The current link to `host`. A host that is not connected answers a
+    /// transport error, which a session waits out.
+    #[must_use]
+    pub fn links(&self, host: &str) -> crate::terminal::session::Links {
+        let shared = self.shared.clone();
+        let host = host.to_owned();
+        Arc::new(move || shared.link(&host).map(|(_, _, link)| link))
     }
 }
 

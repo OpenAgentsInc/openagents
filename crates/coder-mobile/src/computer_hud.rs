@@ -158,6 +158,10 @@ pub(crate) enum Command {
     CancelInput { token: String },
     /// Ask the reader worker for a fresh Computers view.
     Refresh,
+    /// The terminal page fits this grid: send it with `terminal_resize`.
+    TerminalResize { rows: u16, cols: u16 },
+    /// Show the keyboard that types into the terminal.
+    TerminalKeyboard,
 }
 
 /// What a laid-out control does.
@@ -169,12 +173,21 @@ enum Action {
     Scan,
     Type,
     CancelInput,
+    Keyboard,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Kind {
     Text(Intensity),
-    Button { enabled: bool },
+    /// One run of a terminal grid row: one unwrapped monospaced line in
+    /// the view's own colors (linear RGBA), with an optional fill.
+    Run {
+        fg: [f32; 4],
+        bg: Option<[f32; 4]>,
+    },
+    Button {
+        enabled: bool,
+    },
     Qr,
 }
 
@@ -243,6 +256,10 @@ pub(crate) struct ComputerHud {
     screen: Option<String>,
     notice: Option<String>,
     terminal_instance: Option<String>,
+    /// The grid last sent for the open terminal.
+    terminal_size: Option<(u16, u16)>,
+    /// How far the software keyboard covers the bottom, in points.
+    keyboard: f32,
     contacts: Vec<Contact>,
     outbox: Vec<Command>,
     /// A tap was forwarded and no newer feed has arrived.
@@ -261,6 +278,8 @@ impl ComputerHud {
             screen: None,
             notice: None,
             terminal_instance: None,
+            terminal_size: None,
+            keyboard: 0.0,
             contacts: Vec::new(),
             outbox: Vec::new(),
             pending: false,
@@ -315,12 +334,52 @@ impl ComputerHud {
         }
     }
 
+    /// The software keyboard covers `bottom` points of the surface. The
+    /// terminal page, which the keyboard types into, keeps above it; other
+    /// pages answer input natively and ignore it.
+    pub(crate) fn set_keyboard(&mut self, bottom: f32) -> Result<(), String> {
+        if !bottom.is_finite() || !(0.0..=4096.0).contains(&bottom) {
+            return Err("The keyboard height is out of bounds".into());
+        }
+        if self.keyboard != bottom {
+            self.contacts.clear();
+            self.keyboard = bottom;
+        }
+        Ok(())
+    }
+
     pub(crate) fn clear_contacts(&mut self) {
         self.contacts.clear();
     }
 
     pub(crate) fn take_commands(&mut self) -> Vec<Command> {
         std::mem::take(&mut self.outbox)
+    }
+
+    /// While the Terminal page shows, ask for the grid its body fits: the
+    /// columns of the body's width and the rows left after the terminal's
+    /// header and key row. Sent once per change.
+    pub(crate) fn sync_terminal(&mut self, atlas: &Atlas, size: [f32; 2]) {
+        if !self.drawn() || self.page != Page::Terminal || self.feed.terminal.is_none() {
+            return;
+        }
+        let (_, items, body, height) = self.layout(atlas, size);
+        let grid = items
+            .iter()
+            .filter(|laid| matches!(laid.kind, Kind::Run { .. }))
+            .map(|laid| laid.rect[1])
+            .fold(None::<(f32, f32)>, |range, top| match range {
+                None => Some((top, top + atlas.line)),
+                Some((low, high)) => Some((low.min(top), high.max(top + atlas.line))),
+            });
+        let grid_height = grid.map_or(0.0, |(low, high)| high - low);
+        let chrome = (height - grid_height).max(0.0);
+        let rows = ((body[3] - chrome) / atlas.line).floor().clamp(2.0, 80.0) as u16;
+        let cols = (body[2] / atlas.advance).floor().clamp(10.0, 240.0) as u16;
+        if self.terminal_size != Some((rows, cols)) {
+            self.terminal_size = Some((rows, cols));
+            self.outbox.push(Command::TerminalResize { rows, cols });
+        }
     }
 
     /// Accept the reader worker's latest views. A new terminal view opens
@@ -344,6 +403,9 @@ impl ComputerHud {
         } else if terminal.is_none() && self.page == Page::Terminal {
             self.page = Page::Computers;
             self.scroll = 0.0;
+        }
+        if terminal != self.terminal_instance {
+            self.terminal_size = None;
         }
         self.terminal_instance = terminal;
         let screen = checked
@@ -380,7 +442,10 @@ impl ComputerHud {
     }
 
     fn frame(&self, size: [f32; 2]) -> [f32; 4] {
-        let [top, right, bottom, left] = self.insets;
+        let [top, right, mut bottom, left] = self.insets;
+        if self.page == Page::Terminal {
+            bottom = bottom.max(self.keyboard);
+        }
         let x = left + 8.0;
         let w = (size[0] - left - right - 16.0).max(1.0);
         // The upper band keeps the monitor and the world in view.
@@ -416,6 +481,18 @@ impl ComputerHud {
                 lines: vec![label.into()],
                 rect: [cx, y + PAD, bw, button_h],
                 action: Some(Action::Page(page)),
+            });
+            cx += bw + GAP;
+        }
+        if self.page == Page::Terminal && self.feed.terminal.is_some() {
+            let bw = atlas.measure("KEYBOARD") + 16.0;
+            chrome.push(Laid {
+                key: "hud-terminal-keyboard".into(),
+                label: "Keyboard".into(),
+                kind: Kind::Button { enabled: true },
+                lines: vec!["KEYBOARD".into()],
+                rect: [cx, y + PAD, bw, button_h],
+                action: Some(Action::Keyboard),
             });
             cx += bw + GAP;
         }
@@ -702,6 +779,7 @@ impl ComputerHud {
                 self.outbox.push(Command::CancelInput { token: token()? });
                 self.pending = true;
             }
+            Action::Keyboard => self.outbox.push(Command::TerminalKeyboard),
         }
         Some(false)
     }
@@ -809,6 +887,23 @@ fn draw_laid(
                 }
             }
         }
+        Kind::Run { fg, bg } => {
+            let [_, _, w, h] = laid.rect;
+            if !visible(origin[1], h) {
+                return;
+            }
+            if let Some(bg) = bg {
+                ui.rect(atlas, origin[0], origin[1], w, h, bg);
+            }
+            let mut x = origin[0];
+            for c in laid.lines.first().map_or("", String::as_str).chars() {
+                if !box_drawing(ui, atlas, c, [x, origin[1]], fg) {
+                    let mut buffer = [0; 4];
+                    ui.text(atlas, x, origin[1], c.encode_utf8(&mut buffer), fg);
+                }
+                x += atlas.advance;
+            }
+        }
         Kind::Button { enabled } => {
             let [_, _, bw, bh] = laid.rect;
             if !visible(origin[1], bh) {
@@ -881,7 +976,7 @@ fn item(laid: &Laid, frame: [f32; 4]) -> Item {
     let (role, enabled) = match laid.kind {
         Kind::Button { enabled } => ("button", enabled),
         Kind::Text(Intensity::Full) => ("heading", true),
-        Kind::Text(_) | Kind::Qr => ("text", true),
+        Kind::Text(_) | Kind::Run { .. } | Kind::Qr => ("text", true),
     };
     Item {
         key: laid.key.clone(),
@@ -890,6 +985,54 @@ fn item(laid: &Laid, frame: [f32; 4]) -> Item {
         enabled,
         frame,
     }
+}
+
+/// Draws a box-drawing character the atlas lacks as lines through its cell.
+/// Returns `false` for any other character.
+fn box_drawing(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    c: char,
+    [x, y]: [f32; 2],
+    color: [f32; 4],
+) -> bool {
+    // Which arms leave the cell's center: up, down, left, right.
+    let (up, down, left, right) = match c {
+        '─' | '━' => (false, false, true, true),
+        '│' | '┃' => (true, true, false, false),
+        '┌' | '╭' => (false, true, false, true),
+        '┐' | '╮' => (false, true, true, false),
+        '└' | '╰' => (true, false, false, true),
+        '┘' | '╯' => (true, false, true, false),
+        '├' => (true, true, false, true),
+        '┤' => (true, true, true, false),
+        '┬' => (false, true, true, true),
+        '┴' => (true, false, true, true),
+        '┼' => (true, true, true, true),
+        _ => return false,
+    };
+    let (w, h) = (atlas.advance, atlas.line);
+    let (cx, cy) = ((x + w / 2.0).floor(), (y + h / 2.0).floor());
+    if left {
+        ui.rect(atlas, x, cy, cx - x + 1.0, 1.0, color);
+    }
+    if right {
+        ui.rect(atlas, cx, cy, x + w - cx, 1.0, color);
+    }
+    if up {
+        ui.rect(atlas, cx, y, 1.0, cy - y + 1.0, color);
+    }
+    if down {
+        ui.rect(atlas, cx, cy, 1.0, y + h - cy, color);
+    }
+    true
+}
+
+/// A Rust Native color as the batch's linear RGBA.
+fn linear(color: rust_native::style::Color) -> [f32; 4] {
+    let rgb = (u32::from(color.red) << 16) | (u32::from(color.green) << 8) | u32::from(color.blue);
+    let [r, g, b] = verse::palette::linear(rgb);
+    [r, g, b, f32::from(color.alpha) / 255.0]
 }
 
 fn inside([x, y, w, h]: [f32; 4], p: [f32; 2]) -> bool {
@@ -984,8 +1127,61 @@ impl<'a> Flow<'a> {
         h
     }
 
+    /// A terminal grid: each row on one line, its runs side by side in
+    /// monospaced cells, never wrapped; what passes the body's edge is cut.
+    fn grid(&mut self, rows: &[Node<Value>]) {
+        let columns = (self.width / self.atlas.advance).floor().max(1.0) as usize;
+        for row in rows {
+            let runs: Vec<&Node<Value>> = match &row.element {
+                Element::Stack { children, .. } => children.iter().collect(),
+                _ => vec![row],
+            };
+            let mut col = 0usize;
+            for run in runs {
+                let Element::Text { value, .. } = &run.element else {
+                    continue;
+                };
+                if col >= columns {
+                    break;
+                }
+                let text: String = value.chars().take(columns - col).collect();
+                let cells = text.chars().count();
+                let fg = run
+                    .style
+                    .foreground
+                    .map_or(amber(Intensity::ThreeQuarters, 1.0), linear);
+                self.items.push(Laid {
+                    key: run.key.clone(),
+                    label: text.trim().to_owned(),
+                    kind: Kind::Run {
+                        fg,
+                        bg: run.style.background.map(linear),
+                    },
+                    lines: vec![text],
+                    rect: [
+                        col as f32 * self.atlas.advance,
+                        self.y,
+                        cells as f32 * self.atlas.advance,
+                        self.atlas.line,
+                    ],
+                    action: None,
+                });
+                col += cells;
+            }
+            self.y += self.atlas.line;
+        }
+        self.y += GAP;
+    }
+
     fn block(&mut self, node: &Node<Value>, surface: Surface) {
         if self.items.len() >= 1024 {
+            return;
+        }
+        if surface == Surface::Terminal
+            && node.key == "terminal-grid"
+            && let Element::Stack { children, .. } = &node.element
+        {
+            self.grid(children);
             return;
         }
         match &node.element {
@@ -1272,5 +1468,100 @@ mod tests {
         );
         let native = ComputerHud::new(false);
         assert!(!native.drawn());
+    }
+
+    fn terminal_feed(output: &[u8]) -> Feed {
+        let mut model = coder_computers::terminal::Model::new("ab".repeat(32), "Studio", 6, 30);
+        model.phase = coder_computers::terminal::Phase::Attached;
+        model.vt.feed(output);
+        let view = coder_computers::terminal::view(&model, "terminal-1", 1);
+        Feed {
+            terminal: Some(serde_json::to_value(&view).unwrap()),
+            ..feed(1)
+        }
+    }
+
+    #[test]
+    fn the_terminal_page_draws_rows_in_cells_and_asks_for_its_grid() {
+        let size = [393.0, 852.0];
+        let atlas = atlas();
+        let mut hud = ComputerHud::new(true);
+        hud.open();
+        hud.take_commands();
+        hud.feed(terminal_feed(
+            b"$ echo hi\r\nhi\r\n\x1b[31merr\x1b[0m ok\r\n\x1b(0lqk\x1b(B\r\n$ ",
+        ))
+        .unwrap();
+        assert_eq!(hud.page(), Page::Terminal);
+        let snapshot = hud.snapshot(&atlas, size, true);
+        let label = |key: &str| {
+            snapshot
+                .items
+                .iter()
+                .find(|item| item.key == key)
+                .map(|item| (item.label.clone(), item.frame))
+        };
+        // Rows are one line each, a cell per character, never wrapped.
+        let (text, first) = label("terminal-row-0").unwrap();
+        assert_eq!(text, "$ echo hi");
+        let (text, second) = label("terminal-row-1").unwrap();
+        assert_eq!(text, "hi");
+        assert_eq!(second[1] - first[1], atlas.line);
+        assert_eq!(first[2], 9.0 * atlas.advance);
+        // A colored run sits in the columns after the one before it.
+        let (text, red) = label("terminal-row-2-0").unwrap();
+        let (ok, rest) = label("terminal-row-2-1").unwrap();
+        assert_eq!((text.as_str(), ok.as_str()), ("err", "ok"));
+        assert_eq!(rest[0], red[0] + 3.0 * atlas.advance);
+        // Line drawing is drawn, not replaced with `?`.
+        assert_eq!(label("terminal-row-3").unwrap().0, "┌─┐");
+        let batch = hud.draw(&atlas, size, 1.0, None);
+        assert!(!batch.vertices.is_empty());
+
+        // The page asks once for the grid its body fits.
+        hud.sync_terminal(&atlas, size);
+        let commands = hud.take_commands();
+        let [Command::TerminalResize { rows, cols }] = commands.as_slice() else {
+            panic!("expected one resize, got {commands:?}");
+        };
+        let body = snapshot.body;
+        assert_eq!(
+            usize::from(*cols),
+            (body[2] / atlas.advance).floor() as usize
+        );
+        assert!(*rows >= 10 && f32::from(*rows) * atlas.line < body[3]);
+        hud.sync_terminal(&atlas, size);
+        assert!(hud.take_commands().is_empty());
+        // A wider surface asks again.
+        hud.sync_terminal(&atlas, [852.0, 393.0]);
+        assert!(matches!(
+            hud.take_commands().as_slice(),
+            [Command::TerminalResize { cols: wide, .. }] if wide > cols
+        ));
+
+        // The keyboard shrinks the terminal page, so its rows stay above it.
+        hud.sync_terminal(&atlas, size);
+        hud.take_commands();
+        hud.set_keyboard(300.0).unwrap();
+        hud.sync_terminal(&atlas, size);
+        assert!(matches!(
+            hud.take_commands().as_slice(),
+            [Command::TerminalResize { rows: fewer, .. }] if fewer < rows
+        ));
+        assert!(
+            hud.snapshot(&atlas, size, true).frame[1] + hud.snapshot(&atlas, size, true).frame[3]
+                <= size[1] - 300.0
+        );
+        assert!(hud.set_keyboard(f32::NAN).is_err());
+
+        // KEYBOARD asks the native host for the terminal keyboard.
+        assert!(!tap(&mut hud, size, "hud-terminal-keyboard", 9));
+        assert_eq!(hud.take_commands(), vec![Command::TerminalKeyboard]);
+        // Keys on the accessory row are view controls.
+        assert!(!tap(&mut hud, size, "terminal-key-up", 10));
+        assert!(matches!(
+            hud.take_commands().as_slice(),
+            [Command::Activate { surface: Surface::Terminal, node, .. }] if node == "terminal-key-up"
+        ));
     }
 }

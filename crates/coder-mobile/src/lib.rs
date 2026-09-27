@@ -12,8 +12,9 @@ mod terminal;
 mod verse_app;
 mod verse_ffi;
 
-pub use app::{App, Config, Packet, Request};
+pub use app::{App, Config, Packet, Reply, Request};
 pub use push::PushConfig;
+pub use terminal::TerminalPacket;
 
 #[cfg(test)]
 mod tests;
@@ -23,3 +24,6 @@ mod connection_tests;
 
 #[cfg(test)]
 mod computers_live_tests;
+
+#[cfg(test)]
+mod terminal_live_tests;

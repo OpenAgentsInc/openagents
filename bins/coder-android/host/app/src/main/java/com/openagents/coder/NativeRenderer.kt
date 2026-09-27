@@ -144,6 +144,8 @@ class NativeRenderer(private val context: Context, private val activate: (JSONOb
             val text = context.label("", if (role == "markdown") "$key-text" else key)
             if (role == "heading") { text.textSize = 18f; text.setTypeface(text.typeface, Typeface.BOLD); if (android.os.Build.VERSION.SDK_INT >= 28) text.isAccessibilityHeading = true }
             if (role == "code") text.typeface = Typeface.MONOSPACE
+            // A terminal grid row: monospaced, one line, never wrapped.
+            if (role == "terminal") { text.typeface = Typeface.MONOSPACE; text.textSize = 12f; text.maxLines = 1; text.setHorizontallyScrolling(true) }
             if (role == "status") text.textSize = 12f
             text.autoLinkMask = 0
             if (role != "markdown") return Mounted(kind, text, text = text)

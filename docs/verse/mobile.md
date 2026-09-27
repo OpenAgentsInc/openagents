@@ -174,6 +174,44 @@ computer panel, which shows the same Rust Computers screens, including
 ordering and following work. See the
 [verification record](../coder/verification/2026-09-27-verse-computer-hud.md).
 
+## Open a terminal on a linked computer
+
+A computer linked to this phone with the **Open terminals** right can run a
+shell here, over [NIP-TERM](../../nips/openagents/NIP-TERM.md). The terminal
+draws in the world computer's screen, like **COMPUTERS**.
+
+1. Tap the world computer's monitor, then **Open** on an online computer.
+2. Choose **Terminal**. It is disabled, with the reason, when the computer is
+   offline or this phone lacks the **Open terminals** right. The **TERMINAL**
+   page opens.
+3. The shell opens in the computer's first shared workspace, sized to the
+   grid the page fits. Tap **KEYBOARD** and type. Return sends Enter and
+   Backspace deletes. The page stays above the keyboard, and the shell sees
+   the smaller grid.
+4. The key row adds **Esc**, **Tab**, **Ctrl**, **Left**, **Up**, **Down**,
+   **Right**, **^C**, and **Paste**. **Ctrl** applies to the next key only;
+   **Ctrl on** shows it is latched. A hardware keyboard's arrows, Escape,
+   Tab, and Control combinations also work.
+5. Turn the phone to landscape for a wider terminal. Only the terminal page
+   rotates; the shell sees each size change.
+
+**Back** detaches and returns to **COMPUTERS**; the shell keeps running there
+until it exits, you end it, or the computer ends it after its idle period.
+**End terminal** ends it. If the route drops, the page says **Reconnecting**
+and then shows what you missed. Output the computer discarded meanwhile
+appears as an **[output lost: …]** line, never joined to the output around
+it. Nothing you type while disconnected is queued. After the computer's host
+restarts, the terminal shows **Lost**; choose **Open a new terminal**.
+
+Rust owns the session and the [`coder-vt`](../../crates/coder-vt/README.md)
+emulator (`coder-computers::terminal`), the terminal view, and every byte
+sent; the HUD draws each grid row in monospaced cells and asks for the grid
+its page fits. The iOS host forwards keystrokes and the clipboard and polls
+the terminal while its page shows. Android shares the Rust, and its renderer
+draws terminal rows monospaced, but it has no terminal keyboard or grid
+sizing yet. See
+the [verification record](../coder/verification/2026-09-27-mobile-terminal.md).
+
 ## Join another player
 
 The public plaza is the default world connection. It publishes the phone's

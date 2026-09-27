@@ -51,6 +51,8 @@ struct Direct {
 pub struct Link {
     device: Arc<Device>,
     route: Route,
+    /// The host generation this route was proven against, when known.
+    generation: Option<u64>,
     direct: Option<Direct>,
     frames_in: mpsc::UnboundedSender<Frame>,
     frames: tokio::sync::Mutex<mpsc::UnboundedReceiver<Frame>>,
@@ -169,6 +171,7 @@ impl Link {
         Ok(Self {
             device,
             route: Route::Direct(address),
+            generation: Some(generation),
             direct: Some(Direct {
                 outbound,
                 waiters,
@@ -188,11 +191,30 @@ impl Link {
         Self {
             device,
             route: Route::Relay(relay),
+            generation: None,
             direct: None,
             frames_in,
             frames: tokio::sync::Mutex::new(frames),
             subscriptions: Mutex::default(),
         }
+    }
+
+    /// A relay fallback route to a host whose fresh presence named
+    /// `generation`.
+    #[must_use]
+    pub fn relay_at(device: Arc<Device>, relay: String, generation: u64) -> Self {
+        let mut link = Self::relay(device, relay);
+        link.generation = Some(generation);
+        link
+    }
+
+    /// The host generation this route was proven against: the handshake's
+    /// on a direct channel, and the presence the connector read before it
+    /// fell back to the relay. A NIP-TERM terminal reference names the
+    /// terminal generation derived from it.
+    #[must_use]
+    pub fn generation(&self) -> Option<u64> {
+        self.generation
     }
 
     /// The route this link uses.

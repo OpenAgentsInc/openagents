@@ -291,7 +291,7 @@ async fn establish(
         .await
         .map_err(|_| Failure::Unreachable)?;
     let _ = socket.close().await;
-    Ok(Link::relay(device, relay))
+    Ok(Link::relay_at(device, relay, generation))
 }
 
 /// `Err(Some)` blocks the attempt; `Err(None)` tries the next route. A

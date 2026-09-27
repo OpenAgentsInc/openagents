@@ -52,6 +52,9 @@ struct VerseComputerCommand: Decodable {
     let revision: UInt64?
     let node: String?
     let token: String?
+    /// The grid a `terminal_resize` command asks for.
+    let rows: Int?
+    let cols: Int?
 }
 
 /// Accessibility for the HUD: one element per laid-out control, over the

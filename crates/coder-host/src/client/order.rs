@@ -47,6 +47,16 @@ impl Ordered {
     /// that is neither next nor a duplicate waits; once [`HELD_MAX`] frames
     /// wait, the earliest is applied anyway and the state reports the loss.
     pub fn push(&mut self, frame: Frame) -> Vec<Applied> {
+        self.push_frames(frame)
+            .into_iter()
+            .map(|(applied, _)| applied)
+            .collect()
+    }
+
+    /// As [`Ordered::push`], and returns each frame applied with what
+    /// applying it did, in order. An emulator feeds the data of each
+    /// [`Applied::Output`] frame.
+    pub fn push_frames(&mut self, frame: Frame) -> Vec<(Applied, Frame)> {
         let position = match &frame.body {
             Body::Output { seq, .. } | Body::Exit { seq, .. } => Some(*seq),
             Body::Gap { from, .. } => Some(*from),
@@ -59,10 +69,10 @@ impl Ordered {
                 if self.held.len() > HELD_MAX
                     && let Some((_, earliest)) = self.held.pop_first()
                 {
-                    applied.push(self.state.apply(&earliest));
+                    applied.push((self.state.apply(&earliest), earliest));
                 }
             }
-            _ => applied.push(self.state.apply(&frame)),
+            _ => applied.push((self.state.apply(&frame), frame)),
         }
         while let Some(entry) = self.held.first_entry() {
             let next = self.state.resume_after() + 1;
@@ -70,7 +80,7 @@ impl Ordered {
                 break;
             }
             let frame = entry.remove();
-            applied.push(self.state.apply(&frame));
+            applied.push((self.state.apply(&frame), frame));
         }
         applied
     }

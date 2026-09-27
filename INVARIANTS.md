@@ -22,3 +22,12 @@ See [the auto-start guide](docs/coder/runtime/host-autostart.md).
 | --- | --- | --- |
 | Tailscale, SSH, and a relay only introduce devices. Rights come only from a host-signed NIP-HOST grant, and every invitation's rights are chosen explicitly. | New on 2026-09-27 for `coder link` ([#9731](https://github.com/OpenAgentsInc/openagents/issues/9731)). | `invite_needs_explicit_rights`; `join_check_every_route_list_the_host_and_lose_it_on_revocation` in `crates/coder-setup/tests/link.rs` |
 | The owner secret key stays in one private file on the owner's computer; `coder link` never puts it, or an invitation, in an argument or a log line. | New on 2026-09-27. | `an_open_or_malformed_key_refuses_without_echoing_it`, `remote_commands_quote_every_word_and_expand_only_home` |
+
+## Mobile terminal
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| The mobile terminal screen opens only under the host grant's `terminal` right; the host checks it on every NIP-TERM request, and a missing right shows its reason rather than a terminal. | New on 2026-09-27 ([#9733](https://github.com/OpenAgentsInc/openagents/issues/9733)). | `a_device_without_the_terminal_right_is_refused_clearly`, `refusals_map_to_clear_phases` in `crates/coder-mobile` and `crates/coder-computers` |
+| Output the host discarded is shown as a marked gap, never joined to the output around it, and frames apply once, in sequence order. | New on 2026-09-27. | `output_gaps_and_exit_reach_the_model_in_order`, `a_marker_starts_on_its_own_line_and_resets_the_parser` |
+| Terminal input is live only: nothing typed while the screen is not attached is queued or sent later. | New on 2026-09-27. | `a_build_without_the_live_service_refuses_clearly`; `Session::send` refuses unless attached |
+| Terminal output is untrusted data: it cannot read or write the phone's clipboard, and a paste cannot end a bracketed paste early. | New on 2026-09-27. | `title_bell_and_ignored_commands`, `a_paste_normalizes_newlines_and_cannot_close_the_bracket` in `crates/coder-vt` |

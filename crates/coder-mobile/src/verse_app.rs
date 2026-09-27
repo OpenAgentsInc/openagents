@@ -133,6 +133,11 @@ pub(crate) enum Request {
     ComputerHudScroll {
         delta: f32,
     },
+    /// How far the software keyboard covers the surface's bottom, in
+    /// points. The terminal page stays above it.
+    ComputerKeyboard {
+        bottom: f32,
+    },
     InteractGym,
     CloseGym,
     GymView,
@@ -1280,6 +1285,7 @@ impl Scene {
                 self.computer_hud.scroll_by(&self.atlas, size, delta);
                 Ok(())
             }
+            Request::ComputerKeyboard { bottom } => self.computer_hud.set_keyboard(bottom),
             Request::InteractGym => {
                 let gym = self.gym();
                 let size = self.lifecycle.viewport().logical_size();
@@ -1882,6 +1888,10 @@ impl Scene {
 
     /// What the native host must do for the computer's HUD, once each.
     pub(crate) fn take_computer_commands(&mut self) -> Vec<crate::computer_hud::Command> {
+        if self.computer_open {
+            let size = self.lifecycle.viewport().logical_size();
+            self.computer_hud.sync_terminal(&self.atlas, size);
+        }
         self.computer_hud.take_commands()
     }
 

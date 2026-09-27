@@ -20,8 +20,21 @@ struct MobilePacket: Decodable {
     let computers_exit: Bool?
     /// The terminal screen a host's Terminal control opened.
     let terminal: NativeView?
+    /// The terminal screen asked for the clipboard's text.
+    let terminal_paste: Bool?
     /// Push wake status, present once push is configured or requested.
     let push: String?
+}
+
+/// The terminal screen's reply to a terminal request. Rust sends the view
+/// only when it is newer than the revision this host reported.
+struct TerminalPacket: Decodable {
+    let schema: String
+    let open: Bool
+    let revision: UInt64
+    let view: NativeView?
+    /// Rust asked for the clipboard's text to paste.
+    let paste: Bool
 }
 
 /// An invitation QR code Rust rendered on this device: one string of `1`
@@ -105,6 +118,38 @@ private final class RustWorker {
         }
     }
 
+    /// A terminal request. Rust answers with the terminal screen's smaller
+    /// packet: its view only when it changed, and the raw view for the HUD.
+    func sendTerminal(_ request: [String: Any],
+                      completion: @escaping (Result<(TerminalPacket, [String: Any]?), Error>) -> Void) {
+        queue.async {
+            do {
+                let data = try self.raw(request)
+                let packet = try JSONDecoder().decode(TerminalPacket.self, from: data)
+                guard packet.schema == "coder.mobile.terminal.v1",
+                      packet.view == nil || packet.view?.schema == "rust-native.view.v2" else {
+                    throw ReaderError.message("This app does not support the returned terminal version.")
+                }
+                let raw = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["view"] as? [String: Any]
+                completion(.success((packet, raw)))
+            } catch { completion(.failure(error)) }
+        }
+    }
+
+    private func raw(_ request: [String: Any]) throws -> Data {
+        guard let handle else { throw ReaderError.message("The reader has not opened its local state.") }
+        let input = try JSONSerialization.data(withJSONObject: request)
+        guard input.count <= 131_072 else { throw ReaderError.message("The native request is too large.") }
+        let result = input.withUnsafeBytes {
+            coder_mobile_call(handle, $0.bindMemory(to: UInt8.self).baseAddress, $0.count)
+        }
+        defer { coder_mobile_buffer_free(result) }
+        guard let pointer = result.data, result.len > 0, result.len <= 1_048_576 else {
+            throw ReaderError.message("Rust returned an invalid or oversized view packet.")
+        }
+        return Data(bytes: pointer, count: result.len)
+    }
+
     private func call(_ request: [String: Any]) throws -> MobileResult {
         guard let handle else { throw ReaderError.message("The reader has not opened its local state.") }
         let input = try JSONSerialization.data(withJSONObject: request)
@@ -161,6 +206,10 @@ final class MobileBridge: ObservableObject {
     private var pendingPushToken: String?
     /// HUD taps and answers that arrived while a request ran, in order.
     private var queued: [[String: Any]] = []
+    /// The terminal screen asked for the clipboard's text.
+    @Published private(set) var terminalPaste = false
+    private var terminalPolling = false
+    private var terminalRevision: UInt64 = 0
 
     /// `loopbackTest` is for test launches only: the Computers surface then
     /// admits a `ws://` loopback relay and a host on this machine.
@@ -212,6 +261,46 @@ final class MobileBridge: ObservableObject {
     }
 
     func refreshComputers() { request(["op": "computers_refresh"]) }
+
+    /// Send one terminal request: a resize, typed text, a key, or a paste.
+    /// Terminal requests run in order on the same serial Rust queue, outside
+    /// the reader's busy gate, so no keystroke waits for or is dropped by a
+    /// Computers refresh.
+    func terminal(_ request: [String: Any]) {
+        worker.sendTerminal(request) { result in
+            Task { @MainActor in self.receiveTerminal(result) }
+        }
+    }
+
+    /// Poll the terminal screen; skipped while a poll is in flight.
+    func pollTerminal() {
+        guard !terminalPolling, hudFeed["terminal"] != nil else { return }
+        terminalPolling = true
+        worker.sendTerminal(["op": "terminal_poll", "known": terminalRevision]) { result in
+            Task { @MainActor in
+                self.terminalPolling = false
+                self.receiveTerminal(result)
+            }
+        }
+    }
+
+    private func receiveTerminal(_ result: Result<(TerminalPacket, [String: Any]?), Error>) {
+        switch result {
+        case let .success((packet, view)):
+            terminalPaste = packet.paste
+            if !packet.open {
+                if hudFeed.removeValue(forKey: "terminal") != nil { hudFeedRevision &+= 1 }
+                return
+            }
+            if let view, packet.revision > terminalRevision {
+                terminalRevision = packet.revision
+                hudFeed["terminal"] = view
+                hudFeedRevision &+= 1
+            }
+        case let .failure(error):
+            nativeError = error.localizedDescription
+        }
+    }
 
     /// Push wake status for the device details: Rust's, or the native failure.
     var pushStatus: String? { pushFailure ?? packet?.push }
@@ -279,6 +368,9 @@ final class MobileBridge: ObservableObject {
             self.packet = response.packet
             hudFeed = response.feed
             hudFeedRevision &+= 1
+            terminalPaste = response.packet.terminal_paste == true
+            // A new terminal screen restarts its revisions.
+            terminalRevision = response.packet.terminal?.revision ?? 0
         case let .failure(error): nativeError = error.localizedDescription
         }
         if !queued.isEmpty {

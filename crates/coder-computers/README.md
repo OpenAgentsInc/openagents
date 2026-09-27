@@ -155,6 +155,35 @@ grants, connections, and relay traffic. Three services implement it:
   SSH** doesn't change the owner directory; remove the host there
   separately.
 
+## Terminal
+
+`terminal` is the screen the Host screen's **Terminal** control opens, with
+[NIP-TERM](../../nips/openagents/NIP-TERM.md):
+
+- `terminal::model::Model` holds the session's phase (connecting, opening,
+  attached, reconnecting, exited, lost, closed, refused, or left), a
+  [`coder-vt`](../coder-vt/README.md) emulator, gap counts, and the Ctrl the
+  accessory row latched.
+- `terminal::view` draws a Rust Native tree in the amber palette: a header
+  with the status and **Back**, **End terminal**, or **Open a new
+  terminal**; one `terminal`-role text node or run stack per grid row, with
+  the cursor as an inverse block; and the accessory row (Esc, Tab, Ctrl, Left, Up,
+  Down, Right, Ctrl-C, and Paste). Every color maps onto the ladder, and a busy
+  screen stays within the view's node bound by drawing its busiest rows plain.
+- `terminal::session::Session` (the `live` feature) runs the session over the
+  live service's current link, from `live::Live::terminals`: NIP-HOST
+  `terminal.open` in the host's default workspace, then NIP-TERM attach,
+  input, resize, and close. It orders frames with `coder_host::client::Ordered`,
+  marks gaps in the output, reattaches after the frames it applied when the
+  link drops, the supervisor replaces the route, or a frame goes missing for
+  two seconds, and reports `lost` when the host restarted. Typed input is never
+  queued while detached; the screen says it wasn't sent.
+
+The **Terminal** control is enabled only for an online host on which this
+device holds `terminal`; otherwise its reason says which right is missing. The
+host checks the right again on every request, and a host refusal shows as the
+screen's status.
+
 ## QR codes
 
 A created invitation shows as its string and as a QR code rendered on this

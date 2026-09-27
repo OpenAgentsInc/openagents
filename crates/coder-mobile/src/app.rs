@@ -86,6 +86,38 @@ pub enum Request {
     },
     /// Leave the terminal screen.
     TerminalClose,
+    /// The terminal screen's state. `known` is the view revision the native
+    /// host already has; the view is sent only when newer. Answered with a
+    /// `TerminalPacket` by [`App::respond`].
+    TerminalPoll {
+        #[serde(default)]
+        known: Option<u64>,
+    },
+    /// The grid the terminal page fits. The first report opens the shell at
+    /// that size; later ones resize it.
+    TerminalResize {
+        rows: u16,
+        cols: u16,
+    },
+    /// Text typed on the native keyboard.
+    TerminalText {
+        text: String,
+    },
+    /// One key: an editing key's name, such as `backspace` or `up`, or one
+    /// character, with the modifiers held on a hardware keyboard.
+    TerminalKey {
+        key: String,
+        #[serde(default)]
+        ctrl: bool,
+        #[serde(default)]
+        alt: bool,
+        #[serde(default)]
+        shift: bool,
+    },
+    /// The clipboard's text, after the terminal screen asked to paste.
+    TerminalPaste {
+        text: String,
+    },
     /// The application became active or moved to the background. Each host
     /// supervisor probes after a short absence and replaces its connection
     /// after a long one.
@@ -104,6 +136,19 @@ pub enum Request {
 impl Request {
     fn push(&self) -> bool {
         matches!(self, Self::PushToken { .. } | Self::PushDisable)
+    }
+
+    /// A terminal request answered with the terminal screen's smaller
+    /// packet by [`App::respond`], so polling never resends other views.
+    pub fn terminal(&self) -> bool {
+        matches!(
+            self,
+            Self::TerminalPoll { .. }
+                | Self::TerminalResize { .. }
+                | Self::TerminalText { .. }
+                | Self::TerminalKey { .. }
+                | Self::TerminalPaste { .. }
+        )
     }
 
     fn computers(&self) -> bool {
@@ -161,6 +206,15 @@ pub(crate) enum Intent {
     Disconnect,
 }
 
+/// What one native call returns: the application packet, or the terminal
+/// screen's smaller packet for a terminal request.
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum Reply {
+    Packet(Box<Packet>),
+    Terminal(crate::terminal::TerminalPacket),
+}
+
 #[derive(Serialize)]
 pub struct Packet {
     pub schema: &'static str,
@@ -189,6 +243,10 @@ pub struct Packet {
     /// Rust Native view. See [`crate::terminal`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<serde_json::Value>,
+    /// The terminal screen asked for the clipboard's text; the native host
+    /// answers with `terminal_paste`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub terminal_paste: bool,
     /// Push wake status, present once the app is configured for push or a
     /// push request arrived.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -246,6 +304,8 @@ pub struct App {
     computers_exit: bool,
     /// The terminal screen a host's Terminal control opened.
     terminal: Option<crate::terminal::Terminal>,
+    /// Reads each linked host's current link for terminal sessions.
+    terminals: Option<coder_computers::live::Terminals>,
     pairing_completed: bool,
     push: Option<crate::push::Push>,
     push_status: Option<String>,
@@ -293,6 +353,7 @@ impl App {
             computers: None,
             computers_exit: false,
             terminal: None,
+            terminals: None,
             pairing_completed: false,
             push: None,
             push_status: None,
@@ -320,7 +381,10 @@ impl App {
                 Box::new(Synthetic::fixture(Platform::Phone, now))
             } else {
                 match app.live_computers(&config) {
-                    Ok(live) => Box::new(live),
+                    Ok(live) => {
+                        app.terminals = Some(live.terminals());
+                        Box::new(live)
+                    }
                     Err(reason) => {
                         app.notices.push(format!("Computers unavailable: {reason}"));
                         Box::new(coder_computers::Unavailable::new(
@@ -400,8 +464,43 @@ impl App {
         Client::new_with_policy(code, self.secret, self.policy())
     }
 
+    /// Answer one native call: a terminal request with the terminal
+    /// screen's packet, anything else with the application packet.
+    pub fn respond(&mut self, request: Request) -> Reply {
+        if request.terminal() {
+            Reply::Terminal(self.terminal_request(request))
+        } else {
+            Reply::Packet(Box::new(self.call(request)))
+        }
+    }
+
+    fn terminal_request(&mut self, request: Request) -> crate::terminal::TerminalPacket {
+        let Some(terminal) = self.terminal.as_mut() else {
+            return crate::terminal::TerminalPacket::closed();
+        };
+        let mut known = None;
+        match request {
+            Request::TerminalPoll { known: have } => known = have,
+            Request::TerminalResize { rows, cols } => terminal.resize(rows, cols),
+            Request::TerminalText { text } => terminal.text(&text),
+            Request::TerminalKey {
+                key,
+                ctrl,
+                alt,
+                shift,
+            } => terminal.key(&key, coder_vt::Modifiers { ctrl, alt, shift }),
+            Request::TerminalPaste { text } => terminal.paste(&text),
+            _ => {}
+        }
+        terminal.packet(known)
+    }
+
     pub fn call(&mut self, request: Request) -> Packet {
         self.pairing_completed = false;
+        if request.terminal() {
+            let _ = self.terminal_request(request);
+            return self.packet();
+        }
         // Lifecycle callbacks can follow an in-flight pairing call. They must
         // not erase its failure before the user can read it and retry.
         if request.push() {
@@ -522,7 +621,12 @@ impl App {
                 .snapshot()
                 .host(&host)
                 .map_or_else(|| "this computer".to_owned(), |record| record.label.clone());
-            match crate::terminal::Terminal::open(host, label) {
+            match crate::terminal::Terminal::open(
+                host,
+                label,
+                self.terminals.clone(),
+                self.runtime.handle().clone(),
+            ) {
                 Ok(terminal) => self.terminal = Some(terminal),
                 Err(error) => self.notices.push(format!("Terminal unavailable: {error}")),
             }
@@ -545,6 +649,11 @@ impl App {
             | Request::ComputersRefresh
             | Request::TerminalActivate { .. }
             | Request::TerminalClose
+            | Request::TerminalPoll { .. }
+            | Request::TerminalResize { .. }
+            | Request::TerminalText { .. }
+            | Request::TerminalKey { .. }
+            | Request::TerminalPaste { .. }
             | Request::Lifecycle { .. }
             | Request::PushToken { .. }
             | Request::PushDisable => Ok(()),
@@ -1021,7 +1130,10 @@ impl App {
         );
         Ok(())
     }
-    fn packet(&self) -> Packet {
+    fn packet(&mut self) -> Packet {
+        if let Some(terminal) = self.terminal.as_mut() {
+            terminal.redraw();
+        }
         Packet {
             schema: "coder.mobile.v1",
             public_key: self.public_key.clone(),
@@ -1069,6 +1181,10 @@ impl App {
                 .terminal
                 .as_ref()
                 .and_then(crate::terminal::Terminal::view),
+            terminal_paste: self
+                .terminal
+                .as_ref()
+                .is_some_and(crate::terminal::Terminal::wants_paste),
             push: self.push_status.clone(),
         }
     }
