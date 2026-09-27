@@ -26,6 +26,7 @@ def test_known_arms(agents):
         "coder-one",
         "coder-one-no-jev",
         "coder-one-delegate-opus",
+        "coder-one-delegate-fable-low",
         "coder-one-delegate-auto",
         "coder-one-delegate-luna",
         "coder-one-delegate-luna-auto",
@@ -235,6 +236,17 @@ def test_delegate_arms_pin_opus_and_a_new_enough_claude_code(agents):
         assert profile.kwargs["delegate_model"] == "claude-opus-5-5"
         assert profile.kwargs["claude_code_version"] == "2.1.280"
         assert "CLAUDE_CODE_OAUTH_TOKEN" in profile.env_forward
+
+
+def test_fable_low_delegate_arm_sets_effort_as_a_literal(agents):
+    profile = agents["coder-one-delegate-fable-low"]
+    assert profile.kwargs["delegate"] == "always"
+    assert profile.kwargs["delegate_model"] == "claude-fable-5-1"
+    assert profile.kwargs["claude_code_version"] == "2.1.280"
+    env = {"OPENAGENTS_API_KEY": "a", "TYPESAFE_API_KEY": "b", "CLAUDE_CODE_OAUTH_TOKEN": "c"}
+    out = agent_config_env(profile, auth_mode="subscription-oauth", env=env)
+    assert out["CODER_ONE_DELEGATE_EFFORT"] == "low"
+    assert out["CLAUDE_CODE_OAUTH_TOKEN"] == "${CLAUDE_CODE_OAUTH_TOKEN}"
 
 
 def test_delegate_oauth_mode_forwards_the_token_by_name_only(agents):
