@@ -92,6 +92,12 @@ impl std::fmt::Debug for Running {
 /// listener that cannot bind.
 pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     config.validate()?;
+    // Check the operator's TLS files before anything binds or publishes.
+    let websocket_tls = config
+        .websocket_tls
+        .as_ref()
+        .map(crate::tls::acceptor)
+        .transpose()?;
     let access = coder_access::host::Host::new(&config.access, config.policy);
     let authority = Arc::new(Authority::open(access)?);
     let secret = authority.host().signing_key()?;
@@ -148,6 +154,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
             shared.clone(),
             listener,
             acceptor.clone(),
+            websocket_tls,
         )));
     }
     tasks.extend([
@@ -178,6 +185,15 @@ impl Running {
     #[must_use]
     pub fn websocket_addr(&self) -> Option<SocketAddr> {
         self.shared.listen_websocket
+    }
+
+    /// The WebSocket listener's own hint URL: `ws://ADDR/`, or
+    /// `wss://NAME:PORT/` when the listener terminates TLS.
+    #[must_use]
+    pub fn websocket_url(&self) -> Option<String> {
+        self.shared
+            .listen_websocket
+            .map(|listen| websocket::url(listen, self.shared.config.websocket_tls.as_ref()))
     }
 
     /// The host key: the `coder-access` store's key.
@@ -313,10 +329,14 @@ fn hints(shared: &Shared, now: u64) -> Vec<Hint> {
         status: Status::Reachable,
         observed_at: now,
     };
+    // With TLS the hint names the certificate's DNS name. When that name and
+    // the bound address disagree about loopback, as for a loopback listener
+    // behind a forwarder, the hint fails validation below and is left out;
+    // the operator advertises the forwarded endpoint instead.
     let websocket = shared.listen_websocket.map(|listen| Hint {
         class: class(listen),
         transport: Transport::Websocket,
-        address: websocket::url(listen),
+        address: websocket::url(listen, shared.config.websocket_tls.as_ref()),
         status: Status::Reachable,
         observed_at: now,
     });

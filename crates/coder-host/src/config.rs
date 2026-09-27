@@ -43,6 +43,21 @@ impl Advertised {
     }
 }
 
+/// TLS for the WebSocket listener, from files the operator supplies, such
+/// as those `tailscale cert` or an ACME client writes. The host never
+/// obtains or renews a certificate itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WebsocketTls {
+    /// The certificate chain in PEM, leaf first.
+    pub cert: PathBuf,
+    /// The private key in PEM. It must be a regular file that this user
+    /// owns and that grants no access to group or others.
+    pub key: PathBuf,
+    /// The DNS name clients dial. The leaf certificate must be valid for
+    /// it, and the listener's own hint is `wss://NAME:PORT/`.
+    pub name: String,
+}
+
 /// One host's configuration.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -60,6 +75,9 @@ pub struct Config {
     /// handshake, encryption, and frame bounds as the TCP listener, one
     /// frame per binary message, and follows the same loopback rule.
     pub listen_websocket: Option<SocketAddr>,
+    /// Terminate TLS on the WebSocket listener, so a `wss` hint needs no
+    /// forwarder. Without it the listener serves plain `ws`.
+    pub websocket_tls: Option<WebsocketTls>,
     /// Permit a listener on a non-loopback address, such as a LAN or
     /// tailnet interface.
     pub allow_nonloopback: bool,
@@ -98,6 +116,7 @@ impl Config {
             policy: RelayPolicy::Production,
             listen: SocketAddr::from(([127, 0, 0, 1], 0)),
             listen_websocket: None,
+            websocket_tls: None,
             allow_nonloopback: false,
             advertise_listener: true,
             advertise: Vec::new(),
@@ -127,7 +146,9 @@ impl Config {
     ///
     /// # Errors
     /// Refuses a missing relay, a relay the policy refuses, a non-loopback
-    /// listener without permission, a bad workspace, or a zero period.
+    /// listener without permission, WebSocket TLS without a WebSocket
+    /// listener or with a name that is not a DNS name, a bad workspace, or a
+    /// zero period.
     pub fn validate(&self) -> Result<()> {
         self.primary()?;
         if self.relays.len() > coder_reach::directory::MAX_RELAYS {
@@ -145,6 +166,18 @@ impl Config {
             return Err(Error::Config(
                 "the listener is loopback only unless --allow-nonloopback is given".into(),
             ));
+        }
+        if let Some(tls) = &self.websocket_tls {
+            if self.listen_websocket.is_none() {
+                return Err(Error::Config(
+                    "WebSocket TLS needs --listen-websocket".into(),
+                ));
+            }
+            if !is_dns_name(&tls.name) {
+                return Err(Error::Config(
+                    "--websocket-name takes a DNS name, not an address".into(),
+                ));
+            }
         }
         for (label, root) in &self.workspaces {
             if label.is_empty()
@@ -167,6 +200,14 @@ impl Config {
     }
 }
 
+/// Whether `name` is a DNS name a certificate can cover, not an IP address.
+fn is_dns_name(name: &str) -> bool {
+    matches!(
+        rustls::pki_types::ServerName::try_from(name),
+        Ok(rustls::pki_types::ServerName::DnsName(_))
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +225,27 @@ mod tests {
         assert!(config.validate().is_err());
         config.allow_nonloopback = true;
         config.validate().unwrap();
+    }
+
+    #[test]
+    fn websocket_tls_needs_a_listener_and_a_dns_name() {
+        let mut config = Config::new(
+            PathBuf::from("/access"),
+            vec!["wss://relay.example".into()],
+            1,
+        );
+        config.websocket_tls = Some(WebsocketTls {
+            cert: PathBuf::from("/tls/chain.pem"),
+            key: PathBuf::from("/tls/key.pem"),
+            name: "box.example.net".into(),
+        });
+        assert!(config.validate().is_err());
+        config.listen_websocket = Some(SocketAddr::from(([127, 0, 0, 1], 0)));
+        config.validate().unwrap();
+        for name in ["127.0.0.1", "::1", "", "bad name"] {
+            config.websocket_tls.as_mut().unwrap().name = name.into();
+            assert!(config.validate().is_err(), "{name}");
+        }
     }
 
     #[test]

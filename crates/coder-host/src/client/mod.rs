@@ -35,7 +35,7 @@ mod websocket;
 pub use connector::{Connector, Reports};
 pub use link::{Link, Route};
 pub use order::Ordered;
-pub use websocket::Stream as WebSocketStream;
+pub use websocket::{Stream as WebSocketStream, Tls as WebSocketTls, connect as connect_websocket};
 
 /// How long one relay fetch may take.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
