@@ -107,3 +107,41 @@ as declared.
   to the kept first-attempt faults.
 - **Reading the result:** a step that fails because Claude Code refuses or
   rate-limits the login is a provider fault, reported as such, not a result.
+
+## Second attempt results: Claude, base arm complete, full arm held
+
+Nine runs finished on coderos-4080 between 11:26 and 13:35 CDT, all served
+by `claude-opus-5-5`, with no provider faults. Records are under
+`~/gates-reasoning-runs/runs/<task>.<arm>.<n>/` there; `outcomes.txt` in
+the parent directory is the run ledger, read through
+`openagents study outcomes coderos ~/gates-reasoning-runs`.
+
+| Run | Reward | Steps | Time | List price | Ending |
+|---|---:|---:|---:|---:|---|
+| batched-eval-parity.base.1 | 0 | 21 | 14:37 | $6.64 | spend limit |
+| batched-eval-parity.base.2 | 0 | 11 | 22:48 | $6.23 | spend limit |
+| fin-saccr-rwa.base.1 | 1 | 11 | 32:13 | $6.37 | spend limit |
+| fin-saccr-rwa.base.2 | 0 | 10 | 30:36 | $6.13 | spend limit |
+| hof-topology-interpenetration.base.1 | 1 | 12 | 20:57 | $5.37 | finished |
+| hof-topology-interpenetration.base.2 | 1 | 15 | 24:36 | $6.12 | spend limit |
+| sound-change-cascade.base.1 | 1 | 23 | 22:22 | $5.84 | finished |
+| sound-change-cascade.base.2 | 1 | 21 | 19:10 | $5.14 | finished |
+| sound-change-cascade.full.1 | 0 | 13 | 35:10 | $6.83 | spend limit |
+
+- **Base arm: 5 of 8 passed** (batched-eval-parity 0/2, fin-saccr-rwa 1/2,
+  hof-topology-interpenetration 2/2, sound-change-cascade 2/2). Six of the
+  eight ended at the $6.00 cap; the reward is the verifier's grade of the
+  workspace as the run left it, and a cap ending is reported as ended by
+  cost.
+- **Full arm: held after one run.** The pilot's full run reached only step
+  13 before the cap, at about twice the base arm's list price per step,
+  and passed nothing. Launching the other seven full runs at the same cap
+  would most likely end each at the cap before the checks could act, so
+  the operator held the arm. The declared comparison (does the full arm
+  raise the pass rate?) is therefore **unanswered** for Claude: 0 of 1 is
+  not a full-arm result.
+- **What this does say:** Opus 5.5 with reasoning, on the base loop, passes
+  three of the four development tasks at least once at a $6.00 list-price
+  cap. It says nothing about GPT-6 Luna, whose declared re-test waits on the
+  Codex quota reset (2026-10-03 18:07 UTC), and nothing about the checks.
+- **Spend:** $54.67 of list-price figures across the nine runs.
