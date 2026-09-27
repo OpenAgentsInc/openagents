@@ -25,6 +25,9 @@ base exists and how retrieval works inside Microcoder's loop, and
   is keyed by the model name `openai/text-embedding-3-small` and each
   entry's digest, so vectors cached through OpenRouter stay valid. Without
   a key, or when a call fails, search ranks by words alone and says why.
+- To use Google's `text-embedding-005` on Vertex AI instead, see
+  [Embed with Vertex AI](#embed-with-vertex-ai). It's opt-in, and nothing
+  uses it unless you pass the flag.
 - The lint checks entries against the installed Terminal-Bench 4 tasks under
   `~/.openagents/terminal-bench/`. Pass `--corpus DIR`, which can repeat, to
   check other task directories.
@@ -51,6 +54,47 @@ microcoder kb show statistics.mmd-estimators
 
 When a newer version of the entry waits in `knowledge/versions/`, `kb show`
 says so.
+
+### Embed with Vertex AI
+
+When the OpenAI and OpenRouter accounts can't pay for embeddings, you can
+embed with Google's `text-embedding-005` on Vertex AI instead. Nothing uses
+it unless you ask: pass `--embeddings vertex` to `kb search` and the `kb
+harvest` commands, or `--kb-embeddings vertex` to a Microcoder run.
+
+1. Name the Google Cloud project, and optionally the region (the default
+   is `us-central1`):
+
+   ```sh
+   export KB_VERTEX_PROJECT=openagentsgemini
+   export KB_VERTEX_LOCATION=us-central1
+   ```
+
+1. Make an access token available. By default, each process runs `gcloud
+   auth print-access-token` and reuses the token for up to 30 minutes, so
+   point `CLOUDSDK_CONFIG` at a configuration that is signed in, such as a
+   service account's. To use a token file instead, as `--provider vertex`
+   does, set `VERTEX_TOKEN_FILE` to its path.
+
+1. Search:
+
+   ```sh
+   microcoder kb search --embeddings vertex mmd kernel two-sample
+   ```
+
+Entries are embedded as `RETRIEVAL_DOCUMENT` and the query as
+`RETRIEVAL_QUERY`, up to 250 inputs a request. The cost is Vertex AI's
+reported billable characters at the list price, $0.000025 per 1,000
+characters (retrieved 2026-09-27); a response without that count leaves the
+cost unknown. These vectors are cached under `vertex/text-embedding-005`,
+apart from the OpenAI model's. A query is compared only with entries the
+same model embedded, and a ranking that would mix two models' vectors is
+refused. A run's `summary.json` names the model under `retrieval`:
+`"embedding_provider": "vertex"` and
+`"embedding_model": "vertex/text-embedding-005"`.
+
+A study round must declare this option before any of its runs use it,
+because it changes what ranks the knowledge base.
 
 ## Write an entry by hand
 
