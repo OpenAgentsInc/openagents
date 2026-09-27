@@ -29,6 +29,41 @@ relay; their keys are discarded and their sockets close when the process exits.
 The witness subscribes only to the two probe public keys. Session subscriptions
 also read the existing plaza, but this evidence retains no other users' events.
 
+## Native simulator exchange
+
+[`phone-peer.json`](phone-peer.json) records the first 120-second exchange with
+Coder iOS in the simulator, using its real public-relay connection and retained
+world identity. The independent authenticated witness received 22 signed phone
+pose frames and 24 signed synthetic-peer pose frames. The peer received the
+phone's live avatar after 1.661 seconds, and the witness confirmed the peer's
+two offline cleanup states. The process exited after 120.264 seconds with no
+reported witness errors.
+
+This record proves bidirectional signed presence between the native app and a
+shared `Session` peer. The corresponding initial screenshot did not clearly
+show the synthetic avatar: the verifier placed it too far right and behind the
+phone relative to the portrait camera. Live entity counts and submitted vertex
+counts do not by themselves prove a visible avatar in a screenshot.
+
+A subsequent verification-only change places the peer 0.8 meters to the right
+and 3 meters ahead in the plaza's coordinates. It changes the example, not app
+code. The archived app source remains
+`cb655ee1ff4282f30f1a25f2adda8f08d7f85fa1`. The first result remains retained
+alongside the separately recorded visual follow-up.
+
+The [follow-up screenshot](../2026-09-27-world-gym-build48/native-visible-peer.png)
+clearly shows a second avatar and companion in the normal native plaza. Its
+[receipt](../2026-09-27-world-gym-build48/native-visible-peer-receipt.json) binds
+the capture time, image digest, phone identity, and synthetic peer identity.
+This is iOS simulator evidence, not a physical-device check.
+
+[`phone-peer-visual.json`](phone-peer-visual.json) records that follow-up's
+successful 120.265-second exchange: 24 signed phone frames, 24 signed peer
+frames, authenticated witness and completed subscription, both synthetic-peer
+offline states received, and no witness errors. The peer saw the phone's live
+avatar after 3.726 seconds. The snapshot and signed records therefore cover
+the same identified peer. The example exited normally after cleanup.
+
 ## Reproduce
 
 From the repository, use a separate worktree target directory:

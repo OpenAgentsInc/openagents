@@ -49,21 +49,26 @@ design as a Designed profile for durable identity, bounded initiative,
 custody, guardians, and market participation. It composes the current NIPs;
 custody, sovereign lifecycle, and treasury adapters remain to be built.
 
-Coder iOS **0.5.0 (47)** is available in internal TestFlight. The
-[Atlantis forest portal](docs/verse/zones.md) loads the original tree, wizard,
-and zombie artwork only when you enter, then caches the verified 6.6 MB pack.
-The forest has its own palette and an optional [SRD 5.1 encounter](docs/verse/zone-rules.md).
-Use **Map → Forest portal**, tap the arch, and select **Plaza** to return to your
-saved position. Shared forest combat, creator publishing, and the future L1
-construction/physics zone remain roadmap work.
+Coder iOS **0.5.0 (48)** is available in internal TestFlight. New or unconfigured
+installs join `wss://relay.openagents.com` automatically, with shared Nostr
+multiplayer presence. Custom relays and an explicit **Leave** choice survive
+relaunch. Tap the physical **GYM** board to open it; its entry prompt is now
+world-rendered instead of a floating native button. Detailed Gym records still
+require a separate host grant.
 
-The [release receipt](bins/coder-ios/verification/2026-09-27-forest-zones/testflight-build47.json)
-confirms `VALID` and `IN_BETA_TESTING`. [Verification](bins/coder-ios/verification/2026-09-27-forest-zones/README.md)
-covers optimized startup, a real first-visit download, native encounter/return
-controls, cached reentry, and the signed archive. Android's native library and
-APK compile with verified alignment; new physical-device acceptance is separate.
-The [map, companion, and Spark/Halo gates](docs/verse/world-interactions.md)
-remain available in the amber plaza.
+The [release receipt](bins/coder-ios/verification/2026-09-27-world-gym-build48/testflight-build48.json)
+confirms `VALID` and `IN_BETA_TESTING`.
+[Native verification](bins/coder-ios/verification/2026-09-27-world-gym-build48/native-verification.md)
+covers the board, saved relay choices, default public connection, and a visible
+independent peer. [Relay evidence](bins/coder-ios/verification/2026-09-27-relay-presence/README.md)
+retains signed presence and cleanup. Physical-device acceptance is separate.
+
+The [Atlantis forest portal](docs/verse/zones.md) retains runtime-loaded artwork,
+a separate palette, and a local [SRD 5.1 encounter](docs/verse/zone-rules.md).
+Use **Map → Forest portal**, tap the arch, and select **Plaza** to return to your
+saved position. The [map, companion, and Spark/Halo gates](docs/verse/world-interactions.md)
+remain available in the amber plaza. Shared forest combat, creator publishing,
+and the future L1 construction/physics zone remain roadmap work.
 
 Computer setup uses `./pair` or installed `coder pair`. Chats load after
 pairing, the world relay choice persists, and movement combines with looking

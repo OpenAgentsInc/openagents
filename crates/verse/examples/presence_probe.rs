@@ -319,7 +319,7 @@ fn observe_phone(relay: &str, phone: &str) -> Result<(), String> {
         let now = Instant::now();
         witness.drain(started.elapsed());
         if let Some(position) = witness.avatar_positions.get(phone) {
-            player.pos = Vec3::from(*position) + Vec3::new(2.0, 0.0, -3.0);
+            player.pos = Vec3::from(*position) + Vec3::new(0.8, 0.0, 3.0);
             agent.pos = player.pos + Vec3::new(1.0, 1.8, 1.0);
         }
         session.tick(now, &player, &agent);

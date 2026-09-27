@@ -1,0 +1,80 @@
+[
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "3FB3C387-2E4E-4421-B98D-780167C05822.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Synthetic Gym after leaving its interior_0_F88DF625-B838-4739-BC9B-B040BE0D2163.png",
+        "timestamp": 1790488497.131,
+        "retainedFileName": "native-gym-exit.png"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "61089AF4-624C-46FD-A87E-6A45E731EBFC.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Synthetic Gym Microcoder chart and exact values_0_E3C1B29A-0076-4BFE-93BF-A2CFD026F42B.png",
+        "timestamp": 1790488485.246,
+        "retainedFileName": "native-gym-chart.png"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "C1FAE47F-452D-4039-A447-02EC5DE01E65.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Physical Gym board before opening_0_18E174DE-BAC0-40B3-BF69-D6A40D685683.png",
+        "timestamp": 1790488481.913,
+        "retainedFileName": "native-gym-board.png"
+      }
+    ],
+    "testIdentifier": "GymUITests/testInteriorBoardShowsChartsAndStopsWhenPlayerLeaves()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/GymUITests/testInteriorBoardShowsChartsAndStopsWhenPlayerLeaves"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "E344B496-1A59-45B9-9E5F-F19CD33E218B.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Saved relay with concise connection state_0_1C6388B8-0970-45C8-B0B3-3444D0A780D1.png",
+        "timestamp": 1790488512.616,
+        "retainedFileName": "native-saved-relay.png"
+      }
+    ],
+    "testIdentifier": "WorldConnectionUITests/testAbsentChoiceCustomRelayAndExplicitOfflineSurviveRelaunch()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/WorldConnectionUITests/testAbsentChoiceCustomRelayAndExplicitOfflineSurviveRelaunch"
+  },
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "CEB99E43-7BD8-4429-A031-BB3E365C0C75.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Public world after default production launch_0_5E827D43-9513-4BE3-A6DA-7B818F6AAA2A.png",
+        "timestamp": 1790488577.947,
+        "retainedFileName": "native-public-world.png"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "80A56DD2-8E81-4037-B560-2BEDBB61CAF2",
+        "deviceName": "Coder Launch 45",
+        "exportedFileName": "4F582E51-8794-41AE-9D2F-30312F1BD48F.json",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Production world presence observation_0_3770016F-C344-47DC-BFD3-A8A3E9153EAE.json",
+        "timestamp": 1790488577.885,
+        "retainedFileName": "native-public-world-observation.json"
+      }
+    ],
+    "testIdentifier": "WorldRelayProductionUITests/testFreshLaunchJoinsPublicWorldAndPresentsRemoteGeometry()",
+    "testIdentifierURL": "test://com.apple.xcode/Coder/CoderUITests/WorldRelayProductionUITests/testFreshLaunchJoinsPublicWorldAndPresentsRemoteGeometry"
+  }
+]

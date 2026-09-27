@@ -1,0 +1,18 @@
+{
+  "build_id": "078feea5-8bec-4e33-b47f-98f001599b1e",
+  "build": "48",
+  "version": "0.5.0",
+  "processing_state": "VALID",
+  "uploaded_date": "2026-09-26T23:01:08-07:00",
+  "expired": false,
+  "nonexempt_encryption": false,
+  "schema": "coder.ios.testflight-release.v1",
+  "checked_at": "2026-09-27T06:03:08.467611+00:00",
+  "internal_build_state": "IN_BETA_TESTING",
+  "external_build_state": "READY_FOR_BETA_SUBMISSION",
+  "notes_update_status": 200,
+  "upload_exit": 0,
+  "source_commit": "cb655ee1ff4282f30f1a25f2adda8f08d7f85fa1",
+  "archive_source_receipt": "archive-source.json",
+  "physical_device_acceptance": false
+}

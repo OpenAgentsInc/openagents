@@ -1,0 +1,1454 @@
+{
+  "cadence_ms": {
+    "idle": 5000,
+    "moving": 3000,
+    "state": 30000
+  },
+  "elapsed_ms": 120264,
+  "errors": [],
+  "events": [
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488538019,\"online\":true,\"name\":\"phone\"}",
+        "created_at": 1790488538,
+        "id": "21d7fe7a1683a0a37450ce5be4c1375cc1bd21faa154c9ccfe7b02be318f1fba",
+        "kind": 33301,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "0488d67fc57380c87e79b8661d4d5e9a0c1ff12572f9f716aa42142803977d524c8409ee396d348392f1e0ad4e467633904dfdba4220e467f1beda8a7170d267",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/avatar"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 286
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.474845,2.2135766,1.7980081],\"q\":[0.007076035,0.008863169,0.003974393,0.9999278],\"t\":1790488538019,\"online\":true,\"follows\":\"avatar\",\"name\":\"phone\"}",
+        "created_at": 1790488538,
+        "id": "28fea2e23945aa83e2ac4f9a8213908b926f8811292c27f83a65a8a3c679e49b",
+        "kind": 33301,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "f5d18c8f0f73bf94cae04533d543acb883ef96e7228d09e776ae380c1884595c99a054592c930fc7835ca523fc9f19befb4b6d856d825cf0656b7f4ad7a2e720",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/agent"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "agent"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 286
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488538019,\"online\":true,\"name\":\"phone\"}",
+        "created_at": 1790488538,
+        "id": "21d7fe7a1683a0a37450ce5be4c1375cc1bd21faa154c9ccfe7b02be318f1fba",
+        "kind": 33301,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "0488d67fc57380c87e79b8661d4d5e9a0c1ff12572f9f716aa42142803977d524c8409ee396d348392f1e0ad4e467633904dfdba4220e467f1beda8a7170d267",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/avatar"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 361
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.474845,2.2135766,1.7980081],\"q\":[0.007076035,0.008863169,0.003974393,0.9999278],\"t\":1790488538019,\"online\":true,\"follows\":\"avatar\",\"name\":\"phone\"}",
+        "created_at": 1790488538,
+        "id": "28fea2e23945aa83e2ac4f9a8213908b926f8811292c27f83a65a8a3c679e49b",
+        "kind": 33301,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "f5d18c8f0f73bf94cae04533d543acb883ef96e7228d09e776ae380c1884595c99a054592c930fc7835ca523fc9f19befb4b6d856d825cf0656b7f4ad7a2e720",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/agent"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "agent"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 361
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":1,\"t\":1790488576931,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488576,
+        "id": "8d1d5c96fead209a077c9bd3d04be36798f7dac8e5f3351a372a101589505df5",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "a25f19975e59ba1c73eaf06531772fb31fb75e0fdcfedc3440890e190c450060b8bd1ca5eb96e23c4ca2af3f8a83448029c643599d6bf2d5f08478d9bbb996b5",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 543
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488576932,\"online\":true,\"name\":\"verse-phone-probe\"}",
+        "created_at": 1790488576,
+        "id": "0eefbd0dd1cebb3d71edb16b16c8d7b6993c4ff3b9ce84ee4caa48657a68be65",
+        "kind": 33301,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "fb2e02da80dc563788ec3e1c4f890e5723162eb0a528e75bf686d8bedd719cb4f4687cee7b7e728052b410758198c54f8159059f5a4181435189ad62521f1418",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/avatar"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,-1"
+          ]
+        ]
+      },
+      "received_ms": 598
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488576932,\"online\":true,\"follows\":\"avatar\",\"name\":\"verse-phone-probe\"}",
+        "created_at": 1790488576,
+        "id": "35bd92f4cbc644ef4c345e8f48353c77bc224b4fb4ebbdc4aa994b6ebbd886ca",
+        "kind": 33301,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "0e5b5786e33e2ebc3da8651413a066541e73658177a4c72b4eb058e6b56ed5190f3a2955f64fca559f046f39767e8029d450278a17660b9d6450e250496db1f7",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/agent"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "agent"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 598
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b23214c7a6e0a9ae\",\"n\":9,\"t\":1790488578086,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.89212,2.3823311,1.6451621],\"q\":[0.043384615,0.7344283,0.02280392,0.6769143],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488578,
+        "id": "1d0d521f1b7b1e83fa5e58619e21f64362680418f5ce2a332fe72540b2ffbd5a",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "f037e5e3fcd893528c3e0d532b7767747a2e810df5f291ec00fa2a6da7b456c94dbb7d984004eb473a48db5997938d61c08b651b6dfc41e5d94c9401ceac60b1",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 1659
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":2,\"t\":1790488581924,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488581,
+        "id": "56d3687946e42a7cf73685aff929453c7b3888205e3e632d38415e9aeedb5daa",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "acdc57c3b044be6adc9c9e16eee656c37ecb3f047d719c354b002cc30ceda38dbf03c531118848c4a88e14d5405f77abc56a814f57adb0564e10a7821bb1dc7a",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 5684
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":3,\"t\":1790488586956,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488586,
+        "id": "d3a7a223dc3c0919e02c687789084361cba1f6e1b243c18ae9eaece38a4ae25f",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "b401b99ec51c39d4909989f9930e73145872ac77cfecff38873251462276c49152b048f425ce76126832f057a246b2e1f73018570ba0c1d3f7b9b1364e9bf129",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 10565
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":1,\"t\":1790488587653,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.474715,2.2108517,1.7980086],\"q\":[0.0056356527,0.00709636,0.0031910087,0.99995387],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488587,
+        "id": "a486ed36d5387eb7fcd9e3490b5b5d65443f0b27d12bc05e4cbcf66f306cd723",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "130c35aae50b7fc7a407a94d19c7924e0486d33ba89cde3b1c2b0394a48988265d0722b44eb4414463f618f436c4c0223ffde757cc50c89223d357a73f49212d",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 11269
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488587653,\"online\":true,\"name\":\"phone\"}",
+        "created_at": 1790488587,
+        "id": "86e055dca0be4a5b212dad889806c14894dfbeb8048d83a8066587b35e7f000d",
+        "kind": 33301,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "075701863d66b2c0a656a3f1892ab961f60653250558f0b0add5739ed8509baefdc6ae80a4bd8de49b4c692884d839f288547e4b83d6f2faddcdf9440933bc09",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/avatar"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 11269
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.474715,2.2108517,1.7980086],\"q\":[0.0056356527,0.00709636,0.0031910087,0.99995387],\"t\":1790488587653,\"online\":true,\"follows\":\"avatar\",\"name\":\"phone\"}",
+        "created_at": 1790488587,
+        "id": "16049b0cfdf778c5a6bd6de9612f94755b7a5d2f80a8c2c4aa6d8a0ca3c93f64",
+        "kind": 33301,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "d0a66cdbfddb2d145b1eebc534196b9953bfd62c6c9c420e6db55ac71c7595ab4a0a8dd6d3cf73c00b0ea8b22d75916ec6341ec93978d4a4f4f08844f58be081",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/agent"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "agent"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 11334
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":4,\"t\":1790488591998,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488591,
+        "id": "f3ef62df58ba9ce6883d2515d4b3e1708c38755f173329c7721543ecb383504c",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "545dbcf85f287170df06b0d96718fe90fa9e8049b12a4b5483b94a7771438a91b9356361c9094d69ceacf20a21cda8ec04ab88e4c4394b651833c3181099bf54",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 15607
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":2,\"t\":1790488592669,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.745476,2.2980464,1.5667461],\"q\":[-0.011527807,0.79695505,-0.06553801,0.6003619],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488592,
+        "id": "2976ecd869574a838223d723598a39f451826f1f9882e72cd86efea459ff10fd",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "a1bf50f661dea686e55a93ce978f65848dda8aaa6848886b6c78c2807ba545a8c32b34dc45873c50b9f33df46a7a136599b5b8dce0f6b303dff6559af8fd0c0c",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 16289
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":5,\"t\":1790488597016,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488597,
+        "id": "978316f9bf8b84f37590bd61735bd2eeb94b779a69b0f6bce71f7d1dbbdc0b03",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "6b4fd6be4efb9d27da984bf5b4f0c06765fab0df49e6f87f941b8c2c1c2a4ca7caf53a366316acd69dddc1f806f285eea0190efd3ec8d1dd869aecd2d8871853",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 20621
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":3,\"t\":1790488597670,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.451042,2.117817,1.2166204],\"q\":[0.06065017,-0.021994326,-0.01600111,0.9977884],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488597,
+        "id": "84e705c499ee72855712134f7dcfce38ab32103eca058494aa105b3547d74b02",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "593d744c1db8c1146159cc880543a5d017f2faf65fd5d1196a235724b70e0aee5975de215d9b8df29ec0c072aa26bd37cba8668b0de9d08442e7f1578e582121",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 21253
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":6,\"t\":1790488602039,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488602,
+        "id": "f7e18c412f71a1664871ea7014a9f9793082cf17a48b14375d646ddb0b4eec0c",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "acbf817434a718287aae8b421ed4c382bd2180f4acf8ccaaf8b30dab9d4830c62826d23f09a2de8da1eda1483915aea9948ab3c5d950a5739fe048079c8b228b",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 25650
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":4,\"t\":1790488602686,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.158554,2.2806213,1.362743],\"q\":[0.06409576,0.03428788,0.0411922,0.99650353],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488602,
+        "id": "ccff648981d732ccd79af9cfaff259cbd9c94272887c6268b0c4d20cfda84146",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "2eb0ccf91c353935722f3719829f915d3a6e0c9a077d1c28fa2251b053decbd70cad5417890e7841677f17dd97ee698725ce0193f5cae68245bfa348e570904b",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 26317
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":7,\"t\":1790488607048,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488607,
+        "id": "3c6a4baf90399265198e1e0890879def1ea116ed9acabdb91d60cfc9e750c077",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "5abb1350e5a1edad310906b5c2cb603a839332ebe5a4dd9c0058e650256d34f885f7a4ed844a35ff91bbec06bc98462ccd77dbe94474cf8db2f38c174d557b41",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 30663
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":5,\"t\":1790488607687,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.699689,2.1431017,1.7472881],\"q\":[0.040338207,-0.053796757,0.032287728,0.99721426],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488607,
+        "id": "b69ceeda728ba515bba2cfe2794add4a9b664f19219479d665665ee561e8aa1e",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "c53369a5e57367c7087b9d70b573bdeff5a52598d8e4cead8eb0f4cefab94654dddaf774ec2239217a81182a9b2b6b75882331f831c33c7d25fb111636caecb3",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 31294
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":8,\"t\":1790488612090,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488612,
+        "id": "984b542761944651c660155bf7cebd117bb5e05e841e49a7905ee46d519f69cb",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "0bcd6dc7ecb7852f2c9ff843119047f554a0228532de61294737dd52dccf39236ade2ba1c3ef384401feadd3122b096b3f6e0d5160a5819a7be14867548038cb",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 35703
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":6,\"t\":1790488612703,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.698074,2.2123551,1.6922624],\"q\":[0.010476135,0.06638622,-0.035557725,0.9971051],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488612,
+        "id": "58726cd1db823d85a07370177f79199e7911c6a147901af99cb470800160b934",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "6fdf1cde8eaca4a75fed93d7148cb4a45cc8f8d52529627b81369d211e178ed98589054ccdbf4ec37d17cb53e96bcc6991aa1f36bf96cab26b2caf217bd9c05d",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 36325
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":9,\"t\":1790488617101,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488617,
+        "id": "5480a9b2d5d0fe5dab786a33f11ac85d47b92875eeb0841620e6aa932ffc24d1",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "4f2f4bcbbc01b66735cfe49cf0a2e3fbcab74aeed2920219e898c9c9487dd4b554aeef7061b1fa17983fa189ea972a0b13dca5c77d55e6599ee7b89ae0f017d6",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 40715
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":7,\"t\":1790488617703,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.065048,2.2429469,1.2947525],\"q\":[-0.01780301,-0.081267364,-0.041884415,0.9956528],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488617,
+        "id": "0abf001b7e21867bd6244874414f4674fd44ecc3786dad9166c5b8d59170f151",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "02d6406c1a222f3bb8731e0350698630db5b440e67c69b8fa88285b419875b8d2d9378e1d9d2ac6de3b8f978a84ac1154715b758c09fe5dedce0db2659967830",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 41284
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":10,\"t\":1790488622112,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488622,
+        "id": "93645525bfa14ec6d8463b41031223346d5d72171392b815b549b8a2d72f4fd6",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "20e9a00584327a7b099457a9247afe01d25aa2ae909513938f6f42da8c8fc21ff0876a24702b9d343ce95582bd3e6fb4d210aea0fdee80f809cb7f62b9aa84ad",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 45724
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":8,\"t\":1790488622703,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.507604,2.101846,1.2547607],\"q\":[-0.04517875,0.09531741,0.02809625,0.99402416],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488622,
+        "id": "c8badbdda0f7ec400a56e9c288eeb034f60b05497e5873f6841b714dcbbb0a61",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "abe2be39b899cb96b42012ef93726213183a5bee49fde111f66b9835fc785ad4d5a581705bc6176bfa41570b9cac7402ea65b5e35f3307ac8bcadc76ef4c1a38",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 46286
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":11,\"t\":1790488627157,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488627,
+        "id": "bb13f22bf3934eaccc79c21b5df9bea093250647e648eb76fb34cbed4778f128",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "d45824d15d65a0b132dc0c77491c7423ce1cda0ecb2986ab28578e3a4d51e921f54a5531e1cf0a18d00861f33f17d937b2593b0a8f67fc3dc81cfad81ea487d0",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 50767
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":9,\"t\":1790488627720,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.893132,2.3419063,1.643898],\"q\":[-0.061916422,-0.10296534,0.040695608,0.99192154],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488627,
+        "id": "233475d6509ebc89a31f6b528a8129fc84811fba2afaac56943f77f5e002e942",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "d080b8085bcb297be43b0ca8929bbf93d991e476c16b72e17e4db8bd338a52c42e17c9c4a56a704da65cd0e595040889a9b3641d82e85372c84b97b0e0f51c3a",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 51325
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":12,\"t\":1790488632204,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488632,
+        "id": "cf5ccd18c4785549200cbb4aa3c0c61ad28c660b6311a5a0b2a4a4699171647f",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "c40c5f629b059e79f626aba073f59232eb16fbe0102656341f5d804049c8f056f98fcc5061bd150082a7ccc7e16d9909775bb61fafbb4622689a238e6de75e57",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 55812
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":10,\"t\":1790488632720,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.14894,2.0352063,1.775574],\"q\":[-0.05043255,0.11750257,-0.0041611,0.9917825],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488632,
+        "id": "60daaea6bbb8cd5ba909544b3c09a8435924acd7c398e6180d3e97737f12589b",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "a7e16bfbbe7b6908e5708b52aa8c12eb883d18cac4434a13c34e7f9cad74aa1fcfb7d2032b72b84a96396fcb5a7ca40fbfa3a61556c2e6adf58954fa88b0c6e0",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 56353
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":13,\"t\":1790488637226,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488637,
+        "id": "8fa0fee8796c4a16790c8063e5bbd85bbc548cbc7539bf89579a021643eb59b6",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "01f953342ad9262ee6a65f27787314aaa9c5267ecf8d0bda01ef4ed45302973efb634db80ed9f80e7fd7464b18bc0a7f814867a86279f3e2bd8dd3261ee64914",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 60833
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":11,\"t\":1790488637737,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.271976,2.4041228,1.41763],\"q\":[-0.009986787,0.6856074,-0.059128344,0.72549766],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488637,
+        "id": "85879cb0724ec63048c7a473fec664d3524b028c9205b987f90a73c1d5d7a242",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "d08c736352688998b3d566af5faa52f92ff5ce215367b8c4ab3f16fd1051590136593b350c455f30544db4263f786914113c711024e300a390647de3c5bf8527",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 61345
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":14,\"t\":1790488642243,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488642,
+        "id": "9cf79bd5186487abb616765d9c60a6cdbe3bc87df8024f547ec0d9f04d167704",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "a43ca91af90d614456a3b9fb099edf3a93e1cf3b3c0326030e2236c426f96a3f9bddaa179e03a847eb386cd927f28b9f55c9b50a67dc2579f2e721e6cd98a4b2",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 65842
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":12,\"t\":1790488642754,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.935935,2.0596972,1.2018402],\"q\":[-0.1316726,0.13543811,0.013063541,0.9819106],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488642,
+        "id": "fa8dc50de5bff8db4d1e050558cdc4fe70c3de7a3840d1b5c805ab1ee603f074",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "3dd99c923eb0b618613bb52cbc690a6c56cb34584460183b24f5ba567e6bc9dac38d101040f3a177da7c8fc7eaa617cbc1f1e0b9ae2a0bc33664d3972b036af1",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 66351
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":15,\"t\":1790488647257,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488647,
+        "id": "bd1151891c04c34b6c464d347f7ea4dd479953db0f976487d27dd7adf66a22c2",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "35d91e743b4a0e1c2c65e04cdf7091a42bd939b1b42894b7525b141309244ab11e422e07c62c56b11a2a4bdbcb7d53c1ffa580b9506ed0c605b9bbd04e8a2092",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 70862
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":13,\"t\":1790488647771,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.360914,2.2990248,1.5098393],\"q\":[0.03734379,-0.14739762,0.054296426,0.9868796],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488647,
+        "id": "65b957a75bb6a947fde27c6aae28e6296ead912fb3dad7a8de93e4e6abac703c",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "7c6cacbe14fd818b2765dd19da68005d449327a5abdfe2aec12f1639102843ef7dac2ff3b45056e05fcb7894484a7c2e22d110b0570c0cf66a1dc7f69ed7e84c",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 71358
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":16,\"t\":1790488652315,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488652,
+        "id": "848ace32e82c2176cfe3ad575800973d92294e5ca3d42b6b50613e9c105ee7c1",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "6f052afd487278ddd5805409070c2ad9c20fa1ca748ca327c6a06b9df7034428f337791b6d5d4a20b28c4ae8fc6e4f3d921ae3d083ae5817c9bdec8510f68d90",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 75925
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":14,\"t\":1790488652771,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.114932,2.1525834,1.7968025],\"q\":[0.06278478,0.15220316,0.009691466,0.9863054],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488652,
+        "id": "f2f9f71fa25886673ecdb1fcbfd7b8fe152937bfd31475426d59fda1ece53d7b",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "52552130c651d3102f55657de44a6e61ecdf0ba56dcd4a403585e440f5d1f4a20908f4868395aa238d01470a98bf5663a579d5dae9e3b5b07e6d001a5a7326f0",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 76381
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":17,\"t\":1790488657351,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488657,
+        "id": "7efe6d29c5de980cae60c62ffa88d43eb2567c09a4354f3537a2eed4a2ea3173",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "fb73a0a0d31c246cb1185c72a70d375186ff6c4859c977295199a9172b2640e22eb5ca7df23afa71cc7e242930e574f298e3b191ef7e1cdb9c7aea8af80675f4",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 80958
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":15,\"t\":1790488657771,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.804753,2.2000735,1.5580908],\"q\":[0.3053937,-0.13989235,0.008103344,0.9418594],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488657,
+        "id": "6450658f999d4ce58fc608ce030470cf0948337edd7923fa703e2569df26599c",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "ad83610837d829f54d5246132d3cb709f1b35d5a9a46d65353a248822f3834f3e6c55774170209c28a145b712955041ba67de2eb281dbd8d4caf2253405e2aed",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 81355
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":18,\"t\":1790488662367,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488662,
+        "id": "bb416b4f77273bc1049822d9087da74969a33c9680ef1609a4bd700b42f73c21",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "f9ad4749240b84eab03d130235d3df977093d31de63da92f7bd024eda1b01280ecf5834fa379e91eefd04e3494ff2e94851d5e52489abed4a1705bb9562b12d1",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 85974
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":16,\"t\":1790488662788,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.592246,2.2313235,1.2132026],\"q\":[0.031666998,0.1663345,-0.037510023,0.9848467],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488662,
+        "id": "4076dfdfe3110d26df3398e7ac1569fac33d4f0ab74bb87b64be655a92de5df5",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "ca40f7f6912b519b076fecc6bbdefda958b0d55de1663ae0747b348960086f5cf6e30c4b24d232618e552484b6414a2243069b2b05d5d6a9ff4f7024946a8e72",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 86461
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":19,\"t\":1790488667375,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488667,
+        "id": "e15faa71463b1e5b660524872a3790acf4977225fde3dceba09df3070f2c68df",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "7fc018906b4fdec92cdcf9263a4c59bb6ee5c1dff3f81c570916bce625399deb3d6c464933867119ab611231f972d213eeb7e3a2a1241034ead82bc367a7a39e",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 90983
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":17,\"t\":1790488667804,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.119004,2.1580274,1.3721966],\"q\":[0.18276662,-0.17225178,0.064469784,0.9657998],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488667,
+        "id": "502190fa9d8c5be4db03a7f7da24529d02ac031847a2b2f4a634e1dfa0cfc349",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "52fece46e660344117b9feff8fe544c3ccfac4bbe92b6a77d2c4994a13ad54caad53e20fe044421861d630605ff5575f5354a5725e8668a4564cbd4cf8fac3d5",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 91433
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":20,\"t\":1790488672403,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488672,
+        "id": "badb253678281881e1a2709bc43eb1f5b47d9512f178dd05d0b97e6daad9d5b4",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "ff9846cebabdab139126e9c92c39546d359a980442b1414ae04a89d14294957b6e1b4ac86979a62a1c0dc21a96bb3083d8d9f5d4f4f97937540fe43e235cd9d3",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 96010
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":18,\"t\":1790488672804,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.566756,2.227809,1.7530199],\"q\":[-0.017490903,0.17304268,0.045254204,0.9837186],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488672,
+        "id": "cd0543f6dfc61249a5062e55330dd7e9a1ffc11769948f0d13573fa6d97a0ebb",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "709c48ade2687a9d0d89e4f310a5f71e044536a2849cd20a13d786ac6f3bff495aa3c3d2df8786aa2f267786db08909c94410ecb38dcdf29bb44b7e3bec204f0",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 96404
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":21,\"t\":1790488677433,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488677,
+        "id": "a4f58630759d9fc7533bcc774d6fc9cdf8b1d1f2e6711d955577ca91a3c7141d",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "9b427b96399c785ca92244642cc1ac287ac25724075e278334cd8ee6a5a158f38fa7c824a7860fe78b67494345476db72019c43a937cd0f8c3bfcad0054a0b4e",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 101040
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":19,\"t\":1790488677821,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.7222595,2.3209162,1.6839888],\"q\":[-0.011928734,-0.18021116,-0.21897545,0.9588699],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488677,
+        "id": "a997e190997fe251b271fc52a63979ea009f03a3fe22a2d94cf1d3513c83bbfc",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "371a8e1d1e00e7ac616e1535fc7528bcef91d3e3797464e702c404fdc93de917322038adffd77f2eae8b5ca394ba921d5627eccdfd9073183a4c259f9d34a191",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 101439
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":22,\"t\":1790488682438,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488682,
+        "id": "01f517bb31224a3ab450f8118995263830adfab23f02d6d9a467b4110587a390",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "59f85e8afb2b811df5e25a6fc40597c51fd4be6c4cc31193b6f99e108a86daab236c58d50ffc47a83ffee033af626d5d337b4b872d4ca28ff3bd668ae33d8893",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 106041
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":20,\"t\":1790488682821,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.290445,2.1838772,1.2869469],\"q\":[0.02731385,0.858643,-0.14117251,0.49199238],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488682,
+        "id": "34b9881e0ac4c79aae195d63e4cb000559dee12d72355f06f293850374dff8b5",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "c1fafcbb335d7009198ea2e430a2e32a3773056efdc7341285a728fb33262a6b9476b5a3aae65b4b34356639736c502de851f028c252128165656bb2281c32ba",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 106390
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":23,\"t\":1790488687484,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488687,
+        "id": "e744b7048f7dbe4e19f17b3ea17ea8c9c41f727707c03b2502cb94f71a8a85c5",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "99cb969f8f558618bd48afff44a07ccc4a226517e341ef79589b2a8156085cc19d9aabcb4e745c1ef6780f6bf6395112eea200f78b40d740bf9b7842a73d81f4",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 111081
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":21,\"t\":1790488687838,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.337734,2.3059301,1.2621832],\"q\":[-0.04273381,-0.17272286,-0.00042878056,0.9840429],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488687,
+        "id": "c1d8792eb6f70ed109ae73115860bd125a92f977707562fd17fb9db4cf973f74",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "e846e06448e5e8c5a64a7cb87dfad4968466a293d64de8d8b2f18ded7150418545f2072917fdd55de13f08be286c9773c1efa0adf8fc90a312ba7bef71d4c1ae",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 111425
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"b16b9cf06cb00cc1\",\"n\":24,\"t\":1790488692486,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488692,
+        "id": "585ede4e3ba02330b29f2fce647519dacf0b51e2fc819c6e3e0257140b73de26",
+        "kind": 23300,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "5a364c4fcd9fc896153f9a8157d7272785a19421c5e80a7eaa238ca3b819d2ff6cf856964882d421c4af0af2233b20f2a35bfd88f243abbb80dda74d0f85bb84",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,-1"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 116092
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"5ecbff7ac185222d\",\"n\":22,\"t\":1790488692838,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[11.374535,0.0,2.5980089],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"},{\"id\":\"agent\",\"role\":\"agent\",\"p\":[10.682188,2.0515444,1.6534075],\"q\":[-0.0059307176,0.1713243,0.051747553,0.9838369],\"follows\":\"avatar\"}]}",
+        "created_at": 1790488692,
+        "id": "007788a36868780bec10b590c4460f4ec60ebfa3aed95352bba34fc97ad4513b",
+        "kind": 23300,
+        "pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+        "sig": "4a6ab6cac13e7cba9abb8d45a5542182c6c8d33c795eff17397e3942f80479736fabdeee6989f48249c553ccf793da1cecbd94f0ae43a6d3f8520a11cf96680e",
+        "tags": [
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 116425
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[13.374535,0.0,-0.40199113],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488696551,\"online\":false,\"name\":\"verse-phone-probe\"}",
+        "created_at": 1790488696,
+        "id": "6d9152b0098170b77890f3fe2aa9cd28d70c02f7f89d69b2791d3d3dde77c7b8",
+        "kind": 33301,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "67dc83998b83c0c5b6f8bb6b768749fd47d20c9e5bc073734eb0c777781d669a229835387e283cd4d8bb4838ababa72aff300d9d53b95338fa9c48281998043a",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/avatar"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,-1"
+          ]
+        ]
+      },
+      "received_ms": 120154
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"agent\",\"role\":\"agent\",\"p\":[14.374535,1.8,0.5980089],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790488696552,\"online\":false,\"follows\":\"avatar\",\"name\":\"verse-phone-probe\"}",
+        "created_at": 1790488696,
+        "id": "736cc8b7661548fe2447a5a57658972ebcd285b179cad9ed0e7c3806729c7589",
+        "kind": 33301,
+        "pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+        "sig": "74507901516c545841009e92b1090dedeed4ad764c13c7e3da7419b1fc0170493f6885a496f650fa2e9d0731e3ecb34e8265a8758ff5b6171025b4671b5ecdbd",
+        "tags": [
+          [
+            "d",
+            "verse-plaza/agent"
+          ],
+          [
+            "w",
+            "verse-plaza"
+          ],
+          [
+            "role",
+            "agent"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 120206
+    }
+  ],
+  "frame_sequences": {
+    "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24
+    ],
+    "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22
+    ]
+  },
+  "limitations": [
+    "Native screenshot and rendered-entity evidence must be recorded separately",
+    "The probe has no phone secrets and cannot authenticate or publish as the phone",
+    "Only public presence records for the explicitly supplied phone and probe are retained",
+    "The probe publishes no chat, profiles, greetings, model requests, or benchmark runs",
+    "Probe offline states remain; fresh private keys are never persisted"
+  ],
+  "passed": true,
+  "peer_offline_received": true,
+  "peer_online_ms": 427,
+  "peer_pubkey": "b65cb73e15d4b1aaa426f9d59668aeba10890b0e60bea9e7f6d54d28ecd87ad7",
+  "peer_saw_phone_live_ms": 1661,
+  "phone_pubkey": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+  "relay": "wss://relay.openagents.com",
+  "schema": "verse.phone-presence-probe.v1",
+  "started_at_unix": 1790488576,
+  "witness_authenticated": true,
+  "witness_subscribed": true
+}

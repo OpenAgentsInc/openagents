@@ -1,0 +1,13 @@
+{
+  "base_commit": "cb655ee1ff4282f30f1a25f2adda8f08d7f85fa1",
+  "archive_source_commit": "cb655ee1ff4282f30f1a25f2adda8f08d7f85fa1",
+  "working_tree": true,
+  "verification_only_change": "Synthetic peer offset +0.8m X, +3m Z; no app code changed",
+  "files": {
+    "crates/verse/examples/presence_probe.rs": "59404a959b77a0e2052355c51f7c110e3c974bdf0df7c84af4bc75770f9d53ac",
+    "crates/verse/src/session.rs": "d6187201074b311a91949fb7c2450cc11b8b0e5415d462adf17fdc25849c0202",
+    "crates/verse/src/net.rs": "aacd044afe03320b557bdd583d91ee47148f00119276a71578137deec0aab0d7",
+    "crates/verse/src/crowd.rs": "c3243d51212b647db2c24200c03314b151f5563704a00a3edf0be2c5c221e4c5",
+    "crates/verse/src/mv.rs": "5eee6552401d0feb7bf5bec225c5cb674c5e244ecd36df65d4847fe746a52aef"
+  }
+}

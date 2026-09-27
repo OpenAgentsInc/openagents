@@ -1,0 +1,12 @@
+{
+  "base_commit": "3ebcd1e435bb1654e2657d0a06357b7a5f3e5272",
+  "working_tree": true,
+  "files": {
+    "crates/verse/examples/presence_probe.rs": "c4db3f3edb9e3f4290e0dd10ea060f0544505019f971074c72405dfd782cb0ed",
+    "crates/verse/src/session.rs": "d6187201074b311a91949fb7c2450cc11b8b0e5415d462adf17fdc25849c0202",
+    "crates/verse/src/net.rs": "aacd044afe03320b557bdd583d91ee47148f00119276a71578137deec0aab0d7",
+    "crates/verse/src/crowd.rs": "c3243d51212b647db2c24200c03314b151f5563704a00a3edf0be2c5c221e4c5",
+    "crates/verse/src/mv.rs": "5eee6552401d0feb7bf5bec225c5cb674c5e244ecd36df65d4847fe746a52aef"
+  },
+  "binary_sha256": "1af18dd23c1c4333fc96bbdd1040ffb02f339bf6fdbbbb70ac667f67ef7a5ff4"
+}

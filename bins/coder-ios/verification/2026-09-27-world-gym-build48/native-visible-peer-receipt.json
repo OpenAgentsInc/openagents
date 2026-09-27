@@ -1,0 +1,18 @@
+{
+  "schema": "coder-native-visible-peer-v1",
+  "captured_at": "2026-09-27T05:59:54.389629+00:00",
+  "app_bundle": "com.openagents.coder",
+  "app_version": "0.5.0",
+  "app_build": "48",
+  "image": "native-visible-peer.png",
+  "image_sha256": "893cc93041e94dcceb775a16529bce799937eb97dda0a887d46b403d89277a5b",
+  "phone_public_key": "f8171382af220ccf939849ffa997f617b936165a71b029e39cef45e604f9fff5",
+  "peer_public_key": "4a284f525c308898770b3c90b099a5290a30833c109e02069fa765f0fef128a6",
+  "relay": "wss://relay.openagents.com",
+  "synthetic_app": false,
+  "peer_is_independent_test_process": true,
+  "app_source_changed_for_visual_repeat": false,
+  "witness_result": "../2026-09-27-relay-presence/phone-peer-visual.json",
+  "witness_log": "../2026-09-27-relay-presence/phone-peer-visual.log",
+  "visually_observed": "A separate remote avatar and companion are visible ahead of the local avatar."
+}

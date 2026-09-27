@@ -13,16 +13,27 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Latest internal TestFlight: 0.5.0 (47).** App Store Connect confirms `VALID`
-and `IN_BETA_TESTING`. The [distribution receipt](verification/2026-09-27-forest-zones/testflight-build47.json)
-records the clean archived source and Apple state. This build adds the
-[Atlantis forest portal](../../docs/verse/zones.md), original runtime-loaded
-artwork, separate forest palette, local SRD 5.1 encounter, and return to the
-saved plaza position. [Acceptance](verification/2026-09-27-forest-zones/README.md)
-includes normal optimized launch, an empty-cache HTTPS download, the native
-portal/encounter/return flow, cached reentry, and signed packaging checks.
-Physical-device acceptance remains separate. The archive retains the build-45
-startup packaging correction; notification wakes remain unconfigured.
+**Latest internal TestFlight: 0.5.0 (48).** App Store Connect confirms `VALID`
+and `IN_BETA_TESTING`. The [distribution receipt](verification/2026-09-27-world-gym-build48/testflight-build48.json)
+binds it to clean source commit `cb655ee1ff`. New or unconfigured installs join
+`wss://relay.openagents.com` automatically. Custom relays and explicit **Leave**
+choices survive relaunch; synthetic previews stay offline. The Gym entry is a
+world-rendered sign on the physical board, activated by a depth-checked tap.
+Its detailed run and connection panels remain native controls.
+
+[Native acceptance](verification/2026-09-27-world-gym-build48/native-verification.md)
+checks the physical board, custom and offline choices, automatic connection,
+and real remote geometry. A separate peer is visible in the retained screenshot;
+[signed relay evidence](verification/2026-09-27-relay-presence/README.md)
+records exchanged presence and cleanup. Physical-device acceptance remains
+separate. Notification wakes remain unconfigured.
+
+Build 47 adds the [Atlantis forest portal](../../docs/verse/zones.md), original
+runtime-loaded artwork, separate forest palette, local SRD 5.1 encounter, and
+return to the saved plaza position. Its [acceptance](verification/2026-09-27-forest-zones/README.md)
+retains normal optimized launch, an empty-cache HTTPS download, native
+portal/encounter/return controls, cached reentry, and signed packaging checks.
+These features remain in build 48.
 
 Build 46 adds the [expandable map, companion reactions, and
 Spark/Halo gates](../../docs/verse/world-interactions.md). Select a
@@ -138,7 +149,7 @@ and archived executable digest beside the archive. A nonempty workspace status
 must be reviewed rather than described as an exact committed-source build.
 Set `CODER_IOS_BUILD_NUMBER` to a new
 positive build number after checking the existing App Store Connect builds;
-the checked-in and confirmed internal TestFlight build is `47`.
+the checked-in and confirmed internal TestFlight build is `48`.
 The `export` command produces a local
 distribution package using the existing export settings with destination
 changed to `export`. Upload is a separate operator action using the retained
