@@ -144,5 +144,6 @@ shows a user-level `sshd` whose authorized key sets a throwaway `HOME`.
 - The launcher returns typed local results. It does not yet sign NIP-ENV
   request, lease, or cleanup artifacts, and it does not redeem invitations.
   The [Computers screens](../coder-computers/README.md) redeem them: their
-  **Connect over SSH** runs `up` and `invite`, then redeems the invitation
-  with the device key.
+  **Connect over SSH** runs `up` and `invite`, redeems the invitation with
+  the device key, and opens a tunnel whose port the client's connector tries
+  first. Their **Remove over SSH** runs `remove`.

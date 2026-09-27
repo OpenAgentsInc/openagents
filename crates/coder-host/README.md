@@ -118,6 +118,12 @@ hint over TCP, a `websocket` hint through `client::WebSocketStream`, over TLS
 for a `wss` URL. `Link::direct` takes either stream. A `wss` certificate is
 verified against the bundled WebPKI roots; `client::WebSocketTls::test_roots`
 and `Connector::set_websocket_tls` replace those roots for tests only.
+`Connector::set_local_route` gives one host a loopback address that only this
+process can use, such as the forwarded port of an SSH tunnel it runs. Each
+attempt, and each probe of a relay connection, tries that address over TCP
+before the hints. It is same-machine evidence for that one address, so the
+connector's locality still governs the hints, and a non-loopback address is
+refused.
 `client::connect_websocket` dials one URL the same way.
 
 ## Presence telemetry and last seen
