@@ -8,7 +8,7 @@ publish.workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:winit", "dep:libc", "model-host", "xp-host", "replay-host", "capture"]
+desktop = ["dep:winit", "model-host", "xp-host", "replay-host", "capture"]
 model-host = ["dep:coder", "dep:coder-one"]
 xp-host = ["dep:knowledge"]
 replay-host = ["dep:gym", "dep:knowledge"]
@@ -26,13 +26,15 @@ glam = "0.30.10"
 gym = { path = "../gym", optional = true }
 gym-bridge = { path = "../gym-bridge", default-features = false }
 knowledge = { path = "../knowledge", optional = true }
-libc = { version = "0.2", optional = true }
+libc = "0.2"
 nostr = { path = "../nostr" }
 png = { version = "0.18.1", optional = true }
 pollster = "0.4"
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 swash = "0.2.10"
 tokio = { version = "1", features = ["rt", "time", "net", "sync", "macros"] }
 futures-util = "0.3"
@@ -62,3 +64,7 @@ required-features = ["xp-host"]
 [[test]]
 name = "xp_relay"
 required-features = ["xp-host"]
+
+[[example]]
+name = "forest_capture"
+required-features = ["capture"]

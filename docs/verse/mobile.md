@@ -4,7 +4,8 @@ Coder opens directly into **Verse**, which mounts the same seeded city, player c
 collision rules, camera, avatar animation, following spade agent, meshes, and
 wgpu scene renderer as the desktop application. Rust Native supplies a generic
 native drawing-surface contract. Verse supplies the world; `coder-ui` supplies
-the application palette. No OpenAgents identity, theme, world, or network
+the application and plaza palette. Loaded zones may use their own appearance.
+No OpenAgents identity, theme, world, or network
 implementation belongs to the reusable `rust-native` crate.
 
 ## Walk the world
@@ -74,6 +75,33 @@ walk there. The character follows a collision-aware route; manual movement or
 jumping stops it. Camera input can continue while walking. See
 [maps, companions, and doors](world-interactions.md) for the ordered demo work.
 
+## Enter the forest
+
+Expand the map and choose **Forest portal** to walk to the new plaza arch.
+Tap its opening or choose **Enter forest** while nearby. This starts the first
+asset download; normal plaza startup and walking near the arch do not download
+the pack. Loading shows progress and **Cancel**. A failure keeps the plaza
+available with **Retry** or **Dismiss**.
+
+Atlantis forest has its own green and earth-tone palette, trees, wizards, and
+zombies drawn from the reviewed asset pack. Touch movement, motion look, pinch,
+and the map still use the shared Rust controls. Choose **Encounter** for a local
+turn-based wizard-versus-zombie demo. **Fire Bolt** spends an action;
+**End turn** lets the zombie act once; **Reset** restarts. The rules and movement
+budget are enforced in Rust. They do not depend on the display's frame rate.
+
+Choose **Plaza** to leave, including during a fight, or use the return portal.
+The app restores the saved plaza position and releases active forest geometry.
+A verified disk cache speeds later entry. No forest model is embedded in the
+app merely so the plaza can start.
+
+Plaza presence and Gym observation pause while loading and visiting the forest,
+then resume the configured plaza behavior on return. The forest is local-only;
+this does not join another relay or publish its coordinates as plaza movement.
+Pairing and retained-chat grants remain separate. See
+[zone architecture and limits](zones.md) and
+[the exact SRD 5.1 subset](zone-rules.md).
+
 ## Use the world computer
 
 The computer prompt is part of the 3D monitor. Its amber lettering and corner
@@ -137,7 +165,8 @@ connection choice. A new native mount starts a new local world.
 | Seeded geometry, movement/collision, camera, gait, follower, render pipelines, monitor lettering, and world picking | `crates/verse`; shared desktop/iOS/Android implementation |
 | Device touch interpretation, world state, connection choices, C bridge | `crates/coder-mobile` |
 | GPU surface, display callback, native controls, protected identities, scene lifecycle | Thin SwiftUI/UIKit host in `bins/coder-ios`; Android framework host in `bins/coder-android` |
-| Palette | `crates/coder-ui`; outside Rust Native |
+| Application and plaza palette | `crates/coder-ui`; outside Rust Native |
+| Loaded-zone appearance, assets, and rules | `crates/verse::zones`; independent of the plaza palette and admitted only by the shared Rust host |
 | Desktop model chat, retained benchmark-file discovery, verified XP ledger | Desktop feature dependencies; not loaded by the mobile world |
 
 Desktop chat, public-feed panels, XP/quest inspection, and the local Microcoder

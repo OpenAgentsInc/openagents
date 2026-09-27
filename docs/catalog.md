@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 457 documents plus itself as of September 26, 2026.
+This catalog lists 460 documents plus itself as of September 27, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -574,6 +574,9 @@ files are included below.
 | Document | Role | Topic |
 | --- | --- | --- |
 | [verse/README.md](verse/README.md) | Index | Verse |
+| [verse/zones.md](verse/zones.md) | Reference / roadmap | Runtime-loaded Atlantis forest and creator zones |
+| [verse/zone-rules.md](verse/zone-rules.md) | Reference / design | SRD 5.1 encounter and future L1 physics |
+| [verse/SRD-5.1-NOTICE.md](verse/SRD-5.1-NOTICE.md) | Attribution | SRD 5.1 license notice |
 | [verse/gym.md](verse/gym.md) | Guide | Spatial Gym observation and launch recipes |
 | [verse/mobile.md](verse/mobile.md) | Guide | Verse in Coder for iOS |
 | [verse/world-interactions.md](verse/world-interactions.md) | Design and guide | Maps, companions, and local door demos |

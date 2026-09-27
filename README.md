@@ -55,6 +55,12 @@ Spark/Halo gates with local item choices and saved destination memory. Tap a
 clear map location to walk there; move or jump to cancel. Tap a gate to preview
 its destination, then tap again to walk.
 
+The source now also includes an explicit [Atlantis forest portal](docs/verse/zones.md).
+Its original wizard, zombie, and tree artwork loads only on entry, with a separate
+forest palette and an optional [SRD 5.1 encounter](docs/verse/zone-rules.md).
+The forest is local; shared worlds, creator publishing, and the future L1
+construction/physics zone remain roadmap work. Build 47 verification is underway.
+
 Computer setup uses `./pair` or installed `coder pair`. Chats load after
 pairing, the world relay choice persists, and movement combines with looking
 or double-tap jumping. Pinch to zoom; the crosshair recenters the camera.
@@ -103,7 +109,7 @@ and [full-screen release evidence](docs/coder/verification/2026-09-26-fullscreen
 | Operate the Nostr relay | [Local relay runbook](docs/deployment/runbook-local-dev.md), [production (Cloud Run) runbook](docs/deployment/runbook-cloud-run.md), [configuration](docs/deployment/configuration.md) |
 | Review protocol support and gaps | [NIP implementation coverage](docs/protocol/2026-09-26-nip-implementation-coverage.md), [implementation plan](docs/protocol/implementation-plan.md) |
 | Operate a Minecraft agent | [Voyager](docs/voyager/README.md), [watch an episode](docs/minecraft/voyager-runbook.md) |
-| Walk the Verse world on desktop or your phone | [Verse](docs/verse/README.md), [mobile controls](docs/verse/mobile.md), [maps, companions, and gates](docs/verse/world-interactions.md), [Gym building and run boards](docs/verse/gym.md) |
+| Walk the Verse world on desktop or your phone | [Verse](docs/verse/README.md), [mobile controls](docs/verse/mobile.md), [maps, companions, and gates](docs/verse/world-interactions.md), [loaded forest zones](docs/verse/zones.md), [Gym building and run boards](docs/verse/gym.md) |
 
 ## Run Coder
 

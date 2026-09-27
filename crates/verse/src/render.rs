@@ -1,9 +1,8 @@
 //! The wgpu renderer: one shader, a face pipeline, and a line pipeline.
 //!
-//! Each frame clears to the near-black field, draws faces with a depth
-//! bias so coincident edges win, then draws amber lines on top. The static
-//! world uploads once. The avatar rewrites a small dynamic buffer every
-//! frame. [`Renderer`] presents to a window; `capture` renders the same
+//! Each frame clears to the active zone atmosphere, draws faces with a depth
+//! bias so coincident edges win, then draws lines on top. Static geometry uploads
+//! once per zone. Animated models rewrite bounded dynamic buffers each frame. [`Renderer`] presents to a window; `capture` renders the same
 //! scene to a PNG without one.
 
 #[cfg(feature = "capture")]
@@ -18,7 +17,6 @@ use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::mesh::{Mesh, Vertex};
-use crate::palette;
 use crate::ui::{Atlas, UiBatch, UiVertex};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -58,8 +56,22 @@ struct Batch {
     capacity: u64,
 }
 
+fn dynamic_batch(device: &wgpu::Device, label: &str) -> Batch {
+    Batch {
+        buffer: device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: INITIAL_DYNAMIC_BYTES,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }),
+        count: 0,
+        capacity: INITIAL_DYNAMIC_BYTES,
+    }
+}
+
 /// Pipelines and buffers for one color format and sample count.
 struct Scene {
+    atmosphere: crate::zones::Atmosphere,
     samples: u32,
     globals: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
@@ -318,6 +330,53 @@ impl Renderer {
         Ok(())
     }
 
+    /// Replace zone-owned geometry only after the loader has verified its pack.
+    /// Replacing these buffers releases the previous zone's GPU allocations.
+    pub fn replace_world(&mut self, world: &Mesh) -> Result<(), String> {
+        const LIMIT: usize = 96 * 1024 * 1024;
+        for vertices in [&world.faces, &world.lines] {
+            if vertices
+                .len()
+                .checked_mul(std::mem::size_of::<Vertex>())
+                .is_none_or(|n| n > LIMIT)
+                || vertices
+                    .iter()
+                    .any(|v| v.pos.iter().chain(v.color.iter()).any(|x| !x.is_finite()))
+            {
+                return Err("Zone geometry exceeds its GPU bounds".into());
+            }
+        }
+        let upload = |vertices: &[Vertex], label| {
+            let bytes = bytemuck::cast_slice(vertices);
+            let buffer = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(label),
+                    contents: bytes,
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+            Batch {
+                buffer,
+                count: vertices.len() as u32,
+                capacity: bytes.len() as u64,
+            }
+        };
+        let faces = upload(&world.faces, "verse zone faces");
+        let lines = upload(&world.lines, "verse zone lines");
+        self.scene.world_faces = faces;
+        self.scene.world_lines = lines;
+        // Animated models can be much larger than plaza avatars. A return
+        // releases their buffer capacity instead of retaining the largest zone.
+        self.scene.dynamic_faces = dynamic_batch(&self.device, "verse dynamic faces");
+        self.scene.dynamic_lines = dynamic_batch(&self.device, "verse dynamic lines");
+        Ok(())
+    }
+
+    pub fn set_atmosphere(&mut self, atmosphere: crate::zones::Atmosphere) -> Result<(), String> {
+        self.scene.atmosphere = atmosphere.validate()?;
+        Ok(())
+    }
+
     /// Draws one frame. Lost surfaces require a fresh native attachment;
     /// skipped frames never report that they were presented.
     pub fn draw(&mut self, view: View, dynamic: &Mesh, ui: &UiBatch) -> DrawStatus {
@@ -423,12 +482,41 @@ pub fn capture(
     ui: &UiBatch,
     atlas: &Atlas,
 ) -> Result<(), String> {
+    capture_with_atmosphere(
+        path,
+        width,
+        height,
+        world,
+        view,
+        dynamic,
+        ui,
+        atlas,
+        crate::zones::atmosphere(crate::zones::ZoneId::Plaza),
+    )
+}
+
+/// Render a zone with the same atmosphere used by its native surface.
+#[cfg(feature = "capture")]
+#[allow(clippy::too_many_arguments)]
+pub fn capture_with_atmosphere(
+    path: &Path,
+    width: u32,
+    height: u32,
+    world: &Mesh,
+    view: View,
+    dynamic: &Mesh,
+    ui: &UiBatch,
+    atlas: &Atlas,
+    atmosphere: crate::zones::Atmosphere,
+) -> Result<(), String> {
+    let atmosphere = atmosphere.validate()?;
     validate_extent(width, height, RenderOptions::default().max_extent)?;
     validate_frame(view, dynamic, ui)?;
     let instance = instance();
     let (adapter, device, queue) = open(&instance, None)?;
     validate_extent(width, height, device.limits().max_texture_dimension_2d)?;
     let mut scene = Scene::new(&device, &queue, &adapter, CAPTURE_FORMAT, world, atlas, 4);
+    scene.atmosphere = atmosphere;
     let targets = Targets::new(&device, CAPTURE_FORMAT, width, height, scene.samples);
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("verse capture"),
@@ -688,16 +776,6 @@ impl Scene {
             count: vertices.len() as u32,
             capacity: std::mem::size_of_val(vertices) as u64,
         };
-        let dynamic = |label| Batch {
-            buffer: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(label),
-                size: INITIAL_DYNAMIC_BYTES,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
-            count: 0,
-            capacity: INITIAL_DYNAMIC_BYTES,
-        };
         let (ui_pipeline, ui_bind_group, ui_screen) =
             ui_pipeline(device, queue, format, samples, atlas);
         let ui = Batch {
@@ -711,6 +789,7 @@ impl Scene {
             capacity: UI_BYTES,
         };
         Self {
+            atmosphere: crate::zones::atmosphere(crate::zones::ZoneId::Plaza),
             ui_pipeline,
             ui_bind_group,
             ui_screen,
@@ -722,8 +801,8 @@ impl Scene {
             lines,
             world_faces: upload(&world.faces, "verse world faces"),
             world_lines: upload(&world.lines, "verse world lines"),
-            dynamic_faces: dynamic("verse dynamic faces"),
-            dynamic_lines: dynamic("verse dynamic lines"),
+            dynamic_faces: dynamic_batch(device, "verse dynamic faces"),
+            dynamic_lines: dynamic_batch(device, "verse dynamic lines"),
         }
     }
 
@@ -739,7 +818,7 @@ impl Scene {
         dynamic: &Mesh,
         ui: &UiBatch,
     ) {
-        let field = palette::field();
+        let field = self.atmosphere.color;
         queue.write_buffer(
             &self.ui_screen,
             0,
@@ -754,8 +833,8 @@ impl Scene {
         let eye = view.eye;
         let globals = Globals {
             view_proj: view.view_proj.to_cols_array_2d(),
-            eye: [eye.x, eye.y, eye.z, FOG_START],
-            fog: [field[0], field[1], field[2], FOG_END],
+            eye: [eye.x, eye.y, eye.z, self.atmosphere.fog_start],
+            fog: [field[0], field[1], field[2], self.atmosphere.fog_end],
         };
         queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
         write(device, queue, &mut self.dynamic_faces, &dynamic.faces);

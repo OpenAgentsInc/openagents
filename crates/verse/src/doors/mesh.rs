@@ -185,7 +185,7 @@ pub(super) fn effect(id: DoorId, u: f32, reaction: u64) -> Mesh {
 }
 
 /// Bounded ASCII text in an XY plane facing -Z. Quads use the world depth buffer.
-fn label(mesh: &mut Mesh, text: &str, anchor: Vec3, height: f32, intensity: Intensity) {
+pub(crate) fn label(mesh: &mut Mesh, text: &str, anchor: Vec3, height: f32, intensity: Intensity) {
     let letters: Vec<u8> = text
         .bytes()
         .take(32)

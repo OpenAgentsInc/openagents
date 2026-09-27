@@ -13,8 +13,46 @@ struct VerseTestObservation: Decodable {
     let map: VerseTestMap
     let companion: VerseTestCompanion
     let doors: VerseTestDoors
+    let zone: VerseTestZone
     let door_preferences_revision: UInt64
     let door_storage_writes: UInt64
+}
+
+struct VerseTestZone: Decodable {
+    let id: String
+    let state: String
+    let progress: Double
+    let error: String?
+    let encounter: VerseTestEncounter?
+    let portal: VerseTestZonePortal
+    let hud: VerseTestZoneHud
+}
+struct VerseTestEncounter: Decodable {
+    let ruleset: String
+    let round: UInt32
+    let turn: String
+    let status: String
+    let action_available: Bool
+    let last_notice: String
+    let revision: UInt64
+}
+struct VerseTestZonePortal: Decodable {
+    let near: Bool
+    let visible: Bool
+    let screen_x: Double
+    let screen_y: Double
+}
+struct VerseTestZoneHud: Decodable {
+    let visible: Bool
+    let frame: [Double]
+    let buttons: [VerseTestZoneButton]
+    let captured_pointers: [UInt64]
+}
+struct VerseTestZoneButton: Decodable {
+    let id: String
+    let action: String
+    let enabled: Bool
+    let frame: [Double]
 }
 
 struct VerseTestDoors: Decodable {

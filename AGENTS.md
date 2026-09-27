@@ -401,8 +401,13 @@ uses, and marks which are implemented and which are only specified.
   amber lines on the terminal's near-black field, and a third-person
   character with WoW-style movement and mouselook. The stack follows Ruins
   of Atlantis (`wgpu`, `winit`, `glam`, a custom renderer); the controller
-  is reimplemented from its `client_core`, not copied. Every color comes
-  from `coder_ui::theme::Intensity`; a test refuses any other. Desktop features
+  is reimplemented from its `client_core`, not copied. The global plaza uses
+  `coder_ui::theme::Intensity`; a palette test protects its amber geometry.
+  Separately loaded zones may have their own validated colors and atmosphere.
+  The Atlantis forest loads a pinned asset pack only on entry and has a local
+  SRD 5.1 encounter subset. Read `docs/verse/zones.md` and
+  `docs/verse/zone-rules.md` before changing asset admission, transitions, or rules.
+  Keep product colors and world behavior out of Rust Native. Desktop features
   retain model chat, XP, and file-backed replays; mobile disables those host
   dependencies and injects identity. Both use the shared simulation, renderer,
   and Rust Native surface lifetime. `verse

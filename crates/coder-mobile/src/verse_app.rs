@@ -13,6 +13,7 @@ use verse::controller::InputState;
 use verse::doors::{DemoItem, DoorId, DoorIntent};
 use verse::runtime::{Action, WorldRuntime};
 use verse::session::Session;
+use verse::zones::Intent as ZoneIntent;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -31,12 +32,15 @@ pub(crate) struct Config {
     pub world_relay: Option<String>,
     #[serde(default)]
     pub door_preferences: Option<String>,
+    #[serde(default)]
+    pub zone_cache_directory: Option<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Request {
     Snapshot,
+    ZoneCredits,
     Frame {
         timestamp: f64,
     },
@@ -99,6 +103,9 @@ pub(crate) enum Request {
     DoorReset {
         door: DoorId,
     },
+    Zone {
+        intent: ZoneIntent,
+    },
     PetCompanion,
     InteractComputer,
     CloseComputer,
@@ -143,6 +150,9 @@ pub(crate) struct Packet {
     connection: Connection,
     map: verse::minimap::Snapshot,
     doors: DoorPacket,
+    zone: ZonePacket,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credits: Option<&'static str>,
     door_preferences: String,
     door_preferences_revision: u64,
     pub error: Option<String>,
@@ -163,6 +173,13 @@ pub(crate) struct Packet {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gym_board: Option<verse::gym::BoardView>,
     view: View<()>,
+}
+
+#[derive(Serialize)]
+struct ZonePacket {
+    #[serde(flatten)]
+    state: verse::zones::Snapshot,
+    hud: verse::zones::hud::Snapshot,
 }
 
 #[derive(Serialize)]
@@ -347,6 +364,12 @@ fn packet(
             ),
             error: None,
         },
+        zone: {
+            let state = verse::zones::Snapshot::default();
+            let hud = verse::zones::hud::Hud::default().snapshot([393.0, 852.0], &state, false);
+            ZonePacket { state, hud }
+        },
+        credits: None,
         door_preferences: verse::doors::Doors::default().document(),
         door_preferences_revision: 0,
         error,
@@ -396,6 +419,7 @@ enum WorldTarget {
     Computer,
     Companion,
     Door(DoorId),
+    Portal,
 }
 
 struct Touch {
@@ -476,6 +500,7 @@ pub(crate) struct Scene {
     map_error: Option<String>,
     door_hud: verse::doors::hud::DoorHud,
     door_notice: Option<String>,
+    zone_hud: verse::zones::hud::Hud,
     pub lifecycle: SurfaceLifecycle,
     pub session: Option<Session>,
     /// Remote geometry from the last presented frame, also used for picking.
@@ -531,6 +556,15 @@ impl Scene {
             return Err("The Gym preview requires synthetic mode".into());
         }
         let mut world = WorldRuntime::new();
+        if let Some(directory) = config.zone_cache_directory {
+            if directory.is_empty()
+                || directory.len() > 4096
+                || !std::path::Path::new(&directory).is_absolute()
+            {
+                return Err("The zone cache requires an absolute native cache path".into());
+            }
+            world.configure_zone_cache(directory.into());
+        }
         let door_notice = config
             .door_preferences
             .as_deref()
@@ -549,6 +583,7 @@ impl Scene {
             map_error: None,
             door_hud: verse::doors::hud::DoorHud::default(),
             door_notice,
+            zone_hud: verse::zones::hud::Hud::default(),
             lifecycle,
             session: None,
             presented_entities: verse::mesh::Mesh::default(),
@@ -584,6 +619,8 @@ impl Scene {
             self.frame_timestamp = None;
         }
         if !active {
+            self.world.zone_cancel_loading();
+            self.zone_hud.clear_contacts();
             self.world.cancel_navigation();
             self.map.clear_contacts();
             self.door_hud.clear_contacts();
@@ -593,7 +630,11 @@ impl Scene {
             self.jump = false;
             self.sprint = false;
             self.session = None;
-        } else if self.session.is_none() && self.relay.is_some() && !self.synthetic {
+        } else if self.session.is_none()
+            && self.relay.is_some()
+            && !self.synthetic
+            && self.plaza_online_allowed()
+        {
             self.start_session()?;
         }
         self.sync_gym_interest();
@@ -609,13 +650,16 @@ impl Scene {
         // a new app mount restores the signed pose from a remembered relay.
         self.restore_spawn = false;
         self.spawn_pending = false;
-        if self.lifecycle.active() && !self.synthetic {
+        if self.lifecycle.active() && !self.synthetic && self.plaza_online_allowed() {
             self.start_session()?;
         }
         Ok(())
     }
 
     fn start_session(&mut self) -> Result<(), String> {
+        if !self.plaza_online_allowed() {
+            return Err("The forest is a local zone".into());
+        }
         let identity = verse::identity::Identity::from_secret("phone", self.secret)?;
         let mut session = Session::start_with_identity(
             identity,
@@ -645,6 +689,7 @@ impl Scene {
         let changed = self.lifecycle.viewport() != viewport;
         self.lifecycle.resize(viewport).map_err(|e| e.to_string())?;
         if changed {
+            self.zone_hud.clear_contacts();
             self.map.clear_contacts();
             self.door_hud.clear_contacts();
             self.world.cancel_door_interactions();
@@ -657,6 +702,21 @@ impl Scene {
 
     pub fn pointer(&mut self, id: u64, phase: PointerPhase, x: f32, y: f32) -> Result<(), String> {
         let point = [x, y];
+        if self.zone_hud.captured(id) {
+            match phase {
+                PointerPhase::Move => self.zone_hud.moved(id, point),
+                PointerPhase::Up | PointerPhase::Cancel => {
+                    if let Some(intent) =
+                        self.zone_hud
+                            .up(id, point, matches!(phase, PointerPhase::Cancel))
+                    {
+                        self.zone_intent(intent)?;
+                    }
+                }
+                PointerPhase::Down => {}
+            }
+            return Ok(());
+        }
         if self.map.captured(id) {
             match phase {
                 PointerPhase::Move => self.map.moved(id, point),
@@ -688,6 +748,11 @@ impl Scene {
             return Ok(());
         }
         if matches!(phase, PointerPhase::Down) {
+            let snapshot = self.zone_hud_snapshot();
+            if self.zone_hud.down(id, point, &snapshot) {
+                self.cancel_taps();
+                return Ok(());
+            }
             let snapshot = self.map_snapshot();
             if self.map.down(id, point, &snapshot) {
                 self.cancel_taps();
@@ -741,6 +806,16 @@ impl Scene {
                             .all(|other| other.movement && other.target.is_none())));
             if valid && touch.target.is_some() && self.world_target(x, y) == touch.target {
                 match touch.target {
+                    Some(WorldTarget::Portal) => {
+                        self.zone_intent_at(
+                            if self.world.is_plaza() {
+                                ZoneIntent::Enter
+                            } else {
+                                ZoneIntent::Return
+                            },
+                            Some([x, y]),
+                        )?;
+                    }
                     Some(WorldTarget::Computer) => self.open_computer(),
                     Some(WorldTarget::Companion) => {
                         self.world.pet_companion();
@@ -915,13 +990,17 @@ impl Scene {
         else {
             return Ok(None);
         };
+        if self.world.zone_tick() {
+            self.reset_zone_inputs();
+        }
+        self.sync_zone_session()?;
         let camera_dt = self.frame_timestamp.map_or(0.0, |last| timestamp - last);
         self.frame_timestamp = Some(timestamp);
         if self.spawn_pending {
             self.gym_board.set_active(false);
             if let Some(session) = &mut self.session {
                 if let Some(spawn) =
-                    session.poll_spawn(&self.world.world.blockers, verse::world::HALF)
+                    session.poll_spawn(&self.world.world.blockers, self.world.zone_half())
                 {
                     self.world.set_spawn(spawn.pos, spawn.yaw)?;
                     self.spawn_pending = false;
@@ -988,7 +1067,8 @@ impl Scene {
                 left,
             } => {
                 self.map.set_insets([top, right, bottom, left])?;
-                self.door_hud.set_insets([top, right, bottom, left])
+                self.door_hud.set_insets([top, right, bottom, left])?;
+                self.zone_hud.set_insets([top, right, bottom, left])
             }
             Request::MapToggle => self.map_action(verse::minimap::MapAction::Toggle),
             Request::MapCancel => self.map_action(verse::minimap::MapAction::Cancel),
@@ -1051,6 +1131,7 @@ impl Scene {
                 self.disconnect();
                 Ok(())
             }
+            Request::Zone { intent } => self.zone_intent(intent),
             Request::DoorHold { item } => self.door_intent(DoorIntent::Hold(item)),
             Request::DoorTap { door } => self.door_intent(DoorIntent::Tap(door)),
             Request::DoorReset { door } => self.door_intent(DoorIntent::Reset(door)),
@@ -1096,6 +1177,7 @@ impl Scene {
                 self.map.clear_contacts();
                 self.door_hud.clear_contacts();
                 self.world.cancel_door_interactions();
+                self.zone_hud.clear_contacts();
                 self.gym_open = true;
                 self.computer_open = false;
                 self.touches.clear();
@@ -1136,7 +1218,7 @@ impl Scene {
                 self.gym_board.close_detail();
                 Ok(())
             }
-            Request::Snapshot => Ok(()),
+            Request::Snapshot | Request::ZoneCredits => Ok(()),
             Request::Frame { .. } | Request::Resize { .. } => {
                 Err("Request requires a native renderer".into())
             }
@@ -1173,6 +1255,18 @@ impl Scene {
                 .as_ref()
                 .and_then(|session| session.connection_error),
         );
+        if !self.plaza_online_allowed() {
+            packet.connection.state = "local_zone";
+            packet.connection.label = if self.world.zone_loading() {
+                "Loading zone"
+            } else {
+                "Local forest"
+            };
+        }
+        packet.zone = ZonePacket {
+            state: self.zone_snapshot(),
+            hud: self.zone_hud_snapshot(),
+        };
         packet.map = self.map_snapshot();
         packet.door_preferences = self.world.doors.document();
         packet.door_preferences_revision = self.world.doors.revision();
@@ -1216,7 +1310,10 @@ impl Scene {
         packet.gym = self.gym().into();
         packet.gym_open = self.gym_open;
         packet.gym_revision = self.gym_board.revision();
-        packet.gym_active = self.lifecycle.active() && !self.spawn_pending && self.gym().inside;
+        packet.gym_active = self.lifecycle.active()
+            && self.plaza_online_allowed()
+            && !self.spawn_pending
+            && self.gym().inside;
         packet
     }
 
@@ -1227,6 +1324,7 @@ impl Scene {
         match action {
             verse::minimap::MapAction::Toggle => {
                 self.map.expanded = !self.map.expanded;
+                self.zone_hud.clear_contacts();
                 self.door_hud.clear_contacts();
                 self.cancel_taps();
             }
@@ -1264,12 +1362,13 @@ impl Scene {
                 Status::Cancelled => "Walk stopped",
                 Status::Blocked => "Route blocked",
             });
-        self.map.snapshot(
+        self.map.snapshot_for_zone(
             self.lifecycle.viewport().logical_size(),
             [self.world.player.pos.x, self.world.player.pos.z],
             self.lifecycle.active() && !self.panel_open() && !self.spawn_pending,
             state,
             self.world.navigation().destination(),
+            self.world.zone,
         )
     }
 
@@ -1289,7 +1388,114 @@ impl Scene {
             self.lifecycle.viewport().scale(),
         );
         ui.vertices.extend(door_ui.vertices);
+        let zone_ui = self.zone_hud.draw(
+            &self.atlas,
+            &self.zone_hud_snapshot(),
+            self.lifecycle.viewport().scale(),
+        );
+        ui.vertices.extend(zone_ui.vertices);
         ui
+    }
+
+    fn zone_hud_snapshot(&self) -> verse::zones::hud::Snapshot {
+        self.zone_hud.snapshot(
+            self.lifecycle.viewport().logical_size(),
+            &self.zone_snapshot(),
+            self.lifecycle.active() && !self.computer_open && !self.gym_open && !self.map.expanded,
+        )
+    }
+
+    fn plaza_online_allowed(&self) -> bool {
+        self.world.is_plaza() && !self.world.zone_loading()
+    }
+
+    fn zone_snapshot(&self) -> verse::zones::Snapshot {
+        let mut snapshot = self.world.zone_snapshot(self.aspect());
+        let size = self.lifecycle.viewport().logical_size();
+        if snapshot.portal.visible
+            && snapshot.portal.near
+            && !self.portal_hit(
+                snapshot.portal.screen_x * size[0],
+                snapshot.portal.screen_y * size[1],
+            )
+        {
+            snapshot.portal.visible = false;
+            snapshot
+                .controls
+                .retain(|control| control.action != ZoneIntent::Enter);
+        }
+        snapshot
+    }
+
+    fn reset_zone_inputs(&mut self) {
+        self.world.cancel_navigation();
+        self.map.expanded = false;
+        self.map.clear_contacts();
+        self.map_error = None;
+        self.door_hud.clear_contacts();
+        self.zone_hud.clear_contacts();
+        self.world.cancel_door_interactions();
+        self.presented_entities = verse::mesh::Mesh::default();
+        self.touches.clear();
+        self.jump = false;
+        self.sprint = false;
+        self.computer_open = false;
+        self.gym_open = false;
+        self.reset_motion();
+        self.restore_spawn = false;
+        self.spawn_pending = false;
+        self.sync_gym_interest();
+    }
+
+    fn sync_zone_session(&mut self) -> Result<(), String> {
+        if !self.plaza_online_allowed() {
+            self.session = None;
+            self.spawn_pending = false;
+            self.restore_spawn = false;
+            self.presented_entities = verse::mesh::Mesh::default();
+        } else if self.lifecycle.active()
+            && self.session.is_none()
+            && self.relay.is_some()
+            && !self.synthetic
+        {
+            self.start_session()?;
+        }
+        Ok(())
+    }
+
+    fn zone_intent(&mut self, intent: ZoneIntent) -> Result<(), String> {
+        self.zone_intent_at(intent, None)
+    }
+
+    fn zone_intent_at(
+        &mut self,
+        intent: ZoneIntent,
+        point: Option<[f32; 2]>,
+    ) -> Result<(), String> {
+        if !self.lifecycle.active() || self.computer_open || self.gym_open || self.map.expanded {
+            return Err("Return to the world to use the portal".into());
+        }
+        if intent == ZoneIntent::Enter {
+            let portal = self.world.zone_snapshot(self.aspect()).portal;
+            let size = self.lifecycle.viewport().logical_size();
+            let at = point.unwrap_or([portal.screen_x * size[0], portal.screen_y * size[1]]);
+            if !self.portal_hit(at[0], at[1]) {
+                return Err("Approach a visible portal to enter the forest".into());
+            }
+        }
+        self.world.zone_intent(intent)?;
+        if matches!(
+            intent,
+            ZoneIntent::Enter
+                | ZoneIntent::Return
+                | ZoneIntent::Cancel
+                | ZoneIntent::Retry
+                | ZoneIntent::StartEncounter
+                | ZoneIntent::ResetEncounter
+        ) {
+            self.reset_zone_inputs();
+        }
+        self.sync_zone_session()
     }
 
     fn door_snapshot(&self) -> verse::doors::hud::Snapshot {
@@ -1298,6 +1504,7 @@ impl Scene {
             self.world.nearest_door(self.aspect()),
             &self.world.doors,
             self.lifecycle.active()
+                && self.world.is_plaza()
                 && !self.panel_open()
                 && !self.spawn_pending
                 && !self.map.expanded,
@@ -1314,7 +1521,11 @@ impl Scene {
         intent: DoorIntent,
         point: Option<[f32; 2]>,
     ) -> Result<(), String> {
-        if !self.lifecycle.active() || self.panel_open() || self.spawn_pending || self.map.expanded
+        if !self.lifecycle.active()
+            || !self.world.is_plaza()
+            || self.panel_open()
+            || self.spawn_pending
+            || self.map.expanded
         {
             return Err("Return to the world to use a gate".into());
         }
@@ -1480,11 +1691,16 @@ impl Scene {
     }
 
     fn panel_open(&self) -> bool {
-        self.computer_open || self.gym_open
+        self.computer_open || self.gym_open || self.world.zone_loading()
     }
 
     fn require_gym_panel(&self) -> Result<(), String> {
-        if self.lifecycle.active() && !self.spawn_pending && self.gym_open && self.gym().inside {
+        if self.lifecycle.active()
+            && self.plaza_online_allowed()
+            && !self.spawn_pending
+            && self.gym_open
+            && self.gym().inside
+        {
             Ok(())
         } else {
             Err("Open the Gym board while inside to use its controls".into())
@@ -1492,8 +1708,12 @@ impl Scene {
     }
 
     fn sync_gym_interest(&mut self) {
-        self.gym_board
-            .set_active(self.lifecycle.active() && !self.spawn_pending && self.gym().inside);
+        self.gym_board.set_active(
+            self.lifecycle.active()
+                && self.plaza_online_allowed()
+                && !self.spawn_pending
+                && self.gym().inside,
+        );
     }
 
     fn gym(&self) -> verse::runtime::Gym {
@@ -1504,6 +1724,7 @@ impl Scene {
 
     /// Called only after pointer or accessibility picking validates the target.
     fn open_computer(&mut self) {
+        self.zone_hud.clear_contacts();
         self.world.cancel_navigation();
         self.map.clear_contacts();
         self.door_hud.clear_contacts();
@@ -1526,6 +1747,8 @@ impl Scene {
             Some(WorldTarget::Companion)
         } else if self.computer_hit(x, y) {
             Some(WorldTarget::Computer)
+        } else if self.portal_hit(x, y) {
+            Some(WorldTarget::Portal)
         } else {
             DoorId::ALL
                 .iter()
@@ -1535,9 +1758,23 @@ impl Scene {
         }
     }
 
-    fn door_hit(&self, id: DoorId, x: f32, y: f32) -> bool {
+    fn portal_hit(&self, x: f32, y: f32) -> bool {
         let size = self.lifecycle.viewport().logical_size();
         !self.spawn_pending
+            && size[0] > 0.0
+            && size[1] > 0.0
+            && self.world.zone_hit_with_entities(
+                size[0] / size[1],
+                x / size[0],
+                y / size[1],
+                &self.presented_entities,
+            )
+    }
+
+    fn door_hit(&self, id: DoorId, x: f32, y: f32) -> bool {
+        let size = self.lifecycle.viewport().logical_size();
+        self.world.is_plaza()
+            && !self.spawn_pending
             && size[0] > 0.0
             && size[1] > 0.0
             && self.world.door_hit_with_entities(
@@ -1564,7 +1801,8 @@ impl Scene {
 
     fn computer_hit(&self, x: f32, y: f32) -> bool {
         let size = self.lifecycle.viewport().logical_size();
-        !self.spawn_pending
+        self.world.is_plaza()
+            && !self.spawn_pending
             && size[0] > 0.0
             && size[1] > 0.0
             && self.world.computer_hit_with_entities(
@@ -1600,9 +1838,173 @@ mod tests {
             synthetic_gym: false,
             world_relay: None,
             door_preferences: None,
+            zone_cache_directory: None,
         })
         .unwrap()
     }
+    fn cached_zone_scene() -> (Scene, tempfile::TempDir) {
+        let cache = tempfile::tempdir().unwrap();
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/verse/forest/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp");
+        std::fs::copy(
+            source,
+            cache
+                .path()
+                .join(format!("{}.vzp", verse::zones::assets::PACK_SHA256)),
+        )
+        .unwrap();
+        let mut scene = scene();
+        scene.world.configure_zone_cache(cache.path().to_owned());
+        scene.activate(true).unwrap();
+        scene
+            .world
+            .set_spawn([-12.0, 0.0, 8.0].into(), 0.0)
+            .unwrap();
+        (scene, cache)
+    }
+
+    #[test]
+    fn zone_cache_setup_is_inert_and_entry_checks_proximity() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = temp.path().join("unopened-zone-cache");
+        let mut scene = scene();
+        scene.world.configure_zone_cache(cache.clone());
+        scene.activate(true).unwrap();
+        scene.update(1.0).unwrap();
+        assert!(!cache.exists());
+        assert!(scene.world.is_plaza());
+        assert!(!scene.world.zone_loading());
+        assert!(
+            scene
+                .action(Request::Zone {
+                    intent: ZoneIntent::Enter
+                })
+                .is_err()
+        );
+        assert!(!cache.exists());
+        assert!(scene.world.is_plaza());
+    }
+
+    #[test]
+    fn zone_transition_clears_input_and_keeps_plaza_identity_out_of_forest() {
+        let (mut scene, _cache) = cached_zone_scene();
+        // A local socket keeps this an offline test while exercising a real
+        // Session owner that must be dropped before any forest simulation.
+        let relay_socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let relay = format!("wss://{}", relay_socket.local_addr().unwrap());
+        scene.synthetic = false;
+        scene.connect(relay.clone()).unwrap();
+        assert!(scene.session.is_some());
+        let before = scene.world.player.pos;
+        scene.jump = true;
+        scene.sprint = true;
+        scene
+            .action(Request::Zone {
+                intent: ZoneIntent::Enter,
+            })
+            .unwrap();
+        assert!(scene.world.zone_loading());
+        assert!(scene.session.is_none());
+        assert_eq!(scene.packet().connection.state, "local_zone");
+        assert_eq!(
+            scene.packet().connection.relay.as_deref(),
+            Some(relay.as_str())
+        );
+        assert!(!scene.jump && !scene.sprint && scene.touches.is_empty());
+        assert!(!scene.motion_needed());
+        assert!(!scene.packet().gym_active);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut clock = 1.0;
+        while scene.world.zone_loading() && Instant::now() < deadline {
+            scene.update(clock).unwrap();
+            clock += 0.02;
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(
+            scene.world.zone,
+            verse::zones::ZoneId::Forest,
+            "{:?}",
+            scene.world.zone_snapshot(scene.aspect()).error
+        );
+        assert!(scene.session.is_none());
+        assert!(!scene.packet().gym_active);
+        assert!(!scene.packet().computer.near);
+        assert!(!scene.packet().doors.hud.visible);
+        assert!(scene.action(Request::InteractComputer).is_err());
+        assert!(scene.action(Request::InteractGym).is_err());
+        assert!(!scene.map_snapshot().landmarks.iter().any(|p| p.id == "gym"));
+        scene.world.set_spawn([0.0, 0.0, 14.0].into(), 0.0).unwrap();
+        scene
+            .action(Request::Zone {
+                intent: ZoneIntent::Return,
+            })
+            .unwrap();
+        assert!(scene.world.is_plaza());
+        assert_eq!(scene.world.player.pos, before);
+        assert!(!scene.restore_spawn && !scene.spawn_pending);
+        assert!(scene.session.is_some());
+        assert_ne!(scene.packet().connection.state, "local_zone");
+        assert_eq!(scene.relay.as_deref(), Some(relay.as_str()));
+    }
+
+    #[test]
+    fn background_cancels_loading_and_late_ready_cannot_enter_a_zone() {
+        let (mut scene, _cache) = cached_zone_scene();
+        scene
+            .action(Request::Zone {
+                intent: ZoneIntent::Enter,
+            })
+            .unwrap();
+        assert!(scene.world.zone_loading());
+        scene.activate(false).unwrap();
+        assert!(!scene.world.zone_loading());
+        scene.activate(true).unwrap();
+        for tick in 0..20 {
+            scene.update(1.0 + tick as f64 * 0.02).unwrap();
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(scene.world.is_plaza());
+        assert!(!scene.world.zone_loading());
+        assert_eq!(scene.world.zone_revision, 0);
+        assert!(scene.packet().zone.state.error.is_none());
+    }
+
+    #[test]
+    fn a_remote_entity_hides_portal_controls_and_blocks_native_entry() {
+        let (mut scene, _cache) = cached_zone_scene();
+        let portal = scene.zone_snapshot().portal;
+        assert!(portal.near && portal.visible);
+        let size = scene.lifecycle.viewport().logical_size();
+        let point = [portal.screen_x * size[0], portal.screen_y * size[1]];
+        let anchor = verse::zones::ZoneId::Plaza.portal().with_y(2.5);
+        let obstruction = scene.world.view(scene.aspect()).eye.lerp(anchor, 0.8);
+        let right = anchor.with_x(0.4).with_y(0.0).with_z(0.0);
+        let up = anchor.with_x(0.0).with_y(0.5).with_z(0.0);
+        scene.presented_entities.quad([
+            obstruction - right - up,
+            obstruction + right - up,
+            obstruction + right + up,
+            obstruction - right + up,
+        ]);
+        assert!(!scene.portal_hit(point[0], point[1]));
+        assert!(!scene.zone_snapshot().portal.visible);
+        assert!(
+            !scene
+                .zone_snapshot()
+                .controls
+                .iter()
+                .any(|c| c.action == ZoneIntent::Enter)
+        );
+        assert!(
+            scene
+                .action(Request::Zone {
+                    intent: ZoneIntent::Enter
+                })
+                .is_err()
+        );
+        assert!(!scene.world.zone_loading());
+    }
+
     fn gym_scene() -> Scene {
         Scene::new(Config {
             secret_hex: "11".repeat(32),
@@ -1614,6 +2016,7 @@ mod tests {
             synthetic_gym: true,
             world_relay: None,
             door_preferences: None,
+            zone_cache_directory: None,
         })
         .unwrap()
     }
@@ -1683,6 +2086,7 @@ mod tests {
             synthetic_gym: false,
             world_relay: None,
             door_preferences: Some(saved.clone()),
+            zone_cache_directory: None,
         })
         .unwrap();
         restored.activate(true).unwrap();

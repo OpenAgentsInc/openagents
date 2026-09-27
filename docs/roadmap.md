@@ -99,6 +99,22 @@ This is a run-control surface over operator-selected sources, not a new training
 algorithm or a claim that file activity proves process liveness. Broader training
 services and cross-operator orchestration remain separate roadmap work.
 
+### Loaded worlds and selectable rules
+
+The [Atlantis forest](verse/zones.md) implements a first reviewed zone with
+runtime-only asset loading, independent presentation, isolated coordinates,
+and return to the amber plaza. Its [SRD 5.1 encounter](verse/zone-rules.md)
+implements a bounded wizard/zombie turn loop, not the full fifth-edition game.
+The current forest is local-only. NIP-MV's signed scene manifest is a designed
+profile; arbitrary creator worlds, shared combat authority, and published
+rule catalogs remain to be implemented.
+
+The future **L1 construction station** is a design direction, not a built zone:
+collaborative spacecraft assembly, explicit unit/scale choices, and selectable
+educational physics. Its path and boundaries are in the [zone roadmap](verse/zone-rules.md#l1-construction-station-design-only).
+It must not inherit fantasy encounter rules or silently claim realistic orbital
+simulation from the current walking controller.
+
 ### Shared native interfaces
 
 [Rust Native](../crates/rust-native/README.md), tracked in

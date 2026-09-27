@@ -1,0 +1,45 @@
+{
+  "authoring": "Original geometry and skeletal poses; sampled linear albedo, baked light, four-cut alpha leaf silhouettes.",
+  "format": "verse-zone-pack-v1",
+  "license_evidence": "Source repository Apache-2.0 and NOTICE retained. Asset-specific wizard/zombie upstream attribution is incomplete; no separate asset license is asserted.",
+  "meshes": {
+    "tree": {
+      "frames": 1,
+      "vertices": 26715
+    },
+    "wizard": {
+      "duration_seconds": 2.5,
+      "frames": 12,
+      "source_clip": "Waiting",
+      "vertices_per_frame": 6753
+    },
+    "wizard_still": {
+      "frames": 1,
+      "vertices": 6753
+    },
+    "zombie": {
+      "duration_seconds": 2.5333333015441895,
+      "frames": 12,
+      "source_clip": "Idle",
+      "vertices_per_frame": 13644
+    },
+    "zombie_walk": {
+      "duration_seconds": 1.2000000476837158,
+      "frames": 12,
+      "source_clip": "Walk",
+      "vertices_per_frame": 13644
+    }
+  },
+  "pack_bytes": 6629578,
+  "pack_file": "7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp",
+  "pack_sha256": "7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7",
+  "source_commit": "daeb5d0895270159ec8c18341b4adb84bf7a4346",
+  "source_sha256": {
+    "assets/models/trees/CommonTree_3/Bark_NormalTree.png": "f36e94fdd73255347325b998e02a0b2575fdf714b0315bfe5e8ff34bc8e13603",
+    "assets/models/trees/CommonTree_3/CommonTree_3.bin": "24541f46fd9553e2389aba15575f2697009226e82118ed76868284114fd12b49",
+    "assets/models/trees/CommonTree_3/CommonTree_3.gltf": "17c6537aa8042bb7255fbb501bf7aeb2b6db87c16766f794f9c37be3ce70c976",
+    "assets/models/trees/CommonTree_3/Leaves_NormalTree_C.png": "998612bdf0b76a22f5f54d65cd7a457815d2842d89653fa4348a4ebb42933ad3",
+    "assets/models/wizard.gltf": "071a2189e2f90900bd89972dab18fb60053e88b66facb182b8f06d48c1f34675",
+    "assets/models/zombie.glb": "4b0892cfe93070e2a9289b48ac18eaf24c90f8c0ba137ce8305b7558c94a8f8c"
+  }
+}

@@ -10,6 +10,7 @@ struct ComputerPanel: View {
     let worldAction: ([String: Any]) -> Void
     let worldConnection: VerseConnection?
     let worldStorageError: String?
+    let worldCredits: String?
     @Binding var pairing: Bool
     @State private var pasting = false
     @State private var scanning = false
@@ -19,6 +20,7 @@ struct ComputerPanel: View {
     @State private var copied = false
     @State private var relay = ""
     @State private var settings = false
+    @State private var aboutVerse = false
     @State private var computers = false
     @State private var computersScanning = false
     @State private var computersValue = ""
@@ -141,6 +143,16 @@ struct ComputerPanel: View {
                         }
                     }
                     Text("Shares your avatar and movement.").font(.caption2).foregroundStyle(.secondary)
+                }
+                Divider()
+                DisclosureGroup("About Verse", isExpanded: $aboutVerse) {
+                    Text(worldCredits ?? "Loading notices…")
+                        .font(.caption2).textSelection(.enabled)
+                        .accessibilityIdentifier("verse-credits")
+                }
+                .accessibilityIdentifier("verse-about")
+                .onChange(of: aboutVerse) { _, expanded in
+                    if expanded && worldCredits == nil { worldAction(["action": "zone_credits"]) }
                 }
                 Divider()
                 DisclosureGroup("Device details") {

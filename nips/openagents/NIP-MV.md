@@ -9,9 +9,13 @@ events that relays forward and do not store. Durable state uses addressable
 events that relays keep, so a world persists across sessions the way an
 MMORPG world does.
 
-The NIP does not define rendering, physics, collision, or world geometry.
-Two clients that share these events can show each other's entities
-correctly even if they draw them differently.
+The base presence protocol does not define rendering, physics, collision, or
+world geometry. Two clients can show the same entities with different
+renderers. The optional [scene manifest profile](#scene-manifest-profile)
+below binds a reviewed scene and supported simulation profiles without
+shipping executable behavior in a pose event. That profile is **Designed**;
+the current Verse client uses a curated local zone catalog and does not yet
+discover or admit signed scene definitions.
 
 ## Terms
 
@@ -23,6 +27,8 @@ correctly even if they draw them differently.
 | Frame | One ephemeral event carrying the current poses of one or more of a publisher's entities. |
 | State | The durable, last-known record of one entity. |
 | Cell | A square area of the world floor used to scope subscriptions. |
+| Loaded zone | A separately loaded scene with its own world identity, assets, presentation, and supported simulation profiles. This differs from a chat district identified by a `z` tag inside one world. |
+| Scene manifest | A content-pinned description of the scene and the host-supported formats and profiles it requires. A signature identifies its publisher; it does not authorize code execution. |
 
 ## Kinds
 
@@ -101,8 +107,116 @@ An optional description of a world, addressable by `d`.
 | `cell` | Cell size in meters. Default `64`. |
 | `bounds` | Optional axis-aligned bounds, `min` and `max` positions. |
 | `spawn` | Optional spawn disc: a `center` position and a `radius` in meters. |
+| `scene` | Optional scene manifest profile, defined below. Omitted for presence-only definitions. |
 
 The world's `w` tag names its own address.
+
+### Scene manifest profile
+
+**Status: Designed.** This optional profile allocates no new kinds. It uses
+`33300` for discovery and exact content identities for an admitted scene.
+Clients that implement the profile MUST apply the following requirements.
+Clients that implement only presence MAY ignore `scene`, but MUST NOT claim
+that they implement the scene's declared geometry or game rules.
+
+The `scene` object has this shape:
+
+```json
+{
+  "v": "openagents.mv.scene.v1",
+  "manifest": {
+    "schema": "verse.zone.v1",
+    "sha256": "<64 lowercase hexadecimal characters>",
+    "bytes": 512,
+    "media_type": "application/json",
+    "urls": ["https://world.example/forest.json"]
+  }
+}
+```
+
+This reference identifies the exact manifest bytes, not JSON reserialized by
+the receiver. `bytes` is a positive integer. Clients MUST bound manifest bytes,
+locator count, and locator length before allocation or transfer, verify the
+length and SHA-256 before parsing, and reject unknown required schemas or
+profile versions. URLs locate the bytes; they are not the content identity or
+an authorization to access a host. [NIP-94](../official/94.md) file metadata
+events MAY supply alternative locators whose hash, size, and media type match
+the admitted reference. A mutable listing or a redirect cannot change the pin.
+
+Before entering, the client pins the world-definition event ID, its verified
+signer and address, and the scene manifest digest. The addressable `33300`
+record is a discovery head: a newer record does not silently replace a scene
+already in use. A transition or update that changes these pins requires a new
+admission. Receivers MUST reject disagreement between the signed definition's
+world identity and the manifest's declared world binding. Display names are
+not identity, and identical names do not merge worlds.
+
+A supported manifest schema MUST make these concerns explicit, either through
+its own fields or exact, reviewed host profile IDs:
+
+- Geometry, bounds, coordinates, collision semantics, safe arrivals, and exits.
+- Asset identities, exact sizes, media and decode formats, provenance, license
+  notices, and limits on decoded vertices, images, animation, and GPU resources.
+- Presentation values such as palette, lighting, and fog. A shared app palette
+  does not constrain the appearance of every world.
+- Physics and game rules as separate, versioned profiles, with declared
+  feature coverage. Selecting a fifth-edition encounter profile does not
+  imply a complete tabletop rules engine; selecting a space scene does not
+  imply an orbital dynamics implementation.
+- The authority model: local-only simulation or a separately supported shared
+  authority. Pose frames alone do not authorize combat, editing, ownership,
+  inventory transfer, or results accepted by another participant.
+
+The current Verse `verse.zone.v1` schema is intentionally narrower than a
+general authoring format. It has exactly `schema`, `world`, `ruleset`,
+`physics`, `asset_sha256`, and `asset_bytes`. The host admits one reviewed forest
+world, the `srd-5.1-encounter-v1` rules subset, `verse.walk-flat.v1` physics, and
+one pinned asset pack. Its palette, bounds, and arrivals are compiled host
+values. Its local world name is not a published `33300` address, so this local
+catalog does not yet satisfy signed scene admission. A future authoring schema
+needs its own version and validation; adding fields to a permissive JSON blob
+does not implement this profile.
+
+#### Loading and transitions
+
+Discovery, seeing a portal, receiving a pose, or reading a preview MUST NOT
+automatically download heavy scene assets. The client starts asset loading
+after an explicit entry or an already granted loading policy. It MUST enforce
+transfer, decode, concurrency, cache, and memory bounds independently of values
+requested by the publisher. The receiver verifies content before decoding and
+admits only formats and implementations it supports. A declared rules profile
+cannot install native code, scripts, or shaders.
+
+Clients retain a safe source state while preparing the destination. Failed or
+cancelled admission MUST leave a usable source scene or an explicit recovery
+surface, not publish a half-loaded destination. Late work from a cancelled
+generation MUST NOT replace the current scene. On successful replacement,
+clients release unneeded decoded assets and GPU resources; a bounded disk cache
+may retain verified immutable bytes. A cache hit does not bypass validation.
+
+Each separately loaded coordinate space uses a distinct `w` world identifier.
+The chat `z` district tag cannot distinguish unrelated coordinate spaces.
+When leaving a shared world, the client SHOULD publish its final/offline state,
+then stop its old motion stream, close old subscriptions, and clear world-bound
+remote entities. On joining another shared world, it uses the new world ID and
+the admitted definition's bounds and arrival rules. Forest coordinates MUST
+NOT appear in a plaza pose frame. Failed delivery of an offline state remains
+possible, so peers still expire stale presence.
+
+Entry into a different relay additionally requires its connection and
+disclosure policy; a portal cannot silently authorize a new recipient or widen
+existing permissions. A local-only destination suspends the source world's
+publishing and observation and does not present its local actors as shared
+entities. Returning explicitly restores the source scene and its connection
+policy. Pairing grants, Gym launch authority, and paid operations remain
+separate from travel.
+
+[NIP-EXT](NIP-EXT.md) MAY distribute pinned schema and scene-definition files
+inside reviewed packages. Its host component-set admission remains separate;
+a release signature does not permit an arbitrary executable rules engine.
+No new EXT component kind or scene execution right is allocated here. See
+[Verse zones](../../docs/verse/zones.md) for the implemented local slice and
+[zone rules](../../docs/verse/zone-rules.md) for its limited encounter profile.
 
 ## Entity state — kind `33301`
 

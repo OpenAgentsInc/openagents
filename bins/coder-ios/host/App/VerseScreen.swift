@@ -152,7 +152,8 @@ struct VerseScreen: View {
                 pairing = false
                 bridge.send(["action": "close_computer"])
             }, worldAction: { bridge.send($0) }, worldConnection: bridge.packet?.connection,
-           worldStorageError: bridge.worldStorageError ?? bridge.nativeError ?? bridge.packet?.error, pairing: $pairing)
+           worldStorageError: bridge.worldStorageError ?? bridge.nativeError ?? bridge.packet?.error,
+           worldCredits: bridge.verseCredits, pairing: $pairing)
             .frame(width: width, height: height)
             .position(x: left + width / 2, y: top + height / 2)
         }

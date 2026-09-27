@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity() {
     private var pairing = false
     private var details = false
     private var worldDetails = false
+    private var verseAbout = false
+    private var verseCredits: String? = null
     private var scanning = false
     private var requestingCamera = false
     private var foreground = false
@@ -470,6 +472,14 @@ class MainActivity : ComponentActivity() {
             reader.request(json("op" to "computers_refresh"))
         })
         worldConnection(body)
+        body.addView(button("About Verse", "verse-about") {
+            verseAbout = !verseAbout
+            if (verseAbout && verseCredits == null) {
+                verseCredits = world.send(json("action" to "zone_credits"))?.textOrNull("credits")
+            }
+            renderComputer(true)
+        })
+        if (verseAbout) body.addView(label(verseCredits ?: "Notices are unavailable.", "verse-credits", 11f).apply { setTextIsSelectable(true) })
         body.addView(button("Device details", "reader-details") { details = !details; renderComputer(true) })
         if (details) {
             body.addView(label(reader.snapshot?.optString("public_key").orEmpty(), "reader-public-key", 11f))

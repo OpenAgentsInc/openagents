@@ -11,10 +11,13 @@ use std::ptr;
 pub struct VerseHandle {
     pub(crate) scene: Scene,
     pub(crate) renderer: Option<verse::render::Renderer>,
+    pub(crate) rendered_zone_revision: u64,
 }
 
 fn failure() -> CoderMobileBuffer {
-    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"camera_mode":"touch","camera_yaw":0.0,"camera_pitch":0.28,"camera_distance":6.0,"motion_needed":false,"connection":{"state":"offline","label":"Offline","relay":null,"error":null},"map":{"visible":false,"expanded":false,"state":"","destination":null,"captured_pointers":[],"frame":[0,0,0,0],"plot":[0,0,0,0],"center":[0,0],"half_extent":264,"landmarks":[]},"companion":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":0.0,"reacting":false,"cooldown_seconds":0.0,"pet_count":0},"computer":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":5.0},"computer_open":false,"gym":{"inside":false,"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":60.0},"gym_open":false,"gym_revision":0,"gym_active":false,"view":null,"door_preferences":"{\"v\":1,\"world\":\"verse-plaza\",\"definition\":\"demo-doors-v1\",\"held\":\"prism\",\"last\":[null,null]}","door_preferences_revision":0,"doors":{"held":"prism","doors":[],"hud":{"visible":false,"door":null,"held":"prism","caption":"","buttons":[],"frame":[0,0,0,0],"captured_pointers":[]},"error":null}}"#.to_vec())
+    let mut packet = crate::verse_app::blueprint();
+    packet.error = Some("Native Verse request failed".into());
+    buffer(serde_json::to_vec(&packet).unwrap_or_default())
 }
 
 /// Returns the initial Rust-owned surface projection. Release the result with
@@ -81,6 +84,7 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
         )
     }?;
     Ok(VerseHandle {
+        rendered_zone_revision: scene.world.zone_revision,
         scene,
         renderer: Some(renderer),
     })
@@ -133,6 +137,7 @@ impl VerseHandle {
         if bytes.len() > 4096 && !matches!(&request, Request::GymConfigure { .. }) {
             return Err("Native Verse request exceeds its size limit".into());
         }
+        let include_credits = matches!(&request, Request::ZoneCredits);
         let include_gym = matches!(
             &request,
             Request::GymView
@@ -157,6 +162,9 @@ impl VerseHandle {
             Ok(()) => {}
         }
         let mut packet = self.scene.packet();
+        if include_credits {
+            packet.credits = Some(verse::zones::CREDITS);
+        }
         if include_gym {
             packet.gym_board = self.scene.gym_view();
         }
@@ -175,6 +183,11 @@ impl VerseHandle {
                     return Ok(());
                 };
                 if let Some(dt) = self.scene.update(timestamp)? {
+                    if self.rendered_zone_revision != self.scene.world.zone_revision {
+                        renderer.replace_world(&self.scene.world.world.mesh)?;
+                        renderer.set_atmosphere(verse::zones::atmosphere(self.scene.world.zone))?;
+                        self.rendered_zone_revision = self.scene.world.zone_revision;
+                    }
                     let mut mesh = self.scene.world.dynamic_mesh_with_computer_interaction();
                     let entities = self
                         .scene
@@ -252,12 +265,27 @@ mod tests {
             synthetic_gym: false,
             world_relay: None,
             door_preferences: None,
+            zone_cache_directory: None,
         })
         .unwrap();
         let mut handle = VerseHandle {
             scene,
             renderer: None,
+            rendered_zone_revision: 0,
         };
+        let credits: serde_json::Value =
+            serde_json::from_slice(&handle.call_bytes(br#"{"action":"zone_credits"}"#).unwrap())
+                .unwrap();
+        let text = credits["credits"].as_str().unwrap();
+        assert!(text.contains("Wizards of the Coast LLC"));
+        assert!(text.contains("Apache License"));
+        assert!(text.len() <= 32 * 1024);
+        let ordinary: serde_json::Value =
+            serde_json::from_slice(&handle.call_bytes(br#"{"action":"snapshot"}"#).unwrap())
+                .unwrap();
+        assert!(ordinary.get("credits").is_none());
+        assert_eq!(ordinary["zone"]["id"], "plaza");
+        assert_eq!(ordinary["zone"]["progress"], 0.0);
         handle.scene.activate(true).unwrap();
         handle
             .scene

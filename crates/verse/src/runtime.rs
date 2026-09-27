@@ -1,7 +1,8 @@
 //! The shared Verse world simulation. Platform adapters supply intent and time.
 //!
-//! This module opens no windows, files, sockets, or model connections. Desktop
-//! and native surfaces advance the same player, camera, gait, and follower.
+//! Desktop and native surfaces advance the same player, camera, gait, and
+//! follower. Explicit zone entry delegates asset I/O to a bounded background
+//! loader; ordinary simulation starts no network or model calls.
 
 use glam::Vec3;
 
@@ -101,6 +102,9 @@ pub struct WorldRuntime {
     pub gait: Gait,
     pub agent: Agent,
     pub doors: Doors,
+    pub zone: crate::zones::ZoneId,
+    pub zone_revision: u64,
+    pub(crate) zone_state: crate::zones::State,
     pub(crate) navigation: Navigation,
 }
 
@@ -123,6 +127,9 @@ impl WorldRuntime {
             gait: Gait::default(),
             agent,
             doors: Doors::default(),
+            zone: crate::zones::ZoneId::Plaza,
+            zone_revision: 0,
+            zone_state: crate::zones::State::default(),
             navigation: Navigation::default(),
         }
     }
@@ -135,7 +142,7 @@ impl WorldRuntime {
             [self.player.pos.x, self.player.pos.z],
             destination,
             &self.world.blockers,
-            world::HALF,
+            self.zone_half(),
         ) {
             Ok(route) => {
                 self.navigation.start(route);
@@ -214,6 +221,7 @@ impl WorldRuntime {
         if dt == 0.0 {
             return 0.0;
         }
+        let previous = self.player;
         self.doors.tick(dt);
         if input.forward
             || input.backward
@@ -229,7 +237,7 @@ impl WorldRuntime {
             self.walk_route(dt);
         } else {
             self.player
-                .update(input, dt, &self.world.blockers, world::HALF);
+                .update(input, dt, &self.world.blockers, self.zone_half());
         }
         if self.player.speed > 0.1
             && !orbiting
@@ -237,6 +245,7 @@ impl WorldRuntime {
         {
             self.camera.settle(dt);
         }
+        self.forest_tick(dt, previous);
         self.gait
             .advance(self.player.speed, self.player.airborne(), dt);
         if follow_agent {
@@ -261,17 +270,17 @@ impl WorldRuntime {
                 &InputState::default(),
                 dt,
                 &self.world.blockers,
-                world::HALF,
+                self.zone_half(),
             );
             return;
         };
-        if !nav::segment_clear(at, next, &self.world.blockers, world::HALF) {
+        if !nav::segment_clear(at, next, &self.world.blockers, self.zone_half()) {
             self.navigation.stop(NavigationStatus::Blocked);
             self.player.update(
                 &InputState::default(),
                 dt,
                 &self.world.blockers,
-                world::HALF,
+                self.zone_half(),
             );
             return;
         }
@@ -290,14 +299,14 @@ impl WorldRuntime {
             },
             step,
             &self.world.blockers,
-            world::HALF,
+            self.zone_half(),
         );
         if step < dt {
             self.player.update(
                 &InputState::default(),
                 dt - step,
                 &self.world.blockers,
-                world::HALF,
+                self.zone_half(),
             );
         }
         let progress = (self.player.pos.x - at[0]).hypot(self.player.pos.z - at[1]);
@@ -339,7 +348,7 @@ impl WorldRuntime {
         let distance = offset.x.hypot(offset.z);
         let clip = self.view(aspect).view_proj * world::COMPUTER_SCREEN.extend(1.0);
         let mut result = Computer {
-            near: distance <= world::COMPUTER_RANGE,
+            near: self.is_plaza() && distance <= world::COMPUTER_RANGE,
             visible: false,
             screen_x: 0.5,
             screen_y: 0.5,
@@ -349,7 +358,8 @@ impl WorldRuntime {
             let ndc = clip.truncate() / clip.w;
             result.screen_x = (ndc.x * 0.5 + 0.5).clamp(0.0, 1.0);
             result.screen_y = (0.5 - ndc.y * 0.5).clamp(0.0, 1.0);
-            result.visible = (-1.0..=1.0).contains(&ndc.x)
+            result.visible = self.is_plaza()
+                && (-1.0..=1.0).contains(&ndc.x)
                 && (-1.0..=1.0).contains(&ndc.y)
                 && (0.0..=1.0).contains(&ndc.z);
         }
@@ -418,20 +428,14 @@ impl WorldRuntime {
         if !clip.is_finite() || clip.w <= 0.0 || !(0.0..=1.0).contains(&(clip.z / clip.w)) {
             return false;
         }
+        let mut local = self.zone_dynamic_mesh();
+        if self.is_plaza() {
+            local.extend(&avatar::mesh(&self.player, &self.gait));
+            local.extend(&doors::held_mesh(self.doors.held(), &self.player));
+            local.extend(&world::computer_display(None));
+        }
         !mesh_occludes(&self.world.mesh, origin, direction, distance)
-            && !mesh_occludes(
-                &avatar::mesh(&self.player, &self.gait),
-                origin,
-                direction,
-                distance,
-            )
-            && !mesh_occludes(
-                &doors::held_mesh(self.doors.held(), &self.player),
-                origin,
-                direction,
-                distance,
-            )
-            && !mesh_occludes(&world::computer_display(None), origin, direction, distance)
+            && !mesh_occludes(&local, origin, direction, distance)
             && !mesh_occludes(entities, origin, direction, distance)
     }
 
@@ -450,7 +454,8 @@ impl WorldRuntime {
         let clip = self.view(aspect).view_proj * anchor.extend(1.0);
         let mut result = DoorProjection {
             id,
-            near: distance.is_finite()
+            near: self.is_plaza()
+                && distance.is_finite()
                 && distance <= doors::RANGE
                 && (0.0..=3.0).contains(&self.player.pos.y),
             visible: false,
@@ -653,7 +658,8 @@ impl WorldRuntime {
     #[must_use]
     pub fn gym(&self, aspect: f32) -> Gym {
         let position = self.player.pos;
-        let inside = (36.5..59.5).contains(&position.x)
+        let inside = self.is_plaza()
+            && (36.5..59.5).contains(&position.x)
             && (-8.5..8.5).contains(&position.z)
             && (0.0..=4.5).contains(&position.y);
         let offset = position - world::GYM_BOARD;
@@ -671,7 +677,8 @@ impl WorldRuntime {
             let ndc = clip.truncate() / clip.w;
             result.screen_x = (ndc.x * 0.5 + 0.5).clamp(0.0, 1.0);
             result.screen_y = (0.5 - ndc.y * 0.5).clamp(0.0, 1.0);
-            result.visible = (-1.0..=1.0).contains(&ndc.x)
+            result.visible = self.is_plaza()
+                && (-1.0..=1.0).contains(&ndc.x)
                 && (-1.0..=1.0).contains(&ndc.y)
                 && (0.0..=1.0).contains(&ndc.z);
         }
@@ -693,10 +700,17 @@ impl WorldRuntime {
     }
 
     fn mesh_with_computer_display(&self, interaction: Option<bool>) -> Mesh {
-        let mut dynamic = avatar::mesh(&self.player, &self.gait);
+        let mut dynamic = if self.is_plaza() {
+            avatar::mesh(&self.player, &self.gait)
+        } else {
+            Mesh::default()
+        };
+        dynamic.extend(&self.zone_dynamic_mesh());
         dynamic.extend(&self.agent.mesh());
-        dynamic.extend(&self.doors.mesh(&self.player));
-        dynamic.extend(&world::computer_display(interaction));
+        if self.is_plaza() {
+            dynamic.extend(&self.doors.mesh(&self.player));
+            dynamic.extend(&world::computer_display(interaction));
+        }
         dynamic
     }
 
@@ -704,8 +718,8 @@ impl WorldRuntime {
     pub fn set_spawn(&mut self, position: Vec3, yaw: f32) -> Result<(), String> {
         if !position.is_finite()
             || !yaw.is_finite()
-            || position.x.abs() >= world::HALF
-            || position.z.abs() >= world::HALF
+            || position.x.abs() >= self.zone_half()
+            || position.z.abs() >= self.zone_half()
             || position.y < 0.0
             || position.y > 100.0
         {

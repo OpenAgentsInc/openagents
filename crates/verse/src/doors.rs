@@ -10,6 +10,7 @@ pub mod store;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use mesh::label as scene_label;
 pub use mesh::{geometry, held_mesh};
 
 pub const RANGE: f32 = 5.0;

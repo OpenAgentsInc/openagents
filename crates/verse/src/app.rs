@@ -33,6 +33,7 @@ use crate::session::{self, Session, Status};
 use crate::ui::Atlas;
 use crate::world;
 use crate::xp;
+use crate::zones::{self, Intent as ZoneIntent};
 
 /// How the window joins the shared world.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -436,6 +437,13 @@ struct App {
     mount: Option<SurfaceLifecycle>,
     error: Option<String>,
     session: Option<Session>,
+    connection_options: Options,
+    plaza_services_paused: bool,
+    plaza_presence: (PlayerController, Agent),
+    rendered_zone_revision: u64,
+    zone_hud: zones::hud::Hud,
+    zone_frame: Option<zones::hud::Snapshot>,
+    zone_press: Option<CompanionPress>,
     title: String,
     frames: u64,
     atlas: Option<Atlas>,
@@ -609,22 +617,27 @@ impl App {
             Err(error) => Some(error),
         };
         let door_save_revision = doors.revision();
+        let mut runtime = WorldRuntime::new();
+        runtime.world = world;
+        runtime.player = player;
+        runtime.agent = agent;
+        runtime.doors = doors;
+        runtime.configure_zone_cache(crate::identity::home().join("zones-cache"));
         Ok(Self {
             window: None,
             renderer: None,
-            runtime: WorldRuntime {
-                world,
-                player,
-                camera: FollowCamera::default(),
-                gait: Gait::default(),
-                agent,
-                navigation: Default::default(),
-                doors,
-            },
+            runtime,
             keys: Keys::default(),
             mount: None,
             error: None,
             session,
+            connection_options: options.clone(),
+            plaza_services_paused: false,
+            plaza_presence: (player, agent),
+            rendered_zone_revision: 0,
+            zone_hud: zones::hud::Hud::default(),
+            zone_frame: None,
+            zone_press: None,
             title: String::new(),
             frames: 0,
             atlas: None,
@@ -682,10 +695,112 @@ impl App {
         })
     }
 
+    fn plaza_interactive(&self) -> bool {
+        self.runtime.is_plaza() && !self.runtime.zone_loading()
+    }
+
+    /// A zone change drops every plaza subscription before the new pose ticks.
+    /// Returning reconnects the saved profile without applying relay spawn state.
+    fn sync_zone_services(&mut self, active: bool) {
+        let allowed = active && self.plaza_interactive();
+        if !allowed && !self.plaza_services_paused {
+            if let Some(session) = &mut self.session {
+                session.leave(&self.plaza_presence.0, &self.plaza_presence.1);
+            }
+            self.session = None;
+            self.feed = None;
+            self.xp = None;
+            self.update_gym(false);
+            self.gym_view = None;
+            self.replay = None;
+            self.picker = None;
+            self.board_open = false;
+            self.chat.open = false;
+            self.agent_says = None;
+            self.presented_entities = crate::mesh::Mesh::default();
+            self.plaza_services_paused = true;
+        } else if allowed && self.plaza_services_paused {
+            self.plaza_services_paused = false;
+            if let Some(relay) = &self.connection_options.relay {
+                match Session::start(&self.connection_options.profile, relay) {
+                    Ok(session) => self.session = Some(session),
+                    Err(error) => self.offline_log.push(chat::Line::system(error)),
+                }
+                self.feed = Some(Feed::start());
+            }
+            if let Some(relay) = self
+                .connection_options
+                .xp_relay
+                .as_ref()
+                .or(self.connection_options.relay.as_ref())
+            {
+                self.xp = Some(xp::Board::start(
+                    relay,
+                    &self.connection_options.xp_referees,
+                    self.session.as_ref().map(Session::signer),
+                ));
+            }
+            self.update_title();
+        }
+    }
+
+    fn zone_action(&mut self, action: ZoneIntent) {
+        if self.runtime.zone_intent(action).is_ok() {
+            self.stop_map();
+            self.keys = Keys::default();
+            self.capture(false);
+            self.sync_zone_services(true);
+        }
+    }
+
+    /// Backgrounding invalidates loading and input even when no frame can run.
+    fn suspend_world(&mut self) {
+        self.runtime.zone_cancel_loading();
+        self.sync_zone_services(false);
+        self.stop_map();
+        self.update_gym(false);
+        self.keys = Keys::default();
+        self.capture(false);
+    }
+
+    fn cursor_on_zone_hud(&self) -> bool {
+        self.zone_frame.as_ref().is_some_and(|frame| {
+            let [x, y] = self.cursor.map(|v| v / self.scale);
+            let [left, top, width, height] = frame.frame;
+            frame.visible && x >= left && x <= left + width && y >= top && y <= top + height
+        })
+    }
+
+    fn portal_at_cursor(&self) -> bool {
+        if self.runtime.zone_loading()
+            || self.map.expanded
+            || self.cursor_on_map()
+            || self.cursor_on_zone_hud()
+            || self.cursor_on_door_hud()
+            || self.layout.owns(self.cursor[0], self.cursor[1])
+            || !self
+                .mount
+                .as_ref()
+                .is_some_and(|m| m.active() && m.viewport().drawable())
+        {
+            return false;
+        }
+        let Some(renderer) = &self.renderer else {
+            return false;
+        };
+        let size = renderer.size();
+        self.runtime.zone_hit_with_entities(
+            renderer.aspect(),
+            self.cursor[0] / size[0],
+            self.cursor[1] / size[1],
+            &self.presented_entities,
+        )
+    }
+
     /// The spatial and lifecycle gate owns all Gym reads. Merely starting Verse
     /// does not read a connection file, open a Gym socket, or list local runs.
     fn update_gym(&mut self, active: bool) {
-        let inside = active && self.runtime.gym(1.0).inside;
+        let inside = active && self.plaza_interactive() && self.runtime.gym(1.0).inside;
         if !inside {
             if let Some(board) = &mut self.gym {
                 board.set_active(false);
@@ -738,6 +853,9 @@ impl App {
     }
 
     fn gym_key(&mut self, code: KeyCode, pressed: bool) -> bool {
+        if !self.plaza_interactive() {
+            return false;
+        }
         if code == KeyCode::KeyG && pressed && self.runtime.gym(1.0).inside {
             self.stop_map();
             self.gym_open = !self.gym_open;
@@ -846,6 +964,9 @@ impl App {
 
     /// Opens the replay list, reading the retained runs the first time.
     fn open_picker(&mut self) {
+        if !self.plaza_interactive() {
+            return;
+        }
         self.stop_map();
         self.board_open = false;
         let choices = self
@@ -901,6 +1022,9 @@ impl App {
     /// Advances the replay and flies both spades toward their places, or
     /// lets the agent follow the player when nothing is replaying.
     fn step_agents(&mut self, dt: f32) {
+        if !self.plaza_interactive() {
+            return;
+        }
         let Some(r) = &mut self.replay else {
             return;
         };
@@ -932,6 +1056,8 @@ impl App {
 
     /// Records the player as offline on the relay before quitting.
     fn quit(&mut self, event_loop: &ActiveEventLoop) {
+        self.runtime.zone_cancel_loading();
+        self.sync_zone_services(false);
         self.update_gym(false);
         if let Some(session) = &mut self.session {
             session.leave(&self.runtime.player, &self.runtime.agent);
@@ -941,23 +1067,27 @@ impl App {
     }
 
     fn update_title(&mut self) {
-        let title = match &self.session {
-            None => "Verse — offline".to_owned(),
-            Some(s) => {
-                let status = match s.status {
-                    Status::Connecting => "connecting",
-                    Status::Online => "online",
-                    Status::Offline => "relay unreachable, retrying",
-                };
-                let shown = s.crowd.shown(Instant::now());
-                let avatars = shown.iter().filter(|e| e.role == "avatar");
-                let online = avatars.clone().filter(|e| e.online).count();
-                let resting = avatars.count() - online;
-                format!(
-                    "Verse — {} — {} — {online} other players online, {resting} resting",
-                    s.profile(),
-                    status,
-                )
+        let title = if !self.runtime.is_plaza() {
+            format!("Verse — {} — local", self.runtime.zone.label())
+        } else {
+            match &self.session {
+                None => "Verse — offline".to_owned(),
+                Some(s) => {
+                    let status = match s.status {
+                        Status::Connecting => "connecting",
+                        Status::Online => "online",
+                        Status::Offline => "relay unreachable, retrying",
+                    };
+                    let shown = s.crowd.shown(Instant::now());
+                    let avatars = shown.iter().filter(|e| e.role == "avatar");
+                    let online = avatars.clone().filter(|e| e.online).count();
+                    let resting = avatars.count() - online;
+                    format!(
+                        "Verse — {} — {} — {online} other players online, {resting} resting",
+                        s.profile(),
+                        status,
+                    )
+                }
             }
         };
         if title != self.title
@@ -980,6 +1110,9 @@ impl App {
     }
 
     fn open_chat(&mut self, seed: &str) {
+        if !self.plaza_interactive() {
+            return;
+        }
         self.stop_map();
         self.chat.open = true;
         self.chat.text = seed.to_owned();
@@ -1029,6 +1162,9 @@ impl App {
 
     /// Carries out one submitted chat line.
     fn submit(&mut self, text: &str) {
+        if !self.plaza_interactive() {
+            return;
+        }
         let now = Instant::now();
         let command = chat::parse(text, &self.method);
         if let chat::Command::Send(Channel::Agent, text) = &command {
@@ -1068,6 +1204,9 @@ impl App {
     /// Sends a line to the player's own agent: logged privately, answered
     /// by the model, and spoken in a bubble over the spade.
     fn ask_agent(&mut self, text: &str) {
+        if !self.plaza_interactive() {
+            return;
+        }
         let me = self
             .session
             .as_ref()
@@ -1209,7 +1348,8 @@ impl App {
     }
 
     fn map_visible(&self) -> bool {
-        !self.chat.open
+        !self.runtime.zone_loading()
+            && !self.chat.open
             && !self.board_open
             && !self.gym_open
             && self.picker.is_none()
@@ -1217,6 +1357,9 @@ impl App {
     }
 
     fn stop_map(&mut self) {
+        self.zone_press = None;
+        self.zone_hud.clear_contacts();
+        self.zone_frame = None;
         self.companion_press = None;
         self.door_press = None;
         self.door_hud.clear_contacts();
@@ -1270,6 +1413,9 @@ impl App {
     /// A left click at the cursor, if it lands on the HUD. Returns true
     /// when the HUD took it.
     fn click(&mut self) -> bool {
+        if !self.plaza_interactive() {
+            return false;
+        }
         let [x, y] = self.cursor;
         if !self.layout.owns(x, y) {
             return false;
@@ -1292,6 +1438,42 @@ impl App {
     }
 
     fn key(&mut self, code: KeyCode, pressed: bool, event_loop: &ActiveEventLoop) {
+        if self.runtime.zone_loading() {
+            if pressed && code == KeyCode::Escape {
+                self.zone_action(ZoneIntent::Cancel);
+            }
+            return;
+        }
+        if pressed && !self.chat.open && !self.map.expanded {
+            let snapshot = self
+                .runtime
+                .zone_snapshot(self.renderer.as_ref().map_or(1.0, Renderer::aspect));
+            if code == KeyCode::KeyF && snapshot.portal.near && snapshot.portal.visible {
+                self.zone_action(if self.runtime.is_plaza() {
+                    ZoneIntent::Enter
+                } else {
+                    ZoneIntent::Return
+                });
+                return;
+            }
+            if !self.runtime.is_plaza() {
+                let index = match code {
+                    KeyCode::Digit1 => Some(0),
+                    KeyCode::Digit2 => Some(1),
+                    KeyCode::Digit3 => Some(2),
+                    KeyCode::Digit4 => Some(3),
+                    _ => None,
+                };
+                if let Some(action) = index
+                    .and_then(|i| snapshot.controls.get(i))
+                    .filter(|c| c.enabled)
+                    .map(|c| c.action)
+                {
+                    self.zone_action(action);
+                    return;
+                }
+            }
+        }
         if self.gym_key(code, pressed) {
             return;
         }
@@ -1356,7 +1538,7 @@ impl App {
                 self.method = Channel::Agent;
                 self.open_chat("");
             }
-            KeyCode::KeyN if pressed => {
+            KeyCode::KeyN if pressed && self.plaza_interactive() => {
                 self.left_tab = match self.left_tab {
                     hud::LeftTab::World => hud::LeftTab::Nostr,
                     hud::LeftTab::Nostr => hud::LeftTab::World,
@@ -1364,7 +1546,7 @@ impl App {
             }
             KeyCode::Enter | KeyCode::NumpadEnter if pressed => self.open_chat(""),
             KeyCode::Slash if pressed => self.open_chat("/"),
-            KeyCode::Tab if pressed => self.cycle_method(),
+            KeyCode::Tab if pressed && self.plaza_interactive() => self.cycle_method(),
             KeyCode::KeyW | KeyCode::ArrowUp => self.keys.w = pressed,
             KeyCode::KeyS | KeyCode::ArrowDown => self.keys.s = pressed,
             KeyCode::KeyA | KeyCode::ArrowLeft => self.keys.a = pressed,
@@ -1373,7 +1555,7 @@ impl App {
             KeyCode::KeyE => self.keys.e = pressed,
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys.shift = pressed,
             KeyCode::Space if pressed => self.keys.jump = true,
-            KeyCode::KeyB if pressed => {
+            KeyCode::KeyB if pressed && self.plaza_interactive() => {
                 self.stop_map();
                 self.board_open = !self.board_open;
                 self.keys = Keys::default();
@@ -1420,7 +1602,8 @@ impl App {
     }
 
     fn door_context(&self) -> Option<DoorId> {
-        if !self.map_visible()
+        if !self.plaza_interactive()
+            || !self.map_visible()
             || self.map.expanded
             || !self
                 .mount
@@ -1453,7 +1636,8 @@ impl App {
     }
 
     fn door_at_cursor(&self) -> Option<DoorId> {
-        if !self.map_visible()
+        if !self.plaza_interactive()
+            || !self.map_visible()
             || self.map.expanded
             || !self
                 .mount
@@ -1549,6 +1733,58 @@ impl App {
         }
         if button == MouseButton::Left {
             let at = self.cursor.map(|v| v / self.scale);
+            if !pressed && self.zone_hud.captured(1) {
+                if let Some(action) = self.zone_hud.up(1, at, false) {
+                    self.zone_action(action);
+                }
+                return;
+            }
+            if pressed
+                && !self.keys.left_button
+                && !self.keys.right_button
+                && self
+                    .zone_frame
+                    .as_ref()
+                    .is_some_and(|frame| self.zone_hud.down(1, at, frame))
+            {
+                self.companion_press = None;
+                self.door_press = None;
+                self.zone_press = None;
+                return;
+            }
+        }
+        if self.zone_hud.captured(1) || self.runtime.zone_loading() {
+            return;
+        }
+        if button == MouseButton::Left
+            && !pressed
+            && let Some(tap) = self.zone_press.take()
+        {
+            if tap.released(self.cursor.map(|v| v / self.scale), Instant::now())
+                && self.portal_at_cursor()
+            {
+                self.zone_action(if self.runtime.is_plaza() {
+                    ZoneIntent::Enter
+                } else {
+                    ZoneIntent::Return
+                });
+            }
+            return;
+        }
+        if button == MouseButton::Left
+            && pressed
+            && !self.keys.left_button
+            && !self.keys.right_button
+            && self.portal_at_cursor()
+        {
+            self.zone_press = Some(CompanionPress::new(
+                self.cursor.map(|v| v / self.scale),
+                Instant::now(),
+            ));
+            return;
+        }
+        if button == MouseButton::Left {
+            let at = self.cursor.map(|v| v / self.scale);
             if !pressed && self.door_hud.captured(1) {
                 let cancelled = self.door_context().is_none();
                 if let Some(action) = self.door_hud.up(1, at, cancelled) {
@@ -1627,7 +1863,9 @@ impl App {
             MouseButton::Left => self.keys.left_button = pressed,
             MouseButton::Right => {
                 if pressed
-                    && (self.companion_press.take().is_some() || self.door_press.take().is_some())
+                    && (self.companion_press.take().is_some()
+                        || self.door_press.take().is_some()
+                        || self.zone_press.take().is_some())
                 {
                     self.keys.left_button = true;
                 }
@@ -1655,13 +1893,19 @@ impl App {
     }
 
     fn mouse(&mut self, dx: f32, dy: f32) {
-        if self.gym_open || self.map.captured(1) || self.door_hud.captured(1) {
+        if self.gym_open
+            || self.runtime.zone_loading()
+            || self.zone_hud.captured(1)
+            || self.map.captured(1)
+            || self.door_hud.captured(1)
+        {
             return;
         }
         if let Some(tap) = self
             .companion_press
             .as_mut()
             .or_else(|| self.door_press.as_mut().map(|(_, tap)| tap))
+            .or(self.zone_press.as_mut())
         {
             tap.motion(dx / self.scale, dy / self.scale);
             if tap.valid {
@@ -1669,6 +1913,7 @@ impl App {
             }
             self.companion_press = None;
             self.door_press = None;
+            self.zone_press = None;
             self.keys.left_button = true;
             self.capture(true);
         }
@@ -1694,6 +1939,28 @@ impl App {
             _ => return,
         };
 
+        // Suspend the plaza before a completed download can install a forest pose.
+        self.sync_zone_services(true);
+        self.runtime.zone_tick();
+        if self.runtime.zone_revision != self.rendered_zone_revision {
+            self.stop_map();
+            self.map_error = None;
+            self.layout = hud::Layout::default();
+            self.keys = Keys::default();
+            self.capture(false);
+            self.presented_entities = crate::mesh::Mesh::default();
+            if let Some(renderer) = &mut self.renderer {
+                if let Err(error) = renderer
+                    .replace_world(&self.runtime.world.mesh)
+                    .and_then(|()| renderer.set_atmosphere(zones::atmosphere(self.runtime.zone)))
+                {
+                    self.error = Some(error);
+                    return;
+                }
+                self.rendered_zone_revision = self.runtime.zone_revision;
+            }
+            self.sync_zone_services(true);
+        }
         self.map.tick(dt);
         let input = self.keys.input();
         self.keys.jump = false;
@@ -1702,6 +1969,9 @@ impl App {
                 .tick_with_mode(&input, dt, self.keys.left_button, self.replay.is_none());
         self.update_gym(true);
         self.step_agents(dt);
+        if self.plaza_interactive() {
+            self.plaza_presence = (self.runtime.player, self.runtime.agent);
+        }
 
         // The look-around is the agent assessing what is near: it asks the
         // relay for entity states around it, then glances at what it found.
@@ -1759,7 +2029,11 @@ impl App {
                 ));
             }
         }
-        self.hear_agent(now);
+        if self.plaza_interactive() {
+            self.hear_agent(now);
+        } else {
+            self.brain.drain();
+        }
         if let Some(board) = &mut self.xp {
             board.tick();
         }
@@ -1774,12 +2048,13 @@ impl App {
                 NavigationStatus::Cancelled => "Walking cancelled",
                 NavigationStatus::Blocked => "Route blocked",
             });
-        self.map_frame = Some(self.map.snapshot(
+        self.map_frame = Some(self.map.snapshot_for_zone(
             size.map(|value| value / self.scale),
             [self.runtime.player.pos.x, self.runtime.player.pos.z],
             self.map_visible(),
             map_status,
             navigation.destination(),
+            self.runtime.zone,
         ));
         let overheads = self.overheads(now);
         let ui = match &self.atlas {
@@ -1817,37 +2092,41 @@ impl App {
                     Some(feed) => (&feed.lines, feed.title()),
                     None => (&empty, "offline: start Verse with a relay".to_owned()),
                 };
-                let (mut ui, mut layout) = hud::build(
-                    atlas,
-                    &hud::Frame {
-                        size,
-                        scale: self.scale,
-                        view_proj: view.view_proj,
-                        log,
-                        nostr,
-                        nostr_title,
-                        left_tab: self.left_tab,
-                        input: &self.chat,
-                        pills,
-                        hint,
-                        limit,
-                        world_title: hud::world_title(session::WORLD, self.runtime.player.pos),
-                        overheads: &overheads,
-                        time: (now - self.started).as_secs_f32(),
-                        xp: xp::strip(self.xp.as_ref(), &self.my_keys),
-                        board: self
-                            .board_open
-                            .then(|| xp::board_lines(self.xp.as_ref(), unix_now())),
-                        board_scroll: self.board_scroll,
-                        replay: self
-                            .replay
-                            .as_ref()
-                            .map(Replay::hud_lines)
-                            .unwrap_or_default(),
-                        picker: self.picker.as_ref().map(Picker::lines),
-                        picker_scroll: self.picker.as_ref().map_or(0, Picker::scroll),
-                    },
-                );
+                let (mut ui, mut layout) = if self.plaza_interactive() {
+                    hud::build(
+                        atlas,
+                        &hud::Frame {
+                            size,
+                            scale: self.scale,
+                            view_proj: view.view_proj,
+                            log,
+                            nostr,
+                            nostr_title,
+                            left_tab: self.left_tab,
+                            input: &self.chat,
+                            pills,
+                            hint,
+                            limit,
+                            world_title: hud::world_title(session::WORLD, self.runtime.player.pos),
+                            overheads: &overheads,
+                            time: (now - self.started).as_secs_f32(),
+                            xp: xp::strip(self.xp.as_ref(), &self.my_keys),
+                            board: self
+                                .board_open
+                                .then(|| xp::board_lines(self.xp.as_ref(), unix_now())),
+                            board_scroll: self.board_scroll,
+                            replay: self
+                                .replay
+                                .as_ref()
+                                .map(Replay::hud_lines)
+                                .unwrap_or_default(),
+                            picker: self.picker.as_ref().map(Picker::lines),
+                            picker_scroll: self.picker.as_ref().map_or(0, Picker::scroll),
+                        },
+                    )
+                } else {
+                    (crate::ui::UiBatch::default(), hud::Layout::default())
+                };
                 if self.gym_open && self.runtime.gym(size[0] / size[1].max(1.0)).inside {
                     let panel = hud::gym_panel(
                         &mut ui,
@@ -1901,6 +2180,26 @@ impl App {
                     ui.vertices
                         .extend(self.door_hud.draw(atlas, frame, self.scale).vertices);
                 }
+                let _ = self
+                    .zone_hud
+                    .set_bottom_clearance(if self.plaza_interactive() {
+                        bottom_clearance
+                    } else {
+                        12.0
+                    });
+                self.zone_frame = Some(self.zone_hud.snapshot(
+                    size.map(|v| v / self.scale),
+                    &self.runtime.zone_snapshot(size[0] / size[1].max(1.0)),
+                    !self.map.expanded
+                        && !self.chat.open
+                        && !self.board_open
+                        && !self.gym_open
+                        && self.picker.is_none(),
+                ));
+                if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.zone_frame) {
+                    ui.vertices
+                        .extend(self.zone_hud.draw(atlas, frame, self.scale).vertices);
+                }
                 self.layout = layout;
                 ui
             }
@@ -1919,6 +2218,9 @@ impl App {
     /// Name tags and speech bubbles: over you, your agent, nearby players,
     /// and Nostr stand-ins.
     fn overheads(&self, now: Instant) -> Vec<hud::Overhead> {
+        if !self.plaza_interactive() {
+            return Vec::new();
+        }
         use coder_ui::theme::Intensity;
         let mut out = Vec::new();
         let snapshot = self.xp.as_ref().and_then(|b| b.snapshot.as_ref());
@@ -2052,7 +2354,13 @@ impl ApplicationHandler for App {
         self.scale = window.scale_factor() as f32;
         let atlas = Atlas::new((14.0 * self.scale).round());
         match Renderer::new(window.clone(), &self.runtime.world.mesh, &atlas) {
-            Ok(renderer) => {
+            Ok(mut renderer) => {
+                if let Err(error) = renderer.set_atmosphere(zones::atmosphere(self.runtime.zone)) {
+                    self.error = Some(error);
+                    event_loop.exit();
+                    return;
+                }
+                self.rendered_zone_revision = self.runtime.zone_revision;
                 self.renderer = Some(renderer);
                 self.map_atlas = atlas.layout_at_scale(self.scale);
                 self.atlas = Some(atlas);
@@ -2081,10 +2389,7 @@ impl ApplicationHandler for App {
     }
 
     fn suspended(&mut self, _: &ActiveEventLoop) {
-        self.stop_map();
-        self.update_gym(false);
-        self.keys = Keys::default();
-        self.capture(false);
+        self.suspend_world();
         if let Some(mount) = &mut self.mount {
             let _ = mount.set_active(false);
         }
@@ -2098,11 +2403,14 @@ impl ApplicationHandler for App {
                 self.door_press = None;
                 self.door_hud.clear_contacts();
                 self.door_frame = None;
+                self.zone_hud.clear_contacts();
+                self.zone_frame = None;
+                self.zone_press = None;
                 self.runtime.doors.cancel_transient();
                 self.map.clear_contacts();
                 self.map_frame = None;
                 if size.width == 0 || size.height == 0 {
-                    self.stop_map();
+                    self.suspend_world();
                 }
                 let resized = Viewport::new(size.width, size.height, self.scale)
                     .and_then(|v| self.mount.as_mut().map_or(Ok(()), |m| m.resize(v)));
@@ -2137,6 +2445,10 @@ impl ApplicationHandler for App {
                     tap.moved(self.cursor.map(|v| v / self.scale));
                 }
                 self.door_hud.moved(1, self.cursor.map(|v| v / self.scale));
+                self.zone_hud.moved(1, self.cursor.map(|v| v / self.scale));
+                if let Some(tap) = &mut self.zone_press {
+                    tap.moved(self.cursor.map(|v| v / self.scale));
+                }
                 self.map
                     .moved(1, self.cursor.map(|value| value / self.scale));
             }
@@ -2144,12 +2456,16 @@ impl ApplicationHandler for App {
                 self.button(button, state == ElementState::Pressed);
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                self.zone_press = None;
                 self.companion_press = None;
                 self.door_press = None;
                 if self.cursor_on_map()
                     || self.map.captured(1)
                     || self.cursor_on_door_hud()
                     || self.door_hud.captured(1)
+                    || self.cursor_on_zone_hud()
+                    || self.zone_hud.captured(1)
+                    || self.runtime.zone_loading()
                 {
                     return;
                 }
@@ -2171,10 +2487,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Focused(focused) => {
                 if !focused {
-                    self.stop_map();
-                    self.update_gym(false);
-                    self.keys = Keys::default();
-                    self.capture(false);
+                    self.suspend_world();
                 }
                 if let Some(mount) = &mut self.mount {
                     let _ = mount.set_active(focused);
@@ -2185,6 +2498,9 @@ impl ApplicationHandler for App {
                 self.door_press = None;
                 self.door_hud.clear_contacts();
                 self.door_frame = None;
+                self.zone_hud.clear_contacts();
+                self.zone_frame = None;
+                self.zone_press = None;
                 self.map.clear_contacts();
                 self.map_frame = None;
                 self.scale = scale_factor as f32;
@@ -2199,6 +2515,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => self.frame(),
             WindowEvent::CursorLeft { .. } => {
+                self.zone_press = None;
                 self.companion_press = None;
                 self.door_press = None;
             }
@@ -2284,6 +2601,77 @@ fn read_gym_connection(path: &std::path::Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn offline_app() -> App {
+        App::new(&Options {
+            profile: format!("forest-test-{}", std::process::id()),
+            relay: None,
+            ..Options::default()
+        })
+        .expect("offline desktop state")
+    }
+
+    fn forest_pack() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/verse/forest/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp")
+    }
+
+    #[test]
+    fn forest_desktop_gates_plaza_services_and_returns_to_the_same_pose() {
+        let mut app = offline_app();
+        let plaza = app.runtime.player;
+        app.runtime
+            .install_forest(zones::assets::LoadedAssets::load_local(&forest_pack()).unwrap());
+        app.sync_zone_services(true);
+        assert!(app.plaza_services_paused);
+        assert!(app.session.is_none() && app.feed.is_none() && app.xp.is_none());
+        app.open_chat("forest text");
+        app.ask_agent("must not reach a model");
+        app.open_picker();
+        app.update_gym(true);
+        assert!(!app.chat.open && !app.brain.thinking);
+        assert!(app.choices.is_none() && app.picker.is_none());
+        assert!(!app.gym_identity_attempted);
+        assert!(app.overheads(Instant::now()).is_empty());
+        app.keys.w = true;
+        app.zone_action(ZoneIntent::Return);
+        assert!(app.runtime.is_plaza());
+        assert!(!app.plaza_services_paused && !app.keys.w);
+        assert_eq!(app.runtime.player.pos, plaza.pos);
+        assert_eq!(app.runtime.player.yaw, plaza.yaw);
+        assert!(app.session.is_none(), "offline return does not connect");
+    }
+
+    #[test]
+    fn desktop_background_cancels_loading_without_a_render_frame() {
+        let mut app = offline_app();
+        let cache = std::env::temp_dir().join(format!(
+            "verse-desktop-zone-{}",
+            crate::identity::random_hex(8)
+        ));
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::copy(
+            forest_pack(),
+            cache.join(format!("{}.vzp", zones::assets::PACK_SHA256)),
+        )
+        .unwrap();
+        app.runtime.configure_zone_cache(cache.clone());
+        app.runtime.player.pos = zones::ZoneId::Plaza.portal() + Vec3::new(0.0, 0.0, -3.0);
+        app.zone_action(ZoneIntent::Enter);
+        assert!(app.runtime.zone_loading() && app.plaza_services_paused);
+        assert!(!app.map_visible());
+        app.keys.w = true;
+        app.zone_press = Some(CompanionPress::new([0.0, 0.0], Instant::now()));
+        app.suspend_world();
+        assert!(!app.runtime.zone_loading());
+        assert!(app.runtime.is_plaza());
+        assert!(!app.keys.w && app.zone_press.is_none());
+        // Late completion cannot change the selected world after suspension.
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!app.runtime.zone_tick());
+        assert!(app.runtime.is_plaza());
+        std::fs::remove_dir_all(cache).unwrap();
+    }
 
     #[test]
     fn desktop_door_pick_accepts_visible_edges_around_an_occluded_anchor() {

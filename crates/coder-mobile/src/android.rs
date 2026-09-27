@@ -159,6 +159,7 @@ impl AndroidVerse {
             .scene
             .action(crate::verse_app::Request::ResetMotion)?;
         self.handle.renderer = Some(renderer);
+        self.handle.rendered_zone_revision = u64::MAX;
         self.window = Some(window);
         Ok(())
     }
@@ -296,6 +297,7 @@ pub extern "system" fn Java_com_openagents_coder_CoderNative_createVerse<'local>
                     handle: VerseHandle {
                         scene,
                         renderer: None,
+                        rendered_zone_revision: u64::MAX,
                     },
                     window: None,
                 };

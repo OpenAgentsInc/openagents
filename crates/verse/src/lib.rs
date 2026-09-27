@@ -36,3 +36,4 @@ pub mod ui;
 pub mod world;
 #[cfg(feature = "xp-host")]
 pub mod xp;
+pub mod zones;

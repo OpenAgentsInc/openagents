@@ -47,6 +47,7 @@ final class VerseMetalView: UIView {
     private var companionAccessible = false
     private var hudPointers = Set<UInt64>()
     private var hudInsets = EdgeInsets()
+    private var zoneState: VerseZone?
     private var mapState: VerseMap?
     private var doorState: VerseDoors?
     private var doorActionsAvailable = false
@@ -108,6 +109,9 @@ final class VerseMetalView: UIView {
                     "synthetic": bridge.synthetic,
                     "synthetic_gym": bridge.synthetic && ProcessInfo.processInfo.arguments.contains("--gym-preview"),
                 ]
+                let cache = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                    .appendingPathComponent("VerseZones", isDirectory: true)
+                configuration["zone_cache_directory"] = cache.path
                 if let preferences = bridge.storedDoorPreferences() { configuration["door_preferences"] = preferences }
                 if let relay = bridge.storedWorldRelay() { configuration["world_relay"] = relay }
                 if let code = bridge.storedGymCode() { configuration["gym_code"] = code }
@@ -221,6 +225,7 @@ final class VerseMetalView: UIView {
         computerAccessible = available
         companionAccessible = running && !packet.computer_open && !packet.gym_open &&
             packet.companion.near && packet.companion.visible && packet.companion.cooldown_seconds <= 0
+        zoneState = packet.zone
         mapState = packet.map
         doorState = packet.doors
         doorActionsAvailable = running && !packet.computer_open && !packet.gym_open && !packet.map.expanded
@@ -229,8 +234,10 @@ final class VerseMetalView: UIView {
         let map = packet.map
         let mapAvailable = running && map.visible
         let state = "\(available):\(companionAccessible):\(mapAvailable):\(map.expanded):\(map.destination != nil):" + map.landmarks.map(\.id).joined(separator: ",") + ":\(doorActionsAvailable):\(doorActions):\(packet.doors.hud.visible):\(packet.doors.hud.door ?? ""):\(itemActions)"
-        if state != accessibilityActionState {
-            accessibilityActionState = state
+        let zoneActions = packet.zone.hud.visible ? packet.zone.hud.buttons.filter(\.enabled).map(\.id).joined(separator: ",") : ""
+        let combinedState = state + ":" + zoneActions
+        if combinedState != accessibilityActionState {
+            accessibilityActionState = combinedState
             var actions: [UIAccessibilityCustomAction] = []
             if available {
                 actions.append(UIAccessibilityCustomAction(name: "Use computer", target: self, selector: #selector(useComputerAccessibly)))
@@ -274,6 +281,16 @@ final class VerseMetalView: UIView {
                     }
                 }
             }
+            if packet.zone.hud.visible {
+                for button in packet.zone.hud.buttons where button.enabled {
+                    actions.append(UIAccessibilityCustomAction(name: button.label) { [weak self] _ in
+                        guard let self, self.running, self.zoneState?.hud.visible == true,
+                              let current = self.zoneState?.hud.buttons.first(where: { $0.id == button.id }), current.enabled,
+                              case let .success(result)? = self.send(["action": "zone", "intent": current.action], forcePublish: true) else { return false }
+                        return result.error == nil
+                    })
+                }
+            }
             accessibilityCustomActions = actions
         }
         if bridge.synthetic {
@@ -292,13 +309,14 @@ final class VerseMetalView: UIView {
                 "map": packet.map.observation,
                 "companion": packet.companion.observation,
                 "doors": packet.doors.observation,
+                "zone": packet.zone.observation,
                 "door_preferences_revision": packet.door_preferences_revision,
                 "door_storage_writes": bridge.doorStorageWrites,
             ]
             accessibilityValue = (try? JSONSerialization.data(withJSONObject: metadata))
                 .flatMap { String(data: $0, encoding: .utf8) }
         } else {
-            accessibilityValue = available ? "Computer in reach" : "Exploring Verse"
+            accessibilityValue = available ? "Computer in reach" : packet.zone.hud.visible ? (packet.zone.error ?? packet.zone.caption) : "Exploring \(packet.zone.label)"
         }
     }
 
@@ -370,7 +388,7 @@ final class VerseMetalView: UIView {
             pointers[ObjectIdentifier(touch)] = id
             let at = touch.location(in: self)
             pointer(touch, id: id, phase: "down")
-            if mapState?.captured_pointers.contains(id) == true || doorState?.hud.captured_pointers.contains(id) == true {
+            if mapState?.captured_pointers.contains(id) == true || doorState?.hud.captured_pointers.contains(id) == true || zoneState?.hud.captured_pointers.contains(id) == true {
                 hudPointers.insert(id)
             } else {
                 pinchAdmission.down(id, x: Double(at.x), y: Double(at.y), time: touch.timestamp)

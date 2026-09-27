@@ -1,12 +1,13 @@
 //! A shared, bounded map overlay. Hosts supply viewport insets and route state.
 //! Map clicks select local walking destinations; they grant no service access.
+#[cfg(test)]
+use crate::world;
 use coder_ui::theme::Intensity;
 use serde::Serialize;
 
 use crate::{
     controller::Footprint,
     ui::{self, Atlas, UiBatch},
-    world,
 };
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -17,7 +18,7 @@ pub struct Landmark {
     pub z: f32,
 }
 
-pub const LANDMARKS: [Landmark; 8] = [
+pub const LANDMARKS: [Landmark; 9] = [
     Landmark {
         id: "computer",
         label: "Computer",
@@ -66,9 +67,13 @@ pub const LANDMARKS: [Landmark; 8] = [
         x: 12.0,
         z: -9.0,
     },
+    Landmark {
+        id: "forest",
+        label: "Forest portal",
+        x: -12.0,
+        z: 9.0,
+    },
 ];
-
-const EXPANDED_EXTRA: f32 = 76.0 + LANDMARKS.len().div_ceil(3) as f32 * 28.0;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Snapshot {
@@ -170,25 +175,68 @@ impl MapHud {
         state: &str,
         destination: Option<[f32; 2]>,
     ) -> Snapshot {
+        self.snapshot_for_zone(
+            size,
+            player,
+            visible,
+            state,
+            destination,
+            crate::zones::ZoneId::Plaza,
+        )
+    }
+    pub fn snapshot_for_zone(
+        &self,
+        size: [f32; 2],
+        player: [f32; 2],
+        visible: bool,
+        state: &str,
+        destination: Option<[f32; 2]>,
+        zone: crate::zones::ZoneId,
+    ) -> Snapshot {
+        let landmarks = if zone == crate::zones::ZoneId::Plaza {
+            LANDMARKS.to_vec()
+        } else {
+            vec![
+                Landmark {
+                    id: "return",
+                    label: "Plaza portal",
+                    x: 0.0,
+                    z: 15.0,
+                },
+                Landmark {
+                    id: "glade",
+                    label: "Glade",
+                    x: 0.0,
+                    z: 2.0,
+                },
+                Landmark {
+                    id: "grove",
+                    label: "Grove",
+                    x: 18.0,
+                    z: 0.0,
+                },
+            ]
+        };
+        let expanded_extra = 76.0 + landmarks.len().div_ceil(3) as f32 * 28.0;
         let [top, right, bottom, left] = self.insets;
         let available_w = (size[0] - left - right - 24.0).max(1.0);
         let available_h = (size[1] - top - bottom - 24.0).max(1.0);
         let minimum_height = if self.expanded {
-            EXPANDED_EXTRA + 28.0
+            expanded_extra + 28.0
         } else {
             160.0
         };
         let visible = visible && available_w >= 100.0 && available_h >= minimum_height;
         let side = if self.expanded {
             available_w
-                .min(available_h - EXPANDED_EXTRA)
+                .min(available_h - expanded_extra)
                 .clamp(1.0, 440.0)
         } else {
             116.0_f32
                 .min(available_w)
                 .min((available_h - 26.0).max(1.0))
         };
-        let height = side + if self.expanded { EXPANDED_EXTRA } else { 26.0 };
+        let height = side + if self.expanded { expanded_extra } else { 26.0 };
         let x = if self.expanded {
             left + (available_w - side) * 0.5 + 12.0
         } else {
@@ -204,8 +252,12 @@ impl MapHud {
             frame: [x, y, side, height],
             plot: [x, y + 26.0, side, side],
             center: if self.expanded { [0.0, 0.0] } else { player },
-            half_extent: if self.expanded { world::HALF } else { 58.0 },
-            landmarks: LANDMARKS.to_vec(),
+            half_extent: if self.expanded {
+                zone.half_extent()
+            } else {
+                58.0_f32.min(zone.half_extent())
+            },
+            landmarks,
         }
     }
     #[allow(clippy::too_many_arguments)]
@@ -277,7 +329,7 @@ impl MapHud {
                 );
             }
         }
-        if map.expanded {
+        if map.expanded && map.half_extent > 100.0 {
             for (name, u, v) in [
                 ("NORTH WARD", 0.34, 0.08),
                 ("SOUTH WARD", 0.34, 0.86),
@@ -288,7 +340,7 @@ impl MapHud {
                 ui.text(atlas, px + pw * u, py + ph * v, name, half);
             }
         }
-        for landmark in LANDMARKS {
+        for landmark in &map.landmarks {
             let p = project(map, [landmark.x, landmark.z]);
             if inside(map.plot, p) {
                 ui.frame(atlas, p[0] - 2.0, p[1] - 2.0, 4.0, 4.0, 1.0, half);
@@ -343,7 +395,7 @@ impl MapHud {
                     .collect::<String>(),
                 full,
             );
-            for (i, l) in LANDMARKS.iter().enumerate() {
+            for (i, l) in map.landmarks.iter().enumerate() {
                 let r = landmark_rect(map, i);
                 ui.frame(
                     atlas,
@@ -398,7 +450,7 @@ fn hit(map: &Snapshot, at: [f32; 2]) -> Option<MapAction> {
             map.center[1] + (1.0 - (at[1] - map.plot[1]) / map.plot[3] * 2.0) * map.half_extent,
         ]));
     }
-    for (i, l) in LANDMARKS.iter().enumerate() {
+    for (i, l) in map.landmarks.iter().enumerate() {
         if inside(landmark_rect(map, i), at) {
             return Some(MapAction::Walk([l.x, l.z]));
         }

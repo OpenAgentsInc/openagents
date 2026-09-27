@@ -2,12 +2,12 @@
 
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 
-Verse is the OpenAgents desktop, iOS, and Android world: a walkable 3D city drawn in amber
-lines on a near-black field. `crates/verse` holds the first slice, a
-Tron-style city and a third-person character you run around with World of
-Warcraft controls.
+Verse is the OpenAgents desktop, iOS, and Android world. Its global plaza is a
+walkable 3D city drawn in amber lines on a near-black field, with a third-person
+character and World of Warcraft-style controls. Separately loaded zones can use
+their own appearance and supported simulation profiles.
 
-Status: partial. One world exists, and players share it over Nostr with
+Status: partial. Players share the plaza over Nostr with
 [NIP-MV](../../nips/openagents/NIP-MV.md): each player sees the others'
 avatars and agents move and turn, and the relay remembers where everyone
 left. A quest board on the plaza lists live
@@ -16,7 +16,11 @@ level, and titles. `R` replays a retained Microcoder run as the agent's
 visits to the workbench, oracle, library, and proving ground, beside a
 ghost of Fable 5.1 low's cheapest winning run. The [Gym building](gym.md) observes host-selected Microcoder and Terminal-Bench
 records while the player is inside and supports explicitly confirmed recipes.
-Live Pylon and payment state is not implemented.
+The [Atlantis forest](zones.md) is a separate local zone: its models load on
+entry, its palette is independent, and its optional
+[SRD 5.1 encounter](zone-rules.md) implements a small turn-based rules subset.
+Arbitrary creator worlds, signed scene discovery, forest multiplayer, live
+Pylon state, and payment state remain unimplemented.
 
 The [Coder mobile Verse home](mobile.md) shares the world simulation and renderer
 through Rust Native's generic native-surface contract. Mobile touch controls,
@@ -54,6 +58,21 @@ approach the boards and tap the Gym board control on mobile. Updates start only 
 the player is inside and the surface is active. See [Gym setup](gym.md) for
 source grants, recorded charts, and bounded launch recipes.
 
+## Forest portal and loaded zones
+
+Choose **Forest portal** on the expanded map, approach the arch, and select
+**Enter forest**. Entry downloads and verifies the forest pack only when
+needed; later visits can use its disk cache. The forest has original Ruins of
+Atlantis wizard, zombie, and tree geometry in a bounded format, with a new flat
+clearing and its own colors. **Plaza** returns and releases the active forest
+geometry. The portal is separate from the Spark and Halo local route demos.
+
+Select **Encounter** to try the local fifth-edition rules subset. **Fire Bolt**,
+**End turn**, and **Reset** are explicit actions; waiting does not trigger NPC
+attacks. See [zone loading and architecture](zones.md),
+[rules coverage and attribution](zone-rules.md), and
+[mobile controls](mobile.md#enter-the-forest).
+
 ## Multiplayer
 
 Verse speaks [NIP-MV](../../nips/openagents/NIP-MV.md), a standalone NIP
@@ -75,7 +94,10 @@ state. A returning player resumes where they left. A new player spawns at a
 random clear spot within 28 m of the plaza center, so new players can see
 each other.
 
-**What goes over the wire.** Everything is in world `verse-plaza`.
+**What goes over the wire.** Implemented shared presence is in world
+`verse-plaza`. Loading or visiting the local forest suspends plaza presence
+and observation; returning resumes the configured plaza behavior. Forest
+coordinates and encounter state are not published under the plaza identity.
 
 | Event | Kind | Stored | When |
 | --- | --- | --- | --- |
@@ -281,8 +303,8 @@ public trial's wall time, which includes setup and grading.
 
 ## The agent
 
-The agent is a spade from a deck of cards, extruded into 3D and drawn like
-everything else: near-black faces and amber edges. It floats about 2.2 m up
+The agent is a spade from a deck of cards, extruded into 3D with near-black
+faces and amber edges. It floats about 2.2 m up
 and follows the player:
 
 - It chases a point behind the player's right shoulder on a slightly
@@ -376,12 +398,14 @@ only lines. Buildings are solid near-black boxes with amber edges, so nearer
 buildings hide farther lines. Fog fades distant lines into the field. A
 ridge line at 900 m ignores the fog and marks the horizon.
 
-**Palette.** Verse uses the Coder terminal's colors and nothing else: the
-four [`coder_terminal::Intensity`](../../crates/coder-terminal/src/intensity.rs)
-steps over one amber, and `NEAR_BLACK` for the clear color, the fog, and
-every face. `palette.rs` converts those values to linear light and does not
-restate them. The test `every_color_is_on_the_amber_ladder` fails if any
-vertex in the world has another color.
+**Palette.** The global plaza uses Coder's four
+[`coder_ui::theme::Intensity`](../../crates/coder-ui/src/theme.rs) steps over
+one amber, plus `NEAR_BLACK` for its clear color, fog, and faces. `palette.rs`
+converts those values to linear light and does not restate them. The
+`every_color_is_on_the_amber_ladder` test protects the plaza geometry.
+Separately loaded zones can use their own validated colors and atmosphere;
+Atlantis forest uses greens, earth tones, and baked model colors. Coder's HUD
+keeps its application palette. Neither palette belongs to Rust Native.
 
 | Step | Hex | Used for |
 | --- | --- | --- |
@@ -438,6 +462,8 @@ The character collides with building footprints and the world edge.
 | [`src/ui.rs`](../../crates/verse/src/ui.rs), [`src/ui.wgsl`](../../crates/verse/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
 | [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
 | [`src/palette.rs`](../../crates/verse/src/palette.rs) | The amber ladder in linear light. |
+| [`src/zones/`](../../crates/verse/src/zones/mod.rs) | Curated zone identities, manifest admission, lazy forest loading, palette/fog, portals, and the local encounter. |
+| [`src/zones/rules.rs`](../../crates/verse/src/zones/rules.rs) | The bounded SRD 5.1 turn reducer, dice, attack/save semantics, and encounter movement budget. |
 | [`src/render.rs`](../../crates/verse/src/render.rs), [`src/shader.wgsl`](../../crates/verse/src/shader.wgsl) | Pipelines, fog, the window renderer, and PNG capture. |
 
 Test the crate with `cargo test -p verse`. Tests cover the controller rules,

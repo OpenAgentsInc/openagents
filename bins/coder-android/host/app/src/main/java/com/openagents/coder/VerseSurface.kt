@@ -103,7 +103,8 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         try {
             val config = json("secret_hex" to storage.identity("verse"), "width" to width,
                 "height" to height, "scale" to resources.displayMetrics.density,
-                "synthetic" to synthetic, "synthetic_gym" to (synthetic && gymPreview))
+                "synthetic" to synthetic, "synthetic_gym" to (synthetic && gymPreview),
+                "zone_cache_directory" to java.io.File(context.cacheDir, "VerseZones").absolutePath)
             attemptedDoorRevision = null
             latestDoorDocument = null
             doorStorageWrites = 0
@@ -209,11 +210,12 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
                 "map" to result.getJSONObject("map"),
                 "companion" to result.getJSONObject("companion"),
                 "doors" to result.getJSONObject("doors"),
+                "zone" to result.getJSONObject("zone"),
                 "door_preferences_revision" to result.getLong("door_preferences_revision"),
                 "door_storage_writes" to doorStorageWrites)}"
             val available = computerAvailable()
             val map = result.getJSONObject("map")
-            val advertisedDoors = advertisedDoorActions()
+            val advertisedDoors = advertisedDoorActions() + advertisedZoneActions()
             val mapState = "${advertisedDoors}:$available:${companionAvailable()}:${map.optBoolean("visible")}:${map.optBoolean("expanded")}:${!map.isNull("destination")}:${map.optJSONArray("landmarks")}"
             if (accessibilityState != mapState) {
                 computerAccessible = available
@@ -355,7 +357,8 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
                     // Rust decides HUD ownership before native pinch admission.
                     pointer(event, index, "down")
                     val captured = listOf(snapshot?.optJSONObject("map")?.optJSONArray("captured_pointers"),
-                        snapshot?.optJSONObject("doors")?.optJSONObject("hud")?.optJSONArray("captured_pointers"))
+                        snapshot?.optJSONObject("doors")?.optJSONObject("hud")?.optJSONArray("captured_pointers"),
+                        snapshot?.optJSONObject("zone")?.optJSONObject("hud")?.optJSONArray("captured_pointers"))
                     if (captured.any { ids -> ids != null && (0 until ids.length()).any { ids.optLong(it) == id.toLong() } }) {
                         hudPointers.add(id)
                     } else {
@@ -436,6 +439,17 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         return actions
     }
 
+    private fun advertisedZoneActions(): List<Pair<String, JSONObject>> {
+        if (!running || panelOpen()) return emptyList()
+        val hud = snapshot?.optJSONObject("zone")?.optJSONObject("hud") ?: return emptyList()
+        if (!hud.optBoolean("visible")) return emptyList()
+        val buttons = hud.optJSONArray("buttons") ?: return emptyList()
+        val allowed = listOf("enter", "return", "cancel", "retry", "start_encounter", "cast", "end_turn", "reset_encounter")
+        return (0 until minOf(buttons.length(), 16)).map { buttons.getJSONObject(it) }
+            .filter { it.optBoolean("enabled") && it.optString("action") in allowed }
+            .map { it.getString("label") to json("action" to "zone", "intent" to it.getString("action")) }
+    }
+
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
         for ((action, value) in doorActions) info.addAction(AccessibilityNodeInfo.AccessibilityAction(action, value.first))
@@ -466,7 +480,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
 
     override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
         doorActions[action]?.let { selected ->
-            val current = advertisedDoorActions().firstOrNull { it.second.toString() == selected.second.toString() } ?: return false
+            val current = (advertisedDoorActions() + advertisedZoneActions()).firstOrNull { it.second.toString() == selected.second.toString() } ?: return false
             val result = send(current.second) ?: return false
             return result.textOrNull("error") == null
         }

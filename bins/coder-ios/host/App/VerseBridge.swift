@@ -27,6 +27,8 @@ struct VersePacket: Decodable {
     let map: VerseMap
     let companion: VerseCompanion
     let doors: VerseDoors
+    let zone: VerseZone
+    let credits: String?
     let door_preferences: String
     let door_preferences_revision: UInt64
 }
@@ -119,6 +121,7 @@ final class VerseBridge: ObservableObject {
     @Published private(set) var packet: VersePacket?
     @Published private(set) var nativeError: String?
     @Published private(set) var gymBoard: GymBoardView?
+    @Published private(set) var verseCredits: String?
     @Published private(set) var doorStorageError: String?
     @Published private(set) var canRetryDoorSave = false
     private var attemptedDoorRevision: UInt64?
@@ -260,6 +263,7 @@ final class VerseBridge: ObservableObject {
         guard canvas === source else { return }
         switch result {
         case let .success(packet):
+            if let credits = packet.credits { verseCredits = credits }
             let now = CACurrentMediaTime()
             guard force || packet.error != nil || now - lastPublished >= 0.15 else { return }
             lastPublished = now
@@ -293,7 +297,7 @@ final class VerseBridge: ObservableObject {
         }
         let packet = try JSONDecoder().decode(VersePacket.self, from: Data(bytes: data, count: result.len))
         guard packet.schema == "coder.verse.v1",
-              ["offline", "paused", "connecting", "connected", "retrying", "preview"].contains(packet.connection.state),
+              ["offline", "paused", "connecting", "connected", "retrying", "preview", "local_zone"].contains(packet.connection.state),
               (packet.connection.relay?.utf8.count ?? 0) <= 2048,
               packet.position.count == 3, packet.position.allSatisfy(\.isFinite),
               packet.computer.screen_x.isFinite, packet.computer.screen_y.isFinite,
@@ -302,7 +306,7 @@ final class VerseBridge: ObservableObject {
               ["touch", "motion"].contains(packet.camera_mode),
               packet.camera_yaw.isFinite, packet.camera_pitch.isFinite,
               packet.camera_distance.isFinite, packet.camera_distance > 0,
-              packet.map.valid, packet.companion.valid, packet.door_preferences.utf8.count <= 2048, packet.doors.valid,
+              (packet.credits?.utf8.count ?? 0) <= 32_768, packet.map.valid, packet.zone.valid, packet.companion.valid, packet.door_preferences.utf8.count <= 2048, packet.doors.valid,
               packet.gym_board?.valid ?? true else {
             throw ReaderError.message("This app does not support the returned world view.")
         }
