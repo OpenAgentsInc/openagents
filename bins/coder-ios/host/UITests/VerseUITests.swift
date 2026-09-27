@@ -14,21 +14,24 @@ final class VerseUITests: XCTestCase {
     }
 
     func testMetalWorldRendersAndTouchMovementChangesPosition() throws {
-        let position = app.staticTexts["verse-position"]
-        let before = coordinates(position.label)
+        let before = position()
         let surface = app.otherElements["verse-surface"]
         let origin = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.7))
         let forward = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
         origin.press(forDuration: 0.1, thenDragTo: forward, withVelocity: .slow, thenHoldForDuration: 0.8)
         let moved = XCTNSPredicateExpectation(predicate: NSPredicate { [weak self] _, _ in
             guard let self else { return false }
-            let after = self.coordinates(position.label)
+            let after = self.position()
             return abs(after[0] - before[0]) + abs(after[2] - before[2]) > 0.1
-        }, object: position)
+        }, object: app)
         XCTAssertEqual(XCTWaiter.wait(for: [moved], timeout: 5), .completed)
         let frames = frameCount()
-        app.buttons["verse-jump"].tap()
+        let highest = try XCTUnwrap(app.verseObservation()).highest_observed_y
+        XCTAssertFalse(app.buttons["verse-jump"].exists)
+        surface.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.55)).doubleTap()
         XCTAssertTrue(waitForFrames(after: frames))
+        XCTAssertGreaterThan(try XCTUnwrap(app.verseObservation()).highest_observed_y, highest + 0.1,
+                             "A real double-tap makes the Rust player leave the ground.")
         attach("Synthetic Verse Metal world")
     }
 
@@ -51,6 +54,27 @@ final class VerseUITests: XCTestCase {
         attach("Synthetic world computer after background resume")
     }
 
+
+    func testPinchZoomsWithoutMovingThePlayerOrTurningTheCamera() throws {
+        let surface = app.otherElements["verse-surface"]
+        let before = try XCTUnwrap(app.verseObservation())
+        surface.pinch(withScale: 1.6, velocity: 1.0)
+        XCTAssertTrue(waitForFrames(after: before.frames))
+        let closer = try XCTUnwrap(app.verseObservation())
+        XCTAssertLessThan(closer.camera_distance, before.camera_distance)
+        XCTAssertEqual(closer.position[0], before.position[0], accuracy: 0.02)
+        XCTAssertEqual(closer.position[2], before.position[2], accuracy: 0.02)
+        XCTAssertEqual(closer.camera[0], before.camera[0], accuracy: 0.02)
+        XCTAssertEqual(closer.camera[1], before.camera[1], accuracy: 0.02)
+        surface.pinch(withScale: 0.65, velocity: -1.0)
+        XCTAssertTrue(waitForFrames(after: closer.frames))
+        let farther = try XCTUnwrap(app.verseObservation())
+        XCTAssertGreaterThan(farther.camera_distance, closer.camera_distance)
+        XCTAssertFalse(app.buttons["Zoom in"].exists)
+        XCTAssertFalse(app.buttons["Zoom out"].exists)
+        XCTAssertFalse(app.staticTexts["verse-error"].exists)
+        attach("Pinch zoom with a clean world HUD")
+    }
 
     func testInlinePairingRefusesInvalidCodeAndCameraHasPasteFallback() throws {
         app.openWorldComputer()
@@ -75,20 +99,17 @@ final class VerseUITests: XCTestCase {
         attach("Synthetic inline pairing refusal")
     }
 
-    private func coordinates(_ label: String) -> [Double] {
-        let values = label.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+    private func position() -> [Double] {
+        let values = app.verseObservation()?.position ?? []
         XCTAssertEqual(values.count, 3)
         return values.count == 3 ? values : [0, 0, 0]
     }
 
-    private func frameCount() -> UInt64 {
-        let label = app.staticTexts["verse-frames"].label
-        return UInt64(label.split(separator: " ").last ?? "0") ?? 0
-    }
+    private func frameCount() -> UInt64 { app.verseObservation()?.frames ?? 0 }
 
     private func waitForFrames(after previous: UInt64) -> Bool {
         let match = XCTNSPredicateExpectation(predicate: NSPredicate { [weak self] _, _ in
-            guard let self, self.app.staticTexts["verse-frames"].exists else { return false }
+            guard let self, self.app.verseObservation() != nil else { return false }
             return self.frameCount() > previous
         }, object: app)
         return XCTWaiter.wait(for: [match], timeout: 30) == .completed

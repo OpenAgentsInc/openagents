@@ -21,6 +21,7 @@ struct VersePacket: Decodable {
     let camera_mode: String
     let camera_yaw: Double
     let camera_pitch: Double
+    let camera_distance: Double
     let motion_needed: Bool
 }
 
@@ -167,6 +168,7 @@ final class VerseBridge: ObservableObject {
               packet.gym.screen_x.isFinite, packet.gym.screen_y.isFinite, packet.gym.distance.isFinite,
               ["touch", "motion"].contains(packet.camera_mode),
               packet.camera_yaw.isFinite, packet.camera_pitch.isFinite,
+              packet.camera_distance.isFinite, packet.camera_distance > 0,
               packet.gym_board?.valid ?? true else {
             throw ReaderError.message("This app does not support the returned world view.")
         }

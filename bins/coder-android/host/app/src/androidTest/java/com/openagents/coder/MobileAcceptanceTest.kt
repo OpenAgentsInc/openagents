@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.text.Selection
 import android.text.Spannable
 import android.view.MotionEvent
+import android.view.InputDevice
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CompoundButton
@@ -17,6 +18,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
@@ -77,9 +79,6 @@ class MobileAcceptanceTest {
         val before = position()
         walk()
         waitFor { distance(position(), before) > 0.1 }
-        val frame = frames()
-        click("verse-jump")
-        waitFor { frames() > frame }
         assertFalse("Renderer error", exists("verse-error", nonempty = true))
         val retained = position()
         val presented = frames()
@@ -88,6 +87,36 @@ class MobileAcceptanceTest {
         onMain { find(it.window.decorView, "verse-surface")!!.visibility = View.VISIBLE }
         waitFor { frames() > presented }
         assertTrue("Replacing the native surface retains the player", distance(retained, position()) < 0.05)
+    }
+
+    @Test fun cleanWorldUsesDoubleTapJumpAndTwoFingerPinch() {
+        launch()
+        waitFor { frames() >= 3 }
+        for (tag in listOf("verse-status", "verse-jump", "verse-sprint", "verse-zoom-in", "verse-zoom-out",
+                "verse-frames", "verse-position", "gym-interest", "verse-camera", "verse-motion-needed",
+                "verse-controls-hint")) assertFalse("Removed visible control: $tag", exists(tag))
+        assertFalse(hasText("Coder"))
+        assertFalse(hasText("Verse offline world"))
+        val initial = position()
+        tapSurface(0.82f, 0.32f)
+        tapSurface(0.82f, 0.32f)
+        waitFor { position().getOrElse(1) { initial[1] } > initial[1] + 0.03 }
+        val zoomBefore = worldSnapshot().getDouble("camera_distance")
+        val yawBefore = cameraYaw()
+        pinchSurface(0.40f, 0.74f)
+        waitFor { worldSnapshot().getDouble("camera_distance") < zoomBefore - 0.05 }
+        val zoomed = worldSnapshot().getDouble("camera_distance")
+        pinchSurface(0.74f, 0.40f)
+        waitFor { worldSnapshot().getDouble("camera_distance") > zoomed + 0.05 }
+        val afterPinch = position()
+        val yawAfterPinch = cameraYaw()
+        assertEquals("Two fingers reserve zoom before recognition", yawBefore, yawAfterPinch, 0.001)
+        assertTrue("Two fingers do not move the player", distance(initial, afterPinch) < 0.05)
+        val pinchFrame = frames()
+        waitFor { frames() > pinchFrame + 3 }
+        assertEquals("A pinch leaves no held look input", yawAfterPinch, cameraYaw(), 0.001)
+        assertTrue("A pinch leaves no held movement", distance(afterPinch, position()) < 0.05)
+        assertFalse(exists("verse-error", nonempty = true))
     }
 
     @Test fun readerPagesStayPinnedAndExactRecordsRemainAccessible() {
@@ -273,10 +302,13 @@ class MobileAcceptanceTest {
         launch(motion = true)
         waitFor { frames() > 2 }
         click("verse-camera-mode")
-        waitFor { exists("verse-motion-sample") }
+        waitFor { worldSnapshot().optBoolean("motion_needed") }
         waitFor { frames() > 5 }
         val yaw = cameraYaw()
-        click("verse-motion-sample")
+        onMain { activity ->
+            val surface = find(activity.window.decorView, "verse-surface")!!
+            assertTrue(surface.performAccessibilityAction(R.id.verse_inject_motion_action, null))
+        }
         waitFor { abs(cameraYaw() - yaw) > 0.05 }
         assertTrue(exists("verse-motion-recenter"))
         val centered = cameraYaw()
@@ -304,14 +336,14 @@ class MobileAcceptanceTest {
     @Test fun gymHasSyntheticBoardsWithoutLaunchingWork() {
         launch(gym = true)
         waitFor { frames() > 2 }
-        assertEquals("Gym idle", text("gym-interest"))
+        assertFalse(worldSnapshot().optBoolean("gym_active"))
         val run = "gym-run-" + "1".repeat(64)
         assertFalse(exists(run))
         for (attempt in 0..12) {
             if (exists("gym-interact", enabled = true)) break
             walk()
         }
-        waitFor { text("gym-interest") == "Gym listening" && exists("gym-interact", enabled = true) }
+        waitFor { worldSnapshot().optBoolean("gym_active") && exists("gym-interact", enabled = true) }
         click("gym-interact")
         waitFor { exists(run) }
         click(run)
@@ -339,10 +371,10 @@ class MobileAcceptanceTest {
         click("gym-close")
         waitFor { !exists("gym-close") }
         for (attempt in 0..15) {
-            if (text("gym-interest") == "Gym idle") break
+            if (!worldSnapshot().optBoolean("gym_active")) break
             gesture(0.12f, 0.32f, 0.12f, 0.50f, 1200)
         }
-        waitFor { text("gym-interest") == "Gym idle" }
+        waitFor { !worldSnapshot().optBoolean("gym_active") }
         assertFalse(exists(run))
         assertFalse(exists("verse-error", nonempty = true))
     }
@@ -460,6 +492,41 @@ class MobileAcceptanceTest {
         }
     }
 
+    private fun pinchSurface(startSpan: Float, endSpan: Float) {
+        val bounds = IntArray(4)
+        onMain { activity ->
+            val surface = find(activity.window.decorView, "verse-surface")!!
+            surface.getLocationOnScreen(bounds)
+            bounds[2] = surface.width; bounds[3] = surface.height
+        }
+        val down = SystemClock.uptimeMillis()
+        fun event(action: Int, span: Float, count: Int) {
+            val properties = Array(count) { index -> MotionEvent.PointerProperties().apply {
+                id = index; toolType = MotionEvent.TOOL_TYPE_FINGER
+            } }
+            val coordinates = Array(count) { index -> MotionEvent.PointerCoords().apply {
+                x = bounds[0] + bounds[2] * (0.5f + if (index == 0) -span / 2 else span / 2)
+                y = bounds[1] + bounds[3] * 0.32f
+                pressure = 1f; size = 1f
+            } }
+            val touch = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, count,
+                properties, coordinates, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            instrumentation.sendPointerSync(touch)
+            touch.recycle()
+        }
+        event(MotionEvent.ACTION_DOWN, startSpan, 1)
+        event(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), startSpan, 2)
+        for (step in 1..12) {
+            SystemClock.sleep(20)
+            event(MotionEvent.ACTION_MOVE, startSpan + (endSpan - startSpan) * step / 12, 2)
+        }
+        event(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), endSpan, 2)
+        // The remaining finger must not become a new movement or look gesture.
+        event(MotionEvent.ACTION_MOVE, endSpan + 0.2f, 1)
+        SystemClock.sleep(120)
+        event(MotionEvent.ACTION_UP, endSpan + 0.2f, 1)
+    }
+
     private fun publicKey(): String {
         if (!exists("reader-public-key")) click("reader-details")
         waitFor { text("reader-public-key").length == 64 }
@@ -539,9 +606,18 @@ class MobileAcceptanceTest {
         return yaw
     }
 
-    private fun frames() = Regex("[0-9]+").find(text("verse-frames"))?.value?.toLongOrNull() ?: 0L
-    private fun position(): List<Double> = Regex("-?[0-9]+(?:\\.[0-9]+)?")
-        .findAll(text("verse-position")).map { it.value.toDouble() }.toList()
+    private fun worldSnapshot(): JSONObject {
+        var snapshot = JSONObject()
+        onMain { activity ->
+            snapshot = (find(activity.window.decorView, "verse-surface") as VerseSurface).snapshot ?: JSONObject()
+        }
+        return snapshot
+    }
+    private fun frames() = worldSnapshot().optLong("frames_presented")
+    private fun position(): List<Double> {
+        val position = worldSnapshot().optJSONArray("position") ?: return emptyList()
+        return (0 until position.length()).map { position.getDouble(it) }
+    }
     private fun distance(a: List<Double>, b: List<Double>): Double =
         if (a.size == 3 && b.size == 3) abs(a[0]-b[0]) + abs(a[2]-b[2]) else 0.0
 

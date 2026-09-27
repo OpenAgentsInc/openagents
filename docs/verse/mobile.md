@@ -10,8 +10,9 @@ implementation belongs to the reusable `rust-native` crate.
 ## Walk the world
 
 The world fills the entire display behind the system clock and home indicator.
-Controls stay inside the safe area over the canvas. It starts offline and requires no chat pairing
-or model account. A computer sits directly ahead of the starting position.
+Camera controls stay inside the safe area over the canvas. The world has no
+title banner or idle-status labels. It starts offline and requires no chat
+pairing or model account. A computer sits directly ahead of the starting position.
 Walk closer and tap the computer's monitor to open its controls. The monitor
 shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
 
@@ -27,7 +28,13 @@ shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
 - Motion look pauses while the app is in the background or an in-world panel
   is open. It starts from a fresh reference when you return. If motion is
   unavailable, use touch look.
-- Tap **Jump**, toggle **Sprint**, or use the zoom buttons.
+- Double-tap open world space with one finger to jump. Dragging, holding, or
+  using a second finger cancels the tap gesture. The computer monitor keeps
+  its immediate single-tap action.
+- Spread two fingers to zoom in; pinch them together to zoom out. Two fingers are reserved for zoom, so they cancel held movement and pending
+  taps. Use one finger at a time for touch movement or touch look; motion look
+  lets you keep walking while you turn the phone. Walking is the default; the HUD has
+  no walk/sprint toggle, jump button, or zoom buttons.
 - Use the world computer to pair by QR code and open **Chats**, the read-only
   Codex and Claude viewer. Selecting a transcript expands its reading area;
   **All chats** returns to the smaller computer panel. Close the panel to
@@ -100,8 +107,9 @@ appropriate event limits. The existing [local relay helper](README.md#multiplaye
 serves the desktop world; exposing it to a phone is an operator deployment task.
 
 Mobile publishes moving poses every three seconds, idle poses every ten
-seconds, and durable movement state every thirty seconds. Rendering stays at
-30 Hz. This deliberately reduces mobile bandwidth and relay pressure; other
+seconds, and durable movement state every thirty seconds. Those publication
+intervals are independent of display callbacks. This reduces mobile bandwidth
+and relay pressure; other
 players see less frequent position samples than with the desktop's 10 Hz
 moving-pose profile. A compatible wire format does not bypass a relay's
 admission, authentication, or rate limits.
@@ -143,6 +151,7 @@ the desktop glyph atlas.
 
 See the [iOS build guide](../../bins/coder-ios/README.md),
 [Android build guide](../../bins/coder-android/README.md),
+[iOS startup and gesture correction](../coder/verification/2026-09-26-ios-static-link.md),
 [Android emulator verification](../coder/verification/2026-09-26-android-mobile.md),
 [the Verse verification record](../coder/verification/2026-09-26-verse-mobile.md),
 [QR pairing verification](../coder/verification/2026-09-26-world-pairing.md),

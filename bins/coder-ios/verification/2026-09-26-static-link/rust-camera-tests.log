@@ -1,0 +1,19 @@
+   Compiling coder-history v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-history)
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-connect)
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym-bridge)
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `test` profile [unoptimized] target(s) in 2.09s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-e7ac66d55632a722)
+
+running 8 tests
+test camera::tests::the_camera_starts_behind_and_above ... ok
+test camera::tests::mouselook_takes_the_orbit_angle ... ok
+test camera::tests::pitch_is_clamped ... ok
+test camera::tests::settle_swings_back_behind ... ok
+test camera::tests::the_eye_never_sinks_below_the_ground ... ok
+test camera::tests::ordinary_orbit_views_still_point_at_the_player ... ok
+test camera::tests::zoom_is_bounded ... ok
+test camera::tests::upward_view_keeps_its_pitch_when_ground_clearance_lifts_the_eye ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 116 filtered out; finished in 0.00s
+

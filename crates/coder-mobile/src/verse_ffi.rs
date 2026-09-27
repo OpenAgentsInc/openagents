@@ -204,18 +204,11 @@ impl VerseHandle {
             } => {
                 let viewport = rust_native::surface::Viewport::new(width, height, scale)
                     .map_err(|e| e.to_string())?;
-                let changed = self.scene.lifecycle.viewport() != viewport;
                 self.renderer
                     .as_mut()
                     .ok_or("The native Verse surface is detached")?
                     .resize(width, height)?;
-                self.scene
-                    .lifecycle
-                    .resize(viewport)
-                    .map_err(|e| e.to_string())?;
-                if changed {
-                    self.scene.action(Request::ResetMotion)?;
-                }
+                self.scene.resize(viewport)?;
                 Ok(())
             }
             Request::Active { active: true } if self.renderer.is_none() => {

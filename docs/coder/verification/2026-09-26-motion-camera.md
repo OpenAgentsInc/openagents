@@ -6,6 +6,16 @@ sensor-driven camera movement. The implementation is shared Rust camera logic
 with thin iOS and Android motion adapters. No model or benchmark runs are part
 of this verification.
 
+## Subsequent startup failure
+
+The user reported an immediate launch crash in build 44. Its retained archive
+references an external Rust dynamic library that was present on the simulator
+host but absent on the phone. The passing checks below did not establish a
+self-contained application package. See the
+[build 45 packaging correction](2026-09-26-ios-static-link.md) for the reproduced
+failure, corrected release checks, and replacement delivery. Do not use build
+44 as evidence of successful physical-device launch.
+
 ## Causes and corrections
 
 The old projection inverted the native attitude quaternion. Its synthetic

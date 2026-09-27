@@ -44,6 +44,9 @@ final class VerseMetalView: UIView {
     private var pointers: [ObjectIdentifier: UInt64] = [:]
     private var nextPointer: UInt64 = 1
     private var computerAccessible = false
+    private var highestObservedY = 0.0
+    private var pinching = false
+    private lazy var pinchRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(pinch(_:)))
 
     init(bridge: VerseBridge) {
         self.bridge = bridge
@@ -52,8 +55,10 @@ final class VerseMetalView: UIView {
         isOpaque = true
         isAccessibilityElement = true
         accessibilityIdentifier = "verse-surface"
-        accessibilityHint = "Drag on the left to move and on the right to look around. Walk to the computer and tap its screen to open your chats."
+        accessibilityHint = "Drag on the left to move and on the right to look around. Double-tap to jump and pinch with two fingers to zoom. Walk to the computer and tap its screen to open your chats."
         accessibilityTraits = [.allowsDirectInteraction]
+        pinchRecognizer.cancelsTouchesInView = true
+        addGestureRecognizer(pinchRecognizer)
         bridge.bind(self)
         displayTarget.view = self
     }
@@ -128,6 +133,7 @@ final class VerseMetalView: UIView {
         guard active != running else { return }
         running = active
         if !active {
+            pinching = false
             stopMotion()
             cancelPointers()
         }
@@ -186,10 +192,21 @@ final class VerseMetalView: UIView {
             ] : []
         }
         if bridge.synthetic {
-            // Test metadata identifies the Rust-projected monitor. Tests still
-            // send a real surface tap through the shared pointer interpreter.
-            accessibilityValue = String(format: "computer:%@:%0.6f:%0.6f",
-                available ? "ready" : "unavailable", packet.computer.screen_x, packet.computer.screen_y)
+            // Keep test observations in accessibility metadata, not in the HUD.
+            highestObservedY = max(highestObservedY, packet.position[1])
+            let metadata: [String: Any] = [
+                "frames": packet.frames_presented,
+                "position": packet.position,
+                "highest_observed_y": highestObservedY,
+                "camera": [packet.camera_yaw, packet.camera_pitch],
+                "camera_distance": packet.camera_distance,
+                "motion_needed": packet.motion_needed,
+                "gym_active": packet.gym_active,
+                "computer_ready": available,
+                "computer_target": [packet.computer.screen_x, packet.computer.screen_y],
+            ]
+            accessibilityValue = (try? JSONSerialization.data(withJSONObject: metadata))
+                .flatMap { String(data: $0, encoding: .utf8) }
         } else {
             accessibilityValue = available ? "Computer in reach" : "Exploring Verse"
         }
@@ -235,8 +252,34 @@ final class VerseMetalView: UIView {
         DispatchQueue.main.async { [weak self] in self?.bridge.reportMotionFailure(error) }
     }
 
+    @objc private func pinch(_ recognizer: UIPinchGestureRecognizer) {
+        defer { recognizer.scale = 1 }
+        guard running else { pinching = false; return }
+        switch recognizer.state {
+        case .began:
+            pinching = true
+            cancelPointers()
+        case .changed:
+            break
+        case .ended, .cancelled, .failed:
+            pinching = false
+            return
+        default:
+            return
+        }
+        guard recognizer.scale.isFinite, recognizer.scale > 0 else { return }
+        send(["action": "pinch_zoom", "scale": Double(recognizer.scale)], forcePublish: true)
+    }
+
+    private func hasMultipleTouches(_ event: UIEvent?) -> Bool {
+        (event?.allTouches?.filter {
+            $0.phase == .began || $0.phase == .moved || $0.phase == .stationary
+        }.count ?? 0) > 1
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard running else { return }
+        guard !pinching, !hasMultipleTouches(event) else { cancelPointers(); return }
         for touch in touches {
             guard pointers.count < 8 else { continue }
             let id = nextPointer
@@ -247,6 +290,7 @@ final class VerseMetalView: UIView {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard !pinching, !hasMultipleTouches(event) else { cancelPointers(); return }
         for touch in touches {
             if let id = pointers[ObjectIdentifier(touch)] { pointer(touch, id: id, phase: "move") }
         }
@@ -291,6 +335,7 @@ final class VerseMetalView: UIView {
         displayLink?.invalidate()
         displayLink = nil
         running = false
+        pinching = false
         stopMotion()
         cancelPointers()
         if let handle {
@@ -300,5 +345,6 @@ final class VerseMetalView: UIView {
         }
         running = false
         extent = nil
+        highestObservedY = 0
     }
 }

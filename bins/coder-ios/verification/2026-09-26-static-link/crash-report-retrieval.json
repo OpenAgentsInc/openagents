@@ -1,0 +1,25 @@
+{
+  "checked_at": "2026-09-27T02:14:56.641781+00:00",
+  "build": "44",
+  "build_id": "50460e7e-6e57-462e-9ede-937b4455c907",
+  "asc_build_crash_feedback": {
+    "http_status": 200,
+    "count": 0
+  },
+  "asc_all_app_crash_feedback": {
+    "http_status": 200,
+    "count": 0
+  },
+  "asc_build_diagnostic_signatures": {
+    "http_status": 404,
+    "error_code": "NOT_FOUND"
+  },
+  "local_xcode_crashes": "No build44 report located in Xcode Products, iOS Device Logs, Archives, Crashes, or local DiagnosticReports. Only unrelated older CoderProbe and macOS coder reports present.",
+  "paired_device": {
+    "model": "iPhone 17 Pro Max",
+    "os": "26.6.2",
+    "status": "offline / CoreDevice tunnel timed out and disconnected",
+    "crash_copy": "not available; no crash log fetched from device"
+  },
+  "limitation": "No device crash report was obtainable through these paths at this check. This does not establish absence of a crash."
+}

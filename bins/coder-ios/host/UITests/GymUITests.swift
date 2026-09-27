@@ -12,11 +12,11 @@ final class GymUITests: XCTestCase {
         app.launchArguments = ["--synthetic", "--gym-preview"]
         app.launch()
         XCTAssertTrue(app.otherElements["verse-surface"].waitForExistence(timeout: 30))
-        XCTAssertTrue(label("gym-interest", becomes: "Gym idle"))
+        XCTAssertTrue(gymInterest(active: false))
         XCTAssertFalse(app.buttons[runID].exists)
         XCTAssertFalse(app.buttons["gym-close"].exists)
         move(forward: true, hold: 3.5)
-        XCTAssertTrue(label("gym-interest", becomes: "Gym listening"))
+        XCTAssertTrue(gymInterest(active: true))
         let open = app.buttons["gym-interact"]
         XCTAssertTrue(open.waitForExistence(timeout: 5))
         XCTAssertTrue(open.isEnabled)
@@ -35,11 +35,11 @@ final class GymUITests: XCTestCase {
         attach("Synthetic Gym Microcoder chart and exact values")
         XCUIDevice.shared.press(.home)
         app.activate()
-        XCTAssertTrue(label("gym-interest", becomes: "Gym listening"))
+        XCTAssertTrue(gymInterest(active: true))
         XCTAssertTrue(app.buttons[runID].waitForExistence(timeout: 10))
         app.buttons["gym-close"].tap()
         move(forward: false, hold: 6.0)
-        XCTAssertTrue(label("gym-interest", becomes: "Gym idle"))
+        XCTAssertTrue(gymInterest(active: false))
         XCTAssertFalse(app.buttons["gym-close"].exists)
         XCTAssertFalse(app.buttons[runID].exists)
         attach("Synthetic Gym after leaving its interior")
@@ -76,6 +76,13 @@ final class GymUITests: XCTestCase {
     private func reveal(_ element: XCUIElement) {
         for _ in 0..<4 where !element.isHittable { app.scrollViews.firstMatch.swipeUp() }
         XCTAssertTrue(element.isHittable)
+    }
+
+    private func gymInterest(active: Bool) -> Bool {
+        let match = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.app.verseObservation()?.gym_active == active
+        }, object: app)
+        return XCTWaiter.wait(for: [match], timeout: 10) == .completed
     }
 
     private func label(_ identifier: String, becomes expected: String) -> Bool {

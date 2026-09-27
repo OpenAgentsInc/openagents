@@ -65,6 +65,9 @@ pub(crate) enum Request {
     Zoom {
         delta: f32,
     },
+    PinchZoom {
+        scale: f32,
+    },
     Connect {
         relay: String,
     },
@@ -115,6 +118,7 @@ pub(crate) struct Packet {
     camera_mode: CameraMode,
     camera_yaw: f32,
     camera_pitch: f32,
+    camera_distance: f32,
     motion_needed: bool,
     computer: Computer,
     computer_open: bool,
@@ -217,6 +221,7 @@ fn packet(
         camera_mode: CameraMode::Touch,
         camera_yaw: 0.0,
         camera_pitch: verse::camera::FollowCamera::default().pitch,
+        camera_distance: verse::camera::FollowCamera::default().distance,
         motion_needed: false,
         computer: Computer {
             near: false,
@@ -248,8 +253,18 @@ struct Touch {
     movement: bool,
     computer: bool,
     tap_valid: bool,
-    started: Option<f64>,
+    started: f64,
 }
+
+struct WorldTap {
+    position: [f32; 2],
+    finished: f64,
+}
+
+const TAP_DRIFT_POINTS: f32 = 12.0;
+const WORLD_TAP_SECONDS: f64 = 0.25;
+const DOUBLE_TAP_SECONDS: f64 = 0.35;
+const DOUBLE_TAP_DISTANCE_POINTS: f32 = 32.0;
 
 #[derive(Default)]
 struct Motion {
@@ -316,6 +331,8 @@ pub(crate) struct Scene {
     motion: Motion,
     frame_timestamp: Option<f64>,
     touches: BTreeMap<u64, Touch>,
+    pointer_clock: Instant,
+    last_world_tap: Option<WorldTap>,
     jump: bool,
     sprint: bool,
     computer_open: bool,
@@ -368,6 +385,8 @@ impl Scene {
             motion: Motion::default(),
             frame_timestamp: None,
             touches: BTreeMap::new(),
+            pointer_clock: Instant::now(),
+            last_world_tap: None,
             jump: false,
             sprint: false,
             computer_open: false,
@@ -440,54 +459,95 @@ impl Scene {
         self.relay = None;
     }
 
+    /// A resize invalidates input in the previous viewport's coordinate space.
+    pub fn resize(&mut self, viewport: Viewport) -> Result<(), String> {
+        let changed = self.lifecycle.viewport() != viewport;
+        self.lifecycle.resize(viewport).map_err(|e| e.to_string())?;
+        if changed {
+            self.touches.clear();
+            self.jump = false;
+            self.reset_motion();
+        }
+        Ok(())
+    }
+
     pub fn pointer(&mut self, id: u64, phase: PointerPhase, x: f32, y: f32) -> Result<(), String> {
+        // Gesture duration follows receipt time, not the last rendered frame.
+        // A slow frame must not turn a long hold into a tap.
+        self.pointer_at(id, phase, x, y, self.pointer_clock.elapsed().as_secs_f64())
+    }
+
+    fn pointer_at(
+        &mut self,
+        id: u64,
+        phase: PointerPhase,
+        x: f32,
+        y: f32,
+        timestamp: f64,
+    ) -> Result<(), String> {
         if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) {
             // Always release input, including cancelled or malformed native events.
             let touch = self.touches.remove(&id);
-            if let Some(touch) = touch
-                && matches!(phase, PointerPhase::Up)
-                && touch.computer
-                && touch.tap_valid
-                && (x - touch.origin[0]).hypot(y - touch.origin[1]) <= 12.0
-                && touch
-                    .started
-                    .zip(self.frame_timestamp)
-                    .is_some_and(|(start, end)| (0.0..=0.65).contains(&(end - start)))
+            if matches!(phase, PointerPhase::Cancel) {
+                self.cancel_taps();
+                return Ok(());
+            }
+            let Some(touch) = touch else {
+                return Ok(());
+            };
+            let elapsed = timestamp - touch.started;
+            let size = self.lifecycle.viewport().logical_size();
+            let valid = touch.tap_valid
+                && (0.0..=size[0]).contains(&x)
+                && (0.0..=size[1]).contains(&y)
+                && (x - touch.origin[0]).hypot(y - touch.origin[1]) <= TAP_DRIFT_POINTS
+                && (0.0..=0.65).contains(&elapsed)
                 && self.lifecycle.active()
                 && !self.panel_open()
-                && self.computer_hit(x, y)
-            {
+                && !self.spawn_pending
+                && self.touches.is_empty();
+            if valid && touch.computer && self.computer_hit(x, y) {
                 self.open_computer();
+            } else if valid && !touch.computer && elapsed <= WORLD_TAP_SECONDS {
+                self.world_tap([x, y], timestamp);
+            } else {
+                self.last_world_tap = None;
             }
             return Ok(());
         }
-        if !self.lifecycle.active() || self.panel_open() {
+        if !self.lifecycle.active() || self.panel_open() || self.spawn_pending {
+            self.cancel_taps();
             return Ok(());
         }
         if !x.is_finite() || !y.is_finite() || x.abs() > 32768.0 || y.abs() > 32768.0 {
+            self.cancel_taps();
             return Err("Touch coordinates exceed their bounds".into());
         }
         match phase {
             PointerPhase::Down => {
                 if self.touches.contains_key(&id) {
+                    self.cancel_taps();
                     return Err("Touch identity is already active".into());
                 }
-                // A second finger makes this a movement gesture, never a tap.
-                for touch in self.touches.values_mut() {
-                    touch.tap_valid = false;
+                // A second finger makes every participating touch a movement
+                // gesture. It cannot finish either half of a double tap.
+                let single_touch = self.touches.is_empty();
+                if !single_touch {
+                    self.cancel_taps();
                 }
                 if self.touches.len() >= 2 {
                     return Ok(());
                 }
                 let size = self.lifecycle.viewport().logical_size();
                 if x < 0.0 || y < 0.0 || x > size[0] || y > size[1] {
+                    self.cancel_taps();
                     return Ok(());
                 }
-                let computer = self.touches.is_empty() && self.computer_hit(x, y);
+                let computer = single_touch && self.computer_hit(x, y);
+                if computer {
+                    self.last_world_tap = None;
+                }
                 let movement = x < size[0] * 0.5;
-                if !computer && !movement && self.camera_mode == CameraMode::Motion {
-                    return Ok(());
-                }
                 if self.touches.values().any(|p| p.movement == movement) {
                     return Ok(());
                 }
@@ -498,17 +558,21 @@ impl Scene {
                         latest: [x, y],
                         movement,
                         computer,
-                        tap_valid: true,
-                        started: self.frame_timestamp,
+                        tap_valid: single_touch,
+                        started: timestamp,
                     },
                 );
-                if !computer && !movement {
+                if !computer && !movement && self.camera_mode == CameraMode::Touch {
                     self.world.apply(Action::FaceCamera)?;
                 }
             }
             PointerPhase::Move => {
                 if let Some(touch) = self.touches.get_mut(&id) {
-                    touch.tap_valid &= (x - touch.origin[0]).hypot(y - touch.origin[1]) <= 12.0;
+                    touch.tap_valid &=
+                        (x - touch.origin[0]).hypot(y - touch.origin[1]) <= TAP_DRIFT_POINTS;
+                    if !touch.tap_valid {
+                        self.last_world_tap = None;
+                    }
                     if !touch.computer && !touch.movement && self.camera_mode == CameraMode::Touch {
                         self.world.apply(Action::Look {
                             dx: (x - touch.latest[0]).clamp(-500.0, 500.0),
@@ -521,6 +585,28 @@ impl Scene {
             PointerPhase::Up | PointerPhase::Cancel => {}
         }
         Ok(())
+    }
+
+    fn cancel_taps(&mut self) {
+        self.last_world_tap = None;
+        for touch in self.touches.values_mut() {
+            touch.tap_valid = false;
+        }
+    }
+
+    fn world_tap(&mut self, position: [f32; 2], timestamp: f64) {
+        if self.last_world_tap.take().is_some_and(|previous| {
+            (0.0..=DOUBLE_TAP_SECONDS).contains(&(timestamp - previous.finished))
+                && (position[0] - previous.position[0]).hypot(position[1] - previous.position[1])
+                    <= DOUBLE_TAP_DISTANCE_POINTS
+        }) {
+            self.jump = true;
+        } else {
+            self.last_world_tap = Some(WorldTap {
+                position,
+                finished: timestamp,
+            });
+        }
     }
 
     fn input(&mut self) -> InputState {
@@ -659,6 +745,15 @@ impl Scene {
                     self.world.apply(Action::Zoom { lines: delta })
                 }
             }
+            Request::PinchZoom { scale } => {
+                self.touches.clear();
+                self.cancel_taps();
+                self.jump = false;
+                if !self.lifecycle.active() || self.panel_open() || self.spawn_pending {
+                    return Ok(());
+                }
+                self.world.apply(Action::PinchZoom { scale })
+            }
             Request::Connect { relay } => self.connect(relay),
             Request::Disconnect => {
                 self.disconnect();
@@ -759,6 +854,7 @@ impl Scene {
         packet.camera_yaw =
             verse::controller::wrap(self.world.player.yaw + self.world.camera.yaw_offset);
         packet.camera_pitch = self.world.camera.pitch;
+        packet.camera_distance = self.world.camera.distance;
         packet.motion_needed = self.motion_needed();
         packet.computer = self.computer().into();
         packet.computer_open = self.computer_open;
@@ -787,6 +883,7 @@ impl Scene {
     }
 
     fn reset_motion(&mut self) {
+        self.cancel_taps();
         self.motion.baseline = None;
         self.motion.target = None;
         // Keep the high-water mark across sensor restarts. An old native sample
@@ -1214,7 +1311,8 @@ mod tests {
                 }
                 1 => scene.pointer(1, PointerPhase::Cancel, f32::NAN, y).unwrap(),
                 2 => {
-                    scene.update(2.0).unwrap();
+                    let touch = scene.touches.get_mut(&1).unwrap();
+                    touch.started -= 1.0;
                 }
                 3 => scene.pointer(2, PointerPhase::Down, 10.0, 300.0).unwrap(),
                 4 => {
@@ -1233,6 +1331,227 @@ mod tests {
         scene.pointer(1, PointerPhase::Down, 10.0, 30.0).unwrap();
         scene.pointer(1, PointerPhase::Up, x, y).unwrap();
         assert!(!scene.computer_open, "a tap must start on the monitor");
+    }
+
+    fn world_tap(scene: &mut Scene, x: f32, timestamp: f64) {
+        scene
+            .pointer_at(1, PointerPhase::Down, x, 550.0, timestamp)
+            .unwrap();
+        scene
+            .pointer_at(1, PointerPhase::Up, x, 550.0, timestamp + 0.04)
+            .unwrap();
+    }
+
+    #[test]
+    fn nearby_double_taps_jump_once_in_each_camera_mode_and_touch_region() {
+        for mode in [CameraMode::Touch, CameraMode::Motion] {
+            for x in [100.0, 300.0] {
+                let mut scene = scene();
+                scene.activate(true).unwrap();
+                scene.action(Request::CameraMode { mode }).unwrap();
+                scene.update(1.0).unwrap();
+                world_tap(&mut scene, x, 1.0);
+                assert!(!scene.jump, "a single tap cannot jump");
+                world_tap(&mut scene, x + 5.0, 1.15);
+                assert!(scene.jump);
+                let initial_height = scene.world.player.pos.y;
+                scene.update(1.04).unwrap();
+                assert!(scene.world.player.pos.y > initial_height);
+                assert!(!scene.jump, "the shared controller consumes the jump once");
+                world_tap(&mut scene, x, 1.3);
+                assert!(!scene.jump, "a third tap starts another pair");
+            }
+        }
+    }
+
+    #[test]
+    fn double_tap_requires_a_close_pair_without_drag_hold_cancel_or_second_finger() {
+        for case in 0..8 {
+            let mut scene = scene();
+            scene.activate(true).unwrap();
+            scene.update(1.0).unwrap();
+            world_tap(&mut scene, 300.0, 1.0);
+            scene
+                .pointer_at(1, PointerPhase::Down, 300.0, 550.0, 1.1)
+                .unwrap();
+            let mut finished = 1.15;
+            match case {
+                0 => finished = 1.5,
+                1 => {
+                    scene
+                        .pointer_at(1, PointerPhase::Move, 325.0, 550.0, 1.11)
+                        .unwrap();
+                    scene
+                        .pointer_at(1, PointerPhase::Move, 300.0, 550.0, 1.12)
+                        .unwrap();
+                }
+                2 => {
+                    scene
+                        .pointer_at(1, PointerPhase::Cancel, f32::NAN, 550.0, 1.11)
+                        .unwrap();
+                }
+                3 => {
+                    scene
+                        .pointer_at(2, PointerPhase::Down, 100.0, 550.0, 1.11)
+                        .unwrap();
+                    scene
+                        .pointer_at(2, PointerPhase::Up, 100.0, 550.0, 1.12)
+                        .unwrap();
+                }
+                4 => {
+                    scene
+                        .pointer_at(1, PointerPhase::Up, f32::NAN, 550.0, 1.11)
+                        .unwrap();
+                }
+                5 => {
+                    assert!(
+                        scene
+                            .pointer_at(1, PointerPhase::Move, f32::NAN, 550.0, 1.11)
+                            .is_err()
+                    );
+                }
+                6 => {
+                    // A second finger on the same half is not retained as a
+                    // controller touch, but still cancels the tap candidate.
+                    scene
+                        .pointer_at(2, PointerPhase::Down, 320.0, 550.0, 1.11)
+                        .unwrap();
+                    scene
+                        .pointer_at(2, PointerPhase::Up, 320.0, 550.0, 1.12)
+                        .unwrap();
+                }
+                7 => {
+                    scene
+                        .pointer_at(1, PointerPhase::Cancel, 300.0, 550.0, 1.11)
+                        .unwrap();
+                    world_tap(&mut scene, 350.0, 1.12);
+                }
+                _ => unreachable!(),
+            }
+            scene
+                .pointer_at(1, PointerPhase::Up, 300.0, 550.0, finished)
+                .unwrap();
+            assert!(!scene.jump, "invalid gesture {case}");
+            if case != 7 {
+                world_tap(&mut scene, 300.0, finished + 0.01);
+                assert!(
+                    !scene.jump,
+                    "invalid gesture {case} must discard the first tap"
+                );
+            }
+        }
+        for (second_x, second_time) in [(300.0, 1.5), (350.0, 1.15)] {
+            let mut scene = scene();
+            scene.activate(true).unwrap();
+            world_tap(&mut scene, 300.0, 1.0);
+            world_tap(&mut scene, second_x, second_time);
+            assert!(!scene.jump, "a distant or expired pair cannot jump");
+        }
+    }
+
+    #[test]
+    fn render_stalls_do_not_turn_held_touches_into_taps() {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        scene.update(1.0).unwrap();
+        world_tap(&mut scene, 300.0, 1.0);
+        scene
+            .pointer_at(1, PointerPhase::Down, 300.0, 550.0, 1.1)
+            .unwrap();
+        scene
+            .pointer_at(1, PointerPhase::Up, 300.0, 550.0, 2.0)
+            .unwrap();
+        assert_eq!(scene.frame_timestamp, Some(1.0));
+        assert!(!scene.jump);
+        assert!(scene.last_world_tap.is_none());
+    }
+
+    #[test]
+    fn lifecycle_camera_and_panel_changes_discard_double_taps() {
+        for case in 0..7 {
+            let (mut scene, [monitor_x, monitor_y]) = computer_scene();
+            world_tap(&mut scene, 300.0, 1.0);
+            match case {
+                0 => {
+                    scene.activate(false).unwrap();
+                    scene.activate(true).unwrap();
+                }
+                1 => scene.action(Request::ResetMotion).unwrap(),
+                2 => scene
+                    .action(Request::CameraMode {
+                        mode: CameraMode::Motion,
+                    })
+                    .unwrap(),
+                3 => scene
+                    .resize(Viewport::new(900, 1200, 2.0).unwrap())
+                    .unwrap(),
+                4 => {
+                    scene
+                        .pointer_at(1, PointerPhase::Down, monitor_x, monitor_y, 1.1)
+                        .unwrap();
+                    scene
+                        .pointer_at(1, PointerPhase::Up, monitor_x, monitor_y, 1.14)
+                        .unwrap();
+                    assert!(scene.computer_open);
+                    assert!(!scene.jump, "the monitor keeps its immediate single tap");
+                    world_tap(&mut scene, 300.0, 1.15);
+                    assert!(!scene.jump, "an open panel cannot jump");
+                    scene.action(Request::CloseComputer).unwrap();
+                }
+                5 => {
+                    scene.gym_open = true;
+                    world_tap(&mut scene, 300.0, 1.15);
+                    assert!(!scene.jump);
+                    scene.action(Request::CloseGym).unwrap();
+                }
+                6 => {
+                    scene.activate(false).unwrap();
+                    scene.lifecycle.destroy();
+                }
+                _ => unreachable!(),
+            }
+            world_tap(&mut scene, 300.0, 1.2);
+            assert!(!scene.jump, "transition {case} must discard the first tap");
+        }
+    }
+
+    #[test]
+    fn pinch_scales_camera_distance_and_cancels_pending_input() {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        world_tap(&mut scene, 300.0, 1.0);
+        scene
+            .pointer_at(1, PointerPhase::Down, 100.0, 550.0, 1.1)
+            .unwrap();
+        scene.action(Request::Jump).unwrap();
+        let initial = scene.world.camera.distance;
+        scene.action(Request::PinchZoom { scale: 2.0 }).unwrap();
+        assert_eq!(scene.world.camera.distance, initial / 2.0);
+        assert_eq!(scene.packet().camera_distance, initial / 2.0);
+        assert!(scene.touches.is_empty());
+        assert!(scene.last_world_tap.is_none());
+        assert!(!scene.jump);
+        scene.action(Request::PinchZoom { scale: 0.5 }).unwrap();
+        assert_eq!(scene.world.camera.distance, initial);
+        scene.action(Request::PinchZoom { scale: 10.0 }).unwrap();
+        assert_eq!(scene.world.camera.distance, verse::camera::MIN_DISTANCE);
+        scene.action(Request::PinchZoom { scale: 0.1 }).unwrap();
+        scene.action(Request::PinchZoom { scale: 0.1 }).unwrap();
+        assert_eq!(scene.world.camera.distance, verse::camera::MAX_DISTANCE);
+        for scale in [0.0, -1.0, 0.01, 100.0, f32::NAN, f32::INFINITY] {
+            assert!(scene.action(Request::PinchZoom { scale }).is_err());
+            assert_eq!(scene.world.camera.distance, verse::camera::MAX_DISTANCE);
+        }
+        for case in 0..4 {
+            scene.computer_open = case == 0;
+            scene.gym_open = case == 1;
+            scene.spawn_pending = case == 2;
+            if case == 3 {
+                scene.activate(false).unwrap();
+            }
+            scene.action(Request::PinchZoom { scale: 2.0 }).unwrap();
+            assert_eq!(scene.world.camera.distance, verse::camera::MAX_DISTANCE);
+        }
     }
 
     #[test]
@@ -1413,14 +1732,18 @@ mod tests {
     }
 
     #[test]
-    fn motion_left_hold_follows_the_smoothed_view_and_right_touch_is_ignored() {
+    fn motion_left_hold_follows_the_smoothed_view_and_right_drag_does_not_look() {
         let mut scene = motion_scene();
         sample(&mut scene, attitude(0.0, 0.0, 0.0), 1.01);
         scene.pointer(1, PointerPhase::Down, 100.0, 300.0).unwrap();
         assert!(scene.input().forward);
         scene.pointer(2, PointerPhase::Down, 300.0, 300.0).unwrap();
         scene.pointer(2, PointerPhase::Move, 390.0, 390.0).unwrap();
-        assert_eq!(scene.touches.len(), 1);
+        assert!(!scene.jump);
+        close(
+            scene.world.camera.pitch,
+            verse::camera::FollowCamera::default().pitch,
+        );
         close(scene.world.player.yaw, 0.0);
         let start = scene.world.player.pos;
         sample(

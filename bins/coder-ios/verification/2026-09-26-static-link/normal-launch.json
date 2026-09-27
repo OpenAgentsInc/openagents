@@ -1,0 +1,14 @@
+{
+  "build": "45",
+  "checked_at": "2026-09-27T02:38:47.387234+00:00",
+  "launch_arguments": [],
+  "synthetic": false,
+  "launch_exit": 0,
+  "alive_after_seconds": 10,
+  "pid": 1541,
+  "external_rust_dylibs_hidden": 2,
+  "rust_profile": "release",
+  "swift_configuration": "Release",
+  "screenshot": "normal-launch.png",
+  "physical_device_acceptance": false
+}

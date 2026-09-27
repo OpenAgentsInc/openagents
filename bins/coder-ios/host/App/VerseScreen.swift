@@ -6,7 +6,6 @@ struct VerseScreen: View {
     @StateObject private var bridge: VerseBridge
     @ObservedObject var reader: MobileBridge
     @Environment(\.scenePhase) private var phase
-    @State private var sprint = false
     @State private var pairing = false
     let synthetic: Bool
 
@@ -32,11 +31,7 @@ struct VerseScreen: View {
             }
             .ignoresSafeArea()
         }
-        .onChange(of: active) { _, enabled in
-            if !enabled { sprint = false }
-            reader.setLifecycle(enabled)
-        }
-        .onChange(of: panelOpen) { _, open in if open { sprint = false } }
+        .onChange(of: active) { _, enabled in reader.setLifecycle(enabled) }
     }
 
     private func canvas(size: CGSize, safe: EdgeInsets) -> some View {
@@ -47,38 +42,12 @@ struct VerseScreen: View {
                     .frame(width: size.width, height: size.height)
             }
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Coder").font(.headline)
-                    Spacer()
-                    Text(bridge.packet?.status ?? "Opening world").font(.caption)
-                        .accessibilityIdentifier("verse-status")
-                }
                 if let error = bridge.nativeError ?? bridge.packet?.error {
                     Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("verse-error")
                     Button("Retry world renderer") { bridge.retry() }
                 }
                 Spacer()
-                if synthetic, let packet = bridge.packet {
-                    HStack {
-                        Text("Frames \(packet.frames_presented)").accessibilityIdentifier("verse-frames")
-                        Spacer()
-                        Text(packet.position.map { String(format: "%.2f", $0) }.joined(separator: ", "))
-                            .accessibilityIdentifier("verse-position")
-                    }.font(.caption2.monospacedDigit())
-                    Text(packet.gym_active ? "Gym listening" : "Gym idle")
-                        .font(.caption2).accessibilityIdentifier("gym-interest")
-                    Text(String(format: "%.5f, %.5f", packet.camera_yaw, packet.camera_pitch))
-                        .font(.caption2.monospacedDigit()).accessibilityIdentifier("verse-camera")
-                    Text(packet.motion_needed ? "Motion active" : "Motion idle")
-                        .font(.caption2).accessibilityIdentifier("verse-motion-needed")
-                    if bridge.motionSynthetic && !panelOpen {
-                        Button("Inject motion sample") { bridge.previewMotion() }
-                            .accessibilityIdentifier("verse-motion-sample")
-                    }
-                }
                 if !panelOpen {
-                    Text("Walk to the computer to connect your chats.").font(.caption)
-                    Text(motionLook ? "Hold left to move · turn your phone to look" : "Drag left to move · drag right to look").font(.caption2)
                     HStack {
                         Button {
                             bridge.toggleCameraMode()
@@ -87,7 +56,12 @@ struct VerseScreen: View {
                         }
                         .disabled(!active || (!bridge.motionAvailable && !motionLook))
                         .accessibilityIdentifier("verse-camera-mode")
-                        .accessibilityHint("Switches between dragging and phone orientation for camera control.")
+                        .accessibilityHint(bridge.motionAvailable
+                            ? "Switches between dragging and phone orientation for camera control."
+                            : "Motion look is unavailable on this device. Drag the world to look around.")
+                        .highPriorityGesture(
+                            LongPressGesture(minimumDuration: 0.6).onEnded { _ in bridge.previewMotion() },
+                            including: bridge.motionSynthetic ? .all : .none)
                         Spacer()
                         if motionLook {
                             Button("Recenter") { bridge.recenterMotion() }
@@ -96,21 +70,6 @@ struct VerseScreen: View {
                     }
                     if let error = bridge.motionError {
                         Text(error).font(.caption).accessibilityIdentifier("verse-motion-error")
-                    } else if !bridge.motionAvailable {
-                        Text("Motion look is unavailable on this device.").font(.caption2)
-                            .accessibilityIdentifier("verse-motion-unavailable")
-                    }
-                    HStack {
-                        Button("Jump") { bridge.send(["action": "jump"]) }.accessibilityIdentifier("verse-jump")
-                        Toggle("Sprint", isOn: $sprint).fixedSize()
-                            .onChange(of: sprint) { _, enabled in
-                                if active { bridge.send(["action": "sprint", "enabled": enabled]) }
-                            }
-                        Spacer()
-                        Button("Zoom in", systemImage: "plus.magnifyingglass") { bridge.send(["action": "zoom", "delta": 1]) }
-                            .labelStyle(.iconOnly)
-                        Button("Zoom out", systemImage: "minus.magnifyingglass") { bridge.send(["action": "zoom", "delta": -1]) }
-                            .labelStyle(.iconOnly)
                     }
                 }
             }

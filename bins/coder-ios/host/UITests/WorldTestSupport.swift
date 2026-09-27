@@ -1,6 +1,24 @@
 import XCTest
 
+struct VerseTestObservation: Decodable {
+    let frames: UInt64
+    let position: [Double]
+    let highest_observed_y: Double
+    let camera: [Double]
+    let camera_distance: Double
+    let motion_needed: Bool
+    let gym_active: Bool
+    let computer_ready: Bool
+    let computer_target: [Double]
+}
+
 extension XCUIApplication {
+    func verseObservation() -> VerseTestObservation? {
+        guard let value = otherElements["verse-surface"].value as? String,
+              let data = value.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(VerseTestObservation.self, from: data)
+    }
+
     func openWorldComputer(beforeTap: (() -> Void)? = nil) {
         let surface = otherElements["verse-surface"]
         XCTAssertTrue(surface.waitForExistence(timeout: 30))
@@ -25,10 +43,8 @@ extension XCUIApplication {
     }
 
     private func computerTarget(_ surface: XCUIElement) -> (ready: Bool, x: Double, y: Double)? {
-        guard let value = surface.value as? String else { return nil }
-        let fields = value.split(separator: ":")
-        guard fields.count == 4, fields[0] == "computer",
-              let x = Double(fields[2]), let y = Double(fields[3]), x.isFinite, y.isFinite else { return nil }
-        return (fields[1] == "ready", x, y)
+        guard let value = verseObservation(), value.computer_target.count == 2,
+              value.computer_target.allSatisfy(\.isFinite) else { return nil }
+        return (value.computer_ready, value.computer_target[0], value.computer_target[1])
     }
 }

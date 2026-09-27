@@ -1,0 +1,16 @@
+    Finished `test` profile [unoptimized] target(s) in 0.12s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-e7ac66d55632a722)
+
+running 9 tests
+test runtime::tests::external_agent_motion_is_not_advanced_as_a_follower ... ok
+test runtime::tests::the_computer_is_visible_then_reachable_without_walking_through_it ... ok
+test runtime::tests::bad_input_and_resume_gaps_cannot_poison_the_simulation ... ok
+test runtime::tests::computer_action_prompt_requires_an_interactive_host ... ok
+test runtime::tests::gym_entry_requires_the_real_doorway_and_excludes_walls_and_roof ... ok
+test runtime::tests::computer_picking_respects_presented_remote_geometry_without_advancing_it ... ok
+test runtime::tests::computer_picking_rejects_distance_back_faces_invalid_input_and_occlusion ... ok
+test runtime::tests::semantic_input_advances_the_same_world_deterministically ... ok
+test runtime::tests::computer_picking_tracks_the_monitor_in_portrait_landscape_and_oblique_views ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 115 filtered out; finished in 0.01s
+

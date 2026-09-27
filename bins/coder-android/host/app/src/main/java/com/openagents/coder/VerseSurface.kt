@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.view.Choreographer
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.accessibility.AccessibilityNodeInfo
@@ -38,6 +39,22 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     private var sensorRunning = false
     private var computerAccessible = false
     private val pointers = mutableSetOf<Int>()
+    private var pinchOwnsTouches = false
+    private val pinch = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+            if (!running || panelOpen()) return false
+            pinchOwnsTouches = true
+            cancelPointers()
+            return true
+        }
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            val scale = detector.scaleFactor
+            if (running && !panelOpen() && scale.isFinite() && scale > 0f) {
+                send(json("action" to "pinch_zoom", "scale" to scale), false)
+            }
+            return true
+        }
+    }).apply { isQuickScaleEnabled = false; isStylusScaleEnabled = false }
     private val sensors = context.getSystemService(SensorManager::class.java)
     private val sensor = sensors.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
         ?: sensors.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -51,7 +68,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
 
     init {
         tag = "verse-surface"
-        contentDescription = "Verse world. Drag left to move and right to look around. Walk to the computer and tap its screen to open your chats."
+        contentDescription = worldDescription
         holder.addCallback(this)
         isFocusable = true
     }
@@ -113,7 +130,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         val next = resumed && !disposed && attached && handle != 0L && holder.surface.isValid
         if (next == running) return
         running = next
-        if (!next) { stopSensors(); cancelPointers(); Choreographer.getInstance().removeFrameCallback(this) }
+        if (!next) { stopSensors(); cancelTouches(); Choreographer.getInstance().removeFrameCallback(this) }
         lastFrame = 0
         send(json("action" to "active", "active" to next))
         if (next) Choreographer.getInstance().postFrameCallback(this)
@@ -138,6 +155,14 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             require(result.getJSONArray("position").length() == 3 &&
                 result.getString("camera_mode") in listOf("touch", "motion")) { "Invalid world view." }
             snapshot = result
+            if (synthetic) contentDescription = "$worldDescription ${json(
+                "frames" to result.optLong("frames_presented"),
+                "position" to result.getJSONArray("position"),
+                "camera_yaw" to result.optDouble("camera_yaw"),
+                "camera_pitch" to result.optDouble("camera_pitch"),
+                "camera_distance" to result.optDouble("camera_distance"),
+                "gym_active" to result.optBoolean("gym_active"),
+                "motion_needed" to result.optBoolean("motion_needed"))}"
             val available = computerAvailable()
             if (available != computerAccessible) {
                 computerAccessible = available
@@ -230,7 +255,21 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!running || snapshot?.optBoolean("computer_open") == true || snapshot?.optBoolean("gym_open") == true) return false
+        if (!running || panelOpen()) { cancelTouches(); return false }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) pinchOwnsTouches = false
+        if (event.pointerCount > 1 && !pinchOwnsTouches) {
+            // Two fingers reserve zoom before the scale detector crosses its
+            // recognition threshold. Keep the remaining finger reserved, too.
+            pinchOwnsTouches = true
+            cancelPointers()
+        }
+        pinch.onTouchEvent(event)
+        if (pinchOwnsTouches) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                pinchOwnsTouches = false
+            }
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val index = event.actionIndex
@@ -247,6 +286,8 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         }
         return true
     }
+    private val worldDescription get() = "Verse world. Drag left to move and right to look around. Double-tap to jump. Pinch with two fingers to zoom. Walk to the computer and tap its screen to open your chats."
+    private fun panelOpen() = snapshot?.optBoolean("computer_open") == true || snapshot?.optBoolean("gym_open") == true
     private fun computerAvailable(): Boolean {
         val state = snapshot ?: return false
         val computer = state.optJSONObject("computer") ?: return false
@@ -256,12 +297,19 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
 
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
+        if (synthetic && motionPreview) {
+            info.addAction(AccessibilityNodeInfo.AccessibilityAction(R.id.verse_inject_motion_action, "Inject motion sample"))
+        }
         if (computerAvailable()) {
             info.addAction(AccessibilityNodeInfo.AccessibilityAction(R.id.verse_use_computer_action, "Use computer"))
         }
     }
 
     override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
+        if (action == R.id.verse_inject_motion_action && synthetic && motionPreview) {
+            injectMotion()
+            return true
+        }
         if (action == R.id.verse_use_computer_action) {
             if (!computerAvailable()) return false
             return send(json("action" to "interact_computer"))?.optBoolean("computer_open") == true
@@ -279,10 +327,18 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         for (id in pointers.toList()) send(json("action" to "pointer", "id" to id, "phase" to "cancel", "x" to 0, "y" to 0), false)
         pointers.clear()
     }
+    private fun cancelTouches() {
+        cancelPointers()
+        pinchOwnsTouches = false
+        val now = SystemClock.uptimeMillis()
+        val cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+        pinch.onTouchEvent(cancel)
+        cancel.recycle()
+    }
     private fun detachSurface() {
         running = false
         Choreographer.getInstance().removeFrameCallback(this)
-        stopSensors(); cancelPointers()
+        stopSensors(); cancelTouches()
         if (handle != 0L) {
             send(json("action" to "active", "active" to false), false)
             try {

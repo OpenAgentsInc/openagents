@@ -72,6 +72,12 @@ impl FollowCamera {
         self.distance = (self.distance * 0.88f32.powf(lines)).clamp(MIN_DISTANCE, MAX_DISTANCE);
     }
 
+    /// Pinch: a scale above one moves the camera closer.
+    /// The caller validates the incremental scale before applying it.
+    pub fn pinch(&mut self, scale: f32) {
+        self.distance = (self.distance / scale).clamp(MIN_DISTANCE, MAX_DISTANCE);
+    }
+
     /// Swings the orbit back behind a moving character.
     pub fn settle(&mut self, dt: f32) {
         self.yaw_offset *= 0.02f32.powf(dt);

@@ -1,0 +1,32 @@
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-mobile)
+    Finished `test` profile [unoptimized] target(s) in 1.56s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/coder_mobile-3da529fdc40a9fb3)
+
+running 24 tests
+test verse_app::tests::native_portrait_fixtures_turn_the_body_left_and_right_and_look_up ... ok
+test verse_app::tests::motion_mapping_keeps_heading_and_pitch_independent_of_screen_roll ... ok
+test verse_app::tests::motion_pitch_is_bounded_and_pole_crossings_keep_yaw_stable ... ok
+test verse_app::tests::fresh_motion_is_admitted_after_a_slow_frame_but_stale_or_future_motion_is_not ... ok
+test verse_app::tests::motion_lifecycle_resets_pending_targets_and_ignores_inactive_samples ... ok
+test verse_app::tests::motion_left_hold_follows_the_smoothed_view_and_right_drag_does_not_look ... ok
+test verse_app::tests::motion_gaps_and_recenter_discard_pending_interpolation_without_jumping ... ok
+test verse_app::tests::enabling_motion_preserves_view_and_frames_smooth_the_shortest_turn ... ok
+test verse_app::tests::computer_requires_approach_and_releases_held_input ... ok
+test verse_app::tests::bad_and_excess_touches_do_not_poison_camera_or_keep_moving ... ok
+test verse_app::tests::invalid_relay_cannot_replace_a_previous_choice ... ok
+test verse_app::tests::gym_requires_deliberate_selection_and_retains_the_preview_refusal_after_leaving ... ok
+test verse_app::tests::gym_fixture_loads_only_after_walking_inside_and_pauses_on_exit ... ok
+test verse_app::tests::exposed_monitor_edge_opens_even_when_its_center_is_occluded ... ok
+test verse_app::tests::pinch_scales_camera_distance_and_cancels_pending_input ... ok
+test verse_app::tests::render_stalls_do_not_turn_held_touches_into_taps ... ok
+test verse_app::tests::touches_move_shared_player_and_pause_cancels_motion ... ok
+test verse_app::tests::wire_motion_requests_are_closed_and_default_is_touch ... ok
+test verse_app::tests::physical_monitor_tap_opens_without_moving_in_both_camera_modes ... ok
+test verse_app::tests::nearby_double_taps_jump_once_in_each_camera_mode_and_touch_region ... ok
+test verse_app::tests::lifecycle_camera_and_panel_changes_discard_double_taps ... ok
+test verse_app::tests::monitor_gestures_reject_drag_cancel_long_hold_and_multiple_fingers ... ok
+test verse_app::tests::double_tap_requires_a_close_pair_without_drag_hold_cancel_or_second_finger ... ok
+test verse_app::tests::motion_response_is_independent_of_display_and_sensor_rates ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.03s
+

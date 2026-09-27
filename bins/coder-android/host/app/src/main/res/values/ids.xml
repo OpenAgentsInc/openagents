@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <item name="verse_use_computer_action" type="id" />
+    <item name="verse_inject_motion_action" type="id" />
 </resources>

@@ -23,7 +23,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -43,7 +42,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var renderer: NativeRenderer
     private lateinit var computersRenderer: NativeRenderer
     private lateinit var gym: GymPanel
-    private lateinit var status: TextView
     private lateinit var worldError: TextView
     private lateinit var retry: Button
     private lateinit var controls: LinearLayout
@@ -51,7 +49,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var recenter: Button
     private lateinit var motionStatus: TextView
     private lateinit var gymButton: Button
-    private lateinit var diagnostics: LinearLayout
     private lateinit var panel: LinearLayout
     private lateinit var panelBody: LinearLayout
     private var readerContent: LinearLayout? = null
@@ -149,35 +146,16 @@ class MainActivity : ComponentActivity() {
 
     private fun createOverlay() {
         val header = column()
-        header.addView(label("Coder", size = 19f))
-        status = label("Opening world", "verse-status", 12f); header.addView(status)
         worldError = label("", "verse-error").apply { visibility = View.GONE }; header.addView(worldError)
         retry = button("Retry world renderer", "verse-retry") { world.retry() }.apply { visibility = View.GONE }; header.addView(retry)
         safe.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         controls = column()
-        diagnostics = column()
-        if (synthetic) {
-            for (id in listOf("verse-frames", "verse-position", "gym-interest", "verse-camera", "verse-motion-needed")) diagnostics.addView(label("", id, 11f))
-            if (intent.getBooleanExtra("motion_preview", false)) diagnostics.addView(button("Inject motion sample", "verse-motion-sample") { world.injectMotion() })
-            controls.addView(diagnostics)
-        }
-        controls.addView(label("Walk to the computer to connect your chats.", size = 12f))
-        controls.addView(label("Drag left to move · drag right to look", "verse-controls-hint", 11f))
         val modes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         cameraButton = button("Touch look", "verse-camera-mode") { world.toggleMotion() }
         modes.addView(cameraButton, LinearLayout.LayoutParams(0, -2, 1f))
         recenter = button("Recenter", "verse-motion-recenter") { world.send(json("action" to "reset_motion")) }
         modes.addView(recenter); controls.addView(modes)
         motionStatus = label("", "verse-motion-error", 11f); controls.addView(motionStatus)
-        val movement = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        movement.addView(button("Jump", "verse-jump") { world.send(json("action" to "jump")) }, LinearLayout.LayoutParams(0, -2, 1f))
-        movement.addView(Switch(this).apply {
-            text = "Sprint"; tag = "verse-sprint"; setTextColor(AMBER)
-            setOnCheckedChangeListener { _, checked -> world.send(json("action" to "sprint", "enabled" to checked)) }
-        })
-        movement.addView(button("+", "verse-zoom-in") { world.send(json("action" to "zoom", "delta" to 1)) }.apply { contentDescription = "Zoom in" }, LinearLayout.LayoutParams(dp(48), -2))
-        movement.addView(button("−", "verse-zoom-out") { world.send(json("action" to "zoom", "delta" to -1)) }.apply { contentDescription = "Zoom out" }, LinearLayout.LayoutParams(dp(48), -2))
-        controls.addView(movement)
         safe.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
         gymButton = button("Gym board", "gym-interact") { world.send(json("action" to "interact_gym")) }.apply { visibility = View.GONE }
         root.addView(gymButton, FrameLayout.LayoutParams(dp(190), -2))
@@ -191,10 +169,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun receiveWorld(value: JSONObject?, error: String?) {
-        if (!::status.isInitialized) return
+        if (!::worldError.isInitialized) return
         if (value != null) latestWorld = value
         val packet = latestWorld
-        status.text = packet?.optString("status") ?: "Opening world"
         val problem = error ?: packet?.textOrNull("error")
         worldError.text = problem.orEmpty(); worldError.visibility = if (problem == null) View.GONE else View.VISIBLE
         retry.visibility = worldError.visibility
@@ -202,7 +179,6 @@ class MainActivity : ComponentActivity() {
         val newPanel = when { packet.optBoolean("computer_open") -> "computer"; packet.optBoolean("gym_open") -> "gym"; else -> "" }
         if (newPanel != opened) {
             opened = newPanel; computerMode = ""; computers = false; renderer.clear(); computersRenderer.clear(); stopCamera(); controls.visibility = if (opened.isEmpty()) View.VISIBLE else View.GONE
-            controls.findViewWithTag<Switch>("verse-sprint")?.isChecked = false
             reader.foreground(foreground && opened == "computer")
             if (opened.isEmpty()) panel.visibility = View.GONE else {
                 panel.visibility = View.VISIBLE; panel.removeAllViews()
@@ -229,14 +205,7 @@ class MainActivity : ComponentActivity() {
         cameraButton.isEnabled = foreground && world.motionAvailable
         recenter.visibility = if (packet.optString("camera_mode") == "motion") View.VISIBLE else View.GONE
         motionStatus.text = world.motionError ?: if (!world.motionAvailable) "Motion look is unavailable on this device." else ""
-        controls.findViewWithTag<TextView>("verse-controls-hint").text = if (packet.optString("camera_mode") == "motion") "Hold left to move · turn your phone to look" else "Drag left to move · drag right to look"
-        if (synthetic) {
-            diagnostics.findViewWithTag<TextView>("verse-frames").text = "Frames ${packet.optLong("frames_presented")}"
-            diagnostics.findViewWithTag<TextView>("verse-position").text = (0..2).joinToString(", ") { "%.2f".format(java.util.Locale.US, packet.getJSONArray("position").getDouble(it)) }
-            diagnostics.findViewWithTag<TextView>("gym-interest").text = if (packet.optBoolean("gym_active")) "Gym listening" else "Gym idle"
-            diagnostics.findViewWithTag<TextView>("verse-camera").text = "%.5f, %.5f".format(java.util.Locale.US, packet.optDouble("camera_yaw"), packet.optDouble("camera_pitch"))
-            diagnostics.findViewWithTag<TextView>("verse-motion-needed").text = if (packet.optBoolean("motion_needed")) "Motion active" else "Motion idle"
-        }
+        motionStatus.visibility = if (motionStatus.text.isEmpty()) View.GONE else View.VISIBLE
         if (!packet.optBoolean("gym_active") || !location.optBoolean("inside")) { gymBoard = null; requestedGymRevision = -1 }
         packet.optJSONObject("gym_board")?.let { gymBoard = it }
         layoutPanel()

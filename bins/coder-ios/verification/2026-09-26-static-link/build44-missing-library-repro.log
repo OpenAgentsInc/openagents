@@ -1,0 +1,9 @@
+dyld[27342]: Library not loaded: /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/aarch64-apple-ios-sim/debug/deps/libcoder_mobile.dylib
+  Referenced from: <60E7F9CF-688B-36FD-9D03-9270299F4308> /Users/christopherdavid/Library/Developer/CoreSimulator/Devices/80A56DD2-8E81-4037-B560-2BEDBB61CAF2/data/Containers/Bundle/Application/06323068-32C5-48C7-BB4C-B4B3C6A59E62/Coder.app/Coder
+  Reason: tried: '/Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/aarch64-apple-ios-sim/debug/deps/libcoder_mobile.dylib' (no such file), '/Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/aarch64-apple-ios-sim/debug/deps/libcoder_mobile.dylib' (no such file), '/Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/usr/lib/libcoder_mobile.dylib' (no such file)
+An error was encountered processing the command (domain=FBSOpenApplicationServiceErrorDomain, code=1):
+Simulator device failed to launch com.openagents.coder.
+The request was denied by service delegate (SBMainWorkspace).
+Underlying error (domain=FBSOpenApplicationServiceErrorDomain, code=1):
+	The request to open "com.openagents.coder" failed.
+	The request was denied by service delegate (SBMainWorkspace).

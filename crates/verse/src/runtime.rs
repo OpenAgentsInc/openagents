@@ -60,6 +60,8 @@ pub enum Action {
     FaceCamera,
     /// Positive lines move the camera closer.
     Zoom { lines: f32 },
+    /// Incremental finger separation: a scale above one moves the camera closer.
+    PinchZoom { scale: f32 },
 }
 
 /// State shared by every Verse surface. Services remain separate owners.
@@ -107,6 +109,9 @@ impl WorldRuntime {
             }
             Action::Zoom { lines } if lines.is_finite() && lines.abs() <= 100.0 => {
                 self.camera.zoom(lines);
+            }
+            Action::PinchZoom { scale } if scale.is_finite() && (0.1..=10.0).contains(&scale) => {
+                self.camera.pinch(scale);
             }
             _ => return Err("camera input is nonfinite or exceeds its bound".into()),
         }

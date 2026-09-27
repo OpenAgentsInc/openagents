@@ -13,21 +13,22 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Available in internal TestFlight:** Coder `0.5.0 (44)`, built from
-[`c888f72e1f`](https://github.com/OpenAgentsInc/openagents/commit/c888f72e1f5679491121ebc113a424a497f9d35f).
-[Connect your phone](../../docs/coder/guides/mobile-readonly.md) and review the
-[distribution receipt](verification/2026-09-26-motion-camera/testflight-build44.json).
+**Startup correction:** build `44` was distributed but has a confirmed native
+library packaging defect. Build `45` explicitly includes Rust through its static
+archive and is being verified for replacement. See the
+[startup diagnosis](../../docs/coder/verification/2026-09-26-ios-static-link.md).
+[Connect your phone](../../docs/coder/guides/mobile-readonly.md).
 
 Walk east into the [Gym](../../docs/verse/gym.md) for Microcoder and
 Terminal-Bench boards. Its observations and run recipes require a separate
 host grant. Leaving or backgrounding pauses Gym updates.
 
-Build `44` corrects motion look for left and right body turns, enables upward
+The motion-camera changes first shipped in build `44` correct motion look for left and right body turns, enables upward
 look, and interpolates camera movement. Native updates request 60 Hz; fresh
 samples remain valid after a slow frame. See the
 [motion-camera verification](../../docs/coder/verification/2026-09-26-motion-camera.md).
 
-Build `43` replaces the native computer button with the shared world-space
+The world-computer changes first shipped in build `43` replace the native computer button with the shared world-space
 monitor interaction. See [verification](../../docs/coder/verification/2026-09-26-world-computer.md).
 
 Build `42` fills the display behind the system clock and home indicator.
@@ -45,7 +46,7 @@ The user-authorized app metadata and icon preserve the existing Xcode setup:
 | Project, scheme, target, product | `Coder` |
 | Bundle identifier | `com.openagents.coder` |
 | Development team | `HQWSG26L43` |
-| Marketing version and source build | `0.5.0` / `44` |
+| Marketing version and source build | `0.5.0` / `45` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Swift language setting | `5.10` |
 | App Store Connect app | `6807250813` |
@@ -69,10 +70,13 @@ same; the build number advances for this replacement implementation.
 
 Prerequisites: the pinned Rust toolchain, `aarch64-apple-ios` and
 `aarch64-apple-ios-sim` targets, Xcode with the iOS SDK, and `xcodegen`.
-The helper builds `coder-mobile` as a static library, generates the existing
+The helper links the exact `libcoder_mobile.a` static archive, generates the existing
 `Coder.xcodeproj`, and invokes `xcodebuild`. Build products stay outside the
 checkout in the worktree's target directory. Compiler environments exclude
-provider and service credentials.
+provider and service credentials. Every built app passes
+`scripts/verify-coder-ios-bundle.py`, which verifies signatures and native
+library dependencies. A reference to a Cargo output directory cannot pass;
+Android's dynamic-library output does not change the iOS link choice.
 
 ```sh
 # Build only; do not install or launch.
@@ -81,7 +85,7 @@ scripts/build-coder-mobile.sh sim-build
 # Install and launch synthetic Chats and an offline Verse world on a booted simulator.
 scripts/build-coder-mobile.sh sim --synthetic
 
-# Run native UI checks against the separate synthetic fixture and identity.
+# Run normal-startup and synthetic UI checks on the selected simulator.
 scripts/build-coder-mobile.sh sim-test
 
 # Build for an existing paired device, with development signing.
@@ -100,21 +104,27 @@ Store distribution archive cannot be installed directly as a development app.
 
 For an authorized release, `archive` keeps the existing manual distribution
 settings and writes `Coder.xcarchive`. Device and archive commands use Rust's
-optimized release profile; simulator checks use the development profile.
+optimized release profile. Simulator commands default to development Rust;
+set `CODER_IOS_RUST_PROFILE=release` for release acceptance. Before a TestFlight
+upload, launch that optimized app in a dedicated simulator without synthetic
+arguments, run `ProductionLaunchUITests`, and inspect the rendered world.
+Keep this mobile acceptance check separate from the full workspace release gate.
 Commit the release source before archiving. The helper records the commit,
 tracked-diff digest, workspace status, Cargo lock digest, compiler versions,
 and archived executable digest beside the archive. A nonempty workspace status
 must be reviewed rather than described as an exact committed-source build.
 Set `CODER_IOS_BUILD_NUMBER` to a new
 positive build number after checking the existing App Store Connect builds;
-the checked-in build is `44`. The `export` command produces a local
+the checked-in build is `45`. The `export` command produces a local
 distribution package using the existing export settings with destination
 changed to `export`. Upload is a separate operator action using the retained
 upload configuration and protected App Store Connect credentials. Never put
 API key material in a command argument, log, or repository file.
 
-`sim-test` uses the same booted simulator selection, always launches with
-`--synthetic`, and retains an `.xcresult` bundle under `CODER_IOS_OUTPUT`.
+`sim-test` uses the selected simulator and retains an `.xcresult` bundle under
+`CODER_IOS_OUTPUT`. `ProductionLaunchUITests` uses normal app startup without
+test arguments; feature tests use their explicit synthetic fixtures. Use a
+dedicated simulator when another agent is testing on the same machine.
 The UI tests exercise a real linked app, not a second Swift implementation of
 the Rust feature state. The standalone decoder checks in
 `host/Tests/NativeContractChecks.swift` test the generic view mapping without
@@ -175,14 +185,23 @@ relay transport has no visible metadata.
 ## Explore Verse
 
 The app launches into the same Rust world used by the desktop app. It starts
-offline, facing the computer. Drag in the left half of the surface to move and in the right
-half to look around. **Jump**, **Sprint**, and the zoom controls forward typed
-requests to Rust; they do not implement a second controller in Swift.
+offline, facing the computer, with no title banner or idle-status labels over
+the world. Drag in the left half of the surface to move and in the right half
+to look around. **Motion look** uses the phone's orientation instead; hold the
+left half to walk and use **Recenter** to reset the reference.
+
+Double-tap open world space with one finger to jump. Spread two fingers to
+zoom in, or pinch them together to zoom out. The computer monitor keeps its
+single-tap interaction. Pinching cancels held movement and pending taps. The
+HUD has no walk/sprint toggle, jump button, or zoom buttons. Rust owns gesture
+interpretation and camera bounds; Swift forwards native touch and pinch
+updates. See the [startup and gesture correction](../../docs/coder/verification/2026-09-26-ios-static-link.md)
+for verification and delivery status.
 
 The Rust Native projection names a generic surface resource. The app registers
 `verse.world` with a native `CAMetalLayer` mount. wgpu renders the Rust-provided
-city, player, and agent into that layer. Native display callbacks run at up to
-30 frames per second while the app is active. Opening the world computer
+city, player, and agent into that layer. Native display callbacks request
+60 frames per second, with a 30 Hz minimum, while the app is active. Opening the world computer
 clears held input and pauses player movement. Backgrounding pauses the
 render loop, clears held input, and resets the frame clock. Dismantling the mount destroys its Rust surface before
 releasing the native layer. Chat synchronization uses a different Rust handle

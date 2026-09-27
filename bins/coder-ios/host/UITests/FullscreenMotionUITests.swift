@@ -24,11 +24,11 @@ final class FullscreenMotionUITests: XCTestCase {
         XCTAssertGreaterThan(status.frame.height, 0)
         XCTAssertLessThanOrEqual(surface.minY, status.frame.minY + 1)
         XCTAssertGreaterThanOrEqual(surface.maxY, status.frame.maxY)
-        let jump = app.buttons["verse-jump"].frame
-        XCTAssertGreaterThan(jump.minY, status.frame.maxY)
-        XCTAssertLessThan(jump.maxY, window.maxY - 10, "The movement controls leave room for the home indicator.")
+        let control = app.buttons["verse-camera-mode"].frame
+        XCTAssertGreaterThan(control.minY, status.frame.maxY)
+        XCTAssertLessThan(control.maxY, window.maxY - 10, "The camera control leaves room for the home indicator.")
         let geometry: [String: Any] = [
-            "window": rect(window), "surface": rect(surface), "status_bar": rect(status.frame), "jump": rect(jump),
+            "window": rect(window), "surface": rect(surface), "status_bar": rect(status.frame), "camera_control": rect(control),
             "scope": "Actual simulator Metal UIView frame and native controls; no physical device claim."
         ]
         let data = try JSONSerialization.data(withJSONObject: geometry, options: [.prettyPrinted, .sortedKeys])
@@ -49,17 +49,17 @@ final class FullscreenMotionUITests: XCTestCase {
         XCTAssertTrue(wait { abs(self.camera()[0] - initial[0]) > 0.01 }, "Right drag changes touch-mode yaw.")
         mode.tap()
         XCTAssertTrue(wait { mode.label.contains("Motion look") })
-        XCTAssertTrue(wait { self.app.staticTexts["verse-motion-needed"].label == "Motion active" })
+        XCTAssertTrue(wait { self.app.verseObservation()?.motion_needed == true })
         let baselineFrame = frameCount()
         XCTAssertTrue(wait { self.frameCount() > baselineFrame + 8 }, "Present frames with the new motion baseline before injecting a turn.")
         let beforeMotion = camera()
-        app.buttons["verse-motion-sample"].tap()
+        mode.press(forDuration: 0.8)
         XCTAssertTrue(waitForCamera(yaw: beforeMotion[0] + 0.4, pitch: beforeMotion[1]),
                       "A body turn to the left changes yaw without changing pitch after smoothed frames.")
-        app.buttons["verse-motion-sample"].tap()
+        mode.press(forDuration: 0.8)
         XCTAssertTrue(waitForCamera(yaw: beforeMotion[0] - 0.4, pitch: beforeMotion[1]),
                       "A body turn to the right moves the smoothed camera in the opposite direction.")
-        app.buttons["verse-motion-sample"].tap()
+        mode.press(forDuration: 0.8)
         XCTAssertTrue(waitForCamera(yaw: beforeMotion[0], pitch: beforeMotion[1] - 0.8),
                       "Raising the phone's viewing direction looks upward after smoothed frames.")
         XCTAssertLessThan(camera()[1], 0, "Motion look can point above the horizon.")
@@ -77,11 +77,11 @@ final class FullscreenMotionUITests: XCTestCase {
         XCUIDevice.shared.press(.home)
         app.activate()
         XCTAssertTrue(wait { mode.label.contains("Motion look") })
-        XCTAssertTrue(wait { self.app.staticTexts["verse-motion-needed"].label == "Motion active" })
+        XCTAssertTrue(wait { self.app.verseObservation()?.motion_needed == true })
         mode.tap()
         XCTAssertTrue(wait { mode.label.contains("Touch look") })
         XCTAssertFalse(app.buttons["verse-motion-recenter"].exists)
-        XCTAssertTrue(wait { self.app.staticTexts["verse-motion-needed"].label == "Motion idle" })
+        XCTAssertTrue(wait { self.app.verseObservation()?.motion_needed == false })
         let backToTouch = camera()
         dragRight()
         XCTAssertTrue(wait { abs(self.camera()[0] - backToTouch[0]) > 0.01 })
@@ -90,7 +90,7 @@ final class FullscreenMotionUITests: XCTestCase {
     func testUnavailableMotionClearlyKeepsTouchControls() throws {
         #if targetEnvironment(simulator)
         launch(motion: false)
-        XCTAssertTrue(app.staticTexts["verse-motion-unavailable"].exists)
+        XCTAssertFalse(app.staticTexts["verse-motion-unavailable"].exists)
         XCTAssertFalse(app.buttons["verse-camera-mode"].isEnabled)
         XCTAssertTrue(app.buttons["verse-camera-mode"].label.contains("Touch look"))
         XCTAssertFalse(app.buttons["verse-motion-sample"].exists)
@@ -107,7 +107,7 @@ final class FullscreenMotionUITests: XCTestCase {
         app.launchArguments = motion ? ["--synthetic", "--motion-preview"] : ["--synthetic"]
         app.launch()
         XCTAssertTrue(app.otherElements["verse-surface"].waitForExistence(timeout: 30))
-        XCTAssertTrue(wait { self.app.staticTexts["verse-frames"].exists && self.app.staticTexts["verse-frames"].label != "Frames 0" })
+        XCTAssertTrue(wait { self.frameCount() > 0 })
         XCTAssertTrue(app.buttons["verse-camera-mode"].exists)
     }
 
@@ -119,7 +119,7 @@ final class FullscreenMotionUITests: XCTestCase {
     }
 
     private func frameCount() -> UInt64 {
-        UInt64(app.staticTexts["verse-frames"].label.split(separator: " ").last ?? "0") ?? 0
+        app.verseObservation()?.frames ?? 0
     }
     private func waitForCamera(yaw: Double, pitch: Double) -> Bool {
         let started = frameCount()
@@ -129,10 +129,10 @@ final class FullscreenMotionUITests: XCTestCase {
             return self.frameCount() > started + 8 && abs(yawError) < 0.01 && abs(value[1] - pitch) < 0.01
         }
     }
-    private func camera() -> [Double] { values("verse-camera", count: 2) }
-    private func position() -> [Double] { values("verse-position", count: 3) }
-    private func values(_ id: String, count: Int) -> [Double] {
-        let result = app.staticTexts[id].label.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+    private func camera() -> [Double] { values(app.verseObservation()?.camera, count: 2) }
+    private func position() -> [Double] { values(app.verseObservation()?.position, count: 3) }
+    private func values(_ observation: [Double]?, count: Int) -> [Double] {
+        let result = observation ?? []
         XCTAssertEqual(result.count, count)
         return result.count == count ? result : Array(repeating: 0, count: count)
     }

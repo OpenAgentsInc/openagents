@@ -69,8 +69,11 @@ installation, not a Google Play release.
 ## Use the app
 
 - The canvas paints behind the system bars; native controls respect their
-  insets. Drag the left half to move and the right half to look. Jump, sprint,
-  and zoom use the shared Rust controller.
+  insets. Drag the left half to move and the right half to look. Double-tap
+  the world to jump. Pinch with two fingers to zoom: spread them to move the
+  camera closer and bring them together to move it farther away. Two fingers
+  reserve zoom immediately; movement and touch look resume after all fingers
+  lift and you start a new gesture.
 - Select **Motion look** to aim by rotating the device while holding the left
   side to move. **Recenter** resets its reference. Sensors stop when the app
   is inactive or a world panel is open. A device without a usable rotation
@@ -94,6 +97,11 @@ installation, not a Google Play release.
   are separate from chat pairing. Recipe actions require explicit confirmation;
   viewing the world or a board starts no benchmark or model.
 
+The world keeps the camera mode control, **Recenter** in motion mode, nearby
+interactions, and actionable errors. The title, connection status, idle labels,
+diagnostics, instructions, walk/sprint toggle, and jump/zoom buttons are removed
+from the canvas. Synthetic test metadata remains available through accessibility.
+
 Reader and world identities use separate Keystore-protected storage. Synthetic
 acceptance uses separate identities, files, and offline fixtures. Normal
 connections still verify the original grants, recipients, expiry, and source
@@ -101,7 +109,10 @@ cursors in Rust. Closing a panel or backgrounding pauses observation; it does
 not imply cancellation of a separately admitted host task.
 
 The [Android verification record](../../docs/coder/verification/2026-09-26-android-mobile.md)
-records the actual toolchain, checks, screenshots, and limitations. Physical
-camera/sensor behavior, TalkBack, additional OS/device versions, and store
-release acceptance require separate evidence. Desktop-only agent chat, XP,
-and replay UI remain outside both current mobile surfaces.
+records the actual toolchain, checks, screenshots, and limitations. The later
+HUD cleanup and double-tap/pinch changes passed main and instrumentation Kotlin
+compilation; their updated Android interaction tests have not been run on an
+emulator or physical device. Physical camera and sensor behavior, TalkBack,
+additional OS and device versions, and store release acceptance require separate
+evidence. Desktop-only agent chat, XP, and replay UI remain outside both current
+mobile surfaces.

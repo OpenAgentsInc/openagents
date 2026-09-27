@@ -12,6 +12,7 @@ if [[ "${CODER_IOS_SANITIZED:-}" != 1 ]]; then
     CODER_IOS_DEV_PROFILE="${CODER_IOS_DEV_PROFILE:-}" \
     CODER_IOS_BUILD_NUMBER="${CODER_IOS_BUILD_NUMBER:-}" \
     CODER_IOS_DEVICE="${CODER_IOS_DEVICE:-booted}" \
+    CODER_IOS_RUST_PROFILE="${CODER_IOS_RUST_PROFILE:-debug}" \
     DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}" \
     CODER_IOS_SANITIZED=1 /bin/bash "$root/scripts/build-coder-mobile.sh" "$@"
 fi
@@ -29,6 +30,11 @@ export IPHONEOS_DEPLOYMENT_TARGET=17.0
 usage() {
   echo "usage: scripts/build-coder-mobile.sh project|sim-build|sim|sim-test|device|archive|export [--synthetic]" >&2
   echo "sim installs and launches the existing com.openagents.coder app on CODER_IOS_DEVICE (default: booted)." >&2
+  echo "CODER_IOS_RUST_PROFILE=release also checks optimized Rust in the simulator; device/archive always use release." >&2
+}
+
+verify_app() {
+  python3 "$root/scripts/verify-coder-ios-bundle.py" "$1" | tee "$2"
 }
 
 case "$command" in project|sim-build|sim|sim-test|device|archive|export) ;; *) usage; exit 64 ;; esac
@@ -51,6 +57,7 @@ if [[ "$command" == archive ]]; then
 fi
 if [[ "$command" == export ]]; then
   [[ -d "$output/Coder.xcarchive" ]] || { echo "No archive; build one first." >&2; exit 1; }
+  verify_app "$output/Coder.xcarchive/Products/Applications/Coder.app" "$output/archive-bundle-verification.json"
   # Preserve the existing upload configuration. A local export changes only
   # destination in a temporary copy and does not publish the archive.
   options="$output/LocalExportOptions.plist"
@@ -58,6 +65,10 @@ if [[ "$command" == export ]]; then
   /usr/libexec/PlistBuddy -c 'Set :destination export' "$options"
   xcodebuild -exportArchive -archivePath "$output/Coder.xcarchive" \
     -exportOptionsPlist "$options" -exportPath "$output/export"
+  extracted="$(mktemp -d "${TMPDIR:-/tmp}/coder-ios-export.XXXXXX")"
+  trap 'rm -rf "$extracted"' EXIT
+  /usr/bin/ditto -xk "$output/export/Coder.ipa" "$extracted"
+  verify_app "$extracted/Payload/Coder.app" "$output/export-bundle-verification.json"
   exit
 fi
 project() { (cd "$host" && xcodegen generate); }
@@ -71,12 +82,13 @@ if [[ "$command" == sim-test ]]; then
   device_id="$(xcrun simctl getenv "$CODER_IOS_DEVICE" SIMULATOR_UDID)"
   destination="platform=iOS Simulator,id=$device_id"
 fi
-profile=debug
+profile="${CODER_IOS_RUST_PROFILE:-debug}"
+case "$profile" in debug|release) ;; *) echo "CODER_IOS_RUST_PROFILE must be debug or release." >&2; exit 64 ;; esac
 rust_command=(cargo build --locked -p coder-mobile --lib --target "$triple")
 if [[ "$command" == device || "$command" == archive ]]; then
   profile=release
-  rust_command+=(--release)
 fi
+if [[ "$profile" == release ]]; then rust_command+=(--release); fi
 (cd "$root" && "${rust_command[@]}")
 project
 library="$CARGO_TARGET_DIR/$triple/$profile"
@@ -95,11 +107,13 @@ case "$command" in
     xcodebuild "${args[@]}" \
       CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= \
       -resultBundlePath "$results" -parallel-testing-enabled NO test
-    echo "Synthetic native app test results: $results"
+    verify_app "$output/DerivedData/Build/Products/Release-iphonesimulator/Coder.app" "$output/simulator-bundle-verification.json"
+    echo "Native app test results: $results"
     ;;
   sim|sim-build)
     xcodebuild "${args[@]}" CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= build
     app="$output/DerivedData/Build/Products/Release-iphonesimulator/Coder.app"
+    verify_app "$app" "$output/simulator-bundle-verification.json"
     echo "Built $app"
     if [[ "$command" == sim ]]; then
       xcrun simctl install "$CODER_IOS_DEVICE" "$app"
@@ -117,10 +131,12 @@ case "$command" in
                PROVISIONING_PROFILE_SPECIFIER= -allowProvisioningUpdates)
     fi
     xcodebuild "${args[@]}" "${signing[@]}" build
+    verify_app "$output/DerivedData/Build/Products/Release-iphoneos/Coder.app" "$output/device-bundle-verification.json"
     echo "Built $output/DerivedData/Build/Products/Release-iphoneos/Coder.app"
     ;;
   archive)
     xcodebuild "${args[@]}" -archivePath "$output/Coder.xcarchive" archive
+    verify_app "$output/Coder.xcarchive/Products/Applications/Coder.app" "$output/archive-bundle-verification.json"
     shasum -a 256 "$output/Coder.xcarchive/Products/Applications/Coder.app/Coder" \
       > "$output/archive-executable.sha256"
     echo "Archived $output/Coder.xcarchive. This command does not upload or distribute it."
