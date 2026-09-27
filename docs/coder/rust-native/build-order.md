@@ -48,6 +48,17 @@ surface loss. Its [verification record](../verification/2026-09-26-android-mobil
 records emulator interaction, lifecycle, and storage checks separately from
 remaining physical-device and production-relay acceptance.
 
+[Issue #9713](https://github.com/OpenAgentsInc/openagents/issues/9713) adds the
+[Computers screens](../../../crates/coder-computers/README.md): host status,
+adding a computer, access, first run, and activity as one application
+projection with a closed intent enum. Both mobile hosts mount it as a separate
+surface beside the reader, and `coder-terminal`'s
+[native module](../../../crates/coder-terminal/src/native.rs) supplies the RN1
+terminal slice: the initial vocabulary drawn on the ladder, reported
+unsupported properties, and keyboard activation. Values a tree cannot collect,
+such as a scanned invitation, travel through a typed input request that Rust
+validates. See its [verification record](../verification/2026-09-26-computers-screens.md).
+
 This delivers portions of RN1, RN3, RN4, and RN5 for read-only saved history.
 The initial terminal/HTML demonstration, terminal Gym replay pane, general
 mounting protocol, shared editable-input/IME contract, web reader, and

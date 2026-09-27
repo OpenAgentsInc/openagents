@@ -85,6 +85,19 @@ Images and attachments referenced by a record are not fetched or decoded as
 media. A file missing on the computer is visible as unavailable; selecting a
 metadata row cannot recreate its transcript.
 
+## Computers screens
+
+Select **Computers** in the Computer panel to open the shared
+[Computers screens](../../../crates/coder-computers/README.md): your hosts and
+their status, **Add a computer**, **Access**, and **Activity**. Select
+**Chats** to return. These screens are separate from chat pairing. A
+`coder-host:` invitation grants host access; a `coder-pair:` code still only
+reads saved chats.
+
+This build has no host client yet, so the normal app shows every Computers
+action as unavailable with its reason. The synthetic build (`--synthetic`)
+uses an offline fixture that contacts no host.
+
 ## Cache, reconnect, and revocation
 
 The device persists connection metadata, catalog pages, transcript pages, and
