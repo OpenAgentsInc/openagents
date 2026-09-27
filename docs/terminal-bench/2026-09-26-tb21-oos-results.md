@@ -2,10 +2,7 @@
 
 Results for the [pre-registration](2026-09-26-tb21-oos-study.md), including its amendments. Configuration: Microcoder `ea9c973576`, GPT-6 Luna at medium effort through the Codex login (`list_price`), **knowledge base off**, Jev on, 200 steps, $2.00, 60 minutes, 3 runs at a time. Run 2026-09-26 on coderos-4080.
 
-**Label added 2026-09-27: no reasoning.** These runs were made before
-`ac3ee05901`. On the Codex login, GPT-6 Luna did no reasoning on any step,
-so the wins below came from Luna without reasoning ([route
-diff](2026-09-26-route-diff.md)).
+**Label added 2026-09-27: no reasoning.** These runs were made before `ac3ee05901`. On the Codex login, GPT-6 Luna did no reasoning on any step, so the wins below came from Luna without reasoning ([route diff](2026-09-26-route-diff.md)).
 
 ## Result
 
