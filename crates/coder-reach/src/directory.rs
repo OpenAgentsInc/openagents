@@ -97,7 +97,9 @@ impl Directory {
                 return fail(Refusal::LimitExceeded, "too many relays");
             }
             for (i, relay) in entry.relays.iter().enumerate() {
-                relay_url(relay, false)?;
+                // As with relay hints, `ws` is accepted only for a loopback
+                // test relay, which no other machine can reach.
+                relay_url(relay, true)?;
                 if entry.relays[..i].contains(relay) {
                     return fail(Refusal::Malformed, "duplicate relay");
                 }
@@ -316,6 +318,19 @@ mod tests {
             ..entry(2)
         });
         assert!(dir.validate().is_err());
+        // Plain `ws` is refused except for a loopback test relay.
+        let mut dir = Directory::empty(&owner, 100);
+        dir.hosts.push(HostEntry {
+            relays: vec!["ws://relay.example".into()],
+            ..entry(2)
+        });
+        assert!(dir.validate().is_err());
+        let mut dir = Directory::empty(&owner, 100);
+        dir.hosts.push(HostEntry {
+            relays: vec!["ws://127.0.0.1:7000".into()],
+            ..entry(2)
+        });
+        assert!(dir.validate().is_ok());
         let mut dir = Directory::empty(&owner, 100);
         dir.requires.push("oa-future".into());
         assert_eq!(

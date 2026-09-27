@@ -326,7 +326,12 @@ fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
     serde_json::from_value(value).map_err(|_| Error::new(Refusal::Malformed, "handshake fields"))
 }
 
-fn seal_frame(key: &[u8; 32], kind: FrameKind, seq: u64, data: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn seal_frame(
+    key: &[u8; 32],
+    kind: FrameKind,
+    seq: u64,
+    data: &[u8],
+) -> Result<Vec<u8>> {
     let mut plain = Vec::with_capacity(HEADER_BYTES + data.len());
     plain.push(kind as u8);
     plain.extend_from_slice(&seq.to_be_bytes());
@@ -336,7 +341,7 @@ fn seal_frame(key: &[u8; 32], kind: FrameKind, seq: u64, data: &[u8]) -> Result<
         .map_err(|_| Error::new(Refusal::LimitExceeded, "frame encryption"))
 }
 
-fn open_frame(key: &[u8; 32], frame: &Frame) -> Result<Vec<u8>> {
+pub(crate) fn open_frame(key: &[u8; 32], frame: &Frame) -> Result<Vec<u8>> {
     let bad = || Error::new(Refusal::IdentityMismatch, "frame authentication");
     let text = std::str::from_utf8(&frame.body).map_err(|_| bad())?;
     let plain = nip44::decrypt(text, key).map_err(|_| bad())?;
@@ -474,6 +479,29 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Channel<S> {
                 Err(error)
             }
         }
+    }
+
+    /// Split the channel into a reader and a writer, so one task can wait
+    /// for the peer's frames while another sends. Each half keeps its own
+    /// direction's key and sequence number.
+    #[must_use]
+    pub fn into_split(
+        self,
+    ) -> (
+        crate::split::ChannelReader<tokio::io::ReadHalf<S>>,
+        crate::split::ChannelWriter<tokio::io::WriteHalf<S>>,
+    ) {
+        let (read, write) = tokio::io::split(self.stream);
+        (
+            crate::split::ChannelReader::new(
+                read,
+                self.recv_key,
+                self.recv_seq,
+                self.binding,
+                self.closed,
+            ),
+            crate::split::ChannelWriter::new(write, self.send_key, self.send_seq, self.closed),
+        )
     }
 
     /// Send a close frame and stop.

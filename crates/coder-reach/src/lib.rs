@@ -15,6 +15,7 @@ pub mod directory;
 pub mod hints;
 pub mod placement;
 pub mod presence;
+pub mod split;
 
 use std::fmt;
 use std::str::FromStr;

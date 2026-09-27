@@ -399,3 +399,38 @@ async fn stale_hello_time_is_refused() {
     assert_eq!(host.err().unwrap().code, Refusal::Stale);
     assert_eq!(client.err().unwrap().code, Refusal::Stale);
 }
+
+#[tokio::test]
+async fn split_halves_keep_sequence_and_close_in_order() {
+    let setup = setup(4).await;
+    let (host, client) = run(&setup, client(&setup, &key(2), 4)).await;
+    let (mut host_reader, mut host_writer) = host.unwrap().into_split();
+    let (mut client_reader, mut client_writer) = client.unwrap().into_split();
+    assert_eq!(host_reader.binding().generation, 4);
+
+    // Both directions run at once, each with its own sequence numbers.
+    let ((), (to_client, to_host)) = tokio::join!(
+        async {
+            for n in 0..3u8 {
+                host_writer.send(&[n]).await.unwrap();
+            }
+            client_writer.send(b"request").await.unwrap();
+        },
+        async {
+            let mut got = Vec::new();
+            for _ in 0..3 {
+                got.push(client_reader.recv().await.unwrap().unwrap());
+            }
+            (got, host_reader.recv().await.unwrap().unwrap())
+        }
+    );
+    assert_eq!(to_client, vec![vec![0], vec![1], vec![2]]);
+    assert_eq!(to_host, b"request");
+
+    host_writer.close().await.unwrap();
+    assert_eq!(client_reader.recv().await.unwrap(), None);
+    assert_eq!(
+        host_writer.send(b"late").await.unwrap_err().code,
+        Refusal::Unavailable
+    );
+}
