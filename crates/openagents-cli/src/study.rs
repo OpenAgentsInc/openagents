@@ -85,12 +85,19 @@ fn script(command: &str, args: &Args) -> Option<String> {
             let [_, _, task, arm, n, ..] = positional else {
                 return None;
             };
-            let runner = crate::terminal::quote(args.option("runner").unwrap_or("./one.sh"));
+            let runner = args.option("runner").unwrap_or("./one.sh");
+            let words = [runner, task, arm, n]
+                .iter()
+                .map(|word| crate::terminal::quote(word))
+                .collect::<Vec<_>>()
+                .join(" ");
+            // The terminal's process group ends with the shell, so the runner
+            // starts in its own session, and the shell stays until it is up.
+            let pattern =
+                crate::terminal::quote(&format!(" {}$", [runner, task, arm, n].join(" ")));
             format!(
-                "cd {dir} && mkdir -p logs runs && nohup {runner} {} {} {} >/dev/null 2>&1 & echo $!",
-                crate::terminal::quote(task),
-                crate::terminal::quote(arm),
-                crate::terminal::quote(n)
+                "cd {dir} && mkdir -p logs runs && setsid -f nohup {words} >/dev/null 2>&1 </dev/null; \
+                 sleep 1; pgrep -f {pattern} | head -1"
             )
         }
         "status" => format!(
@@ -365,8 +372,8 @@ mod tests {
         )
         .unwrap();
         let text = script("run", &args).unwrap();
-        assert!(text.contains("nohup './one claude.sh' task full 1"));
-        assert!(text.ends_with("echo $!"));
+        assert!(text.contains("setsid -f nohup './one claude.sh' task full 1"));
+        assert!(text.ends_with("pgrep -f ' ./one claude.sh task full 1$' | head -1"));
         assert!(script("run", &Args::parse(&["h".to_owned()], &[]).unwrap()).is_none());
     }
 }
