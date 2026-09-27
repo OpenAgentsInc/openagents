@@ -41,16 +41,20 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
     private var sensorRunning = false
     private var computerAccessible = false
     private val pointers = mutableSetOf<Int>()
+    private val hudPointers = mutableSetOf<Int>()
+    private var hudInsets = floatArrayOf(0f, 0f, 0f, 0f)
+    private var accessibilityState = ""
+    private val landmarkActions = mutableMapOf<Int, String>()
     private val pinchAdmission = PinchAdmission()
     private val pinch = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-            if (!running || panelOpen() || !pinchAdmission.allowed) return false
-            cancelPointers()
+            if (!running || panelOpen() || hudPointers.isNotEmpty() || !pinchAdmission.allowed) return false
+            cancelPointers(keepingHud = true)
             return true
         }
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             val scale = detector.scaleFactor
-            if (running && !panelOpen() && scale.isFinite() && scale > 0f) {
+            if (running && !panelOpen() && hudPointers.isEmpty() && scale.isFinite() && scale > 0f) {
                 send(json("action" to "pinch_zoom", "scale" to scale), false)
             }
             return true
@@ -99,6 +103,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             check(handle != 0L) { packet(CoderNative.verseBlueprint(), "coder.verse.v1").textOrNull("error")
                 ?: "The world renderer could not start on this device." }
             attached = true
+            sendHudInsets()
             send(json("action" to "snapshot"))
             updateActivity()
         } catch (failure: Exception) {
@@ -113,6 +118,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             CoderNative.attachVerse(handle, holder.surface, json("width" to width,
                 "height" to height, "scale" to resources.displayMetrics.density).toString())
             attached = true
+            sendHudInsets()
             send(json("action" to "snapshot"))
             updateActivity()
         } catch (failure: Exception) {
@@ -127,6 +133,17 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         if (disposed) return
         detachSurface()
         if (handle == 0L) create() else attach()
+    }
+    fun setHudInsets(top: Float, right: Float, bottom: Float, left: Float) {
+        val next = floatArrayOf(top, right, bottom, left)
+        if (next.any { !it.isFinite() || it < 0f } || next.contentEquals(hudInsets)) return
+        hudInsets = next
+        cancelTouches()
+        sendHudInsets()
+    }
+    private fun sendHudInsets() {
+        send(json("action" to "hud_insets", "top" to hudInsets[0], "right" to hudInsets[1],
+            "bottom" to hudInsets[2], "left" to hudInsets[3]))
     }
     fun setResumed(value: Boolean) { resumed = value; updateActivity() }
     private fun updateActivity() {
@@ -173,10 +190,19 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
                 "camera_pitch" to result.optDouble("camera_pitch"),
                 "camera_distance" to result.optDouble("camera_distance"),
                 "gym_active" to result.optBoolean("gym_active"),
-                "motion_needed" to result.optBoolean("motion_needed"))}"
+                "motion_needed" to result.optBoolean("motion_needed"),
+                "map" to result.getJSONObject("map"))}"
             val available = computerAvailable()
-            if (available != computerAccessible) {
+            val map = result.getJSONObject("map")
+            val mapState = "$available:${map.optBoolean("visible")}:${map.optBoolean("expanded")}:${!map.isNull("destination")}:${map.optJSONArray("landmarks")}"
+            if (accessibilityState != mapState) {
                 computerAccessible = available
+                accessibilityState = mapState
+                landmarkActions.clear()
+                val landmarks = map.optJSONArray("landmarks") ?: JSONArray()
+                for (index in 0 until minOf(landmarks.length(), 256)) {
+                    landmarkActions[android.view.View.generateViewId()] = landmarks.getJSONObject(index).getString("id")
+                }
                 sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
             }
             nativeError = null
@@ -270,34 +296,40 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         val index = event.actionIndex
         val density = resources.displayMetrics.density
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                pinchAdmission.reset()
-                pinchAdmission.down(event.getPointerId(index), event.getX(index) / density, event.getY(index) / density, event.eventTime)
-            }
-            MotionEvent.ACTION_POINTER_DOWN -> pinchAdmission.down(event.getPointerId(index), event.getX(index) / density, event.getY(index) / density, event.eventTime)
-            MotionEvent.ACTION_MOVE -> for (i in 0 until event.pointerCount)
-                pinchAdmission.move(event.getPointerId(i), event.getX(i) / density, event.getY(i) / density)
-        }
-        if (pinchAdmission.reserved) cancelPointers()
-        pinch.onTouchEvent(event)
-        if (pinchAdmission.reserved) {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> pinchAdmission.up(event.getPointerId(index))
-                MotionEvent.ACTION_CANCEL -> pinchAdmission.reset()
-            }
-            return true
-        }
-        when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                val index = event.actionIndex
-                if (pointers.size < 8) { pointers.add(event.getPointerId(index)); pointer(event, index, "down") }
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    cancelPointers()
+                    pinchAdmission.reset()
+                }
+                val id = event.getPointerId(index)
+                if (pointers.size < 8) {
+                    pointers.add(id)
+                    // Rust decides HUD ownership before native pinch admission.
+                    pointer(event, index, "down")
+                    val captured = snapshot?.optJSONObject("map")?.optJSONArray("captured_pointers")
+                    if (captured != null && (0 until captured.length()).any { captured.optLong(it) == id.toLong() }) {
+                        hudPointers.add(id)
+                    } else {
+                        pinchAdmission.down(id, event.getX(index) / density, event.getY(index) / density, event.eventTime)
+                    }
+                }
             }
-            MotionEvent.ACTION_MOVE -> for (index in 0 until event.pointerCount)
-                if (event.getPointerId(index) in pointers) pointer(event, index, "move")
+            MotionEvent.ACTION_MOVE -> for (i in 0 until event.pointerCount) {
+                val id = event.getPointerId(i)
+                if (id !in hudPointers) pinchAdmission.move(id, event.getX(i) / density, event.getY(i) / density)
+            }
+        }
+        if (pinchAdmission.reserved) cancelPointers(keepingHud = true, retainContacts = true)
+        pinch.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> for (i in 0 until event.pointerCount) {
+                val id = event.getPointerId(i)
+                if (id in pointers && (id in hudPointers || !pinchAdmission.reserved)) pointer(event, i, "move")
+            }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
-                val index = event.actionIndex
-                if (pointers.remove(event.getPointerId(index))) pointer(event, index, "up")
-                pinchAdmission.up(event.getPointerId(index))
+                val id = event.getPointerId(index)
+                if (pointers.remove(id) && (hudPointers.remove(id) || !pinchAdmission.reserved)) pointer(event, index, "up")
+                pinchAdmission.up(id)
                 performClick()
             }
             MotionEvent.ACTION_CANCEL -> { cancelPointers(); pinchAdmission.reset() }
@@ -321,6 +353,20 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         if (computerAvailable()) {
             info.addAction(AccessibilityNodeInfo.AccessibilityAction(R.id.verse_use_computer_action, "Use computer"))
         }
+        val map = snapshot?.optJSONObject("map")
+        if (running && map?.optBoolean("visible") == true) {
+            info.addAction(AccessibilityNodeInfo.AccessibilityAction(R.id.verse_map_toggle_action,
+                if (map.optBoolean("expanded")) "Close map" else "Open map"))
+            if (!map.isNull("destination")) info.addAction(AccessibilityNodeInfo.AccessibilityAction(R.id.verse_map_cancel_action, "Cancel walk"))
+            for ((action, id) in landmarkActions) {
+                landmark(id)?.let { info.addAction(AccessibilityNodeInfo.AccessibilityAction(action, "Walk to ${it.getString("label")}")) }
+            }
+        }
+    }
+
+    private fun landmark(id: String): JSONObject? {
+        val landmarks = snapshot?.optJSONObject("map")?.optJSONArray("landmarks") ?: return null
+        return (0 until landmarks.length()).map { landmarks.getJSONObject(it) }.firstOrNull { it.optString("id") == id }
     }
 
     override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
@@ -332,6 +378,19 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             if (!computerAvailable()) return false
             return send(json("action" to "interact_computer"))?.optBoolean("computer_open") == true
         }
+        if (running && snapshot?.optJSONObject("map")?.optBoolean("visible") == true) {
+            val request = when (action) {
+                R.id.verse_map_toggle_action -> json("action" to "map_toggle")
+                R.id.verse_map_cancel_action -> json("action" to "map_cancel")
+                else -> landmarkActions[action]?.let { landmark(it) }?.let {
+                    json("action" to "map_walk", "x" to it.getDouble("x"), "z" to it.getDouble("z"))
+                }
+            }
+            if (request != null) {
+                val result = send(request) ?: return false
+                return result.textOrNull("error") == null
+            }
+        }
         return super.performAccessibilityAction(action, arguments)
     }
 
@@ -341,9 +400,13 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         send(json("action" to "pointer", "id" to event.getPointerId(index), "phase" to phase,
             "x" to event.getX(index) / density, "y" to event.getY(index) / density), phase != "move")
     }
-    private fun cancelPointers() {
-        for (id in pointers.toList()) send(json("action" to "pointer", "id" to id, "phase" to "cancel", "x" to 0, "y" to 0), false)
-        pointers.clear()
+    private fun cancelPointers(keepingHud: Boolean = false, retainContacts: Boolean = false) {
+        for (id in pointers.toList()) {
+            if (keepingHud && id in hudPointers) continue
+            send(json("action" to "pointer", "id" to id, "phase" to "cancel", "x" to 0, "y" to 0), false)
+            if (!retainContacts) pointers.remove(id)
+        }
+        if (!keepingHud) hudPointers.clear()
     }
     private fun cancelTouches() {
         cancelPointers()

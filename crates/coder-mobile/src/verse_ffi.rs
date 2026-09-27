@@ -14,7 +14,7 @@ pub struct VerseHandle {
 }
 
 fn failure() -> CoderMobileBuffer {
-    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"camera_mode":"touch","camera_yaw":0.0,"camera_pitch":0.28,"camera_distance":6.0,"motion_needed":false,"connection":{"state":"offline","label":"Offline","relay":null,"error":null},"computer":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":5.0},"computer_open":false,"gym":{"inside":false,"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":60.0},"gym_open":false,"gym_revision":0,"gym_active":false,"view":null}"#.to_vec())
+    buffer(br#"{"schema":"coder.verse.v1","status":"Verse unavailable","error":"Native Verse request failed","frames_presented":0,"position":[0,0,0],"camera_mode":"touch","camera_yaw":0.0,"camera_pitch":0.28,"camera_distance":6.0,"motion_needed":false,"connection":{"state":"offline","label":"Offline","relay":null,"error":null},"map":{"visible":false,"expanded":false,"state":"","destination":null,"captured_pointers":[],"frame":[0,0,0,0],"plot":[0,0,0,0],"center":[0,0],"half_extent":264,"landmarks":[]},"computer":{"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":5.0},"computer_open":false,"gym":{"inside":false,"near":false,"visible":false,"screen_x":0.5,"screen_y":0.5,"distance":60.0},"gym_open":false,"gym_revision":0,"gym_active":false,"view":null}"#.to_vec())
 }
 
 /// Returns the initial Rust-owned surface projection. Release the result with
@@ -66,7 +66,6 @@ pub unsafe extern "C" fn coder_verse_create(
 #[cfg(target_os = "ios")]
 fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, String> {
     let viewport = scene.lifecycle.viewport();
-    let atlas = verse::ui::Atlas::new(18.0);
     // The FFI contract keeps the native layer alive for this renderer's mount.
     let renderer = unsafe {
         verse::render::Renderer::from_metal_layer(
@@ -74,7 +73,7 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
             viewport.width().max(1),
             viewport.height().max(1),
             &scene.world.world.mesh,
-            &atlas,
+            &scene.atlas,
             verse::render::RenderOptions {
                 sample_count: 1,
                 max_extent: 4096,
@@ -186,7 +185,7 @@ impl VerseHandle {
                         });
                     mesh.extend(&entities);
                     let view = self.scene.world.view(renderer.aspect());
-                    match renderer.draw(view, &mesh, &verse::ui::UiBatch::default()) {
+                    match renderer.draw(view, &mesh, &self.scene.map_ui()) {
                         verse::render::DrawStatus::Presented => {
                             self.scene.presented_entities = entities;
                             self.scene.frames = self.scene.frames.saturating_add(1);

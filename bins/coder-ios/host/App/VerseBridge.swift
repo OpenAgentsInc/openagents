@@ -24,6 +24,44 @@ struct VersePacket: Decodable {
     let camera_pitch: Double
     let camera_distance: Double
     let motion_needed: Bool
+    let map: VerseMap
+}
+
+struct VerseMap: Decodable {
+    let visible: Bool
+    let expanded: Bool
+    let state: String
+    let destination: [Double]?
+    let captured_pointers: [UInt64]
+    let frame: [Double]
+    let plot: [Double]
+    let center: [Double]
+    let half_extent: Double
+    let landmarks: [VerseMapLandmark]
+
+    var valid: Bool {
+        frame.count == 4 && plot.count == 4 && center.count == 2 &&
+        frame.allSatisfy(\.isFinite) && plot.allSatisfy(\.isFinite) && center.allSatisfy(\.isFinite) &&
+        frame[2] >= 0 && frame[3] >= 0 && plot[2] >= 0 && plot[3] >= 0 &&
+        half_extent.isFinite && half_extent > 0 && state.utf8.count <= 512 &&
+        captured_pointers.count <= 8 && Set(captured_pointers).count == captured_pointers.count &&
+        (destination == nil || (destination?.count == 2 && destination?.allSatisfy(\.isFinite) == true)) &&
+        landmarks.count <= 256 && landmarks.allSatisfy { $0.x.isFinite && $0.z.isFinite && $0.id.utf8.count <= 128 && $0.label.utf8.count <= 128 }
+    }
+
+    var observation: [String: Any] {
+        ["visible": visible, "expanded": expanded, "state": state,
+         "destination": destination as Any? ?? NSNull(), "captured_pointers": captured_pointers,
+         "frame": frame, "plot": plot, "center": center, "half_extent": half_extent,
+         "landmarks": landmarks.map { ["id": $0.id, "label": $0.label, "x": $0.x, "z": $0.z] as [String: Any] }]
+    }
+}
+
+struct VerseMapLandmark: Decodable {
+    let id: String
+    let label: String
+    let x: Double
+    let z: Double
 }
 
 struct VerseConnection: Decodable {
@@ -192,6 +230,7 @@ final class VerseBridge: ObservableObject {
               ["touch", "motion"].contains(packet.camera_mode),
               packet.camera_yaw.isFinite, packet.camera_pitch.isFinite,
               packet.camera_distance.isFinite, packet.camera_distance > 0,
+              packet.map.valid,
               packet.gym_board?.valid ?? true else {
             throw ReaderError.message("This app does not support the returned world view.")
         }

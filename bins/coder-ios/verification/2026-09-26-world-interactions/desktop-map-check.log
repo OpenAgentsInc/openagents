@@ -1,0 +1,251 @@
+    Checking serde_core v1.0.229
+    Checking allocator-api2 v0.2.21
+    Checking memchr v2.8.3
+    Checking thiserror v2.0.20
+    Checking once_cell v1.21.4
+    Checking mio v1.2.3
+    Checking futures-core v0.3.34
+   Compiling serde_json v1.0.151
+    Checking serde v1.0.229
+    Checking hashbrown v0.17.1
+    Checking smallvec v1.16.1
+    Checking parking_lot_core v0.9.12
+    Checking parking_lot v0.12.5
+    Checking indexmap v2.14.2
+    Checking zerofrom v0.1.8
+    Checking hashbrown v0.16.1
+    Checking yoke v0.8.3
+    Checking tokio v1.53.1
+   Compiling zerocopy-derive v0.8.57
+    Checking zerocopy v0.8.57
+    Checking futures-sink v0.3.34
+    Checking zerovec v0.11.8
+    Checking generic-array v0.14.7
+    Checking futures-channel v0.3.34
+    Checking futures-io v0.3.34
+    Checking futures-util v0.3.34
+    Checking anyhow v1.0.104
+    Checking block-buffer v0.10.4
+    Checking crypto-common v0.1.7
+    Checking tinystr v0.8.4
+    Checking icu_locale_core v2.3.0
+    Checking digest v0.10.7
+    Checking zerotrie v0.2.5
+    Checking potential_utf v0.1.6
+    Checking cpufeatures v0.2.17
+    Checking icu_collections v2.3.0
+    Checking ring v0.17.14
+    Checking icu_provider v2.3.1
+    Checking sha2 v0.10.9
+    Checking percent-encoding v2.3.2
+    Checking icu_properties v2.3.0
+    Checking rustls-webpki v0.103.15
+    Checking rustls v0.23.45
+    Checking icu_normalizer v2.3.0
+    Checking wasmtime-internal-core v48.0.2
+    Checking ppv-lite86 v0.2.21
+    Checking rand_chacha v0.9.0
+    Checking idna_adapter v1.2.2
+    Checking form_urlencoded v1.2.2
+    Checking ryu v1.0.23
+    Checking idna v1.1.0
+    Checking rand v0.9.5
+    Checking rustix v1.1.5
+    Checking tokio-rustls v0.26.5
+    Checking cranelift-bitset v0.135.2
+   Compiling crc32fast v1.5.2
+    Checking url v2.5.8
+    Checking secp256k1-sys v0.11.0
+    Checking semver v1.0.28
+    Checking either v1.18.0
+    Checking fnv v1.0.7
+    Checking leb128fmt v0.1.0
+    Checking gimli v0.33.0
+    Checking wasmparser v0.254.0
+    Checking secp256k1 v0.31.1
+    Checking cranelift-entity v0.135.2
+    Checking http-body v1.1.0
+    Checking cobs v0.3.0
+    Checking bumpalo v3.20.3
+    Checking nostr v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr)
+    Checking postcard v1.1.3
+    Checking cranelift-bforest v0.135.2
+    Checking target-lexicon v0.13.5
+    Checking itertools v0.14.0
+    Checking tracing-core v0.1.36
+    Checking tower-service v0.3.3
+    Checking try-lock v0.2.5
+    Checking want v0.3.1
+    Checking tracing v0.1.44
+   Compiling bytemuck_derive v1.12.1
+    Checking atomic-waker v1.1.2
+    Checking rustc-hash v2.1.3
+    Checking hyper v1.11.1
+    Checking bytemuck v1.25.2
+    Checking object v0.39.1
+    Checking wasm-encoder v0.254.0
+    Checking sync_wrapper v1.0.2
+    Checking tower-layer v0.3.3
+    Checking ipnet v2.12.2
+    Checking arbitrary v1.4.2
+    Checking termcolor v1.4.1
+    Checking wasmprinter v0.254.0
+    Checking cranelift-control v0.135.2
+    Checking hyper-util v0.1.20
+    Checking tower v0.5.3
+    Checking cranelift-assembler-x64 v0.135.2
+    Checking cpp_demangle v0.5.1
+    Checking regalloc2 v0.15.2
+    Checking pulley-interpreter v48.0.2
+    Checking wasmtime-internal-component-util v48.0.2
+    Checking rustc-demangle v0.1.28
+    Checking cranelift-codegen-shared v0.135.2
+    Checking cranelift-codegen v0.135.2
+    Checking wasmtime-environ v48.0.2
+    Checking tempfile v3.27.0
+    Checking hyper-rustls v0.27.9
+    Checking tower-http v0.6.11
+    Checking crossbeam-utils v0.8.23
+    Checking http-body-util v0.1.5
+    Checking castaway v0.2.4
+    Checking serde_urlencoded v0.7.1
+    Checking tokio-util v0.7.19
+    Checking supervise v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/supervise)
+    Checking unicode-segmentation v1.13.3
+    Checking unicode-truncate v2.0.1
+    Checking tungstenite v0.30.0
+    Checking reqwest v0.12.28
+    Checking strum v0.28.0
+    Checking compact_str v0.9.1
+    Checking crossbeam-epoch v0.9.21
+    Checking zstd-sys v2.1.0+zstd.1.5.7
+    Checking wasm-encoder v0.259.0
+    Checking kasuari v0.4.12
+    Checking lru v0.18.4
+   Compiling objc-sys v0.3.5
+    Checking winnow v1.0.4
+    Checking critical-section v1.2.0
+    Checking ratatui-core v0.1.2
+    Checking toml_parser v1.1.3+spec-1.1.0
+    Checking wast v259.0.0
+    Checking tokio-tungstenite v0.30.0
+    Checking zstd-safe v7.3.0
+    Checking crossbeam-deque v0.8.8
+    Checking half v2.7.1
+    Checking signal-hook v0.3.18
+    Checking atif v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/atif)
+    Checking toml_datetime v0.7.5+spec-1.1.0
+    Checking serde_spanned v1.1.1
+    Checking num_threads v0.1.7
+    Checking dirs-sys-next v0.1.2
+    Checking powerfmt v0.2.0
+    Checking uuid v1.26.1
+    Checking toml_writer v1.1.2+spec-1.1.0
+    Checking time-core v0.1.9
+    Checking fixedbitset v0.4.2
+    Checking num-conv v0.2.2
+    Checking deranged v0.5.8
+    Checking winnow v0.7.15
+    Checking wat v1.259.0
+    Checking time v0.3.55
+    Checking naga v29.0.4
+    Checking toml v0.9.12+spec-1.1.0
+    Checking petgraph v0.6.5
+    Checking debugid v0.8.0
+    Checking directories-next v2.0.0
+    Checking signal-hook-mio v0.2.5
+    Checking derive_more v2.1.1
+    Checking rayon-core v1.13.0
+    Checking zstd v0.13.3
+    Checking nostr-transport v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr-transport)
+    Checking wasmtime-internal-unwinder v48.0.2
+    Checking wgpu-types v29.0.4
+    Checking cranelift-native v0.135.2
+    Checking cranelift-frontend v0.135.2
+    Checking coder-boundary v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-boundary)
+    Checking coder-history v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-history)
+    Checking line-clipping v0.3.8
+    Checking id-arena v2.3.0
+    Checking simd-adler32 v0.3.10
+    Checking heck v0.5.0
+    Checking simdutf8 v0.1.5
+    Checking coder-connect v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-connect)
+    Checking encoding_rs v0.8.41
+    Checking wasm-compose v0.254.0
+    Checking wit-parser v0.254.0
+    Checking ratatui-widgets v0.3.2
+    Checking microluna v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/microluna)
+    Checking wasmtime-internal-cranelift v48.0.2
+    Checking wgpu-naga-bridge v29.0.4
+    Checking objc2 v0.5.2
+    Checking wasmtime-internal-cache v48.0.2
+    Checking rayon v1.12.0
+    Checking crossterm v0.29.0
+    Checking wasmtime-internal-jit-debug v48.0.2
+    Checking wasmtime-internal-fiber v48.0.2
+    Checking fxprof-processed-profile v0.8.1
+    Checking addr2line v0.26.1
+    Checking wasmtime-internal-jit-icache-coherence v48.0.2
+    Checking futures v0.3.34
+    Checking aho-corasick v1.1.5
+    Checking regex-syntax v0.8.11
+    Checking core-foundation-sys v0.8.7
+    Checking mach2 v0.6.0
+    Checking httpdate v1.0.3
+    Checking adler2 v2.0.1
+    Checking jev v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/jev)
+    Checking regex-automata v0.4.18
+    Checking wasmtime v48.0.2
+    Checking wgpu-hal v29.0.4
+    Checking core-foundation v0.9.4
+    Checking ratatui-crossterm v0.1.2
+    Checking block2 v0.5.1
+    Checking ratatui-macros v0.7.2
+    Checking openrouter v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/openrouter)
+    Checking font-types v0.12.5
+    Checking rust-native v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/rust-native)
+   Compiling foreign-types-macros v0.2.4
+    Checking bitflags v1.3.2
+    Checking foreign-types-shared v0.3.1
+    Checking dispatch v0.2.0
+    Checking unicase v2.9.0
+    Checking pulldown-cmark v0.13.4
+    Checking objc2-foundation v0.2.2
+    Checking foreign-types v0.5.0
+    Checking core-graphics-types v0.1.3
+    Checking coder-ui v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-ui)
+    Checking read-fonts v0.41.0
+    Checking plugin v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/plugin)
+    Checking knowledge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/knowledge)
+    Checking ratatui v0.30.2
+    Checking wgpu-core-deps-apple v29.0.4
+    Checking regex v1.13.1
+    Checking miniz_oxide v0.9.1
+    Checking coder-access v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-access)
+    Checking coder-pty v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-pty)
+    Checking coder-reach v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-reach)
+   Compiling winit v0.30.13
+    Checking coder-link v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-link)
+   Compiling coder v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder)
+    Checking coder-host v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-host)
+    Checking flate2 v1.1.10
+    Checking skrifa v0.44.0
+    Checking coder-one v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-one)
+    Checking wgpu-core v29.0.4
+    Checking coder-terminal v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-terminal)
+    Checking core-graphics v0.23.2
+    Checking objc2-app-kit v0.2.2
+    Checking miniz_oxide v0.8.9
+    Checking fdeflate v0.3.7
+    Checking capability v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/capability)
+    Checking receipts v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/receipts)
+    Checking dpi v0.1.2
+    Checking cursor-icon v1.2.0
+    Checking smol_str v0.2.2
+    Checking swash v0.2.10
+    Checking png v0.18.1
+    Checking wgpu v29.0.4
+    Checking gym v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym)
+    Checking gym-bridge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym-bridge)
+    Checking verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `dev` profile [unoptimized] target(s) in 51.69s

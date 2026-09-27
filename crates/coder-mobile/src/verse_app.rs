@@ -55,6 +55,18 @@ pub(crate) enum Request {
     },
     ResetMotion,
     RecenterCamera,
+    HudInsets {
+        top: f32,
+        right: f32,
+        bottom: f32,
+        left: f32,
+    },
+    MapToggle,
+    MapCancel,
+    MapWalk {
+        x: f32,
+        z: f32,
+    },
     Pointer {
         id: u64,
         phase: PointerPhase,
@@ -116,6 +128,7 @@ pub(crate) struct Packet {
     schema: &'static str,
     status: String,
     connection: Connection,
+    map: verse::minimap::Snapshot,
     pub error: Option<String>,
     frames_presented: u64,
     position: [f32; 3],
@@ -268,6 +281,13 @@ fn packet(
         schema: "coder.verse.v1",
         status,
         connection: connection(None, false, false, None, None),
+        map: verse::minimap::MapHud::default().snapshot(
+            [393.0, 852.0],
+            [0.0, -10.0],
+            false,
+            "",
+            None,
+        ),
         error,
         frames_presented: frames,
         position,
@@ -373,6 +393,9 @@ fn motion_angles(quaternion: [f32; 4]) -> Option<MotionOrientation> {
 
 pub(crate) struct Scene {
     pub world: WorldRuntime,
+    pub atlas: verse::ui::Atlas,
+    map: verse::minimap::MapHud,
+    map_error: Option<String>,
     pub lifecycle: SurfaceLifecycle,
     pub session: Option<Session>,
     /// Remote geometry from the last presented frame, also used for picking.
@@ -437,6 +460,9 @@ impl Scene {
         }
         Ok(Self {
             world,
+            atlas: verse::ui::Atlas::new(12.0),
+            map: verse::minimap::MapHud::default(),
+            map_error: None,
             lifecycle,
             session: None,
             presented_entities: verse::mesh::Mesh::default(),
@@ -472,6 +498,8 @@ impl Scene {
             self.frame_timestamp = None;
         }
         if !active {
+            self.world.cancel_navigation();
+            self.map.clear_contacts();
             self.presented_entities = verse::mesh::Mesh::default();
             self.touches.clear();
             self.jump = false;
@@ -529,6 +557,7 @@ impl Scene {
         let changed = self.lifecycle.viewport() != viewport;
         self.lifecycle.resize(viewport).map_err(|e| e.to_string())?;
         if changed {
+            self.map.clear_contacts();
             self.touches.clear();
             self.jump = false;
             self.reset_motion();
@@ -537,6 +566,29 @@ impl Scene {
     }
 
     pub fn pointer(&mut self, id: u64, phase: PointerPhase, x: f32, y: f32) -> Result<(), String> {
+        let point = [x, y];
+        if self.map.captured(id) {
+            match phase {
+                PointerPhase::Move => self.map.moved(id, point),
+                PointerPhase::Up | PointerPhase::Cancel => {
+                    if let Some(action) =
+                        self.map
+                            .up(id, point, matches!(phase, PointerPhase::Cancel))
+                    {
+                        self.map_action(action)?;
+                    }
+                }
+                PointerPhase::Down => {}
+            }
+            return Ok(());
+        }
+        if matches!(phase, PointerPhase::Down) {
+            let snapshot = self.map_snapshot();
+            if self.map.down(id, point, &snapshot) {
+                self.cancel_taps();
+                return Ok(());
+            }
+        }
         // Gesture duration follows receipt time, not the last rendered frame.
         // A slow frame must not turn a long hold into a tap.
         self.pointer_at(id, phase, x, y, self.pointer_clock.elapsed().as_secs_f64())
@@ -764,6 +816,7 @@ impl Scene {
         self.advance_motion(camera_dt as f32);
         let input = self.input();
         self.world.tick(&input, dt);
+        self.map.tick(dt);
         let panel_was_open = self.panel_open();
         if !self.computer().near {
             self.computer_open = false;
@@ -799,6 +852,15 @@ impl Scene {
     pub fn action(&mut self, request: Request) -> Result<(), String> {
         match request {
             Request::Active { active } => self.activate(active),
+            Request::HudInsets {
+                top,
+                right,
+                bottom,
+                left,
+            } => self.map.set_insets([top, right, bottom, left]),
+            Request::MapToggle => self.map_action(verse::minimap::MapAction::Toggle),
+            Request::MapCancel => self.map_action(verse::minimap::MapAction::Cancel),
+            Request::MapWalk { x, z } => self.map_action(verse::minimap::MapAction::Walk([x, z])),
             Request::CameraMode { mode } => {
                 if self.camera_mode != mode {
                     self.camera_mode = mode;
@@ -880,6 +942,8 @@ impl Scene {
                     return Err("Walk inside the Gym and approach its board to open it".into());
                 }
                 self.reset_motion();
+                self.world.cancel_navigation();
+                self.map.clear_contacts();
                 self.gym_open = true;
                 self.computer_open = false;
                 self.touches.clear();
@@ -957,6 +1021,7 @@ impl Scene {
                 .as_ref()
                 .and_then(|session| session.connection_error),
         );
+        packet.map = self.map_snapshot();
         packet.camera_mode = self.camera_mode;
         packet.camera_yaw =
             verse::controller::wrap(self.world.player.yaw + self.world.camera.yaw_offset);
@@ -970,6 +1035,67 @@ impl Scene {
         packet.gym_revision = self.gym_board.revision();
         packet.gym_active = self.lifecycle.active() && !self.spawn_pending && self.gym().inside;
         packet
+    }
+
+    fn map_action(&mut self, action: verse::minimap::MapAction) -> Result<(), String> {
+        if !self.lifecycle.active() || self.panel_open() || self.spawn_pending {
+            return Err("Return to the world to use the map".into());
+        }
+        match action {
+            verse::minimap::MapAction::Toggle => self.map.expanded = !self.map.expanded,
+            verse::minimap::MapAction::Cancel => {
+                self.world.cancel_navigation();
+                self.map_error = None;
+            }
+            verse::minimap::MapAction::Walk(target) => {
+                self.cancel_taps();
+                self.jump = false;
+                match self.world.navigate_to(target) {
+                    Ok(()) => {
+                        self.map_error = None;
+                        self.map.expanded = false;
+                    }
+                    Err(error) => {
+                        self.map_error = Some(error.to_string());
+                        self.map.expanded = true;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn map_snapshot(&self) -> verse::minimap::Snapshot {
+        use verse::nav::NavigationStatus as Status;
+        let state = self
+            .map_error
+            .as_deref()
+            .unwrap_or(match self.world.navigation().status() {
+                Status::Idle => "Choose a place to walk",
+                Status::Walking => "Walking",
+                Status::Arrived => "Arrived",
+                Status::Cancelled => "Walk stopped",
+                Status::Blocked => "Route blocked",
+            });
+        self.map.snapshot(
+            self.lifecycle.viewport().logical_size(),
+            [self.world.player.pos.x, self.world.player.pos.z],
+            self.lifecycle.active() && !self.panel_open() && !self.spawn_pending,
+            state,
+            self.world.navigation().destination(),
+        )
+    }
+
+    pub fn map_ui(&self) -> verse::ui::UiBatch {
+        self.map.draw(
+            &self.atlas,
+            &self.map_snapshot(),
+            &self.world.world.blockers,
+            [self.world.player.pos.x, self.world.player.pos.z],
+            self.world.player.yaw,
+            self.world.navigation().waypoints(),
+            self.lifecycle.viewport().scale(),
+        )
     }
 
     pub fn gym_view(&self) -> Option<verse::gym::BoardView> {
@@ -1114,6 +1240,8 @@ impl Scene {
 
     /// Called only after pointer or accessibility picking validates the target.
     fn open_computer(&mut self) {
+        self.world.cancel_navigation();
+        self.map.clear_contacts();
         self.reset_motion();
         self.computer_open = true;
         self.gym_open = false;
@@ -1174,6 +1302,91 @@ mod tests {
             world_relay: None,
         })
         .unwrap()
+    }
+
+    #[test]
+    fn map_taps_walk_and_lifecycle_cancels_without_world_input_leaking() {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        scene
+            .action(Request::HudInsets {
+                top: 50.0,
+                right: 0.0,
+                bottom: 24.0,
+                left: 0.0,
+            })
+            .unwrap();
+        let compact = scene.map_snapshot();
+        let tap = [compact.frame[0] + 10.0, compact.frame[1] + 10.0];
+        scene
+            .pointer(77, PointerPhase::Down, tap[0], tap[1])
+            .unwrap();
+        assert_eq!(scene.map_snapshot().captured_pointers, vec![77]);
+        assert!(scene.touches.is_empty());
+        scene.pointer(77, PointerPhase::Up, tap[0], tap[1]).unwrap();
+        assert!(scene.map_snapshot().expanded);
+        scene
+            .action(Request::MapWalk { x: -5.0, z: -10.0 })
+            .unwrap();
+        assert!(scene.world.navigation().is_active());
+        assert!(!scene.map_snapshot().expanded);
+        scene.update(0.0).unwrap();
+        for frame in 1..120 {
+            scene.update(f64::from(frame) / 60.0).unwrap();
+        }
+        assert!((scene.world.player.pos.x + 5.0).abs() < 0.15);
+        assert_eq!(
+            scene.world.navigation().status(),
+            verse::nav::NavigationStatus::Arrived
+        );
+        scene
+            .action(Request::MapWalk { x: -10.0, z: -10.0 })
+            .unwrap();
+        scene.activate(false).unwrap();
+        assert!(!scene.world.navigation().is_active());
+        assert!(!scene.map_snapshot().visible);
+        assert!(scene.action(Request::MapWalk { x: 0.0, z: -10.0 }).is_err());
+    }
+
+    #[test]
+    fn held_manual_movement_keeps_priority_over_a_new_map_route() {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        scene.pointer(1, PointerPhase::Down, 50.0, 350.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 50.0, 300.0).unwrap();
+        scene
+            .action(Request::MapWalk { x: -5.0, z: -10.0 })
+            .unwrap();
+        assert!(scene.touches.contains_key(&1));
+        scene.update(0.0).unwrap();
+        scene.update(0.05).unwrap();
+        assert_eq!(
+            scene.world.navigation().status(),
+            verse::nav::NavigationStatus::Cancelled
+        );
+    }
+
+    #[test]
+    fn blocked_map_destination_is_visible_and_every_landmark_is_reachable() {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        scene.action(Request::MapWalk { x: 0.0, z: -5.0 }).unwrap();
+        assert_eq!(scene.map_snapshot().state, "That destination is blocked");
+        assert!(scene.map_snapshot().expanded);
+        assert!(!scene.world.navigation().is_active());
+        for landmark in verse::minimap::LANDMARKS {
+            scene
+                .world
+                .navigate_to([landmark.x, landmark.z])
+                .unwrap_or_else(|e| panic!("{}: {e}", landmark.label));
+        }
+        let ui = scene.map_ui();
+        assert!(!ui.vertices.is_empty());
+        assert!(
+            ui.vertices
+                .iter()
+                .all(|v| v.pos.iter().all(|x| x.is_finite()))
+        );
     }
 
     #[test]

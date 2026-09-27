@@ -584,3 +584,5 @@ files are included below.
 | Document | Role | Topic |
 | --- | --- | --- |
 | [voyager/README.md](voyager/README.md) | Index | Voyager |
+
+- [Verse maps, companions, and doors](verse/world-interactions.md): ordered local world interactions and their service boundaries.

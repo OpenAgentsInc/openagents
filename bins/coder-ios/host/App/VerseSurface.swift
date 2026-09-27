@@ -8,14 +8,17 @@ struct VerseSurface: UIViewRepresentable {
     let bridge: VerseBridge
     let active: Bool
     let label: String
+    let safeInsets: EdgeInsets
 
     func makeUIView(context: Context) -> VerseMetalView {
         let view = VerseMetalView(bridge: bridge)
         view.accessibilityLabel = label
+        view.setHudInsets(safeInsets)
         return view
     }
 
     func updateUIView(_ uiView: VerseMetalView, context: Context) {
+        uiView.setHudInsets(safeInsets)
         uiView.setActive(active)
     }
 
@@ -31,7 +34,7 @@ private final class VerseDisplayTarget: NSObject {
 }
 
 @MainActor
-final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
+final class VerseMetalView: UIView {
     override class var layerClass: AnyClass { CAMetalLayer.self }
     private let bridge: VerseBridge
     private var handle: UnsafeMutableRawPointer?
@@ -44,9 +47,12 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
     private var pointers: [ObjectIdentifier: UInt64] = [:]
     private var nextPointer: UInt64 = 1
     private var computerAccessible = false
+    private var hudPointers = Set<UInt64>()
+    private var hudInsets = EdgeInsets()
+    private var mapState: VerseMap?
+    private var accessibilityActionState = ""
     private var highestObservedY = 0.0
     private var pinchAdmission = PinchAdmission()
-    private lazy var pinchRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(pinch(_:)))
 
     init(bridge: VerseBridge) {
         self.bridge = bridge
@@ -57,9 +63,6 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
         accessibilityIdentifier = "verse-surface"
         accessibilityHint = "Drag on the left to move and on the right to look around. Double-tap to jump and pinch with two fingers to zoom. Walk to the computer and tap its screen to open your chats."
         accessibilityTraits = [.allowsDirectInteraction]
-        pinchRecognizer.cancelsTouchesInView = false
-        pinchRecognizer.delegate = self
-        addGestureRecognizer(pinchRecognizer)
         bridge.bind(self)
         displayTarget.view = self
     }
@@ -110,6 +113,7 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
                     let failure = try VerseBridge.decode(coder_verse_blueprint())
                     throw ReaderError.message(failure.error ?? "The Metal world could not start on this device.")
                 }
+                sendHudInsets()
                 send(["action": "snapshot"], forcePublish: true, deferred: true)
                 updateActivity()
             } catch {
@@ -123,6 +127,21 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
             send(["action": "resize", "width": width, "height": height, "scale": Double(scale)],
                  forcePublish: true, deferred: true)
         }
+    }
+
+    func setHudInsets(_ insets: EdgeInsets) {
+        guard insets.top.isFinite, insets.trailing.isFinite, insets.bottom.isFinite, insets.leading.isFinite,
+              insets.top >= 0, insets.trailing >= 0, insets.bottom >= 0, insets.leading >= 0 else { return }
+        guard hudInsets != insets else { return }
+        hudInsets = insets
+        cancelPointers()
+        sendHudInsets()
+    }
+
+    private func sendHudInsets() {
+        send(["action": "hud_insets", "top": Double(hudInsets.top), "right": Double(hudInsets.trailing),
+              "bottom": Double(hudInsets.bottom), "left": Double(hudInsets.leading)],
+             forcePublish: true, deferred: true)
     }
 
     func setActive(_ active: Bool) {
@@ -186,12 +205,32 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
     private func syncAccessibility(_ packet: VersePacket) {
         let available = running && packet.computer.near && packet.computer.visible
             && !packet.computer_open && !packet.gym_open
-        if available != computerAccessible {
-            computerAccessible = available
-            accessibilityCustomActions = available ? [
-                UIAccessibilityCustomAction(name: "Use computer", target: self,
-                                            selector: #selector(useComputerAccessibly))
-            ] : []
+        computerAccessible = available
+        mapState = packet.map
+        let map = packet.map
+        let mapAvailable = running && map.visible
+        let state = "\(available):\(mapAvailable):\(map.expanded):\(map.destination != nil):" + map.landmarks.map(\.id).joined(separator: ",")
+        if state != accessibilityActionState {
+            accessibilityActionState = state
+            var actions: [UIAccessibilityCustomAction] = []
+            if available {
+                actions.append(UIAccessibilityCustomAction(name: "Use computer", target: self, selector: #selector(useComputerAccessibly)))
+            }
+            if mapAvailable {
+                actions.append(UIAccessibilityCustomAction(name: map.expanded ? "Close map" : "Open map", target: self, selector: #selector(toggleMapAccessibly)))
+                if map.destination != nil {
+                    actions.append(UIAccessibilityCustomAction(name: "Cancel walk", target: self, selector: #selector(cancelMapWalkAccessibly)))
+                }
+                for landmark in map.landmarks {
+                    actions.append(UIAccessibilityCustomAction(name: "Walk to \(landmark.label)") { [weak self] _ in
+                        guard let self, self.running, self.mapState?.visible == true,
+                              let current = self.mapState?.landmarks.first(where: { $0.id == landmark.id }) else { return false }
+                        guard case let .success(result)? = self.send(["action": "map_walk", "x": current.x, "z": current.z], forcePublish: true) else { return false }
+                        return result.error == nil
+                    })
+                }
+            }
+            accessibilityCustomActions = actions
         }
         if bridge.synthetic {
             // Keep test observations in accessibility metadata, not in the HUD.
@@ -206,6 +245,7 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
                 "gym_active": packet.gym_active,
                 "computer_ready": available,
                 "computer_target": [packet.computer.screen_x, packet.computer.screen_y],
+                "map": packet.map.observation,
             ]
             accessibilityValue = (try? JSONSerialization.data(withJSONObject: metadata))
                 .flatMap { String(data: $0, encoding: .utf8) }
@@ -219,6 +259,18 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
         guard let result = send(["action": "interact_computer"], forcePublish: true) else { return false }
         if case let .success(packet) = result { return packet.computer_open }
         return false
+    }
+
+    @objc private func toggleMapAccessibly() -> Bool {
+        guard running, mapState?.visible == true else { return false }
+        guard case let .success(result)? = send(["action": "map_toggle"], forcePublish: true) else { return false }
+        return result.error == nil
+    }
+
+    @objc private func cancelMapWalkAccessibly() -> Bool {
+        guard running, mapState?.visible == true, mapState?.destination != nil else { return false }
+        guard case let .success(result)? = send(["action": "map_cancel"], forcePublish: true) else { return false }
+        return result.error == nil
     }
 
     private func syncMotion(_ packet: VersePacket) {
@@ -254,18 +306,6 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
         DispatchQueue.main.async { [weak self] in self?.bridge.reportMotionFailure(error) }
     }
 
-    override func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
-        recognizer !== pinchRecognizer || (running && pinchAdmission.allowed)
-    }
-
-    @objc private func pinch(_ recognizer: UIPinchGestureRecognizer) {
-        defer { recognizer.scale = 1 }
-        guard running, pinchAdmission.reserved else { return }
-        guard recognizer.state == .began || recognizer.state == .changed,
-              recognizer.scale.isFinite, recognizer.scale > 0 else { return }
-        send(["action": "pinch_zoom", "scale": Double(recognizer.scale)], forcePublish: true)
-    }
-
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard running else { return }
         // UIKit delivers a set, so admit the oldest contact first.
@@ -275,19 +315,31 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
             nextPointer &+= 1
             pointers[ObjectIdentifier(touch)] = id
             let at = touch.location(in: self)
-            pinchAdmission.down(id, x: Double(at.x), y: Double(at.y), time: touch.timestamp)
-            if !pinchAdmission.reserved { pointer(touch, id: id, phase: "down") }
+            pointer(touch, id: id, phase: "down")
+            if mapState?.captured_pointers.contains(id) == true {
+                hudPointers.insert(id)
+            } else {
+                pinchAdmission.down(id, x: Double(at.x), y: Double(at.y), time: touch.timestamp)
+            }
         }
-        if pinchAdmission.reserved { cancelRustPointers() }
+        if pinchAdmission.reserved { cancelRustPointers(keepingHud: true) }
+        _ = pinchAdmission.scale()
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
             if let id = pointers[ObjectIdentifier(touch)] {
                 let at = touch.location(in: self)
-                pinchAdmission.move(id, x: Double(at.x), y: Double(at.y))
-                if !pinchAdmission.reserved { pointer(touch, id: id, phase: "move") }
+                if hudPointers.contains(id) {
+                    pointer(touch, id: id, phase: "move")
+                } else {
+                    pinchAdmission.move(id, x: Double(at.x), y: Double(at.y))
+                    if !pinchAdmission.reserved { pointer(touch, id: id, phase: "move") }
+                }
             }
+        }
+        if running, hudPointers.isEmpty, let scale = pinchAdmission.scale(), scale.isFinite, scale > 0 {
+            send(["action": "pinch_zoom", "scale": scale], forcePublish: true)
         }
     }
 
@@ -297,7 +349,7 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
     private func finish(_ touches: Set<UITouch>, phase: String) {
         for touch in touches {
             if let id = pointers.removeValue(forKey: ObjectIdentifier(touch)) {
-                if !pinchAdmission.reserved { pointer(touch, id: id, phase: phase) }
+                if hudPointers.remove(id) != nil || !pinchAdmission.reserved { pointer(touch, id: id, phase: phase) }
                 pinchAdmission.up(id)
             }
         }
@@ -310,8 +362,8 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
               "x": Double(at.x), "y": Double(at.y)], forcePublish: phase != "move")
     }
 
-    private func cancelRustPointers() {
-        for id in pointers.values {
+    private func cancelRustPointers(keepingHud: Bool = false) {
+        for id in pointers.values where !keepingHud || !hudPointers.contains(id) {
             send(["action": "pointer", "id": id, "phase": "cancel", "x": 0, "y": 0],
                  forcePublish: false, deferred: true)
         }
@@ -320,6 +372,7 @@ final class VerseMetalView: UIView, UIGestureRecognizerDelegate {
     private func cancelPointers() {
         cancelRustPointers()
         pointers.removeAll()
+        hudPointers.removeAll()
         pinchAdmission.reset()
     }
 

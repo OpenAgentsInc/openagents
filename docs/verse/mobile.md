@@ -39,7 +39,7 @@ shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
   The HUD has no walk/sprint toggle, jump button, or zoom buttons.
 - Use the world computer to pair by QR code and open **Chats**, the read-only
   Codex and Claude viewer. Selecting a transcript expands its reading area;
-  **All chats** returns to the smaller computer panel. Close the panel to
+  **All chats** returns to the chat list. Close the panel to
   continue walking.
 - Walk east to the **GYM** building. Enter, approach the boards, and tap
   **Use Gym board** to inspect Microcoder and Terminal-Bench runs.
@@ -66,6 +66,13 @@ its eye above the ground while preserving the requested view direction,
 including upward look; the ground clamp does not force it to keep looking
 at the avatar. See the
 [motion-camera verification](../coder/verification/2026-09-26-motion-camera.md).
+
+## Map navigation
+
+Tap the top-right map to expand it, then choose a clear position or landmark to
+walk there. The character follows a collision-aware route; manual movement or
+jumping stops it. Camera input can continue while walking. See
+[maps, companions, and doors](world-interactions.md) for the ordered demo work.
 
 ## Use the world computer
 

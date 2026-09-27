@@ -2,4 +2,6 @@
 <resources>
     <item name="verse_use_computer_action" type="id" />
     <item name="verse_inject_motion_action" type="id" />
+    <item name="verse_map_toggle_action" type="id" />
+    <item name="verse_map_cancel_action" type="id" />
 </resources>

@@ -10,6 +10,7 @@ use crate::avatar::{self, Gait};
 use crate::camera::FollowCamera;
 use crate::controller::{InputState, PlayerController, wrap};
 use crate::mesh::Mesh;
+use crate::nav::{self, NavError, Navigation, NavigationStatus};
 use crate::render::View;
 use crate::world::{self, World};
 
@@ -71,6 +72,7 @@ pub struct WorldRuntime {
     pub camera: FollowCamera,
     pub gait: Gait,
     pub agent: Agent,
+    pub(crate) navigation: Navigation,
 }
 
 impl Default for WorldRuntime {
@@ -91,7 +93,41 @@ impl WorldRuntime {
             camera: FollowCamera::default(),
             gait: Gait::default(),
             agent,
+            navigation: Navigation::default(),
         }
+    }
+
+    /// Start ordinary walking to an exact clear ground position.
+    /// A refused destination stops any earlier route.
+    pub fn navigate_to(&mut self, destination: [f32; 2]) -> Result<(), NavError> {
+        match nav::plan(
+            [self.player.pos.x, self.player.pos.z],
+            destination,
+            &self.world.blockers,
+            world::HALF,
+        ) {
+            Ok(route) => {
+                self.navigation.start(route);
+                Ok(())
+            }
+            Err(error) => {
+                self.navigation = Navigation::default();
+                self.navigation.stop(NavigationStatus::Blocked);
+                Err(error)
+            }
+        }
+    }
+
+    /// Stop automatic walking without moving the player or changing the view.
+    pub fn cancel_navigation(&mut self) {
+        if self.navigation.is_active() {
+            self.navigation.stop(NavigationStatus::Cancelled);
+        }
+    }
+
+    #[must_use]
+    pub fn navigation(&self) -> &Navigation {
+        &self.navigation
     }
 
     /// Applies bounded, finite camera input. Invalid input changes no state.
@@ -102,10 +138,16 @@ impl WorldRuntime {
         match action {
             Action::Orbit { dx, dy } if motion(dx, dy) => self.camera.orbit(dx, dy),
             Action::Look { dx, dy } if motion(dx, dy) => {
-                self.player.yaw = wrap(self.player.yaw + self.camera.mouselook(dx, dy));
+                if self.navigation.is_active() {
+                    self.camera.orbit(dx, dy);
+                } else {
+                    self.player.yaw = wrap(self.player.yaw + self.camera.mouselook(dx, dy));
+                }
             }
             Action::FaceCamera => {
-                self.player.yaw = wrap(self.player.yaw + self.camera.take_offset());
+                if !self.navigation.is_active() {
+                    self.player.yaw = wrap(self.player.yaw + self.camera.take_offset());
+                }
             }
             Action::Zoom { lines } if lines.is_finite() && lines.abs() <= 100.0 => {
                 self.camera.zoom(lines);
@@ -140,9 +182,26 @@ impl WorldRuntime {
         if dt == 0.0 {
             return 0.0;
         }
-        self.player
-            .update(input, dt, &self.world.blockers, world::HALF);
-        if self.player.speed > 0.1 && !orbiting {
+        if input.forward
+            || input.backward
+            || input.left
+            || input.right
+            || input.strafe_left
+            || input.strafe_right
+            || input.jump
+        {
+            self.cancel_navigation();
+        }
+        if self.navigation.is_active() {
+            self.walk_route(dt);
+        } else {
+            self.player
+                .update(input, dt, &self.world.blockers, world::HALF);
+        }
+        if self.player.speed > 0.1
+            && !orbiting
+            && !(self.navigation.is_active() && input.mouse_look)
+        {
             self.camera.settle(dt);
         }
         self.gait
@@ -151,6 +210,77 @@ impl WorldRuntime {
             self.agent.update(&self.player, dt);
         }
         dt
+    }
+
+    fn walk_route(&mut self, dt: f32) {
+        let at = [self.player.pos.x, self.player.pos.z];
+        while self
+            .navigation
+            .waypoints()
+            .first()
+            .is_some_and(|next| (next[0] - at[0]).hypot(next[1] - at[1]) <= 0.05)
+        {
+            self.navigation.next += 1;
+        }
+        let Some(&next) = self.navigation.waypoints().first() else {
+            self.navigation.stop(NavigationStatus::Arrived);
+            self.player.update(
+                &InputState::default(),
+                dt,
+                &self.world.blockers,
+                world::HALF,
+            );
+            return;
+        };
+        if !nav::segment_clear(at, next, &self.world.blockers, world::HALF) {
+            self.navigation.stop(NavigationStatus::Blocked);
+            self.player.update(
+                &InputState::default(),
+                dt,
+                &self.world.blockers,
+                world::HALF,
+            );
+            return;
+        }
+        let dx = next[0] - at[0];
+        let dz = next[1] - at[1];
+        let distance = dx.hypot(dz);
+        let view_yaw = self.player.yaw + self.camera.yaw_offset;
+        self.player.yaw = dx.atan2(dz);
+        self.camera.yaw_offset = wrap(view_yaw - self.player.yaw);
+        let step = dt.min(distance / crate::controller::RUN_SPEED);
+        self.player.update(
+            &InputState {
+                forward: true,
+                mouse_look: true,
+                ..InputState::default()
+            },
+            step,
+            &self.world.blockers,
+            world::HALF,
+        );
+        if step < dt {
+            self.player.update(
+                &InputState::default(),
+                dt - step,
+                &self.world.blockers,
+                world::HALF,
+            );
+        }
+        let progress = (self.player.pos.x - at[0]).hypot(self.player.pos.z - at[1]);
+        self.navigation.stalled = if progress < 0.0001 {
+            self.navigation.stalled + dt
+        } else {
+            0.0
+        };
+        if self.navigation.stalled >= 1.0 {
+            self.navigation.stop(NavigationStatus::Blocked);
+        } else if (self.player.pos.x - next[0]).hypot(self.player.pos.z - next[1]) <= 0.05 {
+            self.navigation.next += 1;
+            if self.navigation.waypoints().is_empty() {
+                self.navigation.stop(NavigationStatus::Arrived);
+            }
+        }
     }
 
     #[must_use]
@@ -309,6 +439,7 @@ impl WorldRuntime {
         {
             return Err("spawn is nonfinite or outside the world".into());
         }
+        self.cancel_navigation();
         self.player = PlayerController::new(position, wrap(yaw));
         self.agent = Agent::new(&self.player);
         self.gait = Gait::default();
@@ -347,6 +478,123 @@ fn mesh_occludes(mesh: &Mesh, origin: Vec3, direction: Vec3, distance: f32) -> b
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn navigation_walks_around_a_building_without_teleporting_or_entering_it() {
+        let mut runtime = WorldRuntime::new();
+        runtime.world.blockers = vec![crate::controller::Footprint {
+            min: [-2.0, -2.0],
+            max: [2.0, 2.0],
+        }];
+        runtime.set_spawn(Vec3::new(-8.0, 0.0, 0.0), 0.0).unwrap();
+        runtime.navigate_to([8.0, 0.0]).unwrap();
+        let route = runtime.navigation().waypoints().to_vec();
+        assert!(route.len() >= 2);
+        for _ in 0..2000 {
+            let previous = runtime.player.pos;
+            runtime.tick(&InputState::default(), 1.0 / 60.0);
+            assert!(
+                runtime.player.pos.distance(previous)
+                    <= crate::controller::RUN_SPEED / 60.0 + 0.001
+            );
+            assert!(!runtime.world.blockers[0].contains(
+                runtime.player.pos.x,
+                runtime.player.pos.z,
+                crate::controller::RADIUS
+            ));
+            if !runtime.navigation().is_active() {
+                break;
+            }
+        }
+        assert_eq!(runtime.navigation().status(), NavigationStatus::Arrived);
+        assert!(runtime.player.pos.distance(Vec3::new(8.0, 0.0, 0.0)) <= 0.05);
+        assert_eq!(runtime.navigation().destination(), Some([8.0, 0.0]));
+    }
+
+    #[test]
+    fn navigation_uses_the_seeded_gym_door_and_camera_control_does_not_cancel_it() {
+        let mut runtime = WorldRuntime::new();
+        runtime.navigate_to([48.0, 0.0]).unwrap();
+        let camera = runtime.camera;
+        runtime
+            .apply(Action::Look {
+                dx: 30.0,
+                dy: -20.0,
+            })
+            .unwrap();
+        assert_ne!(runtime.camera, camera);
+        assert!(runtime.navigation().is_active());
+        for _ in 0..3000 {
+            runtime.tick(
+                &InputState {
+                    mouse_look: true,
+                    ..InputState::default()
+                },
+                1.0 / 60.0,
+            );
+            assert!(!runtime.world.blockers.iter().any(|b| b.contains(
+                runtime.player.pos.x,
+                runtime.player.pos.z,
+                crate::controller::RADIUS
+            )));
+            if !runtime.navigation().is_active() {
+                break;
+            }
+        }
+        assert_eq!(runtime.navigation().status(), NavigationStatus::Arrived);
+        assert!(runtime.gym(1.0).inside);
+    }
+
+    #[test]
+    fn manual_movement_jump_and_explicit_cancel_stop_routes() {
+        for input in [
+            InputState {
+                forward: true,
+                ..InputState::default()
+            },
+            InputState {
+                left: true,
+                ..InputState::default()
+            },
+            InputState {
+                strafe_right: true,
+                ..InputState::default()
+            },
+            InputState {
+                jump: true,
+                ..InputState::default()
+            },
+        ] {
+            let mut runtime = WorldRuntime::new();
+            runtime.navigate_to([8.0, -10.0]).unwrap();
+            runtime.tick(&input, 0.02);
+            assert_eq!(runtime.navigation().status(), NavigationStatus::Cancelled);
+        }
+        let mut runtime = WorldRuntime::new();
+        runtime.navigate_to([8.0, -10.0]).unwrap();
+        let position = runtime.player.pos;
+        runtime.cancel_navigation();
+        runtime.tick(&InputState::default(), 0.05);
+        assert_eq!(runtime.player.pos, position);
+        assert_eq!(runtime.navigation().status(), NavigationStatus::Cancelled);
+    }
+
+    #[test]
+    fn changed_obstacles_stop_navigation_before_the_player_crosses_them() {
+        let mut runtime = WorldRuntime::new();
+        runtime.world.blockers.clear();
+        runtime.navigate_to([10.0, -10.0]).unwrap();
+        runtime.world.blockers.push(crate::controller::Footprint {
+            min: [2.0, -12.0],
+            max: [3.0, -8.0],
+        });
+        let position = runtime.player.pos;
+        runtime.tick(&InputState::default(), 0.05);
+        assert_eq!(runtime.navigation().status(), NavigationStatus::Blocked);
+        assert_eq!(runtime.player.pos, position);
+        assert!(runtime.navigate_to([f32::NAN, 0.0]).is_err());
+        assert!(!runtime.navigation().is_active());
+    }
 
     #[test]
     fn gym_entry_requires_the_real_doorway_and_excludes_walls_and_roof() {

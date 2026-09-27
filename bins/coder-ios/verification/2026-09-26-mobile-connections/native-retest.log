@@ -1,0 +1,541 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project bins/coder-ios/host/Coder.xcodeproj -scheme Coder -configuration Release -destination "platform=iOS Simulator,id=80A56DD2-8E81-4037-B560-2BEDBB61CAF2" -derivedDataPath /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData CODER_RUST_LIBRARY_DIR=/Users/christopherdavid/work/openagents-mobile45-target/aarch64-apple-ios-sim/release CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= -resultBundlePath /tmp/coder-build46-native-retest.xcresult -parallel-testing-enabled NO "-only-testing:CoderUITests/FullscreenMotionUITests/testTouchAndInjectedMotionModesPreserveLeftMovement" "-only-testing:CoderUITests/ReaderUITests/testSyntheticDeviceIdentitySurvivesRelaunch" "-only-testing:CoderUITests/VerseUITests/testPinchZoomsWithoutMovingThePlayerOrTurningTheCamera" test
+
+Build settings from command line:
+    CODE_SIGN_IDENTITY = -
+    CODER_RUST_LIBRARY_DIR = /Users/christopherdavid/work/openagents-mobile45-target/aarch64-apple-ios-sim/release
+    PROVISIONING_PROFILE_SPECIFIER = 
+
+Writing result bundle at path:
+	/tmp/coder-build46-native-retest.xcresult
+
+note: Using codesigning identity override: -
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (2 targets)
+    Target 'CoderUITests' in project 'Coder'
+        ➜ Explicit dependency on target 'Coder' in project 'Coder'
+    Target 'Coder' in project 'Coder' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/Coder.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache
+
+ProcessProductPackaging "" /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    
+    Entitlements:
+    
+    {
+    "application-identifier" = "HQWSG26L43.com.openagents.coder";
+}
+    
+    builtin-productPackagingUtility -entitlements -format xml -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent
+
+ProcessProductPackagingDER /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent.der (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /usr/bin/derq query -f xml -i /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent.der --raw
+
+CompileAssetCatalogVariant thinned /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Assets.xcassets (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Assets.xcassets --compile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned --output-format human-readable-text --notices --warnings --export-dependency-info /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_dependencies_thinned --output-partial-info-plist /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist_thinned --app-icon AppIcon --compress-pngs --enable-on-demand-resources YES --filter-for-thinning-device-configuration iPhone18,1 --filter-for-device-os-version 26.5 --development-region en --target-device iphone --minimum-deployment-target 17.0 --platform iphonesimulator
+/* com.apple.actool.compilation-results */
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist_thinned
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned/AppIcon60x60@2x.png
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned/AppIcon76x76@2x~ipad.png
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned/Assets.car
+
+
+SwiftDriver CoderUITests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name CoderUITests -O -whole-module-optimization @/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.SwiftFileList -module-alias Testing\=_Testing_Unavailable -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -num-threads 18 -Xcc -ivfsstatcache -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests_const_extract_protocols.json -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-generated-files.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-own-target-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-all-target-headers.hmap -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-project-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/include -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/DerivedSources-normal/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/DerivedSources/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests-Swift.h -working-directory /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host -no-emit-module-separately-wmo
+
+Ld /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder normal (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -Os -L/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphonesimulator -L/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator -L/Users/christopherdavid/work/openagents-mobile45-target/aarch64-apple-ios-sim/release -F/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphonesimulator -F/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator -filelist /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -dead_strip -Xlinker -object_path_lto -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_lto.o -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -dependency_info -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.swiftmodule @/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder-linker-args.resp /Users/christopherdavid/work/openagents-mobile45-target/aarch64-apple-ios-sim/release/libcoder_mobile.a -framework Metal -liconv -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __ents_der -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.app-Simulated.xcent.der -Xlinker -no_adhoc_codesign -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder
+
+SwiftCompile normal arm64 Compiling\ ComputersLiveUITests.swift,\ ComputersUITests.swift,\ FullscreenMotionUITests.swift,\ GymUITests.swift,\ ProductionLaunchUITests.swift,\ ReaderUITests.swift,\ VerseUITests.swift,\ WorldConnectionUITests.swift,\ WorldTestSupport.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/UITests/ComputersLiveUITests.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/UITests/ComputersUITests.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/UITests/FullscreenMotionUITests.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/UITests/GymUITests.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/UITests/ProductionLaunchUITests.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/UITests/ReaderUITests.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/UITests/VerseUITests.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/UITests/WorldConnectionUITests.swift /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/UITests/WorldTestSupport.swift /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreImage.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Symbols.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_Builtin_float.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreVideo.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/System.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/ObjectiveC.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/DeveloperToolsSupport.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Dispatch.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreFoundation.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Swift.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCTest-VCBPL2EE8F10.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Metal.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/DataDetection.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_Concurrency.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreText.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Foundation.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/UniformTypeIdentifiers.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/OSLog.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Darwin.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/QuartzCore.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_DarwinFoundation2.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_StringProcessing.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Combine.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Spatial.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/simd.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/XPC.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreGraphics.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/os.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/CoreTransferable.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCUIAutomation-2O4CAZ1H4OUBA.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/SwiftUICore.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Observation.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/Accessibility.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/UIKit.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_DarwinFoundation1.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/FileProvider.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator/prebuilt-modules/26.5/_DarwinFoundation3.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/CoreGraphics-62E5X3GSEEDRTIKJ2QE69ZF7T.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Foundation-AOFH4EMWZUOA7XG92AOQVJOYA.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/ImageIO-14GBJK821Z12B4PUM8R6WZD28.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/os_workgroup-14RBRPHJZ6MCI2FVE7U1SPU4J.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_DarwinFoundation1-D7PZ41HR63JGJ4KCSP8BCUKPK.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/UserNotifications-7NSTMLFZ2BTRGG2KOPZKMG1ML.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/os-DIGDKYW7OZ5XKSVQ97LIAYX0P.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_DarwinFoundation3-3F2B3L91ILKTLSVM425LPVBQO.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Metal-871SI4ML6SPZUJ7BUAN667040.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/DeveloperToolsSupport-B77I77HBS2O2GZBLOZHYCN1OC.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Symbols-5SQRNEC686X4ZYSIF1C634661.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/CoreVideo-DIEML12Z2DNFIFEPDF4K1THRE.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/OpenGLES-DBW1IBRRKYVULAWIO537QJRN9.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/CoreFoundation-AZGGYOIIPYNPVA9YEKG41U7IM.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/FileProvider-7DTL2USADAU9SN14PEELHLC53.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Darwin-451QTUJ01DXR3WY4BZ6QCCE37.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/XPC-B2MLFJ78BLEWT7PWA22I036LN.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/QuartzCore-8G067DCY7TIY4P564J1UB5VDI.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/sys_types-AP90WUJ8JC3E0QP3IMWQWDSDO.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_AvailabilityInternal-R0M6LMEMP2GGO3P49G9WW047.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_Builtin_stdint-4DBQXWDCJB1XG6JRS1I3FOIQR.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_SwiftConcurrencyShims-9P9U7BDFQ8MC46EBXSWIO391G.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_Builtin_stddef-6JV99O82QCI6JMCBKSNI1DM0F.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_Builtin_tgmath-B3YFW3TV8C6Q7WA84I1XGJ8EF.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/OSLog-8UD2NJIV7HWDFW6OU3OH7RGN0.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/DataDetection-2GOBNNZS275IJK25CH5DX7LRV.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/ObjectiveC-7OQ7PZP03NVINTTS5VZVK6D4M.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/CoreText-4ISWIAAXB18MWCHW7ZGDAA679.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_Builtin_stdarg-E12R7ICB0RM0YBBJ1ITSDGURT.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Spatial-35QIB1ZW9YLLKWWDEVSV285B2.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/CoreTransferable-2BKNTCK4AAAAWAJZBLJC2VGPS.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Dispatch-3M5TAA9LMUNHENO0AY3GOD3E.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/simd-AKWQ4I32JPMOJFD0ZMGEKWXI6.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/CFNetwork-6UHXLOHI0W9BCZZDKKE0V9W0Y.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/UniformTypeIdentifiers-9JYE6WOW4X8NN9P5JX95VGU1R.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/CoreImage-BI9MEWXPX9ZUKX74IJST45WKD.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_Builtin_stdatomic-4UJ9AXTRVDG92S1F2BL8ZJW4N.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_Builtin_stdbool-AVAUBK6C7KF0OISLSF24LUA0N.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Security-4YHF24I5HM3M0FQMYKVN5O1LP.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCUIAutomation-85M7KGZ6TVHDH8CPEP1S2VC9B.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/SwiftUICore-ALA1Q05GVLB40M0KD3BW1GFGM.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/IOSurface-DJX878UC2EU4BVNV3ZTFFAJND.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_Builtin_float-66J3K1Z321IXF6J4UBI1XWH24.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/SwiftShims-BAGJOVKSYBNYJBFT1VNC6A4U1.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_Builtin_inttypes-6HR1LSXVN25U49A4NGUC7QMOS.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/os_object-3AAJ2O14Q4J5SP0YMT8DJHHKJ.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_DarwinFoundation2-5GPZUWAIGVF7DMF09MG73VK89.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/UIUtilities-ARXSOGR13QEC3MMOH5A67YB8G.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/ptrauth-2ALCVE6HTBMY7CT5QRRQKJ6C8.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Accessibility-7EBKMZDQOLQ2299SLK8LL0G91.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/UIKit-4LTBDJLXDDQJVJHPEWU9T5IVT.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/ptrcheck-1PIESC9OA7QEYMOBYJDUD8IVE.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_Builtin_intrinsics-A0VQIQLL7MLH1XQ9TPP9WI4RZ.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCTest-7ZAJD9SC7YCWGWJR80YTRNHBD.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/_Builtin_limits-F3XR15BUY3SZSLZ9PIUEAMVR6.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/MachO-7K924GTBZ058DP34NU9RLV43.pcm /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests-dependencies-1.json (in target 'CoderUITests' from project 'Coder')
+CompileSwift normal arm64 (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    
+
+SwiftDriver\ Compilation CoderUITests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name CoderUITests -O -whole-module-optimization @/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.SwiftFileList -module-alias Testing\=_Testing_Unavailable -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -num-threads 18 -Xcc -ivfsstatcache -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests_const_extract_protocols.json -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-generated-files.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-own-target-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-all-target-headers.hmap -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-project-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/include -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/DerivedSources-normal/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/DerivedSources/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests-Swift.h -working-directory /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host -no-emit-module-separately-wmo
+
+LinkAssetCatalog /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Assets.xcassets (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-linkAssetCatalog --thinned /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/thinned --thinned-dependencies /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_dependencies_thinned --thinned-info-plist-content /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist_thinned --unthinned /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_output/unthinned --unthinned-dependencies /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_dependencies_unthinned --unthinned-info-plist-content /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist_unthinned --output /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app --plist-output /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist
+note: Emplaced /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/AppIcon76x76@2x~ipad.png (in target 'Coder' from project 'Coder')
+note: Emplaced /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Assets.car (in target 'Coder' from project 'Coder')
+note: Emplaced /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/AppIcon60x60@2x.png (in target 'Coder' from project 'Coder')
+
+ProcessInfoPlistFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Info.plist /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Info.plist (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-infoPlistUtility /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/App/Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/assetcatalog_generated_info.plist -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Info.plist
+
+ExtractAppIntentsMetadata (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.VdpV4P/Metal.xctoolchain --module-name Coder --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.openagents.coder --output /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app --target-triple arm64-apple-ios17.0-simulator --binary-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder --dependency-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder_dependency_info.dat --stringsdata-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftFileList --metadata-file-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.DependencyMetadataFileList --static-metadata-file-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Coder.DependencyStaticMetadataFileList --swift-const-vals-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/Objects-normal/arm64/Coder.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-26 22:20:20.580 appintentsmetadataprocessor[35318:98431151] Starting appintentsmetadataprocessor export
+2026-09-26 22:20:20.581 appintentsmetadataprocessor[35318:98431151] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+CopySwiftLibs /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Frameworks --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/PlugIns --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/SystemExtensions --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Extensions --platform iphonesimulator --toolchain /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.VdpV4P/Metal.xctoolchain --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/Coder.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+GenerateDSYMFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app.dSYM /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app/Coder -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app.dSYM
+
+CodeSign /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app
+
+Validate /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app (in target 'Coder' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-validationUtility /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/Coder.app -shallow-bundle -infoplist-subpath Info.plist
+
+SwiftDriverJobDiscovery normal arm64 Compiling ComputersLiveUITests.swift, ComputersUITests.swift, FullscreenMotionUITests.swift, GymUITests.swift, ProductionLaunchUITests.swift, ReaderUITests.swift, VerseUITests.swift, WorldConnectionUITests.swift, WorldTestSupport.swift (in target 'CoderUITests' from project 'Coder')
+
+SwiftDriver\ Compilation\ Requirements CoderUITests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name CoderUITests -O -whole-module-optimization @/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.SwiftFileList -module-alias Testing\=_Testing_Unavailable -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -num-threads 18 -Xcc -ivfsstatcache -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-688ef53f1462e2c8f657fdc38a81448f6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests_const_extract_protocols.json -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-generated-files.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-own-target-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-all-target-headers.hmap -Xcc -iquote -Xcc /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests-project-headers.hmap -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/include -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/DerivedSources-normal/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/DerivedSources/arm64 -Xcc -I/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests-Swift.h -working-directory /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host -no-emit-module-separately-wmo
+
+Copy /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.swiftsourceinfo (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.swiftsourceinfo /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo
+
+Ld /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/CoderUITests normal (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -bundle -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -Os -L/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphonesimulator -L/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphonesimulator -F/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -filelist /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @loader_path/Frameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -dead_strip -Xlinker -object_path_lto -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests_lto.o -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -dependency_info -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.swiftmodule @/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests-linker-args.resp -Xlinker -needed_framework -Xlinker XCTest -framework XCTest -Xlinker -needed-lXCTestSwiftSupport -lXCTestSwiftSupport -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests.xctest-Simulated.xcent -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __ents_der -Xlinker /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests.xctest-Simulated.xcent.der -Xlinker -no_adhoc_codesign -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/CoderUITests
+
+Copy /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests.swiftmodule/arm64-apple-ios-simulator.abi.json /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.abi.json (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.abi.json /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+GenerateDSYMFile /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest.dSYM /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/CoderUITests (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/CoderUITests -o /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest.dSYM
+
+CopySwiftLibs /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/CoderUITests --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/Frameworks --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/PlugIns --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/SystemExtensions --scan-folder /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/Extensions --platform iphonesimulator --toolchain /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.VdpV4P/Metal.xctoolchain --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+ExtractAppIntentsMetadata (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.VdpV4P/Metal.xctoolchain --module-name CoderUITests --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.openagents.coder.uitests --output /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest --target-triple arm64-apple-ios17.0-simulator --binary-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest/CoderUITests --dependency-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests_dependency_info.dat --stringsdata-file /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.SwiftFileList --metadata-file-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests.DependencyMetadataFileList --static-metadata-file-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/CoderUITests.DependencyStaticMetadataFileList --swift-const-vals-list /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Intermediates.noindex/Coder.build/Release-iphonesimulator/CoderUITests.build/Objects-normal/arm64/CoderUITests.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-26 22:20:21.344 appintentsmetadataprocessor[35334:98431275] Starting appintentsmetadataprocessor export
+2026-09-26 22:20:21.345 appintentsmetadataprocessor[35334:98431275] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+CodeSign /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app/PlugIns/CoderUITests.xctest
+
+CodeSign /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app (in target 'CoderUITests' from project 'Coder')
+    cd /Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app
+/Users/christopherdavid/work/openagents-mobile45-target/coder-ios-build46-sim/DerivedData/Build/Products/Release-iphonesimulator/CoderUITests-Runner.app: replacing existing signature
+
+2026-09-26 22:20:22.447290-0500 CoderUITests-Runner[35354:98431658] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-26 22:20:22.900.
+Test Suite 'CoderUITests.xctest' started at 2026-09-26 22:20:22.900.
+Test Suite 'FullscreenMotionUITests' started at 2026-09-26 22:20:22.900.
+Test Case '-[CoderUITests.FullscreenMotionUITests testTouchAndInjectedMotionModesPreserveLeftMovement]' started.
+    t =     0.00s Start Test at 2026-09-26 22:20:22.901
+    t =     0.01s Set Up
+    t =     0.02s Open com.openagents.coder
+    t =     0.02s     Launch com.openagents.coder
+2026-09-26 22:20:23.061 xcodebuild[35301:98430920] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-26 22:20:23.061 xcodebuild[35301:98430920] [MT] IDELaunchParametersSnapshot: no debugger version
+objc[35354]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10844c310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x107cf0398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     0.57s         Setting up automation session
+    t =     1.16s         Wait for com.openagents.coder to idle
+    t =     2.47s Waiting 30.0s for "verse-surface" Other to exist
+    t =     3.51s     Checking `Expect predicate `existsNoRetry == 1` for object "verse-surface" Other`
+    t =     3.51s         Checking existence of `"verse-surface" Other`
+    t =     4.57s Checking `Expect predicate `BLOCKPREDICATE(0x107ac0390)` for object Target Application 'com.openagents.coder'`
+    t =     4.57s     Find the "verse-surface" Other
+    t =     4.57s Checking existence of `"verse-camera-mode" Button`
+    t =     4.58s Find the "verse-camera-mode" Button
+    t =     4.58s Find the "verse-camera-mode" Button
+    t =     4.59s Find the "verse-surface" Other
+    t =     4.59s Press "verse-surface" Other[0.84, 0.42] for 0.1 seconds, then drag to "verse-surface" Other[0.65, 0.37] with velocity of 250.00 pixels per second, and then hold for 0.1 seconds 
+    t =     4.59s     Wait for com.openagents.coder to idle
+    t =     4.59s     Find the "verse-surface" Other
+    t =     4.60s     Check for interrupting elements affecting "verse-surface" Other
+    t =     4.61s     Synthesize event
+    t =     4.61s         Find the "verse-surface" Other
+    t =     4.61s         Find the "verse-surface" Other
+    t =     4.73s         Find the "verse-surface" Other
+    t =     4.73s         Find the "verse-surface" Other
+    t =     4.74s         Find the "verse-surface" Other
+    t =     5.55s     Wait for com.openagents.coder to idle
+    t =     6.59s Checking `Expect predicate `BLOCKPREDICATE(0x1144d42a0)` for object Target Application 'com.openagents.coder'`
+    t =     6.59s     Find the "verse-surface" Other
+    t =     6.59s Tap "verse-camera-mode" Button
+    t =     6.59s     Wait for com.openagents.coder to idle
+    t =     6.59s     Find the "verse-camera-mode" Button
+    t =     6.60s     Check for interrupting elements affecting "verse-camera-mode" Button
+    t =     6.61s     Synthesize event
+    t =     6.89s     Wait for com.openagents.coder to idle
+    t =     7.93s Checking `Expect predicate `BLOCKPREDICATE(0x1144d5080)` for object Target Application 'com.openagents.coder'`
+    t =     7.94s     Find the "verse-camera-mode" Button
+    t =     8.98s Checking `Expect predicate `BLOCKPREDICATE(0x1144d4ab0)` for object Target Application 'com.openagents.coder'`
+    t =     8.98s     Find the "verse-surface" Other
+    t =     8.99s Find the "verse-surface" Other
+    t =    10.03s Checking `Expect predicate `BLOCKPREDICATE(0x1144d5170)` for object Target Application 'com.openagents.coder'`
+    t =    10.03s     Find the "verse-surface" Other
+    t =    10.03s Find the "verse-surface" Other
+    t =    10.04s Press "verse-camera-mode" Button for 0.8 seconds
+    t =    10.04s     Wait for com.openagents.coder to idle
+    t =    10.04s     Find the "verse-camera-mode" Button
+    t =    10.04s     Check for interrupting elements affecting "verse-camera-mode" Button
+    t =    10.05s     Synthesize event
+    t =    11.08s     Wait for com.openagents.coder to idle
+    t =    11.08s Find the "verse-surface" Other
+    t =    12.12s Checking `Expect predicate `BLOCKPREDICATE(0x1144d52c0)` for object Target Application 'com.openagents.coder'`
+    t =    12.12s     Find the "verse-surface" Other
+    t =    12.13s     Find the "verse-surface" Other
+    t =    12.13s Press "verse-camera-mode" Button for 0.8 seconds
+    t =    12.13s     Wait for com.openagents.coder to idle
+    t =    12.13s     Find the "verse-camera-mode" Button
+    t =    12.14s     Check for interrupting elements affecting "verse-camera-mode" Button
+    t =    12.14s     Synthesize event
+    t =    13.17s     Wait for com.openagents.coder to idle
+    t =    13.17s Find the "verse-surface" Other
+    t =    14.21s Checking `Expect predicate `BLOCKPREDICATE(0x1144d6370)` for object Target Application 'com.openagents.coder'`
+    t =    14.21s     Find the "verse-surface" Other
+    t =    14.21s     Find the "verse-surface" Other
+    t =    14.22s Press "verse-camera-mode" Button for 0.8 seconds
+    t =    14.22s     Wait for com.openagents.coder to idle
+    t =    14.22s     Find the "verse-camera-mode" Button
+    t =    14.23s     Check for interrupting elements affecting "verse-camera-mode" Button
+    t =    14.23s     Synthesize event
+    t =    15.25s     Wait for com.openagents.coder to idle
+    t =    15.26s Find the "verse-surface" Other
+    t =    16.29s Checking `Expect predicate `BLOCKPREDICATE(0x1144d7420)` for object Target Application 'com.openagents.coder'`
+    t =    16.29s     Find the "verse-surface" Other
+    t =    16.30s     Find the "verse-surface" Other
+    t =    16.31s Find the "verse-surface" Other
+    t =    16.31s Find the Target Application 'com.openagents.coder'
+    t =    16.38s Added attachment named 'Motion look above the horizon'
+    t =    16.38s Find the "verse-surface" Other
+    t =    16.38s Press "verse-surface" Other[0.84, 0.42] for 0.1 seconds, then drag to "verse-surface" Other[0.65, 0.37] with velocity of 250.00 pixels per second, and then hold for 0.1 seconds 
+    t =    16.38s     Wait for com.openagents.coder to idle
+    t =    16.38s     Find the "verse-surface" Other
+    t =    16.39s     Check for interrupting elements affecting "verse-surface" Other
+    t =    16.39s     Synthesize event
+    t =    16.39s         Find the "verse-surface" Other
+    t =    16.41s         Find the "verse-surface" Other
+    t =    16.41s         Find the "verse-surface" Other
+    t =    16.42s         Find the "verse-surface" Other
+    t =    16.43s         Find the "verse-surface" Other
+    t =    17.23s     Wait for com.openagents.coder to idle
+    t =    17.24s Find the "verse-surface" Other
+    t =    17.24s Find the "verse-surface" Other
+    t =    17.25s Find the "verse-surface" Other
+    t =    17.25s Press "verse-surface" Other[0.16, 0.43] for 0.9 seconds
+    t =    17.25s     Wait for com.openagents.coder to idle
+    t =    17.26s     Find the "verse-surface" Other
+    t =    17.26s     Check for interrupting elements affecting "verse-surface" Other
+    t =    17.27s     Synthesize event
+    t =    17.27s         Find the "verse-surface" Other
+    t =    17.28s         Find the "verse-surface" Other
+    t =    17.28s         Find the "verse-surface" Other
+    t =    18.41s     Wait for com.openagents.coder to idle
+    t =    19.45s Checking `Expect predicate `BLOCKPREDICATE(0x1144d6fa0)` for object Target Application 'com.openagents.coder'`
+    t =    19.45s     Find the "verse-surface" Other
+    t =    19.46s Tap "verse-motion-recenter" Button
+    t =    19.46s     Wait for com.openagents.coder to idle
+    t =    19.46s     Find the "verse-motion-recenter" Button
+    t =    19.47s     Check for interrupting elements affecting "verse-motion-recenter" Button
+    t =    19.47s     Synthesize event
+    t =    19.76s     Wait for com.openagents.coder to idle
+    t =    20.80s Checking `Expect predicate `BLOCKPREDICATE(0x1144610e0)` for object Target Application 'com.openagents.coder'`
+    t =    20.80s     Find the "verse-surface" Other
+    t =    20.81s Checking existence of `"verse-error" StaticText`
+    t =    20.81s Find the Target Application 'com.openagents.coder'
+    t =    20.88s Added attachment named 'Motion camera with full canvas and safe controls'
+    t =    20.88s Pressing Home button
+    t =    21.34s Open com.openagents.coder
+    t =    21.34s     Activate com.openagents.coder
+    t =    21.82s         Wait for com.openagents.coder to idle
+    t =    22.87s Checking `Expect predicate `BLOCKPREDICATE(0x114461bf0)` for object Target Application 'com.openagents.coder'`
+    t =    22.87s     Find the "verse-camera-mode" Button
+    t =    23.91s Checking `Expect predicate `BLOCKPREDICATE(0x114461620)` for object Target Application 'com.openagents.coder'`
+    t =    23.91s     Find the "verse-surface" Other
+    t =    23.92s Tap "verse-camera-mode" Button
+    t =    23.92s     Wait for com.openagents.coder to idle
+    t =    23.92s     Find the "verse-camera-mode" Button
+    t =    23.92s     Check for interrupting elements affecting "verse-camera-mode" Button
+    t =    23.93s     Synthesize event
+    t =    24.22s     Wait for com.openagents.coder to idle
+    t =    25.26s Checking `Expect predicate `BLOCKPREDICATE(0x1144d6ac0)` for object Target Application 'com.openagents.coder'`
+    t =    25.27s     Find the "verse-camera-mode" Button
+    t =    25.27s Checking existence of `"verse-motion-recenter" Button`
+    t =    26.31s Checking `Expect predicate `BLOCKPREDICATE(0x1144d7d80)` for object Target Application 'com.openagents.coder'`
+    t =    26.31s     Find the "verse-surface" Other
+    t =    26.32s Find the "verse-surface" Other
+    t =    26.32s Press "verse-surface" Other[0.84, 0.42] for 0.1 seconds, then drag to "verse-surface" Other[0.65, 0.37] with velocity of 250.00 pixels per second, and then hold for 0.1 seconds 
+    t =    26.32s     Wait for com.openagents.coder to idle
+    t =    26.33s     Find the "verse-surface" Other
+    t =    26.33s     Check for interrupting elements affecting "verse-surface" Other
+    t =    26.34s     Synthesize event
+    t =    26.34s         Find the "verse-surface" Other
+    t =    26.35s         Find the "verse-surface" Other
+    t =    26.35s         Find the "verse-surface" Other
+    t =    26.36s         Find the "verse-surface" Other
+    t =    26.37s         Find the "verse-surface" Other
+    t =    27.18s     Wait for com.openagents.coder to idle
+    t =    28.22s Checking `Expect predicate `BLOCKPREDICATE(0x11456ef40)` for object Target Application 'com.openagents.coder'`
+    t =    28.22s     Find the "verse-surface" Other
+    t =    28.23s Tear Down
+Test Case '-[CoderUITests.FullscreenMotionUITests testTouchAndInjectedMotionModesPreserveLeftMovement]' passed (28.500 seconds).
+Test Suite 'FullscreenMotionUITests' passed at 2026-09-26 22:20:51.401.
+	 Executed 1 test, with 0 failures (0 unexpected) in 28.500 (28.501) seconds
+Test Suite 'ReaderUITests' started at 2026-09-26 22:20:51.401.
+Test Case '-[CoderUITests.ReaderUITests testSyntheticDeviceIdentitySurvivesRelaunch]' started.
+    t =     0.00s Start Test at 2026-09-26 22:20:51.402
+    t =     0.01s Set Up
+    t =     0.01s     Open com.openagents.coder
+    t =     0.02s         Launch com.openagents.coder
+    t =     0.02s             Terminate com.openagents.coder:35361
+2026-09-26 22:20:52.472 xcodebuild[35301:98430920] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-26 22:20:52.472 xcodebuild[35301:98430920] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.28s             Setting up automation session
+    t =     1.77s             Wait for com.openagents.coder to idle
+    t =     2.95s     Waiting 30.0s for "verse-surface" Other to exist
+    t =     3.98s         Checking `Expect predicate `existsNoRetry == 1` for object "verse-surface" Other`
+    t =     3.98s             Checking existence of `"verse-surface" Other`
+    t =     4.00s     Checking existence of `"computer-interact" Button`
+    t =     4.00s     Find the "verse-surface" Other
+    t =     4.01s     Press "verse-surface" Other[0.15, 0.50] for 0.1 seconds, then drag to "verse-surface" Other[0.15, 0.32] with velocity of 250.00 pixels per second, and then hold for 0.7 seconds 
+    t =     4.01s         Wait for com.openagents.coder to idle
+    t =     4.01s         Find the "verse-surface" Other
+    t =     4.01s         Check for interrupting elements affecting "verse-surface" Other
+    t =     4.02s         Synthesize event
+    t =     4.02s             Find the "verse-surface" Other
+    t =     4.03s             Find the "verse-surface" Other
+    t =     4.03s             Find the "verse-surface" Other
+    t =     4.04s             Find the "verse-surface" Other
+    t =     4.05s             Find the "verse-surface" Other
+    t =     5.72s         Wait for com.openagents.coder to idle
+    t =     5.72s     Find the "verse-surface" Other
+    t =     6.75s     Checking `Expect predicate `BLOCKPREDICATE(0x1144d46c0)` for object "verse-surface" Other`
+    t =     6.75s         Find the "verse-surface" Other
+    t =     6.76s     Find the "verse-surface" Other
+    t =     6.76s     Tap "verse-surface" Other[0.50, 0.40]
+    t =     6.76s         Wait for com.openagents.coder to idle
+    t =     6.77s         Find the "verse-surface" Other
+    t =     6.77s         Check for interrupting elements affecting "verse-surface" Other
+    t =     6.78s         Synthesize event
+    t =     6.78s             Find the "verse-surface" Other
+    t =     6.79s             Find the "verse-surface" Other
+    t =     6.79s             Find the "verse-surface" Other
+    t =     7.08s         Wait for com.openagents.coder to idle
+    t =     7.08s     Waiting 10.0s for "computer-close" Button to exist
+    t =     8.12s         Checking `Expect predicate `existsNoRetry == 1` for object "computer-close" Button`
+    t =     8.12s             Checking existence of `"computer-close" Button`
+    t =     8.14s     Waiting 20.0s for "chat-0" Button to exist
+    t =     9.16s         Checking `Expect predicate `existsNoRetry == 1` for object "chat-0" Button`
+    t =     9.16s             Checking existence of `"chat-0" Button`
+    t =     9.17s Waiting 10.0s for "computer-settings" Button to exist
+    t =    10.21s     Checking `Expect predicate `existsNoRetry == 1` for object "computer-settings" Button`
+    t =    10.21s         Checking existence of `"computer-settings" Button`
+    t =    10.21s Tap "computer-settings" Button
+    t =    10.21s     Wait for com.openagents.coder to idle
+    t =    10.22s     Find the "computer-settings" Button
+    t =    10.22s     Check for interrupting elements affecting "computer-settings" Button
+    t =    10.24s     Synthesize event
+    t =    10.53s     Wait for com.openagents.coder to idle
+    t =    10.53s Waiting 10.0s for "Device details" Button to exist
+    t =    11.56s     Checking `Expect predicate `existsNoRetry == 1` for object "Device details" Button`
+    t =    11.56s         Checking existence of `"Device details" Button`
+    t =    11.58s Tap "Device details" Button
+    t =    11.58s     Wait for com.openagents.coder to idle
+    t =    11.58s     Find the "Device details" Button
+    t =    11.60s     Check for interrupting elements affecting "Device details" Button
+    t =    11.61s     Synthesize event
+    t =    11.90s     Wait for com.openagents.coder to idle
+    t =    11.90s Waiting 10.0s for "reader-public-key" StaticText to exist
+    t =    12.94s     Checking `Expect predicate `existsNoRetry == 1` for object "reader-public-key" StaticText`
+    t =    12.94s         Checking existence of `"reader-public-key" StaticText`
+    t =    13.99s Checking `Expect predicate `label MATCHES "[0-9a-fA-F]{64}"` for object "reader-public-key" StaticText`
+    t =    13.99s     Find the "reader-public-key" StaticText
+    t =    14.00s Find the "reader-public-key" StaticText
+    t =    14.02s Tap "computer-settings" Button
+    t =    14.02s     Wait for com.openagents.coder to idle
+    t =    14.02s     Find the "computer-settings" Button
+    t =    14.02s     Check for interrupting elements affecting "computer-settings" Button
+    t =    14.04s     Synthesize event
+    t =    14.33s     Wait for com.openagents.coder to idle
+    t =    14.33s Terminate com.openagents.coder:36076
+    t =    15.37s Open com.openagents.coder
+    t =    15.37s     Launch com.openagents.coder
+2026-09-26 22:21:06.776 xcodebuild[35301:98430920] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-26 22:21:06.776 xcodebuild[35301:98430920] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    15.58s         Setting up automation session
+    t =    16.11s         Wait for com.openagents.coder to idle
+    t =    17.28s Waiting 30.0s for "verse-surface" Other to exist
+    t =    18.31s     Checking `Expect predicate `existsNoRetry == 1` for object "verse-surface" Other`
+    t =    18.31s         Checking existence of `"verse-surface" Other`
+    t =    18.33s Checking existence of `"computer-interact" Button`
+    t =    18.33s Find the "verse-surface" Other
+    t =    18.33s Press "verse-surface" Other[0.15, 0.50] for 0.1 seconds, then drag to "verse-surface" Other[0.15, 0.32] with velocity of 250.00 pixels per second, and then hold for 0.7 seconds 
+    t =    18.33s     Wait for com.openagents.coder to idle
+    t =    18.34s     Find the "verse-surface" Other
+    t =    18.34s     Check for interrupting elements affecting "verse-surface" Other
+    t =    18.35s     Synthesize event
+    t =    18.35s         Find the "verse-surface" Other
+    t =    18.36s         Find the "verse-surface" Other
+    t =    18.36s         Find the "verse-surface" Other
+    t =    18.37s         Find the "verse-surface" Other
+    t =    18.38s         Find the "verse-surface" Other
+    t =    20.05s     Wait for com.openagents.coder to idle
+    t =    20.06s Find the "verse-surface" Other
+    t =    21.09s Checking `Expect predicate `BLOCKPREDICATE(0x114460270)` for object "verse-surface" Other`
+    t =    21.09s     Find the "verse-surface" Other
+    t =    21.10s Find the "verse-surface" Other
+    t =    21.11s Tap "verse-surface" Other[0.50, 0.40]
+    t =    21.11s     Wait for com.openagents.coder to idle
+    t =    21.11s     Find the "verse-surface" Other
+    t =    21.12s     Check for interrupting elements affecting "verse-surface" Other
+    t =    21.12s     Synthesize event
+    t =    21.12s         Find the "verse-surface" Other
+    t =    21.13s         Find the "verse-surface" Other
+    t =    21.14s         Find the "verse-surface" Other
+    t =    21.43s     Wait for com.openagents.coder to idle
+    t =    21.43s Waiting 10.0s for "computer-close" Button to exist
+    t =    22.46s     Checking `Expect predicate `existsNoRetry == 1` for object "computer-close" Button`
+    t =    22.46s         Checking existence of `"computer-close" Button`
+    t =    22.49s Find the Target Application 'com.openagents.coder'
+    t =    22.55s Added attachment named 'Synthetic reader after relaunch'
+    t =    22.55s Waiting 10.0s for "computer-settings" Button to exist
+    t =    23.57s     Checking `Expect predicate `existsNoRetry == 1` for object "computer-settings" Button`
+    t =    23.57s         Checking existence of `"computer-settings" Button`
+    t =    23.58s Tap "computer-settings" Button
+    t =    23.58s     Wait for com.openagents.coder to idle
+    t =    23.59s     Find the "computer-settings" Button
+    t =    23.59s     Check for interrupting elements affecting "computer-settings" Button
+    t =    23.60s     Synthesize event
+    t =    23.89s     Wait for com.openagents.coder to idle
+    t =    23.90s Waiting 10.0s for "Device details" Button to exist
+    t =    24.93s     Checking `Expect predicate `existsNoRetry == 1` for object "Device details" Button`
+    t =    24.93s         Checking existence of `"Device details" Button`
+    t =    24.95s Tap "Device details" Button
+    t =    24.95s     Wait for com.openagents.coder to idle
+    t =    24.95s     Find the "Device details" Button
+    t =    24.96s     Check for interrupting elements affecting "Device details" Button
+    t =    24.97s     Synthesize event
+    t =    25.26s     Wait for com.openagents.coder to idle
+    t =    25.26s Waiting 10.0s for "reader-public-key" StaticText to exist
+    t =    26.29s     Checking `Expect predicate `existsNoRetry == 1` for object "reader-public-key" StaticText`
+    t =    26.29s         Checking existence of `"reader-public-key" StaticText`
+    t =    27.34s Checking `Expect predicate `label MATCHES "[0-9a-fA-F]{64}"` for object "reader-public-key" StaticText`
+    t =    27.34s     Find the "reader-public-key" StaticText
+    t =    27.36s Find the "reader-public-key" StaticText
+    t =    27.38s Tap "computer-settings" Button
+    t =    27.38s     Wait for com.openagents.coder to idle
+    t =    27.38s     Find the "computer-settings" Button
+    t =    27.39s     Check for interrupting elements affecting "computer-settings" Button
+    t =    27.40s     Synthesize event
+    t =    27.69s     Wait for com.openagents.coder to idle
+    t =    27.69s Tap "computer-close" Button
+    t =    27.69s     Wait for com.openagents.coder to idle
+    t =    27.69s     Find the "computer-close" Button
+    t =    27.71s     Check for interrupting elements affecting "computer-close" Button
+    t =    27.72s     Synthesize event
+    t =    28.02s     Wait for com.openagents.coder to idle
+    t =    28.02s Checking existence of `"computer-interact" Button`
+    t =    28.03s Checking existence of `"verse-surface" Other`
+    t =    28.03s Tear Down
+Test Case '-[CoderUITests.ReaderUITests testSyntheticDeviceIdentitySurvivesRelaunch]' passed (28.269 seconds).
+Test Suite 'ReaderUITests' passed at 2026-09-26 22:21:19.671.
+	 Executed 1 test, with 0 failures (0 unexpected) in 28.269 (28.269) seconds
+Test Suite 'VerseUITests' started at 2026-09-26 22:21:19.671.
+Test Case '-[CoderUITests.VerseUITests testPinchZoomsWithoutMovingThePlayerOrTurningTheCamera]' started.
+    t =     0.00s Start Test at 2026-09-26 22:21:19.672
+    t =     0.02s Set Up
+    t =     0.02s     Open com.openagents.coder
+    t =     0.02s         Launch com.openagents.coder
+    t =     0.02s             Terminate com.openagents.coder:36418
+2026-09-26 22:21:20.730 xcodebuild[35301:98430920] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-26 22:21:20.730 xcodebuild[35301:98430920] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.27s             Setting up automation session
+    t =     1.74s             Wait for com.openagents.coder to idle
+    t =     2.89s     Waiting 30.0s for "verse-surface" Other to exist
+    t =     3.92s         Checking `Expect predicate `existsNoRetry == 1` for object "verse-surface" Other`
+    t =     3.92s             Checking existence of `"verse-surface" Other`
+    t =     4.96s     Checking `Expect predicate `BLOCKPREDICATE(0x1144d46f0)` for object Target Application 'com.openagents.coder'`
+    t =     4.96s         Find the "verse-surface" Other
+    t =     4.97s         Find the "verse-surface" Other
+    t =     4.98s Find the "verse-surface" Other
+    t =     4.98s Pinch with scale 1.6, velocity 1 in "verse-surface" Other
+    t =     4.98s     Wait for com.openagents.coder to idle
+    t =     4.99s     Find the "verse-surface" Other
+    t =     4.99s     Check for interrupting elements affecting "verse-surface" Other
+    t =     5.00s     Synthesize event
+    t =     5.01s         Pinching with rect {{50, 50}, {302, 774}}
+    t =     6.96s     Wait for com.openagents.coder to idle
+    t =     7.99s Checking `Expect predicate `BLOCKPREDICATE(0x1144d5860)` for object Target Application 'com.openagents.coder'`
+    t =     7.99s     Find the "verse-surface" Other
+    t =     8.00s     Find the "verse-surface" Other
+    t =     8.01s Find the "verse-surface" Other
+    t =     8.01s Pinch with scale 0.65, velocity -1 in "verse-surface" Other
+    t =     8.01s     Wait for com.openagents.coder to idle
+    t =     8.01s     Find the "verse-surface" Other
+    t =     8.02s     Check for interrupting elements affecting "verse-surface" Other
+    t =     8.02s     Synthesize event
+    t =     8.03s         Pinching with rect {{50, 50}, {302, 774}}
+    t =     9.02s     Wait for com.openagents.coder to idle
+    t =    10.05s Checking `Expect predicate `BLOCKPREDICATE(0x107bcd9e0)` for object Target Application 'com.openagents.coder'`
+    t =    10.05s     Find the "verse-surface" Other
+    t =    10.06s     Find the "verse-surface" Other
+    t =    10.07s Find the "verse-surface" Other
+/Users/christopherdavid/work/openagents-mobile45/bins/coder-ios/host/UITests/VerseUITests.swift:72: error: -[CoderUITests.VerseUITests testPinchZoomsWithoutMovingThePlayerOrTurningTheCamera] : XCTAssertGreaterThan failed: ("6.4619517") is not greater than ("6.4619517")
+    t =    10.11s Tear Down
+Test Case '-[CoderUITests.VerseUITests testPinchZoomsWithoutMovingThePlayerOrTurningTheCamera]' failed (10.339 seconds).
+Test Suite 'VerseUITests' failed at 2026-09-26 22:21:30.011.
+	 Executed 1 test, with 1 failure (0 unexpected) in 10.339 (10.340) seconds
+Test Suite 'CoderUITests.xctest' failed at 2026-09-26 22:21:30.011.
+	 Executed 3 tests, with 1 failure (0 unexpected) in 67.107 (67.111) seconds
+Test Suite 'Selected tests' failed at 2026-09-26 22:21:30.011.
+	 Executed 3 tests, with 1 failure (0 unexpected) in 67.107 (67.111) seconds
+2026-09-26 22:21:40.275 xcodebuild[35301:98430920] [MT] IDETestOperationsObserverDebug: 78.818 elapsed -- Testing started completed.
+2026-09-26 22:21:40.275 xcodebuild[35301:98430920] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-26 22:21:40.275 xcodebuild[35301:98430920] [MT] IDETestOperationsObserverDebug: 78.818 sec, +78.818 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/coder-build46-native-retest.xcresult
+
+Failing tests:
+	VerseUITests.testPinchZoomsWithoutMovingThePlayerOrTurningTheCamera()
+
+** TEST FAILED **
+
+Testing started

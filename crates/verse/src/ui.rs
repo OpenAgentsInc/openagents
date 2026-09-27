@@ -77,6 +77,38 @@ pub struct Atlas {
 }
 
 impl Atlas {
+    /// Reuses this atlas's UVs with logical-pixel metrics. The returned layout
+    /// has no bitmap and must not be uploaded as a renderer atlas.
+    #[must_use]
+    pub fn layout_at_scale(&self, scale: f32) -> Option<Self> {
+        if !scale.is_finite() || !(0.25..=8.0).contains(&scale) {
+            return None;
+        }
+        Some(Self {
+            width: self.width,
+            height: self.height,
+            pixels: Vec::new(),
+            glyphs: self
+                .glyphs
+                .iter()
+                .map(|(character, glyph)| {
+                    (
+                        *character,
+                        Glyph {
+                            size: glyph.size.map(|value| value / scale),
+                            offset: glyph.offset.map(|value| value / scale),
+                            ..*glyph
+                        },
+                    )
+                })
+                .collect(),
+            advance: self.advance / scale,
+            line: self.line / scale,
+            ascent: self.ascent / scale,
+            solid: self.solid,
+        })
+    }
+
     /// Rasterizes the font at `px` pixels.
     ///
     /// # Panics
@@ -312,6 +344,21 @@ impl UiBatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn logical_layout_preserves_uvs_without_copying_the_bitmap() {
+        let atlas = Atlas::new(28.0);
+        let layout = atlas.layout_at_scale(2.0).unwrap();
+        assert!(layout.pixels.is_empty());
+        assert_eq!(layout.advance * 2.0, atlas.advance);
+        let source = atlas.glyph('M').unwrap();
+        let logical = layout.glyph('M').unwrap();
+        assert_eq!(source.uv0, logical.uv0);
+        assert_eq!(source.uv1, logical.uv1);
+        assert_eq!(source.size, logical.size.map(|value| value * 2.0));
+        assert!(atlas.layout_at_scale(f32::NAN).is_none());
+        assert!(atlas.layout_at_scale(0.0).is_none());
+    }
 
     #[test]
     fn the_font_rasterizes_printable_ascii() {

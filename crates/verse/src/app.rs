@@ -22,6 +22,8 @@ use crate::chat::{self, Channel};
 use crate::controller::{InputState, PlayerController};
 use crate::feed::Feed;
 use crate::hud;
+use crate::minimap::{MapAction, MapHud};
+use crate::nav::NavigationStatus;
 use crate::render::{self, Renderer, View};
 use crate::replay::{self, Place, Replay};
 use crate::runtime::{Action, WorldRuntime};
@@ -402,6 +404,10 @@ struct App {
     title: String,
     frames: u64,
     atlas: Option<Atlas>,
+    map_atlas: Option<Atlas>,
+    map: MapHud,
+    map_frame: Option<crate::minimap::Snapshot>,
+    map_error: Option<String>,
     scale: f32,
     chat: hud::Input,
     method: Channel,
@@ -560,6 +566,7 @@ impl App {
                 camera: FollowCamera::default(),
                 gait: Gait::default(),
                 agent,
+                navigation: Default::default(),
             },
             keys: Keys::default(),
             mount: None,
@@ -568,6 +575,10 @@ impl App {
             title: String::new(),
             frames: 0,
             atlas: None,
+            map_atlas: None,
+            map: MapHud::default(),
+            map_frame: None,
+            map_error: None,
             scale: 1.0,
             chat: hud::Input::default(),
             method: Channel::All,
@@ -666,6 +677,7 @@ impl App {
 
     fn gym_key(&mut self, code: KeyCode, pressed: bool) -> bool {
         if code == KeyCode::KeyG && pressed && self.runtime.gym(1.0).inside {
+            self.stop_map();
             self.gym_open = !self.gym_open;
             self.chat.open = false;
             self.board_open = false;
@@ -772,6 +784,7 @@ impl App {
 
     /// Opens the replay list, reading the retained runs the first time.
     fn open_picker(&mut self) {
+        self.stop_map();
         self.board_open = false;
         let choices = self
             .choices
@@ -816,6 +829,7 @@ impl App {
     }
 
     fn start_replay(&mut self, r: Replay) {
+        self.stop_map();
         self.ghost = Agent::at(Place::Plaza.stand(true), 0.0);
         self.finished = [false; 2];
         self.replay = Some(r);
@@ -904,6 +918,7 @@ impl App {
     }
 
     fn open_chat(&mut self, seed: &str) {
+        self.stop_map();
         self.chat.open = true;
         self.chat.text = seed.to_owned();
         let (left, right) = (self.keys.left_button, self.keys.right_button);
@@ -1131,6 +1146,59 @@ impl App {
         }
     }
 
+    fn map_visible(&self) -> bool {
+        !self.chat.open
+            && !self.board_open
+            && !self.gym_open
+            && self.picker.is_none()
+            && self.replay.is_none()
+    }
+
+    fn stop_map(&mut self) {
+        self.runtime.cancel_navigation();
+        self.map.expanded = false;
+        self.map.clear_contacts();
+        self.map_frame = None;
+    }
+
+    fn map_action(&mut self, action: MapAction) {
+        match action {
+            MapAction::Toggle => {
+                self.map.expanded = !self.map.expanded;
+                if self.map.expanded {
+                    self.runtime.cancel_navigation();
+                }
+            }
+            MapAction::Cancel => {
+                self.runtime.cancel_navigation();
+                self.map_error = None;
+            }
+            MapAction::Walk(destination) => {
+                // A held movement key still wins over the newly selected route.
+                self.capture(false);
+                self.map_error = self
+                    .runtime
+                    .navigate_to(destination)
+                    .err()
+                    .map(|error| error.to_string());
+                if self.map_error.is_none() {
+                    self.map.expanded = false;
+                }
+            }
+        }
+        self.map.clear_contacts();
+        self.map_frame = None;
+    }
+
+    fn cursor_on_map(&self) -> bool {
+        let Some(frame) = self.map_frame.as_ref().filter(|frame| frame.visible) else {
+            return false;
+        };
+        let [x, y] = self.cursor.map(|value| value / self.scale);
+        let [left, top, width, height] = frame.frame;
+        x >= left && x <= left + width && y >= top && y <= top + height
+    }
+
     /// A left click at the cursor, if it lands on the HUD. Returns true
     /// when the HUD took it.
     fn click(&mut self) -> bool {
@@ -1161,6 +1229,18 @@ impl App {
         }
         if pressed && self.picker_key(code) {
             return;
+        }
+        if pressed && self.map_visible() {
+            if code == KeyCode::KeyM {
+                self.map_action(MapAction::Toggle);
+                return;
+            }
+            if code == KeyCode::Escape
+                && (self.map.expanded || self.runtime.navigation().is_active())
+            {
+                self.stop_map();
+                return;
+            }
         }
         let replaying = self.replay.is_some();
         match code {
@@ -1207,7 +1287,12 @@ impl App {
             KeyCode::KeyE => self.keys.e = pressed,
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys.shift = pressed,
             KeyCode::Space if pressed => self.keys.jump = true,
-            KeyCode::KeyB if pressed => self.board_open = !self.board_open,
+            KeyCode::KeyB if pressed => {
+                self.stop_map();
+                self.board_open = !self.board_open;
+                self.keys = Keys::default();
+                self.capture(false);
+            }
             KeyCode::PageDown if pressed && self.board_open => self.scroll_board(8),
             KeyCode::PageUp if pressed && self.board_open => self.scroll_board(-8),
             KeyCode::Escape if pressed && self.board_open => self.board_open = false,
@@ -1225,6 +1310,29 @@ impl App {
     }
 
     fn button(&mut self, button: MouseButton, pressed: bool) {
+        if button == MouseButton::Left {
+            let at = self.cursor.map(|value| value / self.scale);
+            if !pressed && self.map.captured(1) {
+                if let Some(action) = self.map.up(1, at, !self.map_visible()) {
+                    self.map_action(action);
+                }
+                return;
+            }
+            if pressed
+                && !self.keys.left_button
+                && !self.keys.right_button
+                && self.map_visible()
+                && self
+                    .map_frame
+                    .as_ref()
+                    .is_some_and(|frame| self.map.down(1, at, frame))
+            {
+                return;
+            }
+        }
+        if self.map.captured(1) {
+            return;
+        }
         if self.gym_open {
             return;
         }
@@ -1256,7 +1364,7 @@ impl App {
     }
 
     fn mouse(&mut self, dx: f32, dy: f32) {
-        if self.gym_open {
+        if self.gym_open || self.map.captured(1) {
             return;
         }
         if self.keys.right_button {
@@ -1281,6 +1389,7 @@ impl App {
             _ => return,
         };
 
+        self.map.tick(dt);
         let input = self.keys.input();
         self.keys.jump = false;
         let dt =
@@ -1348,6 +1457,24 @@ impl App {
         if let Some(board) = &mut self.xp {
             board.tick();
         }
+        let navigation = self.runtime.navigation();
+        let map_status = self
+            .map_error
+            .as_deref()
+            .unwrap_or(match navigation.status() {
+                NavigationStatus::Idle => "Choose a place to walk",
+                NavigationStatus::Walking => "Walking",
+                NavigationStatus::Arrived => "Arrived",
+                NavigationStatus::Cancelled => "Walking cancelled",
+                NavigationStatus::Blocked => "Route blocked",
+            });
+        self.map_frame = Some(self.map.snapshot(
+            size.map(|value| value / self.scale),
+            [self.runtime.player.pos.x, self.runtime.player.pos.z],
+            self.map_visible(),
+            map_status,
+            navigation.destination(),
+        ));
         let overheads = self.overheads(now);
         let ui = match &self.atlas {
             Some(atlas) => {
@@ -1430,6 +1557,21 @@ impl App {
                         },
                     );
                     layout.panels.push(panel);
+                }
+                if let (Some(map_atlas), Some(map_frame)) = (&self.map_atlas, &self.map_frame) {
+                    ui.vertices.extend(
+                        self.map
+                            .draw(
+                                map_atlas,
+                                map_frame,
+                                &self.runtime.world.blockers,
+                                [self.runtime.player.pos.x, self.runtime.player.pos.z],
+                                self.runtime.player.yaw,
+                                self.runtime.navigation().waypoints(),
+                                self.scale,
+                            )
+                            .vertices,
+                    );
                 }
                 self.layout = layout;
                 ui
@@ -1581,6 +1723,7 @@ impl ApplicationHandler for App {
         match Renderer::new(window.clone(), &self.runtime.world.mesh, &atlas) {
             Ok(renderer) => {
                 self.renderer = Some(renderer);
+                self.map_atlas = atlas.layout_at_scale(self.scale);
                 self.atlas = Some(atlas);
             }
             Err(e) => {
@@ -1607,6 +1750,7 @@ impl ApplicationHandler for App {
     }
 
     fn suspended(&mut self, _: &ActiveEventLoop) {
+        self.stop_map();
         self.update_gym(false);
         self.keys = Keys::default();
         self.capture(false);
@@ -1619,6 +1763,11 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => self.quit(event_loop),
             WindowEvent::Resized(size) => {
+                self.map.clear_contacts();
+                self.map_frame = None;
+                if size.width == 0 || size.height == 0 {
+                    self.stop_map();
+                }
                 let resized = Viewport::new(size.width, size.height, self.scale)
                     .and_then(|v| self.mount.as_mut().map_or(Ok(()), |m| m.resize(v)));
                 match resized {
@@ -1645,11 +1794,16 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = [position.x as f32, position.y as f32];
+                self.map
+                    .moved(1, self.cursor.map(|value| value / self.scale));
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 self.button(button, state == ElementState::Pressed);
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                if self.cursor_on_map() || self.map.captured(1) {
+                    return;
+                }
                 let lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
@@ -1668,6 +1822,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Focused(focused) => {
                 if !focused {
+                    self.stop_map();
                     self.update_gym(false);
                     self.keys = Keys::default();
                     self.capture(false);
@@ -1677,6 +1832,8 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.map.clear_contacts();
+                self.map_frame = None;
                 self.scale = scale_factor as f32;
                 if let Some(window) = &self.window {
                     let size = window.inner_size();

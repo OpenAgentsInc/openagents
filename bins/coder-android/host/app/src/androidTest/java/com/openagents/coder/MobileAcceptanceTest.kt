@@ -481,6 +481,42 @@ class MobileAcceptanceTest {
         }
     }
 
+    @Test fun mapUsesRealSurfaceTouchesAndManualMovementCancelsWalking() {
+        launch()
+        waitFor { worldSnapshot().optJSONObject("map")?.optBoolean("visible") == true }
+        var width = 1f
+        var height = 1f
+        onMain { activity ->
+            val surface = find(activity.window.decorView, "verse-surface") as VerseSurface
+            val density = surface.resources.displayMetrics.density
+            width = surface.width / density
+            height = surface.height / density
+            val labels = surface.createAccessibilityNodeInfo().actionList.map { it.label?.toString() }
+            assertTrue(labels.contains("Open map"))
+            assertTrue(labels.contains("Walk to Gym"))
+        }
+        val compact = worldSnapshot().getJSONObject("map").getJSONArray("frame")
+        assertTrue(compact.getDouble(1) > 0)
+        assertTrue(compact.getDouble(0) + compact.getDouble(2) <= width)
+        tapSurface(((compact.getDouble(0) + compact.getDouble(2) / 2) / width).toFloat(),
+            ((compact.getDouble(1) + 12) / height).toFloat())
+        waitFor { worldSnapshot().getJSONObject("map").getBoolean("expanded") }
+        val before = position()
+        val map = worldSnapshot().getJSONObject("map")
+        val plot = map.getJSONArray("plot")
+        val center = map.getJSONArray("center")
+        val landmarks = map.getJSONArray("landmarks")
+        val gym = (0 until landmarks.length()).map { landmarks.getJSONObject(it) }.first { it.getString("id") == "gym" }
+        val x = plot.getDouble(0) + ((gym.getDouble("x") - center.getDouble(0)) / map.getDouble("half_extent") + 1) * plot.getDouble(2) / 2
+        val y = plot.getDouble(1) + (1 - (gym.getDouble("z") - center.getDouble(1)) / map.getDouble("half_extent")) * plot.getDouble(3) / 2
+        tapSurface((x / width).toFloat(), (y / height).toFloat())
+        waitFor { worldSnapshot().getJSONObject("map").getString("state") == "Walking" }
+        waitFor { distance(before, position()) > 0.3 }
+        gesture(0.15f, 0.78f, 0.15f, 0.65f, 200)
+        waitFor { worldSnapshot().getJSONObject("map").getString("state") == "Walk stopped" }
+        assertTrue(worldSnapshot().textOrNull("error") == null)
+    }
+
     private fun launch(gym: Boolean = false, motion: Boolean = false) {
         val intent = Intent(ApplicationProvider.getApplicationContext(), MainActivity::class.java)
             .putExtra("synthetic", true).putExtra("gym_preview", gym).putExtra("motion_preview", motion)

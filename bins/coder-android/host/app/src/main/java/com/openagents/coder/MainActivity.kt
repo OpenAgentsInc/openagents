@@ -139,6 +139,8 @@ class MainActivity : ComponentActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(safe) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val density = resources.displayMetrics.density
+            world.setHudInsets(bars.top / density, bars.right / density, bars.bottom / density, bars.left / density)
             view.setPadding(bars.left + dp(12), bars.top + dp(12), bars.right + dp(12), maxOf(bars.bottom, keyboard.bottom) + dp(12))
             insets
         }

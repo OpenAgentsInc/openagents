@@ -38,7 +38,9 @@ struct VerseScreen: View {
         ZStack(alignment: .topLeading) {
             if let packet = bridge.packet, let view = packet.view {
                 NativeRenderer(node: view.root, revision: view.revision,
-                               followTarget: nil, followChanged: nil, surface: mount) { _ in }
+                               followTarget: nil, followChanged: nil, surface: { resource, label in
+                                   mount(resource: resource, label: label, safe: safe)
+                               }) { _ in }
                     .frame(width: size.width, height: size.height)
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -160,11 +162,11 @@ struct VerseScreen: View {
                       height: max(80, size.height - top - safe.bottom - 16))
     }
 
-    private func mount(resource: String, label: String) -> AnyView {
+    private func mount(resource: String, label: String, safe: EdgeInsets) -> AnyView {
         guard resource == "verse.world" else {
             return AnyView(Text("This world surface is unavailable."))
         }
-        return AnyView(VerseSurface(bridge: bridge, active: active, label: label)
+        return AnyView(VerseSurface(bridge: bridge, active: active, label: label, safeInsets: safe)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(!panelOpen))
     }

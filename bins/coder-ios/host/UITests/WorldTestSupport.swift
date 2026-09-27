@@ -10,6 +10,27 @@ struct VerseTestObservation: Decodable {
     let gym_active: Bool
     let computer_ready: Bool
     let computer_target: [Double]
+    let map: VerseTestMap
+}
+
+struct VerseTestMap: Decodable {
+    let visible: Bool
+    let expanded: Bool
+    let state: String
+    let destination: [Double]?
+    let captured_pointers: [UInt64]
+    let frame: [Double]
+    let plot: [Double]
+    let center: [Double]
+    let half_extent: Double
+    let landmarks: [VerseTestLandmark]
+}
+
+struct VerseTestLandmark: Decodable {
+    let id: String
+    let label: String
+    let x: Double
+    let z: Double
 }
 
 extension XCUIApplication {

@@ -56,4 +56,3 @@ test connection_tests::app_redeems_qr_invitation_pages_refreshes_restores_and_er
 test computers_live_tests::the_app_enrolls_watches_invites_sees_activity_and_is_revoked_against_a_real_host ... ok
 
 test result: ok. 50 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 4.33s
-

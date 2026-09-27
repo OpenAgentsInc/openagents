@@ -17,4 +17,3 @@ test session::tests::profiles_require_signatures_and_room_labels_require_pinned_
 test session::tests::stopped_link_cannot_echo_a_chat_as_success_and_history_identity_is_bounded ... ok
 
 test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 116 filtered out; finished in 0.02s
-

@@ -135,7 +135,6 @@ impl AndroidVerse {
         }
         self.handle.scene.activate(false)?;
         let window = NativeWindow::acquire(env, surface)?;
-        let atlas = verse::ui::Atlas::new(18.0);
         // SAFETY: this acquired window is moved into the same owner after the
         // renderer, and is released only after the renderer has been dropped.
         let renderer = unsafe {
@@ -144,7 +143,7 @@ impl AndroidVerse {
                 config.width,
                 config.height,
                 &self.handle.scene.world.world.mesh,
-                &atlas,
+                &self.handle.scene.atlas,
                 verse::render::RenderOptions {
                     sample_count: 1,
                     max_extent: 4096,
