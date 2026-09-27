@@ -264,6 +264,14 @@ uses, and marks which are implemented and which are only specified.
   feature, with Esplora and SQLite under `~/.openagents/wallet`. Read
   `nips/openagents/NIP-X402.md` before changing what an invoice or proof
   carries.
+- `crates/x402` — `openagents-x402`, x402 v2 `exact` Lightning over HTTP
+  (`http:1`): the restart-durable replay store whose insert is one exclusive
+  file create per `network:payment_hash`, the embedded facilitator that
+  verifies terms, invoice, and preimage through `crates/nostr::x402` and maps
+  refusals to the upstream `errorReason` vocabulary, the base64
+  `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, and `PAYMENT-RESPONSE` codecs, and
+  the transport-free paid resource handler that `openagents x402 serve`
+  carries. Nothing in it pays or advertises.
 - `crates/coder-host` — the resident Coder host (`coder host serve`) and its
   client. It composes `coder-access`, `coder-reach`, `coder-pty`, and the task
   inbox behind one host key and rechecks the grant on every channel message.

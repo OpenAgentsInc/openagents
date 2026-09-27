@@ -490,9 +490,54 @@ Files live in `~/.openagents/wallet` (`OPENAGENTS_WALLET_HOME` overrides):
 The node needs an Esplora server to start, so every command except `init`
 needs the network; `init --lsp NODE_ID@HOST:PORT` adds LSPS2 inbound
 liquidity. The x402 validator admits only mainnet and testnet invoices
-(`bc`, `tb`), so signet issues but does not validate. Facilitator verify and
-settle, the paid HTTP endpoint, and NIP-CAP `oa-x402-v1` advertising are not
-part of this command yet; see the NIP-X402 status section.
+(`bc`, `tb`), so signet issues but does not validate. NIP-CAP `oa-x402-v1`
+advertising is not part of this command yet; see the NIP-X402 status section.
+
+## Paid HTTP (`openagents x402`, exact Lightning over `http:1`)
+
+`openagents x402` sells one command over HTTP for an exact millisatoshi
+price, or buys one call. The seller side is the embedded facilitator from
+`crates/x402`: it challenges, reconstructs the request binding, verifies the
+proof, consumes it in a replay store, then runs the command.
+
+```sh
+# Seller: every POST to /echo costs 1000 msat and runs `cat` on the body.
+openagents x402 serve --url https://host.example/echo --msat 1000 \
+    --listen 127.0.0.1:8402 --seconds 3600 -- cat
+
+# Buyer: pay at most 1000 msat (+ 50 msat routing fee) for one call.
+echo hi | openagents x402 fetch https://host.example/echo --method POST --body - \
+    --max-msat 1000 --max-fee-msat 50 --json
+```
+
+The wire shapes and headers follow x402 v2 at commit `4fcf836`:
+`PAYMENT-REQUIRED` carries the base64 `PaymentRequired` document with one
+`exact`/`lnbtc` requirement whose `requestHash` binds the method, the
+configured public URL, and the body bytes (`http:1`, no bound headers), and
+whose `extra.invoice` is a fresh BOLT11 from the wallet with that hash in
+`h`. `PAYMENT-SIGNATURE` carries the buyer's `PaymentPayload` with the
+preimage; the server never trusts the payload's own request hash and
+reconstructs the binding from the request it received. `PAYMENT-RESPONSE`
+carries the `SettlementResponse`: on success `transaction` is the payment
+hash; on refusal `errorReason` uses the upstream vocabulary
+(`invalid_exact_lnbtc_invoice_request_mismatch`,
+`invalid_exact_lnbtc_preimage_hash_mismatch`, `duplicate_settlement`, ...).
+
+Settlement consumes `network:payment_hash` in `~/.openagents/x402/replay`
+(`OPENAGENTS_X402_HOME` overrides) with an exclusive file create, so two
+concurrent presentations of one preimage admit exactly one; records stay
+until `invoice_end + skew + 3600`. Payment happens before execution: a
+command that then fails returns 500 with the settlement header and no
+refund, as NIP-X402 specifies. The buyer binds the request itself, accepts
+only a requirement whose invoice validates for that binding, refuses above
+`--max-msat` before paying, does not follow redirects, and prints the
+preimage only with `--show-proof`. Neither log line nor `--json` event on
+the seller side carries an invoice or preimage.
+
+Both sides need a wallet on bitcoin or testnet with a usable channel; the
+local check that needs none is a `serve` on a fresh testnet wallet answered
+by `curl -X POST` (402 with a bound invoice) and by a forged
+`PAYMENT-SIGNATURE` (402, `network_mismatch`).
 
 ## Keys and relays
 

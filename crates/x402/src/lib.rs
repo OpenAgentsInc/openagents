@@ -1,0 +1,41 @@
+//! x402 v2 `exact` Lightning over HTTP (`http:1`) for openagents.
+//!
+//! `crates/nostr::x402` verifies terms, invoices, and preimages without state.
+//! This crate adds the two things a paid service needs around it: a
+//! restart-durable replay store whose insert is atomic across processes, and
+//! the embedded facilitator that maps every refusal to the upstream
+//! `errorReason` vocabulary. `wire` holds the `PaymentRequired`,
+//! `PaymentPayload`, and `SettlementResponse` shapes and the base64 header
+//! codecs pinned to x402 commit `4fcf836cc393174130e1358577ce5d37356da1c3`.
+//! `server` binds one paid resource: challenge, reconstruct, settle, execute,
+//! over the smallest HTTP/1.1 loop. Nothing here pays.
+
+pub mod facilitator;
+pub mod replay;
+pub mod server;
+pub mod wire;
+
+pub use facilitator::{Facilitator, settle, verify};
+pub use replay::{FileReplayStore, ReplayError, ReplayStore};
+pub use wire::{
+    PAYMENT_REQUIRED, PAYMENT_RESPONSE, PAYMENT_SIGNATURE, PaymentPayload, PaymentRequired,
+    ResourceInfo, SettlementResponse, WireError,
+};
+
+/// The x402 network identifier for a wallet network name. Only mainnet and
+/// testnet exist in the `lnbtc` method; signet and regtest return `None`.
+pub fn network_id(wallet_network: &str) -> Option<&'static str> {
+    match wallet_network {
+        "bitcoin" => Some(nostr::x402::MAINNET),
+        "testnet" => Some(nostr::x402::TESTNET),
+        _ => None,
+    }
+}
+
+/// Seconds since the Unix epoch.
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default()
+}
