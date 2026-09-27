@@ -2,7 +2,7 @@
 
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 
-Verse is the OpenAgents desktop and iOS world: a walkable 3D city drawn in amber
+Verse is the OpenAgents desktop, iOS, and Android world: a walkable 3D city drawn in amber
 lines on a near-black field. `crates/verse` holds the first slice, a
 Tron-style city and a third-person character you run around with World of
 Warcraft controls.
@@ -18,7 +18,7 @@ ghost of Fable 5.1 low's cheapest winning run. The [Gym building](gym.md) observ
 records while the player is inside and supports explicitly confirmed recipes.
 Live Pylon and payment state is not implemented.
 
-The [Coder iOS Verse home](mobile.md) shares the world simulation and renderer
+The [Coder mobile Verse home](mobile.md) shares the world simulation and renderer
 through Rust Native's generic native-surface contract. Mobile touch controls,
 Metal mounting, and lifecycle are separate from the retained desktop panels.
 
@@ -41,7 +41,7 @@ floating 3D spade, hovers behind the character's right shoulder.
 ## Gym building
 
 Walk east and enter the building marked **GYM**. Press `G` on desktop, or
-approach the boards and tap **Use Gym board** on iOS. Updates start only while
+approach the boards and tap the Gym board control on mobile. Updates start only while
 the player is inside and the surface is active. See [Gym setup](gym.md) for
 source grants, recorded charts, and bounded launch recipes.
 

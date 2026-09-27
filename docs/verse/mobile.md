@@ -1,4 +1,4 @@
-# Verse in Coder for iOS
+# Verse in Coder for iOS and Android
 
 Coder opens directly into **Verse**, which mounts the same seeded city, player controller,
 collision rules, camera, avatar animation, following spade agent, meshes, and
@@ -37,8 +37,8 @@ Walk closer and tap **Use computer** to open its controls inside the world.
   the phone also accepts its complete pairing string. Camera permission is
   requested only when you choose to scan.
 
-The world uses a 30 Hz native display callback and a single-sample Metal render
-target. The desktop retains its mouse/keyboard controls and supported 4× MSAA.
+The world uses a 30 Hz native display callback and a single-sample render
+target: a Metal layer on iOS and an Android native window on Android. The desktop retains its mouse/keyboard controls and supported 4× MSAA.
 Both surfaces run `verse::runtime::WorldRuntime`; mobile does not approximate
 the city with a separate scene or image.
 
@@ -46,7 +46,8 @@ the city with a separate scene or image.
 
 The computer controls can join a compatible Nostr world relay. This explicitly
 publishes the phone's Verse profile, presence, positions, and gestures. It uses
-a separate device-only Keychain identity from the encrypted chat reader. It
+a separate protected device identity from the encrypted chat reader
+(Keychain on iOS; Keystore-encrypted storage on Android). It
 neither copies desktop account credentials nor reads the computer's chat grant.
 
 Use the same reachable `wss://` relay URL on desktop and phone. Mobile refuses
@@ -77,9 +78,9 @@ connection choice. A new native mount starts a new local world.
 | Component | Ownership |
 | --- | --- |
 | Validated `Surface` element, viewport, active/disposed lifecycle, frame timing | `crates/rust-native`; generic and independent of product crates |
-| Seeded geometry, movement/collision, camera, gait, follower, render pipelines | `crates/verse`; shared desktop/iOS implementation |
+| Seeded geometry, movement/collision, camera, gait, follower, render pipelines | `crates/verse`; shared desktop/iOS/Android implementation |
 | Device touch interpretation, world state, connection choices, C bridge | `crates/coder-mobile` |
-| Metal layer, display callback, native controls, Keychain, scene lifecycle | Thin SwiftUI/UIKit host in `bins/coder-ios` |
+| GPU surface, display callback, native controls, protected identities, scene lifecycle | Thin SwiftUI/UIKit host in `bins/coder-ios`; Android framework host in `bins/coder-android` |
 | Palette | `crates/coder-ui`; outside Rust Native |
 | Desktop model chat, retained benchmark-file discovery, verified XP ledger | Desktop feature dependencies; not loaded by the mobile world |
 
@@ -91,17 +92,19 @@ moves and emotes without a model. Walking through Verse does not start a model o
 request an explicitly confirmed, host-configured recipe through its separate
 execution grant; the chat reader remains read-only.
 
-The `desktop` feature is enabled by default for the Verse executable. The iOS
-application depends on `verse` with default features disabled: no desktop
+The `desktop` feature is enabled by default for the Verse executable. Both mobile
+applications depend on `verse` with default features disabled: no desktop
 harnesses, local Gym result store, knowledge store, or window event loop enter
-that target. The portable `gym-bridge` client observes a separately configured
-host; its filesystem readers and execution host are feature-gated out of iOS. Native
-text and controls remain SwiftUI controls; the desktop glyph atlas is not used
+that targets. The portable `gym-bridge` client observes a separately configured
+host; its filesystem readers and execution host are feature-gated out of both mobile targets. Native
+text and controls remain native platform widgets; the desktop glyph atlas is not used
 as the phone's text renderer.
 
 ## Verification and distribution
 
-See [the native app build guide](../../bins/coder-ios/README.md),
+See the [iOS build guide](../../bins/coder-ios/README.md),
+[Android build guide](../../bins/coder-android/README.md),
+[Android emulator verification](../coder/verification/2026-09-26-android-mobile.md),
 [the Verse verification record](../coder/verification/2026-09-26-verse-mobile.md),
 [QR pairing verification](../coder/verification/2026-09-26-world-pairing.md),
 [Gym verification](../coder/verification/2026-09-26-verse-gym.md),

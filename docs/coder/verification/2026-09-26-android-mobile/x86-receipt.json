@@ -1,0 +1,44 @@
+{
+  "captured_at": "2026-09-27T00:04:15.976949+00:00",
+  "command": "CODER_ANDROID_ABI=x86_64 scripts/build-coder-android.sh rust",
+  "exit_code": 0,
+  "elapsed_seconds": 1.3,
+  "profile": "dev",
+  "source_commit": "7c2ce744326e1fdcf0ae0e355fd8c6f301eb8a79",
+  "source_files_sha256": {
+    "scripts/build-coder-android.sh": "43079cb39c466fbdb3e48c0008486d68e38b19732297ca57aad9505991351bfc",
+    "bins/coder-android/host/app/build.gradle.kts": "fb7954d5f0d62769500022e776fafeba108b0356bccef0a94912d210c8ba4755",
+    "bins/coder-android/host/gradle.properties": "41f0917caa1bdbebcd170e96e66c9ecfca0e6f6a267cbde25dc0a32133671c0a",
+    "crates/coder-mobile/src/android.rs": "c285936396df6e15c33dba1a3ccb01b723e494bfbcce2bef530c7ee78a35b96d",
+    "crates/coder-mobile/src/verse_ffi.rs": "b9af82b29173c3ca0bfcc2a9023cb88911cc48287bac6f7165cd993dd4e4ab62",
+    "crates/verse/src/render.rs": "0470f3134fcbf9de332d99b4fe31107e68208f7ffc847ba89c450673f9fd71a6",
+    "Cargo.lock": "17a1362c3c0e62086c5befac957479461734ad7581be2ab887dbff99f8140b62",
+    "bins/coder-android/host/app/src/main/AndroidManifest.xml": "b2497fa9e38e30950fdcdc296bec658d69556ebebbeba2024604dad13c583b8a",
+    "bins/coder-android/host/app/src/main/java/com/openagents/coder/CoderNative.kt": "6f1a9281545a029186c8e07090775b7515b23835d93945c41f2986e67e953c2e",
+    "bins/coder-android/host/app/src/main/java/com/openagents/coder/DeviceStorage.kt": "09f12f5970b0cc4a385ff668319d8ccbc7d7a8f48cd077e81f04a6c738866679",
+    "bins/coder-android/host/app/src/main/java/com/openagents/coder/GymPanel.kt": "eba9f6a05a28e8c65f2142f0284e70ca3d908954b3e319eabc8ec320cd13c551",
+    "bins/coder-android/host/app/src/main/java/com/openagents/coder/MainActivity.kt": "7b29ba4f4972adae9ec0b08deb1d8db127efad6f0d25e58d3f2fec750d05bfef",
+    "bins/coder-android/host/app/src/main/java/com/openagents/coder/NativeRenderer.kt": "8be40a4f665fdad993b9e7eddaa2a6ec84a7098c37c311f14c9d9fe8c18d7443",
+    "bins/coder-android/host/app/src/main/java/com/openagents/coder/QRScanner.kt": "a0bc4dc702ed78fb9dc229cc0f6634eb0118b30c2d62d253810ce067b5f96772",
+    "bins/coder-android/host/app/src/main/java/com/openagents/coder/ReaderBridge.kt": "4c1c193445f48e1e2f15ac1aed073d9ec7cee1bceac27f39e30647e8981c9608",
+    "bins/coder-android/host/app/src/main/java/com/openagents/coder/VerseSurface.kt": "3c10289e33b749904b647eef374037e9f8c23de8d14a7f057a0f31b8223d363c",
+    "bins/coder-android/host/app/src/main/res/drawable/ic_launcher.xml": "1373e9ca945d096b666fccaa424df8b9f2693046717f80df3901bc8f5199cae4",
+    "bins/coder-android/host/app/src/main/res/values/styles.xml": "356e5a98b8bff648e98bdaa11668f4a04a14bc6f7568ae4c0e1ffe46b1368969",
+    "bins/coder-android/host/app/src/main/res/xml/data_extraction_rules.xml": "eda9dddce1e895de1efd716fe75e244187bf8f91a3bb7444c6ea1731e51c74a8"
+  },
+  "library_sha256": "e2f0221c428db418277700372cd28ecc619decc503a074a0dedbb75608c03377",
+  "load_segment_alignments": [
+    16384,
+    16384,
+    16384,
+    16384
+  ],
+  "relro_end_modulo_16384": [
+    0
+  ],
+  "rounded_relro_overlaps_other_writable_bytes": [],
+  "result": "passed",
+  "android_x86_64_execution": "not_run",
+  "log": "/tmp/coder-android-final-x86-build.log",
+  "elf_log": "/tmp/coder-android-final-x86-elf.txt"
+}

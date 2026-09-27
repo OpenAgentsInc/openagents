@@ -89,8 +89,12 @@ manual matrix is release-only.
 
 The [Verse Gym building](verse/gym.md), tracked in
 [#9700](https://github.com/OpenAgentsInc/openagents/issues/9700), shares desktop
-and iOS geometry, entry-scoped private observations, recorded charts, and
-explicitly confirmed host recipes. Microcoder and Terminal-Bench come first.
+and mobile geometry, entry-scoped private observations, recorded charts, and
+explicitly confirmed host recipes. The [Android host](../bins/coder-android/README.md)
+now mounts the same Rust board and world behavior as iOS; its
+[verification record](coder/verification/2026-09-26-android-mobile.md) separates
+emulator evidence from physical-device and production-relay acceptance.
+Microcoder and Terminal-Bench come first.
 This is a run-control surface over operator-selected sources, not a new training
 algorithm or a claim that file activity proves process liveness. Broader training
 services and cross-operator orchestration remain separate roadmap work.
@@ -100,18 +104,24 @@ services and cross-operator orchestration remain separate roadmap work.
 [Rust Native](../crates/rust-native/README.md), tracked in
 [#9693](https://github.com/OpenAgentsInc/openagents/issues/9693), is the shared
 UI foundation for progressive Coder client adoption. Its initial implementation
-provides serializable `Stack`, `Text`, and `Button` elements, typed application
-intents bound to the current view instance/revision/node, deterministic style
-composition, and generic colors. Coder's palette belongs to `coder-ui`;
-the existing terminal consumes it through compatibility reexports. Native renderers are still planned.
+provides serializable `Stack`, `List`, `Text`, `Button`, and `Surface` elements,
+typed application intents bound to the current view instance/revision/node,
+deterministic style composition, and generic colors. Coder's palette belongs
+to `coder-ui`; the existing terminal consumes it through compatibility reexports.
+The iOS and Android hosts mount the shared reader through native controls and
+the Verse world through platform drawing surfaces. General desktop/web mounts
+and composition-aware editing remain planned.
 
 The [specification](coder/rust-native/architecture.md),
 [build order](coder/rust-native/build-order.md), and
 [adoption map](coder/rust-native/adoption.md) keep this work incremental:
 preserve current terminal behavior, add small native and web adapters, and
-migrate one consumer at a time. The Apple target uses a thin SwiftUI bridge
-with state and domain logic in Rust. The earlier UIKit feasibility probe
-remains UIKit evidence; it does not establish SwiftUI support. UI activation
+migrate one consumer at a time. The Apple target uses a thin SwiftUI bridge;
+the Android target uses thin Kotlin framework glue and JNI. Application state,
+connection authority, transport, and domain logic remain in Rust. The earlier feasibility
+probes retain their original scope; the later mobile hosts have separate
+[iOS](coder/verification/2026-09-26-mobile-reader.md) and
+[Android](coder/verification/2026-09-26-android-mobile.md) evidence. UI activation
 does not replace task grants, and framework completion is not a prerequisite
 for unrelated runtime, host, knowledge, or labor work.
 
@@ -124,7 +134,7 @@ labels, not new protocols or a second issue tracker.
 | --- | --- | --- | --- |
 | **R1 — Economical coding** | Coder, Coder One, Microluna, and Microcoder implement different recorded execution paths. Selected task wins and historical losses exist. | Repeated useful repository and benchmark completions under exact model, effort, tool, and budget controls. Count all attempts, latency distributions, known costs, and unknown totals; demonstrate transfer before broad superiority claims. | [Thesis](coder/design/thesis.md), [networked Coder plan](coder/design/networked-coder-plan.md), [Microcoder guide](coder/guides/microcoder.md), [current results](terminal-bench/README.md) |
 | **R2 — One durable task** | Local inbox, explicit execution owner, recovery, ATIF views, retained artifacts, frozen context, and protected checks are implemented. | Complete the common local/container model adapter, detached control, recovery, and exact candidate verification. Keep completion, verification, acceptance, and integration separate. | [Task owner](coder/runtime/task-owner.md), [repository adapter](coder/runtime/microcoder-repository.md), [frozen context](coder/runtime/frozen-task-context.md), M2–M6 in the [migration tracker](coder/migration-status.md) |
-| **R3 — Clients and continuity** | Terminal/headless and Gym inspection work; Rust mobile feasibility has target-specific prototype evidence. Rust Native supplies the generic semantic/style core; `coder-ui` owns the application theme consumed by the terminal. A scoped CTRL host/client bridge supplies private task control; the [iOS reader](coder/guides/mobile-readonly.md) supplies SwiftUI lists/transcripts and encrypted retained-harness observation. Full task control and other client adapters remain planned. | One computer-started task is observed, corrected, disconnected, reconnected, and checked through an authorized mobile client without duplicated effects. Deliver iOS, Android, desktop, and Rust web slices with separate input, accessibility, lifecycle, credential, and revocation evidence. | [Product suite](coder/design/typesafe-product-suite.md), [Rust Native adoption](coder/rust-native/adoption.md), [mobile feasibility](coder/design/rust-mobile-feasibility.md), [CTRL host](coder/runtime/nostr-task-control.md), [CTRL contract](../nips/openagents/NIP-CTRL.md), M1/M7–M10/M13 |
+| **R3 — Clients and continuity** | Terminal/headless and Gym inspection work; Rust mobile feasibility has target-specific prototype evidence. Rust Native supplies the generic semantic/style core; `coder-ui` owns the application theme consumed by the terminal. A scoped CTRL host/client bridge supplies private task control; the [mobile reader](coder/guides/mobile-readonly.md) and [Android host](../bins/coder-android/README.md) supply native lists/transcripts, encrypted retained-harness observation, and shared Verse behavior. Full task control and desktop/web client adapters remain planned. | One computer-started task is observed, corrected, disconnected, reconnected, and checked through an authorized mobile client without duplicated effects. Deliver iOS, Android, desktop, and Rust web slices with separate input, accessibility, lifecycle, credential, and revocation evidence. | [Product suite](coder/design/typesafe-product-suite.md), [Rust Native adoption](coder/rust-native/adoption.md), [mobile feasibility](coder/design/rust-mobile-feasibility.md), [CTRL host](coder/runtime/nostr-task-control.md), [CTRL contract](../nips/openagents/NIP-CTRL.md), M1/M7–M10/M13 |
 | **R4 — Hosts, CoderOS, and environments** | Local execution boundaries, process supervision, worktrees, and verified bundle/one-shot service packaging exist. | Accept clean Linux and macOS hosts; support exact resource admission, restart recovery, update/rollback, and state compatibility. Build a pinned generic CoderOS profile and admitted environment leases with materialization, cleanup, and uncertain-resource accounting. | [Portable host](coder/runtime/portable-host.md), [migration assessment](coder/design/coder-suite-migration.md), [ENV](../nips/openagents/NIP-ENV.md), M11/M12/M15 |
 | **R5 — Context and operation discovery** | Scoped local instruction capture, exact frozen knowledge, evidence programs, and bounded context selection exist in specific paths. | Share versioned source captures, workspace views, requirement coverage, and recipient-specific context. Discover a small eligible operation set, expand schemas/manuals on demand, and measure missing evidence and false activation. | [TypeSafe analysis](coder/design/typesafe-agent-analysis.md), [decision-function inventory](coder/design/decision-function-inventory.md), [CTX](../nips/openagents/NIP-CTX.md), [WS](../nips/openagents/NIP-WS.md), [POL](../nips/openagents/NIP-POL.md) |
 | **R6 — Programs, plugins, and packages** | Rust registries, six runnable program step kinds (generic `invoke` remains refused), a bounded Wasm host, evidence guests, local locks, client plugins, and skill-directory components exist. | Distribute compatible, exact components over Nostr; keep installation inert; admit host bindings separately; scope skills and roll back activation. Prove useful reuse by another operator and compare components with their absence. | [Extensions](extensions/README.md), [programs](programs.md), [CAP](../nips/openagents/NIP-CAP.md), [PRG](../nips/openagents/NIP-PRG.md), [EXT](../nips/openagents/NIP-EXT.md), M16 |
@@ -137,7 +147,7 @@ labels, not new protocols or a second issue tracker.
 | **R13 — Measurement and optimization** | Gym evaluates decision models and reads coding runs; Terminal-Bench harnesses, replay, component studies, and retained negative results exist. | Make every proposed replacement reproducibly comparable. Bound search and costs, protect confirmation, retain exposure, and promote only under declared criteria. OPT contracts and optimization machinery do not prove improved behavior by themselves. | [Gym](gym/README.md), [Terminal-Bench](terminal-bench/README.md), [optimization](optimization/README.md), [NIP-OPT](../nips/openagents/NIP-OPT.md), [NIP-EVAL](../nips/openagents/NIP-EVAL.md) |
 | **R14 — Device actions, media, and automation** | Specific terminal/world/device probes and subprocess boundaries exist; broad device and automation host contracts are designed. | Admit observation, transmission, recording, speaking, browser/computer input, schedules, and continuations separately. Prove target freshness, exact authority, human override, missed-occurrence handling, and cleanup on each supported platform. | [LIVE](../nips/openagents/NIP-LIVE.md), [AUTO](../nips/openagents/NIP-AUTO.md), [teardown plan](coder/design/teardown-nostr-integration.md), M10/M14/M17 |
 | **R15 — Optional managed hosting** | Gateway tenancy/accounting and worker primitives supply pieces, not a complete Coder Cloud product. | Offer managed task capacity beside owned hosts and labor providers, with explicit tenant isolation, execution placement, export/deletion, recovery, access plans, and measured service economics. Local use remains independent. | [Suite plan](coder/design/typesafe-product-suite.md), [service specification](coder/design/service-spec.md), [tenancy/gateway](decision-models/service/gateway.md), M20 |
-| **R16 — Verse, games, and broader agents** | Verse's shared desktop/iOS world, desktop chat, and Voyager/Minecraft research paths exist; XP and knowledge quests implement narrower contribution mechanics. | Use worlds and progression to make useful work visible, without equating activity or awards with transfer. Keep open-ended game research and future noncoding domain profiles independently evaluated. | [Verse](verse/README.md), [Voyager](voyager/README.md), [Minecraft](minecraft/README.md), [general agents](agents/README.md), [XP](../nips/openagents/NIP-XP.md) |
+| **R16 — Verse, games, and broader agents** | Verse's shared desktop/iOS/Android world, desktop chat, and Voyager/Minecraft research paths exist; XP and knowledge quests implement narrower contribution mechanics. | Use worlds and progression to make useful work visible, without equating activity or awards with transfer. Keep open-ended game research and future noncoding domain profiles independently evaluated. | [Verse](verse/README.md), [Voyager](voyager/README.md), [Minecraft](minecraft/README.md), [general agents](agents/README.md), [XP](../nips/openagents/NIP-XP.md) |
 | **R17 — Operations, discovery, and documentation** | Public discovery/docs, install/runbook infrastructure, focused manual verification, and release checks exist. | Keep one current entry point per domain, exact version/support statements, working examples, compatibility windows, dependencies/licenses, incident and recovery procedures, and release evidence. | [Documentation policy](documentation.md), [verification](verification.md), [dependencies](dependencies.md), [deployment](deployment/README.md), [service operations](decision-models/service/operations.md) |
 
 ## The first suite milestone
@@ -188,7 +198,7 @@ or possible group combinations do not establish that result.
 | Historical direction | Current disposition |
 | --- | --- |
 | MechSuit, Autopilot, Khala/Khala Code, Omega, Sarah, and earlier OpenAgents Desktop brands | Preserve their useful designs and history; implement the selected behavior as Coder suite capabilities. The names do not denote current supported products. |
-| Earlier TypeScript/Effect/Bun, Elixir/Phoenix, private service APIs, and backend-specific clients | Reference designs only. Reimplement in public Rust under the repository contract. The existing Lev bridge and planned thin SwiftUI adapter have narrow explicit scopes; infrastructure tooling remains separate. |
+| Earlier TypeScript/Effect/Bun, Elixir/Phoenix, private service APIs, and backend-specific clients | Reference designs only. Reimplement in public Rust under the repository contract. The Lev bridge and thin SwiftUI/Android native adapters have narrow explicit scopes; application state and domain logic stay in Rust, and infrastructure tooling remains separate. |
 | Extism-era marketplace and prior evidence plugins | Current Wasm/program/skill systems supply the implementation direction. Measure use and benefit; do not revive an unused registry as a success metric. |
 | Historical author revenue shares and developer bounties | Record an explicit disposition when terms are settled. Labor settlement is high priority; automatic royalties or historical payout completion are not claimed. |
 | Nostr markets and earlier swap infrastructure | Reuse bilateral negotiation, provider independence, exact obligations, and recovery. Swaps, liquidity markets, and financial risk products are not prerequisites for Coder or labor. |

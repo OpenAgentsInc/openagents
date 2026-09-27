@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 455 documents plus itself as of September 26, 2026.
+This catalog lists 457 documents plus itself as of September 26, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -178,6 +178,8 @@ files are included below.
 | [coder/verification/2026-09-26-free-labor/README.md](coder/verification/2026-09-26-free-labor/README.md) | Evidence index | Free labor acceptance evidence |
 | [coder/verification/2026-09-26-frozen-context/README.md](coder/verification/2026-09-26-frozen-context/README.md) | Evidence index | Frozen context and shared transport acceptance |
 | [coder/verification/2026-09-26-knowledge/README.md](coder/verification/2026-09-26-knowledge/README.md) | Evidence index | Knowledge integrity and permissioned input verification |
+| [coder/verification/2026-09-26-android-mobile.md](coder/verification/2026-09-26-android-mobile.md) | Verification | Coder Android reader, shared Verse, native lifecycle, and emulator acceptance |
+| [coder/verification/2026-09-26-android-mobile/README.md](coder/verification/2026-09-26-android-mobile/README.md) | Evidence index | Android native acceptance artifacts and screenshots |
 | [coder/verification/2026-09-26-mobile-reader.md](coder/verification/2026-09-26-mobile-reader.md) | Retained evidence / audit | Coder iOS reader verification — September 26, 2026 |
 | [coder/verification/2026-09-26-fullscreen-motion.md](coder/verification/2026-09-26-fullscreen-motion.md) | Verification | Full-screen Verse and phone-motion camera |
 | [coder/verification/2026-09-26-verse-mobile.md](coder/verification/2026-09-26-verse-mobile.md) | Verification | Shared Verse desktop/iOS delivery |

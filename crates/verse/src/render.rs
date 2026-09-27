@@ -180,6 +180,41 @@ impl Renderer {
         Self::from_surface(instance, surface, width, height, world, atlas, options)
     }
 
+    /// Creates an Android surface from an acquired native window.
+    ///
+    /// # Safety
+    /// `window` must point to a valid ANativeWindow on its owning UI thread.
+    /// The caller must retain the window until after this renderer is dropped,
+    /// stop frame callbacks before teardown, and serialize all renderer calls.
+    #[cfg(target_os = "android")]
+    pub unsafe fn from_android_window(
+        window: *mut core::ffi::c_void,
+        width: u32,
+        height: u32,
+        world: &Mesh,
+        atlas: &Atlas,
+        options: RenderOptions,
+    ) -> Result<Self, String> {
+        let window = std::ptr::NonNull::new(window).ok_or("native Android window is null")?;
+        options.validate()?;
+        validate_extent(width, height, options.max_extent)?;
+        // Use the Android GLES path explicitly. Enumerating Vulkan can stall
+        // inside emulator drivers before an adapter fallback is possible.
+        let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+        descriptor.backends = wgpu::Backends::GL;
+        let instance = wgpu::Instance::new(descriptor);
+        let handle = wgpu::rwh::AndroidNdkWindowHandle::new(window);
+        // SAFETY: the caller retains the acquired window through renderer drop.
+        let surface = unsafe {
+            instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
+                raw_display_handle: Some(wgpu::rwh::AndroidDisplayHandle::new().into()),
+                raw_window_handle: handle.into(),
+            })
+        }
+        .map_err(|error| format!("cannot create an Android surface: {error}"))?;
+        Self::from_surface(instance, surface, width, height, world, atlas, options)
+    }
+
     /// Builds the same renderer around a platform-created surface.
     #[allow(clippy::too_many_arguments)]
     pub fn from_surface(
@@ -477,6 +512,7 @@ pub fn capture(
         .map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
+#[cfg(any(target_vendor = "apple", feature = "desktop", feature = "capture"))]
 fn instance() -> wgpu::Instance {
     wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env())
 }

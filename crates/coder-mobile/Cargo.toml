@@ -7,7 +7,7 @@ publish.workspace = true
 description = "Rust-owned read-only Coder mobile conversation state and native bridge."
 
 [lib]
-crate-type = ["rlib", "staticlib"]
+crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
 coder-connect = { path = "../coder-connect", default-features = false }
@@ -21,6 +21,11 @@ serde_json = "1"
 base64 = "0.22"
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "=0.22.4"
+libc = "0.2"
+ndk-sys = "0.6"
 
 [dev-dependencies]
 tempfile = "3"

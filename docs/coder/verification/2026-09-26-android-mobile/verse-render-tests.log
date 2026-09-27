@@ -1,0 +1,11 @@
+    Finished `test` profile [unoptimized] target(s) in 0.14s
+     Running unittests src/lib.rs (../target/debug/deps/verse-e7ac66d55632a722)
+
+running 4 tests
+test render::tests::renderer_options_and_extents_are_bounded_before_gpu_work ... ok
+test render::tests::scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits ... ok
+test render::tests::dynamic_buffers_grow_to_hold_the_full_bounded_crowd ... ok
+test render::tests::over_capacity_frames_fail_instead_of_silently_clipping ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 112 filtered out; finished in 0.01s
+

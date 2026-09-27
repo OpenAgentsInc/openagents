@@ -1,0 +1,8 @@
+Stopping: com.openagents.coder
+Starting: Intent { cmp=com.openagents.coder/.MainActivity (has extras) }
+Status: ok
+LaunchState: COLD
+Activity: com.openagents.coder/.MainActivity
+TotalTime: 620
+WaitTime: 620
+Complete

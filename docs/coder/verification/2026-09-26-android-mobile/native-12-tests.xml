@@ -1,0 +1,20 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.openagents.coder.DeviceStorageTest" tests="12" failures="0" errors="0" skipped="0" time="32.955" timestamp="2026-09-26T23:55:18" hostname="localhost">
+  <properties>
+    <property name="device" value="coder_mobile_api35(AVD) - 15" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="damagedOrOversizedCiphertextDoesNotReplaceTheIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.029" />
+  <testcase name="simultaneousStorageInstancesUseOneIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.0" />
+  <testcase name="interruptedWriteRecoversBeforeCheckingTheBaseLength" classname="com.openagents.coder.DeviceStorageTest" time="0.032" />
+  <testcase name="interruptedAtomicWriteRecoversTheSameIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.003" />
+  <testcase name="readerPagesStayPinnedAndExactRecordsRemainAccessible" classname="com.openagents.coder.MobileAcceptanceTest" time="3.865" />
+  <testcase name="worldRendersFullBleedAndTouchMovesTheSharedPlayer" classname="com.openagents.coder.MobileAcceptanceTest" time="2.872" />
+  <testcase name="invalidPairingIsVisibleAndPasteRemainsAvailable" classname="com.openagents.coder.MobileAcceptanceTest" time="3.534" />
+  <testcase name="motionModeRecenterAndPauseUseTheSharedController" classname="com.openagents.coder.MobileAcceptanceTest" time="4.194" />
+  <testcase name="backgroundAndSurfaceRecreationKeepReaderIdentity" classname="com.openagents.coder.MobileAcceptanceTest" time="6.697" />
+  <testcase name="gymHasSyntheticBoardsWithoutLaunchingWork" classname="com.openagents.coder.MobileAcceptanceTest" time="11.322" />
+  <testcase name="androidQrDecoderMatchesTheRetainedRustInvitation" classname="com.openagents.coder.MobileAcceptanceTest" time="0.063" />
+  <testcase name="jniRejectsMalformedAndStaleReaderHandles" classname="com.openagents.coder.MobileAcceptanceTest" time="0.037" />
+</testsuite>

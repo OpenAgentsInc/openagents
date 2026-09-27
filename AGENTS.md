@@ -7,6 +7,11 @@ repo script and supervised as a child process. Coder's iOS host at `bins/coder-i
 callbacks, as explicitly requested for that surface. Keep its application state,
 domain logic, permissions, and transport in Rust; the implemented observer keeps these in `coder-mobile` and `coder-connect`. Read `crates/rust-native/docs/spec.md` and `docs/coder/rust-native/architecture.md`
 before adding that boundary.
+The Android host at `bins/coder-android/host` uses the equivalent thin Kotlin
+boundary for Android framework widgets, `SurfaceView`, camera, sensors, and
+Keystore access. Keep domain state, Nostr, authorization, cache, and world
+behavior in the same Rust mobile library; do not import the private Android
+backend or authentication implementation.
 Retained Python training and
 acceptance tooling and shell orchestration are infrastructure exceptions,
 not permission to add another product implementation language.
@@ -207,10 +212,11 @@ uses, and marks which are implemented and which are only specified.
 - `crates/coder-connect` — explicitly paired retained-history observation over
   NIP-42 and encrypted private Nostr artifacts. This cannot control an engine.
   Read its README and the NIP-SESS observer profile before changing authority.
-- `crates/coder-mobile` — Rust-owned iOS reader state, encrypted cache, paging,
+- `crates/coder-mobile` — Rust-owned iOS/Android reader state, encrypted cache, paging,
   synchronization, and C ABI, plus a separate main-thread Verse render handle
-  using the shared `verse::runtime::WorldRuntime`. SwiftUI mounts generic Rust
-  Native views and a Metal layer, and owns native controls and Keychain. Keep
+  using the shared `verse::runtime::WorldRuntime`. SwiftUI and Android widgets
+  mount Rust Native views and native GPU surfaces. Platform adapters own native
+  controls, Keychain/Keystore, camera, and sensors. Keep
   Verse identity and lifecycle separate from history-observer authority. Read
   `docs/coder/guides/mobile-readonly.md` and `docs/verse/mobile.md`.
 - `crates/coder-terminal` — the Coder terminal: the amber intensity ladder,

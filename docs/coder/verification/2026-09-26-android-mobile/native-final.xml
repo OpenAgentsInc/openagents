@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.openagents.coder.DeviceStorageTest" tests="13" failures="0" errors="0" skipped="0" time="30.676" timestamp="2026-09-27T00:03:48" hostname="localhost">
+  <properties>
+    <property name="device" value="coder_mobile_api35(AVD) - 15" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="damagedOrOversizedCiphertextDoesNotReplaceTheIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.004" />
+  <testcase name="simultaneousStorageInstancesUseOneIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.03" />
+  <testcase name="interruptedWriteRecoversBeforeCheckingTheBaseLength" classname="com.openagents.coder.DeviceStorageTest" time="0.001" />
+  <testcase name="syntheticAndNormalScopesNeverShareIdentities" classname="com.openagents.coder.DeviceStorageTest" time="0.04" />
+  <testcase name="interruptedAtomicWriteRecoversTheSameIdentity" classname="com.openagents.coder.DeviceStorageTest" time="0.0" />
+  <testcase name="readerPagesStayPinnedAndExactRecordsRemainAccessible" classname="com.openagents.coder.MobileAcceptanceTest" time="4.323" />
+  <testcase name="worldRendersFullBleedAndTouchMovesTheSharedPlayer" classname="com.openagents.coder.MobileAcceptanceTest" time="2.852" />
+  <testcase name="invalidPairingIsVisibleAndPasteRemainsAvailable" classname="com.openagents.coder.MobileAcceptanceTest" time="2.679" />
+  <testcase name="motionModeRecenterAndPauseUseTheSharedController" classname="com.openagents.coder.MobileAcceptanceTest" time="3.367" />
+  <testcase name="backgroundAndSurfaceRecreationKeepReaderIdentity" classname="com.openagents.coder.MobileAcceptanceTest" time="5.799" />
+  <testcase name="gymHasSyntheticBoardsWithoutLaunchingWork" classname="com.openagents.coder.MobileAcceptanceTest" time="11.057" />
+  <testcase name="androidQrDecoderMatchesTheRetainedRustInvitation" classname="com.openagents.coder.MobileAcceptanceTest" time="0.158" />
+  <testcase name="jniRejectsMalformedAndStaleReaderHandles" classname="com.openagents.coder.MobileAcceptanceTest" time="0.066" />
+</testsuite>

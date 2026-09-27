@@ -1,12 +1,15 @@
-# Read saved Codex and Claude chats on iPhone
+# Read saved Codex and Claude chats on your phone
 
-Coder's iOS reader pairs with a computer and displays its retained Codex and
+Coder's iOS and Android readers pair with a computer and display its retained Codex and
 Claude Code conversations. Select a chat to load its native transcript, then
 keep it open to receive appended records. The original harness continues to
 own the conversation. This app cannot send a prompt, run a tool, approve an
 operation, or resume an agent.
 
-The reader uses the existing **Coder** iOS app identity and Xcode setup.
+The iOS reader uses the existing **Coder** app identity and Xcode setup.
+Android uses the same Rust state and protocols with a native Android adapter;
+see its [build guide](../../../bins/coder-android/README.md) and
+[emulator verification](../verification/2026-09-26-android-mobile.md).
 [Native build instructions](../../../bins/coder-ios/README.md), the
 [world and pairing verification](../verification/2026-09-26-world-pairing.md),
 and the [original reader checks](../verification/2026-09-26-mobile-reader.md)
@@ -46,7 +49,7 @@ Selected roots cover supported retained conversations, including archived
 Codex chats and Claude subagents, and future matching files under those roots.
 The connector does not scan account credential files. Text already recorded
 in a chat remains part of the disclosed transcript. Device identity secrets
-stay in their own local store or Keychain; no Codex or Claude account login is
+stay in their own local store, Keychain, or Keystore-protected storage; no Codex or Claude account login is
 transferred. The QR contains an expiring pairing capability, not history.
 
 The previous `pair --client PUBKEY` command and full connection JSON remain
@@ -87,9 +90,10 @@ metadata row cannot recreate its transcript.
 The device persists connection metadata, catalog pages, transcript pages, and
 cursors in its protected application-support directory. Each cache entry is
 NIP-44 encrypted to the device's own key and authenticated against its logical
-identity. Writes are atomic. Files are excluded from device backup, and the
-Keychain identity uses device-only, unlocked access. App termination can lose
-an in-flight refresh but cannot promote a cursor past an unwritten page.
+identity. Writes are atomic. Files are excluded from device backup. iOS uses
+a device-only Keychain identity with unlocked access; Android encrypts its
+identity with Android Keystore and stores it in the no-backup directory. App
+termination can lose an in-flight refresh but cannot promote a cursor past an unwritten page.
 
 Cached lists open before the network answers. Connection failures keep cached
 content visible with an offline label; an old cache does not establish that
@@ -131,9 +135,10 @@ or change the source scope; the maximum grant lifetime is 30 days.
 - [`rust-native`](../../../crates/rust-native/README.md) supplies generic validated
   lists, text, buttons, styles, and revision-bound activation. The Coder palette
   belongs to [`coder-ui`](../../../crates/coder-ui/src/theme.rs).
-- The [thin SwiftUI host](../../../bins/coder-ios/host/App/) owns native controls,
-  Keychain, lifecycle, selection, and scrolling. It does not interpret chat
-  records, run tools, or invent application intents.
+- The [SwiftUI host](../../../bins/coder-ios/host/App/) and
+  [Android host](../../../bins/coder-android/README.md) own native controls,
+  protected identity storage, lifecycle, selection, and scrolling. They do not
+  interpret chat records, run tools, or invent application intents.
 
 Future writing needs a distinct admitted control path, native session adapter,
 retry semantics, and approval boundaries. Observation grants do not acquire

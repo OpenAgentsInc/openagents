@@ -2,9 +2,11 @@
 
 Status: experimental foundation and proposed framework direction, September 26,
 2026. [Issue #9693](https://github.com/OpenAgentsInc/openagents/issues/9693)
-covers the initial crate. The later [read-only iOS reader](../guides/mobile-readonly.md)
-implements one native application slice; its [receipt](../verification/2026-09-26-mobile-reader.md)
-records the checked platforms and remaining limits. Sections distinguish that
+covers the initial crate. The later [read-only mobile reader](../guides/mobile-readonly.md)
+implements a native application slice on iOS and Android. The
+[iOS receipt](../verification/2026-09-26-mobile-reader.md) and
+[Android receipt](../verification/2026-09-26-android-mobile.md)
+record the checked platforms and remaining limits. Sections distinguish that
 delivery from general adapter contracts and complete suite support.
 
 ## Product and architecture
@@ -49,9 +51,11 @@ flowchart TD
 ```
 
 The reusable core data contract exists in Rust Native. Coder theme values
-belong to `coder-ui`, outside that core. The iOS reader connects the core to
-SwiftUI controls and a Rust application host. General mount reconciliation,
-editable input, and other platform integrations remain subsequent work.
+belong to `coder-ui`, outside that core. The mobile reader connects it to
+SwiftUI or Android framework controls and a Rust application host. Android
+reconciles the reader's native controls by stable node key. General mount
+reconciliation, shared editable input, and other platform integrations remain
+subsequent work.
 
 ## Ownership and dependency direction
 
@@ -159,7 +163,7 @@ its working controls do not establish the complete framework protocol.
 | --- | --- | --- |
 | Terminal | `coder-terminal` maps semantics through Ratatui, its ladder, and existing input facilities. | Theme adoption works now. Framing, Markdown, editor, and key bindings remain intact. A generic view renderer is still needed. |
 | iOS | Implemented read-only SwiftUI adapter using `Text`, `Button`, `VStack`/`HStack`, and `List`. | [Reader source](../../../bins/coder-ios/host/App/NativeView.swift) and [receipt](../verification/2026-09-26-mobile-reader.md) cover paged saved history, selection, inert Markdown, and follow behavior. Shared editable input and physical-device acceptance remain open. The earlier UIKit probe is separate. |
-| Android | Rust JNI adapter to native framework text, button, layout, and list widgets. | Reuse the public probe's platform boundary. A Compose adapter would be a separate decision, not a dependency of the first implementation. |
+| Android | Implemented JNI adapter with native text, button, layout, and list widgets, plus an Android native window for Verse. | [Host source](../../../bins/coder-android/README.md) and [verification](../verification/2026-09-26-android-mobile.md) cover the current iOS-equivalent reader/world slice. The feasibility probe remains separate; no Compose runtime is required. |
 | Web | Start with escaped semantic HTML; add Rust/Wasm DOM reconciliation and bounded events. | Static HTML proves serialization and semantics, not browser interactions. Use real controls and accessible roles, not a canvas for every screen. |
 | Desktop and Verse | Add appropriate native or existing terminal adapters; share semantic overlays where useful. | Verse retains its `wgpu` world and controller. A scene renderer is not replaced by a UI component tree. |
 
@@ -279,11 +283,11 @@ controls, property composition, reset, and compatibility with the current
 terminal palette. Deterministic view fixtures establish structure, not visual
 or behavioral platform parity.
 
-The reader's [verification record](../verification/2026-09-26-mobile-reader.md)
-adds focused Rust, relay, and SwiftUI simulator evidence. It leaves physical
-devices, VoiceOver, shared editable input, Android/web, and a general mounting
-runtime unaccepted. Broader adapter completion requires separate checks for
+The reader's [iOS verification record](../verification/2026-09-26-mobile-reader.md)
+adds focused Rust, relay, and SwiftUI simulator evidence. The separate
+[Android verification](../verification/2026-09-26-android-mobile.md) adds native
+emulator coverage. Physical devices, VoiceOver/TalkBack, shared editable input,
+web delivery, and a general mounting runtime remain unaccepted. Broader adapter completion requires separate checks for
 native identity, mount order, cleanup, accessibility, input, and long content.
-Existing receipts retain their original scope. This documentation update adds
-no runs. Follow the
+Existing receipts retain their original scope. Follow the
 [build order](build-order.md) to adopt one useful surface at a time.

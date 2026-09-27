@@ -1,0 +1,4 @@
+    Building arm64-v8a (aarch64-linux-android)
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/.codex/worktrees/coder-task-foundation/openagents/crates/coder-mobile)
+    Finished `dev` profile [unoptimized] target(s) in 1.58s
+     Copying libraries to /Users/christopherdavid/.codex/worktrees/coder-task-foundation/target/coder-android/jniLibs

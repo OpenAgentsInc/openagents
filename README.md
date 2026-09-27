@@ -2,7 +2,7 @@
 
 OpenAgents builds agent infrastructure: typed decisions, bounded execution,
 programs, permissions, traces, and evaluation. **Coder** is the coding product,
-with terminal and headless interfaces and an iOS reader for saved Codex and
+with terminal and headless interfaces and native mobile readers for saved Codex and
 Claude Code chats. The
 [suite plan](docs/coder/design/typesafe-product-suite.md) extends the same runtime
 to mobile, web, cloud execution, and computer control. **Coder One** supplies
@@ -17,8 +17,8 @@ Rust SDKs and CLIs, a Nostr relay, public protocol specifications, and
 Voyager's Minecraft agent. [Rust Native](crates/rust-native/README.md) supplies
 the experimental shared UI foundation: typed views and generic styles. Coder's
 application palette lives separately in `coder-ui`, used through the terminal's
-compatibility exports. The iOS reader renders Rust Native lists and transcripts
-through thin SwiftUI controls. Its [Verse home screen](docs/verse/mobile.md) mounts the
+compatibility exports. The mobile readers render Rust Native lists and transcripts
+through thin SwiftUI and Android framework controls. Its [Verse home screen](docs/verse/mobile.md) mounts the
 shared desktop world through Rust Native's generic drawing-surface contract
 and a native Metal layer. Product state and transport are Rust; native
 glue also includes the Swift bridge for Apple's on-device model. Python and shell handle training, benchmark
@@ -50,6 +50,9 @@ clock. Choose touch look or turn your phone to look around; in motion mode,
 hold the left side to walk. The world computer pairs by QR code or a pasted
 string and opens saved Codex and Claude transcripts with follow updates and encrypted local
 caching. [Pair your computer](docs/coder/guides/mobile-readonly.md).
+The [Android app](bins/coder-android/README.md) uses the same Rust reader and
+Verse runtime. Its [emulator acceptance](docs/coder/verification/2026-09-26-android-mobile.md)
+is recorded separately from TestFlight and physical-device release acceptance.
 The [Gym building](docs/verse/gym.md) loads Microcoder and Terminal-Bench boards
 only while you are inside. Inspect recorded charts and explicitly request
 host-enabled runs through a separate Gym connection.
@@ -66,7 +69,7 @@ host-enabled runs through a separate Gym connection.
 | Install a bounded task host | [Verified bundles, one-shot services, and rollback](docs/coder/runtime/portable-host.md), [platform acceptance and limits](docs/coder/verification/2026-09-26-portable-host/README.md) |
 | Try the experimental knowledge-assisted loop | [Microcoder](docs/coder/guides/microcoder.md), [shared knowledge base](docs/coder/guides/knowledge-base.md) |
 | Inspect exact knowledge inputs and comparisons | [Private and immutable bundles](docs/coder/runtime/knowledge-bundles.md), [evidence integrity](docs/coder/runtime/knowledge-evidence.md), [frozen study bookkeeping](docs/coder/runtime/knowledge-studies.md) |
-| Read computer chats on iPhone | [Pair the Coder iOS reader](docs/coder/guides/mobile-readonly.md), [build and TestFlight setup](bins/coder-ios/README.md), [verification](docs/coder/verification/2026-09-26-world-pairing.md) |
+| Read computer chats on your phone | [Pair the Coder mobile reader](docs/coder/guides/mobile-readonly.md), [iOS build and TestFlight setup](bins/coder-ios/README.md), [Android build and emulator](bins/coder-android/README.md), [verification](docs/coder/verification/2026-09-26-world-pairing.md) |
 | Review mobile platform feasibility | [Rust native prototype and measured limits](docs/coder/design/rust-mobile-feasibility.md) |
 | Build shared terminal, web, and native UI | [Rust Native](crates/rust-native/README.md), [framework contract](crates/rust-native/docs/spec.md), [Coder architecture](docs/coder/rust-native/architecture.md), [build order](docs/coder/rust-native/build-order.md), [adoption map](docs/coder/rust-native/adoption.md) |
 | Compare saved agent transcripts | [Gym head-to-head replay](docs/gym/head-to-head.md) |
@@ -77,7 +80,7 @@ host-enabled runs through a separate Gym connection.
 | Operate the Nostr relay | [Local relay runbook](docs/deployment/runbook-local-dev.md), [production (Cloud Run) runbook](docs/deployment/runbook-cloud-run.md), [configuration](docs/deployment/configuration.md) |
 | Review protocol support and gaps | [NIP implementation coverage](docs/protocol/2026-09-26-nip-implementation-coverage.md), [implementation plan](docs/protocol/implementation-plan.md) |
 | Operate a Minecraft agent | [Voyager](docs/voyager/README.md), [watch an episode](docs/minecraft/voyager-runbook.md) |
-| Walk the Verse world on desktop or iPhone | [Verse](docs/verse/README.md), [mobile controls](docs/verse/mobile.md), [Gym building and run boards](docs/verse/gym.md) |
+| Walk the Verse world on desktop or your phone | [Verse](docs/verse/README.md), [mobile controls](docs/verse/mobile.md), [Gym building and run boards](docs/verse/gym.md) |
 
 ## Run Coder
 
@@ -341,7 +344,7 @@ controller components; a policy's presence in code is not a measured result.
 | [nostr](crates/nostr/), [nostr-relay](crates/nostr-relay/) | Protocol verification and the self-hostable PostgreSQL-backed relay. |
 | [voyager](crates/voyager/) | Minecraft curriculum, bounded programs, critics, skill retention, and traces through the separate [nightly Rust bridge](mc-bridge/). |
 | [gym-bridge](crates/gym-bridge/README.md) | Private Gym observation and explicit recipe launches over Nostr; portable client plus a separately enabled local host. |
-| [verse](crates/verse/) | The shared desktop/iOS Verse world: an amber line city, player controller, following agent, native GPU surfaces, and multiplayer over Nostr with [NIP-MV](nips/openagents/NIP-MV.md). |
+| [verse](crates/verse/) | The shared desktop/iOS/Android Verse world: an amber line city, player controller, following agent, native GPU surfaces, and multiplayer over Nostr with [NIP-MV](nips/openagents/NIP-MV.md). |
 
 The host owns permissions, deadlines, budgets, and execution boundaries.
 Typed judgments inform decisions; their shape does not establish correctness

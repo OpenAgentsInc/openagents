@@ -1,5 +1,5 @@
 //! A separate, main-thread native render handle. Chat synchronization never
-//! shares this handle or its executor. Destroy it before releasing the layer.
+//! shares this handle or its executor. Destroy it before releasing the surface.
 use crate::ffi::{CoderMobileBuffer, buffer};
 use crate::verse_app::{Config, Request, Scene};
 use std::cell::RefCell;
@@ -9,8 +9,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
 pub struct VerseHandle {
-    scene: Scene,
-    renderer: verse::render::Renderer,
+    pub(crate) scene: Scene,
+    pub(crate) renderer: Option<verse::render::Renderer>,
 }
 
 fn failure() -> CoderMobileBuffer {
@@ -81,7 +81,10 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
             },
         )
     }?;
-    Ok(VerseHandle { scene, renderer })
+    Ok(VerseHandle {
+        scene,
+        renderer: Some(renderer),
+    })
 }
 
 #[cfg(not(target_os = "ios"))]
@@ -103,15 +106,34 @@ pub unsafe extern "C" fn coder_verse_call(
         return failure();
     }
     catch_unwind(AssertUnwindSafe(|| {
-        let request: Request =
-            match serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, len) }) {
-                Ok(request) => request,
-                Err(_) => return failure(),
-            };
-        if len > 4096 && !matches!(&request, Request::GymConfigure { .. }) {
-            return failure();
+        let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+        match unsafe { &mut *handle }.call_bytes(bytes) {
+            Ok(bytes) => buffer(bytes),
+            Err(_) => failure(),
         }
-        let handle = unsafe { &mut *handle };
+    }))
+    .unwrap_or_else(|_| failure())
+}
+
+impl VerseHandle {
+    /// Android can lose its native window while retaining the application scene.
+    /// Suspend effects and release the renderer before its window is released.
+    #[cfg(any(target_os = "android", test))]
+    pub(crate) fn detach_renderer(&mut self) -> Result<(), String> {
+        let result = self.scene.activate(false);
+        self.renderer = None;
+        result
+    }
+
+    pub(crate) fn call_bytes(&mut self, bytes: &[u8]) -> Result<Vec<u8>, String> {
+        if bytes.is_empty() || bytes.len() > 96 * 1024 {
+            return Err("Native Verse request exceeds its size limit".into());
+        }
+        let request: Request =
+            serde_json::from_slice(bytes).map_err(|_| "Invalid native Verse request".to_owned())?;
+        if bytes.len() > 4096 && !matches!(&request, Request::GymConfigure { .. }) {
+            return Err("Native Verse request exceeds its size limit".into());
+        }
         let include_gym = matches!(
             &request,
             Request::GymView
@@ -130,39 +152,36 @@ pub unsafe extern "C" fn coder_verse_call(
                 | Request::Snapshot
                 | Request::GymView
         );
-        match handle.call(request) {
-            Err(error) => handle.scene.error = Some(error),
-            Ok(()) if clear_error => handle.scene.error = None,
+        match self.call(request) {
+            Err(error) => self.scene.error = Some(error),
+            Ok(()) if clear_error => self.scene.error = None,
             Ok(()) => {}
         }
-        let mut packet = handle.scene.packet();
+        let mut packet = self.scene.packet();
         if include_gym {
-            packet.gym_board = handle.scene.gym_view();
+            packet.gym_board = self.scene.gym_view();
         }
-        match serde_json::to_vec(&packet) {
-            Ok(bytes) if bytes.len() <= if include_gym { 1024 * 1024 } else { 64 * 1024 } => {
-                buffer(bytes)
-            }
-            _ => failure(),
+        let bytes = serde_json::to_vec(&packet)
+            .map_err(|_| "Cannot encode native Verse state".to_owned())?;
+        if bytes.len() > if include_gym { 1024 * 1024 } else { 64 * 1024 } {
+            return Err("Native Verse state exceeds its size limit".into());
         }
-    }))
-    .unwrap_or_else(|_| failure())
-}
+        Ok(bytes)
+    }
 
-impl VerseHandle {
     fn call(&mut self, request: Request) -> Result<(), String> {
         match request {
             Request::Frame { timestamp } => {
+                let Some(renderer) = &mut self.renderer else {
+                    return Ok(());
+                };
                 if let Some(dt) = self.scene.update(timestamp)? {
                     let mut mesh = self.scene.world.dynamic_mesh();
                     if let Some(session) = &mut self.scene.session {
                         mesh.extend(&session.crowd.mesh(std::time::Instant::now(), dt));
                     }
-                    let view = self.scene.world.view(self.renderer.aspect());
-                    match self
-                        .renderer
-                        .draw(view, &mesh, &verse::ui::UiBatch::default())
-                    {
+                    let view = self.scene.world.view(renderer.aspect());
+                    match renderer.draw(view, &mesh, &verse::ui::UiBatch::default()) {
                         verse::render::DrawStatus::Presented => {
                             self.scene.frames = self.scene.frames.saturating_add(1);
                         }
@@ -180,7 +199,10 @@ impl VerseHandle {
                 let viewport = rust_native::surface::Viewport::new(width, height, scale)
                     .map_err(|e| e.to_string())?;
                 let changed = self.scene.lifecycle.viewport() != viewport;
-                self.renderer.resize(width, height)?;
+                self.renderer
+                    .as_mut()
+                    .ok_or("The native Verse surface is detached")?
+                    .resize(width, height)?;
                 self.scene
                     .lifecycle
                     .resize(viewport)
@@ -189,6 +211,9 @@ impl VerseHandle {
                     self.scene.action(Request::ResetMotion)?;
                 }
                 Ok(())
+            }
+            Request::Active { active: true } if self.renderer.is_none() => {
+                Err("The native Verse surface is detached".into())
             }
             request => self.scene.action(request),
         }
@@ -201,9 +226,67 @@ impl VerseHandle {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn coder_verse_destroy(handle: *mut VerseHandle) {
     if !handle.is_null() {
-        let mut handle = unsafe { Box::from_raw(handle) };
-        let _ = handle.scene.activate(false);
-        handle.scene.lifecycle.destroy();
-        drop(handle);
+        unsafe { drop(Box::from_raw(handle)) };
+    }
+}
+
+impl Drop for VerseHandle {
+    fn drop(&mut self) {
+        let _ = self.scene.activate(false);
+        self.scene.lifecycle.destroy();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::verse_app::CameraMode;
+
+    #[test]
+    fn detached_surface_preserves_scene_without_advancing_or_resuming() {
+        let scene = Scene::new(Config {
+            secret_hex: "01".repeat(32),
+            width: 640,
+            height: 960,
+            scale: 2.0,
+            synthetic: true,
+            gym_code: None,
+            synthetic_gym: false,
+        })
+        .unwrap();
+        let mut handle = VerseHandle {
+            scene,
+            renderer: None,
+        };
+        handle.scene.activate(true).unwrap();
+        handle
+            .scene
+            .world
+            .set_spawn([3.0, 0.0, -4.0].into(), 0.8)
+            .unwrap();
+        handle
+            .scene
+            .action(Request::CameraMode {
+                mode: CameraMode::Motion,
+            })
+            .unwrap();
+        let before: serde_json::Value =
+            serde_json::from_slice(&handle.call_bytes(br#"{"action":"snapshot"}"#).unwrap())
+                .unwrap();
+
+        handle.detach_renderer().unwrap();
+        assert!(!handle.scene.lifecycle.active());
+        assert!(handle.call(Request::Active { active: true }).is_err());
+        handle.call(Request::Frame { timestamp: 5000.0 }).unwrap();
+        handle.detach_renderer().unwrap();
+        let after: serde_json::Value =
+            serde_json::from_slice(&handle.call_bytes(br#"{"action":"snapshot"}"#).unwrap())
+                .unwrap();
+        assert_eq!(after["position"], before["position"]);
+        assert_eq!(after["camera_mode"], "motion");
+        assert_eq!(after["camera_yaw"], before["camera_yaw"]);
+        assert_eq!(after["frames_presented"], before["frames_presented"]);
+        assert_eq!(after["motion_needed"], false);
+        assert_eq!(after["gym_active"], false);
     }
 }

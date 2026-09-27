@@ -1,5 +1,7 @@
 //! Coder's read-only mobile application. Rust owns synchronization and cached
-//! evidence; the native shell owns controls, Keychain, and view lifetimes.
+//! evidence; the native shell owns controls, protected keys, and view lifetimes.
+#[cfg(target_os = "android")]
+mod android;
 mod app;
 mod cache;
 mod ffi;
