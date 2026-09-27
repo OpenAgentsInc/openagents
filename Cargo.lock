@@ -696,16 +696,22 @@ dependencies = [
  "coder-host",
  "coder-link",
  "coder-reach",
+ "coder-ssh",
  "coder-terminal",
  "coder-ui",
  "crossterm",
+ "futures-util",
+ "libc",
  "nostr",
  "ratatui",
  "rust-native",
  "secp256k1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

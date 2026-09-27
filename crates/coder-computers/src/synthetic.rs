@@ -113,6 +113,7 @@ pub struct Synthetic {
     local_host: LocalHost,
     first_run_complete: bool,
     created: u64,
+    ssh: Option<crate::model::SshAttempt>,
     /// Every effect the screens requested, in order. Tests read it.
     pub calls: Vec<String>,
 }
@@ -136,6 +137,9 @@ impl Synthetic {
             link: None,
             route: None,
             compatibility: Compatibility::Compatible,
+            listing: None,
+            ssh: None,
+            presence: None,
             devices: DeviceList::NotLoaded,
             enrollments: Vec::new(),
         };
@@ -292,6 +296,7 @@ impl Synthetic {
             },
             first_run_complete: false,
             created: 0,
+            ssh: None,
             calls: Vec::new(),
         }
     }
@@ -325,6 +330,9 @@ impl Synthetic {
             link: None,
             route: None,
             compatibility: Compatibility::Compatible,
+            listing: None,
+            ssh: None,
+            presence: None,
             devices: DeviceList::NotLoaded,
             enrollments: Vec::new(),
         };
@@ -355,6 +363,9 @@ impl ComputersService for Synthetic {
                 })
                 .collect(),
             activity: self.activity.clone(),
+            directory: crate::model::DirectoryState::NoOwnerKey,
+            ssh_ready: self.platform != Platform::Phone,
+            ssh: self.ssh.clone(),
         })
     }
     fn set_enabled(&mut self, host: &str, enabled: bool) -> Result<()> {
@@ -444,7 +455,14 @@ impl ComputersService for Synthetic {
             return Err(Error::new(Code::Unsupported, "phones never start SSH"));
         }
         let label: String = destination.chars().take(48).collect();
-        self.add(label);
+        let host = self.add(label);
+        if let Some(added) = self.hosts.last_mut() {
+            added.record.ssh = Some(destination.to_owned());
+        }
+        self.ssh = Some(crate::model::SshAttempt {
+            destination: destination.to_owned(),
+            stage: crate::model::SshStage::Added { host },
+        });
         Ok(())
     }
     fn run_without_local_host(&mut self) -> Result<()> {

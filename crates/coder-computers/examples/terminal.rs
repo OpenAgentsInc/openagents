@@ -14,7 +14,19 @@
 //! `--loopback-test` admits a `ws://` loopback relay for a local test, and
 //! `--same-machine` states that the hosts run on this computer, which
 //! allows loopback routes.
-use coder_computers::live::{FileStore, Live, Settings, load_or_create_key};
+//!
+//! To offer **Connect over SSH**, name the `coder` release archives to
+//! install and the host's owner and relay:
+//!
+//! ```sh
+//! cargo run -p coder-computers --features ssh --example terminal -- --live DIR \
+//!   --ssh-archive linux/x86_64=coder-linux-x86_64.tar.gz \
+//!   --owner OWNER_PUBLIC_KEY --relay wss://relay.example/
+//! ```
+//!
+//! Each archive is pinned to the SHA-256 it has when the example starts.
+//! Password prompts appear as masked input.
+use coder_computers::live::{FileStore, Live, Settings, SshSetup, load_or_create_key};
 use coder_computers::synthetic::Synthetic;
 use coder_computers::{Capabilities, Computers, ComputersService, Platform};
 use coder_reach::hints::Locality;
@@ -51,11 +63,75 @@ fn service(runtime: &tokio::runtime::Runtime) -> Result<Box<dyn ComputersService
     if args.iter().any(|arg| arg == "--same-machine") {
         settings.locality = Locality::SameMachine;
     }
+    settings.ssh = ssh_setup(
+        &args,
+        settings.policy == coder_access::RelayPolicy::LoopbackTest,
+    )?;
     let secret = load_or_create_key(directory)?;
     let store = FileStore::open(directory)?;
     let live = Live::open(settings, secret, Box::new(store), runtime.handle().clone())
         .map_err(|error| error.to_string())?;
     Ok(Box::new(live))
+}
+
+/// Every value that follows `flag`.
+fn values<'a>(args: &'a [String], flag: &str) -> Vec<&'a str> {
+    args.windows(2)
+        .filter(|pair| pair[0] == flag)
+        .map(|pair| pair[1].as_str())
+        .collect()
+}
+
+/// The SSH setup from `--ssh-archive OS/ARCH=PATH`, `--owner`, and
+/// `--relay`, or `None` when no archive is named.
+fn ssh_setup(args: &[String], loopback_test: bool) -> Result<Option<SshSetup>, String> {
+    let archives = values(args, "--ssh-archive");
+    if archives.is_empty() {
+        return Ok(None);
+    }
+    let mut artifacts = Vec::new();
+    for archive in archives {
+        let (platform, path) = archive
+            .split_once('=')
+            .ok_or("--ssh-archive takes OS/ARCH=PATH")?;
+        let os = match platform.split('/').next() {
+            Some("linux") => coder_ssh::Os::Linux,
+            Some("macos") => coder_ssh::Os::Macos,
+            _ => return Err("--ssh-archive OS is linux or macos".into()),
+        };
+        let arch = match platform.split('/').nth(1) {
+            Some("x86_64") => coder_ssh::Arch::X86_64,
+            Some("aarch64") => coder_ssh::Arch::Aarch64,
+            _ => return Err("--ssh-archive ARCH is x86_64 or aarch64".into()),
+        };
+        let bytes = std::fs::read(path).map_err(|error| format!("{path}: {error}"))?;
+        artifacts.push(coder_ssh::Artifact {
+            os,
+            arch,
+            sha256: sha256_hex(&bytes),
+            archive: path.into(),
+        });
+    }
+    let owner = values(args, "--owner")
+        .first()
+        .copied()
+        .ok_or("--ssh-archive needs --owner")?;
+    let relay = values(args, "--relay")
+        .first()
+        .copied()
+        .ok_or("--ssh-archive needs --relay")?;
+    let release = coder_ssh::Release::new(artifacts).map_err(|error| error.to_string())?;
+    SshSetup::coder(release, owner, relay, loopback_test)
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn open(runtime: &tokio::runtime::Runtime) -> Result<Computers, String> {
@@ -119,17 +195,31 @@ fn interactive(runtime: &tokio::runtime::Runtime) -> Result<(), String> {
     let ladder = Ladder::from_environment();
     let mut focus: Option<String> = None;
     let mut draft = String::new();
+    let mut token: Option<String> = None;
     loop {
         let view = computers.view().ok_or("no view")?.view().clone();
         let mut keys = Focus::new(&view, focus.as_deref());
         let input = computers.input().cloned();
+        // A new request, such as the next ssh prompt, starts with an empty field.
+        let asking = input.as_ref().map(|input| input.token.clone());
+        if asking != token {
+            draft.clear();
+            token = asking;
+        }
         terminal
             .draw(|frame| {
                 let drawn = render(&view, ladder, keys.current());
                 let mut lines = drawn.lines;
                 if let Some(input) = &input {
                     lines.push(Line::raw(""));
-                    lines.push(Line::raw(format!("{}: {draft}_", input.label)));
+                    lines.push(Line::raw(input.prompt.clone()));
+                    // A secret is masked while it's typed.
+                    let shown = if input.secret {
+                        "*".repeat(draft.chars().count())
+                    } else {
+                        draft.clone()
+                    };
+                    lines.push(Line::raw(format!("{}: {shown}_", input.label)));
                 }
                 let height = frame.area().height as usize;
                 let scroll = drawn.focus_line.unwrap_or(0).saturating_sub(height / 2);
