@@ -257,6 +257,13 @@ uses, and marks which are implemented and which are only specified.
   fail-closed NIP-SOV profile handling. It adds no protocol logic of its
   own; put behavior in the owning crate and expose it here. Read
   `docs/cli/README.md` before adding a command group.
+- `crates/wallet` — `openagents-wallet`, the x402 Lightning rail on an
+  exclusively held node key: the `LightningWallet` trait (exact invoices
+  with a request-hash description hash, fee-capped payment that returns the
+  preimage, lookup) and its `ldk-node` implementation behind the `ldk`
+  feature, with Esplora and SQLite under `~/.openagents/wallet`. Read
+  `nips/openagents/NIP-X402.md` before changing what an invoice or proof
+  carries.
 - `crates/coder-host` — the resident Coder host (`coder host serve`) and its
   client. It composes `coder-access`, `coder-reach`, `coder-pty`, and the task
   inbox behind one host key and rechecks the grant on every channel message.

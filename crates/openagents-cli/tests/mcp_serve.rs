@@ -79,3 +79,29 @@ fn completions_name_the_groups() {
         );
     }
 }
+
+#[test]
+fn wallet_refuses_offline_use_with_json() {
+    let home = std::env::temp_dir().join(format!("openagents-wallet-cli-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let run = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
+            .env("OPENAGENTS_WALLET_HOME", &home)
+            .arg("--json")
+            .arg("wallet")
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let missing = run(&["info"]);
+    assert_eq!(missing.status.code(), Some(1));
+    let doc: serde_json::Value = serde_json::from_slice(&missing.stdout).unwrap();
+    assert!(doc["error"].as_str().unwrap().contains("wallet init"));
+
+    let regtest = run(&["init", "--network", "regtest"]);
+    assert_eq!(regtest.status.code(), Some(64));
+
+    let bad_hash = run(&["invoice", "--msat", "1000", "--request-hash", "zz"]);
+    assert_eq!(bad_hash.status.code(), Some(64), "{bad_hash:?}");
+    let _ = std::fs::remove_dir_all(&home);
+}

@@ -458,6 +458,42 @@ admits), `transition` (a record was refused or the evidence conflicts),
 `store`, `relay`, or `execution`. Nothing in the group authors a record, widens
 a grant, or retries an execution.
 
+## Wallet (x402 Lightning rail)
+
+`openagents wallet` runs an embedded [ldk-node](https://github.com/lightningdevkit/ldk-node)
+Lightning node from `crates/wallet`. Its node key is held only by this
+wallet, so its node id is a valid x402 `payTo`; it issues the exact-amount
+invoices NIP-X402 receivers need and pays them as a buyer.
+
+```sh
+openagents wallet init --network testnet     # bitcoin, testnet, signet, or regtest (--esplora URL)
+openagents wallet info --json                # node_id is the x402 payTo
+openagents wallet fund                       # on-chain address to fund channels from
+openagents wallet channel open NODE_ID@HOST:PORT --sats 100000
+openagents wallet channel list
+openagents wallet invoice --msat 1000 --request-hash HEX64 --json
+openagents wallet pay BOLT11 --max-fee-msat 50 --wait 60 --json
+openagents wallet lookup PAYMENT_HASH
+openagents wallet serve --seconds 3600       # keep the node online; events as JSON lines
+```
+
+`invoice` puts the request hash in the BOLT11 description hash (`h`) and
+uses no memo, so `crates/nostr::x402` accepts it for that amount, hash, and
+`payTo`. `pay` refuses a malformed, foreign-network, expired, or self-issued
+invoice before dispatch, holds the router to `--max-fee-msat`, and prints the
+32-byte preimage plus the fee as proof; paying the same invoice again returns
+the same proof, and a payment still pending after `--wait` exits 1 with the
+payment hash for `lookup`. An unpaid inbound preimage is never shown.
+
+Files live in `~/.openagents/wallet` (`OPENAGENTS_WALLET_HOME` overrides):
+`config.json`, the `seed` (mode 0600, never printed), and the `ldk/` store.
+The node needs an Esplora server to start, so every command except `init`
+needs the network; `init --lsp NODE_ID@HOST:PORT` adds LSPS2 inbound
+liquidity. The x402 validator admits only mainnet and testnet invoices
+(`bc`, `tb`), so signet issues but does not validate. Facilitator verify and
+settle, the paid HTTP endpoint, and NIP-CAP `oa-x402-v1` advertising are not
+part of this command yet; see the NIP-X402 status section.
+
 ## Keys and relays
 
 ```sh
@@ -521,7 +557,8 @@ save it under `~/.config/fish/completions/openagents.fish` (fish).
 ## Verify
 
 ```sh
-cargo fmt -p openagents-cli
-cargo clippy -p openagents-cli --all-targets -- -D warnings
-cargo test -p openagents-cli
+cargo fmt -p openagents-cli -p openagents-wallet
+cargo clippy -p openagents-cli -p openagents-wallet --all-targets -- -D warnings
+cargo test -p openagents-cli -p openagents-wallet
+cargo test -p openagents-wallet --test testnet -- --ignored   # reaches public testnet Esplora
 ```
