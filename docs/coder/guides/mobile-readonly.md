@@ -98,6 +98,28 @@ This build has no host client yet, so the normal app shows every Computers
 action as unavailable with its reason. The synthetic build (`--synthetic`)
 uses an offline fixture that contacts no host.
 
+## Push wakes
+
+Push wakes are off unless the app's configuration includes a `push` object
+with a `wss://` relay URL, an `https://` push gateway URL, and the app
+profile the relay serves. When push is off, a `push_token` request answers
+that push is off and changes nothing.
+
+With push configured, the native shell passes the platform token with
+`{"op":"push_token","token":"…"}`: the APNs device token as lowercase
+hexadecimal, or the FCM registration token. Send it at every launch and
+whenever the platform issues a new token. The Rust library registers the
+token with the [push gateway](../../deployment/push-gateway.md), obtains a
+delivery grant for the relay, and publishes the device's kind 30350 lease,
+renewing it in the last third of its lifetime. `{"op":"push_disable"}`
+revokes the lease and asks the gateway to forget the token. The packet's
+`push` field reports the status.
+
+A wake carries only a fixed reconnect message. The app then reconnects and
+reads its activity summaries over the relay. The iOS and Android shells do not
+yet request a platform token; see the
+[push gateway verification record](../verification/2026-09-27-push-gateway.md).
+
 ## Cache, reconnect, and revocation
 
 The device persists connection metadata, catalog pages, transcript pages, and
