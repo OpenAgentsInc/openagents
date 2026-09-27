@@ -55,6 +55,11 @@ NOSTR_RELAY_TEST_DATABASE_URL="host=${socket_dir} user=${database_user} dbname=n
   NOSTR_RELAY_TEST_ALLOW_DESTRUCTIVE=1 \
   cargo test --locked -p nostr-relay --test push_postgres -- --nocapture
 
+createdb -h "${socket_dir}" -U "${database_user}" push_gateway_relay_test
+NOSTR_RELAY_TEST_DATABASE_URL="host=${socket_dir} user=${database_user} dbname=push_gateway_relay_test" \
+  NOSTR_RELAY_TEST_ALLOW_DESTRUCTIVE=1 \
+  cargo test --locked -p push-gateway --test relay_postgres -- --nocapture
+
 createdb -h "${socket_dir}" -U "${database_user}" nostr_relay_read_state_snapshot_test
 NOSTR_RELAY_TEST_DATABASE_URL="host=${socket_dir} user=${database_user} dbname=nostr_relay_read_state_snapshot_test" \
   NOSTR_RELAY_TEST_ALLOW_DESTRUCTIVE=1 \

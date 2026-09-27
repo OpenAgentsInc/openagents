@@ -1,0 +1,47 @@
+[package]
+name = "push-gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The NIP-PL push gateway that holds APNs and FCM credentials, and the device client that registers a native token and publishes its push lease."
+
+[lib]
+name = "push_gateway"
+path = "src/lib.rs"
+
+[[bin]]
+name = "push-gateway"
+path = "src/main.rs"
+required-features = ["server"]
+
+[features]
+default = ["server", "client"]
+# The gateway service: registration and delivery listeners, token custody,
+# and the APNs and FCM senders.
+server = ["dep:axum", "dep:ring", "dep:base64", "tokio/fs", "tokio/signal", "tokio/rt-multi-thread", "tokio/macros", "reqwest/http2"]
+# The device side: register a native token, obtain a delivery capability,
+# and publish, renew, or revoke the kind 30350 lease.
+client = ["dep:nostr-transport"]
+
+[dependencies]
+nostr = { path = "../nostr" }
+nostr-transport = { path = "../nostr-transport", optional = true }
+axum = { version = "0.8", optional = true }
+base64 = { version = "0.22", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+ring = { version = "0.17", optional = true }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11.0"
+tokio = { version = "1", features = ["net", "sync", "time"] }
+
+[dev-dependencies]
+axum = { version = "0.8", features = ["http2"] }
+nostr-relay = { path = "../nostr-relay" }
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+
+[lints]
+workspace = true
