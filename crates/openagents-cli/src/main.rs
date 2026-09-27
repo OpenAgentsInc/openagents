@@ -21,6 +21,7 @@ mod hosts;
 mod key;
 mod out;
 mod quest;
+mod reach;
 mod relay;
 mod session;
 mod sov;
@@ -39,6 +40,7 @@ Pairing and computers (NIP-HOST, NIP-REACH):
   pair         Show a QR code to read this computer's chats on a phone.
   computer     Enroll with hosts, list them, run commands, order and steer work.
   study        Launch and read Microcoder study runs on a host.
+  reach        Owner directory, host presence, and route probes.
   session      Observe a paired computer's chats (NIP-SESS): pair, list, read, tail.
 
 Coder:
@@ -98,6 +100,7 @@ fn main() -> ExitCode {
         "session" | "sessions" => session::run(&output, &rest),
         "sov" => sov::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        "reach" => reach::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),
         "prg" => catalog::prg(&output, &rest),
