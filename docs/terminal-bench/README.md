@@ -1,7 +1,7 @@
 # Terminal-Bench
 
 Use this index to find retained results, comparison limits, runbooks, and full
-traces. Updated September 26, 2026. Repository reports describe recorded
+traces. Updated September 27, 2026. Repository reports describe recorded
 attempts; they do not establish a remote host's live queue.
 
 ## Current evidence
@@ -11,6 +11,7 @@ attempts; they do not establish a remote host's live queue.
 | Microcoder development | [Per-task ledger](tb4-results.md#microcoder-development-runs-in-sample) and [Gym highlights](../gym/terminal-bench-cli.md#beat-the-winner) | Selected knowledge-assisted wins on tasks used to develop the entries. Keep each provider, cost basis, population, and source-provenance label; these are not an out-of-sample result. |
 | Out-of-sample cost on TB2.1 | [Pre-registration](2026-09-26-tb21-oos-study.md), [results](2026-09-26-tb21-oos-results.md), [retained records](../../bench/terminal-bench/microcoder-runs/coderos-4080-tb21/), and [JSON report](../../bench/terminal-bench/studies/2026-09-26-out-of-sample/t1-report.json) | TB2.1, knowledge off, list price: 30 confirmed out-of-sample wins on 65 tasks against Fable 5 xhigh's cost per trial; median pass at 2.9% of it. First runs passed 48% of tasks, against Fable 5 xhigh's 92% of trials. TB2.1 is older and easier than TB4. |
 | Prospective knowledge transfer | [Frozen study](2026-09-26-out-of-sample-study.md), [retained results](2026-09-26-out-of-sample-study-results.md), and [follow-up knowledge](2026-09-26-round2-knowledge.md) | A separately owned study. Read its current reports for completed coverage, exclusions, and uncertainty; development wins cannot substitute for it. No held-out TB4 pass yet. |
+| Coder One delegating to Fable 5.1 low | [Declaration and results](2026-09-27-fable-delegate.md) and [retained traces](../../bench/terminal-bench/traces/tb4--coder-one-delegate-fable-low--sound-change-cascade--9746-a1/) | 0 of 3 attempts beat Fable 5.1 low's cheapest ($3.85) and fastest (878 s) winning runs on `sound-change-cascade`; none passed. The delegate hit its 600- or 810-second deadline each time with no output written, so its cost is unknown (estimated at least $2.3 to $3.0 of list price). Three attempts on one development task. |
 | Earlier fire loop | [In-sample ledger](tb4-results.md#fire-loop-development-runs-in-sample) and [guide](../coder/guides/fire-loop.md) | Microluna v19-fire passed embedding 5/5 at about $0.0153 per run, excluding the fire-loop judge. Its 5:26 median was slower than Fable low's 2:55. The task was used for development. |
 | Matched controller test | [Ten-task Opus experiment](2026-09-23-matched-controller-targeted.md) | Coder One v8 passed 18/30 versus plain Claude Code's 15/30 under the same executor configuration, while costing 68% more and taking 2.2 times the agent time. The difference in passes was not established statistically. |
 | Negative family result | [Microluna v18](2026-09-25-microluna-v18-family.md) | 0/9 confirmation and 0/9 development. Setup changes and restart make the strict protocol result inconclusive; no policy was promoted. |
