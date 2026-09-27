@@ -155,6 +155,27 @@ held-out tasks with entries signed by operator A's key, which are
 candidates to B until B trusts A. That is M19's "second operator on unseen
 work" in miniature, and it's the first real network measurement.
 
+Status, 2026-09-26: two pre-registered studies run under #9683.
+
+- **TB4 ([pre-registration](../terminal-bench/2026-09-26-out-of-sample-study.md),
+  [results](../terminal-bench/2026-09-26-out-of-sample-study-results.md)).**
+  Round 1 closed as partial, and Round 2 ended with 0 passes in 24 graded
+  held-out runs. Round 3 is running: 0 held-out passes so far, and one
+  pass on a Fable-fails task awaiting its confirming run. No TB4
+  out-of-sample win yet.
+- **TB2.1, knowledge off ([pre-registration](../terminal-bench/2026-09-26-tb21-oos-study.md),
+  [results](../terminal-bench/2026-09-26-tb21-oos-results.md)).** Complete.
+  On 65 TB2.1 tasks Microcoder was never tuned on, with the knowledge base
+  off, it has 30 confirmed out-of-sample wins against Fable 5 xhigh's cost
+  per trial (list price). The median pass cost 2.9% of that bar ($0.0075,
+  1:49), but the first run passed only 31 of 65 tasks (48%), against
+  Fable 5 xhigh's 92% of trials. This tests the loop, not the knowledge
+  base: the base was off.
+
+The honest expectation above held for the knowledge base: nothing yet
+shows it transferring to held-out TB4 tasks. The loop itself transferred
+to TB2.1.
+
 ### Stage 4: the showcase, and the open call
 
 One public write-up, and an episode, built from `gym runs highlights`
@@ -196,7 +217,11 @@ those tasks. Since #9687, a runner measures and publishes evidence about
 another author's synced entry, so a quest can be completed end to end.
 The [showcase](beat-fable-showcase.md) is the write-up: the `beats-winner`
 claims with their labels, the mechanism, the out-of-sample study's status,
-and the open call.
+and the open call. Since the TB2.1 study completed, its headline is the
+TB2.1 out-of-sample result (30 confirmed wins over Fable 5 xhigh's cost per
+trial, knowledge off, list price), with the TB4 in-sample wins and the TB4
+held-out status, still without a pass, beside it. Its draft thread leads
+with the same result and keeps the limits.
 
 ### Stage 5: the segue to Verse
 

@@ -207,6 +207,19 @@ Knowledge from outside the model, retrieved by relevance and checked
 against the code, is what breaks the correlation, and it compounds as
 runs contribute entries.
 
+**Out of sample (2026-09-26).** A
+[pre-registered study](../../terminal-bench/2026-09-26-tb21-oos-study.md)
+ran Microcoder, with GPT-6 Luna and Jev and the knowledge base **off**, on
+65 Terminal-Bench 2.1 tasks it was never tuned on. It has 30 confirmed
+out-of-sample wins against Fable 5 xhigh's cost per trial (list price): the
+median pass cost 2.9% of that, $0.0075 in 1:49. But its first run passed
+only 31 of 65 tasks (48%), against Fable 5 xhigh's 92% of trials
+([results](../../terminal-bench/2026-09-26-tb21-oos-results.md)). So a
+cheap model with a deterministic contract passes about half of TB2.1 at a
+few percent of Fable's cost, without shared knowledge. On TB4's harder
+held-out tasks it hasn't passed yet, with or without knowledge
+([TB4 study](../../terminal-bench/2026-09-26-out-of-sample-study-results.md)).
+
 ## Predictions
 
 The benchmark work in flight will confirm or invalidate each of these.
@@ -218,11 +231,19 @@ The benchmark work in flight will confirm or invalidate each of these.
    Luna direct is at 0 of 20 so far (#9583), Microluna with the contract
    and loop passes materially more (#9585, #9588).
 3. **Cost per pass drops by an order of magnitude** against Opus 5.5 direct
-   on the tasks where Luna plus the contract passes.
+   on the tasks where Luna plus the contract passes. Against Fable 5 xhigh
+   on TB2.1, out of sample and at list price, it dropped by more than
+   that: the median pass cost 2.9% of Fable's cost per trial.
 4. **Failures become honest.** The share of runs Jev flags as "claimed
    success it didn't earn" falls. What remains is mostly "didn't reach
    green within the budget," which is a failure the operator can see and
    act on.
+
+**Where it stands (2026-09-26).** On TB2.1 the cost prediction holds out
+of sample, and pass rate is the open part: 48% of first runs, against
+Fable 5 xhigh's 92% of trials. On TB4's held-out tasks the loop hasn't
+passed yet, including under Round 3's 200-step limit, so on harder tasks
+the second factor's capability ceiling is the live question.
 
 **What would invalidate the thesis:**
 - If green suites routinely fail the verifier, the contract isn't faithful

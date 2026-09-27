@@ -382,6 +382,14 @@ record directory each (`fin-saccr-rwa-1790406355` and
 `fin-saccr-rwa-1790406697`), so those records are mixed. Run directories
 now carry milliseconds.
 
+**Out of sample, see TB2.1.** The pre-registered out-of-sample evidence
+for Microcoder is on Terminal-Bench 2.1, not TB4: with the knowledge base
+off, 30 confirmed out-of-sample wins on 65 tasks against Fable 5 xhigh's
+cost per trial, at list price, with a 48% first-run pass rate
+([results](2026-09-26-tb21-oos-results.md)). On TB4's pre-registered
+held-out tasks there is no pass yet
+([study results](2026-09-26-out-of-sample-study-results.md)).
+
 **Other tasks (out of sample): no passes yet.** Each task ran once with
 the knowledge base on and once with it off, at a 30-minute limit. The
 base held nothing about these tasks' domains: Jev kept only general
