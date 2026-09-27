@@ -14,7 +14,9 @@ repository adapter now includes detached and container code paths. Fresh live
 acceptance was stopped at the user's request; retained attempts are not an
 independently verified success. Code and documentation work can continue, while
 [#9674](https://github.com/OpenAgentsInc/openagents/issues/9674) remains open. See
-the [exact stopped record](verification/2026-09-26-repository-adapter/README.md). The original inbox
+the [exact stopped record](verification/2026-09-26-repository-adapter/README.md) and the
+[Claude-provider setup and checker controls](verification/2026-09-27-repository-adapter-claude/README.md)
+on coderos-4080, which ran no model call. The original inbox
 [#9672](https://github.com/OpenAgentsInc/openagents/issues/9672) remains the inert
 submission boundary; execution requires a separate grant.
 This is the foundation for moving between terminal, headless, phone, desktop, and

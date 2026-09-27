@@ -1,0 +1,80 @@
+{
+ "host": "coderos-4080",
+ "checkout": "788bb1ba03",
+ "rustc": "/home/christopherdavid/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustc",
+ "controls": [
+  {
+   "schema": "openagents.verification.v1",
+   "suite_digest": "sha256:3b3b9871f8058a2f6d9c44c1f662ede0e47295abd6811c10dba3ccc443936e4b",
+   "input_digest": "078341cd49b6ceca42ae24af9669fb8e5d4ca1cacc37133e4ca5c1905fffc14c",
+   "verdict": "failed",
+   "stderr": "{\"program\":\"/home/christopherdavid/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustc\",\"ending\":\"Exited(Some(0))\",\"elapsed_ms\":117,\"truncated\":false,\"stdout\":\"\",\"stderr\":\"warning: linker stderr: terminate called after throwing an instance of 'std::system_error'\\n           what():  Resource temporarily unavailable\\n         PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\\n  |\\n  = note: `#[warn(linker_messages)]` on by default\\n\\nwarning: 1 warning emitted\\n\\n\"}\n{\"program\":\"/tmp/.tmpy4vRmx/suite\",\"ending\":\"Exited(Some(101))\",\"elapsed_ms\":13,\"truncated\":false,\"stdout\":\"\\nrunning 1 test\\ntest independent_rounding_cases ... FAILED\\n\\nfailures:\\n\\n---- independent_rounding_cases stdout ----\\n\\nthread 'independent_rounding_cases' (3) panicked at candidate.rs:4:10:\\nattempt to subtract with overflow\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\\n\\nfailures:\\n    independent_rounding_cases\\n\\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\\n\\n\",\"stderr\":\"\"}\n",
+   "control": "ceil-broken"
+  },
+  {
+   "schema": "openagents.verification.v1",
+   "suite_digest": "sha256:3b3b9871f8058a2f6d9c44c1f662ede0e47295abd6811c10dba3ccc443936e4b",
+   "input_digest": "64923f6ebc7eae5a68db946fcf28aaf1ee77188cfda542b17cfa3e6233629055",
+   "verdict": "failed",
+   "stderr": "{\"program\":\"/home/christopherdavid/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustc\",\"ending\":\"Exited(Some(0))\",\"elapsed_ms\":152,\"truncated\":false,\"stdout\":\"\",\"stderr\":\"warning: linker stderr: terminate called after throwing an instance of 'std::system_error'\\n           what():  Resource temporarily unavailable\\n         PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\\n  |\\n  = note: `#[warn(linker_messages)]` on by default\\n\\nwarning: 1 warning emitted\\n\\n\"}\n{\"program\":\"/tmp/.tmpPAthjj/suite\",\"ending\":\"Exited(Some(101))\",\"elapsed_ms\":6,\"truncated\":false,\"stdout\":\"\\nrunning 1 test\\ntest independent_inclusive_span_cases ... FAILED\\n\\nfailures:\\n\\n---- independent_inclusive_span_cases stdout ----\\n\\nthread 'independent_inclusive_span_cases' (3) panicked at suite.rs:8:9:\\nassertion `left == right` failed: a=0, b=0\\n  left: Some(0)\\n right: Some(1)\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\\n\\nfailures:\\n    independent_inclusive_span_cases\\n\\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\\n\\n\",\"stderr\":\"\"}\n",
+   "control": "range-broken"
+  },
+  {
+   "schema": "openagents.verification.v1",
+   "suite_digest": "sha256:3b3b9871f8058a2f6d9c44c1f662ede0e47295abd6811c10dba3ccc443936e4b",
+   "input_digest": "559f4916bc086469836ba1342ec220a580a086d7f651012bfd08199fe050fae6",
+   "verdict": "passed",
+   "stderr": "{\"program\":\"/home/christopherdavid/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustc\",\"ending\":\"Exited(Some(0))\",\"elapsed_ms\":160,\"truncated\":false,\"stdout\":\"\",\"stderr\":\"warning: linker stderr: terminate called after throwing an instance of 'std::system_error'\\n           what():  Resource temporarily unavailable\\n         PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\\n  |\\n  = note: `#[warn(linker_messages)]` on by default\\n\\nwarning: 1 warning emitted\\n\\n\"}\n{\"program\":\"/tmp/.tmpVcbqXz/suite\",\"ending\":\"Exited(Some(0))\",\"elapsed_ms\":6,\"truncated\":false,\"stdout\":\"\\nrunning 1 test\\ntest independent_rounding_cases ... ok\\n\\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\\n\\n\",\"stderr\":\"\"}\n",
+   "control": "ceil-fixed"
+  },
+  {
+   "schema": "openagents.verification.v1",
+   "suite_digest": "sha256:3b3b9871f8058a2f6d9c44c1f662ede0e47295abd6811c10dba3ccc443936e4b",
+   "input_digest": "8f7c50a30b8ae0b13fcf48ef902ca4690c14c40633e7686c7a5895f819ef1b30",
+   "verdict": "passed",
+   "stderr": "{\"program\":\"/home/christopherdavid/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustc\",\"ending\":\"Exited(Some(0))\",\"elapsed_ms\":79,\"truncated\":false,\"stdout\":\"\",\"stderr\":\"warning: linker stderr: terminate called after throwing an instance of 'std::system_error'\\n           what():  Resource temporarily unavailable\\n         PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\\n  |\\n  = note: `#[warn(linker_messages)]` on by default\\n\\nwarning: 1 warning emitted\\n\\n\"}\n{\"program\":\"/tmp/.tmpj5TY80/suite\",\"ending\":\"Exited(Some(0))\",\"elapsed_ms\":4,\"truncated\":false,\"stdout\":\"\\nrunning 1 test\\ntest independent_inclusive_span_cases ... ok\\n\\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\\n\\n\",\"stderr\":\"\"}\n",
+   "control": "range-fixed"
+  }
+ ],
+ "setup": {
+  "schema": "openagents.repository-acceptance-setup.v1",
+  "synthetic": true,
+  "provider": "claude",
+  "model": "claude-opus-5-5",
+  "effort": "medium",
+  "generation_endpoint": "https://api.anthropic.com",
+  "cases": [
+   {
+    "name": "ceil",
+    "task_id": "repository-ceil",
+    "store": "/home/christopherdavid/acceptance-9674/ceil-tasks",
+    "workspace": "/home/christopherdavid/acceptance-9674/ceil-workspace",
+    "grant": "/home/christopherdavid/acceptance-9674/ceil-grant.json",
+    "checker": "/home/christopherdavid/acceptance-9674/repository-check-ceil",
+    "trust": "/home/christopherdavid/acceptance-9674/trust.json",
+    "controller": "/home/christopherdavid/oa-9674-target/release/microcoder",
+    "model_calls_started": false
+   },
+   {
+    "name": "range",
+    "task_id": "repository-range",
+    "store": "/home/christopherdavid/acceptance-9674/range-tasks",
+    "workspace": "/home/christopherdavid/acceptance-9674/range-workspace",
+    "grant": "/home/christopherdavid/acceptance-9674/range-grant.json",
+    "checker": "/home/christopherdavid/acceptance-9674/repository-check-range",
+    "trust": "/home/christopherdavid/acceptance-9674/trust.json",
+    "controller": "/home/christopherdavid/oa-9674-target/release/microcoder",
+    "model_calls_started": false
+   }
+  ]
+ },
+ "profile": {
+  "schema": "openagents.microcoder.container.v1",
+  "docker_program": "/nix/store/ln47bf0h2xcg5a0q0bfpgffa0d5k03y8-docker-29.7.2/bin/docker",
+  "docker_digest": "sha256:7d040c2a867d2fc4e6849e71c28175cf89e1f196980f5ce87e72afef7ff217e9",
+  "socket": "/var/run/docker.sock",
+  "image": "sha256:4cd829461bd5c4d511c32e269da9cb8929223b666519d8004e35fc8d1d771ab7",
+  "uid": 1000,
+  "gid": 100
+ }
+}
