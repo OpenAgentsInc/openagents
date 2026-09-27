@@ -38,6 +38,7 @@ mod terminal;
 mod wallet;
 mod world;
 mod x402;
+mod x402_native;
 mod zone;
 
 pub use args::Args;
