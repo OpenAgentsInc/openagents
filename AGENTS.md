@@ -245,6 +245,13 @@ uses, and marks which are implemented and which are only specified.
   grants, owner-directory reads under the NIP-REACH owner-authority rule, and,
   with the `ssh` feature, SSH host setup through `coder-ssh`. Read its README
   before changing owner-key handling.
+- `crates/openagents-cli` — the `openagents` command: one `--json`-first
+  program over the existing crates for pairing and computers (`coder-host`,
+  `coder-computers`), durable tasks (`coder`), headless Verse presence and
+  the Lagrange zone (`verse`, `verse-lagrange`), relays and keys, and
+  fail-closed NIP-SOV profile handling. It adds no protocol logic of its
+  own; put behavior in the owning crate and expose it here. Read
+  `docs/cli/README.md` before adding a command group.
 - `crates/coder-host` — the resident Coder host (`coder host serve`) and its
   client. It composes `coder-access`, `coder-reach`, `coder-pty`, and the task
   inbox behind one host key and rechecks the grant on every channel message.

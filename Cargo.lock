@@ -4256,6 +4256,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-cli"
+version = "0.1.0"
+dependencies = [
+ "coder",
+ "coder-access",
+ "coder-computers",
+ "coder-connect",
+ "coder-host",
+ "coder-link",
+ "coder-reach",
+ "glam",
+ "nostr",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "verse",
+ "verse-lagrange",
+]
+
+[[package]]
 name = "openrouter"
 version = "0.1.0"
 dependencies = [

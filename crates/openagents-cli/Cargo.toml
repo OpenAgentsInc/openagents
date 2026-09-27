@@ -1,0 +1,31 @@
+[package]
+name = "openagents-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The openagents command: one program that reaches every OpenAgents surface an agent needs, over Nostr."
+
+[[bin]]
+name = "openagents"
+path = "src/main.rs"
+
+[dependencies]
+coder = { path = "../coder" }
+coder-access = { path = "../coder-access", default-features = false }
+coder-computers = { path = "../coder-computers" }
+coder-connect = { path = "../coder-connect" }
+coder-host = { path = "../coder-host" }
+coder-link = { path = "../coder-link" }
+coder-reach = { path = "../coder-reach" }
+glam = "0.30.10"
+nostr = { path = "../nostr" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+verse = { path = "../verse", default-features = false }
+verse-lagrange = { path = "../verse-lagrange" }
+
+[lints]
+workspace = true

@@ -1,0 +1,816 @@
+//! Verse from the command line: who is in the world, what is near a point,
+//! what people are saying, and the events this identity publishes — its
+//! position, its words, and its gestures. Every event is a NIP-MV event
+//! built by [`verse::mv`], so the desktop client sees this identity exactly
+//! as it sees another player.
+
+use std::collections::BTreeMap;
+use std::time::Duration;
+
+use glam::{Quat, Vec3};
+use nostr::domain::Event;
+use serde_json::{Value, json};
+use verse::mv::{self, EntityPose, Frame, Gesture, Received, State};
+
+use crate::relay::{Client, DEFAULT_WAIT, identity_for, relay_url, unix_now};
+use crate::{Args, Output, out};
+
+const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
+  who                       Every entity with a state in the world, nearest first.
+  look [--at X,Y,Z] [--radius CELLS] [--wait SECONDS]
+                            Listen for live poses around a point (default: where
+                            this identity stands) and list what is there.
+  chat [--limit N]          Recent world chat lines.
+  tail [--wait SECONDS]     Follow poses, gestures, states, and chat as they arrive.
+  me                        This identity's public key and last known state.
+  move X,Y,Z [--yaw DEGREES] [--name NAME]
+                            Stand at a point: publish the avatar state and a frame.
+  say TEXT [--to all|ads|zone|near|here] [--zone NAME]
+                            Speak in world chat from where this identity stands.
+  gesture NAME [--to PUBKEY,ENTITY] [--at X,Y,Z] [--duration SECONDS]
+                            Perform a gesture (for example greet or look-around).
+  name NAME                 Publish a kind 0 profile with this display name.
+  leave                     Mark this identity's avatar offline.
+Options for every command: --as PROFILE (key), --relay URL, --world ID
+(default verse-plaza), --entity ID (default avatar).";
+
+/// Every entity the world knows about, by publisher and entity id.
+#[derive(Default)]
+pub struct Scene {
+    pub entities: BTreeMap<(String, String), Seen>,
+    pub names: BTreeMap<String, String>,
+}
+
+/// The last thing seen of one entity.
+#[derive(Clone, Debug)]
+pub struct Seen {
+    pub pose: EntityPose,
+    pub online: bool,
+    pub name: Option<String>,
+    /// Publisher time in milliseconds.
+    pub t: u64,
+    /// True when a live frame carried it, not just a stored state.
+    pub live: bool,
+}
+
+impl Scene {
+    pub fn absorb(&mut self, event: &Event, world: &str) -> Option<Received> {
+        let received = mv::decode(event, world).ok()?;
+        match &received {
+            Received::State { pubkey, state } => {
+                if let Some(name) = &state.name {
+                    self.names.insert(pubkey.clone(), name.clone());
+                }
+                let key = (pubkey.clone(), state.id.clone());
+                let stale = self.entities.get(&key).is_some_and(|seen| seen.t > state.t);
+                if !stale {
+                    self.entities.insert(
+                        key,
+                        Seen {
+                            pose: state.pose(),
+                            online: state.online,
+                            name: state.name.clone(),
+                            t: state.t,
+                            live: false,
+                        },
+                    );
+                }
+            }
+            Received::Frame { pubkey, frame } => {
+                for pose in &frame.e {
+                    let key = (pubkey.clone(), pose.id.clone());
+                    let name = self.names.get(pubkey).cloned();
+                    self.entities.insert(
+                        key,
+                        Seen {
+                            pose: pose.clone(),
+                            online: true,
+                            name,
+                            t: frame.t,
+                            live: true,
+                        },
+                    );
+                }
+            }
+            Received::Gesture { .. } | Received::Command { .. } => {}
+        }
+        Some(received)
+    }
+
+    /// Entities as JSON rows, nearest to `origin` first.
+    pub fn rows(&self, origin: Option<Vec3>, exclude: Option<&str>) -> Vec<Value> {
+        let mut rows: Vec<(f32, Value)> = self
+            .entities
+            .iter()
+            .filter(|((pubkey, _), _)| exclude != Some(pubkey.as_str()))
+            .map(|((pubkey, id), seen)| {
+                let pos = seen.pose.pos();
+                let distance = origin.map_or(0.0, |origin| origin.distance(pos));
+                (
+                    distance,
+                    json!({
+                        "pubkey": pubkey,
+                        "entity": id,
+                        "role": seen.pose.role,
+                        "name": seen.name.clone().or_else(|| self.names.get(pubkey).cloned()),
+                        "pos": seen.pose.p,
+                        "distance": origin.map(|_| distance),
+                        "online": seen.online,
+                        "live": seen.live,
+                        "follows": seen.pose.follows,
+                        "animation": seen.pose.a,
+                        "t": seen.t,
+                    }),
+                )
+            })
+            .collect();
+        rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+        rows.into_iter().map(|(_, row)| row).collect()
+    }
+}
+
+/// What every command needs: the identity, the relay, and the world.
+pub struct Context {
+    pub client: Client,
+    pub identity: verse::identity::Identity,
+    pub world: String,
+    pub entity: String,
+}
+
+impl Context {
+    pub fn open(args: &Args) -> Result<Self, String> {
+        let identity = identity_for(args.option("as"))?;
+        let signer = identity.signer.clone();
+        let world = args
+            .option("world")
+            .map(str::to_owned)
+            .unwrap_or_else(|| verse::session::WORLD.to_owned());
+        if world.is_empty() || world.len() > 128 {
+            return Err("--world is 1 to 128 bytes".into());
+        }
+        let entity = args
+            .option("entity")
+            .map(str::to_owned)
+            .unwrap_or_else(|| "avatar".to_owned());
+        Ok(Self {
+            client: Client::connect(&relay_url(args.option("relay")), signer),
+            identity,
+            world,
+            entity,
+        })
+    }
+
+    pub fn pubkey(&self) -> &str {
+        self.identity.signer.pubkey()
+    }
+
+    /// The states the relay holds for the world.
+    pub fn states(&mut self, scene: &mut Scene, wait: Duration) -> Result<(), String> {
+        let world = self.world.clone();
+        self.client.subscribe(
+            vec![json!({"kinds": [mv::STATE_KIND], "#w": [world], "limit": 500})],
+            false,
+            wait,
+            |event| {
+                scene.absorb(event, &world);
+            },
+        )
+    }
+
+    /// This identity's own last state, if the relay holds one.
+    pub fn own_state(&mut self, wait: Duration) -> Result<Option<State>, String> {
+        let world = self.world.clone();
+        let address = mv::state_address(&world, &self.entity);
+        let mut found: Option<State> = None;
+        self.client.subscribe(
+            vec![json!({
+                "kinds": [mv::STATE_KIND],
+                "authors": [self.pubkey()],
+                "#d": [address],
+                "limit": 1,
+            })],
+            false,
+            wait,
+            |event| {
+                if let Ok(Received::State { state, .. }) = mv::decode(event, &world)
+                    && found.as_ref().is_none_or(|old| old.t < state.t)
+                {
+                    found = Some(state);
+                }
+            },
+        )?;
+        Ok(found)
+    }
+
+    /// Where this identity stands: `--at`, else its stored state, else the origin.
+    pub fn origin(&mut self, args: &Args) -> Result<(Vec3, Quat), String> {
+        if let Some(at) = args.option("at") {
+            return Ok((Vec3::from(Args::vec3(at)?), Quat::IDENTITY));
+        }
+        Ok(self
+            .own_state(DEFAULT_WAIT)?
+            .map(|state| (Vec3::from(state.p), Quat::from_array(state.q)))
+            .unwrap_or((Vec3::ZERO, Quat::IDENTITY)))
+    }
+
+    /// Publish this identity's state and one frame at `pos`.
+    pub fn stand(
+        &mut self,
+        pos: Vec3,
+        rot: Quat,
+        name: Option<String>,
+        online: bool,
+    ) -> Result<crate::relay::Published, String> {
+        let now = unix_now();
+        let millis = now * 1000;
+        let state = State {
+            v: 1,
+            id: self.entity.clone(),
+            role: "avatar".into(),
+            p: pos.to_array(),
+            q: rot.to_array(),
+            t: millis,
+            online,
+            follows: None,
+            name,
+        };
+        let state_event = mv::state_event(&self.identity.signer, &self.world, &state, now);
+        if online {
+            let frame = Frame {
+                v: 1,
+                s: verse::identity::random_hex(4),
+                n: 1,
+                t: millis,
+                e: vec![EntityPose::new(&self.entity, "avatar", pos, rot)],
+            };
+            self.client.send(mv::frame_event(
+                &self.identity.signer,
+                &self.world,
+                &frame,
+                now,
+            ));
+        }
+        self.client.publish(state_event, DEFAULT_WAIT)
+    }
+}
+
+pub fn run(output: &Output, words: &[String]) -> u8 {
+    let Some((command, rest)) = words.split_first() else {
+        return output.usage("verse", "a command is required", USAGE);
+    };
+    if matches!(command.as_str(), "--help" | "-h" | "help") {
+        println!("{USAGE}");
+        return 0;
+    }
+    let args = match Args::parse(rest, &[]) {
+        Ok(args) => args,
+        Err(message) => return output.usage("verse", &message, USAGE),
+    };
+    let wait = match args.number::<u64>("wait", 0) {
+        Ok(seconds) => seconds,
+        Err(message) => return output.usage("verse", &message, USAGE),
+    };
+    let mut context = match Context::open(&args) {
+        Ok(context) => context,
+        Err(message) => return output.fail("verse", &message),
+    };
+    let result = match command.as_str() {
+        "who" => who(output, &mut context, &args),
+        "look" | "nearby" => look(output, &mut context, &args, wait),
+        "chat" => chat(output, &mut context, &args),
+        "tail" => tail(output, &mut context, wait),
+        "me" => me(output, &mut context),
+        "move" | "go" => move_to(output, &mut context, &args),
+        "say" => say(output, &mut context, &args),
+        "gesture" => gesture(output, &mut context, &args),
+        "name" => name(output, &mut context, &args),
+        "leave" => leave(output, &mut context),
+        other => return output.usage("verse", &format!("unknown command `{other}`"), USAGE),
+    };
+    context.client.close();
+    match result {
+        Ok(code) => code,
+        Err(message) => output.fail("verse", &message),
+    }
+}
+
+fn render_rows(value: &Value) -> String {
+    let Some(rows) = value["entities"].as_array() else {
+        return String::new();
+    };
+    if rows.is_empty() {
+        return "nobody here".into();
+    }
+    let mut table = vec![vec![
+        "distance".to_owned(),
+        "name".to_owned(),
+        "role".to_owned(),
+        "pos".to_owned(),
+        "state".to_owned(),
+        "pubkey".to_owned(),
+    ]];
+    for row in rows {
+        let pos = row["pos"]
+            .as_array()
+            .map(|pos| {
+                pos.iter()
+                    .map(|n| format!("{:.1}", n.as_f64().unwrap_or(0.0)))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .unwrap_or_default();
+        table.push(vec![
+            row["distance"]
+                .as_f64()
+                .map(|d| format!("{d:.1}m"))
+                .unwrap_or_default(),
+            row["name"].as_str().unwrap_or("-").to_owned(),
+            row["role"].as_str().unwrap_or("").to_owned(),
+            pos,
+            match (
+                row["live"].as_bool().unwrap_or(false),
+                row["online"].as_bool().unwrap_or(false),
+            ) {
+                (true, _) => "live".to_owned(),
+                (false, true) => "online".to_owned(),
+                (false, false) => "offline".to_owned(),
+            },
+            row["pubkey"].as_str().unwrap_or("").to_owned(),
+        ]);
+    }
+    out::table(&table)
+}
+
+fn who(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
+    let mut scene = Scene::default();
+    context.states(&mut scene, DEFAULT_WAIT)?;
+    let origin = context.origin(args)?.0;
+    let me = context.pubkey().to_owned();
+    let rows = scene.rows(Some(origin), None);
+    output.emit(
+        &json!({
+            "world": context.world,
+            "origin": origin.to_array(),
+            "me": me,
+            "entities": rows,
+        }),
+        render_rows,
+    );
+    Ok(0)
+}
+
+fn look(output: &Output, context: &mut Context, args: &Args, wait: u64) -> Result<u8, String> {
+    let radius: i64 = args.number("radius", 1)?;
+    let wait = Duration::from_secs(if wait == 0 { 3 } else { wait });
+    let (origin, _) = context.origin(args)?;
+    let mut scene = Scene::default();
+    context.states(&mut scene, DEFAULT_WAIT)?;
+    let cells = mv::cells_around(origin, radius.clamp(0, 8));
+    let world = context.world.clone();
+    context.client.subscribe(
+        vec![json!({
+            "kinds": [mv::FRAME_KIND, mv::GESTURE_KIND, mv::STATE_KIND],
+            "#w": [world],
+            "#c": cells,
+        })],
+        true,
+        wait,
+        |event| {
+            scene.absorb(event, &world);
+        },
+    )?;
+    let reach = (radius as f32 + 0.5) * mv::CELL;
+    let me = context.pubkey().to_owned();
+    let rows: Vec<Value> = scene
+        .rows(Some(origin), Some(&me))
+        .into_iter()
+        .filter(|row| row["distance"].as_f64().unwrap_or(f64::MAX) <= f64::from(reach))
+        .collect();
+    output.emit(
+        &json!({
+            "world": context.world,
+            "origin": origin.to_array(),
+            "radius_m": reach,
+            "entities": rows,
+        }),
+        render_rows,
+    );
+    Ok(0)
+}
+
+fn chat_value(line: &mv::ChatLine) -> Value {
+    json!({
+        "id": line.id,
+        "created_at": line.created_at,
+        "pubkey": line.pubkey,
+        "channel": line.channel,
+        "room": line.room,
+        "zone": line.zone,
+        "pos": line.pos.map(|pos| pos.to_array()),
+        "text": line.text,
+    })
+}
+
+fn render_chat(value: &Value) -> String {
+    format!(
+        "{} [{}] {}: {}",
+        value["created_at"],
+        value["channel"].as_str().unwrap_or("room"),
+        value["pubkey"]
+            .as_str()
+            .map(|key| &key[..key.len().min(8)])
+            .unwrap_or(""),
+        value["text"].as_str().unwrap_or("")
+    )
+}
+
+fn chat(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
+    let limit: u64 = args.number("limit", 50)?;
+    let world = context.world.clone();
+    let mut lines = Vec::new();
+    context.client.subscribe(
+        vec![json!({"kinds": [mv::CHAT_KIND], "#w": [world], "limit": limit.min(500)})],
+        false,
+        DEFAULT_WAIT,
+        |event| {
+            if let Ok(line) = mv::decode_chat(event, &world) {
+                lines.push(line);
+            }
+        },
+    )?;
+    lines.sort_by_key(|line| line.created_at);
+    let values: Vec<Value> = lines.iter().map(chat_value).collect();
+    output.emit(
+        &json!({ "world": context.world, "lines": values }),
+        |value| {
+            value["lines"]
+                .as_array()
+                .map(|lines| lines.iter().map(render_chat).collect::<Vec<_>>().join("\n"))
+                .unwrap_or_default()
+        },
+    );
+    Ok(0)
+}
+
+fn tail(output: &Output, context: &mut Context, wait: u64) -> Result<u8, String> {
+    let wait = Duration::from_secs(if wait == 0 { 30 } else { wait });
+    let world = context.world.clone();
+    let mut scene = Scene::default();
+    context.client.subscribe(
+        vec![json!({
+            "kinds": [mv::FRAME_KIND, mv::GESTURE_KIND, mv::STATE_KIND, mv::CHAT_KIND],
+            "#w": [world],
+            "since": unix_now().saturating_sub(1),
+        })],
+        true,
+        wait,
+        |event| {
+            if event.kind == mv::CHAT_KIND {
+                if let Ok(line) = mv::decode_chat(event, &world) {
+                    let mut value = chat_value(&line);
+                    value["type"] = "chat".into();
+                    output.line(&value, render_chat);
+                }
+                return;
+            }
+            let Some(received) = scene.absorb(event, &world) else {
+                return;
+            };
+            let value = match received {
+                Received::Frame { pubkey, frame } => json!({
+                    "type": "frame", "pubkey": pubkey, "t": frame.t,
+                    "entities": frame.e,
+                }),
+                Received::State { pubkey, state } => json!({
+                    "type": "state", "pubkey": pubkey, "state": state,
+                }),
+                Received::Gesture { pubkey, gesture } => json!({
+                    "type": "gesture", "pubkey": pubkey, "gesture": gesture,
+                }),
+                Received::Command {
+                    pubkey,
+                    to,
+                    command,
+                } => json!({
+                    "type": "command", "pubkey": pubkey, "to": to, "command": command,
+                }),
+            };
+            output.line(&value, |value| {
+                let who = value["pubkey"]
+                    .as_str()
+                    .map(|key| &key[..key.len().min(8)])
+                    .unwrap_or("");
+                match value["type"].as_str() {
+                    Some("frame") => {
+                        let poses = value["entities"]
+                            .as_array()
+                            .map(|poses| {
+                                poses
+                                    .iter()
+                                    .map(|pose| {
+                                        format!(
+                                            "{}@{}",
+                                            pose["id"].as_str().unwrap_or(""),
+                                            pose["p"]
+                                                .as_array()
+                                                .map(|p| p
+                                                    .iter()
+                                                    .map(|n| format!(
+                                                        "{:.1}",
+                                                        n.as_f64().unwrap_or(0.0)
+                                                    ))
+                                                    .collect::<Vec<_>>()
+                                                    .join(","))
+                                                .unwrap_or_default()
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            })
+                            .unwrap_or_default();
+                        format!("frame   {who} {poses}")
+                    }
+                    Some("state") => format!(
+                        "state   {who} {} online={}",
+                        value["state"]["id"].as_str().unwrap_or(""),
+                        value["state"]["online"]
+                    ),
+                    _ => format!(
+                        "gesture {who} {} to={}",
+                        value["gesture"]["g"].as_str().unwrap_or(""),
+                        value["gesture"]["to"]
+                    ),
+                }
+            });
+        },
+    )?;
+    Ok(0)
+}
+
+fn me(output: &Output, context: &mut Context) -> Result<u8, String> {
+    let state = context.own_state(DEFAULT_WAIT)?;
+    output.emit(
+        &json!({
+            "profile": context.identity.profile,
+            "pubkey": context.pubkey(),
+            "world": context.world,
+            "entity": context.entity,
+            "state": state,
+        }),
+        |value| {
+            let state = &value["state"];
+            if state.is_null() {
+                format!(
+                    "{} has no state in {}",
+                    value["pubkey"].as_str().unwrap_or(""),
+                    value["world"].as_str().unwrap_or("")
+                )
+            } else {
+                format!(
+                    "{} at {} online={} name={}",
+                    value["pubkey"].as_str().unwrap_or(""),
+                    state["p"],
+                    state["online"],
+                    state["name"].as_str().unwrap_or("-")
+                )
+            }
+        },
+    );
+    Ok(0)
+}
+
+fn move_to(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
+    let Some(target) = args.positional().first() else {
+        return Err("a target X,Y,Z is required".into());
+    };
+    let pos = Vec3::from(Args::vec3(target)?);
+    let yaw: f32 = args.number("yaw", 0.0)?;
+    let rot = Quat::from_rotation_y(yaw.to_radians());
+    let name = match args.option("name") {
+        Some(name) => Some(name.to_owned()),
+        None => context
+            .own_state(DEFAULT_WAIT)?
+            .and_then(|state| state.name),
+    };
+    let published = context.stand(pos, rot, name, true)?;
+    output.emit(
+        &json!({
+            "pubkey": context.pubkey(),
+            "pos": pos.to_array(),
+            "yaw": yaw,
+            "accepted": published.accepted,
+            "message": published.message,
+        }),
+        |value| {
+            format!(
+                "{} standing at {}{}",
+                if value["accepted"].as_bool().unwrap_or(false) {
+                    "ok"
+                } else {
+                    "refused"
+                },
+                value["pos"],
+                value["message"]
+                    .as_str()
+                    .filter(|m| !m.is_empty())
+                    .map(|m| format!(": {m}"))
+                    .unwrap_or_default()
+            )
+        },
+    );
+    Ok(if published.accepted {
+        0
+    } else {
+        crate::EXIT_FAILURE
+    })
+}
+
+fn say(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
+    let text = args.positional().join(" ");
+    if text.trim().is_empty() {
+        return Err("TEXT is required".into());
+    }
+    if text.len() > 1024 {
+        return Err("TEXT is at most 1024 bytes".into());
+    }
+    let channel = args.option("to").unwrap_or("near");
+    if !["all", "ads", "zone", "near", "here"].contains(&channel) {
+        return Err("--to is all, ads, zone, near, or here".into());
+    }
+    let zone = args.option("zone").unwrap_or("plaza");
+    let (pos, _) = context.origin(args)?;
+    let event = mv::world_chat_event(
+        &context.identity.signer,
+        &context.world,
+        channel,
+        zone,
+        pos,
+        &text,
+        unix_now(),
+    );
+    let published = context.client.publish(event, DEFAULT_WAIT)?;
+    output.emit(
+        &json!({
+            "id": published.id,
+            "accepted": published.accepted,
+            "message": published.message,
+            "channel": channel,
+            "pos": pos.to_array(),
+        }),
+        |value| {
+            format!(
+                "{} said on {}",
+                if value["accepted"].as_bool().unwrap_or(false) {
+                    "ok"
+                } else {
+                    "refused"
+                },
+                value["channel"].as_str().unwrap_or("")
+            )
+        },
+    );
+    Ok(if published.accepted {
+        0
+    } else {
+        crate::EXIT_FAILURE
+    })
+}
+
+fn gesture(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
+    let Some(name) = args.positional().first() else {
+        return Err("a gesture NAME is required".into());
+    };
+    if name.is_empty()
+        || name.len() > 32
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err("NAME is 1 to 32 characters of a-z, 0-9, or -".into());
+    }
+    let to = match args.option("to") {
+        Some(to) => {
+            let (pubkey, entity) = to
+                .split_once(',')
+                .map(|(pubkey, entity)| (pubkey.to_owned(), entity.to_owned()))
+                .unwrap_or_else(|| (to.to_owned(), "avatar".to_owned()));
+            if pubkey.len() != 64 || !pubkey.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err("--to takes a 64-hex public key, optionally ,ENTITY".into());
+            }
+            Some([pubkey, entity])
+        }
+        None => None,
+    };
+    let at = match args.option("at") {
+        Some(at) => vec![Args::vec3(at)?],
+        None => Vec::new(),
+    };
+    let duration: Option<f32> = args
+        .option("duration")
+        .map(str::parse)
+        .transpose()
+        .ok()
+        .flatten();
+    let pos = context
+        .own_state(DEFAULT_WAIT)?
+        .map(|state| Vec3::from(state.p))
+        .unwrap_or(Vec3::ZERO);
+    let gesture = Gesture {
+        v: 1,
+        id: context.entity.clone(),
+        g: name.clone(),
+        t: unix_now() * 1000,
+        d: duration,
+        at,
+        to,
+    };
+    let event = mv::gesture_event(
+        &context.identity.signer,
+        &context.world,
+        &gesture,
+        pos,
+        unix_now(),
+    );
+    let published = context.client.publish(event, DEFAULT_WAIT)?;
+    output.emit(
+        &json!({
+            "id": published.id,
+            "accepted": published.accepted,
+            "message": published.message,
+            "gesture": gesture,
+        }),
+        |value| {
+            format!(
+                "{} {}",
+                if value["accepted"].as_bool().unwrap_or(false) {
+                    "ok"
+                } else {
+                    "refused"
+                },
+                value["gesture"]["g"].as_str().unwrap_or("")
+            )
+        },
+    );
+    Ok(if published.accepted {
+        0
+    } else {
+        crate::EXIT_FAILURE
+    })
+}
+
+fn name(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
+    let display = args.positional().join(" ");
+    if display.trim().is_empty() || display.len() > 64 {
+        return Err("NAME is 1 to 64 bytes".into());
+    }
+    let event = mv::profile_event(&context.identity.signer, &display, unix_now());
+    let published = context.client.publish(event, DEFAULT_WAIT)?;
+    if let Some(state) = context.own_state(DEFAULT_WAIT)? {
+        context.stand(
+            Vec3::from(state.p),
+            Quat::from_array(state.q),
+            Some(display.clone()),
+            state.online,
+        )?;
+    }
+    output.emit(
+        &json!({ "accepted": published.accepted, "name": display, "pubkey": context.pubkey() }),
+        |value| {
+            format!(
+                "{} {} is now {}",
+                if value["accepted"].as_bool().unwrap_or(false) {
+                    "ok"
+                } else {
+                    "refused"
+                },
+                value["pubkey"].as_str().unwrap_or(""),
+                value["name"].as_str().unwrap_or("")
+            )
+        },
+    );
+    Ok(if published.accepted {
+        0
+    } else {
+        crate::EXIT_FAILURE
+    })
+}
+
+fn leave(output: &Output, context: &mut Context) -> Result<u8, String> {
+    let (pos, rot, name) = match context.own_state(DEFAULT_WAIT)? {
+        Some(state) => (Vec3::from(state.p), Quat::from_array(state.q), state.name),
+        None => (Vec3::ZERO, Quat::IDENTITY, None),
+    };
+    let published = context.stand(pos, rot, name, false)?;
+    output.emit(&json!({ "accepted": published.accepted }), |value| {
+        if value["accepted"].as_bool().unwrap_or(false) {
+            "ok offline".to_owned()
+        } else {
+            "refused".to_owned()
+        }
+    });
+    Ok(if published.accepted {
+        0
+    } else {
+        crate::EXIT_FAILURE
+    })
+}

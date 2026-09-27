@@ -23,6 +23,7 @@ pub const STORE_SCHEMA: &str = "openagents.coder.task-store.v2";
 pub mod adapter;
 pub mod artifact;
 pub mod checks;
+pub mod cli;
 pub mod owner;
 pub mod remote;
 pub mod view;
