@@ -74,6 +74,8 @@ WebSocket direct channels, the CAP/CJ binding of NIP-HOST, one host
 generation counter, owner-directory discovery and SSH hosts in the clients,
 an end-to-end headless approval test, Linux systemd, SSH, and PTY runs, a
 push gateway for real APNs and FCM wakes, and physical-device and
-production-relay checks. Those checks need a TestFlight and Play build that
-contains the Computers screens; none has shipped yet. The steps to run on
-that build are in the [live client record](2026-09-26-computers-live.md#physical-devices-and-production-relays).
+production-relay checks. Internal TestFlight build 0.5.0 (45), built from
+`0a3d495114`, already contains the live Computers screens, so the iPhone
+checks can run now; the owner's steps are in the workspace `NEEDS_OWNER.md`
+and the [live client record](2026-09-26-computers-live.md#physical-devices-and-production-relays).
+Android has no distributed build yet.
