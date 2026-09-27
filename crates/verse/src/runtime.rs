@@ -323,7 +323,7 @@ impl WorldRuntime {
         if self.zone == crate::zones::ZoneId::Lagrange1 {
             // Free flight: no ground under the camera.
             eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
-        } else if !self.is_plaza() {
+        } else if self.zone == crate::zones::ZoneId::Ruins {
             eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
             eye.y = eye
                 .y

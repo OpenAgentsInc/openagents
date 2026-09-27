@@ -1,4 +1,8 @@
-//! In-world loading controls and a real-time spell hotbar, with matching native semantics.
+//! In-world loading controls, a real-time spell hotbar, and the Physics Lab
+//! knobs, with matching native semantics.
+//!
+//! The panel holds a caption of up to four lines (split on `\n`) above one
+//! row of controls, or two rows when there are more than five.
 
 use super::Intent;
 use crate::ui::{self, Atlas, UiBatch};
@@ -22,7 +26,14 @@ pub struct Snapshot {
     pub buttons: Vec<Button>,
     pub progress: Option<f32>,
     pub captured_pointers: Vec<u64>,
+    /// Caption lines the panel has room for.
+    #[serde(skip)]
+    pub lines: usize,
 }
+/// Most controls in one row.
+const ROW: usize = 5;
+/// Most caption lines.
+const LINES: usize = 4;
 struct Contact {
     id: u64,
     origin: [f32; 2],
@@ -70,11 +81,17 @@ impl Hud {
     pub fn snapshot(&self, size: [f32; 2], zone: &super::Snapshot, enabled: bool) -> Snapshot {
         let [top, right, bottom, left] = self.insets;
         let width = (size[0] - left - right - 24.0).clamp(1.0, 420.0);
-        let height = 102.0;
+        let caption = zone.error.as_deref().unwrap_or(&zone.caption);
+        let lines = caption.split('\n').count().clamp(2, LINES);
+        let rows = if zone.controls.len() > ROW { 2 } else { 1 };
+        let per_row = zone.controls.len().div_ceil(rows).max(1);
+        // Two lines and one row keep the original 102-point panel.
+        let caption_height = 12.0 + 16.0 * lines as f32;
+        let height = caption_height + 8.0 + 50.0 * rows as f32;
         let x = left + (size[0] - left - right - width) * 0.5;
         let y = size[1] - bottom - self.clearance - height - 8.0;
         let visible = enabled && !zone.controls.is_empty() && width >= 240.0 && y > top + 12.0;
-        let count = zone.controls.len().max(1) as f32;
+        let count = per_row as f32;
         let buttons = zone
             .controls
             .iter()
@@ -99,8 +116,8 @@ impl Hud {
                     })
                     .map_or(0.0, |a| a.cooldown_remaining),
                 frame: [
-                    x + 6.0 + i as f32 * (width - 12.0) / count,
-                    y + 52.0,
+                    x + 6.0 + (i % per_row) as f32 * (width - 12.0) / count,
+                    y + caption_height + 8.0 + (i / per_row) as f32 * 50.0,
                     (width - 12.0) / count,
                     44.0,
                 ],
@@ -108,17 +125,15 @@ impl Hud {
             .collect();
         Snapshot {
             visible,
-            caption: zone
-                .error
-                .as_deref()
-                .unwrap_or(&zone.caption)
+            caption: caption
                 .chars()
-                .take(180)
+                .take(if zone.error.is_some() { 180 } else { 360 })
                 .collect(),
             frame: [x, y, width, height],
             buttons,
             progress: (zone.state == super::LoadState::Loading).then_some(zone.progress),
             captured_pointers: self.contacts.iter().map(|c| c.id).collect(),
+            lines,
         }
     }
     pub fn captured(&self, id: u64) -> bool {
@@ -176,7 +191,7 @@ impl Hud {
             .caption
             .split('\n')
             .flat_map(|part| atlas.wrap(part, w - 16.0))
-            .take(2)
+            .take(snapshot.lines.max(2))
             .enumerate()
         {
             ui.text(atlas, x + 8.0, y + 7.0 + row as f32 * 16.0, &line, full);
@@ -185,7 +200,7 @@ impl Hud {
             ui.rect(
                 atlas,
                 x + 6.0,
-                y + 44.0,
+                y + 12.0 + 16.0 * snapshot.lines.max(2) as f32,
                 (w - 12.0) * progress.clamp(0.0, 1.0),
                 2.0,
                 full,
@@ -280,6 +295,7 @@ mod tests {
             }],
             progress: None,
             captured_pointers: vec![],
+            lines: 2,
         };
         let mut h = Hud::default();
         h.down(1, [10.0, 10.0], &s);

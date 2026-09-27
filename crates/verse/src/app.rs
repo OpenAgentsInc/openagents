@@ -771,6 +771,13 @@ impl App {
 
     fn zone_action(&mut self, action: ZoneIntent) {
         if self.runtime.zone_intent(action).is_ok() {
+            // Only a transition resets input; a lab knob keeps held keys.
+            if !matches!(
+                action,
+                ZoneIntent::Enter | ZoneIntent::Return | ZoneIntent::Cancel | ZoneIntent::Retry
+            ) {
+                return;
+            }
             self.stop_map();
             self.keys = Keys::default();
             self.capture(false);
@@ -1482,11 +1489,17 @@ impl App {
                 return;
             }
             if !self.runtime.is_plaza() {
+                // Number keys press the zone's controls in order.
                 let index = match code {
                     KeyCode::Digit1 => Some(0),
                     KeyCode::Digit2 => Some(1),
                     KeyCode::Digit3 => Some(2),
                     KeyCode::Digit4 => Some(3),
+                    KeyCode::Digit5 => Some(4),
+                    KeyCode::Digit6 => Some(5),
+                    KeyCode::Digit7 => Some(6),
+                    KeyCode::Digit8 => Some(7),
+                    KeyCode::Digit9 => Some(8),
                     _ => None,
                 };
                 if let Some(action) = index

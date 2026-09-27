@@ -16,12 +16,14 @@ level, and titles. `R` replays a retained Microcoder run as the agent's
 visits to the workbench, oracle, library, and proving ground, beside a
 ghost of Fable 5.1 low's cheapest winning run. The [Gym building](gym.md) observes host-selected Microcoder and Terminal-Bench
 records while the player is inside and supports explicitly confirmed recipes.
-Two portals lead to separate local [zones](zones.md). **Ruins** loads its
+Three portals lead to separate local [zones](zones.md). **Ruins** loads its
 models on entry and runs the retained
 [Wizard Woods simulation](ruins-source-parity.md) in real time.
 **[Lagrange 1](lagrange-1.md)** is a construction station at the Sun–Earth L1
 point with restricted three-body orbital mechanics, station-keeping, and
-rigid-body EVA assembly. Arbitrary creator worlds, signed scene discovery,
+rigid-body EVA assembly. The **[Physics Lab](physics-lab.md)** runs each
+mechanism of the shared physics crate live, with knobs to choose a scenario
+and change its parameters. Arbitrary creator worlds, signed scene discovery,
 multiplayer zones, live Pylon state, and payment state remain unimplemented.
 
 The [Coder mobile Verse home](mobile.md) shares the world simulation and renderer
@@ -62,16 +64,22 @@ source grants, recorded charts, and bounded launch recipes.
 
 ## Portals and loaded zones
 
-Choose **Ruins portal** or **L1 portal** on the expanded map, approach the
-arch, and select **Enter Ruins** or **Enter L1**. Ruins entry downloads and
-verifies its pack only when needed; later visits can use its disk cache. Ruins
-runs the original Ruins of Atlantis Wizard Woods combat schedule on its
-retained heightfield. Lagrange 1 is generated and opens immediately.
+Choose **Ruins portal**, **L1 portal**, or **Lab portal** on the expanded map,
+approach the arch, and select **Enter Ruins**, **Enter L1**, or **Enter Lab**.
+Ruins entry downloads and verifies its pack only when needed; later visits can
+use its disk cache. Ruins runs the original Ruins of Atlantis Wizard Woods
+combat schedule on its retained heightfield. Lagrange 1 and the Physics Lab are
+generated and open immediately.
 **Plaza** returns and releases the active zone geometry and simulation.
 The portals are separate from the Spark and Halo local route demos.
 
 In Lagrange 1 you fly a maneuvering pack, fetch parts from the depot, and latch
 them into the keel jig. See [Lagrange 1](lagrange-1.md) for the physics.
+
+In the Physics Lab you walk around a stage where one of nine scenarios runs:
+contact manifolds, friction, tunneling, momentum, stacking and sleep, soft and
+hard joints, and thrusters. The HUD selects a scenario and turns its knobs;
+desktop keys 1–8 press the controls. See [Physics Lab](physics-lab.md).
 
 In Ruins, monsters approach, NPC wizards cast, and projectiles fly as the world updates.
 The phone's bottom hotbar supplies **Firebolt**, **Missile**, and **Fireball**;

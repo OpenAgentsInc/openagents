@@ -82,8 +82,8 @@ jumping stops it. Camera input can continue while walking. See
 
 ## Enter a zone
 
-Two arches on the plaza lead to local zones: **Ruins** (west) and
-**Lagrange 1** (east).
+Three arches on the plaza lead to local zones: **Ruins** (west),
+**Lagrange 1** (east), and the **Physics Lab** (north, behind the spawn).
 
 ### Ruins
 
@@ -116,6 +116,16 @@ set an autopilot target. Fly to the depot, tap **Grab**, carry the part to its
 outlined slot on the keel jig, and tap **Latch** when the outline turns green.
 The caption shows Earth distance, remaining nitrogen, and speed; the airlock
 ring refills the pack. See [Lagrange 1](lagrange-1.md).
+
+### Physics Lab
+
+Choose **Lab portal** on the map, then tap the arch or **Enter Lab**. The lab is
+generated on the device, so it opens immediately. Walk around the railed stage
+with the joystick. The zone panel shows the scenario, the selected knob, and
+readouts above two rows of controls: tap **Prev** or **Next** to select a knob,
+**-** or **+** to change it, **Reset**, **Pause** or **Run**, **Step**, and
+**Plaza**. The first knob switches among nine scenarios. See
+[Physics Lab](physics-lab.md).
 
 Plaza presence and Gym observation pause while loading or visiting a zone,
 then resume the configured plaza behavior on return. Zones are local-only;

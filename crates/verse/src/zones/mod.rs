@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod assets;
 pub mod hud;
+mod lab;
 mod lagrange;
 pub mod operators;
 mod ruins;
@@ -12,6 +13,8 @@ mod runtime;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use lab::Lab;
+pub use lab::{Kind as LabScenario, KnobView, Snapshot as LabSnapshot};
 pub(crate) use lagrange::Lagrange;
 pub(crate) use ruins::Ruins;
 
@@ -34,6 +37,7 @@ pub enum ZoneId {
     Plaza,
     Ruins,
     Lagrange1,
+    PhysicsLab,
 }
 impl ZoneId {
     pub const fn world_id(self) -> &'static str {
@@ -41,6 +45,7 @@ impl ZoneId {
             Self::Plaza => "verse-plaza",
             Self::Ruins => "ruins-v1",
             Self::Lagrange1 => "lagrange-1-v1",
+            Self::PhysicsLab => "physics-lab-v1",
         }
     }
     pub const fn label(self) -> &'static str {
@@ -48,12 +53,14 @@ impl ZoneId {
             Self::Plaza => "Amber plaza",
             Self::Ruins => "Ruins",
             Self::Lagrange1 => "Lagrange 1",
+            Self::PhysicsLab => "Physics Lab",
         }
     }
     pub const fn half_extent(self) -> f32 {
         match self {
             Self::Plaza => crate::world::HALF,
             Self::Ruins | Self::Lagrange1 => 150.0,
+            Self::PhysicsLab => lab::HALF_EXTENT,
         }
     }
     /// The zone's primary portal: the plaza's Ruins arch, or a zone's return.
@@ -66,6 +73,7 @@ impl ZoneId {
             Self::Plaza => vec![
                 (Self::Ruins, glam::Vec3::new(-12.0, 0.0, 12.0)),
                 (Self::Lagrange1, glam::Vec3::new(12.0, 0.0, 12.0)),
+                (Self::PhysicsLab, glam::Vec3::new(0.0, 0.0, -22.0)),
             ],
             Self::Ruins => vec![(
                 Self::Plaza,
@@ -76,6 +84,7 @@ impl ZoneId {
                 ),
             )],
             Self::Lagrange1 => vec![(Self::Plaza, lagrange::RETURN_PORTAL)],
+            Self::PhysicsLab => vec![(Self::Plaza, lab::RETURN_PORTAL)],
         }
     }
     /// Short arch lettering for a destination.
@@ -84,6 +93,7 @@ impl ZoneId {
             Self::Plaza => "PLAZA",
             Self::Ruins => "RUINS",
             Self::Lagrange1 => "LAGRANGE 1",
+            Self::PhysicsLab => "PHYSICS LAB",
         }
     }
 }
@@ -130,6 +140,12 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             fog_start: 1_000.0,
             fog_end: 2_000.0,
         },
+        // A dark blueprint hall; fog only softens the far floor grid.
+        ZoneId::PhysicsLab => Atmosphere {
+            color: [0.006, 0.01, 0.018],
+            fog_start: 30.0,
+            fog_end: 90.0,
+        },
     }
 }
 
@@ -147,6 +163,18 @@ pub enum Intent {
     Release,
     /// Show or hide the physics overlay: contacts, joints, and thrust.
     Forces,
+    /// Physics Lab: select the previous or next knob.
+    KnobPrev,
+    KnobNext,
+    /// Physics Lab: step the selected knob down or up one option.
+    Decrease,
+    Increase,
+    /// Physics Lab: rebuild the scenario from its knobs.
+    Reset,
+    /// Physics Lab: pause or resume the simulation.
+    Pause,
+    /// Physics Lab: pause and advance one fixed step.
+    Step,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -184,6 +212,8 @@ pub struct Snapshot {
     pub combat: Option<verse_ruins::Snapshot>,
     /// Lagrange 1 physics and construction state.
     pub station: Option<verse_lagrange::Snapshot>,
+    /// Physics Lab scenario, knobs, and readouts.
+    pub lab: Option<lab::Snapshot>,
     pub caption: String,
 }
 impl Default for Snapshot {
@@ -204,6 +234,7 @@ impl Default for Snapshot {
             controls: vec![],
             combat: None,
             station: None,
+            lab: None,
             caption: String::new(),
         }
     }
@@ -216,6 +247,7 @@ pub(crate) struct State {
     error: Option<String>,
     ruins: Option<Ruins>,
     lagrange: Option<Lagrange>,
+    lab: Option<Lab>,
     destination: ZoneId,
     plaza_pose: Option<(glam::Vec3, f32)>,
     elapsed: f32,
@@ -229,6 +261,7 @@ impl Default for State {
             error: None,
             ruins: None,
             lagrange: None,
+            lab: None,
             destination: ZoneId::Ruins,
             plaza_pose: None,
             elapsed: 0.0,
@@ -312,6 +345,7 @@ fn arch(
         ZoneId::Plaza => crate::palette::amber(Intensity::Half),
         ZoneId::Ruins => [0.13, 0.55, 0.34],
         ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
+        ZoneId::PhysicsLab => [0.3, 0.85, 1.0],
     };
     // Broken concentric arcs leave the destination visible through the opening.
     for ring in 0..3 {

@@ -441,10 +441,11 @@ uses, and marks which are implemented and which are only specified.
   is reimplemented from its `client_core`, not copied. The global plaza uses
   `coder_ui::theme::Intensity`; a palette test protects its amber geometry.
   Separately loaded zones may have their own validated colors and atmosphere.
-  Two plaza portals lead to local zones: Ruins loads a pinned asset pack only
+  Three plaza portals lead to local zones: Ruins loads a pinned asset pack only
   on entry and runs the original real-time Wizard Woods combat through
   `verse-ruins`; Lagrange 1 is a generated Sun–Earth L1 construction station
-  driven by `verse-lagrange`. Read `docs/verse/zones.md` (including its guide
+  driven by `verse-lagrange`; the Physics Lab runs the `physics` crate's
+  mechanisms live with HUD knobs (`docs/verse/physics-lab.md`). Read `docs/verse/zones.md` (including its guide
   to building and registering a zone) and `docs/verse/zone-rules.md` before
   changing asset admission, transitions, portals, or rules.
   Keep product colors and world behavior out of Rust Native. Desktop features

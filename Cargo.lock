@@ -7594,6 +7594,7 @@ dependencies = [
  "knowledge",
  "libc",
  "nostr",
+ "physics",
  "png",
  "pollster",
  "reqwest",

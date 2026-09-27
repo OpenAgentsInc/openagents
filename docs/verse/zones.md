@@ -1,6 +1,6 @@
-# Loaded zones: Ruins, Lagrange 1, and building new zones
+# Loaded zones: Ruins, Lagrange 1, Physics Lab, and building new zones
 
-Verse opens in the shared amber plaza. Two portal arches on the plaza lead to
+Verse opens in the shared amber plaza. Three portal arches on the plaza lead to
 separately loaded **zones**:
 
 - **Ruins** (west arch, `RUINS`): the original Ruins of Atlantis Wizard Woods
@@ -9,6 +9,10 @@ separately loaded **zones**:
   Lissajous orbit about the Sun–Earth L1 point, with restricted three-body
   orbital mechanics, station-keeping, and rigid-body EVA construction. Its
   geometry is generated in Rust; nothing is downloaded.
+- **Physics Lab** (north arch, behind the spawn, `PHYSICS LAB`): a sandbox that
+  runs each mechanism of the shared [`physics`](../../crates/physics/) crate
+  live, with a scenario selector and parameter knobs. Its geometry is
+  generated in Rust; nothing is downloaded.
 
 A *loaded zone* is an independently loaded scene with its own world ID,
 presentation, physics profile, and rules profile. It differs from the named
@@ -20,17 +24,17 @@ belong in the [iOS](../../bins/coder-ios/README.md) and
 
 ## Zone catalog
 
-| Concern | Amber plaza | Ruins | Lagrange 1 |
-| --- | --- | --- | --- |
-| `ZoneId` / serialized ID | `Plaza` / `plaza` | `Ruins` / `ruins` | `Lagrange1` / `lagrange1` |
-| World ID | `verse-plaza` | `ruins-v1` | `lagrange-1-v1` |
-| Presentation | Coder's four amber intensities on near-black | Forest greens, baked model colors, fog 24–82 m | Vacuum black, direct sunlight from −Z, fog only at the 1–2 km sky shell |
-| Geometry | Shared Rust world | Pinned on-demand pack plus retained heightfield and voxel ruins | Procedural station, stars, Sun, Earth, and Moon |
-| Physics | Flat-ground walking, collision, jump | `ruins.heightfield.v1`: original controller on the retained heightfield | Sun–Earth CR3BP orbit, linearized L1 field locally, rigid bodies, cold-gas EVA pack ([details](lagrange-1.md)) |
-| Rules | Exploration and product interactions | `ruins.wizard-woods.v1`: retained real-time ECS | Construction sandbox: grab, carry, latch |
-| Assets | Built in | 6.6 MB verified pack, cached on disk | None |
-| Network | NIP-MV plaza presence; Gym connection | Local-only | Local-only |
-| Code | [`world.rs`](../../crates/verse/src/world.rs) | [`zones/ruins.rs`](../../crates/verse/src/zones/ruins.rs), [`verse-ruins`](../../crates/verse-ruins/) | [`zones/lagrange.rs`](../../crates/verse/src/zones/lagrange.rs), [`verse-lagrange`](../../crates/verse-lagrange/) |
+| Concern | Amber plaza | Ruins | Lagrange 1 | Physics Lab |
+| --- | --- | --- | --- | --- |
+| `ZoneId` / serialized ID | `Plaza` / `plaza` | `Ruins` / `ruins` | `Lagrange1` / `lagrange1` | `PhysicsLab` / `physics_lab` |
+| World ID | `verse-plaza` | `ruins-v1` | `lagrange-1-v1` | `physics-lab-v1` |
+| Presentation | Coder's four amber intensities on near-black | Forest greens, baked model colors, fog 24–82 m | Vacuum black, direct sunlight from −Z, fog only at the 1–2 km sky shell | Dark blueprint hall, cyan edges on dark faces, fog 30–90 m |
+| Geometry | Shared Rust world | Pinned on-demand pack plus retained heightfield and voxel ruins | Procedural station, stars, Sun, Earth, and Moon | Procedural hall, railed stage, and scenario bodies |
+| Physics | Flat-ground walking, collision, jump | `ruins.heightfield.v1`: original controller on the retained heightfield | Sun–Earth CR3BP orbit, linearized L1 field locally, rigid bodies, cold-gas EVA pack ([details](lagrange-1.md)) | Flat-ground walking; nine `physics` crate scenarios at 1/120 s ([details](physics-lab.md)) |
+| Rules | Exploration and product interactions | `ruins.wizard-woods.v1`: retained real-time ECS | Construction sandbox: grab, carry, latch | Sandbox: choose a scenario and turn knobs |
+| Assets | Built in | 6.6 MB verified pack, cached on disk | None | None |
+| Network | NIP-MV plaza presence; Gym connection | Local-only | Local-only | Local-only |
+| Code | [`world.rs`](../../crates/verse/src/world.rs) | [`zones/ruins.rs`](../../crates/verse/src/zones/ruins.rs), [`verse-ruins`](../../crates/verse-ruins/) | [`zones/lagrange.rs`](../../crates/verse/src/zones/lagrange.rs), [`verse-lagrange`](../../crates/verse-lagrange/) | [`zones/lab/`](../../crates/verse/src/zones/lab/mod.rs), [`physics`](../../crates/physics/) |
 
 The amber palette rule belongs to the plaza and Coder application UI, not to
 every world. Zone colors belong to Verse's zone implementation. Rust Native
@@ -38,19 +42,21 @@ remains product-independent; it gains no zone, Coder colors, or game rules.
 
 ## Enter and return
 
-Expand the map and choose **Ruins portal** or **L1 portal** to walk to an arch.
-Near an arch, tap its opening or select the HUD control (**Enter Ruins** or
-**Enter L1**). The nearest arch decides the destination. Desktop uses **F**.
+Expand the map and choose **Ruins portal**, **L1 portal**, or **Lab portal**
+to walk to an arch. Near an arch, tap its opening or select the HUD control
+(**Enter Ruins**, **Enter L1**, or **Enter Lab**). The nearest arch decides the
+destination. Desktop uses **F**.
 
 - **Ruins** shows loading progress with **Cancel**. The plaza stays active until
   the pack passes content and decode checks. A failed load keeps the plaza and
   offers **Retry** or **Dismiss**. Walking past the arch never fetches the pack.
-- **Lagrange 1** installs immediately because its geometry is generated.
+- **Lagrange 1** and the **Physics Lab** install immediately because their
+  geometry is generated.
 
 Inside a zone, **Plaza** returns without requiring a win or a finished build.
 Return restores the saved plaza position and releases the zone's geometry,
 simulation, and GPU buffers. The Ruins pack can stay in the disk cache.
-Re-entering either zone starts a fresh local simulation.
+Re-entering any zone starts a fresh local simulation.
 
 ### Ruins controls
 
@@ -80,6 +86,18 @@ Releasing elsewhere lets it drift and tumble as a free rigid body.
 Six parts complete the keel: main engine, propellant tank, two keel trusses, RCS
 pod, and avionics bay. [Lagrange 1](lagrange-1.md) documents the physics.
 
+### Physics Lab controls
+
+You walk around a railed stage where the current scenario runs. The HUD shows
+the scenario, the selected knob, and two lines of readouts above two rows of
+controls: **Prev** and **Next** select a knob, **-** and **+** change it,
+**Reset** rebuilds the scenario, **Pause** or **Run** stops or resumes time,
+**Step** advances one fixed step, and **Plaza** returns. On desktop, keys 1–8
+press the controls in order. The first knob chooses among nine scenarios; the
+shared knobs also set the time scale, gravity, and the debug overlay.
+[Physics Lab](physics-lab.md) lists the scenarios, their knobs, and the
+physics API gaps the lab works around.
+
 ## Entry state
 
 ```mermaid
@@ -87,6 +105,7 @@ flowchart TD
     Plaza["Amber plaza"]
     Near["Near an arch: nearest destination"]
     L1["Install generated L1 station"]
+    Lab["Install generated Physics Lab"]
     Prepare["Ruins: suspend plaza; verify cache or download"]
     Decode["Check digest, sizes, format, decoded limits"]
     Ruins["Ruins: real-time Wizard Woods"]
@@ -94,6 +113,7 @@ flowchart TD
     Return["Release zone; restore plaza pose"]
     Plaza --> Near
     Near -->|Lagrange 1| L1
+    Near -->|Physics Lab| Lab
     Near -->|Ruins| Prepare
     Prepare --> Decode
     Decode --> Ruins
@@ -102,6 +122,7 @@ flowchart TD
     Failed --> Plaza
     Ruins --> Return
     L1 --> Return
+    Lab --> Return
     Return --> Plaza
 ```
 
@@ -144,9 +165,10 @@ these places:
    `zone_snapshot`. `Intent::Enter` dispatches on the nearest portal's
    destination.
 5. **Intents and HUD.** New actions become `Intent` variants. The GPU HUD in
-   [`zones/hud.rs`](../../crates/verse/src/zones/hud.rs) draws up to a row of
-   controls and a two-line caption (split on `\n`). Add the new intent and
-   zone IDs to the native validators:
+   [`zones/hud.rs`](../../crates/verse/src/zones/hud.rs) draws a caption of up
+   to four lines (split on `\n`) above one row of controls, or two rows when
+   there are more than five. Desktop number keys 1–9 press the controls in
+   order. Add the new intent and zone IDs to the native validators:
    [`ZoneView.swift`](../../bins/coder-ios/host/App/ZoneView.swift) (`valid`,
    `intents`) and Android's allowed list in
    [`VerseSurface.kt`](../../bins/coder-android/host/app/src/main/java/com/openagents/coder/VerseSurface.kt).
@@ -168,8 +190,8 @@ these places:
    older app builds can still fetch their reviewed bytes.
 9. **Tests and captures.** Cover entry, return to the saved plaza pose,
    intents scoped to their zone, and the zone's own invariants. The
-   `lagrange_capture` and `ruins_capture` examples render a zone offline with
-   the shared renderer for visual review. Add a native UI test in
+   `lagrange_capture`, `ruins_capture`, and `lab_capture` examples render a
+   zone offline with the shared renderer for visual review. Add a native UI test in
    [`ZoneUITests.swift`](../../bins/coder-ios/host/UITests/ZoneUITests.swift).
 10. **Docs.** Add the zone to the catalog above, the
     [rules page](zone-rules.md), the [mobile guide](mobile.md), and the

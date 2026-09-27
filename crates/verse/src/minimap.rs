@@ -18,7 +18,7 @@ pub struct Landmark {
     pub z: f32,
 }
 
-pub const LANDMARKS: [Landmark; 10] = [
+pub const LANDMARKS: [Landmark; 11] = [
     Landmark {
         id: "computer",
         label: "Computer",
@@ -78,6 +78,12 @@ pub const LANDMARKS: [Landmark; 10] = [
         label: "L1 portal",
         x: 12.0,
         z: 9.0,
+    },
+    Landmark {
+        id: "physics_lab",
+        label: "Lab portal",
+        x: 0.0,
+        z: -25.0,
     },
 ];
 
@@ -225,6 +231,20 @@ impl MapHud {
                     label: "Keel jig",
                     x: 0.0,
                     z: -2.0,
+                },
+            ],
+            crate::zones::ZoneId::PhysicsLab => vec![
+                Landmark {
+                    id: "return",
+                    label: "Plaza portal",
+                    x: -9.0,
+                    z: -11.0,
+                },
+                Landmark {
+                    id: "stage",
+                    label: "Stage",
+                    x: 0.0,
+                    z: -3.0,
                 },
             ],
             crate::zones::ZoneId::Ruins => vec![

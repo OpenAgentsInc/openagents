@@ -1,7 +1,8 @@
-//! Zone transition admission and the Ruins and Lagrange 1 simulations.
+//! Zone transition admission and the Ruins, Lagrange 1, and Physics Lab
+//! simulations.
 
 use super::{
-    Control, Intent, Lagrange, LoadState, PortalProjection, Ruins, Snapshot, ZoneId, assets,
+    Control, Intent, Lab, Lagrange, LoadState, PortalProjection, Ruins, Snapshot, ZoneId, assets,
 };
 use crate::{
     controller::{InputState, PlayerController},
@@ -117,6 +118,21 @@ impl WorldRuntime {
         let _ = self.set_spawn(Lagrange::spawn(), Lagrange::spawn_yaw());
         self.camera = crate::camera::FollowCamera::default();
     }
+    /// Enter the generated Physics Lab. Nothing is downloaded.
+    pub fn install_lab(&mut self) {
+        if !self.is_plaza() {
+            return;
+        }
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.zone_cancel_loading();
+        self.world = Lab::world();
+        self.zone_state.lab = Some(Lab::new());
+        self.zone = ZoneId::PhysicsLab;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(Lab::spawn(), Lab::spawn_yaw());
+        self.camera = crate::camera::FollowCamera::default();
+    }
     /// The nearest portal in this zone and its destination.
     fn nearest_portal(&self) -> (ZoneId, Vec3) {
         let at = self.player.pos;
@@ -160,6 +176,12 @@ impl WorldRuntime {
                     self.install_lagrange();
                     return Ok(());
                 }
+                if destination == ZoneId::PhysicsLab {
+                    self.cancel_navigation();
+                    self.doors.cancel_transient();
+                    self.install_lab();
+                    return Ok(());
+                }
                 super::Manifest::ruins()?;
                 let loader = self
                     .zone_state
@@ -184,6 +206,7 @@ impl WorldRuntime {
                 // Dropping a zone releases its decoded frames and simulation.
                 self.zone_state.ruins = None;
                 self.zone_state.lagrange = None;
+                self.zone_state.lab = None;
                 self.world = crate::world::build();
                 self.zone = ZoneId::Plaza;
                 self.zone_revision = self.zone_revision.saturating_add(1);
@@ -230,6 +253,29 @@ impl WorldRuntime {
                     Input::Release
                 })?;
                 lagrange.tick();
+                self.zone_state.error = None;
+            }
+            Intent::KnobPrev
+            | Intent::KnobNext
+            | Intent::Decrease
+            | Intent::Increase
+            | Intent::Reset
+            | Intent::Pause
+            | Intent::Step => {
+                let lab = self
+                    .zone_state
+                    .lab
+                    .as_mut()
+                    .ok_or("Enter the Physics Lab first")?;
+                match intent {
+                    Intent::KnobPrev => lab.cycle_knob(false),
+                    Intent::KnobNext => lab.cycle_knob(true),
+                    Intent::Decrease => lab.adjust(false),
+                    Intent::Increase => lab.adjust(true),
+                    Intent::Reset => lab.reset(),
+                    Intent::Pause => lab.toggle_pause(),
+                    _ => lab.single_step(),
+                }
                 self.zone_state.error = None;
             }
         }
@@ -456,10 +502,28 @@ impl WorldRuntime {
                 s.speed_m_s,
                 status
             )
+        } else if let Some(lab) = &self.zone_state.lab {
+            add("knob_prev", "Prev", Intent::KnobPrev, true);
+            add("knob_next", "Next", Intent::KnobNext, true);
+            add("decrease", "-", Intent::Decrease, true);
+            add("increase", "+", Intent::Increase, true);
+            add("reset", "Reset", Intent::Reset, true);
+            add(
+                "pause",
+                if lab.paused { "Run" } else { "Pause" },
+                Intent::Pause,
+                true,
+            );
+            add("step", "Step", Intent::Step, true);
+            add("return", "Plaza", Intent::Return, true);
+            Lab::caption(&lab.snapshot())
         } else if portal.near && portal.visible {
             if self.nearest_portal().0 == ZoneId::Lagrange1 {
                 add("enter", "Enter L1", Intent::Enter, true);
                 "Lagrange 1 · Sun–Earth L1 station".into()
+            } else if self.nearest_portal().0 == ZoneId::PhysicsLab {
+                add("enter", "Enter Lab", Intent::Enter, true);
+                "Physics Lab · live rigid-body sandbox".into()
             } else {
                 add(
                     "enter",
@@ -486,6 +550,7 @@ impl WorldRuntime {
                 .lagrange
                 .as_ref()
                 .map(|l| l.station.snapshot()),
+            lab: self.zone_state.lab.as_ref().map(Lab::snapshot),
             caption,
         }
     }
@@ -562,6 +627,8 @@ impl WorldRuntime {
             crate::runtime::mesh_occludes(ruins.dynamic(), eye, direction, distance)
         } else if let Some(lagrange) = &self.zone_state.lagrange {
             crate::runtime::mesh_occludes(lagrange.dynamic(), eye, direction, distance)
+        } else if let Some(lab) = &self.zone_state.lab {
+            crate::runtime::mesh_occludes(lab.dynamic(), eye, direction, distance)
         } else {
             crate::runtime::mesh_occludes(&self.dynamic_mesh(), eye, direction, distance)
         }
@@ -576,6 +643,9 @@ impl WorldRuntime {
         if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.tick();
         }
+        if let Some(lab) = &mut self.zone_state.lab {
+            lab.tick(dt);
+        }
     }
     pub(crate) fn zone_dynamic_mesh(&self) -> crate::mesh::Mesh {
         let elapsed = self.zone_state.elapsed;
@@ -585,6 +655,11 @@ impl WorldRuntime {
         }
         if let Some(lagrange) = &self.zone_state.lagrange {
             mesh.extend(lagrange.dynamic());
+        }
+        if let Some(lab) = &self.zone_state.lab {
+            mesh.extend(lab.dynamic());
+            // The lab has no suit of its own; the plaza character walks it.
+            mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));
         }
         mesh
     }
