@@ -1,7 +1,10 @@
 # Lagrange 1 realism audit and roadmap
 
-**Status:** Audit and proposed roadmap, 2026-09-27. Nothing here is approved
-work. Each phase needs an issue before implementation. Studied under
+**Status:** Audit and roadmap, 2026-09-27; implemented the same day under
+tracking issue [#9803](https://github.com/OpenAgentsInc/openagents/issues/9803).
+See [Implementation record](#implementation-record) for what landed, what
+changed from the plan, and what was not adopted. The sections after it are
+the original audit. Studied under
 [AGENTS.md](AGENTS.md). The rigid-body solver is covered separately in
 [the Chaos physics candidates](2026-09-27-chaos-physics-candidates.md). This
 note covers everything else that makes [Lagrange 1](../../verse/lagrange-1.md)
@@ -22,6 +25,49 @@ every item names the public paper, dataset, or permissive engine to build from.
 
 **Compared against:** `crates/verse` and `crates/verse-lagrange` at
 `f8e5ad73c1`.
+
+## Implementation record
+
+Commits on `main`: data `7694952cea`; physics `718ef7aa9c`, `ecbfe7f6df`,
+`3383a1d5eb`, `7ca3498fc6`; renderer and zone `a8ae917044`, `527584b9ee`,
+`00186d2efe`. Captures, including before and after views and a DSCOVR EPIC
+comparison, are in [`docs/verse/captures/lagrange-1-realism/`](../../verse/captures/lagrange-1-realism/README.md).
+The runtime guide is [Lagrange 1](../../verse/lagrange-1.md).
+
+| Candidate | Outcome |
+| --- | --- |
+| V1 sky at infinity | Landed as a sky pass drawn first at infinity in explicit distance order, plus reversed depth for the whole physical path. Reversed depth was needed anyway: solar cells sit 1 mm proud of their panel. |
+| L1 lit path | Landed: forward shading in a separate pipeline; amber zones unchanged. |
+| C1–C3 HDR, EV100, tone map | Landed. Tone mapping is Khronos PBR Neutral (Apache-2.0 reference) rather than AgX, for a clearly licensed, hue-preserving curve. |
+| C2/L6 physical units | Landed: about 130,000 lux of sunlight, Earthshine as a disc light at its physical ratio (tested at a few millionths), no ambient floor. |
+| C8 wide lines | Landed for guides; structural bracing became geometry. |
+| M1–M6 materials | Landed, including the material table. MLI crinkle uses smooth wrinkle noise folded into roughness below pixel scale. |
+| L3 shadows, L2 | L3 landed (one fitted 2048² map with PCSS from the Sun's radius). L2 was not used: the lattice trusses exceed the analytic-primitive budget. |
+| L4 bounce, M7 | Landed: a 3 m irradiance-probe grid baked on a worker thread, rebaked when resting parts change; baked per-vertex occlusion; specular occlusion. |
+| V2–V7 sky bodies, M8 | Landed: limb-darkened Sun, textured Earth with haze, glint, and eclipse shadow, Moon with lunar-Lambert and opposition surge, Yale BSC stars and Milky Way. M8 is analytic: the Earth is a second disc light for specular, which is the whole environment worth reflecting in vacuum. |
+| C4–C7, C9, C10 camera | Landed: bloom, metered auto exposure that ignores empty space and protects highlights, local exposure, vignette, grain, white balance, diffraction spikes, faint lens ghosts. Lateral chromatic aberration is implemented but off by default: at these contrasts it fringes every glint. |
+| E1–E7 effects | Landed: rope tubes, stateless seeded particles, honest plume condensate, XPBD ropes, plume impingement with an `impingement` ledger term, array modes, and vent ice flakes. |
+| M9–M12 | Clear coat, thin film, sheen, and anisotropy landed. M9 is the probe radiance sampled in the reflection direction, not a cube capture. |
+| E8 rope coupling | Implemented behind `Station::rope_coupling`, off by default: coupled, the arrest force exceeds the 3 kN cap slightly and scripted moves yank the lines. |
+| V8 camera-relative positions | Not adopted: the zone spans under 200 m, where single precision holds 20 µm; the sky is direction-only. |
+| C11 TAA | Not adopted: with 4× MSAA, specular antialiasing, and wide guide lines, captures show no crawl on the thinnest members (see the truss in `after-wide.jpg`). |
+| C12 motion blur | Not adopted: an action camera in full sun at EV 15 and f/2.8 exposes about 1/4,000 s, under 0.1 px of blur at the zone's speeds. |
+| C13 HDR display output | Deferred to [#9806](https://github.com/OpenAgentsInc/openagents/issues/9806): it needs native layer changes on iOS and device validation. |
+| E9 MLI flaps | Not adopted: station blankets are taped and stitched, and a cloth solver for a cosmetic edge is not worth its cost on mobile. |
+
+**Changed from the plan.** The station now holds a 30° pitch about its truss
+axis so the Sun is not exactly along the modules, which left every module side
+at zero incidence. Radiators stay edge-on, the fixed arrays keep 87 % of full
+sunlight, and the tidal field is evaluated through the attitude. The default
+spawn heading is 65° off the Sun line. The helmet camera meters automatically
+(EV 10 to 15.5), as small action cameras do; the fixed sunny-16 exposure is the
+starting point.
+
+**Validation.** The Earth close-up's mean disc color is within 1 %, 4 %, and
+8 % (red, green, blue) of the DSCOVR EPIC frame of 2026-09-25 11:10 UTC,
+about 15° of longitude earlier than the render. Tests cover the ephemeris,
+catalogue and texture decoding, the ray-cast hierarchy and bakes, the sky in
+real units, and Earthshine.
 
 ## Where Lagrange stands
 

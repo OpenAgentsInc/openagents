@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 496 documents plus itself as of September 27, 2026.
+This catalog lists 497 documents plus itself as of September 27, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -605,6 +605,7 @@ files are included below.
 | Document | Role | Topic |
 | --- | --- | --- |
 | [verse/README.md](verse/README.md) | Index | Verse |
+| [verse/captures/lagrange-1-realism/README.md](verse/captures/lagrange-1-realism/README.md) | Evidence index | Lagrange 1 realism captures |
 | [verse/zones.md](verse/zones.md) | Reference / guide | Ruins and Lagrange 1 zones, and how to build and register a zone |
 | [verse/lagrange-1.md](verse/lagrange-1.md) | Reference | Lagrange 1 orbital mechanics, station-keeping, rigid bodies, and EVA construction |
 | [verse/ruins-source-parity.md](verse/ruins-source-parity.md) | Audit | Original Wizard Woods source, mechanics, scene, and inherited defects |
