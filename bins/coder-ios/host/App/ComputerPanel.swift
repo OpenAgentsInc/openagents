@@ -117,6 +117,16 @@ struct ComputerPanel: View {
         .onReceive(timer) { _ in
             if active, paired, !pairing, !scanning, !computers { reader.refresh() }
         }
+        // Host status moves on its own; poll while the Computers screens
+        // show. A task lives with the view's identity, so frequent parent
+        // redraws, such as the world's frame counter, don't restart it.
+        .task(id: computers && active) {
+            guard computers && active else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                if !Task.isCancelled, !computersScanning { reader.pollComputers() }
+            }
+        }
     }
 
     private var refreshButton: some View {
@@ -136,6 +146,9 @@ struct ComputerPanel: View {
                     }
                 } else {
                     Text("Computers are unavailable on this device.")
+                }
+                if let qr = reader.packet?.computers_qr {
+                    InvitationQRCode(qr: qr)
                 }
                 if let input = reader.packet?.computers_input {
                     computersInput(input).id(input.token)

@@ -15,7 +15,15 @@ struct MobilePacket: Decodable {
     // The Computers surface has its own instance and revisions.
     let computers: NativeView?
     let computers_input: ComputersInput?
+    let computers_qr: ComputersQR?
     let computers_exit: Bool?
+}
+
+/// An invitation QR code Rust rendered on this device: one string of `1`
+/// (dark) and `0` (light) per module row.
+struct ComputersQR: Decodable, Equatable {
+    let size: Int
+    let rows: [String]
 }
 
 /// A value Rust asks the native host to collect. Rust validates it.
@@ -32,7 +40,8 @@ private final class RustWorker {
     private let queue = DispatchQueue(label: "com.openagents.coder.reader", qos: .userInitiated)
     private var handle: UnsafeMutableRawPointer?
 
-    func initialize(synthetic: Bool, completion: @escaping (Result<MobilePacket, Error>) -> Void) {
+    func initialize(synthetic: Bool, loopbackTest: Bool,
+                    completion: @escaping (Result<MobilePacket, Error>) -> Void) {
         queue.async {
             do {
                 let secret = try DeviceIdentity.loadOrCreate(synthetic: synthetic)
@@ -41,6 +50,7 @@ private final class RustWorker {
                     "cache_dir": directory.path,
                     "secret_hex": secret.map { String(format: "%02x", $0) }.joined(),
                     "synthetic": synthetic,
+                    "loopback_test": loopbackTest,
                 ])
                 self.handle = configuration.withUnsafeBytes {
                     coder_mobile_create($0.bindMemory(to: UInt8.self).baseAddress, $0.count)
@@ -95,10 +105,13 @@ final class MobileBridge: ObservableObject {
     private let worker = RustWorker()
     private var foreground = false
     private var pendingForeground: Bool?
+    private var pendingLifecycle: Bool?
     private var pendingFollow: (enabled: Bool, page: String?)?
 
-    init(synthetic: Bool) {
-        worker.initialize(synthetic: synthetic) { result in
+    /// `loopbackTest` is for test launches only: the Computers surface then
+    /// admits a `ws://` loopback relay and a host on this machine.
+    init(synthetic: Bool, loopbackTest: Bool = false) {
+        worker.initialize(synthetic: synthetic, loopbackTest: loopbackTest) { result in
             Task { @MainActor in self.receive(result) }
         }
     }
@@ -127,6 +140,19 @@ final class MobileBridge: ObservableObject {
     }
 
     func refreshComputers() { request(["op": "computers_refresh"]) }
+
+    /// Poll the Computers surface while it is visible; skipped while busy.
+    func pollComputers() {
+        guard !busy else { return }
+        refreshComputers()
+    }
+
+    /// The scene became active or moved to the background. Rust passes it to
+    /// every host supervisor.
+    func setLifecycle(_ active: Bool) {
+        if busy { pendingLifecycle = active; return }
+        request(["op": "lifecycle", "active": active])
+    }
 
     func setFollowing(_ enabled: Bool, page: String?) {
         if busy { pendingFollow = (enabled, page); return }
@@ -168,6 +194,9 @@ final class MobileBridge: ObservableObject {
         if let active = pendingForeground {
             pendingForeground = nil
             setForeground(active)
+        } else if let active = pendingLifecycle {
+            pendingLifecycle = nil
+            setLifecycle(active)
         } else if let follow = pendingFollow {
             pendingFollow = nil
             setFollowing(follow.enabled, page: follow.page)

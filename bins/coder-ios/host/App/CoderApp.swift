@@ -4,7 +4,8 @@ import SwiftUI
 @main
 struct CoderApp: App {
     @StateObject private var reader = MobileBridge(
-        synthetic: ProcessInfo.processInfo.arguments.contains("--synthetic"))
+        synthetic: ProcessInfo.processInfo.arguments.contains("--synthetic"),
+        loopbackTest: ProcessInfo.processInfo.arguments.contains("--loopback-test"))
 
     var body: some Scene {
         WindowGroup {

@@ -21,7 +21,7 @@ internal fun packet(text: String, schema: String): JSONObject {
 
 /** One worker owns the Rust reader for its entire lifetime. */
 class ReaderBridge(private val storage: DeviceStorage, synthetic: Boolean,
-                   private val changed: () -> Unit) {
+                   loopbackTest: Boolean, private val changed: () -> Unit) {
     companion object {
         // One process-wide owner prevents a retired Activity's refresh from
         // writing a cache after a replacement reader disconnects and erases it.
@@ -32,6 +32,7 @@ class ReaderBridge(private val storage: DeviceStorage, synthetic: Boolean,
     private var disposed = false
     private var wantedForeground = false
     private var pendingForeground: Boolean? = null
+    private var pendingLifecycle: Boolean? = null
     private var pendingFollow: JSONObject? = null
     var snapshot: JSONObject? = null; private set
     var error: String? = null; private set
@@ -41,7 +42,8 @@ class ReaderBridge(private val storage: DeviceStorage, synthetic: Boolean,
         worker.execute {
             val result = runCatching {
                 handle = CoderNative.createReader(json("cache_dir" to storage.cacheDirectory().path,
-                    "secret_hex" to storage.identity("reader"), "synthetic" to synthetic).toString())
+                    "secret_hex" to storage.identity("reader"), "synthetic" to synthetic,
+                    "loopback_test" to loopbackTest).toString())
                 check(handle != 0L) { "The reader could not open its protected local state." }
                 call(json("op" to "snapshot"))
             }
@@ -63,6 +65,14 @@ class ReaderBridge(private val storage: DeviceStorage, synthetic: Boolean,
     fun foreground(active: Boolean) {
         wantedForeground = active
         if (busy) pendingForeground = active else request(json("op" to "foreground", "active" to active))
+    }
+    /** The activity resumed or paused. Rust passes it to every host supervisor. */
+    fun lifecycle(active: Boolean) {
+        if (busy) pendingLifecycle = active else request(json("op" to "lifecycle", "active" to active))
+    }
+    /** Poll the Computers surface while it shows; skipped while busy. */
+    fun pollComputers() {
+        if (!busy) request(json("op" to "computers_refresh"))
     }
     fun refresh(force: Boolean = false) {
         if (wantedForeground && !busy) request(json("op" to if (force) "refresh_now" else "refresh"))
@@ -87,6 +97,7 @@ class ReaderBridge(private val storage: DeviceStorage, synthetic: Boolean,
         result.fold({ snapshot = it; error = null }, { error = it.message ?: "The reader could not update." })
         changed()
         pendingForeground?.let { pendingForeground = null; foreground(it); return }
+        pendingLifecycle?.let { pendingLifecycle = null; lifecycle(it); return }
         pendingFollow?.let { pendingFollow = null; request(it) }
     }
 }

@@ -79,6 +79,14 @@ installation, not a Google Play release.
   [pairing guide](../../docs/coder/guides/mobile-readonly.md). Scan the QR code
   from `cargo run --release -p coder-connect -- connect`, or paste the full
   invitation. Camera access is requested only for scanning.
+- In the computer panel, **Computers** lists the hosts this phone enrolled
+  with a `coder-host:` invitation from `coder host invite`, each with its
+  live status. The **Access** screen lists enrolled devices and creates
+  invitations with narrowed rights, shown as a QR code. See
+  [Coder Computers](../../crates/coder-computers/README.md) and the
+  [live verification record](../../docs/coder/verification/2026-09-26-computers-live.md),
+  which also describes the debug-only `loopback_test` extra for a host on
+  the build computer.
 - The read-only reader supports bounded catalog/transcript pages, follow/pause,
   original record bytes, and selectable text. Viewing a transcript cannot
   execute its contents or submit a message to an external harness.

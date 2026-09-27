@@ -179,6 +179,55 @@ class MobileAcceptanceTest {
         capture("computers-activity")
     }
 
+    /**
+     * The Computers screens against a real host on the build computer. Start the
+     * fixture first (`serve_a_host_for_a_device_run` in crates/coder-mobile),
+     * forward its relay and host ports with `adb reverse`, and pass its
+     * invitation as the `coderLiveInvitation` instrumentation argument.
+     * Without it, the test is skipped.
+     */
+    @Test fun computersLiveEnrollInviteActivityAndRevocation() {
+        val invitation = InstrumentationRegistry.getArguments().getString("coderLiveInvitation")
+        org.junit.Assume.assumeTrue("No live host invitation", invitation?.startsWith("coder-host:") == true)
+        // Start from this test's own empty synthetic Computers record.
+        File(DeviceStorage(instrumentation.targetContext, true).cacheDirectory(), "computers").deleteRecursively()
+        val intent = Intent(ApplicationProvider.getApplicationContext(), MainActivity::class.java)
+            .putExtra("synthetic", true).putExtra("loopback_test", true)
+        scenario = ActivityScenario.launch(intent)
+        waitFor { frames() > 0 }
+        computer()
+        click("computers-toggle")
+        waitFor { exists("first-run-title") }
+        click("invite-paste")
+        waitFor { exists("computers-input") }
+        onMain { (find(it.window.decorView, "computers-input") as EditText).setText(invitation) }
+        click("computers-submit")
+        waitFor(60_000) { text("notice").contains("Added Computer") }
+        click("first-run-continue")
+        waitFor { exists("computers-toggle", enabled = true) }
+        click("computers-toggle")
+        waitFor(60_000) { text("host-0-status").contains("Online") }
+        capture("computers-live-online")
+        click("host-0-access")
+        waitFor(60_000) { text("device-0-label").contains("last seen") }
+        assertFalse(text("device-0-label").contains("unknown"))
+        capture("computers-live-last-seen")
+        click("share-right-terminal")
+        click("share-right-review")
+        click("share-create")
+        waitFor(30_000) { exists("computers-qr") }
+        assertTrue(text("share-code-detail").contains("View sessions and tasks, Run and steer tasks."))
+        capture("computers-live-invitation-qr")
+        click("share-done")
+        click("tab-activity")
+        waitFor(90_000) { text("activity-0-headline").contains("Task queued") }
+        capture("computers-live-activity")
+        click("tab-computers")
+        waitFor(150_000) { text("host-0-status").contains("Revoked") }
+        assertTrue(text("host-0-status").contains("removed this device's access"))
+        capture("computers-live-revoked")
+    }
+
     @Test fun backgroundAndSurfaceRecreationKeepReaderIdentity() {
         launch()
         computer()

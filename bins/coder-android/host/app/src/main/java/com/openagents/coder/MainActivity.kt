@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
@@ -18,6 +20,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
@@ -60,6 +63,8 @@ class MainActivity : ComponentActivity() {
     private var computersToggle: Button? = null
     private var computersContent: LinearLayout? = null
     private var computersInput: LinearLayout? = null
+    private var computersQr: ImageView? = null
+    private var shownQr: String? = null
     private var computersToken: String? = null
     private var handledExit: JSONObject? = null
     private var scanned: (String) -> Unit = { submitCode(it) }
@@ -72,6 +77,7 @@ class MainActivity : ComponentActivity() {
     private var requestingCamera = false
     private var foreground = false
     private var synthetic = false
+    private var loopbackTest = false
     private var latestWorld: JSONObject? = null
     private var gymBoard: JSONObject? = null
     private var requestedGymRevision = -1L
@@ -81,6 +87,8 @@ class MainActivity : ComponentActivity() {
     private val refresh = object : Runnable {
         override fun run() {
             if (foreground && opened == "computer" && !pairing && !scanning && !computers) reader.refresh()
+            // Host status moves on its own; poll while the Computers screens show.
+            if (foreground && opened == "computer" && computers && !scanning) reader.pollComputers()
             main.postDelayed(this, 5000)
         }
     }
@@ -94,6 +102,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         synthetic = BuildConfig.DEBUG && intent.getBooleanExtra("synthetic", false)
+        // Test launches only: admit a ws:// loopback relay and a host on this machine.
+        loopbackTest = BuildConfig.DEBUG && intent.getBooleanExtra("loopback_test", false)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT; window.navigationBarColor = Color.TRANSPARENT
         if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
@@ -121,7 +131,7 @@ class MainActivity : ComponentActivity() {
                 "revision" to view.getLong("revision"), "node" to node))
         }, { _, _ -> }, "computers")
         gym = GymPanel(this, world)
-        reader = ReaderBridge(storage, synthetic) { if (opened == "computer") renderComputer() }
+        reader = ReaderBridge(storage, synthetic, loopbackTest) { if (opened == "computer") renderComputer() }
         setContentView(root)
         ViewCompat.setOnApplyWindowInsetsListener(safe) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
@@ -301,7 +311,7 @@ class MainActivity : ComponentActivity() {
         if (force || mode != computerMode || reading != lastReading) {
             computerMode = mode; lastReading = reading
             stopCamera(); renderer.clear(); computersRenderer.clear(); panelBody.removeAllViews(); readerContent = null
-            computersContent = null; computersInput = null; computersToken = null
+            computersContent = null; computersInput = null; computersToken = null; computersQr = null; shownQr = null
             readerError = label("", "reader-error"); panelBody.addView(readerError)
             readerStatus = label("", "reader-status", 11f); panelBody.addView(readerStatus)
             when (mode) { "computers" -> buildComputers(); "pair" -> buildPairing(paired); else -> buildChats(reading) }
@@ -317,14 +327,38 @@ class MainActivity : ComponentActivity() {
         if (mode == "computers" && packet != null) {
             try { computersContent?.let { computersRenderer.mount(it, packet) } }
             catch (_: Exception) { readerError?.text = "This native view could not be displayed."; readerError?.visibility = View.VISIBLE }
+            renderComputersQr(packet.optJSONObject("computers_qr"))
             renderComputersInput(packet.optJSONObject("computers_input"))
         }
+    }
+
+    /** Draw the invitation QR modules Rust rendered on this device, one pixel per module, unfiltered. */
+    private fun renderComputersQr(qr: JSONObject?) {
+        val view = computersQr ?: return
+        val rows = qr?.optJSONArray("rows")
+        val key = rows?.toString()
+        if (key == shownQr) return
+        shownQr = key
+        if (rows == null || rows.length() == 0 || rows.length() > 256) { view.setImageDrawable(null); view.visibility = View.GONE; return }
+        val size = rows.length()
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        for (y in 0 until size) {
+            val row = rows.optString(y)
+            for (x in 0 until size) bitmap.setPixel(x, y, if (row.getOrNull(x) == '1') Color.BLACK else Color.WHITE)
+        }
+        view.setImageDrawable(BitmapDrawable(resources, bitmap).apply { isFilterBitmap = false })
+        view.visibility = View.VISIBLE
     }
 
     private fun buildComputers() {
         val body = column()
         panelBody.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
         computersContent = column(); body.addView(computersContent)
+        computersQr = ImageView(this).apply {
+            tag = "computers-qr"; contentDescription = "Invitation QR code"; visibility = View.GONE
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        body.addView(computersQr, LinearLayout.LayoutParams(dp(240), dp(240)))
         computersInput = column(); body.addView(computersInput)
     }
 
@@ -455,6 +489,7 @@ class MainActivity : ComponentActivity() {
         super.onResume(); foreground = true
         if (::world.isInitialized) world.setResumed(true)
         if (::reader.isInitialized) reader.foreground(opened == "computer")
+        if (::reader.isInitialized) reader.lifecycle(true)
         if (scanning && !requestingCamera && opened == "computer") startCamera()
     }
     override fun onPause() {
@@ -462,6 +497,7 @@ class MainActivity : ComponentActivity() {
         if (requestingCamera) { scanner.stop(); scannerContainer?.removeAllViews() } else stopCamera()
         if (::world.isInitialized) world.setResumed(false)
         if (::reader.isInitialized) reader.foreground(false)
+        if (::reader.isInitialized) reader.lifecycle(false)
         super.onPause()
     }
     override fun onDestroy() {

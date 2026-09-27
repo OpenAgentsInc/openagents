@@ -32,7 +32,10 @@ struct VerseScreen: View {
             }
             .ignoresSafeArea()
         }
-        .onChange(of: active) { _, enabled in if !enabled { sprint = false } }
+        .onChange(of: active) { _, enabled in
+            if !enabled { sprint = false }
+            reader.setLifecycle(enabled)
+        }
         .onChange(of: panelOpen) { _, open in if open { sprint = false } }
     }
 
