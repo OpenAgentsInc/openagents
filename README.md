@@ -49,27 +49,26 @@ design as a Designed profile for durable identity, bounded initiative,
 custody, guardians, and market participation. It composes the current NIPs;
 custody, sovereign lifecycle, and treasury adapters remain to be built.
 
-Coder iOS **0.5.0 (46)** is available in internal TestFlight. It adds an
-expandable map with eight walking destinations, a tappable companion, and
-Spark/Halo gates with local item choices and saved destination memory. Tap a
-clear map location to walk there; move or jump to cancel. Tap a gate to preview
-its destination, then tap again to walk.
+Coder iOS **0.5.0 (47)** is available in internal TestFlight. The
+[Atlantis forest portal](docs/verse/zones.md) loads the original tree, wizard,
+and zombie artwork only when you enter, then caches the verified 6.6 MB pack.
+The forest has its own palette and an optional [SRD 5.1 encounter](docs/verse/zone-rules.md).
+Use **Map → Forest portal**, tap the arch, and select **Plaza** to return to your
+saved position. Shared forest combat, creator publishing, and the future L1
+construction/physics zone remain roadmap work.
 
-The source now also includes an explicit [Atlantis forest portal](docs/verse/zones.md).
-Its original wizard, zombie, and tree artwork loads only on entry, with a separate
-forest palette and an optional [SRD 5.1 encounter](docs/verse/zone-rules.md).
-The forest is local; shared worlds, creator publishing, and the future L1
-construction/physics zone remain roadmap work. Build 47 verification is underway.
+The [release receipt](bins/coder-ios/verification/2026-09-27-forest-zones/testflight-build47.json)
+confirms `VALID` and `IN_BETA_TESTING`. [Verification](bins/coder-ios/verification/2026-09-27-forest-zones/README.md)
+covers optimized startup, a real first-visit download, native encounter/return
+controls, cached reentry, and the signed archive. Android's native library and
+APK compile with verified alignment; new physical-device acceptance is separate.
+The [map, companion, and Spark/Halo gates](docs/verse/world-interactions.md)
+remain available in the amber plaza.
 
 Computer setup uses `./pair` or installed `coder pair`. Chats load after
 pairing, the world relay choice persists, and movement combines with looking
 or double-tap jumping. Pinch to zoom; the crosshair recenters the camera.
-[Release receipt](bins/coder-ios/verification/2026-09-26-world-interactions/testflight-build46.json)
-confirms `VALID` and `IN_BETA_TESTING`. The retained checks cover optimized
-simulator startup, native interactions, and the signed archive; physical-device
-acceptance remains separate. See [world interactions](docs/verse/world-interactions.md),
-[interaction evidence](bins/coder-ios/verification/2026-09-26-world-interactions/README.md),
-and [connection corrections](docs/coder/verification/2026-09-26-mobile-connections.md).
+See the [connection corrections](docs/coder/verification/2026-09-26-mobile-connections.md).
 
 [Verse fills the screen](docs/verse/mobile.md), including behind the system
 clock. Motion look follows body turns and upward tilt with interpolated camera

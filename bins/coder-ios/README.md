@@ -13,18 +13,20 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Latest internal TestFlight: 0.5.0 (46).** App Store Connect confirms `VALID`
-and `IN_BETA_TESTING`. The [distribution receipt](verification/2026-09-26-world-interactions/testflight-build46.json)
-identifies its clean source commit and verified archive. Optimized simulator
-startup, resume, relaunch, and focused native interaction checks pass; the
-[verification record](verification/2026-09-26-world-interactions/README.md)
-retains earlier failures and corrected retests. Physical-device acceptance
-remains separate. Build 46 retains the build-45 startup packaging fix and
-clean full-bleed canvas. [Connect your phone](../../docs/coder/guides/mobile-readonly.md).
+**Latest internal TestFlight: 0.5.0 (47).** App Store Connect confirms `VALID`
+and `IN_BETA_TESTING`. The [distribution receipt](verification/2026-09-27-forest-zones/testflight-build47.json)
+records the clean archived source and Apple state. This build adds the
+[Atlantis forest portal](../../docs/verse/zones.md), original runtime-loaded
+artwork, separate forest palette, local SRD 5.1 encounter, and return to the
+saved plaza position. [Acceptance](verification/2026-09-27-forest-zones/README.md)
+includes normal optimized launch, an empty-cache HTTPS download, the native
+portal/encounter/return flow, cached reentry, and signed packaging checks.
+Physical-device acceptance remains separate. The archive retains the build-45
+startup packaging correction; notification wakes remain unconfigured.
 
 Build 46 adds the [expandable map, companion reactions, and
-Spark/Halo gates](../../docs/verse/world-interactions.md). Select one of eight
-map landmarks or a clear position to walk there; manual movement cancels the
+Spark/Halo gates](../../docs/verse/world-interactions.md). Select a
+map landmark or a clear position to walk there; manual movement cancels the
 route. Tap the companion for a brief wiggle and hop. Near a gate, choose a
 demo item, tap to inspect its destination, then tap again to walk there. Item
 and gate memory survive relaunch; they provide no service or payment authority.
@@ -136,7 +138,7 @@ and archived executable digest beside the archive. A nonempty workspace status
 must be reviewed rather than described as an exact committed-source build.
 Set `CODER_IOS_BUILD_NUMBER` to a new
 positive build number after checking the existing App Store Connect builds;
-the checked-in source build is `47`; the last confirmed internal TestFlight build is `46`.
+the checked-in and confirmed internal TestFlight build is `47`.
 The `export` command produces a local
 distribution package using the existing export settings with destination
 changed to `export`. Upload is a separate operator action using the retained
@@ -213,7 +215,7 @@ The forest has its own colors, original animated wizard/zombie models, and a
 local [SRD 5.1 encounter](../../docs/verse/zone-rules.md). **Plaza** returns to
 your saved position at any time. Plaza presence and Gym observation pause
 throughout loading and the forest visit. Rules and artwork notices are in
-**Computer > Settings > About Verse**. Build 47 acceptance is tracked in the
+**Computer > Settings > About Verse**. Build 47 acceptance and its release receipt are retained in the
 [forest verification record](verification/2026-09-27-forest-zones/README.md).
 
 

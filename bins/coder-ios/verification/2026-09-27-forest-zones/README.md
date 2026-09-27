@@ -6,9 +6,14 @@ See [zone behavior and architecture](../../../../docs/verse/zones.md),
 [exact rules coverage](../../../../docs/verse/zone-rules.md), and
 [artwork provenance](../../../../assets/verse/forest/README.md).
 
-Build 47 passed its native portal, download, encounter, return, and startup
-checks. Distribution is pending; a source commit or simulator check does not
-establish Apple processing or TestFlight availability.
+Internal TestFlight **0.5.0 (47)** is confirmed `VALID` and `IN_BETA_TESTING`
+in the [release receipt](testflight-build47.json). The [signed archive](archive-source.json)
+pins clean source `49fe25a6d3f26cbe1f88d9e9e3742d4e83e37dcd`, compiler versions,
+Cargo lock digest, and executable digest. [Bundle verification](archive-bundle-verification.json)
+and strict code-signature checks passed; the archive contains no forest pack.
+The [upload receipt](upload-build47.json) records the earlier successful upload
+before Apple exposed its processing result. This release closes #9725–#9727;
+physical-device acceptance remains separate.
 
 ## Targeted checks
 

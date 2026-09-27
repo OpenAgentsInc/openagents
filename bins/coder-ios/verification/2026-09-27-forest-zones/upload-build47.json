@@ -1,0 +1,10 @@
+{
+  "schema": "coder.ios.upload.v1",
+  "build": "47",
+  "version": "0.5.0",
+  "source_commit": "49fe25a6d3f26cbe1f88d9e9e3742d4e83e37dcd",
+  "checked_at": "2026-09-27T05:37:20.373805+00:00",
+  "upload_exit": 0,
+  "distribution_confirmed": false,
+  "note": "Upload succeeded. App Store Connect processing and TestFlight availability are recorded separately."
+}

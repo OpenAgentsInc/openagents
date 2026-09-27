@@ -1,0 +1,17 @@
+{
+  "schema": "coder.ios.archive-source.v1",
+  "version": "0.5.0",
+  "build": "47",
+  "source_commit": "49fe25a6d3f26cbe1f88d9e9e3742d4e83e37dcd",
+  "source_status": "",
+  "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "cargo_lock_sha256": "a8b5aaaa52da0b70742fd90562efb623c5814beaf9aaaef4028af7ed549c75e6",
+  "archive_executable_sha256": "a5e8558791d1b0a384b0f9cc629c8827a53698fcfd7c13c4f573c10fa2b643d7",
+  "rust_version": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "xcode_version": "Xcode 26.6\nBuild version 17F113",
+  "bundle_verification": "passed",
+  "codesign_verification": "passed",
+  "bundled_zone_packs": 0,
+  "push_configured": false,
+  "physical_device_acceptance": false
+}
