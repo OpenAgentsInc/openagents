@@ -75,7 +75,7 @@ reasoning on. It says nothing about Luna. Everything not listed here stands
 as declared.
 
 - **Binary:** `microcoder-study-claude` on coderos-4080, built from
-  `43d9d81bb9`: `main` at `5e83fddbf8` plus the `claude` provider
+  `b7238446f4`: `main` at `4865afd687` plus the `claude` provider
   (`crates/microcoder/src/claude.rs`). The provider runs the `claude`
   binary once per step in print mode with every tool off, one turn, no
   settings files, and no saved session, and asks for the same `next_action`
