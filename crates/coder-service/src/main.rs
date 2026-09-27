@@ -207,6 +207,8 @@ fn install(layout: &Layout, home: &Path, mut args: Vec<String>) -> Result<()> {
             )
         })?,
     };
+    let search_path = take_option(&mut args, "--path")?
+        .unwrap_or_else(|| launcher::search_path(std::env::var("PATH").ok().as_deref()));
     let linger = take_flag(&mut args, "--linger");
     let start = !take_flag(&mut args, "--no-start");
     no_extra(&args)?;
@@ -228,6 +230,7 @@ fn install(layout: &Layout, home: &Path, mut args: Vec<String>) -> Result<()> {
         ready_timeout_secs,
         stop_grace_secs,
         snapshot_max_bytes,
+        search_path,
     };
     launcher::initialize(layout, &config, &version)?;
     let report = service::install(layout, &config, &mut SystemRunner, start, linger)?;

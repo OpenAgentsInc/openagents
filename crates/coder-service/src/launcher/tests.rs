@@ -88,6 +88,9 @@ fn fixture(ready_timeout_secs: u64) -> Fixture {
         ready_timeout_secs,
         stop_grace_secs: 1,
         snapshot_max_bytes: 1 << 20,
+        // The fixture hosts run `mv` and `sleep`, which some systems, such
+        // as NixOS, keep outside the base directories.
+        search_path: search_path(std::env::var("PATH").ok().as_deref()),
     };
     initialize(&layout, &config, &v1).unwrap();
     Fixture {

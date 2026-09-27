@@ -151,7 +151,10 @@ fn render_systemd(config: &Config, args: &[String]) -> Result<String> {
         format!("TimeoutStopSec={}", config.stop_grace_secs + 10),
         "UMask=0077".into(),
         "NoNewPrivileges=yes".into(),
-        "Environment=\"PATH=/usr/bin:/bin\"".into(),
+        format!(
+            "Environment={}",
+            systemd_quote(&format!("PATH={}", config.search_path))?
+        ),
         String::new(),
         "[Install]".into(),
         "WantedBy=default.target".into(),
@@ -191,7 +194,7 @@ fn render_launchd(layout: &Layout, config: &Config, args: &[String]) -> Result<S
             "<dict>\n",
             "\t<key>AbandonProcessGroup</key>\n\t<false/>\n",
             "\t<key>EnvironmentVariables</key>\n\t<dict>\n",
-            "\t\t<key>PATH</key>\n\t\t<string>/usr/bin:/bin</string>\n\t</dict>\n",
+            "\t\t<key>PATH</key>\n\t\t<string>{path}</string>\n\t</dict>\n",
             "\t<key>ExitTimeOut</key>\n\t<integer>{exit}</integer>\n",
             "\t<key>KeepAlive</key>\n\t<dict>\n",
             "\t\t<key>SuccessfulExit</key>\n\t\t<false/>\n\t</dict>\n",
@@ -208,6 +211,7 @@ fn render_launchd(layout: &Layout, config: &Config, args: &[String]) -> Result<S
         ),
         exit = config.stop_grace_secs + 10,
         label = xml(&config.label)?,
+        path = xml(&config.search_path)?,
         program = program,
         log = log,
     ))
@@ -689,6 +693,9 @@ pub fn uninstall(
 ) -> Result<UninstallReport> {
     let canonical = canonical_path(layout, config);
     let registration = registration_path(config);
+    // Read before stopping: `systemctl disable` removes a linked unit's
+    // registration link itself.
+    let ours = fs::read_link(&registration).ok().as_deref() == Some(canonical.as_path());
     let stopped = match config.platform {
         Platform::Linux => {
             let unit = file_name(config);
@@ -728,8 +735,7 @@ pub fn uninstall(
             }
         }
     };
-    let ours = fs::read_link(&registration).ok().as_deref() == Some(canonical.as_path());
-    if ours {
+    if ours && fs::read_link(&registration).ok().as_deref() == Some(canonical.as_path()) {
         fs::remove_file(&registration)?;
     }
     if config.platform == Platform::Linux {
