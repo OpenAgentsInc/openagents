@@ -1,8 +1,8 @@
 # Genesis example port roadmap for Verse physics
 
-**Status:** Roadmap, 2026-09-27. Follows [Genesis lessons for Verse physics zones](2026-09-27-genesis-for-verse-zones.md). No zone authority, networking, or runtime dependency on Genesis is approved here.
+**Status:** Roadmap, 2026-09-27. Tracking issue [#9788](https://github.com/OpenAgentsInc/openagents/issues/9788). Follows [Genesis lessons for Verse physics zones](2026-09-27-genesis-for-verse-zones.md). No zone authority, networking, or runtime dependency on Genesis is approved here.
 
-Porting means **reimplementing the mechanism in Rust inside [`verse-lagrange`](../../crates/verse-lagrange/src/lib.rs)** and proving it with a Verse test. No Genesis source, assets, or Python runtime enter the repo. Genesis stays a pinned reference and, where noted, an offline oracle for calibration runs.
+Porting means **reimplementing the mechanism in Rust in the shared, zone-agnostic [`physics`](../../crates/physics/src/lib.rs) crate** and proving it with a test there. Zones consume it. Lagrange 1 is the first consumer and the acceptance scene, not the home: any zone that needs rigid bodies, contact, joints, thrusters, or sensors uses the same crate. No Genesis source, assets, or Python runtime enter the repo. Genesis stays a pinned reference and, where noted, an offline oracle for calibration runs.
 
 Reference: [Genesis `236719768c72e8d0cefb1607565885fd2c1bab6b`](https://github.com/Genesis-Embodied-AI/Genesis/tree/236719768c72e8d0cefb1607565885fd2c1bab6b) (v1.4.2 + 20, Apache-2.0), cloned read-only at `projects/repos/Genesis` in the workspace. All 123 files under `examples/` were surveyed.
 
@@ -31,12 +31,13 @@ Lagrange 1 is a six-part EVA assembly in microgravity at Sun–Earth L1: one ast
 
 ## Phases
 
-Each phase lands as its own change with tests in [`crates/verse-lagrange/src/tests.rs`](../../crates/verse-lagrange/src/tests.rs) (or a sibling module) and a note in [the L1 physics guide](../verse/lagrange-1.md). The existing CR3BP, Jacobi, station-keeping, propellant, capture-momentum, latch-threshold, and station-collision tests must keep passing at every phase.
+Each phase lands as its own change. It adds the generic mechanism and its tests to `crates/physics`, then moves Lagrange 1 onto it with a zone test in [`crates/verse-lagrange/src/tests.rs`](../../crates/verse-lagrange/src/tests.rs) and a note in [the L1 physics guide](../verse/lagrange-1.md). Zone-specific rules stay in the zone crate: for Lagrange, the orbit, the L1 tide field, the pack's thruster layout, part and slot definitions, and latch thresholds. The existing CR3BP, Jacobi, station-keeping, propellant, capture-momentum, latch-threshold, and station-collision tests must keep passing at every phase.
 
-### GP-0 — Fixed step, restorable state, scripted scenarios
+### GP-0 — Fixed step, restorable state, scripted scenarios ([#9786](https://github.com/OpenAgentsInc/openagents/issues/9786))
 
 Prerequisite from the audit's adaptation step 1. No Genesis port, but it is the harness every later phase tests with.
 
+- Create `crates/physics`: `Body` (moved from `verse_lagrange::RigidBody`, with body kinds dynamic/static/kinematic), a `World` of bodies stepped at a fixed `dt` under a caller-supplied acceleration field, a `FixedStep` accumulator, previous-pose interpolation, and a comparable `Trace`. No zone types.
 - `Station::step` accepts frame time into an accumulator and advances fixed `PHYSICS_DT` (start at 1/120 s) substeps, with a named maximum substep count per frame. Report the time it drops; don't silently drop it. The orbit advances by the same accounted time × `ORBIT_WARP`. The renderer interpolates.
 - Add a serializable, versioned `StationState` distinct from the existing HUD [`Snapshot`](../../crates/verse-lagrange/src/station.rs): orbit state, station-keeping schedule, bodies, grasp/install state, propellant, target, climb, tick.
 - Scenario runner in tests: a named initial state, a `Command` script by tick, and checkpoints of pose/momentum/propellant/mission time. Copy the **pattern** of `contact_manifold.py`: one scripted sweep through phases, log only on state transitions, and a short-run mode for CI versus a long run for local investigation.
@@ -44,7 +45,7 @@ Prerequisite from the audit's adaptation step 1. No Genesis port, but it is the 
 
 **Accept:** Same state and command stream give identical results on one machine. Results at 30, 60, and 144 fps frame pacing agree within a stated tolerance. Save → restore → continue matches an uninterrupted run.
 
-### GP-1 — Zero-g momentum ledger (from `ipc_momentum.py`)
+### GP-1 — Zero-g momentum ledger (from `ipc_momentum.py`) ([#9778](https://github.com/OpenAgentsInc/openagents/issues/9778))
 
 That example sets gravity to zero, launches a cube at 4 m/s into a sphere, and tracks per-body and total momentum plus relative error. Port that measurement as a reusable test helper, not the IPC solver.
 
@@ -54,9 +55,9 @@ That example sets gravity to zero, launches a cube at 4 m/s into a sphere, and t
 
 **Accept:** Relative momentum error below a stated bound (start 1e-9 for coasting, 1e-6 through contacts) in every ledger scenario. This test gates GP-3 to GP-5. Today's carry path, which sets the part's velocity to the astronaut's, is expected to **fail** it; record that as the baseline.
 
-### GP-2 — Force at a point and thruster allocation (from `apply_external_wrench.py`, drone controller)
+### GP-2 — Force at a point and thruster allocation (from `apply_external_wrench.py`, drone controller) ([#9779](https://github.com/OpenAgentsInc/openagents/issues/9779))
 
-- `RigidBody::apply_force_at(point, force, dt)` and `apply_torque(torque, dt)` accumulate a wrench cleared after each step, as `apply_links_external_wrench` does.
+- `Body::apply_force_at(point, force)` and `apply_torque(torque, dt)` accumulate a wrench cleared after each step, as `apply_links_external_wrench` does.
 - Replace the pack's single center-of-mass force with named thruster positions and directions on the astronaut body. Allocate a desired force and torque to thruster firings with a mixer, the way `DronePIDController.__mixer` maps thrust/roll/pitch/yaw to four rotors. Allocate by bounded least squares or a fixed table over thruster pairs. Propellant is spent by total thrust × time / (Isp·g₀), the same as today.
 - Cascade control like `quadcopter_controller.py`: position (fly-to target) → velocity (existing 2 m/s limit and deadband) → attitude. Yaw becomes an attitude **target** held by thrusters rather than a value written to `self.yaw`. Keep the hold/release input model from `interactive_drone.py` for keyboard, and map it for the mobile stick.
 - Plumes render at the actual firing thrusters.
@@ -67,7 +68,7 @@ That example sets gravity to zero, launches a cube at 4 m/s into a sphere, and t
 - Propellant use matches impulse / exhaust velocity.
 - The GP-1 ledger balances when the exhaust term is included.
 
-### GP-3 — Contact shapes, filters, manifolds, friction (from `contact_manifold.py`, `contype.py`, friction examples)
+### GP-3 — Contact shapes, filters, manifolds, friction (from `contact_manifold.py`, `contype.py`, friction examples) ([#9780](https://github.com/OpenAgentsInc/openagents/issues/9780))
 
 - Collision shapes: an oriented box for each part, a capsule for the astronaut, boxes for station modules. Truss lattice uses a compound of boxes or is marked non-solid. Keep six-part scale in mind: brute-force pair tests are fine; no broad-phase tree until GP-6 measurements ask for one.
 - Filtering: a `contype`/`conaffinity` bitmask pair per shape; two shapes collide when `a.contype & b.conaffinity | b.contype & a.conaffinity != 0`. Use it for "carried part does not collide with the carrier", "installed parts collide only with free bodies", and the non-solid lattice.
@@ -83,7 +84,7 @@ That example sets gravity to zero, launches a cube at 4 m/s into a sphere, and t
 - The spinning-tank-into-panel-edge experiment from the audit shows angular impulse.
 - The old six-AABB sphere push-out ([`step_parts`](../../crates/verse-lagrange/src/station.rs)) is removed.
 
-### GP-4 — Grab as a soft constraint at the hit point (from the mouse-interaction plugin)
+### GP-4 — Grab as a soft constraint at the hit point (from the mouse-interaction plugin) ([#9781](https://github.com/OpenAgentsInc/openagents/issues/9781))
 
 This is the most directly portable mechanism. For each axis the plugin computes the arm from the center of mass to the grabbed point, the effective mass along that axis `1 / (1/m + (r×d)·I⁻¹(r×d))`, and a critical damping coefficient from spring stiffness. It then solves one **implicit** impulse whose end-of-step velocity follows the spring-damper response: softness `1 / (dt·(c + dt·k))`, bias rate `k / (c + dt·k)`. That stays stable at any stiffness. A second term damps the pendulum swing about the grabbed point using the inertia about that point.
 
@@ -97,7 +98,7 @@ This is the most directly portable mechanism. For each axis the plugin computes 
 - Exceeding the grip limit breaks the grab.
 - The existing capture-momentum test is rewritten against the constraint rather than removed.
 
-### GP-5 — Latch as weld, tether as connect (from `suction_cup.py`, `closed_loop.py`)
+### GP-5 — Latch as weld, tether as connect (from `suction_cup.py`, `closed_loop.py`) ([#9782](https://github.com/OpenAgentsInc/openagents/issues/9782))
 
 - Constraint set with runtime `add_weld(a, b, frame)` / `remove_weld(a, b)` as in `suction_cup.py`, solved in the same impulse loop as contacts.
 - Latch: allowed only when position error, **orientation** error, relative linear speed, and relative angular speed are all under thresholds. Then add a weld between the part and the jig slot frame. Installed parts become static (GP-6). Unlatching is not required for L1 but the API supports removal.
@@ -107,7 +108,7 @@ This is the most directly portable mechanism. For each axis the plugin computes 
 
 **Accept:** The audit's docking experiment passes: excess angular speed or misalignment is refused, and a latched part stays fixed under impacts. At the 140 m limit the astronaut neither teleports nor gains energy, and recorded tether tension matches the momentum change.
 
-### GP-6 — Sleep and static bodies (from `hibernation.py`)
+### GP-6 — Sleep and static bodies (from `hibernation.py`) ([#9783](https://github.com/OpenAgentsInc/openagents/issues/9783))
 
 - Build islands from bodies connected by contacts or constraints. An island sleeps after its bodies stay below linear and angular thresholds for N steps. It wakes on new contact, grab, thrust, or constraint change.
 - **Microgravity rule:** never sleep an island that is not touching a static body. A drifting part at 1 mm/s is still moving. In L1 this effectively means installed parts (already static) and settled contact stacks on the station.
@@ -115,7 +116,7 @@ This is the most directly portable mechanism. For each axis the plugin computes 
 
 **Accept:** A slowly drifting free part never sleeps. A sleeping settled part wakes on contact and resumes with the same state. Step time drops measurably with sleeping bodies in a stress scene of about 50 parts, a test-only scene.
 
-### GP-7 — Telemetry and debug (from sensors and `draw_debug.py`)
+### GP-7 — Telemetry and debug (from sensors and `draw_debug.py`) ([#9784](https://github.com/OpenAgentsInc/openagents/issues/9784))
 
 - Contact-force readout per body (`contact_force_go2.py`): normal and tangential impulse / dt, used by the HUD ("impact 340 N") and by tests.
 - IMU on the astronaut (`imu_franka.py`): specific force and angular rate from the solved state. Show g-load and spin rate on the HUD; they explain thruster and tether events to the player.
@@ -124,7 +125,7 @@ This is the most directly portable mechanism. For each axis the plugin computes 
 
 **Accept:** Sensor values match analytic cases: a thruster burn's acceleration, and a contact impulse in a head-on collision. The overlay can be toggled and costs nothing when off.
 
-### GP-8 — Calibration, variation, budget (from randomization, timing, Genesis oracle)
+### GP-8 — Calibration, variation, budget (from randomization, timing, Genesis oracle) ([#9785](https://github.com/OpenAgentsInc/openagents/issues/9785))
 
 - Property tests varying part mass, center-of-mass offset, inertia, friction, and restitution within authored ranges, as `domain_randomization.py` and `set_phys_attr.py` vary them per environment. Every GP-1 to GP-5 invariant must hold across the sampled range.
 - Step budget: per-step timing for contacts, constraints, and orbit, as in `speed_benchmark/timers.py`. Record it on desktop and on the lowest supported mobile device, and set a frame-time budget.
@@ -145,6 +146,6 @@ GP-0 and GP-1 are small and unblock everything. GP-3 to GP-5 are the visible rea
 
 ## Boundaries
 
-- Physics stays inside `verse-lagrange`, which has no renderer; `crates/verse` only adapts input and meshes.
+- Generic physics lives in `crates/physics`, which has no renderer, I/O, or zone knowledge. Zone crates such as `verse-lagrange` own their rules and configuration; `crates/verse` only adapts input and meshes.
 - No shared or networked physics authority is implied. NIP-MV commands remain inputs to a locally owned station.
 - The orbital model and its approximations are unchanged by this roadmap. Any orbital fidelity change is a separate study, as the audit states.
