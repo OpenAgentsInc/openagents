@@ -35,6 +35,35 @@ cargo build --release -p openagents-cli
 install target/release/openagents ~/.local/bin/
 ```
 
+## Knowledge entries (NIP-KB)
+
+Use `openagents kb` to work with local knowledge entries and NIP-KB relay
+events. `--json` returns one JSON document on stdout. Success exits `0`,
+refused or failed operations exit `1`, and invalid arguments exit `64`.
+The network commands require an explicit relay and a positive timeout in
+seconds. They use the knowledge signing key unless you pass `--key-file`.
+
+```sh
+openagents kb search "relay handoff" --lexical --limit 5 --json
+openagents kb show entry-id --dir knowledge --json
+openagents kb withdraw entry-id --reason "Outdated advice" --json
+openagents kb publish entry-id --relay wss://relay.example --timeout 30 --json
+openagents kb sync --relay wss://relay.example --timeout 30 --author NPUB --json
+openagents kb head entry-id --relay wss://relay.example --timeout 30 --author NPUB --json
+```
+
+`search` returns ranked hits with scores, entry metadata, and the reason
+when ranking uses only words. `show` returns the parsed entry, its full
+document, and any pending version. `withdraw` updates the local entry and
+returns its new status; use `publish` to send the withdrawal to a relay.
+`publish` returns counts and per-entry outcomes for the selected IDs (or
+every local entry when you omit IDs). `sync` verifies remote events and
+returns accepted entries, withdrawals, refusals, and incomplete query
+counts. `head` returns the author's current verified entry pointer or
+fails if that pointer is missing, invalid, or withdrawn. Use `--author`
+to read another author's head; without it, the command uses the signing
+key's public identity. Run `openagents kb --help` for the full syntax.
+
 ## Pairing and computers (NIP-HOST, NIP-REACH)
 
 Enroll this device with a host, list hosts, and order work. The host

@@ -271,6 +271,46 @@ async fn entries_publish_sync_and_retrieve_through_a_relay() {
     assert!(base.get("numerics.float-comparison").is_none());
 }
 
+#[tokio::test]
+async fn head_binds_the_entry_and_refuses_a_withdrawn_version() {
+    let (url, _) = relay().await;
+    let dir = seed_copy("head");
+    let key = scratch("head-home").join("knowledge-key");
+    let id = "numerics.float-comparison";
+    let d = dir.to_str().unwrap();
+    let publish_one = options(&["--dir", d, "--relay", &url, id]);
+    assert_eq!(publish(&publish_one, &key).await.unwrap(), 0);
+
+    let args = [
+        "head",
+        id,
+        "--relay",
+        &url,
+        "--timeout",
+        "5",
+        "--key-file",
+        key.to_str().unwrap(),
+    ]
+    .map(str::to_string);
+    let (code, value) = result(&args).await.unwrap();
+    assert_eq!(code, 0);
+    assert_eq!(value["id"], id);
+    assert_eq!(value["version"], 1);
+    assert_eq!(value["author"], remote::own_pubkey(&key).unwrap());
+    assert!(value["event"].as_str().is_some());
+
+    let path = dir.join(format!("{id}.md"));
+    let text = std::fs::read_to_string(&path).unwrap();
+    let text = knowledge::set_status(&text, Status::Withdrawn).unwrap();
+    let text =
+        knowledge::set_evidence(&text, &["withdrawn 2026-09-25: a test".to_string()]).unwrap();
+    std::fs::write(&path, text).unwrap();
+    assert_eq!(publish(&publish_one, &key).await.unwrap(), 0);
+    let error = result(&args).await.unwrap_err();
+    assert_eq!(error.0, 1);
+    assert!(error.1.contains("withdrawn"));
+}
+
 fn run(dir: &Path, name: &str, reward: f64, used: &[&str]) {
     let at = dir.join(name);
     std::fs::create_dir_all(&at).unwrap();

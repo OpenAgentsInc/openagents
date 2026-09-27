@@ -16,6 +16,7 @@ use std::process::ExitCode;
 mod args;
 mod computer;
 mod hosts;
+mod kb;
 mod key;
 mod out;
 mod relay;
@@ -46,6 +47,7 @@ Verse (NIP-MV):
 
 Keys and relays:
   key          Show or create Nostr identities.
+  kb           Search, publish, and sync knowledge entries (NIP-KB).
   relay        Query, publish to, and follow a relay.
 
   doctor       Show the identities, stores, and relays this command uses.
@@ -85,6 +87,7 @@ fn main() -> ExitCode {
         "study" => study::run(&output, &rest),
         "sov" => sov::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        "kb" => kb::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
         other => {
             eprintln!("openagents: unknown command `{other}`\n\n{USAGE}");
