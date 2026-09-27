@@ -113,6 +113,7 @@ there.
 ```sh
 openagents study run coderos ~/gates-reasoning-runs sound-change-cascade full 1 --runner ./one-claude.sh
 openagents study status coderos ~/gates-reasoning-runs     # step and state per run
+openagents study status coderos ~/gates-reasoning-runs --until-done 1500  # the host waits for the runs to end first
 openagents study outcomes coderos ~/gates-reasoning-runs   # reward, steps, time, usd, ending
 openagents study faults coderos ~/gates-reasoning-runs     # steps whose model call failed
 ```
