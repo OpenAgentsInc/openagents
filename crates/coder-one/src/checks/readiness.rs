@@ -51,6 +51,7 @@ pub struct Assessment {
 #[must_use]
 pub fn request(input: &Input) -> Request {
     Request {
+        text_format: None,
         model: "gpt-6-astra".into(),
         effort: Some("high".into()),
         cache_key: "coder-one-readiness-v1".into(),

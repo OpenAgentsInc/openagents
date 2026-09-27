@@ -417,8 +417,15 @@ impl Judge for JevJudge {
 }
 
 /// Generation through the operator's logged-in Codex session, with
-/// Microluna's transport: one request per step, and the action is the
-/// arguments of a call to the one declared tool, `next_action`.
+/// Microluna's transport: one request per step, whose reply text must match
+/// the strict `next_action` JSON schema, as on OpenRouter.
+///
+/// A step used to declare `next_action` as a strict function tool instead.
+/// GPT-6 Luna answered a function-call request without reasoning (0
+/// reasoning tokens at every effort, on the Codex login and on OpenRouter's
+/// Responses API alike), while the same request with the schema as its
+/// output format reasoned first. See
+/// `docs/terminal-bench/2026-09-26-route-diff.md`.
 pub struct CodexGenerator<T: microluna::Transport = microluna::codex::CodexTransport> {
     pub transport: T,
     /// The Codex model slug, such as `gpt-6-luna`.
@@ -429,7 +436,9 @@ pub struct CodexGenerator<T: microluna::Transport = microluna::codex::CodexTrans
     pub cache_key: String,
 }
 
-/// The one tool a Codex step declares: its parameters are the action.
+/// `next_action` as a strict function tool: its parameters are the action.
+/// Codex steps no longer declare it (see [`CodexGenerator`]); the door
+/// provider still does.
 #[must_use]
 pub fn next_action_tool() -> Value {
     json!({
@@ -449,22 +458,92 @@ pub fn next_action_tool() -> Value {
 /// record made before calls carried their own bound.
 pub const STEP_REQUEST_FIXED_BYTES: u64 = 16_384;
 
+/// The variable naming a directory to write each step's request body to,
+/// as sent, with the usage its reply reported, for comparing providers.
+/// Bodies carry no credentials: those travel in headers.
+pub const DUMP_VAR: &str = "MICROCODER_DUMP_REQUESTS";
+
+/// Writes `request` (the body as sent) and `reply` to
+/// `$MICROCODER_DUMP_REQUESTS/<provider>-<pid>-<n>.json`, when the
+/// variable is set. A write that fails is reported on stderr and skipped.
+pub fn dump_request(provider: &str, request: &Value, reply: Value) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNT: AtomicU64 = AtomicU64::new(0);
+    let Some(dir) = std::env::var_os(DUMP_VAR).filter(|dir| !dir.is_empty()) else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    let n = COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    let path = dir.join(format!("{provider}-{}-{n}.json", std::process::id()));
+    let record = json!({ "provider": provider, "request": request, "reply": reply });
+    let written = std::fs::create_dir_all(&dir).and_then(|()| {
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&record).unwrap_or_default(),
+        )
+    });
+    if let Err(error) = written {
+        eprintln!("microcoder: can't write {}: {error}", path.display());
+    }
+}
+
+/// The output format a step's reply must match: the strict `next_action`
+/// JSON schema, the same one [`OpenRouterGenerator`] sends as its
+/// `response_format`.
+#[must_use]
+pub fn next_action_format() -> Value {
+    json!({
+        "type": "json_schema",
+        "name": "next_action",
+        "schema": next_action_schema(),
+        "strict": true,
+    })
+}
+
+/// The action in a reply's text: its first complete JSON value, inside a
+/// Markdown fence or not, as `openrouter::Client::structured` reads it.
+///
+/// # Errors
+///
+/// Why the text isn't a [`NextAction`].
+pub fn parse_action(text: &str) -> Result<NextAction, String> {
+    let trimmed = text.trim();
+    let unfenced = trimmed.strip_prefix("```").map_or(trimmed, |rest| {
+        let rest = rest.strip_prefix("json").unwrap_or(rest);
+        rest.strip_suffix("```").unwrap_or(rest).trim()
+    });
+    let excerpt: String = trimmed.chars().take(300).collect();
+    match serde_json::Deserializer::from_str(unfenced)
+        .into_iter::<NextAction>()
+        .next()
+    {
+        Some(Ok(action)) => Ok(action),
+        Some(Err(error)) => Err(format!(
+            "the reply doesn't match the requested shape: {error}: {excerpt}"
+        )),
+        None => Err(format!("the reply holds no JSON value: {excerpt}")),
+    }
+}
+
 impl<T: microluna::Transport> CodexGenerator<T> {
-    /// The request one step sends.
+    /// The request one step sends: the system text as instructions, the
+    /// prompt as the one user message, and the `next_action` schema as the
+    /// output format, with no tools.
     #[must_use]
     pub fn request(&self, system: &str, prompt: &str) -> microluna::Request {
         microluna::Request {
             model: self.model.clone(),
-            instructions: format!("{system} Reply by calling next_action exactly once."),
+            instructions: system.to_string(),
             input: vec![json!({
                 "type": "message",
                 "role": "user",
                 "content": [{ "type": "input_text", "text": prompt }],
             })],
-            tools: vec![next_action_tool()],
+            tools: Vec::new(),
             effort: self.effort.clone(),
             cache_key: self.cache_key.clone(),
             parallel_tools: false,
+            text_format: Some(next_action_format()),
         }
     }
 }
@@ -472,12 +551,21 @@ impl<T: microluna::Transport> CodexGenerator<T> {
 impl<T: microluna::Transport> Generate for CodexGenerator<T> {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
         let request = self.request(system, prompt);
-        let called = microluna::oneshot::call(&self.transport, &request, "next_action").await;
-        Generated {
-            action: called.arguments.and_then(|arguments| {
-                serde_json::from_str::<NextAction>(&arguments)
-                    .map_err(|e| format!("next_action's arguments didn't parse: {e}"))
+        let called = microluna::oneshot::answer(&self.transport, &request).await;
+        dump_request(
+            "codex",
+            &microluna::codex::body(&request),
+            json!({
+                "model": called.model,
+                "input_tokens": called.usage.input,
+                "cached_tokens": called.usage.cached,
+                "output_tokens": called.usage.output,
+                "reasoning_tokens": called.usage.reasoning,
+                "error": called.arguments.as_ref().err(),
             }),
+        );
+        Generated {
+            action: called.arguments.and_then(|text| parse_action(&text)),
             model: called.model,
             prompt_tokens: called.usage.input,
             completion_tokens: called.usage.output,
@@ -520,8 +608,11 @@ pub struct OpenRouterGenerator {
     pub effort: Option<String>,
 }
 
-impl Generate for OpenRouterGenerator {
-    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+impl OpenRouterGenerator {
+    /// The request one step sends, before [`openrouter::Client::structured`]
+    /// adds the `next_action` response format.
+    #[must_use]
+    pub fn request(&self, system: &str, prompt: &str) -> openrouter::ChatRequest {
         let mut request = openrouter::ChatRequest::new(
             &self.model,
             vec![
@@ -532,12 +623,46 @@ impl Generate for OpenRouterGenerator {
         if let Some(effort) = &self.effort {
             request = request.effort(effort);
         }
+        request
+    }
+}
+
+impl Generate for OpenRouterGenerator {
+    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        let request = self.request(system, prompt);
+        let sent = std::env::var_os(DUMP_VAR).map(|_| {
+            serde_json::to_value(
+                request
+                    .clone()
+                    .structured("next_action", next_action_schema()),
+            )
+            .unwrap_or_default()
+        });
         let started = Instant::now();
-        match self
+        let result = self
             .client
             .structured::<NextAction>(request, "next_action", next_action_schema())
-            .await
-        {
+            .await;
+        if let Some(sent) = &sent {
+            let usage = match &result {
+                Ok(reply) => Some(&reply.usage),
+                Err(openrouter::Error::Schema { usage, .. }) => Some(usage),
+                Err(_) => None,
+            };
+            dump_request(
+                "openrouter",
+                sent,
+                json!({
+                    "input_tokens": usage.map(|u| u.prompt_tokens),
+                    "output_tokens": usage.map(|u| u.completion_tokens),
+                    "reasoning_tokens": usage
+                        .and_then(|u| u.completion_tokens_details.as_ref())
+                        .and_then(|d| d.reasoning_tokens),
+                    "error": result.as_ref().err().map(ToString::to_string),
+                }),
+            );
+        }
+        match result {
             Ok(reply) => Generated {
                 action: Ok(reply.value),
                 model: reply.model,
@@ -746,14 +871,14 @@ mod codex_tests {
     use super::*;
     use microluna::fake::FakeTransport;
 
-    fn call(arguments: &str) -> microluna::Reply {
+    fn call(text: &str) -> microluna::Reply {
         microluna::Reply {
             id: None,
             model: "gpt-6-luna".to_string(),
-            items: vec![json!({
-                "type": "function_call", "call_id": "c1", "name": "next_action",
-                "arguments": arguments,
-            })],
+            items: vec![
+                json!({"type": "reasoning", "summary": []}),
+                json!({"type": "message", "content": [{"type": "output_text", "text": text}]}),
+            ],
             usage: microluna::TokenUsage {
                 input: 1_000,
                 output: 100,
@@ -772,7 +897,7 @@ mod codex_tests {
     }
 
     #[tokio::test]
-    async fn a_next_action_call_becomes_the_action() {
+    async fn a_reply_matching_the_format_becomes_the_action() {
         let g = generator(vec![call(
             r#"{"rationale":"look","commands":["ls"],"view":[],"expand":[],"freeze_tests":false,"finished":false}"#,
         )]);
@@ -783,12 +908,83 @@ mod codex_tests {
         assert!(out.usd.unwrap() > 0.0, "Luna has a list price");
         assert_eq!(out.cost_basis, Basis::ListPrice);
         let sent = g.transport.requests();
-        assert_eq!(sent[0].tools[0]["name"], "next_action");
-        assert_eq!(sent[0].tools[0]["parameters"], next_action_schema());
+        assert!(sent[0].tools.is_empty());
+        assert_eq!(sent[0].text_format, Some(next_action_format()));
+        assert_eq!(sent[0].instructions, "system");
+    }
+
+    /// Both routes send one step the same way: the same system text, the
+    /// same prompt, the same effort, and the same strict schema as the
+    /// reply's format rather than as a tool.
+    #[test]
+    fn codex_and_openrouter_steps_send_the_same_parts() {
+        let codex = generator(Vec::new());
+        let openrouter = OpenRouterGenerator {
+            client: openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new("k")))
+                .unwrap(),
+            model: "openai/gpt-6-luna".to_string(),
+            effort: Some("medium".to_string()),
+        };
+        let (system, prompt) = ("the system text", "the step prompt");
+        let codex_body = microluna::codex::body(&codex.request(system, prompt));
+        let openrouter_body = serde_json::to_value(
+            openrouter
+                .request(system, prompt)
+                .structured("next_action", next_action_schema()),
+        )
+        .unwrap();
+
+        assert_eq!(codex_body["model"], "gpt-6-luna");
+        assert_eq!(openrouter_body["model"], "openai/gpt-6-luna");
+        assert_eq!(
+            codex_body["instructions"],
+            openrouter_body["messages"][0]["content"]
+        );
+        assert_eq!(openrouter_body["messages"][0]["role"], "system");
+        assert_eq!(
+            codex_body["input"][0]["content"][0]["text"],
+            openrouter_body["messages"][1]["content"]
+        );
+        assert_eq!(codex_body["input"].as_array().unwrap().len(), 1);
+        assert_eq!(openrouter_body["messages"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            codex_body["reasoning"]["effort"],
+            openrouter_body["reasoning"]["effort"]
+        );
+        let format = &codex_body["text"]["format"];
+        let response_format = &openrouter_body["response_format"];
+        assert_eq!(format["type"], response_format["type"]);
+        assert_eq!(format["name"], response_format["json_schema"]["name"]);
+        assert_eq!(format["schema"], response_format["json_schema"]["schema"]);
+        assert_eq!(format["strict"], response_format["json_schema"]["strict"]);
+        // Neither declares a tool, and neither caps the output or sets a
+        // temperature.
+        for body in [&codex_body, &openrouter_body] {
+            for field in [
+                "tools",
+                "tool_choice",
+                "max_output_tokens",
+                "max_tokens",
+                "temperature",
+            ] {
+                assert!(body.get(field).is_none(), "{field}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_fenced_reply_or_trailing_text_still_parses() {
+        let json = r#"{"rationale":"r","commands":[],"view":[],"expand":[],"freeze_tests":false,"finished":true}"#;
         assert!(
-            sent[0]
-                .instructions
-                .ends_with("Reply by calling next_action exactly once.")
+            parse_action(&format!("```json\n{json}\n```"))
+                .unwrap()
+                .finished
+        );
+        assert!(parse_action(&format!("{json} trailing")).unwrap().finished);
+        assert!(
+            parse_action("I will look first.")
+                .unwrap_err()
+                .contains("requested shape")
         );
     }
 
@@ -838,10 +1034,6 @@ mod codex_tests {
         reply.items =
             vec![json!({"type": "message", "content": [{"type": "output_text", "text": "hello"}]})];
         let out = generator(vec![reply]).generate("s", "p").await;
-        assert!(
-            out.action
-                .unwrap_err()
-                .contains("called no next_action tool")
-        );
+        assert!(out.action.unwrap_err().contains("requested shape"));
     }
 }

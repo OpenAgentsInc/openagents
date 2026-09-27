@@ -171,6 +171,7 @@ mod tests {
                 inner: scripted,
             };
             let request = microluna::Request {
+                text_format: None,
                 model: "fixture-model".into(),
                 instructions: String::new(),
                 input: Vec::new(),
@@ -218,6 +219,7 @@ mod tests {
             inner: scripted,
         };
         let request = microluna::Request {
+            text_format: None,
             model: "fixture-model".into(),
             instructions: "exact fixture instructions".into(),
             input: vec![json!({"type":"message","role":"user","content":"exact fixture input"})],

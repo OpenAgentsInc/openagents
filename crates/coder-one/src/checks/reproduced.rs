@@ -64,6 +64,7 @@ fn request(input: &Input, literal_citations: bool) -> Request {
         })
         .collect();
     Request {
+        text_format: None,
         model: "gpt-6-astra".into(),
         effort: Some("high".into()),
         instructions: INSTRUCTIONS.into(),

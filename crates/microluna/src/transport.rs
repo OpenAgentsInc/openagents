@@ -28,6 +28,9 @@ pub struct Request {
     pub cache_key: String,
     /// Whether the model may call several tools in one turn.
     pub parallel_tools: bool,
+    /// The Responses API `text.format` the reply's message must match,
+    /// such as a strict `json_schema`, or `None` for free text.
+    pub text_format: Option<Value>,
 }
 
 impl Request {
@@ -41,6 +44,10 @@ impl Request {
         (self.instructions.len()
             + json(&self.input)
             + json(&self.tools)
+            + self
+                .text_format
+                .as_ref()
+                .map_or(0, |format| format.to_string().len())
             + self.model.len()
             + self.cache_key.len()
             + self.effort.as_ref().map_or(0, String::len)) as u64

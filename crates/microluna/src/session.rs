@@ -517,6 +517,7 @@ pub async fn run_watched<T: Transport, W: Watch>(
             break;
         }
         let request = Request {
+            text_format: None,
             model: config.model.clone(),
             instructions: INSTRUCTIONS.to_string(),
             input: input.clone(),

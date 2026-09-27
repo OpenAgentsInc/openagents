@@ -266,6 +266,7 @@ impl<T: microluna::Transport> Propose for CodexProposer<T> {
 
     async fn propose(&self, system: &str, prompt: &str) -> Result<(Proposals, Cost), String> {
         let request = microluna::Request {
+            text_format: None,
             model: self.model.clone(),
             instructions: format!("{system}\n\nReply by calling {TOOL} exactly once."),
             input: vec![json!({

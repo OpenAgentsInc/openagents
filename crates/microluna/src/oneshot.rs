@@ -85,6 +85,55 @@ pub async fn call_with<T: Transport>(
     tool: &str,
     unit: Duration,
 ) -> Called {
+    exchange(transport, request, unit, |reply| {
+        reply
+            .calls()
+            .into_iter()
+            .find(|c| c.name == tool)
+            .map(|c| c.arguments)
+            .ok_or_else(|| {
+                format!(
+                    "the reply called no {tool} tool; it said: {}",
+                    reply.text().chars().take(300).collect::<String>()
+                )
+            })
+    })
+    .await
+}
+
+/// Sends `request`, whose [`Request::text_format`] shapes the reply, with
+/// [`call`]'s retries and pricing, and returns the reply's message text as
+/// [`Called::arguments`].
+pub async fn answer<T: Transport>(transport: &T, request: &Request) -> Called {
+    answer_with(transport, request, Duration::from_secs(1)).await
+}
+
+/// [`answer`] with `unit` in place of one second between retries.
+pub async fn answer_with<T: Transport>(transport: &T, request: &Request, unit: Duration) -> Called {
+    exchange(transport, request, unit, |reply| {
+        let text = reply.text();
+        if text.trim().is_empty() {
+            let called: Vec<String> = reply.calls().into_iter().map(|c| c.name).collect();
+            Err(if called.is_empty() {
+                "the reply has no text".to_string()
+            } else {
+                format!("the reply has no text; it called {}", called.join(", "))
+            })
+        } else {
+            Ok(text)
+        }
+    })
+    .await
+}
+
+/// One priced request with retries; `read` takes what the caller wants
+/// from the reply.
+async fn exchange<T: Transport>(
+    transport: &T,
+    request: &Request,
+    unit: Duration,
+    read: impl FnOnce(&crate::transport::Reply) -> Result<String, String>,
+) -> Called {
     let started = Instant::now();
     let mut attempt = 0u32;
     // Failed attempts that may have consumed tokens no usage reported.
@@ -126,18 +175,7 @@ pub async fn call_with<T: Transport>(
             } else {
                 reply.model.clone()
             };
-            let arguments = reply
-                .calls()
-                .into_iter()
-                .find(|c| c.name == tool)
-                .map(|c| c.arguments)
-                .ok_or_else(|| {
-                    format!(
-                        "the reply called no {tool} tool; it said: {}",
-                        reply.text().chars().take(300).collect::<String>()
-                    )
-                });
-            (arguments, model, reply.usage)
+            (read(&reply), model, reply.usage)
         }
         Err(error) => (Err(error), request.model.clone(), TokenUsage::default()),
     };
@@ -197,6 +235,7 @@ mod tests {
             effort: None,
             cache_key: String::new(),
             parallel_tools: false,
+            text_format: None,
         }
     }
 
@@ -222,6 +261,29 @@ mod tests {
             .build()
             .unwrap()
             .block_on(f)
+    }
+
+    #[test]
+    fn an_answer_is_the_message_text_and_is_priced_the_same() {
+        let mut shaped = reply("go");
+        shaped.items = vec![
+            json!({"type": "reasoning", "summary": []}),
+            json!({"type": "message", "content": [{"type": "output_text", "text": "{\"a\":1}"}]}),
+        ];
+        let t = FakeTransport::new(vec![shaped]);
+        let out = run(answer(&t, &request("gpt-6-luna")));
+        assert_eq!(out.arguments.unwrap(), "{\"a\":1}");
+        assert_eq!(out.usd, Some(0.1));
+    }
+
+    #[test]
+    fn an_answer_without_text_is_an_error_naming_any_call() {
+        let t = FakeTransport::new(vec![reply("go")]);
+        let out = run(answer(&t, &request("gpt-6-luna")));
+        assert_eq!(
+            out.arguments.unwrap_err(),
+            "the reply has no text; it called go"
+        );
     }
 
     #[test]

@@ -344,6 +344,17 @@ pub fn body(request: &Request) -> Value {
     if let Some(effort) = &request.effort {
         body["reasoning"]["effort"] = json!(effort);
     }
+    if let Some(format) = &request.text_format {
+        body["text"] = json!({ "format": format });
+        // A reply shaped by its format declares no tools.
+        if request.tools.is_empty()
+            && let Some(fields) = body.as_object_mut()
+        {
+            for field in ["tools", "tool_choice", "parallel_tool_calls"] {
+                fields.remove(field);
+            }
+        }
+    }
     body
 }
 
@@ -725,6 +736,7 @@ mod tests {
             tools: vec![],
             effort: Some("low".to_string()),
             cache_key: "task-1".to_string(),
+            text_format: None,
         };
         let body = body(&request);
         assert_eq!(body["store"], false);
@@ -733,6 +745,27 @@ mod tests {
         assert_eq!(body["reasoning"]["effort"], "low");
         assert_eq!(body["reasoning"]["summary"], "auto");
         assert_eq!(body["include"][0], "reasoning.encrypted_content");
+    }
+
+    #[test]
+    fn a_text_format_replaces_the_tool_fields() {
+        let format = json!({"type": "json_schema", "name": "x", "schema": {}, "strict": true});
+        let request = Request {
+            parallel_tools: false,
+            model: "gpt-6-luna".to_string(),
+            instructions: "be brief".to_string(),
+            input: vec![],
+            tools: vec![],
+            effort: Some("medium".to_string()),
+            cache_key: "task-1".to_string(),
+            text_format: Some(format.clone()),
+        };
+        let body = body(&request);
+        assert_eq!(body["text"]["format"], format);
+        assert_eq!(body["reasoning"]["effort"], "medium");
+        for field in ["tools", "tool_choice", "parallel_tool_calls"] {
+            assert!(body.get(field).is_none(), "{field}");
+        }
     }
 
     #[test]
@@ -772,6 +805,7 @@ mod tests {
             tools: vec![],
             effort: None,
             cache_key: "summary-default".into(),
+            text_format: None,
         };
         assert_eq!(body(&request)["reasoning"], json!({"summary": "auto"}));
     }

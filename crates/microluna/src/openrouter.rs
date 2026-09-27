@@ -145,6 +145,7 @@ mod tests {
 
     fn request() -> Request {
         Request {
+            text_format: None,
             model: "gpt-6-luna".to_string(),
             instructions: "Be brief.".to_string(),
             input: vec![json!({"role": "user", "content": "hi"})],
