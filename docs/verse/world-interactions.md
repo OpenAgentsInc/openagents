@@ -1,11 +1,13 @@
 # Maps, companions, and doors
 
-This ordered implementation extends the shared Verse world in Coder. The
-release remains held until map navigation [#9720](https://github.com/OpenAgentsInc/openagents/issues/9720),
+This ordered implementation extends the shared Verse world in Coder.
+Map navigation [#9720](https://github.com/OpenAgentsInc/openagents/issues/9720),
 companion interaction [#9721](https://github.com/OpenAgentsInc/openagents/issues/9721),
 and door demos [#9722](https://github.com/OpenAgentsInc/openagents/issues/9722)
-are checked together with the mobile connection corrections in
-[#9718](https://github.com/OpenAgentsInc/openagents/issues/9718).
+ship together in internal TestFlight **0.5.0 (46)** with the mobile connection
+corrections in [#9718](https://github.com/OpenAgentsInc/openagents/issues/9718).
+See the [checks and release receipt](../../bins/coder-ios/verification/2026-09-26-world-interactions/README.md).
+Physical-device acceptance remains separate.
 
 ## Map navigation
 

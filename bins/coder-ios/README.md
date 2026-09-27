@@ -13,17 +13,16 @@ observes separately granted host records and requests configured run recipes
 after explicit confirmation. The phone itself runs no model or benchmark;
 the chat reader remains read-only.
 
-**Latest internal TestFlight: 0.5.0 (45).** App Store Connect confirms `VALID`
-and `IN_BETA_TESTING`. Build `45` fixes the native-library startup failure in
-builds `43` and `44`, removes title and idle-status overlays, and replaces jump
-and zoom buttons with double-tap and pinch gestures. Normal optimized simulator
-launch, background resume, cold relaunch, and all 10 native tests pass.
-[Distribution receipt](verification/2026-09-26-static-link/testflight-build45.json).
-Physical-device acceptance remains separate. See the
-[startup diagnosis](../../docs/coder/verification/2026-09-26-ios-static-link.md).
-[Connect your phone](../../docs/coder/guides/mobile-readonly.md).
+**Latest internal TestFlight: 0.5.0 (46).** App Store Connect confirms `VALID`
+and `IN_BETA_TESTING`. The [distribution receipt](verification/2026-09-26-world-interactions/testflight-build46.json)
+identifies its clean source commit and verified archive. Optimized simulator
+startup, resume, relaunch, and focused native interaction checks pass; the
+[verification record](verification/2026-09-26-world-interactions/README.md)
+retains earlier failures and corrected retests. Physical-device acceptance
+remains separate. Build 46 retains the build-45 startup packaging fix and
+clean full-bleed canvas. [Connect your phone](../../docs/coder/guides/mobile-readonly.md).
 
-The next build's source adds the [expandable map, companion reactions, and
+Build 46 adds the [expandable map, companion reactions, and
 Spark/Halo gates](../../docs/verse/world-interactions.md). Select one of eight
 map landmarks or a clear position to walk there; manual movement cancels the
 route. Tap the companion for a brief wiggle and hop. Near a gate, choose a
@@ -35,8 +34,9 @@ pairing, concise chat panels, a remembered world relay, and composed left-side
 movement with right-side look or double-tap jump. Camera mode and **Recenter**
 use labeled icons. [Connection evidence](../../docs/coder/verification/2026-09-26-mobile-connections.md)
 and [world-interaction evidence](verification/2026-09-26-world-interactions/README.md)
-separate Rust checks, native acceptance, and distribution. The final combined
-native run is in progress; these changes are not yet a confirmed TestFlight update.
+separate Rust checks, native acceptance, and distribution. The archive pins
+source commit `a0426ded9d`; later main-branch integrations have separate checks
+and are not implicitly included in that binary.
 
 Walk east into the [Gym](../../docs/verse/gym.md) for Microcoder and
 Terminal-Bench boards. Its observations and run recipes require a separate
@@ -136,7 +136,7 @@ and archived executable digest beside the archive. A nonempty workspace status
 must be reviewed rather than described as an exact committed-source build.
 Set `CODER_IOS_BUILD_NUMBER` to a new
 positive build number after checking the existing App Store Connect builds;
-the checked-in build is `46`, while the confirmed TestFlight build remains `45`.
+the checked-in and confirmed internal TestFlight build is `46`.
 The `export` command produces a local
 distribution package using the existing export settings with destination
 changed to `export`. Upload is a separate operator action using the retained

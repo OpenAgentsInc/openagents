@@ -1,9 +1,11 @@
 # World interaction verification
 
-The confirmed internal TestFlight release remains **0.5.0 (45)**. Source for
-build 46 adds the ordered map, companion, and reactive-gate changes in
-issues #9720, #9721, and #9722. Native acceptance is complete; distribution is pending. See [design and controls](../../../../docs/verse/world-interactions.md)
-and the separate [connection corrections](../../../../docs/coder/verification/2026-09-26-mobile-connections.md).
+Internal TestFlight **0.5.0 (46)** is confirmed `VALID` and `IN_BETA_TESTING`
+in the [release receipt](testflight-build46.json). This single release includes
+the ordered map, companion, and reactive-gate changes in issues #9720, #9721,
+and #9722, plus connection corrections in #9718. See
+[design and controls](../../../../docs/verse/world-interactions.md) and the
+[connection assessment](../../../../docs/coder/verification/2026-09-26-mobile-connections.md).
 
 ## Current Rust and adapter checks
 
@@ -65,6 +67,23 @@ come from the window; keyboard insets belong only to the native panel.
 An additional [normal-launch check](normal-launch.json) starts the optimized
 app without synthetic arguments while external Rust dylibs are temporarily
 unavailable. It remains alive after ten seconds. [Startup screenshot](normal-launch.png).
+
+## Archived source and subsequent integration
+
+The [archive receipt](archive-source.json) pins clean source commit
+`a0426ded9d2c8762a7a4536237ed1e6dd558c0e5`, the Cargo lock digest, compiler
+versions, and the executable digest. The [bundle check](archive-bundle-verification.json)
+confirms system-only dynamic dependencies; strict code-signature verification
+also passed. Push registration remains unconfigured in this archive.
+
+After archiving, main gained independent computer-directory, SSH-route, and
+Android push changes. The merged source passes the [mobile library suite](post-archive-main-mobile-tests.log)
+(61 passed, one manual fixture ignored), plus [Android main/instrumentation
+compilation and two JVM pinch tests](post-archive-android-compile.log). The
+Android merge preserves both contributors' controls and moves the incoming
+owner-key/push test navigation through Settings. These later source checks
+do not change which commit was archived. Firebase-configured push and a new
+Android emulator run are outside this release's acceptance.
 
 ## Retained failures and corrections
 

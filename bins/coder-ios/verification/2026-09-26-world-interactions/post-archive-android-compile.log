@@ -1,0 +1,52 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:processDebugNavigationResources
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:preDebugAndroidTestBuild SKIPPED
+> Task :app:processDebugAndroidTestManifest
+> Task :app:generateDebugAndroidTestBuildConfig
+> Task :app:checkDebugAndroidTestAarMetadata UP-TO-DATE
+> Task :app:processDebugAndroidTestNavigationResources
+> Task :app:compileDebugAndroidTestNavigationResources UP-TO-DATE
+> Task :app:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :app:mapDebugAndroidTestSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugAndroidTestResources UP-TO-DATE
+> Task :app:mergeDebugAndroidTestResources UP-TO-DATE
+> Task :app:processDebugAndroidTestResources UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+
+> Task :app:compileDebugKotlin
+w: file:///Users/christopherdavid/work/openagents-mobile45/bins/coder-android/host/app/src/main/java/com/openagents/coder/MainActivity.kt:119:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///Users/christopherdavid/work/openagents-mobile45/bins/coder-android/host/app/src/main/java/com/openagents/coder/MainActivity.kt:119:59 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:testDebugUnitTest
+> Task :app:compileDebugAndroidTestKotlin
+
+BUILD SUCCESSFUL in 9s
+37 actionable tasks: 17 executed, 20 up-to-date

@@ -6,8 +6,11 @@ did not load automatically, metadata crowded out messages, and a world relay
 choice disappeared. The user also reported that recenter appeared ineffective
 and that movement could not combine with looking or jumping.
 
-Build 46 is in preparation. Final native acceptance and TestFlight delivery
-will be recorded in the [evidence directory](../../../bins/coder-ios/verification/2026-09-26-mobile-connections/README.md).
+Build **0.5.0 (46)** is available in internal TestFlight, confirmed `VALID`
+and `IN_BETA_TESTING`. The [combined evidence](../../../bins/coder-ios/verification/2026-09-26-world-interactions/README.md)
+records native acceptance, exact archived source, and the release receipt;
+[connection evidence](../../../bins/coder-ios/verification/2026-09-26-mobile-connections/README.md)
+retains the earlier diagnostic checks. Physical-device acceptance remains separate.
 
 ## Causes and changes
 

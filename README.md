@@ -49,20 +49,19 @@ design as a Designed profile for durable identity, bounded initiative,
 custody, guardians, and market participation. It composes the current NIPs;
 custody, sovereign lifecycle, and treasury adapters remain to be built.
 
-Coder iOS **0.5.0 (45)** is available in internal TestFlight. It fixes the startup
-packaging failure in builds 43 and 44 and removes title, idle-status, and extra
-movement controls. Double-tap to jump; pinch with two fingers to zoom.
-[Verification and release evidence](docs/coder/verification/2026-09-26-ios-static-link.md)
-include normal optimized simulator launch, resume, relaunch, and 10 passing
-native tests.
+Coder iOS **0.5.0 (46)** is available in internal TestFlight. It adds an
+expandable map with eight walking destinations, a tappable companion, and
+Spark/Halo gates with local item choices and saved destination memory. Tap a
+clear map location to walk there; move or jump to cancel. Tap a gate to preview
+its destination, then tap again to walk.
 
-Source for the next mobile build adds an expandable map with eight walking
-destinations, a tappable companion, and Spark/Halo gates with local item choices
-and saved destination memory. It also shortens computer setup to `./pair` or
-`coder pair`, loads chats after pairing, remembers the world relay, and improves
-combined movement/look controls. These changes are awaiting combined native
-acceptance and distribution; build 45 remains the confirmed TestFlight release.
-See [world interactions](docs/verse/world-interactions.md),
+Computer setup uses `./pair` or installed `coder pair`. Chats load after
+pairing, the world relay choice persists, and movement combines with looking
+or double-tap jumping. Pinch to zoom; the crosshair recenters the camera.
+[Release receipt](bins/coder-ios/verification/2026-09-26-world-interactions/testflight-build46.json)
+confirms `VALID` and `IN_BETA_TESTING`. The retained checks cover optimized
+simulator startup, native interactions, and the signed archive; physical-device
+acceptance remains separate. See [world interactions](docs/verse/world-interactions.md),
 [interaction evidence](bins/coder-ios/verification/2026-09-26-world-interactions/README.md),
 and [connection corrections](docs/coder/verification/2026-09-26-mobile-connections.md).
 
