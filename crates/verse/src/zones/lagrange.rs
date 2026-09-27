@@ -299,7 +299,7 @@ impl Lagrange {
         let astronaut_pos = s.astronaut().interpolated(alpha).0;
         let astronaut = astronaut_pos.as_vec3();
         let carrying = s.parts.iter().any(|p| p.state == PartState::Carried);
-        suit(&mut mesh, feet(astronaut_pos), s.yaw as f32, carrying);
+        suit(&mut mesh, feet(astronaut_pos), s.heading_yaw() as f32, carrying);
         for p in &s.plumes {
             let pos = DVec3::from(p.pos).as_vec3();
             let dir = DVec3::from(p.dir).as_vec3();

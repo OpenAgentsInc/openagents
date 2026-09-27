@@ -91,18 +91,30 @@ impl World {
         self.tick as f64 * self.dt
     }
 
-    /// Advance one step of `dt`: semi-implicit Euler for translation and
-    /// torque-free RK4 for rotation.
+    /// Advance one step of `dt`. Accumulated forces and torques act as
+    /// impulses at the start of the step and are then cleared; translation is
+    /// semi-implicit Euler and rotation is the torque-free
+    /// [`Body::rotate`].
     pub fn step(&mut self, field: &impl Field) {
         let dt = self.dt;
         for body in &mut self.bodies {
             body.prev_pos = body.pos;
             body.prev_orientation = body.orientation;
             match body.kind {
-                BodyKind::Static => continue,
-                BodyKind::Dynamic => body.vel += field.accel(body.pos, body.vel) * dt,
+                BodyKind::Static => {
+                    body.force = DVec3::ZERO;
+                    body.torque = DVec3::ZERO;
+                    continue;
+                }
+                BodyKind::Dynamic => {
+                    body.vel +=
+                        (field.accel(body.pos, body.vel) + body.force * body.inverse_mass()) * dt;
+                    body.apply_angular_impulse(body.torque * dt);
+                }
                 BodyKind::Kinematic => {}
             }
+            body.force = DVec3::ZERO;
+            body.torque = DVec3::ZERO;
             body.pos += body.vel * dt;
             body.rotate(dt);
         }

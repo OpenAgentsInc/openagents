@@ -35,6 +35,14 @@ pub struct Body {
     /// Pose before the last world step, for render interpolation.
     pub prev_pos: DVec3,
     pub prev_orientation: DQuat,
+    /// Force accumulated for the next step, world frame, N. Cleared by the
+    /// step.
+    #[serde(default)]
+    pub force: DVec3,
+    /// Torque about the center of mass accumulated for the next step,
+    /// world frame, N m. Cleared by the step.
+    #[serde(default)]
+    pub torque: DVec3,
 }
 
 impl Body {
@@ -51,6 +59,8 @@ impl Body {
             omega: DVec3::ZERO,
             prev_pos: pos,
             prev_orientation: DQuat::IDENTITY,
+            force: DVec3::ZERO,
+            torque: DVec3::ZERO,
         }
     }
 
@@ -97,6 +107,30 @@ impl Body {
         }
         let local = self.orientation.inverse() * v;
         self.orientation * (local / self.inertia)
+    }
+
+    /// Add a force, N, through the center of mass for the next step.
+    pub fn apply_force(&mut self, force: DVec3) {
+        self.force += force;
+    }
+
+    /// Add a force, N, applied at world point `at` for the next step: the
+    /// force plus its torque about the center of mass (Genesis
+    /// `apply_links_external_wrench`).
+    pub fn apply_force_at(&mut self, force: DVec3, at: DVec3) {
+        self.force += force;
+        self.torque += (at - self.pos).cross(force);
+    }
+
+    /// Add a torque, N m, world frame, for the next step.
+    pub fn apply_torque(&mut self, torque: DVec3) {
+        self.torque += torque;
+    }
+
+    /// Transform a body-frame point to the world frame.
+    #[must_use]
+    pub fn to_world(&self, local: DVec3) -> DVec3 {
+        self.pos + self.orientation * local
     }
 
     /// Apply an impulse `impulse`, N s, at world point `at`. Only dynamic

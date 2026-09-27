@@ -1,13 +1,15 @@
 //! Zone-agnostic rigid-body physics for Verse.
 //!
 //! - [`body`]: rigid bodies with principal inertia, quaternion attitude,
-//!   and torque-free rotation (Euler's equations).
+//!   momentum-conserving rotation, and force, torque, and impulse inputs.
 //! - [`world`]: bodies advanced together in fixed steps under a
 //!   caller-supplied acceleration [`Field`].
 //! - [`clock`]: a [`FixedStep`] accumulator that turns frame time into
 //!   whole steps and reports time it drops.
 //! - [`ledger`]: linear and angular momentum with named external impulses,
 //!   for conservation tests.
+//! - [`thrusters`]: body-mounted thrusters, a bounded allocator from a wanted
+//!   force and torque to throttles, and a vector PID controller.
 //! - [`trace`]: sampled states and a tolerance comparison for replay tests.
 //!
 //! The crate has no rendering, networking, I/O, or zone knowledge. Zones
@@ -17,11 +19,13 @@
 pub mod body;
 pub mod clock;
 pub mod ledger;
+pub mod thrusters;
 pub mod trace;
 pub mod world;
 
 pub use body::{Body, BodyKind};
 pub use clock::FixedStep;
 pub use ledger::{Ledger, LedgerError, Momentum};
+pub use thrusters::{Pid, Thruster, ThrusterSet, Wrench};
 pub use trace::{Divergence, Tolerance, Trace, attitude_difference};
 pub use world::{BodyId, Field, NoField, Uniform, World};

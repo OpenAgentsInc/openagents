@@ -98,6 +98,11 @@ pub struct Ledger {
     pub origin: DVec3,
     pub start: Momentum,
     pub external: BTreeMap<String, Momentum>,
+    /// Sum of the magnitudes of every recorded impulse, linear and angular.
+    /// Terms can cancel (opposed thrusters), so the error is scaled by how
+    /// much momentum moved, not by the net.
+    #[serde(default)]
+    pub throughput: [f64; 2],
 }
 
 impl Ledger {
@@ -107,6 +112,7 @@ impl Ledger {
             origin,
             start,
             external: BTreeMap::new(),
+            throughput: [0.0; 2],
         }
     }
 
@@ -118,6 +124,8 @@ impl Ledger {
     /// Record external momentum under `term`.
     pub fn add(&mut self, term: &str, momentum: Momentum) {
         *self.external.entry(term.to_owned()).or_default() += momentum;
+        self.throughput[0] += momentum.linear.length();
+        self.throughput[1] += momentum.angular.length();
     }
 
     /// Sum of every external term.
@@ -134,20 +142,19 @@ impl Ledger {
         now - (self.start + self.external_total())
     }
 
-    /// The residual relative to the largest momentum in play. A floor of
-    /// 1e-12 keeps a system at rest from dividing by zero.
+    /// The residual relative to the momentum in play: the larger of the
+    /// start, the present, and the impulse throughput. A floor of 1e-12
+    /// keeps a system at rest from dividing by zero.
     #[must_use]
     pub fn error(&self, now: Momentum) -> LedgerError {
         let residual = self.residual(now);
-        let scale = |f: fn(&Momentum) -> DVec3| {
-            let terms = self.external.values().map(|m| f(m).length()).sum::<f64>();
-            (f(&self.start).length() + terms)
-                .max(f(&now).length())
-                .max(1e-12)
-        };
+        let scale =
+            |a: DVec3, b: DVec3, moved: f64| a.length().max(b.length()).max(moved).max(1e-12);
         LedgerError {
-            linear: residual.linear.length() / scale(|m| m.linear),
-            angular: residual.angular.length() / scale(|m| m.angular),
+            linear: residual.linear.length()
+                / scale(self.start.linear, now.linear, self.throughput[0]),
+            angular: residual.angular.length()
+                / scale(self.start.angular, now.angular, self.throughput[1]),
         }
     }
 }

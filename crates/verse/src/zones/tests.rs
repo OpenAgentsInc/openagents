@@ -188,7 +188,7 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
     {
         let lagrange = runtime.zone_state.lagrange.as_mut().unwrap();
         let station = &mut lagrange.station;
-        station.yaw = -std::f64::consts::FRAC_PI_2;
+        station.face(-std::f64::consts::FRAC_PI_2);
         station.astronaut_mut().vel = glam::DVec3::ZERO;
         station.astronaut_mut().pos =
             verse_lagrange::PartKind::MainEngine.stowage() + glam::DVec3::new(1.5, -0.2, 0.0);

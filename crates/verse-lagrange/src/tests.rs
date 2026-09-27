@@ -140,7 +140,7 @@ fn the_pack_obeys_the_rocket_equation_and_holds_position() {
 fn carrying_mass_changes_acceleration_and_momentum_is_conserved() {
     let mut station = Station::new();
     station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
-    station.yaw = -std::f64::consts::FRAC_PI_2;
+    station.face(-std::f64::consts::FRAC_PI_2);
     let empty = station::THRUST / station.mass();
     let kind = station.grab().unwrap();
     assert_eq!(kind, PartKind::MainEngine);
@@ -169,7 +169,7 @@ fn carrying_mass_changes_acceleration_and_momentum_is_conserved() {
 fn latching_requires_position_and_low_closing_speed() {
     let mut station = Station::new();
     station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
-    station.yaw = -std::f64::consts::FRAC_PI_2;
+    station.face(-std::f64::consts::FRAC_PI_2);
     let kind = station.grab().unwrap();
     // Place the held part right at its slot, moving too fast.
     let offset = kind.slot() - station.body(&station.parts[0]).pos;
@@ -217,7 +217,7 @@ fn structure_blocks_the_astronaut() {
 fn busy_station() -> Station {
     let mut station = Station::new();
     station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
-    station.yaw = -std::f64::consts::FRAC_PI_2;
+    station.face(-std::f64::consts::FRAC_PI_2);
     station
 }
 
@@ -450,4 +450,69 @@ fn the_rigid_carry_baseline_breaks_angular_momentum() {
     worst.angular = worst.angular.max(released.angular);
     assert!(worst.linear < 1e-9, "{worst:?}");
     assert!(worst.angular > 1e-3, "baseline violation: {worst:?}");
+}
+
+#[test]
+fn attitude_holds_through_a_translation_and_turns_on_command() {
+    let mut station = open_space();
+    let heading = station.heading_yaw();
+    let across = Command {
+        direction: DVec3::new(1.0, 0.3, 0.2),
+        yaw: heading,
+        climb: false,
+    };
+    let mut worst: f64 = 0.0;
+    for _ in 0..(8 * 60) {
+        station.step(1.0 / 60.0, &across);
+        let off =
+            glam::DQuat::from_rotation_y(heading).angle_between(station.astronaut().orientation);
+        worst = worst.max(off);
+    }
+    assert!(
+        worst.to_degrees() < 1.0,
+        "attitude drifted {:.3} deg",
+        worst.to_degrees()
+    );
+    assert!(station.astronaut().vel.length() > 1.0);
+    // A quarter turn completes and settles within ten seconds.
+    let before = station.propellant;
+    let turn = Command {
+        direction: DVec3::ZERO,
+        yaw: heading + std::f64::consts::FRAC_PI_2,
+        climb: false,
+    };
+    for _ in 0..(10 * 60) {
+        station.step(1.0 / 60.0, &turn);
+    }
+    let target = glam::DQuat::from_rotation_y(turn.yaw);
+    let off = target
+        .angle_between(station.astronaut().orientation)
+        .to_degrees();
+    assert!(off < 1.0, "{off} deg from the commanded heading");
+    assert!(station.astronaut().omega.length() < 0.01);
+    assert!(
+        before - station.propellant > 0.0,
+        "turning costs propellant"
+    );
+    // Hands follow the body: they sit a meter ahead along the new facing.
+    let ahead = station.hands() - station.astronaut().pos;
+    assert!((ahead.dot(station::heading(turn.yaw)) - 1.0).abs() < 0.03);
+}
+
+#[test]
+fn plumes_come_from_the_firing_thrusters() {
+    let mut station = open_space();
+    let push = Command {
+        direction: DVec3::X,
+        yaw: station.heading_yaw(),
+        climb: false,
+    };
+    station.step(1.0 / 60.0, &push);
+    assert!(!station.plumes.is_empty());
+    for plume in &station.plumes {
+        let from = DVec3::from(plume.pos) - station.astronaut().pos;
+        assert!(from.length() < 1.0, "plume {from} is on the pack");
+        // Thrust along +X means exhaust toward -X.
+        assert!(DVec3::from(plume.dir).x < -0.99);
+    }
 }

@@ -108,7 +108,9 @@ along Earth's orbital motion.
 | --- | --- |
 | Suited astronaut plus pack, dry | 230 kg |
 | Nitrogen propellant | 20 kg |
-| Thrust along any commanded direction | 40 N |
+| Thrusters | 24 at 10 N: three at each corner of a 0.7 × 0.9 × 0.6 m box around the center of mass |
+| Thrust along any commanded direction | 40 N (four thrusters) |
+| Attitude hold | 1.5 rad/s natural frequency, critically damped, turns at most 0.6 rad/s |
 | Specific impulse (cold N₂) | 70 s |
 | Flight-control speed limit | 2 m/s relative to the station |
 | Minimum-impulse deadband | 4 mm/s |
@@ -118,7 +120,12 @@ The pack is a hypothetical construction unit comparable to the Manned
 Maneuvering Unit, not a model of a specific flight article. Its fly-by-wire
 control law commands a velocity: joystick input asks for 2 m/s along the
 commanded direction, and no input asks the pack to hold position. The pack
-thrusts toward that command within the 40 N limit. Propellant use follows
+thrusts toward that command within the 40 N limit. The wanted force and the
+attitude hold's torque go to a thruster allocator (`physics::ThrusterSet`),
+which picks throttles for the 24 thrusters without firing opposed pairs, and
+each thruster pushes at its own mounting point, so an unbalanced firing turns
+the astronaut. The camera heading is a command: the body turns to it under
+the attitude hold, and plumes come from the thrusters that fire. Propellant use follows
 ṁ = F / (Isp g₀), and the HUD's Δv reserve follows the ideal rocket equation
 over the current total mass. With no propellant, there is no thrust and the
 astronaut coasts. The airlock ring refills the tank at 2 kg/s when you are
@@ -179,7 +186,9 @@ Drifting parts more than 120 m from the depot are reeled back by their tethers.
 - Station-keeping cancels only the linear unstable mode, so it spends more Δv
   than flight halo control and uses a smaller orbit.
 - Local physics linearizes about L1 rather than about the moving station.
-- The astronaut's attitude is held; only translation is simulated for the pack.
+- The attitude hold keeps the astronaut level; only heading is commanded.
+- The astronaut's inertia is a fixed 40 kg m² about every axis, and a carried
+  part does not add to it.
 - Carried parts do not collide with the station.
 - A carried part is placed at the hands each step, so carrying does not
   conserve angular momentum.
@@ -195,7 +204,8 @@ two years of controlled flight, microgravity magnitude, the rocket equation
 and position hold, inelastic capture, latch conditions, collisions, frame-rate
 independence, the frame step cap, save and restore, journal replay, and the
 momentum ledger through coasting, burns, structure contact, the tether, and
-the rigid-carry baseline.
+the rigid-carry baseline, attitude hold through a translation and a commanded
+turn, and plumes at the firing thrusters.
 `cargo test -p physics` covers the shared rigid-body, clock, world, and trace
 mechanisms.
 `cargo test -p verse --lib zones` covers portal entry and return, flight, and
