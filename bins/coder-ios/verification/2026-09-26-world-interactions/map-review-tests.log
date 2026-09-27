@@ -1,0 +1,13 @@
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `test` profile [unoptimized] target(s) in 1.39s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-e7ac66d55632a722)
+
+running 6 tests
+test minimap::tests::route_segments_clip_at_every_edge_and_can_cross_the_entire_plot ... ok
+test minimap::tests::map_selects_exact_positions_and_cancelled_drags_do_nothing ... ok
+test minimap::tests::small_viewports_hide_both_map_sizes_and_refuse_capture ... ok
+test minimap::tests::insets_and_visibility_bound_capture ... ok
+test minimap::tests::compact_map_draws_a_route_to_an_offscreen_destination ... ok
+test minimap::tests::seeded_world_and_far_route_fit_the_renderer_hud_budget ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 135 filtered out; finished in 0.16s

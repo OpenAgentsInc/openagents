@@ -1165,9 +1165,6 @@ impl App {
         match action {
             MapAction::Toggle => {
                 self.map.expanded = !self.map.expanded;
-                if self.map.expanded {
-                    self.runtime.cancel_navigation();
-                }
             }
             MapAction::Cancel => {
                 self.runtime.cancel_navigation();

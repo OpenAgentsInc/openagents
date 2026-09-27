@@ -159,6 +159,7 @@ impl MapHud {
         let [top, right, bottom, left] = self.insets;
         let available_w = (size[0] - left - right - 24.0).max(1.0);
         let available_h = (size[1] - top - bottom - 24.0).max(1.0);
+        let visible = visible && available_w >= 100.0 && available_h >= 160.0;
         let side = if self.expanded {
             available_w.min(available_h - 132.0).clamp(1.0, 440.0)
         } else {
@@ -276,7 +277,7 @@ impl MapHud {
         for &next in route {
             let a = project(map, previous);
             let b = project(map, next);
-            if inside(map.plot, a) && inside(map.plot, b) {
+            if let Some((a, b)) = clip_segment(map.plot, a, b) {
                 line(&mut ui, atlas, a, b, 1.4, full);
             }
             previous = next;
@@ -393,6 +394,33 @@ fn project(map: &Snapshot, p: [f32; 2]) -> [f32; 2] {
         map.plot[1] + (1.0 - (p[1] - map.center[1]) / map.half_extent) * map.plot[3] * 0.5,
     ]
 }
+
+/// Keep the visible part of a route, including segments with both ends offscreen.
+fn clip_segment(rect: [f32; 4], a: [f32; 2], b: [f32; 2]) -> Option<([f32; 2], [f32; 2])> {
+    let mut enter = 0.0_f32;
+    let mut leave = 1.0_f32;
+    for axis in 0..2 {
+        let delta = b[axis] - a[axis];
+        let lo = rect[axis];
+        let hi = lo + rect[axis + 2];
+        if delta.abs() < f32::EPSILON {
+            if a[axis] < lo || a[axis] > hi {
+                return None;
+            }
+        } else {
+            let t0 = (lo - a[axis]) / delta;
+            let t1 = (hi - a[axis]) / delta;
+            enter = enter.max(t0.min(t1));
+            leave = leave.min(t0.max(t1));
+            if enter > leave {
+                return None;
+            }
+        }
+    }
+    let at = |t: f32| [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    Some((at(enter), at(leave)))
+}
+
 fn line(ui: &mut UiBatch, atlas: &Atlas, a: [f32; 2], b: [f32; 2], width: f32, color: [f32; 4]) {
     let dx = b[0] - a[0];
     let dy = b[1] - a[1];
@@ -443,5 +471,92 @@ mod tests {
         assert!(hud.set_insets([f32::NAN, 0.0, 0.0, 0.0]).is_err());
         let hidden = hud.snapshot([393.0, 852.0], [0.0, 0.0], false, "", None);
         assert!(!hud.down(1, [hidden.frame[0] + 2.0, hidden.frame[1] + 2.0], &hidden));
+    }
+
+    #[test]
+    fn small_viewports_hide_both_map_sizes_and_refuse_capture() {
+        for expanded in [false, true] {
+            let mut hud = MapHud {
+                expanded,
+                ..MapHud::default()
+            };
+            hud.set_insets([20.0, 10.0, 20.0, 10.0]).unwrap();
+            for size in [[143.0, 400.0], [400.0, 223.0]] {
+                let map = hud.snapshot(size, [0.0, 0.0], true, "", None);
+                assert!(!map.visible);
+                let at = [map.frame[0] + 0.5, map.frame[1] + 0.5];
+                assert!(!hud.down(1, at, &map));
+                assert!(!hud.captured(1));
+            }
+            let boundary = hud.snapshot([144.0, 224.0], [0.0, 0.0], true, "", None);
+            assert!(boundary.visible);
+        }
+    }
+
+    #[test]
+    fn route_segments_clip_at_every_edge_and_can_cross_the_entire_plot() {
+        let rect = [10.0, 20.0, 100.0, 100.0];
+        assert_eq!(
+            clip_segment(rect, [60.0, 70.0], [160.0, 70.0]),
+            Some(([60.0, 70.0], [110.0, 70.0]))
+        );
+        assert_eq!(
+            clip_segment(rect, [-40.0, 70.0], [160.0, 70.0]),
+            Some(([10.0, 70.0], [110.0, 70.0]))
+        );
+        assert_eq!(
+            clip_segment(rect, [60.0, 170.0], [60.0, -30.0]),
+            Some(([60.0, 120.0], [60.0, 20.0]))
+        );
+        assert_eq!(clip_segment(rect, [0.0, 0.0], [0.0, 150.0]), None);
+        assert_eq!(clip_segment(rect, [-40.0, 70.0], [60.0, -130.0]), None);
+    }
+
+    #[test]
+    fn compact_map_draws_a_route_to_an_offscreen_destination() {
+        let hud = MapHud::default();
+        let atlas = Atlas::new(12.0);
+        let map = hud.snapshot([393.0, 852.0], [0.0, 0.0], true, "Walking", None);
+        let before = hud.draw(&atlas, &map, &[], [0.0, 0.0], 0.0, &[], 1.0);
+        let route = hud.draw(&atlas, &map, &[], [0.0, 0.0], 0.0, &[[200.0, 0.0]], 1.0);
+        assert_eq!(route.vertices.len(), before.vertices.len() + 6);
+    }
+
+    #[test]
+    fn seeded_world_and_far_route_fit_the_renderer_hud_budget() {
+        let world = world::build();
+        let start = [world::SPAWN.x, world::SPAWN.z];
+        let route = crate::nav::plan(start, [252.0, 252.0], &world.blockers, world::HALF)
+            .expect("the far street intersection is reachable");
+        let atlas = Atlas::new(12.0);
+        for expanded in [false, true] {
+            let hud = MapHud {
+                expanded,
+                ..MapHud::default()
+            };
+            let map = hud.snapshot(
+                [393.0, 852.0],
+                start,
+                true,
+                "Walking",
+                Some(route.destination),
+            );
+            let ui = hud.draw(
+                &atlas,
+                &map,
+                &world.blockers,
+                start,
+                0.0,
+                &route.waypoints,
+                3.0,
+            );
+            let bytes = ui.vertices.len() * std::mem::size_of::<ui::UiVertex>();
+            assert!(bytes < 2 * 1024 * 1024, "map uses {bytes} HUD bytes");
+            assert!(
+                ui.vertices
+                    .iter()
+                    .all(|v| v.pos.iter().all(|p| p.is_finite()))
+            );
+        }
     }
 }

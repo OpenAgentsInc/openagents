@@ -576,6 +576,7 @@ files are included below.
 | [verse/README.md](verse/README.md) | Index | Verse |
 | [verse/gym.md](verse/gym.md) | Guide | Spatial Gym observation and launch recipes |
 | [verse/mobile.md](verse/mobile.md) | Guide | Verse in Coder for iOS |
+| [verse/world-interactions.md](verse/world-interactions.md) | Design and guide | Maps, companions, and local door demos |
 | [verse/chat.md](verse/chat.md) | Reference | Verse chat |
 | [verse/gdd.md](verse/gdd.md) | Reference | Verse game design document (draft) |
 
@@ -584,5 +585,3 @@ files are included below.
 | Document | Role | Topic |
 | --- | --- | --- |
 | [voyager/README.md](voyager/README.md) | Index | Voyager |
-
-- [Verse maps, companions, and doors](verse/world-interactions.md): ordered local world interactions and their service boundaries.

@@ -1,0 +1,13 @@
+    Checking microluna v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/microluna)
+    Checking openrouter v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/openrouter)
+    Checking coder-access v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-access)
+    Checking knowledge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/knowledge)
+    Checking coder-reach v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-reach)
+    Checking coder-pty v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-pty)
+    Checking coder-service v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-service)
+   Compiling coder v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder)
+    Checking coder-host v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-host)
+    Checking coder-one v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-one)
+    Checking gym v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym)
+    Checking verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `dev` profile [unoptimized] target(s) in 18.83s

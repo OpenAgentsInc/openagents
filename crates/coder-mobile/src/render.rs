@@ -757,6 +757,7 @@ mod tests {
             secret_hex: "01".repeat(32),
             synthetic: false,
             loopback_test: false,
+            push: None,
         })
         .unwrap();
         app.selected = history
@@ -823,6 +824,7 @@ mod presentation_tests {
             secret_hex: "01".repeat(32),
             synthetic: true,
             loopback_test: false,
+            push: None,
         })
         .unwrap();
         let catalog = app.call(Request::Snapshot).view.unwrap();

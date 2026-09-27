@@ -1,0 +1,44 @@
+    Checking smallvec v1.16.1
+    Checking futures-util v0.3.34
+    Checking rustls v0.23.45
+    Checking icu_normalizer v2.3.0
+    Checking idna_adapter v1.2.2
+    Checking idna v1.1.0
+    Checking url v2.5.8
+    Checking tokio-rustls v0.26.5
+    Checking tungstenite v0.30.0
+    Checking naga v29.0.4
+    Checking tokio-tungstenite v0.30.0
+    Checking nostr-transport v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr-transport)
+    Checking parking_lot_core v0.9.12
+    Checking coder-connect v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-connect)
+    Checking parking_lot v0.12.5
+    Checking futures-channel v0.3.34
+    Checking hyper v1.11.1
+    Checking tracing v0.1.44
+    Checking hyper-util v0.1.20
+    Checking tower v0.5.3
+    Checking read-fonts v0.41.0
+    Checking wgpu-naga-bridge v29.0.4
+    Checking wgpu-hal v29.0.4
+    Checking wgpu-core-deps-apple v29.0.4
+    Checking serde_urlencoded v0.7.1
+    Checking wgpu-core v29.0.4
+    Checking skrifa v0.44.0
+    Checking coder-service v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-service)
+    Checking tower-http v0.6.11
+    Checking hyper-rustls v0.27.9
+    Checking coder-pty v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-pty)
+    Checking coder-access v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-access)
+    Checking coder-reach v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-reach)
+    Checking swash v0.2.10
+    Checking coder-host v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-host)
+    Checking wgpu v29.0.4
+    Checking reqwest v0.12.28
+    Checking gym-bridge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym-bridge)
+    Checking push-gateway v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/push-gateway)
+    Checking verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Checking coder-computers v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-computers)
+    Checking tempfile v3.27.0
+    Checking coder-mobile v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-mobile)
+    Finished `dev` profile [unoptimized] target(s) in 7.42s
