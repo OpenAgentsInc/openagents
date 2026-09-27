@@ -397,6 +397,23 @@ async fn the_retrieval_mode_names_embeddings_lexical_or_mixed() {
         retrieval_summary(true, embedder, None, &outcome)["mode"],
         "lexical"
     );
+    // An opted-in Vertex AI embedder is named by provider and model.
+    let vertex = knowledge::search::Embedder::with_vertex(knowledge::search::vertex::Vertex::new(
+        "http://127.0.0.1:9",
+        knowledge::search::vertex::Token::Gcloud,
+    ));
+    outcome.embedding_searches = 2;
+    outcome.lexical_searches = 0;
+    let named = retrieval_summary(
+        true,
+        Some((vertex.provider.as_str(), &vertex.model, vertex.basis())),
+        None,
+        &outcome,
+    );
+    assert_eq!(named["mode"], "embeddings");
+    assert_eq!(named["embedding_provider"], "vertex");
+    assert_eq!(named["embedding_model"], "vertex/text-embedding-005");
+    assert_eq!(named["embedding_cost_basis"], "list_price");
 }
 
 #[tokio::test]

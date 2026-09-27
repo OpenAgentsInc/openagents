@@ -16,7 +16,7 @@ nostr = { path = "../nostr" }
 secp256k1 = "0.31.1"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt", "net", "io-util"] }
 
 [lints]
 workspace = true

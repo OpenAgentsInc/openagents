@@ -11,6 +11,15 @@
 //! OpenAI key is set up (`OPENAI_API_KEY` or `~/.openagents/openai.json`),
 //! and otherwise through OpenRouter. Both give that model's vectors, so they
 //! share the cache under the one model name.
+//!
+//! [`Embedder::vertex`] reaches Google's `text-embedding-005` on Vertex AI
+//! instead. It is used only when asked for (`--embeddings vertex` on `kb`,
+//! `--kb-embeddings vertex` on `microcoder`), and its vectors are cached
+//! under [`vertex::CACHE_MODEL`], apart from any other model's. A query is
+//! compared only with entry vectors from the model that embedded it; see
+//! [`rank`].
+
+pub mod vertex;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -136,7 +145,30 @@ pub trait Embed {
         &self,
         inputs: Vec<String>,
     ) -> impl std::future::Future<Output = Result<(Vec<Vec<f32>>, Option<f64>), EmbedError>>;
+
+    /// One vector per document, the query's vector when there's a query,
+    /// and the cost, as [`Embed::embed`] gives them. A model that embeds
+    /// queries apart from documents overrides this; by default the query
+    /// is embedded last in the same call.
+    fn embed_with_query(
+        &self,
+        documents: Vec<String>,
+        query: Option<String>,
+    ) -> impl std::future::Future<Output = Result<Embeddings, EmbedError>> {
+        async move {
+            let asked = query.is_some();
+            let mut inputs = documents;
+            inputs.extend(query);
+            let (mut vectors, usd) = self.embed(inputs).await?;
+            let query = if asked { vectors.pop() } else { None };
+            Ok((vectors, query, usd))
+        }
+    }
 }
+
+/// The documents' vectors, the query's vector, and the cost in dollars or
+/// `None` when that's unknown.
+pub type Embeddings = (Vec<Vec<f32>>, Option<Vec<f32>>, Option<f64>);
 
 /// OpenAI's API, for embeddings without OpenRouter.
 pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
@@ -163,27 +195,50 @@ pub enum EmbeddingProvider {
     Openai,
     /// OpenRouter, which forwards the same model to OpenAI.
     Openrouter,
+    /// Vertex AI, with Google's `text-embedding-005`. Opt-in only.
+    Vertex,
+}
+
+impl EmbeddingProvider {
+    /// The provider's name in records.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EmbeddingProvider::Openai => "openai",
+            EmbeddingProvider::Openrouter => "openrouter",
+            EmbeddingProvider::Vertex => "vertex",
+        }
+    }
 }
 
 impl std::fmt::Display for EmbeddingProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            EmbeddingProvider::Openai => "openai",
-            EmbeddingProvider::Openrouter => "openrouter",
-        })
+        f.write_str(self.as_str())
     }
 }
 
-/// Embeddings through an OpenAI-compatible endpoint: OpenAI's own API, or
-/// OpenRouter. Both serve OpenAI's `text-embedding-3-small`, so the vectors
-/// are the same model's and share one cache, keyed by the OpenRouter slug
-/// [`openrouter::EMBEDDING_MODEL`].
+/// Embeddings through an OpenAI-compatible endpoint (OpenAI's own API, or
+/// OpenRouter) or through Vertex AI. OpenAI and OpenRouter both serve
+/// OpenAI's `text-embedding-3-small`, so their vectors are the same model's
+/// and share one cache key, the OpenRouter slug
+/// [`openrouter::EMBEDDING_MODEL`]. Vertex AI's are another model's, keyed
+/// by [`vertex::CACHE_MODEL`].
 pub struct Embedder {
-    pub client: openrouter::Client,
     pub provider: EmbeddingProvider,
-    /// The model's name as the cache keys it.
+    /// The model's name as the cache keys it and records name it.
     pub model: String,
+    transport: Transport,
 }
+
+/// How an [`Embedder`] reaches its model.
+enum Transport {
+    /// OpenAI's embeddings API, on OpenAI or OpenRouter.
+    Compatible(openrouter::Client),
+    Vertex(vertex::Vertex),
+}
+
+/// The embedding providers `--embeddings` and `--kb-embeddings` accept.
+pub const EMBEDDINGS_CHOICES: &str = "vertex";
 
 /// An OpenAI key from `OPENAI_API_KEY`, or else from `api_key` in
 /// `~/.openagents/openai.json`, which is refused when its group or others
@@ -233,6 +288,53 @@ pub fn key_from_file(path: &std::path::Path) -> Result<String, String> {
 }
 
 impl Embedder {
+    /// An embedder for `text-embedding-3-small` on `client`, which reaches
+    /// OpenAI or OpenRouter as `provider` says.
+    #[must_use]
+    pub fn compatible(client: openrouter::Client, provider: EmbeddingProvider) -> Self {
+        Embedder {
+            provider,
+            model: openrouter::EMBEDDING_MODEL.to_string(),
+            transport: Transport::Compatible(client),
+        }
+    }
+
+    /// An embedder for `text-embedding-005` on Vertex AI through `client`.
+    #[must_use]
+    pub fn with_vertex(client: vertex::Vertex) -> Self {
+        Embedder {
+            provider: EmbeddingProvider::Vertex,
+            model: vertex::CACHE_MODEL.to_string(),
+            transport: Transport::Vertex(client),
+        }
+    }
+
+    /// An embedder on Vertex AI, configured as [`vertex::Vertex::from_env`]
+    /// says.
+    ///
+    /// # Errors
+    ///
+    /// No project is named.
+    pub fn vertex() -> Result<Self, String> {
+        Ok(Embedder::with_vertex(vertex::Vertex::from_env()?))
+    }
+
+    /// The embedder a command asked for: `None` for the default
+    /// ([`Embedder::from_env`]), or `vertex`.
+    ///
+    /// # Errors
+    ///
+    /// Another name, or the chosen embedder can't be set up.
+    pub fn chosen(choice: Option<&str>) -> Result<Self, String> {
+        match choice {
+            None => Embedder::from_env(),
+            Some("vertex") => Embedder::vertex(),
+            Some(other) => Err(format!(
+                "the embeddings provider can be {EMBEDDINGS_CHOICES}, not {other}"
+            )),
+        }
+    }
+
     /// An embedder on OpenAI's API, with the key from `OPENAI_API_KEY` or
     /// `~/.openagents/openai.json`.
     ///
@@ -243,11 +345,10 @@ impl Embedder {
         let mut config = openrouter::Config::new(openrouter::ApiKey::new(&openai_key()?))
             .base_url(OPENAI_BASE_URL);
         config.title = None;
-        Ok(Embedder {
-            client: openrouter::Client::new(config).map_err(|e| e.to_string())?,
-            provider: EmbeddingProvider::Openai,
-            model: openrouter::EMBEDDING_MODEL.to_string(),
-        })
+        Ok(Embedder::compatible(
+            openrouter::Client::new(config).map_err(|e| e.to_string())?,
+            EmbeddingProvider::Openai,
+        ))
     }
 
     /// An embedder on OpenRouter, with the key from `OPENROUTER_API_KEY` or
@@ -258,11 +359,10 @@ impl Embedder {
     /// No key, or the HTTP client can't start.
     pub fn openrouter() -> Result<Self, String> {
         let config = openrouter::Config::from_env().map_err(|e| e.to_string())?;
-        Ok(Embedder {
-            client: openrouter::Client::new(config).map_err(|e| e.to_string())?,
-            provider: EmbeddingProvider::Openrouter,
-            model: openrouter::EMBEDDING_MODEL.to_string(),
-        })
+        Ok(Embedder::compatible(
+            openrouter::Client::new(config).map_err(|e| e.to_string())?,
+            EmbeddingProvider::Openrouter,
+        ))
     }
 
     /// OpenAI's API when an OpenAI key is set up, else OpenRouter.
@@ -276,12 +376,13 @@ impl Embedder {
         })
     }
 
-    /// How this embedder's costs are reached: OpenAI reports tokens, which
-    /// are priced at list price; OpenRouter reports what it billed.
+    /// How this embedder's costs are reached: OpenAI reports tokens and
+    /// Vertex AI billable characters, which are priced at list price;
+    /// OpenRouter reports what it billed.
     #[must_use]
     pub fn basis(&self) -> &'static str {
         match self.provider {
-            EmbeddingProvider::Openai => "list_price",
+            EmbeddingProvider::Openai | EmbeddingProvider::Vertex => "list_price",
             EmbeddingProvider::Openrouter => "billed",
         }
     }
@@ -293,31 +394,107 @@ impl Embed for Embedder {
     }
 
     async fn embed(&self, inputs: Vec<String>) -> Result<(Vec<Vec<f32>>, Option<f64>), EmbedError> {
+        let client = match &self.transport {
+            Transport::Compatible(client) => client,
+            Transport::Vertex(vertex) => {
+                let typed: Vec<(String, vertex::Task)> = inputs
+                    .into_iter()
+                    .map(|text| (text, vertex::Task::Document))
+                    .collect();
+                return vertex.embed(&typed).await;
+            }
+        };
         let wire = match self.provider {
             EmbeddingProvider::Openai => self.model.rsplit('/').next().unwrap_or(&self.model),
-            EmbeddingProvider::Openrouter => &self.model,
+            EmbeddingProvider::Openrouter | EmbeddingProvider::Vertex => &self.model,
         };
         let request = openrouter::EmbeddingRequest::new(wire, inputs);
-        let reply = self
-            .client
-            .embeddings(&request)
-            .await
-            .map_err(|e| EmbedError {
-                refused: matches!(e, openrouter::Error::Api { .. } | openrouter::Error::NoKey),
-                message: match self.provider {
-                    // The client is OpenRouter's, which names itself in errors.
-                    EmbeddingProvider::Openai => e.to_string().replace("OpenRouter", "OpenAI"),
-                    EmbeddingProvider::Openrouter => e.to_string(),
-                },
-            })?;
+        let reply = client.embeddings(&request).await.map_err(|e| EmbedError {
+            refused: matches!(e, openrouter::Error::Api { .. } | openrouter::Error::NoKey),
+            message: match self.provider {
+                // The client is OpenRouter's, which names itself in errors.
+                EmbeddingProvider::Openai => e.to_string().replace("OpenRouter", "OpenAI"),
+                EmbeddingProvider::Openrouter | EmbeddingProvider::Vertex => e.to_string(),
+            },
+        })?;
         let tokens = reply.usage.prompt_tokens.max(reply.usage.total_tokens);
         let list = (tokens > 0).then(|| tokens as f64 * EMBEDDING_USD_PER_MILLION / 1_000_000.0);
         let usd = match self.provider {
-            EmbeddingProvider::Openai => list,
+            EmbeddingProvider::Openai | EmbeddingProvider::Vertex => list,
             EmbeddingProvider::Openrouter => reply.usage.cost.or(list),
         };
         Ok((reply.vectors, usd))
     }
+
+    async fn embed_with_query(
+        &self,
+        documents: Vec<String>,
+        query: Option<String>,
+    ) -> Result<Embeddings, EmbedError> {
+        let asked = query.is_some();
+        let (mut vectors, usd) = match &self.transport {
+            Transport::Compatible(_) => {
+                let mut inputs = documents;
+                inputs.extend(query);
+                self.embed(inputs).await?
+            }
+            Transport::Vertex(vertex) => {
+                let mut typed: Vec<(String, vertex::Task)> = documents
+                    .into_iter()
+                    .map(|text| (text, vertex::Task::Document))
+                    .collect();
+                typed.extend(query.map(|text| (text, vertex::Task::Query)));
+                vertex.embed(&typed).await?
+            }
+        };
+        let query = if asked { vectors.pop() } else { None };
+        Ok((vectors, query, usd))
+    }
+}
+
+/// A query's vector and the model that embedded it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Embedded {
+    pub model: String,
+    pub vector: Vec<f32>,
+}
+
+/// Each entry's cosine similarity to `query`, from `index`, the entry
+/// vectors `model` made keyed by entry digest. An entry with no vector
+/// scores 0.
+///
+/// # Errors
+///
+/// `query` was embedded by another model than `model`, or a vector in
+/// `index` has another length than the query's. Vectors from different
+/// models can't be compared, so the ranking is refused rather than made.
+pub fn rank(
+    model: &str,
+    index: &HashMap<String, Vec<f32>>,
+    entries: &[Entry],
+    query: &Embedded,
+) -> Result<Vec<f64>, EmbedError> {
+    if query.model != model {
+        return Err(EmbedError::from(format!(
+            "the query was embedded by {} but the index holds {model}'s vectors, \
+             and vectors from different models can't be compared",
+            query.model
+        )));
+    }
+    entries
+        .iter()
+        .map(|e| match index.get(&e.digest) {
+            None => Ok(0.0),
+            Some(v) if v.len() == query.vector.len() => Ok(cosine(v, &query.vector)),
+            Some(v) => Err(EmbedError::from(format!(
+                "the cached {model} vector for {} has {} dimensions and the query's has {}, \
+                 so they aren't the same model's",
+                e.id,
+                v.len(),
+                query.vector.len()
+            ))),
+        })
+        .collect()
 }
 
 /// One entry's place in a search.
@@ -489,7 +666,9 @@ impl<E: Embed> Retriever<E> {
     ) -> Result<(Vec<f64>, Option<f64>), EmbedError> {
         let model = embedder.model().to_string();
         let query: String = query.chars().take(QUERY_CHARS).collect();
-        let query_key = digest(query.as_bytes());
+        // The query cache is keyed by model too, so a query vector is never
+        // reused for another model's entries.
+        let query_key = format!("{model}\n{}", digest(query.as_bytes()));
         let missing: Vec<&Entry> = {
             let cache = self.cache.lock().map_err(|_| "the cache lock broke")?;
             let known = cache.get(&model);
@@ -505,17 +684,22 @@ impl<E: Embed> Retriever<E> {
             .map_err(|_| "the cache lock broke")?
             .get(&query_key)
             .cloned();
-        let mut inputs: Vec<String> = missing.iter().map(|e| e.search_text()).collect();
-        if cached_query.is_none() {
-            inputs.push(query.clone());
-        }
+        let documents: Vec<String> = missing.iter().map(|e| e.search_text()).collect();
         let mut usd = Some(0.0);
-        let mut query_vector = cached_query;
-        if !inputs.is_empty() {
-            let (mut vectors, cost) = embedder.embed(inputs).await?;
+        let mut query_vector = cached_query.clone();
+        if !documents.is_empty() || cached_query.is_none() {
+            let asked = cached_query.is_none().then(|| query.clone());
+            let (vectors, embedded, cost) = embedder.embed_with_query(documents, asked).await?;
             usd = cost;
+            if vectors.len() != missing.len() {
+                return Err(EmbedError::from(format!(
+                    "{} vectors came back for {} entries",
+                    vectors.len(),
+                    missing.len()
+                )));
+            }
             if query_vector.is_none() {
-                query_vector = vectors.pop();
+                query_vector = embedded;
             }
             if !missing.is_empty() {
                 let mut cache = self.cache.lock().map_err(|_| "the cache lock broke")?;
@@ -533,16 +717,11 @@ impl<E: Embed> Retriever<E> {
             .insert(query_key, query_vector.clone());
         let cache = self.cache.lock().map_err(|_| "the cache lock broke")?;
         let known = cache.get(&model).ok_or("no cached vectors")?;
-        let similarities = self
-            .base
-            .entries
-            .iter()
-            .map(|e| {
-                known
-                    .get(&e.digest)
-                    .map_or(0.0, |v| cosine(v, &query_vector))
-            })
-            .collect();
+        let query = Embedded {
+            model: model.clone(),
+            vector: query_vector,
+        };
+        let similarities = rank(&model, known, &self.base.entries, &query)?;
         Ok((similarities, usd))
     }
 

@@ -312,11 +312,11 @@ fn both_embedding_providers_key_the_cache_by_one_model_name() {
     // The cache is keyed by model name. OpenAI's vectors for
     // text-embedding-3-small are cached under OpenRouter's slug for the same
     // model, so vectors cached through OpenRouter stay valid.
-    let embedder = |provider| crate::search::Embedder {
-        client: openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new("k")))
-            .unwrap(),
-        provider,
-        model: openrouter::EMBEDDING_MODEL.to_string(),
+    let embedder = |provider| {
+        crate::search::Embedder::compatible(
+            openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new("k"))).unwrap(),
+            provider,
+        )
     };
     let openai = embedder(crate::search::EmbeddingProvider::Openai);
     let openrouter = embedder(crate::search::EmbeddingProvider::Openrouter);

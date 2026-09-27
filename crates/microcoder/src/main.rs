@@ -55,6 +55,12 @@ Options:
                      as candidates) (default the trust file's mode, else own)
   --kb-lexical       rank knowledge entries by words alone, without embeddings;
                      summary.json records the retrieval mode either way
+  --kb-embeddings NAME  embed knowledge searches with another provider instead
+                     of the default: vertex (Google's text-embedding-005 on
+                     Vertex AI in the project KB_VERTEX_PROJECT, region
+                     KB_VERTEX_LOCATION, default us-central1, on a token from
+                     VERTEX_TOKEN_FILE or gcloud); summary.json names the
+                     provider and model
   --gate-requirements  before a run with every frozen test passing ends, Jev
                      checks each statement of the task for a test that
                      checks it, and sends the run back to test the ones
@@ -118,6 +124,9 @@ struct Options {
     kb_key_file: Option<std::path::PathBuf>,
     kb_cache: Option<std::path::PathBuf>,
     kb_lexical: bool,
+    /// The embeddings provider `--kb-embeddings` names, or `None` for the
+    /// default.
+    kb_embeddings: Option<String>,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -141,6 +150,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         kb_key_file: None,
         kb_cache: None,
         kb_lexical: false,
+        kb_embeddings: None,
         kb_trust: match knowledge::remote::trust_file() {
             Some(path) => knowledge::remote::TrustConfig::read(&path)?,
             None => knowledge::remote::TrustConfig::default(),
@@ -214,6 +224,16 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--kb-key-file" => options.kb_key_file = Some(value()?.into()),
             "--kb-cache" => options.kb_cache = Some(value()?.into()),
             "--kb-lexical" => options.kb_lexical = true,
+            "--kb-embeddings" => {
+                let name = value()?;
+                if name != "vertex" {
+                    return Err(format!(
+                        "--kb-embeddings wants {}, not {name}",
+                        knowledge::search::EMBEDDINGS_CHOICES
+                    ));
+                }
+                options.kb_embeddings = Some(name);
+            }
             "--kb-trust" => {
                 let mode = value()?;
                 options.kb_trust.mode = knowledge::remote::Trust::parse(&mode)
@@ -426,7 +446,7 @@ async fn go(options: Options) -> Result<u8, String> {
                 },
             )
         } else {
-            match knowledge::search::Embedder::from_env() {
+            match knowledge::search::Embedder::chosen(options.kb_embeddings.as_deref()) {
                 Ok(embedder) => knowledge::search::Retriever::new(
                     base,
                     embedder,
@@ -724,7 +744,7 @@ async fn go(options: Options) -> Result<u8, String> {
             retriever.is_some(),
             retriever.as_ref().and_then(|r| r.embedder()).map(|e| {
                 (
-                    if e.provider == knowledge::search::EmbeddingProvider::Openai { "openai" } else { "openrouter" },
+                    e.provider.as_str(),
                     e.model.as_str(),
                     e.basis(),
                 )

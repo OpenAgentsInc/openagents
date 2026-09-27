@@ -616,6 +616,23 @@ impl Client {
         })
     }
 
+    /// Posts `body` as JSON to `path` under the base URL and reads the
+    /// response as a `T`, with the same bearer, retries, and error mapping
+    /// as [`Client::chat`]. For JSON APIs on other hosts that take a
+    /// bearer token, such as Vertex AI's `predict`.
+    ///
+    /// # Errors
+    ///
+    /// [`Client::chat`]'s errors, and [`Error::Decode`] when the response
+    /// isn't a `T`.
+    pub async fn post_json<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, Error> {
+        self.post(path, body).await
+    }
+
     /// Posts `body` to `path` under the base URL, with retries, and reads
     /// the response as a `T`.
     async fn post<B: Serialize, T: DeserializeOwned>(

@@ -89,6 +89,10 @@ Options:
   --corpus DIR      a directory of benchmark tasks the lint checks against; it
                     can repeat (default Terminal-Bench 4 under ~/.openagents)
   --lexical         search by words alone, without embeddings
+  --embeddings NAME  embed with another provider instead of the default:
+                    vertex (Google's text-embedding-005 on Vertex AI in the
+                    project KB_VERTEX_PROJECT, region KB_VERTEX_LOCATION, default
+                    us-central1, on a token from VERTEX_TOKEN_FILE or gcloud)
   --provider NAME   the harvests' model: codex (the operator's Codex login in
                     ~/.codex/auth.json, the default; the cost is a list-price
                     estimate) or openrouter (OPENROUTER_API_KEY; billed cost)
@@ -98,7 +102,9 @@ Options:
 
 Embeddings use OpenAI's text-embedding-3-small directly when OPENAI_API_KEY or
 ~/.openagents/openai.json (mode 600) holds a key, else through OpenRouter; without
-either, search and the harvests' near-duplicate check rank by words and say so.";
+either, search and the harvests' near-duplicate check rank by words and say so.
+Each model's vectors are cached apart, and a query is compared only with entries
+the same model embedded.";
 
 /// Every option `kb` takes.
 #[derive(Debug, Default)]
@@ -108,6 +114,9 @@ pub struct Options {
     pub limit: usize,
     pub corpora: Vec<PathBuf>,
     pub lexical: bool,
+    /// The embeddings provider `--embeddings` names, or `None` for the
+    /// default.
+    pub embeddings: Option<String>,
     pub kind: Option<String>,
     pub title: Option<String>,
     pub author: Option<String>,
@@ -207,6 +216,7 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
             }
             "--corpus" => o.corpora.push(PathBuf::from(value()?)),
             "--lexical" => o.lexical = true,
+            "--embeddings" => o.embeddings = Some(value()?),
             "--kind" => o.kind = Some(value()?),
             "--title" => o.title = Some(value()?),
             "--author" => {
@@ -313,7 +323,7 @@ async fn search(o: &Options) -> Result<u8, String> {
     let retriever = if o.lexical {
         Retriever::lexical(base, "--lexical was given")
     } else {
-        match Embedder::from_env() {
+        match Embedder::chosen(o.embeddings.as_deref()) {
             Ok(embedder) => Retriever::new(base, embedder, default_cache()),
             Err(error) => Retriever::lexical(base, &error),
         }
@@ -508,7 +518,7 @@ async fn harvest_and_report(
     let embedder = if o.lexical {
         Err("--lexical was given".to_string())
     } else {
-        Embedder::from_env()
+        Embedder::chosen(o.embeddings.as_deref())
     };
     let retriever = match embedder {
         Ok(embedder) => {
