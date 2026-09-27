@@ -164,9 +164,10 @@ whether the value is a secret to mask. The platform shows its native field or
 scanner and returns the value with the token. A secret request, such as an
 SSH password or the owner key, gets a masked field: a SwiftUI `SecureField`
 on iOS and a password-type field on Android. **Enter owner key** is offered
-on every platform, phones included. Rust validates it: the `coder-host:` prefix, the approval code's shape,
-an SSH destination that cannot be an option, a directory label's bounds, and
-a weight from 0 to 1,000.
+on every platform, phones included. Rust validates each value: the
+`coder-host:` prefix, the approval code's shape, an SSH destination that
+cannot be an option, a directory label's bounds, and a weight from 0 to
+1,000.
 An SSH password or passphrase passes exactly as typed.
 
 ## Try it
