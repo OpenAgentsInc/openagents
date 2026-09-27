@@ -210,7 +210,8 @@ fn structure_blocks_the_astronaut() {
         );
     }
     // The airlock face is at z = 17; the suit stops outside it.
-    assert!(station.astronaut().pos.z >= 17.0 + station::ASTRONAUT_RADIUS - 1e-6);
+    // Contact allows the solver slop (5 mm) of overlap.
+    assert!(station.astronaut().pos.z >= 17.0 + station::ASTRONAUT_RADIUS - 0.01);
 }
 
 /// A short EVA: thrust toward the depot, grab the engine, and drift.
@@ -515,4 +516,89 @@ fn plumes_come_from_the_firing_thrusters() {
         // Thrust along +X means exhaust toward -X.
         assert!(DVec3::from(plume.dir).x < -0.99);
     }
+}
+
+/// Set part `index` drifting at `pos` with the given motion.
+fn release_part(station: &mut Station, index: usize, pos: DVec3, vel: DVec3, omega: DVec3) {
+    let id = station.parts[index].body;
+    station.parts[index].state = PartState::Drifting;
+    station.world[id].kind = PartState::Drifting.body_kind();
+    station
+        .world
+        .collider_mut(station.parts[index].collider)
+        .filter = PartState::Drifting.filter();
+    station.world[id].pos = pos;
+    station.world[id].vel = vel;
+    station.world[id].omega = omega;
+}
+
+#[test]
+fn a_spinning_tank_glances_off_a_solar_array_edge() {
+    let mut station = open_space();
+    station.propellant = 0.0;
+    // The tank lies across the array's inboard edge (x = 13), flying at the
+    // pack's top speed toward the array face.
+    release_part(
+        &mut station,
+        1,
+        DVec3::new(12.0, 6.0, 4.0),
+        DVec3::new(0.0, 0.0, -station::SPEED_LIMIT),
+        DVec3::new(0.1, 0.3, 0.2),
+    );
+    let tank = station.parts[1].body;
+    station.world[tank].orientation = glam::DQuat::from_rotation_y(std::f64::consts::FRAC_PI_2);
+    station.reset_ledger();
+    let spin = station.world[tank].angular_momentum();
+    let mut deepest: f64 = 0.0;
+    for _ in 0..(6 * 60) {
+        station.step(1.0 / 60.0, &Command::default());
+        for c in &station.world.contacts {
+            deepest = deepest.min(c.separation);
+        }
+        let error = station.ledger.error(station.momentum());
+        assert!(error.linear < 1e-9 && error.angular < 1e-9, "{error:?}");
+    }
+    let tank = station.world[tank];
+    assert!(deepest > -0.05, "penetrated {deepest} m");
+    assert!(station.ledger.external["structure"].linear.length() > 100.0);
+    assert!(tank.vel.z > 0.0, "bounced back: {}", tank.vel);
+    assert!(
+        (tank.angular_momentum() - spin).length() > 50.0,
+        "the edge hit changed the spin"
+    );
+}
+
+#[test]
+fn free_parts_collide_with_each_other_and_conserve_momentum() {
+    let mut station = open_space();
+    station.propellant = 0.0;
+    release_part(
+        &mut station,
+        2,
+        DVec3::new(-30.0, 30.0, 40.0),
+        DVec3::new(1.5, 0.0, 0.1),
+        DVec3::new(0.0, 0.2, 0.0),
+    );
+    release_part(
+        &mut station,
+        5,
+        DVec3::new(-26.0, 30.3, 40.0),
+        DVec3::new(-0.5, 0.0, 0.0),
+        DVec3::ZERO,
+    );
+    station.reset_ledger();
+    let before = station.body(&station.parts[5]).vel;
+    for _ in 0..(5 * 60) {
+        station.step(1.0 / 60.0, &Command::default());
+        let error = station.ledger.error(station.momentum());
+        assert!(error.linear < 1e-12 && error.angular < 1e-12, "{error:?}");
+    }
+    assert!(
+        !station.ledger.external.contains_key("structure"),
+        "no fixed body involved"
+    );
+    assert!(
+        (station.body(&station.parts[5]).vel - before).length() > 0.5,
+        "the truss struck the avionics bay"
+    );
 }

@@ -165,12 +165,29 @@ keel jig is open lattice and can be flown through.
 | RCS pod | 140 kg | 2.4 × 1.0 × 1.2 m |
 | Avionics bay | 90 kg | 1.4 m cube |
 
-Parts are torque-free rigid bodies with principal moments of inertia (uniform
-boxes; the tank is a thin-walled cylinder). Euler's equations are integrated
-with RK4 and the attitude quaternion with the exponential map. Tests check
-conservation of angular momentum and rotational energy over two minutes and
-reproduce the Dzhanibekov effect: a spin about the intermediate axis flips while
-spin about the major axis stays stable.
+Parts are rigid bodies with principal moments of inertia (uniform boxes; the
+tank is a thin-walled cylinder). Rotation holds world angular momentum exactly
+and integrates the attitude quaternion with RK4. Tests check conservation of
+angular momentum and rotational energy over two minutes and reproduce the
+Dzhanibekov effect: a spin about the intermediate axis flips while spin about
+the major axis stays stable.
+
+### Contact
+
+Collision uses `physics` colliders. Station modules, the truss, the solar
+arrays, and the depot backboard are fixed boxes; the astronaut is a capsule
+0.9 m across and 1.8 m tall; the tank is a capsule along its keel and the
+other parts are boxes filling their envelopes. Box pairs touch on up to four
+points clipped from the touching faces, so a panel stops a tumbling part with
+the torque of the actual contact patch. The solver applies restitution 0.2,
+Coulomb friction 0.5 on an elliptic cone, and a little torsional friction, and
+it catches contacts up to one step before they touch, so parts at the pack's
+top speed cannot pass through a 30 cm solar array.
+
+Collision groups decide who touches whom: the astronaut hits structure and
+free parts; free parts hit structure, the astronaut, each other, and parts in
+the rack or on the jig. Contacts with fixed bodies enter the momentum ledger
+as the `structure` term.
 
 Grabbing is a perfectly inelastic capture, so momentum is conserved and the
 combined mass slows the pack. Holding a part moves it rigidly with the
@@ -189,7 +206,8 @@ Drifting parts more than 120 m from the depot are reeled back by their tethers.
 - The attitude hold keeps the astronaut level; only heading is commanded.
 - The astronaut's inertia is a fixed 40 kg m² about every axis, and a carried
   part does not add to it.
-- Carried parts do not collide with the station.
+- Carried parts do not collide with anything, and the astronaut passes
+  through parts in the rack or on the jig.
 - A carried part is placed at the hands each step, so carrying does not
   conserve angular momentum.
 - Construction state is local and resets on each visit; there is no shared
@@ -205,9 +223,12 @@ and position hold, inelastic capture, latch conditions, collisions, frame-rate
 independence, the frame step cap, save and restore, journal replay, and the
 momentum ledger through coasting, burns, structure contact, the tether, and
 the rigid-carry baseline, attitude hold through a translation and a commanded
-turn, and plumes at the firing thrusters.
-`cargo test -p physics` covers the shared rigid-body, clock, world, and trace
-mechanisms.
+turn, plumes at the firing thrusters, a spinning tank glancing off a solar
+array edge, and free parts colliding with each other.
+`cargo test -p physics` covers the shared mechanisms, including box manifolds
+through a scripted tilt, yaw, penetration, and slide sweep, friction
+breakaway, torsional friction, tunneling, momentum through collisions, and a
+small stack.
 `cargo test -p verse --lib zones` covers portal entry and return, flight, and
 the grab-carry-latch flow. Render the scene offline with:
 

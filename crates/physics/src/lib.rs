@@ -4,6 +4,10 @@
 //!   momentum-conserving rotation, and force, torque, and impulse inputs.
 //! - [`world`]: bodies advanced together in fixed steps under a
 //!   caller-supplied acceleration [`Field`].
+//! - [`collision`]: sphere, capsule, and box colliders with bitmask filters
+//!   and multi-point manifolds.
+//! - [`contact`]: a sequential-impulse solver with restitution, an elliptic
+//!   friction cone, and torsional friction.
 //! - [`clock`]: a [`FixedStep`] accumulator that turns frame time into
 //!   whole steps and reports time it drops.
 //! - [`ledger`]: linear and angular momentum with named external impulses,
@@ -18,6 +22,8 @@
 
 pub mod body;
 pub mod clock;
+pub mod collision;
+pub mod contact;
 pub mod ledger;
 pub mod thrusters;
 pub mod trace;
@@ -25,7 +31,12 @@ pub mod world;
 
 pub use body::{Body, BodyKind};
 pub use clock::FixedStep;
+pub use collision::{Collider, ColliderId, ContactPoint, Filter, Manifold, Material, Shape};
+pub use contact::{ContactReport, SolverSettings};
 pub use ledger::{Ledger, LedgerError, Momentum};
 pub use thrusters::{Pid, Thruster, ThrusterSet, Wrench};
 pub use trace::{Divergence, Tolerance, Trace, attitude_difference};
 pub use world::{BodyId, Field, NoField, Uniform, World};
+
+#[cfg(test)]
+mod tests;

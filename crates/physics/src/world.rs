@@ -6,6 +6,8 @@ use glam::DVec3;
 use serde::{Deserialize, Serialize};
 
 use crate::body::{Body, BodyKind};
+use crate::collision::{Collider, ColliderId};
+use crate::contact::{ContactReport, SolverSettings};
 
 /// Index of a body in its world. Bodies are never removed, so ids stay valid.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -54,12 +56,20 @@ pub struct World {
     pub dt: f64,
     /// Steps taken.
     pub tick: u64,
+    /// Contact solver tuning.
+    #[serde(default)]
+    pub solver: SolverSettings,
     bodies: Vec<Body>,
+    #[serde(default)]
+    colliders: Vec<Collider>,
+    /// What each contact point did in the last step.
+    #[serde(skip)]
+    pub contacts: Vec<ContactReport>,
 }
 
 impl World {
     /// Bumped whenever the serialized layout changes meaning.
-    pub const VERSION: u32 = 1;
+    pub const VERSION: u32 = 2;
 
     #[must_use]
     pub fn new(dt: f64) -> Self {
@@ -67,8 +77,26 @@ impl World {
             version: Self::VERSION,
             dt,
             tick: 0,
+            solver: SolverSettings::default(),
             bodies: Vec::new(),
+            colliders: Vec::new(),
+            contacts: Vec::new(),
         }
+    }
+
+    /// Attach a collider to its body.
+    pub fn add_collider(&mut self, collider: Collider) -> ColliderId {
+        self.colliders.push(collider);
+        ColliderId(u32::try_from(self.colliders.len() - 1).expect("fewer than 2^32 colliders"))
+    }
+
+    #[must_use]
+    pub fn colliders(&self) -> &[Collider] {
+        &self.colliders
+    }
+
+    pub fn collider_mut(&mut self, id: ColliderId) -> &mut Collider {
+        &mut self.colliders[id.0 as usize]
     }
 
     pub fn add(&mut self, body: Body) -> BodyId {
@@ -91,32 +119,43 @@ impl World {
         self.tick as f64 * self.dt
     }
 
-    /// Advance one step of `dt`. Accumulated forces and torques act as
-    /// impulses at the start of the step and are then cleared; translation is
-    /// semi-implicit Euler and rotation is the torque-free
-    /// [`Body::rotate`].
+    /// Advance one step of `dt`: accumulated forces, torques, and the field
+    /// change velocities (then the accumulators clear); contacts found at the
+    /// current poses correct velocities; then positions advance by
+    /// semi-implicit Euler and rotation by the torque-free [`Body::rotate`].
     pub fn step(&mut self, field: &impl Field) {
         let dt = self.dt;
         for body in &mut self.bodies {
             body.prev_pos = body.pos;
             body.prev_orientation = body.orientation;
-            match body.kind {
-                BodyKind::Static => {
-                    body.force = DVec3::ZERO;
-                    body.torque = DVec3::ZERO;
-                    continue;
-                }
-                BodyKind::Dynamic => {
-                    body.vel +=
-                        (field.accel(body.pos, body.vel) + body.force * body.inverse_mass()) * dt;
-                    body.apply_angular_impulse(body.torque * dt);
-                }
-                BodyKind::Kinematic => {}
+            if body.kind == BodyKind::Dynamic {
+                body.vel +=
+                    (field.accel(body.pos, body.vel) + body.force * body.inverse_mass()) * dt;
+                body.apply_angular_impulse(body.torque * dt);
             }
             body.force = DVec3::ZERO;
             body.torque = DVec3::ZERO;
-            body.pos += body.vel * dt;
-            body.rotate(dt);
+        }
+        self.contacts = if self.colliders.is_empty() {
+            Vec::new()
+        } else {
+            let base = self.solver.margin;
+            let bodies = &self.bodies;
+            let manifolds = self.detect(&|a, b| {
+                let reach = |c: &Collider| {
+                    let body = &bodies[c.body.0 as usize];
+                    body.vel.length()
+                        + body.omega_world().length() * (c.offset.length() + c.shape.bound())
+                };
+                base + (reach(a) + reach(b)) * dt
+            });
+            self.solve_contacts(&manifolds, dt)
+        };
+        for body in &mut self.bodies {
+            if body.moves() {
+                body.pos += body.vel * dt;
+                body.rotate(dt);
+            }
         }
         self.tick += 1;
     }

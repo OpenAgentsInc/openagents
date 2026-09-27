@@ -6,7 +6,10 @@
 //! the direction of Earth's orbital motion). Units are SI.
 
 use glam::{DQuat, DVec3};
-use physics::{Body, BodyId, BodyKind, FixedStep, Ledger, Momentum, ThrusterSet, World};
+use physics::{
+    Body, BodyId, BodyKind, Collider, ColliderId, Filter, FixedStep, Ledger, Material, Momentum,
+    Shape, ThrusterSet, World,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::orbit::{StationOrbit, mean_motion};
@@ -68,8 +71,27 @@ pub const DEPOT: DVec3 = DVec3::new(-12.0, -6.0, 1.0);
 pub const JIG: DVec3 = DVec3::new(0.0, -6.0, 0.0);
 /// Where a new EVA starts (body center), beside the airlock facing the station.
 pub const SPAWN: DVec3 = DVec3::new(3.0, 5.3, 21.0);
-/// Radius of the astronaut's collision sphere around the body center, m.
-pub const ASTRONAUT_RADIUS: f64 = 0.9;
+/// Radius of the astronaut's collision capsule, m. The capsule runs head to
+/// boots: 1.8 m tall around the body center.
+pub const ASTRONAUT_RADIUS: f64 = 0.45;
+/// Half the length of the capsule's core segment, m.
+pub const ASTRONAUT_HALF_LENGTH: f64 = 0.45;
+
+/// Collision groups: fixed station structure, the astronaut, free parts, and
+/// parts fixed in the rack or on the jig.
+pub mod layer {
+    pub const STRUCTURE: u32 = 1;
+    pub const ASTRONAUT: u32 = 2;
+    pub const FREE: u32 = 4;
+    pub const FIXED_PART: u32 = 8;
+}
+
+/// Suit fabric and aluminum hardware.
+pub const SURFACE: Material = Material {
+    friction: 0.5,
+    torsional: 0.01,
+    restitution: 0.2,
+};
 
 /// Ship frame components, in keel order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,6 +162,21 @@ impl PartKind {
         }
     }
 
+    /// Collision shape: the tank is a capsule along the keel, the rest are
+    /// boxes filling their envelopes.
+    #[must_use]
+    pub fn shape(self) -> Shape {
+        match self {
+            Self::PropellantTank => Shape::Capsule {
+                radius: 1.3,
+                half_length: 0.5,
+            },
+            _ => Shape::Cuboid {
+                half: self.size() * 0.5,
+            },
+        }
+    }
+
     #[must_use]
     pub fn inertia(self) -> DVec3 {
         match self {
@@ -187,6 +224,7 @@ pub struct Part {
     pub kind: PartKind,
     /// The part's body in [`Station::world`].
     pub body: BodyId,
+    pub collider: ColliderId,
     pub state: PartState,
 }
 
@@ -198,6 +236,25 @@ impl PartState {
             Self::Stowed | Self::Installed => BodyKind::Static,
             Self::Carried => BodyKind::Kinematic,
             Self::Drifting => BodyKind::Dynamic,
+        }
+    }
+
+    /// What a part in this state collides with. A carried part collides with
+    /// nothing; racked and latched parts stop free parts but not the
+    /// astronaut, who reaches in among them.
+    #[must_use]
+    pub const fn filter(self) -> Filter {
+        use layer::{ASTRONAUT, FIXED_PART, FREE, STRUCTURE};
+        match self {
+            Self::Stowed | Self::Installed => Filter {
+                group: FIXED_PART,
+                mask: FREE,
+            },
+            Self::Carried => Filter::NONE,
+            Self::Drifting => Filter {
+                group: FREE,
+                mask: STRUCTURE | ASTRONAUT | FREE | FIXED_PART,
+            },
         }
     }
 }
@@ -367,17 +424,60 @@ impl Default for Station {
 impl Station {
     #[must_use]
     pub fn new() -> Self {
+        use layer::{ASTRONAUT, FREE, STRUCTURE};
         let mut world = World::new(PHYSICS_DT);
         let astronaut = world.add(Body::new(DRY_MASS + PROPELLANT, DVec3::splat(40.0), SPAWN));
+        world.add_collider(
+            Collider::new(
+                astronaut,
+                Shape::Capsule {
+                    radius: ASTRONAUT_RADIUS,
+                    half_length: ASTRONAUT_HALF_LENGTH,
+                },
+            )
+            .at(DVec3::ZERO, DQuat::from_rotation_x(std::f64::consts::FRAC_PI_2))
+            .with_filter(Filter {
+                group: ASTRONAUT,
+                mask: STRUCTURE | FREE,
+            })
+            .with_material(SURFACE),
+        );
+        for o in &OBSTACLES {
+            let body = world.add(
+                Body::new(1.0, DVec3::ONE, (o.min + o.max) * 0.5).with_kind(BodyKind::Static),
+            );
+            world.add_collider(
+                Collider::new(
+                    body,
+                    Shape::Cuboid {
+                        half: (o.max - o.min) * 0.5,
+                    },
+                )
+                .with_filter(Filter {
+                    group: STRUCTURE,
+                    mask: ASTRONAUT | FREE,
+                })
+                .with_material(SURFACE),
+            );
+        }
         let parts = PartKind::ALL
             .iter()
-            .map(|&kind| Part {
-                kind,
-                body: world.add(
+            .map(|&kind| {
+                let body = world.add(
                     Body::new(kind.mass(), kind.inertia(), kind.stowage())
                         .with_kind(PartState::Stowed.body_kind()),
-                ),
-                state: PartState::Stowed,
+                );
+                let collider = world.add_collider(
+                    Collider::new(body, kind.shape())
+                        .with_filter(PartState::Stowed.filter())
+                        .with_material(SURFACE),
+                );
+                Part {
+                    kind,
+                    body,
+                    collider,
+                    state: PartState::Stowed,
+                }
             })
             .collect();
         let mut station = Self {
@@ -458,9 +558,42 @@ impl Station {
     }
 
     fn set_state(&mut self, index: usize, state: PartState) {
-        self.parts[index].state = state;
-        let id = self.parts[index].body;
-        self.world[id].kind = state.body_kind();
+        let part = &mut self.parts[index];
+        part.state = state;
+        let (body, collider) = (part.body, part.collider);
+        self.world[body].kind = state.body_kind();
+        self.world.collider_mut(collider).filter = state.filter();
+    }
+
+    /// Whether `body` belongs to the free system the ledger follows: the
+    /// astronaut, or a carried or drifting part.
+    fn in_system(&self, body: BodyId) -> bool {
+        body == self.astronaut
+            || self.parts.iter().any(|p| {
+                p.body == body && matches!(p.state, PartState::Carried | PartState::Drifting)
+            })
+    }
+
+    /// Record contact impulses between the free system and fixed bodies
+    /// (station structure, racked and latched parts) as the `structure` term.
+    fn account_contacts(&mut self) {
+        let contacts = std::mem::take(&mut self.world.contacts);
+        for c in &contacts {
+            let (a, b) = (self.in_system(c.body_a), self.in_system(c.body_b));
+            if a == b {
+                continue;
+            }
+            let sign = if b { 1.0 } else { -1.0 };
+            self.ledger.add_impulse("structure", c.impulse * sign, c.point);
+            self.ledger.add(
+                "structure",
+                Momentum {
+                    linear: DVec3::ZERO,
+                    angular: c.twist * sign,
+                },
+            );
+        }
+        self.world.contacts = contacts;
     }
 
     /// Save everything needed to continue or replay from here.
@@ -694,9 +827,7 @@ impl Station {
         self.world.step(&move |p, v| {
             if tidal { tide(c2, p, v) } else { DVec3::ZERO }
         });
-        let before = self.momentum();
-        collide(&mut self.world[self.astronaut], ASTRONAUT_RADIUS);
-        self.account("structure", before);
+        self.account_contacts();
         let before = self.momentum();
         let astronaut = &mut self.world[self.astronaut];
         let range = astronaut.pos.length();
@@ -866,12 +997,6 @@ impl Station {
                 continue;
             }
             let kind = self.parts[i].kind;
-            let before = self.momentum();
-            collide(
-                &mut self.world[self.parts[i].body],
-                kind.size().min_element() * 0.5,
-            );
-            self.account("structure", before);
             let before = self.momentum();
             let body = &mut self.world[self.parts[i].body];
             if body.pos.distance(DEPOT) > PART_TETHER {
@@ -1057,45 +1182,6 @@ pub fn tide(c2: f64, pos: DVec3, vel: DVec3) -> DVec3 {
 /// Distance from the hands to a part's nearest envelope surface, roughly.
 fn reach(part: &Part, body: &Body, hands: DVec3) -> f64 {
     (body.pos.distance(hands) - part.kind.size().max_element() * 0.5).max(0.0)
-}
-
-/// Push a sphere out of solid structure and remove its closing velocity,
-/// with a soft 0.2 restitution.
-fn collide(body: &mut Body, radius: f64) {
-    for o in &OBSTACLES {
-        let nearest = body.pos.clamp(o.min, o.max);
-        let offset = body.pos - nearest;
-        let distance = offset.length();
-        if distance >= radius {
-            continue;
-        }
-        let (surface, normal) = if distance > 1e-9 {
-            (nearest, offset / distance)
-        } else {
-            // Inside: leave through the shallowest face.
-            let center = (o.min + o.max) * 0.5;
-            let half = (o.max - o.min) * 0.5;
-            let d = body.pos - center;
-            let depth = half - d.abs();
-            let mut surface = body.pos;
-            let normal = if depth.x <= depth.y && depth.x <= depth.z {
-                surface.x = center.x + half.x * d.x.signum();
-                DVec3::X * d.x.signum()
-            } else if depth.y <= depth.z {
-                surface.y = center.y + half.y * d.y.signum();
-                DVec3::Y * d.y.signum()
-            } else {
-                surface.z = center.z + half.z * d.z.signum();
-                DVec3::Z * d.z.signum()
-            };
-            (surface, normal)
-        };
-        body.pos = surface + normal * radius;
-        let closing = body.vel.dot(normal);
-        if closing < 0.0 {
-            body.vel -= normal * closing * 1.2;
-        }
-    }
 }
 
 const fn enabled() -> bool {
