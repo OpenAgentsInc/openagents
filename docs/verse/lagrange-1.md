@@ -124,6 +124,25 @@ over the current total mass. With no propellant, there is no thrust and the
 astronaut coasts. The airlock ring refills the tank at 2 kg/s when you are
 nearly stopped inside it.
 
+Each burn is momentum-exact: the spent gas leaves at the exhaust velocity
+(Isp g₀) relative to the pack, and the remaining mass takes the equal and
+opposite momentum. Refill gas starts at rest in the station tank, so taking it
+on slows the pack slightly.
+
+### Momentum ledger
+
+`Station::momentum` sums the linear momentum and the angular momentum about
+the station origin of the free system: the astronaut with its propellant and
+every carried or drifting part. `Station::ledger` (a `physics::Ledger`) records
+every external impulse by name: `exhaust`, `structure` (contact with fixed
+station structure), `tether`, `reel` (a stray part reeled in), and `latch` (a
+part joining the station). With the tidal field off (`Station::tide = false`),
+the momentum always equals the ledger start plus those terms. The rigid carry
+is the known exception: the held part is placed at the hands each step and
+released with a preset spin, which conserves linear but not angular momentum
+until the soft grab ([#9781](https://github.com/OpenAgentsInc/openagents/issues/9781))
+replaces it.
+
 Attitude is held automatically, so the astronaut turns only in yaw. Collisions
 treat the body as a 0.9 m sphere against the habitat, node, truss, solar arrays,
 and depot backboard, removing closing velocity with a soft 0.2 restitution. The
@@ -162,6 +181,8 @@ Drifting parts more than 120 m from the depot are reeled back by their tethers.
 - Local physics linearizes about L1 rather than about the moving station.
 - The astronaut's attitude is held; only translation is simulated for the pack.
 - Carried parts do not collide with the station.
+- A carried part is placed at the hands each step, so carrying does not
+  conserve angular momentum.
 - Construction state is local and resets on each visit; there is no shared
   editing authority. `StationState` can be saved and restored, but the zone
   does not persist it.
@@ -172,7 +193,9 @@ Drifting parts more than 120 m from the depot are reeled back by their tethers.
 exact unstable eigenvector, Jacobi conservation and uncontrolled divergence,
 two years of controlled flight, microgravity magnitude, the rocket equation
 and position hold, inelastic capture, latch conditions, collisions, frame-rate
-independence, the frame step cap, save and restore, and journal replay.
+independence, the frame step cap, save and restore, journal replay, and the
+momentum ledger through coasting, burns, structure contact, the tether, and
+the rigid-carry baseline.
 `cargo test -p physics` covers the shared rigid-body, clock, world, and trace
 mechanisms.
 `cargo test -p verse --lib zones` covers portal entry and return, flight, and

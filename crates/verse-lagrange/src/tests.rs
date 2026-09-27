@@ -334,3 +334,120 @@ fn a_recorded_session_replays_from_its_start_state() {
     same_physics(&live, &replayed);
     assert!(live.parts[0].state == PartState::Drifting);
 }
+
+/// Far from structure, tide off, ledger fresh.
+fn open_space() -> Station {
+    let mut station = Station::new();
+    station.tide = false;
+    station.astronaut_mut().pos = DVec3::new(40.0, 30.0, 60.0);
+    station.reset_ledger();
+    station
+}
+
+fn worst_error(station: &mut Station, seconds: f64, command: &Command) -> physics::LedgerError {
+    let mut worst = physics::LedgerError {
+        linear: 0.0,
+        angular: 0.0,
+    };
+    for _ in 0..(seconds * 60.0) as usize {
+        station.step(1.0 / 60.0, command);
+        let error = station.ledger.error(station.momentum());
+        worst.linear = worst.linear.max(error.linear);
+        worst.angular = worst.angular.max(error.angular);
+    }
+    worst
+}
+
+#[test]
+fn coasting_conserves_momentum() {
+    let mut station = open_space();
+    // An empty pack cannot hold position, so the astronaut coasts too.
+    station.propellant = 0.0;
+    station.astronaut_mut().vel = DVec3::new(0.3, -0.1, 0.2);
+    // A tumbling truss released nearby.
+    let id = station.parts[2].body;
+    station.parts[2].state = PartState::Drifting;
+    station.world[id].kind = PartState::Drifting.body_kind();
+    station.world[id].pos = DVec3::new(30.0, 30.0, 50.0);
+    station.world[id].vel = DVec3::new(-0.05, 0.02, 0.1);
+    station.world[id].omega = DVec3::new(0.2, 0.9, -0.1);
+    station.reset_ledger();
+    let worst = worst_error(&mut station, 20.0, &Command::default());
+    assert!(worst.linear < 1e-12 && worst.angular < 1e-12, "{worst:?}");
+}
+
+#[test]
+fn burns_balance_against_their_exhaust() {
+    let mut station = open_space();
+    let mut worst = worst_error(
+        &mut station,
+        6.0,
+        &Command {
+            direction: DVec3::new(1.0, 0.5, -0.3),
+            yaw: 0.7,
+            climb: false,
+        },
+    );
+    station.fly_to(DVec3::new(20.0, 10.0, 40.0)).unwrap();
+    let hold = worst_error(&mut station, 20.0, &Command::default());
+    worst.linear = worst.linear.max(hold.linear);
+    worst.angular = worst.angular.max(hold.angular);
+    assert!(station.ledger.external["exhaust"].linear.length() > 1.0);
+    assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
+}
+
+#[test]
+fn structure_and_the_safety_tether_are_named_external_terms() {
+    let mut station = Station::new();
+    station.tide = false;
+    station.astronaut_mut().pos = DVec3::new(0.0, 6.0, 24.0);
+    station.reset_ledger();
+    let into_airlock = Command {
+        direction: -DVec3::Z,
+        yaw: std::f64::consts::PI,
+        climb: false,
+    };
+    let worst = worst_error(&mut station, 10.0, &into_airlock);
+    assert!(station.ledger.external["structure"].linear.length() > 1.0);
+    assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
+    let mut station = open_space();
+    station.astronaut_mut().pos = DVec3::new(0.0, 0.0, station::EVA_RANGE - 1.0);
+    station.reset_ledger();
+    let outward = Command {
+        direction: DVec3::Z,
+        yaw: 0.0,
+        climb: false,
+    };
+    let worst = worst_error(&mut station, 5.0, &outward);
+    assert!(station.ledger.external["tether"].linear.length() > 1.0);
+    assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
+}
+
+/// Baseline for GP-4 (#9781): the carried part is teleported to the hands
+/// and released with a preset spin, so a carry conserves linear momentum
+/// but not angular momentum. The soft grab replaces this and flips the
+/// angular assertion.
+#[test]
+fn the_rigid_carry_baseline_breaks_angular_momentum() {
+    let mut station = busy_station();
+    station.tide = false;
+    station.reset_ledger();
+    station.grab().unwrap();
+    let grabbed = station.ledger.error(station.momentum());
+    assert!(grabbed.linear < 1e-12, "capture is inelastic: {grabbed:?}");
+    let mut worst = worst_error(
+        &mut station,
+        4.0,
+        &Command {
+            direction: DVec3::new(0.2, 0.0, 1.0),
+            yaw: 0.9,
+            climb: false,
+        },
+    );
+    station.release().unwrap();
+    let released = station.ledger.error(station.momentum());
+    worst.linear = worst.linear.max(released.linear);
+    worst.angular = worst.angular.max(released.angular);
+    assert!(worst.linear < 1e-9, "{worst:?}");
+    assert!(worst.angular > 1e-3, "baseline violation: {worst:?}");
+}

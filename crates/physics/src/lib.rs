@@ -6,6 +6,8 @@
 //!   caller-supplied acceleration [`Field`].
 //! - [`clock`]: a [`FixedStep`] accumulator that turns frame time into
 //!   whole steps and reports time it drops.
+//! - [`ledger`]: linear and angular momentum with named external impulses,
+//!   for conservation tests.
 //! - [`trace`]: sampled states and a tolerance comparison for replay tests.
 //!
 //! The crate has no rendering, networking, I/O, or zone knowledge. Zones
@@ -14,10 +16,12 @@
 
 pub mod body;
 pub mod clock;
+pub mod ledger;
 pub mod trace;
 pub mod world;
 
 pub use body::{Body, BodyKind};
 pub use clock::FixedStep;
+pub use ledger::{Ledger, LedgerError, Momentum};
 pub use trace::{Divergence, Tolerance, Trace, attitude_difference};
 pub use world::{BodyId, Field, NoField, Uniform, World};

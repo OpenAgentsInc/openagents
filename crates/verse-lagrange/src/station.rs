@@ -6,7 +6,7 @@
 //! the direction of Earth's orbital motion). Units are SI.
 
 use glam::{DQuat, DVec3};
-use physics::{Body, BodyId, BodyKind, FixedStep, World};
+use physics::{Body, BodyId, BodyKind, FixedStep, Ledger, Momentum, World};
 use serde::{Deserialize, Serialize};
 
 use crate::orbit::{StationOrbit, mean_motion};
@@ -331,6 +331,14 @@ pub struct Station {
     /// Inputs applied since recording started, stamped with the world tick.
     #[serde(default)]
     pub journal: Option<Vec<(u64, Input)>>,
+    /// Apply the L1 tidal field to local bodies. Off only for conservation
+    /// tests, since the rotating-frame field is an external force.
+    #[serde(default = "enabled")]
+    pub tide: bool,
+    /// External impulses since [`Station::reset_ledger`]: exhaust, contact
+    /// with fixed structure, the safety tether, tether reel-in, and latching.
+    #[serde(default)]
+    pub ledger: Ledger,
     climb: f64,
     plume_clock: f64,
 }
@@ -357,7 +365,7 @@ impl Station {
                 state: PartState::Stowed,
             })
             .collect();
-        Self {
+        let mut station = Self {
             orbit: StationOrbit::new(),
             world,
             clock: FixedStep::new(PHYSICS_DT, MAX_STEPS_PER_FRAME),
@@ -372,9 +380,13 @@ impl Station {
             refilling: false,
             pilot: Command::default(),
             journal: None,
+            tide: true,
+            ledger: Ledger::default(),
             climb: 0.0,
             plume_clock: 0.0,
-        }
+        };
+        station.reset_ledger();
+        station
     }
 
     /// The astronaut's body.
@@ -627,15 +639,27 @@ impl Station {
             let wanted = error / dt;
             thrust = wanted.clamp_length_max(accel_limit);
             let used = (thrust.length() * mass / (ISP * G0) * dt).min(self.propellant);
+            // Momentum-exact rocket step: the gas leaves at the exhaust
+            // velocity relative to the pack, and the rest of the mass takes
+            // the equal and opposite momentum.
+            let exhaust = -thrust.normalize() * (ISP * G0);
             self.propellant -= used;
+            self.astronaut_mut().vel -= exhaust * (used / (mass - used));
+            // The ledger counts what the system receives: minus the gas.
+            self.ledger
+                .add_impulse("exhaust", -(vel + exhaust) * used, pos);
         }
-        let astronaut = self.astronaut_mut();
-        astronaut.vel += thrust * dt;
-        astronaut.mass = mass;
-        let c2 = self.orbit.l1.c2;
-        self.world.step(&move |p, v| tide(c2, p, v));
+        let mass = self.mass();
+        self.astronaut_mut().mass = mass;
+        let (c2, tidal) = (self.orbit.l1.c2, self.tide);
+        self.world.step(&move |p, v| {
+            if tidal { tide(c2, p, v) } else { DVec3::ZERO }
+        });
+        let before = self.momentum();
+        collide(&mut self.world[self.astronaut], ASTRONAUT_RADIUS);
+        self.account("structure", before);
+        let before = self.momentum();
         let astronaut = &mut self.world[self.astronaut];
-        collide(astronaut, ASTRONAUT_RADIUS);
         let range = astronaut.pos.length();
         if range > EVA_RANGE {
             let out = astronaut.pos / range;
@@ -646,15 +670,55 @@ impl Station {
             }
             self.message = Some("Safety tether taut".into());
         }
+        self.account("tether", before);
         let (pos, vel) = (self.astronaut().pos, self.astronaut().vel);
         self.refilling = pos.distance(AIRLOCK) <= REFILL_RANGE
             && vel.length() < 0.6
             && self.propellant < PROPELLANT;
         if self.refilling {
-            self.propellant = (self.propellant + REFILL_RATE * dt).min(PROPELLANT);
+            // Gas from the station tank starts at rest, so the pack slows.
+            let added = (REFILL_RATE * dt).min(PROPELLANT - self.propellant);
+            let mass = self.mass();
+            self.propellant += added;
+            let astronaut = self.astronaut_mut();
+            astronaut.vel *= mass / (mass + added);
+            astronaut.mass = mass + added;
         }
         self.emit_plumes(thrust, dt);
         self.settle_parts();
+    }
+
+    /// Momentum of the free system, about the station origin: the astronaut
+    /// with its propellant, and every part that is not stowed or installed.
+    /// A carried part moves with the astronaut.
+    #[must_use]
+    pub fn momentum(&self) -> Momentum {
+        let mut astronaut = *self.astronaut();
+        astronaut.mass = DRY_MASS + self.propellant;
+        let mut total = Momentum::of(&astronaut, self.ledger.origin);
+        for part in &self.parts {
+            let mut body = *self.body(part);
+            match part.state {
+                PartState::Stowed | PartState::Installed => continue,
+                PartState::Carried => body.vel = astronaut.vel,
+                PartState::Drifting => {}
+            }
+            total += Momentum::of(&body, self.ledger.origin);
+        }
+        total
+    }
+
+    /// Start a fresh momentum ledger from the current state.
+    pub fn reset_ledger(&mut self) {
+        self.ledger = Ledger::new(DVec3::ZERO, self.momentum());
+    }
+
+    /// Record the momentum change since `before` as external term `term`.
+    fn account(&mut self, term: &str, before: Momentum) {
+        let change = self.momentum() - before;
+        if change != Momentum::ZERO {
+            self.ledger.add(term, change);
+        }
     }
 
     fn emit_plumes(&mut self, thrust: DVec3, dt: f64) {
@@ -694,8 +758,14 @@ impl Station {
                 continue;
             }
             let kind = self.parts[i].kind;
+            let before = self.momentum();
+            collide(
+                &mut self.world[self.parts[i].body],
+                kind.size().min_element() * 0.5,
+            );
+            self.account("structure", before);
+            let before = self.momentum();
             let body = &mut self.world[self.parts[i].body];
-            collide(body, kind.size().min_element() * 0.5);
             if body.pos.distance(DEPOT) > PART_TETHER {
                 *body = Body::new(kind.mass(), kind.inertia(), kind.stowage());
                 self.set_state(i, PartState::Stowed);
@@ -704,6 +774,7 @@ impl Station {
                     kind.name().to_lowercase()
                 ));
             }
+            self.account("reel", before);
         }
     }
 
@@ -774,12 +845,14 @@ impl Station {
         let vel = self.astronaut().vel;
         let id = self.parts[index].body;
         if distance <= LATCH_RANGE && vel.length() <= LATCH_SPEED {
+            let before = self.momentum();
             self.set_state(index, PartState::Installed);
             let body = &mut self.world[id];
             body.pos = kind.slot();
             body.vel = DVec3::ZERO;
             body.orientation = DQuat::IDENTITY;
             body.omega = DVec3::ZERO;
+            self.account("latch", before);
             let installed = self
                 .parts
                 .iter()
@@ -915,4 +988,8 @@ fn collide(body: &mut Body, radius: f64) {
             body.vel -= normal * closing * 1.2;
         }
     }
+}
+
+const fn enabled() -> bool {
+    true
 }

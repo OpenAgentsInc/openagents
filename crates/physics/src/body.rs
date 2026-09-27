@@ -1,7 +1,7 @@
 //! Rigid bodies: Newton for the center of mass, Euler's equations for
 //! rotation about principal axes, and quaternion attitude.
 
-use glam::{DQuat, DVec3};
+use glam::{DQuat, DVec3, DVec4};
 use serde::{Deserialize, Serialize};
 
 /// How the world moves a body.
@@ -89,6 +89,34 @@ impl Body {
         self.vel * self.mass
     }
 
+    /// Inverse inertia tensor in the world frame applied to `v`.
+    #[must_use]
+    pub fn inverse_inertia_world(&self, v: DVec3) -> DVec3 {
+        if self.kind != BodyKind::Dynamic {
+            return DVec3::ZERO;
+        }
+        let local = self.orientation.inverse() * v;
+        self.orientation * (local / self.inertia)
+    }
+
+    /// Apply an impulse `impulse`, N s, at world point `at`. Only dynamic
+    /// bodies respond.
+    pub fn apply_impulse_at(&mut self, impulse: DVec3, at: DVec3) {
+        if self.kind != BodyKind::Dynamic {
+            return;
+        }
+        self.vel += impulse * self.inverse_mass();
+        self.apply_angular_impulse((at - self.pos).cross(impulse));
+    }
+
+    /// Apply an angular impulse, N m s, in the world frame.
+    pub fn apply_angular_impulse(&mut self, impulse: DVec3) {
+        if self.kind != BodyKind::Dynamic {
+            return;
+        }
+        self.omega += (self.orientation.inverse() * impulse) / self.inertia;
+    }
+
     /// Pose between the previous and current step; `alpha` in [0, 1].
     #[must_use]
     pub fn interpolated(&self, alpha: f64) -> (DVec3, DQuat) {
@@ -125,30 +153,30 @@ impl Body {
         0.5 * (self.inertia * self.omega).dot(self.omega)
     }
 
-    /// Advance rotation without torque. Euler's equations use RK4; attitude
-    /// uses the exact exponential map of the step-averaged body rate.
+    /// Advance rotation without torque. World-frame angular momentum is
+    /// held exactly; attitude follows the body rate it implies, integrated
+    /// with RK4 on the quaternion, and the body rate is recovered from the
+    /// new attitude. Momentum is conserved to rounding; energy to the
+    /// integrator's accuracy.
     pub fn rotate(&mut self, dt: f64) {
-        let i = self.inertia;
-        let f = |w: DVec3| {
-            DVec3::new(
-                (i.y - i.z) * w.y * w.z / i.x,
-                (i.z - i.x) * w.z * w.x / i.y,
-                (i.x - i.y) * w.x * w.y / i.z,
-            )
-        };
-        let w0 = self.omega;
-        let k1 = f(w0);
-        let k2 = f(w0 + k1 * (dt / 2.0));
-        let k3 = f(w0 + k2 * (dt / 2.0));
-        let k4 = f(w0 + k3 * dt);
-        let w1 = w0 + (k1 + 2.0 * k2 + 2.0 * k3 + k4) * (dt / 6.0);
-        let mid = w0 + k1 * (dt / 2.0) + (k2 - k1) * (dt / 4.0);
-        let angle = mid.length() * dt;
-        if angle > 0.0 {
-            self.orientation =
-                (self.orientation * DQuat::from_axis_angle(mid.normalize(), angle)).normalize();
+        if self.omega == DVec3::ZERO {
+            return;
         }
-        self.omega = w1;
+        let inertia = self.inertia;
+        let momentum = self.orientation * (inertia * self.omega);
+        let rate = |q: DVec4| {
+            let q = DQuat::from_vec4(q);
+            let w = (q.inverse() * momentum) / inertia;
+            DVec4::from(q * DQuat::from_xyzw(w.x, w.y, w.z, 0.0)) * 0.5
+        };
+        let q0 = DVec4::from(self.orientation);
+        let k1 = rate(q0);
+        let k2 = rate(q0 + k1 * (dt / 2.0));
+        let k3 = rate(q0 + k2 * (dt / 2.0));
+        let k4 = rate(q0 + k3 * dt);
+        let q1 = q0 + (k1 + 2.0 * k2 + 2.0 * k3 + k4) * (dt / 6.0);
+        self.orientation = DQuat::from_vec4(q1).normalize();
+        self.omega = (self.orientation.inverse() * momentum) / inertia;
     }
 }
 
