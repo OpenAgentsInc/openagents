@@ -89,6 +89,22 @@ The shared core owns neither network access, persistence, a palette, clock sourc
 credentials, nor task execution. Platform objects belong to adapters;
 application-specific components and effects belong to their application.
 
+## Input requests
+
+A view can't collect text yet. `input::InputRequest<P>` asks the adapter for
+one value beside the view: a `token` (a bounded identifier), the
+application's closed `purpose` type `P`, a nonempty accessible `label`, a
+one-sentence `prompt`, `scan` to open a scanner first, `secret`, and
+`max_bytes` (1 byte to 64 KiB). Unknown fields are rejected, and `secret` is
+required. `validate` checks the structure. `accept` checks that an answer
+names the current token and fits `max_bytes`; its errors never contain the
+value. The application then validates what the value means.
+
+When `secret` is true, the adapter shows a masked field, such as a SwiftUI
+`SecureField` or an Android password-type input. It never echoes, logs,
+persists, autofills, or suggests the value, and it clears the field after
+submitting. The value goes only to the application.
+
 ## Drawing surfaces
 
 `surface::Viewport` checks physical dimensions (at most 8,192 on either axis

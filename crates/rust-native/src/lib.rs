@@ -5,10 +5,12 @@
 //! crate does not start an application runtime, execute an intent, or render
 //! a native screen. See the crate's docs for implemented and planned layers.
 
+pub mod input;
 pub mod style;
 pub mod surface;
 pub mod view;
 
+pub use input::{InputError, InputRequest};
 pub use view::{Activation, Axis, Element, Node, TextRole, ValidatedView, View, ViewError};
 
 pub(crate) fn valid_id(value: &str) -> bool {

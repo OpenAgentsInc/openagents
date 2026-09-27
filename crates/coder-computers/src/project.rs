@@ -488,11 +488,7 @@ fn computers(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
 
 /// The owner directory's state, and the way to read it on this device.
 fn directory(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilities) {
-    let phone = caps.platform == Platform::Phone;
     let line = match snapshot.directory {
-        DirectoryState::NoOwnerKey if phone => {
-            "This device lists the computers it was added to.".to_owned()
-        }
         DirectoryState::NoOwnerKey => {
             "This device lists the computers it was added to. Enter your owner key to see every computer in your directory.".to_owned()
         }
@@ -521,7 +517,7 @@ fn directory(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
         text("directory-title", "Your directory", TextRole::Heading),
         text("directory-status", line, TextRole::Status),
     ];
-    if !phone && snapshot.directory == DirectoryState::NoOwnerKey {
+    if snapshot.directory == DirectoryState::NoOwnerKey {
         control(
             &mut children,
             "directory-owner-key",
