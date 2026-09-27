@@ -49,4 +49,17 @@ Written and pushed before any run of this experiment started.
 
 ## Results
 
-Pending.
+**Not yet run: the Codex login is out of quota until 2026-10-03 18:07 UTC.**
+
+The first attempt started at 2026-09-27 09:33 CDT with the declared
+configuration. All 16 runs ended within 2 minutes as provider faults:
+every GPT-6 Luna call returned HTTP 429 `usage_limit_reached` (plan `pro`,
+10,080-minute window, resetting at Unix time 1791050823). No model step
+succeeded, so no run is a result. Each spent only about $0.0005, for Jev and
+embeddings. The records are kept in
+`~/gates-reasoning-runs/attempt1-faults/` on coderos-4080.
+
+TB4 Round 4 at `xhigh` most likely used the week's allowance. The
+declaration above stands unchanged. Run it after the reset, or earlier if
+another route to GPT-6 Luna gets credit. A different route is a
+configuration change and must be recorded here before it runs.
