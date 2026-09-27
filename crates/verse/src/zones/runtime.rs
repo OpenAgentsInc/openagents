@@ -248,6 +248,15 @@ impl WorldRuntime {
                 lagrange.overlay = !lagrange.overlay;
                 lagrange.tick();
             }
+            Intent::Camera => {
+                let lagrange = self
+                    .zone_state
+                    .lagrange
+                    .as_mut()
+                    .ok_or("Enter Lagrange 1 first")?;
+                lagrange.art = !lagrange.art;
+                lagrange.tick();
+            }
             Intent::Grab | Intent::Release => {
                 let lagrange = self
                     .zone_state
@@ -465,6 +474,12 @@ impl WorldRuntime {
                     "Forces"
                 },
                 Intent::Forces,
+                true,
+            );
+            add(
+                "camera",
+                if lagrange.art { "Photo" } else { "Art" },
+                Intent::Camera,
                 true,
             );
             add("return", "Plaza", Intent::Return, true);

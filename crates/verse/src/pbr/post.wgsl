@@ -183,7 +183,9 @@ fn fs_output(i: Out) -> @location(0) vec4<f32> {
         let scales = array<f32, 3>(-0.6, -1.2, 0.4);
         for (var k = 0; k < 3; k++) {
             let g = 0.5 + from_center * scales[k];
-            let fade = 1.0 - smoothstep(0.3, 0.5, length(g - 0.5));
+            // Fade before the texture edge so clamped samples never repeat.
+            let edge = min(min(g.x, 1.0 - g.x), min(g.y, 1.0 - g.y));
+            let fade = smoothstep(0.0, 0.15, edge) * (1.0 - smoothstep(0.3, 0.5, length(g - 0.5)));
             c += textureSampleLevel(bloom, clamp_linear, g, ghost_level).rgb * tints[k] * fade * p.lens.y * 2.0e-5;
         }
     }

@@ -163,6 +163,9 @@ pub enum Intent {
     Release,
     /// Show or hide the physics overlay: contacts, joints, and thrust.
     Forces,
+    /// Lagrange 1: switch between the photographic camera and the readable
+    /// art preset (brighter shadows and visible stars).
+    Camera,
     /// Physics Lab: select the previous or next knob.
     KnobPrev,
     KnobNext,

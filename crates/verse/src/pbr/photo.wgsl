@@ -676,8 +676,9 @@ fn earth_radiance(n: vec3<f32>, to_eye: vec3<f32>, lod: f32) -> vec3<f32> {
     let surface = ground * 0.85;
     let albedo = mix(surface, vec3<f32>(0.75), cloud * 0.95);
     let mu0c = max(mu0, 0.02);
-    // Rayleigh optical depth at 650, 550, and 450 nm.
-    let tau = vec3<f32>(0.05, 0.1, 0.22);
+    // Rayleigh optical depth at 650, 550, and 450 nm, trimmed slightly for
+    // the ocean's own absorption so disc color matches DSCOVR EPIC frames.
+    let tau = vec3<f32>(0.045, 0.09, 0.17);
     let air = 1.0 / mu0c + 1.0 / mu;
     let trans = exp(-tau * air);
     var l = albedo / PI * e * mu0 * trans;
@@ -751,11 +752,13 @@ fn fs_body(i: BodyOut) -> @location(0) vec4<f32> {
         let to_eye = -body.xyz;
         // Texture footprint: radians of longitude per pixel near the center.
         let per_pixel = f.params.z / max(r, 1e-6);
+        // Foreshortening toward the limb widens each pixel's footprint.
+        let slant = 1.0 / max(z, 0.08);
         if i.kind == 1u {
-            let lod = log2(max(per_pixel / (2.0 * PI) * f32(textureDimensions(earth_day).x), 1.0));
+            let lod = log2(max(per_pixel * slant / (2.0 * PI) * f32(textureDimensions(earth_day).x), 1.0));
             color = earth_radiance(n, to_eye, lod);
         } else {
-            let lod = log2(max(per_pixel / (2.0 * PI) * f32(textureDimensions(moon_albedo).x), 1.0));
+            let lod = log2(max(per_pixel * slant / (2.0 * PI) * f32(textureDimensions(moon_albedo).x), 1.0));
             color = moon_radiance(n, to_eye, lod);
         }
     }

@@ -264,7 +264,11 @@ fn only_lagrange_frames_carry_a_physical_sky_in_real_units() {
     assert!(!mesh.lit.is_empty() && !runtime.world.mesh.lit.is_empty());
     // The station pitches 30° about its truss: the Sun stands 30° above −Z.
     let expected = glam::Vec3::new(0.0, 0.5, -(3f32.sqrt() / 2.0));
-    assert!(sky.sun_dir.angle_between(expected) < 0.01, "{}", sky.sun_dir);
+    assert!(
+        sky.sun_dir.angle_between(expected) < 0.01,
+        "{}",
+        sky.sun_dir
+    );
     // About 130,000 lux at 0.99 AU, and the true angular sizes.
     assert!((125_000.0..135_000.0).contains(&sky.sun_illuminance));
     assert!((sky.sun_angular_radius.to_degrees() - 0.269).abs() < 0.005);

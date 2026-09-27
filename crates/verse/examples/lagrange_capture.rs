@@ -4,7 +4,8 @@
 //! Player views: spawn, jig, carry, sun, earth. Fixed cameras: sunside (the
 //! station from the sunward side with the Earth behind), wide (a three-quarter
 //! view of the whole station), and telephoto views earthzoom, moonzoom, and
-//! sunzoom, which frame each body at a narrow field of view.
+//! sunzoom, which frame each body at a narrow field of view. `stars` uses
+//! the art preset and looks away from the Sun toward the galactic center.
 use std::path::PathBuf;
 use verse::{
     controller::InputState,
@@ -63,6 +64,7 @@ fn main() -> Result<(), String> {
             runtime.apply(Action::Zoom { lines: 8.0 })?;
         }
         "spawn" => runtime.apply(Action::Orbit { dx: 90.0, dy: 0.0 })?,
+        "stars" => runtime.zone_intent(zones::Intent::Camera)?,
         _ => {}
     }
     for _ in 0..4 {
@@ -75,7 +77,16 @@ fn main() -> Result<(), String> {
     let snapshot = runtime.zone_snapshot(1.6);
     eprintln!("{}", snapshot.caption);
     let ui = hud.draw(&atlas, &hud.snapshot([1280.0, 800.0], &snapshot, true), 1.0);
-    let dynamic = runtime.dynamic_mesh();
+    let mut dynamic = runtime.dynamic_mesh();
+    if view == "sunzoom"
+        && let Some(sky) = &mut dynamic.sky
+    {
+        // A solar filter: about ND 5 over a sunlit exposure.
+        sky.camera.auto_exposure = false;
+        sky.camera.ev100 = 31.0;
+        sky.camera.bloom = 0.0;
+        sky.camera.ghosts = 0.0;
+    }
     let player = runtime.view(1.6);
     let fixed = |eye: glam::Vec3, dir: glam::Vec3, fov: f32| verse::render::View {
         view_proj: glam::Mat4::perspective_rh(fov, 1.6, 0.1, 2000.0)
@@ -95,6 +106,12 @@ fn main() -> Result<(), String> {
         ("earthzoom", Some(sky)) => fixed(player.eye, sky.earth.dir, 0.03),
         ("moonzoom", Some(sky)) => fixed(player.eye, sky.moon.dir, 0.012),
         ("sunzoom", Some(sky)) => fixed(player.eye, sky.sun_dir, 0.03),
+        ("stars", Some(sky)) => {
+            // The galactic center: right ascension 17h45.6m, declination −28.94°.
+            let (ra, dec) = (266.4_f32.to_radians(), (-28.94_f32).to_radians());
+            let equatorial = glam::Vec3::new(dec.cos() * ra.cos(), dec.cos() * ra.sin(), dec.sin());
+            fixed(player.eye, sky.celestial * equatorial, 1.0)
+        }
         _ => player,
     };
     verse::render::capture_with_atmosphere(

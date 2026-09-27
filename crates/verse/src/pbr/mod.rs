@@ -180,7 +180,7 @@ impl Camera {
             fringe: 0.0,
             white_balance: 5_800.0,
             star_gain: 1.0,
-            ghosts: 0.25,
+            ghosts: 0.1,
         }
     }
 
