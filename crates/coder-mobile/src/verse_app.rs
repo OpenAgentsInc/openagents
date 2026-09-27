@@ -87,6 +87,7 @@ pub(crate) enum Request {
         relay: String,
     },
     Disconnect,
+    PetCompanion,
     InteractComputer,
     CloseComputer,
     InteractGym,
@@ -137,6 +138,7 @@ pub(crate) struct Packet {
     camera_pitch: f32,
     camera_distance: f32,
     motion_needed: bool,
+    companion: Companion,
     computer: Computer,
     computer_open: bool,
     gym: Gym,
@@ -198,6 +200,18 @@ fn validated_world_relay(relay: &str) -> Result<String, String> {
 
 /// Coordinates are normalized from the top-left of the Metal viewport.
 /// Visibility describes projection, not occlusion by another world object.
+#[derive(Serialize)]
+struct Companion {
+    near: bool,
+    visible: bool,
+    screen_x: f32,
+    screen_y: f32,
+    distance: f32,
+    reacting: bool,
+    cooldown_seconds: f32,
+    pet_count: u64,
+}
+
 #[derive(Serialize)]
 struct Computer {
     near: bool,
@@ -296,6 +310,16 @@ fn packet(
         camera_pitch: verse::camera::FollowCamera::default().pitch,
         camera_distance: verse::camera::FollowCamera::default().distance,
         motion_needed: false,
+        companion: Companion {
+            near: false,
+            visible: false,
+            screen_x: 0.5,
+            screen_y: 0.5,
+            distance: 0.0,
+            reacting: false,
+            cooldown_seconds: 0.0,
+            pet_count: 0,
+        },
         computer: Computer {
             near: false,
             visible: false,
@@ -320,11 +344,17 @@ fn packet(
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WorldTarget {
+    Computer,
+    Companion,
+}
+
 struct Touch {
     origin: [f32; 2],
     latest: [f32; 2],
     movement: bool,
-    computer: bool,
+    target: Option<WorldTarget>,
     tap_valid: bool,
     started: f64,
 }
@@ -624,14 +654,20 @@ impl Scene {
                 && !self.spawn_pending
                 && (self.touches.is_empty()
                     || (!touch.movement
-                        && !touch.computer
+                        && touch.target.is_none()
                         && self
                             .touches
                             .values()
-                            .all(|other| other.movement && !other.computer)));
-            if valid && touch.computer && self.computer_hit(x, y) {
-                self.open_computer();
-            } else if valid && !touch.computer && elapsed <= WORLD_TAP_SECONDS {
+                            .all(|other| other.movement && other.target.is_none())));
+            if valid && touch.target.is_some() && self.world_target(x, y) == touch.target {
+                match touch.target {
+                    Some(WorldTarget::Computer) => self.open_computer(),
+                    Some(WorldTarget::Companion) => {
+                        self.world.pet_companion();
+                    }
+                    None => {}
+                }
+            } else if valid && touch.target.is_none() && elapsed <= WORLD_TAP_SECONDS {
                 self.world_tap([x, y], timestamp, touch.movement);
             } else if self
                 .last_world_tap
@@ -664,7 +700,7 @@ impl Scene {
                 let beside_movement = !movement
                     && self.touches.values().all(|other| {
                         other.movement
-                            && !other.computer
+                            && other.target.is_none()
                             && (!other.tap_valid || timestamp - other.started > 0.15)
                     });
                 if !single_touch && !beside_movement {
@@ -677,8 +713,8 @@ impl Scene {
                     self.cancel_taps();
                     return Ok(());
                 }
-                let computer = single_touch && self.computer_hit(x, y);
-                if computer {
+                let target = single_touch.then(|| self.world_target(x, y)).flatten();
+                if target.is_some() {
                     self.last_world_tap = None;
                 }
                 if self.touches.values().any(|p| p.movement == movement) {
@@ -690,7 +726,7 @@ impl Scene {
                         origin: [x, y],
                         latest: [x, y],
                         movement,
-                        computer,
+                        target,
                         tap_valid: single_touch || beside_movement,
                         started: timestamp,
                     },
@@ -702,9 +738,9 @@ impl Scene {
                         (x - touch.origin[0]).hypot(y - touch.origin[1]) > TAP_DRIFT_POINTS;
                     touch.tap_valid &= !dragged;
                     if dragged {
-                        // The monitor captures a tap, not the rest of a drag.
+                        // World objects capture a tap, not the rest of a drag.
                         // Continue with the control chosen by the starting side.
-                        touch.computer = false;
+                        touch.target = None;
                     }
                     if !touch.tap_valid
                         && self
@@ -714,7 +750,10 @@ impl Scene {
                     {
                         self.last_world_tap = None;
                     }
-                    if !touch.computer && !touch.movement && self.camera_mode == CameraMode::Touch {
+                    if touch.target.is_none()
+                        && !touch.movement
+                        && self.camera_mode == CameraMode::Touch
+                    {
                         self.world.apply(Action::FaceCamera)?;
                         self.world.apply(Action::Look {
                             dx: (x - touch.latest[0]).clamp(-500.0, 500.0),
@@ -762,7 +801,11 @@ impl Scene {
             sprint: self.sprint,
             ..InputState::default()
         };
-        if let Some(touch) = self.touches.values().find(|p| p.movement && !p.computer) {
+        if let Some(touch) = self
+            .touches
+            .values()
+            .find(|p| p.movement && p.target.is_none())
+        {
             let x = touch.latest[0] - touch.origin[0];
             let y = touch.latest[1] - touch.origin[1];
             input.forward = match self.camera_mode {
@@ -773,8 +816,11 @@ impl Scene {
             input.strafe_left = x < -12.0;
             input.strafe_right = x > 12.0;
         }
-        input.mouse_look =
-            self.motion_needed() || self.touches.values().any(|p| !p.movement && !p.computer);
+        input.mouse_look = self.motion_needed()
+            || self
+                .touches
+                .values()
+                .any(|p| !p.movement && p.target.is_none());
         input
     }
 
@@ -919,6 +965,21 @@ impl Scene {
                 self.disconnect();
                 Ok(())
             }
+            Request::PetCompanion => {
+                let companion = self.world.companion(self.aspect());
+                let size = self.lifecycle.viewport().logical_size();
+                if !self.lifecycle.active()
+                    || self.panel_open()
+                    || self.spawn_pending
+                    || !self
+                        .companion_hit(companion.screen_x * size[0], companion.screen_y * size[1])
+                {
+                    return Err("Bring the companion into view to greet it".into());
+                }
+                self.cancel_taps();
+                self.world.pet_companion();
+                Ok(())
+            }
             Request::InteractComputer => {
                 let computer = self.computer();
                 let size = self.lifecycle.viewport().logical_size();
@@ -1028,6 +1089,17 @@ impl Scene {
         packet.camera_pitch = self.world.camera.pitch;
         packet.camera_distance = self.world.camera.distance;
         packet.motion_needed = self.motion_needed();
+        let companion = self.world.companion(self.aspect());
+        packet.companion = Companion {
+            near: companion.near,
+            visible: companion.visible,
+            screen_x: companion.screen_x,
+            screen_y: companion.screen_y,
+            distance: companion.distance,
+            reacting: companion.reacting,
+            cooldown_seconds: companion.cooldown_seconds,
+            pet_count: self.world.agent.pet_count(),
+        };
         packet.computer = self.computer().into();
         packet.computer_open = self.computer_open;
         packet.gym = self.gym().into();
@@ -1250,6 +1322,34 @@ impl Scene {
         self.sprint = false;
     }
 
+    fn aspect(&self) -> f32 {
+        let size = self.lifecycle.viewport().logical_size();
+        size[0] / size[1].max(1.0)
+    }
+
+    fn world_target(&self, x: f32, y: f32) -> Option<WorldTarget> {
+        if self.companion_hit(x, y) {
+            Some(WorldTarget::Companion)
+        } else if self.computer_hit(x, y) {
+            Some(WorldTarget::Computer)
+        } else {
+            None
+        }
+    }
+
+    fn companion_hit(&self, x: f32, y: f32) -> bool {
+        let size = self.lifecycle.viewport().logical_size();
+        !self.spawn_pending
+            && size[0] > 0.0
+            && size[1] > 0.0
+            && self.world.companion_hit_with_entities(
+                size[0] / size[1],
+                x / size[0],
+                y / size[1],
+                &self.presented_entities,
+            )
+    }
+
     fn computer_hit(&self, x: f32, y: f32) -> bool {
         let size = self.lifecycle.viewport().logical_size();
         !self.spawn_pending
@@ -1302,6 +1402,78 @@ mod tests {
             world_relay: None,
         })
         .unwrap()
+    }
+
+    fn companion_scene() -> (Scene, [f32; 2]) {
+        let mut scene = scene();
+        scene.activate(true).unwrap();
+        scene.update(1.0).unwrap();
+        scene.update(1.01).unwrap();
+        let companion = scene.world.companion(scene.aspect());
+        let size = scene.lifecycle.viewport().logical_size();
+        let point = [companion.screen_x * size[0], companion.screen_y * size[1]];
+        assert!(scene.companion_hit(point[0], point[1]));
+        (scene, point)
+    }
+
+    #[test]
+    fn companion_tap_reacts_once_and_does_not_move_or_jump() {
+        for mode in [CameraMode::Touch, CameraMode::Motion] {
+            let (mut scene, [x, y]) = companion_scene();
+            scene.action(Request::CameraMode { mode }).unwrap();
+            let position = scene.world.player.pos;
+            scene.pointer_at(1, PointerPhase::Down, x, y, 1.02).unwrap();
+            scene.pointer_at(1, PointerPhase::Up, x, y, 1.06).unwrap();
+            assert_eq!(scene.world.agent.pet_count(), 1);
+            assert_eq!(scene.world.agent.emote(), Some(verse::agent::Emote::Wiggle));
+            scene.action(Request::PetCompanion).unwrap();
+            assert_eq!(
+                scene.world.agent.pet_count(),
+                1,
+                "Cooldown never queues another reaction"
+            );
+            assert!(!scene.jump);
+            assert!(!scene.computer_open);
+            for step in 1..=120 {
+                scene.update(1.01 + f64::from(step) / 60.0).unwrap();
+            }
+            assert_eq!(scene.world.player.pos, position);
+            assert_ne!(scene.world.agent.emote(), Some(verse::agent::Emote::Wiggle));
+            scene.action(Request::PetCompanion).unwrap();
+            assert_eq!(scene.packet().companion.pet_count, 2);
+        }
+    }
+
+    #[test]
+    fn companion_rejects_drag_cancel_pinch_hidden_and_inactive_taps() {
+        for case in 0..5 {
+            let (mut scene, [x, y]) = companion_scene();
+            scene.pointer_at(1, PointerPhase::Down, x, y, 1.02).unwrap();
+            match case {
+                0 => {
+                    scene
+                        .pointer_at(1, PointerPhase::Move, x + 30.0, y, 1.03)
+                        .unwrap();
+                }
+                1 => {
+                    scene
+                        .pointer_at(1, PointerPhase::Cancel, x, y, 1.03)
+                        .unwrap();
+                }
+                2 => {
+                    scene.action(Request::PinchZoom { scale: 1.1 }).unwrap();
+                }
+                3 => {
+                    scene.computer_open = true;
+                }
+                _ => {
+                    scene.activate(false).unwrap();
+                }
+            }
+            scene.pointer_at(1, PointerPhase::Up, x, y, 1.06).unwrap();
+            assert_eq!(scene.world.agent.pet_count(), 0, "Invalid gesture {case}");
+            assert!(!scene.jump);
+        }
     }
 
     #[test]

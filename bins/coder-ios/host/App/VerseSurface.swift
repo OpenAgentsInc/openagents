@@ -47,6 +47,7 @@ final class VerseMetalView: UIView {
     private var pointers: [ObjectIdentifier: UInt64] = [:]
     private var nextPointer: UInt64 = 1
     private var computerAccessible = false
+    private var companionAccessible = false
     private var hudPointers = Set<UInt64>()
     private var hudInsets = EdgeInsets()
     private var mapState: VerseMap?
@@ -206,15 +207,20 @@ final class VerseMetalView: UIView {
         let available = running && packet.computer.near && packet.computer.visible
             && !packet.computer_open && !packet.gym_open
         computerAccessible = available
+        companionAccessible = running && !packet.computer_open && !packet.gym_open &&
+            packet.companion.near && packet.companion.visible && packet.companion.cooldown_seconds <= 0
         mapState = packet.map
         let map = packet.map
         let mapAvailable = running && map.visible
-        let state = "\(available):\(mapAvailable):\(map.expanded):\(map.destination != nil):" + map.landmarks.map(\.id).joined(separator: ",")
+        let state = "\(available):\(companionAccessible):\(mapAvailable):\(map.expanded):\(map.destination != nil):" + map.landmarks.map(\.id).joined(separator: ",")
         if state != accessibilityActionState {
             accessibilityActionState = state
             var actions: [UIAccessibilityCustomAction] = []
             if available {
                 actions.append(UIAccessibilityCustomAction(name: "Use computer", target: self, selector: #selector(useComputerAccessibly)))
+            }
+            if companionAccessible {
+                actions.append(UIAccessibilityCustomAction(name: "Pet companion", target: self, selector: #selector(petCompanionAccessibly)))
             }
             if mapAvailable {
                 actions.append(UIAccessibilityCustomAction(name: map.expanded ? "Close map" : "Open map", target: self, selector: #selector(toggleMapAccessibly)))
@@ -246,6 +252,7 @@ final class VerseMetalView: UIView {
                 "computer_ready": available,
                 "computer_target": [packet.computer.screen_x, packet.computer.screen_y],
                 "map": packet.map.observation,
+                "companion": packet.companion.observation,
             ]
             accessibilityValue = (try? JSONSerialization.data(withJSONObject: metadata))
                 .flatMap { String(data: $0, encoding: .utf8) }
@@ -259,6 +266,12 @@ final class VerseMetalView: UIView {
         guard let result = send(["action": "interact_computer"], forcePublish: true) else { return false }
         if case let .success(packet) = result { return packet.computer_open }
         return false
+    }
+
+    @objc private func petCompanionAccessibly() -> Bool {
+        guard running, companionAccessible else { return false }
+        guard case let .success(result)? = send(["action": "pet_companion"], forcePublish: true) else { return false }
+        return result.error == nil
     }
 
     @objc private func toggleMapAccessibly() -> Bool {

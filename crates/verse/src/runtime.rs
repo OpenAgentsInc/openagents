@@ -16,6 +16,22 @@ use crate::world::{self, World};
 
 /// Long pauses never become a large physics step.
 pub const MAX_FRAME_SECONDS: f32 = rust_native::surface::MAX_FRAME_DELTA;
+/// Maximum distance from the player's shoulder to a tappable companion.
+pub const COMPANION_RANGE: f32 = 4.0;
+
+/// The local companion's projected anchor and bounded reaction state.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Companion {
+    pub near: bool,
+    /// Projection visibility only; picking also checks foreground geometry.
+    pub visible: bool,
+    pub screen_x: f32,
+    pub screen_y: f32,
+    /// Distance from the player's shoulder, in meters.
+    pub distance: f32,
+    pub reacting: bool,
+    pub cooldown_seconds: f32,
+}
 
 /// The shared computer's proximity and viewport projection.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -323,6 +339,85 @@ impl WorldRuntime {
         result
     }
 
+    /// Project the animated spade center into normalized viewport coordinates.
+    #[must_use]
+    pub fn companion(&self, aspect: f32) -> Companion {
+        let center = self.agent.transform().transform_point3(Vec3::ZERO);
+        let shoulder = self.player.pos + Vec3::Y * crate::agent::HOVER;
+        let distance = center.distance(shoulder);
+        let clip = self.view(aspect).view_proj * center.extend(1.0);
+        let mut result = Companion {
+            near: distance.is_finite() && distance <= COMPANION_RANGE,
+            visible: false,
+            screen_x: 0.5,
+            screen_y: 0.5,
+            distance: if distance.is_finite() {
+                distance
+            } else {
+                f32::MAX
+            },
+            reacting: self.agent.emote() == Some(crate::agent::Emote::Wiggle),
+            cooldown_seconds: self.agent.pet_cooldown(),
+        };
+        if aspect.is_finite() && aspect > 0.0 && clip.is_finite() && clip.w > 0.0 {
+            let ndc = clip.truncate() / clip.w;
+            result.screen_x = (ndc.x * 0.5 + 0.5).clamp(0.0, 1.0);
+            result.screen_y = (0.5 - ndc.y * 0.5).clamp(0.0, 1.0);
+            result.visible = (-1.0..=1.0).contains(&ndc.x)
+                && (-1.0..=1.0).contains(&ndc.y)
+                && (0.0..=1.0).contains(&ndc.z);
+        }
+        result
+    }
+
+    /// Pick the spade's visible faces, excluding its decorative ground ring.
+    #[must_use]
+    pub fn companion_hit(&self, aspect: f32, x: f32, y: f32) -> bool {
+        self.companion_hit_with_entities(aspect, x, y, &Mesh::default())
+    }
+
+    /// Pick against the presented static, local-player, and remote-entity faces.
+    /// This reads animation state without advancing it or fetching remote state.
+    #[must_use]
+    pub fn companion_hit_with_entities(
+        &self,
+        aspect: f32,
+        x: f32,
+        y: f32,
+        entities: &Mesh,
+    ) -> bool {
+        if !self.companion(aspect).near {
+            return false;
+        }
+        let view = self.view(aspect);
+        let Some((origin, direction)) = viewport_ray(&view, aspect, x, y) else {
+            return false;
+        };
+        let spade = crate::agent::spade(self.agent.transform(), coder_ui::theme::Intensity::Full);
+        let Some(distance) = mesh_hit(&spade, origin, direction) else {
+            return false;
+        };
+        let clip = view.view_proj * (origin + direction * distance).extend(1.0);
+        if !clip.is_finite() || clip.w <= 0.0 || !(0.0..=1.0).contains(&(clip.z / clip.w)) {
+            return false;
+        }
+        !mesh_occludes(&self.world.mesh, origin, direction, distance)
+            && !mesh_occludes(
+                &avatar::mesh(&self.player, &self.gait),
+                origin,
+                direction,
+                distance,
+            )
+            && !mesh_occludes(&world::computer_display(None), origin, direction, distance)
+            && !mesh_occludes(entities, origin, direction, distance)
+    }
+
+    /// React after a host admits a visible tap or accessible action.
+    /// The host owns gesture, visibility, replay, and surface-lifecycle admission.
+    pub fn pet_companion(&mut self) -> bool {
+        self.companion(1.0).near && self.agent.pet()
+    }
+
     /// Tests a normalized viewport point against the physical monitor.
     /// A tap must reach the front display from a nearby player and pass the
     /// same static and local-entity faces that hide it in the scene renderer.
@@ -350,12 +445,9 @@ impl WorldRuntime {
         if view.eye.z >= world::COMPUTER_SCREEN.z {
             return false;
         }
-        let far =
-            view.view_proj.inverse() * glam::Vec4::new(x * 2.0 - 1.0, 1.0 - y * 2.0, 1.0, 1.0);
-        if !far.is_finite() || far.w.abs() < f32::EPSILON {
+        let Some((_, direction)) = viewport_ray(&view, aspect, x, y) else {
             return false;
-        }
-        let direction = (far.truncate() / far.w - view.eye).normalize_or_zero();
+        };
         if direction.z <= f32::EPSILON {
             return false;
         }
@@ -447,37 +539,192 @@ impl WorldRuntime {
     }
 }
 
-fn mesh_occludes(mesh: &Mesh, origin: Vec3, direction: Vec3, distance: f32) -> bool {
-    // Möller–Trumbore, double-sided like the renderer's face pipeline. Ignore
-    // the destination plane itself, including its amber display strokes.
-    mesh.faces.chunks_exact(3).any(|vertices| {
-        let a = Vec3::from(vertices[0].pos);
-        let edge_ab = Vec3::from(vertices[1].pos) - a;
-        let edge_ac = Vec3::from(vertices[2].pos) - a;
-        let cross = direction.cross(edge_ac);
-        let determinant = edge_ab.dot(cross);
-        if determinant.abs() < 1e-7 {
-            return false;
-        }
-        let inverse = determinant.recip();
-        let from_a = origin - a;
-        let u = from_a.dot(cross) * inverse;
-        if !(0.0..=1.0).contains(&u) {
-            return false;
-        }
-        let cross = from_a.cross(edge_ab);
-        let v = direction.dot(cross) * inverse;
-        if v < 0.0 || u + v > 1.0 {
-            return false;
-        }
-        let hit = edge_ac.dot(cross) * inverse;
-        hit > 0.001 && hit < distance - 0.003
-    })
+/// Unproject one finite normalized viewport point using the presented camera.
+pub(crate) fn viewport_ray(view: &View, aspect: f32, x: f32, y: f32) -> Option<(Vec3, Vec3)> {
+    if !aspect.is_finite()
+        || aspect <= 0.0
+        || !(0.0..=1.0).contains(&x)
+        || !(0.0..=1.0).contains(&y)
+        || !view.eye.is_finite()
+    {
+        return None;
+    }
+    let far = view.view_proj.inverse() * glam::Vec4::new(x * 2.0 - 1.0, 1.0 - y * 2.0, 1.0, 1.0);
+    if !far.is_finite() || far.w.abs() < f32::EPSILON {
+        return None;
+    }
+    let direction = (far.truncate() / far.w - view.eye).normalize_or_zero();
+    (direction.is_finite() && direction.length_squared() > 0.5).then_some((view.eye, direction))
+}
+
+pub(crate) fn mesh_occludes(mesh: &Mesh, origin: Vec3, direction: Vec3, distance: f32) -> bool {
+    // Ignore the destination plane itself, including its amber display strokes.
+    mesh_hit(mesh, origin, direction).is_some_and(|hit| hit < distance - 0.003)
+}
+
+/// Nearest double-sided face intersection, matching the renderer's solid faces.
+pub(crate) fn mesh_hit(mesh: &Mesh, origin: Vec3, direction: Vec3) -> Option<f32> {
+    if !origin.is_finite() || !direction.is_finite() {
+        return None;
+    }
+    mesh.faces
+        .chunks_exact(3)
+        .filter_map(|vertices| {
+            let a = Vec3::from(vertices[0].pos);
+            let edge_ab = Vec3::from(vertices[1].pos) - a;
+            let edge_ac = Vec3::from(vertices[2].pos) - a;
+            let cross = direction.cross(edge_ac);
+            let determinant = edge_ab.dot(cross);
+            if determinant.abs() < 1e-7 {
+                return None;
+            }
+            let inverse = determinant.recip();
+            let from_a = origin - a;
+            let u = from_a.dot(cross) * inverse;
+            if !(-1e-6..=1.0 + 1e-6).contains(&u) {
+                return None;
+            }
+            let cross = from_a.cross(edge_ab);
+            let v = direction.dot(cross) * inverse;
+            if v < -1e-6 || u + v > 1.0 + 1e-6 {
+                return None;
+            }
+            let hit = edge_ac.dot(cross) * inverse;
+            (hit.is_finite() && hit > 0.001).then_some(hit)
+        })
+        .min_by(f32::total_cmp)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn projected(runtime: &WorldRuntime, aspect: f32, at: Vec3) -> [f32; 2] {
+        let clip = runtime.view(aspect).view_proj * at.extend(1.0);
+        [clip.x / clip.w * 0.5 + 0.5, 0.5 - clip.y / clip.w * 0.5]
+    }
+
+    #[test]
+    fn companion_picking_uses_the_spade_in_portrait_landscape_and_animated_views() {
+        let mut runtime = WorldRuntime::new();
+        for aspect in [0.46, 2.0 / 3.0, 1.0, 2.2] {
+            for orbit in [-0.3, 0.0, 0.3] {
+                runtime.camera.yaw_offset = orbit;
+                let companion = runtime.companion(aspect);
+                assert!(companion.visible && companion.near);
+                assert!(
+                    runtime.companion_hit(aspect, companion.screen_x, companion.screen_y),
+                    "aspect {aspect}, orbit {orbit}"
+                );
+                let outside = runtime
+                    .agent
+                    .transform()
+                    .transform_point3(Vec3::new(0.5, 0.3, 0.0));
+                let [x, y] = projected(&runtime, aspect, outside);
+                assert!(
+                    !runtime.companion_hit(aspect, x, y),
+                    "no rectangular button outside the silhouette"
+                );
+            }
+        }
+        runtime.camera.yaw_offset = 0.0;
+        let ring = Vec3::new(runtime.agent.pos.x + 0.28, 0.02, runtime.agent.pos.z);
+        let [x, y] = projected(&runtime, 1.0, ring);
+        assert!(!runtime.companion_hit(1.0, x, y));
+        assert!(runtime.pet_companion());
+        for _ in 0..54 {
+            runtime.tick(&InputState::default(), 1.0 / 60.0);
+            let companion = runtime.companion(1.0);
+            assert!(runtime.companion_hit(1.0, companion.screen_x, companion.screen_y));
+        }
+        assert_eq!(runtime.agent.pet_count(), 1);
+    }
+
+    #[test]
+    fn companion_picking_refuses_foreground_static_player_and_remote_faces() {
+        let mut runtime = WorldRuntime::new();
+        let companion = runtime.companion(1.0);
+        let view = runtime.view(1.0);
+        let (eye, direction) =
+            viewport_ray(&view, 1.0, companion.screen_x, companion.screen_y).unwrap();
+        let center = runtime.agent.transform().transform_point3(Vec3::ZERO);
+        let distance = center.distance(eye);
+        let horizontal = direction.cross(Vec3::Y).normalize();
+        let vertical = horizontal.cross(direction).normalize();
+        let wall = |distance| {
+            let at = eye + direction * distance;
+            let mut mesh = Mesh::default();
+            mesh.quad([
+                at - horizontal - vertical,
+                at + horizontal - vertical,
+                at + horizontal + vertical,
+                at - horizontal + vertical,
+            ]);
+            mesh
+        };
+        let foreground = wall(distance - 1.0);
+        assert!(!runtime.companion_hit_with_entities(
+            1.0,
+            companion.screen_x,
+            companion.screen_y,
+            &foreground
+        ));
+        assert!(runtime.companion_hit_with_entities(
+            1.0,
+            companion.screen_x,
+            companion.screen_y,
+            &wall(distance + 1.0)
+        ));
+        let old_mesh = runtime.world.mesh.clone();
+        runtime.world.mesh.extend(&foreground);
+        assert!(!runtime.companion_hit(1.0, companion.screen_x, companion.screen_y));
+        runtime.world.mesh = old_mesh;
+
+        let torso = runtime.player.pos + Vec3::Y;
+        let behind_player = torso + (torso - eye).normalize() * 0.8;
+        runtime.agent = Agent::at(behind_player, 0.0);
+        let companion = runtime.companion(1.0);
+        assert!(companion.near && companion.visible);
+        let (eye, direction) =
+            viewport_ray(&view, 1.0, companion.screen_x, companion.screen_y).unwrap();
+        assert!(
+            mesh_hit(
+                &avatar::mesh(&runtime.player, &runtime.gait),
+                eye,
+                direction
+            )
+            .is_some()
+        );
+        assert!(!runtime.companion_hit(1.0, companion.screen_x, companion.screen_y));
+    }
+
+    #[test]
+    fn companion_refuses_invalid_projection_input_and_distant_reactions() {
+        let mut runtime = WorldRuntime::new();
+        for aspect in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            let companion = runtime.companion(aspect);
+            assert!(!companion.visible);
+            assert!(companion.screen_x.is_finite() && companion.screen_y.is_finite());
+            assert!(!runtime.companion_hit(aspect, companion.screen_x, companion.screen_y));
+        }
+        for (x, y) in [
+            (f32::NAN, 0.5),
+            (0.5, f32::INFINITY),
+            (-0.1, 0.5),
+            (0.5, 1.1),
+        ] {
+            assert!(!runtime.companion_hit(1.0, x, y));
+        }
+        for position in [runtime.player.pos + Vec3::new(6.0, 2.2, 0.0), Vec3::NAN] {
+            runtime.agent = Agent::at(position, 0.0);
+            let companion = runtime.companion(1.0);
+            assert!(!companion.near);
+            assert!(companion.distance.is_finite());
+            assert!(!runtime.pet_companion());
+            assert!(!runtime.companion_hit(1.0, companion.screen_x, companion.screen_y));
+            assert_eq!(runtime.agent.pet_count(), 0);
+        }
+    }
 
     #[test]
     fn navigation_walks_around_a_building_without_teleporting_or_entering_it() {

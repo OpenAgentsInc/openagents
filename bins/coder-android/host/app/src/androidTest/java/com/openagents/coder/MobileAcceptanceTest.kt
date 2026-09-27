@@ -517,6 +517,32 @@ class MobileAcceptanceTest {
         assertTrue(worldSnapshot().textOrNull("error") == null)
     }
 
+    @Test fun projectedCompanionTapReactsWithoutMovingThePlayer() {
+        launch()
+        waitFor {
+            worldSnapshot().optJSONObject("companion")?.let { it.optBoolean("near") && it.optBoolean("visible") } == true
+        }
+        val before = worldSnapshot()
+        val companion = before.getJSONObject("companion")
+        onMain { activity ->
+            val surface = find(activity.window.decorView, "verse-surface") as VerseSurface
+            assertTrue(surface.createAccessibilityNodeInfo().actionList.any { it.label == "Pet companion" })
+        }
+        tapSurface(companion.getDouble("screen_x").toFloat(), companion.getDouble("screen_y").toFloat())
+        waitFor { worldSnapshot().getJSONObject("companion").getLong("pet_count") == companion.getLong("pet_count") + 1 }
+        val after = worldSnapshot()
+        assertEquals(before.getJSONArray("position").getDouble(0), after.getJSONArray("position").getDouble(0), 0.02)
+        assertEquals(before.getJSONArray("position").getDouble(2), after.getJSONArray("position").getDouble(2), 0.02)
+        assertEquals(before.getDouble("camera_yaw"), after.getDouble("camera_yaw"), 0.02)
+        assertEquals(before.getDouble("camera_pitch"), after.getDouble("camera_pitch"), 0.02)
+        assertFalse(after.getBoolean("computer_open"))
+        assertNull(after.textOrNull("error"))
+        waitFor {
+            worldSnapshot().getJSONObject("companion").let { !it.getBoolean("reacting") && it.getDouble("cooldown_seconds") == 0.0 }
+        }
+        assertEquals(companion.getLong("pet_count") + 1, worldSnapshot().getJSONObject("companion").getLong("pet_count"))
+    }
+
     private fun launch(gym: Boolean = false, motion: Boolean = false) {
         val intent = Intent(ApplicationProvider.getApplicationContext(), MainActivity::class.java)
             .putExtra("synthetic", true).putExtra("gym_preview", gym).putExtra("motion_preview", motion)

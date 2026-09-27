@@ -11,6 +11,17 @@ struct VerseTestObservation: Decodable {
     let computer_ready: Bool
     let computer_target: [Double]
     let map: VerseTestMap
+    let companion: VerseTestCompanion
+}
+
+struct VerseTestCompanion: Decodable {
+    let near: Bool
+    let visible: Bool
+    let screen_x: Double
+    let screen_y: Double
+    let reacting: Bool
+    let cooldown_seconds: Double
+    let pet_count: UInt64
 }
 
 struct VerseTestMap: Decodable {

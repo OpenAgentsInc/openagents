@@ -38,6 +38,15 @@ A 1440×900 window titled **Verse** opens with the character on a plaza,
 facing a pylon, with the city around the plaza. The player's agent, a
 floating 3D spade, hovers behind the character's right shoulder.
 
+## Map and companion
+
+The top-right map expands to show the city and named zones. Select a clear
+position or landmark to walk there; manual movement or jumping stops the route.
+`M` toggles the desktop map. Tap or click the floating spade companion for a
+short wiggle and hop. These interactions run in the shared Rust world without
+model calls. See [maps, companions, and doors](world-interactions.md) for
+controls, implementation status, and the ordered mobile release.
+
 ## Gym building
 
 Walk east and enter the building marked **GYM**. Press `G` on desktop, or

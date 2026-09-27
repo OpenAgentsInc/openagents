@@ -86,6 +86,17 @@ continues to reset its baseline without unexpectedly moving the view. Camera
 mode and recenter use icon-only buttons at the bottom right, with accessibility
 labels retained.
 
+### Pinch acceptance correction
+
+The initial simulator test reported that a second pinch did not zoom out.
+Retained native contact logs identified a test-coordinate problem: XCTest
+started the zoom-out at `(345.60, 815.25)`, inside the Recenter button's
+`(342, 784, 44, 44)` frame. Only the opposite finger reached the world surface,
+so it became movement rather than a two-contact pinch. The corrected test uses
+a transparent, synthetic-only center marker that intercepts no touches. Both
+zoom directions must still change distance without moving the avatar or camera
+heading. Production map and button contacts retain their own behavior.
+
 ## Verification scope
 
 The evidence directory separates local protocol fixtures, a bounded public

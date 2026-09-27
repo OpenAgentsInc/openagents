@@ -1,0 +1,87 @@
+   Compiling serde_json v1.0.151
+   Compiling zerocopy v0.8.57
+   Compiling crc32fast v1.5.2
+   Compiling bytemuck v1.25.2
+   Compiling object v0.39.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.5
+   Compiling secp256k1 v0.31.1
+   Compiling nostr v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr)
+   Compiling wasmtime-environ v48.0.2
+   Compiling reqwest v0.12.28
+   Compiling half v2.7.1
+   Compiling atif v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/atif)
+   Compiling naga v29.0.4
+   Compiling objc-sys v0.3.5
+   Compiling wasmtime-internal-unwinder v48.0.2
+   Compiling wgpu-types v29.0.4
+   Compiling nostr-transport v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/nostr-transport)
+   Compiling coder-history v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-history)
+   Compiling simd-adler32 v0.3.10
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-connect)
+   Compiling wgpu-naga-bridge v29.0.4
+   Compiling microluna v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/microluna)
+   Compiling wasmtime-internal-cranelift v48.0.2
+   Compiling objc2 v0.5.2
+   Compiling wasmtime-internal-cache v48.0.2
+   Compiling wasmtime-internal-fiber v48.0.2
+   Compiling wasmtime-internal-jit-debug v48.0.2
+   Compiling fxprof-processed-profile v0.8.1
+   Compiling wit-parser v0.254.0
+   Compiling core-foundation-sys v0.8.7
+   Compiling adler2 v2.0.1
+   Compiling wasmtime v48.0.2
+   Compiling core-foundation v0.9.4
+   Compiling jev v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/jev)
+   Compiling wgpu-hal v29.0.4
+   Compiling block2 v0.5.1
+   Compiling openrouter v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/openrouter)
+   Compiling font-types v0.12.5
+   Compiling rust-native v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/rust-native)
+   Compiling foreign-types-shared v0.3.1
+   Compiling bitflags v1.3.2
+   Compiling dispatch v0.2.0
+   Compiling objc2-foundation v0.2.2
+   Compiling plugin v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/plugin)
+   Compiling core-graphics-types v0.1.3
+   Compiling foreign-types v0.5.0
+   Compiling coder-ui v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-ui)
+   Compiling read-fonts v0.41.0
+   Compiling knowledge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/knowledge)
+   Compiling wgpu-core-deps-apple v29.0.4
+   Compiling miniz_oxide v0.9.1
+   Compiling coder-access v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-access)
+   Compiling coder-reach v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-reach)
+   Compiling coder-service v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-service)
+   Compiling coder-pty v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-pty)
+   Compiling coder-host v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-host)
+   Compiling coder v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder)
+   Compiling flate2 v1.1.10
+   Compiling coder-one v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-one)
+   Compiling wgpu-core v29.0.4
+   Compiling coder-terminal v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/coder-terminal)
+   Compiling skrifa v0.44.0
+   Compiling core-graphics v0.23.2
+   Compiling objc2-app-kit v0.2.2
+   Compiling miniz_oxide v0.8.9
+   Compiling fdeflate v0.3.7
+   Compiling capability v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/capability)
+   Compiling receipts v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/receipts)
+   Compiling cursor-icon v1.2.0
+   Compiling dpi v0.1.2
+   Compiling smol_str v0.2.2
+   Compiling swash v0.2.10
+   Compiling winit v0.30.13
+   Compiling png v0.18.1
+   Compiling wgpu v29.0.4
+   Compiling gym v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym)
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/gym-bridge)
+   Compiling verse v0.1.0 (/Users/christopherdavid/work/openagents-mobile45/crates/verse)
+    Finished `test` profile [unoptimized] target(s) in 50.02s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-mobile45-target/debug/deps/verse-baeaec56c1889682)
+
+running 1 test
+test app::tests::companion_click_rejects_long_holds_and_returning_drags ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 163 filtered out; finished in 0.00s

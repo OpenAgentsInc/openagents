@@ -41,6 +41,8 @@ const CHASE_SPEED: f32 = 5.0;
 const CHASE_TIME: f32 = 0.6;
 /// Shortest and longest wait between idle emotes, in seconds.
 const IDLE_WAIT: (f32, f32) = (5.0, 12.0);
+/// Seconds between accepted taps. A rejected tap never queues another reaction.
+pub const PET_COOLDOWN: f32 = 1.5;
 
 /// A short gesture the agent plays over its ordinary motion.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +58,8 @@ pub enum Emote {
     /// Turn to face another agent, bow twice, and hop. Played when two
     /// agents meet.
     Greet,
+    /// A quick side-to-side wiggle and hop when the player taps the companion.
+    Wiggle,
 }
 
 impl Emote {
@@ -71,6 +75,7 @@ impl Emote {
             Emote::LookUpDown => 1.8,
             Emote::BarrelRoll => 1.1,
             Emote::Greet => 2.2,
+            Emote::Wiggle => 0.9,
         }
     }
 
@@ -81,6 +86,15 @@ impl Emote {
         use std::f32::consts::TAU;
         let u = u.clamp(0.0, 1.0);
         match self {
+            Emote::Wiggle => {
+                let envelope = (u * std::f32::consts::PI).sin();
+                Pose {
+                    yaw: 0.3 * (u * TAU * 2.0).sin() * envelope,
+                    roll: 0.38 * (u * TAU * 3.0).sin() * envelope,
+                    lift: 0.32 * envelope * envelope,
+                    ..Pose::REST
+                }
+            }
             Emote::LookAround => Pose {
                 yaw: 0.85
                     * keys(
@@ -250,6 +264,8 @@ pub struct Agent {
     scanning: bool,
     idle_wait: f32,
     rng: u64,
+    pet_cooldown: f32,
+    pet_count: u64,
 }
 
 impl Agent {
@@ -268,6 +284,8 @@ impl Agent {
             scanning: false,
             idle_wait: IDLE_WAIT.0,
             rng: 0x5eed_a6e7,
+            pet_cooldown: 0.0,
+            pet_count: 0,
         }
     }
 
@@ -287,6 +305,8 @@ impl Agent {
             scanning: false,
             idle_wait: IDLE_WAIT.0,
             rng: 0x5eed_9057,
+            pet_cooldown: 0.0,
+            pet_count: 0,
         }
     }
 
@@ -294,6 +314,34 @@ impl Agent {
     #[must_use]
     pub fn emote(&self) -> Option<Emote> {
         self.playing.map(|p| p.emote)
+    }
+
+    /// Play one immediate reaction while continuing to follow the player.
+    /// Cooldown taps do nothing and cannot restart or queue the animation.
+    pub fn pet(&mut self) -> bool {
+        if self.pet_cooldown > 0.0 {
+            return false;
+        }
+        self.pet_cooldown = PET_COOLDOWN;
+        self.pet_count = self.pet_count.saturating_add(1);
+        self.scan_wanted = false;
+        self.scanning = false;
+        self.owed_look = false;
+        self.idle_wait = IDLE_WAIT.0;
+        self.play(Emote::Wiggle);
+        true
+    }
+
+    /// Accepted reactions in this local agent's lifetime.
+    #[must_use]
+    pub fn pet_count(&self) -> u64 {
+        self.pet_count
+    }
+
+    /// Simulation seconds until another tap can start a reaction.
+    #[must_use]
+    pub fn pet_cooldown(&self) -> f32 {
+        self.pet_cooldown
     }
 
     /// The current emote pose, or rest.
@@ -320,8 +368,11 @@ impl Agent {
     /// hops. Returns false, doing nothing, while the agent is scanning,
     /// looking around, or already greeting; idle emotes give way.
     pub fn greet(&mut self, toward: Vec3) -> bool {
-        let busy =
-            self.scanning || matches!(self.emote(), Some(Emote::LookAround) | Some(Emote::Greet));
+        let busy = self.scanning
+            || matches!(
+                self.emote(),
+                Some(Emote::LookAround | Emote::Greet | Emote::Wiggle)
+            );
         if busy {
             return false;
         }
@@ -351,6 +402,9 @@ impl Agent {
     /// found, nearest first. With none, it glances a default left and right.
     pub fn look_around(&mut self, targets: &[Vec3]) {
         self.scanning = false;
+        if self.emote() == Some(Emote::Wiggle) {
+            return;
+        }
         let mut angles: Vec<f32> = targets
             .iter()
             .take(2)
@@ -417,6 +471,7 @@ impl Agent {
     }
 
     fn advance_emote(&mut self, dt: f32) {
+        self.pet_cooldown = (self.pet_cooldown - dt).max(0.0);
         if let Some(playing) = &mut self.playing {
             playing.elapsed += dt;
             if playing.elapsed >= playing.emote.duration() {
@@ -427,6 +482,10 @@ impl Agent {
 
     fn emotes(&mut self, player: &PlayerController, goal: Vec3, dt: f32) {
         self.advance_emote(dt);
+
+        if self.emote() == Some(Emote::Wiggle) {
+            return;
+        }
 
         if player.speed > CHASE_SPEED {
             self.chased += dt;
@@ -607,6 +666,69 @@ mod tests {
     }
 
     #[test]
+    fn tapping_wiggles_once_then_finishes_without_interrupting_following() {
+        let mut player = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut agent = Agent::new(&player);
+        let mut following = agent;
+        assert!(agent.pet());
+        assert_eq!(agent.pet_count(), 1);
+        assert_eq!(agent.emote(), Some(Emote::Wiggle));
+        let accepted = agent;
+        for _ in 0..100 {
+            assert!(!agent.pet());
+            assert_eq!(agent, accepted, "taps must not restart or queue a reaction");
+        }
+        let run = InputState {
+            forward: true,
+            ..InputState::default()
+        };
+        let mut saw_hop = false;
+        let mut saw_wiggle = false;
+        for _ in 0..55 {
+            player.update(&run, 1.0 / 60.0, &[], 1000.0);
+            agent.update(&player, 1.0 / 60.0);
+            following.update(&player, 1.0 / 60.0);
+            assert_eq!(
+                agent.pos, following.pos,
+                "reaction preserves ordinary following"
+            );
+            saw_hop |= agent.pose().lift > 0.25;
+            saw_wiggle |= agent.pose().roll.abs() > 0.2;
+        }
+        assert!(saw_hop && saw_wiggle);
+        assert_eq!(agent.emote(), None);
+        assert!(agent.pet_cooldown() > 0.0);
+        assert!(!agent.pet(), "cooldown outlasts the animation");
+        for _ in 0..40 {
+            agent.update(&player, 1.0 / 60.0);
+        }
+        assert_eq!(agent.emote(), None, "no queued reaction starts later");
+        assert_eq!(agent.pet_cooldown(), 0.0);
+        assert!(agent.pet());
+        assert_eq!(agent.pet_count(), 2);
+    }
+
+    #[test]
+    fn a_tap_reaction_survives_a_late_scan_result_or_greeting() {
+        let player = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut agent = Agent::new(&player);
+        agent.scanning = true;
+        agent.scan_wanted = true;
+        agent.owed_look = true;
+        assert!(agent.pet());
+        assert!(!agent.scanning());
+        assert!(!agent.take_scan());
+        agent.look_around(&[Vec3::X]);
+        assert_eq!(agent.emote(), Some(Emote::Wiggle));
+        assert!(!agent.greet(Vec3::X));
+        for _ in 0..60 {
+            agent.update(&player, 1.0 / 60.0);
+        }
+        assert_eq!(agent.emote(), None);
+        assert_eq!(agent.pose(), Pose::REST);
+    }
+
+    #[test]
     fn the_agent_lags_then_catches_up() {
         let mut pc = PlayerController::new(Vec3::ZERO, 0.0);
         let mut agent = Agent::new(&pc);
@@ -734,6 +856,7 @@ mod tests {
             Emote::LookUpDown,
             Emote::BarrelRoll,
             Emote::Greet,
+            Emote::Wiggle,
         ] {
             for u in [0.0, 1.0] {
                 let p = e.pose(u);

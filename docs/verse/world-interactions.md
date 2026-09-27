@@ -36,6 +36,24 @@ adapters supply safe areas, pointer contacts, and accessibility callbacks.
 Product styling remains in `coder-ui`; Rust Native remains a generic drawing
 surface foundation.
 
+## Companion interaction
+
+Tap the nearby floating companion to make it wiggle and hop. The reaction lasts
+0.9 seconds, and accepted taps have a 1.5-second cooldown. Repeated taps do not
+queue reactions. The companion continues following the player and returns to
+its normal idle behavior afterward.
+
+Rust checks the actual spade geometry within four meters, including occlusion
+by the world, the player, and the remote entities in the last displayed frame.
+The ground ring is not a target. Map and application controls take input first;
+a drag, cancelled contact, pinch, or replay cannot trigger the reaction. On
+desktop, a short click activates it; dragging from the companion resumes camera
+orbit. Mobile exposes the same action through accessibility.
+
+This is a local animation with no model call. An existing world connection may
+continue publishing its ordinary NIP-MV pose frames; the tap adds no new grant,
+service request, or persistent interaction record.
+
 ## What the existing doors mean
 
 The oracle arch marks where replayed agents ask typed decision questions. Its

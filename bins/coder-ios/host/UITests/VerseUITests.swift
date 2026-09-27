@@ -56,9 +56,12 @@ final class VerseUITests: XCTestCase {
 
 
     func testPinchZoomsWithoutMovingThePlayerOrTurningTheCamera() throws {
-        let surface = app.otherElements["verse-surface"]
         let before = try XCTUnwrap(app.verseObservation())
-        surface.pinch(withScale: 1.6, velocity: 1.0)
+        // Use exposed world pixels: a full-screen XCTest zoom-out starts on
+        // the native recenter button and correctly never admits two world contacts.
+        let pinchRegion = app.otherElements["verse-pinch-region"]
+        XCTAssertTrue(pinchRegion.waitForExistence(timeout: 5))
+        pinchRegion.pinch(withScale: 1.6, velocity: 1.0)
         XCTAssertTrue(waitForFrames(after: before.frames))
         let closer = try XCTUnwrap(app.verseObservation())
         XCTAssertLessThan(closer.camera_distance, before.camera_distance)
@@ -66,10 +69,14 @@ final class VerseUITests: XCTestCase {
         XCTAssertEqual(closer.position[2], before.position[2], accuracy: 0.02)
         XCTAssertEqual(closer.camera[0], before.camera[0], accuracy: 0.02)
         XCTAssertEqual(closer.camera[1], before.camera[1], accuracy: 0.02)
-        surface.pinch(withScale: 0.65, velocity: -1.0)
+        pinchRegion.pinch(withScale: 0.65, velocity: -1.0)
         XCTAssertTrue(waitForFrames(after: closer.frames))
         let farther = try XCTUnwrap(app.verseObservation())
         XCTAssertGreaterThan(farther.camera_distance, closer.camera_distance)
+        XCTAssertEqual(farther.position[0], before.position[0], accuracy: 0.02)
+        XCTAssertEqual(farther.position[2], before.position[2], accuracy: 0.02)
+        XCTAssertEqual(farther.camera[0], before.camera[0], accuracy: 0.02)
+        XCTAssertEqual(farther.camera[1], before.camera[1], accuracy: 0.02)
         XCTAssertFalse(app.buttons["Zoom in"].exists)
         XCTAssertFalse(app.buttons["Zoom out"].exists)
         XCTAssertFalse(app.staticTexts["verse-error"].exists)

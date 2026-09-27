@@ -43,6 +43,18 @@ struct VerseScreen: View {
                                }) { _ in }
                     .frame(width: size.width, height: size.height)
             }
+            if bridge.synthetic {
+                // XCTest's full-screen pinch starts at the camera controls.
+                // This observation-only region targets exposed world pixels;
+                // all touch events still reach the real Metal surface.
+                Color.clear
+                    .frame(width: size.width * 0.8, height: size.height * 0.36)
+                    .position(x: size.width * 0.5, y: size.height * 0.54)
+                    .accessibilityElement()
+                    .accessibilityLabel("World gesture area")
+                    .accessibilityIdentifier("verse-pinch-region")
+                    .allowsHitTesting(false)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 if let error = bridge.nativeError ?? bridge.packet?.error {
                     Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("verse-error")

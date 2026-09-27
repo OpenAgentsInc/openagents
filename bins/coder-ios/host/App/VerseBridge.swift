@@ -25,6 +25,7 @@ struct VersePacket: Decodable {
     let camera_distance: Double
     let motion_needed: Bool
     let map: VerseMap
+    let companion: VerseCompanion
 }
 
 struct VerseMap: Decodable {
@@ -62,6 +63,28 @@ struct VerseMapLandmark: Decodable {
     let label: String
     let x: Double
     let z: Double
+}
+
+struct VerseCompanion: Decodable {
+    let near: Bool
+    let visible: Bool
+    let screen_x: Double
+    let screen_y: Double
+    let distance: Double
+    let reacting: Bool
+    let cooldown_seconds: Double
+    let pet_count: UInt64
+
+    var valid: Bool {
+        screen_x.isFinite && screen_y.isFinite && (0...1).contains(screen_x) &&
+        (0...1).contains(screen_y) && distance.isFinite && distance >= 0 &&
+        cooldown_seconds.isFinite && cooldown_seconds >= 0
+    }
+    var observation: [String: Any] {
+        ["near": near, "visible": visible, "screen_x": screen_x, "screen_y": screen_y,
+         "distance": distance, "reacting": reacting, "cooldown_seconds": cooldown_seconds,
+         "pet_count": pet_count]
+    }
 }
 
 struct VerseConnection: Decodable {
@@ -230,7 +253,7 @@ final class VerseBridge: ObservableObject {
               ["touch", "motion"].contains(packet.camera_mode),
               packet.camera_yaw.isFinite, packet.camera_pitch.isFinite,
               packet.camera_distance.isFinite, packet.camera_distance > 0,
-              packet.map.valid,
+              packet.map.valid, packet.companion.valid,
               packet.gym_board?.valid ?? true else {
             throw ReaderError.message("This app does not support the returned world view.")
         }

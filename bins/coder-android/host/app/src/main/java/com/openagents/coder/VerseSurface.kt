@@ -191,10 +191,11 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
                 "camera_distance" to result.optDouble("camera_distance"),
                 "gym_active" to result.optBoolean("gym_active"),
                 "motion_needed" to result.optBoolean("motion_needed"),
-                "map" to result.getJSONObject("map"))}"
+                "map" to result.getJSONObject("map"),
+                "companion" to result.getJSONObject("companion"))}"
             val available = computerAvailable()
             val map = result.getJSONObject("map")
-            val mapState = "$available:${map.optBoolean("visible")}:${map.optBoolean("expanded")}:${!map.isNull("destination")}:${map.optJSONArray("landmarks")}"
+            val mapState = "$available:${companionAvailable()}:${map.optBoolean("visible")}:${map.optBoolean("expanded")}:${!map.isNull("destination")}:${map.optJSONArray("landmarks")}"
             if (accessibilityState != mapState) {
                 computerAccessible = available
                 accessibilityState = mapState
@@ -345,10 +346,19 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
             !state.optBoolean("computer_open") && !state.optBoolean("gym_open")
     }
 
+    private fun companionAvailable(): Boolean {
+        val companion = snapshot?.optJSONObject("companion") ?: return false
+        return running && !panelOpen() && companion.optBoolean("near") && companion.optBoolean("visible") &&
+            companion.optDouble("cooldown_seconds", 1.0) <= 0
+    }
+
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
         if (synthetic && motionPreview) {
             info.addAction(AccessibilityNodeInfo.AccessibilityAction(R.id.verse_inject_motion_action, "Inject motion sample"))
+        }
+        if (companionAvailable()) {
+            info.addAction(AccessibilityNodeInfo.AccessibilityAction(R.id.verse_pet_companion_action, "Pet companion"))
         }
         if (computerAvailable()) {
             info.addAction(AccessibilityNodeInfo.AccessibilityAction(R.id.verse_use_computer_action, "Use computer"))
@@ -373,6 +383,11 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         if (action == R.id.verse_inject_motion_action && synthetic && motionPreview) {
             injectMotion()
             return true
+        }
+        if (action == R.id.verse_pet_companion_action) {
+            if (!companionAvailable()) return false
+            val result = send(json("action" to "pet_companion")) ?: return false
+            return result.textOrNull("error") == null
         }
         if (action == R.id.verse_use_computer_action) {
             if (!computerAvailable()) return false

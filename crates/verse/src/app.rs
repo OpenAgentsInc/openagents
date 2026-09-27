@@ -376,6 +376,39 @@ struct Keys {
     right_button: bool,
 }
 
+/// A scene click stays distinct from a camera drag, including a drag back to its origin.
+struct CompanionPress {
+    origin: [f32; 2],
+    started: Instant,
+    valid: bool,
+    travel: f32,
+}
+
+impl CompanionPress {
+    fn new(origin: [f32; 2], started: Instant) -> Self {
+        Self {
+            origin,
+            started,
+            valid: true,
+            travel: 0.0,
+        }
+    }
+
+    fn moved(&mut self, at: [f32; 2]) {
+        self.valid &= (at[0] - self.origin[0]).hypot(at[1] - self.origin[1]) <= 8.0;
+    }
+
+    fn motion(&mut self, dx: f32, dy: f32) {
+        self.travel += dx.hypot(dy);
+        self.valid &= self.travel <= 8.0;
+    }
+
+    fn released(mut self, at: [f32; 2], now: Instant) -> bool {
+        self.moved(at);
+        self.valid && now.duration_since(self.started) <= Duration::from_millis(300)
+    }
+}
+
 impl Keys {
     fn input(&self) -> InputState {
         let both = self.left_button && self.right_button;
@@ -408,6 +441,8 @@ struct App {
     map: MapHud,
     map_frame: Option<crate::minimap::Snapshot>,
     map_error: Option<String>,
+    companion_press: Option<CompanionPress>,
+    presented_entities: crate::mesh::Mesh,
     scale: f32,
     chat: hud::Input,
     method: Channel,
@@ -579,6 +614,8 @@ impl App {
             map: MapHud::default(),
             map_frame: None,
             map_error: None,
+            companion_press: None,
+            presented_entities: crate::mesh::Mesh::default(),
             scale: 1.0,
             chat: hud::Input::default(),
             method: Channel::All,
@@ -1155,6 +1192,7 @@ impl App {
     }
 
     fn stop_map(&mut self) {
+        self.companion_press = None;
         self.runtime.cancel_navigation();
         self.map.expanded = false;
         self.map.clear_contacts();
@@ -1162,6 +1200,7 @@ impl App {
     }
 
     fn map_action(&mut self, action: MapAction) {
+        self.companion_press = None;
         match action {
             MapAction::Toggle => {
                 self.map.expanded = !self.map.expanded;
@@ -1306,6 +1345,29 @@ impl App {
         self.board_scroll = next.clamp(0, max as i64) as usize;
     }
 
+    fn companion_at_cursor(&self) -> bool {
+        if !self.map_visible()
+            || !self
+                .mount
+                .as_ref()
+                .is_some_and(|mount| mount.active() && mount.viewport().drawable())
+            || self.layout.owns(self.cursor[0], self.cursor[1])
+            || self.cursor_on_map()
+        {
+            return false;
+        }
+        let Some(renderer) = &self.renderer else {
+            return false;
+        };
+        let size = renderer.size();
+        self.runtime.companion_hit_with_entities(
+            renderer.aspect(),
+            self.cursor[0] / size[0],
+            self.cursor[1] / size[1],
+            &self.presented_entities,
+        )
+    }
+
     fn button(&mut self, button: MouseButton, pressed: bool) {
         if button == MouseButton::Left {
             let at = self.cursor.map(|value| value / self.scale);
@@ -1333,10 +1395,36 @@ impl App {
         if self.gym_open {
             return;
         }
+        if button == MouseButton::Left
+            && !pressed
+            && let Some(tap) = self.companion_press.take()
+        {
+            if tap.released(self.cursor.map(|value| value / self.scale), Instant::now())
+                && self.companion_at_cursor()
+            {
+                self.runtime.pet_companion();
+            }
+            return;
+        }
         match button {
             MouseButton::Left if pressed && !self.keys.left_button && self.click() => return,
+            MouseButton::Left
+                if pressed
+                    && !self.keys.left_button
+                    && !self.keys.right_button
+                    && self.companion_at_cursor() =>
+            {
+                self.companion_press = Some(CompanionPress::new(
+                    self.cursor.map(|value| value / self.scale),
+                    Instant::now(),
+                ));
+                return;
+            }
             MouseButton::Left => self.keys.left_button = pressed,
             MouseButton::Right => {
+                if pressed && self.companion_press.take().is_some() {
+                    self.keys.left_button = true;
+                }
                 self.keys.right_button = pressed;
                 if pressed {
                     let _ = self.runtime.apply(Action::FaceCamera);
@@ -1363,6 +1451,15 @@ impl App {
     fn mouse(&mut self, dx: f32, dy: f32) {
         if self.gym_open || self.map.captured(1) {
             return;
+        }
+        if let Some(tap) = &mut self.companion_press {
+            tap.motion(dx / self.scale, dy / self.scale);
+            if tap.valid {
+                return;
+            }
+            self.companion_press = None;
+            self.keys.left_button = true;
+            self.capture(true);
         }
         if self.keys.right_button {
             let _ = self.runtime.apply(Action::Look { dx, dy });
@@ -1404,8 +1501,9 @@ impl App {
             }
         }
         let mut dynamic = self.runtime.dynamic_mesh();
+        let mut entities = crate::mesh::Mesh::default();
         if self.replay.as_ref().is_some_and(|r| r.ghost.is_ok()) {
-            dynamic.extend(
+            entities.extend(
                 &self
                     .ghost
                     .mesh_at(coder_ui::theme::Intensity::ThreeQuarters),
@@ -1422,7 +1520,7 @@ impl App {
             {
                 session.greeted(&pubkey, at, &self.runtime.agent, now);
             }
-            dynamic.extend(&session.crowd.mesh(now, dt));
+            entities.extend(&session.crowd.mesh(now, dt));
         }
         if self.frames.is_multiple_of(30) {
             self.update_title();
@@ -1442,7 +1540,7 @@ impl App {
             feed.tick(now);
             for v in &feed.visitors {
                 let rot = glam::Quat::from_rotation_y(v.yaw);
-                dynamic.extend(&avatar::figure(
+                entities.extend(&avatar::figure(
                     v.pos,
                     rot,
                     &Gait::default(),
@@ -1575,10 +1673,13 @@ impl App {
             }
             None => crate::ui::UiBatch::default(),
         };
-        if let Some(renderer) = &mut self.renderer
-            && let render::DrawStatus::Error(error) = renderer.draw(view, &dynamic, &ui)
-        {
-            self.error = Some(error);
+        dynamic.extend(&entities);
+        if let Some(renderer) = &mut self.renderer {
+            match renderer.draw(view, &dynamic, &ui) {
+                render::DrawStatus::Presented => self.presented_entities = entities,
+                render::DrawStatus::Error(error) => self.error = Some(error),
+                render::DrawStatus::Skipped(_) => {}
+            }
         }
     }
 
@@ -1760,6 +1861,7 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => self.quit(event_loop),
             WindowEvent::Resized(size) => {
+                self.companion_press = None;
                 self.map.clear_contacts();
                 self.map_frame = None;
                 if size.width == 0 || size.height == 0 {
@@ -1791,6 +1893,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = [position.x as f32, position.y as f32];
+                if let Some(tap) = &mut self.companion_press {
+                    tap.moved(self.cursor.map(|value| value / self.scale));
+                }
                 self.map
                     .moved(1, self.cursor.map(|value| value / self.scale));
             }
@@ -1798,6 +1903,7 @@ impl ApplicationHandler for App {
                 self.button(button, state == ElementState::Pressed);
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                self.companion_press = None;
                 if self.cursor_on_map() || self.map.captured(1) {
                     return;
                 }
@@ -1829,6 +1935,7 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.companion_press = None;
                 self.map.clear_contacts();
                 self.map_frame = None;
                 self.scale = scale_factor as f32;
@@ -1842,6 +1949,7 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => self.frame(),
+            WindowEvent::CursorLeft { .. } => self.companion_press = None,
             _ => {}
         }
     }
@@ -1906,6 +2014,27 @@ fn read_gym_connection(path: &std::path::Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn companion_click_rejects_long_holds_and_returning_drags() {
+        let now = Instant::now();
+        let point = [400.0, 300.0];
+        assert!(
+            CompanionPress::new(point, now)
+                .released([403.0, 302.0], now + Duration::from_millis(200))
+        );
+        assert!(!CompanionPress::new(point, now).released(point, now + Duration::from_millis(301)));
+        let mut drag = CompanionPress::new(point, now);
+        drag.moved([410.0, 300.0]);
+        assert!(!drag.released(point, now + Duration::from_millis(100)));
+        let mut backtrack = CompanionPress::new(point, now);
+        backtrack.motion(5.0, 0.0);
+        backtrack.motion(-5.0, 0.0);
+        assert!(!backtrack.released(point, now + Duration::from_millis(100)));
+        let mut invalid = CompanionPress::new(point, now);
+        invalid.motion(f32::NAN, 0.0);
+        assert!(!invalid.released(point, now + Duration::from_millis(100)));
+    }
 
     #[test]
     fn gym_prioritizes_agent_and_evaluation_rows_without_reordering_each_group() {
