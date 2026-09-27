@@ -7,7 +7,9 @@ use crate::{
     controller::{InputState, PlayerController},
     runtime::WorldRuntime,
 };
-use glam::Vec3;
+use glam::{DVec3, Vec3};
+use serde_json::{Value, json};
+use verse_lagrange::PartState;
 
 impl WorldRuntime {
     pub(crate) fn update_player(&mut self, input: &InputState, dt: f32) {
@@ -223,6 +225,86 @@ impl WorldRuntime {
             }
         }
         Ok(())
+    }
+    /// Applies a NIP-MV zone command from an authorized operator to the
+    /// loaded simulation and returns what changed.
+    ///
+    /// Verbs: `fly X,Y,Z` or `fly LANDMARK`, `grab`, `release`, `stop`,
+    /// `status`, and `parts`. `install` and `wait` are headless-only, since
+    /// the desktop simulation runs in real time. Anything else is refused.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the command names another zone, no zone is
+    /// loaded, or the simulation refuses the verb.
+    pub fn zone_command(&mut self, command: &crate::mv::Command) -> Result<Value, String> {
+        use crate::mv::Arg;
+        if command.zone != self.zone.world_id() {
+            return Err(format!(
+                "zone `{}` is not loaded; this operator is in `{}`",
+                command.zone,
+                self.zone.world_id()
+            ));
+        }
+        let lagrange = self
+            .zone_state
+            .lagrange
+            .as_mut()
+            .ok_or("no simulation zone is loaded")?;
+        let station = &mut lagrange.station;
+        let result = match command.cmd.as_str() {
+            "fly" => {
+                let target = match command.args.as_slice() {
+                    [Arg::Text(name)] => station
+                        .landmark(name)
+                        .ok_or_else(|| format!("`{name}` is not a landmark or part"))?,
+                    [Arg::Number(x), Arg::Number(y), Arg::Number(z)] => DVec3::new(*x, *y, *z),
+                    _ => return Err("fly takes X,Y,Z or a landmark name".into()),
+                };
+                let target = if station.snapshot().carrying.is_some() {
+                    target - (station.hands() - station.astronaut.pos)
+                } else {
+                    target
+                };
+                station.fly_to(target)?;
+                json!({ "flying_to": target.to_array(), "from": station.astronaut.pos.to_array() })
+            }
+            "grab" => json!({ "grabbed": station.grab()?.name() }),
+            "release" => {
+                let kind = station.release()?;
+                let installed = station
+                    .parts
+                    .iter()
+                    .any(|part| part.kind == kind && part.state == PartState::Installed);
+                json!({ "released": kind.name(), "installed": installed })
+            }
+            "stop" => {
+                station.target = None;
+                json!({ "stopped": true })
+            }
+            "status" => serde_json::to_value(station.snapshot()).map_err(|e| e.to_string())?,
+            "parts" => json!(
+                station
+                    .parts
+                    .iter()
+                    .map(|part| json!({
+                        "kind": part.kind.name(),
+                        "state": format!("{:?}", part.state).to_lowercase(),
+                        "pos": part.body.pos.to_array(),
+                    }))
+                    .collect::<Vec<_>>()
+            ),
+            "install" | "wait" => {
+                return Err(format!(
+                    "`{}` runs only in the headless simulator; send fly, grab, release, and stop",
+                    command.cmd
+                ));
+            }
+            other => return Err(format!("unknown zone command `{other}`")),
+        };
+        lagrange.tick();
+        self.zone_state.error = None;
+        Ok(result)
     }
     /// Map status and marker while an EVA pack autopilot owns map taps.
     #[must_use]
@@ -590,5 +672,99 @@ mod tests {
         assert_eq!(world.player, original);
         assert!(world.zone_snapshot(1.0).combat.is_none());
         assert!(world.zone_state.ruins.is_none());
+    }
+
+    fn command(zone: &str, cmd: &str, args: Vec<crate::mv::Arg>) -> crate::mv::Command {
+        crate::mv::Command {
+            v: 1,
+            zone: zone.into(),
+            cmd: cmd.into(),
+            args,
+            t: 0,
+            id: "c1".into(),
+        }
+    }
+
+    #[test]
+    fn zone_command_refuses_without_a_simulation_or_in_another_zone() {
+        let mut world = WorldRuntime::new();
+        let error = world
+            .zone_command(&command("lagrange-1-v1", "status", vec![]))
+            .unwrap_err();
+        assert!(error.contains("not loaded"), "{error}");
+        world.install_lagrange();
+        let error = world
+            .zone_command(&command("plaza", "status", vec![]))
+            .unwrap_err();
+        assert!(error.contains("not loaded"), "{error}");
+    }
+
+    #[test]
+    fn zone_command_flies_grabs_and_refuses_headless_verbs() {
+        use crate::mv::Arg;
+        let mut world = WorldRuntime::new();
+        world.install_lagrange();
+        let zone = "lagrange-1-v1";
+        let before = world
+            .zone_state
+            .lagrange
+            .as_ref()
+            .unwrap()
+            .station
+            .astronaut
+            .pos;
+        let flown = world
+            .zone_command(&command(zone, "fly", vec![Arg::Text("depot".into())]))
+            .unwrap();
+        assert!(flown["flying_to"].is_array());
+        assert!(
+            world
+                .zone_state
+                .lagrange
+                .as_ref()
+                .unwrap()
+                .station
+                .target
+                .is_some()
+        );
+        world.zone_command(&command(zone, "stop", vec![])).unwrap();
+        assert!(
+            world
+                .zone_state
+                .lagrange
+                .as_ref()
+                .unwrap()
+                .station
+                .target
+                .is_none()
+        );
+        let parts = world.zone_command(&command(zone, "parts", vec![])).unwrap();
+        assert_eq!(parts.as_array().unwrap().len(), 6);
+        let status = world
+            .zone_command(&command(zone, "status", vec![]))
+            .unwrap();
+        assert!(status.is_object());
+        for verb in ["install", "wait", "explode"] {
+            let error = world
+                .zone_command(&command(zone, verb, vec![]))
+                .unwrap_err();
+            assert!(!error.is_empty(), "{verb}");
+        }
+        let error = world
+            .zone_command(&command(zone, "fly", vec![Arg::Text("nowhere".into())]))
+            .unwrap_err();
+        assert!(error.contains("nowhere"), "{error}");
+        assert!(
+            world
+                .zone_state
+                .lagrange
+                .as_ref()
+                .unwrap()
+                .station
+                .astronaut
+                .pos
+                .is_finite(),
+            "refused commands leave the station intact (started at {before})"
+        );
     }
 }

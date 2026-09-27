@@ -437,6 +437,8 @@ struct App {
     mount: Option<SurfaceLifecycle>,
     error: Option<String>,
     session: Option<Session>,
+    /// Who may send this operator NIP-MV zone commands.
+    zone_operators: crate::zones::operators::Operators,
     connection_options: Options,
     plaza_services_paused: bool,
     plaza_presence: (PlayerController, Agent),
@@ -553,6 +555,24 @@ impl Picker {
     }
 }
 
+/// The zone operator list for this session's key: itself plus the keys in
+/// `<VERSE_HOME>/zone-operators` and `VERSE_ZONE_OPERATORS`. Malformed
+/// entries are noted in the session log rather than admitted.
+fn zone_operators_for(session: Option<&Session>) -> crate::zones::operators::Operators {
+    let Some(session) = session else {
+        return crate::zones::operators::Operators::default();
+    };
+    let list = crate::zones::operators::Operators::load(&crate::identity::home(), session.pubkey());
+    if !list.rejected.is_empty() {
+        eprintln!(
+            "verse: zone-operators: {} malformed entries skipped: {}",
+            list.rejected.len(),
+            list.rejected.join(", ")
+        );
+    }
+    list
+}
+
 impl App {
     fn new(options: &Options) -> Result<Self, String> {
         let world = world::build();
@@ -623,6 +643,7 @@ impl App {
         runtime.agent = agent;
         runtime.doors = doors;
         runtime.configure_zone_cache(crate::identity::home().join("zones-cache"));
+        let zone_operators = zone_operators_for(session.as_ref());
         Ok(Self {
             window: None,
             renderer: None,
@@ -631,6 +652,7 @@ impl App {
             mount: None,
             error: None,
             session,
+            zone_operators,
             connection_options: options.clone(),
             plaza_services_paused: false,
             plaza_presence: (player, agent),
@@ -723,7 +745,10 @@ impl App {
             self.plaza_services_paused = false;
             if let Some(relay) = &self.connection_options.relay {
                 match Session::start(&self.connection_options.profile, relay) {
-                    Ok(session) => self.session = Some(session),
+                    Ok(session) => {
+                        self.zone_operators = zone_operators_for(Some(&session));
+                        self.session = Some(session);
+                    }
                     Err(error) => self.offline_log.push(chat::Line::system(error)),
                 }
                 self.feed = Some(Feed::start());
@@ -2000,6 +2025,35 @@ impl App {
                 && self.runtime.agent.greet(at)
             {
                 session.greeted(&pubkey, at, &self.runtime.agent, now);
+            }
+            for zone_command in session.take_zone_commands() {
+                let outcome = if self.zone_operators.allows(&zone_command.from) {
+                    self.runtime.zone_command(&zone_command.command)
+                } else {
+                    Err("sender is not a listed zone operator".to_owned())
+                };
+                let ok = outcome.is_ok();
+                let text = match &outcome {
+                    Ok(value) => format!(
+                        "zone {} {} from {}…: {value}",
+                        zone_command.command.id,
+                        zone_command.command.cmd,
+                        &zone_command.from[..8.min(zone_command.from.len())],
+                    ),
+                    Err(error) => format!(
+                        "zone {} {} from {}… refused: {error}",
+                        zone_command.command.id,
+                        zone_command.command.cmd,
+                        &zone_command.from[..8.min(zone_command.from.len())],
+                    ),
+                };
+                session.log.push(chat::Line::system(text));
+                session.report_zone(
+                    &zone_command.from,
+                    &zone_command.command.id,
+                    ok,
+                    self.runtime.player.pos,
+                );
             }
             entities.extend(&session.crowd.mesh(now, dt));
         }

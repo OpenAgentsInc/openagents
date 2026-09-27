@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub mod assets;
 pub mod hud;
 mod lagrange;
+pub mod operators;
 mod ruins;
 mod runtime;
 #[cfg(test)]

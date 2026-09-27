@@ -98,27 +98,6 @@ fn beside(stowage: DVec3) -> DVec3 {
     stowage + DVec3::new(2.0, 0.0, 0.0)
 }
 
-/// `depot` lands beside the next stowed part when one remains; a part
-/// name lands beside that part's stowage.
-fn landmark(name: &str, station: &Station) -> Option<DVec3> {
-    Some(match name {
-        "depot" => station
-            .next_part()
-            .map_or(DEPOT, |kind| beside(kind.stowage())),
-        "jig" => JIG,
-        "airlock" => AIRLOCK,
-        "spawn" => SPAWN,
-        _ => beside(part_by_name(name)?.stowage()),
-    })
-}
-
-fn part_by_name(name: &str) -> Option<PartKind> {
-    PartKind::ALL
-        .iter()
-        .copied()
-        .find(|kind| kind.name().eq_ignore_ascii_case(&name.replace('-', " ")))
-}
-
 fn part_json(station: &Station) -> Vec<Value> {
     station
         .parts
@@ -272,7 +251,9 @@ impl Sim {
         match verb.name.as_str() {
             "fly" => {
                 let target = match verb.args.as_slice() {
-                    [Arg::Text(name)] => landmark(name, &self.station)
+                    [Arg::Text(name)] => self
+                        .station
+                        .landmark(name)
                         .ok_or_else(|| format!("`{name}` is not a landmark or part"))?,
                     _ => match numbers(verb).as_deref() {
                         Some([x, y, z]) => DVec3::new(*x, *y, *z),

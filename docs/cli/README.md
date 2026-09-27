@@ -337,9 +337,17 @@ own.
 To drive a zone another client simulates, `openagents zone send VERB...
 --to OPERATOR_PUBKEY` publishes the verbs as NIP-MV kind `23302` zone
 commands, and `openagents zone listen` prints the commands addressed to
-this identity. The `23302` kind is a proposed extension in
-`nips/openagents/NIP-MV.md`; the Verse desktop client does not yet accept
-it, so today the local simulation is the only operator.
+this identity. The `23302` kind is specified in `nips/openagents/NIP-MV.md`.
+
+The Verse desktop client is an operator for the zone it has loaded. It
+admits commands from its own key and from the keys listed one per line in
+`<VERSE_HOME>/zone-operators` or comma-separated in `VERSE_ZONE_OPERATORS`
+(64-character lowercase hex; `#` starts a comment). It applies `fly`,
+`grab`, `release`, `stop`, `status`, and `parts` to the loaded Lagrange
+station and answers each command with a `zone-ok` or `zone-refused`
+gesture, which `zone send` waits for. Commands for another zone, from an
+unlisted key, or naming `install` or `wait` (headless-only verbs) are
+refused without touching the simulation.
 
 ## Sovereign agents (NIP-SOV)
 
