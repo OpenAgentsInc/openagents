@@ -31,10 +31,12 @@ operation; this README covers the crate.
 | `tasks` | The task-owner trait and `NoTasks`. |
 | `config` | The host configuration. |
 | `telemetry` | Coarse CPU and memory samples for presence. |
-| `cli` | `coder host init`, `public-key`, `invite`, `list`, `revoke`, and `serve`. |
+| `generation` | Which NIP-REACH generation `serve` runs as, from the host root's one counter in `coder_service::generation`. |
+| `enroll` | Reverse enrollment for a host without a screen: publish a request, show its code, and read the outcome the running host recorded. |
+| `cli` | `coder host init`, `public-key`, `invite`, `request`, `list`, `revoke`, and `serve`. |
 
 The default `host` feature builds the host: `serve`, `cli`, `authority`,
-`config`, and `telemetry`. A client, such as the mobile library through
+`config`, `telemetry`, `generation`, and `enroll`. A client, such as the mobile library through
 [`coder-computers`](../coder-computers/README.md), disables default features
 and keeps `client`, `mailbox`, `message`, and `tasks`, with the portable
 halves of `coder-access` and `coder-pty`.
@@ -120,9 +122,6 @@ retained frames in any order after a reconnect, so a client feeds them through
 
 - The WebSocket listener serves plain `ws`. A `wss` hint needs a forwarder
   that terminates TLS in front of it.
-- A standalone host takes its generation from a counter file with a clock
-  floor; the host service passes its own generation. Switching between the
-  two can make presence readers refuse the lower generation.
 - The CAP/CJ binding of NIP-HOST is not served; only the direct artifact
   binding and the direct-channel binding run.
 - Terminal state is process-local. A restart reports every terminal as
@@ -145,3 +144,9 @@ The [verification record](../../docs/coder/verification/2026-09-26-host-serve.md
 and the
 [WebSocket channel record](../../docs/coder/verification/2026-09-27-websocket-channels.md)
 list what they establish.
+
+`tests/headless.rs` runs reverse enrollment of a headless host through the
+resident host and a local relay: approval, denial, five wrong codes, an
+approver without `access_admin`, and an expired request. Its
+[verification record](../../docs/coder/verification/2026-09-27-host-generation-and-headless.md)
+also covers the shared generation counter.

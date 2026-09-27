@@ -116,8 +116,34 @@ relay while the host serves. `--rights` narrows the grant, and
 `coder host list [--json]` shows enrolled devices, and
 `coder host revoke --device KEY` revokes one. A running host closes that
 device's channels, ends its terminal attachments, and refuses its requests
-on their next check. For a host without a screen, use reverse enrollment
-through `coder-access request` and `approve`.
+on their next check.
+
+### Enroll from a host without a screen
+
+When no one can scan an invitation at the host, ask from the host instead:
+
+```sh
+coder host request
+```
+
+The command records a NIP-HOST enrollment request, publishes one sealed
+copy to the owner and to each device that holds `access_admin`, and prints
+the request ID and an eight-character code, such as `code 7KQ4-M2XD`. Read
+the code to the person approving; the request never carries it. The running
+`coder host serve` answers the approval or denial on the request's relay,
+so it must be serving that relay. The command waits until the request is
+approved, denied, closed after five wrong codes, or expired after five
+minutes, and exits with status 0 only when it is approved. `--relay`
+defaults to the first relay from `init`, and `--rights` narrows what the
+request asks for; the default is `standard`.
+
+The approver opens the request with
+`coder_access::client::pending_enrollments`, types the code, and sends the
+approval as the owner or from a device with `access_admin`. The host
+refuses an approver without `access_admin`, or a right the approver lacks,
+as `missing_right`; a right outside the request as `forbidden`; each wrong
+code as `wrong_code`, and every approval after the fifth as
+`rate_limited`; and an expired request as `expired`.
 
 ## Run it as a service
 

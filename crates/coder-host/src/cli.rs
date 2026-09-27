@@ -28,6 +28,7 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   init --owner KEY --relay URL [--relay URL]... [--workspace LABEL=PATH]...
   public-key
   invite [--relay URL] [--rights LIST] [--grant-secs N]
+  request [--relay URL] [--rights LIST]
   list [--json]
   revoke --device KEY
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
@@ -83,6 +84,7 @@ pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
         "init" => init(&common, &mut options),
         "public-key" => public_key(&common, &mut options),
         "invite" => invite(&common, &mut options),
+        "request" => request(&common, &mut options).await,
         "list" => list(&common, &mut options),
         "revoke" => revoke(&common, &mut options),
         "serve" => serve(&common, &mut options, open_tasks).await,
@@ -332,6 +334,49 @@ fn invite(common: &Common, options: &mut Options) -> Result<()> {
     })?;
     println!("{}", issued.code);
     Ok(())
+}
+
+/// Reverse enrollment for a host without a screen: publish a request, print
+/// its short code, and wait while the running host answers the approval.
+async fn request(common: &Common, options: &mut Options) -> Result<()> {
+    let relay = match options.one("--relay")? {
+        Some(relay) => relay,
+        None => load_settings(&common.root)?
+            .relays
+            .into_iter()
+            .next()
+            .ok_or_else(|| usage(" request needs --relay, or run init first"))?,
+    };
+    let rights = match options.one("--rights")? {
+        Some(list) => Rights::parse_list(&list)?,
+        None => Rights::standard(),
+    };
+    options.finish()?;
+    let requested = crate::enroll::request(&common.state, common.policy, &relay, rights).await?;
+    println!("enrollment {}", requested.id);
+    println!("code {}", requested.code);
+    eprintln!(
+        "Approve this request from the owner or a device with access_admin, typing the code. \
+         `coder host serve` must be running on {relay} to answer. It expires at {}.",
+        requested.expires_at
+    );
+    let outcome = crate::enroll::wait(
+        &common.state,
+        common.policy,
+        &requested.id,
+        Duration::from_millis(500),
+    )
+    .await?;
+    match outcome {
+        coder_access::host::EnrollmentStatus::Approved { device, grant } => {
+            println!("approved device {device} grant {grant}");
+            Ok(())
+        }
+        other => Err(Error::Config(format!(
+            "the enrollment request was {}",
+            crate::enroll::describe(&other)
+        ))),
+    }
 }
 
 fn list(common: &Common, options: &mut Options) -> Result<()> {

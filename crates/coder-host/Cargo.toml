@@ -50,5 +50,9 @@ required-features = ["host"]
 name = "websocket"
 required-features = ["host"]
 
+[[test]]
+name = "headless"
+required-features = ["host"]
+
 [lints]
 workspace = true
