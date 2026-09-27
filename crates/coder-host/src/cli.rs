@@ -12,10 +12,9 @@ use std::time::Duration;
 
 use coder_access::host::Host;
 use coder_access::{RelayPolicy, Rights};
-use coder_reach::hints::Class;
-use serde::{Deserialize, Serialize};
 
-use crate::config::{Advertised, Config, Ready, WebsocketTls};
+use crate::config::{Config, Ready, WebsocketTls};
+use crate::settings::{ServeSettings, TlsSetting, parse_advertise};
 use crate::tasks::Tasks;
 use crate::{Error, Result, generation};
 
@@ -26,6 +25,8 @@ pub const EXIT_FAILED: u8 = 1;
 
 pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   init --owner KEY --relay URL [--relay URL]... [--workspace LABEL=PATH]...
+       [--listen-websocket ADDR] [--allow-nonloopback] [--advertise CLASS=HOST:PORT|URL]...
+       [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]
   public-key
   invite [--relay URL] [--rights LIST] [--grant-secs N]
   request [--relay URL] [--rights LIST]
@@ -43,19 +44,6 @@ Every command also takes --state DIR (the access store, default
 LIST is standard, admin, all, or comma-separated rights.";
 
 const DEFAULT_GRANT_SECS: u64 = 7 * 24 * 60 * 60;
-const SETTINGS: &str = "serve.json";
-const SETTINGS_SCHEMA: &str = "openagents.coder.host-serve-settings.v1";
-
-/// Settings `init` records so `coder host serve` runs with no arguments, as
-/// the host service starts it.
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Settings {
-    schema: String,
-    relays: Vec<String>,
-    workspaces: BTreeMap<String, PathBuf>,
-}
-
 /// Opens the task owner for a task store directory and the workspace labels
 /// the host admits.
 pub type OpenTasks =
@@ -252,53 +240,60 @@ fn home(relative: &str) -> Result<PathBuf> {
         .ok_or_else(|| Error::Config("HOME is not set; pass the directory explicitly".into()))
 }
 
-fn load_settings(root: &Path) -> Result<Settings> {
-    let path = root.join(SETTINGS);
-    match std::fs::read(&path) {
-        Ok(bytes) => {
-            let settings: Settings = serde_json::from_slice(&bytes)
-                .map_err(|_| Error::Config(format!("{} is malformed", path.display())))?;
-            if settings.schema != SETTINGS_SCHEMA {
-                return Err(Error::Config(format!(
-                    "{} has an unsupported schema",
-                    path.display()
-                )));
-            }
-            Ok(settings)
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Settings::default()),
-        Err(_) => Err(Error::Config(format!("cannot read {}", path.display()))),
-    }
-}
-
-/// Establish the owner locally and record the relays and workspaces serve
-/// uses by default.
+/// Establish the owner locally and record the relays, workspaces, and
+/// listeners serve uses by default.
 fn init(common: &Common, options: &mut Options) -> Result<()> {
     let (policy, state, root) = (common.policy, &common.state, &common.root);
     let owner = public_key_text(&options.required("--owner")?)?;
     let relays = options.all("--relay");
     let workspaces = options.workspaces()?;
+    let mut settings = ServeSettings::new(relays, workspaces);
+    settings.listen_websocket = listen_websocket(options)?;
+    settings.websocket_tls = websocket_tls(options)?.map(|tls| TlsSetting {
+        cert: tls.cert,
+        key: tls.key,
+        name: tls.name,
+    });
+    settings.allow_nonloopback = options.flag("--allow-nonloopback");
+    settings.advertise = options
+        .all("--advertise")
+        .iter()
+        .map(|entry| parse_advertise(entry))
+        .collect::<Result<_>>()?;
     options.finish()?;
-    if relays.is_empty() {
+    if settings.relays.is_empty() {
         return Err(usage(" init needs at least one --relay"));
     }
-    for relay in &relays {
+    for relay in &settings.relays {
         policy
             .validate(relay)
             .map_err(|_| Error::Config("a relay is not allowed by the relay policy".into()))?;
     }
+    // The same checks serve makes, so a recorded setting that could never
+    // serve refuses now.
+    let mut check = Config::new(state.clone(), settings.relays.clone(), 1);
+    check.policy = policy;
+    check.listen_websocket = settings.listen_websocket;
+    check.websocket_tls = settings.tls();
+    check.allow_nonloopback = settings.allow_nonloopback;
+    check.advertise = settings.advertised()?;
+    check.workspaces = settings.workspaces.clone();
+    check.validate()?;
     coder_access::host::ensure_parent(state)?;
     let host = Host::new(state, policy).init(&owner)?;
-    let settings = Settings {
-        schema: SETTINGS_SCHEMA.into(),
-        relays,
-        workspaces,
-    };
-    let bytes = serde_json::to_vec_pretty(&settings)
-        .map_err(|_| Error::Config("settings cannot be encoded".into()))?;
-    crate::serve::write_private(&root.join(SETTINGS), &bytes)?;
+    settings.save(root)?;
     println!("{host}");
     Ok(())
+}
+
+fn listen_websocket(options: &mut Options) -> Result<Option<SocketAddr>> {
+    options
+        .one("--listen-websocket")?
+        .map(|text| {
+            text.parse::<SocketAddr>()
+                .map_err(|_| usage(" --listen-websocket takes HOST:PORT"))
+        })
+        .transpose()
 }
 
 fn public_key(common: &Common, options: &mut Options) -> Result<()> {
@@ -312,7 +307,7 @@ fn public_key(common: &Common, options: &mut Options) -> Result<()> {
 fn invite(common: &Common, options: &mut Options) -> Result<()> {
     let relay = match options.one("--relay")? {
         Some(relay) => relay,
-        None => load_settings(&common.root)?
+        None => ServeSettings::load(&common.root)?
             .relays
             .into_iter()
             .next()
@@ -343,7 +338,7 @@ fn invite(common: &Common, options: &mut Options) -> Result<()> {
 async fn request(common: &Common, options: &mut Options) -> Result<()> {
     let relay = match options.one("--relay")? {
         Some(relay) => relay,
-        None => load_settings(&common.root)?
+        None => ServeSettings::load(&common.root)?
             .relays
             .into_iter()
             .next()
@@ -431,14 +426,14 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         coder_access::host::ensure_parent(&state)?;
         Host::new(&state, policy).init(&owner)?;
     }
-    let settings = load_settings(root)?;
+    let settings = ServeSettings::load(root)?;
     let mut relays = options.all("--relay");
     if relays.is_empty() {
-        relays = settings.relays;
+        relays = settings.relays.clone();
     }
     let mut workspaces = options.workspaces()?;
     if workspaces.is_empty() {
-        workspaces = settings.workspaces;
+        workspaces = settings.workspaces.clone();
     }
     let listen = match options
         .one("--listen")?
@@ -449,32 +444,38 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
             .map_err(|_| usage(" --listen takes HOST:PORT"))?,
         None => SocketAddr::from(([127, 0, 0, 1], 0)),
     };
-    let listen_websocket = options
-        .one("--listen-websocket")?
-        .map(|text| {
-            text.parse::<SocketAddr>()
-                .map_err(|_| usage(" --listen-websocket takes HOST:PORT"))
-        })
-        .transpose()?;
-    let websocket_tls = websocket_tls(options)?;
-    let allow_nonloopback = options.flag("--allow-nonloopback");
+    // The WebSocket listener and its TLS go together: given here, both come
+    // from the options; otherwise both come from the recorded settings.
+    let (listen_websocket, websocket_tls, allow_nonloopback) = match listen_websocket(options)? {
+        Some(listen) => (
+            Some(listen),
+            websocket_tls(options)?,
+            options.flag("--allow-nonloopback"),
+        ),
+        None => {
+            let given_tls = websocket_tls(options)?;
+            let given_allow = options.flag("--allow-nonloopback");
+            (
+                settings.listen_websocket,
+                given_tls.or_else(|| settings.tls()),
+                given_allow || settings.allow_nonloopback,
+            )
+        }
+    };
     let telemetry = !options.flag("--no-telemetry");
-    let mut advertise = Vec::new();
-    for entry in options.all("--advertise") {
-        let (class, address) = entry
-            .split_once('=')
-            .ok_or_else(|| usage(" --advertise takes CLASS=HOST:PORT or CLASS=URL"))?;
-        let class = match class {
-            "lan" => Class::Lan,
-            "tailnet" => Class::Tailnet,
-            "public" => Class::Public,
-            _ => return Err(usage(" --advertise class is lan, tailnet, or public")),
-        };
-        advertise.push(Advertised {
-            class,
-            address: address.to_owned(),
-        });
+    let mut advertise = options
+        .all("--advertise")
+        .iter()
+        .map(|entry| parse_advertise(entry))
+        .collect::<Result<Vec<_>>>()?;
+    if advertise.is_empty() {
+        advertise = settings.advertise.clone();
     }
+    let advertise = ServeSettings {
+        advertise,
+        ..ServeSettings::default()
+    }
+    .advertised()?;
     let generation = match options
         .one("--generation")?
         .or_else(|| std::env::var("OPENAGENTS_HOST_GENERATION").ok())
@@ -632,6 +633,70 @@ mod tests {
         }
         assert_eq!(options.all("--relay"), ["ws://127.0.0.1:9/"]);
         assert!(options.finish().is_ok());
+    }
+
+    fn no_tasks() -> Box<OpenTasks> {
+        Box::new(|_: &Path, _: &BTreeMap<String, PathBuf>| {
+            Ok(Arc::new(crate::NoTasks) as Arc<dyn Tasks>)
+        })
+    }
+
+    #[tokio::test]
+    async fn init_records_listeners_and_refuses_ones_that_could_never_serve() {
+        let dir = tempfile::tempdir().unwrap();
+        let (state, root) = (dir.path().join("access"), dir.path().join("host"));
+        let owner = "ab".repeat(32);
+        let args = |extra: &[&str]| -> Vec<String> {
+            let mut args: Vec<String> = [
+                "init",
+                "--owner",
+                &owner,
+                "--relay",
+                "wss://relay.example/",
+                "--state",
+                state.to_str().unwrap(),
+                "--root",
+                root.to_str().unwrap(),
+            ]
+            .map(String::from)
+            .to_vec();
+            args.extend(extra.iter().map(|arg| (*arg).to_owned()));
+            args
+        };
+        // A tailnet listener without permission for a non-loopback address.
+        assert_eq!(
+            run(
+                &args(&["--listen-websocket", "100.101.102.103:47101"]),
+                no_tasks()
+            )
+            .await,
+            EXIT_FAILED
+        );
+        assert!(!root.join(crate::settings::FILE).exists());
+        assert_eq!(
+            run(&args(&["--advertise", "loopback=127.0.0.1:1"]), no_tasks()).await,
+            EXIT_USAGE
+        );
+        let tailnet = [
+            "--listen-websocket",
+            "100.101.102.103:47101",
+            "--allow-nonloopback",
+            "--advertise",
+            "tailnet=ws://100.101.102.103:47101/",
+        ];
+        assert_eq!(run(&args(&tailnet), no_tasks()).await, 0);
+        let settings = ServeSettings::load(&root).unwrap();
+        assert_eq!(
+            settings.listen_websocket,
+            Some("100.101.102.103:47101".parse().unwrap())
+        );
+        assert!(settings.allow_nonloopback);
+        assert_eq!(settings.advertise[0].class, "tailnet");
+        // Idempotent for the same owner; another owner is refused.
+        assert_eq!(run(&args(&tailnet), no_tasks()).await, 0);
+        let mut other = args(&[]);
+        other[2] = coder_reach::pubkey(&secp256k1::SecretKey::new(&mut secp256k1::rand::rng()));
+        assert_eq!(run(&other, no_tasks()).await, EXIT_FAILED);
     }
 
     #[test]

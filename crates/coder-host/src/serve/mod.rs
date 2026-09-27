@@ -340,28 +340,64 @@ fn hints(shared: &Shared, now: u64) -> Vec<Hint> {
         status: Status::Reachable,
         observed_at: now,
     });
-    let listeners = std::iter::once(listener).chain(websocket);
-    let advertised = shared.config.advertise.iter().map(|a| Hint {
-        class: a.class,
-        transport: a.transport(),
-        address: a.address.clone(),
-        status: Status::Unknown,
-        observed_at: now,
-    });
-    let relays = shared.config.relays.iter().map(|relay| Hint {
-        class: Class::Relay,
-        transport: Transport::Nostr,
-        address: relay.clone(),
-        status: Status::Unknown,
-        observed_at: now,
-    });
-    listeners
-        .filter(|_| shared.config.advertise_listener)
-        .chain(advertised)
-        .chain(relays)
-        .filter(|hint| hint.validate().is_ok())
-        .take(coder_reach::hints::MAX_HINTS)
-        .collect()
+    let advertised: Vec<Hint> = shared
+        .config
+        .advertise
+        .iter()
+        .map(|a| Hint {
+            class: a.class,
+            transport: a.transport(),
+            address: a.address.clone(),
+            status: Status::Unknown,
+            observed_at: now,
+        })
+        .collect();
+    let relays = shared
+        .config
+        .relays
+        .iter()
+        .map(|relay| Hint {
+            class: Class::Relay,
+            transport: Transport::Nostr,
+            address: relay.clone(),
+            status: Status::Unknown,
+            observed_at: now,
+        })
+        .collect();
+    let listeners = if shared.config.advertise_listener {
+        std::iter::once(listener).chain(websocket).collect()
+    } else {
+        Vec::new()
+    };
+    merge_hints(listeners, advertised, relays)
+}
+
+/// The listeners' own hints, then the advertised endpoints, then the relays,
+/// each valid and each once. An advertised endpoint that names a listener's
+/// own address, such as a tailnet `wss` URL for a listener bound to the
+/// tailnet address, states its class, so the listener's copy is dropped: a
+/// duplicate would invalidate the whole hint set.
+fn merge_hints(listeners: Vec<Hint>, advertised: Vec<Hint>, relays: Vec<Hint>) -> Vec<Hint> {
+    let listeners: Vec<Hint> = listeners
+        .into_iter()
+        .filter(|own| {
+            !advertised
+                .iter()
+                .any(|a| a.transport == own.transport && a.address == own.address)
+        })
+        .collect();
+    let mut merged: Vec<Hint> = Vec::new();
+    for hint in listeners.into_iter().chain(advertised).chain(relays) {
+        if hint.validate().is_ok()
+            && !merged
+                .iter()
+                .any(|held| held.transport == hint.transport && held.address == hint.address)
+        {
+            merged.push(hint);
+        }
+    }
+    merged.truncate(coder_reach::hints::MAX_HINTS);
+    merged
 }
 
 /// Publish an activity summary for a changed task to every device that
@@ -454,4 +490,58 @@ pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
         .and_then(|()| file.sync_all())
         .map_err(|_| failed())?;
     std::fs::rename(&temporary, path).map_err(|_| failed())
+}
+
+#[cfg(test)]
+mod hint_tests {
+    use super::*;
+
+    fn hint(class: Class, transport: Transport, address: &str) -> Hint {
+        Hint {
+            class,
+            transport,
+            address: address.into(),
+            status: Status::Reachable,
+            observed_at: 1,
+        }
+    }
+
+    #[test]
+    fn an_advertised_copy_of_a_listener_states_its_class_once() {
+        let url = "wss://box.example.ts.net:47101/";
+        let merged = merge_hints(
+            vec![
+                hint(Class::Loopback, Transport::Tcp, "127.0.0.1:47100"),
+                hint(Class::Lan, Transport::Websocket, url),
+            ],
+            vec![
+                hint(Class::Tailnet, Transport::Websocket, url),
+                hint(Class::Tailnet, Transport::Websocket, url),
+            ],
+            vec![hint(Class::Relay, Transport::Nostr, "wss://relay.example/")],
+        );
+        let seen: Vec<(Class, &str)> = merged
+            .iter()
+            .map(|h| (h.class, h.address.as_str()))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                (Class::Loopback, "127.0.0.1:47100"),
+                (Class::Tailnet, url),
+                (Class::Relay, "wss://relay.example/"),
+            ]
+        );
+        let set = Hints {
+            v: coder_reach::hints::SCHEMA.into(),
+            requires: vec![],
+            host: "ab".repeat(32),
+            generation: 1,
+            issued_at: 2,
+            expires_at: 3,
+            hints: merged,
+            meta: None,
+        };
+        set.validate().unwrap();
+    }
 }

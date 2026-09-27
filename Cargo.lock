@@ -649,6 +649,7 @@ dependencies = [
  "coder-connect",
  "coder-host",
  "coder-one",
+ "coder-setup",
  "coder-terminal",
  "coderbench",
  "crossterm",
@@ -951,6 +952,27 @@ dependencies = [
  "sha2 0.10.9",
  "supervise",
  "tempfile",
+]
+
+[[package]]
+name = "coder-setup"
+version = "0.1.0"
+dependencies = [
+ "coder-access",
+ "coder-computers",
+ "coder-connect",
+ "coder-host",
+ "coder-reach",
+ "coder-service",
+ "futures-util",
+ "libc",
+ "nostr",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

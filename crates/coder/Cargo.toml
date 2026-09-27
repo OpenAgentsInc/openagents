@@ -13,6 +13,8 @@ coder-boundary = { path = "../coder-boundary" }
 coder-connect = { path = "../coder-connect" }
 coder-host = { path = "../coder-host" }
 coder-one = { path = "../coder-one" }
+# `coder link`: set up a serving host and link devices.
+coder-setup = { path = "../coder-setup" }
 coder-terminal = { path = "../coder-terminal" }
 jev = { path = "../jev" }
 knowledge = { path = "../knowledge" }

@@ -61,6 +61,7 @@ Usage:
   coder pair                  Show a QR code to read computer chats on your phone.
   coder task --help           Manage durable queued requests; runs no agent.
   coder host --help           Enroll devices and run the resident host.
+  coder link --help           Make this computer a linked, serving host.
   coder --version             Show the repository, commit, and tree state.
 
 Options:

@@ -250,9 +250,19 @@ uses, and marks which are implemented and which are only specified.
   inbox behind one host key and rechecks the grant on every channel message.
   It also answers NIP-HOST over CJ execution through the same admission and
   publishes its `host-access` capability.
-  `task.create` is an inert inbox submission and grants no execution authority.
-  Read its README and `docs/coder/runtime/host-serve.md` before changing a
-  binding or its authority.
+  `task.create` is an inert inbox submission and grants no execution authority,
+  except under the owner's local auto-start policy (`coder host autostart`,
+  off by default, in `coder::task::autostart`), which starts eligible tasks
+  within its workspace, concurrency, and engine bounds and records each start.
+  Read its README, `docs/coder/runtime/host-serve.md`, and
+  `docs/coder/runtime/host-autostart.md` before changing a binding or its
+  authority.
+- `crates/coder-setup` — `coder link`: makes a computer a serving host over
+  Tailscale with relay fallback (host settings, `tailscale cert` TLS, the
+  host service, the owner directory), mints invitations with explicit rights,
+  and joins and checks other hosts, locally or over SSH.
+  `scripts/link-device.sh` builds, stages, and runs it. Read its README and
+  `docs/coder/guides/link-devices.md`.
 - `crates/push-gateway` — the NIP-PL push gateway: holds APNs and FCM
   credentials for the relay's PL executor, resolves relay-presented delivery
   grants to sealed device tokens, and sends only the registered wake constants.

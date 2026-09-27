@@ -14,6 +14,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use coder_host::{Code, TaskCreate, TaskRef, Tasks};
 use nostr::activity_summary::Phase;
@@ -28,6 +29,7 @@ use super::{
 pub struct Inbox {
     store: PathBuf,
     workspaces: BTreeMap<String, PathBuf>,
+    autostart: Option<Arc<super::autostart::Autostart>>,
 }
 
 impl Inbox {
@@ -38,7 +40,16 @@ impl Inbox {
         Self {
             store: store.into(),
             workspaces,
+            autostart: None,
         }
+    }
+
+    /// Consult the owner's auto-start policy on every creation. With the
+    /// policy off, creation stays the inert submission it is without one.
+    #[must_use]
+    pub fn with_autostart(mut self, autostart: Arc<super::autostart::Autostart>) -> Self {
+        self.autostart = Some(autostart);
+        self
     }
 
     /// The task store directory.
@@ -56,12 +67,18 @@ impl Inbox {
 }
 
 impl Tasks for Inbox {
-    fn create(&self, key: &str, _device: &str, task: &TaskCreate) -> Result<TaskRef, Code> {
+    fn create(&self, key: &str, device: &str, task: &TaskCreate) -> Result<TaskRef, Code> {
         let root = self
             .workspaces
             .get(&task.workspace)
             .ok_or(Code::Forbidden)?;
-        self.apply(&Command {
+        // Under the owner's policy the task records the engine's model, which
+        // its grant must name; otherwise no model, as always.
+        let model = self
+            .autostart
+            .as_ref()
+            .and_then(|autostart| autostart.model_for(&task.workspace));
+        let command = |model: Option<String>| Command {
             schema: COMMAND_SCHEMA.into(),
             command_id: format!("host-create-{key}"),
             task_id: key.into(),
@@ -76,11 +93,33 @@ impl Tasks for Inbox {
                     },
                     configuration: RequestedConfiguration {
                         adapter: super::adapter::NAME.into(),
-                        model: None,
+                        model,
                     },
                 },
             },
-        })
+        };
+        let created = match self.apply(&command(model.clone())) {
+            // A retry of a request first saved while the policy was in the
+            // other state carries the other bytes; replay those so the retry
+            // still returns the original receipt.
+            Err(Code::Conflict) => {
+                let other = match &model {
+                    Some(_) => None,
+                    None => self
+                        .autostart
+                        .as_ref()
+                        .and_then(|a| a.policy())
+                        .map(|policy| policy.engine.model),
+                };
+                return self.apply(&command(other));
+            }
+            other => other?,
+        };
+        if let (Some(autostart), Some(_)) = (&self.autostart, &model) {
+            autostart.eligible(key, device, &task.workspace);
+            autostart.sweep_soon();
+        }
+        Ok(created)
     }
 
     fn steer(

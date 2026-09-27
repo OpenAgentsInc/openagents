@@ -38,6 +38,8 @@ pub mod message;
 mod publish;
 #[cfg(feature = "host")]
 pub mod serve;
+#[cfg(feature = "host")]
+pub mod settings;
 pub mod tasks;
 #[cfg(feature = "host")]
 pub mod telemetry;

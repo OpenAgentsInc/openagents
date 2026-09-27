@@ -317,12 +317,44 @@ async fn main() -> ExitCode {
     if arguments.first().is_some_and(|argument| argument == "task") {
         return ExitCode::from(task_cli::run(&arguments[1..]).await);
     }
+    if arguments.first().is_some_and(|argument| argument == "link") {
+        return ExitCode::from(coder_setup::cli::run(&arguments[1..]).await);
+    }
     if arguments.first().is_some_and(|argument| argument == "host") {
+        if arguments
+            .get(1)
+            .is_some_and(|argument| argument == "autostart")
+        {
+            return ExitCode::from(coder::task::autostart::cli(&arguments[2..]));
+        }
+        // The same host root `coder host` uses: `--root DIR`, else
+        // ~/.openagents/host. The owner's auto-start policy lives there.
+        let root = arguments
+            .windows(2)
+            .find(|pair| pair[0] == "--root")
+            .map(|pair| std::path::PathBuf::from(&pair[1]))
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .map(|home| std::path::PathBuf::from(home).join(".openagents/host"))
+            });
         // The resident host hands admitted task operations to the durable
-        // local inbox; creation stays an inert submission.
+        // local inbox. Creation stays an inert submission unless the owner
+        // turned on the auto-start policy in the host root.
         let open = Box::new(
-            |store: &Path, workspaces: &std::collections::BTreeMap<String, std::path::PathBuf>| {
-                let inbox = coder::task::remote::Inbox::new(store, workspaces.clone());
+            move |store: &Path,
+                  workspaces: &std::collections::BTreeMap<String, std::path::PathBuf>| {
+                let mut inbox = coder::task::remote::Inbox::new(store, workspaces.clone());
+                if let Some(root) = root {
+                    let autostart = std::sync::Arc::new(coder::task::autostart::Autostart::new(
+                        root,
+                        store.to_path_buf(),
+                        workspaces.clone(),
+                        Box::new(coder::task::autostart::Process),
+                        coder::task::autostart::unix_now,
+                    ));
+                    coder::task::autostart::spawn_sweeper(autostart.clone());
+                    inbox = inbox.with_autostart(autostart);
+                }
                 Ok(std::sync::Arc::new(inbox) as std::sync::Arc<dyn coder_host::Tasks>)
             },
         );
