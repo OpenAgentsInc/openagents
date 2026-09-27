@@ -1,10 +1,11 @@
 use crate::authority::{Action, Denial, check};
 use crate::model::*;
 use crate::service::{ComputersService, Result as ServiceResult, Unavailable};
+use crate::synthetic;
 use crate::synthetic::{
     APPROVAL_CODE, EXPIRED_INVITATION, Synthetic, device, key as synthetic_key,
 };
-use crate::{Computers, InputPurpose, Intent, Outcome, Refusal, Screen};
+use crate::{Computers, InputPurpose, Intent, MAX_INPUT_BYTES, Outcome, Refusal, Screen};
 use coder_access::protocol::{DeviceState, OriginKind};
 use coder_access::{Code, Error, Right, Rights};
 use coder_link::{BlockReason, Failure, Freshness, Moment, Phase, Stage, StaleCause, Status};
@@ -1549,41 +1550,79 @@ fn directory_weights_reach_placement() {
 }
 
 #[test]
-fn owner_key_import_follows_the_platform_and_needs_a_computer() {
+fn owner_key_import_is_offered_on_every_platform_and_needs_a_computer() {
     let mut snapshot = directory_snapshot();
     snapshot.directory = DirectoryState::NoOwnerKey;
-    assert_eq!(
-        check(&snapshot, caps(Platform::Desktop), Action::ImportOwnerKey),
-        Ok(())
-    );
-    assert_eq!(
-        check(&snapshot, caps(Platform::Phone), Action::ImportOwnerKey),
-        Err(Denial::OwnerKeyOnComputer)
-    );
-    let phone = Computers::new(
+    for platform in [Platform::Desktop, Platform::Terminal, Platform::Phone] {
+        assert_eq!(
+            check(&snapshot, caps(platform), Action::ImportOwnerKey),
+            Ok(())
+        );
+    }
+    let mut phone = Computers::new(
         Box::new(Fixed::new(snapshot.clone())),
         caps(Platform::Phone),
         "c:phone",
     )
     .unwrap();
-    assert!(find(&phone, "directory-owner-key").is_none());
-    assert_eq!(
-        text_of(&phone, "directory-status"),
-        "This device lists the computers it was added to."
-    );
+    assert!(find(&phone, "directory-owner-key").is_some());
+    assert!(text_of(&phone, "directory-status").contains("Enter your owner key"));
+    // The phone asks for a masked value, bounded by the shared contract.
+    press(&mut phone, "directory-owner-key").unwrap();
+    let asked = phone.input().unwrap().clone();
+    assert_eq!(asked.purpose, InputPurpose::OwnerKey);
+    assert!(asked.secret && !asked.scan);
+    assert_eq!(asked.validate(), Ok(()));
+    let json = serde_json::to_value(&asked).unwrap();
+    assert_eq!(json["secret"], true);
+    assert_eq!(json["purpose"], "owner_key");
     snapshot.hosts.clear();
     assert_eq!(
-        check(&snapshot, caps(Platform::Desktop), Action::ImportOwnerKey),
+        check(&snapshot, caps(Platform::Phone), Action::ImportOwnerKey),
         Err(Denial::OwnerKeyNeedsComputer)
     );
     assert_eq!(
         check(
             &directory_snapshot(),
-            caps(Platform::Desktop),
+            caps(Platform::Phone),
             Action::ImportOwnerKey
         ),
         Err(Denial::OwnerKeyHeld)
     );
+}
+
+#[test]
+fn a_phone_enters_the_owner_key_the_fixture_grants_name() {
+    let mut phone = open(Platform::Phone);
+    press(&mut phone, "first-run-continue").unwrap();
+    press(&mut phone, "directory-owner-key").unwrap();
+    let asked = phone.input().unwrap().clone();
+    assert!(asked.secret);
+    // A key no held grant names is refused, and the refusal never echoes it.
+    let other = "0f".repeat(32);
+    let refused = phone.submit(&asked.token, &other).unwrap_err();
+    assert!(matches!(refused, Refusal::Failed(_)));
+    assert!(!refused.reason().contains(&other));
+    assert!(!phone.notice().unwrap().text.contains(&other));
+    // A stale token and an oversized value are refused before the service.
+    assert_eq!(
+        phone.submit("c:other-input-1", &synthetic::owner_secret_hex()),
+        Err(Refusal::Stale)
+    );
+    assert!(matches!(
+        phone.submit(&asked.token, &"0".repeat(MAX_INPUT_BYTES + 1)),
+        Err(Refusal::Input(_))
+    ));
+    let asked = phone.input().unwrap().clone();
+    phone
+        .submit(
+            &asked.token,
+            &format!(" {} ", synthetic::owner_secret_hex()),
+        )
+        .unwrap();
+    assert!(phone.input().is_none());
+    assert!(find(&phone, "directory-owner-key").is_none());
+    assert!(text_of(&phone, "directory-status").contains("Your directory is empty"));
 }
 
 #[test]

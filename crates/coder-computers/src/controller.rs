@@ -46,23 +46,12 @@ pub enum InputPurpose {
     DirectoryLabel,
 }
 
-/// A request for one value the Rust Native tree cannot collect yet. The
-/// adapter shows its native field or scanner and answers with the token.
-/// Rust validates the value; the adapter only carries it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct InputRequest {
-    pub token: String,
-    pub purpose: InputPurpose,
-    /// The field's accessible label.
-    pub label: String,
-    /// One sentence that says what to enter.
-    pub prompt: String,
-    /// Open the scanner first.
-    pub scan: bool,
-    /// The value is a secret: mask it while typing and never echo it.
-    pub secret: bool,
-    pub max_bytes: usize,
-}
+/// A request for one value the Rust Native tree cannot collect yet: Rust
+/// Native's input request with this application's purposes. The adapter
+/// shows its native field or scanner and answers with the token. A `secret`
+/// request gets a masked field whose value the adapter never echoes, logs,
+/// or keeps. Rust validates the value; the adapter only carries it.
+pub type InputRequest = rust_native::InputRequest<InputPurpose>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Target {
@@ -469,6 +458,7 @@ impl Computers {
             },
             target,
         });
+        debug_assert!(self.input().is_some_and(|input| input.validate().is_ok()));
         self.ui.notice = None;
         Ok(Outcome::InputRequested)
     }
@@ -715,13 +705,17 @@ impl Computers {
     }
 
     fn accept(&mut self, token: &str, value: &str) -> Result<Outcome, Refusal> {
-        let target = match &self.ui.input {
-            Some(input) if input.request.token == token => input.target.clone(),
-            _ => return Err(Refusal::Stale),
+        let Some(input) = &self.ui.input else {
+            return Err(Refusal::Stale);
         };
-        if value.len() > MAX_INPUT_BYTES {
-            return Err(Refusal::Input("That's too long. Copy it again.".into()));
-        }
+        let value = match input.request.accept(token, value) {
+            Ok(value) => value,
+            Err(rust_native::InputError::TooLong) => {
+                return Err(Refusal::Input("That's too long. Copy it again.".into()));
+            }
+            Err(_) => return Err(Refusal::Stale),
+        };
+        let target = input.target.clone();
         if let Target::SshPrompt { id } = target {
             // A password is passed exactly as typed.
             self.service

@@ -21,6 +21,7 @@ use nostr::activity_summary::{
     ActivitySummary, Attention, Phase, SubjectKind, SummaryDraft, encode,
 };
 use secp256k1::{Keypair, Secp256k1, SecretKey};
+use std::str::FromStr;
 
 /// The fixture key for `tag`: the x-only public key of the secret key whose
 /// 32 bytes all equal `tag`. Activity summaries need real public keys.
@@ -39,6 +40,12 @@ pub fn key(tag: u8) -> String {
 /// This device's key in the fixture.
 pub fn device() -> String {
     key(0x1d)
+}
+/// The owner key the fixture's grants name: the secret key whose 32 bytes
+/// all equal `0x0e`, entered as 64 hex characters. A public test value, not
+/// a credential.
+pub fn owner_secret_hex() -> String {
+    "0e".repeat(32)
 }
 /// The code the fixture's headless host shows.
 pub const APPROVAL_CODE: &str = "7K4M-9QXZ";
@@ -114,6 +121,8 @@ pub struct Synthetic {
     first_run_complete: bool,
     created: u64,
     ssh: Option<crate::model::SshAttempt>,
+    /// Whether this device holds the fixture's owner key.
+    owner_key: bool,
     /// Every effect the screens requested, in order. Tests read it.
     pub calls: Vec<String>,
 }
@@ -297,6 +306,7 @@ impl Synthetic {
             first_run_complete: false,
             created: 0,
             ssh: None,
+            owner_key: false,
             calls: Vec::new(),
         }
     }
@@ -363,7 +373,16 @@ impl ComputersService for Synthetic {
                 })
                 .collect(),
             activity: self.activity.clone(),
-            directory: crate::model::DirectoryState::NoOwnerKey,
+            // Holding the owner key reads an empty directory; the fixture
+            // contacts no relay.
+            directory: if self.owner_key {
+                crate::model::DirectoryState::Current {
+                    revision: None,
+                    as_of: (self.now)(),
+                }
+            } else {
+                crate::model::DirectoryState::NoOwnerKey
+            },
             ssh_ready: self.platform != Platform::Phone,
             ssh: self.ssh.clone(),
         })
@@ -524,6 +543,28 @@ impl ComputersService for Synthetic {
             return Ok(());
         }
         Err(Error::new(Code::Stale, "no such device"))
+    }
+    fn import_owner_key(&mut self, secret: &str) -> Result<()> {
+        // Record the call, never the key.
+        self.calls.push("import_owner_key".into());
+        let owner = key(0x0e);
+        let named = SecretKey::from_str(secret)
+            .ok()
+            .map(|secret| {
+                Keypair::from_secret_key(&Secp256k1::new(), &secret)
+                    .x_only_public_key()
+                    .0
+                    .to_string()
+            })
+            .is_some_and(|key| key == owner);
+        if !named {
+            return Err(Error::new(
+                Code::Malformed,
+                "no held grant names this key as the owner",
+            ));
+        }
+        self.owner_key = true;
+        Ok(())
     }
     fn complete_first_run(&mut self) -> Result<()> {
         self.calls.push("complete_first_run".into());

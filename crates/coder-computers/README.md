@@ -116,10 +116,7 @@ grants, connections, and relay traffic. Three services implement it:
   Forgetting the computer never stops the remote host: only `coder-ssh`'s
   explicit remove does, and these screens don't offer it yet.
 - **Limits.** A phone claims another machine's locality, so it uses LAN,
-  tailnet, or public hints and the relay, never loopback. A phone doesn't
-  offer **Enter owner key** because its native input field doesn't mask
-  secrets yet; it reads the directory only when its device key is the owner.
-  The screens don't edit a listed host's label or weight, or remove it from
+  tailnet, or public hints and the relay, never loopback. The screens don't edit a listed host's label or weight, or remove it from
   the directory. An SSH host is reached through its relay; the `coder-ssh`
   loopback tunnel isn't a route yet.
 
@@ -134,10 +131,14 @@ modules from `Computers::invitation_qr` natively.
 ## Input
 
 A Rust Native tree cannot collect text yet. When a screen needs a value, the
-controller publishes an `InputRequest` with a token, a purpose, a label,
-whether to open the scanner first, and whether the value is a secret to mask.
-The platform shows its native field or scanner and returns the value with the
-token. Rust validates it: the `coder-host:` prefix, the approval code's shape,
+controller publishes an `InputRequest`, Rust Native's
+[input request](../rust-native/docs/spec.md#input-requests) with this crate's
+purposes: a token, a purpose, a label, whether to open the scanner first, and
+whether the value is a secret to mask. The platform shows its native field or
+scanner and returns the value with the token. A secret request, such as an
+SSH password or the owner key, gets a masked field: a SwiftUI `SecureField`
+on iOS and a password-type field on Android. **Enter owner key** is offered
+on every platform, phones included. Rust validates it: the `coder-host:` prefix, the approval code's shape,
 an SSH destination that cannot be an option, and a directory label's bounds.
 An SSH password or passphrase passes exactly as typed.
 

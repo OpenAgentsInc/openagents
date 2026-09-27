@@ -84,7 +84,6 @@ pub enum Denial {
     SshRunning,
     OwnerKeyNeedsComputer,
     OwnerKeyHeld,
-    OwnerKeyOnComputer,
     NotOwner,
     DirectoryNotRead,
     DirectoryConflict,
@@ -132,9 +131,6 @@ impl Denial {
                 "Add a computer first. The owner key must be the one your computers name.".into()
             }
             Self::OwnerKeyHeld => "This device already holds your owner key.".into(),
-            Self::OwnerKeyOnComputer => {
-                "Enter your owner key in the desktop or terminal app.".into()
-            }
             Self::NotOwner => {
                 "Only a device that holds your owner key can change your directory.".into()
             }
@@ -287,9 +283,9 @@ pub fn check(snapshot: &Snapshot, caps: Capabilities, action: Action<'_>) -> Res
             }
         }
         Action::ImportOwnerKey => {
-            if caps.platform == Platform::Phone {
-                Err(Denial::OwnerKeyOnComputer)
-            } else if snapshot.directory != DirectoryState::NoOwnerKey {
+            // Every platform offers it: each adapter masks a secret input
+            // request. The service keeps the rest of the NIP-REACH rule.
+            if snapshot.directory != DirectoryState::NoOwnerKey {
                 Err(Denial::OwnerKeyHeld)
             } else if !snapshot
                 .hosts

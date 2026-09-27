@@ -315,6 +315,37 @@ fn the_computers_surface_is_separate_from_the_reader() {
 }
 
 #[test]
+fn a_phone_enters_the_owner_key_through_a_masked_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app(dir.path());
+    let activate = |view: &serde_json::Value, label: &str| Request::ComputersActivate {
+        instance: view["instance"].as_str().unwrap().into(),
+        revision: view["revision"].as_u64().unwrap(),
+        node: find_button(&view["root"], label),
+    };
+    let first = app.call(Request::Snapshot).computers.unwrap();
+    let list = app.call(activate(&first, "Continue")).computers.unwrap();
+    let asked = app.call(activate(&list, "Enter owner key"));
+    let input = asked.computers_input.clone().unwrap();
+    assert!(input.secret && !input.scan);
+    // The adapter reads the flag from the packet it decodes.
+    let encoded = serde_json::to_value(&asked).unwrap();
+    assert_eq!(encoded["computers_input"]["secret"], true);
+    assert_eq!(encoded["computers_input"]["purpose"], "owner_key");
+    let key = coder_computers::synthetic::owner_secret_hex();
+    let held = app.call(Request::ComputersInput {
+        token: input.token,
+        value: key.clone(),
+    });
+    assert!(held.computers_input.is_none());
+    let text = serde_json::to_string(&held).unwrap();
+    assert!(text.contains("This device now holds your owner key."));
+    assert!(text.contains("Your directory is empty."));
+    // The key never comes back to the adapter.
+    assert!(!text.contains(&key));
+}
+
+#[test]
 fn the_normal_app_offers_live_computers_and_validates_what_it_is_given() {
     let dir = tempfile::tempdir().unwrap();
     let mut app = App::new(Config {
