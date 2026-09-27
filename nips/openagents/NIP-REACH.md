@@ -84,6 +84,37 @@ A client that does not hold the owner key cannot read the directory. It learns
 about hosts through enrollment (NIP-HOST) and can list only the hosts it was
 enrolled with.
 
+### Owner authority on a client
+
+A client reads or publishes the directory only with the owner secret key in
+its own protected store. It holds that key in one of two ways, and both are
+local to the device:
+
+1. Its device key is the owner key: a grant the client holds names the
+   client's own key as `owner`.
+2. The person enters the owner secret key on the device. The client accepts
+   it only when its public key is the `owner` of a grant the client holds,
+   so a mistyped or unrelated key is refused before it is saved.
+
+The owner key never travels in a directory, presence, hint, invitation,
+grant, or relay message. This profile defines no re-encryption of the
+directory to device keys: a device without the owner key stays limited to its
+enrolled hosts.
+
+A client that holds the owner key follows these rules:
+
+- It reads retained revisions from the relays named by the grants it holds
+  for that owner's hosts and by the entries of the last directory it
+  trusted, and selects the current revision as above. It keeps the highest
+  revision it has read or published and never replaces it with a lower one.
+- It lists a directory host it holds no grant for as not enrolled. A
+  directory entry grants nothing and carries no connection.
+- It uses each entry's `label` as the host's display text and each entry's
+  `weight` for placement.
+- It publishes a new revision only after a successful read with no conflict,
+  under the mailbox of the revision it read, or a fresh random mailbox when
+  none exists, to the same relays.
+
 ## Host presence
 
 A host publishes presence to each enrolled device as a separate artifact,
@@ -220,7 +251,8 @@ The length counts the kind, sequence number, and body. A frame longer than
 65,536 bytes, or shorter than 9, refuses before its body is read. Each
 direction numbers its frames from 0 and increases by one; a gap, repeat, or
 reordering refuses and closes the channel. Over WebSocket, each binary message
-carries exactly one frame, length prefix included.
+carries exactly one frame, length prefix included; the
+[WebSocket mapping](#websocket-mapping) gives the rules.
 
 | Kind | Name | Body |
 | --- | --- | --- |
@@ -234,6 +266,39 @@ carries exactly one frame, length prefix included.
 
 Unknown kinds refuse. Handshake messages are strict JSON of at most 4,096
 bytes.
+
+### WebSocket mapping
+
+A `websocket` hint carries the same direct channel over a WebSocket
+connection (RFC 6455). The handshake, transcript, encryption, sequence
+numbers, frame kinds, and bounds are the ones TCP uses. Only the carriage of
+frames differs:
+
+- The client opens the hint URL exactly as written. A `ws` URL uses a plain
+  connection and a `wss` URL uses TLS. The channel authenticates and encrypts
+  itself either way, so a `ws` hint is valid in every direct class; TLS lets a
+  channel pass through a forwarder that terminates TLS. A host serves the
+  channel on every path of its WebSocket listener, so a forwarder may rewrite
+  the path.
+- Neither side offers or selects a subprotocol or an extension. A host
+  ignores an offered subprotocol.
+- Each binary message carries exactly one frame, length prefix included. A
+  message whose size is not 4 plus its prefix refuses as `malformed`: a frame
+  never spans messages, and a message never carries two frames. The prefix
+  rules still apply: a prefix over 65,536 refuses as `limit_exceeded`, and one
+  under 9 as `malformed`.
+- A message over 65,540 bytes, one largest frame and its prefix, refuses as
+  `limit_exceeded`. A receiver applies this bound to each WebSocket frame
+  header and to the running size of a fragmented message, so an oversized
+  message refuses before its payload is read.
+- A text message refuses as `malformed`. Ping and pong messages carry no
+  channel data and advance no sequence number.
+- A WebSocket close ends the transport, as end of stream does over TCP. Only
+  an encrypted close frame (kind 17) shows that the peer closed the channel;
+  a WebSocket close without one is a transport failure. An endpoint sends its
+  close frame before it closes the WebSocket connection.
+- The host's handshake time limit covers the WebSocket upgrade as well as the
+  channel handshake.
 
 ### Handshake
 
@@ -345,26 +410,36 @@ replaceable private kind and check the OpenAgents kind table for collisions.
 [`crates/coder-reach`](../../crates/coder-reach/README.md) implements the
 three schemas, sealing and opening through the shared private artifact
 functions, freshness and compatibility, hint validation and selection, the
-handshake and frame format over any ordered byte stream (tested over TCP), and
-placement. Grant checks go through a trait, so the crate does not depend on a
-grant store. It also splits an open channel into a reader and a writer.
+handshake and frame format over any ordered byte stream, the WebSocket
+mapping, and placement. The same handshake and frame tests run over TCP and
+over WebSocket. Grant checks go through a trait, so the crate does not depend
+on a grant store. It also splits an open channel into a reader and a writer.
 
 [`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
 and its client. The host seals presence and hints to each enrolled device,
-serves TCP direct channels with the real NIP-HOST grant store behind the
-grant check, rechecks the grant before each message, and closes a channel
-whose grant stopped admitting it. Its client reads the owner directory and
-the host's presence and hints, and tries selected direct routes before relay
-fallback under a `coder-link` supervisor. It reports telemetry: the logical
+serves TCP direct channels and, when configured, WebSocket direct channels
+with the real NIP-HOST grant store behind the grant check, rechecks the grant
+before each message, and closes a channel whose grant stopped admitting it.
+Its client reads the owner directory and the host's presence and hints, and
+tries selected `tcp` and `websocket` routes before relay fallback under a
+`coder-link` supervisor. It reports telemetry: the logical
 CPU count, the one-minute load average per CPU as CPU use, and the kernel's
 share of available memory, each as a whole number, or `null` when the host
 cannot read a value or its operator turns telemetry off.
 
 The [Computers screens](../../crates/coder-computers/README.md) show each
 host's supervised status, route class, and compatibility from this presence.
-Neither crate implements a WebSocket listener. The
-[reach verification record](../../docs/coder/verification/2026-09-26-host-reach.md)
-and the [host serve record](../../docs/coder/verification/2026-09-26-host-serve.md)
+Their live service applies the owner-authority rules above: it holds the
+owner key only as described, lists directory hosts with their labels and
+weights beside enrolled hosts, shows an unenrolled directory host as not
+enrolled, publishes the next revision when the owner adds an enrolled host,
+and feeds directory weights to placement. The
+[reach verification record](../../docs/coder/verification/2026-09-26-host-reach.md),
+the [host serve record](../../docs/coder/verification/2026-09-26-host-serve.md),
+the
+[WebSocket channel record](../../docs/coder/verification/2026-09-27-websocket-channels.md),
+and the
+[client directory and SSH record](../../docs/coder/verification/2026-09-27-client-directory-and-ssh.md)
 list the checks that ran and their limits.
 
 ## Conformance
@@ -376,7 +451,19 @@ version ranges that do not overlap, mislabeled loopback hints, hints with
 credentials in URLs, selection with and without shareable endpoints, placement
 edge cases, and handshakes with a wrong host key, an impersonating host, a
 replayed nonce, a revoked grant, a wrong epoch, a stale host generation, a
-stale hello time, and an oversized frame.
+stale hello time, and an oversized frame. A WebSocket implementation runs
+the handshake cases over WebSocket too, and adds a message that carries two
+frames, a message cut short, and a message over the message bound.
+
+The wire fixtures in
+[`crates/coder-reach/fixtures/nip-reach.json`](../../crates/coder-reach/fixtures/nip-reach.json)
+give valid directory, presence, and hint bodies; invalid bodies with the
+refusal code each must produce; placement vectors with each candidate's
+assessment and the chosen host; a transcript vector with the exact SHA-256
+both channel proofs sign; and WebSocket message vectors, each one binary
+message with the code a receiver refuses it with, or `null` when it carries
+exactly one frame. `crates/coder-reach/tests/wire.rs` checks them. The transcript vector was also computed independently of the crate
+from this section's construction.
 
 Advertise `nip-reach-v1` in NIP-11 `supported_extensions` only for a relay
 whose private-artifact policy delivers these records to their exact

@@ -9,7 +9,8 @@ use coder_access::protocol::{DeviceState, OriginKind};
 use coder_access::{Right, Rights};
 use coder_link::{BlockReason, Failure, Freshness, Phase, Stage, Status as LinkStatus};
 use coder_reach::hints::Class;
-use coder_reach::presence::{ClientProfile, Presence};
+use coder_reach::placement::{self, Assessment, Candidate, Limits};
+use coder_reach::presence::{ClientProfile, Freshness as PresenceFreshness, Presence, Received};
 use nostr::activity_summary::ActivitySummary;
 
 /// Where the client runs. It decides which ways to add a computer apply.
@@ -176,13 +177,89 @@ impl std::fmt::Debug for CreatedInvitation {
     }
 }
 
+/// The owner directory's entry for a host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Listing {
+    /// The owner's placement weight, 0 to 1,000. Zero keeps the host listed
+    /// and excludes it from placement.
+    pub weight: u32,
+    pub added_at: u64,
+}
+
+/// The weight placement gives a host the owner directory does not list.
+/// NIP-REACH lets a client apply a local weight; this is that default. It is
+/// also the weight a host gets when this device adds it to the directory.
+pub const LOCAL_WEIGHT: u32 = 100;
+
+/// What this client knows about the owner host directory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DirectoryState {
+    /// This device holds no owner key. It lists only the hosts it enrolled
+    /// with.
+    NoOwnerKey,
+    /// This device holds the owner key and has not read the directory yet.
+    Loading,
+    /// The last read succeeded. `revision` is `None` when the owner has not
+    /// published a directory yet.
+    Current { revision: Option<u64>, as_of: u64 },
+    /// Two different directories share the highest revision. The client
+    /// keeps the last revision it trusted and waits for a higher one.
+    Conflict { revision: u64 },
+    /// The last read failed. The list shows the last revision read, if any.
+    Failed { revision: Option<u64> },
+}
+
+impl DirectoryState {
+    /// Whether this device may publish the next revision: it holds the owner
+    /// key and its last read succeeded.
+    pub fn writable(self) -> bool {
+        matches!(self, Self::Current { .. })
+    }
+}
+
+/// A host SSH setup in progress or just finished.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SshAttempt {
+    /// The destination as the person entered it.
+    pub destination: String,
+    pub stage: SshStage,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SshStage {
+    /// Installing, then starting or adopting the host.
+    Starting,
+    /// `ssh` asks a question, such as a password. `id` names this prompt;
+    /// `text` is what `ssh` printed, with control characters removed.
+    Prompt { id: u64, text: String },
+    /// Redeeming the host's invitation with this device's key.
+    Enrolling,
+    /// Enrolled. The host is in the list under `host`.
+    Added { host: String },
+    /// The setup stopped. `reason` is user-facing copy.
+    Failed { reason: String },
+}
+
+impl SshStage {
+    /// Whether the setup still runs.
+    pub fn running(&self) -> bool {
+        matches!(self, Self::Starting | Self::Prompt { .. } | Self::Enrolling)
+    }
+}
+
 /// Everything the client knows about one host.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HostRecord {
     /// The host's public key in hex.
     pub key: String,
-    /// The owner directory's label.
+    /// The owner directory's label when the directory lists the host, and
+    /// otherwise this device's own label for it.
     pub label: String,
+    /// The owner directory's entry, when this device can read the directory
+    /// and it lists the host.
+    pub listing: Option<Listing>,
+    /// The SSH destination this device set the host up through, if any.
+    pub ssh: Option<String>,
     pub enrollment: Enrollment,
     /// The connection supervisor's status. `None` when no supervisor runs
     /// for this host, for example before enrollment.
@@ -190,8 +267,24 @@ pub struct HostRecord {
     /// The class of the route a live connection uses.
     pub route: Option<Class>,
     pub compatibility: Compatibility,
+    /// The newest presence this device accepted, for placement.
+    pub presence: Option<Received>,
     pub devices: DeviceList,
     pub enrollments: Vec<PendingEnrollment>,
+}
+
+impl HostRecord {
+    /// The weight placement uses: the owner directory's, or
+    /// [`LOCAL_WEIGHT`] for a host the directory does not list.
+    pub fn weight(&self) -> u32 {
+        self.listing.map_or(LOCAL_WEIGHT, |listing| listing.weight)
+    }
+
+    /// The owner directory lists the host and this device holds no grant
+    /// for it. Such a row carries no connection to switch, retry, or forget.
+    pub fn directory_only(&self) -> bool {
+        self.listing.is_some() && self.enrollment == Enrollment::NotEnrolled
+    }
 }
 
 /// The projection input for every Computers screen.
@@ -211,6 +304,12 @@ pub struct Snapshot {
     /// Verified activity summaries. Order does not matter; the projection
     /// keeps the newest per subject.
     pub activity: Vec<ActivitySummary>,
+    pub directory: DirectoryState,
+    /// This client can start hosts over SSH: it runs where `ssh` does and
+    /// holds a pinned host release to install.
+    pub ssh_ready: bool,
+    /// The current or last SSH setup.
+    pub ssh: Option<SshAttempt>,
 }
 
 impl Snapshot {
@@ -223,6 +322,47 @@ impl Snapshot {
         self.hosts
             .iter()
             .any(|host| host.enrollment.rights(self.now).is_some())
+    }
+
+    /// Assess every host for new work with the NIP-REACH placement rule.
+    /// Weights come from the owner directory (see [`HostRecord::weight`]).
+    /// A host is admitted only when it is online and this device may run
+    /// tasks on it. Placement never substitutes for the host's admission.
+    pub fn assess_placement(&self, client: &ClientProfile) -> Vec<Assessment<'_>> {
+        placement::assess(
+            &self.candidates(),
+            client,
+            self.now,
+            PresenceFreshness::default(),
+            Limits::default(),
+        )
+    }
+
+    /// The host new work goes to, if any qualifies.
+    pub fn place(&self, client: &ClientProfile) -> Option<&str> {
+        placement::place(
+            &self.candidates(),
+            client,
+            self.now,
+            PresenceFreshness::default(),
+            Limits::default(),
+        )
+    }
+
+    fn candidates(&self) -> Vec<Candidate<'_>> {
+        self.hosts
+            .iter()
+            .map(|host| Candidate {
+                host: &host.key,
+                weight: host.weight(),
+                presence: host.presence.as_ref(),
+                admitted: host
+                    .enrollment
+                    .rights(self.now)
+                    .is_some_and(|rights| rights.contains(Right::Operate))
+                    && HostStatus::derive(host, self.now).online(),
+            })
+            .collect()
     }
 }
 

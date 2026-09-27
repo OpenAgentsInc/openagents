@@ -31,6 +31,7 @@ leaves media disabled.
 | Coder conversation worker or approved executor worker | [Worker deployment](../coder/guides/worker-executor.md) and [service assets](../../deploy/README.md) |
 | Durable local Coder task owner | [Portable host packaging](../coder/runtime/portable-host.md) |
 | Decision API gateway | [Gateway deployment](../decision-models/service/deployment.md) |
+| NIP-PL push gateway, which holds APNs and FCM credentials for the relay's push executor | [Push gateway](push-gateway.md) |
 | Free-only labor reference host | [Labor runtime](../coder/runtime/free-labor.md) |
 | Local model doors | [Kev](../kev/README.md), [Lev](../lev/README.md), and [Laya](../laya/README.md) |
 

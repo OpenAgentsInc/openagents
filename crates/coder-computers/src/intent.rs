@@ -88,4 +88,10 @@ pub enum Intent {
     /// Close a confirmation or an input request.
     Cancel,
     ContinueOnboarding,
+    /// Ask for the owner key, so this device can read the owner directory.
+    ImportOwnerKey,
+    /// Ask for a label, then add an enrolled host to the owner directory.
+    ListInDirectory {
+        host: String,
+    },
 }

@@ -221,6 +221,7 @@ impl<T: Transport> Generate for DoorGenerator<T> {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
         let started = Instant::now();
         let request = Request {
+            text_format: None,
             model: self.model.clone(),
             instructions: format!("{system} Reply by calling next_action exactly once."),
             input: vec![json!({

@@ -200,6 +200,15 @@ impl ComputersService for Fixed {
     fn complete_first_run(&mut self) -> ServiceResult<()> {
         self.effect("first_run".into())
     }
+    fn import_owner_key(&mut self, secret: &str) -> ServiceResult<()> {
+        self.effect(format!("owner_key {secret}"))
+    }
+    fn list_in_directory(&mut self, host: &str, label: &str) -> ServiceResult<()> {
+        self.effect(format!("list {host} {label}"))
+    }
+    fn answer_ssh_prompt(&mut self, id: u64, answer: Option<&str>) -> ServiceResult<()> {
+        self.effect(format!("ssh_answer {id} {}", answer.is_some()))
+    }
 }
 
 fn link(phase: Phase) -> Status {
@@ -223,6 +232,9 @@ fn host(enrollment: Enrollment, link: Option<Status>) -> HostRecord {
         link,
         route: Some(Class::Tailnet),
         compatibility: Compatibility::Compatible,
+        listing: None,
+        ssh: None,
+        presence: None,
         devices: DeviceList::NotLoaded,
         enrollments: Vec::new(),
     }
@@ -599,10 +611,11 @@ fn disabled_controls_carry_reasons_on_every_screen_and_platform() {
     )
     .unwrap();
     assert_reasons(&unavailable);
+    // A phone never offers SSH.
+    assert!(find(&unavailable, "ssh-connect").is_none());
     for key in [
         "invite-scan",
         "invite-paste",
-        "ssh-connect",
         "local-client-only",
         "first-run-continue",
     ] {
@@ -861,6 +874,39 @@ fn every_intent_runs_through_its_check() {
     );
     assert!(phone.input().unwrap().scan);
 
+    // The owner key, then an owner action on the directory.
+    let fixed = Fixed::new(
+        Synthetic::fixture(Platform::Desktop, now)
+            .snapshot()
+            .unwrap(),
+    );
+    let mut owner =
+        Computers::new(Box::new(fixed.clone()), caps(Platform::Desktop), "c:owner").unwrap();
+    press(&mut owner, "first-run-continue").unwrap();
+    press(&mut owner, "directory-owner-key").unwrap();
+    let asked = owner.input().unwrap().clone();
+    assert_eq!(asked.purpose, InputPurpose::OwnerKey);
+    assert!(asked.secret);
+    owner.submit(&asked.token, "  ab  ").unwrap();
+    assert_eq!(fixed.calls().last().unwrap(), "owner_key ab");
+    fixed.0.lock().unwrap().snapshot.directory = DirectoryState::Current {
+        revision: Some(4),
+        as_of: NOW,
+    };
+    press(&mut owner, "computers-refresh").unwrap();
+    assert!(find(&owner, "directory-owner-key").is_none());
+    press(&mut owner, "host-0-list").unwrap();
+    let asked = owner.input().unwrap().clone();
+    assert_eq!(asked.purpose, InputPurpose::DirectoryLabel);
+    assert!(!asked.secret);
+    assert!(matches!(
+        owner.submit(&asked.token, &"x".repeat(65)),
+        Err(Refusal::Input(_))
+    ));
+    owner.submit(&asked.token, "Studio").unwrap();
+    let key = synthetic_key(0xa1);
+    assert_eq!(fixed.calls().last().unwrap(), &format!("list {key} Studio"));
+
     // Every intent variant was resolved from a real control above.
     let pressed = PRESSED.with(|pressed| pressed.borrow().clone());
     for kind in [
@@ -885,10 +931,12 @@ fn every_intent_runs_through_its_check() {
         "confirm_revoke",
         "cancel",
         "continue_onboarding",
+        "import_owner_key",
+        "list_in_directory",
     ] {
         assert!(pressed.contains(kind), "{kind} was never pressed");
     }
-    assert_eq!(pressed.len(), 21);
+    assert_eq!(pressed.len(), 23);
 }
 
 #[test]
@@ -1051,8 +1099,14 @@ fn approval_is_limited_to_approvers_and_narrows_rights() {
 #[test]
 fn ssh_and_local_host_follow_the_platform() {
     let phone = open(Platform::Phone);
-    assert!(!enabled(&phone, "ssh-connect"));
-    assert!(text_of(&phone, "ssh-connect-reason").contains("desktop or terminal"));
+    // A phone can't run ssh, so it doesn't offer SSH at all.
+    assert!(find(&phone, "ssh").is_none());
+    assert!(find(&phone, "ssh-connect").is_none());
+    let snapshot = phone.snapshot().clone();
+    assert_eq!(
+        check(&snapshot, caps(Platform::Phone), Action::ConnectSsh),
+        Err(Denial::SshNeedsComputer)
+    );
     assert!(!enabled(&phone, "local-client-only"));
     assert!(text_of(&phone, "local-client-only-reason").contains("never run a host"));
     assert!(enabled(&phone, "invite-scan"));
@@ -1293,4 +1347,346 @@ fn application_lifecycle_reaches_every_supervisor() {
     let mut computers = open(Platform::Phone);
     computers.set_active(false).unwrap();
     computers.set_active(true).unwrap();
+}
+
+fn listed(key: &str, label: &str, weight: u32, enrollment: Enrollment) -> HostRecord {
+    HostRecord {
+        key: key.into(),
+        label: label.into(),
+        listing: Some(Listing {
+            weight,
+            added_at: NOW - 100,
+        }),
+        ..host(enrollment, None)
+    }
+}
+
+fn received(host: &str, cpu_utilization_pct: u8) -> coder_reach::presence::Received {
+    coder_reach::presence::Received {
+        presence: Presence {
+            v: "openagents.host-presence.v1".into(),
+            requires: vec![],
+            host: host.into(),
+            owner: "cd".repeat(32),
+            generation: 1,
+            protocol: coder_reach::PROTOCOL_VERSION,
+            compatibility: VersionRange {
+                min: coder_reach::PROTOCOL_VERSION,
+                max: coder_reach::PROTOCOL_VERSION,
+            },
+            capabilities: vec![],
+            observed_at: NOW,
+            telemetry: Some(coder_reach::presence::Telemetry {
+                cpu_count: 8,
+                cpu_utilization_pct,
+                memory_available_pct: 50,
+            }),
+            meta: None,
+        },
+        received_at: NOW,
+    }
+}
+
+fn directory_snapshot() -> Snapshot {
+    let mut snapshot = Synthetic::empty(Platform::Desktop, now).snapshot().unwrap();
+    let online = Some(Status {
+        freshness: Freshness::Current { as_of: Moment(1) },
+        ..link(Phase::Connected)
+    });
+    let studio = HostRecord {
+        link: online,
+        presence: Some(received(&"a1".repeat(32), 50)),
+        ..listed(&"a1".repeat(32), "Studio", 300, enrolled(Rights::all()))
+    };
+    let laptop = HostRecord {
+        key: "a2".repeat(32),
+        label: "Computer a2a2a2a2".into(),
+        link: online,
+        presence: Some(received(&"a2".repeat(32), 50)),
+        ..host(enrolled(Rights::all()), None)
+    };
+    let build = listed(&"a3".repeat(32), "Build box", 0, Enrollment::NotEnrolled);
+    snapshot.hosts = vec![studio, laptop, build];
+    snapshot.first_run_complete = true;
+    snapshot.directory = DirectoryState::Current {
+        revision: Some(2),
+        as_of: NOW - 30,
+    };
+    snapshot
+}
+
+#[test]
+fn directory_hosts_show_labels_weights_and_unenrolled_rows() {
+    let fixed = Fixed::new(directory_snapshot());
+    let mut computers =
+        Computers::new(Box::new(fixed.clone()), caps(Platform::Desktop), "c:dir").unwrap();
+    assert_eq!(text_of(&computers, "host-0-label"), "Studio");
+    assert_eq!(
+        text_of(&computers, "host-0-directory"),
+        "In your directory. Weight 300."
+    );
+    // An enrolled host the directory doesn't list keeps its own label and
+    // offers the owner action.
+    assert!(find(&computers, "host-1-directory").is_none());
+    assert!(enabled(&computers, "host-1-list"));
+    assert!(find(&computers, "host-0-list").is_none());
+    // A listed host this device holds no grant for: not enrolled, with no
+    // connection to switch, retry, or forget.
+    assert_eq!(text_of(&computers, "host-2-label"), "Build box");
+    assert!(
+        text_of(&computers, "host-2-status").starts_with(
+            "Not enrolled: it's in your directory, and this device has no access yet."
+        )
+    );
+    assert_eq!(
+        text_of(&computers, "host-2-directory"),
+        "In your directory. Weight 0: not used for new work."
+    );
+    for control in ["switch", "retry", "forget", "list"] {
+        assert!(find(&computers, &format!("host-2-{control}")).is_none());
+    }
+    let snapshot = computers.snapshot().clone();
+    let build = "a3".repeat(32);
+    for action in [
+        Action::SetEnabled { host: &build },
+        Action::RetryNow { host: &build },
+        Action::Forget { host: &build },
+    ] {
+        assert_eq!(
+            check(&snapshot, caps(Platform::Desktop), action),
+            Err(Denial::NotEnrolled)
+        );
+    }
+    assert_eq!(
+        text_of(&computers, "directory-status"),
+        "Your directory, revision 2, read just now."
+    );
+
+    // A later revision relabels the host.
+    fixed.0.lock().unwrap().snapshot.hosts[0].label = "Studio Mac".into();
+    computers.refresh().unwrap();
+    assert_eq!(text_of(&computers, "host-0-label"), "Studio Mac");
+
+    // Owner actions need a directory this device read.
+    for (state, denial) in [
+        (DirectoryState::NoOwnerKey, Denial::NotOwner),
+        (DirectoryState::Loading, Denial::DirectoryNotRead),
+        (
+            DirectoryState::Failed { revision: Some(2) },
+            Denial::DirectoryNotRead,
+        ),
+        (
+            DirectoryState::Conflict { revision: 2 },
+            Denial::DirectoryConflict,
+        ),
+    ] {
+        let mut snapshot = directory_snapshot();
+        snapshot.directory = state;
+        assert_eq!(
+            check(
+                &snapshot,
+                caps(Platform::Desktop),
+                Action::ListInDirectory {
+                    host: &"a2".repeat(32)
+                }
+            ),
+            Err(denial)
+        );
+    }
+    assert_eq!(
+        check(
+            &directory_snapshot(),
+            caps(Platform::Desktop),
+            Action::ListInDirectory {
+                host: &"a1".repeat(32)
+            }
+        ),
+        Err(Denial::AlreadyListed)
+    );
+}
+
+#[test]
+fn directory_weights_reach_placement() {
+    let client = ClientProfile {
+        protocol: coder_reach::PROTOCOL_VERSION,
+        accepts: VersionRange {
+            min: coder_reach::PROTOCOL_VERSION,
+            max: coder_reach::PROTOCOL_VERSION,
+        },
+    };
+    let snapshot = directory_snapshot();
+    let studio = "a1".repeat(32);
+    let laptop = "a2".repeat(32);
+    let build = "a3".repeat(32);
+    // Equal telemetry: the directory's weight of 300 beats the local weight
+    // of 100 an unlisted host gets.
+    assert_eq!(snapshot.place(&client), Some(studio.as_str()));
+    let scores: Vec<_> = snapshot.assess_placement(&client);
+    assert_eq!(
+        scores,
+        vec![
+            coder_reach::placement::Assessment::Eligible {
+                host: &studio,
+                score: 300 * 8 * 50 * 50
+            },
+            coder_reach::placement::Assessment::Eligible {
+                host: &laptop,
+                score: u128::from(LOCAL_WEIGHT) * 8 * 50 * 50
+            },
+            coder_reach::placement::Assessment::Skipped {
+                host: &build,
+                reason: coder_reach::placement::Skip::NotAdmitted
+            },
+        ]
+    );
+    // A new revision that sets the weight to zero excludes the host.
+    let mut zero = directory_snapshot();
+    zero.hosts[0].listing = Some(Listing {
+        weight: 0,
+        added_at: NOW - 100,
+    });
+    assert_eq!(zero.place(&client), Some(laptop.as_str()));
+}
+
+#[test]
+fn owner_key_import_follows_the_platform_and_needs_a_computer() {
+    let mut snapshot = directory_snapshot();
+    snapshot.directory = DirectoryState::NoOwnerKey;
+    assert_eq!(
+        check(&snapshot, caps(Platform::Desktop), Action::ImportOwnerKey),
+        Ok(())
+    );
+    assert_eq!(
+        check(&snapshot, caps(Platform::Phone), Action::ImportOwnerKey),
+        Err(Denial::OwnerKeyOnComputer)
+    );
+    let phone = Computers::new(
+        Box::new(Fixed::new(snapshot.clone())),
+        caps(Platform::Phone),
+        "c:phone",
+    )
+    .unwrap();
+    assert!(find(&phone, "directory-owner-key").is_none());
+    assert_eq!(
+        text_of(&phone, "directory-status"),
+        "This device lists the computers it was added to."
+    );
+    snapshot.hosts.clear();
+    assert_eq!(
+        check(&snapshot, caps(Platform::Desktop), Action::ImportOwnerKey),
+        Err(Denial::OwnerKeyNeedsComputer)
+    );
+    assert_eq!(
+        check(
+            &directory_snapshot(),
+            caps(Platform::Desktop),
+            Action::ImportOwnerKey
+        ),
+        Err(Denial::OwnerKeyHeld)
+    );
+}
+
+#[test]
+fn ssh_setup_progress_prompts_and_result_show_on_the_add_screen() {
+    let mut snapshot = Synthetic::empty(Platform::Terminal, now)
+        .snapshot()
+        .unwrap();
+    snapshot.first_run_complete = true;
+    let fixed = Fixed::new(snapshot);
+    let mut computers =
+        Computers::new(Box::new(fixed.clone()), caps(Platform::Terminal), "c:ssh").unwrap();
+    press(&mut computers, "tab-add").unwrap();
+    press(&mut computers, "ssh-connect").unwrap();
+    let asked = computers.input().unwrap().clone();
+    assert!(!asked.secret);
+    computers.submit(&asked.token, "me@box").unwrap();
+    assert_eq!(fixed.calls().last().unwrap(), "ssh me@box");
+    assert_eq!(
+        text_of(&computers, "notice"),
+        "Setting up a host on me@box over SSH."
+    );
+
+    let set = |stage: SshStage| {
+        fixed.0.lock().unwrap().snapshot.ssh = Some(SshAttempt {
+            destination: "me@box".into(),
+            stage,
+        });
+    };
+    set(SshStage::Starting);
+    computers.refresh().unwrap();
+    assert_eq!(
+        text_of(&computers, "ssh-status"),
+        "Setting up a host on me@box."
+    );
+    assert!(!enabled(&computers, "ssh-connect"));
+    assert!(text_of(&computers, "ssh-connect-reason").contains("already running"));
+
+    // A prompt becomes a masked input request with ssh's own words. The
+    // answer passes exactly as typed.
+    set(SshStage::Prompt {
+        id: 7,
+        text: "me@box's password:".into(),
+    });
+    computers.refresh().unwrap();
+    let prompt = computers.input().unwrap().clone();
+    assert_eq!(prompt.purpose, InputPurpose::SshPassword);
+    assert!(prompt.secret);
+    assert_eq!(prompt.prompt, "me@box's password:");
+    // Refreshing keeps the same request.
+    computers.refresh().unwrap();
+    assert_eq!(computers.input().unwrap().token, prompt.token);
+    computers.submit(&prompt.token, " pass word ").unwrap();
+    assert_eq!(fixed.calls().last().unwrap(), "ssh_answer 7 true");
+    assert!(computers.input().is_none());
+
+    // Cancelling a prompt refuses it, so ssh fails rather than wait.
+    set(SshStage::Prompt {
+        id: 8,
+        text: "Enter passphrase:".into(),
+    });
+    computers.refresh().unwrap();
+    let prompt = computers.input().unwrap().clone();
+    computers.cancel_input(&prompt.token).unwrap();
+    assert_eq!(fixed.calls().last().unwrap(), "ssh_answer 8 false");
+
+    // A prompt the setup stopped waiting on closes.
+    set(SshStage::Prompt {
+        id: 9,
+        text: "Password:".into(),
+    });
+    computers.refresh().unwrap();
+    assert!(computers.input().is_some());
+    set(SshStage::Enrolling);
+    computers.refresh().unwrap();
+    assert!(computers.input().is_none());
+    assert_eq!(
+        text_of(&computers, "ssh-status"),
+        "Adding this device to the host on me@box."
+    );
+    set(SshStage::Failed {
+        reason: "the host didn't start.".into(),
+    });
+    computers.refresh().unwrap();
+    assert_eq!(
+        text_of(&computers, "ssh-status"),
+        "Couldn't set up a host on me@box: the host didn't start."
+    );
+    assert!(enabled(&computers, "ssh-connect"));
+
+    // A client without a host release can't offer SSH.
+    fixed.0.lock().unwrap().snapshot.ssh_ready = false;
+    computers.refresh().unwrap();
+    assert!(!enabled(&computers, "ssh-connect"));
+    assert_eq!(
+        text_of(&computers, "ssh-connect-reason"),
+        "Unavailable: This app has no Coder release to install over SSH."
+    );
+}
+
+#[test]
+fn the_invitation_help_names_the_host_command() {
+    let computers = open(Platform::Terminal);
+    let body = text_of(&computers, "invite-body");
+    assert!(body.contains("`coder host invite`"), "{body}");
+    assert!(!body.contains("coder-access"));
 }

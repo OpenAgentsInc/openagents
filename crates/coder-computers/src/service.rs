@@ -43,7 +43,10 @@ pub trait ComputersService {
         grant_expires_at: u64,
     ) -> Result<()>;
     fn deny_enrollment(&mut self, host: &str, enrollment: &str) -> Result<()>;
-    /// Start or adopt a host over SSH. Desktop and terminal only.
+    /// Start an SSH setup: install or reuse the host release on
+    /// `destination`, start or adopt its host, and redeem its invitation.
+    /// Desktop and terminal only. It may return before the setup finishes;
+    /// [`Snapshot::ssh`] reports progress, prompts, and the result.
     fn connect_ssh(&mut self, destination: &str) -> Result<()>;
     /// Record that this machine runs no local host.
     fn run_without_local_host(&mut self) -> Result<()>;
@@ -68,6 +71,31 @@ pub trait ComputersService {
     fn application(&mut self, active: bool) -> Result<()> {
         let _ = active;
         Ok(())
+    }
+    /// Answer the SSH prompt `id` that [`Snapshot::ssh`] shows, or refuse
+    /// it with `None`. The answer is a password or passphrase: never log it.
+    fn answer_ssh_prompt(&mut self, id: u64, answer: Option<&str>) -> Result<()> {
+        let _ = (id, answer);
+        Err(Error::new(Code::Unavailable, "no SSH setup is waiting"))
+    }
+    /// Hold the owner key on this device so it can read and update the owner
+    /// directory. `secret` is a hex or `nsec` secret key; the service accepts
+    /// it only when its public key is the owner a held grant names.
+    fn import_owner_key(&mut self, secret: &str) -> Result<()> {
+        let _ = secret;
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't hold an owner key",
+        ))
+    }
+    /// Publish the next directory revision with `host` listed under `label`.
+    /// An owner action.
+    fn list_in_directory(&mut self, host: &str, label: &str) -> Result<()> {
+        let _ = (host, label);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't change the directory",
+        ))
     }
 }
 
@@ -108,6 +136,9 @@ impl ComputersService for Unavailable {
             first_run_complete: false,
             hosts: Vec::new(),
             activity: Vec::new(),
+            directory: crate::model::DirectoryState::NoOwnerKey,
+            ssh_ready: false,
+            ssh: None,
         })
     }
     fn set_enabled(&mut self, _: &str, _: bool) -> Result<()> {

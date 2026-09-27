@@ -16,8 +16,8 @@ connects them to real hosts, within the
 | Screen | What it shows | Intents |
 | --- | --- | --- |
 | First run | The ways to add a computer and a **Continue** control that stays disabled until one computer has a current grant. | Every **Add a computer** intent, `continue_onboarding`. |
-| Computers | One row per host: label, status, route in use, and the reason when blocked. | `set_enabled` (switch off without forgetting), `retry_now`, `forget` and `confirm_forget`, `show` the host's access. |
-| Add a computer | Scan or paste a `coder-host:` invitation, approve a headless host's 8-character code, connect over SSH, and run with no local host. | `scan_invitation`, `paste_invitation`, `enter_code`, `deny`, `connect_ssh`, `run_without_host`. |
+| Computers | One row per host: label, status, route in use, the reason when blocked, and the owner directory's weight for a listed host. Your directory's state follows the rows. | `set_enabled` (switch off without forgetting), `retry_now`, `forget` and `confirm_forget`, `show` the host's access, `list_in_directory`, `import_owner_key`. |
+| Add a computer | Scan or paste a `coder-host:` invitation, approve a headless host's 8-character code, connect over SSH with its progress, and run with no local host. A phone doesn't show SSH. | `scan_invitation`, `paste_invitation`, `enter_code`, `deny`, `connect_ssh`, `run_without_host`. |
 | Access | This device's rights on the host, the enrolled devices with rights, origin, and the time the host last saw each, and a new invitation with a chosen subset of rights, shown as its string and a QR code. | `refresh_devices`, `toggle_right`, `create_invitation`, `cancel_invitation`, `dismiss_invitation`, `revoke` and `confirm_revoke`. |
 | Activity | The newest activity summary per task or session, attention first, marked when its host is not online. | `refresh`. |
 
@@ -31,7 +31,7 @@ A row's status is one of six words, and the text always says which:
 | Connecting | `Connecting(Establishing \| Probing \| Replacing)`. |
 | Offline | Switched off, not connected, no network, retrying after a failure, or blocked because the host refused this device's key or its settings are invalid. |
 | Out of date | A NIP-REACH presence that fails the compatibility rule, naming the side to update, or a supervisor blocked as `Incompatible`. |
-| Not enrolled | No grant, or an expired one. |
+| Not enrolled | No grant, or an expired one. A host your owner directory lists and this device has no grant for says so. |
 | Revoked | The host revoked this device, or the supervisor is blocked as `Revoked`. |
 
 Access outranks compatibility, which outranks transport, so a revoked host
@@ -91,10 +91,37 @@ grants, connections, and relay traffic. Three services implement it:
 - **Lifecycle.** `ComputersService::application` passes the application's
   foreground and background to every supervisor, which probes its connection
   after a short absence and replaces it after a long one.
-- **Limits.** It does not start hosts over SSH, read an owner directory, or
-  label a host beyond `Computer` and a key prefix. A phone claims another
-  machine's locality, so it uses LAN, tailnet, or public hints and the relay,
-  never loopback.
+- **Owner directory.** The device reads the owner directory only with the
+  owner key, under the owner-authority rule in
+  [NIP-REACH](../../nips/openagents/NIP-REACH.md#owner-authority-on-a-client):
+  either its device key is the owner a held grant names, or the person enters
+  the owner key with **Enter owner key**, and the service accepts it only
+  when a held grant names that key as owner. `live::Saved::owner` keeps it in
+  the same protected store as the grants. The pump reads the directory from
+  the owner's relays every `Settings::refresh_every`, never accepts a lower
+  revision than one it trusts, and reports a conflict at the top revision.
+  Listed hosts take the directory's label and weight; a listed host with no
+  grant here shows as not enrolled, with no controls that need a connection.
+  **Add to directory** on an enrolled host asks for a label and publishes the
+  next revision with weight 100.
+- **Placement.** `Snapshot::place` and `Snapshot::assess_placement` apply the
+  NIP-REACH placement rule to the snapshot: directory weights, or weight 100
+  for an unlisted host, the newest accepted presence, and admission only for
+  an online host this device may operate.
+- **SSH.** With the `ssh` feature and `Settings::ssh`, **Connect over SSH**
+  asks for a destination, then runs `coder-ssh` on a thread: install or reuse
+  the pinned release, start or adopt the host, and redeem the invitation
+  `coder host invite` prints. `ssh` prompts reach the screen through
+  `Snapshot::ssh` and become masked input requests; closing one refuses it.
+  Forgetting the computer never stops the remote host: only `coder-ssh`'s
+  explicit remove does, and these screens don't offer it yet.
+- **Limits.** A phone claims another machine's locality, so it uses LAN,
+  tailnet, or public hints and the relay, never loopback. A phone doesn't
+  offer **Enter owner key** because its native input field doesn't mask
+  secrets yet; it reads the directory only when its device key is the owner.
+  The screens don't edit a listed host's label or weight, or remove it from
+  the directory. An SSH host is reached through its relay; the `coder-ssh`
+  loopback tunnel isn't a route yet.
 
 ## QR codes
 
@@ -107,30 +134,41 @@ modules from `Computers::invitation_qr` natively.
 ## Input
 
 A Rust Native tree cannot collect text yet. When a screen needs a value, the
-controller publishes an `InputRequest` with a token, a purpose, a label, and
-whether to open the scanner first. The platform shows its native field or
-scanner and returns the value with the token. Rust validates it: the
-`coder-host:` prefix, the approval code's shape, and an SSH destination that
-cannot be an option.
+controller publishes an `InputRequest` with a token, a purpose, a label,
+whether to open the scanner first, and whether the value is a secret to mask.
+The platform shows its native field or scanner and returns the value with the
+token. Rust validates it: the `coder-host:` prefix, the approval code's shape,
+an SSH destination that cannot be an option, and a directory label's bounds.
+An SSH password or passphrase passes exactly as typed.
 
 ## Try it
 
 ```sh
-cargo run -p coder-computers --example terminal            # interactive
-cargo run -p coder-computers --example terminal -- --print # each screen as text
-cargo run -p coder-computers --example terminal -- --live ~/.openagents/coder-computers
+cargo run -p coder-computers --features ssh --example terminal            # interactive
+cargo run -p coder-computers --features ssh --example terminal -- --print # each screen as text
+cargo run -p coder-computers --features ssh --example terminal -- --live ~/.openagents/coder-computers
 ```
 
 The example uses the offline fixture unless you pass `--live DIR`, which runs
 the live service with its device key and grants owner-only in `DIR`.
 `--loopback-test` admits a `ws://` loopback relay for a local test, and
-`--same-machine` states that the hosts run on this computer. Tab and the arrow keys move focus,
-Enter or Space activates, and `q` quits.
+`--same-machine` states that the hosts run on this computer. To offer SSH,
+add `--ssh-archive OS/ARCH=PATH` for each `coder` release archive, plus
+`--owner KEY` and `--relay URL` for the host it starts. Tab and the arrow
+keys move focus, Enter or Space activates, and `q` quits. Secret input shows
+as asterisks.
 
 ## Checks
 
 ```sh
-cargo test -p coder-computers
-cargo clippy -p coder-computers --all-targets -- -D warnings
+cargo test -p coder-computers --features ssh
+cargo clippy -p coder-computers --features ssh --all-targets -- -D warnings
+cargo clippy -p coder-computers --no-default-features --lib -- -D warnings
 cargo fmt -p coder-computers -- --check
 ```
+
+`tests/live.rs` runs the live service against a real `coder host serve` on
+the synthetic relay: the owner directory, and an SSH setup through the fake
+`ssh` harness in `crates/coder-ssh/tests/support/fake_ssh.rs`. The
+[verification record](../../docs/coder/verification/2026-09-27-client-directory-and-ssh.md)
+lists what it establishes.

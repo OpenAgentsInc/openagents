@@ -14,7 +14,10 @@ use tokio_tungstenite::{
 
 type Events = Arc<Mutex<BTreeMap<String, Event>>>;
 fn visible(event: &Event, principal: &str) -> bool {
-    event.pubkey == principal || event.tag_values("p").any(|p| p == principal)
+    // A capability discovery head is public.
+    event.kind == 30180
+        || event.pubkey == principal
+        || event.tag_values("p").any(|p| p == principal)
 }
 fn matches(event: &Event, filter: &Value) -> bool {
     let member = |key: &str, value: Value| {
@@ -94,7 +97,7 @@ async fn serve(
                     Some("EVENT")=>{
                         let e:Event=serde_json::from_value(value[1].clone()).map_err(|e|e.to_string())?;
                         let good=principal.as_ref()==Some(&e.pubkey) && e.validate_crypto().is_ok() && match e.kind{
-                            3188=>nostr::private_artifact::admit(&e).is_ok(),25920|26920|27020=>e.tag_values("p").count()==1,_=>false};
+                            3188=>nostr::private_artifact::admit(&e).is_ok(),30180=>e.tag_values("d").count()==1,25920|26920|27020=>e.tag_values("p").count()==1,_=>false};
                         if good {events.lock().await.entry(e.id.clone()).or_insert(e.clone());let _=sender.send(e.clone());}
                         json!(["OK",e.id,good,if good{""}else{"restricted: fixture event refused"}])
                     },
@@ -104,7 +107,7 @@ async fn serve(
                         let filter=value[2].clone();subscriptions.insert(id.clone(),filter.clone());
                         if filter["limit"]!=0{
                             let stored=events.lock().await;
-                            for event in stored.values().filter(|e|e.kind==3188 && visible(e,reader) && matches(e,&filter)){
+                            for event in stored.values().filter(|e|(e.kind==3188||e.kind==30180) && visible(e,reader) && matches(e,&filter)){
                                 socket.send(Message::Text(json!(["EVENT",id,event]).to_string().into())).await.map_err(|e|e.to_string())?;
                             }
                         }

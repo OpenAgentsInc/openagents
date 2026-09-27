@@ -32,10 +32,12 @@ use crate::publish::Publisher;
 use crate::tasks::{TaskRef, Tasks};
 use crate::{CAPABILITIES, Error, PROTOCOL_VERSION, Result, unix_time};
 
+mod cj;
 mod direct;
 mod dispatch;
 mod relay;
 mod terminal;
+mod websocket;
 
 /// The runtime record schema SSH launchers read.
 pub const RUNTIME_SCHEMA: &str = "openagents.coder.host-runtime.v1";
@@ -59,6 +61,8 @@ pub(crate) struct Shared {
     pub(crate) tasks: Arc<dyn Tasks>,
     pub(crate) publisher: Publisher,
     pub(crate) listen: SocketAddr,
+    /// The bound WebSocket listener, when one is configured.
+    pub(crate) listen_websocket: Option<SocketAddr>,
     /// The workspace a NIP-HOST `terminal.open` uses: the first label.
     pub(crate) default_workspace: Option<String>,
 }
@@ -107,6 +111,11 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     let listen = listener
         .local_addr()
         .map_err(|_| Error::Config("the listener has no local address".into()))?;
+    let websocket = match config.listen_websocket {
+        Some(address) => Some(websocket::bind(address).await?),
+        None => None,
+    };
+    let listen_websocket = websocket.as_ref().map(|(_, address)| *address);
     let publisher = Publisher::spawn(&config.relays, secret);
     let acceptor = Arc::new(Acceptor::new(
         secret,
@@ -129,14 +138,24 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         tasks,
         publisher,
         listen,
+        listen_websocket,
     });
 
     let (ready, relay_ready) = tokio::sync::oneshot::channel();
-    let tasks = vec![
+    let mut tasks = vec![];
+    if let Some((listener, _)) = websocket {
+        tasks.push(tokio::spawn(websocket::listen(
+            shared.clone(),
+            listener,
+            acceptor.clone(),
+        )));
+    }
+    tasks.extend([
         tokio::spawn(direct::listen(shared.clone(), listener, acceptor)),
         tokio::spawn(relay::serve(shared.clone(), ready)),
         tokio::spawn(presence_loop(shared.clone())),
-    ];
+        tokio::spawn(cj::serve(shared.clone())),
+    ]);
     let _ = tokio::time::timeout(RELAY_READY_WAIT, relay_ready).await;
 
     if let Some(path) = &shared.config.runtime {
@@ -153,6 +172,12 @@ impl Running {
     #[must_use]
     pub fn local_addr(&self) -> SocketAddr {
         self.shared.listen
+    }
+
+    /// The bound WebSocket direct-channel address, when one is configured.
+    #[must_use]
+    pub fn websocket_addr(&self) -> Option<SocketAddr> {
+        self.shared.listen_websocket
     }
 
     /// The host key: the `coder-access` store's key.
@@ -274,20 +299,31 @@ fn reach_events(shared: &Shared, device: &str, now: u64) -> Result<Vec<nostr::do
 }
 
 fn hints(shared: &Shared, now: u64) -> Vec<Hint> {
-    let listener = Hint {
-        class: if shared.listen.ip().is_loopback() {
+    let class = |listen: SocketAddr| {
+        if listen.ip().is_loopback() {
             Class::Loopback
         } else {
             Class::Lan
-        },
+        }
+    };
+    let listener = Hint {
+        class: class(shared.listen),
         transport: Transport::Tcp,
         address: shared.listen.to_string(),
         status: Status::Reachable,
         observed_at: now,
     };
+    let websocket = shared.listen_websocket.map(|listen| Hint {
+        class: class(listen),
+        transport: Transport::Websocket,
+        address: websocket::url(listen),
+        status: Status::Reachable,
+        observed_at: now,
+    });
+    let listeners = std::iter::once(listener).chain(websocket);
     let advertised = shared.config.advertise.iter().map(|a| Hint {
         class: a.class,
-        transport: Transport::Tcp,
+        transport: a.transport(),
         address: a.address.clone(),
         status: Status::Unknown,
         observed_at: now,
@@ -299,11 +335,8 @@ fn hints(shared: &Shared, now: u64) -> Vec<Hint> {
         status: Status::Unknown,
         observed_at: now,
     });
-    shared
-        .config
-        .advertise_listener
-        .then_some(listener)
-        .into_iter()
+    listeners
+        .filter(|_| shared.config.advertise_listener)
         .chain(advertised)
         .chain(relays)
         .filter(|hint| hint.validate().is_ok())

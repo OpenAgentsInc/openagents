@@ -271,6 +271,29 @@ impl ChatRequest {
         self.max_tokens = Some(max);
         self
     }
+
+    /// The request [`Client::structured`] sends: a strict `json_schema`
+    /// response format named `name`, routing only to providers that
+    /// support every parameter sent, and the response-healing plugin for a
+    /// reply that still misses the schema.
+    #[must_use]
+    pub fn structured(mut self, name: &str, schema: Value) -> Self {
+        self.provider = Some(ProviderPreferences {
+            require_parameters: true,
+        });
+        self.plugins = vec![Plugin {
+            id: "response-healing".to_string(),
+        }];
+        self.response_format = Some(ResponseFormat {
+            kind: "json_schema".to_string(),
+            json_schema: JsonSchema {
+                name: name.to_string(),
+                schema,
+                strict: true,
+            },
+        });
+        self
+    }
 }
 
 /// Token counts and cost, as OpenRouter reports them.
@@ -716,27 +739,12 @@ impl Client {
     /// text, and [`Error::Schema`] when the text isn't a `T`.
     pub async fn structured<T: DeserializeOwned>(
         &self,
-        mut request: ChatRequest,
+        request: ChatRequest,
         name: &str,
         schema: Value,
     ) -> Result<Structured<T>, Error> {
-        // Three layers, from OpenRouter's API: a strict schema, routing only
-        // to providers that support every parameter sent, and the
-        // response-healing plugin for a reply that still misses the schema.
-        request.provider = Some(ProviderPreferences {
-            require_parameters: true,
-        });
-        request.plugins = vec![Plugin {
-            id: "response-healing".to_string(),
-        }];
-        request.response_format = Some(ResponseFormat {
-            kind: "json_schema".to_string(),
-            json_schema: JsonSchema {
-                name: name.to_string(),
-                schema,
-                strict: true,
-            },
-        });
+        // Three layers, from OpenRouter's API: see ChatRequest::structured.
+        let request = request.structured(name, schema);
         let started = std::time::Instant::now();
         let response = self.chat(&request).await?;
         let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);

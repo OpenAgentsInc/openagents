@@ -1,0 +1,101 @@
+$ cargo test -p coder-pty
+
+running 19 tests
+test client::tests::a_character_split_across_frames_is_kept_whole ... ok
+test client::tests::exit_is_sequenced_like_output ... ok
+test client::tests::a_frame_ahead_of_the_expected_one_is_held_back ... ok
+test client::tests::a_frame_for_another_terminal_is_refused ... ok
+test client::tests::the_screen_drops_escape_sequences_and_applies_carriage_returns ... ok
+test client::tests::output_applies_in_order_and_duplicates_are_ignored ... ok
+test client::tests::a_gap_frame_is_recorded_and_advances_the_resume_point ... ok
+test client::tests::the_screen_is_bounded_in_lines_and_columns ... ok
+test ring::tests::a_full_ring_discards_the_oldest_and_reports_what_was_missed ... ok
+test ring::tests::sequence_numbers_start_at_one_and_increase ... ok
+test ring::tests::the_frame_ceiling_also_discards ... ok
+test wire::tests::a_directory_that_leaves_the_root_is_refused ... ok
+test wire::tests::a_relative_program_is_refused ... ok
+test wire::tests::an_unknown_feature_and_version_refuse_distinctly ... ok
+test wire::tests::a_valid_open_request_checks ... ok
+test wire::tests::oversized_input_is_refused ... ok
+test wire::tests::frames_round_trip_with_base64_data ... ok
+test wire::tests::unknown_fields_are_refused ... ok
+test wire::tests::the_largest_frame_fits_one_direct_channel_data_frame ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 20 tests
+test a_detached_client_reattaches_and_replays_what_it_missed ... ok
+test a_revoked_attachment_is_ended_on_the_next_tick ... ok
+test a_signal_reaches_the_foreground_process ... ok
+test close_ends_the_terminal_and_reports_why ... ok
+test an_exact_input_retry_is_typed_once ... ok
+test an_idle_terminal_expires ... ok
+test echo_round_trips_through_a_real_pty ... ok
+test observers_read_only_when_the_host_allows_it ... ok
+test process_exit_is_reported_with_its_status ... ok
+test input_without_the_terminal_right_is_refused ... ok
+test replay_after_the_ring_wrapped_reports_a_gap ... ok
+test two_attached_readers_see_the_same_frames ... ok
+test resize_reaches_the_process ... ok
+test the_process_sees_a_terminal_and_its_workspace ... ok
+test the_working_directory_and_environment_are_admitted_by_the_host ... ok
+test a_wrapped_terminal_writes_only_where_its_boundary_allows ... ok
+test a_terminal_from_an_earlier_host_generation_is_lost ... ok
+test host_shutdown_kills_the_process_group ... ok
+test dropping_the_host_kills_the_process_group ... ok
+test a_slow_attachment_is_held_to_its_rate ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.21s
+
+
+running 3 tests
+test every_invalid_fixture_refuses_with_its_reason ... ok
+test the_fixture_frames_apply_as_a_client_would_see_them ... ok
+test every_valid_fixture_checks_and_round_trips ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+$ cargo test -p coder-pty --no-default-features
+
+running 19 tests
+test client::tests::a_character_split_across_frames_is_kept_whole ... ok
+test client::tests::a_frame_ahead_of_the_expected_one_is_held_back ... ok
+test client::tests::a_frame_for_another_terminal_is_refused ... ok
+test client::tests::a_gap_frame_is_recorded_and_advances_the_resume_point ... ok
+test client::tests::output_applies_in_order_and_duplicates_are_ignored ... ok
+test client::tests::exit_is_sequenced_like_output ... ok
+test client::tests::the_screen_is_bounded_in_lines_and_columns ... ok
+test client::tests::the_screen_drops_escape_sequences_and_applies_carriage_returns ... ok
+test ring::tests::a_full_ring_discards_the_oldest_and_reports_what_was_missed ... ok
+test ring::tests::sequence_numbers_start_at_one_and_increase ... ok
+test wire::tests::a_directory_that_leaves_the_root_is_refused ... ok
+test wire::tests::a_relative_program_is_refused ... ok
+test ring::tests::the_frame_ceiling_also_discards ... ok
+test wire::tests::a_valid_open_request_checks ... ok
+test wire::tests::an_unknown_feature_and_version_refuse_distinctly ... ok
+test wire::tests::oversized_input_is_refused ... ok
+test wire::tests::frames_round_trip_with_base64_data ... ok
+test wire::tests::unknown_fields_are_refused ... ok
+test wire::tests::the_largest_frame_fits_one_direct_channel_data_frame ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test every_invalid_fixture_refuses_with_its_reason ... ok
+test the_fixture_frames_apply_as_a_client_would_see_them ... ok
+test every_valid_fixture_checks_and_round_trips ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

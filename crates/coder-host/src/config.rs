@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use coder_access::RelayPolicy;
-use coder_reach::hints::Class;
+use coder_reach::hints::{Class, Transport};
 
 use crate::{Error, Result};
 
@@ -25,8 +25,22 @@ pub struct Ready {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Advertised {
     pub class: Class,
-    /// `host:port`.
+    /// `host:port` for a TCP endpoint, or a `ws` or `wss` URL for a
+    /// WebSocket endpoint that forwards to the WebSocket listener.
     pub address: String,
+}
+
+impl Advertised {
+    /// The transport the address names: a `ws` or `wss` URL is a WebSocket
+    /// endpoint, and anything else is `host:port` over TCP.
+    #[must_use]
+    pub fn transport(&self) -> Transport {
+        if self.address.starts_with("ws://") || self.address.starts_with("wss://") {
+            Transport::Websocket
+        } else {
+            Transport::Tcp
+        }
+    }
 }
 
 /// One host's configuration.
@@ -42,6 +56,10 @@ pub struct Config {
     /// The direct-channel listener. It must be a loopback address unless
     /// `allow_nonloopback` is set.
     pub listen: SocketAddr,
+    /// An optional WebSocket direct-channel listener. It carries the same
+    /// handshake, encryption, and frame bounds as the TCP listener, one
+    /// frame per binary message, and follows the same loopback rule.
+    pub listen_websocket: Option<SocketAddr>,
     /// Permit a listener on a non-loopback address, such as a LAN or
     /// tailnet interface.
     pub allow_nonloopback: bool,
@@ -79,6 +97,7 @@ impl Config {
             relays,
             policy: RelayPolicy::Production,
             listen: SocketAddr::from(([127, 0, 0, 1], 0)),
+            listen_websocket: None,
             allow_nonloopback: false,
             advertise_listener: true,
             advertise: Vec::new(),
@@ -119,7 +138,10 @@ impl Config {
                 .validate(relay)
                 .map_err(|_| Error::Config("a relay is not allowed by the relay policy".into()))?;
         }
-        if !self.listen.ip().is_loopback() && !self.allow_nonloopback {
+        let nonloopback = std::iter::once(self.listen)
+            .chain(self.listen_websocket)
+            .any(|listen| !listen.ip().is_loopback());
+        if nonloopback && !self.allow_nonloopback {
             return Err(Error::Config(
                 "the listener is loopback only unless --allow-nonloopback is given".into(),
             ));
@@ -142,5 +164,42 @@ impl Config {
             return Err(Error::Config("periods must be greater than zero".into()));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn websocket_listener_follows_the_loopback_rule() {
+        let mut config = Config::new(
+            PathBuf::from("/access"),
+            vec!["wss://relay.example".into()],
+            1,
+        );
+        config.listen_websocket = Some(SocketAddr::from(([127, 0, 0, 1], 0)));
+        config.validate().unwrap();
+        config.listen_websocket = Some(SocketAddr::from(([192, 168, 1, 2], 0)));
+        assert!(config.validate().is_err());
+        config.allow_nonloopback = true;
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn an_advertised_url_is_a_websocket_endpoint() {
+        let advertised = |address: &str| Advertised {
+            class: Class::Lan,
+            address: address.into(),
+        };
+        assert_eq!(
+            advertised("wss://box.lan/reach").transport(),
+            Transport::Websocket
+        );
+        assert_eq!(
+            advertised("ws://192.168.1.2:9000/").transport(),
+            Transport::Websocket
+        );
+        assert_eq!(advertised("192.168.1.2:9000").transport(), Transport::Tcp);
     }
 }

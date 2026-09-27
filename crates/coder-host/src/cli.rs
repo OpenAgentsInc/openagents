@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{Advertised, Config, Ready};
 use crate::tasks::Tasks;
-use crate::{Error, Result, unix_time};
+use crate::{Error, Result, generation};
 
 /// Exit code for a usage error.
 pub const EXIT_USAGE: u8 = 2;
@@ -28,10 +28,12 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   init --owner KEY --relay URL [--relay URL]... [--workspace LABEL=PATH]...
   public-key
   invite [--relay URL] [--rights LIST] [--grant-secs N]
+  request [--relay URL] [--rights LIST]
   list [--json]
   revoke --device KEY
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
-        [--allow-nonloopback] [--advertise lan|tailnet|public=HOST:PORT]...
+        [--listen-websocket ADDR] [--allow-nonloopback]
+        [--advertise lan|tailnet|public=HOST:PORT|URL]...
         [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback]
         [--no-telemetry]
 Every command also takes --state DIR (the access store, default
@@ -82,6 +84,7 @@ pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
         "init" => init(&common, &mut options),
         "public-key" => public_key(&common, &mut options),
         "invite" => invite(&common, &mut options),
+        "request" => request(&common, &mut options).await,
         "list" => list(&common, &mut options),
         "revoke" => revoke(&common, &mut options),
         "serve" => serve(&common, &mut options, open_tasks).await,
@@ -134,12 +137,13 @@ struct Options {
     flags: Vec<String>,
 }
 
-const FLAGS: [&str; 6] = [
+const FLAGS: [&str; 7] = [
     "--json",
     "--loopback",
     "--loopback-test",
     "--allow-nonloopback",
     "--no-runtime",
+    "--no-telemetry",
     "--help",
 ];
 
@@ -333,6 +337,49 @@ fn invite(common: &Common, options: &mut Options) -> Result<()> {
     Ok(())
 }
 
+/// Reverse enrollment for a host without a screen: publish a request, print
+/// its short code, and wait while the running host answers the approval.
+async fn request(common: &Common, options: &mut Options) -> Result<()> {
+    let relay = match options.one("--relay")? {
+        Some(relay) => relay,
+        None => load_settings(&common.root)?
+            .relays
+            .into_iter()
+            .next()
+            .ok_or_else(|| usage(" request needs --relay, or run init first"))?,
+    };
+    let rights = match options.one("--rights")? {
+        Some(list) => Rights::parse_list(&list)?,
+        None => Rights::standard(),
+    };
+    options.finish()?;
+    let requested = crate::enroll::request(&common.state, common.policy, &relay, rights).await?;
+    println!("enrollment {}", requested.id);
+    println!("code {}", requested.code);
+    eprintln!(
+        "Approve this request from the owner or a device with access_admin, typing the code. \
+         `coder host serve` must be running on {relay} to answer. It expires at {}.",
+        requested.expires_at
+    );
+    let outcome = crate::enroll::wait(
+        &common.state,
+        common.policy,
+        &requested.id,
+        Duration::from_millis(500),
+    )
+    .await?;
+    match outcome {
+        coder_access::host::EnrollmentStatus::Approved { device, grant } => {
+            println!("approved device {device} grant {grant}");
+            Ok(())
+        }
+        other => Err(Error::Config(format!(
+            "the enrollment request was {}",
+            crate::enroll::describe(&other)
+        ))),
+    }
+}
+
 fn list(common: &Common, options: &mut Options) -> Result<()> {
     let json = options.flag("--json");
     options.finish()?;
@@ -401,13 +448,20 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
             .map_err(|_| usage(" --listen takes HOST:PORT"))?,
         None => SocketAddr::from(([127, 0, 0, 1], 0)),
     };
+    let listen_websocket = options
+        .one("--listen-websocket")?
+        .map(|text| {
+            text.parse::<SocketAddr>()
+                .map_err(|_| usage(" --listen-websocket takes HOST:PORT"))
+        })
+        .transpose()?;
     let allow_nonloopback = options.flag("--allow-nonloopback");
     let telemetry = !options.flag("--no-telemetry");
     let mut advertise = Vec::new();
     for entry in options.all("--advertise") {
         let (class, address) = entry
             .split_once('=')
-            .ok_or_else(|| usage(" --advertise takes CLASS=HOST:PORT"))?;
+            .ok_or_else(|| usage(" --advertise takes CLASS=HOST:PORT or CLASS=URL"))?;
         let class = match class {
             "lan" => Class::Lan,
             "tailnet" => Class::Tailnet,
@@ -423,10 +477,11 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         .one("--generation")?
         .or_else(|| std::env::var("OPENAGENTS_HOST_GENERATION").ok())
     {
-        Some(text) => text
-            .parse::<u64>()
-            .map_err(|_| usage(" --generation takes a whole number"))?,
-        None => next_generation(root)?,
+        Some(text) => generation::Source::Given(
+            text.parse::<u64>()
+                .map_err(|_| usage(" --generation takes a whole number"))?,
+        ),
+        None => generation::Source::Next,
     };
     let runtime = if options.flag("--no-runtime") {
         None
@@ -453,9 +508,12 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         _ => None,
     };
     let tasks = open_tasks(&tasks_dir, &workspaces).map_err(Error::Config)?;
+    // The last step before serving, so a refused start uses no generation.
+    let generation = generation::resolve(&generation::counter_root(root), generation)?;
     let mut config = Config::new(state, relays, generation);
     config.policy = policy;
     config.listen = listen;
+    config.listen_websocket = listen_websocket;
     config.allow_nonloopback = allow_nonloopback;
     config.telemetry = telemetry;
     config.advertise = advertise;
@@ -470,6 +528,9 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         running.generation(),
         running.local_addr()
     );
+    if let Some(address) = running.websocket_addr() {
+        eprintln!("coder host: WebSocket direct channels on {address}");
+    }
     wait_for_stop().await;
     running.shutdown().await;
     Ok(())
@@ -489,21 +550,6 @@ async fn wait_for_stop() {
         _ = term.recv() => {},
         _ = interrupt.recv() => {},
     }
-}
-
-/// A standalone host takes the next generation from a counter it keeps. The
-/// host service passes its own in `OPENAGENTS_HOST_GENERATION`.
-fn next_generation(root: &Path) -> Result<u64> {
-    let path = root.join("generation");
-    let current = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|text| text.trim().parse::<u64>().ok())
-        .unwrap_or(0);
-    // A clock-derived floor keeps generations increasing if the counter is
-    // lost; presence readers refuse a generation that goes backward.
-    let next = current.max(unix_time()?).saturating_add(1);
-    crate::serve::write_private(&path, format!("{next}\n").as_bytes())?;
-    Ok(next)
 }
 
 fn public_key_text(text: &str) -> Result<String> {
@@ -534,5 +580,35 @@ fn retry_busy<T>(
             }
             other => return other,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serve_flags_take_no_value() {
+        let args: Vec<String> = [
+            "--loopback",
+            "--no-telemetry",
+            "--no-runtime",
+            "--allow-nonloopback",
+            "--relay",
+            "ws://127.0.0.1:9/",
+        ]
+        .map(String::from)
+        .to_vec();
+        let mut options = Options::parse(&args).unwrap();
+        for flag in [
+            "--loopback",
+            "--no-telemetry",
+            "--no-runtime",
+            "--allow-nonloopback",
+        ] {
+            assert!(options.flag(flag), "{flag}");
+        }
+        assert_eq!(options.all("--relay"), ["ws://127.0.0.1:9/"]);
+        assert!(options.finish().is_ok());
     }
 }

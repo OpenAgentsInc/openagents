@@ -50,6 +50,7 @@ pub struct Program {
 #[must_use]
 pub fn request(spec: &Spec) -> Request {
     Request {
+        text_format: None,
         model: "gpt-6-astra".into(),
         effort: Some("high".into()),
         cache_key: "coder-one-public-program-v1".into(),

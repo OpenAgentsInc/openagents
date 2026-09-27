@@ -49,7 +49,10 @@ host.attach(device, &Attach::new(request2, terminal, Mode::Interact, 0, 64 * 102
   `crates/supervise` convention. Close, idle expiry, and shutdown send the
   group `SIGHUP`, `SIGTERM`, and `SIGCONT`, wait `supervise::GRACE`
   (250 milliseconds), send `SIGKILL`, and reap the child before recording its
-  exit. A child that exits on its own takes the rest of its group with it.
+  exit. They then wait, within the same grace period, until the group is
+  empty: a killed descendant stays in the group as a zombie until init or a
+  subreaper reaps it. A child that exits on its own takes the rest of its
+  group with it.
 - **Boundaries.** `Config::wrap` takes a `Wrap` that turns a program and its
   arguments into the command to spawn. A `coder_boundary::Boundary` fits
   directly; `tests/pty.rs` runs a terminal inside a write boundary. The host
@@ -63,8 +66,12 @@ host.attach(device, &Attach::new(request2, terminal, Mode::Interact, 0, 64 * 102
 ## Limits
 
 - **Unix only.** Elsewhere `Host::open` refuses as `unavailable`. Tested on
-  macOS; the Linux path compiles for musl and Android but was not run here.
-  On glibc the crate links `libutil`, where older releases keep `openpty`.
+  macOS and on Linux with glibc 2.42 (NixOS); the
+  [Linux runs record](../../docs/coder/verification/2026-09-27-linux-runs.md)
+  holds the Linux results. On glibc the crate links `libutil`, where
+  releases before 2.34 keep `openpty`; on 2.34 and later `openpty` resolves
+  from `libc`, and the linker drops `libutil` as unneeded. Musl and Android
+  builds compile but were not run.
 - **No memory cap.** A terminal's tree is not placed under the supervisor's
   memory scope or watch. A terminal is interactive and long-lived, which the
   supervisor's job model does not cover; the resident host must bound it

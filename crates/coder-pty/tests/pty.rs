@@ -95,6 +95,19 @@ fn command(program: &str, args: &[&str]) -> Launch {
     }
 }
 
+/// `cat` found through `PATH`. A launch names an absolute program, and
+/// some systems, such as NixOS, keep no `cat` in `/bin`.
+fn cat() -> String {
+    std::env::var_os("PATH")
+        .iter()
+        .flat_map(std::env::split_paths)
+        .map(|dir| dir.join("cat"))
+        .find(|path| path.is_absolute() && path.is_file())
+        .expect("cat is on PATH")
+        .display()
+        .to_string()
+}
+
 fn sh(script: &str) -> Launch {
     command("/bin/sh", &["-c", script])
 }
@@ -184,7 +197,7 @@ fn type_in(host: &Host, principal: &str, terminal: &TerminalRef, text: &str) -> 
 #[test]
 fn echo_round_trips_through_a_real_pty() {
     let fixture = fixture();
-    let terminal = open(&fixture.host, command("/bin/cat", &[]));
+    let terminal = open(&fixture.host, command(&cat(), &[]));
     let mut reader = Reader::attach(&fixture.host, OWNER, &terminal, Mode::Interact, 0);
     let typed = type_in(&fixture.host, OWNER, &terminal, "hello pty\n").unwrap();
     assert_eq!(typed, (Status::Accepted, Value::Written { bytes: 10 }));
@@ -246,7 +259,7 @@ fn resize_reaches_the_process() {
 #[test]
 fn two_attached_readers_see_the_same_frames() {
     let fixture = fixture();
-    let terminal = open(&fixture.host, command("/bin/cat", &[]));
+    let terminal = open(&fixture.host, command(&cat(), &[]));
     let mut first = Reader::attach(&fixture.host, OWNER, &terminal, Mode::Interact, 0);
     let mut second = Reader::attach(&fixture.host, OWNER, &terminal, Mode::Observe, 0);
     type_in(&fixture.host, OWNER, &terminal, "shared line\n").unwrap();
@@ -260,7 +273,7 @@ fn two_attached_readers_see_the_same_frames() {
 #[test]
 fn a_detached_client_reattaches_and_replays_what_it_missed() {
     let fixture = fixture();
-    let terminal = open(&fixture.host, command("/bin/cat", &[]));
+    let terminal = open(&fixture.host, command(&cat(), &[]));
     let mut phone = Reader::attach(&fixture.host, OWNER, &terminal, Mode::Interact, 0);
     type_in(&fixture.host, OWNER, &terminal, "before detach\n").unwrap();
     assert!(phone.until(|state| state.screen().text().matches("before detach").count() >= 2));
@@ -345,7 +358,7 @@ fn replay_after_the_ring_wrapped_reports_a_gap() {
 #[test]
 fn input_without_the_terminal_right_is_refused() {
     let fixture = fixture_with(|config| config.observers_read = true);
-    let terminal = open(&fixture.host, command("/bin/cat", &[]));
+    let terminal = open(&fixture.host, command(&cat(), &[]));
     let mut observer = Reader::attach(&fixture.host, OBSERVER, &terminal, Mode::Observe, 0);
 
     let refused = type_in(&fixture.host, OBSERVER, &terminal, "observer typed\n").unwrap_err();
@@ -398,7 +411,7 @@ fn input_without_the_terminal_right_is_refused() {
 #[test]
 fn observers_read_only_when_the_host_allows_it() {
     let fixture = fixture();
-    let terminal = open(&fixture.host, command("/bin/cat", &[]));
+    let terminal = open(&fixture.host, command(&cat(), &[]));
     let (sink, _frames) = host::channel(4);
     let attach = Attach::new(id(), terminal, Mode::Observe, 0, RATE);
     assert_eq!(
@@ -414,7 +427,7 @@ fn observers_read_only_when_the_host_allows_it() {
 #[test]
 fn a_revoked_attachment_is_ended_on_the_next_tick() {
     let fixture = fixture_with(|config| config.observers_read = true);
-    let terminal = open(&fixture.host, command("/bin/cat", &[]));
+    let terminal = open(&fixture.host, command(&cat(), &[]));
     let mut observer = Reader::attach(&fixture.host, OBSERVER, &terminal, Mode::Observe, 0);
     fixture.grants.revoke(OBSERVER);
     fixture.host.tick(Instant::now());
@@ -475,7 +488,7 @@ fn a_signal_reaches_the_foreground_process() {
 #[test]
 fn close_ends_the_terminal_and_reports_why() {
     let fixture = fixture();
-    let terminal = open(&fixture.host, command("/bin/cat", &[]));
+    let terminal = open(&fixture.host, command(&cat(), &[]));
     let group = fixture.host.process_group(&terminal).unwrap();
     let mut reader = Reader::attach(&fixture.host, OWNER, &terminal, Mode::Interact, 0);
     let close = Close::new(id(), terminal.clone());
@@ -536,7 +549,7 @@ fn dropping_the_host_kills_the_process_group() {
 #[test]
 fn an_idle_terminal_expires() {
     let fixture = fixture_with(|config| config.idle = Duration::from_secs(3600));
-    let terminal = open(&fixture.host, command("/bin/cat", &[]));
+    let terminal = open(&fixture.host, command(&cat(), &[]));
     let group = fixture.host.process_group(&terminal).unwrap();
     let reader = Reader::attach(&fixture.host, OWNER, &terminal, Mode::Interact, 0);
     // Attached clients keep it alive however long they wait.
@@ -569,7 +582,7 @@ fn an_idle_terminal_expires() {
 #[test]
 fn a_terminal_from_an_earlier_host_generation_is_lost() {
     let fixture = fixture();
-    let terminal = open(&fixture.host, command("/bin/cat", &[]));
+    let terminal = open(&fixture.host, command(&cat(), &[]));
     let restarted = fixture_with(|_| {});
     let attach = Attach::new(id(), terminal.clone(), Mode::Interact, 0, RATE);
     let (sink, _frames) = host::channel(4);
@@ -600,7 +613,7 @@ fn a_terminal_from_an_earlier_host_generation_is_lost() {
 #[test]
 fn an_exact_input_retry_is_typed_once() {
     let fixture = fixture();
-    let terminal = open(&fixture.host, command("/bin/cat", &[]));
+    let terminal = open(&fixture.host, command(&cat(), &[]));
     let mut reader = Reader::attach(&fixture.host, OWNER, &terminal, Mode::Interact, 0);
     let input = Input::new(id(), terminal.clone(), b"once\n".to_vec());
     assert_eq!(

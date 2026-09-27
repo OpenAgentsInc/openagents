@@ -1,0 +1,1231 @@
+{
+  "description": "NIP-REACH wire fixtures. Keys are the x-only public keys of secp256k1 scalars 1 (host), 2 (owner), 3 (device), 4 (second host), and 5 (third host). Times are Unix seconds. Valid bodies validate and round-trip exactly; invalid bodies refuse with the stated code when parsed or validated. Placement vectors give each candidate's presence and receipt time, the expected host (null for none), and each candidate's assessment. The transcript vector gives the SHA-256 channel transcript both proofs sign; the proof signature is a placeholder and does not enter the transcript. WebSocket message vectors give one binary message in hex and the code the receiver refuses it with (null when it carries exactly one frame).",
+  "valid": {
+    "directory": {
+      "v": "openagents.host-directory.v1",
+      "requires": [],
+      "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "revision": 3,
+      "issued_at": 1790000000,
+      "hosts": [
+        {
+          "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "label": "Studio Mac",
+          "relays": [
+            "wss://relay.example.com/"
+          ],
+          "weight": 100,
+          "added_at": 1789913600
+        },
+        {
+          "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "label": "Build box",
+          "relays": [
+            "wss://relay.example.com/",
+            "wss://relay2.example.com/"
+          ],
+          "weight": 250,
+          "added_at": 1789996400
+        }
+      ]
+    },
+    "presence": {
+      "v": "openagents.host-presence.v1",
+      "requires": [],
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "generation": 7,
+      "protocol": 1,
+      "compatibility": {
+        "min": 1,
+        "max": 1
+      },
+      "capabilities": [
+        "direct-tcp",
+        "terminal",
+        "task-create"
+      ],
+      "observed_at": 1790000000,
+      "telemetry": {
+        "cpu_count": 10,
+        "cpu_utilization_pct": 35,
+        "memory_available_pct": 60
+      }
+    },
+    "presence_without_telemetry": {
+      "v": "openagents.host-presence.v1",
+      "requires": [],
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "generation": 7,
+      "protocol": 1,
+      "compatibility": {
+        "min": 1,
+        "max": 1
+      },
+      "capabilities": [
+        "direct-tcp",
+        "terminal",
+        "task-create"
+      ],
+      "observed_at": 1790000000,
+      "telemetry": null
+    },
+    "hints": {
+      "v": "openagents.reach-hints.v1",
+      "requires": [],
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "generation": 7,
+      "issued_at": 1790000000,
+      "expires_at": 1790003600,
+      "hints": [
+        {
+          "class": "loopback",
+          "transport": "tcp",
+          "address": "127.0.0.1:47100",
+          "status": "reachable",
+          "observed_at": 1790000000
+        },
+        {
+          "class": "lan",
+          "transport": "tcp",
+          "address": "192.168.1.20:47100",
+          "status": "reachable",
+          "observed_at": 1790000000
+        },
+        {
+          "class": "tailnet",
+          "transport": "tcp",
+          "address": "100.101.102.103:47100",
+          "status": "unknown",
+          "observed_at": 1790000000
+        },
+        {
+          "class": "public",
+          "transport": "websocket",
+          "address": "wss://host.example.com/reach",
+          "status": "unknown",
+          "observed_at": 1790000000
+        },
+        {
+          "class": "relay",
+          "transport": "nostr",
+          "address": "wss://relay.example.com/",
+          "status": "reachable",
+          "observed_at": 1790000000
+        }
+      ]
+    }
+  },
+  "invalid": [
+    {
+      "name": "owner listed as a host",
+      "schema": "directory",
+      "body": {
+        "v": "openagents.host-directory.v1",
+        "requires": [],
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "revision": 3,
+        "issued_at": 1790000000,
+        "hosts": [
+          {
+            "host": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "label": "Studio Mac",
+            "relays": [
+              "wss://relay.example.com/"
+            ],
+            "weight": 100,
+            "added_at": 1789913600
+          }
+        ]
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "duplicate host",
+      "schema": "directory",
+      "body": {
+        "v": "openagents.host-directory.v1",
+        "requires": [],
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "revision": 3,
+        "issued_at": 1790000000,
+        "hosts": [
+          {
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "label": "Studio Mac",
+            "relays": [
+              "wss://relay.example.com/"
+            ],
+            "weight": 100,
+            "added_at": 1789913600
+          },
+          {
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "label": "Studio Mac",
+            "relays": [
+              "wss://relay.example.com/"
+            ],
+            "weight": 100,
+            "added_at": 1789913600
+          }
+        ]
+      },
+      "code": "conflict"
+    },
+    {
+      "name": "weight over 1000",
+      "schema": "directory",
+      "body": {
+        "v": "openagents.host-directory.v1",
+        "requires": [],
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "revision": 3,
+        "issued_at": 1790000000,
+        "hosts": [
+          {
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "label": "Studio Mac",
+            "relays": [
+              "wss://relay.example.com/"
+            ],
+            "weight": 1001,
+            "added_at": 1789913600
+          }
+        ]
+      },
+      "code": "limit_exceeded"
+    },
+    {
+      "name": "plain ws relay off loopback",
+      "schema": "directory",
+      "body": {
+        "v": "openagents.host-directory.v1",
+        "requires": [],
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "revision": 3,
+        "issued_at": 1790000000,
+        "hosts": [
+          {
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "label": "Studio Mac",
+            "relays": [
+              "ws://relay.example.com/"
+            ],
+            "weight": 100,
+            "added_at": 1789913600
+          }
+        ]
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "host added after issue",
+      "schema": "directory",
+      "body": {
+        "v": "openagents.host-directory.v1",
+        "requires": [],
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "revision": 3,
+        "issued_at": 1790000000,
+        "hosts": [
+          {
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "label": "Studio Mac",
+            "relays": [
+              "wss://relay.example.com/"
+            ],
+            "weight": 100,
+            "added_at": 1790000001
+          }
+        ]
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "unsupported directory version",
+      "schema": "directory",
+      "body": {
+        "v": "openagents.host-directory.v2",
+        "requires": [],
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "revision": 3,
+        "issued_at": 1790000000,
+        "hosts": [
+          {
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "label": "Studio Mac",
+            "relays": [
+              "wss://relay.example.com/"
+            ],
+            "weight": 100,
+            "added_at": 1789913600
+          },
+          {
+            "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+            "label": "Build box",
+            "relays": [
+              "wss://relay.example.com/",
+              "wss://relay2.example.com/"
+            ],
+            "weight": 250,
+            "added_at": 1789996400
+          }
+        ]
+      },
+      "code": "unsupported_version"
+    },
+    {
+      "name": "required feature",
+      "schema": "directory",
+      "body": {
+        "v": "openagents.host-directory.v1",
+        "requires": [
+          "openagents.future.v1"
+        ],
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "revision": 3,
+        "issued_at": 1790000000,
+        "hosts": [
+          {
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "label": "Studio Mac",
+            "relays": [
+              "wss://relay.example.com/"
+            ],
+            "weight": 100,
+            "added_at": 1789913600
+          },
+          {
+            "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+            "label": "Build box",
+            "relays": [
+              "wss://relay.example.com/",
+              "wss://relay2.example.com/"
+            ],
+            "weight": 250,
+            "added_at": 1789996400
+          }
+        ]
+      },
+      "code": "unsupported_feature"
+    },
+    {
+      "name": "unknown field",
+      "schema": "directory",
+      "body": {
+        "v": "openagents.host-directory.v1",
+        "requires": [],
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "revision": 3,
+        "issued_at": 1790000000,
+        "hosts": [
+          {
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "label": "Studio Mac",
+            "relays": [
+              "wss://relay.example.com/"
+            ],
+            "weight": 100,
+            "added_at": 1789913600
+          },
+          {
+            "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+            "label": "Build box",
+            "relays": [
+              "wss://relay.example.com/",
+              "wss://relay2.example.com/"
+            ],
+            "weight": 250,
+            "added_at": 1789996400
+          }
+        ],
+        "public": true
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "host is the owner",
+      "schema": "presence",
+      "body": {
+        "v": "openagents.host-presence.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "generation": 7,
+        "protocol": 1,
+        "compatibility": {
+          "min": 1,
+          "max": 1
+        },
+        "capabilities": [
+          "direct-tcp",
+          "terminal",
+          "task-create"
+        ],
+        "observed_at": 1790000000,
+        "telemetry": {
+          "cpu_count": 10,
+          "cpu_utilization_pct": 35,
+          "memory_available_pct": 60
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "empty version range",
+      "schema": "presence",
+      "body": {
+        "v": "openagents.host-presence.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "generation": 7,
+        "protocol": 1,
+        "compatibility": {
+          "min": 2,
+          "max": 1
+        },
+        "capabilities": [
+          "direct-tcp",
+          "terminal",
+          "task-create"
+        ],
+        "observed_at": 1790000000,
+        "telemetry": {
+          "cpu_count": 10,
+          "cpu_utilization_pct": 35,
+          "memory_available_pct": 60
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "cpu use over 100",
+      "schema": "presence",
+      "body": {
+        "v": "openagents.host-presence.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "generation": 7,
+        "protocol": 1,
+        "compatibility": {
+          "min": 1,
+          "max": 1
+        },
+        "capabilities": [
+          "direct-tcp",
+          "terminal",
+          "task-create"
+        ],
+        "observed_at": 1790000000,
+        "telemetry": {
+          "cpu_count": 10,
+          "cpu_utilization_pct": 101,
+          "memory_available_pct": 60
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "zero cpus",
+      "schema": "presence",
+      "body": {
+        "v": "openagents.host-presence.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "generation": 7,
+        "protocol": 1,
+        "compatibility": {
+          "min": 1,
+          "max": 1
+        },
+        "capabilities": [
+          "direct-tcp",
+          "terminal",
+          "task-create"
+        ],
+        "observed_at": 1790000000,
+        "telemetry": {
+          "cpu_count": 0,
+          "cpu_utilization_pct": 1,
+          "memory_available_pct": 60
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "duplicate capability",
+      "schema": "presence",
+      "body": {
+        "v": "openagents.host-presence.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "generation": 7,
+        "protocol": 1,
+        "compatibility": {
+          "min": 1,
+          "max": 1
+        },
+        "capabilities": [
+          "terminal",
+          "terminal"
+        ],
+        "observed_at": 1790000000,
+        "telemetry": {
+          "cpu_count": 10,
+          "cpu_utilization_pct": 35,
+          "memory_available_pct": 60
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "loopback class on a LAN address",
+      "schema": "hints",
+      "body": {
+        "v": "openagents.reach-hints.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "generation": 7,
+        "issued_at": 1790000000,
+        "expires_at": 1790003600,
+        "hints": [
+          {
+            "class": "loopback",
+            "transport": "tcp",
+            "address": "192.168.1.20:47100",
+            "status": "reachable",
+            "observed_at": 1790000000
+          }
+        ]
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "shareable class on a loopback address",
+      "schema": "hints",
+      "body": {
+        "v": "openagents.reach-hints.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "generation": 7,
+        "issued_at": 1790000000,
+        "expires_at": 1790003600,
+        "hints": [
+          {
+            "class": "lan",
+            "transport": "tcp",
+            "address": "127.0.0.1:47100",
+            "status": "reachable",
+            "observed_at": 1790000000
+          }
+        ]
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "relay class over tcp",
+      "schema": "hints",
+      "body": {
+        "v": "openagents.reach-hints.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "generation": 7,
+        "issued_at": 1790000000,
+        "expires_at": 1790003600,
+        "hints": [
+          {
+            "class": "relay",
+            "transport": "tcp",
+            "address": "203.0.113.5:443",
+            "status": "reachable",
+            "observed_at": 1790000000
+          }
+        ]
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "websocket URL with credentials",
+      "schema": "hints",
+      "body": {
+        "v": "openagents.reach-hints.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "generation": 7,
+        "issued_at": 1790000000,
+        "expires_at": 1790003600,
+        "hints": [
+          {
+            "class": "public",
+            "transport": "websocket",
+            "address": "wss://user:pw@host.example.com/reach",
+            "status": "unknown",
+            "observed_at": 1790000000
+          }
+        ]
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "unspecified address",
+      "schema": "hints",
+      "body": {
+        "v": "openagents.reach-hints.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "generation": 7,
+        "issued_at": 1790000000,
+        "expires_at": 1790003600,
+        "hints": [
+          {
+            "class": "lan",
+            "transport": "tcp",
+            "address": "0.0.0.0:47100",
+            "status": "reachable",
+            "observed_at": 1790000000
+          }
+        ]
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "lifetime over a day",
+      "schema": "hints",
+      "body": {
+        "v": "openagents.reach-hints.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "generation": 7,
+        "issued_at": 1790000000,
+        "expires_at": 1790086401,
+        "hints": [
+          {
+            "class": "loopback",
+            "transport": "tcp",
+            "address": "127.0.0.1:47100",
+            "status": "reachable",
+            "observed_at": 1790000000
+          },
+          {
+            "class": "lan",
+            "transport": "tcp",
+            "address": "192.168.1.20:47100",
+            "status": "reachable",
+            "observed_at": 1790000000
+          },
+          {
+            "class": "tailnet",
+            "transport": "tcp",
+            "address": "100.101.102.103:47100",
+            "status": "unknown",
+            "observed_at": 1790000000
+          },
+          {
+            "class": "public",
+            "transport": "websocket",
+            "address": "wss://host.example.com/reach",
+            "status": "unknown",
+            "observed_at": 1790000000
+          },
+          {
+            "class": "relay",
+            "transport": "nostr",
+            "address": "wss://relay.example.com/",
+            "status": "reachable",
+            "observed_at": 1790000000
+          }
+        ]
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "hint observed after issue",
+      "schema": "hints",
+      "body": {
+        "v": "openagents.reach-hints.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "generation": 7,
+        "issued_at": 1790000000,
+        "expires_at": 1790003600,
+        "hints": [
+          {
+            "class": "lan",
+            "transport": "tcp",
+            "address": "192.168.1.20:47100",
+            "status": "reachable",
+            "observed_at": 1790000001
+          }
+        ]
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "duplicate hint",
+      "schema": "hints",
+      "body": {
+        "v": "openagents.reach-hints.v1",
+        "requires": [],
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "generation": 7,
+        "issued_at": 1790000000,
+        "expires_at": 1790003600,
+        "hints": [
+          {
+            "class": "lan",
+            "transport": "tcp",
+            "address": "192.168.1.20:47100",
+            "status": "reachable",
+            "observed_at": 1790000000
+          },
+          {
+            "class": "lan",
+            "transport": "tcp",
+            "address": "192.168.1.20:47100",
+            "status": "reachable",
+            "observed_at": 1790000000
+          }
+        ]
+      },
+      "code": "malformed"
+    }
+  ],
+  "placement": [
+    {
+      "name": "highest score wins",
+      "now": 1790000010,
+      "client": {
+        "protocol": 1,
+        "accepts": {
+          "min": 1,
+          "max": 1
+        }
+      },
+      "candidates": [
+        {
+          "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "weight": 100,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": {
+              "cpu_count": 10,
+              "cpu_utilization_pct": 35,
+              "memory_available_pct": 60
+            }
+          },
+          "received_at": 1790000001
+        },
+        {
+          "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "weight": 100,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": {
+              "cpu_count": 32,
+              "cpu_utilization_pct": 80,
+              "memory_available_pct": 40
+            }
+          },
+          "received_at": 1790000001
+        },
+        {
+          "host": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+          "weight": 100,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": {
+              "cpu_count": 8,
+              "cpu_utilization_pct": 10,
+              "memory_available_pct": 90
+            }
+          },
+          "received_at": 1790000001
+        }
+      ],
+      "expected": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+      "assessments": {
+        "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "eligible",
+        "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13": "eligible",
+        "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4": "eligible"
+      }
+    },
+    {
+      "name": "weight tips the choice",
+      "now": 1790000010,
+      "client": {
+        "protocol": 1,
+        "accepts": {
+          "min": 1,
+          "max": 1
+        }
+      },
+      "candidates": [
+        {
+          "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "weight": 100,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": {
+              "cpu_count": 10,
+              "cpu_utilization_pct": 35,
+              "memory_available_pct": 60
+            }
+          },
+          "received_at": 1790000001
+        },
+        {
+          "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "weight": 10,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": {
+              "cpu_count": 32,
+              "cpu_utilization_pct": 80,
+              "memory_available_pct": 40
+            }
+          },
+          "received_at": 1790000001
+        }
+      ],
+      "expected": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "assessments": {
+        "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "eligible",
+        "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13": "eligible"
+      }
+    },
+    {
+      "name": "stale, overloaded, zero-weight, and unadmitted hosts are skipped",
+      "now": 1790000500,
+      "client": {
+        "protocol": 1,
+        "accepts": {
+          "min": 1,
+          "max": 1
+        }
+      },
+      "candidates": [
+        {
+          "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "weight": 100,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": {
+              "cpu_count": 10,
+              "cpu_utilization_pct": 35,
+              "memory_available_pct": 60
+            }
+          },
+          "received_at": 1790000001
+        },
+        {
+          "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "weight": 100,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000490,
+            "telemetry": {
+              "cpu_count": 32,
+              "cpu_utilization_pct": 95,
+              "memory_available_pct": 40
+            }
+          },
+          "received_at": 1790000495
+        },
+        {
+          "host": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+          "weight": 0,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000490,
+            "telemetry": {
+              "cpu_count": 8,
+              "cpu_utilization_pct": 10,
+              "memory_available_pct": 90
+            }
+          },
+          "received_at": 1790000495
+        }
+      ],
+      "expected": null,
+      "assessments": {
+        "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "stale",
+        "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13": "overloaded",
+        "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4": "zero_weight"
+      }
+    },
+    {
+      "name": "incompatible and telemetry-less hosts are skipped",
+      "now": 1790000010,
+      "client": {
+        "protocol": 1,
+        "accepts": {
+          "min": 1,
+          "max": 1
+        }
+      },
+      "candidates": [
+        {
+          "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "weight": 100,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 2,
+            "compatibility": {
+              "min": 2,
+              "max": 3
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": {
+              "cpu_count": 10,
+              "cpu_utilization_pct": 35,
+              "memory_available_pct": 60
+            }
+          },
+          "received_at": 1790000001
+        },
+        {
+          "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "weight": 100,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": null
+          },
+          "received_at": 1790000001
+        },
+        {
+          "host": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+          "weight": 100,
+          "admitted": false,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": {
+              "cpu_count": 8,
+              "cpu_utilization_pct": 10,
+              "memory_available_pct": 90
+            }
+          },
+          "received_at": 1790000001
+        }
+      ],
+      "expected": null,
+      "assessments": {
+        "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "incompatible",
+        "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13": "no_telemetry",
+        "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4": "not_admitted"
+      }
+    },
+    {
+      "name": "ties go to the smallest host key",
+      "now": 1790000010,
+      "client": {
+        "protocol": 1,
+        "accepts": {
+          "min": 1,
+          "max": 1
+        }
+      },
+      "candidates": [
+        {
+          "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "weight": 100,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": {
+              "cpu_count": 10,
+              "cpu_utilization_pct": 35,
+              "memory_available_pct": 60
+            }
+          },
+          "received_at": 1790000001
+        },
+        {
+          "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "weight": 100,
+          "admitted": true,
+          "presence": {
+            "v": "openagents.host-presence.v1",
+            "requires": [],
+            "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "generation": 7,
+            "protocol": 1,
+            "compatibility": {
+              "min": 1,
+              "max": 1
+            },
+            "capabilities": [
+              "direct-tcp",
+              "terminal",
+              "task-create"
+            ],
+            "observed_at": 1790000000,
+            "telemetry": {
+              "cpu_count": 10,
+              "cpu_utilization_pct": 35,
+              "memory_available_pct": 60
+            }
+          },
+          "received_at": 1790000001
+        }
+      ],
+      "expected": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "assessments": {
+        "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "eligible",
+        "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13": "eligible"
+      }
+    }
+  ],
+  "transcript": {
+    "hello": {
+      "v": "openagents.reach-hello.v1",
+      "requires": [],
+      "client": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "generation": 7,
+      "nonce": "2222222222222222222222222222222222222222222222222222222222222222",
+      "ephemeral": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+      "issued_at": 1790000000
+    },
+    "host_proof": {
+      "v": "openagents.reach-host-proof.v1",
+      "requires": [],
+      "nonce": "3333333333333333333333333333333333333333333333333333333333333333",
+      "ephemeral": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+      "generation": 7,
+      "signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "sha256": "85f2f49ace8973cbfef9b2682488987cba2e98d3f314031e83f00efd0f2526ec"
+  },
+  "websocket_messages": [
+    {
+      "name": "one hello frame",
+      "message": "0000000b0100000000000000007b7d",
+      "code": null
+    },
+    {
+      "name": "one data frame",
+      "message": "0000000f1000000000000000027365616c6564",
+      "code": null
+    },
+    {
+      "name": "two frames in one message",
+      "message": "0000000b0100000000000000007b7d0000000b0100000000000000007b7d",
+      "code": "malformed"
+    },
+    {
+      "name": "frame cut short",
+      "message": "0000000b0100000000000000007b",
+      "code": "malformed"
+    },
+    {
+      "name": "trailing byte after the frame",
+      "message": "0000000b0100000000000000007b7d00",
+      "code": "malformed"
+    },
+    {
+      "name": "prefix shorter than a header",
+      "message": "000000080000000000000000",
+      "code": "malformed"
+    },
+    {
+      "name": "message shorter than a prefix",
+      "message": "000009",
+      "code": "malformed"
+    },
+    {
+      "name": "prefix over the frame bound",
+      "message": "00010001",
+      "code": "limit_exceeded"
+    }
+  ]
+}

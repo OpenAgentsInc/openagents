@@ -2,7 +2,7 @@
 //! intent handling, and input requests.
 use crate::authority::{Action, Denial, check};
 use crate::intent::{Intent, Screen};
-use crate::model::{Capabilities, CreatedInvitation, HostRecord, Snapshot};
+use crate::model::{Capabilities, CreatedInvitation, HostRecord, Snapshot, SshStage};
 use crate::service::ComputersService;
 use coder_access::protocol::{INVITATION_PREFIX, MAX_GRANT_LIFETIME, normalize_code};
 use coder_access::{Code, Error, Right, Rights};
@@ -38,6 +38,12 @@ pub enum InputPurpose {
     Invitation,
     ApprovalCode,
     SshDestination,
+    /// An answer `ssh` asks for, such as a password or key passphrase.
+    SshPassword,
+    /// The owner's secret key, to read the owner directory.
+    OwnerKey,
+    /// The label the owner directory gives a computer.
+    DirectoryLabel,
 }
 
 /// A request for one value the Rust Native tree cannot collect yet. The
@@ -53,6 +59,8 @@ pub struct InputRequest {
     pub prompt: String,
     /// Open the scanner first.
     pub scan: bool,
+    /// The value is a secret: mask it while typing and never echo it.
+    pub secret: bool,
     pub max_bytes: usize,
 }
 
@@ -61,6 +69,9 @@ enum Target {
     Invitation,
     Code { host: String, enrollment: String },
     Ssh,
+    SshPrompt { id: u64 },
+    OwnerKey,
+    DirectoryLabel { host: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -286,12 +297,24 @@ impl Computers {
     pub fn cancel_input(&mut self, token: &str) -> Result<Outcome, Refusal> {
         let result = match &self.ui.input {
             Some(input) if input.request.token == token => {
-                self.ui.input = None;
+                self.close_input();
                 Ok(Outcome::Updated)
             }
             _ => Err(Refusal::Stale),
         };
         self.finish(result)
+    }
+
+    /// Close the current input request. Closing an SSH prompt refuses it, so
+    /// `ssh` fails authentication rather than wait.
+    fn close_input(&mut self) {
+        if let Some(PendingInput {
+            target: Target::SshPrompt { id },
+            ..
+        }) = self.ui.input.take()
+        {
+            let _ = self.service.answer_ssh_prompt(id, None);
+        }
     }
 
     fn finish(&mut self, result: Result<Outcome, Refusal>) -> Result<Outcome, Refusal> {
@@ -320,6 +343,7 @@ impl Computers {
                 {
                     self.ui.screen = Screen::Computers;
                 }
+                self.sync_ssh_prompt();
             }
             Err(error) => {
                 self.ui.notice = Some(Notice {
@@ -327,6 +351,35 @@ impl Computers {
                     text: describe(&error),
                 });
             }
+        }
+    }
+
+    /// Show an SSH prompt as an input request, and close a prompt request
+    /// the setup no longer waits on.
+    fn sync_ssh_prompt(&mut self) {
+        let waiting = match self.snapshot.ssh.as_ref().map(|attempt| &attempt.stage) {
+            Some(SshStage::Prompt { id, text }) => Some((*id, text.clone())),
+            _ => None,
+        };
+        let shown = match &self.ui.input {
+            Some(PendingInput {
+                target: Target::SshPrompt { id },
+                ..
+            }) => Some(*id),
+            _ => None,
+        };
+        match (waiting, shown) {
+            (Some((id, _)), Some(current)) if id == current => {}
+            (Some((id, text)), _) => {
+                let _ = self.ask_with(
+                    InputPurpose::SshPassword,
+                    Target::SshPrompt { id },
+                    false,
+                    Some(text),
+                );
+            }
+            (None, Some(_)) => self.ui.input = None,
+            (None, None) => {}
         }
     }
 
@@ -368,6 +421,16 @@ impl Computers {
         target: Target,
         scan: bool,
     ) -> Result<Outcome, Refusal> {
+        self.ask_with(purpose, target, scan, None)
+    }
+
+    fn ask_with(
+        &mut self,
+        purpose: InputPurpose,
+        target: Target,
+        scan: bool,
+        asked: Option<String>,
+    ) -> Result<Outcome, Refusal> {
         self.inputs += 1;
         let (label, prompt) = match purpose {
             InputPurpose::Invitation => (
@@ -382,14 +445,26 @@ impl Computers {
                 "SSH destination",
                 "Enter a destination ssh accepts, such as a configured alias or user@host.",
             ),
+            InputPurpose::SshPassword => ("SSH answer", "Enter what ssh asks for."),
+            InputPurpose::OwnerKey => (
+                "Owner key",
+                "Enter the secret key your computers name as their owner, as hex or nsec. It stays on this device.",
+            ),
+            InputPurpose::DirectoryLabel => (
+                "Computer name",
+                "Enter the name your directory shows for this computer, up to 64 bytes.",
+            ),
         };
+        let prompt = asked.unwrap_or_else(|| prompt.to_owned());
+        let secret = matches!(purpose, InputPurpose::SshPassword | InputPurpose::OwnerKey);
         self.ui.input = Some(PendingInput {
             request: InputRequest {
                 token: format!("{}-input-{}", self.instance, self.inputs),
                 purpose,
                 label: label.into(),
-                prompt: prompt.into(),
+                prompt,
                 scan,
+                secret,
                 max_bytes: MAX_INPUT_BYTES,
             },
             target,
@@ -611,9 +686,21 @@ impl Computers {
             }
             Intent::Cancel => {
                 self.ui.confirm = None;
-                self.ui.input = None;
+                self.close_input();
                 self.ui.notice = None;
                 Ok(Outcome::Updated)
+            }
+            Intent::ImportOwnerKey => {
+                self.allow(Action::ImportOwnerKey)?;
+                self.ask(InputPurpose::OwnerKey, Target::OwnerKey, false)
+            }
+            Intent::ListInDirectory { host } => {
+                self.allow(Action::ListInDirectory { host: &host })?;
+                self.ask(
+                    InputPurpose::DirectoryLabel,
+                    Target::DirectoryLabel { host },
+                    false,
+                )
             }
             Intent::ContinueOnboarding => {
                 self.allow(Action::ContinueFirstRun)?;
@@ -635,8 +722,47 @@ impl Computers {
         if value.len() > MAX_INPUT_BYTES {
             return Err(Refusal::Input("That's too long. Copy it again.".into()));
         }
+        if let Target::SshPrompt { id } = target {
+            // A password is passed exactly as typed.
+            self.service
+                .answer_ssh_prompt(id, Some(value))
+                .map_err(Refusal::Failed)?;
+            self.ui.input = None;
+            self.ui.notice = None;
+            return Ok(Outcome::Updated);
+        }
         let value = value.trim();
         match target {
+            Target::SshPrompt { .. } => Err(Refusal::Stale),
+            Target::OwnerKey => {
+                self.allow(Action::ImportOwnerKey)?;
+                if value.is_empty() {
+                    return Err(Refusal::Input(
+                        "Enter the owner's secret key as 64 hex characters or nsec.".into(),
+                    ));
+                }
+                self.service
+                    .import_owner_key(value)
+                    .map_err(Refusal::Failed)?;
+                self.ui.input = None;
+                self.done("This device now holds your owner key. It reads your directory.")
+            }
+            Target::DirectoryLabel { host } => {
+                self.allow(Action::ListInDirectory { host: &host })?;
+                if value.is_empty()
+                    || value.len() > coder_reach::directory::MAX_LABEL_BYTES
+                    || value.chars().any(char::is_control)
+                {
+                    return Err(Refusal::Input(
+                        "Enter a name of 1 to 64 bytes with no control characters.".into(),
+                    ));
+                }
+                self.service
+                    .list_in_directory(&host, value)
+                    .map_err(Refusal::Failed)?;
+                self.ui.input = None;
+                self.done(format!("Added {value} to your directory."))
+            }
             Target::Invitation => {
                 self.allow(Action::PasteInvitation)?;
                 if value.starts_with("coder-pair:") {
@@ -712,7 +838,7 @@ impl Computers {
                 }
                 self.service.connect_ssh(value).map_err(Refusal::Failed)?;
                 self.ui.input = None;
-                self.done(format!("Connecting to {value} over SSH."))
+                self.done(format!("Setting up a host on {value} over SSH."))
             }
         }
     }

@@ -6,7 +6,7 @@
 //! grant ID, grant epoch, and the host generation. Either side refuses a
 //! mismatch. Relay-carried control remains the fallback when no direct route
 //! works. The handshake runs over any ordered byte stream; this crate tests it
-//! over TCP.
+//! over TCP and over WebSocket through [`crate::websocket::WebSocket`].
 //!
 //! Wire frame: `u32` big-endian length of the rest, a `u8` frame kind, a `u64`
 //! big-endian sequence number, and the body. Each direction numbers its frames
@@ -116,11 +116,11 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
     writer
         .write_all(&bytes)
         .await
-        .map_err(|_| Error::new(Refusal::Unavailable, "write failed"))?;
+        .map_err(|e| io_refusal(&e, "write failed"))?;
     writer
         .flush()
         .await
-        .map_err(|_| Error::new(Refusal::Unavailable, "flush failed"))
+        .map_err(|e| io_refusal(&e, "flush failed"))
 }
 
 /// Read one frame, checking its length before reading the body.
@@ -133,7 +133,7 @@ pub async fn read_frame<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Frame> {
     reader
         .read_exact(&mut prefix)
         .await
-        .map_err(|_| Error::new(Refusal::Unavailable, "stream closed"))?;
+        .map_err(|e| io_refusal(&e, "stream closed"))?;
     let len = u32::from_be_bytes(prefix) as usize;
     if len > MAX_FRAME_BYTES {
         return fail(Refusal::LimitExceeded, "frame exceeds the maximum size");
@@ -145,7 +145,7 @@ pub async fn read_frame<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Frame> {
     reader
         .read_exact(&mut bytes)
         .await
-        .map_err(|_| Error::new(Refusal::Unavailable, "stream closed"))?;
+        .map_err(|e| io_refusal(&e, "stream closed"))?;
     let kind = FrameKind::parse(bytes[0])?;
     let mut seq = [0; 8];
     seq.copy_from_slice(&bytes[1..HEADER_BYTES]);
@@ -154,6 +154,16 @@ pub async fn read_frame<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Frame> {
         seq: u64::from_be_bytes(seq),
         body: bytes.split_off(HEADER_BYTES),
     })
+}
+
+/// The refusal a transport attached to an I/O error, such as a WebSocket
+/// message that breaks the mapping, or `unavailable` with `detail`.
+fn io_refusal(error: &std::io::Error, detail: &'static str) -> Error {
+    error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<Error>())
+        .cloned()
+        .unwrap_or(Error::new(Refusal::Unavailable, detail))
 }
 
 /// The client's opening message.

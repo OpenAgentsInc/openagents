@@ -28,11 +28,16 @@
 //! # The host contract
 //!
 //! The launcher starts `<bundle>/coder <host args>` with a cleared
-//! environment holding `PATH`, `HOME`, and these variables:
+//! environment holding `HOME`, `PATH` set to [`Config::search_path`], and
+//! these variables:
 //!
 //! - `OPENAGENTS_HOST_READY_FILE`: where the host writes its ready record.
 //! - `OPENAGENTS_HOST_GENERATION` and `OPENAGENTS_HOST_VERSION`: the values
-//!   the ready record must repeat.
+//!   the ready record must repeat. The launcher reserves the generation from
+//!   the host root's one counter, [`crate::generation`], which a standalone
+//!   host advances too, so the two never hand out the same or a lower value.
+//! - `OPENAGENTS_HOST_GENERATION_ROOT`: the launcher's host root, which
+//!   holds that counter, so the host claims its generation there.
 //! - `OPENAGENTS_HOST_LISTEN`: the loopback address to bind.
 //! - `OPENAGENTS_HOST_TRIAL`: `1` during a trial, else `0`.
 //!
@@ -54,10 +59,62 @@ use crate::descriptor::{
     UpdateView,
 };
 use crate::service::Platform;
-use crate::{Error, Result, bundle, fsx, snapshot};
+use crate::{Error, Result, bundle, fsx, generation, snapshot};
 
 /// The service configuration schema.
 pub const CONFIG_SCHEMA: &str = "openagents.coder.host-service.v1";
+
+/// The system directories every service search path starts with, and the
+/// whole search path of a configuration written before it recorded one.
+pub const BASE_SEARCH_PATH: &str = "/usr/bin:/bin";
+
+/// The longest search path a configuration holds, in bytes.
+const SEARCH_PATH_MAX: usize = 8192;
+
+fn base_search_path() -> String {
+    BASE_SEARCH_PATH.into()
+}
+
+/// The search path install records: [`BASE_SEARCH_PATH`], then each
+/// absolute directory of `inherited` (the installing shell's `PATH`) that
+/// is not already listed. Relative and empty entries, entries with a
+/// control character, and entries past the length limit are dropped.
+///
+/// Some systems keep few tools in the base directories. On NixOS,
+/// `/usr/bin` holds only `env` and `/bin` only `sh`, so a host limited to
+/// them could not run `mv`, `sleep`, `git`, or a terminal's tools.
+#[must_use]
+pub fn search_path(inherited: Option<&str>) -> String {
+    let mut entries: Vec<&str> = BASE_SEARCH_PATH.split(':').collect();
+    let mut length = BASE_SEARCH_PATH.len();
+    for entry in inherited.unwrap_or_default().split(':') {
+        if !entry.starts_with('/')
+            || entry.chars().any(char::is_control)
+            || entries.contains(&entry)
+            || length + 1 + entry.len() > SEARCH_PATH_MAX
+        {
+            continue;
+        }
+        length += 1 + entry.len();
+        entries.push(entry);
+    }
+    entries.join(":")
+}
+
+fn validate_search_path(path: &str) -> Result<()> {
+    let valid = !path.is_empty()
+        && path.len() <= SEARCH_PATH_MAX
+        && path
+            .split(':')
+            .all(|entry| entry.starts_with('/') && !entry.chars().any(char::is_control));
+    if valid {
+        Ok(())
+    } else {
+        Err(Error::refused(
+            "the search path is 1 to 8192 bytes of absolute directories separated by colons",
+        ))
+    }
+}
 /// The launcher record schema.
 pub const STATE_SCHEMA: &str = "openagents.coder.host-launcher.v1";
 /// The ready record schema a host writes.
@@ -171,6 +228,10 @@ pub struct Config {
     pub stop_grace_secs: u64,
     /// The most file bytes one snapshot copies.
     pub snapshot_max_bytes: u64,
+    /// The `PATH` of the launcher and the host it starts. A configuration
+    /// without one uses [`BASE_SEARCH_PATH`].
+    #[serde(default = "base_search_path")]
+    pub search_path: String,
 }
 
 impl Config {
@@ -202,6 +263,7 @@ impl Config {
                 return Err(Error::refused("service paths must be absolute"));
             }
         }
+        validate_search_path(&self.search_path)?;
         if self.state_dirs.len() > 16 {
             return Err(Error::refused("at most 16 state directories"));
         }
@@ -291,7 +353,8 @@ pub struct LauncherState {
     pub committed: String,
     /// The version committed before it.
     pub previous: Option<String>,
-    /// The generation of the host last started.
+    /// The generation of the host last started, as reserved from the host
+    /// root's counter.
     pub generation: u64,
     /// Where an update is.
     pub phase: Phase,
@@ -626,7 +689,7 @@ impl Launcher {
         else {
             return Err(Error::refused("no prepared update"));
         };
-        let generation = self.state.generation + 1;
+        let generation = generation::reserve(self.layout.root(), self.state.generation)?;
         let timeout_ms = self.config.ready_timeout_secs.saturating_mul(1000);
         self.state.generation = generation;
         self.state.phase = Phase::Trial {
@@ -787,7 +850,7 @@ impl Launcher {
 
     /// Starts the committed version as a new generation.
     fn start_committed(&mut self) -> Result<()> {
-        self.state.generation += 1;
+        self.state.generation = generation::reserve(self.layout.root(), self.state.generation)?;
         self.save()?;
         let version = self.state.committed.clone();
         self.spawn(&version, self.state.generation, false)?;
@@ -808,10 +871,11 @@ impl Launcher {
         command
             .args(&self.config.host_args)
             .env_clear()
-            .env("PATH", "/usr/bin:/bin")
+            .env("PATH", &self.config.search_path)
             .env("HOME", std::env::var_os("HOME").unwrap_or_default())
             .env("OPENAGENTS_HOST_READY_FILE", &ready)
             .env("OPENAGENTS_HOST_GENERATION", generation.to_string())
+            .env("OPENAGENTS_HOST_GENERATION_ROOT", self.layout.root())
             .env("OPENAGENTS_HOST_VERSION", version)
             .env("OPENAGENTS_HOST_LISTEN", &self.config.listen)
             .env("OPENAGENTS_HOST_TRIAL", if trial { "1" } else { "0" })

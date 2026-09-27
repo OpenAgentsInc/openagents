@@ -365,6 +365,51 @@ invoke them through CJ execution v1 over `25920`/`26920`/`27020`:
 The CJ request carries the exact signed request artifact. Admission is
 identical in both bindings. A host advertises only the binding it serves.
 
+The host advertises the role as one CAP `adapter` definition with the `d`
+slug `host-access`, the ID `<host-key>:openagents/host-access`, transport
+`nostr-cj`, `interface` `openagents.host-request.v1`, `operations` listing
+every operation `kind` above, and `remote` naming the host key as the worker
+and the relays it serves. Its `input` SchemaRef pins the JSON Schema for
+`{v: "openagents.host-call.v1", event}` and its `output` SchemaRef pins the
+one for `{v: "openagents.host-answer.v1", event}`: the direct-channel call
+and answer, carrying the exact signed request and reply artifacts. A client
+resolves the definition only from the host key it pinned.
+
+Every field of the execute body is fixed by the definition and the embedded
+request:
+
+| Field | Value |
+| --- | --- |
+| `request`, `run` | The NIP-HOST request ID. |
+| `attempt` | `1`. |
+| `target` | The definition's DefinitionRef, with the digest of its JCS bytes. |
+| `lock` | The one-entry `openagents.lock.v1` whose root is `target`. |
+| `input` | The call, validated against the pinned input schema. |
+| `context`, `requirements` | The fixed bodies `{v: "openagents.host-context.v1", requires: []}` and `{v: "openagents.host-requirements.v1", requires: []}`: the binding discloses no context and states no requirement beyond NIP-HOST admission. |
+| `bounds` | `{}`. |
+| `deadline` | The request's `expires_at`, mirrored in `expiration`. |
+| `retain_until` | `deadline` plus 60 seconds. |
+
+The CJ idempotency key therefore reduces to the NIP-HOST request ID. A
+retransmission carries the same body. Changed bytes under a known request ID
+are a changed NIP-HOST request, and the host answers with its signed
+`conflict` reply, exactly as in the direct artifact binding. The CJ signer
+must be the request's signer; another signer earns a CJ refusal
+`not_admitted`. A target, lock, context, or requirements that is not the
+host's earns `identity_mismatch`, and any other binding mismatch earns
+`malformed`. These refusals come before NIP-HOST admission and have
+`dispatched: false`.
+
+Otherwise the host hands the embedded request to NIP-HOST admission and
+returns a `26920` result with outcome `completed`, `dispatched: true`, and
+the answer as `output`. `completed` means the NIP-HOST operation answered:
+the embedded reply states whether it was admitted, and a `dispatched` reply
+inside it is still only a handling receipt, not evidence that a task ran. A
+request that earns no signed reply in the direct artifact binding, such as an
+unknown invitation or an expired request, earns no CJ result. The operation
+answers within the request, so the host sends no `accepted` or progress
+feedback and answers no status, replay, or cancel control.
+
 **Direct-channel binding.** Over an open [REACH](NIP-REACH.md) direct
 channel, a device sends `{v: "openagents.host-call.v1", event}` whose `event`
 is the exact signed request artifact of the direct artifact binding, and the
@@ -435,7 +480,11 @@ behaviors tested, in NIP-11 `supported_extensions`, not a numeric
 
 [`crates/coder-access`](../../crates/coder-access/README.md) implements the
 host store, the direct artifact binding, the portable client, and a CLI. Its
-fixtures run over a synthetic NIP-42 relay.
+behavior tests run over a synthetic NIP-42 relay. The wire fixtures in
+[`crates/coder-access/fixtures/nip-host.json`](../../crates/coder-access/fixtures/nip-host.json)
+give a valid body for every artifact and every operation, and invalid bodies
+with the refusal code each must produce; `crates/coder-access/tests/wire.rs`
+checks them.
 [`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
 (`coder host serve`): it serves the direct artifact binding and the
 direct-channel binding, and dispatches `task.create`, `task.steer`, and
@@ -444,5 +493,18 @@ host. It records each device's last-seen time for `device.list`. The
 [Computers screens](../../crates/coder-computers/README.md) are its
 interface on iOS, Android, and the terminal: their live service redeems
 invitations, lists devices, creates narrowed invitations, and revokes
-devices through `coder_host::client`. The CAP/CJ binding is not
-implemented.
+devices through `coder_host::client`.
+
+The resident host also serves the CAP/CJ binding. `coder host serve`
+publishes the `host-access` definition as a `30180` on every relay it serves
+and answers `25920` requests through the same admission path as the other
+bindings. [`coder_access::cj`](../../crates/coder-access/src/cj.rs) builds the
+definition and checks the binding fields, and its client sends an operation
+over CJ. The schemas are
+[`host-call.v1.json`](schemas/host-call.v1.json) and
+[`host-answer.v1.json`](schemas/host-answer.v1.json), and
+[`crates/coder-access/fixtures/host-access-capability.json`](../../crates/coder-access/fixtures/host-access-capability.json)
+is a reference definition that the NIP-CAP validator accepts.
+`crates/coder-host/tests/cj.rs` shows, over a synthetic relay, that both
+bindings give the same outcome for a granted operation, a missing right, a
+revoked grant, a stale epoch, and a reused request ID.

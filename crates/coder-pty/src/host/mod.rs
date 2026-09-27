@@ -9,6 +9,9 @@
 //! group gets `SIGHUP` and `SIGTERM` (an interactive shell ignores
 //! `SIGTERM` but not a hang-up), up to `GRACE` to exit, then `SIGKILL`,
 //! and the direct child is reaped before the terminal reports its exit.
+//! Ending waits, within `GRACE`, until the group holds no process, since
+//! a killed descendant lingers as a zombie until init or a subreaper reaps
+//! it.
 //! A child that exits on its own takes whatever is left in its group with
 //! it. A descendant that calls `setsid` leaves the group and escapes this,
 //! as it escapes the supervisor.
@@ -78,6 +81,8 @@ pub const GRACE: Duration = Duration::from_millis(250);
 
 /// How long one reader wait lasts before it checks the child.
 const POLL: Duration = Duration::from_millis(25);
+/// How often an ended terminal's group is checked for leftover processes.
+const SETTLE_POLL: Duration = Duration::from_millis(5);
 /// How often the background ticker pumps and expires terminals.
 const TICK: Duration = Duration::from_millis(100);
 /// How many applied requests the host remembers to answer exact retries.
@@ -1018,6 +1023,16 @@ fn end(terminals: &[Arc<Terminal>], cause: Cause) {
     }
     for terminal in terminals {
         terminal.join();
+    }
+    // A killed descendant stays in the group as a zombie until its new
+    // parent, init or a subreaper, reaps it. On Linux that happens after
+    // the direct child is reaped, so emptiness is waited for, within the
+    // grace period, rather than read once.
+    let settle = Instant::now() + GRACE;
+    for terminal in &live {
+        while terminal.process.group_running() && Instant::now() < settle {
+            std::thread::sleep(SETTLE_POLL);
+        }
     }
 }
 

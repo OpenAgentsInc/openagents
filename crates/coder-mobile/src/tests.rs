@@ -7,6 +7,7 @@ fn app(root: &std::path::Path) -> App {
         secret_hex: "01".repeat(32),
         synthetic: true,
         loopback_test: false,
+        push: None,
     })
     .unwrap()
 }
@@ -318,6 +319,7 @@ fn the_normal_app_offers_live_computers_and_validates_what_it_is_given() {
         secret_hex: "02".repeat(32),
         synthetic: false,
         loopback_test: false,
+        push: None,
     })
     .unwrap();
     let packet = app.call(Request::Snapshot);
@@ -360,4 +362,39 @@ fn the_normal_app_offers_live_computers_and_validates_what_it_is_given() {
     assert!(resumed.error.is_none());
     let resumed = app.call(Request::Lifecycle { active: true });
     assert!(resumed.error.is_none() && resumed.computers.is_some());
+}
+
+#[test]
+fn push_is_off_until_configured_and_refuses_cleartext_outside_tests() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app(dir.path());
+    let snapshot = serde_json::to_value(app.call(Request::Snapshot)).unwrap();
+    assert!(snapshot.get("push").is_none());
+    let request: Request = serde_json::from_str(r#"{"op":"push_token","token":"ab"}"#).unwrap();
+    let packet = app.call(request);
+    assert_eq!(
+        packet.push.as_deref(),
+        Some("Push notifications are off in this build.")
+    );
+    assert!(packet.error.is_none());
+
+    let config: Config = serde_json::from_value(serde_json::json!({
+        "cache_dir": dir.path().join("configured"),
+        "secret_hex": "02".repeat(32),
+        "synthetic": true,
+        "push": {
+            "relay_url": "ws://127.0.0.1:1",
+            "gateway_url": "http://127.0.0.1:2",
+            "app_profile": "com.openagents.coder/ios"
+        }
+    }))
+    .unwrap();
+    let mut cleartext = App::new(config).unwrap();
+    let packet = cleartext.call(Request::PushDisable);
+    assert!(
+        packet
+            .push
+            .unwrap()
+            .contains("needs a wss:// relay and an https:// gateway")
+    );
 }

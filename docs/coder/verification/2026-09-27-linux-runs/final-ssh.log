@@ -1,0 +1,46 @@
+$ cargo test -p coder-ssh
+
+running 9 tests
+test launcher::tests::invitations_do_not_print ... ok
+test launcher::tests::a_release_pins_one_archive_per_platform ... ok
+test protocol::tests::banners_are_ignored_and_fields_are_closed ... ok
+test launcher::tests::runner_arguments_are_bounded_and_fingerprinted ... ok
+test ssh::tests::destinations_cannot_become_options ... ok
+test ssh::tests::connections_disable_multiplexing_and_forward_only_loopback ... ok
+test ssh::tests::quoting_survives_single_quotes ... ok
+test protocol::tests::remote_errors_map_to_named_failures ... ok
+test ssh::tests::resolution_reads_the_first_value_of_each_key ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 19 tests
+test client_process ... ignored, helper process for client_exit_leaves_the_host_running
+test dash_runs_the_same_script ... ok
+test real_sshd_lifecycle ... ok
+
+running 1 test
+test a_destination_resolves_through_ssh_g ... ok
+test a_local_archive_that_does_not_match_its_pin_is_not_sent ... ok
+test a_release_without_this_platform_is_refused ... ok
+test unsupported_platform_is_named ... ok
+test checksum_mismatch_installs_nothing ... ok
+test a_binary_that_does_not_run_is_not_installed ... ok
+test a_lock_left_by_a_dead_owner_is_reclaimed ... ok
+test fresh_install_then_reuse ... ok
+test an_invitation_is_returned_to_the_caller ... ok
+test tunnel_death_leaves_the_host_running ... ok
+test a_password_goes_through_a_one_shot_askpass_pipe ... ok
+test client_exit_leaves_the_host_running ... ok
+test a_runner_change_relaunches_a_managed_host ... ok
+test a_running_host_is_adopted_as_external_and_never_stopped ... ok
+test a_reused_process_identifier_is_never_stopped ... ok
+test a_lock_held_by_a_live_owner_is_waited_for_and_then_refused ... ok
+
+test result: ok. 18 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.04s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -7,7 +7,8 @@
 //! it. Passing this check grants nothing: the host still checks its own grant
 //! record for every operation.
 use crate::model::{
-    Capabilities, HostRecord, HostStatus, LocalHost, Platform, ServiceState, Snapshot, right_label,
+    Capabilities, DirectoryState, Enrollment, HostRecord, HostStatus, LocalHost, Platform,
+    ServiceState, Snapshot, right_label,
 };
 use coder_access::protocol::DeviceState;
 use coder_access::{Right, Rights};
@@ -49,6 +50,12 @@ pub enum Action<'a> {
         device: &'a str,
     },
     ContinueFirstRun,
+    /// Hold the owner key on this device to read the owner directory.
+    ImportOwnerKey,
+    /// Add an enrolled host to the owner directory. An owner action.
+    ListInDirectory {
+        host: &'a str,
+    },
 }
 
 /// Why a control is unavailable.
@@ -73,6 +80,15 @@ pub enum Denial {
     ThisDevice,
     NotActive,
     NeedsComputer,
+    SshNotSetUp,
+    SshRunning,
+    OwnerKeyNeedsComputer,
+    OwnerKeyHeld,
+    OwnerKeyOnComputer,
+    NotOwner,
+    DirectoryNotRead,
+    DirectoryConflict,
+    AlreadyListed,
 }
 
 impl Denial {
@@ -110,6 +126,25 @@ impl Denial {
             }
             Self::NotActive => "This device's access already ended.".into(),
             Self::NeedsComputer => "Add at least one computer to continue.".into(),
+            Self::SshNotSetUp => "This app has no Coder release to install over SSH.".into(),
+            Self::SshRunning => "An SSH setup is already running. Wait for it to finish.".into(),
+            Self::OwnerKeyNeedsComputer => {
+                "Add a computer first. The owner key must be the one your computers name.".into()
+            }
+            Self::OwnerKeyHeld => "This device already holds your owner key.".into(),
+            Self::OwnerKeyOnComputer => {
+                "Enter your owner key in the desktop or terminal app.".into()
+            }
+            Self::NotOwner => {
+                "Only a device that holds your owner key can change your directory.".into()
+            }
+            Self::DirectoryNotRead => {
+                "Your directory hasn't been read yet. Refresh, then try again.".into()
+            }
+            Self::DirectoryConflict => {
+                "Your directory has two different versions at one revision. Publish a newer one from the device that made the change.".into()
+            }
+            Self::AlreadyListed => "Your directory already lists this computer.".into(),
         }
     }
 }
@@ -153,7 +188,13 @@ pub fn check(snapshot: &Snapshot, caps: Capabilities, action: Action<'_>) -> Res
     match action {
         Action::SetEnabled { host: key }
         | Action::RetryNow { host: key }
-        | Action::Forget { host: key } => host(snapshot, key).map(|_| ()),
+        | Action::Forget { host: key } => {
+            if host(snapshot, key)?.directory_only() {
+                Err(Denial::NotEnrolled)
+            } else {
+                Ok(())
+            }
+        }
         Action::ScanInvitation => {
             if caps.camera {
                 Ok(())
@@ -183,10 +224,18 @@ pub fn check(snapshot: &Snapshot, caps: Capabilities, action: Action<'_>) -> Res
             }
         }
         Action::ConnectSsh => {
-            if caps.ssh() {
-                Ok(())
-            } else {
+            if !caps.ssh() {
                 Err(Denial::SshNeedsComputer)
+            } else if !snapshot.ssh_ready {
+                Err(Denial::SshNotSetUp)
+            } else if snapshot
+                .ssh
+                .as_ref()
+                .is_some_and(|attempt| attempt.stage.running())
+            {
+                Err(Denial::SshRunning)
+            } else {
+                Ok(())
             }
         }
         Action::RunWithoutHost => match (&snapshot.local_host, caps.platform) {
@@ -235,6 +284,40 @@ pub fn check(snapshot: &Snapshot, caps: Capabilities, action: Action<'_>) -> Res
                 Ok(())
             } else {
                 Err(Denial::NeedsComputer)
+            }
+        }
+        Action::ImportOwnerKey => {
+            if caps.platform == Platform::Phone {
+                Err(Denial::OwnerKeyOnComputer)
+            } else if snapshot.directory != DirectoryState::NoOwnerKey {
+                Err(Denial::OwnerKeyHeld)
+            } else if !snapshot
+                .hosts
+                .iter()
+                .any(|host| matches!(host.enrollment, Enrollment::Enrolled { .. }))
+            {
+                Err(Denial::OwnerKeyNeedsComputer)
+            } else {
+                Ok(())
+            }
+        }
+        Action::ListInDirectory { host: key } => {
+            let record = host(snapshot, key)?;
+            match snapshot.directory {
+                DirectoryState::NoOwnerKey => return Err(Denial::NotOwner),
+                DirectoryState::Conflict { .. } => return Err(Denial::DirectoryConflict),
+                DirectoryState::Loading | DirectoryState::Failed { .. } => {
+                    return Err(Denial::DirectoryNotRead);
+                }
+                DirectoryState::Current { .. } => {}
+            }
+            if record.listing.is_some() {
+                return Err(Denial::AlreadyListed);
+            }
+            match HostStatus::derive(record, snapshot.now) {
+                HostStatus::Revoked => Err(Denial::Revoked),
+                HostStatus::NotEnrolled { .. } => Err(Denial::NotEnrolled),
+                _ => Ok(()),
             }
         }
     }

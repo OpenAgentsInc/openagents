@@ -1,0 +1,64 @@
+[Unit]
+Description=OpenAgents NIP-PL push gateway
+Documentation=https://github.com/OpenAgentsInc/openagents/tree/main/docs/deployment/push-gateway.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=push-gateway
+Group=push-gateway
+EnvironmentFile=/etc/push-gateway/push-gateway.env
+ExecStartPre=/usr/bin/test -x /opt/push-gateway/current/push-gateway
+ExecStart=/opt/push-gateway/current/push-gateway
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=push-gateway
+
+# The gateway binds two loopback ports and reaches APNs and FCM over the
+# internet, so outbound addresses stay open; binding is limited to its two
+# listeners.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SocketBindDeny=any
+SocketBindAllow=tcp:8090
+SocketBindAllow=tcp:8091
+
+StateDirectory=push-gateway
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/push-gateway
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+KeyringMode=private
+RemoveIPC=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

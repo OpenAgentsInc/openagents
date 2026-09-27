@@ -7,7 +7,7 @@ revocation epochs, delegation, device listing and revocation, and a typed
 `task.create` operation. Requests and replies are original signed private
 `3188` artifacts over NIP-42 authenticated relay connections. The resident
 host in [`coder-host`](../coder-host/README.md) also carries them over direct
-channels.
+channels and inside NIP-CJ execution requests.
 
 The host is the only issuer of access. An invitation, an approval, or relay
 delivery introduces a device. Only the host's current grant record admits an
@@ -132,6 +132,19 @@ QR rendering, and uses `coder-connect` without its host feature.
 - `client::pending_enrollments` and `OpenedEnrollment::approve` or `deny`
   build reverse-enrollment decisions.
 - `Access::from_authorization` accepts a grant envelope an approver forwarded.
+- `cj` is the CAP/CJ binding. `Capability` builds the host's `host-access`
+  NIP-CAP definition, pins the
+  [`host-call.v1`](../../nips/openagents/schemas/host-call.v1.json) and
+  [`host-answer.v1`](../../nips/openagents/schemas/host-answer.v1.json)
+  schemas, and signs the `kind:30180` manifest. `cj::intake` checks a
+  `kind:25920` request's binding fields before the host admits the embedded
+  request, and `Answering::answer` seals the result. On a device,
+  `cj::fetch_capability` reads the manifest from the pinned host, and
+  `Client::call_cj` or `send_cj` sends an operation over CJ and verifies the
+  reply exactly as `send` does. A `completed` CJ result means the operation
+  answered, not that a task ran.
+  [`fixtures/host-access-capability.json`](fixtures/host-access-capability.json)
+  is a reference definition for a placeholder host key.
 - `host::Host` owns the store. `host::Dispatch` connects `task.create`,
   `task.steer`, `task.cancel`, and `terminal.open` to their owners; the
   default `Unconnected` dispatcher refuses them as `unavailable`. The
@@ -168,6 +181,7 @@ cargo clippy -p coder-access --no-default-features --lib -- -D warnings
 cargo fmt -p coder-access --check
 ```
 
-The fixtures use throwaway keys and the shared synthetic NIP-42 relay from
+`tests/capability.rs` checks the reference definition against the NIP-CAP
+validator and the checked-in schemas. The fixtures use throwaway keys and the shared synthetic NIP-42 relay from
 `coder-control`. The [verification record](../../docs/coder/verification/2026-09-26-host-access.md)
 states what they establish and what they don't.

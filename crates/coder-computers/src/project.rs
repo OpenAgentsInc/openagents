@@ -7,8 +7,9 @@ use crate::authority::{Action, Denial, check};
 use crate::controller::{Confirm, Notice, UiState};
 use crate::intent::{Intent, Screen};
 use crate::model::{
-    Capabilities, DataState, DeviceList, DeviceRow, HostRecord, HostStatus, LocalHost,
-    NotEnrolledCause, OfflineCause, OutOfDate, Platform, ServiceState, Snapshot, right_label,
+    Capabilities, DataState, DeviceList, DeviceRow, DirectoryState, HostRecord, HostStatus,
+    LocalHost, NotEnrolledCause, OfflineCause, OutOfDate, Platform, ServiceState, Snapshot,
+    SshStage, right_label,
 };
 use coder_access::Right;
 use coder_access::protocol::{DeviceState, OriginKind};
@@ -195,6 +196,9 @@ pub fn status_line(host: &HostRecord, now: u64) -> String {
             }
         },
         HostStatus::NotEnrolled { cause } => match cause {
+            NotEnrolledCause::NoAccess if host.listing.is_some() => {
+                "Not enrolled: it's in your directory, and this device has no access yet. Add it with an invitation.".into()
+            }
             NotEnrolledCause::NoAccess => {
                 "Not enrolled: this device has no access. Add it with an invitation.".into()
             }
@@ -326,8 +330,47 @@ fn computers(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
                 TextRole::Status,
             ),
         ];
+        if let Some(listing) = host.listing {
+            row.push(text(
+                format!("{prefix}-directory"),
+                if listing.weight == 0 {
+                    "In your directory. Weight 0: not used for new work.".to_owned()
+                } else {
+                    format!("In your directory. Weight {}.", listing.weight)
+                },
+                TextRole::Status,
+            ));
+        }
+        if let Some(destination) = &host.ssh {
+            row.push(text(
+                format!("{prefix}-ssh"),
+                format!("Set up over SSH on {destination}."),
+                TextRole::Status,
+            ));
+        }
         let status = HostStatus::derive(host, snapshot.now);
         let mut actions = Vec::new();
+        if host.directory_only() {
+            control(
+                &mut actions,
+                format!("{prefix}-access"),
+                "Access",
+                Intent::Show {
+                    screen: Screen::Access {
+                        host: host.key.clone(),
+                    },
+                },
+                Ok(()),
+            );
+            row.push(stack(
+                format!("{prefix}-actions"),
+                Axis::Horizontal,
+                Space::Md,
+                actions,
+            ));
+            nodes.push(section(prefix, row));
+            continue;
+        }
         let enabled = host.link.is_none_or(|link| link.enabled);
         control(
             &mut actions,
@@ -370,6 +413,17 @@ fn computers(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
             },
             check(snapshot, caps, Action::Forget { host: &host.key }),
         );
+        if host.listing.is_none() && snapshot.directory != DirectoryState::NoOwnerKey {
+            control(
+                &mut actions,
+                format!("{prefix}-list"),
+                "Add to directory",
+                Intent::ListInDirectory {
+                    host: host.key.clone(),
+                },
+                check(snapshot, caps, Action::ListInDirectory { host: &host.key }),
+            );
+        }
         row.push(stack(
             format!("{prefix}-actions"),
             Axis::Horizontal,
@@ -429,6 +483,54 @@ fn computers(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
         Ok(()),
     );
     nodes.push(stack("computers-end", Axis::Horizontal, Space::Md, end));
+    directory(nodes, snapshot, caps);
+}
+
+/// The owner directory's state, and the way to read it on this device.
+fn directory(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilities) {
+    let phone = caps.platform == Platform::Phone;
+    let line = match snapshot.directory {
+        DirectoryState::NoOwnerKey if phone => {
+            "This device lists the computers it was added to.".to_owned()
+        }
+        DirectoryState::NoOwnerKey => {
+            "This device lists the computers it was added to. Enter your owner key to see every computer in your directory.".to_owned()
+        }
+        DirectoryState::Loading => "Reading your directory.".to_owned(),
+        DirectoryState::Current { revision: None, .. } => {
+            "Your directory is empty. Add a computer to it from its row.".to_owned()
+        }
+        DirectoryState::Current {
+            revision: Some(revision),
+            as_of,
+        } => format!(
+            "Your directory, revision {revision}, read {}.",
+            ago(snapshot.now, as_of)
+        ),
+        DirectoryState::Conflict { revision } => format!(
+            "Your directory has two different versions at revision {revision}. This list shows the last version this device trusted."
+        ),
+        DirectoryState::Failed { revision: Some(revision) } => format!(
+            "Couldn't read your directory. This list shows revision {revision}."
+        ),
+        DirectoryState::Failed { revision: None } => {
+            "Couldn't read your directory. Refresh to try again.".to_owned()
+        }
+    };
+    let mut children = vec![
+        text("directory-title", "Your directory", TextRole::Heading),
+        text("directory-status", line, TextRole::Status),
+    ];
+    if !phone && snapshot.directory == DirectoryState::NoOwnerKey {
+        control(
+            &mut children,
+            "directory-owner-key",
+            "Enter owner key",
+            Intent::ImportOwnerKey,
+            check(snapshot, caps, Action::ImportOwnerKey),
+        );
+    }
+    nodes.push(section("directory", children));
 }
 
 fn add(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilities) {
@@ -436,7 +538,7 @@ fn add(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilities) {
         text("invite-title", "Use an invitation", TextRole::Heading),
         text(
             "invite-body",
-            "On the computer, run `coder-access invite`. Scan its QR code, or paste its complete coder-host: string.",
+            "On the computer, run `coder host invite`. Scan its QR code, or paste its complete coder-host: string.",
             TextRole::Body,
         ),
     ];
@@ -539,22 +641,43 @@ fn add(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilities) {
     }
     nodes.push(section("approve", approve));
 
-    let mut ssh = vec![
-        text("ssh-title", "Connect over SSH", TextRole::Heading),
-        text(
-            "ssh-body",
-            "Start or adopt a host on a machine you can reach with ssh. SSH authorizes the setup once; after that, the host's grant decides access.",
-            TextRole::Body,
-        ),
-    ];
-    control(
-        &mut ssh,
-        "ssh-connect",
-        "Connect over SSH",
-        Intent::ConnectSsh,
-        check(snapshot, caps, Action::ConnectSsh),
-    );
-    nodes.push(section("ssh", ssh));
+    // Only a client that can run ssh offers SSH; a phone never does.
+    if caps.ssh() {
+        let mut ssh = vec![
+            text("ssh-title", "Connect over SSH", TextRole::Heading),
+            text(
+                "ssh-body",
+                "Start or adopt a host on a machine you can reach with ssh. SSH authorizes the setup once; after that, the host's grant decides access.",
+                TextRole::Body,
+            ),
+        ];
+        if let Some(attempt) = &snapshot.ssh {
+            let destination = &attempt.destination;
+            let line = match &attempt.stage {
+                SshStage::Starting => format!("Setting up a host on {destination}."),
+                SshStage::Prompt { .. } => format!("{destination} asks for an answer."),
+                SshStage::Enrolling => format!("Adding this device to the host on {destination}."),
+                SshStage::Added { host } => format!(
+                    "Added {} over SSH.",
+                    snapshot
+                        .host(host)
+                        .map_or("the computer", |record| record.label.as_str())
+                ),
+                SshStage::Failed { reason } => {
+                    format!("Couldn't set up a host on {destination}: {reason}")
+                }
+            };
+            ssh.push(text("ssh-status", line, TextRole::Status));
+        }
+        control(
+            &mut ssh,
+            "ssh-connect",
+            "Connect over SSH",
+            Intent::ConnectSsh,
+            check(snapshot, caps, Action::ConnectSsh),
+        );
+        nodes.push(section("ssh", ssh));
+    }
 
     let mut local = vec![text("local-title", "No local host", TextRole::Heading)];
     local.push(text(

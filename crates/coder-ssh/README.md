@@ -100,7 +100,8 @@ listens. The invite command must print one invitation line and exit.
 `coder host serve --loopback --owner KEY --relay URL` and
 `coder host invite --relay URL` provide both; the
 [host serve guide](../../docs/coder/runtime/host-serve.md#reach-it-over-ssh)
-shows the runner. The tests here still use a shell stand-in.
+shows the runner. Most tests here use a shell stand-in; the real `sshd`
+test below runs the real host.
 
 ## Tests
 
@@ -110,8 +111,25 @@ cargo test -p coder-ssh
 
 The integration tests in `tests/remote.rs` use a fake `ssh` program and a
 temporary remote home. They never read or write the real `~/.ssh` or
-`~/.openagents`. A test against a real loopback `sshd` is skipped unless you
-set `CODER_SSH_LOOPBACK_DESTINATION` to a disposable account.
+`~/.openagents`. The fake `ssh` and the archive packer live in
+`tests/support/fake_ssh.rs`, which a client's tests include with `#[path]`;
+the Computers screens' live test drives an SSH setup through it.
+
+`real_sshd_lifecycle` runs against a real `sshd` and a real
+`coder host serve`: install, start, reuse, a tunnel, an invitation, tunnel
+death, remove, and adoption of an external host. It is skipped unless you
+set these variables:
+
+| Variable | Meaning |
+| --- | --- |
+| `CODER_SSH_REAL_DESTINATION` | A destination for a disposable account, such as `ssh://user@127.0.0.1:2222`. |
+| `CODER_SSH_REAL_CODER` | A `coder` binary for the remote platform. |
+| `CODER_SSH_REAL_SSH` | Optional. The `ssh` program, such as a wrapper that adds `-F` and a throwaway configuration. |
+| `CODER_SSH_REAL_PLATFORM` | Optional. The remote `OS/ARCH`, such as `linux/x86_64`, when it differs from this machine. |
+
+The run writes under the remote account's `~/.openagents`. The
+[Linux runs record](../../docs/coder/verification/2026-09-27-linux-runs.md)
+shows a user-level `sshd` whose authorized key sets a throwaway `HOME`.
 
 ## Limits
 
@@ -125,3 +143,6 @@ set `CODER_SSH_LOOPBACK_DESTINATION` to a disposable account.
   identifier alone.
 - The launcher returns typed local results. It does not yet sign NIP-ENV
   request, lease, or cleanup artifacts, and it does not redeem invitations.
+  The [Computers screens](../coder-computers/README.md) redeem them: their
+  **Connect over SSH** runs `up` and `invite`, then redeems the invitation
+  with the device key.

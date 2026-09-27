@@ -1,0 +1,238 @@
+base=/tmp/oa-9719-linux-d941997a label=openagents-test-9719-d941997a port=47919
+--- machine
+Linux 6.18.49 x86_64
+ldd (GNU libc) 2.42
+systemd 260 (260.2)
+Linger=no
+v1=163a14bf298d391936e9ecef185bab4d58f22e7b21d0e853bab988aee3d7340a v2=2642f8a3ea3fe7b8844bd4273756e92bd3ef62a6aa46415546b19276dc77954f bad=1c1ea45e8ff6cba38d7cc0e30d90fa2955a9946465e35697fc480b50600ef7a7 silent=bb429fd399e28a850c517021fef3684afb0f1db3e9192e7fddbbb41b14fe8416
+host key=f5058f0aab644ddabc62d48039a99632b71d6498e01ee74557be0157097953fc
+--- install
+{
+  "definition": "/tmp/oa-9719-linux-d941997a/svc/host/service/openagents-test-9719-d941997a.service",
+  "registration": "/home/christopherdavid/.config/systemd/user/openagents-test-9719-d941997a.service",
+  "started": true,
+  "linger_enabled": false
+}
+--- rendered unit
+[Unit]
+Description=OpenAgents Coder host (openagents-test-9719-d941997a)
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart="/tmp/oa-9719-linux-d941997a/svc/host/bin/c3ccc50b1baaec9043c9ec87047324ec47ed732a5b723d8e0053acf7037667d2/coder-service" "--root" "/tmp/oa-9719-linux-d941997a/svc/host" "run"
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=13
+UMask=0077
+NoNewPrivileges=yes
+Environment="PATH=/usr/bin:/bin:/home/christopherdavid/.local/bin:/run/wrappers/bin:/home/christopherdavid/.openagents/bin:/home/christopherdavid/.nix-profile/bin:/nix/profile/bin:/home/christopherdavid/.local/state/nix/profile/bin:/etc/profiles/per-user/christopherdavid/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin"
+
+[Install]
+WantedBy=default.target
+registration: /tmp/oa-9719-linux-d941997a/svc/host/service/openagents-test-9719-d941997a.service
+--- status after install
+{
+  "platform": "linux",
+  "label": "openagents-test-9719-d941997a",
+  "definition_current": true,
+  "registered": true,
+  "loaded": true,
+  "running": true,
+  "pid": 738478,
+  "enabled": true,
+  "starts_at": "login",
+  "survives_logout": false,
+  "linger": false,
+  "pending_restart": false,
+  "pending_reasons": [],
+  "committed": "163a14bf298d391936e9ecef185bab4d58f22e7b21d0e853bab988aee3d7340a",
+  "descriptor": {
+    "capabilities": [
+      "activity-summary",
+      "direct-tcp",
+      "host-rollback",
+      "host-trial-update",
+      "relay-control",
+      "task-control",
+      "task-create",
+      "terminal"
+    ],
+    "host_generation": 1,
+    "host_key": "f5058f0aab644ddabc62d48039a99632b71d6498e01ee74557be0157097953fc",
+    "listen": "127.0.0.1:47919",
+    "protocol_version": 1,
+    "schema": "openagents.coder.host-descriptor.v1",
+    "state": "ready",
+    "update": {
+      "from": null,
+      "reason": null,
+      "request": null,
+      "state": "none",
+      "target": null
+    },
+    "version": "163a14bf298d391936e9ecef185bab4d58f22e7b21d0e853bab988aee3d7340a"
+  }
+}
+--- the cgroup
+MainPID=738478
+NRestarts=0
+ControlGroup=/user.slice/user-1000.slice/user@1000.service/app.slice/openagents-test-9719-d941997a.service
+ 738478  738478 /tmp/oa-9719-linux-d941997a/svc/host/bin/c3ccc50b1baaec9043c9ec87047324ec47ed732a5b723d8e0053acf7037667d2/coder-service --root /tmp/oa-9719-linux-d941997a/svc/host run
+ 738858  738858 /tmp/oa-9719-linux-d941997a/svc/host-bundle/versions/163a14bf298d391936e9ecef185bab4d58f22e7b21d0e853bab988aee3d7340a/coder host serve --state /tmp/oa-9719-linux-d941997a/svc/coder-access --root /tmp/oa-9719-linux-d941997a/svc/coder-host --tasks /tmp/oa-9719-linux-d941997a/svc/tasks --no-runtime --no-telemetry --loopback-test
+listener: LISTEN 0      128        127.0.0.1:47919      0.0.0.0:*
+--- update to v2 (a second real build)
+{
+  "capabilities": [
+    "activity-summary",
+    "direct-tcp",
+    "host-rollback",
+    "host-trial-update",
+    "relay-control",
+    "task-control",
+    "task-create",
+    "terminal"
+  ],
+  "host_generation": 2,
+  "host_key": "f5058f0aab644ddabc62d48039a99632b71d6498e01ee74557be0157097953fc",
+  "listen": "127.0.0.1:47919",
+  "protocol_version": 1,
+  "schema": "openagents.coder.host-descriptor.v1",
+  "state": "ready",
+  "update": {
+    "from": "163a14bf298d391936e9ecef185bab4d58f22e7b21d0e853bab988aee3d7340a",
+    "reason": null,
+    "request": "u1790479233034-740251",
+    "state": "committed",
+    "target": "2642f8a3ea3fe7b8844bd4273756e92bd3ef62a6aa46415546b19276dc77954f"
+  },
+  "version": "2642f8a3ea3fe7b8844bd4273756e92bd3ef62a6aa46415546b19276dc77954f"
+}
+exit=0
+--- update to a build that exits
+{
+  "capabilities": [
+    "host-rollback",
+    "host-trial-update"
+  ],
+  "host_generation": 3,
+  "host_key": "f5058f0aab644ddabc62d48039a99632b71d6498e01ee74557be0157097953fc",
+  "listen": "127.0.0.1:47919",
+  "protocol_version": null,
+  "schema": "openagents.coder.host-descriptor.v1",
+  "state": "stopped",
+  "update": {
+    "from": "2642f8a3ea3fe7b8844bd4273756e92bd3ef62a6aa46415546b19276dc77954f",
+    "reason": "the trial host exited with code 3 before it reported ready",
+    "request": "u1790479247071-740804",
+    "state": "rolled-back",
+    "target": "1c1ea45e8ff6cba38d7cc0e30d90fa2955a9946465e35697fc480b50600ef7a7"
+  },
+  "version": "2642f8a3ea3fe7b8844bd4273756e92bd3ef62a6aa46415546b19276dc77954f"
+}
+exit=2
+marker after rollback: absent
+evidence after rollback: {"evidence":"before"}
+running version: True
+--- restart
+{
+  "label": "openagents-test-9719-d941997a",
+  "result": "restarted"
+}
+ready again: 5 True
+--- SIGKILL of the launcher during a trial
+trial in progress; SIGKILL to launcher 741328 (trial group 742455)
+{
+  "capabilities": [
+    "activity-summary",
+    "direct-tcp",
+    "host-rollback",
+    "host-trial-update",
+    "relay-control",
+    "task-control",
+    "task-create",
+    "terminal"
+  ],
+  "host_generation": 7,
+  "host_key": "f5058f0aab644ddabc62d48039a99632b71d6498e01ee74557be0157097953fc",
+  "listen": "127.0.0.1:47919",
+  "protocol_version": 1,
+  "schema": "openagents.coder.host-descriptor.v1",
+  "state": "ready",
+  "update": {
+    "from": "2642f8a3ea3fe7b8844bd4273756e92bd3ef62a6aa46415546b19276dc77954f",
+    "reason": "the launcher stopped during the trial, before the host reported ready",
+    "request": "u1790479261180-742447",
+    "state": "rolled-back",
+    "target": "bb429fd399e28a850c517021fef3684afb0f1db3e9192e7fddbbb41b14fe8416"
+  },
+  "version": "2642f8a3ea3fe7b8844bd4273756e92bd3ef62a6aa46415546b19276dc77954f"
+}
+processes left in trial group 742455: 
+new launcher pid: 743551; restarts: 1
+marker after rollback: absent
+--- status before uninstall
+{
+  "platform": "linux",
+  "label": "openagents-test-9719-d941997a",
+  "definition_current": true,
+  "registered": true,
+  "loaded": true,
+  "running": true,
+  "pid": 743551,
+  "enabled": true,
+  "starts_at": "login",
+  "survives_logout": false,
+  "linger": false,
+  "pending_restart": false,
+  "pending_reasons": [],
+  "committed": "2642f8a3ea3fe7b8844bd4273756e92bd3ef62a6aa46415546b19276dc77954f",
+  "descriptor": {
+    "capabilities": [
+      "activity-summary",
+      "direct-tcp",
+      "host-rollback",
+      "host-trial-update",
+      "relay-control",
+      "task-control",
+      "task-create",
+      "terminal"
+    ],
+    "host_generation": 7,
+    "host_key": "f5058f0aab644ddabc62d48039a99632b71d6498e01ee74557be0157097953fc",
+    "listen": "127.0.0.1:47919",
+    "protocol_version": 1,
+    "schema": "openagents.coder.host-descriptor.v1",
+    "state": "ready",
+    "update": {
+      "from": "2642f8a3ea3fe7b8844bd4273756e92bd3ef62a6aa46415546b19276dc77954f",
+      "reason": "the launcher stopped during the trial, before the host reported ready",
+      "request": "u1790479261180-742447",
+      "state": "rolled-back",
+      "target": "bb429fd399e28a850c517021fef3684afb0f1db3e9192e7fddbbb41b14fe8416"
+    },
+    "version": "2642f8a3ea3fe7b8844bd4273756e92bd3ef62a6aa46415546b19276dc77954f"
+  }
+}
+--- cleanup
+{
+  "stopped": true,
+  "registration_removed": true,
+  "definition_removed": true,
+  "preserved": [
+    "host state directories",
+    "staged bundles",
+    "launcher record and descriptor",
+    "logs",
+    "the linger setting"
+  ]
+}
+LoadState=not-found
+ActiveState=inactive
+  ls: cannot access '/home/christopherdavid/.config/systemd/user/openagents-test-9719-d941997a.service': No such file or directory
+  ls: cannot access '/home/christopherdavid/.config/systemd/user/default.target.wants/openagents-test-9719-d941997a.service': No such file or directory
+no process references /tmp/oa-9719-linux-d941997a/svc
+files under ~/.openagents newer than the start of this run:
+(end)

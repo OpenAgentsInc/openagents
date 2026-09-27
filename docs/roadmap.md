@@ -154,7 +154,10 @@ push wakeups. Wave 2 composes them into one resident host,
 shared Rust Native "Computers" screens,
 [#9713](https://github.com/OpenAgentsInc/openagents/issues/9713).
 
-Status: **implemented; physical-device and production acceptance pending.**
+Status: **delivered; closed on 2026-09-27** with the
+[closure record](coder/verification/2026-09-27-remote-access-closure.md).
+Physical-device and production acceptance are tracked in
+[#9719](https://github.com/OpenAgentsInc/openagents/issues/9719).
 The six drafts are in `nips/openagents/`, and each crate has targeted tests and
 a verification record under `docs/coder/verification/`. `coder host serve`
 runs one resident host that handles enrollment, presence with telemetry and
@@ -163,10 +166,14 @@ cancel into the durable inbox, and activity summaries. The Computers screens on
 iOS, Android, and the terminal use the live host client, show invitations as
 QR codes, and pass app foreground and background to each host's connection
 supervisor. Synthetic end-to-end runs, iOS simulator runs, and Android emulator
-runs pass. Still open: WebSocket framing for web clients, the CAP/CJ binding of
-NIP-HOST, discovery through the owner directory in the app, launchd, systemd,
-loopback `sshd`, and Linux runs, physical-device and production-relay checks,
-and real APNs and FCM delivery, which needs owner credentials.
+runs pass. The follow-up, [#9719](https://github.com/OpenAgentsInc/openagents/issues/9719),
+then added WebSocket direct channels, the CAP/CJ binding of NIP-HOST, one host
+generation counter, headless enrollment through the resident host, the owner
+directory and SSH setup in the Computers screens, a push gateway for APNs and
+FCM, and Linux runs on NixOS: real PTYs, SSH against a real `sshd`, and the
+systemd user service with commit and rollback. Still waiting on the owner:
+iPhone and production-relay checks, an Android distribution channel, APNs and
+FCM credentials for real wakes, and a reboot to prove service recovery.
 
 ## Complete outcome map
 

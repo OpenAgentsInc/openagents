@@ -653,6 +653,7 @@ mod tests {
             secret_hex: "01".repeat(32),
             synthetic: false,
             loopback_test: false,
+            push: None,
         })
         .unwrap();
         app.selected = history

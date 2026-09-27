@@ -1,0 +1,33 @@
+    Finished `test` profile [unoptimized] target(s) in 0.27s
+     Running tests/remote.rs (target/debug/deps/remote-61677df9b34a4c73)
+
+running 1 test
+resolved: christopherdavid@100.74.238.61:48219
+up: Fresh Started Managed pid=746396 port=33741 os=linux arch=x86_64
+remote process: 746396       1  746396  746396 /tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/versions/15fe4dd2184604c31d3fdbfaa82807b9be09a59f650030761b33fec728785227/coder host serve --loopback --loopback-test --no-telemetry --owner 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798 --relay ws://127.0.0.1:9/
+up again: Reused Reused
+tunnel: 127.0.0.1:50026 -> remote 127.0.0.1:33741 (ssh pid 38049)
+invite: one line, Invitation(redacted)
+after tunnel death: Reused pid=746396
+remove: stopped 746396
+external pid=747046: Adopted External
+remove: detached from 747046; it still runs
+remote files after the run:
+/tmp/oa-9719-linux-d941997a/rhome/.openagents
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/coder-access
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/coder-access/access.json
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/coder-access/access.lock
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/coder-access/host.key
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/host
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/host/generation
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/host.log
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/uploads
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/versions
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/versions/15fe4dd2184604c31d3fdbfaa82807b9be09a59f650030761b33fec728785227
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/versions/15fe4dd2184604c31d3fdbfaa82807b9be09a59f650030761b33fec728785227/coder
+/tmp/oa-9719-linux-d941997a/rhome/.openagents/ssh-host/versions/15fe4dd2184604c31d3fdbfaa82807b9be09a59f650030761b33fec728785227/manifest
+test real_sshd_lifecycle ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 32.50s
+

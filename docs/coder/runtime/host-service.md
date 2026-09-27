@@ -48,6 +48,7 @@ Everything the service writes for you lives under `~/.openagents`:
 | `~/.openagents/tasks/` | The default state directory a trial snapshots. |
 | `~/.openagents/host/service.json` | The service configuration. |
 | `~/.openagents/host/launcher.json` | The launcher's durable record: committed version, generation, update phase. |
+| `~/.openagents/host/generation` | The host root's one generation counter, which the launcher and a standalone `coder host serve` both advance. |
 | `~/.openagents/host/descriptor.json` | The host descriptor. |
 | `~/.openagents/host/update-request.json` | A pending update request. |
 | `~/.openagents/host/snapshots/` | The snapshot of a trial in progress. |
@@ -59,10 +60,13 @@ Everything the service writes for you lives under `~/.openagents`:
 The operating system reads service definitions from its own directory, so
 install adds one symbolic link there, pointing at the rendered file:
 `~/Library/LaunchAgents/<label>.plist` on macOS and
-`~/.config/systemd/user/<label>.service` on Linux. That link is the only
-thing outside `~/.openagents`. Uninstall removes it only when it still points
-at this host's file, and install refuses to replace a file it did not
-create.
+`~/.config/systemd/user/<label>.service` on Linux. On Linux,
+`systemctl --user enable` also adds
+`~/.config/systemd/user/default.target.wants/<label>.service`. Those links
+are the only things outside `~/.openagents`. Uninstall removes the
+registration link only when it still points at this host's file, and
+`systemctl --user disable` removes the other; install refuses to replace a
+file it did not create.
 
 ## Install
 
@@ -103,6 +107,7 @@ version; change versions with an update.
 | `--no-start` | Off | Register and enable without starting. |
 | `--platform` | This machine's | `macos` or `linux`. |
 | `--registration-dir` | The platform's directory | Where the registration link goes. |
+| `--path` | `/usr/bin:/bin`, then your `PATH` | The `PATH` of the launcher and the host. |
 | `-- <args>` | `host serve` | The arguments after the host binary. |
 
 Pass `--root <dir>` before the command to use a host root other than
@@ -117,6 +122,13 @@ explicit host arguments after `--` for any other host program.
 The service binds loopback only. Remote reach comes from the host reach and
 enrollment work, never from this service.
 
+Install records a search path in the configuration: `/usr/bin:/bin`, then
+each absolute directory of the `PATH` you run install from that is not
+already listed. The host and every terminal it opens inherit it. Some systems
+keep few tools in the base directories; on NixOS, `/usr/bin` holds only
+`env` and `/bin` only `sh`. Pass `--path` to record another value. A
+configuration written before this setting existed uses `/usr/bin:/bin`.
+
 ## What the service does
 
 The rendered definition runs `coder-service --root <root> run`. The service
@@ -128,7 +140,7 @@ stopped.
 | Starts | At login (`RunAtLoad`) | At login; at boot with linger |
 | Restart | `KeepAlive.SuccessfulExit=false`, `ThrottleInterval=10` | `Restart=on-failure`, `RestartSec=5`, at most 5 starts in 300 seconds |
 | Stop | `ExitTimeOut` = stop grace + 10 seconds | `KillMode=control-group`, `TimeoutStopSec` = stop grace + 10 seconds |
-| Environment | `PATH=/usr/bin:/bin`, `Umask` 077 | `PATH=/usr/bin:/bin`, `UMask=0077`, `NoNewPrivileges=yes` |
+| Environment | `PATH` = the recorded search path, `Umask` 077 | `PATH` = the recorded search path, `UMask=0077`, `NoNewPrivileges=yes` |
 | Logs | `logs/launcher.log` | The user journal |
 
 On `SIGTERM` the launcher stops its host (`SIGTERM` to the host's process
@@ -218,13 +230,14 @@ contain the host root or sit inside it.
 ### The host contract
 
 The launcher starts `<bundle>/coder <host args>` in a process group of its
-own, with a cleared environment that holds `PATH=/usr/bin:/bin`, `HOME`, and
-these variables:
+own, with a cleared environment that holds `HOME`, `PATH` set to the
+recorded search path, and these variables:
 
 | Variable | Meaning |
 | --- | --- |
 | `OPENAGENTS_HOST_READY_FILE` | Where the host writes its ready record. |
-| `OPENAGENTS_HOST_GENERATION` | The generation the ready record repeats. |
+| `OPENAGENTS_HOST_GENERATION` | The generation the ready record repeats. The launcher reserves it from the host root's counter. |
+| `OPENAGENTS_HOST_GENERATION_ROOT` | The host root whose counter holds that reservation. The host claims the generation there before it serves. |
 | `OPENAGENTS_HOST_VERSION` | The bundle identity the ready record repeats. |
 | `OPENAGENTS_HOST_LISTEN` | The loopback address to bind. |
 | `OPENAGENTS_HOST_TRIAL` | `1` during a trial, else `0`. |
@@ -254,7 +267,7 @@ it assumes anything about the host.
 | `schema` | `openagents.coder.host-descriptor.v1`. A client refuses any other value. |
 | `host_key` | The host's x-only Nostr public key. |
 | `protocol_version` | The host protocol the running host reported, or `null` before it is ready. |
-| `host_generation` | Increases every time the launcher starts a host. A different generation means the host restarted. |
+| `host_generation` | Increases every time the launcher starts a host, and never falls below a generation a standalone `coder host serve` used from the same root. A different generation means the host restarted. |
 | `capabilities` | Sorted, unique flags: `host-rollback` and `host-trial-update` from the launcher, plus the flags the ready host reported. |
 | `listen` | The loopback address. |
 | `state` | `starting`, `ready`, `updating`, or `stopped`. |
@@ -273,9 +286,15 @@ sees `update.state` `committed` with `update.target` equal to `version`, or
 
 ## Limits
 
-- **Linux runtime.** Unit rendering, quoting, linger parsing, and the exact
-  `systemctl` and `loginctl` commands are unit tested. No real systemd run
-  is part of this slice's evidence.
+- **Linux runtime.** The
+  [Linux runs record](../verification/2026-09-27-linux-runs.md) holds a real
+  systemd user-unit run of `coder host serve` on NixOS: install, status,
+  restart, a committed update, two rolled-back updates, and uninstall.
+  Starting at boot with linger and recovery after a reboot were not
+  exercised.
+- **Update wait.** `update --wait` returns when the descriptor reports
+  `rolled-back`. The previous version may still be starting then: the
+  descriptor shows `stopped` until that host reports ready.
 - **Logout on macOS.** A launchd agent in the `gui` domain stops at logout
   and starts at the next login. Status reports this rather than hiding it.
 - **Login-time loading.** The runtime check loads the agent with

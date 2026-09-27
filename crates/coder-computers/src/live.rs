@@ -20,25 +20,38 @@
 //!   refusal, or a channel the host closed as revoked, blocks the supervisor
 //!   and marks the host revoked on this device.
 //!
+//! - With the owner key, the pump also reads the owner host directory. Its
+//!   labels and weights apply to enrolled hosts, and a listed host this
+//!   device holds no grant for shows as not enrolled. Adding an enrolled host
+//!   to the directory publishes the next revision. See [`Saved::owner`] for
+//!   how a device holds the owner key.
+//! - With the `ssh` feature, [`ComputersService::connect_ssh`] installs,
+//!   starts or adopts a host with `coder-ssh`, and redeems its invitation.
+//!
 //! The device key never leaves this process. The saved grants are private:
 //! the mobile store encrypts them under the device key, and [`FileStore`]
 //! writes them owner-only.
 use crate::model::{
-    Compatibility, CreatedInvitation, DeviceList, DeviceRow, Enrollment, HostRecord, LocalHost,
-    PendingEnrollment, Platform, ServiceState, Snapshot,
+    Compatibility, CreatedInvitation, DeviceList, DeviceRow, DirectoryState, Enrollment,
+    HostRecord, LOCAL_WEIGHT, Listing, LocalHost, PendingEnrollment, Platform, ServiceState,
+    Snapshot, SshAttempt,
 };
 use crate::service::{ComputersService, Result};
 use coder_access::client::{OpenedEnrollment, pending_enrollments, redeem};
 use coder_access::protocol::DeviceEntry;
 use coder_access::{Access, Code, Error, Operation, Outcome, RelayPolicy, Right, Rights};
-use coder_host::client::{Connector, Device, Link, Reports, Route, fetch_reach, fetch_summaries};
+use coder_host::client::{
+    Connector, Device, Link, Reports, Route, fetch_directory_revisions, fetch_reach,
+    fetch_summaries, publish_directory,
+};
 use coder_link::{
     BlockReason, ConnectionId, Failure, HostKey, Phase, Policy, Registry, Report, Signal,
     SystemClock,
 };
+use coder_reach::directory::{Directory, HostEntry};
 use coder_reach::hints::Class;
 pub use coder_reach::hints::Locality;
-use coder_reach::presence::{ClientProfile, VersionRange};
+use coder_reach::presence::{ClientProfile, Received, VersionRange};
 use nostr::activity_summary::ActivitySummary;
 use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};
@@ -56,6 +69,8 @@ pub const SAVED_SCHEMA: &str = "openagents.coder.computers.v1";
 const TICK: Duration = Duration::from_millis(200);
 /// A snapshot asks for fresh data when the last read is older than this.
 const NUDGE_AFTER: Duration = Duration::from_secs(2);
+/// How long relays keep a directory revision this device publishes.
+const DIRECTORY_RETENTION: u64 = 365 * 86_400;
 
 /// Everything this device keeps about its computers. It holds grants: keep
 /// it only in the platform's protected store.
@@ -67,6 +82,13 @@ pub struct Saved {
     pub first_run_complete: bool,
     /// The person chose to run this client with no local host.
     pub client_only: bool,
+    /// Owner authority on this device, under the NIP-REACH rule: the device
+    /// reads and updates the owner directory only with the owner key held
+    /// here. It holds that key when its own device key is the owner a held
+    /// grant names, or when the person entered the owner key on this device.
+    /// The key never arrives over a relay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<SavedOwner>,
 }
 
 impl Default for Saved {
@@ -76,7 +98,35 @@ impl Default for Saved {
             hosts: Vec::new(),
             first_run_complete: false,
             client_only: false,
+            owner: None,
         }
+    }
+}
+
+/// The owner key this device holds, and the directory it last trusted.
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SavedOwner {
+    /// The owner's secret key in hex. `None` when the device key is the
+    /// owner key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret: Option<String>,
+    /// The mailbox the owner's directory revisions use.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mailbox: Option<String>,
+    /// The highest directory revision this device read or published. A
+    /// lower revision never replaces it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directory: Option<Directory>,
+}
+
+impl std::fmt::Debug for SavedOwner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SavedOwner")
+            .field("secret", &self.secret.as_ref().map(|_| "[redacted]"))
+            .field("mailbox", &self.mailbox)
+            .field("directory", &self.directory)
+            .finish()
     }
 }
 
@@ -92,6 +142,9 @@ pub struct SavedHost {
     /// The host revoked this device, as its signed refusal or channel
     /// closing said.
     pub revoked: bool,
+    /// The SSH destination this device set the host up through, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh: Option<String>,
 }
 
 /// Where a platform keeps [`Saved`].
@@ -225,14 +278,18 @@ pub struct Settings {
     pub locality: Locality,
     /// Each host supervisor's retry and timeout policy.
     pub link: Policy,
-    /// How often a connected host's data is read again.
+    /// How often a connected host's data, and the owner directory, are read
+    /// again.
     pub refresh_every: Duration,
     /// Unix seconds.
     pub now: fn() -> u64,
+    /// How this client starts hosts over SSH. `None` offers no SSH setup.
+    #[cfg(feature = "ssh")]
+    pub ssh: Option<SshSetup>,
 }
 
 impl Settings {
-    /// Production relays, another machine, default timing.
+    /// Production relays, another machine, default timing, no SSH setup.
     #[must_use]
     pub fn new(platform: Platform) -> Self {
         Self {
@@ -242,7 +299,58 @@ impl Settings {
             link: Policy::default(),
             refresh_every: Duration::from_secs(30),
             now: unix_now,
+            #[cfg(feature = "ssh")]
+            ssh: None,
         }
+    }
+}
+
+/// What an SSH setup installs and runs on the remote machine.
+#[cfg(feature = "ssh")]
+#[derive(Clone, Debug)]
+pub struct SshSetup {
+    /// The pinned `coder` release archives.
+    pub release: coder_ssh::Release,
+    /// The serve and invite commands.
+    pub runner: coder_ssh::Runner,
+    /// The `ssh` program, when not the one on `PATH`.
+    pub program: Option<PathBuf>,
+}
+
+#[cfg(feature = "ssh")]
+impl SshSetup {
+    /// Run the `coder` binary's host: `coder host serve --loopback --owner
+    /// OWNER --relay RELAY` and `coder host invite --relay RELAY --rights
+    /// all`. The person who can log in over SSH already controls that
+    /// account, so the invitation grants every right. `loopback_test` adds
+    /// `--loopback-test` for a local test relay.
+    ///
+    /// # Errors
+    /// Refuses arguments `coder-ssh` cannot send.
+    pub fn coder(
+        release: coder_ssh::Release,
+        owner: &str,
+        relay: &str,
+        loopback_test: bool,
+    ) -> std::result::Result<Self, coder_ssh::Error> {
+        let mut serve: Vec<String> = ["host", "serve", "--loopback", "--owner", owner, "--relay"]
+            .iter()
+            .map(|arg| (*arg).to_owned())
+            .collect();
+        serve.push(relay.to_owned());
+        let mut invite: Vec<String> = ["host", "invite", "--relay", relay, "--rights", "all"]
+            .iter()
+            .map(|arg| (*arg).to_owned())
+            .collect();
+        if loopback_test {
+            serve.push("--loopback-test".into());
+            invite.push("--loopback-test".into());
+        }
+        Ok(Self {
+            release,
+            runner: coder_ssh::Runner::new(serve, invite)?,
+            program: None,
+        })
     }
 }
 
@@ -258,6 +366,7 @@ struct HostLive {
     key: Option<HostKey>,
     device: Option<Arc<Device>>,
     compatibility: Option<Compatibility>,
+    presence: Option<Received>,
     devices: Option<(Vec<DeviceEntry>, u64)>,
     enrollments: Vec<OpenedEnrollment>,
     activity: Vec<ActivitySummary>,
@@ -267,9 +376,35 @@ struct HostLive {
     nudged: bool,
 }
 
+/// The owner directory's read state.
+struct DirectoryLive {
+    state: DirectoryState,
+    reading: bool,
+    read_at: Option<Instant>,
+    nudged: bool,
+}
+
+impl Default for DirectoryLive {
+    fn default() -> Self {
+        Self {
+            state: DirectoryState::Loading,
+            reading: false,
+            read_at: None,
+            nudged: false,
+        }
+    }
+}
+
 struct State {
     saved: Saved,
     hosts: BTreeMap<String, HostLive>,
+    directory: DirectoryLive,
+    ssh: Option<SshAttempt>,
+    /// The SSH prompt waiting for an answer, and where the answer goes.
+    #[cfg(feature = "ssh")]
+    prompt: Option<(u64, std::sync::mpsc::Sender<Option<coder_ssh::Secret>>)>,
+    #[cfg(feature = "ssh")]
+    prompts: u64,
 }
 
 /// State the service and its pump share. Lock order: registry, state,
@@ -303,11 +438,18 @@ impl Live {
         mut store: Box<dyn Store>,
         runtime: Handle,
     ) -> Result<Self> {
-        let saved = store
+        let mut saved = store
             .load()
             .map_err(|message| Error::new(Code::Unavailable, message))?
             .filter(|saved| saved.v == SAVED_SCHEMA)
             .unwrap_or_default();
+        // A saved directory counts only for the owner key this device holds.
+        let owner = owner_key(&saved, &secret).map(|owner| coder_reach::pubkey(&owner));
+        if let Some(record) = &mut saved.owner {
+            record.directory = record.directory.take().filter(|directory| {
+                owner.as_deref() == Some(directory.owner.as_str()) && directory.validate().is_ok()
+            });
+        }
         let (connector, reports) = Connector::new(runtime.clone(), settings.locality);
         let registry = Registry::new(SystemClock::new(), connector, settings.link.clone())
             .map_err(|error| Error::new(Code::Unavailable, error.to_string()))?;
@@ -319,6 +461,12 @@ impl Live {
             state: Mutex::new(State {
                 saved,
                 hosts: BTreeMap::new(),
+                directory: DirectoryLive::default(),
+                ssh: None,
+                #[cfg(feature = "ssh")]
+                prompt: None,
+                #[cfg(feature = "ssh")]
+                prompts: 0,
             }),
             store: Mutex::new(store),
         });
@@ -357,7 +505,22 @@ impl Live {
         let state = lock(&self.shared.state);
         self.shared.save(&state.saved)
     }
+
+    /// Whether this client can start hosts over SSH.
+    fn ssh_ready(&self) -> bool {
+        #[cfg(feature = "ssh")]
+        {
+            self.shared.settings.platform != Platform::Phone && self.shared.settings.ssh.is_some()
+        }
+        #[cfg(not(feature = "ssh"))]
+        {
+            false
+        }
+    }
 }
+
+#[cfg(feature = "ssh")]
+mod ssh;
 
 impl Drop for Live {
     fn drop(&mut self) {
@@ -524,7 +687,196 @@ impl Shared {
                 link,
             ));
         }
+        drop(registry);
+        let Some(owner) = owner_key(&state.saved, &self.secret) else {
+            return;
+        };
+        let directory = &mut state.directory;
+        let due = directory.nudged || directory.read_at.is_none_or(|at| at.elapsed() >= every);
+        if directory.reading || !due {
+            return;
+        }
+        directory.reading = true;
+        directory.nudged = false;
+        let relays = self.directory_relays(&state.saved, &owner);
+        tokio::spawn(read_directory(self.clone(), owner, relays));
     }
+
+    /// The relays the owner's directory lives on: those named by the grants
+    /// this device holds for the owner's hosts, and by the entries of the
+    /// directory it last trusted.
+    fn directory_relays(&self, saved: &Saved, owner: &SecretKey) -> Vec<String> {
+        let owner = coder_reach::pubkey(owner);
+        let mut relays: Vec<String> = saved
+            .hosts
+            .iter()
+            .filter(|host| host.access.grant.owner == owner)
+            .map(|host| host.access.grant.relay.clone())
+            .collect();
+        if let Some(directory) = saved.owner.as_ref().and_then(|o| o.directory.as_ref()) {
+            relays.extend(
+                directory
+                    .hosts
+                    .iter()
+                    .flat_map(|entry| entry.relays.iter().cloned()),
+            );
+        }
+        relays.sort();
+        relays.dedup();
+        relays.retain(|relay| self.settings.policy.validate(relay).is_ok());
+        relays
+    }
+
+    /// Redeem a `coder-host:` invitation, save the grant, and supervise the
+    /// host. `label` names a new host; a host already saved keeps its label.
+    fn redeem(
+        &self,
+        runtime: &Handle,
+        invitation: &str,
+        label: Option<String>,
+        ssh: Option<String>,
+    ) -> Result<String> {
+        let access = runtime.block_on(redeem(invitation, &self.secret, self.settings.policy))?;
+        let host = access.grant.host.clone();
+        self.unsupervise(&host);
+        let saved = {
+            let mut state = lock(&self.state);
+            let previous = state
+                .saved
+                .hosts
+                .iter()
+                .find(|saved| saved.access.grant.host == host)
+                .cloned();
+            let label = previous.as_ref().map_or_else(
+                || label.unwrap_or_else(|| format!("Computer {}", short(&host))),
+                |saved| saved.label.clone(),
+            );
+            state
+                .saved
+                .hosts
+                .retain(|saved| saved.access.grant.host != host);
+            let saved = SavedHost {
+                access,
+                label,
+                enabled: true,
+                revoked: false,
+                ssh: ssh.or_else(|| previous.and_then(|saved| saved.ssh)),
+            };
+            state.saved.hosts.push(saved.clone());
+            // A grant can make the device key the owner key.
+            state.directory.nudged = true;
+            let record = state.saved.clone();
+            drop(state);
+            self.save(&record)?;
+            saved
+        };
+        self.supervise(&saved);
+        Ok(host)
+    }
+}
+
+/// The owner key this device holds, if any: the owner key the person
+/// entered here, or the device key when a held grant names it as the owner.
+fn owner_key(saved: &Saved, device: &SecretKey) -> Option<SecretKey> {
+    if let Some(secret) = saved
+        .owner
+        .as_ref()
+        .and_then(|owner| owner.secret.as_deref())
+    {
+        return secret.parse().ok();
+    }
+    let key = coder_reach::pubkey(device);
+    saved
+        .hosts
+        .iter()
+        .any(|host| host.access.grant.owner == key)
+        .then_some(*device)
+}
+
+/// Parse an owner secret key entered as 64 hex characters or `nsec`.
+fn parse_secret(text: &str) -> Option<SecretKey> {
+    if text.starts_with("nsec1") {
+        let bytes = nostr::nip19::decode_nsec(text).ok()?;
+        SecretKey::from_byte_array(bytes).ok()
+    } else if text.len() == 64 && text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        text.to_ascii_lowercase().parse().ok()
+    } else {
+        None
+    }
+}
+
+/// Read every retained directory revision from `relays` and keep the
+/// current one. A lower revision than the one this device trusts never
+/// replaces it, and two different bodies at the top revision are a conflict.
+async fn read_directory(shared: Arc<Shared>, owner: SecretKey, relays: Vec<String>) {
+    let mut found: Vec<(Directory, String)> = Vec::new();
+    let mut answered = false;
+    for relay in &relays {
+        if let Ok(revisions) =
+            fetch_directory_revisions(relay, &owner, shared.settings.policy).await
+        {
+            answered = true;
+            found.extend(revisions);
+        }
+    }
+    let now = (shared.settings.now)();
+    let mut state = lock(&shared.state);
+    state.directory.reading = false;
+    state.directory.read_at = Some(Instant::now());
+    // The owner key changed while this read ran; the next read starts over.
+    if owner_key(&state.saved, &shared.secret).map(|key| key.secret_bytes())
+        != Some(owner.secret_bytes())
+    {
+        return;
+    }
+    let held = state
+        .saved
+        .owner
+        .as_ref()
+        .and_then(|record| record.directory.clone());
+    let held_revision = held.as_ref().map(|directory| directory.revision);
+    if !answered {
+        state.directory.state = DirectoryState::Failed {
+            revision: held_revision,
+        };
+        return;
+    }
+    let mut candidates: Vec<Directory> = found.iter().map(|(d, _)| d.clone()).collect();
+    candidates.extend(held.clone());
+    let current = match Directory::current(&candidates) {
+        Err(_) => {
+            let top = candidates.iter().map(|d| d.revision).max().unwrap_or(0);
+            state.directory.state = DirectoryState::Conflict { revision: top };
+            return;
+        }
+        Ok(current) => current.cloned(),
+    };
+    let Some(current) = current else {
+        state.directory.state = DirectoryState::Current {
+            revision: None,
+            as_of: now,
+        };
+        return;
+    };
+    state.directory.state = DirectoryState::Current {
+        revision: Some(current.revision),
+        as_of: now,
+    };
+    if held.as_ref() == Some(&current) {
+        return;
+    }
+    let mailbox = found
+        .iter()
+        .find(|(directory, _)| *directory == current)
+        .map(|(_, mailbox)| mailbox.clone());
+    let record = state.saved.owner.get_or_insert_with(SavedOwner::default);
+    if mailbox.is_some() {
+        record.mailbox = mailbox;
+    }
+    record.directory = Some(current);
+    let saved = state.saved.clone();
+    drop(state);
+    let _ = shared.save(&saved);
 }
 
 /// Read what a connected host holds for this device, then report whether
@@ -546,10 +898,13 @@ async fn catch_up(
             max: coder_reach::PROTOCOL_VERSION,
         },
     };
-    let compatibility = fetch_reach(&device, &relay)
+    let presence = fetch_reach(&device, &relay)
         .await
         .ok()
-        .map(|reach| Compatibility::judge(&reach.presence.presence, &client));
+        .map(|reach| reach.presence);
+    let compatibility = presence
+        .as_ref()
+        .map(|received| Compatibility::judge(&received.presence, &client));
     let summaries = fetch_summaries(&device, &relay).await;
     let mut revoked = false;
     let devices = if rights.contains(Right::AccessRead) {
@@ -579,6 +934,7 @@ async fn catch_up(
             live.caught_up = Some((connection.0, Instant::now()));
             if compatibility.is_some() {
                 live.compatibility = compatibility;
+                live.presence = presence;
             }
             if let Ok(summaries) = &summaries {
                 live.activity.clone_from(summaries);
@@ -609,6 +965,12 @@ fn route_class(route: &Route) -> Class {
         Route::Relay(_) => return Class::Relay,
         Route::Direct(address) => address,
     };
+    // A WebSocket route is a `ws` or `wss` URL; classify its authority.
+    let address = address
+        .split_once("://")
+        .map_or(address.as_str(), |(_, rest)| {
+            rest.split(['/', '?', '#']).next().unwrap_or(rest)
+        });
     match address.parse::<SocketAddr>().map(|a| a.ip()) {
         Ok(ip) if ip.is_loopback() => Class::Loopback,
         Ok(IpAddr::V4(ip)) => {
@@ -663,8 +1025,41 @@ impl ComputersService for Live {
         let now = (self.shared.settings.now)();
         let registry = lock(&self.shared.registry);
         let mut state = lock(&self.shared.state);
-        let State { saved, hosts } = &mut *state;
-        let records = saved
+        let owner = owner_key(&state.saved, &self.shared.secret);
+        if owner.is_some()
+            && state
+                .directory
+                .read_at
+                .is_some_and(|at| at.elapsed() >= NUDGE_AFTER)
+        {
+            state.directory.nudged = true;
+        }
+        let State {
+            saved,
+            hosts,
+            directory: directory_live,
+            ssh,
+            ..
+        } = &mut *state;
+        // The directory counts only while this device holds its owner key.
+        let directory = owner
+            .as_ref()
+            .and(saved.owner.as_ref())
+            .and_then(|record| record.directory.as_ref());
+        let listing = |key: &str| {
+            directory
+                .and_then(|directory| directory.entry(key))
+                .map(|entry| {
+                    (
+                        entry.label.clone(),
+                        Listing {
+                            weight: entry.weight,
+                            added_at: entry.added_at,
+                        },
+                    )
+                })
+        };
+        let mut records: Vec<HostRecord> = saved
             .hosts
             .iter()
             .map(|saved| {
@@ -702,13 +1097,19 @@ impl ComputersService for Live {
                         expires_at: grant.expires_at,
                     }
                 };
+                let listed = listing(&host);
                 HostRecord {
                     key: host,
-                    label: saved.label.clone(),
+                    label: listed
+                        .as_ref()
+                        .map_or_else(|| saved.label.clone(), |(label, _)| label.clone()),
+                    listing: listed.map(|(_, listing)| listing),
+                    ssh: saved.ssh.clone(),
                     enrollment,
                     link,
                     route,
                     compatibility: live.compatibility.unwrap_or(Compatibility::Unknown),
+                    presence: live.presence.clone(),
                     devices: live.devices.as_ref().map_or(
                         DeviceList::NotLoaded,
                         |(devices, as_of)| DeviceList::Loaded {
@@ -728,6 +1129,31 @@ impl ComputersService for Live {
                 }
             })
             .collect();
+        // Listed hosts this device holds no grant for: not enrolled. A
+        // directory entry grants nothing.
+        if let Some(directory) = directory {
+            for entry in &directory.hosts {
+                if records.iter().any(|record| record.key == entry.host) {
+                    continue;
+                }
+                records.push(HostRecord {
+                    key: entry.host.clone(),
+                    label: entry.label.clone(),
+                    listing: Some(Listing {
+                        weight: entry.weight,
+                        added_at: entry.added_at,
+                    }),
+                    ssh: None,
+                    enrollment: Enrollment::NotEnrolled,
+                    link: None,
+                    route: None,
+                    compatibility: Compatibility::Unknown,
+                    presence: None,
+                    devices: DeviceList::NotLoaded,
+                    enrollments: Vec::new(),
+                });
+            }
+        }
         let activity = saved
             .hosts
             .iter()
@@ -747,6 +1173,13 @@ impl ComputersService for Live {
             first_run_complete: saved.first_run_complete,
             hosts: records,
             activity,
+            directory: if owner.is_some() {
+                directory_live.state
+            } else {
+                DirectoryState::NoOwnerKey
+            },
+            ssh_ready: self.ssh_ready(),
+            ssh: ssh.clone(),
         })
     }
 
@@ -799,37 +1232,7 @@ impl ComputersService for Live {
     }
 
     fn redeem_invitation(&mut self, invitation: &str) -> Result<String> {
-        let access = self.runtime.block_on(redeem(
-            invitation,
-            &self.shared.secret,
-            self.shared.settings.policy,
-        ))?;
-        let host = access.grant.host.clone();
-        self.shared.unsupervise(&host);
-        let saved = {
-            let mut state = lock(&self.shared.state);
-            let label = state
-                .saved
-                .hosts
-                .iter()
-                .find(|saved| saved.access.grant.host == host)
-                .map_or_else(|| format!("Computer {}", short(&host)), |s| s.label.clone());
-            state
-                .saved
-                .hosts
-                .retain(|saved| saved.access.grant.host != host);
-            let saved = SavedHost {
-                access,
-                label,
-                enabled: true,
-                revoked: false,
-            };
-            state.saved.hosts.push(saved.clone());
-            saved
-        };
-        self.save()?;
-        self.shared.supervise(&saved);
-        Ok(host)
+        self.shared.redeem(&self.runtime, invitation, None, None)
     }
 
     fn approve_enrollment(
@@ -898,11 +1301,142 @@ impl ComputersService for Live {
         Ok(())
     }
 
+    #[cfg(not(feature = "ssh"))]
     fn connect_ssh(&mut self, _: &str) -> Result<()> {
         Err(Error::new(
             Code::Unavailable,
             "this client does not start hosts over SSH",
         ))
+    }
+
+    #[cfg(feature = "ssh")]
+    fn connect_ssh(&mut self, destination: &str) -> Result<()> {
+        ssh::start(&self.shared, &self.runtime, destination)
+    }
+
+    #[cfg(feature = "ssh")]
+    fn answer_ssh_prompt(&mut self, id: u64, answer: Option<&str>) -> Result<()> {
+        ssh::answer(&self.shared, id, answer)
+    }
+
+    fn import_owner_key(&mut self, text: &str) -> Result<()> {
+        let secret = parse_secret(text.trim())
+            .ok_or_else(|| Error::new(Code::Malformed, "not a secret key"))?;
+        let key = coder_reach::pubkey(&secret);
+        {
+            let mut state = lock(&self.shared.state);
+            if !state
+                .saved
+                .hosts
+                .iter()
+                .any(|host| host.access.grant.owner == key)
+            {
+                return Err(Error::new(
+                    Code::Malformed,
+                    "no held grant names this key as the owner",
+                ));
+            }
+            state.saved.owner = Some(SavedOwner {
+                // The device key needs no second copy.
+                secret: (secret.secret_bytes() != self.shared.secret.secret_bytes())
+                    .then(|| secret.display_secret().to_string()),
+                mailbox: None,
+                directory: None,
+            });
+            state.directory = DirectoryLive {
+                nudged: true,
+                ..DirectoryLive::default()
+            };
+        }
+        self.save()
+    }
+
+    fn list_in_directory(&mut self, host: &str, label: &str) -> Result<()> {
+        let now = (self.shared.settings.now)();
+        let (owner, current, mailbox, entry, relays) = {
+            let state = lock(&self.shared.state);
+            let owner = owner_key(&state.saved, &self.shared.secret)
+                .ok_or_else(|| Error::new(Code::Forbidden, "this device holds no owner key"))?;
+            if !state.directory.state.writable() {
+                return Err(Error::new(Code::Stale, "the directory was not read"));
+            }
+            let saved = state
+                .saved
+                .hosts
+                .iter()
+                .find(|saved| saved.access.grant.host == host)
+                .ok_or_else(|| Error::new(Code::Stale, "unknown computer"))?;
+            if saved.access.grant.owner != coder_reach::pubkey(&owner) {
+                return Err(Error::new(
+                    Code::Forbidden,
+                    "the computer names another owner",
+                ));
+            }
+            let record = state.saved.owner.as_ref();
+            let current = record
+                .and_then(|record| record.directory.clone())
+                .unwrap_or_else(|| Directory::empty(&coder_reach::pubkey(&owner), now));
+            let mailbox = record
+                .and_then(|record| record.mailbox.clone())
+                .unwrap_or_else(coder_reach::new_id);
+            let entry = HostEntry {
+                host: host.to_owned(),
+                label: label.to_owned(),
+                relays: vec![saved.access.grant.relay.clone()],
+                weight: LOCAL_WEIGHT,
+                added_at: now,
+            };
+            let mut relays = self.shared.directory_relays(&state.saved, &owner);
+            if !relays.contains(&saved.access.grant.relay) {
+                relays.push(saved.access.grant.relay.clone());
+            }
+            (owner, current, mailbox, entry, relays)
+        };
+        let issued_at = now.max(current.issued_at);
+        let next = current
+            .with_host(entry, issued_at)
+            .map_err(|error| Error::new(Code::Malformed, error.to_string()))?;
+        let retain_until = issued_at.saturating_add(DIRECTORY_RETENTION);
+        // Publish to every directory relay; one that accepts is enough.
+        let mut published = false;
+        for relay in &relays {
+            published |= self
+                .runtime
+                .block_on(publish_directory(
+                    relay,
+                    &owner,
+                    &next,
+                    &mailbox,
+                    retain_until,
+                    self.shared.settings.policy,
+                ))
+                .is_ok();
+        }
+        if !published {
+            return Err(Error::new(
+                Code::Transport,
+                "no relay accepted the directory",
+            ));
+        }
+        {
+            let mut state = lock(&self.shared.state);
+            let record = state.saved.owner.get_or_insert_with(SavedOwner::default);
+            record.mailbox = Some(mailbox);
+            record.directory = Some(next.clone());
+            state.directory.state = DirectoryState::Current {
+                revision: Some(next.revision),
+                as_of: now,
+            };
+            if let Some(saved) = state
+                .saved
+                .hosts
+                .iter_mut()
+                .find(|saved| saved.access.grant.host == host)
+            {
+                label.clone_into(&mut saved.label);
+            }
+        }
+        self.save()
     }
 
     fn run_without_local_host(&mut self) -> Result<()> {
@@ -1020,6 +1554,9 @@ mod tests {
         assert_eq!(direct("100.128.0.1:4000"), Class::Public);
         assert_eq!(direct("[fd00::1]:4000"), Class::Lan);
         assert_eq!(direct("203.0.113.9:4000"), Class::Public);
+        assert_eq!(direct("ws://127.0.0.1:4000/reach"), Class::Loopback);
+        assert_eq!(direct("wss://192.168.1.20:4443/"), Class::Lan);
+        assert_eq!(direct("wss://host.example/reach"), Class::Public);
         assert_eq!(
             route_class(&Route::Relay("wss://relay.example/".into())),
             Class::Relay

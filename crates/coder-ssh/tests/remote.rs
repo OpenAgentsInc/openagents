@@ -7,7 +7,6 @@
 //! starts is a `sleep` process that the fixture kills by its recorded
 //! process identifier.
 
-use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -17,7 +16,9 @@ use coder_ssh::{
     Arch, Artifact, Error, Install, Launcher, Os, Ownership, Release, Removal, Runner, Secret,
     Start,
 };
-use sha2::{Digest as _, Sha256};
+
+#[path = "support/fake_ssh.rs"]
+mod fake_ssh;
 
 const SERVE: &[&str] = &["host", "serve", "--loopback"];
 const INVITE: &[&str] = &["host", "invite"];
@@ -62,15 +63,7 @@ fn local_platform() -> (Os, Arch) {
 }
 
 fn sha256_file(path: &Path) -> String {
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)
-        .unwrap()
-        .read_to_end(&mut bytes)
-        .unwrap();
-    Sha256::digest(&bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    fake_ssh::sha256_file(path)
 }
 
 fn alive(pid: u32) -> bool {
@@ -144,77 +137,11 @@ impl Fixture {
     }
 
     fn write_archive(&self, coder: &str, name: &str) -> PathBuf {
-        let bundle = self.dir.join(format!("bundle-{name}"));
-        std::fs::create_dir_all(&bundle).unwrap();
-        let binary = bundle.join("coder");
-        std::fs::write(&binary, coder).unwrap();
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let archive = self.dir.join(name);
-        let status = Command::new("tar")
-            .arg("-czf")
-            .arg(&archive)
-            .arg("-C")
-            .arg(&bundle)
-            .arg("coder")
-            .status()
-            .unwrap();
-        assert!(status.success());
-        archive
+        fake_ssh::archive(&self.dir, coder, name)
     }
 
     fn write_shim(&self, shell: &str) {
-        let d = self.dir.display();
-        let home = self.home().display().to_string();
-        let shim = format!(
-            r#"#!/bin/sh
-# Fake ssh for coder-ssh tests.
-printf '%s\n' "$*" >> '{d}/calls'
-resolve=no
-tunnel=no
-forward=
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    -G) resolve=yes; shift ;;
-    -N) tunnel=yes; shift ;;
-    -T) shift ;;
-    -o) shift 2 ;;
-    -L) forward=$2; shift 2 ;;
-    --) shift; break ;;
-    -*) echo "fake ssh: unexpected option $1" >&2; exit 255 ;;
-    *) break ;;
-  esac
-done
-shift
-if [ "$resolve" = yes ]; then
-  printf 'hostname fake.example\nuser fake\nport 2222\ncontrolmaster false\n'
-  exit 0
-fi
-if [ -f '{d}/password' ]; then
-  if [ "${{SSH_ASKPASS_REQUIRE:-}}" != force ]; then echo 'Permission denied (batch).' >&2; exit 255; fi
-  printf '%s\n' "$SSH_ASKPASS" >> '{d}/askpass-paths'
-  if env | grep -F -q "$(cat '{d}/password')"; then echo 'password in environment' >&2; exit 254; fi
-  answer=$("$SSH_ASKPASS" "fake@fake.example's password: ") || {{ echo 'Permission denied.' >&2; exit 255; }}
-  if [ "$answer" != "$(cat '{d}/password')" ]; then echo 'Permission denied.' >&2; exit 255; fi
-fi
-if [ "$tunnel" = yes ]; then
-  printf '%s %s\n' "$$" "$forward" > '{d}/tunnel'
-  exec sleep 600
-fi
-if [ -f '{d}/corrupt' ]; then
-  case "$*" in
-    *oa-ssh-upload*)
-      {{ cat; printf 'x'; }} | env HOME='{home}' PATH='{d}/bin':"$PATH" {shell} -c "$*"
-      exit $? ;;
-  esac
-fi
-exec env HOME='{home}' PATH='{d}/bin':"$PATH" {shell} -c "$*"
-"#
-        );
-        let path = self.shim();
-        std::fs::write(&path, shim).unwrap();
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        fake_ssh::shim(&self.dir, &self.home(), shell);
     }
 
     fn shim(&self) -> PathBuf {
@@ -759,26 +686,270 @@ fn a_destination_resolves_through_ssh_g() {
     assert!(fixture.calls().contains("-G -- devbox"));
 }
 
-#[test]
-fn loopback_sshd() {
-    // A real sshd on loopback needs an account whose home this test may
-    // write, host keys, and an authorized key, none of which a test may
-    // create in the real ~/.ssh. Run it by hand against a disposable
-    // account and destination instead.
-    match std::env::var("CODER_SSH_LOOPBACK_DESTINATION") {
-        Err(_) => eprintln!(
-            "skipped: set CODER_SSH_LOOPBACK_DESTINATION to a disposable loopback sshd account to run it"
-        ),
-        Ok(destination) => {
-            let fixture = Fixture::new();
-            let launcher =
-                Launcher::new(&destination, fixture.release(), Fixture::runner(SERVE)).unwrap();
-            let host = launcher.up().unwrap();
-            assert_eq!(host.ownership, Ownership::Managed);
-            assert!(matches!(
-                launcher.remove().unwrap(),
-                Removal::Stopped { .. }
-            ));
-        }
+/// The real-`sshd` run's settings, from the environment.
+struct Real {
+    destination: String,
+    ssh: PathBuf,
+    coder: PathBuf,
+    os: Os,
+    arch: Arch,
+}
+
+impl Real {
+    fn from_env() -> Option<Self> {
+        let destination = std::env::var("CODER_SSH_REAL_DESTINATION").ok()?;
+        let coder = std::env::var_os("CODER_SSH_REAL_CODER")
+            .map(PathBuf::from)
+            .expect("CODER_SSH_REAL_CODER names the coder binary to install");
+        let ssh =
+            std::env::var_os("CODER_SSH_REAL_SSH").map_or_else(|| "ssh".into(), PathBuf::from);
+        let (os, arch) = match std::env::var("CODER_SSH_REAL_PLATFORM").as_deref() {
+            Ok("linux/x86_64") => (Os::Linux, Arch::X86_64),
+            Ok("linux/aarch64") => (Os::Linux, Arch::Aarch64),
+            Ok("macos/x86_64") => (Os::Macos, Arch::X86_64),
+            Ok("macos/aarch64") => (Os::Macos, Arch::Aarch64),
+            Ok(other) => panic!("CODER_SSH_REAL_PLATFORM is OS/ARCH, not {other}"),
+            Err(_) => local_platform(),
+        };
+        Some(Real {
+            destination,
+            ssh,
+            coder,
+            os,
+            arch,
+        })
     }
+
+    /// Runs one command on the remote machine, outside the launcher.
+    fn remote(&self, script: &str) -> (bool, String) {
+        let output = Command::new(&self.ssh)
+            .args(["-o", "BatchMode=yes", "-o", "ControlMaster=no"])
+            .args(["-o", "ControlPath=none", "-T", "--"])
+            .arg(&self.destination)
+            .arg(script)
+            .output()
+            .unwrap();
+        (
+            output.status.success(),
+            String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        )
+    }
+
+    fn remote_alive(&self, pid: u32) -> bool {
+        self.remote(&format!("kill -0 {pid}")).0
+    }
+
+    fn remote_dead(&self, pid: u32) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline {
+            if !self.remote_alive(pid) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        false
+    }
+}
+
+/// A relay that nothing serves. The host waits for it, then serves direct
+/// channels anyway.
+const REAL_RELAY: &str = "ws://127.0.0.1:9/";
+const REAL_OWNER: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+/// Install, start (detached with `setsid` where the remote has it), reuse,
+/// tunnel, invite, tunnel death, adoption of an external host, and explicit
+/// remove, against a real `sshd` and a real `coder host serve`.
+///
+/// Skipped unless `CODER_SSH_REAL_DESTINATION` names a disposable account
+/// and `CODER_SSH_REAL_CODER` names a `coder` binary for the remote
+/// platform. `CODER_SSH_REAL_SSH` replaces the `ssh` program, for example
+/// with a wrapper that adds `-F` and a throwaway configuration, and
+/// `CODER_SSH_REAL_PLATFORM` (`linux/x86_64`) names the remote platform when
+/// it differs from this one. The run writes only under the remote
+/// account's `~/.openagents`, so use an account or `HOME` you can discard.
+#[test]
+fn real_sshd_lifecycle() {
+    let Some(real) = Real::from_env() else {
+        eprintln!(
+            "skipped: set CODER_SSH_REAL_DESTINATION and CODER_SSH_REAL_CODER to run against a real sshd"
+        );
+        return;
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let bundle = temp.path().join("bundle");
+    std::fs::create_dir(&bundle).unwrap();
+    std::fs::copy(&real.coder, bundle.join("coder")).unwrap();
+    let archive = temp.path().join("coder.tar.gz");
+    // macOS tar otherwise adds an AppleDouble `._coder` entry for a file
+    // with extended attributes, and it lands in the version directory.
+    let status = Command::new("tar")
+        .env("COPYFILE_DISABLE", "1")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&bundle)
+        .arg("coder")
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let sha = sha256_file(&archive);
+    let release = Release::new(vec![Artifact {
+        os: real.os,
+        arch: real.arch,
+        sha256: sha.clone(),
+        archive: archive.clone(),
+    }])
+    .unwrap();
+    let serve: Vec<String> = [
+        "host",
+        "serve",
+        "--loopback",
+        "--loopback-test",
+        "--no-telemetry",
+        "--owner",
+        REAL_OWNER,
+        "--relay",
+        REAL_RELAY,
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect();
+    let invite: Vec<String> = ["host", "invite", "--loopback-test", "--relay", REAL_RELAY]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    let launcher = Launcher::new(
+        &real.destination,
+        release,
+        Runner::new(serve.clone(), invite).unwrap(),
+    )
+    .unwrap()
+    .program(&real.ssh);
+
+    let resolved = launcher.resolve().unwrap();
+    eprintln!(
+        "resolved: {}@{}:{}",
+        resolved.user, resolved.hostname, resolved.port
+    );
+    assert_eq!(launcher.remove().unwrap(), Removal::Absent);
+
+    // Fresh install and start. The ssh session that started the host has
+    // ended when `up` returns.
+    let host = launcher.up().unwrap();
+    eprintln!(
+        "up: {:?} {:?} {:?} pid={} port={} os={} arch={}",
+        host.install,
+        host.start,
+        host.ownership,
+        host.pid,
+        host.port,
+        host.os.as_str(),
+        host.arch.as_str()
+    );
+    assert_eq!(
+        (host.install, host.start, host.ownership),
+        (Install::Fresh, Start::Started, Ownership::Managed)
+    );
+    assert_eq!(host.version, sha);
+    let (_, process) = real.remote(&format!(
+        "ps -o pid=,ppid=,pgid=,sid=,args= -p {}",
+        host.pid
+    ));
+    eprintln!("remote process: {process}");
+    let fields: Vec<&str> = process.split_whitespace().collect();
+    let (_, has_setsid) = real.remote("command -v setsid >/dev/null && echo yes || echo no");
+    if has_setsid == "yes" {
+        // setsid made the host lead its own session and process group.
+        assert_eq!(fields[2], fields[0], "the host leads its process group");
+        assert_eq!(fields[3], fields[0], "the host leads its session");
+    } else {
+        assert_eq!(fields[2], fields[0], "the host leads its process group");
+    }
+    assert!(real.remote_alive(host.pid));
+
+    let again = launcher.up().unwrap();
+    eprintln!("up again: {:?} {:?}", again.install, again.start);
+    assert_eq!(
+        (again.install, again.start),
+        (Install::Reused, Start::Reused)
+    );
+    assert_eq!(again.pid, host.pid);
+
+    // A tunnel reaches the host's direct listener.
+    let mut tunnel = launcher.connect(&host).unwrap();
+    tunnel.ready(Duration::from_secs(20)).unwrap();
+    eprintln!(
+        "tunnel: 127.0.0.1:{} -> remote 127.0.0.1:{} (ssh pid {})",
+        tunnel.local_port(),
+        tunnel.remote_port(),
+        tunnel.pid()
+    );
+    let invitation = launcher.invite(&host).unwrap();
+    assert!(invitation.expose().starts_with("coder-host:"));
+    eprintln!("invite: one line, {invitation:?}");
+
+    // The tunnel dies abruptly; the host keeps running.
+    // SAFETY: the identifier is this test's own tunnel child.
+    unsafe { libc::kill(tunnel.pid() as i32, libc::SIGKILL) };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while tunnel.alive() {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    drop(tunnel);
+    assert!(
+        real.remote_alive(host.pid),
+        "a dead tunnel stopped the host"
+    );
+    let after = launcher.up().unwrap();
+    eprintln!("after tunnel death: {:?} pid={}", after.start, after.pid);
+    assert_eq!((after.start, after.pid), (Start::Reused, host.pid));
+
+    // Explicit remove stops the managed host.
+    assert_eq!(
+        launcher.remove().unwrap(),
+        Removal::Stopped { pid: host.pid }
+    );
+    assert!(real.remote_dead(host.pid));
+    eprintln!("remove: stopped {}", host.pid);
+
+    // A host started outside any launcher is adopted and never stopped.
+    let binary = format!("\"$HOME/.openagents/ssh-host/versions/{sha}/coder\"");
+    let (started, _) = real.remote(&format!(
+        "nohup {binary} {} </dev/null >/dev/null 2>&1 & echo $!",
+        serve.join(" ")
+    ));
+    assert!(started);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let external = loop {
+        let (ok, pid) = real.remote("sed -n 's/^pid=//p' \"$HOME/.openagents/host/runtime\"");
+        if ok && let Ok(pid) = pid.parse::<u32>() {
+            break pid;
+        }
+        assert!(Instant::now() < deadline, "the external host did not start");
+        std::thread::sleep(Duration::from_millis(200));
+    };
+    let adopted = launcher.up().unwrap();
+    eprintln!(
+        "external pid={external}: {:?} {:?}",
+        adopted.start, adopted.ownership
+    );
+    assert_eq!(
+        (adopted.start, adopted.ownership, adopted.pid),
+        (Start::Adopted, Ownership::External, external)
+    );
+    assert_eq!(
+        launcher.remove().unwrap(),
+        Removal::Detached { pid: external }
+    );
+    assert!(
+        real.remote_alive(external),
+        "remove stopped an external host"
+    );
+    eprintln!("remove: detached from {external}; it still runs");
+    // This test started the external host, so it stops it.
+    assert!(real.remote(&format!("kill {external}")).0);
+    assert!(real.remote_dead(external));
+    let (_, left) = real.remote("find \"$HOME/.openagents\" | sort");
+    eprintln!("remote files after the run:\n{left}");
 }

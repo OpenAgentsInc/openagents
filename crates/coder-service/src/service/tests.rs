@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use super::*;
-use crate::launcher::{CONFIG_SCHEMA, initialize};
+use crate::launcher::{BASE_SEARCH_PATH, CONFIG_SCHEMA, initialize, search_path};
 
 const KEY: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
@@ -82,6 +82,7 @@ fn fixture(platform: Platform) -> Fixture {
         ready_timeout_secs: 60,
         stop_grace_secs: 10,
         snapshot_max_bytes: 1 << 30,
+        search_path: BASE_SEARCH_PATH.into(),
     };
     initialize(&layout, &config, &digest).unwrap();
     Fixture {
@@ -118,6 +119,50 @@ fn systemd_unit_renders_a_restarting_user_service() {
          WantedBy=default.target\n"
     );
     assert_eq!(unit, expected);
+}
+
+#[test]
+fn install_records_the_base_directories_then_the_installing_path() {
+    assert_eq!(search_path(None), "/usr/bin:/bin");
+    assert_eq!(
+        search_path(Some(
+            "/home/u/.nix-profile/bin::relative:/bin:/run/current-system/sw/bin:/x\u{7}y"
+        )),
+        "/usr/bin:/bin:/home/u/.nix-profile/bin:/run/current-system/sw/bin"
+    );
+    let long = format!("/{}", "a".repeat(9000));
+    assert_eq!(search_path(Some(&long)), "/usr/bin:/bin");
+}
+
+#[test]
+fn the_recorded_search_path_reaches_the_unit_and_the_plist() {
+    let mut fixture = fixture(Platform::Linux);
+    fixture.config.search_path = "/usr/bin:/bin:/nix/store/%a$b/bin".into();
+    let unit = render(&fixture.layout, &fixture.config).unwrap();
+    assert!(
+        unit.contains("Environment=\"PATH=/usr/bin:/bin:/nix/store/%%a$$b/bin\"\n"),
+        "{unit}"
+    );
+    fixture.config.platform = Platform::Macos;
+    fixture.config.search_path = "/usr/bin:/bin:/opt/a&b/bin".into();
+    let plist = render(&fixture.layout, &fixture.config).unwrap();
+    assert!(
+        plist.contains("<string>/usr/bin:/bin:/opt/a&amp;b/bin</string>"),
+        "{plist}"
+    );
+    fixture.config.search_path = "/usr/bin:relative".into();
+    assert!(render(&fixture.layout, &fixture.config).is_err());
+    fixture.config.search_path = String::new();
+    assert!(render(&fixture.layout, &fixture.config).is_err());
+}
+
+#[test]
+fn a_configuration_without_a_search_path_uses_the_base_directories() {
+    let fixture = fixture(Platform::Linux);
+    let mut value = serde_json::to_value(&fixture.config).unwrap();
+    value.as_object_mut().unwrap().remove("search_path");
+    let config: Config = serde_json::from_value(value).unwrap();
+    assert_eq!(config.search_path, BASE_SEARCH_PATH);
 }
 
 #[test]
@@ -273,6 +318,42 @@ fn systemd_install_status_restart_and_uninstall_run_the_expected_commands() {
         fixture.layout.state().exists(),
         "uninstall keeps the launcher record"
     );
+}
+
+/// A runner that, like systemd, removes a linked unit's registration link
+/// on `systemctl --user disable`.
+struct DisableRemovesLink {
+    recorder: Recorder,
+    link: PathBuf,
+}
+
+impl Runner for DisableRemovesLink {
+    fn run(&mut self, program: &str, args: &[String]) -> Result<Output> {
+        if program == "systemctl" && args.iter().any(|arg| arg == "disable") {
+            fs::remove_file(&self.link).unwrap();
+        }
+        self.recorder.run(program, args)
+    }
+}
+
+#[test]
+fn a_link_that_systemd_disable_removed_is_reported_removed() {
+    let fixture = fixture(Platform::Linux);
+    let report = install(
+        &fixture.layout,
+        &fixture.config,
+        &mut Recorder::default(),
+        true,
+        false,
+    )
+    .unwrap();
+    let mut runner = DisableRemovesLink {
+        recorder: Recorder::default(),
+        link: report.registration.clone(),
+    };
+    let removed = uninstall(&fixture.layout, &fixture.config, &mut runner).unwrap();
+    assert!(removed.registration_removed && removed.definition_removed);
+    assert!(fs::symlink_metadata(&report.registration).is_err());
 }
 
 #[test]

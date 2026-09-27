@@ -261,6 +261,13 @@ impl Process {
         signal_group(self.group, libc::SIGKILL);
     }
 
+    /// Whether any process, including an unreaped zombie, is still in the
+    /// session's process group.
+    pub(super) fn group_running(&self) -> bool {
+        // Signal zero checks existence and sends nothing.
+        signal_group(self.group, 0)
+    }
+
     /// The child's status once it has exited; reaps it.
     pub(super) fn try_wait(&self) -> Option<Status> {
         let mut child = self

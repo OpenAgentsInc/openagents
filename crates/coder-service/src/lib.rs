@@ -16,6 +16,9 @@
 //!   about a host: its key, protocol version, generation, capability
 //!   flags, and the state of the latest update.
 //!
+//! [`generation`] owns the host root's one generation counter, which the
+//! launcher and a standalone `coder host serve` both advance.
+//!
 //! [`snapshot`] copies and restores the host's state directories for the
 //! launcher. [`bundle`] reads the immutable, digest-named bundles that
 //! `scripts/coder-host.py` stages; this crate never stages a binary.
@@ -27,6 +30,7 @@
 pub mod bundle;
 pub mod descriptor;
 pub mod fsx;
+pub mod generation;
 pub mod launcher;
 pub mod service;
 pub mod snapshot;

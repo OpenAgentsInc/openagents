@@ -15,7 +15,7 @@ use coder_pty::wire::{FRAME, Frame, RESULT, TerminalResult, Value as TermValue};
 use coder_reach::channel::{ClientConfig, connect};
 use nostr_transport::Connection;
 use serde_json::json;
-use tokio::net::TcpStream;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
@@ -31,7 +31,7 @@ const TERMINAL_LIFETIME: u64 = 60;
 /// Which route a link uses.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Route {
-    /// A direct channel to `host:port`.
+    /// A direct channel to `host:port` over TCP, or to a `ws` or `wss` URL.
     Direct(String),
     /// Relay fallback through this relay.
     Relay(String),
@@ -86,19 +86,23 @@ impl Link {
     }
 
     /// Open a direct channel over `stream` to `address`, expecting the host
-    /// generation from fresh presence.
+    /// generation from fresh presence. The stream is a TCP connection or a
+    /// [`WebSocketStream`](super::WebSocketStream).
     ///
     /// # Errors
     /// Returns the handshake's refusal. One whose detail is
     /// `coder_reach::channel::UNAUTHENTICATED` came before the host proved
     /// its key and says nothing about this device's grant.
-    pub async fn direct(
+    pub async fn direct<S>(
         device: Arc<Device>,
-        stream: TcpStream,
+        stream: S,
         address: String,
         generation: u64,
         timeout: Duration,
-    ) -> Result<Self> {
+    ) -> Result<Self>
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    {
         let config = ClientConfig {
             device: device.secret,
             host: device.host().to_owned(),

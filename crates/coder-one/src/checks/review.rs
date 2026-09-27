@@ -64,6 +64,7 @@ pub fn request(input: &Input) -> Request {
         .map(|s| ((*s).to_string(), json!({"type":"string"})))
         .collect();
     Request {
+        text_format: None,
         model: "gpt-6-luna".to_string(),
         effort: Some("high".to_string()),
         cache_key: "coder-one-review-v1".to_string(),

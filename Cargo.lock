@@ -697,16 +697,22 @@ dependencies = [
  "coder-host",
  "coder-link",
  "coder-reach",
+ "coder-ssh",
  "coder-terminal",
  "coder-ui",
  "crossterm",
+ "futures-util",
+ "libc",
  "nostr",
  "ratatui",
  "rust-native",
  "secp256k1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
@@ -816,6 +822,7 @@ dependencies = [
  "libc",
  "ndk-sys",
  "nostr",
+ "push-gateway",
  "rust-native",
  "secp256k1",
  "serde",
@@ -895,12 +902,14 @@ name = "coder-reach"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "futures-util",
  "nostr",
  "secp256k1",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tokio",
+ "tokio-tungstenite",
  "url",
 ]
 
@@ -2461,6 +2470,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "h2"
+version = "0.4.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef8e5e5a340588f4452631496976cf8636d4a7ecf600239fdc27615d2530bc16"
+dependencies = [
+ "atomic-waker",
+ "bytes",
+ "fnv",
+ "futures-core",
+ "futures-sink",
+ "http",
+ "indexmap",
+ "slab",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2643,6 +2671,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
+ "h2",
  "http",
  "http-body",
  "httparse",
@@ -4701,6 +4730,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d8f70e07b9c3962945a74e59ca1c511bba65b6419468acc217c457d93f3c740"
 
 [[package]]
+name = "push-gateway"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "nostr",
+ "nostr-relay",
+ "nostr-transport",
+ "reqwest",
+ "ring",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "qrcodegen"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5177,6 +5225,7 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
+ "h2",
  "http",
  "http-body",
  "http-body-util",

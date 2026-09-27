@@ -13,6 +13,8 @@ install them from a checkout and edit the installed environment files only.
 | `systemd/coder-worker.service` | The hardened worker unit, same shape as the relay's. |
 | `systemd/coder-worker-executor.conf` | Drop-in for a worker that answers through a local executor. |
 | `coder-worker.env.example` | The worker's environment template, with the credential decision in its comments. |
+| `systemd/push-gateway.service` | The NIP-PL push gateway's hardened unit. Its runbook is `docs/deployment/push-gateway.md`. |
+| `push-gateway.env.example` | The push gateway's environment template. It names credential files and holds no credential. |
 | `gateway/` | The decision-API gateway's per-lane configs, hardened unit, and install-verification backend stub. Its runbook is `docs/decision-models/service/deployment.md`. |
 
 The relay's runbook is
