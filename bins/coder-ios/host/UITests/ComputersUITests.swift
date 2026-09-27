@@ -51,11 +51,9 @@ final class ComputersUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["host-0-status"].waitForLabel(containing: "switched off", timeout: 10))
 
         tap("tab-add")
-        let ssh = app.buttons["ssh-connect"]
-        reveal(ssh)
-        XCTAssertFalse(ssh.isEnabled)
-        XCTAssertTrue(app.staticTexts["ssh-connect-reason"].label.contains("desktop or terminal"))
-        scrollToTop()
+        // A phone never starts SSH, so it shows no SSH section.
+        XCTAssertTrue(app.buttons["invite-paste"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["ssh-connect"].exists)
         tap("invite-paste")
         let field = app.descendants(matching: .any)["computers-input"]
         reveal(field)

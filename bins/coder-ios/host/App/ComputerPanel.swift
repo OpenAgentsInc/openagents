@@ -101,6 +101,10 @@ struct ComputerPanel: View {
             }.font(.caption) }
             Text(reader.packet?.status ?? "Opening protected local state")
                 .font(.caption2).foregroundStyle(.secondary).accessibilityIdentifier("reader-status")
+            // Only builds configured for push have a wake status.
+            if let wakes = reader.pushStatus {
+                Text(wakes).font(.caption2).foregroundStyle(.secondary).accessibilityIdentifier("push-status")
+            }
         }
         .padding(14)
         .background(Color(red: 0.025, green: 0.02, blue: 0).opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
@@ -174,15 +178,20 @@ struct ComputerPanel: View {
                         .accessibilityIdentifier("computers-scan")
                 }
             }
-            TextField(input.label, text: $computersValue, axis: .vertical)
-                .lineLimit(1...4)
-                .autocorrectionDisabled().textInputAutocapitalization(.never)
-                .accessibilityLabel(input.label).accessibilityIdentifier("computers-input")
+            if input.secret {
+                SecretInputField(label: input.label, value: $computersValue)
+            } else {
+                TextField(input.label, text: $computersValue, axis: .vertical)
+                    .lineLimit(1...4)
+                    .autocorrectionDisabled().textInputAutocapitalization(.never)
+                    .accessibilityLabel(input.label).accessibilityIdentifier("computers-input")
+            }
             Button("Submit") { submitComputers(input, computersValue) }
                 .disabled(reader.busy || computersValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("computers-submit")
         }
         .onAppear { computersValue = ""; computersScanning = input.scan && active }
+        .onDisappear { computersValue = "" }
     }
 
     private func submitComputers(_ input: ComputersInput, _ value: String) {

@@ -13,6 +13,10 @@ if [[ "${CODER_IOS_SANITIZED:-}" != 1 ]]; then
     CODER_IOS_BUILD_NUMBER="${CODER_IOS_BUILD_NUMBER:-}" \
     CODER_IOS_DEVICE="${CODER_IOS_DEVICE:-booted}" \
     CODER_IOS_RUST_PROFILE="${CODER_IOS_RUST_PROFILE:-debug}" \
+    CODER_IOS_PUSH="${CODER_IOS_PUSH:-}" \
+    CODER_PUSH_RELAY_URL="${CODER_PUSH_RELAY_URL:-}" \
+    CODER_PUSH_GATEWAY_URL="${CODER_PUSH_GATEWAY_URL:-}" \
+    CODER_PUSH_APP_PROFILE="${CODER_PUSH_APP_PROFILE:-}" \
     DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}" \
     CODER_IOS_SANITIZED=1 /bin/bash "$root/scripts/build-coder-mobile.sh" "$@"
 fi
@@ -31,6 +35,7 @@ usage() {
   echo "usage: scripts/build-coder-mobile.sh project|sim-build|sim|sim-test|device|archive|export [--synthetic]" >&2
   echo "sim installs and launches the existing com.openagents.coder app on CODER_IOS_DEVICE (default: booted)." >&2
   echo "CODER_IOS_RUST_PROFILE=release also checks optimized Rust in the simulator; device/archive always use release." >&2
+  echo "CODER_IOS_PUSH=development|production signs with the push entitlement; off by default." >&2
 }
 
 verify_app() {
@@ -95,6 +100,21 @@ library="$CARGO_TARGET_DIR/$triple/$profile"
 args=(-project "$host/Coder.xcodeproj" -scheme Coder -configuration Release
       -destination "$destination" -derivedDataPath "$output/DerivedData"
       "CODER_RUST_LIBRARY_DIR=$library")
+# Push is opt-in. The aps-environment entitlement signs only with a profile
+# whose App ID has Push Notifications, so the default adds none. The three
+# push settings reach the app's Info.plist; empty values leave push off.
+case "$CODER_IOS_PUSH" in
+  "") ;;
+  development|production)
+    if [[ "$command" == archive && "$CODER_IOS_PUSH" != production ]]; then
+      echo "An archive for TestFlight needs CODER_IOS_PUSH=production." >&2; exit 64
+    fi
+    args+=(CODE_SIGN_ENTITLEMENTS=Push/Coder-Push.entitlements "CODER_APS_ENVIRONMENT=$CODER_IOS_PUSH") ;;
+  *) echo "CODER_IOS_PUSH must be development, production, or empty." >&2; exit 64 ;;
+esac
+for setting in CODER_PUSH_RELAY_URL CODER_PUSH_GATEWAY_URL CODER_PUSH_APP_PROFILE; do
+  if [[ -n "${!setting}" ]]; then args+=("$setting=${!setting}"); fi
+done
 if [[ -n "$CODER_IOS_BUILD_NUMBER" ]]; then
   [[ "$CODER_IOS_BUILD_NUMBER" =~ ^[0-9]+$ ]] || { echo "Build number must be a positive integer." >&2; exit 64; }
   [[ "$CODER_IOS_BUILD_NUMBER" != 0 ]] || { echo "Build number must be positive." >&2; exit 64; }

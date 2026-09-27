@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Opt-in push entitlements. The default signing configuration uses none, so
+  builds keep signing with profiles that lack Push Notifications. Build with
+  CODER_IOS_PUSH=development or production (bins/coder-ios/README.md) only
+  after Push Notifications is on for com.openagents.coder and the profile in
+  use was regenerated.
+-->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>$(CODER_APS_ENVIRONMENT)</string>
+</dict>
+</plist>
