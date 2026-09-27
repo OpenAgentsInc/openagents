@@ -54,3 +54,7 @@ required-features = ["ssh"]
 [[test]]
 name = "live"
 required-features = ["ssh"]
+
+[[test]]
+name = "edits"
+required-features = ["ssh"]

@@ -2,7 +2,9 @@
 //!
 //! [`shim`] writes a program that stands in for `ssh`: it records each
 //! argument list in `DIR/calls`, answers `ssh -G`, asks for a password
-//! through `SSH_ASKPASS` when `DIR/password` exists, and runs the remote
+//! through `SSH_ASKPASS` when `DIR/password` exists, refuses port forwarding
+//! when `DIR/no-tunnel` exists, records each tunnel's process and forwarding
+//! in `DIR/tunnel` and then sleeps without forwarding, and runs the remote
 //! command in a local shell with `HOME` set to a temporary "remote" home.
 //! [`archive`] packs a stand-in `coder` program as a release archive. A
 //! test that includes this file never reads or writes the real `~/.ssh` or
@@ -52,6 +54,9 @@ if [ -f '{d}/password' ]; then
   if env | grep -F -q "$(cat '{d}/password')"; then echo 'password in environment' >&2; exit 254; fi
   answer=$("$SSH_ASKPASS" "fake@fake.example's password: ") || {{ echo 'Permission denied.' >&2; exit 255; }}
   if [ "$answer" != "$(cat '{d}/password')" ]; then echo 'Permission denied.' >&2; exit 255; fi
+fi
+if [ "$tunnel" = yes ] && [ -f '{d}/no-tunnel' ]; then
+  echo 'fake ssh: port forwarding refused' >&2; exit 255
 fi
 if [ "$tunnel" = yes ]; then
   printf '%s %s\n' "$$" "$forward" > '{d}/tunnel'

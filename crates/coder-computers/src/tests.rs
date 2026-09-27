@@ -210,7 +210,27 @@ impl ComputersService for Fixed {
     fn answer_ssh_prompt(&mut self, id: u64, answer: Option<&str>) -> ServiceResult<()> {
         self.effect(format!("ssh_answer {id} {}", answer.is_some()))
     }
+    fn edit_listing(
+        &mut self,
+        host: &str,
+        revision: u64,
+        change: &ListingChange,
+    ) -> ServiceResult<()> {
+        self.effect(format!("edit {host} {revision} {change:?}"))
+    }
+    fn remove_from_directory(&mut self, host: &str, revision: u64) -> ServiceResult<()> {
+        self.effect(format!("delist {host} {revision}"))
+    }
+    fn keep_directory(&mut self, revision: u64) -> ServiceResult<()> {
+        self.effect(format!("keep {revision}"))
+    }
+    fn remove_ssh(&mut self, host: &str) -> ServiceResult<()> {
+        self.effect(format!("ssh_remove {host}"))
+    }
 }
+
+/// Directory editing and SSH removal: every new intent and state.
+mod edit;
 
 fn link(phase: Phase) -> Status {
     Status {
@@ -234,7 +254,9 @@ fn host(enrollment: Enrollment, link: Option<Status>) -> HostRecord {
         route: Some(Class::Tailnet),
         compatibility: Compatibility::Compatible,
         listing: None,
+        delisted: false,
         ssh: None,
+        tunnel: None,
         presence: None,
         devices: DeviceList::NotLoaded,
         enrollments: Vec::new(),

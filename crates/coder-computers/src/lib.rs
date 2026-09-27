@@ -32,9 +32,9 @@ pub use controller::{
 pub use intent::{Intent, Screen};
 pub use model::{
     Capabilities, Compatibility, CreatedInvitation, DataState, DeviceList, DeviceRow,
-    DirectoryState, Enrollment, HostRecord, HostStatus, LOCAL_WEIGHT, Listing, LocalHost,
-    NotEnrolledCause, OfflineCause, OutOfDate, PendingEnrollment, Platform, ServiceState, Snapshot,
-    SshAttempt, SshStage,
+    DirectoryState, Enrollment, HostRecord, HostStatus, LOCAL_WEIGHT, Listing, ListingChange,
+    LocalHost, NotEnrolledCause, OfflineCause, OutOfDate, PendingEnrollment, Platform,
+    ServiceState, Snapshot, SshAttempt, SshRemoval, SshStage, Tunnel,
 };
 pub use service::{ComputersService, Unavailable};
 

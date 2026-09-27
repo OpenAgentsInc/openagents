@@ -2,7 +2,9 @@
 //! intent handling, and input requests.
 use crate::authority::{Action, Denial, check};
 use crate::intent::{Intent, Screen};
-use crate::model::{Capabilities, CreatedInvitation, HostRecord, Snapshot, SshStage};
+use crate::model::{
+    Capabilities, CreatedInvitation, HostRecord, ListingChange, Snapshot, SshStage,
+};
 use crate::service::ComputersService;
 use coder_access::protocol::{INVITATION_PREFIX, MAX_GRANT_LIFETIME, normalize_code};
 use coder_access::{Code, Error, Right, Rights};
@@ -17,6 +19,10 @@ pub const MAX_INPUT_BYTES: usize = 16 * 1024;
 pub(crate) enum Confirm {
     Forget(String),
     Revoke(String, String),
+    /// Remove a host from the owner directory at a revision.
+    Delist(String, u64),
+    /// Remove a host this device set up over SSH.
+    RemoveSsh(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +50,9 @@ pub enum InputPurpose {
     OwnerKey,
     /// The label the owner directory gives a computer.
     DirectoryLabel,
+    /// The placement weight the owner directory gives a computer, 0 to
+    /// 1,000.
+    DirectoryWeight,
 }
 
 /// A request for one value the Rust Native tree cannot collect yet: Rust
@@ -61,6 +70,8 @@ enum Target {
     SshPrompt { id: u64 },
     OwnerKey,
     DirectoryLabel { host: String },
+    EditLabel { host: String, revision: u64 },
+    EditWeight { host: String, revision: u64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -443,6 +454,10 @@ impl Computers {
                 "Computer name",
                 "Enter the name your directory shows for this computer, up to 64 bytes.",
             ),
+            InputPurpose::DirectoryWeight => (
+                "Placement weight",
+                "Enter a weight from 0 to 1000. Higher weights get more new work; 0 keeps the computer listed and gives it none.",
+            ),
         };
         let prompt = asked.unwrap_or_else(|| prompt.to_owned());
         let secret = matches!(purpose, InputPurpose::SshPassword | InputPurpose::OwnerKey);
@@ -692,6 +707,80 @@ impl Computers {
                     false,
                 )
             }
+            Intent::EditLabel { host, revision } => {
+                self.allow(Action::EditListing {
+                    host: &host,
+                    revision,
+                })?;
+                self.ask(
+                    InputPurpose::DirectoryLabel,
+                    Target::EditLabel { host, revision },
+                    false,
+                )
+            }
+            Intent::EditWeight { host, revision } => {
+                self.allow(Action::EditListing {
+                    host: &host,
+                    revision,
+                })?;
+                self.ask(
+                    InputPurpose::DirectoryWeight,
+                    Target::EditWeight { host, revision },
+                    false,
+                )
+            }
+            Intent::RemoveFromDirectory { host, revision } => {
+                self.allow(Action::EditListing {
+                    host: &host,
+                    revision,
+                })?;
+                self.ui.confirm = Some(Confirm::Delist(host, revision));
+                self.ui.notice = None;
+                Ok(Outcome::Updated)
+            }
+            Intent::ConfirmRemoveFromDirectory { host, revision } => {
+                if self.ui.confirm != Some(Confirm::Delist(host.clone(), revision)) {
+                    return Err(Refusal::Stale);
+                }
+                self.allow(Action::EditListing {
+                    host: &host,
+                    revision,
+                })?;
+                let label = self.label(&host);
+                self.service
+                    .remove_from_directory(&host, revision)
+                    .map_err(Refusal::Failed)?;
+                self.ui.confirm = None;
+                self.done(format!(
+                    "Removed {label} from your directory. It no longer gets new work."
+                ))
+            }
+            Intent::KeepDirectory { revision } => {
+                self.allow(Action::KeepDirectory { revision })?;
+                self.service
+                    .keep_directory(revision)
+                    .map_err(Refusal::Failed)?;
+                self.done(format!(
+                    "Published this device's version of your directory as revision {}.",
+                    revision.saturating_add(1)
+                ))
+            }
+            Intent::RemoveSshHost { host } => {
+                self.allow(Action::RemoveSsh { host: &host })?;
+                self.ui.confirm = Some(Confirm::RemoveSsh(host));
+                self.ui.notice = None;
+                Ok(Outcome::Updated)
+            }
+            Intent::ConfirmRemoveSshHost { host } => {
+                if self.ui.confirm != Some(Confirm::RemoveSsh(host.clone())) {
+                    return Err(Refusal::Stale);
+                }
+                self.allow(Action::RemoveSsh { host: &host })?;
+                let label = self.label(&host);
+                self.service.remove_ssh(&host).map_err(Refusal::Failed)?;
+                self.ui.confirm = None;
+                self.done(format!("Removing {label} over SSH."))
+            }
             Intent::ContinueOnboarding => {
                 self.allow(Action::ContinueFirstRun)?;
                 self.service.complete_first_run().map_err(Refusal::Failed)?;
@@ -748,16 +837,44 @@ impl Computers {
                 self.ui.input = None;
                 self.done("This device now holds your owner key. It reads your directory.")
             }
+            Target::EditLabel { host, revision } => {
+                self.allow(Action::EditListing {
+                    host: &host,
+                    revision,
+                })?;
+                directory_label(value)?;
+                self.service
+                    .edit_listing(&host, revision, &ListingChange::Label(value.to_owned()))
+                    .map_err(Refusal::Failed)?;
+                self.ui.input = None;
+                self.done(format!(
+                    "Renamed the computer to {value} in your directory."
+                ))
+            }
+            Target::EditWeight { host, revision } => {
+                self.allow(Action::EditListing {
+                    host: &host,
+                    revision,
+                })?;
+                let weight = value
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|weight| *weight <= coder_reach::directory::MAX_WEIGHT)
+                    .ok_or_else(|| Refusal::Input("Enter a whole number from 0 to 1000.".into()))?;
+                let label = self.label(&host);
+                self.service
+                    .edit_listing(&host, revision, &ListingChange::Weight(weight))
+                    .map_err(Refusal::Failed)?;
+                self.ui.input = None;
+                self.done(if weight == 0 {
+                    format!("{label} stays in your directory with weight 0. It gets no new work.")
+                } else {
+                    format!("{label} now has weight {weight} in your directory.")
+                })
+            }
             Target::DirectoryLabel { host } => {
                 self.allow(Action::ListInDirectory { host: &host })?;
-                if value.is_empty()
-                    || value.len() > coder_reach::directory::MAX_LABEL_BYTES
-                    || value.chars().any(char::is_control)
-                {
-                    return Err(Refusal::Input(
-                        "Enter a name of 1 to 64 bytes with no control characters.".into(),
-                    ));
-                }
+                directory_label(value)?;
                 self.service
                     .list_in_directory(&host, value)
                     .map_err(Refusal::Failed)?;
@@ -843,4 +960,17 @@ impl Computers {
             }
         }
     }
+}
+
+/// Check a directory label: 1 to 64 bytes with no control characters.
+fn directory_label(value: &str) -> Result<(), Refusal> {
+    if value.is_empty()
+        || value.len() > coder_reach::directory::MAX_LABEL_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err(Refusal::Input(
+            "Enter a name of 1 to 64 bytes with no control characters.".into(),
+        ));
+    }
+    Ok(())
 }
