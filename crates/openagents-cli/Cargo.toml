@@ -18,6 +18,8 @@ coder-connect = { path = "../coder-connect" }
 coder-host = { path = "../coder-host" }
 coder-link = { path = "../coder-link" }
 coder-reach = { path = "../coder-reach" }
+coder-service = { path = "../coder-service" }
+coder-ssh = { path = "../coder-ssh" }
 glam = "0.30.10"
 libc = "0.2"
 nostr = { path = "../nostr" }

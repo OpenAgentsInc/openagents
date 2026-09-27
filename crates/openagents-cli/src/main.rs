@@ -19,7 +19,9 @@ mod hosts;
 mod key;
 mod out;
 mod relay;
+mod service;
 mod sov;
+mod ssh;
 mod study;
 mod terminal;
 mod world;
@@ -38,6 +40,8 @@ Pairing and computers (NIP-HOST, NIP-REACH):
 
 Coder:
   task         Durable local task requests and explicit execution.
+  service      Install, update, and roll back the resident host service.
+  ssh          Start or adopt a host over SSH and tunnel to it.
 
 Verse (NIP-MV):
   verse        See who is around, listen, speak, move, and gesture.
@@ -86,6 +90,8 @@ fn main() -> ExitCode {
         "sov" => sov::run(&output, &rest),
         "key" => key::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
+        "service" => service::run(&output, &rest),
+        "ssh" => ssh::run(&output, &rest),
         other => {
             eprintln!("openagents: unknown command `{other}`\n\n{USAGE}");
             EXIT_USAGE

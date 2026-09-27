@@ -4313,6 +4313,8 @@ dependencies = [
  "coder-host",
  "coder-link",
  "coder-reach",
+ "coder-service",
+ "coder-ssh",
  "glam",
  "libc",
  "nostr",
