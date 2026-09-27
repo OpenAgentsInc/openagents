@@ -86,6 +86,17 @@ impl PartKind {
         }
     }
 
+    /// The part whose display name matches `name`, ignoring case and
+    /// treating `-` as a space (`aft-keel-truss`).
+    #[must_use]
+    pub fn by_name(name: &str) -> Option<Self> {
+        let name = name.replace('-', " ");
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|kind| kind.name().eq_ignore_ascii_case(&name))
+    }
+
     /// Dry mass, kg.
     #[must_use]
     pub const fn mass(self) -> f64 {
@@ -345,6 +356,23 @@ impl Station {
             .iter()
             .find(|p| p.state == PartState::Stowed)
             .map(|p| p.kind)
+    }
+
+    /// A named place to fly to: `depot` (beside the next stowed part, or
+    /// the empty depot), `jig`, `airlock`, `spawn`, or a part name, which
+    /// lands beside that part's stowage.
+    #[must_use]
+    pub fn landmark(&self, name: &str) -> Option<DVec3> {
+        let beside = |stowage: DVec3| stowage + DVec3::new(2.0, 0.0, 0.0);
+        Some(match name {
+            "depot" => self
+                .next_part()
+                .map_or(DEPOT, |kind| beside(kind.stowage())),
+            "jig" => JIG,
+            "airlock" => AIRLOCK,
+            "spawn" => SPAWN,
+            _ => beside(PartKind::by_name(name)?.stowage()),
+        })
     }
 
     /// Fly the pack toward `target` under the same speed and thrust limits.

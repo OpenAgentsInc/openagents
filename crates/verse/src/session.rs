@@ -43,6 +43,8 @@ pub const ROOMS: [&str; 3] = ["lounge", "trading-post", "builders"];
 /// How long an overhead bubble stays up.
 pub const BUBBLE_TIME: Duration = Duration::from_secs(7);
 const MAX_PEOPLE: usize = 1024;
+/// Zone commands held for the application before older ones are dropped.
+const MAX_ZONE_COMMANDS: usize = 64;
 const MAX_CHAT_IDS: usize = 4096;
 const CHAT_SUB: &str = "chat-world";
 const ROOM_SUB: &str = "chat-rooms";
@@ -147,6 +149,9 @@ pub struct Session {
     /// Pubkeys whose agents greeted this one, and when.
     invited: Vec<(String, Instant)>,
     greets_received: u64,
+    /// Zone commands addressed to this operator, oldest first, until the
+    /// application takes them.
+    zone_commands: Vec<ZoneCommand>,
     /// Both chat windows.
     pub log: chat::Log,
     /// Lines floating over speakers' heads.
@@ -172,6 +177,15 @@ pub struct Session {
     intervals: PublishIntervals,
     pending_spawn: Option<PendingSpawn>,
     room_authority: Option<String>,
+}
+
+/// A NIP-MV zone command (kind 23302) addressed to this operator.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ZoneCommand {
+    /// Sender pubkey, hex.
+    pub from: String,
+    /// The decoded command.
+    pub command: mv::Command,
 }
 
 /// A line floating over a speaker.
@@ -225,7 +239,10 @@ impl Session {
         let me = id.signer.pubkey().to_owned();
         link.send(Out::Subscribe {
             id: LIVE_SUB.into(),
-            filters: vec![json!({"kinds": [mv::FRAME_KIND, mv::GESTURE_KIND], "#w": [WORLD]})],
+            filters: vec![
+                json!({"kinds": [mv::FRAME_KIND, mv::GESTURE_KIND], "#w": [WORLD]}),
+                json!({"kinds": [mv::COMMAND_KIND], "#w": [WORLD], "#p": [me]}),
+            ],
             live: true,
         });
         link.send(Out::Subscribe {
@@ -273,6 +290,7 @@ impl Session {
             greeted: HashMap::new(),
             invited: Vec::new(),
             greets_received: 0,
+            zone_commands: Vec::new(),
             log: chat::Log::default(),
             bubbles: Vec::new(),
             names: HashMap::new(),
@@ -543,6 +561,34 @@ impl Session {
         ));
     }
 
+    /// Takes the zone commands that arrived for this operator since the
+    /// last call, oldest first.
+    pub fn take_zone_commands(&mut self) -> Vec<ZoneCommand> {
+        std::mem::take(&mut self.zone_commands)
+    }
+
+    /// Answers a zone command: a `zone-ok` or `zone-refused` gesture whose
+    /// entity id is the command id, addressed to the sender, as
+    /// `openagents zone send` waits for.
+    pub fn report_zone(&mut self, to: &str, command_id: &str, ok: bool, at: Vec3) {
+        let gesture = Gesture {
+            v: 1,
+            id: command_id.to_owned(),
+            g: if ok { "zone-ok" } else { "zone-refused" }.into(),
+            t: unix_millis(),
+            d: None,
+            at: vec![at.to_array()],
+            to: Some([to.to_owned(), "avatar".into()]),
+        };
+        self.publish_now(mv::gesture_event(
+            &self.id.signer,
+            WORLD,
+            &gesture,
+            at,
+            unix_now(),
+        ));
+    }
+
     /// How many greetings addressed to this agent have arrived.
     #[must_use]
     pub fn greets_received(&self) -> u64 {
@@ -682,6 +728,20 @@ impl Session {
                         && let Some(name) = &state.name
                     {
                         self.remember_name(pubkey, clean_name(name));
+                    }
+                    if let Received::Command {
+                        pubkey,
+                        to,
+                        command,
+                    } = received
+                    {
+                        if to == self.pubkey() && self.zone_commands.len() < MAX_ZONE_COMMANDS {
+                            self.zone_commands.push(ZoneCommand {
+                                from: pubkey,
+                                command,
+                            });
+                        }
+                        return;
                     }
                     if let Received::Gesture { pubkey, gesture } = &received
                         && gesture.g == "greet"
