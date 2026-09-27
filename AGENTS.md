@@ -212,6 +212,33 @@ uses, and marks which are implemented and which are only specified.
 - `crates/coder-connect` — explicitly paired retained-history observation over
   NIP-42 and encrypted private Nostr artifacts. This cannot control an engine.
   Read its README and the NIP-SESS observer profile before changing authority.
+- `crates/coder-access` — NIP-HOST host-wide device enrollment: single-use
+  `coder-host:` invitations, reverse enrollment approved by code, host-signed
+  device grants with six closed rights and revocation epochs, and delegation
+  that can only narrow. The client feature builds without host code. Read its
+  README and `nips/openagents/NIP-HOST.md` before changing rights or admission.
+- `crates/coder-reach` — NIP-REACH: the owner host directory, host presence,
+  reachability hints that never offer loopback to another machine, the
+  encrypted direct-channel handshake, and placement. Grant checks go through a
+  trait. Read `nips/openagents/NIP-REACH.md` before changing the handshake.
+- `crates/coder-link` — one connection supervisor per host for Coder clients:
+  a deterministic state machine and registry with an injected `Connector` and
+  clock, separate transport health and data freshness, and no network,
+  storage, or UI dependency. Read its README before changing retry or blocked
+  behavior.
+- `crates/coder-pty` — NIP-TERM terminal sessions: Unix host PTYs owned as
+  process groups, bounded replay with explicit gaps, idle expiry, and shutdown
+  cleanup, plus portable client state. Rights and frame delivery are traits the
+  resident host wires. Read `nips/openagents/NIP-TERM.md` before changing framing.
+- `crates/coder-ssh` — installs, starts or adopts, and reaches a Coder host over
+  the system `ssh` binary with a fixed POSIX `sh` script and SHA-256-pinned
+  archives. Only an explicit remove, or a launch with a changed release or
+  runner, stops a managed host; client exit and tunnel loss never do. Read its
+  README and the NIP-ENV SSH-launched hosts section.
+- `crates/coder-service` — the Coder host as a launchd agent or systemd user
+  unit, with trial updates against state snapshots, rollback, and the host
+  descriptor. `scripts/coder-host.py` still stages bundles. Read
+  `docs/coder/runtime/host-service.md` before changing a state transition.
 - `crates/coder-mobile` — Rust-owned iOS/Android reader state, encrypted cache, paging,
   synchronization, and C ABI, plus a separate main-thread Verse render handle
   using the shared `verse::runtime::WorldRuntime`. SwiftUI and Android widgets

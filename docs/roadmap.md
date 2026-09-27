@@ -152,8 +152,19 @@ the host service with trial updates, and [#9711](https://github.com/OpenAgentsIn
 push wakeups. Wave 2 composes them into one resident host,
 [#9712](https://github.com/OpenAgentsInc/openagents/issues/9712), and the
 shared Rust Native "Computers" screens,
-[#9713](https://github.com/OpenAgentsInc/openagents/issues/9713). Status:
-**Active.** Each issue's verification record states what its checks prove.
+[#9713](https://github.com/OpenAgentsInc/openagents/issues/9713).
+
+Status: **wave 1 landed, wave 2 active.** The six drafts are in
+`nips/openagents/`, and each wave 1 crate has targeted tests and a
+verification record under `docs/coder/verification/`: `coder-access`
+(enrollment over a synthetic authenticated relay), `coder-reach` (loopback TCP
+direct channels), `coder-link` (table-driven supervisor transitions),
+`coder-pty` (real PTYs on macOS), `coder-ssh` (a fake `ssh` and a temporary
+remote home), `coder-service` (unit tests and a macOS launchd run), and the
+relay's push lease executor (disposable Postgres). Still open: the resident
+host that wires them together, the client screens, WebSocket framing, a Linux
+systemd run, loopback `sshd` and Linux SSH runs, and real APNs and FCM
+delivery, which needs owner credentials and physical devices.
 
 ## Complete outcome map
 
