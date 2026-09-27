@@ -16,8 +16,8 @@ final class VerseUITests: XCTestCase {
     func testMetalWorldRendersAndTouchMovementChangesPosition() throws {
         let before = position()
         let surface = app.otherElements["verse-surface"]
-        let origin = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.7))
-        let forward = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
+        let origin = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.87))
+        let forward = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.6))
         origin.press(forDuration: 0.1, thenDragTo: forward, withVelocity: .slow, thenHoldForDuration: 0.8)
         let moved = XCTNSPredicateExpectation(predicate: NSPredicate { [weak self] _, _ in
             guard let self else { return false }

@@ -80,8 +80,8 @@ build `45` replace the native computer button with the shared world-space
 monitor interaction. See [verification](../../docs/coder/verification/2026-09-26-world-computer.md).
 
 Build `42` fills the display behind the system clock and home indicator.
-Switch between right-side touch look and phone-motion look; use **Recenter**
-to establish a comfortable reference. In motion mode, hold the left side to
+Switch between whole-screen touch look and phone-motion look; use **Recenter**
+to establish a comfortable reference. In motion mode, hold the bottom stick to
 walk forward. See [controls](../../docs/verse/mobile.md) and
 [verification](../../docs/coder/verification/2026-09-26-fullscreen-motion.md).
 
@@ -255,12 +255,13 @@ acceptance and its release receipt are retained in the
 
 The app launches into the same Rust world used by the desktop app. It starts
 in the public plaza unless you saved an offline choice, facing the computer, with no title banner or idle-status labels over
-the world. Drag in the left half of the surface to move and in the right half
-to look around. **Motion look** uses the phone's orientation instead; hold the
-left half to walk and use the crosshair to return the camera behind your character.
+the world. Drag anywhere on the surface to look around, and push the
+translucent stick above the bottom-left safe area to walk, back up, or strafe.
+**Motion look** uses the phone's orientation instead; hold the stick to walk
+and use the crosshair to return the camera behind your character.
 
-Double-tap with your right thumb to jump, including while holding the left side to move.
-Left movement and right camera dragging also work together. Spread two fingers to
+Double-tap open world space to jump, including while holding the stick to move.
+The stick and camera dragging also work together. Spread two fingers to
 zoom in, or pinch them together to zoom out. The computer monitor keeps its
 single-tap interaction. Pinching cancels held movement and pending taps. The
 HUD has no walk/sprint toggle, jump button, or zoom buttons. Rust owns gesture

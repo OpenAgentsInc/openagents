@@ -19,25 +19,27 @@ No chat pairing or model account is required. A computer sits directly ahead of 
 Walk closer and tap the computer's monitor to open its controls. The monitor
 shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
 
-- In **Touch look**, drag on the left half to move and on the right half to
-  turn and look up or down. Releasing the left side stops movement.
+- In **Touch look**, drag anywhere on the world to turn and look up or down.
+  A translucent movement stick sits above the bottom-left safe area: push it
+  up to walk forward, down to back up, and sideways to strafe. Releasing the
+  stick stops movement.
 - Switch to **Motion look** to look around by turning your body with the phone
   or pointing the phone left, right, up, or down. Screen roll does not tilt the
   horizon. The shared Rust camera interpolates toward the latest orientation
-  on each rendered frame. Hold the left half to walk forward; move that touch
-  to adjust direction. **Recenter** uses
+  on each rendered frame. Hold the stick to walk forward; push it to adjust
+  direction. **Recenter** uses
   your current phone position as the new reference and returns the camera behind
   your character at its default pitch. Zoom stays unchanged.
   Switch back to **Touch look** whenever you prefer finger controls.
 - Motion look pauses while the app is in the background or an in-world panel
   is open. It starts from a fresh reference when you return. If motion is
   unavailable, use touch look.
-- Double-tap open world space with your right thumb to jump, including while
-  your left thumb keeps moving. You can also move on the left and drag the
-  camera on the right at the same time. The computer keeps its single-tap action.
+- Double-tap open world space to jump, including while your other thumb holds
+  the stick. You can also hold the stick and drag the camera at the same
+  time. The computer keeps its single-tap action.
 - Place two fingers together, then spread them to zoom in or pinch inward to
   zoom out. A deliberate pinch owns those touches until you lift them. Adding
-  a right-hand control after movement starts keeps independent controls active.
+  a look drag after movement starts keeps independent controls active.
   The HUD has no walk/sprint toggle, jump button, or zoom buttons.
 - Use the world computer to reach your linked computers: see each one's
   status and route, open it, order work, and follow that work in
