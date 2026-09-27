@@ -456,6 +456,11 @@ pub struct DeviceEntry {
     pub issued_at: u64,
     pub expires_at: u64,
     pub state: DeviceState,
+    /// Host time of the host's last authenticated request or direct channel
+    /// from the device under this grant, or null when it has none. A device
+    /// reads it as the host observed it; the device's own clock plays no part.
+    #[serde(default)]
+    pub last_seen: Option<u64>,
 }
 /// Host handling of a dispatched operation. It is not evidence that a task
 /// finished or a terminal produced output.

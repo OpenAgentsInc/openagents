@@ -467,6 +467,28 @@ async fn administrator_lists_and_revokes_devices() {
     };
     assert_eq!(devices.len(), 2);
     assert!(devices.iter().all(|d| d.state == DeviceState::Active));
+    // The host records its own observation of each device. The listing
+    // admin was seen by this request; the phone has made none yet.
+    let seen = |key: &str| devices.iter().find(|d| d.device == key).unwrap().last_seen;
+    let admin_key = admin.access().unwrap().grant.device.clone();
+    assert!(seen(&admin_key).is_some_and(|at| at + 5 >= now() && at <= now()));
+    assert_eq!(seen(&pubkey(&phone)), None);
+    // A channel admission records the phone once per resolution interval.
+    let grant = operator.access().unwrap().grant.grant.clone();
+    let at = now();
+    f.host().touch(&pubkey(&phone), &grant, at).unwrap();
+    f.host().touch(&pubkey(&phone), &grant, at + 1).unwrap();
+    // A key that does not hold the grant records nothing.
+    f.host().touch(&admin_key, &grant, at + 2).unwrap();
+    let listed = f.host().devices(now()).unwrap();
+    assert_eq!(
+        listed
+            .iter()
+            .find(|d| d.device == pubkey(&phone))
+            .unwrap()
+            .last_seen,
+        Some(at)
+    );
     let Outcome::Revoked { grants, .. } = admin
         .call(Operation::Revoke {
             device: pubkey(&phone),

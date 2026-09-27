@@ -100,6 +100,10 @@ request.
 
 ## List, revoke, and serve
 
+Each listed device carries `last_seen`: when the host last admitted a request
+or, through `Host::touch`, a direct channel from it. The host records it
+itself, at most once a minute for an open channel.
+
 ```sh
 cargo run -p coder-access -- list [--json]
 cargo run -p coder-access -- revoke --device <device-public-key>

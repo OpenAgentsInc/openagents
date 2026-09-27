@@ -23,6 +23,9 @@ const MAX_REPLIES: usize = 1024;
 const MAX_EPOCHS: usize = 1024;
 /// Revocation tombstones outlive grant expiry by the request window.
 const SKEW: u64 = MAX_REQUEST_LIFETIME;
+/// A channel admission refreshes last-seen at most this often, so an open
+/// channel does not rewrite the store on every recheck.
+pub const SEEN_RESOLUTION: u64 = 60;
 
 /// Supplies the effects that other profiles own. `request` is the idempotency
 /// key: a retry after an uncertain save calls it again with the same key.
@@ -48,6 +51,10 @@ struct GrantRecord {
     grant: Grant,
     authorization: Event,
     revoked_at: Option<u64>,
+    /// Host time of the last authenticated request or direct channel from
+    /// the grant's device under this grant. Older stores lack it.
+    #[serde(default)]
+    seen_at: Option<u64>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -197,6 +204,28 @@ impl Host {
         store.save(&book)?;
         Ok(result)
     }
+    /// Record that the host admitted `device` under `grant` at `now`, for
+    /// example when a direct channel opens. A request admitted through
+    /// [`Host::handle`] records itself. Writes at most once per
+    /// [`SEEN_RESOLUTION`] seconds per grant; an unknown, revoked, or foreign
+    /// grant records nothing.
+    pub fn touch(&self, device: &str, grant: &str, now: u64) -> Result<()> {
+        let (mut store, _, mut book) = self.open()?;
+        let Some(record) = book.grants.get_mut(grant) else {
+            return Ok(());
+        };
+        if record.grant.device != device
+            || record.revoked_at.is_some()
+            || record
+                .seen_at
+                .is_some_and(|at| at.saturating_add(SEEN_RESOLUTION) > now)
+        {
+            return Ok(());
+        }
+        record.seen_at = Some(now);
+        store.save(&book)?;
+        Ok(())
+    }
 
     pub fn handle(
         &self,
@@ -266,6 +295,11 @@ impl Host {
             match principal(&book, &request, &signer, now) {
                 Err(error) => (refused(error), false),
                 Ok(p) => {
+                    // The host observed the device now. The reply's save,
+                    // below, commits it with everything else.
+                    if let Some(record) = p.grant.as_ref().and_then(|id| book.grants.get_mut(id)) {
+                        record.seen_at = Some(now);
+                    }
                     if let Some(right) = request.op.required().filter(|r| !p.rights.contains(*r)) {
                         (refused(Error::missing(right)), true)
                     } else if let Some(Retained {
@@ -536,6 +570,7 @@ fn devices(book: &Book, now: u64) -> Vec<DeviceEntry> {
             origin: r.grant.origin.kind,
             issued_at: r.grant.issued_at,
             expires_at: r.grant.expires_at,
+            last_seen: r.seen_at,
             state: if r.revoked_at.is_some() {
                 DeviceState::Revoked
             } else if r.grant.expires_at <= now || r.grant.epoch != book.epoch(&r.grant.device) {
@@ -623,6 +658,7 @@ fn issue(
             grant,
             authorization: authorization.clone(),
             revoked_at: None,
+            seen_at: None,
         },
     );
     Ok(authorization)

@@ -30,7 +30,14 @@ operation; this README covers the crate.
 | `client` | `Device`, directory and reach fetches, summaries, `Link`, `Connector`, and `Ordered` frame ordering. |
 | `tasks` | The task-owner trait and `NoTasks`. |
 | `config` | The host configuration. |
+| `telemetry` | Coarse CPU and memory samples for presence. |
 | `cli` | `coder host init`, `public-key`, `invite`, `list`, `revoke`, and `serve`. |
+
+The default `host` feature builds the host: `serve`, `cli`, `authority`,
+`config`, and `telemetry`. A client, such as the mobile library through
+[`coder-computers`](../coder-computers/README.md), disables default features
+and keeps `client`, `mailbox`, `message`, and `tasks`, with the portable
+halves of `coder-access` and `coder-pty`.
 
 ## One host identity
 
@@ -69,6 +76,19 @@ the channel proved, and only for requests that name the host's primary relay.
 The host rechecks the channel's grant before each message and every
 `recheck_every` (500 milliseconds by default).
 
+## Presence telemetry and last seen
+
+Presence carries NIP-REACH telemetry so placement can rank the host: the
+logical CPU count, the one-minute load average per CPU as CPU use, and the
+share of memory available to new work (`MemAvailable` on Linux, the kernel's
+memory status level on macOS), each a whole number. A value the host cannot
+read withholds the whole sample, and `--no-telemetry` (or
+`Config::telemetry = false`) turns it off.
+
+The host records when it last saw each device: every admitted NIP-HOST
+request, and each direct channel at admission and then at most once a minute
+while messages arrive. `device.list` reports it as `last_seen`.
+
 ## Relay binding for terminals
 
 A device seals each NIP-TERM request as a private `3188` artifact to the host,
@@ -83,8 +103,6 @@ retained frames in any order after a reconnect, so a client feeds them through
 
 - The direct listener speaks TCP only. The WebSocket mapping in NIP-REACH is
   not implemented.
-- Presence withholds telemetry (`null`), so placement skips this host until a
-  telemetry source exists.
 - A standalone host takes its generation from a counter file with a clock
   floor; the host service passes its own generation. Switching between the
   two can make presence readers refuse the lower generation.

@@ -113,6 +113,15 @@ impl Authority {
         busy_retry(|| self.host.revoke(device, now))
     }
 
+    /// Record that a direct channel admitted `device` under `grant` now, so
+    /// `device.list` reports when the host last saw it. Best effort: a busy
+    /// or unreadable store records nothing and admits nothing.
+    pub fn touch(&self, device: &str, grant: &str) {
+        let _serial = lock(&self.serial);
+        let _ = coder_access::unix_time()
+            .and_then(|now| busy_retry(|| self.host.touch(device, grant, now)));
+    }
+
     /// The current device list, reloaded when the store changed. `None`
     /// means the snapshot is unusable and every check fails closed.
     pub fn devices(&self) -> Option<Vec<DeviceEntry>> {

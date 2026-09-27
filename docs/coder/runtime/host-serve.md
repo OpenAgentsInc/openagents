@@ -48,6 +48,7 @@ coder host serve
 | `--runtime FILE`, `--no-runtime` | `~/.openagents/host/runtime` | The runtime record SSH launchers read. |
 | `--tasks DIR` | `~/.openagents/tasks` | The durable task inbox. |
 | `--owner KEY` | None | Establish the owner on first start; the same owner is a no-op. |
+| `--no-telemetry` | Off | Withhold CPU and memory telemetry from presence; placement then skips the host. |
 
 Every `coder host` command also takes `--state DIR` for the access store,
 `--root DIR` for `~/.openagents/host`, and `--loopback-test`, which permits
@@ -125,6 +126,12 @@ connection instead of falling back: a revoked grant is revoked on every
 route. A relay link's probe fails while a direct route answers, so sending
 `Signal::RetryNow` moves a relay connection back to a direct one.
 
+Enrolled devices see this host on their
+[Computers screens](../../../crates/coder-computers/README.md). The status
+comes from each device's connection supervisor, the Access screen lists
+devices with the time the host last saw each one, and a new invitation shows
+as a QR code rendered on the device that created it.
+
 ## Authority
 
 - Creating a task is an inert submission to the task inbox. It records
@@ -143,7 +150,8 @@ route. A relay link's probe fails while a direct route answers, so sending
 
 - The direct listener speaks TCP only; the WebSocket mapping is not
   implemented.
-- Presence withholds telemetry, so placement skips the host.
+- Telemetry is coarse and local: CPU use is the load average per CPU, not a
+  measured utilization.
 - Terminals do not survive a restart; references to them refuse as `lost`.
 - The CAP/CJ binding of NIP-HOST is not served.
 - Evidence is synthetic and from one machine; see the verification record.

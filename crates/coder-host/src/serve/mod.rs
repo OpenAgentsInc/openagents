@@ -241,9 +241,13 @@ fn reach_events(shared: &Shared, device: &str, now: u64) -> Result<Vec<nostr::do
         },
         capabilities: CAPABILITIES.iter().map(|c| (*c).to_owned()).collect(),
         observed_at: now,
-        // Coarse telemetry is optional; this host withholds it, so placement
-        // skips it rather than trusting a guess.
-        telemetry: None,
+        // Coarse telemetry lets placement rank this host. A value the host
+        // cannot read withholds the whole sample; placement then skips it.
+        telemetry: shared
+            .config
+            .telemetry
+            .then(crate::telemetry::sample)
+            .flatten(),
         meta: None,
     };
     let hints = Hints {

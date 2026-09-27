@@ -355,9 +355,14 @@ serves TCP direct channels with the real NIP-HOST grant store behind the
 grant check, rechecks the grant before each message, and closes a channel
 whose grant stopped admitting it. Its client reads the owner directory and
 the host's presence and hints, and tries selected direct routes before relay
-fallback under a `coder-link` supervisor. It publishes no telemetry.
+fallback under a `coder-link` supervisor. It reports telemetry: the logical
+CPU count, the one-minute load average per CPU as CPU use, and the kernel's
+share of available memory, each as a whole number, or `null` when the host
+cannot read a value or its operator turns telemetry off.
 
-Neither implements a WebSocket listener or screens. The
+The [Computers screens](../../crates/coder-computers/README.md) show each
+host's supervised status, route class, and compatibility from this presence.
+Neither crate implements a WebSocket listener. The
 [reach verification record](../../docs/coder/verification/2026-09-26-host-reach.md)
 and the [host serve record](../../docs/coder/verification/2026-09-26-host-serve.md)
 list the checks that ran and their limits.

@@ -91,6 +91,11 @@ async fn session(shared: Arc<Shared>, acceptor: Arc<Acceptor<Grants>>, stream: T
         }
     });
 
+    // The host records when it last saw the device: at admission, then at
+    // most once per resolution interval while messages arrive.
+    let seen_every = std::time::Duration::from_secs(coder_access::host::SEEN_RESOLUTION);
+    shared.authority.touch(&binding.client, &binding.grant);
+    let mut seen = std::time::Instant::now();
     let mut ticker = tokio::time::interval(shared.config.recheck_every);
     loop {
         let next = tokio::select! {
@@ -105,6 +110,10 @@ async fn session(shared: Arc<Shared>, acceptor: Arc<Acceptor<Grants>>, stream: T
             break;
         }
         if let Some(bytes) = next {
+            if seen.elapsed() >= seen_every {
+                shared.authority.touch(&binding.client, &binding.grant);
+                seen = std::time::Instant::now();
+            }
             serve_message(&shared, &binding, &outbound, &bytes);
         }
     }

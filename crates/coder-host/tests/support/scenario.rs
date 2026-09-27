@@ -340,6 +340,42 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
     assert_eq!(reach.presence.presence.generation, GENERATION);
     assert_eq!(reach.presence.presence.owner, pubkey(&owner));
     assert!(reach.presence.presence.supports("terminal"));
+    // Presence carries coarse telemetry, so placement ranks the host rather
+    // than skipping it for lack of a sample.
+    let telemetry = reach.presence.presence.telemetry.expect("telemetry");
+    assert!(telemetry.cpu_count >= 1);
+    let client = coder_host::reach::presence::ClientProfile {
+        protocol: coder_host::PROTOCOL_VERSION,
+        accepts: coder_host::reach::presence::VersionRange {
+            min: coder_host::PROTOCOL_VERSION,
+            max: coder_host::PROTOCOL_VERSION,
+        },
+    };
+    let assessed = coder_host::reach::placement::assess(
+        &[coder_host::reach::placement::Candidate {
+            host: &host_key,
+            weight: 100,
+            presence: Some(&reach.presence),
+            admitted: true,
+        }],
+        &client,
+        now(),
+        coder_host::reach::presence::Freshness::default(),
+        coder_host::reach::placement::Limits {
+            max_cpu_utilization_pct: 100,
+            min_memory_available_pct: 0,
+        },
+    );
+    assert!(
+        !matches!(
+            assessed[0],
+            coder_host::reach::placement::Assessment::Skipped {
+                reason: coder_host::reach::placement::Skip::NoTelemetry,
+                ..
+            }
+        ),
+        "{assessed:?}"
+    );
     let same = select(&reach.hints, Locality::SameMachine, GENERATION, now()).unwrap();
     assert_eq!(same[0].transport, Transport::Tcp);
     assert_eq!(same[0].address, path.address.to_string());

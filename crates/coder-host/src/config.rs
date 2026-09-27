@@ -64,6 +64,10 @@ pub struct Config {
     pub recheck_every: Duration,
     /// How long a direct handshake may take.
     pub handshake_timeout: Duration,
+    /// Report coarse CPU and memory telemetry in presence so placement can
+    /// rank this host. When off, or when a value cannot be read, presence
+    /// withholds telemetry and placement skips the host.
+    pub telemetry: bool,
 }
 
 impl Config {
@@ -85,6 +89,7 @@ impl Config {
             presence_every: Duration::from_secs(60),
             recheck_every: Duration::from_millis(500),
             handshake_timeout: Duration::from_secs(10),
+            telemetry: true,
         }
     }
 

@@ -305,6 +305,26 @@ host, the recipient is the requesting key, and the mailbox is the request
 ID. Clients check that correlation before reading the outcome, and check
 that the outcome kind answers the operation.
 
+### Device listing
+
+`devices` returns one entry per grant the host retains:
+
+| Field | Meaning |
+| --- | --- |
+| `device` | The grant's device key. |
+| `grant`, `epoch` | The grant ID and its epoch. |
+| `rights` | The grant's canonical rights list. |
+| `origin` | `invitation` or `approval`. |
+| `issued_at`, `expires_at` | The grant's lifetime. |
+| `state` | `active`, `revoked`, or `expired`. A grant at an old epoch is `expired`. |
+| `last_seen` | Host time of the host's last admitted request or direct channel from the device under this grant, or null when it has none. |
+
+The host alone observes `last_seen`; a device's own clock or claim never sets
+it. A host may record it coarsely, for example at most once a minute for an
+open channel, and must not publish it anywhere but a `devices` answer to a
+device that holds `access_read`. A reader that receives an entry without
+`last_seen` treats it as null.
+
 Refusal codes are `malformed`, `unsupported`, `forbidden`, `missing_right`,
 `expired`, `revoked`, `stale`, `conflict`, `bounds`, `unavailable`,
 `rate_limited`, `wrong_code`, and `denied`. Local transport failures are
@@ -420,4 +440,9 @@ fixtures run over a synthetic NIP-42 relay.
 (`coder host serve`): it serves the direct artifact binding and the
 direct-channel binding, and dispatches `task.create`, `task.steer`, and
 `task.cancel` to the durable task inbox and `terminal.open` to its terminal
-host. The CAP/CJ binding and interface screens are not implemented.
+host. It records each device's last-seen time for `device.list`. The
+[Computers screens](../../crates/coder-computers/README.md) are its
+interface on iOS, Android, and the terminal: their live service redeems
+invitations, lists devices, creates narrowed invitations, and revokes
+devices through `coder_host::client`. The CAP/CJ binding is not
+implemented.

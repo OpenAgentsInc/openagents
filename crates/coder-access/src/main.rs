@@ -320,13 +320,15 @@ async fn run() -> Result<()> {
             } else {
                 for d in devices {
                     println!(
-                        "{} grant {} {:?} rights {} epoch {} expires {}",
+                        "{} grant {} {:?} rights {} epoch {} expires {} last-seen {}",
                         d.device,
                         d.grant,
                         d.state,
                         d.rights.to_list(),
                         d.epoch,
-                        d.expires_at
+                        d.expires_at,
+                        d.last_seen
+                            .map_or_else(|| "none".to_owned(), |at| at.to_string())
                     );
                 }
             }

@@ -33,6 +33,7 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
         [--allow-nonloopback] [--advertise lan|tailnet|public=HOST:PORT]...
         [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback]
+        [--no-telemetry]
 Every command also takes --state DIR (the access store, default
 ~/.openagents/coder-access), --root DIR (default ~/.openagents/host), and
 --loopback-test (allow ws:// to a numeric loopback relay, for fixtures only).
@@ -344,12 +345,14 @@ fn list(common: &Common, options: &mut Options) -> Result<()> {
     } else {
         for d in devices {
             println!(
-                "{} {:?} {} epoch {} expires {}",
+                "{} {:?} {} epoch {} expires {} last-seen {}",
                 d.device,
                 d.state,
                 d.rights.to_list(),
                 d.epoch,
-                d.expires_at
+                d.expires_at,
+                d.last_seen
+                    .map_or_else(|| "none".to_owned(), |at| at.to_string())
             );
         }
     }
@@ -399,6 +402,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         None => SocketAddr::from(([127, 0, 0, 1], 0)),
     };
     let allow_nonloopback = options.flag("--allow-nonloopback");
+    let telemetry = !options.flag("--no-telemetry");
     let mut advertise = Vec::new();
     for entry in options.all("--advertise") {
         let (class, address) = entry
@@ -453,6 +457,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     config.policy = policy;
     config.listen = listen;
     config.allow_nonloopback = allow_nonloopback;
+    config.telemetry = telemetry;
     config.advertise = advertise;
     config.workspaces = workspaces;
     config.ready = ready;

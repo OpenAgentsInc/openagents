@@ -15,27 +15,37 @@
 //!
 //! [`serve::start`] runs the host. [`client`] reaches it over the best route
 //! a device can prove, with relay fallback, and [`client::Connector`] plugs
-//! that into a `coder-link` registry. Read `crates/coder-host/README.md` and
+//! that into a `coder-link` registry. The default `host` feature builds the
+//! host; a client build disables it and keeps [`client`]. Read `crates/coder-host/README.md` and
 //! `docs/coder/runtime/host-serve.md` before changing a binding.
 
 use std::fmt;
 
+#[cfg(feature = "host")]
 pub mod authority;
+#[cfg(feature = "host")]
 pub mod cli;
 pub mod client;
+#[cfg(feature = "host")]
 pub mod config;
 pub mod mailbox;
 pub mod message;
+#[cfg(feature = "host")]
 mod publish;
+#[cfg(feature = "host")]
 pub mod serve;
 pub mod tasks;
+#[cfg(feature = "host")]
+pub mod telemetry;
 
 /// The composed profiles, re-exported so a client names one dependency.
 pub use {coder_access as access, coder_link as link, coder_pty as pty, coder_reach as reach};
 
 pub use coder_access::Code;
 pub use coder_access::protocol::TaskCreate;
+#[cfg(feature = "host")]
 pub use config::Config;
+#[cfg(feature = "host")]
 pub use serve::{Running, start};
 pub use tasks::{NoTasks, TaskRef, Tasks};
 
