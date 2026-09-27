@@ -105,6 +105,56 @@ impl Client {
         Ok(host)
     }
 
+    /// Queue a task on a joined host, named by label or key, over the first
+    /// direct route that answers, else the relay. Returns the route used and
+    /// the host's dispatch reference: a handling receipt, not a start.
+    ///
+    /// # Errors
+    /// Reports an unknown host, no route, and the host's refusal.
+    pub async fn create_task(
+        &self,
+        host: &str,
+        task: coder_access::protocol::TaskCreate,
+    ) -> Result<(String, String)> {
+        let saved = self
+            .saved
+            .hosts
+            .iter()
+            .find(|saved| saved.label == host || saved.access.grant.host == host)
+            .ok_or_else(|| Error::new(format!("this computer joined no host named {host}")))?;
+        let device = Arc::new(Device::new(saved.access.clone(), self.secret, self.policy)?);
+        let relay = device.relay().to_owned();
+        let mut link = None;
+        if let Ok(reach) = fetch_reach(&device, &relay).await {
+            let generation = reach.presence.presence.generation;
+            let now = coder_host::unix_time().unwrap_or(0);
+            let hints = select(&reach.hints, self.locality, generation, now)
+                .map(|hints| hints.into_iter().cloned().collect::<Vec<_>>())
+                .unwrap_or_default();
+            for hint in hints.iter().filter(|h| h.transport != Transport::Nostr) {
+                if let Ok(opened) =
+                    open_direct(&device, hint.transport, &hint.address, generation).await
+                {
+                    link = Some(opened);
+                    break;
+                }
+            }
+        }
+        let link = link.unwrap_or_else(|| Link::relay(device.clone(), relay));
+        let route = match link.route() {
+            coder_host::client::Route::Direct(address) => format!("direct {address}"),
+            coder_host::client::Route::Relay(relay) => format!("relay {relay}"),
+        };
+        let outcome = link.call(Operation::CreateTask { task }).await;
+        link.shutdown();
+        match outcome? {
+            Outcome::Dispatched { receipt } => Ok((route, receipt.reference)),
+            _ => Err(Error::new(
+                "the host answered with something other than a dispatch",
+            )),
+        }
+    }
+
     /// Prove the routes to every enabled, unrevoked host this device joined.
     pub async fn check(&self, which: Which) -> Vec<Checked> {
         let mut results = Vec::new();
@@ -233,7 +283,23 @@ async fn direct_ping(
     address: &str,
     generation: u64,
 ) -> std::result::Result<(), String> {
-    let link = match transport {
+    let link = open_direct(device, transport, address, generation).await?;
+    let pinged = link
+        .ping()
+        .await
+        .map_err(|error| format!("ping failed: {error}"));
+    link.shutdown();
+    pinged
+}
+
+/// Open a direct channel over one hint: both keys proved, the grant checked.
+async fn open_direct(
+    device: &Arc<Device>,
+    transport: Transport,
+    address: &str,
+    generation: u64,
+) -> std::result::Result<Link, String> {
+    match transport {
         Transport::Tcp => {
             let stream = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(address))
                 .await
@@ -263,13 +329,7 @@ async fn direct_ping(
         }
         Transport::Nostr => return Err("not a direct route".into()),
     }
-    .map_err(|error| format!("handshake failed: {error}"))?;
-    let pinged = link
-        .ping()
-        .await
-        .map_err(|error| format!("ping failed: {error}"));
-    link.shutdown();
-    pinged
+    .map_err(|error| format!("handshake failed: {error}"))
 }
 
 /// One NIP-HOST operation over the relay alone: `device.list` when the grant

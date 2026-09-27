@@ -33,6 +33,9 @@ pub const USAGE: &str = "usage: coder link COMMAND [OPTIONS]
             so this computer can reach that host.
   peer      --ssh DEST [--rights LIST] [--label NAME] [--remote-label NAME]
             Enroll this computer and DEST as devices of each other's hosts.
+  order     --host NAME --workspace LABEL --title TEXT
+            Queue a task on a joined host; the prompt is read from standard
+            input. The host starts it only under its owner's auto-start policy.
   check     [--direct | --relay-only]   Prove every route to every joined host.
   status    Show the host, its settings, service, devices, and joined hosts.
   owner     init | show [--owner-key FILE]
@@ -71,6 +74,7 @@ pub async fn run(args: &[String]) -> u8 {
         "join" => join(&mut options).await,
         "peer" => peer(&mut options).await,
         "check" => check(&mut options).await,
+        "order" => order(&mut options).await,
         "status" => status(&mut options).await,
         "owner" => owner_command(&mut options),
         "directory" => directory_command(&mut options).await,
@@ -663,6 +667,42 @@ fn local_label() -> Result<String> {
     Ok(node
         .and_then(|node| node.short_name().map(str::to_owned))
         .unwrap_or_else(|| "computer".into()))
+}
+
+/// `coder link order`: the prompt comes on standard input.
+async fn order(options: &mut Options) -> Result<u8> {
+    let host = options
+        .one("--host")?
+        .ok_or_else(|| usage("order needs --host NAME"))?;
+    let workspace = options
+        .one("--workspace")?
+        .ok_or_else(|| usage("order needs --workspace LABEL"))?;
+    let title = options
+        .one("--title")?
+        .ok_or_else(|| usage("order needs --title TEXT"))?;
+    options.finish()?;
+    let mut prompt = String::new();
+    std::io::stdin()
+        .take(32 * 1024)
+        .read_to_string(&mut prompt)
+        .map_err(|_| Error::new("cannot read the prompt from standard input"))?;
+    let prompt = prompt.trim().to_owned();
+    if prompt.is_empty() {
+        return Err(usage("order reads the prompt from standard input"));
+    }
+    let client = Client::open(&devices::default_dir()?, RelayPolicy::Production)?;
+    let (route, reference) = client
+        .create_task(
+            &host,
+            coder_access::protocol::TaskCreate {
+                title,
+                prompt,
+                workspace,
+            },
+        )
+        .await?;
+    println!("queued {reference} via {route}");
+    Ok(0)
 }
 
 /// `coder link check`.

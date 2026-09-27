@@ -132,6 +132,17 @@ async fn join_check_every_route_list_the_host_and_lose_it_on_revocation() {
         None
     );
 
+    // Ordering work reaches the host's task owner over a direct route; this
+    // host has none, so it refuses, signed.
+    let task = coder_access::protocol::TaskCreate {
+        title: "Fix the flaky test".into(),
+        prompt: "Find why it fails.".into(),
+        workspace: "checkout".into(),
+    };
+    let refused = client.create_task("box", task.clone()).await.unwrap_err();
+    assert!(refused.to_string().contains("navailable"), "{refused}");
+    assert!(client.create_task("nobody", task).await.is_err());
+
     // Revocation ends every route.
     store.revoke(&client.key(), now()).unwrap();
     let results = client.check(Which::Both).await;

@@ -80,8 +80,13 @@ build() {
     mv -f "$home/bin/.$name.$$" "$home/bin/$name"
   done
 
-  # The host service runs a digest-named bundle of this exact build.
-  local built="$target_dir/release/coder" sha revision flags=()
+  # The host service runs a digest-named bundle of this exact build. Cargo
+  # hard-links its outputs, and the stager takes only an unlinked file, so
+  # stage a private copy.
+  local built sha revision flags=()
+  built="$(mktemp "${TMPDIR:-/tmp}/coder-bundle.XXXXXX")"
+  cp "$target_dir/release/coder" "$built"
+  chmod 700 "$built"
   if command -v sha256sum >/dev/null; then
     sha="$(sha256sum "$built" | cut -d' ' -f1)"
   else
@@ -93,7 +98,8 @@ build() {
   fi
   python3 "$source_dir/scripts/coder-host.py" --root "$home/host-bundle" --tasks "$home/tasks" \
     install --binary "$built" --sha256 "$sha" --source-revision "$revision" "${flags[@]+"${flags[@]}"}" >&2 ||
-    die "staging the host bundle failed"
+    { rm -f "$built"; die "staging the host bundle failed"; }
+  rm -f "$built"
   say "staged host bundle $sha"
 }
 
