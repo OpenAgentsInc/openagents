@@ -19,6 +19,7 @@ mod hosts;
 mod key;
 mod out;
 mod relay;
+mod session;
 mod sov;
 mod study;
 mod terminal;
@@ -35,6 +36,7 @@ Pairing and computers (NIP-HOST, NIP-REACH):
   pair         Show a QR code to read this computer's chats on a phone.
   computer     Enroll with hosts, list them, run commands, order and steer work.
   study        Launch and read Microcoder study runs on a host.
+  session      Observe a paired computer's chats (NIP-SESS): pair, list, read, tail.
 
 Coder:
   task         Durable local task requests and explicit execution.
@@ -83,6 +85,7 @@ fn main() -> ExitCode {
         "verse" => world::run(&output, &rest),
         "zone" => zone::run(&output, &rest),
         "study" => study::run(&output, &rest),
+        "session" | "sessions" => session::run(&output, &rest),
         "sov" => sov::run(&output, &rest),
         "key" => key::run(&output, &rest),
         "relay" => relay::run(&output, &rest),

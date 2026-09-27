@@ -124,6 +124,43 @@ Each goes through `computer exec`, so the journal records it too.
 `openagents pair` shows the QR code that reads this computer's chats on a
 phone.
 
+### Paired chats (`openagents session`, NIP-SESS)
+
+`session` is the other end of `openagents pair`: it redeems a `coder-pair:`
+invitation with the `--as` profile key, keeps the public connection code
+under `~/.openagents/session/` (`OPENAGENTS_SESSION_HOME` or `--store PATH`
+overrides it), and reads the retained Codex and Claude chats the computer
+disclosed, through `coder-connect`'s history-observer client. The
+`coder-connect` binary keeps working as before; it is the host side.
+
+```sh
+openagents session pair 'coder-pair:...' --timeout 20     # the invitation's relay; --relay must match
+openagents session connections                             # saved grants, hosts, relays, sources
+openagents session list --json                             # every chat each paired computer discloses
+openagents session read CHAT --limit 50                    # records from the start of one chat
+openagents session tail CHAT --timeout 120                 # records as the chat grows, one line each
+openagents session steer CHAT "prefer the smaller change"  # refused: exit 1
+openagents session interrupt CHAT                          # refused: exit 1
+openagents session forget GRANT                            # drop the saved connection; the host still holds the grant
+```
+
+`CHAT` is the chat ID that `list` prints, or its source ID. `read` pages
+through the transcript until it has `--limit` records (default 200) or the
+source ends; with `--json` it prints one document with the chat, the
+records (raw bytes as `raw_base64`, the reader's `readable` projection
+when there is one), `has_more`, and the next cursor. `tail` polls with the
+retained cursor every two seconds until `--timeout` (default 30) passes and
+prints one record per line. Every request has the observer's bounds: 32 KiB
+of raw bytes per page, 240 reads per minute per grant.
+
+`steer` and `interrupt` exist so an agent learns the answer from the grant
+rather than from a missing command. The observer profile's
+`openagents.history-observer-grant.v1` admits observation only, so both read
+the saved grants and exit `1` with the reason; control of a task goes
+through `openagents computer steer` and `openagents computer cancel` under
+a NIP-HOST grant. The invitation is never printed or logged after `pair`
+redeems it.
+
 ## Verse (NIP-MV)
 
 Headless presence: see who is around, listen, speak, move, and gesture.
