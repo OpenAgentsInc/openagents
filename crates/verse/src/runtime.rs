@@ -138,6 +138,11 @@ impl WorldRuntime {
     /// A refused destination stops any earlier route.
     pub fn navigate_to(&mut self, destination: [f32; 2]) -> Result<(), NavError> {
         self.doors.route_owner = None;
+        // In Lagrange 1 a map point becomes an EVA pack autopilot target.
+        if let Some(result) = self.lagrange_fly_to(destination) {
+            self.navigation = Navigation::default();
+            return result.map_err(|_| NavError::WorldBounds);
+        }
         match nav::plan(
             [self.player.pos.x, self.player.pos.z],
             destination,
@@ -244,7 +249,7 @@ impl WorldRuntime {
         {
             self.camera.settle(dt);
         }
-        self.forest_tick(dt, previous);
+        self.ruins_tick(dt, previous);
         self.gait
             .advance(self.player.speed, self.player.airborne(), dt);
         if follow_agent {
@@ -315,11 +320,14 @@ impl WorldRuntime {
             1.0
         };
         let mut eye = self.camera.eye(self.player.pos, self.player.yaw);
-        if !self.is_plaza() {
+        if self.zone == crate::zones::ZoneId::Lagrange1 {
+            // Free flight: no ground under the camera.
+            eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
+        } else if !self.is_plaza() {
             eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
             eye.y = eye
                 .y
-                .max(verse_atlantis::scene::Terrain::bundled().height(eye.x, eye.z) + 0.4);
+                .max(verse_ruins::scene::Terrain::bundled().height(eye.x, eye.z) + 0.4);
         }
         View {
             view_proj: self.camera.view_proj_from_eye(eye, self.player.yaw, aspect),
@@ -1473,7 +1481,7 @@ mod tests {
         runtime.camera.yaw_offset = std::f32::consts::PI;
         assert!(!test(&runtime), "the camera is behind the board");
         runtime.camera.yaw_offset = 0.0;
-        runtime.zone = crate::zones::ZoneId::Forest;
+        runtime.zone = crate::zones::ZoneId::Ruins;
         assert!(!test(&runtime));
     }
 

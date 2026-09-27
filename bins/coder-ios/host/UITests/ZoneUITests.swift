@@ -15,32 +15,32 @@ final class ZoneUITests: XCTestCase {
         waitFor { $0.frames > 0 && $0.map.visible }
     }
 
-    func testPortalLoadsRealtimeForestAndHotbarThenReturnsToPlaza() throws {
+    func testPortalLoadsRealtimeRuinsAndHotbarThenReturnsToPlaza() throws {
         let initial = try observation()
         XCTAssertEqual(initial.zone.id, "plaza")
         XCTAssertEqual(initial.zone.state, "idle")
         XCTAssertEqual(initial.zone.progress, 0)
         waitFor { $0.frames > initial.frames + 12 }
-        XCTAssertEqual(try observation().zone.progress, 0, "Starting Verse does not load the forest.")
+        XCTAssertEqual(try observation().zone.progress, 0, "Starting Verse does not load the ruins.")
         try approachPortal()
         let plaza = try observation()
         XCTAssertTrue(plaza.zone.portal.near && plaza.zone.portal.visible)
         surface.coordinate(withNormalizedOffset: CGVector(dx: plaza.zone.portal.screen_x,
                                                           dy: plaza.zone.portal.screen_y)).tap()
-        waitFor(timeout: 45) { $0.zone.id == "forest" && $0.zone.state == "idle" }
-        let forest = try observation()
-        XCTAssertFalse(forest.gym_active)
-        XCTAssertFalse(forest.computer_ready)
-        XCTAssertFalse(forest.doors.hud.visible)
-        XCTAssertFalse(forest.map.landmarks.contains { $0.id == "gym" })
-        XCTAssertTrue(forest.map.landmarks.contains { $0.id == "return" })
-        XCTAssertTrue(forest.map.landmarks.allSatisfy { abs($0.x) <= forest.map.half_extent && abs($0.z) <= forest.map.half_extent })
-        XCTAssertNil(forest.zone.error)
-        attach("Runtime-loaded Atlantis forest")
+        waitFor(timeout: 45) { $0.zone.id == "ruins" && $0.zone.state == "idle" }
+        let ruins = try observation()
+        XCTAssertFalse(ruins.gym_active)
+        XCTAssertFalse(ruins.computer_ready)
+        XCTAssertFalse(ruins.doors.hud.visible)
+        XCTAssertFalse(ruins.map.landmarks.contains { $0.id == "gym" })
+        XCTAssertTrue(ruins.map.landmarks.contains { $0.id == "return" })
+        XCTAssertTrue(ruins.map.landmarks.allSatisfy { abs($0.x) <= ruins.map.half_extent && abs($0.z) <= ruins.map.half_extent })
+        XCTAssertNil(ruins.zone.error)
+        attach("Runtime-loaded Ruins")
 
-        let initialCombat = try XCTUnwrap(forest.zone.combat)
+        let initialCombat = try XCTUnwrap(ruins.zone.combat)
         XCTAssertEqual(Set(initialCombat.abilities.map(\.id)), Set(["firebolt", "magic_missile", "fireball"]))
-        XCTAssertFalse(forest.zone.hud.buttons.contains { ["start_encounter", "cast", "end_turn", "reset_encounter"].contains($0.action) })
+        XCTAssertFalse(ruins.zone.hud.buttons.contains { ["start_encounter", "cast", "end_turn", "reset_encounter"].contains($0.action) })
         XCTAssertTrue(initialCombat.actors.contains { $0.kind == "zombie" })
         XCTAssertTrue(initialCombat.actors.contains { $0.kind == "wizard" && $0.faction != "player" })
         let positions = Dictionary(uniqueKeysWithValues: initialCombat.actors.filter { $0.faction != "player" }.map { ($0.id, $0.pos) })
@@ -92,7 +92,7 @@ final class ZoneUITests: XCTestCase {
         waitFor { value in
             value.zone.combat?.abilities.first(where: { $0.id == "fireball" })?.ready == true
         }
-        attach("Real-time forest and GPU ability hotbar")
+        attach("Real-time ruins and GPU ability hotbar")
         attachObservation("Real-time combat after Fireball")
         try tapAction("return")
         waitFor { $0.zone.id == "plaza" && $0.zone.state == "idle" }
@@ -105,7 +105,34 @@ final class ZoneUITests: XCTestCase {
         attach("Returned to the amber plaza")
     }
 
-    func testRulesAndArtworkNoticesShipWithoutLoadingForest() throws {
+    func testLagrangePortalEntersStationFliesAndReturns() throws {
+        try approachPortal("lagrange1")
+        let plaza = try observation()
+        XCTAssertTrue(plaza.zone.hud.buttons.contains { $0.action == "enter" && $0.label == "Enter L1" })
+        surface.coordinate(withNormalizedOffset: CGVector(dx: plaza.zone.portal.screen_x,
+                                                          dy: plaza.zone.portal.screen_y)).tap()
+        waitFor { $0.zone.id == "lagrange1" && $0.zone.state == "idle" }
+        let station = try observation()
+        XCTAssertNil(station.zone.combat)
+        XCTAssertFalse(station.gym_active)
+        XCTAssertTrue(station.map.landmarks.contains { $0.id == "jig" })
+        XCTAssertTrue(station.zone.hud.buttons.contains { $0.action == "grab" })
+        XCTAssertTrue(station.zone.caption.hasPrefix("Earth 1."))
+        attach("Lagrange 1 construction station")
+        // A map tap sets an EVA pack autopilot target; thrust is gradual.
+        try walkToLandmark("depot")
+        waitFor(timeout: 40) { value in
+            hypot(value.position[0] - station.position[0], value.position[2] - station.position[2]) > 3
+        }
+        attach("EVA pack flight toward the parts depot")
+        try tapAction("return")
+        waitFor { $0.zone.id == "plaza" && $0.zone.state == "idle" }
+        let returned = try observation()
+        XCTAssertEqual(returned.position[0], plaza.position[0], accuracy: 0.1)
+        XCTAssertEqual(returned.position[2], plaza.position[2], accuracy: 0.1)
+    }
+
+    func testRulesAndArtworkNoticesShipWithoutLoadingRuins() throws {
         app.openWorldComputer()
         app.buttons["computer-settings"].tap()
         let about = app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", "verse-about", "About Verse")).firstMatch
@@ -126,12 +153,12 @@ final class ZoneUITests: XCTestCase {
         attach("Bundled Verse rules and artwork notices")
     }
 
-    private func approachPortal() throws {
+    private func approachPortal(_ id: String = "ruins") throws {
         let compact = try observation().map
         tap(compact.frame[0] + compact.frame[2] / 2, compact.frame[1] + 12)
         waitFor { $0.map.expanded }
         let map = try observation().map
-        let destination = try XCTUnwrap(map.landmarks.first { $0.id == "forest" })
+        let destination = try XCTUnwrap(map.landmarks.first { $0.id == id })
         tap(map.plot[0] + ((destination.x - map.center[0]) / map.half_extent + 1) * map.plot[2] / 2,
             map.plot[1] + (1 - (destination.z - map.center[1]) / map.half_extent) * map.plot[3] / 2)
         waitFor { $0.map.state == "Arrived" }
@@ -155,7 +182,7 @@ final class ZoneUITests: XCTestCase {
         let destination = try XCTUnwrap(map.landmarks.first { $0.id == id })
         tap(map.plot[0] + ((destination.x - map.center[0]) / map.half_extent + 1) * map.plot[2] / 2,
             map.plot[1] + (1 - (destination.z - map.center[1]) / map.half_extent) * map.plot[3] / 2)
-        waitFor { $0.map.destination != nil }
+        waitFor { $0.map.destination != nil || !$0.map.expanded }
     }
 
     private func attachObservation(_ name: String) {

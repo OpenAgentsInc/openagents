@@ -1,218 +1,244 @@
-# Loaded zones and the Atlantis forest
+# Loaded zones: Ruins, Lagrange 1, and building new zones
 
-Verse opens in the shared amber plaza. A separate forest portal loads
-**Atlantis forest**, a local scene with its own green and earth-tone appearance,
-the original real-time Wizard Woods simulation, wizards, and zombies. The
-forest's heavy geometry is fetched and decoded only when the player enters.
+Verse opens in the shared amber plaza. Two portal arches on the plaza lead to
+separately loaded **zones**:
+
+- **Ruins** (west arch, `RUINS`): the original Ruins of Atlantis Wizard Woods
+  real-time combat on its retained heightfield. Models download on first entry.
+- **Lagrange 1** (east arch, `LAGRANGE 1`): a construction station on a
+  Lissajous orbit about the Sun–Earth L1 point, with restricted three-body
+  orbital mechanics, station-keeping, and rigid-body EVA construction. Its
+  geometry is generated in Rust; nothing is downloaded.
+
+A *loaded zone* is an independently loaded scene with its own world ID,
+presentation, physics profile, and rules profile. It differs from the named
+districts used by ZONE chat inside the plaza.
 
 This page describes the source implementation. Release and device acceptance
 belong in the [iOS](../../bins/coder-ios/README.md) and
-[Android](../../bins/coder-android/README.md) build records. It does not claim
-that a new TestFlight build or a shared forest session has been verified.
+[Android](../../bins/coder-android/README.md) build records.
+
+## Zone catalog
+
+| Concern | Amber plaza | Ruins | Lagrange 1 |
+| --- | --- | --- | --- |
+| `ZoneId` / serialized ID | `Plaza` / `plaza` | `Ruins` / `ruins` | `Lagrange1` / `lagrange1` |
+| World ID | `verse-plaza` | `ruins-v1` | `lagrange-1-v1` |
+| Presentation | Coder's four amber intensities on near-black | Forest greens, baked model colors, fog 24–82 m | Vacuum black, direct sunlight from −Z, fog only at the 1–2 km sky shell |
+| Geometry | Shared Rust world | Pinned on-demand pack plus retained heightfield and voxel ruins | Procedural station, stars, Sun, Earth, and Moon |
+| Physics | Flat-ground walking, collision, jump | `ruins.heightfield.v1`: original controller on the retained heightfield | Sun–Earth CR3BP orbit, linearized L1 field locally, rigid bodies, cold-gas EVA pack ([details](lagrange-1.md)) |
+| Rules | Exploration and product interactions | `ruins.wizard-woods.v1`: retained real-time ECS | Construction sandbox: grab, carry, latch |
+| Assets | Built in | 6.6 MB verified pack, cached on disk | None |
+| Network | NIP-MV plaza presence; Gym connection | Local-only | Local-only |
+| Code | [`world.rs`](../../crates/verse/src/world.rs) | [`zones/ruins.rs`](../../crates/verse/src/zones/ruins.rs), [`verse-ruins`](../../crates/verse-ruins/) | [`zones/lagrange.rs`](../../crates/verse/src/zones/lagrange.rs), [`verse-lagrange`](../../crates/verse-lagrange/) |
+
+The amber palette rule belongs to the plaza and Coder application UI, not to
+every world. Zone colors belong to Verse's zone implementation. Rust Native
+remains product-independent; it gains no zone, Coder colors, or game rules.
 
 ## Enter and return
 
-Use the expanded map's **Forest portal** shortcut to approach the new arch in
-the plaza. Tap its opening or select **Enter forest** when in reach. This portal
-is separate from the Spark and Halo local walking demos.
+Expand the map and choose **Ruins portal** or **L1 portal** to walk to an arch.
+Near an arch, tap its opening or select the HUD control (**Enter Ruins** or
+**Enter L1**). The nearest arch decides the destination. Desktop uses **F**.
 
-The loading control shows progress and **Cancel**. The plaza remains the active
-scene until the pack passes content and decode checks. A failed load leaves it
-available and offers **Retry** or **Dismiss**. Entry never runs a model or starts
-a benchmark. Walking past a portal does not fetch the forest pack.
+- **Ruins** shows loading progress with **Cancel**. The plaza stays active until
+  the pack passes content and decode checks. A failed load keeps the plaza and
+  offers **Retry** or **Dismiss**. Walking past the arch never fetches the pack.
+- **Lagrange 1** installs immediately because its geometry is generated.
 
-Inside the forest, movement and combat run together. Monsters approach targets,
-NPC wizards cast, and projectiles travel while the world is active. The bottom
-hotbar supplies **Firebolt**, **Missile**, and **Fireball**, replacing the source
-game's keys 1, 2, and 3 on a phone. The same keys remain available on desktop.
-HP, mana, and cooldowns come from the original simulation. There is no round,
-movement budget, or **End turn** control.
+Inside a zone, **Plaza** returns without requiring a win or a finished build.
+Return restores the saved plaza position and releases the zone's geometry,
+simulation, and GPU buffers. The Ruins pack can stay in the disk cache.
+Re-entering either zone starts a fresh local simulation.
 
-**Plaza** returns without requiring a combat win; the return portal supplies the
-same destination. Return restores the saved plaza position and releases the
-forest's decoded geometry, simulation, and active GPU buffers. The verified
-asset file can stay in the disk cache for the next visit. Reentering creates a
-fresh local simulation.
+### Ruins controls
 
-The game logic is retained Ruins of Atlantis `server_core` source, composed
-through a portable Rust adapter. The terrain is the source's exact 129-by-129
-heightfield, spanning 300 meters. Its authoritative snapshot currently has no
-trees. The pack retains the tree model for future authored placement; this
-version does not invent a ring of trees and call it the original scene.
-[The source audit](atlantis-source-parity.md) identifies the precise runtime,
-original behaviors, adaptations, and remaining rendering differences. Mobile
-presentation uses sampled mesh animations and colors rather than the original
-full texture and skeletal renderer.
+Movement and combat run together. The bottom hotbar supplies **Firebolt**,
+**Missile**, and **Fireball**, replacing the source game's keys 1–3 (still
+available on desktop). HP, mana, and cooldowns come from the original
+simulation; there is no round, movement budget, or **End turn**.
+[The source audit](ruins-source-parity.md) records the runtime, behaviors,
+adaptations, and rendering differences.
 
-## Zone identity, appearance, and simulation
+### Lagrange 1 controls
 
-A *loaded zone* is an independently loaded scene. It differs from a named
-district used by ZONE chat inside the plaza. Each loaded zone has a distinct
-world ID even if no relay is connected.
+You fly a suited astronaut with a cold-gas maneuvering pack. The joystick or
+**W/A/S/D** commands a velocity; with no input, the pack holds position
+relative to the station. Tilt the camera above or below level to climb or dive
+along the view; double-tap (Space on desktop) for a short climb. A map tap sets
+an autopilot target at the current altitude. Thrust is 40 N, so a loaded pack
+accelerates slowly: carrying the 450 kg engine cuts acceleration by about
+two-thirds. Propellant refills at the airlock ring.
 
-| Concern | Amber plaza | Atlantis forest |
-| --- | --- | --- |
-| World ID | `verse-plaza` | `atlantis-forest-v1` |
-| Presentation | Coder's four amber intensities on near-black | Forest colors, baked model colors, and independent fog |
-| Geometry | Built by the shared Rust world | Reviewed on-demand models, retained heightfield, and original voxel ruins |
-| Physics | Shared flat-ground walking, collision, and jump controller | `atlantis.heightfield.v1`; shared controller on the retained heightfield |
-| Rules | Exploration and existing product interactions | `atlantis.wizard-woods.v1`; retained real-time ECS simulation |
-| Network | Existing NIP-MV plaza presence; separate Gym connection | Local-only; no shared combat, presence, or forest chat |
-
-The amber palette rule belongs to the plaza and Coder application UI. It does
-not apply to every world asset. Forest colors and atmosphere belong to Verse's
-zone implementation. Rust Native remains a product-independent surface and UI
-foundation; it gains no forest, Coder colors, or game rules.
-
-The [rules roadmap](zone-rules.md) separates the original real-time game from
-future creator-selected fifth-edition profiles. The source's spell names and
-SRD references do not establish full Dungeons & Dragons compatibility. Scene
-appearance, physics, and game rules remain independent choices.
-
-## Asset loading and cache
-
-[`zones/assets.rs`](../../crates/verse/src/zones/assets.rs) loads a single
-reviewed pack from an HTTPS locator. Its compiled content pin is:
-
-| Property | Value |
-| --- | --- |
-| Pack | [Content-addressed forest pack](../../assets/verse/forest/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp) |
-| Exact transfer size | 6,629,578 bytes, about 6.6 MB |
-| SHA-256 | `7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7` |
-| Format | `verse-zone-pack-v1`, with bounded triangle meshes and sampled animation frames |
-| Current decoded pack geometry | About 12 MiB of face vertices; this excludes world instances, GPU buffers, and temporary transfer storage |
-
-The pack is not embedded in the application binary or downloaded during plaza
-startup. Configuring its cache directory starts no file read or transfer.
-Explicit entry creates one background worker. It first checks a content-addressed
-cache file; otherwise it downloads, verifies the exact byte count and digest,
-decodes, and installs the cache file atomically. Redirects are refused. The URL
-is a locator: serving different bytes at that URL cannot alter the accepted
-pack, although unavailable original bytes can prevent a fresh entry.
-
-The asset filename contains its digest. Retain earlier pack files when publishing
-new versions so an older app can still load its reviewed content. The baker writes
-the digest filename and its checksum; it does not replace another revision.
-
-Cache reads on the supported Unix hosts use no-follow file opens and validate
-the opened regular file. Unsupported hosts refuse local file loading rather than
-weakening that check. A successful verified cache hit or atomic installation
-prunes only explicitly listed older forest digests and recognized forest temporary
-files older than 24 hours. It preserves the current pack, recent transfers,
-symlinks, and unknown files. Cleanup is best effort, bounded to 32 known revisions
-and 256 directory entries per pass. When updating the pack, retain the old digest
-in `FOREST_PACK_HISTORY` so older forest cache entries can be reclaimed. Invalid
-entries remain in place until a replacement download passes every check.
-
-The decoder checks finite coordinates, triangle counts, animation timing,
-trailing bytes, and cumulative allocation before constructing the assets. Its
-defense-in-depth limits are 25 MiB of transferred data, 96 MiB of decoded
-vertices, 400,000 vertices per mesh, and 24 frames per animation; the admitted
-pack's exact size is tighter than the general transfer bound. These decoder
-limits do not claim a bound on all renderer or driver allocations.
-
-Cancellation prevents late worker results from replacing the scene. A cancelled
-worker must finish before another transfer starts. Returning drops live forest
-assets while keeping its verified cache entry. A cache miss, invalid cache, or
-download failure never silently substitutes unrelated artwork.
-
-The [pack documentation](../../assets/verse/forest/README.md) records the baker,
-sampling choices, source commit, original input hashes, and notices. Its
-provenance record retains the unresolved asset-specific attribution for the
-wizard and zombie; the repository's code license is not a claim that those
-upstream asset records have been recovered.
+**Grab** takes the next part at the depot or a free-floating part within reach.
+Carry it to its outlined slot on the keel jig. When the part is within 1.6 m of
+the slot and closing below 0.35 m/s, the control reads **Latch** and releasing
+locks it in. Releasing elsewhere lets it drift and tumble as a free rigid body.
+Six parts complete the keel: main engine, propellant tank, two keel trusses, RCS
+pod, and avionics bay. [Lagrange 1](lagrange-1.md) documents the physics.
 
 ## Entry state
 
 ```mermaid
 flowchart TD
-    Plaza["Amber plaza; no forest assets loaded"]
-    Entry["Explicit Enter forest"]
-    Prepare["Suspend plaza observation; verify cache or download"]
-    Decode["Check digest, sizes, format, and decoded limits"]
-    Replace["Replace world and GPU geometry"]
-    Forest["Local forest; real-time Wizard Woods"]
-    Return["Release forest; restore plaza position"]
+    Plaza["Amber plaza"]
+    Near["Near an arch: nearest destination"]
+    L1["Install generated L1 station"]
+    Prepare["Ruins: suspend plaza; verify cache or download"]
+    Decode["Check digest, sizes, format, decoded limits"]
+    Ruins["Ruins: real-time Wizard Woods"]
     Failed["Keep plaza; Retry or Dismiss"]
-    Plaza --> Entry
-    Entry --> Prepare
+    Return["Release zone; restore plaza pose"]
+    Plaza --> Near
+    Near -->|Lagrange 1| L1
+    Near -->|Ruins| Prepare
     Prepare --> Decode
-    Decode --> Replace
-    Replace --> Forest
+    Decode --> Ruins
     Prepare -->|Failure or cancel| Failed
     Decode -->|Failure| Failed
     Failed --> Plaza
-    Forest --> Return
+    Ruins --> Return
+    L1 --> Return
     Return --> Plaza
 ```
 
-Scene transition clears movement/navigation and transient interaction state.
-The loader's generation is separate from the active scene. The renderer replaces
-its world buffers when the zone revision changes instead of keeping every
-zone's geometry resident. Shared native surface activation and disposal still
-control rendering. A suspended surface does not catch up combat by simulating
-the time spent in the background.
+A transition clears movement, navigation, and transient interaction state and
+increments `WorldRuntime::zone_revision`. Hosts compare that revision each
+frame, replace the world GPU buffers, and apply the zone's atmosphere. A
+suspended surface does not catch up simulated time spent in the background.
 
-## Nostr scope and current limits
+## Build and register a new zone
 
-Plaza presence and Gym observation pause during loading and the forest visit.
-Returning resumes the configured plaza behavior. The forest does not publish
-coordinates under `verse-plaza`, reuse its crowd, or silently join a different
-relay. A failed offline-state delivery remains possible, so other clients still
-need to expire stale presence.
+Zones are closed, host-supported code. A zone never downloads scripts, native
+code, or shaders; an asset pack is only data. Adding one is a source change in
+these places:
 
-[NIP-MV's scene manifest profile](../../nips/openagents/NIP-MV.md#scene-manifest-profile)
-is **Designed**. It pins a `33300` definition event and an exact scene manifest,
-can use NIP-94 asset locators, and separates content identity from host admission.
-The current app does not discover, publish, or load arbitrary signed scene
-definitions. The curated forest catalog is a local implementation, not evidence
-that the proposed Nostr authoring contract is complete.
+1. **Simulation crate (optional).** Put engine-independent simulation in its own
+   crate with no renderer or I/O, as [`verse-ruins`](../../crates/verse-ruins/)
+   and [`verse-lagrange`](../../crates/verse-lagrange/) do. Give it unit tests
+   for its physical or rules invariants. Add it to
+   [`crates/verse/Cargo.toml`](../../crates/verse/Cargo.toml).
+2. **Identity.** Add a variant to `ZoneId` in
+   [`zones/mod.rs`](../../crates/verse/src/zones/mod.rs) and fill in
+   `world_id` (a new stable ID, versioned like `name-v1`), `label`,
+   `half_extent`, `portals` (its return portal, plus a plaza arch), `sign` (arch
+   lettering: A–Z, 0–9, space, `/`, `.`), and `atmosphere` (validated: colors in
+   0–1, fog end at most 2 km). Serde derives the snake_case ID that native hosts
+   see.
+3. **Scene adapter.** Add `zones/<name>.rs` with a type that owns the zone's
+   simulation and provides `world()` (static mesh and footprints),
+   `move_player` (map `InputState` into the zone's physics and write back the
+   shared `PlayerController`), `tick`, and a cached `dynamic()` mesh. Existing
+   helpers: `crate::doors::scene_label` for text, `Mesh::cube` for amber boxes,
+   or raw `Vertex` faces and lines with explicit colors. Vertex `fog` of 0
+   ignores fog, which suits sky objects.
+4. **State and runtime.** Add an `Option<YourZone>` to `zones::State`. In
+   [`zones/runtime.rs`](../../crates/verse/src/zones/runtime.rs): install it
+   (save the plaza pose, set `world`, `zone`, spawn, reset the camera, and bump
+   `zone_revision`), route `update_player`, tick it in `ruins_tick`, add its
+   dynamic mesh to `zone_dynamic_mesh` and `zone_dynamic_occludes`, drop it on
+   `Intent::Return`, and describe its HUD controls and caption in
+   `zone_snapshot`. `Intent::Enter` dispatches on the nearest portal's
+   destination.
+5. **Intents and HUD.** New actions become `Intent` variants. The GPU HUD in
+   [`zones/hud.rs`](../../crates/verse/src/zones/hud.rs) draws up to a row of
+   controls and a two-line caption (split on `\n`). Add the new intent and
+   zone IDs to the native validators:
+   [`ZoneView.swift`](../../bins/coder-ios/host/App/ZoneView.swift) (`valid`,
+   `intents`) and Android's allowed list in
+   [`VerseSurface.kt`](../../bins/coder-android/host/app/src/main/java/com/openagents/coder/VerseSurface.kt).
+   An unknown ID or intent is refused by native decoding.
+6. **Plaza placement.** The plaza arch goes in `ZoneId::Plaza.portals()`;
+   [`world.rs`](../../crates/verse/src/world.rs) adds pillar footprints for
+   every arch automatically. Add a map landmark in
+   [`minimap.rs`](../../crates/verse/src/minimap.rs) and zone-local landmarks
+   in `snapshot_for_zone`. Keep the arch's approach clear; the
+   `plaza_portals_stand_clear_of_structures` test checks it.
+7. **Camera and bounds.** `WorldRuntime::view` clamps the eye above ground per
+   zone; free-flight zones use the unclamped eye. `set_spawn` requires a finite
+   position inside `half_extent`.
+8. **Assets (only if needed).** A downloaded pack follows the Ruins pattern in
+   [`zones/assets.rs`](../../crates/verse/src/zones/assets.rs): a compiled
+   SHA-256 and byte length, a content-addressed file name, a bounded decoder,
+   and a manifest in `assets/verse/<zone>/zone.json` admitted by
+   `Manifest::validate`. Keep every published digest file in the repository so
+   older app builds can still fetch their reviewed bytes.
+9. **Tests and captures.** Cover entry, return to the saved plaza pose,
+   intents scoped to their zone, and the zone's own invariants. The
+   `lagrange_capture` and `ruins_capture` examples render a zone offline with
+   the shared renderer for visual review. Add a native UI test in
+   [`ZoneUITests.swift`](../../bins/coder-ios/host/UITests/ZoneUITests.swift).
+10. **Docs.** Add the zone to the catalog above, the
+    [rules page](zone-rules.md), the [mobile guide](mobile.md), and the
+    [glossary](../glossary.md).
 
-The forest is also not a multiplayer combat server. Its local HP, mana, projectiles,
-and NPCs are not shared authoritative state. A future shared rules profile
-needs admitted actors, sequence and replay semantics, exact rules versions,
-recovery, and explicit authority. Signing a pose is insufficient.
+## Ruins asset loading and cache
 
-## Manifest contract and authoring roadmap
+[`zones/assets.rs`](../../crates/verse/src/zones/assets.rs) loads one reviewed
+pack from an HTTPS locator. Its compiled content pin is:
 
-The current Rust `Manifest` admits exactly this six-field document:
+| Property | Value |
+| --- | --- |
+| Pack | [Content-addressed Ruins pack](../../assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp) |
+| Exact transfer size | 6,629,578 bytes, about 6.6 MB |
+| SHA-256 | `7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7` |
+| Format | `verse-zone-pack-v1`, with bounded triangle meshes and sampled animation frames |
+| Decoded geometry | About 12 MiB of face vertices, excluding world instances and GPU buffers |
+
+Builds through 49 fetch the same bytes from the earlier `assets/verse/forest/`
+path, which is retained unchanged. The pack is not embedded in the application
+or downloaded at plaza startup. Explicit entry starts one background worker. It
+checks a content-addressed cache file; otherwise it downloads, verifies the
+exact size and digest, decodes, and installs the cache file atomically.
+Redirects are refused. The URL is a locator: different bytes at that URL cannot
+alter the accepted pack.
+
+Cache reads on supported Unix hosts use no-follow opens and validate the opened
+regular file. A verified cache hit or install prunes only explicitly listed
+older Ruins digests (`RUINS_PACK_HISTORY`) and recognized `.ruins-*.part`
+temporary files older than 24 hours, preserving the current pack, recent
+transfers, symlinks, and unknown files. The decoder checks finite coordinates,
+triangle counts, animation timing, trailing bytes, and cumulative allocation.
+Its limits are 25 MiB transferred, 96 MiB of decoded vertices, 400,000 vertices
+per mesh, and 24 frames per animation.
+
+The [pack documentation](../../assets/verse/ruins/README.md) records the baker
+([`scripts/bake-verse-ruins.py`](../../scripts/bake-verse-ruins.py)), sampling
+choices, source commit, input hashes, and notices, including the unresolved
+asset-specific attribution for the wizard and zombie.
+
+## Manifest contract
+
+The Rust `Manifest` admits exactly this six-field document for the Ruins:
 
 ```json
 {
   "schema": "verse.zone.v1",
-  "world": "atlantis-forest-v1",
-  "ruleset": "atlantis.wizard-woods.v1",
-  "physics": "atlantis.heightfield.v1",
+  "world": "ruins-v1",
+  "ruleset": "ruins.wizard-woods.v1",
+  "physics": "ruins.heightfield.v1",
   "asset_sha256": "7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7",
   "asset_bytes": 6629578
 }
 ```
 
-Unknown fields and values refuse. The host fixes the palette, bounds, arrivals,
-collision construction, and asset interpretation. This is a closed admission
-contract for the reviewed forest, not a general downloadable game format.
+Unknown fields and values refuse. The host fixes palette, bounds, arrivals,
+collision, and asset interpretation. Lagrange 1 has no downloaded content and
+so no manifest; its profile is compiled.
 
-Future creator support needs a new schema version that makes those currently
-compiled choices explicit. The order is:
+## Nostr scope and current limits
 
-1. Publish and validate exact world-definition and manifest pins, including
-   identity, units, bounds, spawn/return placement, and supported format IDs.
-2. Admit asset manifests with resource budgets, provenance, supported media,
-   content-addressed availability, cancellation, and cache eviction behavior.
-3. Add reviewed presentation, physics, and rules profiles with versioned
-   configuration and coverage. Refuse unsupported required behavior.
-4. Add safe travel between independently admitted worlds and relays, including
-   source recovery and destination disclosure.
-5. Add shared simulation only with a separately reviewed authority and recovery
-   protocol. Then add creator tooling over those admitted contracts.
+Plaza presence and Gym observation pause while a zone loads or is visited, and
+resume on return. A zone does not publish coordinates under `verse-plaza`, reuse
+its crowd, or join a different relay. Neither zone is a multiplayer server:
+Ruins combat and L1 construction are local, unshared state.
 
-Creators select host-supported behavior; an asset manifest does not inject
-scripts, native code, arbitrary shader programs, model calls, or spending.
-[NIP-EXT](../../nips/openagents/NIP-EXT.md) can distribute reviewed definitions
-and schemas but does not grant execution merely because a package is signed.
-
-The L1 spaceship-construction station remains **design only**. Its future
-physics profile needs explicit celestial bodies, reference frame, units,
-gravity approximation, time step, rigid-body constraints, save/load, and
-collaborative edit authority. None of those behaviors follow from loading a
-space-themed scene. See [the L1 design](zone-rules.md#l1-construction-station-design-only).
+[NIP-MV's scene manifest profile](../../nips/openagents/NIP-MV.md#scene-manifest-profile)
+is **Designed**. The app does not discover, publish, or load arbitrary signed
+scene definitions. Future creator support needs a new schema version that makes
+the compiled choices explicit, then admitted asset manifests with budgets,
+reviewed physics and rules profiles, safe travel between independently admitted
+worlds, and, last, shared simulation with a reviewed authority and recovery
+protocol. [NIP-EXT](../../nips/openagents/NIP-EXT.md) can distribute reviewed
+definitions but does not grant execution because a package is signed.

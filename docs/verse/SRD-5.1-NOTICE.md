@@ -7,7 +7,7 @@ licensed under the Creative Commons Attribution 4.0 International License
 available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 This attribution is retained for the earlier `srd-5.1-encounter-v1` demo and its
-historical verification records. That demo is removed from the current forest
+historical verification records. That demo is removed from the current Ruins
 runtime, which now uses the original real-time Wizard Woods simulation. See
 [zone rules and future profiles](zone-rules.md) for the current boundary. The
 earlier demo adapted a limited subset and an authored character; it was not

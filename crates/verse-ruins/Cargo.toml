@@ -1,9 +1,9 @@
 [package]
-name = "verse-atlantis"
+name = "verse-ruins"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
-description = "The retained Ruins of Atlantis real-time forest simulation for Verse"
+description = "The retained Ruins of Atlantis real-time Wizard Woods simulation for the Verse Ruins zone"
 
 [dependencies]
 client_core = { path = "vendor/crates/client_core" }

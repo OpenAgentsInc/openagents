@@ -304,6 +304,6 @@ def bake(source, output):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, type=Path)
-    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "assets/verse/forest")
+    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "assets/verse/ruins")
     args = parser.parse_args()
     bake(args.source.resolve(), args.output.resolve())

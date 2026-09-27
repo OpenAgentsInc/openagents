@@ -16,11 +16,13 @@ level, and titles. `R` replays a retained Microcoder run as the agent's
 visits to the workbench, oracle, library, and proving ground, beside a
 ghost of Fable 5.1 low's cheapest winning run. The [Gym building](gym.md) observes host-selected Microcoder and Terminal-Bench
 records while the player is inside and supports explicitly confirmed recipes.
-The [Atlantis forest](zones.md) is a separate local zone: its models load on
-entry, its palette is independent, and its retained
-[Wizard Woods simulation](atlantis-source-parity.md) runs real-time combat.
-Arbitrary creator worlds, signed scene discovery, forest multiplayer, live
-Pylon state, and payment state remain unimplemented.
+Two portals lead to separate local [zones](zones.md). **Ruins** loads its
+models on entry and runs the retained
+[Wizard Woods simulation](ruins-source-parity.md) in real time.
+**[Lagrange 1](lagrange-1.md)** is a construction station at the Sun–Earth L1
+point with restricted three-body orbital mechanics, station-keeping, and
+rigid-body EVA assembly. Arbitrary creator worlds, signed scene discovery,
+multiplayer zones, live Pylon state, and payment state remain unimplemented.
 
 The [Coder mobile Verse home](mobile.md) shares the world simulation and renderer
 through Rust Native's generic native-surface contract. Mobile touch controls,
@@ -58,22 +60,25 @@ approach the boards and tap the physical **GYM** display on mobile. Updates star
 the player is inside and the surface is active. See [Gym setup](gym.md) for
 source grants, recorded charts, and bounded launch recipes.
 
-## Forest portal and loaded zones
+## Portals and loaded zones
 
-Choose **Forest portal** on the expanded map, approach the arch, and select
-**Enter forest**. Entry downloads and verifies the forest pack only when
-needed; later visits can use its disk cache. The forest runs the original Ruins of
-Atlantis Wizard Woods combat schedule on its retained heightfield. Models load
-in a bounded format with sampled source animations and independent colors.
-**Plaza** returns and releases the active forest geometry and simulation.
-The portal is separate from the Spark and Halo local route demos.
+Choose **Ruins portal** or **L1 portal** on the expanded map, approach the
+arch, and select **Enter Ruins** or **Enter L1**. Ruins entry downloads and
+verifies its pack only when needed; later visits can use its disk cache. Ruins
+runs the original Ruins of Atlantis Wizard Woods combat schedule on its
+retained heightfield. Lagrange 1 is generated and opens immediately.
+**Plaza** returns and releases the active zone geometry and simulation.
+The portals are separate from the Spark and Halo local route demos.
 
-Monsters approach, NPC wizards cast, and projectiles fly as the world updates.
+In Lagrange 1 you fly a maneuvering pack, fetch parts from the depot, and latch
+them into the keel jig. See [Lagrange 1](lagrange-1.md) for the physics.
+
+In Ruins, monsters approach, NPC wizards cast, and projectiles fly as the world updates.
 The phone's bottom hotbar supplies **Firebolt**, **Missile**, and **Fireball**;
 desktop retains keys 1, 2, and 3. See [zone loading and architecture](zones.md),
-[source provenance and parity](atlantis-source-parity.md),
+[source provenance and parity](ruins-source-parity.md),
 [future creator rules](zone-rules.md), and
-[mobile controls](mobile.md#enter-the-forest).
+[mobile controls](mobile.md#enter-a-zone).
 
 ## Multiplayer
 
@@ -97,9 +102,9 @@ random clear spot within 28 m of the plaza center, so new players can see
 each other.
 
 **What goes over the wire.** Implemented shared presence is in world
-`verse-plaza`. Loading or visiting the local forest suspends plaza presence
-and observation; returning resumes the configured plaza behavior. Forest
-coordinates and combat state are not published under the plaza identity.
+`verse-plaza`. Loading or visiting a local zone suspends plaza presence and
+observation; returning resumes the configured plaza behavior. Zone coordinates,
+combat, and construction state are not published under the plaza identity.
 
 | Event | Kind | Stored | When |
 | --- | --- | --- | --- |
@@ -406,7 +411,8 @@ one amber, plus `NEAR_BLACK` for its clear color, fog, and faces. `palette.rs`
 converts those values to linear light and does not restate them. The
 `every_color_is_on_the_amber_ladder` test protects the plaza geometry.
 Separately loaded zones can use their own validated colors and atmosphere;
-Atlantis forest uses greens, earth tones, and baked model colors. Coder's HUD
+Ruins uses greens, earth tones, and baked model colors; Lagrange 1 uses vacuum
+black and direct sunlight. Coder's HUD
 keeps its application palette. Neither palette belongs to Rust Native.
 
 | Step | Hex | Used for |
@@ -464,8 +470,9 @@ The character collides with building footprints and the world edge.
 | [`src/ui.rs`](../../crates/verse/src/ui.rs), [`src/ui.wgsl`](../../crates/verse/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
 | [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
 | [`src/palette.rs`](../../crates/verse/src/palette.rs) | The amber ladder in linear light. |
-| [`src/zones/`](../../crates/verse/src/zones/mod.rs) | Curated zone identities, manifest admission, lazy forest loading, palette/fog, portals, and the local encounter. |
-| [`verse-atlantis`](../../crates/verse-atlantis/) | Retained Wizard Woods ECS simulation, exact source terrain, and portable host adapter. |
+| [`src/zones/`](../../crates/verse/src/zones/mod.rs) | Curated zone identities, portals, manifest admission, lazy Ruins loading, palette/fog, the Ruins hotbar, and the Lagrange 1 scene. |
+| [`verse-ruins`](../../crates/verse-ruins/) | Retained Wizard Woods ECS simulation, exact source terrain, and portable host adapter. |
+| [`verse-lagrange`](../../crates/verse-lagrange/) | Sun–Earth CR3BP orbit and station-keeping, rigid bodies, and the L1 EVA construction sandbox. |
 | [`src/render.rs`](../../crates/verse/src/render.rs), [`src/shader.wgsl`](../../crates/verse/src/shader.wgsl) | Pipelines, fog, the window renderer, and PNG capture. |
 
 Test the crate with `cargo test -p verse`. Tests cover the controller rules,

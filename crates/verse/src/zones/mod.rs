@@ -4,24 +4,26 @@
 use serde::{Deserialize, Serialize};
 
 pub mod assets;
-mod forest;
 pub mod hud;
+mod lagrange;
+mod ruins;
 mod runtime;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use forest::Forest;
+pub(crate) use lagrange::Lagrange;
+pub(crate) use ruins::Ruins;
 
 /// Read on demand by native Settings, not repeated in each frame packet.
 pub const CREDITS: &str = concat!(
-    "Atlantis forest: the original Ruins of Atlantis Wizard Woods simulation with a mobile renderer.\n",
+    "Ruins: the original Ruins of Atlantis Wizard Woods simulation with a mobile renderer.\n",
     "Geometry and original animation poses are baked with sampled colors and leaf cutouts.\n",
     "The original wizard/zombie upstream authors and separate asset licenses were not identified in the source.\n",
-    "Source and modifications: https://github.com/OpenAgentsInc/openagents/tree/main/assets/verse/forest\n\n",
+    "Source and modifications: https://github.com/OpenAgentsInc/openagents/tree/main/assets/verse/ruins\n\n",
     "\n\nRetained source project notice:\n",
-    include_str!("../../../../assets/verse/forest/SOURCE_NOTICE"),
+    include_str!("../../../../assets/verse/ruins/SOURCE_NOTICE"),
     "\n\nSource repository license:\n",
-    include_str!("../../../../assets/verse/forest/SOURCE_LICENSE"),
+    include_str!("../../../../assets/verse/ruins/SOURCE_LICENSE"),
 );
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,35 +31,58 @@ pub const CREDITS: &str = concat!(
 pub enum ZoneId {
     #[default]
     Plaza,
-    Forest,
+    Ruins,
+    Lagrange1,
 }
 impl ZoneId {
     pub const fn world_id(self) -> &'static str {
         match self {
             Self::Plaza => "verse-plaza",
-            Self::Forest => "atlantis-forest-v1",
+            Self::Ruins => "ruins-v1",
+            Self::Lagrange1 => "lagrange-1-v1",
         }
     }
     pub const fn label(self) -> &'static str {
         match self {
             Self::Plaza => "Amber plaza",
-            Self::Forest => "Atlantis forest",
+            Self::Ruins => "Ruins",
+            Self::Lagrange1 => "Lagrange 1",
         }
     }
     pub const fn half_extent(self) -> f32 {
         match self {
             Self::Plaza => crate::world::HALF,
-            Self::Forest => 150.0,
+            Self::Ruins | Self::Lagrange1 => 150.0,
         }
     }
+    /// The zone's primary portal: the plaza's Ruins arch, or a zone's return.
     pub fn portal(self) -> glam::Vec3 {
+        self.portals()[0].1
+    }
+    /// Every portal in this zone with its destination.
+    pub fn portals(self) -> Vec<(ZoneId, glam::Vec3)> {
         match self {
-            Self::Plaza => glam::Vec3::new(-12.0, 0.0, 12.0),
-            Self::Forest => glam::Vec3::new(
-                0.0,
-                verse_atlantis::scene::Terrain::bundled().height(0.0, -8.0),
-                -8.0,
-            ),
+            Self::Plaza => vec![
+                (Self::Ruins, glam::Vec3::new(-12.0, 0.0, 12.0)),
+                (Self::Lagrange1, glam::Vec3::new(12.0, 0.0, 12.0)),
+            ],
+            Self::Ruins => vec![(
+                Self::Plaza,
+                glam::Vec3::new(
+                    0.0,
+                    verse_ruins::scene::Terrain::bundled().height(0.0, -8.0),
+                    -8.0,
+                ),
+            )],
+            Self::Lagrange1 => vec![(Self::Plaza, lagrange::RETURN_PORTAL)],
+        }
+    }
+    /// Short arch lettering for a destination.
+    const fn sign(self) -> &'static str {
+        match self {
+            Self::Plaza => "PLAZA",
+            Self::Ruins => "RUINS",
+            Self::Lagrange1 => "LAGRANGE 1",
         }
     }
 }
@@ -93,10 +118,16 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             fog_start: crate::render::FOG_START,
             fog_end: crate::render::FOG_END,
         },
-        ZoneId::Forest => Atmosphere {
+        ZoneId::Ruins => Atmosphere {
             color: [0.045, 0.092, 0.079],
             fog_start: 24.0,
             fog_end: 82.0,
+        },
+        // Vacuum: no scattering. Fog only fades the edge of the 2 km sky shell.
+        ZoneId::Lagrange1 => Atmosphere {
+            color: [0.0, 0.0, 0.004],
+            fog_start: 1_000.0,
+            fog_end: 2_000.0,
         },
     }
 }
@@ -111,6 +142,8 @@ pub enum Intent {
     Firebolt,
     MagicMissile,
     Fireball,
+    Grab,
+    Release,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -145,7 +178,9 @@ pub struct Snapshot {
     pub error: Option<String>,
     pub portal: PortalProjection,
     pub controls: Vec<Control>,
-    pub combat: Option<verse_atlantis::Snapshot>,
+    pub combat: Option<verse_ruins::Snapshot>,
+    /// Lagrange 1 physics and construction state.
+    pub station: Option<verse_lagrange::Snapshot>,
     pub caption: String,
 }
 impl Default for Snapshot {
@@ -165,6 +200,7 @@ impl Default for Snapshot {
             },
             controls: vec![],
             combat: None,
+            station: None,
             caption: String::new(),
         }
     }
@@ -175,7 +211,9 @@ pub(crate) struct State {
     loading: LoadState,
     progress: f32,
     error: Option<String>,
-    forest: Option<Forest>,
+    ruins: Option<Ruins>,
+    lagrange: Option<Lagrange>,
+    destination: ZoneId,
     plaza_pose: Option<(glam::Vec3, f32)>,
     elapsed: f32,
 }
@@ -186,7 +224,9 @@ impl Default for State {
             loading: LoadState::Idle,
             progress: 0.0,
             error: None,
-            forest: None,
+            ruins: None,
+            lagrange: None,
+            destination: ZoneId::Ruins,
             plaza_pose: None,
             elapsed: 0.0,
         }
@@ -205,18 +245,18 @@ pub struct Manifest {
     pub asset_bytes: u64,
 }
 impl Manifest {
-    pub fn forest() -> Result<Self, String> {
+    pub fn ruins() -> Result<Self, String> {
         let manifest: Self =
-            serde_json::from_str(include_str!("../../../../assets/verse/forest/zone.json"))
-                .map_err(|_| "The installed forest definition is invalid".to_owned())?;
+            serde_json::from_str(include_str!("../../../../assets/verse/ruins/zone.json"))
+                .map_err(|_| "The installed ruins definition is invalid".to_owned())?;
         manifest.validate()?;
         Ok(manifest)
     }
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != "verse.zone.v1"
-            || self.world != ZoneId::Forest.world_id()
-            || self.ruleset != "atlantis.wizard-woods.v1"
-            || self.physics != "atlantis.heightfield.v1"
+            || self.world != ZoneId::Ruins.world_id()
+            || self.ruleset != "ruins.wizard-woods.v1"
+            || self.physics != "ruins.heightfield.v1"
             || self.asset_sha256 != assets::PACK_SHA256
             || self.asset_bytes != assets::PACK_BYTES
         {
@@ -228,11 +268,23 @@ impl Manifest {
 
 /// A visible arch in the current zone. Only the plaza geometry is amber-bound.
 pub fn portal_mesh(zone: ZoneId, elapsed: f32) -> crate::mesh::Mesh {
-    use crate::mesh::{Mesh, Vertex};
+    let mut mesh = crate::mesh::Mesh::default();
+    for (destination, at) in zone.portals() {
+        arch(&mut mesh, zone, destination, at, elapsed);
+    }
+    mesh
+}
+
+fn arch(
+    mesh: &mut crate::mesh::Mesh,
+    zone: ZoneId,
+    destination: ZoneId,
+    at: glam::Vec3,
+    elapsed: f32,
+) {
+    use crate::mesh::Vertex;
     use coder_ui::theme::Intensity;
     use glam::{Mat4, Vec3};
-    let at = zone.portal();
-    let mut mesh = Mesh::default();
     for x in [-1.9, 1.9] {
         mesh.cube(
             Mat4::from_translation(at + Vec3::new(x, 2.25, 0.0))
@@ -245,21 +297,18 @@ pub fn portal_mesh(zone: ZoneId, elapsed: f32) -> crate::mesh::Mesh {
             * Mat4::from_scale(Vec3::new(4.2, 0.35, 0.5)),
         Intensity::Full,
     );
+    let sign = destination.sign();
     crate::doors::scene_label(
-        &mut mesh,
-        if zone == ZoneId::Plaza {
-            "ATLANTIS"
-        } else {
-            "PLAZA"
-        },
+        mesh,
+        sign,
         at + Vec3::new(0.0, 4.9, -0.3),
-        0.45,
+        if sign.len() > 6 { 0.3 } else { 0.45 },
         Intensity::Full,
     );
-    let color = if zone == ZoneId::Plaza {
-        crate::palette::amber(Intensity::Half)
-    } else {
-        [0.13, 0.55, 0.34]
+    let color = match zone {
+        ZoneId::Plaza => crate::palette::amber(Intensity::Half),
+        ZoneId::Ruins => [0.13, 0.55, 0.34],
+        ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
     };
     // Broken concentric arcs leave the destination visible through the opening.
     for ring in 0..3 {
@@ -285,5 +334,4 @@ pub fn portal_mesh(zone: ZoneId, elapsed: f32) -> crate::mesh::Mesh {
             }
         }
     }
-    mesh
 }

@@ -83,12 +83,14 @@ pub fn build() -> World {
     let (doors, blockers) = crate::doors::geometry();
     world.mesh.extend(&doors);
     world.blockers.extend(blockers);
-    let portal = crate::zones::ZoneId::Plaza.portal();
-    for x in [-1.9, 1.9] {
-        world.blockers.push(Footprint {
-            min: [portal.x + x - 0.18, portal.z - 0.25],
-            max: [portal.x + x + 0.18, portal.z + 0.25],
-        });
+    // Each portal arch's two pillars block walking; the opening does not.
+    for (_, portal) in crate::zones::ZoneId::Plaza.portals() {
+        for x in [-1.9, 1.9] {
+            world.blockers.push(Footprint {
+                min: [portal.x + x - 0.18, portal.z - 0.25],
+                max: [portal.x + x + 0.18, portal.z + 0.25],
+            });
+        }
     }
     horizon(&mut world.mesh);
     world

@@ -1939,7 +1939,7 @@ impl App {
             _ => return,
         };
 
-        // Suspend the plaza before a completed download can install a forest pose.
+        // Suspend the plaza before a completed download can install a ruins pose.
         self.sync_zone_services(true);
         self.runtime.zone_tick();
         if self.runtime.zone_revision != self.rendered_zone_revision {
@@ -2038,22 +2038,23 @@ impl App {
             board.tick();
         }
         let navigation = self.runtime.navigation();
-        let map_status = self
-            .map_error
-            .as_deref()
-            .unwrap_or(match navigation.status() {
+        let eva = self.runtime.eva_map_status();
+        let map_status = self.map_error.as_deref().unwrap_or(match eva {
+            Some((status, _)) => status,
+            None => match navigation.status() {
                 NavigationStatus::Idle => "Choose a place to walk",
                 NavigationStatus::Walking => "Walking",
                 NavigationStatus::Arrived => "Arrived",
                 NavigationStatus::Cancelled => "Walking cancelled",
                 NavigationStatus::Blocked => "Route blocked",
-            });
+            },
+        });
         self.map_frame = Some(self.map.snapshot_for_zone(
             size.map(|value| value / self.scale),
             [self.runtime.player.pos.x, self.runtime.player.pos.z],
             self.map_visible(),
             map_status,
-            navigation.destination(),
+            eva.map_or_else(|| navigation.destination(), |(_, target)| target),
             self.runtime.zone,
         ));
         let overheads = self.overheads(now);
@@ -2604,28 +2605,28 @@ mod tests {
 
     fn offline_app() -> App {
         App::new(&Options {
-            profile: format!("forest-test-{}", std::process::id()),
+            profile: format!("ruins-test-{}", std::process::id()),
             relay: None,
             ..Options::default()
         })
         .expect("offline desktop state")
     }
 
-    fn forest_pack() -> std::path::PathBuf {
+    fn ruins_pack() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../assets/verse/forest/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp")
+            .join("../../assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp")
     }
 
     #[test]
-    fn forest_desktop_gates_plaza_services_and_returns_to_the_same_pose() {
+    fn ruins_desktop_gates_plaza_services_and_returns_to_the_same_pose() {
         let mut app = offline_app();
         let plaza = app.runtime.player;
         app.runtime
-            .install_forest(zones::assets::LoadedAssets::load_local(&forest_pack()).unwrap());
+            .install_ruins(zones::assets::LoadedAssets::load_local(&ruins_pack()).unwrap());
         app.sync_zone_services(true);
         assert!(app.plaza_services_paused);
         assert!(app.session.is_none() && app.feed.is_none() && app.xp.is_none());
-        app.open_chat("forest text");
+        app.open_chat("ruins text");
         app.ask_agent("must not reach a model");
         app.open_picker();
         app.update_gym(true);
@@ -2651,7 +2652,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&cache).unwrap();
         std::fs::copy(
-            forest_pack(),
+            ruins_pack(),
             cache.join(format!("{}.vzp", zones::assets::PACK_SHA256)),
         )
         .unwrap();

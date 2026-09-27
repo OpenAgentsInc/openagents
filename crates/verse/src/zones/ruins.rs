@@ -6,15 +6,15 @@ use crate::{
     world::World,
 };
 use glam::{Mat4, Vec3};
-use verse_atlantis::{Simulation, Snapshot, Spell, scene::Terrain};
+use verse_ruins::{Simulation, Snapshot, Spell, scene::Terrain};
 
-pub(crate) struct Forest {
+pub(crate) struct Ruins {
     pub assets: LoadedAssets,
     pub simulation: Simulation,
     pub snapshot: Snapshot,
     particles: Vec<Particle>,
     rendered: Mesh,
-    controller: verse_atlantis::Controller,
+    controller: verse_ruins::Controller,
 }
 struct Particle {
     pos: Vec3,
@@ -24,23 +24,23 @@ struct Particle {
     color: [f32; 3],
 }
 
-impl Forest {
+impl Ruins {
     pub fn new(assets: LoadedAssets) -> Result<Self, String> {
         let simulation = Simulation::new(Self::spawn().to_array())?;
         let snapshot = simulation.snapshot();
-        let mut forest = Self {
+        let mut ruins = Self {
             assets,
             simulation,
             snapshot,
             particles: Vec::new(),
             rendered: Mesh::default(),
-            controller: verse_atlantis::Controller::new(Self::spawn()),
+            controller: verse_ruins::Controller::new(Self::spawn()),
         };
-        forest.rendered = forest.build_dynamic(&crate::controller::PlayerController::new(
+        ruins.rendered = ruins.build_dynamic(&crate::controller::PlayerController::new(
             Self::spawn(),
             0.0,
         ));
-        Ok(forest)
+        Ok(ruins)
     }
     pub fn spawn() -> Vec3 {
         Vec3::new(0.0, Terrain::bundled().height(0.0, 0.0), 0.0)
@@ -84,7 +84,7 @@ impl Forest {
         source.set_ground_height(Terrain::bundled().height(source.pos.x, source.pos.z));
         let before = source.pos;
         source.update(
-            &verse_atlantis::MovementInput {
+            &verse_ruins::MovementInput {
                 forward: input.forward,
                 backward: input.backward,
                 strafe_left: input.strafe_left || (input.mouse_look && input.left),

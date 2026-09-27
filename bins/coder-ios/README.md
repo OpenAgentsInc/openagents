@@ -24,7 +24,7 @@ the retained simulation. The turn-based encounter is removed.
 [Native acceptance and recording](verification/2026-09-27-atlantis-realtime-build49/native-verification.md)
 show production startup, autonomous combat, Fireball launch/flight/burst during
 movement, cooldown recovery, and return to the plaza. The
-[source audit](../../docs/verse/atlantis-source-parity.md) records fidelity and
+[source audit](../../docs/verse/ruins-source-parity.md) records fidelity and
 inherited limits. Physical-device acceptance remains separate.
 
 Build 48's default public relay and world-rendered Gym entry remain. New or
@@ -42,7 +42,7 @@ retains normal optimized launch, an empty-cache HTTPS download, native
 portal/encounter/return controls, cached reentry, and signed packaging checks.
 Build 49 replaces that historical turn-based demo with the original Wizard
 Woods real-time simulation; see
-[the source audit](../../docs/verse/atlantis-source-parity.md).
+[the source audit](../../docs/verse/ruins-source-parity.md).
 
 Build 46 adds the [expandable map, companion reactions, and
 Spark/Halo gates](../../docs/verse/world-interactions.md). Select a
@@ -228,16 +228,19 @@ relay transport has no visible metadata.
 
 ## Explore Verse
 
-The new **Forest portal** on the expanded map leads to the
-[Atlantis forest](../../docs/verse/zones.md). Entry downloads its reviewed
-6.6 MB asset pack only when requested; later visits use the verified cache.
-The forest has its own colors, original animated wizard/zombie models, and a
-[original real-time combat](../../docs/verse/atlantis-source-parity.md).
+Two arches on the plaza lead to local [zones](../../docs/verse/zones.md).
+**Ruins portal** on the expanded map leads to **Ruins**: entry downloads its
+reviewed 6.6 MB asset pack only when requested, and later visits use the
+verified cache. Ruins has its own colors, original animated wizard/zombie
+models, and the [original real-time combat](../../docs/verse/ruins-source-parity.md).
 Use the bottom hotbar to cast Firebolt, Magic Missile, and Fireball while
-monsters move and attack. **Plaza** returns to
-your saved position at any time. Plaza presence and Gym observation pause
-throughout loading and the forest visit. Rules and artwork notices are in
-**Computer > Settings > About Verse**. Build 47 acceptance and its release receipt are retained in the
+monsters move and attack. **L1 portal** leads to
+[Lagrange 1](../../docs/verse/lagrange-1.md), a construction station at the
+Sun–Earth L1 point: fly a maneuvering pack, **Grab** parts at the depot, and
+**Latch** them into the keel jig. **Plaza** returns to your saved position at
+any time. Plaza presence and Gym observation pause while you are in a zone.
+Rules and artwork notices are in **Computer > Settings > About Verse**. Build 47
+acceptance and its release receipt are retained in the
 [forest verification record](verification/2026-09-27-forest-zones/README.md).
 
 

@@ -18,7 +18,7 @@ pub struct Landmark {
     pub z: f32,
 }
 
-pub const LANDMARKS: [Landmark; 9] = [
+pub const LANDMARKS: [Landmark; 10] = [
     Landmark {
         id: "computer",
         label: "Computer",
@@ -68,9 +68,15 @@ pub const LANDMARKS: [Landmark; 9] = [
         z: -9.0,
     },
     Landmark {
-        id: "forest",
-        label: "Forest portal",
+        id: "ruins",
+        label: "Ruins portal",
         x: -12.0,
+        z: 9.0,
+    },
+    Landmark {
+        id: "lagrange1",
+        label: "L1 portal",
+        x: 12.0,
         z: 9.0,
     },
 ];
@@ -193,10 +199,35 @@ impl MapHud {
         destination: Option<[f32; 2]>,
         zone: crate::zones::ZoneId,
     ) -> Snapshot {
-        let landmarks = if zone == crate::zones::ZoneId::Plaza {
-            LANDMARKS.to_vec()
-        } else {
-            vec![
+        let landmarks = match zone {
+            crate::zones::ZoneId::Plaza => LANDMARKS.to_vec(),
+            crate::zones::ZoneId::Lagrange1 => vec![
+                Landmark {
+                    id: "return",
+                    label: "Plaza portal",
+                    x: -5.0,
+                    z: 20.0,
+                },
+                Landmark {
+                    id: "airlock",
+                    label: "Airlock",
+                    x: 0.0,
+                    z: 19.0,
+                },
+                Landmark {
+                    id: "depot",
+                    label: "Parts depot",
+                    x: -11.0,
+                    z: 1.0,
+                },
+                Landmark {
+                    id: "jig",
+                    label: "Keel jig",
+                    x: 0.0,
+                    z: -2.0,
+                },
+            ],
+            crate::zones::ZoneId::Ruins => vec![
                 Landmark {
                     id: "return",
                     label: "Plaza portal",
@@ -215,7 +246,7 @@ impl MapHud {
                     x: 18.0,
                     z: 0.0,
                 },
-            ]
+            ],
         };
         let expanded_extra = 76.0 + landmarks.len().div_ceil(3) as f32 * 28.0;
         let [top, right, bottom, left] = self.insets;
@@ -580,7 +611,7 @@ mod tests {
                 assert!(!hud.down(1, at, &map));
                 assert!(!hud.captured(1));
             }
-            let boundary = hud.snapshot([144.0, 252.0], [0.0, 0.0], true, "", None);
+            let boundary = hud.snapshot([144.0, 280.0], [0.0, 0.0], true, "", None);
             assert!(boundary.visible);
         }
     }

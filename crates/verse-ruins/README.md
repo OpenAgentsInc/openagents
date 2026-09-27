@@ -1,6 +1,6 @@
-# Atlantis simulation for Verse
+# Ruins simulation for Verse
 
-`verse-atlantis` runs the original Ruins of Atlantis Wizard Woods combat and
+`verse-ruins` runs the original Ruins of Atlantis Wizard Woods combat and
 movement code inside Verse. The three hotbar controls replace the source's keys
 1–3: Firebolt, Magic missile, and Fireball. Monsters move, choose targets, and cast
 while the player moves. There is no turn-based encounter controller in this crate.
@@ -28,7 +28,7 @@ no `archetypes.toml`. Unused server telemetry dependencies are omitted.
 The exact active terrain snapshot is under `data/wizard_woods`, with a separate
 [scene provenance manifest](data/wizard_woods/provenance.json). It has no tree
 instances. Its terrain spans ±150 meters and uses a 129 × 129 height grid.
-The separately downloaded forest model pack is owned by Verse's asset loader;
+The separately downloaded Ruins model pack is owned by Verse's asset loader;
 this crate does not fetch models, own a renderer, or connect to a relay.
 
 ## Host boundary
@@ -76,7 +76,7 @@ both; meshes and occupancy retain that placement. Melee selects wizard NPCs,
 not the player faction. Insufficient mana can still start a cooldown. Source
 burn damage rounds each short frame down to zero, and its area status assignment
 is broader than its hostile direct-damage assignment. These are not silently
-replaced with new game rules. See the [Verse source-parity audit](../../docs/verse/atlantis-source-parity.md)
+replaced with new game rules. See the [Verse source-parity audit](../../docs/verse/ruins-source-parity.md)
 for the original paths and integration decisions.
 
 The adapter rejects non-finite positions, invalid frame deltas, invalid cast
@@ -88,9 +88,9 @@ observations; they do not establish multiplayer authority.
 
 ## Verification
 
-Run `python3 crates/verse-atlantis/verify-source.py` to check all retained source
+Run `python3 crates/verse-ruins/verify-source.py` to check all retained source
 hashes and declared adaptations. Add `--source-root /path/to/ruinsofatlantis` to
-compare the originals too. Run `cargo test -p verse-atlantis` for adapter, terrain,
+compare the originals too. Run `cargo test -p verse-ruins` for adapter, terrain,
 movement, autonomous combat, cooldown, damage, death, and mesh checks. The retained
 `server_core` and `client_core` tests provide source-level coverage; upstream
 ignored tests remain ignored and do not count as passing evidence.

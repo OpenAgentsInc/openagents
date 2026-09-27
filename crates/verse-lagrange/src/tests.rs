@@ -75,7 +75,10 @@ fn station_keeping_holds_a_lissajous_orbit_for_two_years() {
     }
     assert!(max_offset < 600_000.0, "bounded: {max_offset} km");
     let per_year = orbit.keeping_dv / 2.0;
-    eprintln!("station-keeping {per_year:.2} m/s per year, {} burns", orbit.burns);
+    eprintln!(
+        "station-keeping {per_year:.2} m/s per year, {} burns",
+        orbit.burns
+    );
     // Flight halo controllers spend a few m/s per year. Cancelling only the
     // linear unstable mode costs more, but stays within ten.
     assert!(per_year > 1.0 && per_year < 10.0, "{per_year} m/s per year");

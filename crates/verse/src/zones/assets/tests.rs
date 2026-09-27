@@ -2,14 +2,14 @@ use super::*;
 
 fn pack() -> Vec<u8> {
     std::fs::read(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/forest/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp"),
     )
-    .expect("retained forest pack")
+    .expect("retained ruins pack")
 }
 
 fn cache_dir() -> PathBuf {
     std::env::temp_dir().join(format!(
-        "verse-forest-test-{}-{}",
+        "verse-ruins-test-{}-{}",
         std::process::id(),
         TEMP_ID.fetch_add(1, Ordering::Relaxed)
     ))
@@ -17,7 +17,7 @@ fn cache_dir() -> PathBuf {
 
 #[test]
 fn original_models_decode_with_distinct_animated_poses_and_leaf_geometry() {
-    let assets = LoadedAssets::decode(&pack()).expect("original forest geometry");
+    let assets = LoadedAssets::decode(&pack()).expect("original ruins geometry");
     assert_eq!(assets.tree.faces.len(), 26_715);
     assert_eq!(assets.wizard_still.faces.len(), 6_753);
     assert_eq!(assets.wizard.frames.len(), 12);
@@ -200,9 +200,9 @@ fn pruning_keeps_unknown_files_links_active_temps_and_the_current_pack() {
     let old_path = cache.join(format!("{old}.vzp"));
     let unknown_path = cache.join(format!("{unknown}.vzp"));
     let link_path = cache.join(format!("{linked}.vzp"));
-    let stale = cache.join(".forest-12-45.part");
-    let recent = cache.join(".forest-12-46.part");
-    let strange = cache.join(".forest-unknown.part");
+    let stale = cache.join(".ruins-12-45.part");
+    let recent = cache.join(".ruins-12-46.part");
+    let strange = cache.join(".ruins-unknown.part");
     for path in [&old_path, &unknown_path, &stale, &recent, &strange] {
         std::fs::write(path, b"retained test data").unwrap();
     }

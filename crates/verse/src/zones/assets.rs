@@ -1,4 +1,4 @@
-//! A pinned forest asset pack, loaded only after explicit portal entry.
+//! A pinned ruins asset pack, loaded only after explicit portal entry.
 //!
 //! The pack contains bounded geometry and sampled animation frames. It carries
 //! no executable scripts, URLs, textures, or application authority.
@@ -14,20 +14,20 @@ use sha2::{Digest, Sha256};
 
 use crate::mesh::{Mesh, Vertex};
 
-/// Exact content identity of the reviewed forest pack.
+/// Exact content identity of the reviewed ruins pack.
 pub const PACK_SHA256: &str = "7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7";
-/// Transfer size of the reviewed forest pack.
+/// Transfer size of the reviewed ruins pack.
 pub const PACK_BYTES: u64 = 6_629_578;
-const PACK_URL: &str = "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/assets/verse/forest/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp";
+const PACK_URL: &str = "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp";
 const MAX_PACK_BYTES: u64 = 25 * 1024 * 1024;
 const MAX_DECODED_BYTES: usize = 96 * 1024 * 1024;
 const MAX_VERTICES: usize = 400_000;
 const MAX_FRAMES: usize = 24;
 const MAGIC: &[u8; 8] = b"VZP1\r\n\x1a\n";
 static TEMP_ID: AtomicU64 = AtomicU64::new(0);
-// Retain previous reviewed forest digests here when changing PACK_SHA256.
+// Retain previous reviewed ruins digests here when changing PACK_SHA256.
 // Other zones can share the cache directory; arbitrary digest names are not ours.
-const FOREST_PACK_HISTORY: &[&str] = &[PACK_SHA256];
+const RUINS_PACK_HISTORY: &[&str] = &[PACK_SHA256];
 #[cfg(unix)]
 const STALE_TEMP_SECONDS: i64 = 24 * 60 * 60;
 
@@ -52,7 +52,7 @@ impl AnimatedMesh {
     }
 }
 
-/// Original forest meshes in meters, with feet at the local ground plane.
+/// Original ruins meshes in meters, with feet at the local ground plane.
 #[derive(Debug)]
 pub struct LoadedAssets {
     /// An 8-meter tree with baked leaf cutouts.
@@ -81,7 +81,7 @@ impl LoadedAssets {
 
     fn decode_structure(bytes: &[u8]) -> Result<Self, String> {
         if bytes.len() as u64 > MAX_PACK_BYTES {
-            return Err("Forest pack exceeds the transfer limit".into());
+            return Err("Ruins pack exceeds the transfer limit".into());
         }
         let mut reader = PackReader {
             bytes,
@@ -89,7 +89,7 @@ impl LoadedAssets {
             decoded_bytes: 0,
         };
         if reader.take(8)? != MAGIC {
-            return Err("Forest pack has an unsupported format".into());
+            return Err("Ruins pack has an unsupported format".into());
         }
         let tree = reader.mesh()?;
         let wizard_still = reader.mesh()?;
@@ -97,7 +97,7 @@ impl LoadedAssets {
         let zombie = reader.animation()?;
         let zombie_walk = reader.animation()?;
         if reader.offset != bytes.len() {
-            return Err("Forest pack has trailing data".into());
+            return Err("Ruins pack has trailing data".into());
         }
         Ok(Self {
             tree,
@@ -120,11 +120,11 @@ impl<'a> PackReader<'a> {
         let end = self
             .offset
             .checked_add(count)
-            .ok_or("Forest pack size overflow")?;
+            .ok_or("Ruins pack size overflow")?;
         let value = self
             .bytes
             .get(self.offset..end)
-            .ok_or("Forest pack is truncated")?;
+            .ok_or("Ruins pack is truncated")?;
         self.offset = end;
         Ok(value)
     }
@@ -146,25 +146,25 @@ impl<'a> PackReader<'a> {
     fn mesh(&mut self) -> Result<Mesh, String> {
         let count = self.u32()? as usize;
         if count == 0 || count > MAX_VERTICES || !count.is_multiple_of(3) {
-            return Err("Forest mesh has an invalid vertex count".into());
+            return Err("Ruins mesh has an invalid vertex count".into());
         }
         self.decoded_bytes = self
             .decoded_bytes
             .checked_add(count * size_of::<Vertex>())
-            .ok_or("Forest mesh size overflow")?;
+            .ok_or("Ruins mesh size overflow")?;
         if self.decoded_bytes > MAX_DECODED_BYTES {
-            return Err("Forest pack exceeds the decoded memory limit".into());
+            return Err("Ruins pack exceeds the decoded memory limit".into());
         }
         let packed = self.take(count * 15)?;
         let mut faces = Vec::new();
         faces
             .try_reserve_exact(count)
-            .map_err(|_| "Forest mesh allocation failed")?;
+            .map_err(|_| "Ruins mesh allocation failed")?;
         for v in packed.chunks_exact(15) {
             let read_float = |at| f32::from_le_bytes([v[at], v[at + 1], v[at + 2], v[at + 3]]);
             let pos = [read_float(0), read_float(4), read_float(8)];
             if pos.iter().any(|n| !n.is_finite() || n.abs() > 32.0) {
-                return Err("Forest mesh has an invalid position".into());
+                return Err("Ruins mesh has an invalid position".into());
             }
             faces.push(Vertex {
                 pos,
@@ -190,7 +190,7 @@ impl<'a> PackReader<'a> {
             || !frame_seconds.is_finite()
             || !(0.02..=5.0).contains(&frame_seconds)
         {
-            return Err("Forest animation has invalid timing".into());
+            return Err("Ruins animation has invalid timing".into());
         }
         let frames = (0..count)
             .map(|_| self.mesh())
@@ -219,7 +219,7 @@ struct Worker {
     handle: JoinHandle<()>,
 }
 
-/// One lazy worker and one content-addressed cache entry per forest loader.
+/// One lazy worker and one content-addressed cache entry per ruins loader.
 pub struct Loader {
     cache: PathBuf,
     worker: Option<Worker>,
@@ -245,7 +245,7 @@ impl Loader {
         let worker_cancel = cancel.clone();
         let (tx, events) = mpsc::channel();
         let handle = match std::thread::Builder::new()
-            .name("verse-forest-assets".into())
+            .name("verse-ruins-assets".into())
             .spawn(move || {
                 let result = load(&cache, &worker_cancel, &tx);
                 if !worker_cancel.load(Ordering::Acquire) {
@@ -286,7 +286,7 @@ impl Loader {
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.worker.take();
                 Some(LoadEvent::Failed(
-                    "Forest loader stopped before completion".into(),
+                    "Ruins loader stopped before completion".into(),
                 ))
             }
             Err(mpsc::TryRecvError::Empty) => None,
@@ -321,10 +321,10 @@ impl Drop for Loader {
 
 fn verify_bytes(bytes: &[u8]) -> Result<(), String> {
     if bytes.len() as u64 != PACK_BYTES || bytes.len() as u64 > MAX_PACK_BYTES {
-        return Err("Forest pack has an unexpected size".into());
+        return Err("Ruins pack has an unexpected size".into());
     }
     if format!("{:x}", Sha256::digest(bytes)) != PACK_SHA256 {
-        return Err("Forest pack failed its content check".into());
+        return Err("Ruins pack failed its content check".into());
     }
     Ok(())
 }
@@ -337,27 +337,27 @@ fn read_bounded(path: &Path) -> Result<Vec<u8>, String> {
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
-        .map_err(|_| "Forest cache could not be opened")?;
-    let metadata = file.metadata().map_err(|_| "Forest cache is unavailable")?;
+        .map_err(|_| "Ruins cache could not be opened")?;
+    let metadata = file.metadata().map_err(|_| "Ruins cache is unavailable")?;
     if !metadata.is_file() || metadata.len() != PACK_BYTES {
-        return Err("Forest cache has an unexpected size or file type".into());
+        return Err("Ruins cache has an unexpected size or file type".into());
     }
     let mut bytes = Vec::with_capacity(PACK_BYTES as usize);
     file.take(PACK_BYTES + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| "Forest cache could not be read")?;
+        .map_err(|_| "Ruins cache could not be read")?;
     verify_bytes(&bytes)?;
     Ok(bytes)
 }
 
 #[cfg(not(unix))]
 fn read_bounded(_path: &Path) -> Result<Vec<u8>, String> {
-    Err("Forest file loading requires no-follow file support on this platform".into())
+    Err("Ruins file loading requires no-follow file support on this platform".into())
 }
 
 fn canceled(cancel: &AtomicBool) -> Result<(), String> {
     if cancel.load(Ordering::Acquire) {
-        Err("Forest entry canceled".into())
+        Err("Ruins entry canceled".into())
     } else {
         Ok(())
     }
@@ -375,7 +375,7 @@ fn load(
         canceled(cancel)?;
         if let Ok(assets) = LoadedAssets::decode(&bytes) {
             canceled(cancel)?;
-            prune_cache(cache, FOREST_PACK_HISTORY);
+            prune_cache(cache, RUINS_PACK_HISTORY);
             return Ok(assets);
         }
         // Leave the old entry in place until a downloaded replacement passes
@@ -388,19 +388,19 @@ fn load(
         .connect_timeout(Duration::from_secs(12))
         .timeout(Duration::from_secs(60))
         .build()
-        .map_err(|_| "Forest download could not start")?;
+        .map_err(|_| "Ruins download could not start")?;
     let mut response = client
         .get(PACK_URL)
         .send()
-        .map_err(|_| "Forest download could not connect")?;
+        .map_err(|_| "Ruins download could not connect")?;
     if !response.status().is_success() {
-        return Err("Forest download is unavailable; try again later".into());
+        return Err("Ruins download is unavailable; try again later".into());
     }
     if response
         .content_length()
         .is_some_and(|size| size != PACK_BYTES)
     {
-        return Err("Forest download has an unexpected size".into());
+        return Err("Ruins download has an unexpected size".into());
     }
     let mut bytes = Vec::with_capacity(PACK_BYTES as usize);
     let mut block = [0; 64 * 1024];
@@ -409,12 +409,12 @@ fn load(
         canceled(cancel)?;
         let count = response
             .read(&mut block)
-            .map_err(|_| "Forest download was interrupted")?;
+            .map_err(|_| "Ruins download was interrupted")?;
         if count == 0 {
             break;
         }
         if bytes.len() + count > PACK_BYTES as usize {
-            return Err("Forest download exceeds its declared size".into());
+            return Err("Ruins download exceeds its declared size".into());
         }
         bytes.extend_from_slice(&block[..count]);
         // At most 100 progress records under the transfer budget.
@@ -437,13 +437,13 @@ fn install_cache(cache: &Path, bytes: &[u8], cancel: &AtomicBool) -> Result<(), 
     verify_bytes(bytes)?;
     canceled(cancel)?;
     validate_cache_directory(cache)?;
-    std::fs::create_dir_all(cache).map_err(|_| "Forest cache directory could not be created")?;
+    std::fs::create_dir_all(cache).map_err(|_| "Ruins cache directory could not be created")?;
     if !std::fs::symlink_metadata(cache).is_ok_and(|m| m.is_dir()) {
-        return Err("Forest cache directory must not be a symbolic link".into());
+        return Err("Ruins cache directory must not be a symbolic link".into());
     }
     let final_path = cache.join(format!("{PACK_SHA256}.vzp"));
     let temp = cache.join(format!(
-        ".forest-{}-{}.part",
+        ".ruins-{}-{}.part",
         std::process::id(),
         TEMP_ID.fetch_add(1, Ordering::Relaxed)
     ));
@@ -457,13 +457,13 @@ fn install_cache(cache: &Path, bytes: &[u8], cancel: &AtomicBool) -> Result<(), 
         }
         let mut file = options
             .open(&temp)
-            .map_err(|_| "Forest cache could not be created")?;
+            .map_err(|_| "Ruins cache could not be created")?;
         file.write_all(bytes)
-            .map_err(|_| "Forest cache could not be written")?;
+            .map_err(|_| "Ruins cache could not be written")?;
         file.sync_all()
-            .map_err(|_| "Forest cache could not be saved")?;
+            .map_err(|_| "Ruins cache could not be saved")?;
         canceled(cancel)?;
-        std::fs::rename(&temp, &final_path).map_err(|_| "Forest cache could not be installed")?;
+        std::fs::rename(&temp, &final_path).map_err(|_| "Ruins cache could not be installed")?;
         Ok(())
     })();
     if result.is_err() {
@@ -471,7 +471,7 @@ fn install_cache(cache: &Path, bytes: &[u8], cancel: &AtomicBool) -> Result<(), 
     } else {
         // Cleanup is best effort after publication. Failure cannot invalidate a
         // verified scene, and unknown files never become cleanup candidates.
-        prune_cache(cache, FOREST_PACK_HISTORY);
+        prune_cache(cache, RUINS_PACK_HISTORY);
     }
     result
 }
@@ -480,14 +480,14 @@ fn validate_cache_directory(cache: &Path) -> Result<(), String> {
     match std::fs::symlink_metadata(cache) {
         Ok(metadata) if metadata.is_dir() => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        _ => Err("Forest cache directory must be a regular directory".into()),
+        _ => Err("Ruins cache directory must be a regular directory".into()),
     }
 }
 
 #[cfg(unix)]
-fn forest_temp_name(name: &str) -> bool {
+fn ruins_temp_name(name: &str) -> bool {
     let Some(body) = name
-        .strip_prefix(".forest-")
+        .strip_prefix(".ruins-")
         .and_then(|s| s.strip_suffix(".part"))
     else {
         return false;
@@ -500,7 +500,7 @@ fn forest_temp_name(name: &str) -> bool {
         .all(|s| !s.is_empty() && s.len() <= 20 && s.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// Prune only named previous forest revisions and abandoned forest temp files.
+/// Prune only named previous ruins revisions and abandoned ruins temp files.
 /// Directory-relative unlinking cannot follow a replaced cache-directory path.
 #[cfg(unix)]
 fn prune_cache(cache: &Path, history: &[&str]) {
@@ -565,7 +565,7 @@ fn prune_cache(cache: &Path, history: &[&str]) {
             if let Some(name) = entry
                 .file_name()
                 .to_str()
-                .filter(|name| forest_temp_name(name))
+                .filter(|name| ruins_temp_name(name))
             {
                 remove(name, true);
             }

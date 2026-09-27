@@ -1,18 +1,18 @@
 [workspace]
 members = [
     "crates/coderbench","crates/*"]
-# Retained Atlantis source is third-party code, not first-party workspace policy.
+# Retained Ruins of Atlantis source is third-party code, not first-party workspace policy.
 exclude = [
-    "crates/verse-atlantis/vendor/crates/client_core",
-    "crates/verse-atlantis/vendor/crates/collision_static",
-    "crates/verse-atlantis/vendor/crates/core_materials",
-    "crates/verse-atlantis/vendor/crates/core_units",
-    "crates/verse-atlantis/vendor/crates/data_runtime",
-    "crates/verse-atlantis/vendor/crates/ecs_core",
-    "crates/verse-atlantis/vendor/crates/net_core",
-    "crates/verse-atlantis/vendor/crates/server_core",
-    "crates/verse-atlantis/vendor/crates/voxel_mesh",
-    "crates/verse-atlantis/vendor/crates/voxel_proxy",
+    "crates/verse-ruins/vendor/crates/client_core",
+    "crates/verse-ruins/vendor/crates/collision_static",
+    "crates/verse-ruins/vendor/crates/core_materials",
+    "crates/verse-ruins/vendor/crates/core_units",
+    "crates/verse-ruins/vendor/crates/data_runtime",
+    "crates/verse-ruins/vendor/crates/ecs_core",
+    "crates/verse-ruins/vendor/crates/net_core",
+    "crates/verse-ruins/vendor/crates/server_core",
+    "crates/verse-ruins/vendor/crates/voxel_mesh",
+    "crates/verse-ruins/vendor/crates/voxel_proxy",
 ]
 resolver = "2"
 

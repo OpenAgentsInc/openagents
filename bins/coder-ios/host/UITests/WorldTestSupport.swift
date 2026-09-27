@@ -42,6 +42,7 @@ struct VerseTestZone: Decodable {
     let state: String
     let progress: Double
     let error: String?
+    let caption: String
     let combat: VerseTestCombat?
     let portal: VerseTestZonePortal
     let hud: VerseTestZoneHud
@@ -97,6 +98,7 @@ struct VerseTestZoneHud: Decodable {
 }
 struct VerseTestZoneButton: Decodable {
     let id: String
+    let label: String
     let action: String
     let enabled: Bool
     let frame: [Double]

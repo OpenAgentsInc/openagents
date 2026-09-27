@@ -91,9 +91,9 @@ impl Hud {
                         combat.abilities.iter().find(|a| {
                             matches!(
                                 (a.id, c.action),
-                                (verse_atlantis::Spell::Firebolt, Intent::Firebolt)
-                                    | (verse_atlantis::Spell::MagicMissile, Intent::MagicMissile)
-                                    | (verse_atlantis::Spell::Fireball, Intent::Fireball)
+                                (verse_ruins::Spell::Firebolt, Intent::Firebolt)
+                                    | (verse_ruins::Spell::MagicMissile, Intent::MagicMissile)
+                                    | (verse_ruins::Spell::Fireball, Intent::Fireball)
                             )
                         })
                     })
@@ -172,13 +172,14 @@ impl Hud {
         let half = ui::amber(Intensity::Half, 1.0);
         ui.rect(atlas, x, y, w, h, ui::field(0.95));
         ui.frame(atlas, x, y, w, h, 1.0, half);
-        for (row, line) in atlas
-            .wrap(&snapshot.caption, w - 16.0)
-            .iter()
+        for (row, line) in snapshot
+            .caption
+            .split('\n')
+            .flat_map(|part| atlas.wrap(part, w - 16.0))
             .take(2)
             .enumerate()
         {
-            ui.text(atlas, x + 8.0, y + 7.0 + row as f32 * 16.0, line, full);
+            ui.text(atlas, x + 8.0, y + 7.0 + row as f32 * 16.0, &line, full);
         }
         if let Some(progress) = snapshot.progress {
             ui.rect(

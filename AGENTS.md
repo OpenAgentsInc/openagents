@@ -404,9 +404,12 @@ uses, and marks which are implemented and which are only specified.
   is reimplemented from its `client_core`, not copied. The global plaza uses
   `coder_ui::theme::Intensity`; a palette test protects its amber geometry.
   Separately loaded zones may have their own validated colors and atmosphere.
-  The Atlantis forest loads a pinned asset pack only on entry and has a local
-  original real-time Wizard Woods combat through `verse-atlantis`. Read `docs/verse/zones.md` and
-  `docs/verse/zone-rules.md` before changing asset admission, transitions, or rules.
+  Two plaza portals lead to local zones: Ruins loads a pinned asset pack only
+  on entry and runs the original real-time Wizard Woods combat through
+  `verse-ruins`; Lagrange 1 is a generated Sun–Earth L1 construction station
+  driven by `verse-lagrange`. Read `docs/verse/zones.md` (including its guide
+  to building and registering a zone) and `docs/verse/zone-rules.md` before
+  changing asset admission, transitions, portals, or rules.
   Keep product colors and world behavior out of Rust Native. Desktop features
   retain model chat, XP, and file-backed replays; mobile disables those host
   dependencies and injects identity. Both use the shared simulation, renderer,
@@ -418,12 +421,17 @@ uses, and marks which are implemented and which are only specified.
   NIP-C7, NIP-29, and NIP-17 (`docs/verse/chat.md`). Read `docs/verse/`
   before changing the controller, the palette, the world, chat, or the wire
   format.
-- `crates/verse-atlantis` — the retained Ruins of Atlantis Wizard Woods ECS,
+- `crates/verse-ruins` — the retained Ruins of Atlantis Wizard Woods ECS,
   original player controller, and pinned terrain. Its adapter exposes portable
   gameplay snapshots and destructible meshes. Keep source provenance and
   modification records current; do not substitute the separate turn-based SRD
-  engine for this game. Read `docs/verse/atlantis-source-parity.md` before
+  engine for this game. Read `docs/verse/ruins-source-parity.md` before
   changing combat, movement, or scene inputs.
+- `crates/verse-lagrange` — Sun–Earth L1 physics for the Lagrange 1 zone:
+  the circular restricted three-body orbit with RK4 and unstable-mode
+  station-keeping, torque-free rigid bodies, and the EVA construction sandbox.
+  No renderer or I/O. Keep named constants and the approximations listed in
+  `docs/verse/lagrange-1.md` accurate; convert physics regressions into tests.
 - `crates/nostr` — pure Nostr protocol and verification primitives
   (events, filters, signatures, NIP-19/NIP-44, replacement and deletion,
   Block NIP validators). No storage, no network, no third-party Nostr

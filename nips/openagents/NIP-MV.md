@@ -169,8 +169,8 @@ its own fields or exact, reviewed host profile IDs:
 
 The current Verse `verse.zone.v1` schema is intentionally narrower than a
 general authoring format. It has exactly `schema`, `world`, `ruleset`,
-`physics`, `asset_sha256`, and `asset_bytes`. The host admits one reviewed forest
-world, the original `atlantis.wizard-woods.v1` real-time simulation, `atlantis.heightfield.v1` terrain, and
+`physics`, `asset_sha256`, and `asset_bytes`. The host admits one reviewed Ruins
+world, the original `ruins.wizard-woods.v1` real-time simulation, `ruins.heightfield.v1` terrain, and
 one pinned asset pack. Its palette, bounds, and arrivals are compiled host
 values. Its local world name is not a published `33300` address, so this local
 catalog does not yet satisfy signed scene admission. A future authoring schema
@@ -199,7 +199,7 @@ The chat `z` district tag cannot distinguish unrelated coordinate spaces.
 When leaving a shared world, the client SHOULD publish its final/offline state,
 then stop its old motion stream, close old subscriptions, and clear world-bound
 remote entities. On joining another shared world, it uses the new world ID and
-the admitted definition's bounds and arrival rules. Forest coordinates MUST
+the admitted definition's bounds and arrival rules. Zone coordinates MUST
 NOT appear in a plaza pose frame. Failed delivery of an offline state remains
 possible, so peers still expire stale presence.
 

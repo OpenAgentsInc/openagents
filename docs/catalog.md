@@ -601,9 +601,10 @@ files are included below.
 | Document | Role | Topic |
 | --- | --- | --- |
 | [verse/README.md](verse/README.md) | Index | Verse |
-| [verse/zones.md](verse/zones.md) | Reference / roadmap | Runtime-loaded Atlantis forest and creator zones |
-| [verse/atlantis-source-parity.md](verse/atlantis-source-parity.md) | Audit | Original Wizard Woods source, mechanics, scene, and inherited defects |
-| [verse/zone-rules.md](verse/zone-rules.md) | Reference / design | Real-time Atlantis gameplay, future D&D rules, and L1 physics |
+| [verse/zones.md](verse/zones.md) | Reference / guide | Ruins and Lagrange 1 zones, and how to build and register a zone |
+| [verse/lagrange-1.md](verse/lagrange-1.md) | Reference | Lagrange 1 orbital mechanics, station-keeping, rigid bodies, and EVA construction |
+| [verse/ruins-source-parity.md](verse/ruins-source-parity.md) | Audit | Original Wizard Woods source, mechanics, scene, and inherited defects |
+| [verse/zone-rules.md](verse/zone-rules.md) | Reference / design | Real-time Ruins gameplay, future D&D rules, and Lagrange 1 physics |
 | [verse/SRD-5.1-NOTICE.md](verse/SRD-5.1-NOTICE.md) | Attribution | SRD 5.1 license notice |
 | [verse/gym.md](verse/gym.md) | Guide | Spatial Gym observation and launch recipes |
 | [verse/mobile.md](verse/mobile.md) | Guide | Verse in Coder for iOS |

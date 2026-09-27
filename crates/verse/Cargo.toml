@@ -20,7 +20,8 @@ coder = { path = "../coder", optional = true }
 coder-one = { path = "../coder-one", optional = true }
 coder-ui = { path = "../coder-ui" }
 rust-native = { path = "../rust-native" }
-verse-atlantis = { path = "../verse-atlantis" }
+verse-lagrange = { path = "../verse-lagrange" }
+verse-ruins = { path = "../verse-ruins" }
 glam = "0.30.10"
 # Replays read retained Microcoder runs and Fable 5.1 trajectories with the
 # Gym's own readers, so a replay and `gym runs` agree on every number.
@@ -67,5 +68,9 @@ name = "xp_relay"
 required-features = ["xp-host"]
 
 [[example]]
-name = "forest_capture"
+name = "ruins_capture"
+required-features = ["capture"]
+
+[[example]]
+name = "lagrange_capture"
 required-features = ["capture"]

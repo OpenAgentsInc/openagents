@@ -682,7 +682,7 @@ impl Scene {
 
     fn start_session(&mut self) -> Result<(), String> {
         if !self.plaza_online_allowed() {
-            return Err("The forest is a local zone".into());
+            return Err("This zone is local-only".into());
         }
         let identity = verse::identity::Identity::from_secret("phone", self.secret)?;
         let mut session = Session::start_with_identity(
@@ -1289,7 +1289,7 @@ impl Scene {
             packet.connection.label = if self.world.zone_loading() {
                 "Loading zone"
             } else {
-                "Local forest"
+                self.world.zone.label()
             };
         }
         packet.zone = ZonePacket {
@@ -1381,22 +1381,26 @@ impl Scene {
 
     fn map_snapshot(&self) -> verse::minimap::Snapshot {
         use verse::nav::NavigationStatus as Status;
-        let state = self
-            .map_error
-            .as_deref()
-            .unwrap_or(match self.world.navigation().status() {
+        let eva = self.world.eva_map_status();
+        let state = self.map_error.as_deref().unwrap_or(match eva {
+            Some((status, _)) => status,
+            None => match self.world.navigation().status() {
                 Status::Idle => "Choose a place to walk",
                 Status::Walking => "Walking",
                 Status::Arrived => "Arrived",
                 Status::Cancelled => "Walk stopped",
                 Status::Blocked => "Route blocked",
-            });
+            },
+        });
         self.map.snapshot_for_zone(
             self.lifecycle.viewport().logical_size(),
             [self.world.player.pos.x, self.world.player.pos.z],
             self.lifecycle.active() && !self.panel_open() && !self.spawn_pending,
             state,
-            self.world.navigation().destination(),
+            eva.map_or_else(
+                || self.world.navigation().destination(),
+                |(_, target)| target,
+            ),
             self.world.zone,
         )
     }
@@ -1509,7 +1513,7 @@ impl Scene {
             let size = self.lifecycle.viewport().logical_size();
             let at = point.unwrap_or([portal.screen_x * size[0], portal.screen_y * size[1]]);
             if !self.portal_hit(at[0], at[1]) {
-                return Err("Approach a visible portal to enter the forest".into());
+                return Err("Approach a visible portal to enter its zone".into());
             }
         }
         self.world.zone_intent(intent)?;
@@ -1901,7 +1905,7 @@ mod tests {
     fn cached_zone_scene() -> (Scene, tempfile::TempDir) {
         let cache = tempfile::tempdir().unwrap();
         let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../assets/verse/forest/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp");
+            .join("../../assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp");
         std::fs::copy(
             source,
             cache
@@ -1920,13 +1924,13 @@ mod tests {
     }
 
     #[test]
-    fn forest_hotbar_cast_keeps_a_held_movement_pointer() {
+    fn ruins_hotbar_cast_keeps_a_held_movement_pointer() {
         let (mut scene, _cache) = cached_zone_scene();
         let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../assets/verse/forest/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp");
+            .join("../../assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp");
         scene
             .world
-            .install_forest(verse::zones::assets::LoadedAssets::load_local(&pack).unwrap());
+            .install_ruins(verse::zones::assets::LoadedAssets::load_local(&pack).unwrap());
         scene.reset_zone_inputs();
         scene.update(1.0).unwrap();
         scene.pointer(1, PointerPhase::Down, 50.0, 200.0).unwrap();
@@ -1987,10 +1991,10 @@ mod tests {
     }
 
     #[test]
-    fn zone_transition_clears_input_and_keeps_plaza_identity_out_of_forest() {
+    fn zone_transition_clears_input_and_keeps_plaza_identity_out_of_ruins() {
         let (mut scene, _cache) = cached_zone_scene();
         // A local socket keeps this an offline test while exercising a real
-        // Session owner that must be dropped before any forest simulation.
+        // Session owner that must be dropped before any ruins simulation.
         let relay_socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let relay = format!("wss://{}", relay_socket.local_addr().unwrap());
         scene.synthetic = false;
@@ -2023,7 +2027,7 @@ mod tests {
         }
         assert_eq!(
             scene.world.zone,
-            verse::zones::ZoneId::Forest,
+            verse::zones::ZoneId::Ruins,
             "{:?}",
             scene.world.zone_snapshot(scene.aspect()).error
         );

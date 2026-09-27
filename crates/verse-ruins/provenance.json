@@ -1198,5 +1198,5 @@
   ],
   "license": "Apache-2.0",
   "notice": "NOTICE",
-  "verification": "python3 crates/verse-atlantis/verify-source.py [--source-root /path/to/ruinsofatlantis]"
+  "verification": "python3 crates/verse-ruins/verify-source.py [--source-root /path/to/ruinsofatlantis]"
 }

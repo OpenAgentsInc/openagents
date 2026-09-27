@@ -50,17 +50,17 @@ custody, guardians, and market participation. It composes the current NIPs;
 custody, sovereign lifecycle, and treasury adapters remain to be built.
 
 Coder iOS **0.5.0 (49)** is available in internal TestFlight. The
-[Atlantis forest](docs/verse/zones.md) now runs the original Wizard Woods
+[Ruins](docs/verse/zones.md) now runs the original Wizard Woods
 real-time combat and player controller. Zombies pursue continuously, wizards
 cast, and the bottom GPU hotbar activates Firebolt, Magic Missile, and Fireball
 with the original mana, cooldowns, projectiles, and damage. The turn-based demo
-is removed. Use **Map → Forest portal** to enter and **Plaza** to return.
+is removed. Use **Map → Ruins portal** to enter and **Plaza** to return.
 
 The [release receipt](bins/coder-ios/verification/2026-09-27-atlantis-realtime-build49/testflight-build49.json)
 confirms `VALID` and `IN_BETA_TESTING`. The
 [simulator recording and acceptance](bins/coder-ios/verification/2026-09-27-atlantis-realtime-build49/native-verification.md)
 show autonomous combat, Fireball launch/flight/burst while moving, cooldowns,
-and return. The [source audit](docs/verse/atlantis-source-parity.md) identifies
+and return. The [source audit](docs/verse/ruins-source-parity.md) identifies
 retained code, scene data, host adaptations, and inherited limits. Physical-device
 acceptance is separate.
 
@@ -70,7 +70,7 @@ choice persist. Tap the physical **GYM** board to open its world-rendered entry;
 detailed Gym records require a separate host grant. The
 [build 48 connection and Gym evidence](bins/coder-ios/verification/2026-09-27-world-gym-build48/native-verification.md)
 and [signed relay receipts](bins/coder-ios/verification/2026-09-27-relay-presence/README.md)
-remain available. Shared forest combat, creator publishing, and the future L1
+remain available. Shared Ruins combat, creator publishing, and the future L1
 construction/physics zone remain roadmap work.
 
 Computer setup uses `./pair` or installed `coder pair`. Chats load after
@@ -116,7 +116,7 @@ and [full-screen release evidence](docs/coder/verification/2026-09-26-fullscreen
 | Operate the Nostr relay | [Local relay runbook](docs/deployment/runbook-local-dev.md), [production (Cloud Run) runbook](docs/deployment/runbook-cloud-run.md), [configuration](docs/deployment/configuration.md) |
 | Review protocol support and gaps | [NIP implementation coverage](docs/protocol/2026-09-26-nip-implementation-coverage.md), [implementation plan](docs/protocol/implementation-plan.md) |
 | Operate a Minecraft agent | [Voyager](docs/voyager/README.md), [watch an episode](docs/minecraft/voyager-runbook.md) |
-| Walk the Verse world on desktop or your phone | [Verse](docs/verse/README.md), [mobile controls](docs/verse/mobile.md), [maps, companions, and gates](docs/verse/world-interactions.md), [loaded forest zones](docs/verse/zones.md), [Gym building and run boards](docs/verse/gym.md) |
+| Walk the Verse world on desktop or your phone | [Verse](docs/verse/README.md), [mobile controls](docs/verse/mobile.md), [maps, companions, and gates](docs/verse/world-interactions.md), [loaded zones: Ruins and Lagrange 1](docs/verse/zones.md), [Gym building and run boards](docs/verse/gym.md) |
 
 ## Run Coder
 

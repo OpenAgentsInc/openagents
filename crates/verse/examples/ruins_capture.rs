@@ -4,10 +4,10 @@ use verse::{controller::InputState, runtime::WorldRuntime, zones};
 
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
-    let pack = PathBuf::from(args.next().ok_or("Expected a forest pack path")?);
+    let pack = PathBuf::from(args.next().ok_or("Expected a Ruins pack path")?);
     let output = PathBuf::from(args.next().ok_or("Expected an output PNG path")?);
     let mut runtime = WorldRuntime::new();
-    runtime.install_forest(zones::assets::LoadedAssets::load_local(&pack)?);
+    runtime.install_ruins(zones::assets::LoadedAssets::load_local(&pack)?);
     for _ in 0..24 {
         runtime.tick(&InputState::default(), 0.05);
     }

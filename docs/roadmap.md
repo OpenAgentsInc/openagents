@@ -101,20 +101,21 @@ services and cross-operator orchestration remain separate roadmap work.
 
 ### Loaded worlds and selectable rules
 
-The [Atlantis forest](verse/zones.md) implements a first reviewed zone with
+[Ruins](verse/zones.md) is the first reviewed zone with
 runtime-only asset loading, independent presentation, isolated coordinates,
-and return to the amber plaza. Its [source port](verse/atlantis-source-parity.md) retains the original
+and return to the amber plaza. Its [source port](verse/ruins-source-parity.md) retains the original
 Wizard Woods real-time ECS and player controller, with a bottom spell hotbar.
 A separate [fifth-edition rules profile](verse/zone-rules.md) remains design work.
-The current forest is local-only. NIP-MV's signed scene manifest is a designed
+The Ruins and Lagrange 1 zones are local-only. NIP-MV's signed scene manifest is a designed
 profile; arbitrary creator worlds, shared combat authority, and published
 rule catalogs remain to be implemented.
 
-The future **L1 construction station** is a design direction, not a built zone:
-collaborative spacecraft assembly, explicit unit/scale choices, and selectable
-educational physics. Its path and boundaries are in the [zone roadmap](verse/zone-rules.md#l1-construction-station-design-only).
-It must not inherit fantasy encounter rules or silently claim realistic orbital
-simulation from the current walking controller.
+**[Lagrange 1](verse/lagrange-1.md)** is the second zone: a construction
+station at the Sun–Earth L1 point with restricted three-body orbital mechanics,
+station-keeping, rigid-body parts, and a rocket-equation maneuvering pack. It
+has no combat rules. Saved assemblies, collaborative construction with edit
+authority, and a larger ship catalog remain roadmap work; see
+[zone rules](verse/zone-rules.md#lagrange-1-physics-without-combat).
 
 ### Shared native interfaces
 

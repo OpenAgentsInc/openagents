@@ -1,6 +1,8 @@
-//! Zone transition admission and the shared forest simulation.
+//! Zone transition admission and the Ruins and Lagrange 1 simulations.
 
-use super::{Control, Forest, Intent, LoadState, PortalProjection, Snapshot, ZoneId, assets};
+use super::{
+    Control, Intent, Lagrange, LoadState, PortalProjection, Ruins, Snapshot, ZoneId, assets,
+};
 use crate::{
     controller::{InputState, PlayerController},
     runtime::WorldRuntime,
@@ -9,8 +11,10 @@ use glam::Vec3;
 
 impl WorldRuntime {
     pub(crate) fn update_player(&mut self, input: &InputState, dt: f32) {
-        if let Some(forest) = &mut self.zone_state.forest {
-            forest.move_player(&mut self.player, input, dt);
+        if let Some(ruins) = &mut self.zone_state.ruins {
+            ruins.move_player(&mut self.player, input, dt);
+        } else if let Some(lagrange) = &mut self.zone_state.lagrange {
+            lagrange.move_player(&mut self.player, input, self.camera.pitch, dt);
         } else {
             self.player
                 .update(input, dt, &self.world.blockers, self.zone_half());
@@ -59,7 +63,7 @@ impl WorldRuntime {
                 };
             }
             Some(assets::LoadEvent::Ready(assets)) => {
-                self.install_forest(*assets);
+                self.install_ruins(*assets);
                 return true;
             }
             Some(assets::LoadEvent::Failed(error)) => {
@@ -71,29 +75,63 @@ impl WorldRuntime {
         false
     }
     /// Install already verified artwork. Offline tools use the same decoder.
-    pub fn install_forest(&mut self, assets: assets::LoadedAssets) {
+    pub fn install_ruins(&mut self, assets: assets::LoadedAssets) {
         // A repeated completion cannot replace the saved plaza return pose.
         if !self.is_plaza() {
             return;
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
-        let forest = match Forest::new(assets) {
-            Ok(forest) => forest,
+        let ruins = match Ruins::new(assets) {
+            Ok(ruins) => ruins,
             Err(error) => {
                 self.zone_state.error = Some(error);
                 self.zone_state.loading = LoadState::Failed;
                 return;
             }
         };
-        self.world = forest.world();
-        self.zone_state.forest = Some(forest);
-        self.zone = ZoneId::Forest;
+        self.world = ruins.world();
+        self.zone_state.ruins = Some(ruins);
+        self.zone = ZoneId::Ruins;
         self.zone_state.loading = LoadState::Idle;
         self.zone_state.error = None;
         self.zone_state.progress = 1.0;
         self.zone_revision = self.zone_revision.saturating_add(1);
-        let _ = self.set_spawn(Forest::spawn(), 0.0);
+        let _ = self.set_spawn(Ruins::spawn(), 0.0);
         self.camera = crate::camera::FollowCamera::default();
+    }
+    /// Enter the procedurally built L1 station. Nothing is downloaded.
+    pub fn install_lagrange(&mut self) {
+        if !self.is_plaza() {
+            return;
+        }
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.zone_cancel_loading();
+        let zone = Lagrange::new();
+        self.world = Lagrange::world();
+        self.zone_state.lagrange = Some(zone);
+        self.zone = ZoneId::Lagrange1;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(Lagrange::spawn(), Lagrange::spawn_yaw());
+        self.camera = crate::camera::FollowCamera::default();
+    }
+    /// The nearest portal in this zone and its destination.
+    fn nearest_portal(&self) -> (ZoneId, Vec3) {
+        let at = self.player.pos;
+        self.zone
+            .portals()
+            .into_iter()
+            .min_by(|a, b| {
+                let da = (a.1 - at).x.hypot((a.1 - at).z);
+                let db = (b.1 - at).x.hypot((b.1 - at).z);
+                da.total_cmp(&db)
+            })
+            .unwrap_or((ZoneId::Plaza, self.zone.portal()))
+    }
+    fn portal_in_reach(&self, at: Vec3) -> bool {
+        let offset = self.player.pos - at;
+        offset.x.hypot(offset.z) <= 6.0
+            && (offset.y.abs() < 3.0 || self.is_plaza() && offset.y < 3.0)
     }
     pub fn zone_intent(&mut self, intent: Intent) -> Result<(), String> {
         let result = self.apply_zone_intent(intent);
@@ -106,9 +144,21 @@ impl WorldRuntime {
         match intent {
             Intent::Enter | Intent::Retry => {
                 if !self.is_plaza() || self.zone_loading() || !self.zone_portal(1.0).near {
-                    return Err("Approach the forest portal".into());
+                    return Err("Approach a portal".into());
                 }
-                super::Manifest::forest()?;
+                let destination = if intent == Intent::Retry {
+                    self.zone_state.destination
+                } else {
+                    self.nearest_portal().0
+                };
+                self.zone_state.destination = destination;
+                if destination == ZoneId::Lagrange1 {
+                    self.cancel_navigation();
+                    self.doors.cancel_transient();
+                    self.install_lagrange();
+                    return Ok(());
+                }
+                super::Manifest::ruins()?;
                 let loader = self
                     .zone_state
                     .loader
@@ -129,8 +179,9 @@ impl WorldRuntime {
                     return Err("You are already in the plaza".into());
                 }
                 self.zone_cancel_loading();
-                // Dropping the forest releases its decoded animation frames.
-                self.zone_state.forest = None;
+                // Dropping a zone releases its decoded frames and simulation.
+                self.zone_state.ruins = None;
+                self.zone_state.lagrange = None;
                 self.world = crate::world::build();
                 self.zone = ZoneId::Plaza;
                 self.zone_revision = self.zone_revision.saturating_add(1);
@@ -144,24 +195,53 @@ impl WorldRuntime {
             }
             Intent::Firebolt | Intent::MagicMissile | Intent::Fireball => {
                 let spell = match intent {
-                    Intent::Firebolt => verse_atlantis::Spell::Firebolt,
-                    Intent::MagicMissile => verse_atlantis::Spell::MagicMissile,
-                    _ => verse_atlantis::Spell::Fireball,
+                    Intent::Firebolt => verse_ruins::Spell::Firebolt,
+                    Intent::MagicMissile => verse_ruins::Spell::MagicMissile,
+                    _ => verse_ruins::Spell::Fireball,
                 };
                 let direction = self.player.forward();
                 let origin = self.player.pos + Vec3::Y * 1.4 + direction * 0.25;
-                let forest = self
-                    .zone_state
-                    .forest
-                    .as_mut()
-                    .ok_or("Enter the forest first")?;
-                forest
+                let ruins = self.zone_state.ruins.as_mut().ok_or("Enter Ruins first")?;
+                ruins
                     .simulation
                     .cast(spell, origin.to_array(), direction.to_array())?;
                 self.zone_state.error = None;
             }
+            Intent::Grab | Intent::Release => {
+                let lagrange = self
+                    .zone_state
+                    .lagrange
+                    .as_mut()
+                    .ok_or("Enter Lagrange 1 first")?;
+                if intent == Intent::Grab {
+                    lagrange.station.grab()?;
+                } else {
+                    lagrange.station.release()?;
+                }
+                lagrange.tick();
+                self.zone_state.error = None;
+            }
         }
         Ok(())
+    }
+    /// Map status and marker while an EVA pack autopilot owns map taps.
+    #[must_use]
+    pub fn eva_map_status(&self) -> Option<(&'static str, Option<[f32; 2]>)> {
+        let station = &self.zone_state.lagrange.as_ref()?.station;
+        Some(match station.target {
+            Some(t) => ("Flying", Some([t.x as f32, t.z as f32])),
+            None => ("Choose a point to fly to", None),
+        })
+    }
+    /// Fly the EVA pack toward a map point at the current altitude.
+    pub(crate) fn lagrange_fly_to(&mut self, destination: [f32; 2]) -> Option<Result<(), String>> {
+        let lagrange = self.zone_state.lagrange.as_mut()?;
+        let y = lagrange.station.astronaut.pos.y;
+        Some(lagrange.station.fly_to(glam::DVec3::new(
+            f64::from(destination[0]),
+            y,
+            f64::from(destination[1]),
+        )))
     }
     pub fn zone_snapshot(&self, aspect: f32) -> Snapshot {
         let portal = self.zone_portal(aspect);
@@ -174,30 +254,26 @@ impl WorldRuntime {
                 enabled,
             })
         };
-        let combat = self.zone_state.forest.as_ref().map(|f| f.snapshot.clone());
+        let combat = self.zone_state.ruins.as_ref().map(|f| f.snapshot.clone());
         let caption = if self.zone_loading() {
             add("cancel", "Cancel", Intent::Cancel, true);
             format!(
-                "Loading Atlantis forest · {}%",
+                "Loading Ruins · {}%",
                 (self.zone_state.progress * 100.0) as u32
             )
         } else if self.zone_state.loading == LoadState::Failed {
             add("retry", "Retry", Intent::Retry, portal.near);
             add("cancel", "Dismiss", Intent::Cancel, true);
-            "Forest could not load".into()
-        } else if self.zone == ZoneId::Forest {
+            "Ruins could not load".into()
+        } else if self.zone == ZoneId::Ruins {
             if let Some(c) = &combat {
                 for ability in &c.abilities {
                     let (id, label, intent) = match ability.id {
-                        verse_atlantis::Spell::Firebolt => {
-                            ("firebolt", "Firebolt", Intent::Firebolt)
-                        }
-                        verse_atlantis::Spell::MagicMissile => {
+                        verse_ruins::Spell::Firebolt => ("firebolt", "Firebolt", Intent::Firebolt),
+                        verse_ruins::Spell::MagicMissile => {
                             ("magic_missile", "Missile", Intent::MagicMissile)
                         }
-                        verse_atlantis::Spell::Fireball => {
-                            ("fireball", "Fireball", Intent::Fireball)
-                        }
+                        verse_ruins::Spell::Fireball => ("fireball", "Fireball", Intent::Fireball),
                     };
                     add(id, label, intent, ability.ready);
                 }
@@ -213,14 +289,60 @@ impl WorldRuntime {
             } else {
                 String::new()
             }
+        } else if let Some(lagrange) = &self.zone_state.lagrange {
+            let s = lagrange.station.snapshot();
+            if s.carrying.is_some() {
+                add(
+                    "release",
+                    if s.latch_ready { "Latch" } else { "Release" },
+                    Intent::Release,
+                    true,
+                );
+            } else {
+                add("grab", "Grab", Intent::Grab, s.can_grab);
+            }
+            add("return", "Plaza", Intent::Return, true);
+            let status = if let Some(kind) = s.carrying {
+                match s.latch_distance_m {
+                    Some(_) if s.latch_ready => format!("{} aligned · latch", kind.name()),
+                    Some(d) => format!("{} · {:.0} kg · jig {:.1} m", kind.name(), kind.mass(), d),
+                    None => kind.name().to_owned(),
+                }
+            } else if let Some(message) = &s.message {
+                message.clone()
+            } else if let Some(next) = s.next_part {
+                format!("Next: {} at the depot", next.name().to_lowercase())
+            } else {
+                "Keel frame complete".into()
+            };
+            let status = if s.keeping_active && s.carrying.is_none() {
+                format!(
+                    "Day {:.0} · keeping burn · {:.2} m/s total",
+                    s.orbit.mission_days, s.orbit.keeping_dv_m_s
+                )
+            } else {
+                status
+            };
+            format!(
+                "Earth {:.2}M km · N2 {:.1} kg · {:.1} m/s\n{}",
+                s.orbit.earth_distance_km / 1.0e6,
+                s.propellant_kg,
+                s.speed_m_s,
+                status
+            )
         } else if portal.near && portal.visible {
-            add(
-                "enter",
-                "Enter forest",
-                Intent::Enter,
-                self.zone_state.loader.is_some(),
-            );
-            "Atlantis forest · load this zone".into()
+            if self.nearest_portal().0 == ZoneId::Lagrange1 {
+                add("enter", "Enter L1", Intent::Enter, true);
+                "Lagrange 1 · Sun–Earth L1 station".into()
+            } else {
+                add(
+                    "enter",
+                    "Enter Ruins",
+                    Intent::Enter,
+                    self.zone_state.loader.is_some(),
+                );
+                "Ruins · load this zone".into()
+            }
         } else {
             String::new()
         };
@@ -233,18 +355,23 @@ impl WorldRuntime {
             portal,
             controls,
             combat,
+            station: self
+                .zone_state
+                .lagrange
+                .as_ref()
+                .map(|l| l.station.snapshot()),
             caption,
         }
     }
     fn zone_portal(&self, aspect: f32) -> PortalProjection {
-        let at = self.zone.portal();
+        let at = self.nearest_portal().1;
         let offset = self.player.pos - at;
         let distance = offset.x.hypot(offset.z);
         let anchor = at + Vec3::new(0.0, 2.5, -0.3);
         let view = self.view(aspect);
         let clip = view.view_proj * anchor.extend(1.0);
         let mut p = PortalProjection {
-            near: distance <= 6.0 && self.player.pos.y - at.y < 3.0,
+            near: self.portal_in_reach(at),
             visible: false,
             screen_x: 0.5,
             screen_y: 0.5,
@@ -280,18 +407,15 @@ impl WorldRuntime {
         y: f32,
         entities: &crate::mesh::Mesh,
     ) -> bool {
-        let offset = self.player.pos - self.zone.portal();
-        if offset.x.hypot(offset.z) > 6.0
-            || self.player.pos.y - self.zone.portal().y >= 3.0
-            || self.zone_loading()
-        {
+        let portal = self.nearest_portal().1;
+        if !self.portal_in_reach(portal) || self.zone_loading() {
             return false;
         }
         let view = self.view(aspect);
         let Some((eye, direction)) = crate::runtime::viewport_ray(&view, aspect, x, y) else {
             return false;
         };
-        let at = self.zone.portal() + Vec3::new(0.0, 2.25, -0.3);
+        let at = portal + Vec3::new(0.0, 2.25, -0.3);
         if direction.z.abs() < 0.0001 {
             return false;
         }
@@ -308,25 +432,33 @@ impl WorldRuntime {
             && !crate::runtime::mesh_occludes(entities, eye, direction, distance)
     }
     fn zone_dynamic_occludes(&self, eye: Vec3, direction: Vec3, distance: f32) -> bool {
-        if let Some(forest) = &self.zone_state.forest {
-            crate::runtime::mesh_occludes(forest.dynamic(), eye, direction, distance)
+        if let Some(ruins) = &self.zone_state.ruins {
+            crate::runtime::mesh_occludes(ruins.dynamic(), eye, direction, distance)
+        } else if let Some(lagrange) = &self.zone_state.lagrange {
+            crate::runtime::mesh_occludes(lagrange.dynamic(), eye, direction, distance)
         } else {
             crate::runtime::mesh_occludes(&self.dynamic_mesh(), eye, direction, distance)
         }
     }
-    pub(crate) fn forest_tick(&mut self, dt: f32, _previous: PlayerController) {
+    pub(crate) fn ruins_tick(&mut self, dt: f32, _previous: PlayerController) {
         self.zone_state.elapsed = (self.zone_state.elapsed + dt) % 1000.0;
-        if let Some(forest) = &mut self.zone_state.forest
-            && let Err(error) = forest.tick(dt, &self.player)
+        if let Some(ruins) = &mut self.zone_state.ruins
+            && let Err(error) = ruins.tick(dt, &self.player)
         {
             self.zone_state.error = Some(error);
+        }
+        if let Some(lagrange) = &mut self.zone_state.lagrange {
+            lagrange.tick();
         }
     }
     pub(crate) fn zone_dynamic_mesh(&self) -> crate::mesh::Mesh {
         let elapsed = self.zone_state.elapsed;
         let mut mesh = super::portal_mesh(self.zone, elapsed);
-        if let Some(forest) = &self.zone_state.forest {
-            mesh.extend(forest.dynamic());
+        if let Some(ruins) = &self.zone_state.ruins {
+            mesh.extend(ruins.dynamic());
+        }
+        if let Some(lagrange) = &self.zone_state.lagrange {
+            mesh.extend(lagrange.dynamic());
         }
         mesh
     }
@@ -337,13 +469,13 @@ mod tests {
     use super::*;
     use crate::{controller::InputState, mesh::Mesh};
 
-    fn forest_world() -> WorldRuntime {
+    fn ruins_world() -> WorldRuntime {
         let animation = || assets::AnimatedMesh {
             frames: vec![Mesh::default()],
             frame_seconds: 0.1,
         };
         let mut world = WorldRuntime::new();
-        world.install_forest(assets::LoadedAssets {
+        world.install_ruins(assets::LoadedAssets {
             tree: Mesh::default(),
             wizard_still: Mesh::default(),
             wizard: animation(),
@@ -354,14 +486,14 @@ mod tests {
     }
 
     #[test]
-    fn forest_runs_immediately_and_fireball_spends_mana_while_moving() {
-        let mut world = forest_world();
+    fn ruins_runs_immediately_and_fireball_spends_mana_while_moving() {
+        let mut world = ruins_world();
         let initial = world.zone_snapshot(1.0).combat.unwrap();
         assert_eq!(
             initial.actors.iter().filter(|a| a.kind == "zombie").count(),
             35
         );
-        assert_eq!(world.player.pos, Forest::spawn());
+        assert_eq!(world.player.pos, Ruins::spawn());
         let moving = InputState {
             forward: true,
             ..Default::default()
@@ -373,7 +505,7 @@ mod tests {
         assert!(
             cast.abilities
                 .iter()
-                .find(|a| a.id == verse_atlantis::Spell::Fireball)
+                .find(|a| a.id == verse_ruins::Spell::Fireball)
                 .unwrap()
                 .cooldown_remaining
                 > 0.0
@@ -382,7 +514,7 @@ mod tests {
         assert!(
             cast.projectiles
                 .iter()
-                .any(|p| p.kind == verse_atlantis::Spell::Fireball)
+                .any(|p| p.kind == verse_ruins::Spell::Fireball)
         );
         for _ in 0..80 {
             world.tick(&moving, 0.05);
@@ -400,7 +532,7 @@ mod tests {
             later
                 .abilities
                 .iter()
-                .find(|a| a.id == verse_atlantis::Spell::Fireball)
+                .find(|a| a.id == verse_ruins::Spell::Fireball)
                 .unwrap()
                 .ready
         );
@@ -414,8 +546,8 @@ mod tests {
     }
 
     #[test]
-    fn forest_uses_source_strafe_and_terrain_camera_and_stops_defeated_players() {
-        let mut world = forest_world();
+    fn ruins_uses_source_strafe_and_terrain_camera_and_stops_defeated_players() {
+        let mut world = ruins_world();
         let moving = InputState {
             left: true,
             mouse_look: true,
@@ -427,10 +559,10 @@ mod tests {
         world.camera.distance = crate::camera::MIN_DISTANCE;
         world.camera.pitch = -0.6;
         let view = world.view(1.0);
-        let floor = verse_atlantis::scene::Terrain::bundled().height(view.eye.x, view.eye.z);
+        let floor = verse_ruins::scene::Terrain::bundled().height(view.eye.x, view.eye.z);
         assert!(view.eye.y < 0.0, "camera follows negative terrain");
         assert!(view.eye.y >= floor + 0.399);
-        world.zone_state.forest.as_mut().unwrap().snapshot.player.hp = 0;
+        world.zone_state.ruins.as_mut().unwrap().snapshot.player.hp = 0;
         let before = world.player.pos;
         world.update_player(&moving, 0.05);
         assert_eq!(world.player.pos, before);
@@ -450,13 +582,13 @@ mod tests {
     fn return_drops_combat_and_restores_the_plaza_pose() {
         let mut world = WorldRuntime::new();
         let original = world.player;
-        let mut forest = forest_world();
-        world.install_forest(forest.zone_state.forest.take().unwrap().assets);
+        let mut ruins = ruins_world();
+        world.install_ruins(ruins.zone_state.ruins.take().unwrap().assets);
         world.zone_intent(Intent::Firebolt).unwrap();
         world.tick(&InputState::default(), 0.05);
         world.zone_intent(Intent::Return).unwrap();
         assert_eq!(world.player, original);
         assert!(world.zone_snapshot(1.0).combat.is_none());
-        assert!(world.zone_state.forest.is_none());
+        assert!(world.zone_state.ruins.is_none());
     }
 }

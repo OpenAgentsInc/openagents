@@ -77,15 +77,20 @@ walk there. The character follows a collision-aware route; manual movement or
 jumping stops it. Camera input can continue while walking. See
 [maps, companions, and doors](world-interactions.md) for the ordered demo work.
 
-## Enter the forest
+## Enter a zone
 
-Expand the map and choose **Forest portal** to walk to the new plaza arch.
-Tap its opening or choose **Enter forest** while nearby. This starts the first
+Two arches on the plaza lead to local zones: **Ruins** (west) and
+**Lagrange 1** (east).
+
+### Ruins
+
+Expand the map and choose **Ruins portal** to walk to its plaza arch.
+Tap its opening or choose **Enter Ruins** while nearby. This starts the first
 asset download; normal plaza startup and walking near the arch do not download
 the pack. Loading shows progress and **Cancel**. A failure keeps the plaza
 available with **Retry** or **Dismiss**.
 
-Atlantis forest uses its own colors and the original Wizard Woods real-time
+Ruins uses its own colors and the original Wizard Woods real-time
 simulation. Touch movement, motion look, pinch, and the map use shared Rust
 controls on the retained source heightfield. Monsters chase targets and NPC
 wizards cast as the foreground world updates. Tap **Firebolt**, **Missile**, or
@@ -93,16 +98,28 @@ wizards cast as the foreground world updates. Tap **Firebolt**, **Missile**, or
 the original game state. There is no turn or movement-budget control.
 
 Choose **Plaza** to leave, including during a fight, or use the return portal.
-The app restores the saved plaza position and releases active forest geometry.
-A verified disk cache speeds later entry. No forest model is embedded in the
+The app restores the saved plaza position and releases active zone geometry.
+A verified disk cache speeds later entry. No Ruins model is embedded in the
 app merely so the plaza can start.
 
-Plaza presence and Gym observation pause while loading and visiting the forest,
-then resume the configured plaza behavior on return. The forest is local-only;
-this does not join another relay or publish its coordinates as plaza movement.
+### Lagrange 1
+
+Choose **L1 portal** on the map, then tap the arch or **Enter L1**. The station
+is generated on the device, so it opens immediately. The left joystick commands
+the maneuvering pack; with no input it holds position, and motion builds up
+gradually because the pack has only 40 N of thrust. Tilt the view above or
+below level to climb or dive, double-tap for a short climb, or tap the map to
+set an autopilot target. Fly to the depot, tap **Grab**, carry the part to its
+outlined slot on the keel jig, and tap **Latch** when the outline turns green.
+The caption shows Earth distance, remaining nitrogen, and speed; the airlock
+ring refills the pack. See [Lagrange 1](lagrange-1.md).
+
+Plaza presence and Gym observation pause while loading or visiting a zone,
+then resume the configured plaza behavior on return. Zones are local-only;
+this does not join another relay or publish their coordinates as plaza movement.
 Pairing and retained-chat grants remain separate. See
 [zone architecture and limits](zones.md) and
-[source mechanics and parity](atlantis-source-parity.md).
+[source mechanics and parity](ruins-source-parity.md).
 
 ## Use the world computer
 

@@ -6844,14 +6844,23 @@ dependencies = [
  "swash",
  "tokio",
  "tokio-tungstenite",
- "verse-atlantis",
+ "verse-lagrange",
+ "verse-ruins",
  "webpki-roots 1.0.9",
  "wgpu",
  "winit",
 ]
 
 [[package]]
-name = "verse-atlantis"
+name = "verse-lagrange"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "serde",
+]
+
+[[package]]
+name = "verse-ruins"
 version = "0.1.0"
 dependencies = [
  "client_core",

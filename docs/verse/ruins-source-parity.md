@@ -1,5 +1,8 @@
 # Wizard Woods source audit and parity
 
+The Verse zone that runs this game is named **Ruins** (world `ruins-v1`,
+crate `verse-ruins`). Earlier builds and records call it the Atlantis forest.
+
 Issue [#9730](https://github.com/OpenAgentsInc/openagents/issues/9730) replaces the
 newly invented turn-based forest demo with the retained Ruins of Atlantis
 real-time game. The relevant source revision is
@@ -23,14 +26,14 @@ The port retains ten source crates: `server_core`, the original `client_core`
 movement controller, and eight shared dependencies: `core_materials`,
 `core_units`, `voxel_proxy`, `data_runtime`, `voxel_mesh`, `ecs_core`,
 `collision_static`, and `net_core`. The portable adapter is
-[`verse-atlantis`](../../crates/verse-atlantis/). It supplies host inputs and
+[`verse-ruins`](../../crates/verse-ruins/). It supplies host inputs and
 bounded snapshots while the retained ECS owns combat. It does not import the
 source's native window, web host, private service, or authentication system.
 
 The source hashes are recorded in the crate's
-[provenance manifest](../../crates/verse-atlantis/provenance.json).
-[`LICENSE`](../../crates/verse-atlantis/LICENSE) and
-[`NOTICE`](../../crates/verse-atlantis/NOTICE) preserve Apache-2.0 and the
+[provenance manifest](../../crates/verse-ruins/provenance.json).
+[`LICENSE`](../../crates/verse-ruins/LICENSE) and
+[`NOTICE`](../../crates/verse-ruins/NOTICE) preserve Apache-2.0 and the
 source's notices. Changed files and platform adaptations must remain listed in
 the crate's modification record. The original notice names SRD 5.2.1; this does
 not make the real-time schedule a complete fifth-edition rules implementation.
@@ -39,8 +42,8 @@ not make the real-time schedule a complete fifth-edition rules implementation.
 
 The source terrain loader prefers workspace `data/zones/wizard_woods/` over
 its older crate-local copy. The exact active JSON is retained under
-[`data/wizard_woods`](../../crates/verse-atlantis/data/wizard_woods/) with
-[file hashes](../../crates/verse-atlantis/data/wizard_woods/provenance.json).
+[`data/wizard_woods`](../../crates/verse-ruins/data/wizard_woods/) with
+[file hashes](../../crates/verse-ruins/data/wizard_woods/provenance.json).
 
 | Source value | Meaning |
 | --- | --- |
@@ -58,7 +61,7 @@ not the active workspace scene, and copying it would reproduce a placement bug
 rather than a forest. The previous Verse ring of trees and flat arena were new
 authoring. They must not be described as original terrain.
 
-[`scene::Terrain`](../../crates/verse-atlantis/src/scene.rs) adapts the source
+[`scene::Terrain`](../../crates/verse-ruins/src/scene.rs) adapts the source
 bilinear height sampler and finite-difference normals. The JSON is parsed once
 from compile-time data, without filesystem discovery. The caller can retrieve
 vertices and normals for the exact grid. Finite out-of-bounds samples clamp to
@@ -128,8 +131,8 @@ use XZ geometry, not a complete three-dimensional projectile physics solver.
 
 ## Original movement and host input mapping
 
-`verse-atlantis::Controller` and `MovementInput` re-export the original
-`client_core::controller::PlayerController` and input type. The forest retains
+`verse-ruins::Controller` and `MovementInput` re-export the original
+`client_core::controller::PlayerController` and input type. The Ruins retains
 one controller across frames, including its jump velocity and grounded state;
 it does not reconstruct a controller from each rendered pose.
 
@@ -225,15 +228,15 @@ the retained source ECS schedule:
   request. The original schedule does not check whether its caster is alive;
   this guard prevents a stale UI action from casting during the two-second
   death cleanup interval.
-- At zero player HP, the forest stops player movement, removes the living
+- At zero player HP, the Ruins stops player movement, removes the living
   player model, disables abilities, and displays **Defeated · return to Plaza**.
   The return control remains available. Returning and entering again creates a
   fresh simulation; there is no invented authoritative respawn message.
-- Forest camera clearance uses the heightfield at the camera's XZ position
+- Ruins camera clearance uses the heightfield at the camera's XZ position
   plus 0.4 meters. It no longer inherits the plaza's absolute Y=0.4 floor,
   which was wrong over the source's negative terrain heights. Applying
   clearance preserves the requested look angle.
-- The forest builds its dynamic geometry once per simulation update and
+- The Ruins builds its dynamic geometry once per simulation update and
   retains that mesh for rendering and portal depth checks. Portal checks no
   longer repeatedly transform the full actor population. The renderer still
   copies/uploads dynamic geometry; this is not an instancing claim or a
@@ -281,10 +284,10 @@ The mobile renderer still uses the reviewed geometry pack's sampled poses and
 vertex colors. It does not reproduce every original shader, texture, skinning
 transition, sky effect, or actor-specific model. Those are presentation limits,
 not permission to substitute turn-based rules for the original combat.
-The geometry pack's [asset-specific provenance limits](../../assets/verse/forest/README.md#source-notices-and-provenance-limits)
+The geometry pack's [asset-specific provenance limits](../../assets/verse/ruins/README.md#source-notices-and-provenance-limits)
 remain unresolved and distinct from the source code's Apache license.
 
-Nostr currently connects the plaza, not this local combat world. Shared forest
+Nostr currently connects the plaza, not this local combat world. Shared Ruins
 combat needs a separately admitted authority and command protocol; a signed
 avatar pose is not a verified hit. Creator-selected fifth-edition rules and
 L1 construction physics remain [separate planned profiles](zone-rules.md).

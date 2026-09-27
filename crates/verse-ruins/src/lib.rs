@@ -135,7 +135,7 @@ impl Simulation {
     pub fn tick(&mut self, dt: f32, player_position: [f32; 3], yaw: f32) -> Result<(), String> {
         validate_position(player_position)?;
         if !dt.is_finite() || !(0.0..=0.1).contains(&dt) || !yaw.is_finite() {
-            return Err("Invalid Atlantis frame input".into());
+            return Err("Invalid Ruins frame input".into());
         }
         if let Some(id) = self.source.pc_actor
             && let Some(pc) = self.source.ecs.get_mut(id)
@@ -229,7 +229,7 @@ impl Simulation {
             || !direction.length_squared().is_finite()
             || direction.length_squared() < 1e-6
         {
-            return Err("Invalid Atlantis cast direction".into());
+            return Err("Invalid Ruins cast direction".into());
         }
         if !self
             .source
@@ -237,10 +237,10 @@ impl Simulation {
             .and_then(|id| self.source.ecs.get(id))
             .is_some_and(|pc| pc.hp.alive())
         {
-            return Err("The Atlantis player is defeated".into());
+            return Err("The Ruins player is defeated".into());
         }
         if self.source.pending_casts.len() >= 16 {
-            return Err("Wait for the next Atlantis frame".into());
+            return Err("Wait for the next Ruins frame".into());
         }
         self.source
             .enqueue_cast(Vec3::from(origin), direction.normalize(), spell.source());
@@ -345,7 +345,7 @@ impl Simulation {
 
 fn validate_position(position: [f32; 3]) -> Result<(), String> {
     if !position.iter().all(|v| v.is_finite() && v.abs() <= 10000.0) {
-        return Err("Invalid Atlantis world position".into());
+        return Err("Invalid Ruins world position".into());
     }
     Ok(())
 }
