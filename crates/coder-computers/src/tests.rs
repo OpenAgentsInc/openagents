@@ -260,6 +260,7 @@ fn host(enrollment: Enrollment, link: Option<Status>) -> HostRecord {
         presence: None,
         devices: DeviceList::NotLoaded,
         enrollments: Vec::new(),
+        workspaces: None,
     }
 }
 
@@ -588,6 +589,18 @@ fn screens(computers: &Computers) -> Vec<Screen> {
                 host: host.key.clone(),
             }),
     );
+    // Every enrolled host has its own screen; a host only the directory
+    // lists has no connection to open.
+    screens.extend(
+        computers
+            .snapshot()
+            .hosts
+            .iter()
+            .filter(|host| !host.directory_only())
+            .map(|host| Screen::Host {
+                host: host.key.clone(),
+            }),
+    );
     screens
 }
 
@@ -609,6 +622,23 @@ fn show(computers: &mut Computers, screen: Screen) {
                 .position(|record| &record.key == host)
                 .unwrap();
             format!("host-{index}-access")
+        }
+        Screen::Host { host } | Screen::Order { host } => {
+            if computers.screen() != &Screen::Computers {
+                press(computers, "tab-computers").unwrap();
+            }
+            let index = computers
+                .snapshot()
+                .hosts
+                .iter()
+                .position(|record| &record.key == host)
+                .unwrap();
+            if matches!(screen, Screen::Host { .. }) {
+                format!("host-{index}-open")
+            } else {
+                press(computers, &format!("host-{index}-open")).unwrap();
+                "host-order".to_owned()
+            }
         }
         Screen::FirstRun => unreachable!(),
     };
@@ -1750,4 +1780,153 @@ fn the_invitation_help_names_the_host_command() {
     let body = text_of(&computers, "invite-body");
     assert!(body.contains("`coder host invite`"), "{body}");
     assert!(!body.contains("coder-access"));
+}
+
+/// The index of the Activity row whose headline is `headline`.
+fn activity_row(computers: &Computers, prefix: &str, headline: &str) -> usize {
+    (0..64)
+        .find(|index| {
+            find(computers, &format!("{prefix}-{index}-headline")).is_some_and(
+                |node| matches!(&node.element, Element::Text { value, .. } if value == headline),
+            )
+        })
+        .unwrap_or_else(|| panic!("no {prefix} row for {headline}"))
+}
+
+#[test]
+fn a_phone_orders_steers_and_stops_work_on_an_online_host() {
+    let mut computers = open(Platform::Phone);
+    press(&mut computers, "first-run-continue").unwrap();
+    let studio = synthetic_key(0xa1);
+
+    // An offline host offers neither ordering nor a terminal, with reasons.
+    show(
+        &mut computers,
+        Screen::Host {
+            host: synthetic_key(0xa3),
+        },
+    );
+    assert!(!enabled(&computers, "host-order"));
+    assert!(text_of(&computers, "host-order-reason").contains("offline"));
+    assert!(!enabled(&computers, "host-terminal"));
+
+    // The online host names its route and workspaces, and offers both.
+    show(
+        &mut computers,
+        Screen::Host {
+            host: studio.clone(),
+        },
+    );
+    assert!(text_of(&computers, "host-status").starts_with("Online over the local network"));
+    assert_eq!(
+        text_of(&computers, "host-workspaces"),
+        "Workspaces: openagents, scratch."
+    );
+    assert_eq!(
+        press(&mut computers, "host-terminal").unwrap(),
+        Outcome::Terminal
+    );
+    assert_eq!(computers.take_terminal().as_deref(), Some(studio.as_str()));
+    assert_eq!(computers.take_terminal(), None);
+
+    press(&mut computers, "host-order").unwrap();
+    assert_eq!(
+        computers.screen(),
+        &Screen::Order {
+            host: studio.clone()
+        }
+    );
+    assert!(!enabled(&computers, "order-submit"));
+    assert_reasons(&computers);
+    press(&mut computers, "order-workspace-1").unwrap();
+    assert_eq!(text_of(&computers, "order-workspace-1"), "[x] scratch");
+    assert_eq!(
+        press(&mut computers, "order-prompt").unwrap(),
+        Outcome::InputRequested
+    );
+    let input = computers.input().unwrap().clone();
+    assert_eq!(input.purpose, InputPurpose::TaskPrompt);
+    assert!(matches!(
+        computers.submit(&input.token, "   "),
+        Err(Refusal::Input(_))
+    ));
+    let input = computers.input().unwrap().clone();
+    computers
+        .submit(
+            &input.token,
+            "\tFix the flaky parser test\nThen run the suite.",
+        )
+        .unwrap();
+    assert!(text_of(&computers, "order-prompt-text").starts_with("Fix the flaky"));
+    assert!(enabled(&computers, "order-submit"));
+    press(&mut computers, "order-submit").unwrap();
+    assert_eq!(computers.screen(), &Screen::Activity);
+    assert!(text_of(&computers, "notice").contains("Sent \"Fix the flaky parser test\""));
+
+    let row = activity_row(&computers, "activity", "Fix the flaky parser test");
+    assert!(text_of(&computers, &format!("activity-{row}-subject")).contains("Task, queued"));
+    press(&mut computers, &format!("activity-{row}-steer")).unwrap();
+    let input = computers.input().unwrap().clone();
+    assert_eq!(input.purpose, InputPurpose::SteerPrompt);
+    computers
+        .submit(&input.token, "Only the parser module.")
+        .unwrap();
+    assert!(text_of(&computers, "notice").contains("Sent new instructions"));
+    let row = activity_row(&computers, "activity", "Fix the flaky parser test");
+    assert!(text_of(&computers, &format!("activity-{row}-time")).contains("Revision 2."));
+
+    press(&mut computers, &format!("activity-{row}-cancel")).unwrap();
+    assert!(find(&computers, &format!("activity-{row}-cancel-confirm")).is_some());
+    press(&mut computers, &format!("activity-{row}-cancel-yes")).unwrap();
+    let row = activity_row(&computers, "activity", "Fix the flaky parser test");
+    assert!(text_of(&computers, &format!("activity-{row}-subject")).contains("cancelled"));
+    assert!(find(&computers, &format!("activity-{row}-steer")).is_none());
+
+    // The host's own screen lists its recent work.
+    show(&mut computers, Screen::Host { host: studio });
+    activity_row(&computers, "host-task", "Fix the flaky parser test");
+    assert_reasons(&computers);
+}
+
+#[test]
+fn a_host_without_a_workspace_list_takes_a_typed_name() {
+    let mut computers = open(Platform::Phone);
+    press(&mut computers, "first-run-continue").unwrap();
+    let studio = synthetic_key(0xa1);
+    show(
+        &mut computers,
+        Screen::Order {
+            host: studio.clone(),
+        },
+    );
+    press(&mut computers, "order-workspace-enter").unwrap();
+    let input = computers.input().unwrap().clone();
+    assert_eq!(input.purpose, InputPurpose::TaskWorkspace);
+    assert!(matches!(
+        computers.submit(&input.token, "two\nlines"),
+        Err(Refusal::Input(_))
+    ));
+    let input = computers.input().unwrap().clone();
+    computers.submit(&input.token, "elsewhere").unwrap();
+    assert_eq!(
+        text_of(&computers, "order-workspace-entered"),
+        "Workspace: elsewhere."
+    );
+    press(&mut computers, "order-prompt").unwrap();
+    let input = computers.input().unwrap().clone();
+    computers.submit(&input.token, "Try it").unwrap();
+    // The fixture host refuses a workspace it does not share, and the
+    // screen says so instead of leaving.
+    assert!(press(&mut computers, "order-submit").is_err());
+    assert_eq!(computers.screen(), &Screen::Order { host: studio });
+    assert!(text_of(&computers, "notice").contains("refused"));
+}
+
+#[test]
+fn task_titles_are_one_bounded_line() {
+    use crate::controller::task_title;
+    assert_eq!(task_title("\n\n  Fix it\nmore"), "Fix it");
+    assert_eq!(task_title("a\tb"), "a b");
+    assert_eq!(task_title("   "), "Task");
+    assert_eq!(task_title(&"x".repeat(300)).chars().count(), 80);
 }

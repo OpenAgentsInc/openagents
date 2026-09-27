@@ -19,7 +19,16 @@ connects them to real hosts, within the
 | Computers | One row per host: label, status, route in use (including the SSH tunnel), the reason when blocked, the owner directory's weight for a listed host or that the owner removed it, and an SSH host's tunnel. Your directory's state follows the rows, and the outcome of a remove over SSH. | `set_enabled` (switch off without forgetting), `retry_now`, `forget` and `confirm_forget`, `show` the host's access, `list_in_directory`, `edit_label`, `edit_weight`, `remove_from_directory` and `confirm_remove_from_directory`, `keep_directory`, `remove_ssh_host` and `confirm_remove_ssh_host`, `import_owner_key`. |
 | Add a computer | Scan or paste a `coder-host:` invitation, approve a headless host's 8-character code, connect over SSH with its progress, and run with no local host. A phone doesn't show SSH. | `scan_invitation`, `paste_invitation`, `enter_code`, `deny`, `connect_ssh`, `run_without_host`. |
 | Access | This device's rights on the host, the enrolled devices with rights, origin, and the time the host last saw each, and a new invitation with a chosen subset of rights, shown as its string and a QR code. | `refresh_devices`, `toggle_right`, `create_invitation`, `cancel_invitation`, `dismiss_invitation`, `revoke` and `confirm_revoke`. |
-| Activity | The newest activity summary per task or session, attention first, marked when its host is not online. | `refresh`. |
+| Activity | The newest activity summary per task or session, attention first, marked when its host is not online, with its revision. An open task (queued, running, or waiting) offers **Steer** and **Stop task** when this device may operate its host. | `refresh`, `steer_task`, `cancel_task` and `confirm_cancel_task`. |
+| Host | One host, opened from its row: status and route, this device's rights, the workspaces it shares, **Order work**, **Terminal**, **Access**, and its recent work with the same controls as Activity. | `show`, `open_terminal`, `retry_now`, `steer_task`, `cancel_task`. |
+| Order work | A workspace the host lists through `workspace.list` (or a typed name when it lists none), a prompt, and **Send task**, which sends NIP-HOST `task.create` and moves to Activity. | `choose_workspace`, `enter_workspace`, `refresh_workspaces`, `write_prompt`, `submit_task`. |
+
+**Terminal** needs the `terminal` right and an online host. The controller
+records the host and returns `Outcome::Terminal`; the client takes the host
+from `Computers::take_terminal` and shows its own terminal screen. Ordering,
+steering, and stopping need `operate`. A task's title is the prompt's first
+line, at most 80 characters. Sending a task records it on the host; it runs
+only under the host's own execution policy.
 
 ## Status
 

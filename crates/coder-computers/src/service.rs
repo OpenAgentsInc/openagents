@@ -12,6 +12,7 @@
 //! against its own grant records; the screens' checks only avoid offering a
 //! control that cannot work.
 use crate::model::{CreatedInvitation, ListingChange, LocalHost, ServiceState, Snapshot};
+use coder_access::protocol::TaskCreate;
 use coder_access::{Code, Error, Rights};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -137,6 +138,43 @@ pub trait ComputersService {
         Err(Error::new(
             Code::Unavailable,
             "this client does not reach hosts over SSH",
+        ))
+    }
+    /// Read the workspace labels the host accepts (`workspace.list`) into
+    /// [`crate::HostRecord::workspaces`].
+    fn refresh_workspaces(&mut self, host: &str) -> Result<()> {
+        let _ = host;
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't order work",
+        ))
+    }
+    /// Order work on a host (`task.create`). Returns the host-issued task
+    /// ID. The host records the task; it runs only under the host's own
+    /// execution policy.
+    fn create_task(&mut self, host: &str, task: &TaskCreate) -> Result<String> {
+        let _ = (host, task);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't order work",
+        ))
+    }
+    /// Replace a task's instructions (`task.steer`) at the revision the
+    /// screen showed.
+    fn steer_task(&mut self, host: &str, task: &str, revision: u64, prompt: &str) -> Result<()> {
+        let _ = (host, task, revision, prompt);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't steer work",
+        ))
+    }
+    /// Ask the host to stop a task (`task.cancel`) at the revision the
+    /// screen showed.
+    fn cancel_task(&mut self, host: &str, task: &str, revision: u64, reason: &str) -> Result<()> {
+        let _ = (host, task, revision, reason);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't cancel work",
         ))
     }
 }

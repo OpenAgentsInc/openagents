@@ -292,6 +292,9 @@ pub enum Operation {
         revision: u64,
         reason: String,
     },
+    /// List the workspace labels `task.create` accepts on this host.
+    #[serde(rename = "workspace.list")]
+    ListWorkspaces {},
 }
 impl Operation {
     pub fn name(&self) -> &'static str {
@@ -307,6 +310,7 @@ impl Operation {
             Self::OpenTerminal { .. } => "terminal.open",
             Self::SteerTask { .. } => "task.steer",
             Self::CancelTask { .. } => "task.cancel",
+            Self::ListWorkspaces {} => "workspace.list",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -320,9 +324,10 @@ impl Operation {
             | Self::CancelInvite { .. }
             | Self::Revoke { .. } => Some(Right::AccessAdmin),
             Self::ListDevices {} => Some(Right::AccessRead),
-            Self::CreateTask { .. } | Self::SteerTask { .. } | Self::CancelTask { .. } => {
-                Some(Right::Operate)
-            }
+            Self::CreateTask { .. }
+            | Self::SteerTask { .. }
+            | Self::CancelTask { .. }
+            | Self::ListWorkspaces {} => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -362,7 +367,7 @@ impl Operation {
                 grant_expires_at, ..
             } => safe(*grant_expires_at)?,
             Self::CancelInvite { invitation } => identity(invitation).map_err(Error::from)?,
-            Self::ListDevices {} => {}
+            Self::ListDevices {} | Self::ListWorkspaces {} => {}
             Self::Revoke { device } => public(device)?,
             Self::CreateTask { task } => {
                 text(&task.title, 200)?;
@@ -497,8 +502,38 @@ pub enum Outcome {
     Dispatched {
         receipt: Receipt,
     },
+    /// The workspace labels a device may name in `task.create`, sorted and
+    /// distinct. A label names a host-side root; it is never a path.
+    Workspaces {
+        workspaces: Vec<String>,
+    },
 }
+
+/// The most workspace labels a `workspaces` outcome carries.
+pub const MAX_WORKSPACES: usize = 64;
+
 impl Outcome {
+    /// Check an outcome's own bounds. A `workspaces` list holds at most
+    /// [`MAX_WORKSPACES`] sorted, distinct labels of 1 to 128 bytes without
+    /// control characters.
+    ///
+    /// # Errors
+    /// Refuses a list over its bounds, unsorted, or with a bad label.
+    pub fn validate(&self) -> Result<()> {
+        if let Self::Workspaces { workspaces } = self {
+            if workspaces.len() > MAX_WORKSPACES {
+                return fail(Code::Bounds, "too many workspaces");
+            }
+            for (index, label) in workspaces.iter().enumerate() {
+                text(label, 128)?;
+                if label.is_empty() || (index > 0 && workspaces[index - 1] >= *label) {
+                    return fail(Code::Malformed, "workspaces must be sorted and distinct");
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Whether this outcome is the one the operation can produce.
     pub fn answers(&self, op: &Operation) -> bool {
         match (op, self) {
@@ -507,7 +542,8 @@ impl Outcome {
             | (Operation::Invite { .. }, Self::Invitation { .. })
             | (Operation::CancelInvite { .. }, Self::Cancelled { .. })
             | (Operation::ListDevices {}, Self::Devices { .. })
-            | (Operation::Revoke { .. }, Self::Revoked { .. }) => true,
+            | (Operation::Revoke { .. }, Self::Revoked { .. })
+            | (Operation::ListWorkspaces {}, Self::Workspaces { .. }) => true,
             (
                 Operation::CreateTask { .. }
                 | Operation::OpenTerminal { .. }

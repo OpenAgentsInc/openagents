@@ -10,7 +10,7 @@ use crate::model::{
     PendingEnrollment, Platform, ServiceState, Snapshot,
 };
 use crate::service::{ComputersService, Result};
-use coder_access::protocol::{DeviceState, INVITATION_PREFIX, OriginKind};
+use coder_access::protocol::{DeviceState, INVITATION_PREFIX, OriginKind, TaskCreate};
 use coder_access::{Code, Error, Right, Rights};
 use coder_link::{
     AttemptId, BlockReason, Command, ConnectionId, Failure, Moment, Policy, Report, Signal,
@@ -120,6 +120,7 @@ pub struct Synthetic {
     local_host: LocalHost,
     first_run_complete: bool,
     created: u64,
+    tasks: u64,
     ssh: Option<crate::model::SshAttempt>,
     /// Whether this device holds the fixture's owner key.
     owner_key: bool,
@@ -153,9 +154,11 @@ impl Synthetic {
             presence: None,
             devices: DeviceList::NotLoaded,
             enrollments: Vec::new(),
+            workspaces: None,
         };
         let mut studio = record(0xa1, "Studio Mac", enrolled(Rights::all()));
         studio.route = Some(Class::Lan);
+        studio.workspaces = Some(vec!["openagents".into(), "scratch".into()]);
         studio.devices = DeviceList::Loaded {
             as_of: at - 90,
             devices: vec![
@@ -307,6 +310,7 @@ impl Synthetic {
             },
             first_run_complete: false,
             created: 0,
+            tasks: 0,
             ssh: None,
             owner_key: false,
             calls: Vec::new(),
@@ -326,6 +330,44 @@ impl Synthetic {
             .iter_mut()
             .find(|host| host.record.key == key)
             .ok_or_else(|| Error::new(Code::Unavailable, "unknown synthetic host"))
+    }
+
+    /// Record a task summary as a host would publish it.
+    fn summarize(
+        &mut self,
+        host: &str,
+        subject: &str,
+        sequence: u64,
+        phase: Phase,
+        headline: &str,
+    ) -> Result<()> {
+        let summary = encode(&SummaryDraft {
+            host,
+            subject_kind: SubjectKind::Task,
+            subject,
+            sequence,
+            phase,
+            headline,
+            attention: Attention::None,
+            updated_at: (self.now)(),
+        })
+        .map_err(|_| Error::new(Code::Malformed, "synthetic summary refused"))?;
+        self.activity.push(summary);
+        Ok(())
+    }
+
+    /// The newest summary of a task, which must be at `revision`.
+    fn latest(&self, host: &str, task: &str, revision: u64) -> Result<(u64, Phase, String)> {
+        let latest = self
+            .activity
+            .iter()
+            .filter(|summary| summary.host == host && summary.subject == task)
+            .max_by_key(|summary| summary.sequence)
+            .ok_or_else(|| Error::new(Code::Stale, "no such synthetic task"))?;
+        if latest.sequence != revision {
+            return Err(Error::new(Code::Stale, "the task moved on"));
+        }
+        Ok((latest.sequence, latest.phase, latest.headline.clone()))
     }
 
     fn add(&mut self, label: String) -> String {
@@ -349,6 +391,7 @@ impl Synthetic {
             presence: None,
             devices: DeviceList::NotLoaded,
             enrollments: Vec::new(),
+            workspaces: None,
         };
         let key = record.key.clone();
         self.hosts.push(Host {
@@ -569,6 +612,45 @@ impl ComputersService for Synthetic {
         }
         self.owner_key = true;
         Ok(())
+    }
+    fn refresh_workspaces(&mut self, host: &str) -> Result<()> {
+        self.calls.push(format!("refresh_workspaces {host}"));
+        let record = &mut self.host(host)?.record;
+        if record.workspaces.is_none() {
+            record.workspaces = Some(Vec::new());
+        }
+        Ok(())
+    }
+    fn create_task(&mut self, host: &str, task: &TaskCreate) -> Result<String> {
+        // Record the workspace and title, never the prompt.
+        self.calls.push(format!(
+            "create_task {host} {} {}",
+            task.workspace, task.title
+        ));
+        let record = &self.host(host)?.record;
+        if record
+            .workspaces
+            .as_ref()
+            .is_some_and(|list| !list.contains(&task.workspace))
+        {
+            return Err(Error::new(Code::Forbidden, "unknown synthetic workspace"));
+        }
+        self.tasks += 1;
+        let subject = format!("{:064x}", 0x7a5c_0000_u64 + self.tasks);
+        self.summarize(host, &subject, 1, Phase::Queued, &task.title)?;
+        Ok(subject)
+    }
+    fn steer_task(&mut self, host: &str, task: &str, revision: u64, _: &str) -> Result<()> {
+        self.calls
+            .push(format!("steer_task {host} {task} {revision}"));
+        let (sequence, phase, headline) = self.latest(host, task, revision)?;
+        self.summarize(host, task, sequence + 1, phase, &headline)
+    }
+    fn cancel_task(&mut self, host: &str, task: &str, revision: u64, _: &str) -> Result<()> {
+        self.calls
+            .push(format!("cancel_task {host} {task} {revision}"));
+        let (sequence, _, headline) = self.latest(host, task, revision)?;
+        self.summarize(host, task, sequence + 1, Phase::Cancelled, &headline)
     }
     fn complete_first_run(&mut self) -> Result<()> {
         self.calls.push("complete_first_run".into());

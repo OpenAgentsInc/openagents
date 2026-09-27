@@ -71,6 +71,15 @@ pub enum Action<'a> {
     RemoveSsh {
         host: &'a str,
     },
+    /// Order, steer, or cancel work on a host (`task.create`, `task.steer`,
+    /// `task.cancel`, and `workspace.list`), which need `operate`.
+    Operate {
+        host: &'a str,
+    },
+    /// Open a terminal on a host (`terminal.open`), which needs `terminal`.
+    Terminal {
+        host: &'a str,
+    },
 }
 
 /// Why a control is unavailable.
@@ -268,6 +277,8 @@ pub fn check(snapshot: &Snapshot, caps: Capabilities, action: Action<'_>) -> Res
             (LocalHost::Undecided, _) => Ok(()),
         },
         Action::ReadDevices { host: key } => live(snapshot, key, Right::AccessRead).map(|_| ()),
+        Action::Operate { host: key } => live(snapshot, key, Right::Operate).map(|_| ()),
+        Action::Terminal { host: key } => live(snapshot, key, Right::Terminal).map(|_| ()),
         Action::IncludeRight { host: key, right } => {
             let held = live(snapshot, key, Right::AccessAdmin)?;
             if held.contains(right) {

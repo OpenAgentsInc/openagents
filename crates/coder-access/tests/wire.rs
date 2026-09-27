@@ -69,6 +69,9 @@ fn every_valid_fixture_validates_and_round_trips() {
                     outcome.answers(&request.op),
                     "{name} answers the wrong operation"
                 );
+                outcome
+                    .validate()
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
             }
             coder_access::protocol::ReplyResult::Refused { code, missing } => {
                 if *code == Code::MissingRight {
@@ -134,7 +137,40 @@ fn every_operation_has_a_fixture() {
         "terminal.open",
         "task.steer",
         "task.cancel",
+        "workspace.list",
     ] {
         assert!(kinds.contains(kind), "no request fixture for {kind}");
     }
+}
+
+#[test]
+fn workspace_lists_are_sorted_distinct_and_bounded() {
+    use coder_access::protocol::{MAX_WORKSPACES, Operation, Outcome};
+    let list = |labels: &[&str]| Outcome::Workspaces {
+        workspaces: labels.iter().map(|label| (*label).to_owned()).collect(),
+    };
+    assert!(list(&[]).validate().is_ok());
+    assert!(list(&["openagents", "scratch"]).validate().is_ok());
+    assert!(list(&["openagents", "scratch"]).answers(&Operation::ListWorkspaces {}));
+    assert!(!list(&["openagents"]).answers(&Operation::ListDevices {}));
+    for bad in [
+        list(&["scratch", "openagents"]),
+        list(&["same", "same"]),
+        list(&[""]),
+        list(&["line\nbreak"]),
+    ] {
+        assert!(bad.validate().is_err(), "{bad:?}");
+    }
+    let many: Vec<String> = (0..=MAX_WORKSPACES).map(|i| format!("w{i:03}")).collect();
+    assert_eq!(
+        Outcome::Workspaces { workspaces: many }
+            .validate()
+            .expect_err("over the bound")
+            .code,
+        Code::Bounds
+    );
+    assert_eq!(
+        Operation::ListWorkspaces {}.required(),
+        Some(coder_access::Right::Operate)
+    );
 }

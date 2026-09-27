@@ -278,11 +278,18 @@ A request is `openagents.host-request.v1`:
 | `task.steer` | `operate` | `dispatched` |
 | `task.cancel` | `operate` | `dispatched` |
 | `terminal.open` | `terminal` | `dispatched` |
+| `workspace.list` | `operate` | `workspaces` |
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
 bytes, the prompt at most 16 KiB, and the workspace a host-scoped label of at
 most 128 bytes, never a path. `terminal.open` carries `{cols, rows}`, each
 1–1,000; [TERM](NIP-TERM.md) defines the session and stream.
+`workspace.list` carries nothing and returns `{workspaces}`: the labels
+`task.create` accepts on this host, sorted and distinct, at most 64, each
+1–128 bytes without control characters. The roots they name stay on the
+host. A host with no task owner refuses it as `unavailable`, and an older
+host that predates it refuses it as `malformed` or `unsupported`; a client
+then asks for the label instead of offering a list.
 `task.steer` carries `{task, revision, prompt}` and `task.cancel` carries
 `{task, revision, reason}`: the host-issued task ID from a `task.create`
 receipt, the task revision the device last read, and a replacement prompt of

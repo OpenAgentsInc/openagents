@@ -42,7 +42,7 @@ use crate::model::{
 };
 use crate::service::{ComputersService, Result};
 use coder_access::client::{OpenedEnrollment, pending_enrollments, redeem};
-use coder_access::protocol::DeviceEntry;
+use coder_access::protocol::{DeviceEntry, TaskCreate};
 use coder_access::{Access, Code, Error, Operation, Outcome, RelayPolicy, Right, Rights};
 use coder_host::client::{
     Connector, Device, Link, Reports, Route, fetch_directory_revisions, fetch_reach,
@@ -378,6 +378,8 @@ struct HostLive {
     devices: Option<(Vec<DeviceEntry>, u64)>,
     enrollments: Vec<OpenedEnrollment>,
     activity: Vec<ActivitySummary>,
+    /// The host's `workspace.list` answer, with `operate`.
+    workspaces: Option<Vec<String>>,
     /// The connection the last catch-up read, and when it finished.
     caught_up: Option<(u64, Instant)>,
     catching_up: bool,
@@ -517,6 +519,22 @@ impl Live {
             }
             error
         })
+    }
+
+    /// Run a task operation and return the host's receipt reference. The
+    /// host publishes the task's new summary after it replies, so the next
+    /// catch-up is asked for at once.
+    fn dispatched(&self, host: &str, op: Operation) -> Result<String> {
+        let Outcome::Dispatched { receipt } = self.call(host, op)? else {
+            return Err(Error::new(
+                Code::Malformed,
+                "the host did not dispatch the operation",
+            ));
+        };
+        if let Some(live) = lock(&self.shared.state).hosts.get_mut(host) {
+            live.nudged = true;
+        }
+        Ok(receipt.reference)
     }
 
     fn save(&self) -> Result<()> {
@@ -959,6 +977,16 @@ async fn catch_up(
     } else {
         None
     };
+    // A host that predates `workspace.list` refuses it; the order form then
+    // asks for a workspace name.
+    let workspaces = if rights.contains(Right::Operate) {
+        match link.call(Operation::ListWorkspaces {}).await {
+            Ok(Outcome::Workspaces { workspaces }) => Some(workspaces),
+            _ => None,
+        }
+    } else {
+        None
+    };
     let enrollments = if rights.contains(Right::AccessAdmin) {
         pending_enrollments(&relay, &shared.secret, &host, shared.settings.policy)
             .await
@@ -984,6 +1012,9 @@ async fn catch_up(
             }
             if let Some(enrollments) = enrollments {
                 live.enrollments = enrollments;
+            }
+            if workspaces.is_some() {
+                live.workspaces = workspaces;
             }
         }
     }
@@ -1179,6 +1210,7 @@ impl ComputersService for Live {
                             expires_at: opened.enrollment.expires_at,
                         })
                         .collect(),
+                    workspaces: live.workspaces.clone(),
                 }
             })
             .collect();
@@ -1206,6 +1238,7 @@ impl ComputersService for Live {
                     presence: None,
                     devices: DeviceList::NotLoaded,
                     enrollments: Vec::new(),
+                    workspaces: None,
                 });
             }
         }
@@ -1509,6 +1542,49 @@ impl ComputersService for Live {
             host,
             Operation::Revoke {
                 device: device.into(),
+            },
+        )
+        .map(|_| ())
+    }
+
+    fn refresh_workspaces(&mut self, host: &str) -> Result<()> {
+        let Outcome::Workspaces { workspaces } = self.call(host, Operation::ListWorkspaces {})?
+        else {
+            return Err(Error::new(
+                Code::Malformed,
+                "the host did not list workspaces",
+            ));
+        };
+        if let Some(live) = lock(&self.shared.state).hosts.get_mut(host) {
+            live.workspaces = Some(workspaces);
+        }
+        Ok(())
+    }
+
+    fn create_task(&mut self, host: &str, task: &TaskCreate) -> Result<String> {
+        let reference = self.dispatched(host, Operation::CreateTask { task: task.clone() })?;
+        Ok(reference)
+    }
+
+    fn steer_task(&mut self, host: &str, task: &str, revision: u64, prompt: &str) -> Result<()> {
+        self.dispatched(
+            host,
+            Operation::SteerTask {
+                task: task.into(),
+                revision,
+                prompt: prompt.into(),
+            },
+        )
+        .map(|_| ())
+    }
+
+    fn cancel_task(&mut self, host: &str, task: &str, revision: u64, reason: &str) -> Result<()> {
+        self.dispatched(
+            host,
+            Operation::CancelTask {
+                task: task.into(),
+                revision,
+                reason: reason.into(),
             },
         )
         .map(|_| ())

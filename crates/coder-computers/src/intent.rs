@@ -19,6 +19,10 @@ pub enum Screen {
     Access { host: String },
     /// Hosts and tasks that need attention.
     Activity,
+    /// One host: its status and route, and what this device can do there.
+    Host { host: String },
+    /// Order work on one host: a workspace it shares and a prompt.
+    Order { host: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,6 +133,51 @@ pub enum Intent {
     /// Run `coder-ssh`'s explicit remove, which stops only a host its setup
     /// started, then forget the computer on this device.
     ConfirmRemoveSshHost {
+        host: String,
+    },
+    /// Read the workspaces the host shares again (`workspace.list`).
+    RefreshWorkspaces {
+        host: String,
+    },
+    /// Choose one of the workspaces the host listed for the order.
+    ChooseWorkspace {
+        host: String,
+        workspace: String,
+    },
+    /// Ask for a workspace label, for a host that lists none.
+    EnterWorkspace {
+        host: String,
+    },
+    /// Ask for the order's prompt.
+    WritePrompt {
+        host: String,
+    },
+    /// Send the order (`task.create`).
+    SubmitTask {
+        host: String,
+    },
+    /// Ask for replacement instructions (`task.steer`). `revision` is the
+    /// task revision the screen showed.
+    SteerTask {
+        host: String,
+        task: String,
+        revision: u64,
+    },
+    /// Ask to confirm stopping a task.
+    CancelTask {
+        host: String,
+        task: String,
+        revision: u64,
+    },
+    /// Ask the host to stop the task (`task.cancel`).
+    ConfirmCancelTask {
+        host: String,
+        task: String,
+        revision: u64,
+    },
+    /// Open a terminal on the host. The client's terminal screen takes over
+    /// from [`crate::Computers::take_terminal`].
+    OpenTerminal {
         host: String,
     },
 }

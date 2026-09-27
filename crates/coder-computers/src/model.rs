@@ -339,6 +339,10 @@ pub struct HostRecord {
     pub presence: Option<Received>,
     pub devices: DeviceList,
     pub enrollments: Vec<PendingEnrollment>,
+    /// The workspace labels the host accepts in `task.create`, as its
+    /// `workspace.list` answered. `None` until read, or when the host does
+    /// not list them; ordering work then asks for a label instead.
+    pub workspaces: Option<Vec<String>>,
 }
 
 impl HostRecord {

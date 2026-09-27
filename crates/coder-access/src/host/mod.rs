@@ -36,6 +36,11 @@ pub trait Dispatch: Send {
         device: &str,
         op: &Operation,
     ) -> std::result::Result<Receipt, Code>;
+    /// The workspace labels `task.create` accepts, for `workspace.list`.
+    /// Sorted and distinct. A host without a task owner has none to offer.
+    fn workspaces(&mut self) -> std::result::Result<Vec<String>, Code> {
+        Err(Code::Unavailable)
+    }
 }
 /// The default dispatcher: task and terminal effects are not connected.
 pub struct Unconnected;
@@ -376,6 +381,15 @@ impl Host {
                     grants,
                 })
             }
+            Operation::ListWorkspaces {} => match dispatch.workspaces() {
+                Ok(mut workspaces) => {
+                    workspaces.sort();
+                    workspaces.dedup();
+                    let outcome = Outcome::Workspaces { workspaces };
+                    outcome.validate().map(|()| outcome)
+                }
+                Err(code) => Err(Error::new(code, "the host lists no workspaces")),
+            },
             Operation::CreateTask { .. }
             | Operation::OpenTerminal { .. }
             | Operation::SteerTask { .. }

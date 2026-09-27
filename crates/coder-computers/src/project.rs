@@ -265,7 +265,23 @@ pub(crate) fn root(snapshot: &Snapshot, caps: Capabilities, ui: &UiState) -> Nod
                 TextRole::Body,
             )),
         },
-        Screen::Activity => activity(&mut nodes, snapshot),
+        Screen::Activity => activity(&mut nodes, snapshot, caps, ui),
+        Screen::Host { host } => match snapshot.host(host) {
+            Some(record) => host_detail(&mut nodes, snapshot, caps, ui, record),
+            None => nodes.push(text(
+                "host-missing",
+                "This computer is no longer in your list.",
+                TextRole::Body,
+            )),
+        },
+        Screen::Order { host } => match snapshot.host(host) {
+            Some(record) => order(&mut nodes, snapshot, caps, ui, record),
+            None => nodes.push(text(
+                "order-missing",
+                "This computer is no longer in your list.",
+                TextRole::Body,
+            )),
+        },
     }
     let mut node = stack("computers-screen", Axis::Vertical, Space::Sm, nodes);
     node.style.background = Some(Color::rgb(
@@ -396,6 +412,17 @@ fn computers(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilit
             continue;
         }
         let enabled = host.link.is_none_or(|link| link.enabled);
+        control(
+            &mut actions,
+            format!("{prefix}-open"),
+            "Open",
+            Intent::Show {
+                screen: Screen::Host {
+                    host: host.key.clone(),
+                },
+            },
+            Ok(()),
+        );
         control(
             &mut actions,
             format!("{prefix}-switch"),
@@ -1238,7 +1265,7 @@ pub(crate) fn current_activity(snapshot: &Snapshot) -> Vec<&ActivitySummary> {
     newest
 }
 
-fn activity(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot) {
+fn activity(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilities, ui: &UiState) {
     nodes.push(text("activity-title", "Activity", TextRole::Heading));
     let summaries = current_activity(snapshot);
     let attention = summaries
@@ -1254,8 +1281,35 @@ fn activity(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot) {
         },
         TextRole::Status,
     ));
+    summary_rows(nodes, snapshot, caps, ui, "activity", &summaries);
+    let mut end = Vec::new();
+    control(
+        &mut end,
+        "activity-refresh",
+        "Refresh",
+        Intent::Refresh,
+        Ok(()),
+    );
+    nodes.push(stack("activity-end", Axis::Horizontal, Space::Md, end));
+}
+
+/// Whether a task in this phase can still be steered or stopped.
+fn open_phase(phase: Phase) -> bool {
+    matches!(phase, Phase::Queued | Phase::Running | Phase::Waiting)
+}
+
+/// One row per summary, with steer and stop controls on open tasks. Keys
+/// are `<prefix>-<index>-…`.
+fn summary_rows(
+    nodes: &mut Vec<Node<Intent>>,
+    snapshot: &Snapshot,
+    caps: Capabilities,
+    ui: &UiState,
+    prefix: &str,
+    summaries: &[&ActivitySummary],
+) {
     for (index, summary) in summaries.iter().take(64).enumerate() {
-        let prefix = format!("activity-{index}");
+        let prefix = format!("{prefix}-{index}");
         let host = snapshot.host(&summary.host);
         let label = host.map_or_else(
             || format!("Computer {}", short_key(&summary.host)),
@@ -1296,29 +1350,372 @@ fn activity(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot) {
             text(
                 format!("{prefix}-time"),
                 format!(
-                    "{}Updated {}.",
+                    "{}Updated {}. Revision {}.",
                     reason.map_or(String::new(), |r| format!("{r} ")),
-                    ago(snapshot.now, summary.updated_at)
+                    ago(snapshot.now, summary.updated_at),
+                    summary.sequence
                 ),
                 TextRole::Status,
             ),
         ];
-        if host.is_some_and(|h| !HostStatus::derive(h, snapshot.now).online()) {
+        let online = host.is_some_and(|h| HostStatus::derive(h, snapshot.now).online());
+        if host.is_some() && !online {
             row.push(text(
                 format!("{prefix}-stale"),
                 format!("From the last summary. {label} isn't online now."),
                 TextRole::Status,
             ));
         }
+        if summary.subject_kind == SubjectKind::Task && open_phase(summary.phase) && host.is_some()
+        {
+            let allowed = check(
+                snapshot,
+                caps,
+                Action::Operate {
+                    host: &summary.host,
+                },
+            );
+            let mut actions = Vec::new();
+            control(
+                &mut actions,
+                format!("{prefix}-steer"),
+                "Steer",
+                Intent::SteerTask {
+                    host: summary.host.clone(),
+                    task: summary.subject.clone(),
+                    revision: summary.sequence,
+                },
+                allowed.clone(),
+            );
+            control(
+                &mut actions,
+                format!("{prefix}-cancel"),
+                "Stop task",
+                Intent::CancelTask {
+                    host: summary.host.clone(),
+                    task: summary.subject.clone(),
+                    revision: summary.sequence,
+                },
+                allowed,
+            );
+            row.push(stack(
+                format!("{prefix}-actions"),
+                Axis::Horizontal,
+                Space::Md,
+                actions,
+            ));
+            if ui.confirm
+                == Some(Confirm::CancelTask(
+                    summary.host.clone(),
+                    summary.subject.clone(),
+                    summary.sequence,
+                ))
+            {
+                row.push(text(
+                    format!("{prefix}-cancel-confirm"),
+                    format!(
+                        "Stop \"{}\" on {label}? The computer stops its work and keeps what it recorded.",
+                        summary.headline
+                    ),
+                    TextRole::Body,
+                ));
+                let mut confirm = Vec::new();
+                control(
+                    &mut confirm,
+                    format!("{prefix}-cancel-yes"),
+                    "Stop task",
+                    Intent::ConfirmCancelTask {
+                        host: summary.host.clone(),
+                        task: summary.subject.clone(),
+                        revision: summary.sequence,
+                    },
+                    check(
+                        snapshot,
+                        caps,
+                        Action::Operate {
+                            host: &summary.host,
+                        },
+                    ),
+                );
+                control(
+                    &mut confirm,
+                    format!("{prefix}-cancel-no"),
+                    "Keep running",
+                    Intent::Cancel,
+                    Ok(()),
+                );
+                row.push(stack(
+                    format!("{prefix}-cancel-actions"),
+                    Axis::Horizontal,
+                    Space::Md,
+                    confirm,
+                ));
+            }
+        }
         nodes.push(section(prefix, row));
     }
+}
+
+/// One host: status and route, what this device may do there, and its
+/// recent work.
+fn host_detail(
+    nodes: &mut Vec<Node<Intent>>,
+    snapshot: &Snapshot,
+    caps: Capabilities,
+    ui: &UiState,
+    host: &HostRecord,
+) {
+    nodes.push(text("host-title", &host.label, TextRole::Heading));
+    nodes.push(text(
+        "host-status",
+        status_line(host, snapshot.now),
+        TextRole::Status,
+    ));
+    nodes.push(text(
+        "host-key",
+        format!("Computer key {}.", short_key(&host.key)),
+        TextRole::Status,
+    ));
+    if let Some(rights) = host.enrollment.rights(snapshot.now) {
+        let labels: Vec<&str> = rights.iter().map(right_label).collect();
+        nodes.push(text(
+            "host-rights",
+            format!("This device can: {}.", labels.join(", ")),
+            TextRole::Status,
+        ));
+    }
+    if let Some(workspaces) = &host.workspaces {
+        nodes.push(text(
+            "host-workspaces",
+            if workspaces.is_empty() {
+                "It shares no workspaces for new work.".to_owned()
+            } else {
+                format!("Workspaces: {}.", workspaces.join(", "))
+            },
+            TextRole::Status,
+        ));
+    }
+    let mut actions = Vec::new();
+    control(
+        &mut actions,
+        "host-order",
+        "Order work",
+        Intent::Show {
+            screen: Screen::Order {
+                host: host.key.clone(),
+            },
+        },
+        check(snapshot, caps, Action::Operate { host: &host.key }),
+    );
+    control(
+        &mut actions,
+        "host-terminal",
+        "Terminal",
+        Intent::OpenTerminal {
+            host: host.key.clone(),
+        },
+        check(snapshot, caps, Action::Terminal { host: &host.key }),
+    );
+    control(
+        &mut actions,
+        "host-access",
+        "Access",
+        Intent::Show {
+            screen: Screen::Access {
+                host: host.key.clone(),
+            },
+        },
+        Ok(()),
+    );
+    if matches!(
+        HostStatus::derive(host, snapshot.now),
+        HostStatus::Offline { .. }
+    ) && host.link.is_none_or(|link| link.enabled)
+    {
+        control(
+            &mut actions,
+            "host-retry",
+            "Try now",
+            Intent::RetryNow {
+                host: host.key.clone(),
+            },
+            check(snapshot, caps, Action::RetryNow { host: &host.key }),
+        );
+    }
+    nodes.push(section("host-actions", actions));
+    nodes.push(text("host-work-title", "Recent work", TextRole::Heading));
+    let work: Vec<&ActivitySummary> = current_activity(snapshot)
+        .into_iter()
+        .filter(|summary| summary.host == host.key)
+        .collect();
+    if work.is_empty() {
+        nodes.push(text(
+            "host-work-empty",
+            "No tasks or sessions reported yet.",
+            TextRole::Status,
+        ));
+    }
+    summary_rows(nodes, snapshot, caps, ui, "host-task", &work);
     let mut end = Vec::new();
     control(
         &mut end,
-        "activity-refresh",
-        "Refresh",
-        Intent::Refresh,
+        "host-back",
+        "All computers",
+        Intent::Show {
+            screen: Screen::Computers,
+        },
         Ok(()),
     );
-    nodes.push(stack("activity-end", Axis::Horizontal, Space::Md, end));
+    control(&mut end, "host-refresh", "Refresh", Intent::Refresh, Ok(()));
+    nodes.push(stack("host-end", Axis::Horizontal, Space::Md, end));
+}
+
+/// The order form: a workspace the host shares and a prompt, then send.
+fn order(
+    nodes: &mut Vec<Node<Intent>>,
+    snapshot: &Snapshot,
+    caps: Capabilities,
+    ui: &UiState,
+    host: &HostRecord,
+) {
+    let key = host.key.clone();
+    nodes.push(text(
+        "order-title",
+        format!("Order work on {}", host.label),
+        TextRole::Heading,
+    ));
+    nodes.push(text(
+        "order-status",
+        status_line(host, snapshot.now),
+        TextRole::Status,
+    ));
+    let allowed = check(snapshot, caps, Action::Operate { host: &key });
+    let draft = ui.orders.get(&key).cloned().unwrap_or_default();
+    let mut workspace = vec![text(
+        "order-workspace-title",
+        "Workspace",
+        TextRole::Heading,
+    )];
+    match &host.workspaces {
+        Some(list) if !list.is_empty() => {
+            let mut choices = Vec::new();
+            for (index, label) in list.iter().enumerate() {
+                let chosen = draft.workspace.as_deref() == Some(label.as_str());
+                control(
+                    &mut choices,
+                    format!("order-workspace-{index}"),
+                    if chosen {
+                        format!("[x] {label}")
+                    } else {
+                        format!("[ ] {label}")
+                    },
+                    Intent::ChooseWorkspace {
+                        host: key.clone(),
+                        workspace: label.clone(),
+                    },
+                    allowed.clone(),
+                );
+            }
+            workspace.push(stack(
+                "order-workspaces",
+                Axis::Horizontal,
+                Space::Md,
+                choices,
+            ));
+        }
+        Some(_) => workspace.push(text(
+            "order-workspaces-none",
+            "This computer shares no workspaces. Start its host with --workspace NAME=PATH, or enter a name.",
+            TextRole::Status,
+        )),
+        None => workspace.push(text(
+            "order-workspaces-unknown",
+            "This computer hasn't listed its workspaces. Refresh, or enter a name.",
+            TextRole::Status,
+        )),
+    }
+    if let Some(chosen) = &draft.workspace
+        && !host
+            .workspaces
+            .as_ref()
+            .is_some_and(|list| list.contains(chosen))
+    {
+        workspace.push(text(
+            "order-workspace-entered",
+            format!("Workspace: {chosen}."),
+            TextRole::Status,
+        ));
+    }
+    let mut workspace_actions = Vec::new();
+    control(
+        &mut workspace_actions,
+        "order-workspace-enter",
+        "Enter a name",
+        Intent::EnterWorkspace { host: key.clone() },
+        allowed.clone(),
+    );
+    control(
+        &mut workspace_actions,
+        "order-workspace-refresh",
+        "Refresh",
+        Intent::RefreshWorkspaces { host: key.clone() },
+        allowed.clone(),
+    );
+    workspace.push(stack(
+        "order-workspace-actions",
+        Axis::Horizontal,
+        Space::Md,
+        workspace_actions,
+    ));
+    nodes.push(section("order-workspace", workspace));
+    let mut prompt = vec![text("order-prompt-title", "Prompt", TextRole::Heading)];
+    prompt.push(text(
+        "order-prompt-text",
+        draft
+            .prompt
+            .as_deref()
+            .unwrap_or("No prompt yet. Write what the computer should do."),
+        TextRole::Body,
+    ));
+    control(
+        &mut prompt,
+        "order-prompt",
+        if draft.prompt.is_some() {
+            "Rewrite prompt"
+        } else {
+            "Write prompt"
+        },
+        Intent::WritePrompt { host: key.clone() },
+        allowed.clone(),
+    );
+    nodes.push(section("order-prompt-section", prompt));
+    let ready = match (&draft.workspace, &draft.prompt) {
+        (Some(_), Some(_)) => allowed,
+        _ => Err(Denial::Unavailable(
+            "Choose a workspace and write a prompt first.".into(),
+        )),
+    };
+    let mut end = Vec::new();
+    control(
+        &mut end,
+        "order-submit",
+        "Send task",
+        Intent::SubmitTask { host: key.clone() },
+        ready,
+    );
+    control(
+        &mut end,
+        "order-back",
+        "Back",
+        Intent::Show {
+            screen: Screen::Host { host: key },
+        },
+        Ok(()),
+    );
+    nodes.push(stack("order-end", Axis::Horizontal, Space::Md, end));
+    nodes.push(text(
+        "order-note",
+        "The computer records the task. It runs under the computer's own policy; sending it grants nothing else.",
+        TextRole::Status,
+    ));
 }

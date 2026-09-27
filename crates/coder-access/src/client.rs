@@ -150,6 +150,7 @@ fn verify_reply(
             if !outcome.answers(&pending.request.op) {
                 return fail(Code::Forbidden, "host answered with another operation");
             }
+            outcome.validate()?;
             if let Outcome::Granted { authorization } = &outcome {
                 nostr::private_artifact::admit(authorization)
                     .map_err(|_| Error::new(Code::Forbidden, "grant envelope is invalid"))?;

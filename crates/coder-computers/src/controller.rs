@@ -23,6 +23,36 @@ pub(crate) enum Confirm {
     Delist(String, u64),
     /// Remove a host this device set up over SSH.
     RemoveSsh(String),
+    /// Stop a task: host, task, and the revision the screen showed.
+    CancelTask(String, String, u64),
+}
+
+/// An order being written on one host's order screen.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct OrderDraft {
+    pub workspace: Option<String>,
+    pub prompt: Option<String>,
+}
+
+/// The title a task gets from its prompt: the first line with text, with
+/// control characters replaced, at most 80 characters.
+pub(crate) fn task_title(prompt: &str) -> String {
+    let line = prompt
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("Task");
+    let title: String = line
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .take(80)
+        .collect();
+    let title = title.trim();
+    if title.is_empty() {
+        "Task".into()
+    } else {
+        title.into()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,6 +83,12 @@ pub enum InputPurpose {
     /// The placement weight the owner directory gives a computer, 0 to
     /// 1,000.
     DirectoryWeight,
+    /// The prompt of a task to order.
+    TaskPrompt,
+    /// A workspace label, for a host that lists none.
+    TaskWorkspace,
+    /// Replacement instructions for a task.
+    SteerPrompt,
 }
 
 /// A request for one value the Rust Native tree cannot collect yet: Rust
@@ -65,13 +101,37 @@ pub type InputRequest = rust_native::InputRequest<InputPurpose>;
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Target {
     Invitation,
-    Code { host: String, enrollment: String },
+    Code {
+        host: String,
+        enrollment: String,
+    },
     Ssh,
-    SshPrompt { id: u64 },
+    SshPrompt {
+        id: u64,
+    },
     OwnerKey,
-    DirectoryLabel { host: String },
-    EditLabel { host: String, revision: u64 },
-    EditWeight { host: String, revision: u64 },
+    DirectoryLabel {
+        host: String,
+    },
+    EditLabel {
+        host: String,
+        revision: u64,
+    },
+    EditWeight {
+        host: String,
+        revision: u64,
+    },
+    Prompt {
+        host: String,
+    },
+    Workspace {
+        host: String,
+    },
+    Steer {
+        host: String,
+        task: String,
+        revision: u64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,6 +151,10 @@ pub(crate) struct UiState {
     pub invitations: BTreeMap<String, CreatedInvitation>,
     pub input: Option<PendingInput>,
     pub notice: Option<Notice>,
+    /// Orders being written, per host.
+    pub orders: BTreeMap<String, OrderDraft>,
+    /// A terminal the person asked to open, until the client takes it.
+    pub terminal: Option<String>,
 }
 
 impl UiState {
@@ -117,6 +181,9 @@ pub enum Outcome {
     InputRequested,
     /// First run finished; the client continues to its existing onboarding.
     ContinueOnboarding,
+    /// The person asked to open a terminal. The client takes the host from
+    /// [`Computers::take_terminal`] and shows its terminal screen.
+    Terminal,
 }
 
 /// Why an activation or input did nothing.
@@ -216,6 +283,8 @@ impl Computers {
                 invitations: BTreeMap::new(),
                 input: None,
                 notice: None,
+                orders: BTreeMap::new(),
+                terminal: None,
             },
             instance: instance.into(),
             revision: 0,
@@ -241,6 +310,12 @@ impl Computers {
 
     pub fn notice(&self) -> Option<&Notice> {
         self.ui.notice.as_ref()
+    }
+
+    /// The host whose terminal the person asked to open, once. A client
+    /// with a terminal screen shows it after an [`Outcome::Terminal`].
+    pub fn take_terminal(&mut self) -> Option<String> {
+        self.ui.terminal.take()
     }
 
     /// The value the adapter should collect, if any.
@@ -338,7 +413,9 @@ impl Computers {
                     self.snapshot.hosts.iter().map(|h| h.key.clone()).collect();
                 self.ui.drafts.retain(|host, _| hosts.contains(host));
                 self.ui.invitations.retain(|host, _| hosts.contains(host));
-                if let Screen::Access { host } = &self.ui.screen
+                self.ui.orders.retain(|host, _| hosts.contains(host));
+                if let Screen::Access { host } | Screen::Host { host } | Screen::Order { host } =
+                    &self.ui.screen
                     && !hosts.contains(host)
                 {
                     self.ui.screen = Screen::Computers;
@@ -458,6 +535,18 @@ impl Computers {
                 "Placement weight",
                 "Enter a weight from 0 to 1000. Higher weights get more new work; 0 keeps the computer listed and gives it none.",
             ),
+            InputPurpose::TaskPrompt => (
+                "Task prompt",
+                "Describe the work for the computer, up to 16 KiB.",
+            ),
+            InputPurpose::TaskWorkspace => (
+                "Workspace",
+                "Enter the workspace name the computer shares, such as openagents.",
+            ),
+            InputPurpose::SteerPrompt => (
+                "New instructions",
+                "Enter the instructions that replace this task's prompt.",
+            ),
         };
         let prompt = asked.unwrap_or_else(|| prompt.to_owned());
         let secret = matches!(purpose, InputPurpose::SshPassword | InputPurpose::OwnerKey);
@@ -493,7 +582,8 @@ impl Computers {
     fn apply(&mut self, intent: Intent) -> Result<Outcome, Refusal> {
         match intent {
             Intent::Show { screen } => {
-                if let Screen::Access { host } = &screen
+                if let Screen::Access { host } | Screen::Host { host } | Screen::Order { host } =
+                    &screen
                     && self.snapshot.host(host).is_none()
                 {
                     return Err(Refusal::Denied(Denial::UnknownHost));
@@ -501,11 +591,146 @@ impl Computers {
                 if screen == Screen::FirstRun && self.snapshot.first_run_complete {
                     return Err(Refusal::NotInteractive);
                 }
-                self.ui.screen = screen;
                 self.ui.confirm = None;
                 self.ui.input = None;
                 self.ui.notice = None;
+                // Opening an order reads the workspaces the host shares
+                // when they are not known yet. A failure leaves the form
+                // usable: the person can enter a workspace name.
+                if let Screen::Order { host } = &screen
+                    && self
+                        .snapshot
+                        .host(host)
+                        .is_some_and(|record| record.workspaces.is_none())
+                    && self.allow(Action::Operate { host }).is_ok()
+                {
+                    if let Err(error) = self.service.refresh_workspaces(host) {
+                        self.ui.notice = Some(Notice {
+                            kind: NoticeKind::Refused,
+                            text: format!(
+                                "Couldn't list this computer's workspaces: {} Enter a workspace name instead.",
+                                describe(&error)
+                            ),
+                        });
+                    }
+                    self.reload();
+                }
+                self.ui.screen = screen;
                 Ok(Outcome::Updated)
+            }
+            Intent::RefreshWorkspaces { host } => {
+                self.allow(Action::Operate { host: &host })?;
+                self.service
+                    .refresh_workspaces(&host)
+                    .map_err(Refusal::Failed)?;
+                self.done("Workspaces refreshed.")
+            }
+            Intent::ChooseWorkspace { host, workspace } => {
+                self.allow(Action::Operate { host: &host })?;
+                let listed = self
+                    .snapshot
+                    .host(&host)
+                    .and_then(|record| record.workspaces.as_ref())
+                    .is_some_and(|list| list.contains(&workspace));
+                if !listed {
+                    return Err(Refusal::Stale);
+                }
+                self.ui.orders.entry(host).or_default().workspace = Some(workspace);
+                self.ui.notice = None;
+                Ok(Outcome::Updated)
+            }
+            Intent::EnterWorkspace { host } => {
+                self.allow(Action::Operate { host: &host })?;
+                self.ask(
+                    InputPurpose::TaskWorkspace,
+                    Target::Workspace { host },
+                    false,
+                )
+            }
+            Intent::WritePrompt { host } => {
+                self.allow(Action::Operate { host: &host })?;
+                self.ask(InputPurpose::TaskPrompt, Target::Prompt { host }, false)
+            }
+            Intent::SubmitTask { host } => {
+                self.allow(Action::Operate { host: &host })?;
+                let draft = self.ui.orders.get(&host).cloned().unwrap_or_default();
+                let (Some(workspace), Some(prompt)) = (draft.workspace, draft.prompt) else {
+                    return Err(Refusal::Input(
+                        "Choose a workspace and write a prompt first.".into(),
+                    ));
+                };
+                let task = coder_access::protocol::TaskCreate {
+                    title: task_title(&prompt),
+                    prompt,
+                    workspace: workspace.clone(),
+                };
+                self.service
+                    .create_task(&host, &task)
+                    .map_err(Refusal::Failed)?;
+                if let Some(order) = self.ui.orders.get_mut(&host) {
+                    order.prompt = None;
+                }
+                let label = self.label(&host);
+                self.ui.screen = Screen::Activity;
+                self.done(format!(
+                    "Sent \"{}\" to {label} in {workspace}. Follow it here.",
+                    task.title
+                ))
+            }
+            Intent::SteerTask {
+                host,
+                task,
+                revision,
+            } => {
+                self.allow(Action::Operate { host: &host })?;
+                self.ask(
+                    InputPurpose::SteerPrompt,
+                    Target::Steer {
+                        host,
+                        task,
+                        revision,
+                    },
+                    false,
+                )
+            }
+            Intent::CancelTask {
+                host,
+                task,
+                revision,
+            } => {
+                self.allow(Action::Operate { host: &host })?;
+                self.ui.confirm = Some(Confirm::CancelTask(host, task, revision));
+                self.ui.notice = None;
+                Ok(Outcome::Updated)
+            }
+            Intent::ConfirmCancelTask {
+                host,
+                task,
+                revision,
+            } => {
+                if self.ui.confirm
+                    != Some(Confirm::CancelTask(host.clone(), task.clone(), revision))
+                {
+                    return Err(Refusal::Stale);
+                }
+                self.allow(Action::Operate { host: &host })?;
+                let reason = match self.caps.platform {
+                    crate::model::Platform::Phone => "Cancelled from a phone.",
+                    crate::model::Platform::Desktop => "Cancelled from the desktop app.",
+                    crate::model::Platform::Terminal => "Cancelled from the terminal app.",
+                };
+                self.service
+                    .cancel_task(&host, &task, revision, reason)
+                    .map_err(Refusal::Failed)?;
+                self.ui.confirm = None;
+                let label = self.label(&host);
+                self.done(format!("Asked {label} to stop the task."))
+            }
+            Intent::OpenTerminal { host } => {
+                self.allow(Action::Terminal { host: &host })?;
+                self.ui.terminal = Some(host);
+                self.ui.notice = None;
+                Ok(Outcome::Terminal)
             }
             Intent::Refresh => {
                 self.ui.notice = None;
@@ -817,6 +1042,44 @@ impl Computers {
         let value = value.trim();
         match target {
             Target::SshPrompt { .. } => Err(Refusal::Stale),
+            Target::Prompt { host } => {
+                self.allow(Action::Operate { host: &host })?;
+                if value.is_empty() {
+                    return Err(Refusal::Input("Write what the computer should do.".into()));
+                }
+                self.ui.orders.entry(host).or_default().prompt = Some(value.to_owned());
+                self.ui.input = None;
+                self.ui.notice = None;
+                Ok(Outcome::Updated)
+            }
+            Target::Workspace { host } => {
+                self.allow(Action::Operate { host: &host })?;
+                if value.is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
+                    return Err(Refusal::Input(
+                        "Enter a workspace name of 1 to 128 bytes on one line.".into(),
+                    ));
+                }
+                self.ui.orders.entry(host).or_default().workspace = Some(value.to_owned());
+                self.ui.input = None;
+                self.ui.notice = None;
+                Ok(Outcome::Updated)
+            }
+            Target::Steer {
+                host,
+                task,
+                revision,
+            } => {
+                self.allow(Action::Operate { host: &host })?;
+                if value.is_empty() {
+                    return Err(Refusal::Input("Enter the new instructions.".into()));
+                }
+                self.service
+                    .steer_task(&host, &task, revision, value)
+                    .map_err(Refusal::Failed)?;
+                self.ui.input = None;
+                let label = self.label(&host);
+                self.done(format!("Sent new instructions to {label}."))
+            }
             Target::OwnerKey => {
                 self.allow(Action::ImportOwnerKey)?;
                 if value.is_empty() {

@@ -42,6 +42,11 @@ impl Dispatcher {
 }
 
 impl Dispatch for Dispatcher {
+    /// The configured workspace labels. The roots they name stay on the host.
+    fn workspaces(&mut self) -> Result<Vec<String>, Code> {
+        Ok(self.shared.config.workspaces.keys().cloned().collect())
+    }
+
     fn dispatch(&mut self, request: &str, device: &str, op: &Operation) -> Result<Receipt, Code> {
         let tasks = self.shared.tasks.clone();
         match op {
