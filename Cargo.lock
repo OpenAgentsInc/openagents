@@ -736,6 +736,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-link"
+version = "0.1.0"
+
+[[package]]
 name = "coder-mobile"
 version = "0.1.0"
 dependencies = [

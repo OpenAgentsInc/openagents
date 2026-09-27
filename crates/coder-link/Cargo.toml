@@ -1,0 +1,12 @@
+[package]
+name = "coder-link"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Deterministic per-host connection supervision for Coder clients."
+
+[dependencies]
+
+[lints]
+workspace = true

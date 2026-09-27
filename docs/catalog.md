@@ -175,6 +175,7 @@ files are included below.
 | [coder/verification/2026-09-21-project-supervisor.md](coder/verification/2026-09-21-project-supervisor.md) | Retained evidence / audit | Project supervisor verification, 2026-09-21 |
 | [coder/verification/2026-09-22-relay-interoperability.md](coder/verification/2026-09-22-relay-interoperability.md) | Retained evidence / audit | Relay, worker, and program interoperability |
 | [coder/verification/2026-09-25-issue-eval-read-isolation.md](coder/verification/2026-09-25-issue-eval-read-isolation.md) | Retained evidence / audit | Confine issue-evaluation reads |
+| [coder/verification/2026-09-26-connection-supervisor.md](coder/verification/2026-09-26-connection-supervisor.md) | Verification | Per-host connection supervisor and transition tests |
 | [coder/verification/2026-09-26-free-labor/README.md](coder/verification/2026-09-26-free-labor/README.md) | Evidence index | Free labor acceptance evidence |
 | [coder/verification/2026-09-26-frozen-context/README.md](coder/verification/2026-09-26-frozen-context/README.md) | Evidence index | Frozen context and shared transport acceptance |
 | [coder/verification/2026-09-26-knowledge/README.md](coder/verification/2026-09-26-knowledge/README.md) | Evidence index | Knowledge integrity and permissioned input verification |
