@@ -398,6 +398,114 @@ attachment reservation and is otherwise null. Conflicts/refusals require a
 common refusal reason. The configured allocator signs the result. CJ completion
 means the lifecycle operation answered, not that provisioning or cleanup finished.
 
+## SSH-launched hosts
+
+This profile applies the lease rules above to one resource: a Coder host
+process that runs under a user account the owner can reach with SSH. A
+**launcher** is the client that runs the system SSH client against that
+account. The launcher is the allocator for the SSH session only. The host,
+not the launcher and not SSH, issues and enforces every later grant.
+[`coder-ssh`](../../crates/coder-ssh/README.md) implements the launcher side
+of this profile. It does not yet emit signed request, lease, or cleanup
+artifacts; it returns typed local results.
+
+### Create and adopt
+
+A launcher either creates a host or adopts one; it never guesses.
+
+| Situation | Request `mode` | Recorded ownership | `cleanup` |
+| --- | --- | --- | --- |
+| No live host runs for the account, so the launcher starts one. | `create` | `managed`: launcher-owned. | `destroy` |
+| A live host already runs for the account and no launcher record names it. | `adopt` | `external`: discovered. | `detach` |
+
+Ownership lives on the remote account, not in the client. A resident host
+writes a runtime record once it listens, with its schema
+(`openagents.coder.host-runtime.v1`), process identifier, and loopback port.
+Before a created host reports ready, the launcher writes a separate ownership
+record (`openagents.coder.ssh-managed.v1`) with that host's process
+identifier, the release digest, and the runner digest. A host is `managed`
+exactly when both records name the same live process; otherwise a live host
+is `external`. A second client that later reaches the same account reads the
+same records and reaches the same answer. A client-side flag, a host name, or
+a matching port cannot turn an external host into a managed one.
+
+### Installation
+
+The launcher sends a fixed POSIX `sh` script on standard input and names the
+operation in its arguments. The script never evaluates text from the client
+as shell code. It detects the operating system and architecture, and
+selects the release archive pinned for that platform by SHA-256. An
+unsupported platform or a release without that platform refuses before any
+transfer.
+
+The script installs under the account's `~/.openagents/` in private
+directories. It holds a lock whose owner record names a process and machine;
+it reclaims the lock only when that process no longer exists on the same
+machine, and it refuses as busy after a bounded wait for a live owner. It
+verifies the transferred archive's SHA-256 before extraction, extracts into a
+staging directory, proves the binary runs, and only then moves the version
+into place. A mismatch, an unusable archive, or a binary that does not run
+installs nothing and leaves any running host untouched. A verified installed
+version is reused without a transfer.
+
+### Lifetime and the ownership rule
+
+A host started over SSH is detached from the SSH session that started it. It
+binds loopback only. Its lifetime follows these rules:
+
+1. Only an explicit owner operation stops a `managed` host: a remove, or a
+   launch that replaces it under rule 4. Either one stops only the exact
+   process that both records name and that still runs the recorded version.
+   A recorded process identifier that now names another program is stale;
+   that program is never signaled.
+2. Remove on an `external` host detaches and reports the host still running.
+   No operation in this profile stops an external host.
+3. Client exit, a closed or dead tunnel, a lost network, a stopped SSH
+   session, and a client's disconnection are observational. None of
+   them stops, restarts, or re-labels a host.
+4. A launch with a changed release or runner for a `managed` host stops that
+   exact process and creates a new host with a new runtime generation. An
+   `external` host is adopted as it is, whatever its version.
+
+A cleanup receipt for a created host uses action `destroy`; for an adopted
+host, `detach`. A confirmed `destroy` needs the process to be gone and both
+records removed. Records establish ownership, not identity: a process
+identifier can be reused after its process exits, so a client trusts a host
+only after it proves its own key over the tunnel.
+
+### Transport and enrollment
+
+The launcher forwards a local loopback port to the host's loopback port. The
+tunnel is a route, not an identity: the client verifies the host's Nostr key
+over it on every connection, as over any other route in
+[NIP-REACH](NIP-REACH.md). The launcher disables SSH connection sharing for
+its own connections, so no multiplexed master that another program owns
+carries Coder traffic or outlives it. A password or passphrase answer passes
+to the SSH client through a one-shot pipe, never through an environment
+variable, an argument, or a file, and the helper is removed afterwards.
+
+SSH authorizes enrollment once. Over SSH, the launcher runs the host's local
+invitation command and receives one single-use invitation for this client's
+device key. The client redeems it through the host access profile
+(NIP-HOST). From then on, that grant governs access: an SSH login is not a
+grant, removing SSH access does not revoke the grant, and revoking the grant
+does not require SSH. The invitation never appears in a URL, a log, or a
+public event.
+
+### Conformance
+
+1. A fresh account installs the pinned archive once; a second launch reuses
+   it without a transfer and reuses the same managed host.
+2. A transferred archive whose digest differs installs nothing.
+3. An unsupported platform refuses before any transfer.
+4. A lock left by a dead owner is reclaimed; a live owner's lock is waited
+   for and then refused.
+5. A host already running without a launcher record is adopted as
+   `external`; remove detaches and the host keeps running.
+6. A changed runner relaunches a managed host and never an external one.
+7. Killing the tunnel, closing it, and exiting the client without cleanup
+   all leave the host running, and the next launch reuses it.
+
 ## Example and conformance
 
 A coding agent requests a pinned runtime plus a WS repository snapshot. The

@@ -1,0 +1,16 @@
+[package]
+name = "coder-ssh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Install, start or adopt, and reach a Coder host over the system ssh binary."
+
+[dependencies]
+libc = "0.2"
+sha2 = "0.10"
+supervise = { path = "../supervise", default-features = false }
+tempfile = "3"
+
+[lints]
+workspace = true

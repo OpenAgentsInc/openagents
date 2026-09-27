@@ -839,6 +839,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-ssh"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "sha2 0.10.9",
+ "supervise",
+ "tempfile",
+]
+
+[[package]]
 name = "coder-terminal"
 version = "0.1.0"
 dependencies = [
