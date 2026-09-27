@@ -32,6 +32,7 @@ use crate::publish::Publisher;
 use crate::tasks::{TaskRef, Tasks};
 use crate::{CAPABILITIES, Error, PROTOCOL_VERSION, Result, unix_time};
 
+mod cj;
 mod direct;
 mod dispatch;
 mod relay;
@@ -153,6 +154,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         tokio::spawn(direct::listen(shared.clone(), listener, acceptor)),
         tokio::spawn(relay::serve(shared.clone(), ready)),
         tokio::spawn(presence_loop(shared.clone())),
+        tokio::spawn(cj::serve(shared.clone())),
     ]);
     let _ = tokio::time::timeout(RELAY_READY_WAIT, relay_ready).await;
 

@@ -39,6 +39,10 @@ futures-util = "0.3"
 tempfile = "3"
 
 [[test]]
+name = "cj"
+required-features = ["host"]
+
+[[test]]
 name = "end_to_end"
 required-features = ["host"]
 
