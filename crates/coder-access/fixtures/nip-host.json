@@ -1,0 +1,852 @@
+{
+  "description": "NIP-HOST wire fixtures. Keys are the x-only public keys of secp256k1 scalars 1 (host), 2 (owner), 3 (device), and 4 (second device). Times are Unix seconds. Valid bodies must validate under the production relay policy and round-trip exactly; invalid bodies must refuse with the stated code, either when parsed or when validated.",
+  "valid": {
+    "grant": {
+      "v": "openagents.host-grant.v1",
+      "requires": [],
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+      "relay": "wss://relay.example.com/",
+      "rights": [
+        "observe",
+        "operate",
+        "terminal",
+        "review"
+      ],
+      "epoch": 0,
+      "origin": {
+        "kind": "invitation",
+        "id": "2222222222222222222222222222222222222222222222222222222222222222",
+        "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+      },
+      "issued_at": 1790000000,
+      "expires_at": 1790086400
+    },
+    "grant_approval": {
+      "v": "openagents.host-grant.v1",
+      "requires": [],
+      "grant": "3333333333333333333333333333333333333333333333333333333333333333",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "device": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+      "relay": "wss://relay.example.com/",
+      "rights": [
+        "observe"
+      ],
+      "epoch": 0,
+      "origin": {
+        "kind": "approval",
+        "id": "4444444444444444444444444444444444444444444444444444444444444444",
+        "issuer": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+      },
+      "issued_at": 1790000000,
+      "expires_at": 1790086400
+    },
+    "enrollment": {
+      "v": "openagents.host-enrollment-request.v1",
+      "requires": [],
+      "enrollment": "4444444444444444444444444444444444444444444444444444444444444444",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "relay": "wss://relay.example.com/",
+      "rights": [
+        "observe",
+        "operate",
+        "terminal",
+        "review"
+      ],
+      "issued_at": 1790000000,
+      "expires_at": 1790000300
+    },
+    "request_redeem": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": null,
+      "epoch": null,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "enroll.redeem",
+        "invitation": "2222222222222222222222222222222222222222222222222222222222222222",
+        "capability": "5555555555555555555555555555555555555555555555555555555555555555"
+      }
+    },
+    "request_approve": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "enroll.approve",
+        "enrollment": "4444444444444444444444444444444444444444444444444444444444444444",
+        "request_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "code": "7K3M-Q9TX",
+        "device": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+        "rights": [
+          "observe"
+        ],
+        "grant_expires_at": 1790086400
+      }
+    },
+    "request_deny": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "enroll.deny",
+        "enrollment": "4444444444444444444444444444444444444444444444444444444444444444",
+        "request_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+      }
+    },
+    "request_invite": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "invite.create",
+        "rights": [
+          "observe",
+          "operate"
+        ],
+        "grant_expires_at": 1790086400
+      }
+    },
+    "request_cancel_invite": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "invite.cancel",
+        "invitation": "7777777777777777777777777777777777777777777777777777777777777777"
+      }
+    },
+    "request_list_devices": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "device.list"
+      }
+    },
+    "request_revoke": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "0000000000000000000000000000000000000000000000000000000000000000",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "device.revoke",
+        "device": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13"
+      }
+    },
+    "request_task_create": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "8888888888888888888888888888888888888888888888888888888888888888",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "task.create",
+        "task": {
+          "title": "Fix the failing parser test",
+          "prompt": "Make the parser test in crates/example pass without changing the test.",
+          "workspace": "example"
+        }
+      }
+    },
+    "request_terminal_open": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "9999999999999999999999999999999999999999999999999999999999999999",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "terminal.open",
+        "cols": 120,
+        "rows": 40
+      }
+    },
+    "request_task_steer": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "5555555555555555555555555555555555555555555555555555555555555555",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "task.steer",
+        "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": 2,
+        "prompt": "Keep the public API unchanged."
+      }
+    },
+    "request_task_cancel": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "6666666666666666666666666666666666666666666666666666666666666666",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "task.cancel",
+        "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": 3,
+        "reason": "No longer needed."
+      }
+    },
+    "reply_devices": {
+      "v": "openagents.host-reply.v1",
+      "requires": [],
+      "request": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "request_event": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "result": {
+        "status": "ok",
+        "outcome": {
+          "kind": "devices",
+          "devices": [
+            {
+              "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+              "rights": [
+                "observe",
+                "operate",
+                "terminal",
+                "review"
+              ],
+              "epoch": 0,
+              "origin": "invitation",
+              "issued_at": 1790000000,
+              "expires_at": 1790086400,
+              "state": "active",
+              "last_seen": 1790000030
+            },
+            {
+              "device": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+              "grant": "3333333333333333333333333333333333333333333333333333333333333333",
+              "rights": [
+                "observe"
+              ],
+              "epoch": 1,
+              "origin": "approval",
+              "issued_at": 1790000000,
+              "expires_at": 1790086400,
+              "state": "revoked",
+              "last_seen": null
+            }
+          ]
+        }
+      }
+    },
+    "reply_dispatched": {
+      "v": "openagents.host-reply.v1",
+      "requires": [],
+      "request": "8888888888888888888888888888888888888888888888888888888888888888",
+      "request_event": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "result": {
+        "status": "ok",
+        "outcome": {
+          "kind": "dispatched",
+          "receipt": {
+            "operation": "task.create",
+            "reference": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    "reply_revoked": {
+      "v": "openagents.host-reply.v1",
+      "requires": [],
+      "request": "0000000000000000000000000000000000000000000000000000000000000000",
+      "request_event": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "result": {
+        "status": "ok",
+        "outcome": {
+          "kind": "revoked",
+          "device": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "epoch": 1,
+          "grants": [
+            "3333333333333333333333333333333333333333333333333333333333333333"
+          ]
+        }
+      }
+    },
+    "reply_refused_missing_right": {
+      "v": "openagents.host-reply.v1",
+      "requires": [],
+      "request": "9999999999999999999999999999999999999999999999999999999999999999",
+      "request_event": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "result": {
+        "status": "refused",
+        "code": "missing_right",
+        "missing": "terminal"
+      }
+    },
+    "reply_refused_revoked": {
+      "v": "openagents.host-reply.v1",
+      "requires": [],
+      "request": "8888888888888888888888888888888888888888888888888888888888888888",
+      "request_event": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "result": {
+        "status": "refused",
+        "code": "revoked",
+        "missing": null
+      }
+    }
+  },
+  "invalid": [
+    {
+      "name": "rights out of canonical order",
+      "schema": "grant",
+      "body": {
+        "v": "openagents.host-grant.v1",
+        "requires": [],
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relay": "wss://relay.example.com/",
+        "rights": [
+          "operate",
+          "observe"
+        ],
+        "epoch": 0,
+        "origin": {
+          "kind": "invitation",
+          "id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        },
+        "issued_at": 1790000000,
+        "expires_at": 1790086400
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "empty rights",
+      "schema": "grant",
+      "body": {
+        "v": "openagents.host-grant.v1",
+        "requires": [],
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relay": "wss://relay.example.com/",
+        "rights": [],
+        "epoch": 0,
+        "origin": {
+          "kind": "invitation",
+          "id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        },
+        "issued_at": 1790000000,
+        "expires_at": 1790086400
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "unknown right",
+      "schema": "grant",
+      "body": {
+        "v": "openagents.host-grant.v1",
+        "requires": [],
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relay": "wss://relay.example.com/",
+        "rights": [
+          "admin"
+        ],
+        "epoch": 0,
+        "origin": {
+          "kind": "invitation",
+          "id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        },
+        "issued_at": 1790000000,
+        "expires_at": 1790086400
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "unknown field",
+      "schema": "grant",
+      "body": {
+        "v": "openagents.host-grant.v1",
+        "requires": [],
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relay": "wss://relay.example.com/",
+        "rights": [
+          "observe",
+          "operate",
+          "terminal",
+          "review"
+        ],
+        "epoch": 0,
+        "origin": {
+          "kind": "invitation",
+          "id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        },
+        "issued_at": 1790000000,
+        "expires_at": 1790086400,
+        "bearer": true
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "unsupported version",
+      "schema": "grant",
+      "body": {
+        "v": "openagents.host-grant.v2",
+        "requires": [],
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relay": "wss://relay.example.com/",
+        "rights": [
+          "observe",
+          "operate",
+          "terminal",
+          "review"
+        ],
+        "epoch": 0,
+        "origin": {
+          "kind": "invitation",
+          "id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        },
+        "issued_at": 1790000000,
+        "expires_at": 1790086400
+      },
+      "code": "unsupported"
+    },
+    {
+      "name": "required feature",
+      "schema": "grant",
+      "body": {
+        "v": "openagents.host-grant.v1",
+        "requires": [
+          "openagents.future.v1"
+        ],
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relay": "wss://relay.example.com/",
+        "rights": [
+          "observe",
+          "operate",
+          "terminal",
+          "review"
+        ],
+        "epoch": 0,
+        "origin": {
+          "kind": "invitation",
+          "id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        },
+        "issued_at": 1790000000,
+        "expires_at": 1790086400
+      },
+      "code": "unsupported"
+    },
+    {
+      "name": "host is the owner",
+      "schema": "grant",
+      "body": {
+        "v": "openagents.host-grant.v1",
+        "requires": [],
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relay": "wss://relay.example.com/",
+        "rights": [
+          "observe",
+          "operate",
+          "terminal",
+          "review"
+        ],
+        "epoch": 0,
+        "origin": {
+          "kind": "invitation",
+          "id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        },
+        "issued_at": 1790000000,
+        "expires_at": 1790086400
+      },
+      "code": "forbidden"
+    },
+    {
+      "name": "lifetime over 30 days",
+      "schema": "grant",
+      "body": {
+        "v": "openagents.host-grant.v1",
+        "requires": [],
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relay": "wss://relay.example.com/",
+        "rights": [
+          "observe",
+          "operate",
+          "terminal",
+          "review"
+        ],
+        "epoch": 0,
+        "origin": {
+          "kind": "invitation",
+          "id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        },
+        "issued_at": 1790000000,
+        "expires_at": 1792678400
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "plain ws relay in production",
+      "schema": "grant",
+      "body": {
+        "v": "openagents.host-grant.v1",
+        "requires": [],
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relay": "ws://relay.example.com/",
+        "rights": [
+          "observe",
+          "operate",
+          "terminal",
+          "review"
+        ],
+        "epoch": 0,
+        "origin": {
+          "kind": "invitation",
+          "id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        },
+        "issued_at": 1790000000,
+        "expires_at": 1790086400
+      },
+      "code": "forbidden"
+    },
+    {
+      "name": "relay with a query",
+      "schema": "grant",
+      "body": {
+        "v": "openagents.host-grant.v1",
+        "requires": [],
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relay": "wss://relay.example.com/?token=x",
+        "rights": [
+          "observe",
+          "operate",
+          "terminal",
+          "review"
+        ],
+        "epoch": 0,
+        "origin": {
+          "kind": "invitation",
+          "id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "issuer": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        },
+        "issued_at": 1790000000,
+        "expires_at": 1790086400
+      },
+      "code": "forbidden"
+    },
+    {
+      "name": "enrollment host is the owner",
+      "schema": "enrollment",
+      "body": {
+        "v": "openagents.host-enrollment-request.v1",
+        "requires": [],
+        "enrollment": "4444444444444444444444444444444444444444444444444444444444444444",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "relay": "wss://relay.example.com/",
+        "rights": [
+          "observe",
+          "operate",
+          "terminal",
+          "review"
+        ],
+        "issued_at": 1790000000,
+        "expires_at": 1790000300
+      },
+      "code": "forbidden"
+    },
+    {
+      "name": "enrollment over five minutes",
+      "schema": "enrollment",
+      "body": {
+        "v": "openagents.host-enrollment-request.v1",
+        "requires": [],
+        "enrollment": "4444444444444444444444444444444444444444444444444444444444444444",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "owner": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "relay": "wss://relay.example.com/",
+        "rights": [
+          "observe",
+          "operate",
+          "terminal",
+          "review"
+        ],
+        "issued_at": 1790000000,
+        "expires_at": 1790000301
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "redemption names a grant",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "enroll.redeem",
+          "invitation": "2222222222222222222222222222222222222222222222222222222222222222",
+          "capability": "5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "grant without epoch",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "8888888888888888888888888888888888888888888888888888888888888888",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": null,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "task.create",
+          "task": {
+            "title": "Fix the failing parser test",
+            "prompt": "Make the parser test in crates/example pass without changing the test.",
+            "workspace": "example"
+          }
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "request over 60 seconds",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000061,
+        "op": {
+          "kind": "device.list"
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "terminal size zero",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "9999999999999999999999999999999999999999999999999999999999999999",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "terminal.open",
+          "cols": 0,
+          "rows": 40
+        }
+      },
+      "code": "bounds"
+    },
+    {
+      "name": "empty steering prompt",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "5555555555555555555555555555555555555555555555555555555555555555",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "task.steer",
+          "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 2,
+          "prompt": "   "
+        }
+      },
+      "code": "bounds"
+    },
+    {
+      "name": "approval digest without prefix",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "enroll.approve",
+          "enrollment": "4444444444444444444444444444444444444444444444444444444444444444",
+          "request_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+          "code": "7K3M-Q9TX",
+          "device": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "rights": [
+            "observe"
+          ],
+          "grant_expires_at": 1790086400
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "unknown operation",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "host.shutdown"
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "uppercase identity",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "device.list"
+        }
+      },
+      "code": "malformed"
+    }
+  ]
+}

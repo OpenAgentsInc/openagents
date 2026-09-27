@@ -435,7 +435,11 @@ behaviors tested, in NIP-11 `supported_extensions`, not a numeric
 
 [`crates/coder-access`](../../crates/coder-access/README.md) implements the
 host store, the direct artifact binding, the portable client, and a CLI. Its
-fixtures run over a synthetic NIP-42 relay.
+behavior tests run over a synthetic NIP-42 relay. The wire fixtures in
+[`crates/coder-access/fixtures/nip-host.json`](../../crates/coder-access/fixtures/nip-host.json)
+give a valid body for every artifact and every operation, and invalid bodies
+with the refusal code each must produce; `crates/coder-access/tests/wire.rs`
+checks them.
 [`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
 (`coder host serve`): it serves the direct artifact binding and the
 direct-channel binding, and dispatches `task.create`, `task.steer`, and

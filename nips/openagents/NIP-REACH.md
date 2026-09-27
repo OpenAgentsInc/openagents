@@ -378,6 +378,15 @@ edge cases, and handshakes with a wrong host key, an impersonating host, a
 replayed nonce, a revoked grant, a wrong epoch, a stale host generation, a
 stale hello time, and an oversized frame.
 
+The wire fixtures in
+[`crates/coder-reach/fixtures/nip-reach.json`](../../crates/coder-reach/fixtures/nip-reach.json)
+give valid directory, presence, and hint bodies; invalid bodies with the
+refusal code each must produce; placement vectors with each candidate's
+assessment and the chosen host; and a transcript vector with the exact
+SHA-256 both channel proofs sign. `crates/coder-reach/tests/wire.rs` checks
+them. The transcript vector was also computed independently of the crate
+from this section's construction.
+
 Advertise `nip-reach-v1` in NIP-11 `supported_extensions` only for a relay
 whose private-artifact policy delivers these records to their exact
 recipients. Hosts and clients state their role in their own capability
