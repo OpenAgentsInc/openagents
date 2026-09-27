@@ -252,9 +252,10 @@ after [Round 2's additions](../terminal-bench/2026-09-26-round2-knowledge.md).
 in this section needs to change. Take every number from
 2026-09-26-out-of-sample-study-results.md. -->
 
-**Status (2026-09-27): TB4 Round 3 is complete. No TB4 out-of-sample
-win is claimed: 0 held-out passes in 24, and the one Fable-fails pass didn't
-confirm (1 of 3).** The TB2.1 result
+**Status (2026-09-27): four TB4 rounds are complete. No TB4 out-of-sample
+win is claimed. Rounds 2, 3, and 4 each had 0 held-out passes in 24. Round 4
+fixed the Codex route so Luna reasons and ran at xhigh. Round 3's one
+Fable-fails pass didn't confirm (1 of 3). Follow-up: #9717.** The TB2.1 result
 [above](#out-of-sample-terminal-bench-21-knowledge-off) is a separate,
 pre-registered study, on an older benchmark with the knowledge base off.
 
@@ -403,8 +404,8 @@ but not removed.
    came over Nostr, harvested by contrasting failed runs with public Fable
    wins.
 6. The limit: in-sample means the entry came from the task it helped. On
-   TB4's pre-registered held-out tasks: 0 passes in three rounds. TB4 is
-   still open.
+   TB4's pre-registered held-out tasks: 0 passes in four rounds, including
+   one with reasoning fixed at xhigh. TB4 is still open.
 7. The base is as wide as the people who write it. 11 open quests on
    relay.openagents.com: find the detail Microcoder misses, publish it under
    your key, and let someone else's runs measure it. XP per accepted
