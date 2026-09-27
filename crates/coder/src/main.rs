@@ -45,7 +45,6 @@
 mod checkup;
 mod cli;
 mod headless;
-mod task_cli;
 
 use std::io::{self, stdout};
 use std::path::Path;
@@ -315,7 +314,7 @@ async fn main() -> ExitCode {
         };
     }
     if arguments.first().is_some_and(|argument| argument == "task") {
-        return ExitCode::from(task_cli::run(&arguments[1..]).await);
+        return ExitCode::from(coder::task::cli::run(&arguments[1..]).await);
     }
     if arguments.first().is_some_and(|argument| argument == "link") {
         return ExitCode::from(coder_setup::cli::run(&arguments[1..]).await);

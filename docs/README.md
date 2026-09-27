@@ -9,6 +9,7 @@ the [document catalog](catalog.md) to find a specific reference.
 
 | Goal | Start here |
 | --- | --- |
+| Reach every surface from one command | [The `openagents` command](cli/README.md) |
 | Use or develop Coder | [Coder](coder/README.md), [installation](coder/guides/install.md), [task commands](coder/guides/tasks.md) |
 | Build shared terminal, native, and web interfaces | [Rust Native](../crates/rust-native/README.md), [styling](coder/rust-native/styling-design.md), [adoption plan](coder/rust-native/adoption.md) |
 | Follow suite delivery and ownership | [Migration tracker](coder/migration-status.md), [master roadmap](roadmap.md) |

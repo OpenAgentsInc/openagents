@@ -131,7 +131,7 @@ impl Witness {
                             };
                             target.insert((pubkey, state.id));
                         }
-                        Received::Gesture { .. } => continue,
+                        Received::Gesture { .. } | Received::Command { .. } => continue,
                     }
                     if self.events.len() < 128 {
                         self.events

@@ -3,8 +3,10 @@
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
-use coder::task::{self, Action, MAX_COMMAND_BYTES, Store};
+use super::{self as task, Action, MAX_COMMAND_BYTES, Store};
 use serde_json::{Value, json};
+
+const EXIT_USAGE: u8 = 64;
 
 const USAGE: &str = "\
 Usage:
@@ -189,7 +191,7 @@ pub async fn run(arguments: &[String]) -> u8 {
         Ok(options) => options,
         Err(message) => {
             eprintln!("coder task: {message}\n\n{USAGE}");
-            return crate::cli::EXIT_USAGE;
+            return EXIT_USAGE;
         }
     };
     // Validate before opening a store. A wrong subcommand must never apply the
@@ -235,7 +237,7 @@ pub async fn run(arguments: &[String]) -> u8 {
     };
     match &options.operation {
         Operation::Check(id) => {
-            return match task::owner::check(&directory, id, &coder::capability::Trust::operator())
+            return match task::owner::check(&directory, id, &crate::capability::Trust::operator())
                 .await
             {
                 Ok(task) => output(&json!(task)),

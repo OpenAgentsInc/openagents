@@ -38,6 +38,7 @@ discover or admit signed scene definitions.
 | `33301` | Addressable | Entity state |
 | `23300` | Ephemeral | Pose frame |
 | `23301` | Ephemeral | Gesture |
+| `23302` | Ephemeral | Zone command |
 
 Kind allocations are draft assignments, not upstream registrations.
 
@@ -344,6 +345,60 @@ not recognize. Two names are suggested for common interactions:
 | `look-around` | The entity surveyed its surroundings; `at` lists what it looked at. |
 | `greet` | The entity greeted another; `to` names it. A recipient MAY greet back once, and SHOULD NOT greet the same entity again for a cooldown, so two clients do not greet each other in a loop. |
 
+## Zone command — kind `23302`
+
+A zone command asks the client that simulates a loaded zone to act inside
+it: fly the astronaut to a point, grab the next part, release what is held.
+It is how a program or another participant reaches into a simulation that
+runs on someone else's machine. The event names the zone, the client
+pubkey it is for, and one verb with its arguments. Relays forward it and
+do not store it.
+
+```json
+{
+  "kind": 23302,
+  "tags": [
+    ["w", "<world identifier>"],
+    ["z", "lagrange"],
+    ["p", "<operator pubkey>"]
+  ],
+  "content": "{\"v\":1,\"zone\":\"lagrange\",\"cmd\":\"fly\",\"args\":[-12.0,-6.0,4.0],\"t\":1790000001000,\"id\":\"c7f1\"}"
+}
+```
+
+| Content field | Meaning |
+| --- | --- |
+| `v` | Content version, `1`. |
+| `zone` | The loaded zone the command is for: 1 to 32 bytes of `[a-z0-9-]`. |
+| `cmd` | The verb: 1 to 32 bytes of `[a-z0-9-]`. |
+| `args` | Zero or more arguments: numbers or strings, at most 16, each string at most 128 bytes. |
+| `t` | Publisher time in milliseconds. |
+| `id` | A short opaque id, 1 to 16 bytes, so the operator can report the result. |
+
+The `p` tag names the client whose simulation should act. That client is
+the **operator** of its zone instance. An operator MUST ignore a command
+from a pubkey it has not admitted; admission is the operator's own policy
+(its own keys, an owner key, or an explicit allow list) and is never
+implied by presence in the world. An operator MUST ignore verbs it does not
+recognize and MAY report the outcome as a gesture from its avatar, with
+`g` set to `zone-ok` or `zone-refused` and `to` naming the sender, so the
+sender can wait for it.
+
+Verbs are zone-defined. The Lagrange 1 construction zone recognizes:
+
+| Verb | Arguments | Meaning |
+| --- | --- | --- |
+| `fly` | `x, y, z` | Fly the maneuvering pack to a point in station coordinates. |
+| `grab` | none | Take the nearest drifting part, or the next part at the depot. |
+| `install` | none | Carry the held part to its jig slot, correcting for the carry offset, and latch it. Fails if the part does not latch. |
+| `release` | none | Let go of the held part; within latch range and speed it locks into the jig. |
+| `stop` | none | Cancel the current flight target and hold position. |
+| `status` | none | Report the simulation snapshot as a `zone-ok` gesture. |
+
+The current Verse client does not yet accept zone commands; the
+`openagents zone` command sends them and runs the same simulation
+headlessly.
+
 ## World chat
 
 Chat inside a world uses [NIP-C7](../official/C7.md) kind `9` messages with
@@ -392,6 +447,7 @@ Typical filters:
 {"kinds": [23300, 23301, 33301], "#w": ["<world>"], "#c": ["0,-1", "1,-1", "0,0"]}
 {"kinds": [33301], "authors": ["<own pubkey>"], "#d": ["<world>/avatar"]}
 {"kinds": [9], "#w": ["<world>"], "limit": 100}
+{"kinds": [23302], "#w": ["<world>"], "#p": ["<own pubkey>"]}
 ```
 
 A client SHOULD resubscribe with new `#c` values as it crosses cells.

@@ -164,7 +164,7 @@ impl Crowd {
                     remote.state = Some((pose.pos(), pose.rot(), state.online));
                 }
             }
-            Received::Gesture { .. } => {}
+            Received::Gesture { .. } | Received::Command { .. } => {}
         }
     }
 

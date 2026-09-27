@@ -24,6 +24,7 @@ pub mod adapter;
 pub mod artifact;
 pub mod autostart;
 pub mod checks;
+pub mod cli;
 pub mod owner;
 pub mod remote;
 pub mod view;

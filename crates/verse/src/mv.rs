@@ -17,6 +17,10 @@ pub const STATE_KIND: u16 = 33_301;
 pub const FRAME_KIND: u16 = 23_300;
 /// Gesture, ephemeral.
 pub const GESTURE_KIND: u16 = 23_301;
+/// Zone command, ephemeral.
+pub const COMMAND_KIND: u16 = 23_302;
+/// Most arguments one zone command carries.
+pub const MAX_COMMAND_ARGS: usize = 16;
 /// NIP-C7 chat message, used for world chat.
 pub const CHAT_KIND: u16 = 9;
 /// Default cell size in meters.
@@ -173,9 +177,61 @@ pub struct Gesture {
     pub to: Option<[String; 2]>,
 }
 
+/// One argument of a zone command.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Arg {
+    /// A number.
+    Number(f64),
+    /// A short string.
+    Text(String),
+}
+
+/// Content of a zone command: one verb for the client that simulates a
+/// loaded zone.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Command {
+    /// Content version.
+    pub v: u32,
+    /// The loaded zone the command is for.
+    pub zone: String,
+    /// The verb.
+    pub cmd: String,
+    /// Arguments.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<Arg>,
+    /// Publisher time in milliseconds.
+    pub t: u64,
+    /// A short opaque id the operator echoes in its report.
+    pub id: String,
+}
+
+impl Command {
+    /// The numeric arguments, when every argument is a number.
+    #[must_use]
+    pub fn numbers(&self) -> Option<Vec<f64>> {
+        self.args
+            .iter()
+            .map(|arg| match arg {
+                Arg::Number(n) => Some(*n),
+                Arg::Text(_) => None,
+            })
+            .collect()
+    }
+}
+
 /// A received NIP-MV event, validated.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Received {
+    /// A zone command from `pubkey`, addressed to `to`.
+    Command {
+        /// Sender.
+        pubkey: String,
+        /// The operator the command is for.
+        to: String,
+        /// Command content.
+        command: Command,
+    },
     /// A pose frame from `pubkey`.
     Frame {
         /// Publisher.
@@ -289,6 +345,28 @@ pub fn gesture_event(
     }
     let content = serde_json::to_string(gesture).expect("a gesture serializes");
     signer.sign(now, GESTURE_KIND, tags, content)
+}
+
+/// Signs a zone command for the operator `to`.
+///
+/// # Panics
+///
+/// Never in practice: serializing owned plain data cannot fail.
+#[must_use]
+pub fn command_event(
+    signer: &RelaySigner,
+    world: &str,
+    to: &str,
+    command: &Command,
+    now: u64,
+) -> Event {
+    let tags = vec![
+        tag(&["w", world]),
+        tag(&["z", &command.zone]),
+        tag(&["p", to]),
+    ];
+    let content = serde_json::to_string(command).expect("a command serializes");
+    signer.sign(now, COMMAND_KIND, tags, content)
 }
 
 /// A world chat line: NIP-C7 kind `9` scoped by NIP-MV tags. `channel` is
@@ -492,7 +570,68 @@ pub fn decode(event: &Event, world: &str) -> Result<Received, String> {
             }
             Ok(Received::Gesture { pubkey, gesture })
         }
+        COMMAND_KIND => {
+            let command: Command =
+                serde_json::from_str(&event.content).map_err(|e| e.to_string())?;
+            if command.v != 1 {
+                return Err(format!("unsupported command version {}", command.v));
+            }
+            check_name(&command.zone)?;
+            check_name(&command.cmd)?;
+            if command.id.is_empty() || command.id.len() > 16 {
+                return Err("command id must be 1 to 16 bytes".into());
+            }
+            if command.args.len() > MAX_COMMAND_ARGS {
+                return Err("a command carries at most 16 arguments".into());
+            }
+            for arg in &command.args {
+                match arg {
+                    Arg::Number(n) if !n.is_finite() || n.abs() >= f64::from(MAX_COORD) => {
+                        return Err("a command argument is not a finite number".into());
+                    }
+                    Arg::Text(text) if text.len() > 128 => {
+                        return Err("a command argument is longer than 128 bytes".into());
+                    }
+                    _ => {}
+                }
+            }
+            if event.tag_values("z").collect::<Vec<_>>() != [command.zone.as_str()] {
+                return Err("the z tag does not match the zone".into());
+            }
+            let to: Vec<&str> = event.tag_values("p").collect();
+            let [to] = to.as_slice() else {
+                return Err("a command names exactly one operator".into());
+            };
+            if !is_hex_key(to) {
+                return Err("a command's operator is a malformed pubkey".into());
+            }
+            Ok(Received::Command {
+                pubkey,
+                to: (*to).to_owned(),
+                command,
+            })
+        }
         other => Err(format!("kind {other} is not a NIP-MV event")),
+    }
+}
+
+fn is_hex_key(text: &str) -> bool {
+    text.len() == 64
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+fn check_name(name: &str) -> Result<(), String> {
+    let ok = !name.is_empty()
+        && name.len() <= 32
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    if ok {
+        Ok(())
+    } else {
+        Err(format!("{name:?} is not 1 to 32 bytes of [a-z0-9-]"))
     }
 }
 
