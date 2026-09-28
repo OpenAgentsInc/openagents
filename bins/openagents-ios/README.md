@@ -52,12 +52,10 @@ The app has four tabs, shown as icons:
   position, speed, and physics time.
 - **Wallet** is a placeholder.
 - **Account** holds **Computers** (Coder's shared Computers screens: add a
-  computer, access, activity, order work, terminal), **Chats on your
-  computers** (the Claude, Codex, and Coder chats saved on every connected
-  computer, newest first, without subagents), **Tailnet**, and **About this
-  device**.
+  computer, access, activity, order work, terminal), **Tailnet**, and
+  **About this device**.
 
-Both chat screens draw Rust Native's conversation elements: a
+The Coder chat screen draws Rust Native's conversation elements: a
 bottom-anchored transcript with a jump to the bottom and **Load earlier**,
 messages by role, Markdown parsed in Rust, collapsible tool rows, a working
 row, and a composer with send and stop. The shared iOS renderer
@@ -86,8 +84,7 @@ without running `coder pair`. The phone must be on the tailnet, through the
 Tailscale app, to reach the computer.
 
 A computer without tailnet admission can still be added from **Computers >
-Add a computer** with a `coder-host:` invitation or an 8-character code, and
-its chats from **Chats > Add a computer** with `coder pair`. The device's
+Add a computer** with a `coder-host:` invitation or an 8-character code. The device's
 Nostr key stays in Keychain, and grants and pairings stay in encrypted
 stores keyed by it.
 

@@ -116,45 +116,6 @@ struct CoderTab: View {
     }
 }
 
-/// Chats from every computer paired for reading. The surface holds its own
-/// lists, so it does not scroll as a whole.
-struct ChatsTab: View {
-    @ObservedObject var bridge: MobileBridge
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .topTrailing) {
-                if let view = bridge.packet?.chats {
-                    NativeRenderer(node: view.root, revision: view.revision,
-                                   followTarget: nil, followChanged: nil,
-                                   activate: { node in bridge.activate("chats", view: view, node: node) })
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                } else {
-                    Color.clear
-                }
-                if bridge.packet?.chats_loading == true {
-                    ProgressView().padding().accessibilityLabel("Loading chats")
-                }
-            }
-            if let input = bridge.packet?.chats_input {
-                InputBar(input: input, busy: bridge.busy,
-                         submit: { bridge.submit("chats", token: input.token, value: $0) },
-                         cancel: { bridge.cancel("chats", token: input.token) })
-                    .id(input.token)
-            }
-        }
-        .background(Color.black.ignoresSafeArea())
-        // Reads finish in the background; poll until they do.
-        .task(id: bridge.packet?.chats_loading == true) {
-            guard bridge.packet?.chats_loading == true else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                if !Task.isCancelled { bridge.snapshot() }
-            }
-        }
-    }
-}
-
 struct TailnetTab: View {
     @ObservedObject var bridge: MobileBridge
 

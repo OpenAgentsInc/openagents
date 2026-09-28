@@ -28,7 +28,7 @@ enum AppTab: String, CaseIterable {
 
 /// A screen that the Account tab pushes.
 enum AccountRoute: String, Hashable {
-    case computers, chats, tailnet, device
+    case computers, tailnet, device
 }
 
 /// Developer launch arguments that open a tab or an Account screen directly,
@@ -112,7 +112,6 @@ struct AccountTab: View {
             List {
                 Section {
                     NavigationLink("Computers", value: AccountRoute.computers)
-                    NavigationLink("Chats on your computers", value: AccountRoute.chats)
                     NavigationLink("Tailnet", value: AccountRoute.tailnet)
                 }
                 Section {
@@ -134,7 +133,6 @@ struct AccountTab: View {
     @ViewBuilder private func destination(_ route: AccountRoute) -> some View {
         switch route {
         case .computers: ComputersTab(bridge: bridge).navigationTitle("") // The screen draws its own heading.
-        case .chats: ChatsTab(bridge: bridge).navigationTitle("") // The screen draws its own heading.
         case .tailnet: TailnetTab(bridge: bridge).navigationTitle("") // The screen draws its own heading.
         case .device: AboutDeviceScreen(device: bridge.packet?.device).navigationTitle("About this device")
         }
