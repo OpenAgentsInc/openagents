@@ -38,6 +38,15 @@ pub fn referee_key_file() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/nostr/referee-key"))
 }
 
+/// `~/.openagents/nostr/playtest-referee-key`, the separate key that signs
+/// `playtest` quests and awards. It is never created on first use:
+/// `microcoder xp playtest-keygen` makes it, once, on the owner's machine.
+#[must_use]
+pub fn playtest_referee_key_file() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .map(|home| PathBuf::from(home).join(".openagents/nostr/playtest-referee-key"))
+}
+
 /// Whose awards a reader counts.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct XpTrust {
@@ -134,6 +143,25 @@ pub fn verify_reproduction(
     Ok((award, parsed))
 }
 
+/// Checks one `playtest` award completely: the award alone, its quest,
+/// its rule-derived key, and the rule over the tester's report and, for a
+/// moderated or group session, the moderator's session record.
+///
+/// # Errors
+///
+/// A message naming the first check that failed.
+pub fn verify_playtest(
+    award_event: &Event,
+    quest: &Event,
+    report: &Event,
+    session: Option<&Event>,
+) -> Result<(Award, xp::Quest), String> {
+    let award = xp::parse_award(award_event).map_err(|e| e.to_string())?;
+    let parsed = xp::bind_quest(&award, quest).map_err(|e| e.to_string())?;
+    xp::bind_playtest(&award, &parsed, report, session).map_err(|e| e.to_string())?;
+    Ok((award, parsed))
+}
+
 /// One awardee's share of one counted award.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Credit {
@@ -144,10 +172,11 @@ pub struct Credit {
     pub quest: String,
     pub title: String,
     pub season: String,
-    /// The quest's rule: `kb-transfer` or `reproduce`.
+    /// The quest's rule: `kb-transfer`, `reproduce`, or `playtest`.
     pub rule: String,
     /// `author` or `runner` under `kb-transfer`; `claimant` or
-    /// `reproducer` under `reproduce`.
+    /// `reproducer` under `reproduce`; `tester` or `triager` under
+    /// `playtest`.
     pub role: String,
     pub pubkey: String,
     pub xp: u64,
@@ -183,7 +212,11 @@ fn short(hex: &str) -> &str {
 /// plus the `3190` entries and `3189` evidence the awards name. Events may
 /// come from several relays and repeat. When the reader lists runners, a
 /// `kb-transfer` award counts only when its runner is listed, and a
-/// `reproduce` award only when its reproducer is.
+/// `reproduce` award only when its reproducer is; the runner list doesn't
+/// apply to `playtest`, whose evidence is a tester's report.
+///
+/// A `playtest` award's key is derived by its rule, and a quest version
+/// with more live awards than its `max_awards` counts none of them.
 #[must_use]
 pub fn derive(events: &[Event], trust: &XpTrust) -> Ledger {
     let mut ledger = Ledger::default();
@@ -252,6 +285,14 @@ pub fn derive(events: &[Event], trust: &XpTrust) -> Ledger {
                     .ok_or(format!("the {what} {} isn't available", short(id)))
             };
             let quest = find(&award.quest.id, "quest")?;
+            if award.rule == xp::PLAYTEST {
+                let report = find(&award.evidence[0].id, "report")?;
+                let session = match award.evidence.get(1) {
+                    Some(record) => Some(find(&record.id, "session record")?),
+                    None => None,
+                };
+                return verify_playtest(event, quest, report, session);
+            }
             let (award, quest) = if award.rule == xp::REPRODUCE {
                 let claim = find(&award.evidence[0].id, "claim")?;
                 let reproduction = find(&award.evidence[1].id, "reproduction")?;
@@ -284,7 +325,37 @@ pub fn derive(events: &[Event], trust: &XpTrust) -> Ledger {
         }
     }
 
+    // A playtest quest version states the most awards it pays; more live
+    // awards than that is the referee overissuing, and none of them count.
+    let mut per_quest: BTreeMap<(String, String), (u64, usize)> = BTreeMap::new();
+    for ((referee, _), awards) in &live {
+        for (award, quest, _) in awards {
+            if let Some(accepted) = &quest.acceptance.playtest {
+                per_quest
+                    .entry((referee.clone(), award.coordinate.clone()))
+                    .or_insert((accepted.max_awards, 0))
+                    .1 += 1;
+            }
+        }
+    }
+    let overissued: BTreeSet<(String, String)> = per_quest
+        .into_iter()
+        .filter(|(_, (max, n))| (*n as u64) > *max)
+        .map(|(quest, (max, n))| {
+            ledger.conflicts.push(format!(
+                "{}: {n} live awards over its max_awards of {max}; none counts until the \
+referee revokes the extra ones",
+                quest.1
+            ));
+            quest
+        })
+        .collect();
     for ((referee, key), awards) in live {
+        if awards.first().is_some_and(|(award, _, _)| {
+            overissued.contains(&(referee.clone(), award.coordinate.clone()))
+        }) {
+            continue;
+        }
         if awards.len() > 1 {
             let ids: Vec<&str> = awards.iter().map(|(_, _, id)| short(id)).collect();
             ledger.conflicts.push(format!(

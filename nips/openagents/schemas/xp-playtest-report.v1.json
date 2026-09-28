@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.xp-playtest-report.v1",
+  "title": "NIP-XP playtest report (kind 3195) body: content-free",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "requires",
+    "type",
+    "build",
+    "platform",
+    "kind",
+    "digest",
+    "script"
+  ],
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "requires": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "type": {
+      "const": "playtest-report"
+    },
+    "build": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "platform": {
+      "enum": [
+        "ios",
+        "android"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "bug",
+        "confusing",
+        "idea",
+        "felt-good",
+        "verified",
+        "session",
+        "diary"
+      ]
+    },
+    "digest": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "script": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      ]
+    }
+  }
+}

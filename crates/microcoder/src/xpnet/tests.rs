@@ -716,3 +716,75 @@ async fn a_trainer_key_file_may_hold_an_nsec() {
     std::fs::write(&path, "nsec1notakey").unwrap();
     assert!(load_key(&path, "signing as").is_err());
 }
+
+#[tokio::test]
+async fn a_playtest_referee_accepts_a_testers_report_once() {
+    let (url, store) = relay().await;
+    let home = scratch("xp-playtest");
+    let key = home.join("nostr/playtest-referee-key");
+    let key_arg = key.to_str().unwrap().to_string();
+
+    // The key is made once and never replaced; a quest needs it to exist.
+    let keygen = options(&["--key", &key_arg]);
+    assert!(playtest_key(&keygen).is_err());
+    assert_eq!(playtest_keygen(&keygen).unwrap(), 0);
+    assert_eq!(playtest_keygen(&keygen).unwrap(), 1);
+    let referee = remote::own_pubkey(&key).unwrap();
+
+    let path = home.join("playtest-bug.json");
+    let spec = json!({
+        "id": "playtest-s1.bug-minor",
+        "version": 1,
+        "season": {"id": "playtest-s1", "opens_at": 0, "closes_at": 4_000_000_000_u64},
+        "title": "Reproducible bug report, P2 or P3",
+        "objective": "Report a bug a triager can reproduce from your steps.",
+        "acceptance": {"rule": "playtest", "contribution": "bug", "builds": ["1.0.0 (15)"],
+                       "severities": ["p2", "p3"], "max_awards": 50},
+        "reference": null,
+        "award": {"tester": 20, "triager": 0},
+    });
+    std::fs::write(&path, spec.to_string()).unwrap();
+    let file = path.to_str().unwrap().to_string();
+    let publish = options(&[&file, "--relay", &url, "--key", &key_arg]);
+    assert_eq!(quest_key(&publish).unwrap(), key);
+    assert_eq!(quest(&publish, &key).await.unwrap(), 0);
+
+    let (tester, triager) = (signer(7), signer(8));
+    let report = put(
+        &store,
+        &tester,
+        xp::playtest_report("1.0.0 (15)", "ios", "bug", &"cd".repeat(32), None).unwrap(),
+    );
+    let accept = |severity: &str| {
+        options(&[
+            "--relay",
+            &url,
+            "--key",
+            &key_arg,
+            "--quest",
+            "playtest-s1.bug-minor@1",
+            "--evidence",
+            &report.id,
+            "--triager",
+            triager.pubkey(),
+            "--issue",
+            "OpenAgentsInc/openagents#9901",
+            "--severity",
+            severity,
+        ])
+    };
+    // A severity the quest doesn't pay for is refused; the right one pays
+    // once.
+    assert_eq!(award(&accept("p0"), &key).await.unwrap(), 1);
+    assert_eq!(award(&accept("p2"), &key).await.unwrap(), 0);
+    assert_eq!(award(&accept("p2"), &key).await.unwrap(), 1);
+    assert_eq!(count(&store, xp::AWARD_KIND), 1);
+
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee]),
+        runners: BTreeSet::new(),
+    };
+    let derived = derive_from(&store, &trust);
+    assert_eq!(derived.totals.get(tester.pubkey()), Some(&20));
+    assert!(!derived.totals.contains_key(triager.pubkey()));
+}

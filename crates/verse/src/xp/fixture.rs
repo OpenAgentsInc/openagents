@@ -302,3 +302,129 @@ pub fn tutorial_events(
         .flat_map(|task| Reproduction::new(referee, &claimant, reproducer, task, 50, at).events(at))
         .collect()
 }
+
+/// Signed events in which `tester` has accepted playtest contributions
+/// from `referee`, a labeled fixture for captures, tests, and the app's
+/// preview card: one reproducible bug (20 XP), one verified fix (10 XP),
+/// and a moderated session (25 XP), with the titles `playtester`,
+/// `founding-playtester`, `bug-hunter`, `fix-verifier`, and `raider` on
+/// them. The triager and moderator are throwaway keys. Trust `referee`
+/// alone to read it; it never counts toward a trainer level.
+///
+/// # Panics
+///
+/// Never: the fixtures are valid.
+#[must_use]
+pub fn playtest_events(referee: &RelaySigner, tester: &RelaySigner, at: u64) -> Vec<Event> {
+    let triager = signer(0x7e_1a_9e);
+    let moderator = signer(0x30_de_7a);
+    let season =
+        json!({"id": "playtest-s1", "opens_at": at - 1_000, "closes_at": at + 28 * 86_400});
+    let builds = json!(["1.0.0 (15)", "1.0.0 (16)"]);
+    let quest = |id: &str, title: &str, acceptance: serde_json::Value, xp: u64| {
+        let mut acceptance = acceptance;
+        acceptance["rule"] = json!("playtest");
+        acceptance["builds"] = builds.clone();
+        acceptance["max_awards"] = json!(500);
+        sign(
+            referee,
+            at,
+            xp::quest(&json!({
+                "id": id, "version": 1, "season": season, "title": title,
+                "objective": "An accepted playtest contribution in season playtest-s1.",
+                "acceptance": acceptance, "reference": null,
+                "award": {"tester": xp, "triager": 0},
+            }))
+            .expect("a valid playtest quest"),
+        )
+    };
+    let bug = quest(
+        "playtest-s1.bug-minor",
+        "Reproducible bug report, P2 or P3",
+        json!({"contribution": "bug", "severities": ["p2", "p3"]}),
+        20,
+    );
+    let fix = quest(
+        "playtest-s1.verified-fix",
+        "Verified fix",
+        json!({"contribution": "verified-fix"}),
+        10,
+    );
+    let raid = quest(
+        "playtest-s1.raid",
+        "Group session: the Grid raid",
+        json!({"contribution": "session", "script": "raid", "format": "group"}),
+        25,
+    );
+    let digest = "ab".repeat(32);
+    let report = |kind: &str, script: Option<&str>| {
+        sign(
+            tester,
+            at,
+            xp::playtest_report("1.0.0 (15)", "ios", kind, &digest, script)
+                .expect("a valid report"),
+        )
+    };
+    let (found, verified, played) = (
+        report("bug", None),
+        report("verified", None),
+        report("session", Some("raid")),
+    );
+    let record = sign(
+        &moderator,
+        at,
+        xp::playtest_session("raid", "group", "1.0.0 (15)", tester.pubkey(), at)
+            .expect("a valid session record"),
+    );
+    let issue = Some("OpenAgentsInc/openagents#9901".to_owned());
+    let award = |quest: &Event,
+                 report: &Event,
+                 session: Option<&Event>,
+                 by: &RelaySigner,
+                 fields: xp::PlaytestAward| {
+        let parts = xp::playtest_award(quest, report, session, by.pubkey(), &fields, at)
+            .expect("the rule accepts the contribution");
+        sign(referee, at, parts)
+    };
+    let bug_award = award(
+        &bug,
+        &found,
+        None,
+        &triager,
+        xp::PlaytestAward {
+            issue: issue.clone(),
+            severity: Some("p2".into()),
+            commit: None,
+        },
+    );
+    let fix_award = award(
+        &fix,
+        &verified,
+        None,
+        &triager,
+        xp::PlaytestAward {
+            issue,
+            ..xp::PlaytestAward::default()
+        },
+    );
+    let raid_award = award(
+        &raid,
+        &played,
+        Some(&record),
+        &moderator,
+        xp::PlaytestAward::default(),
+    );
+    let labels = [
+        (&bug_award, "playtester"),
+        (&bug_award, "founding-playtester"),
+        (&bug_award, "bug-hunter"),
+        (&fix_award, "fix-verifier"),
+        (&raid_award, "raider"),
+    ]
+    .map(|(award, value)| Completion::label(referee, award, value, at));
+    let mut events = vec![
+        bug, fix, raid, found, verified, played, record, bug_award, fix_award, raid_award,
+    ];
+    events.extend(labels);
+    events
+}

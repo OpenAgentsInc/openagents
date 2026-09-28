@@ -38,17 +38,26 @@ pub const LABEL_KIND: u16 = 1_985;
 pub const LABEL_NAMESPACE: &str = "openagents.xp";
 
 /// The acceptance rules this version implements.
-pub const RULES: &[&str] = &[KB_TRANSFER, REPRODUCE];
+pub const RULES: &[&str] = &[KB_TRANSFER, REPRODUCE, PLAYTEST];
 /// The rule a knowledge entry that helped out of sample completes.
 pub const KB_TRANSFER: &str = "kb-transfer";
 /// The rule an independent reproduction of a published attempt completes.
 pub const REPRODUCE: &str = "reproduce";
-/// The uniqueness policies this version implements.
+/// The rule an accepted playtest contribution completes
+/// ([`playtest`]).
+pub const PLAYTEST: &str = "playtest";
+/// The uniqueness policies this version implements. Under `first`, the
+/// first accepted completion per uniqueness key earns the award: the key is
+/// the quest version's coordinate, except under `playtest`, whose rule
+/// derives it ([`playtest::key`]).
 pub const COMPLETIONS: &[&str] = &["first"];
 /// The awardee roles of `kb-transfer`, in the order an award lists them.
 pub const ROLES: &[&str] = &["author", "runner"];
 /// The awardee roles of `reproduce`, in the order an award lists them.
 pub const REPRODUCE_ROLES: &[&str] = &["claimant", "reproducer"];
+/// The awardee roles of `playtest`, in the order an award lists them. For
+/// a moderated or group session, the triager is the session's moderator.
+pub const PLAYTEST_ROLES: &[&str] = &["tester", "triager"];
 
 /// The awardee roles of `rule`, in the order an award lists them. An
 /// unknown rule has none.
@@ -57,6 +66,7 @@ pub fn roles(rule: &str) -> &'static [&'static str] {
     match rule {
         KB_TRANSFER => ROLES,
         REPRODUCE => REPRODUCE_ROLES,
+        PLAYTEST => PLAYTEST_ROLES,
         _ => &[],
     }
 }
@@ -112,6 +122,8 @@ pub struct Acceptance {
     pub recipe: Option<String>,
     /// `reproduce`: the exact `3189` run evidence of the published attempt.
     pub claim: Option<Pointer>,
+    /// `playtest`: which contribution counts, and on which builds.
+    pub playtest: Option<playtest::PlaytestAcceptance>,
 }
 
 /// The run a quest is measured against, for display and provenance.
@@ -137,7 +149,8 @@ pub struct Quest {
     pub reference: Option<Reference>,
     /// XP per role. The award is the sum; roles split it, never multiply it.
     pub award: BTreeMap<String, u64>,
-    /// `first` in this version: the first accepted completion earns it.
+    /// `first` in this version: the first accepted completion per
+    /// uniqueness key earns it.
     pub completions: String,
     /// The `d` tag: `<id>@<version>`.
     pub address: String,
@@ -192,6 +205,8 @@ pub struct Award {
     /// claim, then the reproduction, under `reproduce`.
     pub evidence: Vec<Pointer>,
     pub awardees: Vec<Awardee>,
+    /// `playtest`: the public issue, severity, and commit the award cites.
+    pub playtest: Option<playtest::PlaytestAward>,
 }
 
 impl Award {
@@ -379,6 +394,18 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
     if !RULES.contains(&rule.as_str()) {
         return Err(unsupported("acceptance.rule"));
     }
+    if rule == PLAYTEST {
+        let parsed = playtest::acceptance(object)?;
+        return Ok(Acceptance {
+            rule,
+            task: parsed.contribution.clone(),
+            min_pass_rate: 1.0,
+            max_usd_per_run: None,
+            recipe: None,
+            claim: None,
+            playtest: Some(parsed),
+        });
+    }
     if rule == REPRODUCE {
         reject(object, &["rule", "task", "recipe", "claim"])?;
     } else {
@@ -408,6 +435,7 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
             max_usd_per_run: None,
             recipe: Some(recipe),
             claim: Some(claim),
+            playtest: None,
         });
     }
     let min_pass_rate = require(object, "min_pass_rate")?
@@ -430,6 +458,7 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
         max_usd_per_run,
         recipe: None,
         claim: None,
+        playtest: None,
     })
 }
 
@@ -569,6 +598,7 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
     let rule = match first_role {
         "author" => KB_TRANSFER,
         "claimant" => REPRODUCE,
+        "tester" => PLAYTEST,
         _ => return Err(unsupported("awardee roles")),
     };
     let mut allowed = vec![
@@ -583,6 +613,9 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
     ];
     if rule == KB_TRANSFER {
         allowed.extend(["entry", "entry_version"]);
+    }
+    if rule == PLAYTEST {
+        allowed.extend(["issue", "severity", "commit"]);
     }
     reject(&object, &allowed)?;
     let quest_value = require(&object, "quest")?
@@ -599,7 +632,12 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
         .ok_or_else(|| mismatch("quest.coordinate"))?;
     valid_address(address)?;
     let key = text(&object, "key")?;
-    if key != coordinate_value {
+    // A `playtest` key is derived by its rule from the quest and the
+    // contribution; [`bind_quest`] re-derives it. Every other key is the
+    // quest version's coordinate.
+    if rule == PLAYTEST {
+        playtest::check_key_shape(&key)?;
+    } else if key != coordinate_value {
         return Err(mismatch("key"));
     }
     if one_tag(event, "a")? != coordinate_value {
@@ -616,16 +654,27 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
         .as_array()
         .ok_or_else(|| malformed("evidence"))?;
     // `kb-transfer` names exactly one evidence event, the runner's;
-    // `reproduce` names two, the claim and then the reproduction.
-    let count = if rule == KB_TRANSFER { 1 } else { 2 };
-    if evidence_values.len() != count {
+    // `reproduce` names two, the claim and then the reproduction;
+    // `playtest` names the tester's report, then, for a moderated or group
+    // session, the moderator's session record.
+    let counts: &[usize] = match rule {
+        KB_TRANSFER => &[1],
+        REPRODUCE => &[2],
+        _ => &[1, 2],
+    };
+    if !counts.contains(&evidence_values.len()) {
         return Err(unsupported("evidence count"));
     }
     let mut evidence = Vec::new();
-    for value in evidence_values {
+    for (index, value) in evidence_values.iter().enumerate() {
         let item = value.as_object().ok_or_else(|| malformed("evidence"))?;
         reject(item, &["id", "pubkey", "kind"])?;
-        evidence.push(pointer(item, kb::EVIDENCE_KIND, "evidence")?);
+        let kind = match (rule, index) {
+            (PLAYTEST, 0) => playtest::REPORT_KIND,
+            (PLAYTEST, _) => playtest::SESSION_KIND,
+            _ => kb::EVIDENCE_KIND,
+        };
+        evidence.push(pointer(item, kind, "evidence")?);
     }
     let awardees = awardees(require(&object, "awardees")?, roles(rule))?;
     let (first, second) = (&awardees[0], &awardees[1]);
@@ -643,6 +692,8 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
                 "the runner is the entry's author: self-evidence earns nothing",
             ));
         }
+    } else if rule == PLAYTEST {
+        playtest::check_awardees(&event.pubkey, first, second, &evidence)?;
     } else {
         if first.pubkey != evidence[0].pubkey {
             return Err(mismatch("the claimant awardee didn't sign the claim"));
@@ -659,6 +710,11 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
             ));
         }
     }
+    let playtest = if rule == PLAYTEST {
+        Some(playtest::award_fields(&object)?)
+    } else {
+        None
+    };
     let total: u64 = awardees.iter().map(|a| a.xp).sum();
     if total == 0 {
         return Err(malformed("awardees"));
@@ -686,6 +742,7 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
         entry_version,
         evidence,
         awardees,
+        playtest,
     })
 }
 
@@ -766,6 +823,9 @@ pub fn bind_quest(award: &Award, quest: &Event) -> Result<Quest, ContractError> 
         return Err(mismatch("the award's claim isn't the one its quest pins"));
     }
     in_season(&parsed, award.accepted_at)?;
+    if award.rule == PLAYTEST {
+        playtest::bind_fields(award, &parsed)?;
+    }
     for awardee in &award.awardees {
         if parsed.award.get(&awardee.role) != Some(&awardee.xp) {
             return Err(ContractError::new(
@@ -946,7 +1006,9 @@ pub fn revocation(award: &Event, reason: &str) -> Result<Unsigned, ContractError
         tags: vec![
             tag(&["t", "oa:xp:revocation:v1"]),
             tag(&["e", &award.id]),
-            tag(&["a", &parsed.key]),
+            // The quest version's coordinate, which is the key except
+            // under `playtest`.
+            tag(&["a", &parsed.coordinate]),
         ],
         content: content.to_string(),
     })
@@ -973,17 +1035,23 @@ pub fn parse_revocation(event: &Event) -> Result<Revocation, ContractError> {
         return Err(mismatch("only the award's referee revokes it"));
     }
     let key = text(&object, "key")?;
-    let address = key
-        .strip_prefix(&format!("{QUEST_KIND}:{}:", event.pubkey))
-        .ok_or_else(|| mismatch("key"))?;
-    valid_address(address)?;
+    let prefix = format!("{QUEST_KIND}:{}:", event.pubkey);
+    let a = one_tag(event, "a")?;
+    if key.starts_with(playtest::KEY_PREFIX) {
+        // A playtest key is rule-derived; the `a` tag names the quest.
+        playtest::check_key_shape(&key)?;
+        valid_address(a.strip_prefix(&prefix).ok_or_else(|| mismatch("a tag"))?)?;
+    } else {
+        let address = key.strip_prefix(&prefix).ok_or_else(|| mismatch("key"))?;
+        valid_address(address)?;
+        if a != key {
+            return Err(mismatch("a tag"));
+        }
+    }
     let reason = text(&object, "reason")?;
     check_reason(&reason)?;
     if one_tag(event, "e")? != award.id {
         return Err(mismatch("e tag"));
-    }
-    if one_tag(event, "a")? != key {
-        return Err(mismatch("a tag"));
     }
     Ok(Revocation { award, key, reason })
 }
@@ -1061,7 +1129,11 @@ pub fn parse_achievement(event: &Event) -> Result<Achievement, ContractError> {
     })
 }
 
-fn open(event: &Event, kind: u16, record: &str) -> Result<Map<String, Value>, ContractError> {
+pub(crate) fn open(
+    event: &Event,
+    kind: u16,
+    record: &str,
+) -> Result<Map<String, Value>, ContractError> {
     if event.kind != kind {
         return Err(mismatch("kind"));
     }
@@ -1093,7 +1165,11 @@ fn open(event: &Event, kind: u16, record: &str) -> Result<Map<String, Value>, Co
     Ok(object)
 }
 
-fn pointer(object: &Map<String, Value>, kind: u16, what: &str) -> Result<Pointer, ContractError> {
+pub(crate) fn pointer(
+    object: &Map<String, Value>,
+    kind: u16,
+    what: &str,
+) -> Result<Pointer, ContractError> {
     let pointer = Pointer {
         id: text(object, "id")?,
         pubkey: text(object, "pubkey")?,
@@ -1107,7 +1183,7 @@ fn pointer(object: &Map<String, Value>, kind: u16, what: &str) -> Result<Pointer
     Ok(pointer)
 }
 
-fn in_season(quest: &Quest, at: u64) -> Result<(), ContractError> {
+pub(crate) fn in_season(quest: &Quest, at: u64) -> Result<(), ContractError> {
     if at < quest.season.opens_at || at > quest.season.closes_at {
         return Err(ContractError::new(
             RefusalCode::Stale,
@@ -1127,7 +1203,7 @@ fn check_reason(reason: &str) -> Result<(), ContractError> {
     Ok(())
 }
 
-fn valid_address(address: &str) -> Result<(), ContractError> {
+pub(crate) fn valid_address(address: &str) -> Result<(), ContractError> {
     let (id, version) = address
         .rsplit_once('@')
         .ok_or_else(|| malformed("quest address"))?;
@@ -1138,7 +1214,7 @@ fn valid_address(address: &str) -> Result<(), ContractError> {
     Ok(())
 }
 
-fn valid_slug(value: &str) -> bool {
+pub(crate) fn valid_slug(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 64
         && value.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
@@ -1147,7 +1223,7 @@ fn valid_slug(value: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
 }
 
-fn tag_set<'a>(event: &'a Event, name: &str) -> BTreeSet<&'a str> {
+pub(crate) fn tag_set<'a>(event: &'a Event, name: &str) -> BTreeSet<&'a str> {
     event
         .tags
         .iter()
@@ -1156,6 +1232,12 @@ fn tag_set<'a>(event: &'a Event, name: &str) -> BTreeSet<&'a str> {
         .collect()
 }
 
+pub mod playtest;
+pub use playtest::{
+    PlaytestAcceptance, PlaytestAward, PlaytestReport, PlaytestSession, bind_playtest,
+    check_playtest, parse_playtest_report, parse_playtest_session, playtest_award, playtest_report,
+    playtest_session,
+};
 pub mod reproduce;
 pub use reproduce::{
     RECIPE_SCHEMA, RUN_MARKER, Recipe, RunEvidence, RunRecord, bind_reproduction, check_reproduce,

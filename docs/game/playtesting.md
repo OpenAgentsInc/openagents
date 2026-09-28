@@ -183,7 +183,7 @@ Status words follow the [glossary](../glossary.md).
 | **Changelog** in Account (`crates/openagents-mobile/src/account.rs`) | Implemented. One entry, "First release". |
 | In-app feedback action, session log, or telemetry of any kind | **None.** The app sends no analytics. |
 | Triage inbox and triage log: `openagents playtest` reads the triage key's reports, drafts `playtest` issues for a person to approve, and records every acceptance ([playtest-triage.md](playtest-triage.md)) | Implemented ([#9884](https://github.com/OpenAgentsInc/openagents/issues/9884)). It reads reports once the owner creates the triage key and a build carries it. |
-| NIP-XP quests, awards, revocations, and achievement labels; the ledger; the referee tool ([NIP-XP](../../nips/openagents/NIP-XP.md)) | Implemented. Only one rule exists, `kb-transfer`, and no award has been granted. |
+| NIP-XP quests, awards, revocations, and achievement labels; the ledger; the referee tool ([NIP-XP](../../nips/openagents/NIP-XP.md)) | Implemented, with three rules: `kb-transfer`, `reproduce`, and `playtest` ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)). The `playtest` rule, its report (`3195`) and session record (`3196`), and `microcoder xp playtest-keygen`/`playtest-session` exist; the playtest referee key doesn't yet (an owner step), so no playtest award counts. |
 | Levels, titles, and `lv n` name tags | Implemented on desktop Verse only. The Grid's name tags show a pubkey prefix and no level. |
 | A read-only XP reader and trainer card in the app | Specified; phase 1 of epic [#9847](https://github.com/OpenAgentsInc/openagents/issues/9847), in progress. |
 | NIP-17 private messages and NIP-44 encryption | Implemented in `crates/nostr` (`nip17.rs`, `nip44.rs`). |
@@ -533,7 +533,16 @@ fixtures, as NIP-XP requires of "a future rule":
   plainly: `playtest` is a weaker rule than `kb-transfer`, which is exactly
   why it has its own referee key and never feeds the trainer level.
 
-Until the rule, the referee key, and the app's XP reader exist, the triage
+The rule is specified in
+[NIP-XP, `playtest`](../../nips/openagents/NIP-XP.md#playtest) and
+implemented in `crates/nostr` (`xp::playtest`), `knowledge::xp::derive`, and
+`microcoder xp` (2026-09-28). Its uniqueness keys are rule-derived (one
+report-class award per issue, one session award per tester and script)
+with a per-quest `max_awards`; the general `per-awardee` policy (#9894) may
+later subsume them. The app reads it through `verse::xp::playtest_card`
+and `playtest_titles` once `PLAYTEST_REFEREE` holds the owner's key.
+
+Until the referee key and the app's playtest reader exist, the triage
 log records every acceptance with the tester's key, the issue, and the date.
 Awards are signed from that log when the rule lands; evidence dated inside
 the season stays valid, as the leveling spec says of closed seasons.

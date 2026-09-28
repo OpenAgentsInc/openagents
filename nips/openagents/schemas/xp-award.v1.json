@@ -8,6 +8,9 @@
     },
     {
       "$ref": "#/$defs/reproduce"
+    },
+    {
+      "$ref": "#/$defs/playtest"
     }
   ],
   "$defs": {
@@ -369,6 +372,182 @@
           ],
           "minItems": 2,
           "maxItems": 2
+        }
+      }
+    },
+    "tester": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "pubkey",
+        "xp"
+      ],
+      "properties": {
+        "role": {
+          "const": "tester"
+        },
+        "pubkey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "xp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      }
+    },
+    "triager": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "pubkey",
+        "xp"
+      ],
+      "properties": {
+        "role": {
+          "const": "triager"
+        },
+        "pubkey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "xp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      }
+    },
+    "playtest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "type",
+        "quest",
+        "key",
+        "accepted_at",
+        "evidence",
+        "awardees"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "type": {
+          "const": "award"
+        },
+        "quest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "pubkey",
+            "kind",
+            "coordinate"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "pubkey": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "kind": {
+              "const": 30193
+            },
+            "coordinate": {
+              "type": "string",
+              "minLength": 73,
+              "maxLength": 220
+            }
+          }
+        },
+        "key": {
+          "type": "string",
+          "minLength": 12,
+          "maxLength": 320
+        },
+        "accepted_at": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "pubkey",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 64,
+                "maxLength": 64
+              },
+              "pubkey": {
+                "type": "string",
+                "minLength": 64,
+                "maxLength": 64
+              },
+              "kind": {
+                "enum": [
+                  3195,
+                  3196
+                ]
+              }
+            }
+          }
+        },
+        "awardees": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/tester"
+            },
+            {
+              "$ref": "#/$defs/triager"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "issue": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 212
+        },
+        "severity": {
+          "enum": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ]
+        },
+        "commit": {
+          "type": "string",
+          "minLength": 40,
+          "maxLength": 40
         }
       }
     }

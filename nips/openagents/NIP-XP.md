@@ -1,7 +1,7 @@
 # NIP-XP — Quests, acceptance, and experience points
 
 `draft` `optional` — v1, 2026-09-26; the `reproduce` rule added
-2026-09-28. The [shared contracts](contracts.md) are normative.
+2026-09-28; the `playtest` rule added 2026-09-28. The [shared contracts](contracts.md) are normative.
 
 This NIP publishes quests, a referee's acceptance of a completed quest, and
 the experience points (XP) that acceptance carries, as signed Nostr events.
@@ -35,6 +35,8 @@ These are OpenAgents draft assignments, not upstream registrations.
 | `3193` | Regular | An award: a referee's acceptance of one completion. |
 | `3194` | Regular | Irreversible revocation of one award. |
 | `1985` | Regular (NIP-32) | Optional achievement label that points at an award. It carries no XP. |
+| `3195` | Regular | A tester's content-free playtest report (the `playtest` rule). |
+| `3196` | Regular | A moderator's record of a completed playtest session (the `playtest` rule). |
 
 Every XP body (`30193`, `3193`, `3194`) is a UTF-8 JSON object with `v: 1`,
 `requires` (the empty list in this version), and `type`: `quest`, `award`,
@@ -45,7 +47,9 @@ refused. Every `t` value is lowercase.
 
 `schemas/xp-quest.v1.json`, `schemas/xp-award.v1.json`, and
 `schemas/xp-revocation.v1.json` describe the three bodies, and
-`schemas/xp-recipe.v1.json` the recipe a `reproduce` quest pins. The schema
+`schemas/xp-recipe.v1.json` the recipe a `reproduce` quest pins, and
+`schemas/xp-playtest-report.v1.json` and
+`schemas/xp-playtest-session.v1.json` the two `playtest` records. The schema
 dialect has no `pattern` keyword, so the validator checks the ID grammar,
 the hex fields, and the coordinates itself.
 
@@ -66,8 +70,13 @@ the hex fields, and the coordinates itself.
   trusted runners, and derives XP from them. A reader's runner list also
   lists the reproducers it trusts.
 
+- A **tester** played a build and signed a playtest report.
+- A **triager** accepted the tester's contribution on a public issue; for a
+  moderated or group session, the triager is the session's **moderator**,
+  who signed the session record.
+
 The author and the runner MUST be different keys, and so MUST the claimant
-and the reproducer. Evidence an author signs about their own entry, and a
+and the reproducer, and the tester and the triager. Evidence an author signs about their own entry, and a
 reproduction a claimant signs of their own attempt, never earn XP.
 
 ## Quests (`30193`)
@@ -118,7 +127,7 @@ The body (illustrative values):
 | `acceptance` | The rule and its parameters; see [Acceptance rules](#acceptance-rules). Each rule has its own closed set of keys. |
 | `reference` | The run the quest is measured against, or `null`: a label, its cost in dollars, its wall time in seconds, and where it's recorded. Display and provenance only; the executable bar is in `acceptance`. |
 | `award` | Fixed XP per role, with exactly the rule's roles: `author` and `runner` under `kb-transfer`, `claimant` and `reproducer` under `reproduce`. A role MAY be 0. The quest's award is the sum, at least 1 and at most 1,000. Roles split the award; they never multiply it. |
-| `completions` | The uniqueness policy. `first` is the only value in this version: the first accepted completion of the quest version earns the award, once. |
+| `completions` | The uniqueness policy. `first` is the only value in this version: the first accepted completion per uniqueness key earns the award, once. The key is the quest version's coordinate, except under `playtest`, whose rule derives it. |
 
 Tags:
 
@@ -252,6 +261,106 @@ bytes have the digest the reproduction names, and checks that the extract
 is the one those bytes give. A reader can't repeat that check without the
 file, so, as under `kb-transfer`, a reader that wants more than the
 referee's word lists the reproducers it trusts.
+
+### `playtest`
+
+A playtest quest is completed by a contribution to the OpenAgents app's
+playtest program ([`docs/game/playtesting.md`](../../docs/game/playtesting.md))
+that a triager accepted. Joining, installing, or opening a build is never a
+contribution, so no quest exists for them.
+
+```json
+"acceptance": {
+  "rule": "playtest",
+  "contribution": "bug",
+  "builds": ["1.0.0 (14)", "1.0.0 (15)"],
+  "severities": ["p2", "p3"],
+  "max_awards": 200
+},
+"award": {"tester": 20, "triager": 0}
+```
+
+| Field | Contract |
+| --- | --- |
+| `contribution` | `feedback`, `bug`, `design`, `verified-fix`, `session`, or `diary`. |
+| `builds` | The season's build list, 1 to 64 distinct strings such as `1.0.0 (15)`. A report on any other build doesn't count. |
+| `severities` | `bug` only, and required: the triage severities (`p0` to `p3`) this quest pays for. |
+| `script`, `format` | `session` only, and required: the session script (a slug such as `session-2`) and `unmoderated`, `moderated`, or `group`. |
+| `max_awards` | Required: the most live awards this quest version pays, 1 to 10,000. |
+
+The **playtest report** (`3195`) is signed by the tester and holds no
+text. The report itself travels privately to the triage key (a NIP-17
+message sealed with NIP-44); this event only commits to it:
+
+```json
+{"v": 1, "requires": [], "type": "playtest-report", "build": "1.0.0 (15)",
+ "platform": "ios", "kind": "bug", "digest": "<64 hex>", "script": null}
+```
+
+`platform` is `ios` or `android`; `kind` is `bug`, `confusing`, `idea`,
+`felt-good`, `verified`, `session`, or `diary`; `digest` is the lowercase
+hex SHA-256 of the private report's exact bytes (the NIP-17 kind `14`
+rumor's `content`); `script` names a session script or is `null`. The one
+tag is `t` `oa:xp:playtest-report:v1`; the time is `created_at`.
+
+The **session record** (`3196`) is signed by the moderator: `script`,
+`format` (`moderated` or `group`), `build`, `tester` (hex), and `held_at`,
+with the tags `t` `oa:xp:playtest-session:v1` and one `p`, the tester. A
+moderator never records their own session.
+
+A playtest award names the report, then, for a moderated or group
+session, the session record, in `evidence`, and lists the tester, then the
+triager, in `awardees`. It adds `issue` (`owner/repo#number`, required for
+`feedback`, `bug`, `design`, and `verified-fix`, absent otherwise), which
+is the public record of the acceptance; `severity` (`bug` only, and one of
+the quest's `severities`); and `commit` (`design` only: the 40-hex commit
+that shipped the change). A contribution is accepted when all hold:
+
+1. The report is a valid `3195`, its build is in the quest's build list,
+   its kind is one the contribution takes (`feedback`: bug, confusing,
+   idea, or felt-good; `bug`: bug; `design`: bug, confusing, or idea;
+   `verified-fix`: verified; `session`: session; `diary`: diary), and it
+   was published inside the season.
+2. The tester awardee signed the report. The tester is neither the
+   triager nor the award's referee: a referee never awards a key it
+   controls.
+3. For a session, the report names the quest's script. For a moderated or
+   group session, the session record is valid, signed by the triager,
+   names the report's signer as tester and the quest's script and format,
+   a listed build, and a time inside the season. Any other contribution
+   names no session record.
+4. The issue, severity, and commit are present exactly when the
+   contribution needs them, and `accepted_at` is inside the season and no
+   earlier than the evidence.
+5. The award's `key` is the one this rule derives:
+   - `feedback`, `bug`, `design`: `playtest:<season>:report:<issue>`, so one
+     issue earns one report-class award from a referee, whichever of those
+     quests pays it (a later duplicate report earns nothing);
+   - `verified-fix`: `playtest:<season>:verified:<issue>`;
+   - `session`, `diary`: `playtest:<season>:<quest address>:<tester>`, once
+     per tester per script (one quest version per script) per season.
+   The `a` tag is still the quest coordinate, so `#a` finds a quest's
+   awards.
+6. The quest version has at most `max_awards` live awards from its
+   referee. More is the referee overissuing: a reader reports the conflict
+   and counts none of that version's awards until the referee revokes the
+   extras. It never chooses by timestamp.
+
+A reader can re-check all of that from signed events. It can't re-check
+whether the bug was real or how severe it was: that is the referee's
+judgment, recorded on the public issue. `playtest` is a weaker rule than
+`kb-transfer` and `reproduce`, which is why playtest awards are signed by a
+separate **playtest referee** key, and why a client MUST NOT sum playtest
+XP into a trainer level: it shows playtest XP beside the trainer level,
+never inside it. Playtest titles (`playtester`, `founding-playtester`,
+`bug-hunter`, `fix-verifier`, `raider`) are NIP-32 achievement labels on
+counted playtest awards, signed by the playtest referee.
+
+A revocation of a playtest award carries the award's `key` and, in its
+`a` tag, the quest coordinate.
+
+This rule's uniqueness is rule-derived; the general `per-awardee` policy
+the leveling spec proposes (issue #9894) may later subsume it.
 
 Rules are closed: a reader refuses a quest whose rule it doesn't implement.
 A future rule, such as a Gym trial with a pinned suite or a coding quest
@@ -480,9 +589,10 @@ A reader accepts a `3193` only when all of these hold:
    has `v: 1`, an empty `requires`, `type: award`, and no unknown keys.
 3. The signer is the quest's referee, `key` equals the quest coordinate,
    and the `a`, `e`, and `p` tags agree with the body.
-4. The awardees are the author, then the runner, under `kb-transfer`, or
-   the claimant, then the reproducer, under `reproduce`; each signed the
-   event its role names, and the two differ.
+4. The awardees are the author, then the runner, under `kb-transfer`, the
+   claimant, then the reproducer, under `reproduce`, or the tester, then
+   the triager, under `playtest`; each signed the event its role names,
+   and the two differ.
 5. The exact quest event it names is available and valid, the award falls
    inside the season, and each role's XP equals the quest's table.
 6. The exact events it names are available and valid, the entry version
@@ -514,7 +624,14 @@ reproduction, a failed reproduction, a copied run record, a reproduction
 outside the season, one that doesn't cite the claim, a claim the quest
 doesn't pin, a claim that didn't pass, tampered run evidence, a record
 that didn't follow its recipe, swapped roles, inflated XP, and a
-reproduction whose record file the referee doesn't have. `crates/nostr/src/xp/tests.rs`, `crates/nostr/src/xp/reproduce/tests.rs`,
+reproduction whose record file the referee doesn't have. For `playtest`: a build outside the list, a report kind the contribution
+doesn't take, a report outside the season, an unpaid severity, a missing
+issue or severity, the tester as triager or referee, a session without its
+record or with another tester's or the tester's own, a report on another
+script, a key the rule doesn't derive, one issue paid by two quests, and a
+quest version over its `max_awards`.
+`crates/nostr/src/xp/tests.rs`, `crates/nostr/src/xp/reproduce/tests.rs`,
+`crates/nostr/src/xp/playtest/tests.rs`,
 `crates/knowledge/src/xp/tests.rs`, and
 `crates/microcoder/src/xpnet/tests.rs` hold them.
 

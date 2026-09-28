@@ -303,3 +303,52 @@ fn missing_names_a_reproductions_claim_and_reproduction() {
     assert!(want.contains(&r.claim.id));
     assert!(want.contains(&r.reproduction.id));
 }
+
+#[test]
+fn playtest_awards_count_on_their_own_card_and_never_in_the_trainer_level() {
+    let referee = fixture::signer(0x9_1a7);
+    let tester = fixture::signer(0x7e_57);
+    let at = 1_790_000_000;
+    let events = fixture::playtest_events(&referee, &tester, at);
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.pubkey().to_owned()]),
+        runners: BTreeSet::new(),
+    };
+    let snap = snapshot(&events, &trust);
+    let me = vec![tester.pubkey().to_owned()];
+    // Trainer XP, level, and titles don't move.
+    assert_eq!(snap.xp_of(&me), 0);
+    assert!(snap.titles_of(&me).is_empty());
+    assert_eq!(card(&snap, &me).awards.len(), 0);
+    assert_eq!(level_tag(Some(&snap), &me), None);
+    // The playtest card has all of it.
+    let playtest = playtest_card(&snap, &me);
+    assert_eq!(playtest.xp, 55);
+    assert_eq!(
+        (
+            playtest.accepted_reports,
+            playtest.fixes_verified,
+            playtest.sessions,
+            playtest.diaries
+        ),
+        (1, 1, 1, 0)
+    );
+    assert_eq!(
+        playtest.titles,
+        [
+            "bug-hunter",
+            "fix-verifier",
+            "founding-playtester",
+            "playtester",
+            "raider"
+        ]
+    );
+    assert!(playtest_titles(Some(&snap), tester.pubkey()).contains("playtester"));
+    // A reader that trusts only the trainer referee sees none of it.
+    let trainer = snapshot(&events, &openagents_trust());
+    assert_eq!(playtest_card(&trainer, &me).xp, 0);
+    assert!(playtest_titles(Some(&trainer), tester.pubkey()).is_empty());
+    // No playtest referee key exists yet, so the app trusts none.
+    assert_eq!(PLAYTEST_REFEREE, None);
+    assert!(playtest_trust().is_none());
+}

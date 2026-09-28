@@ -40,6 +40,24 @@ Refereeing (signed with the referee key):
   revoke <award-event-id> --reason TEXT
                            revoke one of your awards (kind 3194)
 
+Playtesting (signed with the playtest referee key; see
+docs/game/playtesting.md):
+  playtest-keygen          create the playtest referee key, once, at --key or
+                           ~/.openagents/nostr/playtest-referee-key (mode
+                           0600); prints only its public key
+  quest <file.json>        a quest whose rule is playtest is signed with the
+                           playtest referee key
+  award --quest ID@VERSION --evidence REPORT-ID --triager KEY
+        [--issue OWNER/REPO#N] [--severity pN] [--commit SHA]
+        [--session RECORD-ID] [--label VALUE]...
+                           accept a tester's playtest report (kind 3195): the
+                           issue records the acceptance; a moderated or group
+                           session also names the moderator's record
+  playtest-session --tester KEY --script NAME --format moderated|group
+        --build BUILD
+                           as a moderator (your knowledge key, or --key),
+                           publish the record of a completed session (3196)
+
 Run evidence (signed with your knowledge key, or --key):
   claim --record RUN [--benchmark NAME --benchmark-version V]
                            publish a graded run as a claim: run evidence
@@ -80,6 +98,17 @@ pub struct XpOptions {
     pub record: Option<PathBuf>,
     pub benchmark: Option<String>,
     pub benchmark_version: Option<String>,
+    /// `playtest`: the moderator's session record.
+    pub session: Option<String>,
+    /// `playtest`: the key that accepted the report.
+    pub triager: Option<String>,
+    pub issue: Option<String>,
+    pub severity: Option<String>,
+    pub commit: Option<String>,
+    pub script: Option<String>,
+    pub format: Option<String>,
+    pub build: Option<String>,
+    pub tester: Option<String>,
     pub json: bool,
     /// Words that aren't options, in order.
     pub words: Vec<String>,
@@ -107,6 +136,15 @@ pub fn parse(args: &[String]) -> Result<XpOptions, String> {
             "--record" => o.record = Some(PathBuf::from(value()?)),
             "--benchmark" => o.benchmark = Some(value()?),
             "--benchmark-version" => o.benchmark_version = Some(value()?),
+            "--session" => o.session = Some(value()?),
+            "--triager" => o.triager = Some(value()?),
+            "--issue" => o.issue = Some(value()?),
+            "--severity" => o.severity = Some(value()?),
+            "--commit" => o.commit = Some(value()?),
+            "--script" => o.script = Some(value()?),
+            "--format" => o.format = Some(value()?),
+            "--build" => o.build = Some(value()?),
+            "--tester" => o.tester = Some(value()?),
             "--json" => o.json = true,
             "-h" | "--help" => return Err(USAGE.to_string()),
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
@@ -145,6 +183,40 @@ fn referee_key(o: &XpOptions) -> Result<PathBuf, String> {
         .clone()
         .or_else(ledger_xp::referee_key_file)
         .ok_or("HOME isn't set, so there's no key file: pass --key".to_string())
+}
+
+/// The playtest referee key: `--key`, or the default file. It is never
+/// created here; `playtest-keygen` makes it.
+fn playtest_key(o: &XpOptions) -> Result<PathBuf, String> {
+    let key = o
+        .key
+        .clone()
+        .or_else(ledger_xp::playtest_referee_key_file)
+        .ok_or("HOME isn't set, so there's no key file: pass --key".to_string())?;
+    if !key.exists() {
+        return Err(format!(
+            "there's no playtest referee key at {}; create it once with \
+`microcoder xp playtest-keygen`",
+            key.display()
+        ));
+    }
+    Ok(key)
+}
+
+/// The key a quest file is signed with: the playtest referee key for a
+/// `playtest` quest, the referee key otherwise.
+fn quest_key(o: &XpOptions) -> Result<PathBuf, String> {
+    let playtest = o
+        .words
+        .first()
+        .and_then(|file| std::fs::read_to_string(file).ok())
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|spec| spec.pointer("/acceptance/rule") == Some(&json!(xp::PLAYTEST)));
+    if playtest {
+        playtest_key(o)
+    } else {
+        referee_key(o)
+    }
 }
 
 fn trainer_key(o: &XpOptions) -> Result<PathBuf, String> {
@@ -222,8 +294,11 @@ pub async fn main(args: &[String]) -> u8 {
         let command = args.first().ok_or(USAGE)?;
         let o = parse(&args[1..])?;
         match command.as_str() {
-            "quest" => quest(&o, &referee_key(&o)?).await,
+            "quest" => quest(&o, &quest_key(&o)?).await,
+            "award" if o.triager.is_some() => award(&o, &playtest_key(&o)?).await,
             "award" => award(&o, &referee_key(&o)?).await,
+            "playtest-keygen" => playtest_keygen(&o),
+            "playtest-session" => playtest_session(&o, &trainer_key(&o)?).await,
             "revoke" => revoke(&o, &referee_key(&o)?).await,
             "claim" => claim(&o, &trainer_key(&o)?).await,
             "reproduce" => reproduce(&o, &trainer_key(&o)?).await,
@@ -346,6 +421,9 @@ pub async fn award(o: &XpOptions, key: &Path) -> Result<u8, String> {
         _ => return Err(format!("{address} has conflicting versions on this relay")),
     };
     let parsed = xp::parse_quest(&quest).map_err(|e| e.to_string())?;
+    if parsed.acceptance.rule == xp::PLAYTEST {
+        return playtest_award(o, &identity, &mut relay, &quest, &parsed, evidence_id).await;
+    }
     let evidence = by_id(&mut relay, evidence_id, kb::EVIDENCE_KIND, "evidence").await?;
     let completion = if parsed.acceptance.rule == xp::REPRODUCE {
         let claim_id = &parsed.acceptance.claim.as_ref().ok_or("no claim")?.id;
@@ -442,6 +520,201 @@ first to replace it.",
         }
     }
     Ok(u8::from(refused > 0))
+}
+
+/// `xp award` for a `playtest` quest: fetches the tester's report and any
+/// session record, checks the rule and the fields the contribution needs,
+/// refuses when the rule-derived key already has a live award or the quest
+/// version has reached its `max_awards`, and publishes the award and any
+/// labels.
+async fn playtest_award(
+    o: &XpOptions,
+    identity: &Identity,
+    relay: &mut Relay,
+    quest: &Event,
+    parsed: &xp::Quest,
+    report_id: &str,
+) -> Result<u8, String> {
+    let address = &parsed.address;
+    let me = identity.pubkey().to_string();
+    let triager = o
+        .triager
+        .as_deref()
+        .and_then(parse_author)
+        .ok_or("name the key that accepted the report with --triager KEY")?;
+    let report = by_id(
+        relay,
+        report_id,
+        xp::playtest::REPORT_KIND,
+        "playtest report",
+    )
+    .await?;
+    let session = match o.session.as_deref() {
+        Some(id) => Some(by_id(relay, id, xp::playtest::SESSION_KIND, "session record").await?),
+        None => None,
+    };
+    let fields = xp::PlaytestAward {
+        issue: o.issue.clone(),
+        severity: o.severity.clone(),
+        commit: o.commit.clone(),
+    };
+    let key = match xp::playtest::key(parsed, &report.pubkey, fields.issue.as_deref()) {
+        Ok(key) => key,
+        Err(error) => {
+            println!("{address}: not accepted: {error}");
+            return Ok(1);
+        }
+    };
+    let existing = relay
+        .query(json!({
+            "kinds": [xp::AWARD_KIND, xp::REVOCATION_KIND], "authors": [&me], "limit": LIMIT,
+        }))
+        .await?;
+    let revoked: BTreeSet<String> = existing
+        .iter()
+        .filter_map(|e| xp::parse_revocation(e).ok())
+        .map(|r| r.award.id)
+        .collect();
+    let live: Vec<(Event, xp::Award)> = existing
+        .iter()
+        .filter(|e| !revoked.contains(&e.id))
+        .filter_map(|e| xp::parse_award(e).ok().map(|a| (e.clone(), a)))
+        .collect();
+    if let Some((event, _)) = live.iter().find(|(_, a)| a.key == key) {
+        println!(
+            "{address}: {key} already has award {}; a contribution pays once. Revoke that \
+award first to replace it.",
+            short(&event.id)
+        );
+        return Ok(1);
+    }
+    let coordinate = xp::coordinate(&me, address);
+    let max = parsed
+        .acceptance
+        .playtest
+        .as_ref()
+        .map_or(0, |p| p.max_awards);
+    let used = live
+        .iter()
+        .filter(|(_, a)| a.coordinate == coordinate)
+        .count() as u64;
+    if used >= max {
+        println!("{address}: already has {used} live awards, its max_awards of {max}");
+        return Ok(1);
+    }
+    let accepted_at = existing
+        .iter()
+        .filter_map(|e| xp::parse_award(e).ok())
+        .filter(|a| a.key == key)
+        .map(|a| a.accepted_at + 1)
+        .fold(now(), u64::max);
+    let parts = match xp::playtest_award(
+        quest,
+        &report,
+        session.as_ref(),
+        &triager,
+        &fields,
+        accepted_at,
+    ) {
+        Ok(parts) => parts,
+        Err(error) => {
+            println!("{address}: not accepted: {error}");
+            return Ok(1);
+        }
+    };
+    let signed = sign(identity, parts);
+    relay.publish(&signed).await?;
+    println!(
+        "{address}: award {} published for {}: tester {} {} XP",
+        short(&signed.id),
+        key,
+        npub(&report.pubkey),
+        parsed.award["tester"]
+    );
+    let mut refused = 0;
+    for value in &o.labels {
+        let parts = xp::achievement(&signed, value).map_err(|e| format!("label {value}: {e}"))?;
+        let label = sign(identity, parts);
+        match relay.publish(&label).await {
+            Ok(()) => println!("label {value}: {} published", short(&label.id)),
+            Err(error) => {
+                refused += 1;
+                println!("label {value}: {error}");
+            }
+        }
+    }
+    Ok(u8::from(refused > 0))
+}
+
+/// `xp playtest-keygen`: creates the playtest referee key, once, and
+/// prints only its public key.
+///
+/// # Errors
+///
+/// When the file already exists or can't be written.
+pub fn playtest_keygen(o: &XpOptions) -> Result<u8, String> {
+    let key = o
+        .key
+        .clone()
+        .or_else(ledger_xp::playtest_referee_key_file)
+        .ok_or("HOME isn't set, so there's no key file: pass --key")?;
+    if key.exists() {
+        let pubkey = remote::own_pubkey(&key).unwrap_or_default();
+        println!(
+            "{} already holds a key ({}); it is never replaced here",
+            key.display(),
+            npub(&pubkey)
+        );
+        return Ok(1);
+    }
+    if let Some(dir) = key.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    let identity = Identity::load_from(&key)?;
+    println!(
+        "playtest referee {}\npublic key (hex) {}\nsecret key in {} (mode 0600); keep it \
+there and back it up offline. Never paste it anywhere.",
+        npub(identity.pubkey()),
+        identity.pubkey(),
+        key.display()
+    );
+    Ok(0)
+}
+
+/// `xp playtest-session`: a moderator publishes the record of a completed
+/// moderated or group session.
+///
+/// # Errors
+///
+/// A bad usage, key, or relay.
+pub async fn playtest_session(o: &XpOptions, key: &Path) -> Result<u8, String> {
+    let url = relay_url(o)?;
+    let tester = o
+        .tester
+        .as_deref()
+        .and_then(parse_author)
+        .ok_or("name the tester with --tester KEY")?;
+    let need = |value: &Option<String>, flag: &str| {
+        value.clone().ok_or(format!("name the session's {flag}"))
+    };
+    let parts = xp::playtest_session(
+        &need(&o.script, "--script")?,
+        &need(&o.format, "--format")?,
+        &need(&o.build, "--build")?,
+        &tester,
+        now(),
+    )
+    .map_err(|e| e.to_string())?;
+    let identity = load_key(key, "moderating as")?;
+    if identity.pubkey() == tester {
+        return Err("a moderator can't record their own session".into());
+    }
+    let event = sign(&identity, parts);
+    let mut relay = Relay::open(url, &identity).await?;
+    println!("connected to {url}");
+    relay.publish(&event).await?;
+    println!("session record {} published", event.id);
+    Ok(0)
 }
 
 /// What an award accepts, by the quest's rule.

@@ -56,6 +56,24 @@ pub fn openagents_trust() -> XpTrust {
     }
 }
 
+/// The OpenAgents *playtest* referee's public key, hex, once the owner has
+/// created it (`microcoder xp playtest-keygen`, on the owner's machine).
+/// Until then it is `None`, and no playtest award counts anywhere. It is a
+/// separate key from [`OPENAGENTS_REFEREE`] so a reader that trusts only
+/// the trainer referee sees a trainer level playtesting never touched.
+pub const PLAYTEST_REFEREE: Option<&str> = None;
+
+/// A trust list with the playtest referee alone: what the OpenAgents app
+/// counts for its playtest card and Grid titles. `None` until the key
+/// exists.
+#[must_use]
+pub fn playtest_trust() -> Option<XpTrust> {
+    PLAYTEST_REFEREE.map(|referee| XpTrust {
+        referees: BTreeSet::from([referee.to_owned()]),
+        runners: BTreeSet::new(),
+    })
+}
+
 /// The name of the level curve [`xp_to_reach`] and [`level_of`] compute.
 /// Every display of a level names it, so two clients never show different
 /// numbers under one name; a new curve gets a new name.
@@ -129,10 +147,15 @@ impl QuestRow {
 pub struct Snapshot {
     /// Trusted referees' quests first, then everyone else's.
     pub quests: Vec<QuestRow>,
-    /// XP per hex public key.
+    /// Trainer XP per hex public key: every counted award except
+    /// `playtest` awards, which never feed the trainer level.
     pub totals: BTreeMap<String, u64>,
-    /// Achievement titles per hex public key.
+    /// Achievement titles per hex public key, on trainer awards.
     pub titles: BTreeMap<String, BTreeSet<String>>,
+    /// Playtest XP per hex public key, kept apart from [`Self::totals`].
+    pub playtest_totals: BTreeMap<String, u64>,
+    /// Titles on counted `playtest` awards, such as `playtester`.
+    pub playtest_titles: BTreeMap<String, BTreeSet<String>>,
     /// Every awardee's share of every counted award.
     pub credits: Vec<Credit>,
     /// Awards that count.
@@ -176,6 +199,23 @@ pub fn snapshot(events: &[Event], trust: &XpTrust) -> Snapshot {
 
     // Counted awards: their referee, awardees, and quest.
     let mut counted: BTreeMap<&str, (&str, &str, Vec<&str>)> = BTreeMap::new();
+    let playtest_awards: BTreeSet<&str> = ledger
+        .credits
+        .iter()
+        .filter(|c| c.rule == xp::PLAYTEST)
+        .map(|c| c.award.as_str())
+        .collect();
+    let mut totals: BTreeMap<String, u64> = BTreeMap::new();
+    let mut playtest_totals: BTreeMap<String, u64> = BTreeMap::new();
+    for credit in &ledger.credits {
+        let bucket = if credit.rule == xp::PLAYTEST {
+            &mut playtest_totals
+        } else {
+            &mut totals
+        };
+        *bucket.entry(credit.pubkey.clone()).or_default() += credit.xp;
+    }
+    let mut playtest_titles: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for credit in &ledger.credits {
         counted
             .entry(credit.award.as_str())
@@ -198,8 +238,13 @@ pub fn snapshot(events: &[Event], trust: &XpTrust) -> Snapshot {
         if *referee != event.pubkey {
             continue;
         }
+        let bucket = if playtest_awards.contains(label.award.as_str()) {
+            &mut playtest_titles
+        } else {
+            &mut titles
+        };
         for pubkey in people {
-            titles
+            bucket
                 .entry((*pubkey).to_owned())
                 .or_default()
                 .insert(label.value.clone());
@@ -281,8 +326,10 @@ pub fn snapshot(events: &[Event], trust: &XpTrust) -> Snapshot {
 
     Snapshot {
         quests,
-        totals: ledger.totals.clone(),
+        totals,
         titles,
+        playtest_totals,
+        playtest_titles,
         credits: ledger.credits.clone(),
         counted: counted.len(),
         revoked: ledger.revoked.len(),
@@ -733,6 +780,10 @@ pub fn board_lines(board: Option<&Board>, now: u64) -> Vec<Styled> {
         }
         out.push((title, Intensity::Full));
         let bar = match (&q.recipe, q.max_usd_per_run) {
+            _ if q.rule == xp::PLAYTEST => format!(
+                "an accepted {} contribution on a season build, by the playtest referee",
+                q.task
+            ),
             (Some(recipe), _) => format!(
                 "reproduce the published pass from recipe {} with a run of your own",
                 short(recipe)
@@ -864,7 +915,7 @@ pub fn card(snapshot: &Snapshot, keys: &[String]) -> Card {
     let mut awards: Vec<CardAward> = snapshot
         .credits
         .iter()
-        .filter(|c| c.xp > 0 && mine.contains(&c.pubkey))
+        .filter(|c| c.xp > 0 && c.rule != xp::PLAYTEST && mine.contains(&c.pubkey))
         .map(|c| CardAward {
             award: c.award.clone(),
             referee: c.referee.clone(),
@@ -889,6 +940,95 @@ pub fn card(snapshot: &Snapshot, keys: &[String]) -> Card {
         awards,
         referees: snapshot.referees,
     }
+}
+
+/// A playtest card: playtest XP and titles for `keys`, and what they came
+/// from. It is shown next to the trainer card and never summed into the
+/// trainer level: playtest XP has no curve.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct PlaytestCard {
+    pub keys: Vec<String>,
+    pub xp: u64,
+    /// Such as `playtester`, `founding-playtester`, `bug-hunter`.
+    pub titles: Vec<String>,
+    pub awards: Vec<CardAward>,
+    /// Counted feedback, bug, and design awards.
+    pub accepted_reports: usize,
+    /// Counted verified-fix awards.
+    pub fixes_verified: usize,
+    /// Counted session-script awards.
+    pub sessions: usize,
+    /// Counted diary awards.
+    pub diaries: usize,
+}
+
+/// The playtest card for `keys` under `snapshot`, which should come from a
+/// reader trusting the playtest referee ([`playtest_trust`]).
+#[must_use]
+pub fn playtest_card(snapshot: &Snapshot, keys: &[String]) -> PlaytestCard {
+    let mine: BTreeSet<&String> = keys.iter().collect();
+    let contribution = |referee: &str, quest: &str| {
+        snapshot
+            .quests
+            .iter()
+            .find(|q| q.referee == referee && q.address == quest)
+            .map_or("", |q| q.task.as_str())
+    };
+    let mut awards: Vec<CardAward> = snapshot
+        .credits
+        .iter()
+        .filter(|c| c.xp > 0 && c.rule == xp::PLAYTEST && mine.contains(&c.pubkey))
+        .map(|c| CardAward {
+            award: c.award.clone(),
+            referee: c.referee.clone(),
+            quest: c.quest.clone(),
+            title: c.title.clone(),
+            season: c.season.clone(),
+            rule: c.rule.clone(),
+            role: c.role.clone(),
+            xp: c.xp,
+        })
+        .collect();
+    awards.sort_by(|a, b| a.quest.cmp(&b.quest).then(a.award.cmp(&b.award)));
+    awards.dedup_by(|a, b| a.award == b.award);
+    let count = |kinds: &[&str]| {
+        awards
+            .iter()
+            .filter(|a| kinds.contains(&contribution(&a.referee, &a.quest)))
+            .count()
+    };
+    let titles: BTreeSet<String> = keys
+        .iter()
+        .filter_map(|k| snapshot.playtest_titles.get(k))
+        .flatten()
+        .cloned()
+        .collect();
+    PlaytestCard {
+        keys: keys.to_vec(),
+        xp: keys
+            .iter()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .filter_map(|k| snapshot.playtest_totals.get(k))
+            .sum(),
+        titles: titles.into_iter().collect(),
+        accepted_reports: count(&["feedback", "bug", "design"]),
+        fixes_verified: count(&["verified-fix"]),
+        sessions: count(&["session"]),
+        diaries: count(&["diary"]),
+        awards,
+    }
+}
+
+/// The playtest titles `pubkey` holds under `snapshot`, which the Grid
+/// draws as shapes: `playtester`, `founding-playtester`, `bug-hunter`,
+/// `fix-verifier`, and `raider`.
+#[must_use]
+pub fn playtest_titles(snapshot: Option<&Snapshot>, pubkey: &str) -> BTreeSet<String> {
+    snapshot
+        .and_then(|s| s.playtest_titles.get(pubkey))
+        .cloned()
+        .unwrap_or_default()
 }
 
 pub mod fixture;

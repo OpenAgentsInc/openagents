@@ -251,6 +251,31 @@ In the OpenAgents app, the key over your head in the Grid is your
 to sign with on your computer, so an award to it shows as your level in the
 Grid and on your trainer card.
 
+## Referee playtest contributions
+
+Playtest awards follow NIP-XP's `playtest` rule and are signed by a
+separate playtest referee key, never by the OpenAgents referee, so they
+never move a trainer level ([playtesting](../../game/playtesting.md#rewards)).
+
+1. Create the key once, on the machine that referees playtesting:
+   `microcoder xp playtest-keygen`. It writes the secret to
+   `~/.openagents/nostr/playtest-referee-key` (mode 0600), refuses to
+   replace an existing key, and prints only the npub and hex public key.
+   Nothing else creates it.
+2. Publish the season's quests as usual: `microcoder xp quest
+   playtest-s1.bug-minor.json --relay URL`. A file whose rule is
+   `playtest` is signed with the playtest referee key.
+3. A moderator records a moderated or group session with their own key:
+   `microcoder xp playtest-session --relay URL --tester NPUB --script raid
+   --format group --build "1.0.0 (15)"`.
+4. Accept a tester's report (their `3195`) from a triage-log acceptance:
+   `microcoder xp award --relay URL --quest playtest-s1.bug-minor@1
+   --evidence REPORT-ID --triager NPUB --issue OpenAgentsInc/openagents#N
+   --severity p2 [--label playtester]`. Add `--session RECORD-ID` for a
+   session and `--commit SHA` for a design finding. A contribution pays
+   once under its rule-derived key, and a quest version stops at its
+   `max_awards`.
+
 ## Revoke an award
 
 ```sh

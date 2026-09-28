@@ -381,3 +381,139 @@ fn a_reproduce_award_without_its_reproduction_is_refused() {
     assert!(ledger.totals.is_empty());
     assert!(ledger.refused[0].contains("reproduction"));
 }
+
+fn playtest_quest(referee: &RelaySigner, contribution: &str, max_awards: u64) -> Event {
+    let mut acceptance = json!({
+        "rule": "playtest", "contribution": contribution,
+        "builds": ["1.0.0 (15)"], "max_awards": max_awards,
+    });
+    if contribution == "bug" {
+        acceptance["severities"] = json!(["p2", "p3"]);
+    }
+    sign(
+        referee,
+        xp::quest(&json!({
+            "id": format!("playtest-s1.{contribution}"),
+            "version": 1,
+            "season": {"id": "playtest-s1", "opens_at": AT - 1_000, "closes_at": AT + 1_000_000},
+            "title": format!("Playtest {contribution}"),
+            "objective": "An accepted playtest contribution.",
+            "acceptance": acceptance,
+            "reference": null,
+            "award": {"tester": 20, "triager": 0},
+        }))
+        .unwrap(),
+    )
+}
+
+fn playtest_report(tester: &RelaySigner, kind: &str) -> Event {
+    sign(
+        tester,
+        xp::playtest_report("1.0.0 (15)", "android", kind, &"ab".repeat(32), None).unwrap(),
+    )
+}
+
+fn playtest_award(
+    referee: &RelaySigner,
+    quest: &Event,
+    report: &Event,
+    issue: &str,
+    severity: Option<&str>,
+) -> Event {
+    let fields = xp::PlaytestAward {
+        issue: Some(issue.into()),
+        severity: severity.map(str::to_owned),
+        commit: None,
+    };
+    sign(
+        referee,
+        xp::playtest_award(quest, report, None, signer("triager").pubkey(), &fields, AT).unwrap(),
+    )
+}
+
+#[test]
+fn an_accepted_playtest_contribution_credits_the_tester_only() {
+    let referee = signer("playtest-referee");
+    let tester = signer("tester");
+    let quest = playtest_quest(&referee, "bug", 10);
+    let report = playtest_report(&tester, "bug");
+    let award = playtest_award(
+        &referee,
+        &quest,
+        &report,
+        "OpenAgentsInc/openagents#1",
+        Some("p2"),
+    );
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.pubkey().to_owned()]),
+        // A runner list doesn't apply to playtest awards.
+        runners: BTreeSet::from([signer("runner").pubkey().to_owned()]),
+    };
+    let ledger = derive(&[quest.clone(), report.clone(), award.clone()], &trust);
+    assert_eq!(ledger.refused, Vec::<String>::new());
+    assert_eq!(ledger.totals.get(tester.pubkey()), Some(&20));
+    assert_eq!(ledger.credits.len(), 1);
+    assert_eq!(ledger.credits[0].rule, "playtest");
+    assert_eq!(ledger.credits[0].role, "tester");
+    // Without the tester's report, the award isn't counted.
+    let ledger = derive(&[quest, award], &trust);
+    assert!(ledger.totals.is_empty());
+    assert_eq!(ledger.refused.len(), 1);
+}
+
+#[test]
+fn one_issue_earns_one_report_class_award_across_quests() {
+    let referee = signer("playtest-referee");
+    let tester = signer("tester");
+    let bug = playtest_quest(&referee, "bug", 10);
+    let feedback = playtest_quest(&referee, "feedback", 10);
+    let report = playtest_report(&tester, "bug");
+    let issue = "OpenAgentsInc/openagents#2";
+    let first = playtest_award(&referee, &bug, &report, issue, Some("p3"));
+    let second = playtest_award(&referee, &feedback, &report, issue, None);
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.pubkey().to_owned()]),
+        runners: BTreeSet::new(),
+    };
+    let ledger = derive(&[bug, feedback, report, first, second], &trust);
+    assert!(ledger.totals.is_empty());
+    assert_eq!(ledger.conflicts.len(), 1);
+    assert!(ledger.conflicts[0].starts_with("playtest:playtest-s1:report:"));
+}
+
+#[test]
+fn a_quest_version_over_its_max_awards_counts_none() {
+    let referee = signer("playtest-referee");
+    let quest = playtest_quest(&referee, "feedback", 1);
+    let (a, b) = (signer("tester-a"), signer("tester-b"));
+    let (ra, rb) = (
+        playtest_report(&a, "idea"),
+        playtest_report(&b, "confusing"),
+    );
+    let award_a = playtest_award(&referee, &quest, &ra, "OpenAgentsInc/openagents#3", None);
+    let award_b = playtest_award(&referee, &quest, &rb, "OpenAgentsInc/openagents#4", None);
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.pubkey().to_owned()]),
+        runners: BTreeSet::new(),
+    };
+    let ledger = derive(
+        &[
+            quest.clone(),
+            ra.clone(),
+            rb,
+            award_a.clone(),
+            award_b.clone(),
+        ],
+        &trust,
+    );
+    assert!(ledger.totals.is_empty());
+    assert!(ledger.conflicts[0].contains("max_awards of 1"));
+    // Revoking the extra one brings the quest within its limit.
+    let revoked = sign(
+        &referee,
+        xp::revocation(&award_b, "Duplicate of #3.").unwrap(),
+    );
+    let ledger = derive(&[quest, ra, award_a, award_b, revoked], &trust);
+    assert_eq!(ledger.totals.get(a.pubkey()), Some(&20));
+    assert_eq!(ledger.revoked.len(), 1);
+}
