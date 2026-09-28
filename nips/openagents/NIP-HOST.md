@@ -245,7 +245,12 @@ When `chats` is requested and the host serves retained history, the answer
 also carries a `coder-pair:` invitation from the read-only observer in
 `coder-connect` (the SESS observer profile). That grant is separate: it
 admits only history reads, and a HOST grant still never admits one. The
-host then runs the observer in-process on its primary relay.
+host then runs the observer in-process on its primary relay, and serves
+the same sealed observer requests on direct connections to this listener,
+as NIP-SESS's [direct tailnet transport](NIP-SESS.md#direct-tailnet-transport)
+defines: a line naming `openagents.history-observer-direct.v1` first, then
+frames. The listener welcomes only the callers it would admit, and each
+request still carries its own grant.
 
 Tailscale identifies the caller; it never decides access by itself. The
 operator's opt-in, the explicit rights, and the host's signature on every

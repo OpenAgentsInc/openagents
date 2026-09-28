@@ -576,9 +576,10 @@ recipient the granted client, and mailbox the request ID. Expiry is no later
 than the request expiry. No response can substitute for another request even
 when the source, query, or visible text happens to match.
 
-Only bounded inline JSON is supported. Observer bodies are at most 128 KiB;
-catalogs have at most 32 entries and transcript pages at most 32 KiB of raw
-source bytes within the reader's 112 KiB encoded-page bound. Exact private
+Only bounded inline JSON is supported. Through a relay, observer bodies are
+at most 128 KiB; catalogs have at most 32 entries and transcript pages at
+most 32 KiB of raw source bytes within the reader's 112 KiB encoded-page
+bound. The direct transport below allows larger replies. Exact private
 envelope and NIP-44 bounds also apply. Oversize, unsupported, partial,
 unavailable, and changed-source cases cannot be silently labeled complete.
 Stable refusal codes are `revoked`, `expired`, `source_changed`, `unavailable`,
@@ -598,6 +599,59 @@ retains receipt time MUST label it as received or checked, not source capture.
 Clients MUST validate raw byte bounds, record IDs and offsets, newline
 completion, and next-record cursors before merging transcript chunks into a
 cache. A valid host signature does not make an inconsistent reader page valid.
+
+### Direct tailnet transport
+
+A host that serves chats with NIP-HOST
+[tailnet admission](NIP-HOST.md#tailnet-admission) also carries these same
+sealed requests and replies on a direct connection to that listener, which
+is bound to the host's own tailnet address, never a wildcard or LAN address.
+It is a transport, not an admission: a device uses it only with a grant it
+already holds, and a relay stays the fallback.
+
+The device connects and sends one line of JSON,
+`{v: "openagents.history-observer-direct.v1", requires: []}`, at most 1,024
+bytes. The host answers `{v, refused}` and serves the connection only when
+`refused` is null: the caller's address is in Tailscale's ranges and its
+local `tailscale whois` names the host machine's own untagged user, exactly
+the callers admission answers. Refusal codes are `not_tailnet`,
+`unavailable`, `tagged`, `not_owner`, and `not_serving`. After that, each
+line is one frame. The device sends `{id, event}`, where `event` is an
+original signed `3188` request artifact and `id` a connection-local number.
+The host answers `{"reply": {id, event}}` with the original signed reply
+artifact, or `{"refused": {id, code}}` when it has no signed reply (an
+unauthenticated local failure, never a domain result). Frames of different
+requests may be in flight and answered in any order.
+
+The host runs every check of a relay request: signature, recipient, schema,
+client, current grant, original authorization, source roots, freshness,
+rate, revocation, and request-ID replay. It skips only the relay binding,
+since no relay carried the request. A pairing redemption travels only
+through its relay. The device verifies the reply exactly as a relay reply.
+
+A direct reply may be larger: a transcript page of up to 160 KiB of raw
+source bytes within a 232 KiB encoded page, a catalog page of up to 256
+chats, and an observer body of up to 248 KiB, within NIP-44's 256 KiB
+plaintext. A relay reply keeps the bounds above, and a host refuses a
+direct-sized request that arrives through a relay. A backward page whose
+whole records do not fit the encoded bound together holds the newest of
+them that do, down to one record.
+
+Replay protection is unchanged across routes: the host binds each request
+ID to its exact event in its book on first answer, and a request ID is read
+at most once whichever route carries it. Because a direct reply can be four
+times a relay reply, the host keeps its bytes in memory through the request
+lifetime and keeps a signed `conflict` reply for that request in the book
+instead; an exact retry gets the kept bytes, or that conflict once the host
+no longer has them.
+
+The host may also send a nudge, `{"changed": {source}}` or `"catalog"`, when
+a source this connection read grew or changed, or when the Coder task
+directory of a catalog this connection read changed. A nudge carries only a
+source ID already disclosed on that connection and no bytes, length, or
+title; it is a hint to read again through an ordinary request, and grants
+nothing. A host watches a source for at most ten minutes after its last read
+on that connection.
 
 ### Expiry, revocation, and disclosure limits
 

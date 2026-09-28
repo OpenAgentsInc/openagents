@@ -546,6 +546,23 @@ impl App {
             format!("chats:{}", id()),
         )
         .with_pulled_transcripts(launch.pulled_transcripts);
+        let admissions = Cache::open(&config.state_dir.join("admissions"), &secret);
+        // Chats read directly at each admitted computer's tailnet listener,
+        // including pairings made before the phone remembered its address.
+        let mut chats = chats;
+        let admitted: BTreeMap<String, Admitted> = admissions
+            .as_ref()
+            .ok()
+            .and_then(|cache| cache.read("admitted").ok().flatten())
+            .unwrap_or_default();
+        for (address, admitted) in &admitted {
+            if let Ok(ip) = address.parse::<std::net::Ipv4Addr>() {
+                chats.set_direct(
+                    &admitted.host,
+                    std::net::SocketAddr::from((ip, coder_host::tailnet::PORT)),
+                );
+            }
+        }
         let tailnet_client = Client::open(&config.state_dir.join("tailscale")).map(Arc::new);
         // The Spark wallet replaced the Mutinynet test wallet, whose store
         // held only signet test coins; remove it. Its Keychain item goes too.
@@ -579,7 +596,7 @@ impl App {
                 admits: BTreeMap::new(),
                 answers: vec![],
             })),
-            admissions: Cache::open(&config.state_dir.join("admissions"), &secret),
+            admissions,
             tailnet_revision: 0,
             tailnet_view: None,
             wallet: {
@@ -1040,9 +1057,13 @@ impl App {
                             .computers
                             .as_mut()
                             .is_some_and(|computers| computers.admit(invitation, &label).is_ok());
+                    let direct = address
+                        .parse::<std::net::Ipv4Addr>()
+                        .ok()
+                        .map(|ip| std::net::SocketAddr::from((ip, coder_host::tailnet::PORT)));
                     if let Some(chats) = admission.chats.clone() {
                         self.chats
-                            .pair(chats, Some(label), Some(admission.host.clone()));
+                            .pair(chats, Some(label), Some(admission.host.clone()), direct);
                     }
                     if added {
                         known.insert(

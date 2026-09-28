@@ -8,12 +8,40 @@ use serde_json::json;
 use std::str::FromStr;
 
 pub const MAX_BODY: usize = 128 * 1024;
+/// A body on a direct tailnet connection: one sealed reply within NIP-44's
+/// 256 KiB plaintext, less the envelope around it.
+pub const MAX_DIRECT_BODY: usize = 248 * 1024;
 pub const MAX_GRANT_LIFETIME: u64 = 30 * 24 * 60 * 60;
 pub const MAX_REQUEST_LIFETIME: u64 = 60;
 pub const GRANT: &str = "openagents.history-observer-grant.v1";
 pub const CONNECTION: &str = "openagents.history-observer-connection.v1";
 pub const REQUEST: &str = "openagents.history-observer-request.v1";
 pub const REPLY: &str = "openagents.history-observer-reply.v1";
+
+/// How a sealed request and its reply travel. The request, its grant, its
+/// authorization, and every host check are the same on both; only the
+/// bounds of one reply differ.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Route {
+    /// Through the grant's relay.
+    Relay,
+    /// On a direct connection to the host's tailnet address.
+    Direct,
+}
+impl Route {
+    pub fn limits(self) -> coder_history::Limits {
+        match self {
+            Self::Relay => coder_history::Limits::RELAY,
+            Self::Direct => coder_history::Limits::DIRECT,
+        }
+    }
+    pub fn body(self) -> usize {
+        match self {
+            Self::Relay => MAX_BODY,
+            Self::Direct => MAX_DIRECT_BODY,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RelayPolicy {
@@ -176,16 +204,21 @@ pub enum Query {
 }
 impl Query {
     pub fn validate(&self) -> Result<()> {
+        self.validate_for(Route::Relay)
+    }
+    /// Check the query against the bounds of the route it travels.
+    pub fn validate_for(&self, route: Route) -> Result<()> {
+        let limits = route.limits();
         if encoded(self)?.len() > 8192 {
             return fail(ErrorCode::Bounds, "query exceeds its byte bound");
         }
         match self {
-            Self::Catalog(q) if q.limit == 0 || q.limit > coder_history::MAX_CATALOG_PAGE => {
+            Self::Catalog(q) if q.limit == 0 || q.limit > limits.catalog_page => {
                 fail(ErrorCode::Bounds, "catalog limit exceeds the reader bound")
             }
             Self::Page(q)
                 if q.max_bytes == 0
-                    || q.max_bytes > coder_history::MAX_PAGE_BYTES
+                    || q.max_bytes > limits.page_bytes
                     || q.source_id.is_empty()
                     || q.source_id.len() > 128 =>
             {
@@ -224,12 +257,15 @@ pub struct Request {
 }
 impl Request {
     pub fn validate(&self) -> Result<()> {
+        self.validate_for(Route::Relay)
+    }
+    pub fn validate_for(&self, route: Route) -> Result<()> {
         schema(&self.v, REQUEST, &self.requires)?;
         for id in [&self.request, &self.grant, &self.authorization] {
             identity(id)?;
         }
         window(self.issued_at, self.expires_at, MAX_REQUEST_LIFETIME)?;
-        self.query.validate()
+        self.query.validate_for(route)
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -306,6 +342,10 @@ pub fn fresh(issued: u64, expires: u64, now: u64) -> Result<()> {
     Ok(())
 }
 pub fn encoded(value: &impl Serialize) -> Result<Vec<u8>> {
+    encoded_within(value, MAX_BODY)
+}
+/// Canonical bytes of an observer body of at most `max` bytes.
+pub fn encoded_within(value: &impl Serialize, max: usize) -> Result<Vec<u8>> {
     let value = serde_json::to_value(value)
         .map_err(|_| Error::new(ErrorCode::Malformed, "observer serialization failed"))?;
     let bytes = contracts::jcs(&value).map_err(|_| {
@@ -314,13 +354,16 @@ pub fn encoded(value: &impl Serialize) -> Result<Vec<u8>> {
             "observer canonical serialization failed",
         )
     })?;
-    if bytes.len() > MAX_BODY {
+    if bytes.len() > max {
         return fail(ErrorCode::Bounds, "observer body exceeds its byte bound");
     }
     Ok(bytes)
 }
 pub fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
-    let value = contracts::parse_strict_bounded(bytes, MAX_BODY)
+    decode_within(bytes, MAX_BODY)
+}
+pub fn decode_within<T: DeserializeOwned>(bytes: &[u8], max: usize) -> Result<T> {
+    let value = contracts::parse_strict_bounded(bytes, max)
         .map_err(|_| Error::new(ErrorCode::Malformed, "invalid bounded observer JSON"))?;
     serde_json::from_value(value).map_err(|_| {
         Error::new(
@@ -338,7 +381,25 @@ pub fn seal(
     issued: u64,
     expires: u64,
 ) -> Result<Event> {
-    let bytes = encoded(value)?;
+    seal_within(
+        value,
+        schema,
+        secret,
+        recipient,
+        (mailbox, issued, expires),
+        MAX_BODY,
+    )
+}
+/// [`seal`] a body of at most `max` bytes.
+pub fn seal_within(
+    value: &impl Serialize,
+    schema: &str,
+    secret: &SecretKey,
+    recipient: &str,
+    (mailbox, issued, expires): (&str, u64, u64),
+    max: usize,
+) -> Result<Event> {
+    let bytes = encoded_within(value, max)?;
     let inline: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|_| Error::new(ErrorCode::Malformed, "observer body"))?;
     let body = json!({"v":"openagents.artifact-envelope.v1","requires":[],"artifact":{"digest":contracts::digest_bytes(&bytes),"size":bytes.len(),"media_type":"application/json","schema":schema},"inline":inline,"issued_at":issued,"retain_until":expires});
@@ -353,6 +414,16 @@ pub fn open<T: DeserializeOwned>(
     signer: &str,
     recipient: &str,
     schema: &str,
+) -> Result<T> {
+    open_within(event, secret, (signer, recipient), schema, MAX_BODY)
+}
+/// [`open`] a body of at most `max` bytes.
+pub fn open_within<T: DeserializeOwned>(
+    event: &Event,
+    secret: &SecretKey,
+    (signer, recipient): (&str, &str),
+    schema: &str,
+    max: usize,
 ) -> Result<T> {
     if event.content.len() > 400 * 1024 {
         return fail(
@@ -377,10 +448,12 @@ pub fn open<T: DeserializeOwned>(
             "observer signer, recipient, schema, or issue time differs",
         );
     }
-    let value: serde_json::Value =
-        decode(opened.inline_bytes().ok_or_else(|| {
+    let value: serde_json::Value = decode_within(
+        opened.inline_bytes().ok_or_else(|| {
             Error::new(ErrorCode::Unavailable, "inline observer bytes unavailable")
-        })?)?;
+        })?,
+        max,
+    )?;
     if value["issued_at"].as_u64() != Some(opened.body().issued_at)
         || value["expires_at"].as_u64() != Some(opened.body().retain_until)
     {

@@ -1294,3 +1294,41 @@ fn a_transcript_read_finds_a_moved_source_by_listing_again() {
         .unwrap_err();
     assert_eq!(refused, Error::SourceMissing);
 }
+
+/// A direct read asks for far more bytes than a relay read may, and a
+/// backward page whose records do not all fit its encoded bound answers
+/// with the newest of them rather than refusing.
+#[test]
+fn a_direct_backward_page_is_large_and_keeps_the_newest_records_that_fit() {
+    let fixture = Fixture::new();
+    let line = format!(
+        "{{\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"{}\"}}]}}}}\n",
+        "x".repeat(40)
+    );
+    fixture.codex("large", &line.repeat(4000));
+    let history = fixture.history();
+    let source = first(&history).source_id.unwrap();
+    let request = TranscriptRequest {
+        source_id: source.clone(),
+        cursor: None,
+        max_bytes: Limits::DIRECT.page_bytes,
+        end: Some(NEWEST),
+    };
+    assert_eq!(
+        history.transcript(request.clone()).unwrap_err(),
+        Error::InvalidRequest
+    );
+    let page = history.transcript_within(request, Limits::DIRECT).unwrap();
+    assert!(encoded_len(&page).unwrap() <= Limits::DIRECT.response_bytes);
+    assert!(
+        page.chunks.len() > Limits::RELAY.chunks,
+        "{}",
+        page.chunks.len()
+    );
+    assert!(page.chunks.iter().all(|c| c.complete));
+    assert_eq!(page.chunks.last().unwrap().end_offset, page.snapshot_bytes);
+    assert_eq!(page.previous, Some(page.chunks[0].offset));
+    for pair in page.chunks.windows(2) {
+        assert_eq!(pair[0].end_offset, pair[1].offset);
+    }
+}

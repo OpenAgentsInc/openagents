@@ -719,4 +719,5 @@ async fn cancelled_exchange_discards_socket_before_the_next_observation() {
     let _ = relay.await;
 }
 
+mod direct;
 mod pairing;

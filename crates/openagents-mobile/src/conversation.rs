@@ -15,6 +15,8 @@
 //! reply shows after a read or two. Each source is a segment of the chat,
 //! and a read for a source the chat moved past is dropped.
 
+use coder_connect::direct::Change;
+use coder_connect::protocol::Route;
 use coder_connect::{Client, Observation, Query};
 use coder_history::{Chat, RecordChunk, TranscriptRequest};
 use rust_native::markdown;
@@ -28,9 +30,18 @@ use tokio::runtime::Handle;
 use base64::Engine;
 
 const OBSERVE_LIMIT: Duration = Duration::from_secs(20);
-/// Raw bytes per backward page. A full 32 KiB page, base64-encoded with its
-/// readable projections, can exceed what one sealed observer reply holds.
+/// Raw bytes per backward page through a relay. A full 32 KiB page,
+/// base64-encoded with its readable projections, can exceed what one sealed
+/// relay reply holds. A direct connection's pages are ten times as large, so
+/// a chat's newest screen comes in one read.
 const PAGE_BYTES: u32 = 16 * 1024;
+
+fn page_bytes(route: Route) -> u32 {
+    match route {
+        Route::Relay => PAGE_BYTES,
+        Route::Direct => route.limits().page_bytes,
+    }
+}
 /// Backward pages read for one batch.
 const BATCH_PAGES: usize = 12;
 /// Backward pages one poll, or one read of a new turn, reads to reach what
@@ -162,6 +173,9 @@ struct Inner {
     compact: u8,
     /// The read showing its pages as they arrive.
     partial: Option<u64>,
+    /// The computer said the newest source grew while a read ran: read
+    /// again when it finishes.
+    again: bool,
 }
 
 impl Inner {
@@ -197,6 +211,14 @@ pub struct Conversation {
     client: Arc<Client>,
     runtime: Handle,
     inner: Arc<Mutex<Inner>>,
+    /// Reads again when the computer says the newest source grew.
+    watch: tokio::task::AbortHandle,
+}
+
+impl Drop for Conversation {
+    fn drop(&mut self) {
+        self.watch.abort();
+    }
 }
 
 fn lock(inner: &Mutex<Inner>) -> MutexGuard<'_, Inner> {
@@ -247,11 +269,14 @@ impl Conversation {
                 }
             }
         }
+        let inner = Arc::new(Mutex::new(inner));
+        let watch = watch(&runtime, &client, &inner);
         let conversation = Self {
             chat,
             client,
             runtime,
-            inner: Arc::new(Mutex::new(inner)),
+            inner,
+            watch,
         };
         conversation.poll();
         conversation
@@ -309,23 +334,7 @@ impl Conversation {
     /// source's newest records have not been read, as after a failed read
     /// or a move to a newer source, those. Returns whether a read started.
     pub fn poll(&self) -> bool {
-        let (kind, segment, source) = {
-            let mut inner = lock(&self.inner);
-            if inner.loading || inner.polling {
-                return false;
-            }
-            let kind = if inner.stale {
-                inner.loading = true;
-                Read::Head
-            } else {
-                inner.polling = true;
-                Read::Newer
-            };
-            let (segment, source) = inner.newest();
-            (kind, segment, source)
-        };
-        self.read(kind, segment, source, coder_history::NEWEST);
-        true
+        poll(&self.client, &self.runtime, &self.inner, false)
     }
 
     /// The newest source's newest records were not read, as after a failed
@@ -394,37 +403,12 @@ impl Conversation {
     }
 
     fn read(&self, kind: Read, segment: u8, source: String, end: u64) {
-        let (client, inner) = (self.client.clone(), self.inner.clone());
-        let (generation, ticket, through) = {
-            let mut state = lock(&inner);
-            state.started += 1;
-            if matches!(kind, Read::Head) && (segment > 0 || state.rows.is_empty()) {
-                state.partial = Some(state.started);
-            }
-            (state.generation, state.started, state.through)
-        };
-        self.runtime.spawn(async move {
-            let result = match kind {
-                Read::Newer => newer(&client, &source, through).await,
-                Read::Head => {
-                    // Show each page as it arrives: the newest messages
-                    // first, then the rest.
-                    let shown = inner.clone();
-                    let show = move |rows: &[Row], previous: Option<u64>| {
-                        let mut state = lock(&shown);
-                        if state.generation == generation
-                            && state.partial == Some(ticket)
-                            && !rows.is_empty()
-                        {
-                            state.show(segment, rows, previous);
-                        }
-                    };
-                    batch(&client, &source, segment, end, &show).await
-                }
-                Read::Earlier => batch(&client, &source, segment, end, &|_, _| {}).await,
-            };
-            finish(&mut lock(&inner), kind, segment, generation, ticket, result);
-        });
+        read(
+            &self.client,
+            &self.runtime,
+            &self.inner,
+            (kind, segment, source, end),
+        );
     }
 
     /// The chat as a transcript node. `earlier` is the intent that loads
@@ -473,6 +457,108 @@ impl Conversation {
     pub fn shrink(&self) -> bool {
         shrink(&mut lock(&self.inner))
     }
+}
+
+/// Start a read of `source` in the background.
+fn read(
+    client: &Arc<Client>,
+    runtime: &Handle,
+    inner: &Arc<Mutex<Inner>>,
+    (kind, segment, source, end): (Read, u8, String, u64),
+) {
+    let (client, inner) = (client.clone(), inner.clone());
+    let (generation, ticket, through) = {
+        let mut state = lock(&inner);
+        state.started += 1;
+        if matches!(kind, Read::Head) && (segment > 0 || state.rows.is_empty()) {
+            state.partial = Some(state.started);
+        }
+        (state.generation, state.started, state.through)
+    };
+    runtime.spawn(async move {
+        let result = match kind {
+            Read::Newer => newer(&client, &source, through).await,
+            Read::Head => {
+                // Show each page as it arrives: the newest messages
+                // first, then the rest.
+                let shown = inner.clone();
+                let show = move |rows: &[Row], previous: Option<u64>| {
+                    let mut state = lock(&shown);
+                    if state.generation == generation
+                        && state.partial == Some(ticket)
+                        && !rows.is_empty()
+                    {
+                        state.show(segment, rows, previous);
+                    }
+                };
+                batch(&client, &source, segment, end, &show).await
+            }
+            Read::Earlier => batch(&client, &source, segment, end, &|_, _| {}).await,
+        };
+        let again = {
+            let mut state = lock(&inner);
+            finish(&mut state, kind, segment, generation, ticket, result);
+            std::mem::take(&mut state.again)
+        };
+        if again {
+            poll(&client, &Handle::current(), &inner, false);
+        }
+    });
+}
+
+/// Start a read of the newest source (see [`Conversation::poll`]). A nudge
+/// that arrives while a read runs reads again once it finishes, since the
+/// running read may have started before the source grew.
+fn poll(client: &Arc<Client>, runtime: &Handle, inner: &Arc<Mutex<Inner>>, nudged: bool) -> bool {
+    let (kind, segment, source) = {
+        let mut state = lock(inner);
+        if state.loading || state.polling {
+            state.again |= nudged;
+            return false;
+        }
+        let kind = if state.stale {
+            state.loading = true;
+            Read::Head
+        } else {
+            state.polling = true;
+            Read::Newer
+        };
+        let (segment, source) = state.newest();
+        (kind, segment, source)
+    };
+    read(
+        client,
+        runtime,
+        inner,
+        (kind, segment, source, coder_history::NEWEST),
+    );
+    true
+}
+
+/// Follow the client's nudges for the chat's newest source.
+fn watch(
+    runtime: &Handle,
+    client: &Arc<Client>,
+    inner: &Arc<Mutex<Inner>>,
+) -> tokio::task::AbortHandle {
+    use tokio::sync::broadcast::error::RecvError;
+    let mut changes = client.changes();
+    let (client, weak) = (client.clone(), Arc::downgrade(inner));
+    runtime
+        .spawn(async move {
+            loop {
+                let source = match changes.recv().await {
+                    Ok(Change::Source(source)) => source,
+                    Ok(Change::Catalog) | Err(RecvError::Lagged(_)) => continue,
+                    Err(RecvError::Closed) => return,
+                };
+                let Some(inner) = weak.upgrade() else { return };
+                if lock(&inner).newest().1 == source {
+                    poll(&client, &Handle::current(), &inner, true);
+                }
+            }
+        })
+        .abort_handle()
 }
 
 /// Show less of each tool row's output, then drop the oldest half of the
@@ -636,25 +722,24 @@ struct Found {
     through: u64,
 }
 
-async fn observe(client: &Client, query: Query) -> Result<Observation, String> {
-    tokio::time::timeout(OBSERVE_LIMIT, client.observe(query))
-        .await
-        .map_err(|_| "The computer did not answer.".to_string())?
-        .map_err(|error| error.to_string())
-}
-
 async fn back(
     client: &Client,
     source: &str,
     end: u64,
 ) -> Result<coder_history::TranscriptPage, String> {
-    let request = TranscriptRequest {
-        source_id: source.to_owned(),
-        cursor: None,
-        max_bytes: PAGE_BYTES,
-        end: Some(end),
-    };
-    match observe(client, Query::Page(request)).await? {
+    let read = client.observe_with(|route| {
+        Query::Page(TranscriptRequest {
+            source_id: source.to_owned(),
+            cursor: None,
+            max_bytes: page_bytes(route),
+            end: Some(end),
+        })
+    });
+    let observed = tokio::time::timeout(OBSERVE_LIMIT, read)
+        .await
+        .map_err(|_| "The computer did not answer.".to_string())?
+        .map_err(|error| error.to_string())?;
+    match observed {
         Observation::Page(page) => Ok(page),
         Observation::Catalog(_) => Err("The computer answered with the wrong page.".into()),
     }

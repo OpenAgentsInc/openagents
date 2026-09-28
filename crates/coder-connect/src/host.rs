@@ -115,6 +115,8 @@ impl Host {
         }
     }
     pub fn key(&self) -> Result<SecretKey> {
+        let gate = self.gate();
+        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
         Store::open(&self.directory, false)?.key(false)
     }
     pub fn pair(
@@ -126,6 +128,8 @@ impl Host {
         expires_at: u64,
     ) -> Result<ConnectionCode> {
         self.policy.validate(relay)?;
+        let gate = self.gate();
+        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
         window(now, expires_at, MAX_GRANT_LIFETIME)?;
         let mut roots = Vec::new();
         if let Some(path) = config.codex {
@@ -201,6 +205,8 @@ impl Host {
         Ok(code)
     }
     pub fn revoke(&self, grant: &str, source: Option<&str>, now: u64) -> Result<()> {
+        let gate = self.gate();
+        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
         let mut store = Store::open(&self.directory, false)?;
         let secret = store.key(false)?;
         let mut book = self.book(&store, &secret, false)?;
@@ -217,6 +223,8 @@ impl Host {
         self.save(&mut store, &book)
     }
     pub fn relays(&self, now: u64) -> Result<Vec<String>> {
+        let gate = self.gate();
+        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
         let store = Store::open(&self.directory, false)?;
         let secret = store.key(false)?;
         let book = self.book(&store, &secret, false)?;
@@ -253,16 +261,47 @@ impl Host {
         &self,
         event: &Event,
         relay: &str,
-        mut clock: impl FnMut() -> Result<u64>,
+        clock: impl FnMut() -> Result<u64>,
     ) -> Result<Event> {
+        self.handle_via(event, Via::Relay(relay), clock)
+            .map(|handled| handled.reply)
+    }
+    /// Answer a sealed observation request that arrived on a direct tailnet
+    /// connection rather than through the grant's relay. Every check is the
+    /// same as [`Host::handle_current`] except the relay binding, and a
+    /// reply may be as large as [`Route::Direct`] allows. A pairing
+    /// redemption is refused here: it travels only through a relay.
+    pub fn handle_direct(&self, event: &Event) -> Result<Handled> {
+        if self.is_pairing(event)? {
+            return fail(
+                ErrorCode::Forbidden,
+                "pairing redemption travels only through its relay",
+            );
+        }
+        self.handle_via(event, Via::Direct, crate::unix_time)
+    }
+    pub(crate) fn handle_via(
+        &self,
+        event: &Event,
+        via: Via<'_>,
+        mut clock: impl FnMut() -> Result<u64>,
+    ) -> Result<Handled> {
+        let gate = self.gate();
+        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
         let now = clock()?;
-        self.policy.validate(relay)?;
+        let route = match via {
+            Via::Relay(relay) => {
+                self.policy.validate(relay)?;
+                Route::Relay
+            }
+            Via::Direct => Route::Direct,
+        };
         let mut store = Store::open(&self.directory, false)?;
         let secret = store.key(false)?;
         let host = pubkey(&secret);
         let mut book = self.book(&store, &secret, false)?;
         let request: Request = open(event, &secret, &event.pubkey, &host, REQUEST)?;
-        request.validate()?;
+        request.validate_for(route)?;
         fresh(request.issued_at, request.expires_at, now)?;
         let envelope = nostr::private_artifact::open(event, &secret)
             .map_err(|_| Error::new(ErrorCode::Forbidden, "request envelope unavailable"))?;
@@ -284,8 +323,14 @@ impl Host {
             .admissions
             .get_mut(&request.grant)
             .ok_or_else(|| Error::new(ErrorCode::Forbidden, "request has no admitted grant"))?;
+        // A relay request binds the grant's exact relay. A direct request
+        // arrives on the host's own tailnet listener, which is no relay.
+        let relay_differs = match via {
+            Via::Relay(relay) => admission.grant.relay != relay,
+            Via::Direct => false,
+        };
         if admission.grant.client != event.pubkey
-            || admission.grant.relay != relay
+            || relay_differs
             || admission.authorization.id != request.authorization
         {
             return fail(
@@ -305,21 +350,36 @@ impl Host {
             Ok(())
         };
         if let Err(code) = current {
-            return self.reply(&secret, event, &request, ReplyResult::Refused { code }, now);
+            return self
+                .reply(&secret, event, &request, ReplyResult::Refused { code }, now)
+                .map(Handled::from);
         }
         if let Some(old) = admission.replies.get(&request.request) {
             if old.request_event == event.id {
-                return Ok(old.event.clone());
+                // A direct reply's bytes are kept in memory through its
+                // request's lifetime, for a direct retry; the book holds a
+                // signed conflict in their place, which any other retry gets.
+                let kept = kept()
+                    .get(&(self.directory.clone(), request.request.clone()))
+                    .filter(|kept| {
+                        route == Route::Direct
+                            && kept.request_event == event.id
+                            && kept.expires_at > now
+                    })
+                    .map(|kept| kept.reply.clone());
+                return Ok(Handled::from(kept.unwrap_or_else(|| old.event.clone())));
             }
-            return self.reply(
-                &secret,
-                event,
-                &request,
-                ReplyResult::Refused {
-                    code: ErrorCode::Conflict,
-                },
-                now,
-            );
+            return self
+                .reply(
+                    &secret,
+                    event,
+                    &request,
+                    ReplyResult::Refused {
+                        code: ErrorCode::Conflict,
+                    },
+                    now,
+                )
+                .map(Handled::from);
         }
         if now < admission.window_start {
             return fail(
@@ -331,36 +391,100 @@ impl Host {
             admission.window_start = now;
             admission.reads = 0;
         }
+        let mut answered = None;
         let result = if admission.reads >= MAX_READS_PER_MINUTE {
             ReplyResult::Refused {
                 code: ErrorCode::RateLimited,
             }
         } else {
             admission.reads += 1;
-            match read(&admission.roots, &request.query) {
-                Ok(observation) => ReplyResult::Ok {
-                    observation: Box::new(observation),
-                },
+            match read(&admission.roots, &request.query, route.limits()) {
+                Ok(observation) => {
+                    answered = Some(match &observation {
+                        Observation::Page(page) => {
+                            Some((page.incarnation.clone(), page.snapshot_bytes))
+                        }
+                        Observation::Catalog(_) => None,
+                    });
+                    ReplyResult::Ok {
+                        observation: Box::new(observation),
+                    }
+                }
                 Err(error) => ReplyResult::Refused { code: error.code },
             }
         };
         // A slow reader must not extend a request's grant or freshness window.
         let final_now = clock()?;
         fresh(request.issued_at, request.expires_at, final_now)?;
-        let response = self.reply(&secret, event, &request, result, final_now)?;
+        let response =
+            self.reply_within(&secret, event, &request, result, final_now, route.body())?;
         if admission.replies.len() >= MAX_REPLIES {
             return fail(ErrorCode::Bounds, "observer reply retention limit reached");
         }
+        // The book binds the request to this exact event either way. A
+        // direct reply, up to four times a relay reply's size, stays out of
+        // the book, which is written on every read.
+        let retained = match route {
+            Route::Relay => response.clone(),
+            Route::Direct => self.reply(
+                &secret,
+                event,
+                &request,
+                ReplyResult::Refused {
+                    code: ErrorCode::Conflict,
+                },
+                final_now,
+            )?,
+        };
         admission.replies.insert(
             request.request.clone(),
             RetainedReply {
                 request_event: event.id.clone(),
                 expires_at: request.expires_at,
-                event: response.clone(),
+                event: retained,
             },
         );
+        let read = answered.map(|length| Read {
+            grant: request.grant.clone(),
+            query: request.query.clone(),
+            sources: sources(&admission.roots),
+            length,
+        });
         self.save(&mut store, &book)?;
-        Ok(response)
+        if route == Route::Direct {
+            let mut kept = kept();
+            kept.retain(|_, kept| kept.expires_at > final_now);
+            if kept.len() < 64 * MAX_REPLIES {
+                kept.insert(
+                    (self.directory.clone(), request.request.clone()),
+                    Kept {
+                        request_event: event.id.clone(),
+                        expires_at: request.expires_at,
+                        reply: response.clone(),
+                    },
+                );
+            }
+        }
+        Ok(Handled {
+            reply: response,
+            read,
+        })
+    }
+    /// This host's lock within the process, around every use of its store:
+    /// the relay loop and direct connections share one store.
+    fn gate(&self) -> std::sync::Arc<std::sync::Mutex<()>> {
+        static GATES: std::sync::OnceLock<
+            std::sync::Mutex<
+                std::collections::HashMap<PathBuf, std::sync::Arc<std::sync::Mutex<()>>>,
+            >,
+        > = std::sync::OnceLock::new();
+        GATES
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .entry(self.directory.clone())
+            .or_default()
+            .clone()
     }
     fn reply(
         &self,
@@ -369,6 +493,17 @@ impl Host {
         request: &Request,
         result: ReplyResult,
         now: u64,
+    ) -> Result<Event> {
+        self.reply_within(secret, event, request, result, now, MAX_BODY)
+    }
+    fn reply_within(
+        &self,
+        secret: &SecretKey,
+        event: &Event,
+        request: &Request,
+        result: ReplyResult,
+        now: u64,
+        max: usize,
     ) -> Result<Event> {
         let reply = Reply {
             v: REPLY.into(),
@@ -380,14 +515,13 @@ impl Host {
             expires_at: request.expires_at,
             result,
         };
-        seal(
+        seal_within(
             &reply,
             REPLY,
             secret,
             &event.pubkey,
-            &request.request,
-            now,
-            request.expires_at,
+            (&request.request, now, request.expires_at),
+            max,
         )
     }
     /// Save `book` and remember it as the validated state of the new file.
@@ -498,27 +632,84 @@ fn memo() -> std::sync::MutexGuard<'static, std::collections::HashMap<PathBuf, M
         .lock()
         .unwrap_or_else(|poison| poison.into_inner())
 }
-fn read(roots: &[Root], query: &Query) -> Result<Observation> {
+/// What a request read, when the host answered it with an observation.
+#[derive(Clone, Debug)]
+pub struct Read {
+    pub grant: String,
+    pub query: Query,
+    /// The grant's admitted roots.
+    pub sources: coder_history::Config,
+    /// A transcript page's source incarnation and the length it read.
+    pub length: Option<(String, u64)>,
+}
+
+/// A signed reply, and what it read when it answered with an observation.
+#[derive(Clone, Debug)]
+pub struct Handled {
+    pub reply: Event,
+    pub read: Option<Read>,
+}
+impl From<Event> for Handled {
+    fn from(reply: Event) -> Self {
+        Self { reply, read: None }
+    }
+}
+
+/// How a request travelled, for its relay binding.
+#[derive(Clone, Copy)]
+pub(crate) enum Via<'a> {
+    Relay(&'a str),
+    Direct,
+}
+
+/// A direct reply kept for an exact retry through its request's lifetime.
+struct Kept {
+    request_event: String,
+    expires_at: u64,
+    reply: Event,
+}
+fn kept() -> std::sync::MutexGuard<'static, std::collections::HashMap<(PathBuf, String), Kept>> {
+    static KEPT: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<(PathBuf, String), Kept>>,
+    > = std::sync::OnceLock::new();
+    KEPT.get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+}
+
+fn sources(roots: &[Root]) -> coder_history::Config {
     let mut config = coder_history::Config::default();
     for root in roots {
-        root.current()?;
         match root.scope.kind {
             SourceKind::Codex => config.codex = Some(root.path.clone()),
             SourceKind::Claude => config.claude = Some(root.path.clone()),
             SourceKind::Coder => config.coder = Some(root.path.clone()),
         }
     }
-    let history = coder_history::History::open(config).map_err(history_error)?;
+    config
+}
+
+fn read(roots: &[Root], query: &Query, limits: coder_history::Limits) -> Result<Observation> {
+    for root in roots {
+        root.current()?;
+    }
+    let history = coder_history::History::open(sources(roots)).map_err(history_error)?;
     let observation = match query {
-        Query::Catalog(q) => {
-            Observation::Catalog(history.catalog(q.clone()).map_err(history_error)?)
-        }
-        Query::Page(q) => Observation::Page(history.transcript(q.clone()).map_err(history_error)?),
+        Query::Catalog(q) => Observation::Catalog(
+            history
+                .catalog_within(q.clone(), limits)
+                .map_err(history_error)?,
+        ),
+        Query::Page(q) => Observation::Page(
+            history
+                .transcript_within(q.clone(), limits)
+                .map_err(history_error)?,
+        ),
     };
     for root in roots {
         root.current()?;
     }
-    crate::client::check_observation(query, &observation)?;
+    crate::client::check_observation_within(query, &observation, limits)?;
     Ok(observation)
 }
 fn history_error(error: coder_history::Error) -> Error {

@@ -835,8 +835,12 @@ fn read_first_prompt(root: &confined::Root, source: &Source) -> (Option<String>,
     }
 }
 
-pub(super) fn page(history: &History, request: CatalogRequest) -> Result<CatalogPage, Error> {
-    if request.limit == 0 || request.limit > MAX_CATALOG_PAGE {
+pub(super) fn page(
+    history: &History,
+    request: CatalogRequest,
+    limits: Limits,
+) -> Result<CatalogPage, Error> {
+    if request.limit == 0 || request.limit > limits.catalog_page {
         return Err(Error::InvalidRequest);
     }
     let (sources, mut notices) = scan(history)?;
@@ -983,7 +987,7 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
         } else {
             None
         };
-        if encoded_len(&page)? > MAX_RESPONSE_BYTES {
+        if encoded_len(&page)? > limits.response_bytes {
             page.entries.pop();
             if end == start {
                 return Err(Error::ResourceLimit);
@@ -1016,7 +1020,7 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
             chat.title = prompt;
         }
     }
-    if encoded_len(&page)? > MAX_RESPONSE_BYTES {
+    if encoded_len(&page)? > limits.response_bytes {
         return Err(Error::ResourceLimit);
     }
     Ok(page)

@@ -1,15 +1,39 @@
 //! Portable client. It never reads desktop roots or acquires an engine credential.
+use crate::direct::{self, Change};
 use crate::{Error, ErrorCode, Result, fail, protocol::*, transport, unix_time};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use nostr::domain::Event;
 use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 pub struct Client {
     code: ConnectionCode,
     secret: SecretKey,
     policy: RelayPolicy,
-    connection: tokio::sync::Mutex<Option<transport::Session>>,
+    /// Relay sessions between exchanges; each exchange takes one or opens
+    /// one, so reads do not wait for each other.
+    idle: std::sync::Mutex<Vec<transport::Session>>,
+    relay_slots: tokio::sync::Semaphore,
+    direct: std::sync::Mutex<DirectState>,
+    connecting: tokio::sync::Mutex<()>,
+    changes: tokio::sync::broadcast::Sender<Change>,
+}
+
+/// Relay exchanges one client runs at once.
+const RELAY_SESSIONS: usize = 3;
+/// How long a direct read waits for its reply.
+const DIRECT_LIMIT: Duration = Duration::from_secs(8);
+/// After a direct connection fails, reads use the relay for this long.
+const DIRECT_RETRY: Duration = Duration::from_secs(30);
+
+#[derive(Default)]
+struct DirectState {
+    address: Option<SocketAddr>,
+    connection: Option<Arc<direct::Connection>>,
+    retry_at: Option<Instant>,
 }
 
 /// Retaining this exact packet permits a bounded retry without a new read ID.
@@ -34,15 +58,48 @@ impl Client {
             code,
             secret,
             policy,
-            connection: tokio::sync::Mutex::new(None),
+            idle: std::sync::Mutex::new(Vec::new()),
+            relay_slots: tokio::sync::Semaphore::new(RELAY_SESSIONS),
+            direct: std::sync::Mutex::new(DirectState::default()),
+            connecting: tokio::sync::Mutex::new(()),
+            changes: tokio::sync::broadcast::channel(64).0,
         })
     }
     pub fn connection(&self) -> &ConnectionCode {
         &self.code
     }
+    /// Read over a direct connection to the host's tailnet listener at
+    /// `address` when it answers, and through the relay otherwise; `None`
+    /// reads only through the relay.
+    pub fn set_direct(&self, address: Option<SocketAddr>) {
+        let mut state = lock(&self.direct);
+        if state.address != address {
+            *state = DirectState {
+                address,
+                ..DirectState::default()
+            };
+        }
+    }
+    /// The route the next read tries first.
+    pub fn route(&self) -> Route {
+        let state = lock(&self.direct);
+        match (state.address, state.retry_at) {
+            (Some(_), None) => Route::Direct,
+            (Some(_), Some(at)) if at <= Instant::now() => Route::Direct,
+            _ => Route::Relay,
+        }
+    }
+    /// Nudges a direct connection receives: read again.
+    pub fn changes(&self) -> tokio::sync::broadcast::Receiver<Change> {
+        self.changes.subscribe()
+    }
     pub fn prepare(&self, query: Query, now: u64) -> Result<Pending> {
+        self.prepare_for(query, now, Route::Relay)
+    }
+    /// A sealed request within `route`'s bounds.
+    pub fn prepare_for(&self, query: Query, now: u64, route: Route) -> Result<Pending> {
         self.code.verify(&self.secret, now, self.policy)?;
-        query.validate()?;
+        query.validate_for(route)?;
         let request = Request {
             v: REQUEST.into(),
             requires: vec![],
@@ -56,7 +113,7 @@ impl Client {
                 .min(now.saturating_add(MAX_REQUEST_LIFETIME)),
             query,
         };
-        request.validate()?;
+        request.validate_for(route)?;
         let event = seal(
             &request,
             REQUEST,
@@ -69,17 +126,71 @@ impl Client {
         Ok(Pending { request, event })
     }
     pub async fn observe(&self, query: Query) -> Result<Observation> {
-        let pending = self.prepare(query, unix_time()?)?;
+        self.observe_with(move |_| query.clone()).await
+    }
+    /// Read the query `make` builds for the route it travels: directly when
+    /// the host's tailnet listener answers, else through the relay, where a
+    /// failed direct read is tried again.
+    pub async fn observe_with(&self, make: impl Fn(Route) -> Query) -> Result<Observation> {
+        if self.route() == Route::Direct {
+            match self.observe_direct(make(Route::Direct)).await {
+                Err(error) if error.code == ErrorCode::Transport => self.direct_failed(),
+                result => return result,
+            }
+        }
+        let pending = self.prepare(make(Route::Relay), unix_time()?)?;
         self.send(&pending).await
     }
+    async fn observe_direct(&self, query: Query) -> Result<Observation> {
+        let connection = self.direct_connection().await?;
+        let pending = self.prepare_for(query, unix_time()?, Route::Direct)?;
+        let event = connection.exchange(&pending.event, DIRECT_LIMIT).await?;
+        self.verify_reply_via(&pending, &event, unix_time()?, Route::Direct)
+    }
+    async fn direct_connection(&self) -> Result<Arc<direct::Connection>> {
+        let current = || {
+            let state = lock(&self.direct);
+            state.connection.clone().filter(|c| c.alive())
+        };
+        if let Some(connection) = current() {
+            return Ok(connection);
+        }
+        let _one = self.connecting.lock().await;
+        if let Some(connection) = current() {
+            return Ok(connection);
+        }
+        let address = lock(&self.direct)
+            .address
+            .ok_or_else(|| Error::new(ErrorCode::Transport, "no direct address"))?;
+        let connection = Arc::new(direct::Connection::open(address, self.changes.clone()).await?);
+        let mut state = lock(&self.direct);
+        if state.address == Some(address) {
+            state.connection = Some(connection.clone());
+            state.retry_at = None;
+        }
+        Ok(connection)
+    }
+    fn direct_failed(&self) {
+        let mut state = lock(&self.direct);
+        state.connection = None;
+        state.retry_at = Some(Instant::now() + DIRECT_RETRY);
+    }
     pub async fn send(&self, pending: &Pending) -> Result<Observation> {
-        self.check_pending(pending, unix_time()?)?;
-        let mut slot = self.connection.lock().await;
-        self.check_pending(pending, unix_time()?)?;
-        // Take ownership before awaiting. Cancellation or any error drops the
+        self.check_pending(pending, unix_time()?, Route::Relay)?;
+        let _slot = self
+            .relay_slots
+            .acquire()
+            .await
+            .map_err(|_| Error::new(ErrorCode::Transport, "client is closing"))?;
+        self.check_pending(pending, unix_time()?, Route::Relay)?;
+        // Take a session before awaiting. Cancellation or any error drops the
         // uncertain socket; only a completely checked exchange can reuse it.
-        let previous = slot.take().filter(transport::Session::reusable);
-        let (session, response) = tokio::time::timeout(std::time::Duration::from_secs(8), async {
+        let previous = {
+            let mut idle = lock(&self.idle);
+            idle.retain(transport::Session::reusable);
+            idle.pop()
+        };
+        let (session, response) = tokio::time::timeout(Duration::from_secs(8), async {
             let mut session = match previous {
                 Some(session) => session,
                 None => {
@@ -95,13 +206,16 @@ impl Client {
         .map_err(|_| Error::new(ErrorCode::Transport, "observation deadline exceeded"))??;
         let observation = self.verify_reply(pending, &response, unix_time()?);
         if observation.is_ok() {
-            *slot = Some(session);
+            let mut idle = lock(&self.idle);
+            if idle.len() < RELAY_SESSIONS {
+                idle.push(session);
+            }
         }
         observation
     }
-    fn check_pending(&self, pending: &Pending, now: u64) -> Result<()> {
+    fn check_pending(&self, pending: &Pending, now: u64, route: Route) -> Result<()> {
         self.code.verify(&self.secret, now, self.policy)?;
-        pending.request.validate()?;
+        pending.request.validate_for(route)?;
         fresh(pending.request.issued_at, pending.request.expires_at, now)?;
         let original: Request = open(
             &pending.event,
@@ -124,13 +238,24 @@ impl Client {
         Ok(())
     }
     pub fn verify_reply(&self, pending: &Pending, event: &Event, now: u64) -> Result<Observation> {
-        self.check_pending(pending, now)?;
-        let reply: Reply = open(
+        self.verify_reply_via(pending, event, now, Route::Relay)
+    }
+    /// Verify a reply that travelled `route`: the same checks on either,
+    /// within that route's bounds.
+    pub fn verify_reply_via(
+        &self,
+        pending: &Pending,
+        event: &Event,
+        now: u64,
+        route: Route,
+    ) -> Result<Observation> {
+        self.check_pending(pending, now, route)?;
+        let reply: Reply = open_within(
             event,
             &self.secret,
-            &self.code.host,
-            &self.code.client,
+            (&self.code.host, &self.code.client),
             REPLY,
+            route.body(),
         )?;
         schema(&reply.v, REPLY, &reply.requires)?;
         window(reply.issued_at, reply.expires_at, MAX_REQUEST_LIFETIME)?;
@@ -156,19 +281,28 @@ impl Client {
             ),
             ReplyResult::Refused { code } => Err(Error::new(code, "host refused this observation")),
             ReplyResult::Ok { observation } => {
-                check_observation(&pending.request.query, &observation)?;
+                check_observation_within(&pending.request.query, &observation, route.limits())?;
                 Ok(*observation)
             }
         }
     }
 }
 
-pub(crate) fn check_observation(query: &Query, observation: &Observation) -> Result<()> {
+fn lock<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poison| poison.into_inner())
+}
+
+/// Check a page against its request and the bounds of its route.
+pub(crate) fn check_observation_within(
+    query: &Query,
+    observation: &Observation,
+    limits: coder_history::Limits,
+) -> Result<()> {
     let page_bytes = match observation {
-        Observation::Catalog(page) => encoded(page)?,
-        Observation::Page(page) => encoded(page)?,
+        Observation::Catalog(page) => encoded_within(page, MAX_DIRECT_BODY)?,
+        Observation::Page(page) => encoded_within(page, MAX_DIRECT_BODY)?,
     };
-    if page_bytes.len() > coder_history::MAX_RESPONSE_BYTES {
+    if page_bytes.len() > limits.response_bytes {
         return fail(
             ErrorCode::Bounds,
             "history page exceeds the negotiated bound",
@@ -189,7 +323,7 @@ pub(crate) fn check_observation(query: &Query, observation: &Observation) -> Res
                 || page.next.incarnation != page.incarnation
                 || page.next.offset > page.snapshot_bytes
                 || page.next.record_offset > page.next.offset
-                || page.chunks.len() > 128
+                || page.chunks.len() > limits.chunks
             {
                 return fail(
                     ErrorCode::Malformed,

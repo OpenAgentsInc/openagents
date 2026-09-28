@@ -1182,3 +1182,92 @@ fn live_coder_chat_starts_promptly_follows_its_turns_and_reopens_at_once() {
         );
     });
 }
+
+/// Timings of the Chats surface against a real host with tailnet admission,
+/// as the owner sees them: the chat list loading on an existing pairing,
+/// and the newest chats opening with nothing kept on the phone. Set
+/// `OPENAGENTS_TEST_ADMISSION`. It only reads, and prints what it measured.
+#[test]
+#[ignore = "network: needs a host with tailnet admission"]
+fn live_chat_timings() {
+    let address = std::env::var("OPENAGENTS_TEST_ADMISSION").expect("address");
+    let (mut app, _dir) = app();
+    app.set_tailnet(Screen::Devices(Tailnet {
+        name: None,
+        this_device: None,
+        devices: vec![Device {
+            name: "test-computer".into(),
+            os: "macOS".into(),
+            address,
+            online: Some(true),
+        }],
+    }));
+    let wait = |app: &mut App, what: &str, done: &dyn Fn(&crate::app::Packet) -> bool| {
+        let started = std::time::Instant::now();
+        loop {
+            let packet = app.call(Request::Snapshot);
+            if done(&packet) {
+                return (packet, started.elapsed());
+            }
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(120),
+                "waiting for {what}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    };
+    let listed = |p: &crate::app::Packet| {
+        !p.chats_loading
+            && p.chats.as_ref().is_some_and(|chats| {
+                key_for(chats, "Forget").is_some()
+                    && values(chats).iter().any(|t| t.ends_with(" chats"))
+            })
+    };
+    let (_, took) = wait(&mut app, "admission and the chat list", &listed);
+    eprintln!("admission, pairing, and chat list: {took:?}");
+    let mut list = None;
+    for round in 0..3 {
+        let chats = app.call(Request::Snapshot).chats.unwrap();
+        let node = key_for(&chats, "Refresh").unwrap();
+        app.call(Request::ChatsActivate {
+            instance: chats["instance"].as_str().unwrap().into(),
+            revision: chats["revision"].as_u64().unwrap(),
+            node,
+        });
+        let (packet, took) = wait(&mut app, "the chat list", &listed);
+        eprintln!("chat list load {round}: {took:?}");
+        list = packet.chats;
+    }
+    let list = list.unwrap();
+    let rows: Vec<String> = values(&list)
+        .into_iter()
+        .filter(|t| t.contains('\n'))
+        .collect();
+    for (index, row) in rows.iter().take(3).enumerate() {
+        for attempt in ["open", "reopen"] {
+            let chats = app.call(Request::Snapshot).chats.unwrap();
+            let node = key_for(&chats, row).unwrap();
+            app.call(Request::ChatsActivate {
+                instance: chats["instance"].as_str().unwrap().into(),
+                revision: chats["revision"].as_u64().unwrap(),
+                node,
+            });
+            let (packet, took) = wait(&mut app, "the chat", &|p| {
+                !p.chats_loading
+                    && p.chats.as_ref().is_some_and(|reader| {
+                        !nodes_of(reader, "message").is_empty()
+                            || !nodes_of(reader, "tool").is_empty()
+                    })
+            });
+            let reader = packet.chats.unwrap();
+            let shown = nodes_of(&reader, "message").len() + nodes_of(&reader, "tool").len();
+            eprintln!("chat {index} {attempt}: {took:?}, {shown} rows");
+            let node = key_for(&reader, "Chats").unwrap();
+            app.call(Request::ChatsActivate {
+                instance: reader["instance"].as_str().unwrap().into(),
+                revision: reader["revision"].as_u64().unwrap(),
+                node,
+            });
+        }
+    }
+}

@@ -5,8 +5,6 @@ use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 
-const MAX_CHUNKS: usize = 128;
-
 struct Prefix {
     hash: Sha256,
     record_offset: u64,
@@ -58,9 +56,13 @@ fn hash_string(hash: &Sha256) -> String {
         .collect()
 }
 
-pub(super) fn page(history: &History, request: TranscriptRequest) -> Result<TranscriptPage, Error> {
+pub(super) fn page(
+    history: &History,
+    request: TranscriptRequest,
+    limits: Limits,
+) -> Result<TranscriptPage, Error> {
     if request.max_bytes == 0
-        || request.max_bytes > MAX_PAGE_BYTES
+        || request.max_bytes > limits.page_bytes
         || request.source_id.len() != 64
         || !request.source_id.bytes().all(|b| b.is_ascii_hexdigit())
     {
@@ -90,18 +92,30 @@ pub(super) fn page(history: &History, request: TranscriptRequest) -> Result<Tran
         if request.cursor.is_some() {
             return Err(Error::InvalidRequest);
         }
-        let (start, end) = backward_window(&mut file, meta.len(), end, request.max_bytes)?;
-        let progress = prefix(&mut file, start)?;
-        return read_range(
-            root,
-            &source,
-            &mut file,
-            &incarnation,
-            meta.len(),
-            (progress, start),
-            end,
-            true,
-        );
+        let (mut start, end) =
+            backward_window(&mut file, meta.len(), end, request.max_bytes, limits.chunks)?;
+        loop {
+            let progress = prefix(&mut file, start)?;
+            match read_range(
+                root,
+                &source,
+                &mut file,
+                &incarnation,
+                meta.len(),
+                (progress, start),
+                end,
+                true,
+                limits,
+            ) {
+                // Records that do not fit the encoded bound together: keep
+                // the newer half of them, down to the newest record alone.
+                Err(Error::ResourceLimit) => match newer_half(&mut file, start, end)? {
+                    Some(newer) => start = newer,
+                    None => return Err(Error::ResourceLimit),
+                },
+                other => return other,
+            }
+        }
     }
     let cursor = request.cursor.unwrap_or_else(|| TranscriptCursor {
         source_id: source.id.clone(),
@@ -134,7 +148,24 @@ pub(super) fn page(history: &History, request: TranscriptRequest) -> Result<Tran
         (progress, cursor.offset),
         end,
         false,
+        limits,
     )
+}
+
+/// The start of the newer half of the whole records in `start..end`: just
+/// after the first newline at or past their middle, else the newest record's
+/// start; `None` when they are one record.
+fn newer_half(file: &mut File, start: u64, end: u64) -> Result<Option<u64>, Error> {
+    let middle = start + (end - start) / 2;
+    // The last byte is the final record's newline; a newline before it
+    // starts a newer record.
+    let bytes = read_at(file, middle, end.saturating_sub(1).saturating_sub(middle))?;
+    let newer = match bytes.iter().position(|b| *b == b'\n') {
+        Some(index) => middle + index as u64 + 1,
+        // The newest record started before the middle: keep it alone.
+        None => last_newline_end(file, end.saturating_sub(1))?,
+    };
+    Ok(Some(newer).filter(|newer| *newer > start && *newer < end))
 }
 
 /// The most records larger than a page that one backward read passes over.
@@ -151,6 +182,7 @@ fn backward_window(
     len: u64,
     end: u64,
     max_bytes: u32,
+    max_chunks: usize,
 ) -> Result<(u64, u64), Error> {
     let limit = end.min(len);
     // End at a record boundary: after the last newline at or before limit.
@@ -166,7 +198,7 @@ fn backward_window(
         match bytes.iter().position(|b| *b == b'\n') {
             Some(index) if window + (index as u64) < end => {
                 let start = window + index as u64;
-                return Ok((within_chunk_limit(file, start, end)?, end));
+                return Ok((within_chunk_limit(file, start, end, max_chunks)?, end));
             }
             // One record fills the page: pass over it.
             _ => end = last_newline_end(file, window)?,
@@ -177,13 +209,18 @@ fn backward_window(
 
 /// Move `start` past whole records until `start..end` fits in one page's
 /// chunk limit, keeping the newest records.
-fn within_chunk_limit(file: &mut File, start: u64, end: u64) -> Result<u64, Error> {
+fn within_chunk_limit(
+    file: &mut File,
+    start: u64,
+    end: u64,
+    max_chunks: usize,
+) -> Result<u64, Error> {
     let bytes = read_at(file, start, end - start)?;
     let mut chunks = 0;
     let mut kept = end;
     for line in bytes.split_inclusive(|b| *b == b'\n').rev() {
         chunks += line.len().div_ceil(MAX_CHUNK_BYTES).max(1);
-        if chunks > MAX_CHUNKS {
+        if chunks > max_chunks {
             break;
         }
         kept -= line.len() as u64;
@@ -227,6 +264,7 @@ fn read_range(
     (mut progress, start): (Prefix, u64),
     end: u64,
     backward: bool,
+    limits: Limits,
 ) -> Result<TranscriptPage, Error> {
     let incarnation = incarnation.to_owned();
     let cursor = TranscriptCursor {
@@ -258,7 +296,7 @@ fn read_range(
     for chunk in bytes
         .split_inclusive(|b| *b == b'\n')
         .flat_map(|line| line.chunks(MAX_CHUNK_BYTES))
-        .take(MAX_CHUNKS)
+        .take(limits.chunks)
     {
         let end = position + chunk.len() as u64;
         let complete = chunk.ends_with(b"\n");
@@ -329,7 +367,7 @@ fn read_range(
             source_id: Some(page.source_id.clone()),
         });
     }
-    if encoded_len(&page)? > MAX_RESPONSE_BYTES {
+    if encoded_len(&page)? > limits.response_bytes {
         for chunk in &mut page.chunks {
             chunk.readable = None;
         }
@@ -338,7 +376,7 @@ fn read_range(
             source_id: Some(page.source_id.clone()),
         });
     }
-    if encoded_len(&page)? > MAX_RESPONSE_BYTES {
+    if encoded_len(&page)? > limits.response_bytes {
         return Err(Error::ResourceLimit);
     }
     Ok(page)

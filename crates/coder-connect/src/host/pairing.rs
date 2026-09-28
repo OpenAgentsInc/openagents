@@ -27,6 +27,8 @@ impl Host {
         grant_expires_at: u64,
     ) -> Result<String> {
         self.policy.validate(relay)?;
+        let gate = self.gate();
+        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
         window(now, grant_expires_at, MAX_GRANT_LIFETIME)?;
         let expires_at = now
             .checked_add(pairing::LIFETIME)
@@ -95,6 +97,8 @@ impl Host {
     }
     /// Cancel only an unused invitation. A paired grant needs explicit revocation.
     pub fn cancel_invitation(&self, id: &str) -> Result<()> {
+        let gate = self.gate();
+        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
         let mut store = Store::open(&self.directory, false)?;
         let secret = store.key(false)?;
         let mut book = self.book(&store, &secret, false)?;
@@ -109,6 +113,8 @@ impl Host {
     }
     /// The original grant ID, once consumption has been committed durably.
     pub fn invitation_grant(&self, id: &str) -> Result<Option<String>> {
+        let gate = self.gate();
+        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
         let store = Store::open(&self.directory, false)?;
         let secret = store.key(false)?;
         let book = self.book(&store, &secret, false)?;
@@ -135,6 +141,8 @@ impl Host {
         mut clock: impl FnMut() -> Result<u64>,
     ) -> Result<Event> {
         self.policy.validate(relay)?;
+        let gate = self.gate();
+        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
         let mut store = Store::open(&self.directory, false)?;
         let secret = store.key(false)?;
         let host = pubkey(&secret);

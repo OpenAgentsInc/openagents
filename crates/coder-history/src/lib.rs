@@ -17,6 +17,37 @@ pub const MAX_CATALOG_PAGE: u16 = 32;
 pub const NEWEST: u64 = (1 << 53) - 1;
 pub const MAX_READABLE_RECORD_BYTES: usize = 256 * 1024;
 
+/// The bounds one read answers within. A reply that crosses a relay keeps
+/// [`Limits::RELAY`]; a reply on a direct tailnet connection, which carries
+/// one sealed reply of up to NIP-44's 256 KiB plaintext, can use
+/// [`Limits::DIRECT`], so a chat's newest screen comes in one read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Limits {
+    /// The most raw source bytes one transcript page asks for.
+    pub page_bytes: u32,
+    /// The most bytes one encoded page takes.
+    pub response_bytes: usize,
+    /// The most chats one catalog page lists.
+    pub catalog_page: u16,
+    /// The most record chunks one transcript page holds.
+    pub chunks: usize,
+}
+
+impl Limits {
+    pub const RELAY: Self = Self {
+        page_bytes: MAX_PAGE_BYTES,
+        response_bytes: MAX_RESPONSE_BYTES,
+        catalog_page: MAX_CATALOG_PAGE,
+        chunks: 128,
+    };
+    pub const DIRECT: Self = Self {
+        page_bytes: 160 * 1024,
+        response_bytes: 232 * 1024,
+        catalog_page: 256,
+        chunks: 2048,
+    };
+}
+
 mod project;
 pub use project::{readable_record, readable_record_full};
 

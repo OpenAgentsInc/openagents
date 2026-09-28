@@ -278,7 +278,7 @@ pub fn is_tailnet(ip: IpAddr) -> bool {
 /// Reports a missing Tailscale, or a listener that cannot bind.
 pub async fn start(settings: Settings) -> Result<SocketAddr> {
     let me = me(&settings.tailscale).await?;
-    let listener = TcpListener::bind(SocketAddr::from((me.ip, settings.port)))
+    let listener = TcpListener::bind(listen_address(&me, settings.port)?)
         .await
         .map_err(|_| Error::Config("the tailnet admission listener cannot bind".into()))?;
     let address = listener
@@ -310,8 +310,21 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
         });
     }
     let host_key = coder_access::host::Host::new(&settings.state, settings.policy).public_key()?;
-    let shared = Arc::new((settings, me, host_key));
+    let observer = settings.chats.as_ref().map(|chats| {
+        Arc::new(coder_connect::host::Host::new(
+            &chats.observer,
+            settings.policy,
+        ))
+    });
+    let shared = Arc::new(Shared {
+        settings,
+        me,
+        host: host_key,
+        observer,
+        owners: std::sync::Mutex::default(),
+    });
     let permits = Arc::new(Semaphore::new(CONCURRENT));
+    let direct = Arc::new(Semaphore::new(DIRECT_CONNECTIONS));
     tokio::spawn(async move {
         loop {
             let Ok((stream, peer)) = listener.accept().await else {
@@ -320,12 +333,31 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
             let Ok(permit) = permits.clone().try_acquire_owned() else {
                 continue;
             };
-            let shared = shared.clone();
+            let (shared, direct) = (shared.clone(), direct.clone());
             tokio::spawn(async move {
-                let _ = tokio::time::timeout(
-                    EXCHANGE_LIMIT,
-                    exchange(stream, peer, &shared.0, &shared.1, &shared.2),
-                )
+                let _ = stream.set_nodelay(true);
+                let (read, mut write) = stream.into_split();
+                let mut reader = BufReader::new(read);
+                let Ok(Ok(line)) =
+                    tokio::time::timeout(EXCHANGE_LIMIT, first_line(&mut reader)).await
+                else {
+                    return;
+                };
+                if coder_connect::direct::Hello::parse(&line).is_some() {
+                    // A direct chat connection outlives an admission
+                    // exchange; it holds a permit of its own instead.
+                    drop(permit);
+                    observe(reader, write, peer, &shared, &direct).await;
+                    return;
+                }
+                let _ = tokio::time::timeout(EXCHANGE_LIMIT, async {
+                    let reply =
+                        answer(&line, peer.ip(), &shared.settings, &shared.me, &shared.host).await;
+                    let mut bytes = serde_json::to_vec(&reply).unwrap_or_default();
+                    bytes.push(b'\n');
+                    write.write_all(&bytes).await?;
+                    write.shutdown().await
+                })
                 .await;
                 drop(permit);
             });
@@ -335,22 +367,145 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
 }
 
 #[cfg(feature = "host")]
-async fn exchange(
-    stream: TcpStream,
-    peer: SocketAddr,
-    settings: &Settings,
-    me: &Me,
-    host: &str,
-) -> std::io::Result<()> {
-    let (read, mut write) = stream.into_split();
+/// Where the listener binds: this machine's own tailnet address, never a
+/// wildcard or LAN address, since admission and direct chat reads are for
+/// tailnet callers only.
+///
+/// # Errors
+/// Refuses an address outside Tailscale's ranges.
+pub fn listen_address(me: &Me, port: u16) -> Result<SocketAddr> {
+    let ip = IpAddr::V4(me.ip);
+    if !is_tailnet(ip) || me.ip.is_unspecified() {
+        return Err(Error::Config(
+            "the tailnet listener binds only a tailnet address".into(),
+        ));
+    }
+    Ok(SocketAddr::new(ip, port))
+}
+
+#[cfg(feature = "host")]
+/// Direct chat connections served at once.
+const DIRECT_CONNECTIONS: usize = 16;
+#[cfg(feature = "host")]
+/// How long a caller's Tailscale owner is remembered after `whois` names it.
+const OWNER_FOR: Duration = Duration::from_secs(10 * 60);
+
+#[cfg(feature = "host")]
+struct Shared {
+    settings: Settings,
+    me: Me,
+    host: String,
+    observer: Option<Arc<coder_connect::host::Host>>,
+    /// Recent `whois` answers by caller address.
+    owners: std::sync::Mutex<std::collections::HashMap<IpAddr, (Owner, std::time::Instant)>>,
+}
+
+#[cfg(feature = "host")]
+/// The first line, up to [`MAX_REQUEST_BYTES`] and one more byte: through
+/// its newline, or all that came before the caller stopped writing.
+async fn first_line<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
+) -> std::io::Result<Vec<u8>> {
     let mut line = Vec::new();
-    let mut reader = BufReader::new(read.take(MAX_REQUEST_BYTES as u64 + 1));
-    reader.read_until(b'\n', &mut line).await?;
-    let reply = answer(&line, peer.ip(), settings, me, host).await;
-    let mut bytes = serde_json::to_vec(&reply).unwrap_or_default();
+    loop {
+        let buffer = reader.fill_buf().await?;
+        if buffer.is_empty() {
+            return Ok(line);
+        }
+        let room = MAX_REQUEST_BYTES + 1 - line.len();
+        let (count, done) = match buffer.iter().take(room).position(|b| *b == b'\n') {
+            Some(index) => (index + 1, true),
+            None => (buffer.len().min(room), false),
+        };
+        line.extend_from_slice(&buffer[..count]);
+        reader.consume(count);
+        if done || line.len() > MAX_REQUEST_BYTES {
+            return Ok(line);
+        }
+    }
+}
+
+#[cfg(feature = "host")]
+/// Welcome a direct chat connection from this machine's own untagged
+/// Tailscale user, the callers admission answers, and serve it. The listener
+/// is bound to the tailnet address, and the caller's sealed requests carry
+/// their own authority; Tailscale identity only admits the connection.
+async fn observe(
+    reader: BufReader<tokio::net::tcp::OwnedReadHalf>,
+    mut write: tokio::net::tcp::OwnedWriteHalf,
+    peer: SocketAddr,
+    shared: &Shared,
+    direct: &Arc<Semaphore>,
+) {
+    let permit = direct.clone().try_acquire_owned();
+    let refused = match (&shared.observer, &permit) {
+        (None, _) => Some("not_serving".to_string()),
+        (_, Err(_)) => Some("unavailable".to_string()),
+        _ => tokio::time::timeout(EXCHANGE_LIMIT, owner_refusal(peer.ip(), shared))
+            .await
+            .unwrap_or_else(|_| Some("unavailable".into())),
+    };
+    let welcome = coder_connect::direct::Welcome {
+        v: coder_connect::direct::HELLO.into(),
+        refused: refused.clone(),
+    };
+    let mut bytes = serde_json::to_vec(&welcome).unwrap_or_default();
     bytes.push(b'\n');
-    write.write_all(&bytes).await?;
-    write.shutdown().await
+    if write.write_all(&bytes).await.is_err() {
+        return;
+    }
+    match (refused, &shared.observer) {
+        (None, Some(observer)) => {
+            coder_connect::direct::serve(reader, write, observer.clone()).await;
+        }
+        _ => {
+            let _ = write.shutdown().await;
+        }
+    }
+    drop(permit);
+}
+
+#[cfg(feature = "host")]
+/// Why the caller at `ip` is not this machine's own untagged Tailscale
+/// user, or `None` when it is.
+async fn owner_refusal(ip: IpAddr, shared: &Shared) -> Option<String> {
+    if !is_tailnet(ip) {
+        return Some("not_tailnet".into());
+    }
+    let known = shared
+        .owners
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .get(&ip)
+        .filter(|(_, at)| at.elapsed() < OWNER_FOR)
+        .map(|(owner, _)| owner.clone());
+    let owner = match known {
+        Some(owner) => owner,
+        None => match whois(&shared.settings.tailscale, ip).await {
+            Ok(owner) => {
+                shared
+                    .owners
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner())
+                    .insert(ip, (owner.clone(), std::time::Instant::now()));
+                owner
+            }
+            Err(_) => return Some("unavailable".into()),
+        },
+    };
+    refusal(&owner, &shared.me)
+}
+
+#[cfg(feature = "host")]
+/// Whether `owner` may be answered by this machine, `me`.
+fn refusal(owner: &Owner, me: &Me) -> Option<String> {
+    if owner.tagged {
+        Some("tagged".into())
+    } else if owner.user != me.user {
+        Some("not_owner".into())
+    } else {
+        None
+    }
 }
 
 #[cfg(feature = "host")]
@@ -384,11 +539,8 @@ async fn answer(line: &[u8], peer: IpAddr, settings: &Settings, me: &Me, host: &
         Ok(owner) => owner,
         Err(_) => return refuse(reply, "unavailable"),
     };
-    if owner.tagged {
-        return refuse(reply, "tagged");
-    }
-    if owner.user != me.user {
-        return refuse(reply, "not_owner");
+    if let Some(code) = refusal(&owner, me) {
+        return refuse(reply, &code);
     }
     let Ok(now) = crate::unix_time() else {
         return refuse(reply, "unavailable");
@@ -511,6 +663,70 @@ mod tests {
         );
         let tagged = serde_json::json!({"UserProfile": {"ID": 7}, "Node": {"Name": "ci", "Tags": ["tag:ci"]}});
         assert!(parse_whois(&tagged).unwrap().tagged);
+    }
+
+    #[test]
+    fn the_listener_binds_only_a_tailnet_address() {
+        let me = |ip: &str| Me {
+            ip: ip.parse().unwrap(),
+            user: 42,
+            label: "box".into(),
+        };
+        assert_eq!(
+            listen_address(&me("100.64.0.9"), PORT).unwrap(),
+            "100.64.0.9:47109".parse().unwrap()
+        );
+        for other in ["0.0.0.0", "192.168.1.2", "127.0.0.1", "100.128.0.1"] {
+            assert!(listen_address(&me(other), PORT).is_err(), "{other}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_direct_connection_is_welcomed_only_for_the_hosts_own_user() {
+        let me = Me {
+            ip: "100.64.0.9".parse().unwrap(),
+            user: 42,
+            label: "box".into(),
+        };
+        let owner = |user, tagged| Owner {
+            user,
+            tagged,
+            name: "phone".into(),
+        };
+        assert_eq!(refusal(&owner(42, false), &me), None);
+        assert_eq!(refusal(&owner(42, true), &me).as_deref(), Some("tagged"));
+        assert_eq!(refusal(&owner(7, false), &me).as_deref(), Some("not_owner"));
+        let shared = Shared {
+            settings: Settings {
+                state: PathBuf::from("/nonexistent"),
+                policy: RelayPolicy::Production,
+                relay: "wss://relay.example".into(),
+                rights: Rights::standard(),
+                grant_secs: 3600,
+                port: 0,
+                // A whois fails: a caller it cannot name is refused.
+                tailscale: PathBuf::from("/nonexistent/tailscale"),
+                chats: None,
+            },
+            me,
+            host: "hostkey".into(),
+            observer: None,
+            owners: std::sync::Mutex::default(),
+        };
+        let refused = |ip: &str| owner_refusal(ip.parse().unwrap(), &shared);
+        assert_eq!(refused("192.168.1.2").await.as_deref(), Some("not_tailnet"));
+        assert_eq!(refused("100.64.0.2").await.as_deref(), Some("unavailable"));
+        // A remembered answer is used as given.
+        shared.owners.lock().unwrap().insert(
+            "100.64.0.3".parse().unwrap(),
+            (owner(7, false), std::time::Instant::now()),
+        );
+        assert_eq!(refused("100.64.0.3").await.as_deref(), Some("not_owner"));
+        shared.owners.lock().unwrap().insert(
+            "100.64.0.4".parse().unwrap(),
+            (owner(42, false), std::time::Instant::now()),
+        );
+        assert_eq!(refused("100.64.0.4").await, None);
     }
 
     #[tokio::test]

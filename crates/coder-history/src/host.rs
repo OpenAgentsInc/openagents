@@ -47,11 +47,40 @@ impl History {
     }
 
     pub fn catalog(&self, request: CatalogRequest) -> Result<CatalogPage, Error> {
-        catalog::page(self, request)
+        catalog::page(self, request, Limits::RELAY)
     }
 
     pub fn transcript(&self, request: TranscriptRequest) -> Result<TranscriptPage, Error> {
-        transcript::page(self, request)
+        transcript::page(self, request, Limits::RELAY)
+    }
+
+    /// A catalog page within `limits`.
+    pub fn catalog_within(
+        &self,
+        request: CatalogRequest,
+        limits: Limits,
+    ) -> Result<CatalogPage, Error> {
+        catalog::page(self, request, limits)
+    }
+
+    /// A transcript page within `limits`. A backward read whose records do
+    /// not fit the encoded bound in `request.max_bytes` answers with fewer
+    /// of the newest ones.
+    pub fn transcript_within(
+        &self,
+        request: TranscriptRequest,
+        limits: Limits,
+    ) -> Result<TranscriptPage, Error> {
+        transcript::page(self, request, limits)
+    }
+
+    /// A source's current file incarnation and length, where a listing
+    /// found it; `None` when it is gone. A host uses it to see a chat grow.
+    pub fn source_length(&self, source_id: &str) -> Option<(String, u64)> {
+        let source = catalog::find(self, source_id).ok()?;
+        let file = self.roots[source.root].open_file(&source.relative).ok()?;
+        let meta = file.metadata().ok()?;
+        Some((confined::incarnation(&meta), meta.len()))
     }
 }
 
@@ -65,6 +94,19 @@ impl History {
     }
     pub fn transcript(&self, _: TranscriptRequest) -> Result<TranscriptPage, Error> {
         Err(Error::UnsupportedPlatform)
+    }
+    pub fn catalog_within(&self, _: CatalogRequest, _: Limits) -> Result<CatalogPage, Error> {
+        Err(Error::UnsupportedPlatform)
+    }
+    pub fn transcript_within(
+        &self,
+        _: TranscriptRequest,
+        _: Limits,
+    ) -> Result<TranscriptPage, Error> {
+        Err(Error::UnsupportedPlatform)
+    }
+    pub fn source_length(&self, _: &str) -> Option<(String, u64)> {
+        None
     }
 }
 

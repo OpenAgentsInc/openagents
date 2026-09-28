@@ -8,6 +8,8 @@
 
 use crate::conversation::Conversation;
 use coder_computers::cache::Cache;
+use coder_connect::direct::Change;
+use coder_connect::protocol::Route;
 use coder_connect::{Client, ConnectionCode, Observation, Query, RelayPolicy};
 use coder_history::{CatalogRequest, Chat, Harness};
 use rust_native::input::InputRequest;
@@ -19,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use tokio::runtime::Handle;
+use tokio::sync::broadcast::error::RecvError;
 
 const OBSERVE_LIMIT: Duration = Duration::from_secs(20);
 /// Catalog pages read per computer, of up to 32 chats each, newest first.
@@ -62,6 +65,10 @@ struct Saved {
     /// paired it: the Coder tab reads that host's task chats here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     host: Option<String>,
+    /// The machine's tailnet listener, where chats read directly when it
+    /// answers; the relay otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    direct: Option<std::net::SocketAddr>,
 }
 
 enum Status {
@@ -73,6 +80,8 @@ enum Status {
 struct Computer {
     saved: Saved,
     client: Result<Arc<Client>, String>,
+    /// Reads the newest chats when the computer says its task list changed.
+    watch: Option<tokio::task::AbortHandle>,
     status: Status,
     chats: Vec<Chat>,
     /// Reads of the catalog's first page started and finished, and whether
@@ -80,6 +89,14 @@ struct Computer {
     heads: u64,
     heads_done: u64,
     head_running: bool,
+}
+
+impl Drop for Computer {
+    fn drop(&mut self) {
+        if let Some(watch) = &self.watch {
+            watch.abort();
+        }
+    }
 }
 
 #[derive(Default)]
@@ -127,23 +144,29 @@ impl Chats {
         if let Err(error) = &store {
             state.notice = Some(format!("Chats can't be saved: {error}"));
         }
+        let shared = Arc::new(Mutex::new(State::default()));
         state.computers = saved
             .into_iter()
-            .map(|saved| Computer {
-                client: client(&saved.code, secret),
-                saved,
-                status: Status::Loading,
-                chats: vec![],
-                heads: 0,
-                heads_done: 0,
-                head_running: false,
+            .map(|saved| {
+                let client = client(&saved, secret);
+                Computer {
+                    watch: watch(&runtime, &shared, &saved, &client),
+                    client,
+                    saved,
+                    status: Status::Loading,
+                    chats: vec![],
+                    heads: 0,
+                    heads_done: 0,
+                    head_running: false,
+                }
             })
             .collect();
+        *lock(&shared) = state;
         let mut chats = Self {
             runtime,
             secret,
             store,
-            state: Arc::new(Mutex::new(state)),
+            state: shared,
             instance,
             revision: 0,
             current: None,
@@ -281,7 +304,7 @@ impl Chats {
             return;
         }
         match input.purpose {
-            Purpose::Pair => self.pair(value.trim().to_owned(), None, None),
+            Purpose::Pair => self.pair(value.trim().to_owned(), None, None, None),
             Purpose::Name => {
                 let name: String = value
                     .trim()
@@ -308,7 +331,13 @@ impl Chats {
     /// Pair from a `coder-pair:` string. With `label`, the computer is named
     /// and no name is asked for; `host` links it to the machine's Computers
     /// host key.
-    pub fn pair(&mut self, text: String, label: Option<String>, linked: Option<String>) {
+    pub fn pair(
+        &mut self,
+        text: String,
+        label: Option<String>,
+        linked: Option<String>,
+        direct: Option<std::net::SocketAddr>,
+    ) {
         let secret = self.secret;
         let state = self.state.clone();
         {
@@ -346,13 +375,16 @@ impl Chats {
                     .map_or_else(|| format!("Computer {number}"), |c| c.saved.label.clone())
             });
             guard.computers.retain(|c| c.saved.code.host != host);
-            let client = client(&code, secret);
+            let saved = Saved {
+                code,
+                label,
+                host: linked,
+                direct,
+            };
+            let client = client(&saved, secret);
             guard.computers.push(Computer {
-                saved: Saved {
-                    code,
-                    label,
-                    host: linked,
-                },
+                watch: watch(&handle, &state, &saved, &client),
+                saved,
                 client: client.clone(),
                 status: Status::Loading,
                 chats: vec![],
@@ -464,6 +496,27 @@ impl Chats {
             .cloned()
     }
 
+    /// Read the chats of the machine whose Computers host key is `host`
+    /// directly at its tailnet listener `address` when it answers.
+    pub fn set_direct(&mut self, host: &str, address: std::net::SocketAddr) {
+        let mut state = lock(&self.state);
+        let mut changed = false;
+        for computer in state
+            .computers
+            .iter_mut()
+            .filter(|c| c.saved.host.as_deref() == Some(host))
+        {
+            if let Ok(client) = &computer.client {
+                client.set_direct(Some(address));
+            }
+            if computer.saved.direct != Some(address) {
+                computer.saved.direct = Some(address);
+                changed = true;
+            }
+        }
+        state.dirty |= changed;
+    }
+
     /// Read the first page of the catalog of the machine whose Computers
     /// host key is `host`, its newest chats, and merge it into the list, as
     /// a Coder task's next turn appears. Returns the read's number, or
@@ -483,11 +536,13 @@ impl Chats {
         };
         let state = self.state.clone();
         self.runtime.spawn(async move {
-            let request = CatalogRequest {
-                cursor: None,
-                limit: coder_history::MAX_CATALOG_PAGE,
-            };
-            let result = observe(&client, Query::Catalog(request)).await;
+            let result = observe(&client, &|route| {
+                Query::Catalog(CatalogRequest {
+                    cursor: None,
+                    limit: head_limit(route),
+                })
+            })
+            .await;
             let mut state = lock(&state);
             let Some(computer) = state
                 .computers
@@ -580,14 +635,74 @@ impl Chats {
     }
 }
 
-fn client(code: &ConnectionCode, secret: SecretKey) -> Result<Arc<Client>, String> {
-    Client::new_with_policy(code.clone(), secret, RelayPolicy::Production)
-        .map(Arc::new)
-        .map_err(|error| error.to_string())
+fn client(saved: &Saved, secret: SecretKey) -> Result<Arc<Client>, String> {
+    let client = Client::new_with_policy(saved.code.clone(), secret, RelayPolicy::Production)
+        .map_err(|error| error.to_string())?;
+    client.set_direct(saved.direct);
+    Ok(Arc::new(client))
 }
 
-async fn observe(client: &Client, query: Query) -> Result<Observation, String> {
-    tokio::time::timeout(OBSERVE_LIMIT, client.observe(query))
+/// The newest chats one read asks for: a relay page, or on a direct
+/// connection enough for the whole list at once.
+fn head_limit(route: Route) -> u16 {
+    match route {
+        Route::Relay => coder_history::MAX_CATALOG_PAGE,
+        Route::Direct => route.limits().catalog_page.min(CATALOG_WANTED as u16 * 2),
+    }
+}
+
+/// Follow the computer's nudges: when its task list changes, read its
+/// newest chats and merge them, as a Coder task's next turn appears.
+fn watch(
+    runtime: &Handle,
+    state: &Arc<Mutex<State>>,
+    saved: &Saved,
+    client: &Result<Arc<Client>, String>,
+) -> Option<tokio::task::AbortHandle> {
+    let client = client.as_ref().ok()?.clone();
+    let mut changes = client.changes();
+    let state = Arc::downgrade(state);
+    let observer = saved.code.host.clone();
+    let task = runtime.spawn(async move {
+        loop {
+            match changes.recv().await {
+                Ok(Change::Catalog) => {}
+                Ok(Change::Source(_)) | Err(RecvError::Lagged(_)) => continue,
+                Err(RecvError::Closed) => return,
+            }
+            let result = observe(&client, &|route| {
+                Query::Catalog(CatalogRequest {
+                    cursor: None,
+                    limit: head_limit(route),
+                })
+            })
+            .await;
+            let Some(state) = state.upgrade() else { return };
+            let mut state = lock(&state);
+            if let (Ok(Observation::Catalog(page)), Some(computer)) = (
+                result,
+                state
+                    .computers
+                    .iter_mut()
+                    .find(|c| c.saved.code.host == observer),
+            ) {
+                for chat in page.entries {
+                    match computer.chats.iter_mut().find(|known| known.id == chat.id) {
+                        Some(known) => *known = chat,
+                        None => computer.chats.push(chat),
+                    }
+                }
+            }
+        }
+    });
+    Some(task.abort_handle())
+}
+
+async fn observe(
+    client: &Client,
+    make: &(dyn Fn(Route) -> Query + Sync),
+) -> Result<Observation, String> {
+    tokio::time::timeout(OBSERVE_LIMIT, client.observe_with(make))
         .await
         .map_err(|_| {
             "The computer did not answer. Keep `coder pair` running and refresh.".to_string()
@@ -601,11 +716,14 @@ async fn catalog(client: &Client) -> Result<Vec<Chat>, String> {
     let mut chats: Vec<Chat> = vec![];
     let mut cursor = None;
     for _ in 0..CATALOG_PAGES {
-        let request = CatalogRequest {
-            cursor: cursor.take(),
-            limit: coder_history::MAX_CATALOG_PAGE,
+        let after = cursor.take();
+        let make = |route: Route| {
+            Query::Catalog(CatalogRequest {
+                cursor: after.clone(),
+                limit: head_limit(route),
+            })
         };
-        let page = match observe(client, Query::Catalog(request)).await {
+        let page = match observe(client, &make).await {
             Ok(Observation::Catalog(page)) => page,
             Ok(_) => return Err("The computer answered with the wrong page.".into()),
             // A later page can fail when the chat list changed; keep what
