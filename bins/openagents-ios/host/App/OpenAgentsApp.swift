@@ -274,10 +274,11 @@ struct CoderTab: View {
         }
         .background(Color.black.ignoresSafeArea())
         .task { await CoderLaunchTaps.run(bridge) }
-        // Task status and a running chat's transcript move on their own.
+        // Task status and a running chat's transcript move on their own:
+        // every second while the open chat changes, else every three.
         .task {
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
+                try? await Task.sleep(for: .seconds(bridge.packet?.coder_live == true ? 1 : 3))
                 if !Task.isCancelled && !bridge.busy { bridge.refreshComputers() }
             }
         }

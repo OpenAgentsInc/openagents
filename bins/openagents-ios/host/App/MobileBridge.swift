@@ -68,6 +68,8 @@ struct AppPacket: Decodable {
     let computers_input: ComputersInput?
     let computers_qr: ComputersQR?
     let coder: NativeView?
+    /// The open Coder chat changes on its own; ask for a packet sooner.
+    let coder_live: Bool?
     let chats: NativeView?
     let chats_input: ComputersInput?
     let chats_loading: Bool

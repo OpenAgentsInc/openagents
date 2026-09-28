@@ -423,7 +423,9 @@ class MainActivity : ComponentActivity() {
             val packet = bridge.packet
             val computersPolling = tab == AppTab.CODER ||
                 (tab == AppTab.ACCOUNT && route == AccountRoute.COMPUTERS && packet?.objectOrNull("computers_input") == null)
-            if (ticks % 3 == 0 && computersPolling && !bridge.busy) bridge.refreshComputers()
+            // An open Coder chat that changes on its own polls every second.
+            val live = tab == AppTab.CODER && packet?.optBoolean("coder_live", false) == true
+            if ((live || ticks % 3 == 0) && computersPolling && !bridge.busy) bridge.refreshComputers()
             val loading = tab == AppTab.ACCOUNT && (
                 (route == AccountRoute.CHATS && packet?.optBoolean("chats_loading") == true) ||
                 (route == AccountRoute.TAILNET && packet?.optBoolean("tailnet_loading") == true))
