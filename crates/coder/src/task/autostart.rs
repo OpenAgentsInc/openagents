@@ -107,6 +107,12 @@ pub struct Engine {
     /// recorded refusals only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_probe: Option<UsageProbe>,
+    /// What each started task's commands may reach. Absent means the
+    /// filesystem boundary, so a policy written before this field keeps
+    /// its meaning; `full` is the owner's full access
+    /// (`coder host autostart on --full-access`).
+    #[serde(default, skip_serializing_if = "adapter::Access::is_boundary")]
+    pub access: adapter::Access,
 }
 
 /// The owner's usage-probe setting.
@@ -328,6 +334,7 @@ impl Policy {
             expected_controller_digest: None,
             container: None,
             fallbacks: order[1..].iter().map(route).collect(),
+            access: engine.access,
         }
     }
 
@@ -882,7 +889,7 @@ impl Autostart {
                     entry.grant_digest = Some(launched.grant_digest);
                     entry.owner_process = Some(launched.owner_process);
                     entry.detail = Some(format!(
-                        "{} {} fallbacks [{}] max_steps {} wall_seconds {} write_workspace {}",
+                        "{} {} fallbacks [{}] max_steps {} wall_seconds {} write_workspace {} access {}",
                         policy.engine.adapter,
                         order[0],
                         order[1..]
@@ -892,7 +899,8 @@ impl Autostart {
                             .join(","),
                         policy.engine.max_steps,
                         policy.engine.wall_seconds,
-                        policy.engine.write_workspace
+                        policy.engine.write_workspace,
+                        policy.engine.access.as_str()
                     ));
                     entry
                 }
@@ -1037,7 +1045,7 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
      [--effort low|medium|high|xhigh] [--max-steps N] [--wall-seconds N]
      [--memory-mib N] [--read-only] [--controller PATH]
      [--decision-endpoint URL] [--decision-model ID]
-     [--probe-usage] [--usage-threshold PERCENT]
+     [--probe-usage] [--usage-threshold PERCENT] [--full-access]
                        Start tasks that enrolled devices with `operate` create
                        in these workspaces, at most N at once (default 1).
                        Each --route admits a provider (codex or claude) and
@@ -1046,6 +1054,10 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
                        --probe-usage reads each provider's usage windows
                        with its local login and prefers a route below
                        PERCENT (default 90) used.
+                       --full-access runs each task's commands as you,
+                       with no sandbox, network access, and your
+                       login-shell environment. Use it only on your own
+                       computer.
   off                  Stop starting tasks; queued tasks stay queued.
 Every command takes --root DIR (default ~/.openagents/host). The policy is
 off until `on` runs.";
@@ -1071,11 +1083,14 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
     };
     let mut values: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut read_only = false;
+    let mut full_access = false;
     let mut probe_usage = false;
     let mut rest = rest.iter();
     while let Some(arg) = rest.next() {
         if arg == "--read-only" {
             read_only = true;
+        } else if arg == "--full-access" {
+            full_access = true;
         } else if arg == "--probe-usage" {
             probe_usage = true;
         } else if arg == "--help" {
@@ -1211,6 +1226,11 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                     .unwrap_or_else(|| DEFAULT_DECISION_MODEL.into()),
                 routes,
                 usage_probe: None,
+                access: if full_access {
+                    adapter::Access::Full
+                } else {
+                    adapter::Access::Boundary
+                },
             };
             let threshold = take_one(&mut values, "--usage-threshold")?;
             let mut engine = engine;
@@ -1250,7 +1270,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
             record(
                 &root,
                 &Entry::new(now, "policy_on").detail(format!(
-                    "workspaces {} max_running {} routes {} write_workspace {} usage_probe {}",
+                    "workspaces {} max_running {} routes {} write_workspace {} access {} usage_probe {}",
                     workspaces.join(","),
                     policy.max_running,
                     policy
@@ -1260,6 +1280,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                         .collect::<Vec<_>>()
                         .join(","),
                     policy.engine.write_workspace,
+                    policy.engine.access.as_str(),
                     policy
                         .engine
                         .usage_probe
@@ -1313,15 +1334,33 @@ fn isolated_worktree(path: &Path) -> std::result::Result<(), String> {
     let output = std::process::Command::new(git)
         .arg("-C")
         .arg(path)
-        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .args([
+            "rev-parse",
+            "--path-format=absolute",
+            "--show-toplevel",
+            "--git-common-dir",
+        ])
         .output()
         .map_err(|_| "cannot run git".to_owned())?;
-    let common = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut lines = stdout.lines().map(str::trim);
+    let top = PathBuf::from(lines.next().unwrap_or_default());
+    let common = PathBuf::from(lines.next().unwrap_or_default());
     let root = path
         .canonicalize()
         .map_err(|_| "the workspace is missing".to_owned())?;
     if !output.status.success() || common.as_os_str().is_empty() {
         return Err(format!("{} is not a Git checkout", root.display()));
+    }
+    // An empty or plain directory inside another repository answers with
+    // that repository; the workspace must be a checkout's own top level.
+    if top.canonicalize().ok().as_deref() != Some(root.as_path()) {
+        return Err(format!(
+            "{} is not the top level of a Git checkout; create the worktree there \
+             (git worktree add --detach {} origin/main)",
+            root.display(),
+            root.display()
+        ));
     }
     let common = common.canonicalize().unwrap_or(common);
     if common.starts_with(&root) {
@@ -1455,6 +1494,7 @@ mod tests {
                 decision_model: "jev-latest".into(),
                 routes: Vec::new(),
                 usage_probe: None,
+                access: adapter::Access::Boundary,
             },
             changed_at: 1,
         }
@@ -1779,6 +1819,102 @@ mod tests {
         let recorded: Vec<String> = journal(&root).into_iter().map(|e| e.event).collect();
         assert_eq!(recorded, ["policy_on", "policy_off"]);
         assert_eq!(cli(&args(&["on"])), 2);
+    }
+
+    /// Full access is the owner's choice, made with a command on the host,
+    /// and every grant the policy writes carries it. A workspace must be a
+    /// checkout's own top level: an empty directory inside another
+    /// repository, as the owner's host had, refuses.
+    #[test]
+    fn the_owner_turns_on_full_access_on_the_host() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("host");
+        let repo = dir.path().join("repo");
+        let checkout = dir.path().join("checkout");
+        let empty = repo.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let git = |args: &[&str], cwd: &Path| {
+            assert!(
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(cwd)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        };
+        git(&["init", "-q"], &repo);
+        git(
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "--allow-empty",
+                "-qm",
+                "Fixture",
+            ],
+            &repo,
+        );
+        git(
+            &[
+                "worktree",
+                "add",
+                "--detach",
+                "-q",
+                checkout.to_str().unwrap(),
+            ],
+            &repo,
+        );
+        coder_host::settings::ServeSettings::new(
+            vec!["wss://relay.example/".into()],
+            BTreeMap::from([
+                ("checkout".into(), checkout.canonicalize().unwrap()),
+                ("empty".into(), empty.canonicalize().unwrap()),
+            ]),
+        )
+        .save(&root)
+        .unwrap();
+        let controller = std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let root_arg = root.to_string_lossy().into_owned();
+        let on = |label: &str, extra: &[&str]| {
+            let mut list = vec![
+                "on",
+                "--workspace",
+                label,
+                "--controller",
+                &controller,
+                "--root",
+                &root_arg,
+            ];
+            list.extend_from_slice(extra);
+            cli(&list.iter().map(|a| (*a).to_owned()).collect::<Vec<_>>())
+        };
+        assert_eq!(on("empty", &["--full-access"]), 1);
+        assert!(Policy::load(&root).unwrap().is_none());
+        assert_eq!(on("checkout", &[]), 0);
+        let policy = Policy::load(&root).unwrap().unwrap();
+        assert_eq!(policy.engine.access, adapter::Access::Boundary);
+        assert!(policy.configuration(&policy.routes()).access.is_boundary());
+        assert_eq!(on("checkout", &["--full-access"]), 0);
+        let policy = Policy::load(&root).unwrap().unwrap();
+        assert_eq!(policy.engine.access, adapter::Access::Full);
+        let configuration = policy.configuration(&policy.routes());
+        assert_eq!(configuration.access, adapter::Access::Full);
+        configuration.validate().unwrap();
+        let saved = std::fs::read_to_string(root.join(POLICY_FILE)).unwrap();
+        assert!(saved.contains("\"access\": \"full\""), "{saved}");
+        let last = journal(&root).pop().unwrap();
+        assert!(
+            last.detail
+                .as_deref()
+                .is_some_and(|d| d.contains("access full")),
+            "{last:?}"
+        );
     }
 
     #[test]

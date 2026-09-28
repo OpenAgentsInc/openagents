@@ -91,8 +91,12 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
         if let Some(name) = std::env::var_os("USER").or_else(account_name) {
             process.env("USER", &name).env("LOGNAME", name);
         }
+        // SHELL names the owner's login shell, which a full-access run asks
+        // for the owner's environment; its commands get that environment,
+        // never this process's.
         for key in [
             "HOME",
+            "SHELL",
             crate::claude::BIN_VAR,
             "TYPESAFE_API_KEY",
             "TYPESAFE_BASE_URL",

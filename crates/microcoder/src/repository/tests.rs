@@ -105,6 +105,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
             expected_controller_digest: None,
             container: None,
             fallbacks: Vec::new(),
+            access: coder::task::adapter::Access::Boundary,
         }),
     };
     (root, store, serde_json::to_vec(&grant).unwrap())
@@ -1183,4 +1184,150 @@ async fn a_finished_reply_is_the_answer_and_the_rationale_is_not() {
     assert!(prompt.contains(answer));
     assert!(!prompt.contains(rationale) && !prompt.contains("Finished."));
     host.finish("fixture_complete", false, json!({})).unwrap();
+}
+
+/// A grant with `access: full` for the owner's own host.
+fn full_access(grant: &[u8]) -> Vec<u8> {
+    let mut grant: task::owner::Grant = serde_json::from_slice(grant).unwrap();
+    grant.adapter_configuration.as_mut().unwrap().access = coder::task::adapter::Access::Full;
+    serde_json::to_vec(&grant).unwrap()
+}
+
+/// Full access: no sandbox, the owner's login environment and real HOME,
+/// and process listing; the boundary grant keeps its scratch HOME and its
+/// write boundary.
+#[tokio::test]
+async fn full_access_runs_as_the_owner_with_no_sandbox() {
+    let home = coder::task::adapter::login::account().home;
+    let elsewhere = tempfile::tempdir_in("/var/tmp").unwrap();
+    let outside = elsewhere.path().join("outside");
+    let script = format!(
+        "printf 'home=%s\\nuser=%s\\n' \"$HOME\" \"$USER\"; ps -p $$ -o pid= >/dev/null && echo ps=ok; \
+         printf written > '{}' && echo write=ok",
+        outside.display()
+    );
+
+    let (_root, store, grant) = fixture();
+    let host = Host::admit(&store, &full_access(&grant)).await.unwrap();
+    let observation = match host.command(&script, Duration::from_secs(20)).await {
+        Ok(observation) => observation,
+        Err(error) => panic!(
+            "{error:?}: {}",
+            std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap()
+        ),
+    };
+    assert_eq!(observation.exit, Some(0), "{}", observation.output);
+    assert!(
+        observation
+            .output
+            .contains(&format!("home={}\n", home.display())),
+        "{}",
+        observation.output
+    );
+    assert!(
+        !observation.output.contains("user=\n"),
+        "{}",
+        observation.output
+    );
+    assert!(
+        observation.output.contains("ps=ok"),
+        "{}",
+        observation.output
+    );
+    assert!(
+        observation.output.contains("write=ok"),
+        "{}",
+        observation.output
+    );
+    assert_eq!(std::fs::read(&outside).unwrap(), b"written");
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    assert!(trace.contains("\"access\":\"full\"") && trace.contains("host_network"));
+    host.finish("fixture_complete", false, json!({})).unwrap();
+
+    std::fs::remove_file(&outside).unwrap();
+    let (_root, store, grant) = fixture();
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let observation = host
+        .command(&script, Duration::from_secs(20))
+        .await
+        .unwrap();
+    assert!(
+        !observation
+            .output
+            .contains(&format!("home={}\n", home.display())),
+        "{}",
+        observation.output
+    );
+    assert!(!outside.exists());
+    host.finish("fixture_complete", false, json!({})).unwrap();
+}
+
+/// Full access applies to local commands only; a container keeps its own
+/// boundary.
+#[test]
+fn full_access_is_refused_for_container_commands() {
+    let (_root, _store, grant) = fixture();
+    let grant: task::owner::Grant = serde_json::from_slice(&full_access(&grant)).unwrap();
+    let mut configuration = grant.adapter_configuration.unwrap();
+    assert!(configuration.validate().is_ok());
+    configuration.container = Some(coder::task::adapter::container::Profile {
+        schema: "openagents.microcoder.container.v1".into(),
+        docker_program: "/usr/local/bin/docker".into(),
+        docker_digest: format!("sha256:{}", "0".repeat(64)),
+        socket: "/var/run/docker.sock".into(),
+        image: format!("sha256:{}", "1".repeat(64)),
+        uid: 501,
+        gid: 20,
+    });
+    let refused = configuration.validate().unwrap_err().to_string();
+    assert!(refused.contains("full access"), "{refused}");
+}
+
+/// A workspace must be a checkout's own top level: an empty directory
+/// inside another repository, as the owner's host had, is refused before
+/// anything runs.
+#[tokio::test]
+async fn an_empty_directory_inside_a_repository_is_not_a_workspace() {
+    let (root, store, _grant) = fixture();
+    let empty = root.path().join("repo/empty");
+    std::fs::create_dir(&empty).unwrap();
+    let command = Command {
+        schema: task::COMMAND_SCHEMA.into(),
+        command_id: "submit-empty".into(),
+        task_id: "empty".into(),
+        expected_revision: None,
+        action: Action::Submit {
+            intent: TaskIntent {
+                title: "Empty".into(),
+                prompt: "who are you".into(),
+                workspace: Workspace {
+                    path: empty.canonicalize().unwrap().display().to_string(),
+                    source_revision: None,
+                },
+                configuration: RequestedConfiguration {
+                    adapter: NAME.into(),
+                    model: Some("fixture-model".into()),
+                },
+            },
+        },
+    };
+    let task = {
+        let mut inbox = Store::open(&store).unwrap();
+        inbox.apply(&serde_json::to_vec(&command).unwrap()).unwrap();
+        inbox.show("empty").unwrap()
+    };
+    let (_, _, grant) = fixture();
+    let mut grant: task::owner::Grant = serde_json::from_slice(&grant).unwrap();
+    grant.task_id = task.task_id;
+    grant.intent_digest = task.intent_digest;
+    let refused = Host::admit(&store, &serde_json::to_vec(&grant).unwrap())
+        .await
+        .err()
+        .map(|error| error.to_string());
+    assert!(
+        refused
+            .as_deref()
+            .is_some_and(|error| error.contains("top level")),
+        "{refused:?}"
+    );
 }

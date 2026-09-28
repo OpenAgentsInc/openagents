@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use supervise::{Input, Job, Limits};
 
 pub mod container;
+pub mod login;
 
 pub const NAME: &str = "microcoder-repository";
 
@@ -66,6 +67,44 @@ pub struct Configuration {
     /// the field is then left out, so earlier grants keep their bytes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fallbacks: Vec<Route>,
+    /// What the engine's commands may reach. Absent means
+    /// [`Access::Boundary`], so earlier grants keep their bytes and meaning.
+    #[serde(default, skip_serializing_if = "Access::is_boundary")]
+    pub access: Access,
+}
+
+/// What an admitted run's commands may reach.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Access {
+    /// The filesystem boundary: writes only to the workspace and private
+    /// scratch, no external network, a cleared environment with the system
+    /// `PATH`, and a scratch `HOME`.
+    #[default]
+    Boundary,
+    /// The owner's full access, for the owner's own hosts: commands run
+    /// as the host's user with no sandbox, with network access, in the
+    /// user's login-shell environment and real `HOME`. Credential variables
+    /// (`*_API_KEY`, `*_TOKEN`, `*_SECRET`) are still left out. Only the
+    /// host's owner turns it on, with `coder host autostart on
+    /// --full-access`; a device cannot ask for it.
+    Full,
+}
+
+impl Access {
+    #[must_use]
+    pub fn is_boundary(&self) -> bool {
+        *self == Access::Boundary
+    }
+
+    /// The name the policy journal and the admission record use.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Access::Boundary => "boundary",
+            Access::Full => "full",
+        }
+    }
 }
 
 /// The most fallback routes one grant admits.
@@ -137,6 +176,11 @@ impl Configuration {
         }
         if let Some(container) = &self.container {
             container.validate()?;
+            if self.access == Access::Full {
+                return Err(Error::InvalidCommand(
+                    "full access does not apply to container commands",
+                ));
+            }
         }
         if self.fallbacks.len() > MAX_FALLBACKS {
             return Err(Error::InvalidCommand("too many fallback routes"));
@@ -206,6 +250,7 @@ impl Configuration {
             "container_adapter": if self.container.is_some() { "docker-per-command-workspace-persistence" } else { "not_requested" },
             "provider_failover": if self.fallbacks.is_empty() { "not_requested" } else { "on-capacity-refusal" },
             "frozen_knowledge_context":self.knowledge == "frozen-context",
+            "access":self.access.as_str(),
             "steering": STEERING
         })
     }
@@ -336,6 +381,8 @@ pub struct Host {
     admission: owner::Admission,
     before: Snapshot,
     boundary: Boundary,
+    /// The owner's login-shell environment, for a full-access run.
+    login: Option<login::Environment>,
     earlier: Vec<EarlierTurn>,
     trace: RefCell<Log>,
     trace_bytes: Cell<usize>,
@@ -412,6 +459,14 @@ impl Host {
                 "the granted program must be the canonical system shell",
             ));
         }
+        // The workspace is its checkout's top level: an empty or plain
+        // directory inside some other repository is not a workspace.
+        let top_level = owner::git(&workspace, &["rev-parse", "--show-toplevel"]).await?;
+        if Path::new(&top_level).canonicalize().ok().as_deref() != Some(workspace.as_path()) {
+            return Err(Error::InvalidCommand(
+                "the workspace is not the top level of a Git checkout",
+            ));
+        }
         let source_revision = owner::git(&workspace, &["rev-parse", "HEAD"]).await?;
         if task
             .intent
@@ -460,6 +515,10 @@ impl Host {
             container.admit(&workspace, &owner.dir).await?;
         }
         let context = checks::Context::capture(&task, &workspace, grant.requirements.as_ref())?;
+        let login = match configuration.access {
+            Access::Full => Some(login::capture().await),
+            Access::Boundary => None,
+        };
         let controller = std::env::current_exe()?.canonicalize()?;
         let controller_digest = digest_bytes(&std::fs::read(&controller)?);
         if configuration
@@ -483,12 +542,16 @@ impl Host {
             adapter: NAME.into(),
             network: if configuration.container.is_some() {
                 "container_network_none"
+            } else if configuration.access == Access::Full {
+                "host_network"
             } else {
                 owner::network_policy()
             }
             .into(),
             read_scope: if configuration.container.is_some() {
                 "workspace_host_reads_and_pinned_container_image"
+            } else if configuration.access == Access::Full {
+                "host_user"
             } else {
                 "workspace_and_system"
             }
@@ -527,7 +590,14 @@ impl Host {
             )
             .noting("admission", json!(admission))
             .noting("controller",json!({"path":controller,"digest":controller_digest,"version":env!("CARGO_PKG_VERSION")}))
-            .noting("capabilities", configuration.capabilities()),
+            .noting("capabilities", configuration.capabilities())
+            .noting(
+                "command_environment",
+                login.as_ref().map_or_else(
+                    || json!({"source":"cleared","path":owner::SYSTEM_PATH}),
+                    login::Environment::record,
+                ),
+            ),
         )?;
         if Snapshot::observe(&workspace).digest() != before.digest() {
             return Err(Error::InvalidCommand(
@@ -548,6 +618,7 @@ impl Host {
             admission,
             before,
             boundary,
+            login,
             earlier,
             trace: RefCell::new(trace),
             trace_bytes: Cell::new(trace_bytes),
@@ -768,19 +839,35 @@ impl Host {
             return Err(Error::InvalidTransition);
         }
         let sequence = self.effect("command", json!({"script":script}))?;
-        let mut command = self
-            .boundary
-            .command(&self.admission.grant.program, ["-c", script])
-            .map_err(|_| Error::UnsafePath)?;
-        let scratch = self.boundary.scratch().ok_or(Error::UnsafePath)?;
-        command
-            .current_dir(self.workspace())
-            .env_clear()
-            .env("PATH", owner::SYSTEM_PATH)
-            .env("HOME", scratch)
-            .env("TMPDIR", scratch)
-            .env("TMP", scratch)
-            .env("TEMP", scratch);
+        let command = match &self.login {
+            // Full access: the owner's own shell, with no sandbox, the
+            // network, and the owner's login environment.
+            Some(login) => {
+                let mut command = std::process::Command::new(&self.admission.grant.program);
+                command
+                    .args(["-c", script])
+                    .current_dir(self.workspace())
+                    .env_clear()
+                    .envs(login.variables.iter().map(|(key, value)| (key, value)));
+                command
+            }
+            None => {
+                let mut command = self
+                    .boundary
+                    .command(&self.admission.grant.program, ["-c", script])
+                    .map_err(|_| Error::UnsafePath)?;
+                let scratch = self.boundary.scratch().ok_or(Error::UnsafePath)?;
+                command
+                    .current_dir(self.workspace())
+                    .env_clear()
+                    .env("PATH", owner::SYSTEM_PATH)
+                    .env("HOME", scratch)
+                    .env("TMPDIR", scratch)
+                    .env("TMP", scratch)
+                    .env("TEMP", scratch);
+                command
+            }
+        };
         let live = {
             let store = Store::open(&self.owner.dir)?;
             if store.show(&self.task.task_id)?.status != Status::Running {

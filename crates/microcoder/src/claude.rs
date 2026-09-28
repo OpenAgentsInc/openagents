@@ -61,6 +61,11 @@ pub struct ClaudeGenerator {
     /// model's default.
     pub effort: Option<String>,
     pub binary: PathBuf,
+    /// Pass `--permission-mode bypassPermissions`, for a run with the
+    /// owner's full access. Each call has every tool off, so Claude Code
+    /// runs nothing itself either way; the flag keeps a permission prompt
+    /// from ever holding a headless call.
+    pub bypass_permissions: bool,
 }
 
 impl ClaudeGenerator {
@@ -74,7 +79,16 @@ impl ClaudeGenerator {
             model: alias(model),
             effort,
             binary: find_binary()?,
+            bypass_permissions: false,
         })
+    }
+
+    /// This generator, passing `--permission-mode bypassPermissions` when
+    /// `bypass` is set.
+    #[must_use]
+    pub fn bypassing_permissions(mut self, bypass: bool) -> Self {
+        self.bypass_permissions = bypass;
+        self
     }
 
     /// The arguments one step passes, before the prompt on stdin.
@@ -97,6 +111,10 @@ impl ClaudeGenerator {
         if let Some(effort) = &self.effort {
             args.push("--effort".to_string());
             args.push(effort.clone());
+        }
+        if self.bypass_permissions {
+            args.push("--permission-mode".to_string());
+            args.push("bypassPermissions".to_string());
         }
         args.push("--system-prompt".to_string());
         args.push(system.to_string());
@@ -370,6 +388,7 @@ mod tests {
             model: "opus".into(),
             effort: Some("xhigh".into()),
             binary: PathBuf::from("claude"),
+            bypass_permissions: false,
         };
         let args = generator.args("SYS");
         let at = |flag: &str| {
@@ -386,6 +405,27 @@ mod tests {
         assert!(args.contains(&"--no-session-persistence".to_string()));
         let schema: Value = serde_json::from_str(&at("--json-schema").unwrap()).unwrap();
         assert_eq!(schema, next_action_schema());
+        assert_eq!(at("--permission-mode"), None);
+    }
+
+    #[test]
+    fn a_full_access_call_bypasses_permissions_and_still_runs_no_tool() {
+        let generator = ClaudeGenerator {
+            model: "claude-opus-5-5".into(),
+            effort: None,
+            binary: PathBuf::from("claude"),
+            bypass_permissions: false,
+        }
+        .bypassing_permissions(true);
+        let args = generator.args("SYS");
+        let at = |flag: &str| {
+            args.iter()
+                .position(|a| a == flag)
+                .map(|i| args[i + 1].clone())
+        };
+        assert_eq!(at("--permission-mode"), Some("bypassPermissions".into()));
+        assert_eq!(at("--tools"), Some(String::new()));
+        assert!(args.contains(&"--no-session-persistence".to_string()));
     }
 
     #[test]

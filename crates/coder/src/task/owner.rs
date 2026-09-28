@@ -232,6 +232,15 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
                 {
                     admission.network != "container_network_none"
                         || admission.read_scope != "workspace_host_reads_and_pinned_container_image"
+                } else if admission
+                    .grant
+                    .adapter_configuration
+                    .as_ref()
+                    .is_some_and(|config| config.access == super::adapter::Access::Full)
+                {
+                    // The owner's full access: the host user's reads and
+                    // network, and nothing narrower claimed.
+                    admission.network != "host_network" || admission.read_scope != "host_user"
                 } else {
                     !matches!(
                         admission.network.as_str(),

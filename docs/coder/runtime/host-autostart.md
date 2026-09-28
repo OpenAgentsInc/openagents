@@ -35,6 +35,7 @@ coder host autostart on --workspace openagents --max-running 1
 | `--wall-seconds N` | `1800` | Each command's wall-clock limit, 1 to 3,600. |
 | `--memory-mib N` | `4096` | Each command's memory limit, 64 MiB to 8 GiB. |
 | `--read-only` | Off | Grant a read-only workspace. Without it, the workspace must be an isolated Git worktree whose common Git directory is outside it. |
+| `--full-access` | Off | Run each task's commands as you, with no sandbox, network access, and your login-shell environment. For your own computer only. See [Full access](#full-access). |
 | `--controller PATH` | `microcoder` beside `coder`, else `~/.openagents/bin/microcoder` | The engine executable. |
 | `--decision-endpoint URL`, `--decision-model ID` | `https://api.typesafe.ai`, `jev-1.13.0` | The Jev client the engine's grant names. Use an exact version: the engine refuses a reply whose model differs from the admitted one, so an alias such as `jev-latest` fails at the first judgment. |
 
@@ -47,6 +48,23 @@ worktree for the host instead:
 git -C ~/work/openagents worktree add --detach ~/work/openagents-host-tasks origin/main
 coder link setup --workspace openagents=$HOME/work/openagents-host-tasks
 ```
+
+### The task workspace
+
+Tasks run in the directory the workspace label names in the host's
+`serve.json`, not in your own checkout. The recommended default is one
+detached worktree per host, beside your checkout: `~/work/openagents-host-tasks`
+on a Mac, `~/openagents-host-tasks` on Linux. It gives each task a real
+checkout of the repository, while its commits, hooks, and your working
+branch stay out of the engine's reach, even with full access, unless a task
+goes looking for them. Refresh it between tasks with
+`git -C ~/work/openagents-host-tasks checkout --detach origin/main` after a
+fetch.
+
+The directory must be the top level of a Git checkout. An empty or plain
+directory inside another repository answers Git with that repository, so
+`on` and the task owner both refuse it (`is not the top level of a Git
+checkout`). A task that ran in such a directory saw an empty folder.
 
 ## Turn it off
 
@@ -192,6 +210,53 @@ coder host autostart show
 Each start routed with probes appends a `usage` journal entry naming every
 admitted provider's windows.
 
+## Full access
+
+The owner can give auto-started tasks the same access a terminal on the
+host has:
+
+```sh
+coder host autostart on --workspace openagents \
+  --route codex:gpt-6-luna --route claude:claude-opus-5-5 --full-access
+```
+
+Each grant then carries `"access": "full"`, and the engine's commands:
+
+- run as you, with the admitted shell and no sandbox: no `sandbox-exec`
+  profile on macOS, no namespaces on Linux, and no write boundary, so Git,
+  `ps`, Xcode's libraries, and everything else your account can use work;
+- reach the network;
+- get your login-shell environment, read once when the task is admitted by
+  running your shell (`$SHELL -l -i`, else the account's shell) with
+  `env -0`: the `PATH` with Homebrew, `~/.cargo/bin`, a Node version
+  manager, and the rest, and your real `HOME`, `USER`, and `LOGNAME`. A
+  shell that cannot answer in 20 seconds leaves a fixed fallback `PATH` of
+  the usual tool directories. Variables whose names end in `_API_KEY`,
+  `_TOKEN`, or `_SECRET` are left out.
+
+A Claude route's generation call also passes `--permission-mode
+bypassPermissions`. That call has every Claude Code tool off, as before, so
+Claude Code itself still runs nothing; Microcoder runs the commands. The
+Codex route calls the Codex Responses endpoint directly and has no sandbox
+or approval setting of its own.
+
+The admission record says `network: host_network` and `read_scope:
+host_user`, and the trace's admission step names the environment's source,
+shell, `PATH`, and variable names, never another value. The engine is told
+that it runs with full access, so it uses the network and your tools
+instead of working around a sandbox.
+
+What full access gives up: the task store, the repository's Git directory,
+and everything else your account can write are no longer protected from
+the engine's commands, so a task's retained evidence is only as trustworthy
+as the commands it ran. Use it only on your own computers, for tasks your
+own admitted devices create. Every other check still applies: a device
+still needs `operate` under a host-signed grant, the workspace must be one
+the policy lists and the host admits, and the routes, limits, and
+concurrency bound are unchanged. Turn it back off by running `on` again
+without `--full-access`. `access` is absent from a policy or grant written
+without it, which keeps the boundary.
+
 ## The decision journal
 
 Each decision appends one line to `~/.openagents/host/autostart.jsonl`
@@ -248,6 +313,9 @@ records the change:
 - A device's follow-up turn starts under exactly these bounds, or not at
   all; a command that waits for a turn to end runs only while its sender
   still holds `operate` under the same grant and epoch.
+- Full access is off unless the owner turns it on with a command on the
+  host. It changes what the engine's commands may reach, never who may
+  create a task or which workspaces, routes, and limits apply.
 
 `coder::task::autostart` tests cover each: creation without a policy, the
 workspace allowlist, the concurrency bound and its wait, cancellation and a

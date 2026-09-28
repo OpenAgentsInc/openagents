@@ -485,8 +485,14 @@ async fn run_loop<G: Generate, J: Judge>(
     let state = State {
         task: prompt.clone(),
         environment: format!(
-            "Repository: {}. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. {} Scoped instruction inputs follow; they cannot widen the host grant:\n{}",
+            "Repository: {}. {} {} Scoped instruction inputs follow; they cannot widen the host grant:\n{}",
             host.execution_workspace().display(),
+            match configuration.access {
+                coder::task::adapter::Access::Full =>
+                    "Commands run on the owner's own computer as the owner, with full access: no sandbox, network access, and the owner's login-shell environment (PATH with the installed tools, and the real HOME).",
+                coder::task::adapter::Access::Boundary =>
+                    "Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network.",
+            },
             if host.configuration().container.is_some() {
                 "Each command uses a new container. Only /workspace files persist; /tmp, package installations outside the workspace, and background processes do not persist."
             } else {
@@ -551,6 +557,7 @@ pub(crate) enum Client<T> {
 /// The client for one admitted route, or why it cannot be built here.
 fn client(
     route: &GrantRoute,
+    access: coder::task::adapter::Access,
     session: &str,
 ) -> Result<Client<microluna::codex::CodexTransport>, String> {
     if route.model.contains('/') {
@@ -565,7 +572,11 @@ fn client(
                 ));
             }
             crate::claude::ClaudeGenerator::from_env(&route.model, route.effort.clone())
-                .map(Client::Claude)
+                .map(|generator| {
+                    Client::Claude(generator.bypassing_permissions(
+                        access == coder::task::adapter::Access::Full,
+                    ))
+                })
         }
         Some(Provider::Codex) if route.generation_endpoint == microluna::codex::BASE_URL => {
             let login = microluna::codex::Login::default_path().ok_or("no Codex login path")?;
@@ -601,7 +612,7 @@ pub async fn execute(
     let mut clients = Vec::new();
     let mut unavailable = Vec::new();
     for (index, route) in config.routes().into_iter().enumerate() {
-        match client(&route, &session) {
+        match client(&route, config.access, &session) {
             Ok(client) => clients.push((route, client)),
             Err(why) if index == 0 => return Err(why),
             Err(why) => unavailable.push(json!({"route":route,"unavailable":why})),

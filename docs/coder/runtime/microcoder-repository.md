@@ -237,7 +237,8 @@ sequence number and a fsynced ATIF record. Failure to retain an intent prevents
 its dispatch. Failure to retain a later observation stops further effects and
 leaves explicit incomplete or unknown evidence.
 
-Credentials stay in the controller. Shell children receive a cleared
+Credentials stay in the controller. Under the default `access` (absent, or
+`"boundary"`), shell children receive a cleared
 environment, an explicit system `PATH`, and private scratch for `HOME` and
 `TMPDIR`. Filesystem writes are restricted to the granted worktree and scratch;
 the task store and common Git directory stay protected. The existing boundary
@@ -245,6 +246,20 @@ also permits its documented system read paths. On macOS its offline policy
 blocks external IP traffic but permits localhost; on Linux it uses an isolated
 network namespace. This profile does not claim those policies are identical.
 Controller model calls use the explicitly admitted endpoints.
+
+An optional `"access": "full"` in `adapter_configuration` is the owner's full
+access for the owner's own host, which `coder host autostart on
+--full-access` writes. Commands then run the admitted shell with no boundary
+and with network access, in the owner's login-shell environment read once at
+admission, with the real `HOME`, `USER`, and `LOGNAME`, and without variables
+named `*_API_KEY`, `*_TOKEN`, or `*_SECRET`. The admission records
+`host_network` and `host_user`; the trace records the environment's source,
+shell, `PATH`, and variable names only. The task store and the common Git
+directory are no longer protected from commands. A container grant refuses
+full access. [Full access](host-autostart.md#full-access) covers it.
+
+Admission also refuses a workspace that is not the top level of its Git
+checkout, such as an empty directory inside another repository.
 
 The owner checks cancellation before dispatch and while awaiting commands and
 model calls. A command's supervisor result records process-group cleanup.
