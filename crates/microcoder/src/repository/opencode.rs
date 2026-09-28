@@ -564,6 +564,28 @@ mod tests {
         assert!(sent.iter().all(|line| line["method"] != "session/prompt"));
     }
 
+    /// A live repository turn through the installed OpenCode, on the model
+    /// `OPENCODE_LIVE_MODEL` names (such as `google/gemini-3.6-flash`),
+    /// with OpenCode's own login. The fixture task asks for `result.txt`.
+    #[tokio::test]
+    #[ignore = "runs the installed opencode against a real provider; set OPENCODE_LIVE_MODEL"]
+    async fn a_live_opencode_turn_writes_the_file() {
+        let model = std::env::var("OPENCODE_LIVE_MODEL").expect("OPENCODE_LIVE_MODEL");
+        let (root, store, grant) = fixture_with(&model, |c| {
+            opencode(c, Access::Full);
+            c.model.clone_from(&model);
+        });
+        let program = binary().unwrap();
+        let task = run_turn(&store, &grant, &model, program).await;
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert_eq!(result.ending, "model_finished", "{trace}");
+        let checkout = root.path().join("checkout");
+        assert!(checkout.join("result.txt").is_file(), "{trace}");
+        assert!(trace.contains("\"kind\":\"opencode_prompt\""));
+        eprintln!("{}", serde_json::to_string_pretty(&result).unwrap());
+    }
+
     #[test]
     fn an_opencode_route_is_closed() {
         let (_root, _store, grant) = fixture_with(MODEL, |c| opencode(c, Access::Full));
