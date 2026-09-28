@@ -18,7 +18,13 @@ The app has four tabs, shown as white icons on black:
   the task's transcript. Later messages are durable `task.command`s that
   continue, queue, steer, or answer; a long press on send offers the other
   ways to send, as a menu.
-  This is the iPhone app's Coder tab; Rust decides everything it shows.
+  The chats list has a round **New chat** button (the compose glyph) that
+  opens the New chat screen with the cursor in its field; an open chat
+  has a breadcrumb back to the list beside its phase and computer; a
+  waiting question makes the composer answer it, and an approval request
+  adds **Approve** and **Deny**. Chats last shown stay listed across a
+  relaunch. This is the iPhone app's Coder tab; Rust decides everything
+  it shows.
 - **Verse** (globe) mounts Verse's bare world (`coder_mobile::VerseHandle` in
   bare mode) in a `SurfaceView` and forwards touches, pinch, and rotation
   samples as Coder's `coder.verse.v1` requests. Rust draws the movement
@@ -90,8 +96,13 @@ composer) follow the iOS design in
   links (styled, never opened), lists with task states, code blocks with a
   **Copy** control, quotes, tables that scroll sideways, and rules.
 - A tool row expands to its output; the expansion survives new revisions.
-- The composer grows to six lines, enforces the byte bound, and sends a
-  `coder_input` answer bound to its token. While Coder works it becomes a
+- Buttons with a glyph (back, compose) draw it: alone in a 44 dp circle
+  with the label as its spoken name, or before the label as a back link.
+  An end-aligned glyph button sits at the end of its row.
+- The composer is one capsule with the send control inside its trailing
+  end. It grows to six lines, enforces the byte bound, and sends a
+  `coder_input` answer bound to its token; a composer with `focus` takes
+  the cursor once per token. While Coder works it becomes a
   stop control that activates the composer node.
 
 The host polls as the iPhone app does: the Computers surface every 3 seconds

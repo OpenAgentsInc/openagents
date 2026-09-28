@@ -575,15 +575,22 @@ class Composer(private val context: Context, private val send: (String, String) 
     /** Each choice's token and label, in order. */
     private var choices: List<Pair<String, String>> = emptyList()
 
+    /** One capsule holding the field and, at its trailing end, the send control. */
+    private val capsule = context.row()
+
     init {
         root.gravity = Gravity.BOTTOM
         root.setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
+        capsule.gravity = Gravity.BOTTOM
+        capsule.minimumHeight = context.dp(50)
+        capsule.background = context.rounded(Palette.RAISED, 25f, Palette.BORDER)
+        capsule.setPadding(context.dp(6), context.dp(8), context.dp(8), context.dp(8))
         field.apply {
             textSize = 16f
             setTextColor(Palette.PRIMARY)
             setHintTextColor(Palette.TERTIARY)
-            background = context.rounded(Palette.RAISED, 20f)
-            setPadding(context.dp(14), context.dp(9), context.dp(14), context.dp(9))
+            background = null
+            setPadding(context.dp(12), context.dp(6), context.dp(8), context.dp(6))
             minLines = 1; maxLines = 6
             isVerticalScrollBarEnabled = true
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
@@ -602,13 +609,13 @@ class Composer(private val context: Context, private val send: (String, String) 
         control.apply {
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
-            background = context.rounded(Palette.PRIMARY, 18f)
+            background = context.rounded(Palette.PRIMARY, 17f)
             setOnClickListener { if (busy) doStop() else doSend() }
             setOnLongClickListener { offerChoices() }
         }
-        root.addView(field, LinearLayout.LayoutParams(0, -2, 1f))
-        root.addView(control, LinearLayout.LayoutParams(context.dp(36), context.dp(36)).apply {
-            marginStart = context.dp(8); bottomMargin = context.dp(1) })
+        capsule.addView(field, LinearLayout.LayoutParams(0, -2, 1f))
+        capsule.addView(control, LinearLayout.LayoutParams(context.dp(34), context.dp(34)).apply { marginStart = context.dp(4) })
+        root.addView(capsule, LinearLayout.LayoutParams(-1, -2))
     }
 
     fun update(props: JSONObject) {
@@ -617,6 +624,9 @@ class Composer(private val context: Context, private val send: (String, String) 
             field.setText(props.getString("draft"))
             field.setSelection(field.text.length)
         }
+        // A screen whose purpose is to write, such as a new chat, opens
+        // with the cursor in the field, once per token.
+        val focus = next != token && props.optBoolean("focus") && props.getBoolean("enabled")
         token = next
         choices = props.optJSONArray("choices")?.let { list ->
             (0 until list.length()).map { list.getJSONObject(it).let { c -> c.getString("token") to c.getString("label") } }
@@ -630,6 +640,10 @@ class Composer(private val context: Context, private val send: (String, String) 
         field.isEnabled = enabled
         root.alpha = if (enabled) 1f else 0.6f
         refresh()
+        if (focus) field.post {
+            if (field.requestFocus()) context.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                ?.showSoftInput(field, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
     private val canSend get() = enabled && !busy && field.text.toString().isNotBlank() &&

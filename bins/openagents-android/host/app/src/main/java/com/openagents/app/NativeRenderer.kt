@@ -78,7 +78,13 @@ class NativeRenderer(
         val props = element.getJSONObject("props")
         val style = node.optJSONObject("style") ?: JSONObject()
         val elementKind = element.getString("kind")
-        val kind = if (elementKind == "text") "text:${props.getString("role")}" else elementKind
+        val kind = when {
+            elementKind == "text" -> "text:${props.getString("role")}"
+            // A glyph button from the closed set; an unknown glyph shows the label.
+            elementKind == "button" && glyph(props) != null ->
+                if (props.getJSONObject("icon").optBoolean("circular")) "button:circle" else "button:link"
+            else -> elementKind
+        }
         val mounted = mounts[key]?.takeIf { it.kind == kind } ?: create(kind, props).also { mounts[key] = it }
         val view = mounted.view
         when (kind) {
@@ -90,6 +96,9 @@ class NativeRenderer(
                 replaceChildren(this, children.mapIndexed { index, child ->
                     val params = when {
                         horizontal && kindOf(child) == "text" -> LinearLayout.LayoutParams(0, -2, 1f)
+                        // An end-aligned glyph button takes the rest of its
+                        // row and sits at its end, as a toolbar button does.
+                        horizontal && endGlyph(child) -> LinearLayout.LayoutParams(0, -2, 1f)
                         horizontal -> LinearLayout.LayoutParams(-2, -2)
                         !scrolling && fills(child) -> LinearLayout.LayoutParams(-1, 0, 1f)
                         else -> LinearLayout.LayoutParams(-1, -2)
@@ -111,6 +120,21 @@ class NativeRenderer(
                 isEnabled = props.getBoolean("enabled")
                 alpha = if (isEnabled) 1f else 0.4f
             }
+            "button:circle", "button:link" -> {
+                val label = props.getString("label")
+                val enabled = props.getBoolean("enabled")
+                view.isEnabled = enabled; view.alpha = if (enabled) 1f else 0.4f
+                view.contentDescription = label
+                val inner = (view as FrameLayout).getChildAt(0)
+                (inner.layoutParams as FrameLayout.LayoutParams).gravity =
+                    (if (style.textOrNull("align") == "end") Gravity.END else Gravity.START) or Gravity.CENTER_VERTICAL
+                if (kind == "button:link") (inner as TextView).apply {
+                    if (text.toString() != label) text = label
+                    val icon = context.getDrawable(glyph(props)!!)?.apply { setBounds(0, 0, context.dp(18), context.dp(18)) }
+                    setCompoundDrawables(icon, null, null, null)
+                } else (inner as android.widget.ImageView).setImageResource(glyph(props)!!)
+                inner.requestLayout()
+            }
             "surface" -> (view as TextView).text = "This device can't display ${props.getString("label")}."
             "transcript" -> mounted.transcript!!.update(props, chat)
             "composer" -> mounted.composer!!.update(props)
@@ -129,10 +153,10 @@ class NativeRenderer(
             }
         }
         view.setTag(R.id.native_key, key)
-        if (kind != "button" && kind != "composer") view.setPadding(space(style.textOrNull("padding_start")), space(style.textOrNull("padding_top")),
+        if (!kind.startsWith("button") && kind != "composer") view.setPadding(space(style.textOrNull("padding_start")), space(style.textOrNull("padding_top")),
             space(style.textOrNull("padding_end")), space(style.textOrNull("padding_bottom")))
         style.objectOrNull("background")?.let { view.setBackgroundColor(color(it)) }
-            ?: if (kind != "button" && kind != "transcript") view.setBackgroundColor(Color.TRANSPARENT) else Unit
+            ?: if (!kind.startsWith("button") && kind != "transcript") view.setBackgroundColor(Color.TRANSPARENT) else Unit
         (mounted.text ?: view as? TextView)?.let { text ->
             text.setTextColor(style.objectOrNull("foreground")?.let { color(it) }
                 ?: if (kind == "text:status") Palette.SECONDARY else Palette.PRIMARY)
@@ -167,6 +191,26 @@ class NativeRenderer(
             stateListAnimator = null
             setOnClickListener { v -> (v.getTag(R.id.native_key) as? String)?.let { activateNode(it) } }
         })
+        kind == "button:circle" -> Mounted(kind, FrameLayout(context).apply {
+            // A 44 dp circle with the glyph; the label is its spoken name.
+            addView(android.widget.ImageView(context).apply {
+                scaleType = android.widget.ImageView.ScaleType.CENTER
+                background = context.rounded(Palette.RAISED, 22f, Palette.BORDER)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, FrameLayout.LayoutParams(context.dp(44), context.dp(44)))
+            isClickable = true; isFocusable = true
+            setOnClickListener { v -> if (v.isEnabled) (v.getTag(R.id.native_key) as? String)?.let { activateNode(it) } }
+        })
+        kind == "button:link" -> Mounted(kind, FrameLayout(context).apply {
+            // The glyph before a visible label, as a back link.
+            addView(context.text("", 17f).apply {
+                compoundDrawablePadding = context.dp(4)
+                setPadding(0, context.dp(10), context.dp(8), context.dp(10))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, FrameLayout.LayoutParams(-2, -2))
+            isClickable = true; isFocusable = true
+            setOnClickListener { v -> if (v.isEnabled) (v.getTag(R.id.native_key) as? String)?.let { activateNode(it) } }
+        })
         kind == "stack" -> Mounted(kind, context.column())
         kind == "list" -> {
             val rows = context.column()
@@ -189,6 +233,19 @@ class NativeRenderer(
     }
 
     private fun kindOf(node: JSONObject) = node.getJSONObject("element").getString("kind")
+
+    /** The drawable for a button's glyph, or null when it has none this app knows. */
+    private fun glyph(props: JSONObject): Int? = when (props.objectOrNull("icon")?.optString("glyph")) {
+        "back" -> R.drawable.ic_glyph_back
+        "compose" -> R.drawable.ic_glyph_compose
+        else -> null
+    }
+
+    private fun endGlyph(node: JSONObject): Boolean {
+        val element = node.getJSONObject("element")
+        return element.getString("kind") == "button" && glyph(element.getJSONObject("props")) != null &&
+            node.optJSONObject("style")?.textOrNull("align") == "end"
+    }
 
     /** A node that takes the remaining height in a vertical stack. */
     private fun fills(node: JSONObject): Boolean {
