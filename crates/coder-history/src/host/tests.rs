@@ -61,6 +61,7 @@ fn read(
             source_id: source.into(),
             cursor,
             max_bytes: max,
+            end: None,
         })
         .unwrap()
 }
@@ -251,6 +252,7 @@ fn rewritten_prefix_truncation_replacement_and_forged_cursor_refuse() {
         source_id: source.clone(),
         cursor: Some(cursor),
         max_bytes: 8,
+        end: None,
     };
     let mut changed = original.clone();
     changed[1] = b' ';
@@ -303,7 +305,8 @@ fn symlink_sources_and_directories_cannot_escape_selected_roots() {
             history.transcript(TranscriptRequest {
                 source_id: notice.source_id.unwrap(),
                 cursor: None,
-                max_bytes: 8
+                max_bytes: 8,
+                end: None,
             }),
             Err(Error::SourceMissing)
         );
@@ -407,7 +410,8 @@ fn moving_to_archive_retains_chat_identity_but_requires_a_new_source_cursor() {
         history.transcript(TranscriptRequest {
             source_id: source,
             cursor: Some(cursor),
-            max_bytes: MAX_PAGE_BYTES
+            max_bytes: MAX_PAGE_BYTES,
+            end: None,
         }),
         Err(Error::SourceMissing)
     );
@@ -431,7 +435,8 @@ fn request_and_response_bounds_are_enforced() {
             history.transcript(TranscriptRequest {
                 source_id: source.clone(),
                 cursor: None,
-                max_bytes: max
+                max_bytes: max,
+                end: None,
             }),
             Err(Error::InvalidRequest)
         );
@@ -446,7 +451,8 @@ fn request_and_response_bounds_are_enforced() {
         history.transcript(TranscriptRequest {
             source_id: source,
             cursor: None,
-            max_bytes: 8
+            max_bytes: 8,
+            end: None,
         }),
         Err(Error::ResourceLimit)
     );
@@ -476,4 +482,108 @@ fn unconfigured_harness_trees_and_credentials_are_never_cataloged() {
         }),
         Err(Error::InvalidRoot)
     ));
+}
+
+fn back(history: &History, source: &str, end: u64, max: u32) -> TranscriptPage {
+    history
+        .transcript(TranscriptRequest {
+            source_id: source.into(),
+            cursor: None,
+            max_bytes: max,
+            end: Some(end),
+        })
+        .unwrap()
+}
+
+#[test]
+fn backward_pages_walk_whole_records_from_the_newest() {
+    let fixture = Fixture::new();
+    let mut tail = String::new();
+    for index in 0..20 {
+        tail.push_str(&format!(
+            "{{\"type\":\"event_msg\",\"payload\":{{\"type\":\"agent_message\",\"message\":\"reply {index:02} padding padding\"}}}}\n"
+        ));
+    }
+    // A record still being written is never part of a backward page.
+    tail.push_str("{\"type\":\"event_msg\",\"partial");
+    let path = fixture.codex("019c0000-0000-7000-8000-000000000001", &tail);
+    let history = fixture.history();
+    let source = first(&history).source_id.unwrap();
+    let whole = fs::read(&path).unwrap();
+    let complete = &whole[..whole.iter().rposition(|b| *b == b'\n').unwrap() + 1];
+
+    let mut end = u64::MAX;
+    let mut pages = Vec::new();
+    loop {
+        let page = back(&history, &source, end, 300);
+        assert!(page.chunks.iter().all(|c| c.complete));
+        assert!(!page.chunks.is_empty());
+        let bytes: Vec<u8> = page
+            .chunks
+            .iter()
+            .flat_map(|c| STANDARD.decode(&c.raw_base64).unwrap())
+            .collect();
+        assert!(bytes.len() <= 300);
+        pages.push(bytes);
+        match page.previous {
+            Some(previous) => end = previous,
+            None => break,
+        }
+    }
+    let joined: Vec<u8> = pages.into_iter().rev().flatten().collect();
+    assert_eq!(joined, complete);
+
+    // The newest page's forward cursor continues after its last record.
+    let newest = back(&history, &source, u64::MAX, 300);
+    assert_eq!(newest.next.offset, complete.len() as u64);
+    assert!(newest.has_more, "the partial record remains to read");
+    let after = read(&history, &source, Some(newest.next), MAX_PAGE_BYTES);
+    assert_eq!(after.chunks.len(), 1);
+    assert!(!after.chunks[0].complete);
+
+    // A backward read takes no cursor.
+    assert!(
+        history
+            .transcript(TranscriptRequest {
+                source_id: source.clone(),
+                cursor: Some(after.next),
+                max_bytes: 300,
+                end: Some(u64::MAX),
+            })
+            .is_err()
+    );
+}
+
+#[test]
+fn catalog_lists_newest_first_with_times_and_first_prompts() {
+    let fixture = Fixture::new();
+    let old = fixture.codex(
+        "019c0000-0000-7000-8000-00000000000a",
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"<environment_context>cwd</environment_context>\"}]}}\n{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Fix the flaky test\\nmore detail\"}]}}\n",
+    );
+    let new = fixture.codex("019c0000-0000-7000-8000-00000000000b", "");
+    let set = |path: &Path, seconds: u64| {
+        OpenOptions::new()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds))
+            .unwrap();
+    };
+    set(&old, 1_700_000_000);
+    set(&new, 1_800_000_000);
+    let page = fixture
+        .history()
+        .catalog(CatalogRequest::default())
+        .unwrap();
+    assert_eq!(page.entries.len(), 2);
+    assert_eq!(
+        page.entries[0].updated_at.as_deref(),
+        Some("2027-01-15T08:00:00Z")
+    );
+    assert_eq!(
+        page.entries[1].updated_at.as_deref(),
+        Some("2023-11-14T22:13:20Z")
+    );
+    assert_eq!(page.entries[1].title, "Fix the flaky test");
 }

@@ -362,6 +362,46 @@ impl Computers {
         self.finish(result)
     }
 
+    /// Whether this device may order work on `host` now: the same check the
+    /// Order work screen makes.
+    pub fn can_operate(&self, host: &str) -> bool {
+        self.allow(Action::Operate { host }).is_ok()
+    }
+
+    /// Ask `host` again for the workspace labels it accepts.
+    pub fn refresh_workspaces(&mut self, host: &str) -> Result<(), Refusal> {
+        self.allow(Action::Operate { host })?;
+        self.service
+            .refresh_workspaces(host)
+            .map_err(Refusal::Failed)?;
+        self.reload();
+        self.rebuild().map_err(Refusal::Failed)
+    }
+
+    /// Order work on `host` without the Order work screen, as a chat client
+    /// does: NIP-HOST `task.create` with the prompt's first line as title.
+    /// It records the task; the host's own policy decides whether it runs.
+    pub fn start_task(
+        &mut self,
+        host: &str,
+        workspace: &str,
+        prompt: &str,
+    ) -> Result<String, Refusal> {
+        self.allow(Action::Operate { host })?;
+        let task = coder_access::protocol::TaskCreate {
+            title: task_title(prompt),
+            prompt: prompt.to_owned(),
+            workspace: workspace.to_owned(),
+        };
+        let id = self
+            .service
+            .create_task(host, &task)
+            .map_err(Refusal::Failed)?;
+        self.reload();
+        self.rebuild().map_err(Refusal::Failed)?;
+        Ok(id)
+    }
+
     /// Leave first run for the Computers screen, for a client that adds hosts
     /// on its own, such as through NIP-HOST tailnet admission.
     pub fn finish_first_run(&mut self) -> Result<(), Refusal> {

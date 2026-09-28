@@ -558,6 +558,7 @@ async fn page(
         source_id: source_id.to_owned(),
         cursor,
         max_bytes: coder_connect::coder_history::MAX_PAGE_BYTES,
+        end: None,
     };
     match observe(client, Query::Page(request), wait).await? {
         Observation::Page(page) => Ok(page),

@@ -8,8 +8,14 @@ decodes and renders it. The host shares Coder's renderer and native glue
 scanner, the secret field, and the terminal keyboard) instead of copying
 them.
 
-The app has three tabs:
+The app has four tabs:
 
+- **Coder** starts a chat with Coder on one of your computers. A new chat is
+  a NIP-HOST `task.create` in the computer's `openagents` workspace, the
+  same operation as Order work; with the host's auto-start policy on, the
+  host runs Coder's engine on it right away. The list follows each task
+  through the host's signed activity summaries. Reading the engine's replies
+  on the phone is not implemented yet.
 - **Computers** mounts Coder's shared
   [Computers screens](../../crates/coder-computers/README.md) over the live
   host client, drawn in white and gray instead of Coder's amber. From a
@@ -19,7 +25,9 @@ The app has three tabs:
   authenticates both Nostr keys
   ([NIP-REACH](../../nips/openagents/NIP-REACH.md)).
 - **Chats** lists the Claude and Codex chats saved on every connected
-  computer, newest first, and opens one to read it. It uses the read-only
+  computer, newest first, without subagents. A chat opens at its newest
+  messages, read backward from the end, and **Show earlier messages** loads
+  ten more at a time. It uses the read-only
   observer in `coder-connect` and Coder's readable record projection.
 - **Tailnet** lists the devices on your tailnet with name, operating system,
   tailnet address, online state, and whether OpenAgents connected to it.
@@ -78,13 +86,13 @@ uses only its control-plane client.
 | Bundle identifier | `com.openagents.app` |
 | App Store Connect app | `6748620735` (**OpenAgents**) |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `1.0.0` / `4` |
+| Marketing version and build | `1.0.0` / `5` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Archive signing | Manual, Apple Distribution, `OpenAgents App Store` profile |
 
 The App Store Connect record also holds `0.x` builds from an earlier app on
 this bundle identifier. Build numbers only need to be unique within one
-version, so `1.0.0` started at build `1`. Builds `1` to `3` are on TestFlight. Raise the build number for every
+version, so `1.0.0` started at build `1`. Builds `1` to `4` are on TestFlight. Raise the build number for every
 upload; set it in `host/project.yml` or with `OPENAGENTS_IOS_BUILD_NUMBER`.
 
 The `OpenAgents App Store` profile uses the same Apple Distribution

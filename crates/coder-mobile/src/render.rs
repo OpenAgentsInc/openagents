@@ -668,6 +668,7 @@ mod tests {
                     source_id: app.source().unwrap(),
                     cursor: app.transcript.cursor.clone(),
                     max_bytes: coder_history::MAX_PAGE_BYTES,
+                    end: None,
                 })
                 .unwrap();
             let more = page.has_more;
@@ -784,6 +785,7 @@ mod tests {
                     source_id: app.source().unwrap(),
                     cursor: None,
                     max_bytes: coder_history::MAX_PAGE_BYTES,
+                    end: None,
                 })
                 .unwrap(),
         )

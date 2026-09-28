@@ -483,7 +483,19 @@ the pinned host and original signer is the granted client. Query is exactly
 `{kind: "page", request: TranscriptRequest}` under the versioned reader DTO
 contract in `crates/coder-history`. Catalog requests have a bounded cursor and
 limit; transcript requests name only an opaque reader-issued `source_id`,
-cursor, and byte limit. Requests carry no host path or executable content.
+cursor, and byte limit, or, instead of a cursor, an `end` offset for a
+backward read. Requests carry no host path or executable content.
+
+Catalog pages list chats newest first by each source's last write, which is
+also the entry's `updated_at`. The page cursor covers membership, not order:
+a chat that moves between page requests can repeat or be skipped, so readers
+merge pages by chat ID. A chat without a title is named from the first line
+of its first user message that is not injected context. A backward read
+returns the page of whole records ending at or before `end` (`u64::MAX` for
+the newest complete record) and, when earlier records remain, `previous`:
+the `end` of the page before it. Its `next` cursor continues forward from
+its last record, so a reader can open a chat at its end, page back on
+request, and poll for new records.
 
 The host verifies signature, recipient, schema, current grant, original grant
 event identity, selected source roots, and request freshness before reading.

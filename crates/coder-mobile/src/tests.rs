@@ -215,6 +215,7 @@ fn large_message_is_readable_across_source_pages_without_a_one_kib_cut() {
             has_more: offset < total,
             pending_line: false,
             notices: vec![],
+            previous: None,
         })
         .unwrap();
     }

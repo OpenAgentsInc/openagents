@@ -78,6 +78,23 @@ pub(super) fn page(history: &History, request: TranscriptRequest) -> Result<Tran
         return Err(Error::ResourceLimit);
     }
     let incarnation = confined::incarnation(&meta);
+    if let Some(end) = request.end {
+        if request.cursor.is_some() {
+            return Err(Error::InvalidRequest);
+        }
+        let (start, end) = backward_window(&mut file, meta.len(), end, request.max_bytes)?;
+        let progress = prefix(&mut file, start)?;
+        return read_range(
+            root,
+            &source,
+            &mut file,
+            &incarnation,
+            meta.len(),
+            (progress, start),
+            end,
+            true,
+        );
+    }
     let cursor = request.cursor.unwrap_or_else(|| TranscriptCursor {
         source_id: source.id.clone(),
         incarnation: incarnation.clone(),
@@ -92,26 +109,134 @@ pub(super) fn page(history: &History, request: TranscriptRequest) -> Result<Tran
     {
         return Err(Error::SourceChanged);
     }
-    let mut progress = prefix(&mut file, cursor.offset)?;
+    let progress = prefix(&mut file, cursor.offset)?;
     if cursor.record_offset != progress.record_offset
         || cursor.record_index != progress.record_index
         || cursor.prefix_sha256 != hash_string(&progress.hash)
     {
         return Err(Error::SourceChanged);
     }
-    let to_read = u64::from(request.max_bytes).min(meta.len() - cursor.offset) as usize;
+    let end = cursor.offset + u64::from(request.max_bytes).min(meta.len() - cursor.offset);
+    read_range(
+        root,
+        &source,
+        &mut file,
+        &incarnation,
+        meta.len(),
+        (progress, cursor.offset),
+        end,
+        false,
+    )
+}
+
+/// The byte range of a backward read: whole records that end at or before
+/// `end` (the newest complete record for `u64::MAX`), within `max_bytes`.
+/// A single record larger than the page yields an empty range at its start.
+fn backward_window(
+    file: &mut File,
+    len: u64,
+    end: u64,
+    max_bytes: u32,
+) -> Result<(u64, u64), Error> {
+    let limit = end.min(len);
+    // End at a record boundary: after the last newline at or before limit.
+    let end = last_newline_end(file, limit)?;
+    let window = end.saturating_sub(u64::from(max_bytes));
+    if window == 0 {
+        return Ok((0, end));
+    }
+    let bytes = read_at(file, window - 1, end - (window - 1))?;
+    // Start just after a newline at or after window - 1, so the window
+    // begins at a record boundary.
+    match bytes.iter().position(|b| *b == b'\n') {
+        Some(index) if window + (index as u64) < end => {
+            let start = window + index as u64;
+            Ok((within_chunk_limit(file, start, end)?, end))
+        }
+        // One record fills the page: skip it by returning its start.
+        _ => {
+            let start = last_newline_end(file, window)?;
+            Ok((start, start))
+        }
+    }
+}
+
+/// Move `start` past whole records until `start..end` fits in one page's
+/// chunk limit, keeping the newest records.
+fn within_chunk_limit(file: &mut File, start: u64, end: u64) -> Result<u64, Error> {
+    let bytes = read_at(file, start, end - start)?;
+    let mut chunks = 0;
+    let mut kept = end;
+    for line in bytes.split_inclusive(|b| *b == b'\n').rev() {
+        chunks += line.len().div_ceil(MAX_CHUNK_BYTES).max(1);
+        if chunks > MAX_CHUNKS {
+            break;
+        }
+        kept -= line.len() as u64;
+    }
+    Ok(kept)
+}
+
+/// The offset just past the last newline at or before `limit`, or 0.
+fn last_newline_end(file: &mut File, limit: u64) -> Result<u64, Error> {
+    let mut position = limit;
+    while position > 0 {
+        let from = position.saturating_sub(64 * 1024);
+        let bytes = read_at(file, from, position - from)?;
+        if let Some(index) = bytes.iter().rposition(|b| *b == b'\n') {
+            return Ok(from + index as u64 + 1);
+        }
+        position = from;
+    }
+    Ok(0)
+}
+
+fn read_at(file: &mut File, from: u64, count: u64) -> Result<Vec<u8>, Error> {
+    let count = usize::try_from(count).map_err(|_| Error::ResourceLimit)?;
+    let mut bytes = vec![0; count];
+    file.seek(SeekFrom::Start(from))
+        .map_err(|_| Error::SourceUnreadable)?;
+    file.read_exact(&mut bytes)
+        .map_err(|_| Error::SourceChanged)?;
+    Ok(bytes)
+}
+
+/// Read `start..end` as one page. A backward page reports `previous` and
+/// never includes a partial record.
+#[allow(clippy::too_many_arguments)]
+fn read_range(
+    root: &confined::Root,
+    source: &catalog::Source,
+    file: &mut File,
+    incarnation: &str,
+    len: u64,
+    (mut progress, start): (Prefix, u64),
+    end: u64,
+    backward: bool,
+) -> Result<TranscriptPage, Error> {
+    let incarnation = incarnation.to_owned();
+    let cursor = TranscriptCursor {
+        source_id: source.id.clone(),
+        incarnation: incarnation.clone(),
+        offset: start,
+        record_offset: progress.record_offset,
+        record_index: progress.record_index,
+        prefix_sha256: hash_string(&progress.hash),
+    };
+    let to_read = (end - start) as usize;
     let mut bytes = vec![0; to_read];
     file.read_exact(&mut bytes)
         .map_err(|_| Error::SourceChanged)?;
     let mut page = TranscriptPage {
         source_id: source.id.clone(),
         incarnation: incarnation.clone(),
-        snapshot_bytes: meta.len(),
+        snapshot_bytes: len,
         chunks: Vec::new(),
         next: cursor.clone(),
         has_more: false,
         pending_line: false,
         notices: Vec::new(),
+        previous: (backward && start > 0).then_some(start),
     };
     let mut position = cursor.offset;
     let mut consumed = 0;
@@ -175,14 +300,14 @@ pub(super) fn page(history: &History, request: TranscriptRequest) -> Result<Tran
         return Err(Error::SourceChanged);
     }
     page.next = TranscriptCursor {
-        source_id: source.id,
+        source_id: source.id.clone(),
         incarnation,
         offset: position,
         record_offset: progress.record_offset,
         record_index: progress.record_index,
         prefix_sha256: hash_string(&progress.hash),
     };
-    page.has_more = consumed < bytes.len() || position < meta.len();
+    page.has_more = consumed < bytes.len() || position < len;
     page.pending_line = progress.record_offset < position;
     if page.pending_line && !page.has_more {
         page.notices.push(Notice {

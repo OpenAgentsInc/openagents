@@ -216,22 +216,49 @@ fn uuid_suffix(path: &Path) -> Option<String> {
     }
 }
 
-fn head(root: &confined::Root, source: &Source) -> (Option<String>, Option<String>, SourceStatus) {
+/// A source's first record: its native ID and title, when the header has
+/// them, and its status. The modification time is the chat's last activity.
+struct Head {
+    native: Option<String>,
+    title: Option<String>,
+    status: SourceStatus,
+    modified: Option<String>,
+}
+
+fn head(root: &confined::Root, source: &Source) -> Head {
+    let (native, title, status, modified) = head_parts(root, source);
+    Head {
+        native,
+        title,
+        status,
+        modified,
+    }
+}
+
+fn head_parts(
+    root: &confined::Root,
+    source: &Source,
+) -> (Option<String>, Option<String>, SourceStatus, Option<String>) {
     let file = match root.open_file(&source.relative) {
         Ok(file) => file,
-        Err(Error::SourceMissing) => return (None, None, SourceStatus::Missing),
-        Err(_) => return (None, None, SourceStatus::Unreadable),
+        Err(Error::SourceMissing) => return (None, None, SourceStatus::Missing, None),
+        Err(_) => return (None, None, SourceStatus::Unreadable, None),
     };
     let Ok(meta) = file.metadata() else {
-        return (None, None, SourceStatus::Unreadable);
+        return (None, None, SourceStatus::Unreadable, None);
     };
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|elapsed| utc(elapsed.as_secs()));
     if meta.len() == 0 {
-        return (None, None, SourceStatus::Empty);
+        return (None, None, SourceStatus::Empty, modified);
     }
     let mut first = Vec::new();
     let read = BufReader::new(file.take(16 * 1024)).read_until(b'\n', &mut first);
     if read.is_err() {
-        return (None, None, SourceStatus::Unreadable);
+        return (None, None, SourceStatus::Unreadable, modified);
     }
     let value = serde_json::from_slice::<serde_json::Value>(&first).ok();
     let native = value
@@ -250,7 +277,60 @@ fn head(root: &confined::Root, source: &Source) -> (Option<String>, Option<Strin
         .and_then(|v| v.get("customTitle").or_else(|| v.get("summary")))
         .and_then(|v| v.as_str())
         .map(str::to_owned);
-    (native, title, SourceStatus::Available)
+    (native, title, SourceStatus::Available, modified)
+}
+
+/// `YYYY-MM-DDTHH:MM:SSZ` for Unix seconds, in UTC.
+fn utc(seconds: u64) -> String {
+    let days = (seconds / 86_400) as i64;
+    let rest = seconds % 86_400;
+    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rest / 3_600,
+        rest % 3_600 / 60,
+        rest % 60
+    )
+}
+
+/// The first line of the chat's first prompt, for a chat with no title:
+/// the first user message within the first 64 KiB that is not injected
+/// context (text that opens with `<`, such as `<environment_context>`).
+fn first_prompt(root: &confined::Root, source: &Source) -> Option<String> {
+    let file = root.open_file(&source.relative).ok()?;
+    let mut reader = BufReader::new(file.take(64 * 1024));
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        if reader.read_until(b'\n', &mut line).ok()? == 0 || !line.ends_with(b"\n") {
+            return None;
+        }
+        let Some(readable) = crate::readable_record(&line) else {
+            continue;
+        };
+        if readable.role.as_deref() != Some("user") {
+            continue;
+        }
+        let text = readable.text.trim();
+        if text.is_empty()
+            || text.starts_with('<')
+            || text.starts_with("Caveat:")
+            || text.contains("AGENTS.md instructions")
+        {
+            continue;
+        }
+        let first = text.lines().next().unwrap_or(text).trim();
+        return Some(bounded(first, 120).0);
+    }
 }
 
 pub(super) fn page(history: &History, request: CatalogRequest) -> Result<CatalogPage, Error> {
@@ -259,11 +339,17 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
     }
     let (sources, mut notices) = scan(history)?;
     let mut entries: Vec<(String, Chat)> = Vec::new();
+    let mut untitled: BTreeMap<String, (usize, PathBuf)> = BTreeMap::new();
     for (root_index, root) in history.roots.iter().enumerate() {
         let title_map = titles(root, &mut notices)?;
         let mut present = HashSet::new();
         for source in sources.iter().filter(|s| s.root == root_index) {
-            let (from_header, from_title, status) = head(root, source);
+            let Head {
+                native: from_header,
+                title: from_title,
+                status,
+                modified,
+            } = head(root, source);
             let native = from_header.or_else(|| uuid_suffix(&source.relative));
             let title = native.as_ref().and_then(|id| title_map.get(id));
             if let Some(id) = &native {
@@ -273,13 +359,11 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
                 Harness::Codex => "Saved Codex chat",
                 Harness::Claude => "Saved Claude chat",
             };
-            let (name, truncated) = bounded(
-                title
-                    .map(|t| t.name.as_str())
-                    .or(from_title.as_deref())
-                    .unwrap_or(default),
-                256,
-            );
+            let named = title.map(|t| t.name.as_str()).or(from_title.as_deref());
+            if named.is_none() {
+                untitled.insert(source.id.clone(), (root_index, source.relative.clone()));
+            }
+            let (name, truncated) = bounded(named.unwrap_or(default), 256);
             let id = native
                 .as_ref()
                 .map(|n| digest(format!("{}\0{n}", root.id).as_bytes()))
@@ -292,7 +376,8 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
                     native_id: native,
                     title: name,
                     title_truncated: truncated,
-                    updated_at: title.and_then(|t| t.updated.clone()),
+                    // The file's last write is its last activity.
+                    updated_at: modified.or_else(|| title.and_then(|t| t.updated.clone())),
                     archived: source.archived,
                     subagent: source.subagent,
                     source_id: Some(source.id.clone()),
@@ -327,14 +412,22 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
         return Err(Error::ResourceLimit);
     }
     entries.sort_by(|a, b| a.0.cmp(&b.0));
-    // Cursor continuity covers membership/order, not mutable title metadata.
-    // A running chat can update its title without starving catalog pagination.
+    // Cursor continuity covers membership, not order or mutable metadata: a
+    // running chat moves to the top and can update its title without
+    // starving catalog pagination. Readers merge pages by chat ID.
     let membership: Vec<_> = entries
         .iter()
         .map(|(key, chat)| (key, &chat.id, &chat.source_id, chat.archived))
         .collect();
     let snapshot =
         digest(&serde_json::to_vec(&(&membership, &notices)).map_err(|_| Error::Encoding)?);
+    // Newest first. Timestamps share one UTC format, so text order is time
+    // order; a chat with no time goes last.
+    entries.sort_by(|a, b| {
+        b.1.updated_at
+            .cmp(&a.1.updated_at)
+            .then_with(|| a.0.cmp(&b.0))
+    });
     let start = if let Some(cursor) = request.cursor {
         if cursor.snapshot != snapshot {
             return Err(Error::CursorStale);
@@ -377,6 +470,24 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
             break;
         }
         end += 1;
+    }
+    // Name untitled chats on this page from their first prompt.
+    for chat in &mut page.entries {
+        if let Some((root, relative)) = chat.source_id.as_ref().and_then(|id| untitled.get(id))
+            && let Some(prompt) = first_prompt(
+                &history.roots[*root],
+                &Source {
+                    root: *root,
+                    relative: relative.clone(),
+                    id: String::new(),
+                    harness: chat.harness,
+                    archived: chat.archived,
+                    subagent: chat.subagent,
+                },
+            )
+        {
+            chat.title = prompt;
+        }
     }
     if encoded_len(&page)? > MAX_RESPONSE_BYTES {
         return Err(Error::ResourceLimit);

@@ -2,6 +2,7 @@
 //! it opens, and the Tailnet surface.
 
 use crate::chats::{Chats, Purpose as ChatsPurpose};
+use crate::coder_tab::{CoderTab, Purpose as CoderPurpose};
 use crate::tailnet::{Client, Outcome as TailnetOutcome};
 use crate::tailnet_view::{self, Admit, Intent as TailnetIntent, Screen as TailnetScreen};
 use coder_computers::cache::Cache;
@@ -65,6 +66,18 @@ pub enum Request {
         token: String,
     },
     ChatsRefresh,
+    CoderActivate {
+        instance: String,
+        revision: u64,
+        node: String,
+    },
+    CoderInput {
+        token: String,
+        value: String,
+    },
+    CoderCancel {
+        token: String,
+    },
     TailnetActivate {
         instance: String,
         revision: u64,
@@ -135,6 +148,9 @@ pub struct Packet {
     /// A value the Computers surface asks the host to collect.
     pub computers_input: Option<InputRequest>,
     pub computers_qr: Option<QrModules>,
+    pub coder: Option<serde_json::Value>,
+    /// A value the Coder surface asks the host to collect.
+    pub coder_input: Option<rust_native::input::InputRequest<CoderPurpose>>,
     pub chats: Option<serde_json::Value>,
     /// A value the Chats surface asks the host to collect.
     pub chats_input: Option<rust_native::input::InputRequest<ChatsPurpose>>,
@@ -191,6 +207,7 @@ pub struct App {
     device: String,
     computers: Option<Computers>,
     chats: Chats,
+    coder: CoderTab,
     terminals: Option<Terminals>,
     terminal: Option<Terminal>,
     tailnet_client: Result<Arc<Client>, String>,
@@ -274,6 +291,7 @@ impl App {
             device,
             computers,
             chats,
+            coder: CoderTab::new(format!("coder:{}", id())),
             terminals,
             terminal: None,
             tailnet_client,
@@ -359,6 +377,22 @@ impl App {
             Request::ChatsInput { token, value } => self.chats.submit(&token, &value),
             Request::ChatsCancel { token } => self.chats.cancel(&token),
             Request::ChatsRefresh => self.chats.refresh(),
+            Request::CoderActivate {
+                instance,
+                revision,
+                node,
+            } => self.coder.activate(
+                &Activation {
+                    instance,
+                    revision,
+                    node,
+                },
+                self.computers.as_mut(),
+            ),
+            Request::CoderInput { token, value } => {
+                self.coder.submit(&token, &value, self.computers.as_mut())
+            }
+            Request::CoderCancel { token } => self.coder.cancel(&token),
             Request::TailnetActivate {
                 instance,
                 revision,
@@ -643,6 +677,7 @@ impl App {
         self.chats.settle();
         let tailnet = self.render_tailnet();
         let chats = self.chats.render();
+        let coder = self.coder.render(self.computers.as_ref());
         let computers = self.computers.as_ref();
         Packet {
             schema: "openagents.mobile.v1",
@@ -665,6 +700,8 @@ impl App {
                         })
                         .collect(),
                 }),
+            coder,
+            coder_input: self.coder.input().cloned(),
             chats,
             chats_input: self.chats.input().cloned(),
             chats_follow: self.chats.follow(),
@@ -685,6 +722,15 @@ impl App {
         let mut state = self.lock_tailnet();
         state.probe = matches!(screen, TailnetScreen::Devices(_));
         state.screen = screen;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn admit_for_test(&mut self, invitation: &str, label: &str) {
+        self.computers
+            .as_mut()
+            .expect("computers")
+            .admit(invitation, label)
+            .expect("admitted");
     }
 
     #[cfg(test)]

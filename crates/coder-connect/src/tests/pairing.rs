@@ -288,6 +288,7 @@ async fn bootstrap_roundtrip(url: &str) {
             source_id: source,
             cursor: None,
             max_bytes: coder_history::MAX_PAGE_BYTES,
+            end: None,
         }))
         .await
         .unwrap()

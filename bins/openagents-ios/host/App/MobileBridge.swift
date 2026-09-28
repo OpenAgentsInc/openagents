@@ -38,6 +38,8 @@ struct AppPacket: Decodable {
     let computers: NativeView?
     let computers_input: ComputersInput?
     let computers_qr: ComputersQR?
+    let coder: NativeView?
+    let coder_input: ComputersInput?
     let chats: NativeView?
     let chats_input: ComputersInput?
     let chats_follow: String?

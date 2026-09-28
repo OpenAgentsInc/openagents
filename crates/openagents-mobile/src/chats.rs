@@ -20,12 +20,17 @@ use std::time::Duration;
 use tokio::runtime::Handle;
 
 const OBSERVE_LIMIT: Duration = Duration::from_secs(20);
-/// Catalog pages read per computer, of up to 32 chats each.
-const CATALOG_PAGES: usize = 4;
-/// Transcript pages read per chat, of up to 32 KiB each.
-const TRANSCRIPT_PAGES: usize = 64;
-/// Messages shown for one chat: the newest ones.
-const SHOWN_MESSAGES: usize = 120;
+/// Catalog pages read per computer, of up to 32 chats each, newest first.
+const CATALOG_PAGES: usize = 8;
+/// Stop reading a computer's catalog once this many chats would show.
+const CATALOG_WANTED: usize = 60;
+/// Backward transcript pages read for one batch of messages.
+const TRANSCRIPT_PAGES: usize = 8;
+/// Messages a batch shows: the newest when a chat opens, then more each time
+/// earlier messages are asked for.
+const BATCH_MESSAGES: usize = 10;
+/// Messages kept for one chat.
+const SHOWN_MESSAGES: usize = 200;
 /// Text shown per message.
 const MESSAGE_BYTES: usize = 2_000;
 const SHOWN_CHATS: usize = 200;
@@ -37,6 +42,7 @@ pub enum Intent {
     Refresh,
     Open { computer: String, source: String },
     Back,
+    Earlier,
     Forget { computer: String },
 }
 
@@ -67,6 +73,8 @@ struct Computer {
 }
 
 struct Message {
+    /// The record's offset: a stable row key.
+    offset: u64,
     role: String,
     text: String,
     markdown: bool,
@@ -76,7 +84,11 @@ struct Reading {
     computer: String,
     chat: Chat,
     messages: Vec<Message>,
+    /// Where earlier records end, when there are any.
+    previous: Option<u64>,
     loading: bool,
+    /// Earlier messages are being read.
+    earlier: bool,
     error: Option<String>,
 }
 
@@ -215,6 +227,7 @@ impl Chats {
             Intent::AddComputer => self.ask(Purpose::Pair),
             Intent::Refresh => self.refresh(),
             Intent::Back => lock(&self.state).reading = None,
+            Intent::Earlier => self.earlier(),
             Intent::Forget { computer } => {
                 lock(&self.state)
                     .computers
@@ -414,49 +427,66 @@ impl Chats {
             computer: computer.clone(),
             chat,
             messages: vec![],
+            previous: None,
             loading: true,
+            earlier: false,
             error: None,
         });
+        self.read_back(client, computer, source, u64::MAX);
+    }
+
+    /// Read the batch of messages before the earliest one shown.
+    fn earlier(&mut self) {
+        let found = {
+            let mut state = lock(&self.state);
+            let reading = state.reading.as_mut().filter(|r| !r.loading && !r.earlier);
+            let Some(reading) = reading else { return };
+            let Some(previous) = reading.previous else {
+                return;
+            };
+            reading.earlier = true;
+            let (computer, source) = (
+                reading.computer.clone(),
+                reading.chat.source_id.clone().unwrap_or_default(),
+            );
+            state
+                .computers
+                .iter()
+                .find(|c| c.saved.code.host == computer)
+                .and_then(|c| c.client.as_ref().ok().cloned())
+                .map(|client| (client, computer, source, previous))
+        };
+        if let Some((client, computer, source, previous)) = found {
+            self.read_back(client, computer, source, previous);
+        }
+    }
+
+    /// Read backward from `end` until a batch of messages is found, then put
+    /// them before the ones shown, all at once, so the screen doesn't shift
+    /// while pages arrive.
+    fn read_back(&mut self, client: Arc<Client>, computer: String, source: String, end: u64) {
         let state = self.state.clone();
         self.runtime.spawn(async move {
-            let mut cursor = None;
-            for _ in 0..TRANSCRIPT_PAGES {
-                let request = TranscriptRequest {
-                    source_id: source.clone(),
-                    cursor: cursor.take(),
-                    max_bytes: coder_history::MAX_PAGE_BYTES,
-                };
-                let page = match observe(&client, Query::Page(request)).await {
-                    Ok(Observation::Page(page)) => page,
-                    Ok(_) => {
-                        let error = "The computer answered with the wrong page.".to_string();
-                        set_error(&state, &computer, &source, error);
-                        return;
-                    }
-                    Err(error) => {
-                        set_error(&state, &computer, &source, error);
-                        return;
-                    }
-                };
-                let messages = messages(&page.chunks);
-                let more = page.has_more;
-                cursor = Some(page.next);
-                let mut guard = lock(&state);
-                let Some(reading) = guard.reading.as_mut().filter(|r| {
-                    r.computer == computer && r.chat.source_id.as_deref() == Some(&source)
-                }) else {
-                    return;
-                };
-                reading.messages.extend(messages);
-                let excess = reading.messages.len().saturating_sub(SHOWN_MESSAGES);
-                reading.messages.drain(..excess);
-                if !more {
-                    reading.loading = false;
-                    return;
+            let result = batch(&client, &source, end).await;
+            let mut guard = lock(&state);
+            let Some(reading) = guard
+                .reading
+                .as_mut()
+                .filter(|r| r.computer == computer && r.chat.source_id.as_deref() == Some(&source))
+            else {
+                return;
+            };
+            reading.loading = false;
+            reading.earlier = false;
+            match result {
+                Ok((mut messages, previous)) => {
+                    messages.append(&mut reading.messages);
+                    let excess = messages.len().saturating_sub(SHOWN_MESSAGES);
+                    messages.drain(..excess);
+                    reading.messages = messages;
+                    reading.previous = if excess > 0 { None } else { previous };
                 }
-            }
-            if let Some(reading) = lock(&state).reading.as_mut() {
-                reading.loading = false;
+                Err(error) => reading.error = Some(error),
             }
         });
     }
@@ -479,18 +509,6 @@ impl Chats {
     }
 }
 
-fn set_error(state: &Mutex<State>, computer: &str, source: &str, error: String) {
-    let mut guard = lock(state);
-    if let Some(reading) = guard
-        .reading
-        .as_mut()
-        .filter(|r| r.computer == computer && r.chat.source_id.as_deref() == Some(source))
-    {
-        reading.loading = false;
-        reading.error = Some(error);
-    }
-}
-
 fn client(code: &ConnectionCode, secret: SecretKey) -> Result<Arc<Client>, String> {
     Client::new_with_policy(code.clone(), secret, RelayPolicy::Production)
         .map(Arc::new)
@@ -506,24 +524,76 @@ async fn observe(client: &Client, query: Query) -> Result<Observation, String> {
         .map_err(|error| error.to_string())
 }
 
+/// Up to a batch of messages ending at `end`, oldest first, and where
+/// earlier records end.
+async fn batch(
+    client: &Client,
+    source: &str,
+    mut end: u64,
+) -> Result<(Vec<Message>, Option<u64>), String> {
+    let mut found: Vec<Message> = vec![];
+    let mut previous = None;
+    for _ in 0..TRANSCRIPT_PAGES {
+        let request = TranscriptRequest {
+            source_id: source.to_owned(),
+            cursor: None,
+            max_bytes: coder_history::MAX_PAGE_BYTES,
+            end: Some(end),
+        };
+        let Observation::Page(page) = observe(client, Query::Page(request)).await? else {
+            return Err("The computer answered with the wrong page.".into());
+        };
+        let mut messages = messages(&page.chunks);
+        messages.append(&mut found);
+        found = messages;
+        previous = page.previous;
+        let conversational = found.iter().filter(|m| m.markdown).count();
+        match page.previous {
+            Some(earlier) if conversational < BATCH_MESSAGES => end = earlier,
+            _ => break,
+        }
+    }
+    Ok((found, previous))
+}
+
+/// The computer's newest chats, until enough would show. The host lists
+/// newest first; a chat that moved between pages is kept once.
 async fn catalog(client: &Client) -> Result<Vec<Chat>, String> {
-    let mut chats = vec![];
+    let mut chats: Vec<Chat> = vec![];
     let mut cursor = None;
     for _ in 0..CATALOG_PAGES {
         let request = CatalogRequest {
             cursor: cursor.take(),
             limit: coder_history::MAX_CATALOG_PAGE,
         };
-        let Observation::Catalog(page) = observe(client, Query::Catalog(request)).await? else {
-            return Err("The computer answered with the wrong page.".into());
+        let page = match observe(client, Query::Catalog(request)).await {
+            Ok(Observation::Catalog(page)) => page,
+            Ok(_) => return Err("The computer answered with the wrong page.".into()),
+            // A later page can fail when the chat list changed; keep what
+            // arrived.
+            Err(_) if !chats.is_empty() => break,
+            Err(error) => return Err(error),
         };
-        chats.extend(page.entries);
+        for chat in page.entries {
+            if !chats.iter().any(|known| known.id == chat.id) {
+                chats.push(chat);
+            }
+        }
+        if chats.iter().filter(|chat| shown(chat)).count() >= CATALOG_WANTED {
+            break;
+        }
         match page.next {
             Some(next) => cursor = Some(next),
             None => break,
         }
     }
     Ok(chats)
+}
+
+/// Whether the list shows a chat: not archived, not a subagent's, and
+/// readable.
+fn shown(chat: &Chat) -> bool {
+    !chat.archived && !chat.subagent && chat.source_id.is_some()
 }
 
 /// Readable messages from one page. A record whose chunks are all on the
@@ -578,6 +648,7 @@ fn messages(chunks: &[coder_history::RecordChunk]) -> Vec<Message> {
             _ => role,
         };
         out.push(Message {
+            offset: record,
             role,
             text,
             markdown,
@@ -640,7 +711,7 @@ fn catalog_view(state: &State) -> Node<Intent> {
         .computers
         .iter()
         .flat_map(|computer| computer.chats.iter().map(move |chat| (computer, chat)))
-        .filter(|(_, chat)| !chat.archived && chat.source_id.is_some())
+        .filter(|(_, chat)| shown(chat))
         .collect();
     all.sort_by(|a, b| b.1.updated_at.cmp(&a.1.updated_at));
     let total = all.len();
@@ -663,9 +734,6 @@ fn catalog_view(state: &State) -> Node<Intent> {
                         .collect::<String>()
                         .replace('T', " "),
                 );
-            }
-            if chat.subagent {
-                detail.push_str(" · subagent");
             }
             button(
                 &format!("chat-{index}"),
@@ -718,40 +786,46 @@ fn reader(reading: &Reading) -> Node<Intent> {
     if let Some(error) = &reading.error {
         header.push(status("chat-error", error));
     }
-    let mut rows: Vec<Node<Intent>> = reading
-        .messages
-        .iter()
-        .enumerate()
-        .map(|(index, message)| {
-            stack(
-                &format!("message-{index}"),
-                vec![
-                    status(&format!("message-{index}-role"), &message.role),
-                    text(
-                        &format!("message-{index}-text"),
-                        &message.text,
-                        if message.markdown {
-                            TextRole::Markdown
-                        } else {
-                            TextRole::Code
-                        },
-                        WHITE,
-                        false,
-                    ),
-                ],
-            )
-        })
-        .collect();
-    rows.push(status(
-        "chat-end",
-        if reading.loading {
-            "Loading…"
-        } else if reading.messages.is_empty() {
-            "No readable messages."
-        } else {
-            "End of chat"
-        },
-    ));
+    let mut rows: Vec<Node<Intent>> = vec![];
+    if reading.earlier {
+        rows.push(status("earlier", "Loading earlier messages…"));
+    } else if reading.previous.is_some() && !reading.loading {
+        rows.push(button("earlier", "Show earlier messages", Intent::Earlier));
+    }
+    rows.extend(reading.messages.iter().map(|message| {
+        let key = format!("message-{}", message.offset);
+        stack(
+            &key,
+            vec![
+                status(&format!("{key}-role"), &message.role),
+                text(
+                    &format!("{key}-text"),
+                    &message.text,
+                    if message.markdown {
+                        TextRole::Markdown
+                    } else {
+                        TextRole::Code
+                    },
+                    WHITE,
+                    false,
+                ),
+            ],
+        )
+    }));
+    // Nothing shows until the newest batch arrives, so the screen opens at
+    // the end and does not shift.
+    if !reading.loading || !reading.messages.is_empty() {
+        rows.push(status(
+            "chat-end",
+            if reading.messages.is_empty() {
+                "No readable messages."
+            } else {
+                "Latest"
+            },
+        ));
+    } else {
+        rows.push(status("chat-end", "Loading…"));
+    }
     header.push(Node {
         key: "messages".into(),
         style: Style::default(),

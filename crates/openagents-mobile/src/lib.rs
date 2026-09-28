@@ -2,15 +2,17 @@
 //! builds each screen as a Rust Native view; the thin SwiftUI host decodes
 //! and renders it and forwards activations and the few values it collects.
 //!
-//! The app has three surfaces. **Computers** is Coder's shared Computers
+//! The app has four surfaces. **Computers** is Coder's shared Computers
 //! controller over the live host client: it enrolls this phone with hosts
 //! (NIP-HOST), follows their presence and routes (NIP-REACH), and commands
-//! them (tasks and terminals). **Chats** lists the Claude and Codex chats
+//! them (tasks and terminals). **Coder** starts a chat with Coder on a
+//! computer as a NIP-HOST task and follows it. **Chats** lists the Claude and Codex chats
 //! saved on every computer paired for reading. **Tailnet** lists the devices on the user's
 //! tailnet through Tailscale's control server.
 
 mod app;
 mod chats;
+mod coder_tab;
 mod tailnet;
 mod tailnet_view;
 

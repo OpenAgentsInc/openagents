@@ -20,10 +20,13 @@ struct OpenAgentsApp: App {
 
 struct HomeScreen: View {
     @ObservedObject var bridge: MobileBridge
-    @State private var tab = "computers"
+    @State private var tab = "coder"
 
     var body: some View {
         TabView(selection: $tab) {
+            CoderTab(bridge: bridge)
+                .tabItem { Label("Coder", systemImage: "chevron.left.forwardslash.chevron.right") }
+                .tag("coder")
             ComputersTab(bridge: bridge)
                 .tabItem { Label("Computers", systemImage: "desktopcomputer") }
                 .tag("computers")
@@ -91,6 +94,39 @@ struct ComputersTab: View {
         // Host status moves on its own; poll while no value is being entered.
         .task(id: bridge.packet?.computers_input == nil) {
             guard bridge.packet?.computers_input == nil else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                if !Task.isCancelled && !bridge.busy { bridge.refreshComputers() }
+            }
+        }
+    }
+}
+
+/// Chats with Coder: a new chat is a task on the chosen computer.
+struct CoderTab: View {
+    @ObservedObject var bridge: MobileBridge
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let view = bridge.packet?.coder {
+                NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
+                               followChanged: nil,
+                               activate: { node in bridge.activate("coder", view: view, node: node) })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                Color.clear
+            }
+            if let input = bridge.packet?.coder_input {
+                InputBar(input: input, busy: bridge.busy,
+                         submit: { bridge.submit("coder", token: input.token, value: $0) },
+                         cancel: { bridge.cancel("coder", token: input.token) })
+                    .id(input.token)
+            }
+        }
+        .background(Color.black.ignoresSafeArea())
+        // Task status moves on its own; poll while no message is being typed.
+        .task(id: bridge.packet?.coder_input == nil) {
+            guard bridge.packet?.coder_input == nil else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 if !Task.isCancelled && !bridge.busy { bridge.refreshComputers() }

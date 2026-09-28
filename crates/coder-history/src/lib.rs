@@ -104,6 +104,11 @@ pub struct TranscriptRequest {
     pub source_id: String,
     pub cursor: Option<TranscriptCursor>,
     pub max_bytes: u32,
+    /// Read backward instead of from a cursor: the page of whole records
+    /// that ends at or before this offset, `u64::MAX` for the newest. It
+    /// needs no cursor; the page's `previous` names the next one to ask for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,6 +135,10 @@ pub struct TranscriptPage {
     pub has_more: bool,
     pub pending_line: bool,
     pub notices: Vec<Notice>,
+    /// A backward read's start, when earlier records remain: send it as the
+    /// next request's `end`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

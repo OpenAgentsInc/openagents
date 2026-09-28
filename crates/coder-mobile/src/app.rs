@@ -1037,6 +1037,7 @@ impl App {
             source_id: source,
             cursor: self.transcript.cursor.clone(),
             max_bytes: coder_history::MAX_PAGE_BYTES,
+            end: None,
         };
         let Observation::Page(page) = self.observe(Query::Page(request))? else {
             return Err("computer returned another page type".into());
@@ -1264,6 +1265,7 @@ impl App {
                 has_more: false,
                 pending_line: false,
                 notices: vec![],
+                previous: None,
             })?;
         }
         self.selected = None;

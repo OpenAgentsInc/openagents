@@ -386,3 +386,156 @@ fn live_tailnet_admission_adds_the_computer_and_its_chats() {
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
 }
+
+#[test]
+fn coder_asks_for_a_computer_before_a_chat() {
+    let (mut app, _dir) = app();
+    let packet = app.call(Request::Snapshot);
+    let text = values(&packet.coder.expect("coder view"));
+    assert!(text.contains(&"Coder".to_string()));
+    assert!(
+        text.iter()
+            .any(|t| t.starts_with("Add a computer under Computers")),
+        "{text:?}"
+    );
+    assert!(packet.coder_input.is_none());
+}
+
+/// Chats against a real host with tailnet admission, as in
+/// `live_tailnet_admission_adds_the_computer_and_its_chats`: newest first
+/// without subagents, and the newest chat opens at its end with earlier
+/// messages on request. It only reads.
+#[test]
+#[ignore = "network: needs a host with tailnet admission"]
+fn live_chat_list_and_tail() {
+    let address = std::env::var("OPENAGENTS_TEST_ADMISSION").expect("address");
+    let (mut app, _dir) = app();
+    app.set_tailnet(Screen::Devices(Tailnet {
+        name: None,
+        this_device: None,
+        devices: vec![Device {
+            name: "test-computer".into(),
+            os: "macOS".into(),
+            address,
+            online: Some(true),
+        }],
+    }));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    let wait = |app: &mut App, what: &str, done: &dyn Fn(&crate::app::Packet) -> bool| loop {
+        let packet = app.call(Request::Snapshot);
+        if done(&packet) {
+            return packet;
+        }
+        assert!(std::time::Instant::now() < deadline, "waiting for {what}");
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    };
+    // The chat list, newest first, with times.
+    let packet = wait(&mut app, "chats", &|p| {
+        !p.chats_loading && key_for(p.chats.as_ref().unwrap(), "Forget").is_some()
+    });
+    let chats = packet.chats.unwrap();
+    let rows: Vec<String> = values(&chats)
+        .into_iter()
+        .filter(|t| t.contains('\n'))
+        .collect();
+    eprintln!("newest chats: {:?}", &rows[..rows.len().min(5)]);
+    assert!(rows.len() >= 5);
+    assert!(rows.iter().all(|row| !row.contains("subagent")));
+    let times: Vec<&str> = rows
+        .iter()
+        .map(|row| row.rsplit(" · ").next().unwrap())
+        .collect();
+    assert!(times.windows(2).all(|pair| pair[0] >= pair[1]), "{times:?}");
+    // Open the newest chat: it arrives whole, ending at the latest message.
+    let node = key_for(&chats, &rows[0]).unwrap();
+    app.call(Request::ChatsActivate {
+        instance: chats["instance"].as_str().unwrap().into(),
+        revision: chats["revision"].as_u64().unwrap(),
+        node,
+    });
+    let packet = wait(&mut app, "the newest messages", &|p| !p.chats_loading);
+    let reader = packet.chats.unwrap();
+    let text = values(&reader);
+    eprintln!(
+        "opened: {} rows, earlier: {}",
+        text.len(),
+        key_for(&reader, "Show earlier messages").is_some()
+    );
+    assert_eq!(text.last().map(String::as_str), Some("Latest"));
+    if let Some(node) = key_for(&reader, "Show earlier messages") {
+        let before = text.len();
+        app.call(Request::ChatsActivate {
+            instance: reader["instance"].as_str().unwrap().into(),
+            revision: reader["revision"].as_u64().unwrap(),
+            node,
+        });
+        let packet = wait(&mut app, "earlier messages", &|p| {
+            !p.chats_loading && {
+                let v = values(p.chats.as_ref().unwrap());
+                !v.contains(&"Loading earlier messages…".to_string())
+            }
+        });
+        let after = values(&packet.chats.unwrap()).len();
+        eprintln!("earlier: {before} -> {after} rows");
+        assert!(after > before);
+    }
+}
+
+/// A new Coder chat becomes a task on a real host. Set
+/// `OPENAGENTS_TEST_INVITATION` to a fresh `coder host invite` from a host
+/// with an `openagents` workspace. Without auto-start the task only queues.
+#[test]
+#[ignore = "network: needs a host invitation"]
+fn live_coder_chat_creates_a_task() {
+    let invitation = std::env::var("OPENAGENTS_TEST_INVITATION").expect("invitation");
+    let (mut app, _dir) = app();
+    app.admit_for_test(&invitation, "test-host");
+    // The app reports the foreground, as the host does at launch.
+    app.call(Request::Lifecycle { active: true });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    let coder = loop {
+        // The app refreshes Computers every few seconds while a tab shows.
+        let coder = app.call(Request::ComputersRefresh).coder.unwrap();
+        if key_for(&coder, "New chat").is_some() {
+            break coder;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{:?} {:?}",
+            values(&coder),
+            values(&app.call(Request::Snapshot).computers.unwrap())
+        );
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    };
+    let node = key_for(&coder, "New chat").expect("new chat");
+    let input = app
+        .call(Request::CoderActivate {
+            instance: coder["instance"].as_str().unwrap().into(),
+            revision: coder["revision"].as_u64().unwrap(),
+            node,
+        })
+        .coder_input
+        .expect("prompt request");
+    let packet = app.call(Request::CoderInput {
+        token: input.token,
+        value: "Say hello from the OpenAgents app test.".into(),
+    });
+    let text = values(&packet.coder.unwrap());
+    eprintln!("coder: {text:?}");
+    assert!(
+        text.iter().any(|t| t.starts_with("Sent to Coder")),
+        "{text:?}"
+    );
+    // The host's activity summary lists it.
+    loop {
+        let text = values(&app.call(Request::ComputersRefresh).coder.unwrap());
+        if text.iter().any(|t| t.contains(" · test-host · "))
+            && text.contains(&"Say hello from the OpenAgents app test.".to_string())
+        {
+            eprintln!("listed: {text:?}");
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "{text:?}");
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}

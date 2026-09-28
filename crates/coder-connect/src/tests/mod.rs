@@ -143,6 +143,7 @@ fn catalog_page_cursor_and_exact_request_correlation() {
                 source_id,
                 cursor: None,
                 max_bytes: coder_history::MAX_PAGE_BYTES,
+                end: None,
             }),
             f.now,
         )
@@ -243,6 +244,7 @@ fn changed_root_and_unadmitted_source_refuse() {
                 source_id: "../auth.json".into(),
                 cursor: None,
                 max_bytes: 128,
+                end: None,
             }),
             f.now,
         )
@@ -365,6 +367,7 @@ fn signed_corrupt_base64_or_offsets_are_refused_by_client() {
                 source_id: page.entries[0].source_id.clone().unwrap(),
                 cursor: None,
                 max_bytes: 8192,
+                end: None,
             }),
             f.now,
         )
@@ -429,6 +432,7 @@ fn signed_transcript_record_regrouping_and_false_cursors_are_refused() {
                 source_id: page.entries[0].source_id.clone().unwrap(),
                 cursor: None,
                 max_bytes: coder_history::MAX_PAGE_BYTES,
+                end: None,
             }),
             f.now,
         )
@@ -512,6 +516,7 @@ async fn production_relay_reads_only_generated_history() {
                 source_id: page.entries[0].source_id.clone().unwrap(),
                 cursor: None,
                 max_bytes: coder_history::MAX_PAGE_BYTES,
+                end: None,
             })),
             async {
                 let incoming = receiver.next_request().await.unwrap();

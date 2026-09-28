@@ -5233,6 +5233,7 @@ dependencies = [
  "coder-history",
  "coder-host",
  "coder-vt",
+ "nostr",
  "rust-native",
  "rustls",
  "secp256k1 0.31.1",
