@@ -405,34 +405,47 @@ fn head(root: &confined::Root, source: &Source) -> Head {
             ..Head::default()
         };
     }
-    let value = serde_json::from_slice::<serde_json::Value>(&first).ok();
-    let native = value
+    // Only the fields the catalog uses are kept: a Codex header's base
+    // instructions are skipped, not copied.
+    #[derive(serde::Deserialize)]
+    struct Payload {
+        id: Option<serde_json::Value>,
+        session_id: Option<serde_json::Value>,
+        originator: Option<serde_json::Value>,
+        source: Option<serde_json::Value>,
+    }
+    #[derive(serde::Deserialize)]
+    #[allow(non_snake_case)]
+    struct Header {
+        payload: Option<Payload>,
+        sessionId: Option<serde_json::Value>,
+        customTitle: Option<serde_json::Value>,
+        summary: Option<serde_json::Value>,
+    }
+    let header = serde_json::from_slice::<Header>(&first).ok();
+    let payload = header.as_ref().and_then(|h| h.payload.as_ref());
+    let native = match source.harness {
+        Harness::Codex => payload.and_then(|p| p.id.as_ref().or(p.session_id.as_ref())),
+        Harness::Claude => header.as_ref().and_then(|h| h.sessionId.as_ref()),
+        // The file name, not the header, names a Coder task.
+        Harness::Coder => None,
+    }
+    .and_then(|v| v.as_str())
+    .filter(|v| !v.is_empty() && v.len() <= 128)
+    .map(str::to_owned);
+    let title = header
         .as_ref()
-        .and_then(|v| match source.harness {
-            Harness::Codex => v
-                .get("payload")
-                .and_then(|p| p.get("id").or_else(|| p.get("session_id"))),
-            Harness::Claude => v.get("sessionId"),
-            // The file name, not the header, names a Coder task.
-            Harness::Coder => None,
-        })
-        .and_then(|v| v.as_str())
-        .filter(|v| !v.is_empty() && v.len() <= 128)
-        .map(str::to_owned);
-    let title = value
-        .as_ref()
-        .and_then(|v| v.get("customTitle").or_else(|| v.get("summary")))
+        .and_then(|h| h.customTitle.as_ref().or(h.summary.as_ref()))
         .and_then(|v| v.as_str())
         .map(str::to_owned);
-    let payload = value.as_ref().and_then(|v| v.get("payload"));
     let (engine, spawned) = match source.harness {
         Harness::Codex => (
             payload
-                .and_then(|p| p.get("originator"))
+                .and_then(|p| p.originator.as_ref())
                 .and_then(|o| o.as_str())
                 == Some(crate::engine::MARK),
             payload
-                .and_then(|p| p.get("source"))
+                .and_then(|p| p.source.as_ref())
                 .and_then(|s| s.as_object())
                 .is_some_and(|s| s.contains_key("subagent")),
         ),
