@@ -4,6 +4,10 @@ use super::*;
 struct Transport<'a, T> {
     host: &'a Host,
     inner: T,
+    /// The model this route admits.
+    model: String,
+    /// A usage-limit refusal the last request met.
+    refusal: RefCell<Option<Refusal>>,
 }
 impl<T: microluna::Transport> microluna::Transport for Transport<'_, T> {
     async fn respond(
@@ -14,6 +18,11 @@ impl<T: microluna::Transport> microluna::Transport for Transport<'_, T> {
             "input":request.input,"tools":request.tools,"effort":request.effort,"cache_key":request.cache_key,
             "parallel_tools":request.parallel_tools})).map_err(|error|microluna::TransportError::Failed(error.to_string()))?;
         let response = self.inner.respond(request).await;
+        if let Err(microluna::TransportError::Http { status, body }) = &response
+            && let Some(refusal) = Refusal::codex(*status, body, task::autostart::unix_now())
+        {
+            *self.refusal.borrow_mut() = Some(refusal);
+        }
         let observation = match &response {
             Ok(reply) => json!({"id":reply.id,"model":reply.model,"items":reply.items,
                 "usage":{"input":reply.usage.input,"cached":reply.usage.cached,"output":reply.usage.output,"reasoning":reply.usage.reasoning}}),
@@ -25,7 +34,7 @@ impl<T: microluna::Transport> microluna::Transport for Transport<'_, T> {
             .result(sequence, "codex_request", observation)
             .map_err(|error| microluna::TransportError::Failed(error.to_string()))?;
         if let Ok(reply) = &response
-            && (reply.model.is_empty() || reply.model != self.host.configuration().model)
+            && (reply.model.is_empty() || reply.model != self.model)
         {
             self.host
                 .fail("native provider model identity is missing or differs from admission");
@@ -128,6 +137,8 @@ impl Judge for NativeJudge<'_> {
 struct Claude<'a> {
     host: &'a Host,
     inner: crate::claude::ClaudeGenerator,
+    /// A usage or rate-limit refusal the last call met.
+    refusal: RefCell<Option<Refusal>>,
 }
 impl Generate for Claude<'_> {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
@@ -140,6 +151,11 @@ impl Generate for Claude<'_> {
             Err(error) => return refused_generation(&self.inner.model, false, &error.to_string()),
         };
         let invocation = self.inner.invoke(system, prompt).await;
+        *self.refusal.borrow_mut() = Refusal::claude(
+            invocation.api_error_status.is_some(),
+            invocation.api_error_status,
+            task::autostart::unix_now(),
+        );
         let observation = json!({"status":invocation.status,"stdout":invocation.stdout,"stderr":invocation.stderr,
             "model":invocation.generated.model,"usd":invocation.generated.usd,"billing":"provider-reported-list-price"});
         if let Err(error) = self.host.result(sequence, "claude_request", observation) {
@@ -149,42 +165,66 @@ impl Generate for Claude<'_> {
     }
 }
 
+/// One admitted route's native generator.
+enum Native<'a, T: microluna::Transport> {
+    Codex(crate::models::CodexGenerator<Transport<'a, T>>),
+    Claude(Claude<'a>),
+}
+
+impl<T: microluna::Transport> Generate for Native<'_, T> {
+    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        match self {
+            Native::Codex(generator) => {
+                generator.transport.refusal.borrow_mut().take();
+                generator.generate(system, prompt).await
+            }
+            Native::Claude(generator) => generator.generate(system, prompt).await,
+        }
+    }
+}
+
+impl<T: microluna::Transport> Lane for Native<'_, T> {
+    fn refusal(&self) -> Option<Refusal> {
+        match self {
+            Native::Codex(generator) => generator.transport.refusal.borrow_mut().take(),
+            Native::Claude(generator) => generator.refusal.borrow_mut().take(),
+        }
+    }
+}
+
 pub(super) async fn run<T: microluna::Transport>(
     host: Host,
-    transport: T,
+    book: PathBuf,
+    clients: Vec<(GrantRoute, Client<T>)>,
     client: jev::Client,
     session: String,
 ) -> Result<task::Task, task::Error> {
     let (state, outcome) = {
-        let configuration = host.configuration();
-        let generator = crate::models::CodexGenerator {
-            transport: Transport {
-                host: &host,
-                inner: transport,
-            },
-            model: configuration.model.clone(),
-            effort: configuration.effort.clone(),
-            cache_key: session,
-        };
-        let judge = NativeJudge {
-            host: &host,
-            client,
-        };
-        run_loop(&host, &generator, &judge).await?
-    };
-    finish(host, state, outcome)
-}
-
-pub(super) async fn run_claude(
-    host: Host,
-    generator: crate::claude::ClaudeGenerator,
-    client: jev::Client,
-) -> Result<task::Task, task::Error> {
-    let (state, outcome) = {
-        let generator = Claude {
-            host: &host,
-            inner: generator,
-        };
+        let lanes = clients
+            .into_iter()
+            .map(|(route, client)| {
+                let lane = match client {
+                    Client::Codex(transport) => Native::Codex(crate::models::CodexGenerator {
+                        transport: Transport {
+                            host: &host,
+                            inner: transport,
+                            model: route.model.clone(),
+                            refusal: RefCell::new(None),
+                        },
+                        model: route.model.clone(),
+                        effort: route.effort.clone(),
+                        cache_key: session.clone(),
+                    }),
+                    Client::Claude(generator) => Native::Claude(Claude {
+                        host: &host,
+                        inner: generator,
+                        refusal: RefCell::new(None),
+                    }),
+                };
+                (route, lane)
+            })
+            .collect();
+        let generator = Failover::new(&host, book, lanes, task::autostart::unix_now);
         let judge = NativeJudge {
             host: &host,
             client,
@@ -214,6 +254,8 @@ mod tests {
             let transport = Transport {
                 host: &host,
                 inner: scripted,
+                model: "fixture-model".into(),
+                refusal: RefCell::new(None),
             };
             let request = microluna::Request {
                 text_format: None,
@@ -262,6 +304,8 @@ mod tests {
         let transport = Transport {
             host: &host,
             inner: scripted,
+            model: "fixture-model".into(),
+            refusal: RefCell::new(None),
         };
         let request = microluna::Request {
             text_format: None,

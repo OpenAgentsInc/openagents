@@ -181,6 +181,11 @@ pub enum Ending {
     /// Jev judged the last step made no progress, and the model still didn't
     /// finish; or the tests held three times that long.
     TestsHeld,
+    /// Every admitted provider refused for a usage or rate limit; the
+    /// earliest one resets at `resets_at`, in Unix seconds, when known.
+    NoCapacity {
+        resets_at: Option<u64>,
+    },
 }
 
 /// What the loop reports as it runs.
@@ -1191,6 +1196,11 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
                 generated: generated.clone(),
             },
         );
+        if let Some(exhausted) = generator.out_of_capacity() {
+            break Ending::NoCapacity {
+                resets_at: exhausted.resets_at,
+            };
+        }
         let action: NextAction = match generated.action {
             Ok(action) => {
                 bad = 0;

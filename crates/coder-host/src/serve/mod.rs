@@ -437,8 +437,9 @@ async fn summary_loop(shared: Arc<Shared>) {
 }
 
 /// Publish an activity summary for a changed task to every device that
-/// holds `observe`. The headline is the generic phrase for the phase: a
-/// title comes from a device, and a summary never carries sent text.
+/// holds `observe`. The headline is the generic phrase for the phase, or
+/// the host's typed note, such as a missing model capacity: a title comes
+/// from a device, and a summary never carries sent text.
 pub(crate) async fn summarize(shared: &Shared, task: &TaskRef) {
     let Ok(now) = unix_time() else { return };
     let attention = match task.phase {
@@ -446,13 +447,22 @@ pub(crate) async fn summarize(shared: &Shared, task: &TaskRef) {
         Phase::Failed => Attention::Failed,
         _ => Attention::None,
     };
+    let tasks = shared.tasks.clone();
+    let id = task.task.clone();
+    let note = tokio::task::spawn_blocking(move || tasks.note(&id))
+        .await
+        .ok()
+        .flatten()
+        .map(crate::tasks::Note::headline);
     let draft = SummaryDraft {
         host: &shared.host_key,
         subject_kind: SubjectKind::Task,
         subject: &task.task,
         sequence: task.revision,
         phase: task.phase,
-        headline: activity_summary::generic_headline(SubjectKind::Task, task.phase),
+        headline: note
+            .as_deref()
+            .unwrap_or_else(|| activity_summary::generic_headline(SubjectKind::Task, task.phase)),
         attention,
         updated_at: now,
     };

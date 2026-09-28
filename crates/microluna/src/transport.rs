@@ -219,12 +219,16 @@ impl std::error::Error for TransportError {}
 impl TransportError {
     /// Whether sending the request again may succeed: a connection that
     /// couldn't be made, a broken stream, a rate limit, or a server error.
-    /// A refused login or a failed or incomplete response is not.
+    /// A refused login, a failed or incomplete response, and a usage limit
+    /// ([`crate::codex::UsageLimit`], which holds until its reset) are not.
     #[must_use]
     pub fn transient(&self) -> bool {
         match self {
             TransportError::Unsent(_) | TransportError::Stream(_) => true,
-            TransportError::Http { status, .. } => *status == 429 || *status >= 500,
+            TransportError::Http { status, body } => {
+                (*status == 429 && crate::codex::UsageLimit::parse(*status, body).is_none())
+                    || *status >= 500
+            }
             _ => false,
         }
     }

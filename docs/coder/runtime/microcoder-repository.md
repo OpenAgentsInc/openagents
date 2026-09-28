@@ -110,8 +110,9 @@ The host validates exact document ID, version, digest, path, and declared
 sources before retaining the text in Context. It rejects current-task and
 source-excluded provenance. The existing loop receives those retained bytes;
 it does not query an ambient base or call an embedding service.
-The admitted model must equal the task's requested model. Generation uses the
-fixed Codex transport endpoint. The decision endpoint and model must equal the
+The task's requested model must be one of the grant's admitted routes: the
+configuration's own `model` or a fallback's. Generation uses the fixed
+endpoint of each route's provider. The decision endpoint and model must equal the
 actual Jev client configuration before admission. The returned decision model
 name must also match exactly. An alias such as `jev-latest` that resolves to a
 different returned name is refused; select and admit an explicit version when
@@ -133,6 +134,48 @@ and rechecks it before the epoch's first effect. It also captures the user
 prompt and root and declared scoped instruction files through the common
 context builder. Repository context cannot widen the grant. Local OS-user
 access remains the trust boundary; an external writer is not globally fenced.
+
+## Fallback routes and capacity
+
+An optional `fallbacks` list in `adapter_configuration` admits more routes, in
+preference order, after the configuration's own provider and model. Each is
+closed: `provider` (`codex` or `claude`), the exact `model`, `effort`, and the
+provider's `generation_endpoint`. A grant holds at most four, none repeated.
+An omitted or empty list keeps the grant's bytes and meaning.
+
+```json
+"fallbacks": [
+  {
+    "provider": "claude",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "generation_endpoint": "https://api.anthropic.com"
+  }
+]
+```
+
+The primary route's client must build before admission. A fallback whose
+client cannot (no Codex login or no `claude` binary on this host) is left
+out, and a System step with a `routes_unavailable` extension says why.
+
+The run starts on the first route whose provider has capacity in the task
+store's capacity book, `capacity.json`. When a generation fails because the
+provider refused for a usage or rate limit (a Codex HTTP 429
+`usage_limit_reached`, which the transport no longer retries, or a Claude
+Code error result with API status 429), the host:
+
+1. Records the refusal in the capacity book, with the reset time the provider
+   reported, or 30 minutes when it reported none.
+2. Appends a System step with a `route_switch` extension naming the route it
+   leaves, the route it takes, and the refusal.
+3. Generates the same step again on the next route with capacity. The step's
+   `generated` event carries the tokens and cost of every attempt.
+
+When no admitted route has capacity, the host appends a `route_exhausted`
+step, and the loop ends with `{"reason":"no_capacity","detail":{"resets_at":N}}`.
+The task's result ending is `no_capacity`. The session header still names the
+primary model; the `route_switch` steps and each generation effect name the
+route that served.
 
 ## Isolated container commands
 

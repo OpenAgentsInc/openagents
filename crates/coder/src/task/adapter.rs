@@ -41,9 +41,54 @@ pub struct Configuration {
     pub expected_controller_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub container: Option<container::Profile>,
+    /// Further admitted routes, in the owner's preference order. When the
+    /// provider in use refuses for a usage or rate limit, the run switches
+    /// to the first of these with capacity. Empty means no failover, and
+    /// the field is then left out, so earlier grants keep their bytes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallbacks: Vec<Route>,
+}
+
+/// The most fallback routes one grant admits.
+pub const MAX_FALLBACKS: usize = 4;
+
+/// One admitted provider and model a run may generate through.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Route {
+    /// `codex` or `claude`, as [`Configuration::provider`].
+    pub provider: String,
+    /// The exact identity the provider must report.
+    pub model: String,
+    pub effort: Option<String>,
+    pub generation_endpoint: String,
 }
 
 impl Configuration {
+    /// The route the run starts on: the configuration's own provider,
+    /// model, effort, and endpoint.
+    pub fn primary(&self) -> Route {
+        Route {
+            provider: self.provider.clone(),
+            model: self.model.clone(),
+            effort: self.effort.clone(),
+            generation_endpoint: self.generation_endpoint.clone(),
+        }
+    }
+
+    /// Every admitted route, the primary first.
+    pub fn routes(&self) -> Vec<Route> {
+        std::iter::once(self.primary())
+            .chain(self.fallbacks.iter().cloned())
+            .collect()
+    }
+
+    /// Whether `model` is one this grant admits. A task records the policy's
+    /// first model; the grant may start on another admitted route.
+    pub fn admits_model(&self, model: &str) -> bool {
+        self.model == model || self.fallbacks.iter().any(|route| route.model == model)
+    }
+
     pub fn validate(&self) -> Result<(), Error> {
         if self.schema != CONFIG_SCHEMA
             || !matches!(self.provider.as_str(), "codex" | "claude" | "synthetic")
@@ -74,7 +119,35 @@ impl Configuration {
         if let Some(container) = &self.container {
             container.validate()?;
         }
-        for endpoint in [&self.generation_endpoint, &self.decision_endpoint] {
+        if self.fallbacks.len() > MAX_FALLBACKS {
+            return Err(Error::InvalidCommand("too many fallback routes"));
+        }
+        let routes = self.routes();
+        for (index, route) in routes.iter().enumerate() {
+            let known = if self.provider == "synthetic" {
+                route.provider == "synthetic"
+            } else {
+                matches!(route.provider.as_str(), "codex" | "claude")
+            };
+            if !known
+                || !identifier(&route.model, true)
+                || route
+                    .effort
+                    .as_deref()
+                    .is_some_and(|effort| !matches!(effort, "low" | "medium" | "high" | "xhigh"))
+                || routes[..index].iter().any(|earlier| {
+                    earlier.provider == route.provider && earlier.model == route.model
+                })
+            {
+                return Err(Error::InvalidCommand(
+                    "unsupported or repeated fallback route",
+                ));
+            }
+        }
+        let endpoints = std::iter::once(&self.decision_endpoint)
+            .chain(routes.iter().map(|route| &route.generation_endpoint))
+            .collect::<Vec<_>>();
+        for endpoint in endpoints {
             if self.provider == "synthetic" {
                 if endpoint != "in-process" {
                     return Err(Error::InvalidCommand(
@@ -112,6 +185,7 @@ impl Configuration {
             "cost_reporting": if self.provider == "claude" { "provider-reported-list-price" } else { "token-list-price" },
             "provider_artifact_attestation":"unsupported",
             "container_adapter": if self.container.is_some() { "docker-per-command-workspace-persistence" } else { "not_requested" },
+            "provider_failover": if self.fallbacks.is_empty() { "not_requested" } else { "on-capacity-refusal" },
             "frozen_knowledge_context":self.knowledge == "frozen-context"
         })
     }
@@ -181,7 +255,12 @@ impl Host {
                 return Err(Error::RevisionMismatch);
             }
             if task.intent.configuration.adapter != NAME
-                || task.intent.configuration.model.as_deref() != Some(&configuration.model)
+                || !task
+                    .intent
+                    .configuration
+                    .model
+                    .as_deref()
+                    .is_some_and(|model| configuration.admits_model(model))
             {
                 return Err(Error::InvalidCommand(
                     "requested and granted adapter or model differ",
@@ -348,6 +427,12 @@ impl Host {
             .adapter_configuration
             .as_ref()
             .expect("configuration admitted")
+    }
+
+    /// The task store directory this owner holds, where the capacity book
+    /// lives.
+    pub fn store(&self) -> &Path {
+        &self.owner.dir
     }
 
     pub fn prompt(&self) -> &str {

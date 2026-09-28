@@ -354,9 +354,14 @@ impl CoderTab {
     }
 
     fn chat(&self, open: &Open, computers: Option<&Computers>) -> Node<Intent> {
-        let phase = computers
-            .and_then(|c| Self::summary(c.snapshot(), &open.host, &open.task))
-            .map(|s| s.phase);
+        let summary = computers.and_then(|c| Self::summary(c.snapshot(), &open.host, &open.task));
+        let phase = summary.map(|s| s.phase);
+        // The host's typed note, such as a missing model capacity.
+        let note = summary
+            .filter(|s| {
+                s.headline != nostr::activity_summary::generic_headline(SubjectKind::Task, s.phase)
+            })
+            .map(|s| s.headline.clone());
         let running = phase.is_none_or(Self::running);
         let label = computers
             .and_then(|c| c.snapshot().host(&open.host))
@@ -380,6 +385,9 @@ impl CoderTab {
             ),
             heading("coder-chat-title", &open.title),
         ];
+        if let Some(note) = &note {
+            children.push(status("coder-chat-note", note));
+        }
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
@@ -471,10 +479,20 @@ fn tasks(
                     .filter(|title| !title.is_empty() && !title.starts_with("Saved "))
                     .unwrap_or_else(|| summary.headline.clone())
             });
+            // A host's own note, such as "No model capacity until ...",
+            // shows under the phase; the generic phrase adds nothing.
+            let note = if summary.headline != title
+                && summary.headline
+                    != nostr::activity_summary::generic_headline(SubjectKind::Task, summary.phase)
+            {
+                format!("\n{}", summary.headline)
+            } else {
+                String::new()
+            };
             button(
                 &format!("task-{}", &summary.subject[..16.min(summary.subject.len())]),
                 &format!(
-                    "{title}\n{} · {label} · {}",
+                    "{title}\n{} · {label} · {}{note}",
                     phase_label(summary.phase),
                     ago(snapshot.now, summary.updated_at)
                 ),

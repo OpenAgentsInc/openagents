@@ -424,6 +424,15 @@ impl Observer for Terminal {
                     Ending::TimeLimit => "the time limit".to_string(),
                     Ending::SpendLimit => "the spend limit".to_string(),
                     Ending::BadReplies(error) => format!("unusable replies ({error})"),
+                    Ending::NoCapacity {
+                        resets_at: Some(at),
+                    } => format!(
+                        "no admitted provider had capacity (the earliest resets at {})",
+                        coder::task::capacity::utc(*at)
+                    ),
+                    Ending::NoCapacity { resets_at: None } => {
+                        "no admitted provider had capacity".to_string()
+                    }
                     Ending::Idle => "replies that ran nothing".to_string(),
                     Ending::Unaccepted => {
                         "finished replies refused while acceptance tests failed".to_string()

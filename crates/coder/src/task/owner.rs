@@ -206,9 +206,12 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
                     admission.adapter.as_str(),
                 ) {
                     (None, "bounded-command") => task.intent.configuration.model.is_some(),
-                    (Some(config), super::adapter::NAME) => {
-                        task.intent.configuration.model.as_deref() != Some(config.model.as_str())
-                    }
+                    (Some(config), super::adapter::NAME) => !task
+                        .intent
+                        .configuration
+                        .model
+                        .as_deref()
+                        .is_some_and(|model| config.admits_model(model)),
                     _ => true,
                 }
                 || if admission

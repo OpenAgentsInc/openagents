@@ -438,6 +438,12 @@ between the trace, the worker's log, and the relay's `debug` log.
 
 ## What is not built
 
+- **Model-provider connectivity in the capability surface.** Tasks a phone
+  orders route among the connected model providers with capacity (see
+  [Routes and capacity](host-autostart.md#routes-and-capacity)), but NIP-CAP
+  manifests and `crates/capability` do not yet report which model providers
+  a host can reach or when their limits reset.
+
 - **Grading what a delegate changed.** The boundary confines writes and
   the retained checkout keeps them, and `crates/coder-boundary` snapshots
   observe a tree before and after a run; the CoderBench side that grades

@@ -26,8 +26,9 @@ coder host autostart on --workspace openagents --max-running 1
 | --- | --- | --- |
 | `--workspace LABEL` | Required | A workspace label the host admits, from `coder host init` or `coder link setup --workspace`. Repeat for more. |
 | `--max-running N` | `1` | At most N auto-started tasks run at once, 1 to 8. The rest wait queued. |
-| `--model ID` | `gpt-6-luna` | The model each eligible task records and its grant admits. |
-| `--effort LEVEL` | `medium` | `low`, `medium`, `high`, or `xhigh`. |
+| `--model ID` | `gpt-6-luna` | The Codex model each eligible task records and its grant admits, when no `--route` is given. |
+| `--route PROVIDER:MODEL` | None | An admitted provider (`codex` or `claude`) and model, in preference order. Repeat for more, up to five. The first route's model is the one each task records. Use instead of `--model`. See [Routes and capacity](#routes-and-capacity). |
+| `--effort LEVEL` | `medium` | `low`, `medium`, `high`, or `xhigh`, for every route. |
 | `--max-steps N` | `24` | The engine's step limit, 1 to 128. |
 | `--wall-seconds N` | `1800` | Each command's wall-clock limit, 1 to 3,600. |
 | `--memory-mib N` | `4096` | Each command's memory limit, 64 MiB to 8 GiB. |
@@ -55,7 +56,9 @@ The next creation and the next sweep read the file again, so no restart is
 needed. Tasks already started keep running under their grants; cancel one
 from a device or with `coder task cancel`. Queued tasks stay queued, as
 without a policy. `coder host autostart show` prints the policy and the
-latest decisions. Deleting `autostart.json` also turns it off.
+latest decisions, and whether each model provider is connected and has
+capacity; pass `--store DIR` when the task store is not `~/.openagents/tasks`.
+Deleting `autostart.json` also turns it off.
 
 ## What it does
 
@@ -79,15 +82,72 @@ While the policy is on:
    A started task counts against the bound while it runs, or for 120
    seconds while its owner process admits it.
 
+## Routes and capacity
+
+A policy admits one or more routes, each a provider and a model, in the
+owner's order of preference:
+
+```sh
+coder host autostart on --workspace openagents \
+  --route codex:gpt-6-luna --route claude:claude-opus-5-5
+```
+
+A Claude route's model is the exact name Claude Code reports for the served
+model, because the engine refuses a reply from a model other than the admitted
+one. A policy written before routes existed has one route, the Codex login
+with its `model`, and keeps exactly that meaning.
+
+Each start chooses its route when it starts, not when the task was created:
+
+1. **Connected.** With more than one route, the host skips a provider without
+   a usable local login: a Codex login in `~/.codex/auth.json` (or
+   `$CODEX_HOME`) whose access token is not about to expire, or a `claude`
+   binary with a Claude Code sign-in. The probe makes no network request and
+   reads no credential into a log. A one-route policy skips the probe, as
+   before, and a login problem shows in the task's diagnostic file.
+2. **Capacity.** The host skips a provider whose usage or rate limit holds in
+   the capacity book, `capacity.json` in the task store (mode `0600`). The
+   engine records a refusal there when a provider refuses a generation: a
+   Codex HTTP 429 `usage_limit_reached` with its `resets_at`, or a Claude Code
+   error result with API status 429, which holds 30 minutes because Claude
+   Code does not report the reset. The book keeps one entry per provider:
+   the kind of limit, when it was observed, and until when it holds.
+3. **Grant.** The grant names the first connected route with capacity. The
+   other connected routes follow as its `fallbacks`, in preference order.
+   The task records the policy's first model either way; the task owner
+   admits a grant whose routes include it.
+
+When no connected route has capacity, the host does not start a run that
+cannot succeed. It appends a `no_capacity` entry with the earliest reset,
+then ends the task with a cancellation whose reason names that time. The
+device's activity summary reads, for example, `No model capacity until
+2026-10-03 18:07 UTC`, and the phone shows it under the task's `Stopped`
+phase.
+
+During a run, the engine fails over. When a provider refuses a generation for
+a usage or rate limit, the engine records the refusal, appends a System step
+with a `route_switch` extension to the ATIF transcript, and generates the
+same step again on the next admitted route with capacity. When none is left,
+the run ends with the `no_capacity` ending and the earliest reset, and the
+device sees the same headline. The step's cost adds every attempt's cost, so
+`usd`, `usd_upper`, and `cost_unknown` stay honest across a failover. Read
+[the repository adapter](microcoder-repository.md#fallback-routes-and-capacity).
+
+Failover only chooses among the routes the owner admitted. It never adds a
+model, widens a limit, or spends beyond the policy's bounds.
+
+## The decision journal
+
 Each decision appends one line to `~/.openagents/host/autostart.jsonl`
 (mode `0600`), with schema `openagents.coder.host-autostart-entry.v1`:
 
 | `event` | Meaning |
 | --- | --- |
 | `eligible` | A device created the task under the policy. |
-| `started` | The owner process started, with its process ID and the grant digest. It is not an admission receipt; read the task. |
+| `started` | The owner process started, with its process ID, the grant digest, and the chosen route and fallbacks. It is not an admission receipt; read the task. |
 | `skipped` | The task was cancelled or gone, the policy stopped listing its workspace, or the policy's model changed after it was created. |
-| `refused` | The owner process could not start, with the reason. |
+| `refused` | The owner process could not start, or no admitted provider is connected, with the reason. |
+| `no_capacity` | No connected admitted provider had capacity. `resets_at` is the earliest reset, in Unix seconds, when known. The task was cancelled with that reason. |
 | `unadmitted` | A started task was still queued 120 seconds later: its owner process refused it. The reason is in the task store's `repository-launch-TASK-*.jsonl` diagnostic. |
 | `policy_on`, `policy_off` | The owner changed the policy, with its bounds. |
 
@@ -107,6 +167,10 @@ records the change:
   admission check of the task owner still applies.
 - At most `max_running` auto-started tasks run at once, and each start is
   recorded before the next decision.
+- A task generates only through routes the policy admits. Choosing a route
+  at start and failing over during a run pick among those routes only, and
+  a task with no admitted provider that has capacity ends instead of
+  starting.
 
 `coder::task::autostart` tests cover each: creation without a policy, the
 workspace allowlist, the concurrency bound and its wait, cancellation and a
@@ -123,6 +187,12 @@ the command line.
   the refusal in its diagnostic file.
 - Writing tasks share one worktree. Consecutive tasks see each other's
   uncommitted changes; review and commit or reset between them.
-- The engine needs the host's Codex login and Jev key, as `microcoder
-  repository` does. A refusal from either shows in the task's diagnostic
-  file, not in the journal.
+- The engine needs a login for each route it uses and the host's Jev key, as
+  `microcoder repository` does. A refusal from either shows in the task's
+  diagnostic file, not in the journal.
+- Capacity is learned from refusals, not read ahead from a provider's usage
+  endpoint, so the first task after a limit is reached still makes one
+  refused request. A Claude limit holds for 30 minutes at a time because its
+  reset is not reported.
+- A task the policy ended for lack of capacity stays ended. Create it again
+  after the reset.

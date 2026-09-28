@@ -1,6 +1,8 @@
 use super::*;
 use crate::models::NextAction;
+use coder::task::adapter::Route as GrantRoute;
 use coder::task::adapter::{CONFIG_SCHEMA, Configuration, NAME};
+use coder::task::capacity::{self, Provider, Refusal};
 use coder::task::{Action, Command, RequestedConfiguration, Store, TaskIntent, Workspace};
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -102,6 +104,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
             dollar_limit_micros: None,
             expected_controller_digest: None,
             container: None,
+            fallbacks: Vec::new(),
         }),
     };
     (root, store, serde_json::to_vec(&grant).unwrap())
@@ -473,9 +476,11 @@ async fn missing_codex_usage_is_unknown_and_preserves_earlier_lower_bound() {
         let host = Host::admit(&store, &serde_json::to_vec(&grant).unwrap())
             .await
             .unwrap();
+        let route = host.configuration().primary();
         let generated = RecordedGenerator {
             host: &host,
             inner: &MissingUsageGenerator { prior_unknown },
+            route: &route,
         }
         .generate("fixture", "fixture")
         .await;
@@ -726,4 +731,256 @@ fn landed_local_admission_keeps_its_original_serialized_identity() {
     .unwrap();
     let retained: task::Task = serde_json::from_value(original.clone()).unwrap();
     assert_eq!(serde_json::to_value(&retained).unwrap(), original);
+}
+
+/// The Codex refusal observed on 2026-09-28, and a clock inside its window.
+const LIMIT: &str = r#"{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1791050823,"eligible_promo":null,"limit_window_minutes":10080,"resets_in_seconds":478613}}"#;
+const RESET: u64 = 1_791_050_823;
+fn during_limit() -> u64 {
+    1_790_572_210
+}
+
+/// A route whose replies are scripted: an action, or a capacity refusal.
+struct ScriptedLane {
+    script: RefCell<VecDeque<Result<NextAction, Refusal>>>,
+    model: &'static str,
+    usd: f64,
+    calls: Cell<usize>,
+    refusal: RefCell<Option<Refusal>>,
+}
+fn lane(model: &'static str, usd: f64, script: Vec<Result<NextAction, Refusal>>) -> ScriptedLane {
+    ScriptedLane {
+        script: RefCell::new(script.into()),
+        model,
+        usd,
+        calls: Cell::new(0),
+        refusal: RefCell::new(None),
+    }
+}
+impl Generate for ScriptedLane {
+    async fn generate(&self, _system: &str, _prompt: &str) -> Generated {
+        self.calls.set(self.calls.get() + 1);
+        let next = self
+            .script
+            .borrow_mut()
+            .pop_front()
+            .unwrap_or_else(|| Err(Refusal::codex(429, LIMIT, during_limit()).unwrap()));
+        let (action, usd) = match next {
+            Ok(action) => (Ok(action), self.usd),
+            Err(refusal) => {
+                *self.refusal.borrow_mut() = Some(refusal);
+                (Err(format!("the provider returned HTTP 429: {LIMIT}")), 0.0)
+            }
+        };
+        Generated {
+            action,
+            model: self.model.into(),
+            prompt_tokens: 10,
+            completion_tokens: 5,
+            usd: Some(usd),
+            known_usd: usd,
+            cost_unknown: None,
+            usd_upper: Some(usd),
+            cost_basis: Basis::ListPrice,
+            milliseconds: 1,
+        }
+    }
+}
+impl Lane for &ScriptedLane {
+    fn refusal(&self) -> Option<Refusal> {
+        self.refusal.borrow_mut().take()
+    }
+}
+impl Generate for &ScriptedLane {
+    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        (*self).generate(system, prompt).await
+    }
+}
+
+fn route(provider: &str, model: &str) -> GrantRoute {
+    GrantRoute {
+        provider: provider.into(),
+        model: model.into(),
+        effort: None,
+        generation_endpoint: Provider::from_config(provider).unwrap().endpoint().into(),
+    }
+}
+
+fn write(command: &str) -> NextAction {
+    NextAction {
+        rationale: "Write the output.".into(),
+        commands: vec![command.into()],
+        view: Vec::new(),
+        freeze_tests: false,
+        expand: Vec::new(),
+        finished: false,
+    }
+}
+
+fn done() -> NextAction {
+    NextAction {
+        rationale: "Done.".into(),
+        commands: Vec::new(),
+        view: Vec::new(),
+        freeze_tests: false,
+        expand: Vec::new(),
+        finished: true,
+    }
+}
+
+#[tokio::test]
+async fn a_capacity_refusal_fails_over_to_the_next_admitted_route_and_is_recorded() {
+    let (root, store, grant) = fixture();
+    let codex = lane(
+        "gpt-6-luna",
+        0.0,
+        vec![Err(Refusal::codex(429, LIMIT, during_limit()).unwrap())],
+    );
+    let claude = lane(
+        "claude-opus-5-5",
+        0.25,
+        vec![Ok(write("printf output > result.txt")), Ok(done())],
+    );
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let result = run_routes(
+        host,
+        store.clone(),
+        vec![
+            (route("codex", "gpt-6-luna"), &codex),
+            (route("claude", "claude-opus-5-5"), &claude),
+        ],
+        &JudgeFixture,
+        during_limit,
+    )
+    .await
+    .unwrap();
+    // One refused request, not three retries ending in bad replies.
+    assert_eq!(codex.calls.get(), 1);
+    assert_eq!(claude.calls.get(), 2);
+    assert_eq!(result.execution, task::Execution::Finished);
+    assert_eq!(
+        std::fs::read(root.path().join("checkout/result.txt")).unwrap(),
+        b"output"
+    );
+    // The refusal is durable capacity state with its reset.
+    let book = capacity::Book::load(&store);
+    let refusal = book.blocking(Provider::Codex, during_limit()).unwrap();
+    assert_eq!(refusal.until, RESET);
+    // The transcript records why the route changed, and the step's cost
+    // counts both attempts: the refused one and the one that answered.
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    assert!(trace.contains("\"route_switch\""));
+    assert!(trace.contains("usage_limit"));
+    let generated: Vec<Value> = trace
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|line| line.pointer("/step/extensions/microcoder/event").cloned())
+        .filter(|event| event["event"] == "generated")
+        .collect();
+    assert_eq!(generated.len(), 2, "{trace}");
+    assert_eq!(generated[0]["generated"]["model"], "claude-opus-5-5");
+    assert_eq!(generated[0]["generated"]["prompt_tokens"], 20);
+    assert_eq!(generated[0]["generated"]["usd"], 0.25);
+}
+
+#[tokio::test]
+async fn with_every_route_exhausted_the_run_ends_as_no_capacity_with_the_earliest_reset() {
+    let (_root, store, grant) = fixture();
+    let claude_refusal = Refusal::claude(true, Some(429), during_limit()).unwrap();
+    let codex = lane(
+        "gpt-6-luna",
+        0.0,
+        vec![Err(Refusal::codex(429, LIMIT, during_limit()).unwrap())],
+    );
+    let claude = lane("claude-opus-5-5", 0.0, vec![Err(claude_refusal.clone())]);
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let result = run_routes(
+        host,
+        store.clone(),
+        vec![
+            (route("codex", "gpt-6-luna"), &codex),
+            (route("claude", "claude-opus-5-5"), &claude),
+        ],
+        &JudgeFixture,
+        during_limit,
+    )
+    .await
+    .unwrap();
+    assert_eq!((codex.calls.get(), claude.calls.get()), (1, 1));
+    let run = result.run.unwrap();
+    assert_eq!(run.result.unwrap().ending, capacity::NO_CAPACITY_ENDING);
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    assert!(trace.contains("\"route_switch\"") && trace.contains("\"route_exhausted\""));
+    // Claude's unreported reset holds for the default; it is the earliest.
+    let earliest = claude_refusal.until;
+    assert!(earliest < RESET);
+    assert!(trace.contains(&format!(
+        "\"reason\":\"no_capacity\",\"detail\":{{\"resets_at\":{earliest}}}"
+    )));
+}
+
+#[tokio::test]
+async fn a_run_starts_on_the_first_route_with_capacity() {
+    let (_root, store, grant) = fixture();
+    capacity::record(&store, Refusal::codex(429, LIMIT, during_limit()).unwrap()).unwrap();
+    let codex = lane("gpt-6-luna", 0.0, vec![Ok(done())]);
+    let claude = lane("claude-opus-5-5", 0.0, vec![Ok(done())]);
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let result = run_routes(
+        host,
+        store.clone(),
+        vec![
+            (route("codex", "gpt-6-luna"), &codex),
+            (route("claude", "claude-opus-5-5"), &claude),
+        ],
+        &JudgeFixture,
+        during_limit,
+    )
+    .await
+    .unwrap();
+    assert_eq!((codex.calls.get(), claude.calls.get()), (0, 1));
+    assert_eq!(result.execution, task::Execution::Finished);
+}
+
+#[tokio::test]
+async fn admission_accepts_the_task_model_on_any_admitted_route() {
+    // The task records the policy's first model; the grant may start on a
+    // fallback, and must still admit the recorded model.
+    let (_root, store, bytes) = fixture();
+    let mut grant = task::owner::Grant::parse(&bytes).unwrap();
+    grant.adapter_configuration.as_mut().unwrap().model = "fixture-fallback".into();
+    let (_other_root, other_store, other_bytes) = fixture();
+    let mut refused = task::owner::Grant::parse(&other_bytes).unwrap();
+    refused.adapter_configuration.as_mut().unwrap().model = "fixture-fallback".into();
+    grant.adapter_configuration.as_mut().unwrap().fallbacks = vec![GrantRoute {
+        provider: "synthetic".into(),
+        model: "fixture-model".into(),
+        effort: None,
+        generation_endpoint: "in-process".into(),
+    }];
+    assert!(
+        Host::admit(&other_store, &serde_json::to_vec(&refused).unwrap())
+            .await
+            .is_err_and(|error| error.to_string().contains("model differ"))
+    );
+    let host = Host::admit(&store, &serde_json::to_vec(&grant).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(host.configuration().routes().len(), 2);
+    drop(host);
+    // A repeated route or a real provider beside synthetic fixtures refuses.
+    let configuration = refused.adapter_configuration.as_mut().unwrap();
+    configuration.fallbacks = vec![configuration.primary()];
+    assert!(configuration.validate().is_err());
+    configuration.fallbacks = vec![route("claude", "claude-opus-5-5")];
+    assert!(configuration.validate().is_err());
+}
+
+#[test]
+fn a_grant_without_fallbacks_keeps_its_bytes() {
+    let (_root, _store, bytes) = fixture();
+    let grant = task::owner::Grant::parse(&bytes).unwrap();
+    let text = serde_json::to_string(&grant).unwrap();
+    assert!(!text.contains("fallbacks"));
+    assert_eq!(crate::claude::ENDPOINT, Provider::Claude.endpoint());
 }

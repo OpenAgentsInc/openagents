@@ -347,6 +347,21 @@ pub struct Generated {
 /// Returns the next action for a prompt.
 pub trait Generate {
     fn generate(&self, system: &str, prompt: &str) -> impl std::future::Future<Output = Generated>;
+
+    /// Whether no admitted provider has capacity left after the last
+    /// generation; the loop then ends with [`crate::run::Ending::NoCapacity`].
+    /// A generator without routes never runs out.
+    fn out_of_capacity(&self) -> Option<Exhausted> {
+        None
+    }
+}
+
+/// Every admitted provider refused for a usage or rate limit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct Exhausted {
+    /// The earliest time one of them has capacity again, in Unix seconds,
+    /// when known.
+    pub resets_at: Option<u64>,
 }
 
 /// Jev through `crates/jev`.

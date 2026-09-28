@@ -16,9 +16,10 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use coder_host::{Code, TaskCreate, TaskRef, Tasks};
+use coder_host::{Code, Note, TaskCreate, TaskRef, Tasks};
 use nostr::activity_summary::Phase;
 
+use super::capacity::Provider;
 use super::{
     Action, COMMAND_SCHEMA, Command, Error, Receipt, RequestedConfiguration, Status, Store,
     TaskIntent, Workspace,
@@ -149,6 +150,36 @@ impl Tasks for Inbox {
             .unwrap_or_default()
     }
 
+    /// A task that ended for lack of model capacity: the auto-start policy
+    /// ended it before a run, or its run stopped when the last admitted
+    /// provider refused. The reset comes from the policy's record or the
+    /// capacity book.
+    fn note(&self, id: &str) -> Option<Note> {
+        let task = Store::open(&self.store).ok()?.show(id).ok()?;
+        if ended_without_capacity(&task) {
+            let providers: Vec<Provider> = task
+                .run
+                .as_ref()
+                .and_then(|run| run.admission.grant.adapter_configuration.as_ref())
+                .map(|configuration| {
+                    configuration
+                        .routes()
+                        .iter()
+                        .filter_map(|route| Provider::from_config(&route.provider))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let until = super::capacity::Book::load(&self.store)
+                .earliest_reset(&providers, super::autostart::unix_now());
+            return Some(Note::NoCapacity { until });
+        }
+        if task.status == Status::Cancelled && task.run.is_none() {
+            let until = self.autostart.as_ref()?.no_capacity(id)?;
+            return Some(Note::NoCapacity { until });
+        }
+        None
+    }
+
     fn cancel(
         &self,
         key: &str,
@@ -169,14 +200,24 @@ impl Tasks for Inbox {
     }
 }
 
+/// Whether the task's run ended because no admitted provider had capacity.
+fn ended_without_capacity(task: &super::Task) -> bool {
+    task.run
+        .as_ref()
+        .and_then(|run| run.result.as_ref())
+        .is_some_and(|result| result.ending == super::capacity::NO_CAPACITY_ENDING)
+}
+
 /// A stored task's revision and phase. A finished run that failed or was
-/// stopped reports that, not completion.
+/// stopped reports that, not completion. A run that stopped for lack of
+/// model capacity reports a stop, so its summary can say why.
 fn current(task: &super::Task) -> TaskRef {
     use super::Execution;
     TaskRef {
         task: task.task_id.clone(),
         revision: task.revision,
         phase: match (task.status, task.execution) {
+            (Status::Finished, _) if ended_without_capacity(task) => Phase::Cancelled,
             (Status::Queued, _) => Phase::Queued,
             (Status::Running | Status::CancelRequested, _) => Phase::Running,
             (Status::Cancelled, _) | (Status::Finished, Execution::Stopped) => Phase::Cancelled,

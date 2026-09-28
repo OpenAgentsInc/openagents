@@ -12,8 +12,14 @@
 //! - **Concurrency**: at most `max_running` auto-started tasks run at once;
 //!   the rest wait queued and start as earlier ones finish.
 //! - **Engine**: one adapter (`microcoder-repository`), one controller
-//!   executable, one model, step and wall-clock limits, and the same
-//!   filesystem boundary and supervisor as a hand-written grant.
+//!   executable, the admitted models in the owner's preference order, step
+//!   and wall-clock limits, and the same filesystem boundary and supervisor
+//!   as a hand-written grant.
+//! - **Routes**: each start names the first admitted route whose provider
+//!   has a local login and no recorded usage-limit refusal (see
+//!   [`super::capacity`]); the other connected routes follow as the grant's
+//!   fallbacks. When none has capacity, the task ends as `no_capacity` with
+//!   the earliest reset instead of starting a run that cannot succeed.
 //!
 //! Every decision is appended to `autostart.jsonl` beside the policy:
 //! eligible, started (with the grant digest and owner process), skipped, and
@@ -29,7 +35,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Status, Store, adapter, owner};
+use super::capacity::{self, Connection, Provider};
+use super::{Action, COMMAND_SCHEMA, Command, Status, Store, adapter, owner};
 
 /// The policy file in the host root.
 pub const POLICY_FILE: &str = "autostart.json";
@@ -83,9 +90,117 @@ pub struct Engine {
     pub write_workspace: bool,
     pub decision_endpoint: String,
     pub decision_model: String,
+    /// The admitted routes, in preference order. Empty means the one route
+    /// every policy had before routes existed: the Codex login with `model`
+    /// and `effort`. When set, the first route's model is `model`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub routes: Vec<Route>,
+}
+
+/// One admitted provider and model, in a policy's preference order.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Route {
+    pub provider: Provider,
+    /// The exact model identity the provider reports.
+    pub model: String,
+    /// The route's effort; the engine's when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+}
+
+impl std::fmt::Display for Route {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.provider, self.model)
+    }
+}
+
+/// The route a start chose, and the admitted, connected routes that follow
+/// it as the grant's fallbacks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Choice {
+    /// Start on `order[0]`; the rest are fallbacks, in preference order.
+    Start { order: Vec<Route> },
+    /// Every connected admitted provider has a refusal that holds; the
+    /// earliest one ends at `until`.
+    NoCapacity { until: Option<u64> },
+    /// No admitted provider has a usable login here.
+    Unconnected { why: String },
 }
 
 impl Policy {
+    /// The admitted routes in preference order.
+    #[must_use]
+    pub fn routes(&self) -> Vec<Route> {
+        if self.engine.routes.is_empty() {
+            vec![Route {
+                provider: Provider::Codex,
+                model: self.engine.model.clone(),
+                effort: None,
+            }]
+        } else {
+            self.engine.routes.clone()
+        }
+    }
+
+    /// Choose a route at `now`: the first admitted route whose provider is
+    /// connected and has capacity in `book`. A one-route policy skips the
+    /// connection probe, so an existing policy starts exactly as before
+    /// and a login problem shows in the task's diagnostic file.
+    #[must_use]
+    pub fn choose(
+        &self,
+        book: &capacity::Book,
+        probe: &dyn Fn(Provider) -> Connection,
+        now: u64,
+    ) -> Choice {
+        let routes = self.routes();
+        let mut missing = Vec::new();
+        let connected: Vec<Route> = if routes.len() == 1 {
+            routes
+        } else {
+            let mut probed: BTreeMap<Provider, Connection> = BTreeMap::new();
+            routes
+                .into_iter()
+                .filter(|route| {
+                    let connection = probed
+                        .entry(route.provider)
+                        .or_insert_with(|| probe(route.provider));
+                    match connection {
+                        Connection::Connected => true,
+                        Connection::Missing(why) => {
+                            missing.push(format!("{}: {why}", route.provider));
+                            false
+                        }
+                    }
+                })
+                .collect()
+        };
+        if connected.is_empty() {
+            missing.dedup();
+            return Choice::Unconnected {
+                why: format!("no admitted provider is connected ({})", missing.join("; ")),
+            };
+        }
+        match connected
+            .iter()
+            .position(|route| book.has_capacity(route.provider, now))
+        {
+            Some(index) => {
+                let mut order = connected;
+                let chosen = order.remove(index);
+                order.insert(0, chosen);
+                Choice::Start { order }
+            }
+            None => {
+                let providers: Vec<Provider> = connected.iter().map(|r| r.provider).collect();
+                Choice::NoCapacity {
+                    until: book.earliest_reset(&providers, now),
+                }
+            }
+        }
+    }
+
     /// Check the policy's own bounds.
     ///
     /// # Errors
@@ -101,6 +216,19 @@ impl Policy {
             return Err(format!("max_running is 1 to {MAX_RUNNING}"));
         }
         let engine = &self.engine;
+        if engine.routes.len() > 1 + adapter::MAX_FALLBACKS {
+            return Err(format!(
+                "a policy admits at most {} routes",
+                1 + adapter::MAX_FALLBACKS
+            ));
+        }
+        if engine
+            .routes
+            .first()
+            .is_some_and(|first| first.model != engine.model)
+        {
+            return Err("the first route's model must be the engine's model".into());
+        }
         if engine.adapter != adapter::NAME {
             return Err(format!("the only engine adapter is {}", adapter::NAME));
         }
@@ -109,7 +237,9 @@ impl Policy {
         }
         // The same checks the task owner makes at admission, so a policy
         // that could never start a task refuses now.
-        self.configuration().validate().map_err(|e| e.to_string())?;
+        self.configuration(&self.routes())
+            .validate()
+            .map_err(|e| e.to_string())?;
         if !(1..=3600).contains(&engine.wall_seconds) {
             return Err("wall_seconds is 1 to 3600".into());
         }
@@ -125,14 +255,23 @@ impl Policy {
         self.enabled && self.workspaces.iter().any(|w| w == workspace)
     }
 
-    fn configuration(&self) -> adapter::Configuration {
+    /// The grant configuration that starts on `order[0]` and falls back to
+    /// the rest. `order` must not be empty.
+    fn configuration(&self, order: &[Route]) -> adapter::Configuration {
         let engine = &self.engine;
+        let route = |route: &Route| adapter::Route {
+            provider: route.provider.as_str().into(),
+            model: route.model.clone(),
+            effort: route.effort.clone().or_else(|| engine.effort.clone()),
+            generation_endpoint: route.provider.endpoint().into(),
+        };
+        let primary = route(&order[0]);
         adapter::Configuration {
             schema: adapter::CONFIG_SCHEMA.into(),
-            provider: "codex".into(),
-            model: engine.model.clone(),
-            effort: engine.effort.clone(),
-            generation_endpoint: "https://chatgpt.com/backend-api/codex".into(),
+            provider: primary.provider,
+            model: primary.model,
+            effort: primary.effort,
+            generation_endpoint: primary.generation_endpoint,
             decision_endpoint: engine.decision_endpoint.clone(),
             decision_model: engine.decision_model.clone(),
             max_steps: engine.max_steps,
@@ -142,6 +281,7 @@ impl Policy {
             dollar_limit_micros: None,
             expected_controller_digest: None,
             container: None,
+            fallbacks: order[1..].iter().map(route).collect(),
         }
     }
 
@@ -180,8 +320,8 @@ impl Policy {
 pub struct Entry {
     pub schema: String,
     pub at: u64,
-    /// `eligible`, `started`, `skipped`, `refused`, `unadmitted`,
-    /// `policy_on`, or `policy_off`.
+    /// `eligible`, `started`, `skipped`, `refused`, `no_capacity`,
+    /// `unadmitted`, `policy_on`, or `policy_off`.
     pub event: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<String>,
@@ -198,6 +338,10 @@ pub struct Entry {
     /// Never a prompt or title.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    /// For `no_capacity`: when the earliest admitted provider's limit
+    /// resets, in Unix seconds, if known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resets_at: Option<u64>,
 }
 
 impl Entry {
@@ -212,6 +356,7 @@ impl Entry {
             grant_digest: None,
             owner_process: None,
             detail: None,
+            resets_at: None,
         }
     }
 
@@ -342,6 +487,7 @@ pub struct Autostart {
     workspaces: BTreeMap<String, PathBuf>,
     launcher: Box<dyn Launch>,
     now: fn() -> u64,
+    probe: fn(Provider) -> Connection,
     sweeping: Mutex<()>,
     background: bool,
 }
@@ -371,9 +517,29 @@ impl Autostart {
             workspaces,
             launcher,
             now,
+            probe: capacity::probe,
             sweeping: Mutex::new(()),
             background: true,
         }
+    }
+
+    /// Decide which providers are connected with `probe` instead of the
+    /// local login probe, for tests.
+    #[must_use]
+    pub fn with_probe(mut self, probe: fn(Provider) -> Connection) -> Self {
+        self.probe = probe;
+        self
+    }
+
+    /// Whether the policy ended `task` for lack of capacity, and if so the
+    /// reset it recorded.
+    #[must_use]
+    pub fn no_capacity(&self, task: &str) -> Option<Option<u64>> {
+        journal(&self.root)
+            .into_iter()
+            .rev()
+            .find(|entry| entry.event == "no_capacity" && entry.task.as_deref() == Some(task))
+            .map(|entry| entry.resets_at)
     }
 
     /// Sweep on the creating thread instead of a new one, for tests.
@@ -452,7 +618,7 @@ impl Autostart {
                 "unadmitted" => {
                     unadmitted.insert(task);
                 }
-                "skipped" | "refused" => {
+                "skipped" | "refused" | "no_capacity" => {
                     decided.insert(task);
                 }
                 _ => {}
@@ -472,7 +638,7 @@ impl Autostart {
         // Read the store once, then release its lock before any launch: the
         // launched owner opens the same store.
         let plans = {
-            let store = match Store::open(&self.store) {
+            let mut store = match Store::open(&self.store) {
                 Ok(store) => store,
                 Err(error) => {
                     eprintln!("coder host: auto-start cannot open the task store: {error}");
@@ -548,22 +714,54 @@ impl Autostart {
                 if active >= policy.max_running as usize {
                     break;
                 }
+                // Route at start time: capacity changes while tasks wait.
+                let book = capacity::Book::load(&self.store);
+                let order = match policy.choose(&book, &self.probe, now) {
+                    Choice::Start { order } => order,
+                    Choice::NoCapacity { until } => {
+                        // Record first, then end the task, so the summary a
+                        // device receives for the ending can name the reset.
+                        let mut entry = Entry::new(now, "no_capacity").task(&id).detail(
+                            "no admitted provider has capacity; the task ends instead of starting",
+                        );
+                        entry.workspace = Some(workspace.clone());
+                        entry.resets_at = until;
+                        write(entry);
+                        end_without_capacity(&mut store, &id, task.revision, until);
+                        continue;
+                    }
+                    Choice::Unconnected { why } => {
+                        write(Entry::new(now, "refused").task(&id).detail(why));
+                        continue;
+                    }
+                };
                 active += 1;
-                plans.push((id, workspace, task.intent_digest.clone(), task.revision));
+                plans.push((
+                    id,
+                    workspace,
+                    task.intent_digest.clone(),
+                    task.revision,
+                    order,
+                ));
             }
             plans
         };
-        for (id, workspace, intent_digest, revision) in plans {
-            let entry = match self.start(&policy, &id, &intent_digest, revision) {
+        for (id, workspace, intent_digest, revision, order) in plans {
+            let entry = match self.start(&policy, &order, &id, &intent_digest, revision) {
                 Ok(launched) => {
                     let mut entry = Entry::new(now, "started").task(&id);
                     entry.workspace = Some(workspace);
                     entry.grant_digest = Some(launched.grant_digest);
                     entry.owner_process = Some(launched.owner_process);
                     entry.detail = Some(format!(
-                        "{} {} max_steps {} wall_seconds {} write_workspace {}",
+                        "{} {} fallbacks [{}] max_steps {} wall_seconds {} write_workspace {}",
                         policy.engine.adapter,
-                        policy.engine.model,
+                        order[0],
+                        order[1..]
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(","),
                         policy.engine.max_steps,
                         policy.engine.wall_seconds,
                         policy.engine.write_workspace
@@ -580,6 +778,7 @@ impl Autostart {
     fn start(
         &self,
         policy: &Policy,
+        order: &[Route],
         task: &str,
         intent_digest: &str,
         revision: u64,
@@ -598,7 +797,7 @@ impl Autostart {
             stream_bytes: 64 * 1024,
             memory_bytes: policy.engine.memory_bytes,
             requirements: None,
-            adapter_configuration: Some(policy.configuration()),
+            adapter_configuration: Some(policy.configuration(order)),
         };
         let bytes = serde_json::to_vec_pretty(&grant).map_err(|e| e.to_string())?;
         owner::Grant::parse(&bytes).map_err(|e| format!("the grant is invalid: {e}"))?;
@@ -608,6 +807,32 @@ impl Autostart {
             .join(format!("{task}-{revision}.grant.json"));
         write_private(&path, &bytes)?;
         self.launcher.launch(&policy.engine, &path, &self.store)
+    }
+}
+
+/// End a queued task that no admitted provider can serve: the host cancels
+/// it with a reason that names the earliest reset. The command identity is
+/// fixed per task, so a repeat after a crash is an exact retry.
+fn end_without_capacity(store: &mut Store, task: &str, revision: u64, until: Option<u64>) {
+    let reason = match until {
+        Some(until) => format!(
+            "No admitted model provider has capacity until {}.",
+            capacity::utc(until)
+        ),
+        None => "No admitted model provider has capacity.".to_owned(),
+    };
+    let command = Command {
+        schema: COMMAND_SCHEMA.into(),
+        command_id: format!("autostart-no-capacity-{task}"),
+        task_id: task.into(),
+        expected_revision: Some(revision),
+        action: Action::Cancel { reason },
+    };
+    let applied = serde_json::to_vec(&command)
+        .map_err(|e| e.to_string())
+        .and_then(|bytes| store.apply(&bytes).map_err(|e| e.to_string()));
+    if let Err(error) = applied {
+        eprintln!("coder host: auto-start cannot end a task without capacity: {error}");
     }
 }
 
@@ -661,13 +886,19 @@ pub fn unix_now() -> u64 {
 }
 
 pub const USAGE: &str = "usage: coder host autostart COMMAND
-  show                 Print the policy and the latest decisions.
-  on --workspace LABEL [--workspace LABEL]... [--max-running N] [--model ID]
+  show [--store DIR]   Print the policy, each provider's login and capacity
+                       (from DIR, default ~/.openagents/tasks), and the
+                       latest decisions.
+  on --workspace LABEL [--workspace LABEL]... [--max-running N]
+     [--model ID | --route PROVIDER:MODEL [--route PROVIDER:MODEL]...]
      [--effort low|medium|high|xhigh] [--max-steps N] [--wall-seconds N]
      [--memory-mib N] [--read-only] [--controller PATH]
      [--decision-endpoint URL] [--decision-model ID]
                        Start tasks that enrolled devices with `operate` create
                        in these workspaces, at most N at once (default 1).
+                       Each --route admits a provider (codex or claude) and
+                       model, in preference order; a task starts on the
+                       first one that is connected and has capacity.
   off                  Stop starting tasks; queued tasks stay queued.
 Every command takes --root DIR (default ~/.openagents/host). The policy is
 off until `on` runs.";
@@ -724,6 +955,23 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                 ),
                 None => println!("off (no policy)"),
             }
+            let store = match take_one(&mut values, "--store")? {
+                Some(store) => PathBuf::from(store),
+                None => PathBuf::from(std::env::var_os("HOME").ok_or("HOME is not set")?)
+                    .join(".openagents/tasks"),
+            };
+            let book = capacity::Book::load(&store);
+            for provider in Provider::ALL {
+                let connection = match capacity::probe(provider) {
+                    Connection::Connected => "connected".to_owned(),
+                    Connection::Missing(why) => format!("not connected ({why})"),
+                };
+                let capacity = match book.blocking(provider, now) {
+                    Some(refusal) => format!("no capacity until {}", capacity::utc(refusal.until)),
+                    None => "capacity".to_owned(),
+                };
+                println!("{provider}: {connection}; {capacity}");
+            }
             for entry in journal(&root).iter().rev().take(20).rev() {
                 println!(
                     "{}",
@@ -768,10 +1016,27 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
             let controller = controller
                 .canonicalize()
                 .map_err(|_| format!("the controller {} does not exist", controller.display()))?;
+            let routes = values
+                .remove("--route")
+                .unwrap_or_default()
+                .iter()
+                .map(|route| parse_route(route))
+                .collect::<std::result::Result<Vec<Route>, String>>()?;
+            let model = take_one(&mut values, "--model")?;
+            let model = match (routes.first(), model) {
+                (Some(_), Some(_)) => {
+                    return Err(
+                        "usage: give --model or --route, not both; name the Codex model as --route codex:MODEL"
+                            .into(),
+                    );
+                }
+                (Some(first), None) => first.model.clone(),
+                (None, model) => model.unwrap_or_else(|| "gpt-6-luna".into()),
+            };
             let engine = Engine {
                 adapter: adapter::NAME.into(),
                 controller,
-                model: take_one(&mut values, "--model")?.unwrap_or_else(|| "gpt-6-luna".into()),
+                model,
                 effort: Some(take_one(&mut values, "--effort")?.unwrap_or_else(|| "medium".into())),
                 max_steps: usize::try_from(max_steps).map_err(|_| "--max-steps is too large")?,
                 wall_seconds,
@@ -781,6 +1046,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                     .unwrap_or_else(|| "https://api.typesafe.ai".into()),
                 decision_model: take_one(&mut values, "--decision-model")?
                     .unwrap_or_else(|| DEFAULT_DECISION_MODEL.into()),
+                routes,
             };
             if let Some(name) = values.keys().next() {
                 return Err(format!("usage: {name} does not apply to on"));
@@ -809,10 +1075,15 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
             record(
                 &root,
                 &Entry::new(now, "policy_on").detail(format!(
-                    "workspaces {} max_running {} model {} write_workspace {}",
+                    "workspaces {} max_running {} routes {} write_workspace {}",
                     workspaces.join(","),
                     policy.max_running,
-                    policy.engine.model,
+                    policy
+                        .routes()
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(","),
                     policy.engine.write_workspace
                 )),
             )?;
@@ -821,6 +1092,23 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
         _ => return Err(format!("usage: unknown command `{command}`")),
     }
     Ok(())
+}
+
+/// `PROVIDER:MODEL`, where the provider is one of the closed set.
+fn parse_route(text: &str) -> std::result::Result<Route, String> {
+    let (provider, model) = text
+        .split_once(':')
+        .ok_or_else(|| format!("usage: --route takes PROVIDER:MODEL, not `{text}`"))?;
+    let provider = Provider::from_config(provider)
+        .ok_or_else(|| format!("usage: the provider in `{text}` is not codex or claude"))?;
+    if model.is_empty() {
+        return Err(format!("usage: `{text}` names no model"));
+    }
+    Ok(Route {
+        provider,
+        model: model.into(),
+        effort: None,
+    })
 }
 
 fn take_one(
@@ -944,6 +1232,7 @@ mod tests {
                 Box::new(Fake(launched.clone())),
                 clock,
             )
+            .with_probe(|_| Connection::Connected)
             .foreground(),
         );
         let inbox = Inbox::new(&store, workspaces).with_autostart(autostart.clone());
@@ -974,9 +1263,37 @@ mod tests {
                 write_workspace: true,
                 decision_endpoint: "https://api.typesafe.ai".into(),
                 decision_model: "jev-latest".into(),
+                routes: Vec::new(),
             },
             changed_at: 1,
         }
+    }
+
+    fn routed(max_running: u32) -> Policy {
+        let mut policy = policy(max_running);
+        policy.engine.routes = vec![
+            Route {
+                provider: Provider::Codex,
+                model: "gpt-6-luna".into(),
+                effort: None,
+            },
+            Route {
+                provider: Provider::Claude,
+                model: "claude-opus-5-5".into(),
+                effort: Some("high".into()),
+            },
+        ];
+        policy
+    }
+
+    fn launched_grant(s: &Setup, index: usize) -> owner::Grant {
+        owner::Grant::parse(&std::fs::read(&s.launched.lock().unwrap()[index]).unwrap()).unwrap()
+    }
+
+    /// Codex's weekly limit, as the backend reported it, observed now.
+    fn exhaust_codex(store: &Path) {
+        let body = r#"{"error":{"type":"usage_limit_reached","resets_at":500000,"resets_in_seconds":499000}}"#;
+        capacity::record(store, capacity::Refusal::codex(429, body, clock()).unwrap()).unwrap();
     }
 
     fn create(workspace: &str) -> TaskCreate {
@@ -1199,5 +1516,217 @@ mod tests {
         let recorded: Vec<String> = journal(&root).into_iter().map(|e| e.event).collect();
         assert_eq!(recorded, ["policy_on", "policy_off"]);
         assert_eq!(cli(&args(&["on"])), 2);
+    }
+
+    #[test]
+    fn an_existing_policy_file_keeps_its_meaning() {
+        // A policy written before routes existed, byte for byte.
+        let dir = tempfile::tempdir().unwrap();
+        let old = r#"{"schema":"openagents.coder.host-autostart.v1","enabled":true,"workspaces":["allowed"],"max_running":1,"engine":{"adapter":"microcoder-repository","controller":"/opt/coder/microcoder","model":"gpt-6-luna","effort":"medium","max_steps":24,"wall_seconds":1800,"memory_bytes":4294967296,"write_workspace":true,"decision_endpoint":"https://api.typesafe.ai","decision_model":"jev-1.13.0"},"changed_at":1}"#;
+        std::fs::write(dir.path().join(POLICY_FILE), old).unwrap();
+        let policy = Policy::load(dir.path()).unwrap().unwrap();
+        assert_eq!(
+            policy.routes(),
+            [Route {
+                provider: Provider::Codex,
+                model: "gpt-6-luna".into(),
+                effort: None,
+            }]
+        );
+        // It saves without a routes field, and its grant configuration is
+        // the one every earlier grant carried.
+        policy.save(dir.path()).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join(POLICY_FILE)).unwrap()).unwrap();
+        assert_eq!(
+            saved,
+            serde_json::from_str::<serde_json::Value>(old).unwrap()
+        );
+        let configuration = serde_json::to_value(policy.configuration(&policy.routes())).unwrap();
+        assert_eq!(
+            configuration,
+            serde_json::json!({"schema":adapter::CONFIG_SCHEMA,"provider":"codex","model":"gpt-6-luna",
+                "effort":"medium","generation_endpoint":"https://chatgpt.com/backend-api/codex",
+                "decision_endpoint":"https://api.typesafe.ai","decision_model":"jev-1.13.0","max_steps":24,
+                "acceptance":false,"route":"never","knowledge":"off","dollar_limit_micros":null,
+                "expected_controller_digest":null})
+        );
+        // A one-route policy starts without a login probe, as before.
+        let book = capacity::Book::default();
+        assert!(matches!(
+            policy.choose(&book, &|_| Connection::Missing("no login".into()), 1),
+            Choice::Start { .. }
+        ));
+    }
+
+    #[test]
+    fn a_task_starts_on_the_first_connected_route_with_capacity() {
+        let s = setup();
+        routed(1).save(&s.root).unwrap();
+        exhaust_codex(&s.store);
+        let task = "4".repeat(64);
+        s.inbox.create(&task, "phone", &create("allowed")).unwrap();
+        // The task records the policy's first model; its grant starts on
+        // Claude, which has capacity, and keeps Codex as a fallback.
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(
+            stored.intent.configuration.model.as_deref(),
+            Some("gpt-6-luna")
+        );
+        let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
+        assert_eq!(
+            (
+                configuration.provider.as_str(),
+                configuration.model.as_str()
+            ),
+            ("claude", "claude-opus-5-5")
+        );
+        assert_eq!(configuration.effort.as_deref(), Some("high"));
+        assert_eq!(
+            configuration.generation_endpoint,
+            "https://api.anthropic.com"
+        );
+        assert_eq!(configuration.fallbacks.len(), 1);
+        assert_eq!(configuration.fallbacks[0].model, "gpt-6-luna");
+        assert_eq!(configuration.fallbacks[0].effort.as_deref(), Some("medium"));
+        assert!(configuration.admits_model("gpt-6-luna"));
+        let started = journal(&s.root)
+            .into_iter()
+            .find(|entry| entry.event == "started")
+            .unwrap();
+        assert!(started.detail.unwrap().contains("claude:claude-opus-5-5"));
+        // Once Codex resets, the next task starts on it again.
+        advance(500_000);
+        let next = "5".repeat(64);
+        s.inbox.create(&next, "phone", &create("allowed")).unwrap();
+        advance(PENDING_GRACE + 1);
+        s.autostart.sweep();
+        let configuration = launched_grant(&s, 1).adapter_configuration.unwrap();
+        assert_eq!(configuration.provider, "codex");
+    }
+
+    #[test]
+    fn an_unconnected_provider_is_not_routed_to() {
+        let mut policy = routed(1);
+        policy.engine.routes.reverse();
+        policy.engine.model = "claude-opus-5-5".into();
+        policy.validate().unwrap();
+        let book = capacity::Book::default();
+        let only_codex = |provider: Provider| match provider {
+            Provider::Codex => Connection::Connected,
+            Provider::Claude => Connection::Missing("not signed in".into()),
+        };
+        match policy.choose(&book, &only_codex, 1) {
+            Choice::Start { order } => {
+                assert_eq!(order.len(), 1);
+                assert_eq!(order[0].provider, Provider::Codex);
+            }
+            other => panic!("{other:?}"),
+        }
+        match policy.choose(&book, &|_| Connection::Missing("no login".into()), 1) {
+            Choice::Unconnected { why } => assert!(why.contains("claude: no login")),
+            other => panic!("{other:?}"),
+        }
+        // The first route's model must be the model a task records.
+        policy.engine.model = "gpt-6-luna".into();
+        assert!(policy.validate().is_err());
+    }
+
+    #[test]
+    fn without_capacity_a_task_ends_as_no_capacity_with_the_reset() {
+        let s = setup();
+        // The old one-route policy: Codex only, and Codex is exhausted.
+        policy(1).save(&s.root).unwrap();
+        exhaust_codex(&s.store);
+        let task = "6".repeat(64);
+        s.inbox.create(&task, "phone", &create("allowed")).unwrap();
+        assert!(
+            s.launched.lock().unwrap().is_empty(),
+            "no doomed run starts"
+        );
+        let entry = journal(&s.root)
+            .into_iter()
+            .find(|entry| entry.event == "no_capacity")
+            .unwrap();
+        assert_eq!(entry.resets_at, Some(500_000));
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(stored.status, Status::Cancelled);
+        assert!(
+            stored
+                .cancellation_reason
+                .unwrap()
+                .contains(&capacity::utc(500_000))
+        );
+        // The device's summary says why, with the reset.
+        let current = s.inbox.current();
+        assert_eq!(current[0].phase, nostr::activity_summary::Phase::Cancelled);
+        let note = s.inbox.note(&task).unwrap();
+        assert_eq!(
+            note,
+            coder_host::Note::NoCapacity {
+                until: Some(500_000)
+            }
+        );
+        assert_eq!(
+            note.headline(),
+            format!("No model capacity until {}", capacity::utc(500_000))
+        );
+        // Nothing is decided twice.
+        assert!(s.autostart.sweep().is_empty());
+    }
+
+    #[test]
+    fn the_command_line_admits_routes_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("host");
+        let workspace = dir.path().join("checkout");
+        std::fs::create_dir_all(&workspace).unwrap();
+        coder_host::settings::ServeSettings::new(
+            vec!["wss://relay.example/".into()],
+            BTreeMap::from([("checkout".into(), workspace.canonicalize().unwrap())]),
+        )
+        .save(&root)
+        .unwrap();
+        let controller = std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let root_text = root.to_string_lossy().into_owned();
+        let on = |extra: &[&str]| {
+            let mut list = vec![
+                "on",
+                "--workspace",
+                "checkout",
+                "--read-only",
+                "--controller",
+                &controller,
+                "--root",
+                &root_text,
+            ];
+            list.extend_from_slice(extra);
+            cli(&list.iter().map(|a| (*a).to_owned()).collect::<Vec<_>>())
+        };
+        assert_eq!(
+            on(&[
+                "--route",
+                "claude:claude-opus-5-5",
+                "--route",
+                "codex:gpt-6-luna"
+            ]),
+            0
+        );
+        let policy = Policy::load(&root).unwrap().unwrap();
+        assert_eq!(policy.engine.model, "claude-opus-5-5");
+        assert_eq!(
+            policy
+                .routes()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["claude:claude-opus-5-5", "codex:gpt-6-luna"]
+        );
+        assert_eq!(on(&["--route", "codex:a", "--model", "b"]), 2);
+        assert_eq!(on(&["--route", "gemini:x"]), 2);
+        assert_eq!(on(&["--route", "codex:a", "--route", "codex:a"]), 1);
     }
 }

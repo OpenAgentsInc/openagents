@@ -610,6 +610,75 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
+/// A usage-limit refusal from the Codex backend: HTTP 429 whose body's
+/// `error.type` is `usage_limit_reached`. The login's plan has used its
+/// allowance for the window, so another attempt before the reset fails the
+/// same way. Other 429 bodies are ordinary rate limits and stay transient.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UsageLimit {
+    /// When the allowance resets, in Unix seconds, as the backend reports.
+    pub resets_at: Option<u64>,
+    /// Seconds until the reset, as the backend reports.
+    pub resets_in_seconds: Option<u64>,
+    /// The plan, such as `pro`, when reported.
+    pub plan_type: Option<String>,
+    /// The allowance window in minutes, when reported.
+    pub window_minutes: Option<u64>,
+}
+
+/// The error kinds a 429 body can name. Only the usage limit is typed;
+/// every other kind is an ordinary rate limit.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum LimitKind {
+    UsageLimitReached,
+    #[serde(other)]
+    Other,
+}
+
+#[derive(serde::Deserialize)]
+struct LimitError {
+    #[serde(rename = "type")]
+    kind: LimitKind,
+    #[serde(default)]
+    resets_at: Option<u64>,
+    #[serde(default)]
+    resets_in_seconds: Option<u64>,
+    #[serde(default)]
+    plan_type: Option<String>,
+    #[serde(default)]
+    limit_window_minutes: Option<u64>,
+}
+
+#[derive(serde::Deserialize)]
+struct LimitBody {
+    error: LimitError,
+}
+
+impl UsageLimit {
+    /// The usage limit an error response reports, or `None` for any other
+    /// status or body.
+    #[must_use]
+    pub fn parse(status: u16, body: &str) -> Option<UsageLimit> {
+        if status != 429 {
+            return None;
+        }
+        let body: LimitBody = serde_json::from_str(body.trim()).ok()?;
+        match body.error.kind {
+            LimitKind::UsageLimitReached => Some(UsageLimit {
+                resets_at: body.error.resets_at,
+                resets_in_seconds: body.error.resets_in_seconds,
+                plan_type: body
+                    .error
+                    .plan_type
+                    .filter(|plan| plan.len() <= 32 && plan.bytes().all(|b| b.is_ascii_graphic())),
+                window_minutes: body.error.limit_window_minutes,
+            }),
+            LimitKind::Other => None,
+        }
+    }
+}
+
 pub(crate) fn excerpt(text: &str, max: usize) -> String {
     let text = text.trim();
     match text.char_indices().nth(max) {
@@ -864,5 +933,31 @@ mod tests {
             events.push(incomplete.as_bytes()),
             Err(TransportError::Incomplete(why)) if why == "max_output_tokens"
         ));
+    }
+
+    #[test]
+    fn a_usage_limit_is_typed_and_not_transient() {
+        // The body the Codex backend returned on 2026-09-28.
+        let body = r#"{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1791050823,"eligible_promo":null,"limit_window_minutes":10080,"resets_in_seconds":478613}}"#;
+        let limit = UsageLimit::parse(429, body).unwrap();
+        assert_eq!(limit.resets_at, Some(1_791_050_823));
+        assert_eq!(limit.resets_in_seconds, Some(478_613));
+        assert_eq!(limit.plan_type.as_deref(), Some("pro"));
+        assert_eq!(limit.window_minutes, Some(10_080));
+        let error = TransportError::Http {
+            status: 429,
+            body: body.into(),
+        };
+        assert!(!error.transient());
+        // Another status, another error kind, or no JSON is not a usage limit.
+        assert_eq!(UsageLimit::parse(500, body), None);
+        let other = r#"{"error":{"type":"rate_limit_exceeded","message":"slow down"}}"#;
+        assert_eq!(UsageLimit::parse(429, other), None);
+        assert_eq!(UsageLimit::parse(429, "Too Many Requests"), None);
+        let plain = TransportError::Http {
+            status: 429,
+            body: other.into(),
+        };
+        assert!(plain.transient());
     }
 }

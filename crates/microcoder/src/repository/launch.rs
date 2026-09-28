@@ -38,7 +38,12 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
             return Err(task::Error::RevisionMismatch.into());
         }
         if task.intent.configuration.adapter != task::adapter::NAME
-            || task.intent.configuration.model.as_ref() != Some(&configuration.model)
+            || !task
+                .intent
+                .configuration
+                .model
+                .as_deref()
+                .is_some_and(|model| configuration.admits_model(model))
         {
             return Err("task and repository launch configuration differ".into());
         }

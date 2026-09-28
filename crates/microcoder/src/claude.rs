@@ -141,6 +141,10 @@ fn find_binary() -> Result<PathBuf, String> {
 pub struct Report {
     #[serde(default)]
     pub is_error: bool,
+    /// The HTTP status of the API error that ended the turn, when one did,
+    /// such as 429 for a usage or rate limit.
+    #[serde(default)]
+    pub api_error_status: Option<u16>,
     #[serde(default)]
     pub result: String,
     #[serde(default)]
@@ -209,6 +213,9 @@ pub struct Invocation {
     pub generated: Generated,
     /// The binary's exit status, or `None` when it did not run or was killed.
     pub status: Option<i32>,
+    /// The API status of an error result, such as 429 for a usage or rate
+    /// limit; `None` for a success or a call with no report.
+    pub api_error_status: Option<u16>,
     pub stdout: String,
     pub stderr: String,
 }
@@ -238,6 +245,7 @@ impl ClaudeGenerator {
                 milliseconds: milliseconds(),
             },
             status: None,
+            api_error_status: None,
             stdout: String::new(),
             stderr: String::new(),
         };
@@ -337,6 +345,7 @@ impl ClaudeGenerator {
                 milliseconds: milliseconds(),
             },
             status: output.status.code(),
+            api_error_status: report.is_error.then_some(report.api_error_status).flatten(),
             stdout,
             stderr,
         }
@@ -406,6 +415,12 @@ mod tests {
         )
         .unwrap();
         assert!(report.is_error);
+        assert_eq!(report.api_error_status, None);
+        let limited = Report::parse(
+            r#"{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"limit reached","total_cost_usd":0}"#,
+        )
+        .unwrap();
+        assert_eq!(limited.api_error_status, Some(429));
         assert_eq!(report.result, "Not logged in · Please run /login");
         assert!(Report::parse("nothing here").is_err());
     }

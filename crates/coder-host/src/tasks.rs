@@ -26,6 +26,42 @@ pub struct TaskRef {
     pub phase: Phase,
 }
 
+/// Something typed the host can say about a task in its summary headline.
+/// The host builds the text from this state alone, never from a prompt or
+/// engine output.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Note {
+    /// No admitted model provider had capacity, so the task ended without
+    /// running, or stopped when the last one refused. `until` is the
+    /// earliest reset, in Unix seconds, when a provider reported one.
+    NoCapacity { until: Option<u64> },
+}
+
+impl Note {
+    /// The summary headline, such as
+    /// `No model capacity until 2026-10-03 18:07 UTC`.
+    #[must_use]
+    pub fn headline(self) -> String {
+        match self {
+            Note::NoCapacity { until: Some(until) } => {
+                format!("No model capacity until {}", utc(until))
+            }
+            Note::NoCapacity { until: None } => "No model capacity".to_owned(),
+        }
+    }
+}
+
+/// `YYYY-MM-DD HH:MM UTC` for Unix seconds.
+#[must_use]
+pub fn utc(seconds: u64) -> String {
+    format!(
+        "{} {:02}:{:02} UTC",
+        nostr::git_sign::utc_date(seconds),
+        seconds % 86_400 / 3_600,
+        seconds % 3_600 / 60
+    )
+}
+
 /// Where admitted task operations go.
 ///
 /// Implementations return promptly and never call back into the host.
@@ -69,6 +105,12 @@ pub trait Tasks: Send + Sync {
     fn current(&self) -> Vec<TaskRef> {
         Vec::new()
     }
+
+    /// A typed note for a task's summary headline, such as why it ended
+    /// without running. The default has none.
+    fn note(&self, _task: &str) -> Option<Note> {
+        None
+    }
 }
 
 /// A host without a task owner. Every task operation refuses as
@@ -85,5 +127,39 @@ impl Tasks for NoTasks {
     }
     fn cancel(&self, _: &str, _: &str, _: &str, _: u64, _: &str) -> Result<TaskRef, Code> {
         Err(Code::Unavailable)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nostr::activity_summary::{self, Attention, SubjectKind, SummaryDraft};
+
+    #[test]
+    fn a_no_capacity_note_survives_the_summary_disclosure_rules() {
+        let note = Note::NoCapacity {
+            until: Some(1_791_050_823),
+        };
+        assert_eq!(
+            note.headline(),
+            "No model capacity until 2026-10-03 18:07 UTC"
+        );
+        let headline = note.headline();
+        let summary = activity_summary::encode(&SummaryDraft {
+            host: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            subject_kind: SubjectKind::Task,
+            subject: &"a".repeat(64),
+            sequence: 2,
+            phase: Phase::Cancelled,
+            headline: &headline,
+            attention: Attention::None,
+            updated_at: 1_790_572_210,
+        })
+        .unwrap();
+        assert_eq!(summary.headline, headline);
+        assert_eq!(
+            Note::NoCapacity { until: None }.headline(),
+            "No model capacity"
+        );
     }
 }
