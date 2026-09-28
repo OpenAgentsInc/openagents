@@ -426,24 +426,89 @@ struct PlaytestScreen: View {
     }
 }
 
-/// The playtest card at the top of Account > Playtest.
+/// The playtest card at the top of Account > Playtest: sessions, accepted
+/// reports, fixes verified, playtest XP beside (never inside) the trainer
+/// level, and titles. Rust reads them from the playtest referee.
 struct PlaytestCardSection: View {
     @ObservedObject var bridge: MobileBridge
     let reports: ReportsPacket?
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var card: TrainerPacket?
+    private let refresh = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Section {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Playtesting").font(.title3.bold())
-                Text("Joining earns nothing. Accepted reports, verified fixes, and completed sessions can earn playtest XP and titles later, signed by the OpenAgents playtest referee. Never money.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                if let reports {
-                    Text("\(reports.reports.count) reports filed from this phone")
-                        .font(.footnote.monospacedDigit())
+            VStack(alignment: .leading, spacing: 10) {
+                if card?.playtest.state == "preview" {
+                    Label("Preview: a labeled fixture, not real awards.", systemImage: "flask")
+                        .font(.footnote).foregroundStyle(.yellow)
                 }
+                HStack(alignment: .firstTextBaseline) {
+                    Text("\(card?.playtest.xp ?? 0) playtest XP").font(.title2.bold().monospacedDigit())
+                        .accessibilityIdentifier("playtest-xp")
+                    Spacer()
+                    if let card {
+                        Text("Trainer: \(card.xp) XP · lv \(card.level)")
+                            .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                }
+                HStack(spacing: 0) {
+                    stat(card?.playtest.sessions ?? 0, "sessions")
+                    stat(card?.playtest.accepted_reports ?? 0, "accepted reports")
+                    stat(card?.playtest.fixes_verified ?? 0, "fixes verified")
+                }
+                if let titles = card?.playtest.titles, !titles.isEmpty {
+                    Text(titles.map { $0.uppercased() }.joined(separator: " · "))
+                        .font(.footnote.monospaced().weight(.semibold))
+                }
+                Text(status).font(.footnote).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 4)
+            .accessibilityIdentifier("playtest-card")
+            ForEach(card?.playtest.awards ?? [], id: \.self) { award in
+                if let url = URL(string: award.link) {
+                    Link(destination: url) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(award.title).font(.subheadline)
+                            Spacer()
+                            Text("+\(award.xp) XP").font(.subheadline.monospacedDigit())
+                        }
+                    }
+                    .foregroundStyle(.white)
+                }
+            }
+        } header: {
+            Text("Playtest card")
+        } footer: {
+            Text(card?.playtest.note ?? "")
         }
+        .onAppear { bridge.trainer { card = $0 } }
+        .onReceive(refresh) { _ in
+            guard scenePhase == .active, card?.playtest.state != "preview" else { return }
+            bridge.trainer { card = $0 }
+        }
+    }
+
+    private var status: String {
+        let filed = reports?.reports.count ?? 0
+        let phone = "\(filed) report\(filed == 1 ? "" : "s") filed from this phone."
+        switch card?.playtest.state {
+        case "unpublished":
+            return "\(phone) The playtest referee's key isn't published yet; accepted contributions are recorded in the triage log and signed later."
+        case "connecting", "reading":
+            return "\(phone) Reading playtest awards…"
+        default:
+            return phone
+        }
+    }
+
+    private func stat(_ value: Int, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("\(value)").font(.title3.monospacedDigit())
+            Text(label).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

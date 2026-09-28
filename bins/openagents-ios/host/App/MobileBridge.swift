@@ -163,7 +163,23 @@ struct TrainerPacket: Decodable {
     let awards: [TrainerAward]
     let open_quests: Int
     let note: String
+    let playtest: PlaytestXP
     let nsec: String?
+}
+
+/// The Account playtest card: playtest XP from the separate playtest
+/// referee, never summed into the trainer level.
+struct PlaytestXP: Decodable {
+    let state: String
+    let referee_npub: String?
+    let xp: UInt64
+    let titles: [String]
+    let accepted_reports: Int
+    let fixes_verified: Int
+    let sessions: Int
+    let diaries: Int
+    let awards: [TrainerAward]
+    let note: String
 }
 
 /// A report kind the form offers, with Rust's words for it.

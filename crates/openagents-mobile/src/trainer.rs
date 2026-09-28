@@ -64,9 +64,32 @@ pub struct TrainerPacket {
     /// Open quests from the trusted referee that no counted award has taken.
     pub open_quests: usize,
     pub note: &'static str,
+    /// Playtest XP and titles from the separate playtest referee, shown
+    /// beside the trainer XP above and never summed into its level.
+    pub playtest: PlaytestSection,
     /// The trainer key's secret in NIP-19 form, only on an explicit reveal.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nsec: Option<String>,
+}
+
+/// Why playtest XP is separate, shown under the playtest card.
+pub const PLAYTEST_NOTE: &str = "Playtest XP records accepted playtest contributions: feedback, reproducible bugs, verified fixes, and sessions with a report. The OpenAgents playtest referee signs it, separately from the trainer referee, so it never counts toward your trainer level. Joining earns nothing.";
+
+/// The Account playtest card.
+#[derive(Serialize)]
+pub struct PlaytestSection {
+    /// `unpublished` (no playtest referee key yet), `connecting`,
+    /// `reading`, `ready`, or `preview`.
+    pub state: &'static str,
+    pub referee_npub: Option<String>,
+    pub xp: u64,
+    pub titles: Vec<String>,
+    pub accepted_reports: usize,
+    pub fixes_verified: usize,
+    pub sessions: usize,
+    pub diaries: usize,
+    pub awards: Vec<AwardRow>,
+    pub note: &'static str,
 }
 
 /// The card's reader. It starts on the first `trainer` request and stops
@@ -76,6 +99,9 @@ pub struct Trainer {
     board: Option<Board>,
     snapshot: Option<Snapshot>,
     preview: bool,
+    /// The playtest referee's reader, beside the trainer reader.
+    playtest_board: Option<Board>,
+    playtest_snapshot: Option<Snapshot>,
 }
 
 fn gateway_link(event_id: &str) -> String {
@@ -85,6 +111,19 @@ fn gateway_link(event_id: &str) -> String {
     match nostr::nip19::encode("note", &bytes) {
         Ok(note) => format!("https://njump.me/{note}"),
         Err(_) => format!("https://njump.me/{event_id}"),
+    }
+}
+
+fn row(a: ::verse::xp::CardAward) -> AwardRow {
+    AwardRow {
+        link: gateway_link(&a.award),
+        title: a.title,
+        quest: a.quest,
+        season: a.season,
+        rule: a.rule,
+        role: a.role,
+        xp: a.xp,
+        award: a.award,
     }
 }
 
@@ -98,6 +137,66 @@ impl Trainer {
     /// The app left the foreground: close the relay connection.
     pub fn pause(&mut self) {
         self.board = None;
+        self.playtest_board = None;
+    }
+
+    /// The playtest card for `public_hex`: read from the playtest referee
+    /// when its key is published, or the labeled fixture in a preview.
+    fn playtest(
+        &mut self,
+        public_hex: &str,
+        signer: &nostr::domain::RelaySigner,
+    ) -> PlaytestSection {
+        let trust = ::verse::xp::playtest_trust();
+        if self.preview && self.playtest_snapshot.is_none() {
+            let referee = ::verse::xp::fixture::signer(0x91a7_7e57);
+            let events = ::verse::xp::fixture::playtest_events(&referee, signer, unix_now());
+            let trust = ::verse::xp::XpTrust {
+                referees: std::collections::BTreeSet::from([referee.pubkey().to_owned()]),
+                runners: std::collections::BTreeSet::new(),
+            };
+            self.playtest_snapshot = Some(::verse::xp::snapshot(&events, &trust));
+        }
+        let state = if self.preview {
+            "preview"
+        } else if let Some(trust) = trust.clone() {
+            let board = self.playtest_board.get_or_insert_with(|| {
+                Board::start_with(
+                    ::verse::session::PUBLIC_RELAY,
+                    trust,
+                    None,
+                    Some(signer.clone()),
+                )
+            });
+            board.tick();
+            if let Some(snapshot) = board.snapshot.take() {
+                self.playtest_snapshot = Some(snapshot);
+            }
+            match (&self.playtest_snapshot, board.connected) {
+                (Some(_), _) => "ready",
+                (None, true) => "reading",
+                (None, false) => "connecting",
+            }
+        } else {
+            "unpublished"
+        };
+        let empty = Snapshot::default();
+        let snapshot = self.playtest_snapshot.as_ref().unwrap_or(&empty);
+        let card = ::verse::xp::playtest_card(snapshot, &[public_hex.to_owned()]);
+        PlaytestSection {
+            state,
+            referee_npub: ::verse::xp::PLAYTEST_REFEREE
+                .and_then(|k| k.parse::<secp256k1::XOnlyPublicKey>().ok())
+                .map(|k| nostr::nip19::encode_npub(&k.serialize())),
+            xp: card.xp,
+            titles: card.titles,
+            accepted_reports: card.accepted_reports,
+            fixes_verified: card.fixes_verified,
+            sessions: card.sessions,
+            diaries: card.diaries,
+            awards: card.awards.into_iter().map(row).collect(),
+            note: PLAYTEST_NOTE,
+        }
     }
 
     /// Answers a `trainer` request for the world key `secret_hex`.
@@ -138,7 +237,7 @@ impl Trainer {
                     ::verse::session::PUBLIC_RELAY,
                     ::verse::xp::openagents_trust(),
                     None,
-                    Some(signer),
+                    Some(signer.clone()),
                 )
             });
             board.tick();
@@ -169,8 +268,10 @@ impl Trainer {
                     && !taken.contains(q.address.as_str())
             })
             .count();
+        let playtest = self.playtest(&public_hex, &signer);
         Ok(TrainerPacket {
             schema: "openagents.trainer.v1",
+            playtest,
             npub: nostr::nip19::encode_npub(&key.serialize()),
             tag: public_hex[..8].to_owned(),
             public_hex,
@@ -186,20 +287,7 @@ impl Trainer {
             next_level_at: card.next_level_at,
             to_next: card.to_next,
             titles: card.titles,
-            awards: card
-                .awards
-                .into_iter()
-                .map(|a| AwardRow {
-                    link: gateway_link(&a.award),
-                    title: a.title,
-                    quest: a.quest,
-                    season: a.season,
-                    rule: a.rule,
-                    role: a.role,
-                    xp: a.xp,
-                    award: a.award,
-                })
-                .collect(),
+            awards: card.awards.into_iter().map(row).collect(),
             open_quests,
             note: NOTE,
             nsec: reveal.then(|| nostr::nip19::encode_nsec(&secret.secret_bytes())),
@@ -233,6 +321,29 @@ mod tests {
         assert!(packet.note.contains("can't be spent"));
         let json = serde_json::to_string(&packet).unwrap();
         assert!(!json.contains(WORLD) && !json.contains("nsec1"));
+    }
+
+    #[test]
+    fn playtest_xp_shows_beside_the_trainer_level_and_never_in_it() {
+        let mut trainer = Trainer::default();
+        let packet = trainer.packet(WORLD, false, true).unwrap();
+        // The tutorial fixture's 300 trainer XP is level 3; the playtest
+        // fixture's 55 XP is its own number and leaves the level alone.
+        assert_eq!((packet.xp, packet.level), (300, 3));
+        let playtest = &packet.playtest;
+        assert_eq!(playtest.state, "preview");
+        assert_eq!(playtest.xp, 55);
+        assert_eq!(
+            (
+                playtest.accepted_reports,
+                playtest.fixes_verified,
+                playtest.sessions
+            ),
+            (1, 1, 1)
+        );
+        assert!(playtest.titles.iter().any(|t| t == "playtester"));
+        assert!(packet.awards.iter().all(|a| a.rule != "playtest"));
+        assert!(playtest.awards.iter().all(|a| a.rule == "playtest"));
     }
 
     #[test]
