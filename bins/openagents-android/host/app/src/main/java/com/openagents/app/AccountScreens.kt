@@ -245,7 +245,9 @@ internal class AccountScreens(private val activity: MainActivity, private val br
         for (release in account?.optJSONArray("changelog")?.objects() ?: emptyList()) {
             val heading = activity.row().apply {
                 gravity = Gravity.BOTTOM; setPadding(activity.dp(16), activity.dp(20), 0, 0)
-                addView(activity.label(release.getString("version"), 17f, bold = true))
+                val build = release.optString("build")
+                val version = release.getString("version")
+                addView(activity.label(if (build.isEmpty()) version else "$version ($build)", 17f, bold = true))
                 addView(activity.label(release.getString("title"), 14f, Palette.SECONDARY),
                     LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(10) })
             }
@@ -253,8 +255,16 @@ internal class AccountScreens(private val activity: MainActivity, private val br
             val card = activity.column().apply {
                 background = activity.rounded(Palette.SURFACE, 12f)
                 setPadding(activity.dp(16), activity.dp(4), activity.dp(16), activity.dp(4))
+                val whatToTest = release.optString("what_to_test")
+                if (whatToTest.isNotEmpty()) {
+                    add(activity.column().apply {
+                        setPadding(0, activity.dp(10), 0, activity.dp(10))
+                        add(activity.label("What to test", 16f, bold = true))
+                        add(activity.label(whatToTest, 14f), 2)
+                    })
+                }
                 release.getJSONArray("items").objects().forEachIndexed { index, item ->
-                    if (index > 0) rowDivider()
+                    if (index > 0 || whatToTest.isNotEmpty()) rowDivider()
                     add(activity.column().apply {
                         setPadding(0, activity.dp(10), 0, activity.dp(10))
                         add(activity.label(item.getString("title"), 16f, bold = true))

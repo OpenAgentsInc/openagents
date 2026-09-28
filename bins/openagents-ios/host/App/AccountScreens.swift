@@ -183,7 +183,7 @@ struct AboutDeviceScreen: View {
     }
 }
 
-/// What each release brought, newest first.
+/// What each build brought and what to test in it, newest first.
 struct ChangelogScreen: View {
     @ObservedObject var bridge: MobileBridge
     @State private var releases: [Release] = []
@@ -192,6 +192,13 @@ struct ChangelogScreen: View {
         List {
             ForEach(releases, id: \.self) { release in
                 Section {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("What to test").font(.subheadline.weight(.semibold))
+                        Text(release.what_to_test).font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityIdentifier("changelog-what-to-test")
                     ForEach(release.items, id: \.self) { item in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.title).font(.body.weight(.semibold))
@@ -202,7 +209,7 @@ struct ChangelogScreen: View {
                     }
                 } header: {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(release.version).font(.headline).foregroundStyle(.white)
+                        Text("\(release.version) (\(release.build))").font(.headline).foregroundStyle(.white)
                         Text(release.title)
                         Spacer()
                     }

@@ -11,11 +11,15 @@
 use secp256k1::{Secp256k1, SecretKey};
 use serde::Serialize;
 
-/// One released version and what it brought.
+/// One TestFlight build and what it brought.
 #[derive(Serialize)]
 pub struct Release {
     pub version: &'static str,
+    /// The build number, or the range of builds the entry covers.
+    pub build: &'static str,
     pub title: &'static str,
+    /// Where testers should look in this build: every build has one.
+    pub what_to_test: &'static str,
     pub items: &'static [Item],
 }
 
@@ -26,29 +30,79 @@ pub struct Item {
     pub detail: &'static str,
 }
 
-/// The app's releases, newest first.
-pub const CHANGELOG: &[Release] = &[Release {
-    version: "1.0.0",
-    title: "First release",
-    items: &[
-        Item {
-            title: "Coder launch",
-            detail: "Chat with Coder on your own computers from the Coder tab.",
-        },
-        Item {
-            title: "Verse launch",
-            detail: "Walk Verse's world with other players in the Verse tab.",
-        },
-        Item {
-            title: "Computers",
-            detail: "Add a computer by invitation or over your tailnet, then order work and open its terminal.",
-        },
-        Item {
-            title: "Identity keys",
-            detail: "See this device's npub, and reveal and copy its nsec.",
-        },
-    ],
-}];
+/// The app's builds, newest first. The first entry's build is the one
+/// `bins/openagents-ios/host/project.yml` builds, so every TestFlight build
+/// ships with its own entry and its What to test line.
+pub const CHANGELOG: &[Release] = &[
+    Release {
+        version: "1.0.0",
+        build: "16",
+        title: "Playtesting",
+        what_to_test: "Report something from Account, Report a problem, or long-press the tab bar on any screen, and find it in My reports. Turn on Playtest session in Account, Playtest, move around, and check that the log shows only tabs, screens, and times.",
+        items: &[
+            Item {
+                title: "Report a problem",
+                detail: "Send a private report with the build and screen filled in, and a screenshot only if you choose one. Never from the Wallet or a key screen.",
+            },
+            Item {
+                title: "Playtest session",
+                detail: "An opt-in log of which tab and screen you're on, kept on this phone and attached only to a report you preview.",
+            },
+            Item {
+                title: "My reports",
+                detail: "Every report you filed, with the code to quote.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
+        build: "15",
+        title: "Scanning, paying, and long chats",
+        what_to_test: "Scan a Lightning invoice or address with the Wallet's scanner and pay a tiny amount. Open a long Coder chat and scroll it. Walk the Grid with the look stick.",
+        items: &[
+            Item {
+                title: "Wallet scanner",
+                detail: "The scanner reads payment codes, not only Coder invitations.",
+            },
+            Item {
+                title: "Lightning addresses",
+                detail: "Pay Lightning addresses and LNURL codes within the recipient's limits.",
+            },
+            Item {
+                title: "Long chats",
+                detail: "A chat's rows are laid out from Rust, so long chats open and scroll faster.",
+            },
+            Item {
+                title: "Look stick",
+                detail: "The Grid's look stick turns at a gentler speed.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
+        build: "1–14",
+        title: "First release",
+        what_to_test: "Open the app with no help and say what it's for. Walk the Grid and push the ball, open the Gym's RESULTS board, chat with Coder on your own computer, and send a tiny Wallet payment.",
+        items: &[
+            Item {
+                title: "Coder launch",
+                detail: "Chat with Coder on your own computers from the Coder tab.",
+            },
+            Item {
+                title: "Verse launch",
+                detail: "Walk Verse's world with other players in the Verse tab.",
+            },
+            Item {
+                title: "Computers",
+                detail: "Add a computer by invitation or over your tailnet, then order work and open its terminal.",
+            },
+            Item {
+                title: "Identity keys",
+                detail: "See this device's npub, and reveal and copy its nsec.",
+            },
+        ],
+    },
+];
 
 /// The answer to an `account` request.
 #[derive(Serialize)]
@@ -170,12 +224,24 @@ mod tests {
     }
 
     #[test]
-    fn the_changelog_starts_with_the_first_release() {
-        let first = &CHANGELOG[0];
-        assert_eq!(first.version, "1.0.0");
+    fn every_build_has_a_changelog_entry_with_what_to_test() {
+        // The newest entry is the build the iOS project makes.
+        let project = include_str!("../../../bins/openagents-ios/host/project.yml");
+        let newest = &CHANGELOG[0];
+        assert!(
+            project.contains(&format!("CURRENT_PROJECT_VERSION: {}\n", newest.build)),
+            "add a Changelog entry for the build in project.yml"
+        );
+        for release in CHANGELOG {
+            assert!(!release.what_to_test.trim().is_empty(), "{}", release.build);
+            assert!(!release.items.is_empty());
+        }
+        let first = CHANGELOG.last().expect("first release");
         let titles: Vec<&str> = first.items.iter().map(|item| item.title).collect();
         assert!(titles.contains(&"Coder launch") && titles.contains(&"Verse launch"));
         let (mut app, _dir) = app();
-        assert_eq!(account(&mut app, false)["changelog"][0]["version"], "1.0.0");
+        let packet = account(&mut app, false);
+        assert_eq!(packet["changelog"][0]["build"], newest.build);
+        assert!(packet["changelog"][0]["what_to_test"].is_string());
     }
 }

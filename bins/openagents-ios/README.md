@@ -147,11 +147,22 @@ backup. Anyone with the nsec can act as this device on your computers.
 **About this device** shows the same public key in both forms and the app's
 version.
 
-**Changelog** lists what each release brought, from Rust
-(`crates/openagents-mobile/src/account.rs`).
+**Changelog** lists what each TestFlight build brought and a **What to
+test** line for it, from Rust (`crates/openagents-mobile/src/account.rs`).
+Every build gets an entry: when you raise `CURRENT_PROJECT_VERSION` in
+`host/project.yml`, add the entry for that build first; the test
+`every_build_has_a_changelog_entry_with_what_to_test` fails until you do.
+
+**Playtest** (Account) holds the playtest card, the opt-in **Playtest
+session** log, **Report a problem**, and **My reports**; a long press on the
+tab bar also opens **Report a problem** for the screen on view
+(`crates/openagents-mobile/src/playtest.rs`, `host/App/Playtest.swift`,
+[playtesting](../../docs/game/playtesting.md)). `--report` opens the report
+form at launch, and `--playtest-session` turns the session on, in simulator
+builds.
 
 In simulator builds, `--tab account --account-route
-computers|tailnet|identity|device|changelog` opens a screen directly, and
+computers|tailnet|identity|device|changelog|playtest|reports` opens a screen directly, and
 `--identity-script warn|reveal` shows the reveal warning or reveals the nsec
 without taps. Launching with
 `SIMCTL_CHILD_OPENAGENTS_COMPUTERS_FIXTURE=1` draws Computers from Coder's

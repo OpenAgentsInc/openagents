@@ -108,14 +108,16 @@ struct WalletFilePacket: Decodable {
 
 struct WalletExportError: Error { let message: String }
 
-/// One released version and what it brought.
+/// One TestFlight build, what it brought, and where to test it.
 struct Release: Decodable, Hashable {
     struct Item: Decodable, Hashable {
         let title: String
         let detail: String
     }
     let version: String
+    let build: String
     let title: String
+    let what_to_test: String
     let items: [Item]
 }
 
