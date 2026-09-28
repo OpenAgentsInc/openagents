@@ -3,31 +3,35 @@ import SwiftUI
 
 @main
 struct OpenAgentsApp: App {
+    @StateObject private var bridge = MobileBridge()
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
-            HomeScreen()
+            HomeScreen(bridge: bridge)
+                .onChange(of: scenePhase, initial: true) { _, phase in
+                    if phase == .active { bridge.refresh() }
+                }
         }
     }
 }
 
 struct HomeScreen: View {
-    private let view: NativeView? = {
-        let buffer = openagents_mobile_home()
-        defer { openagents_mobile_buffer_free(buffer) }
-        guard let data = buffer.data, buffer.len > 0 else { return nil }
-        return try? JSONDecoder().decode(NativeView.self, from: Data(bytes: data, count: buffer.len))
-    }()
+    @ObservedObject var bridge: MobileBridge
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
-            if let view {
+            if let view = bridge.view {
                 NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
-                               followChanged: nil, activate: { _ in })
-                    .fixedSize(horizontal: true, vertical: false)
-            } else {
-                Text("OpenAgents could not load this screen.").foregroundStyle(.white)
+                               followChanged: nil, activate: bridge.activate)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            if bridge.busy {
+                ProgressView().tint(.white).padding()
+                    .accessibilityLabel("Checking your tailnet")
             }
         }
+        .tint(.white)
     }
 }

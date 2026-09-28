@@ -12,9 +12,14 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 rust-native = { path = "../rust-native" }
 serde = { version = "1", features = ["derive"] }
-
-[dev-dependencies]
 serde_json = "1"
+# Tailscale's Rust control client. The app signs in as its own tailnet node
+# and reads one netmap to list the tailnet's devices; it carries no traffic.
+ts_control = "=0.6.1"
+ts_control_serde = "=0.6.1"
+ts_keys = { version = "=0.6.1", features = ["serde"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "io-util"] }
+url = "2"
 
 [lints]
 workspace = true

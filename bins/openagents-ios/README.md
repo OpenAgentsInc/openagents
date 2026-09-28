@@ -7,8 +7,29 @@ crate, and a thin SwiftUI host decodes and renders it. The host shares
 Coder's renderer, [`NativeView.swift`](../coder-ios/host/App/NativeView.swift),
 instead of copying it.
 
-The first screen is a Rust-rendered hello world. The app flow is not built
-yet.
+The home screen lists the devices on your tailnet, with each device's
+name, operating system, tailnet address, and online state.
+
+## Tailnet devices
+
+iOS does not let one app read another app's Tailscale state, and a tailnet
+has no discovery broadcast, so the phone's own Tailscale connection cannot
+list its peers. Instead, the app uses Tailscale's Rust control client,
+[tailscale-rs](https://github.com/tailscale/tailscale-rs) (`ts_control`
+0.6.1), to register as its own tailnet node named `openagents-ios`, then
+reads one netmap from Tailscale's control server. It never joins the data
+plane or carries traffic.
+
+1. On first launch, the control server returns a sign-in URL. The app shows
+   **Connect to a tailnet** and **Sign in with Tailscale**.
+2. The button opens the URL in Safari. After you approve the device, the app
+   reads the netmap and shows the device list.
+3. The node keys stay in the app's Application Support directory, so later
+   launches skip the sign-in until the node key expires.
+
+If the tailnet has no other devices, the app shows **Connect to a tailnet**
+with a **Refresh** button. tailscale-rs is pre-1.0 and unaudited; the app
+uses only its control-plane client.
 
 ## App identity
 
@@ -18,13 +39,13 @@ yet.
 | Bundle identifier | `com.openagents.app` |
 | App Store Connect app | `6748620735` (**OpenAgents**) |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `1.0.0` / `1` |
+| Marketing version and build | `1.0.0` / `2` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Archive signing | Manual, Apple Distribution, `OpenAgents App Store` profile |
 
 The App Store Connect record also holds `0.x` builds from an earlier app on
 this bundle identifier. Build numbers only need to be unique within one
-version, so `1.0.0` starts at build `1`. Raise the build number for every
+version, so `1.0.0` started at build `1`. Build `1` (hello world) is on TestFlight. Raise the build number for every
 upload; set it in `host/project.yml` or with `OPENAGENTS_IOS_BUILD_NUMBER`.
 
 The `OpenAgents App Store` profile uses the same Apple Distribution
