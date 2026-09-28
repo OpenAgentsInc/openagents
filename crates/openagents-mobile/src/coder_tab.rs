@@ -279,7 +279,7 @@ impl CoderTab {
         let view = loop {
             let root = match &self.open {
                 Some(open) => self.chat(open, computers),
-                None => self.home(computers),
+                None => self.home(computers, chats),
             };
             match View::new(self.instance.clone(), self.revision, root).validate() {
                 Ok(view) => break view,
@@ -312,7 +312,7 @@ impl CoderTab {
         )
     }
 
-    fn home(&self, computers: Option<&Computers>) -> Node<Intent> {
+    fn home(&self, computers: Option<&Computers>, chats: &Chats) -> Node<Intent> {
         let mut children = vec![heading("coder-title", "Coder")];
         let chosen = computers.and_then(|c| self.chosen(c));
         let Some((computers, host)) = computers.zip(chosen) else {
@@ -334,7 +334,7 @@ impl CoderTab {
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
-        let rows = tasks(computers.snapshot(), &self.titles);
+        let rows = tasks(computers.snapshot(), &self.titles, chats);
         if rows.is_empty() {
             children.push(status(
                 "coder-none",
@@ -434,7 +434,11 @@ impl CoderTab {
 }
 
 /// One tappable row per task, newest first, from the newest summary of each.
-fn tasks(snapshot: &Snapshot, titles: &BTreeMap<String, String>) -> Vec<Node<Intent>> {
+fn tasks(
+    snapshot: &Snapshot,
+    titles: &BTreeMap<String, String>,
+    chats: &Chats,
+) -> Vec<Node<Intent>> {
     let mut newest: Vec<&ActivitySummary> = vec![];
     for summary in snapshot
         .activity
@@ -458,7 +462,15 @@ fn tasks(snapshot: &Snapshot, titles: &BTreeMap<String, String>) -> Vec<Node<Int
             let label = snapshot
                 .host(&summary.host)
                 .map_or("a computer", |host| host.label.as_str());
-            let title = titles.get(&summary.subject).unwrap_or(&summary.headline);
+            // The first line this device sent, else the transcript's title,
+            // else the host's generic headline.
+            let title = titles.get(&summary.subject).cloned().unwrap_or_else(|| {
+                chats
+                    .coder_chat(&summary.host, &summary.subject)
+                    .map(|(_, _, chat)| chat.title)
+                    .filter(|title| !title.is_empty() && !title.starts_with("Saved "))
+                    .unwrap_or_else(|| summary.headline.clone())
+            });
             button(
                 &format!("task-{}", &summary.subject[..16.min(summary.subject.len())]),
                 &format!(
