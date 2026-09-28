@@ -188,8 +188,16 @@ private extension NativeView {
                 ]))
             case 3:
                 rows.append(message(key, "assistant", [
-                    ["kind": "code", "language": "rust", "text": "let job = queue.lock().pop();\ndrop(guard);\nready.wait();\n"],
+                    // The long line scrolls sideways.
+                    ["kind": "code", "language": "rust", "text": "let job = queue.lock().expect(\"the scheduler queue lock is poisoned\").pop_front().unwrap_or_default();\ndrop(guard);\nready.wait();\n"],
                 ]))
+            case 4 where index % 10 == 9:
+                // A table wider than the screen scrolls sideways.
+                let columns = ["Worker", "Queue", "Waits", "Held for", "Jobs taken", "Stalls", "Notes"]
+                rows.append(message(key, "assistant", [["kind": "table",
+                    "align": columns.map { _ in "none" },
+                    "header": columns.map { [span($0)] },
+                    "rows": (1...3).map { row in columns.map { [span("\($0.lowercased()) \(row)")] } }]]))
             default:
                 rows.append(message(key, "assistant", [["kind": "paragraph", "spans": [
                     span("Short reply \(index).")]]]))

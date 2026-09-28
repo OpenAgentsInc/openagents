@@ -9,6 +9,11 @@
 //! when its content version, the width, the text scale, or its expansion
 //! changes, so a streamed token re-measures one row.
 //!
+//! Every row's display list is kept from layout, and each update publishes an
+//! immutable [`Frame`]: keys, versions, offsets, and display lists. A frame
+//! can be read on any thread while the next update runs on another, so an
+//! adapter can lay out off its UI thread and swap frames when one is ready.
+//!
 //! The semantic contract does not change: applications still emit
 //! `Transcript`, `Message`, `Markdown`, and `Tool` nodes. Layout is an adapter
 //! implementation detail that Rust performs on the adapter's behalf.
@@ -20,7 +25,7 @@ mod measure;
 mod rows;
 pub mod testing;
 
-pub use display::RowDisplay;
+pub use display::{RowDisplay, Scroller};
 pub use measure::{Line, MeasureCache, MeasureRun, Measured, Measurer};
 pub use rows::{EARLIER_KEY, READING_WIDTH, content_band};
 
@@ -41,6 +46,8 @@ pub const EDGE_INSET: f32 = 16.0;
 pub const ROW_GAP: f32 = 18.0;
 /// The most rows one layout holds.
 pub const MAX_ROWS: usize = 20_000;
+/// The most points one text-size curve may name.
+pub const MAX_CURVE_POINTS: usize = 16;
 
 /// The older-rows control as the layout sees it: no intent.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +84,12 @@ pub struct Update {
     pub expanded: Vec<String>,
     #[serde(default)]
     pub earlier: Option<EarlierRow>,
+    /// The reader's text size for each nominal size, as `[nominal, scaled]`
+    /// points, such as Dynamic Type's curve for each text style. Sizes
+    /// between points interpolate; sizes outside keep the nearest point's
+    /// ratio. Empty means every size scales by `scale`.
+    #[serde(default)]
+    pub curve: Vec<[f32; 2]>,
 }
 
 impl Update {
@@ -95,7 +108,78 @@ impl Update {
             rows: children.iter().map(without_intents).collect(),
             expanded: vec![],
             earlier: earlier.as_ref().map(EarlierRow::from),
+            curve: vec![],
         })
+    }
+}
+
+/// How nominal font sizes become drawn sizes: one scale, or a curve.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Typography {
+    scale: f32,
+    /// Sorted by nominal size, without repeats.
+    curve: Vec<(f32, f32)>,
+}
+
+impl Default for Typography {
+    fn default() -> Self {
+        Self {
+            scale: 1.0,
+            curve: vec![],
+        }
+    }
+}
+
+impl Typography {
+    /// Checks a scale and a curve: the scale is 0.5–4, and each point names
+    /// a nominal size of 1–400 points whose scaled size is 0.5–4 times it.
+    pub fn new(scale: f32, curve: &[[f32; 2]]) -> Result<Self, LayoutError> {
+        if !scale.is_finite() || !(0.5..=4.0).contains(&scale) || curve.len() > MAX_CURVE_POINTS {
+            return Err(LayoutError::Geometry);
+        }
+        let mut points = Vec::with_capacity(curve.len());
+        for [nominal, scaled] in curve {
+            if !nominal.is_finite()
+                || !scaled.is_finite()
+                || !(1.0..=400.0).contains(nominal)
+                || !(0.5..=4.0).contains(&(scaled / nominal))
+            {
+                return Err(LayoutError::Geometry);
+            }
+            points.push((*nominal, *scaled));
+        }
+        points.sort_by(|a, b| a.0.total_cmp(&b.0));
+        points.dedup_by(|a, b| a.0 == b.0);
+        Ok(Self {
+            scale,
+            curve: points,
+        })
+    }
+
+    /// The drawn size for a nominal size.
+    pub fn size(&self, nominal: f32) -> f32 {
+        let (Some(first), Some(last)) = (self.curve.first(), self.curve.last()) else {
+            return nominal * self.scale;
+        };
+        if nominal <= first.0 {
+            return nominal * first.1 / first.0;
+        }
+        if nominal >= last.0 {
+            return nominal * last.1 / last.0;
+        }
+        let upper = self.curve.partition_point(|p| p.0 < nominal);
+        let (a, b) = (self.curve[upper - 1], self.curve[upper]);
+        let t = (nominal - a.0) / (b.0 - a.0);
+        a.1 + t * (b.1 - a.1)
+    }
+
+    fn fingerprint(&self) -> u64 {
+        let bits: Vec<(u32, u32)> = self
+            .curve
+            .iter()
+            .map(|(a, b)| (a.to_bits(), b.to_bits()))
+            .collect();
+        hash_of(&(self.scale.to_bits(), bits))
     }
 }
 
@@ -137,7 +221,9 @@ pub enum LayoutError {
 impl fmt::Display for LayoutError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Geometry => f.write_str("layout width or text scale is out of range"),
+            Self::Geometry => {
+                f.write_str("layout width, text scale, or text-size curve is out of range")
+            }
             Self::Limit => f.write_str("transcript exceeds the layout's row bound"),
             Self::DuplicateRow(key) => write!(f, "duplicate transcript row: {key}"),
             Self::UnknownRow(key) => write!(f, "transcript row has no content: {key}"),
@@ -160,22 +246,102 @@ struct Row {
     content: u64,
     expanded: bool,
     height: f32,
-    /// The inputs the height was computed for: content, width and scale
-    /// bits, and expansion.
-    laid: Option<(u64, u32, u32, bool)>,
+    /// The inputs the display was computed for: content, width bits,
+    /// typography, and expansion.
+    laid: Option<(u64, u32, u64, bool)>,
+    /// The display list from the last layout.
+    display: Option<Arc<RowDisplay>>,
+}
+
+/// One published layout: every row's key, version, offset, and display
+/// list. Frames are immutable and can be read on any thread.
+#[derive(Clone, Debug, Default)]
+pub struct Frame {
+    width: f32,
+    keys: Arc<Vec<String>>,
+    index: Arc<HashMap<String, usize>>,
+    /// Each row's top, then the content height.
+    tops: Vec<f32>,
+    rows: Vec<Arc<RowDisplay>>,
+}
+
+impl Frame {
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    /// The content height, including the edge insets.
+    pub fn height(&self) -> f32 {
+        self.tops.last().copied().unwrap_or(2.0 * EDGE_INSET)
+    }
+
+    pub fn width(&self) -> f32 {
+        self.width
+    }
+
+    pub fn placement(&self, index: usize) -> Option<Placement> {
+        let row = self.rows.get(index)?;
+        Some(Placement {
+            index,
+            version: row.version,
+            y: self.tops[index],
+            height: row.height,
+        })
+    }
+
+    /// The row index for a key; the earlier control is `EARLIER_KEY`.
+    pub fn find(&self, key: &str) -> Option<usize> {
+        self.index.get(key).copied()
+    }
+
+    pub fn key(&self, index: usize) -> Option<&str> {
+        self.keys.get(index).map(String::as_str)
+    }
+
+    /// The rows that intersect `y0..y1`, by binary search.
+    pub fn rows_in(&self, y0: f32, y1: f32) -> Range<usize> {
+        rows_in(&self.tops, |i| self.rows[i].height, y0, y1)
+    }
+
+    pub fn display(&self, index: usize) -> Option<&RowDisplay> {
+        self.rows.get(index).map(|row| &**row)
+    }
+}
+
+/// The rows of `tops` (each row's top, then the content height) that
+/// intersect `y0..y1`.
+fn rows_in(tops: &[f32], height: impl Fn(usize) -> f32, y0: f32, y1: f32) -> Range<usize> {
+    let count = tops.len().saturating_sub(1);
+    let first = tops[..count]
+        .partition_point(|top| *top <= y0)
+        .saturating_sub(1);
+    let first = if first < count && tops[first] + height(first) < y0 {
+        first + 1
+    } else {
+        first
+    };
+    let last = tops[..count].partition_point(|top| *top < y1);
+    first.min(last)..last
 }
 
 /// Exact heights and display lists for one transcript. Use one per mounted
 /// transcript, on one thread.
 pub struct TranscriptLayout {
     width: f32,
-    scale: f32,
+    typography: Typography,
     rows: Vec<Row>,
-    index: HashMap<String, usize>,
+    keys: Arc<Vec<String>>,
+    index: Arc<HashMap<String, usize>>,
     /// Each row's top, then the content height.
     tops: Vec<f32>,
     expanded: HashSet<String>,
     cache: MeasureCache,
+    /// The frame for the current state, built when first asked for.
+    frame: Option<Arc<Frame>>,
 }
 
 impl Default for TranscriptLayout {
@@ -188,12 +354,14 @@ impl TranscriptLayout {
     pub fn new() -> Self {
         Self {
             width: 0.0,
-            scale: 1.0,
+            typography: Typography::default(),
             rows: vec![],
-            index: HashMap::new(),
+            keys: Arc::default(),
+            index: Arc::default(),
             tops: vec![2.0 * EDGE_INSET],
             expanded: HashSet::new(),
             cache: MeasureCache::default(),
+            frame: None,
         }
     }
 
@@ -205,13 +373,10 @@ impl TranscriptLayout {
     ) -> Result<Summary, LayoutError> {
         let started = Instant::now();
         let misses = self.cache.misses;
-        if !update.width.is_finite()
-            || !(1.0..=16_384.0).contains(&update.width)
-            || !update.scale.is_finite()
-            || !(0.5..=4.0).contains(&update.scale)
-        {
+        if !update.width.is_finite() || !(1.0..=16_384.0).contains(&update.width) {
             return Err(LayoutError::Geometry);
         }
+        let typography = Typography::new(update.scale, &update.curve)?;
         let expanded: HashSet<String> = update.expanded.into_iter().collect();
         let has_earlier = self.rows.first().is_some_and(|row| row.key == EARLIER_KEY);
         if update.order.is_none() && update.earlier.is_some() == has_earlier {
@@ -220,7 +385,7 @@ impl TranscriptLayout {
                 update.earlier,
                 expanded,
                 update.width,
-                update.scale,
+                typography,
                 measurer,
                 started,
                 misses,
@@ -260,6 +425,7 @@ impl TranscriptLayout {
                     expanded: false,
                     height: 0.0,
                     laid: None,
+                    display: None,
                 },
             });
         }
@@ -281,6 +447,7 @@ impl TranscriptLayout {
                     expanded: open,
                     height: 0.0,
                     laid: None,
+                    display: None,
                 },
                 (None, Some(old)) => Row {
                     expanded: open,
@@ -291,14 +458,16 @@ impl TranscriptLayout {
             rows.push(row);
         }
         self.rows = rows;
-        self.index = self
-            .rows
-            .iter()
-            .enumerate()
-            .map(|(i, row)| (row.key.clone(), i))
-            .collect();
+        let keys: Vec<String> = self.rows.iter().map(|row| row.key.clone()).collect();
+        self.index = Arc::new(
+            keys.iter()
+                .enumerate()
+                .map(|(i, key)| (key.clone(), i))
+                .collect(),
+        );
+        self.keys = Arc::new(keys);
         self.expanded = expanded;
-        Ok(self.relayout(update.width, update.scale, measurer, started, misses))
+        Ok(self.relayout(update.width, typography, measurer, started, misses))
     }
 
     /// The streaming path: the order is unchanged, so changed rows are
@@ -310,7 +479,7 @@ impl TranscriptLayout {
         earlier: Option<EarlierRow>,
         expanded: HashSet<String>,
         width: f32,
-        scale: f32,
+        typography: Typography,
         measurer: &mut dyn Measurer,
         started: Instant,
         misses: u64,
@@ -345,25 +514,30 @@ impl TranscriptLayout {
             }
             self.expanded = expanded;
         }
-        Ok(self.relayout(width, scale, measurer, started, misses))
+        Ok(self.relayout(width, typography, measurer, started, misses))
     }
 
     /// Lays out every row whose inputs changed, then recomputes offsets.
     fn relayout(
         &mut self,
         width: f32,
-        scale: f32,
+        typography: Typography,
         measurer: &mut dyn Measurer,
         started: Instant,
         misses: u64,
     ) -> Summary {
         self.width = width;
-        self.scale = scale;
+        let fingerprint = typography.fingerprint();
+        self.typography = typography;
+        self.frame = None;
         let mut relaid = 0;
         for row in &mut self.rows {
-            let inputs = (row.content, width.to_bits(), scale.to_bits(), row.expanded);
+            let inputs = (row.content, width.to_bits(), fingerprint, row.expanded);
             if row.laid != Some(inputs) {
-                row.height = lay(row, width, scale, &mut self.cache, measurer).height;
+                let mut display = lay(row, width, &self.typography, &mut self.cache, measurer);
+                display.version = hash_of(&inputs);
+                row.height = display.height;
+                row.display = Some(Arc::new(display));
                 row.laid = Some(inputs);
                 relaid += 1;
             }
@@ -419,7 +593,7 @@ impl TranscriptLayout {
         let row = self.rows.get(index)?;
         Some(Placement {
             index,
-            version: paint_version(row, self.width, self.scale),
+            version: row.display.as_ref().map_or(0, |d| d.version),
             y: self.tops[index],
             height: row.height,
         })
@@ -436,29 +610,33 @@ impl TranscriptLayout {
 
     /// The rows that intersect `y0..y1`, by binary search.
     pub fn rows_in(&self, y0: f32, y1: f32) -> Range<usize> {
-        let count = self.rows.len();
-        let first = self.tops[..count]
-            .partition_point(|top| *top <= y0)
-            .saturating_sub(1);
-        let first = if first < count && self.tops[first] + self.rows[first].height < y0 {
-            first + 1
-        } else {
-            first
-        };
-        let last = self.tops[..count].partition_point(|top| *top < y1);
-        first.min(last)..last
+        rows_in(&self.tops, |i| self.rows[i].height, y0, y1)
     }
 
-    /// Paints one row. Measurements come from the cache when the row was laid
-    /// out at this width.
-    pub fn display(&mut self, index: usize, measurer: &mut dyn Measurer) -> Option<RowDisplay> {
-        let row = self.rows.get(index)?;
-        let mut display = lay(row, self.width, self.scale, &mut self.cache, measurer);
-        display.version = paint_version(row, self.width, self.scale);
-        // A platform that answered differently since layout must not move
-        // rows under the reader; the frame keeps the laid-out height.
-        display.height = row.height;
-        Some(display)
+    /// One row's display list, as laid out.
+    pub fn display(&self, index: usize) -> Option<&RowDisplay> {
+        self.rows.get(index)?.display.as_deref()
+    }
+
+    /// The current layout as an immutable frame. Building one after an
+    /// update copies offsets and shares display lists; later calls reuse it.
+    pub fn frame(&mut self) -> Arc<Frame> {
+        if let Some(frame) = &self.frame {
+            return frame.clone();
+        }
+        let frame = Arc::new(Frame {
+            width: self.width,
+            keys: self.keys.clone(),
+            index: self.index.clone(),
+            tops: self.tops.clone(),
+            rows: self
+                .rows
+                .iter()
+                .map(|row| row.display.clone().unwrap_or_default())
+                .collect(),
+        });
+        self.frame = Some(frame.clone());
+        frame
     }
 }
 
@@ -479,14 +657,14 @@ fn checked_rows(rows: Vec<Node<()>>) -> Result<HashMap<String, (Node<()>, u64)>,
 fn lay(
     row: &Row,
     width: f32,
-    scale: f32,
+    typography: &Typography,
     cache: &mut MeasureCache,
     measurer: &mut dyn Measurer,
 ) -> RowDisplay {
     let mut ctx = rows::Ctx {
         measurer,
         cache,
-        scale,
+        typography,
         out: RowDisplay {
             key: row.key.clone(),
             ..RowDisplay::default()
@@ -500,10 +678,6 @@ fn lay(
     };
     ctx.out.height = height;
     ctx.out
-}
-
-fn paint_version(row: &Row, width: f32, scale: f32) -> u64 {
-    hash_of(&(row.content, width.to_bits(), scale.to_bits(), row.expanded))
 }
 
 fn hash_of(value: &impl Hash) -> u64 {

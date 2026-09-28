@@ -103,10 +103,14 @@ Applications still emit the semantic elements above; layout is part of how an
 adapter presents them, not a separate wire contract.
 
 - **Input.** An `Update` carries the viewport width (1–16,384 points), a text
-  scale (0.5–4), the row order (or none, to keep the previous order), the rows
+  scale (0.5–4), an optional text-size curve, the row order (or none, to keep the previous order), the rows
   that are new or changed as intent-free `Node<()>` values, the expanded tool
   keys, and the `earlier` control's label and loading state. Each row passes
   the same checks as a one-node view. A layout holds at most 20,000 rows.
+- **Text sizes.** The curve lists at most 16 `[nominal, scaled]` points, such
+  as Dynamic Type's size for each text style, each 0.5–4 times its nominal
+  size. A size between two points interpolates, and a size outside them keeps
+  the nearest point's ratio. Without a curve, every size scales by `scale`.
 - **Measurement.** Text goes through the adapter's `Measurer`, which breaks a
   styled paragraph into lines and reports each line's UTF-16 range, width,
   ascent, descent, and leading, plus the x offset of each style boundary. The
@@ -115,15 +119,23 @@ adapter presents them, not a separate wire contract.
   display list for a laid-out row, does not measure again.
 - **Frame.** Every row has a key, a content version, an exact height, and a
   cumulative offset. `rows_in(y0, y1)` is a binary search. A row is laid out
-  again only when its content, the width, the text scale, or its expansion
-  changes, so a streamed token lays out one row.
+  again only when its content, the width, the text sizes, or its expansion
+  changes, so a streamed token lays out one row. Each update publishes an
+  immutable `Frame` of keys, versions, offsets, and display lists. A frame can
+  be read on any thread while the next update runs on another, so an adapter
+  lays out off its UI thread and swaps frames when one is ready.
 - **Display lists.** `display(i)` returns what to paint: paragraph texts,
   styles (font size, weight, italic, monospace, a palette role or explicit
   color, opacity, underline, and strikethrough), text runs with UTF-8 and
   UTF-16 ranges, `x`, and baseline, rounded rectangles for bubbles, code
   blocks, quotes, tables, rules, and inline code, inert link rectangles, and
   native widgets (copy, disclosure toggle and chevron, tool state, checkbox,
-  working indicator, spinner, and the earlier control). It also carries the
+  working indicator, spinner, and the earlier control). Code blocks keep their
+  lines, and a code block or table wider than the row becomes a sideways
+  scroller: a clip rectangle, a content width, and the ranges of runs,
+  rectangles, and links that scroll inside it. Lines longer than 8,192 points
+  are truncated, and table columns wrap past 260 points at the default text
+  size. It also carries the
   row's accessibility label, value, hint, and button trait, and the plain text
   a Copy action uses.
 
@@ -135,12 +147,19 @@ the reader drags; resume when a scroll comes to rest, or momentum carries the
 list, within 70 points of the bottom; offer a jump to the bottom; and keep the
 first visible row still on screen when rows are prepended or change above it.
 Tool expansion stays adapter state that the adapter passes to each update.
+Painted text can be selected in place: the adapter hit-tests its runs, draws
+the highlight and handles, and copies the selected text. It may fade in the
+new text of a row that changed without a geometry change, such as a streamed
+reply.
 
 The C interface (`include/rust_native_layout.h`, the `ffi` feature) exposes
 one handle per transcript: create with a measurer callback, update with JSON,
-query placements into a caller array, find a row by key, and fetch a display
-list as JSON. Calls catch panics and bound their input; the measurer runs only
-during update and display calls, on the calling thread.
+take the current frame, and, on the handle or a frame, query placements into a
+caller array, find a row by key, and fetch a row's key or display list as
+JSON. Calls on one handle must not overlap but may come from any thread; a
+frame is reference-counted, outlives later updates, and is released once.
+Calls catch panics and bound their input; the measurer runs only during
+update, on the updating thread.
 
 ## Input requests
 

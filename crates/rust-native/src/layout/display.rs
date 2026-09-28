@@ -197,6 +197,25 @@ pub struct Widget {
     pub kind: WidgetKind,
 }
 
+/// A region that scrolls sideways, such as a code block or a table wider than
+/// the row. The items in its ranges are laid out at their unscrolled
+/// positions in row coordinates; the adapter paints them inside a horizontal
+/// scroller clipped to `x..x + w`, shifted left by its scroll offset, and
+/// leaves them out of the row's own painting.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct Scroller {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    /// The width of the scrolled content, from `x`. Always more than `w`.
+    pub content_w: f32,
+    /// `runs[runs[0]..runs[1]]` scroll with this region.
+    pub runs: [u32; 2],
+    pub rects: [u32; 2],
+    pub links: [u32; 2],
+}
+
 /// A row's accessibility element, from the semantic tree.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Accessibility {
@@ -225,6 +244,9 @@ pub struct RowDisplay {
     pub rects: Vec<Rect>,
     pub links: Vec<Link>,
     pub widgets: Vec<Widget>,
+    /// Regions that scroll sideways. Their items are in the lists above.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub scrollers: Vec<Scroller>,
     pub accessibility: Accessibility,
     /// The message's plain text for a Copy action, if the row is a message.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -249,6 +271,23 @@ impl RowDisplay {
             rects: self.rects.len(),
             links: self.links.len(),
             widgets: self.widgets.len(),
+            scrollers: self.scrollers.len(),
+        }
+    }
+
+    /// Inserts a rectangle behind the ones from `at` on, keeping scroller
+    /// ranges on the rectangles they named.
+    pub(crate) fn insert_rect(&mut self, at: usize, rect: Rect) {
+        self.rects.insert(at, rect);
+        let at = at as u32;
+        for scroller in &mut self.scrollers {
+            let [start, end] = &mut scroller.rects;
+            if *start >= at {
+                *start += 1;
+                *end += 1;
+            } else if *end > at {
+                *end += 1;
+            }
         }
     }
 
@@ -270,6 +309,10 @@ impl RowDisplay {
             widget.x += dx;
             widget.y += dy;
         }
+        for scroller in &mut self.scrollers[mark.scrollers..] {
+            scroller.x += dx;
+            scroller.y += dy;
+        }
     }
 
     /// The rightmost edge of the text runs added since `mark`.
@@ -288,6 +331,7 @@ impl RowDisplay {
         self.rects.truncate(mark.rects);
         self.links.truncate(mark.links);
         self.widgets.truncate(mark.widgets);
+        self.scrollers.truncate(mark.scrollers);
     }
 
     pub(crate) fn has_blocks_since(&self, mark: Mark) -> bool {
@@ -303,4 +347,5 @@ pub(crate) struct Mark {
     pub(crate) rects: usize,
     pub(crate) links: usize,
     pub(crate) widgets: usize,
+    pub(crate) scrollers: usize,
 }

@@ -1,9 +1,10 @@
 //! Lays out one transcript row into a display list. The measurements, sizes,
 //! and spacing here are the transcript's design; adapters only paint them.
 
+use super::Typography;
 use super::display::{
-    Accessibility, ColorRole, Font, Ink, Link, Rect, RowDisplay, Run, TextStyle, Weight, Widget,
-    WidgetKind,
+    Accessibility, ColorRole, Font, Ink, Link, Rect, RowDisplay, Run, Scroller, TextStyle, Weight,
+    Widget, WidgetKind,
 };
 use super::measure::{MeasureCache, MeasureRun, Measurer};
 use crate::markdown::{self, Align, Block, Item, Span};
@@ -18,6 +19,12 @@ pub const EARLIER_KEY: &str = "\u{1}earlier";
 pub const READING_WIDTH: f32 = 720.0;
 /// The smallest side margin.
 pub const SIDE_MARGIN: f32 = 16.0;
+/// The widest a line inside a sideways scroller grows before it is
+/// truncated.
+pub const MAX_SCROLL_WIDTH: f32 = 8_192.0;
+/// The widest a table column grows, at the default text size, before its
+/// cells wrap.
+pub const MAX_COLUMN_WIDTH: f32 = 260.0;
 
 /// The horizontal band a row's content occupies at `width`.
 pub fn content_band(width: f32) -> (f32, f32) {
@@ -89,7 +96,7 @@ impl Para {
 pub(crate) struct Ctx<'a> {
     pub measurer: &'a mut dyn Measurer,
     pub cache: &'a mut MeasureCache,
-    pub scale: f32,
+    pub typography: &'a Typography,
     pub out: RowDisplay,
 }
 
@@ -115,7 +122,7 @@ fn rect(x: f32, y: f32, w: f32, h: f32, radius: f32) -> Rect {
 impl Ctx<'_> {
     fn font(&self, size: f32, weight: Weight, italic: bool, mono: bool) -> Font {
         Font {
-            size: size * self.scale,
+            size: self.typography.size(size),
             weight,
             italic,
             mono,
@@ -343,7 +350,7 @@ impl Ctx<'_> {
                     self.blocks(blocks, x + 12.0, y, (w - 12.0).max(1.0), ink.quieter(), 8.0);
                 let mut bar = rect(x, y, 3.0, height, 1.5);
                 bar.fill = Some(Ink::Role(ColorRole::Border));
-                self.out.rects.insert(mark.rects, bar);
+                self.out.insert_rect(mark.rects, bar);
                 height
             }
             Block::Table {
@@ -459,7 +466,9 @@ impl Ctx<'_> {
         let label = language.filter(|l| !l.is_empty()).unwrap_or("code");
         let label_style = self.style(12.0, Weight::Semibold, SECONDARY);
         let label_para = Para::plain(label, label_style);
-        let copy_w = 72.0;
+        // The header and its Copy control grow with the caption size.
+        let grow = self.typography.size(12.0) / 12.0;
+        let copy_w = (72.0 * grow).min(w / 2.0).ceil();
         let mark = self.out.mark();
         let (label_h, _) = self.para(
             &label_para,
@@ -469,32 +478,44 @@ impl Ctx<'_> {
             0.0,
             AlignX::Start,
         );
-        // Center the label in the 32-point header.
-        self.out.shift(mark, 0.0, ((32.0 - label_h) / 2.0).max(0.0));
+        let header = 32.0f32.max((label_h + 14.0).ceil());
+        self.out
+            .shift(mark, 0.0, ((header - label_h) / 2.0).max(0.0));
         self.widget(
             x + w - 8.0 - copy_w,
             y,
             copy_w,
-            32.0,
+            header,
             WidgetKind::Copy {
                 text: text.strip_suffix('\n').unwrap_or(text).to_owned(),
             },
         );
-        let mut rule = rect(x, y + 32.0, w, 1.0, 0.0);
+        let mut rule = rect(x, y + header, w, 1.0, 0.0);
         rule.fill = Some(Ink::Role(ColorRole::Border));
         self.out.rects.push(rule);
         let style = TextStyle::new(self.font(13.0, Weight::Regular, false, true), ink);
         let para = Para::plain(code, style);
-        let (text_h, _) = self.para(
+        // Code keeps its lines; a block wider than the row scrolls sideways.
+        let mark = self.out.mark();
+        let (text_h, widest) = self.para(
             &para,
             x + 12.0,
-            y + 45.0,
-            Wrap::At((w - 24.0).max(1.0)),
+            y + header + 13.0,
+            Wrap::Clip(Some(MAX_SCROLL_WIDTH)),
             3.0,
             AlignX::Start,
         );
-        let height = 33.0 + 24.0 + text_h;
+        let height = header + 1.0 + 24.0 + text_h;
         self.out.rects[frame_index].h = height;
+        // Inside the one-point border, below the header rule.
+        self.scroller(
+            mark,
+            x + 1.0,
+            y + header + 1.0,
+            w - 2.0,
+            height - header - 2.0,
+            widest.ceil() + 23.0,
+        );
         height
     }
 
@@ -538,8 +559,17 @@ impl Ctx<'_> {
                 *width = width.max(self.natural(&para) + 20.0);
             }
         }
-        let widths = fit_columns(&natural, w);
+        // Columns wrap at a readable width; a table still wider than the row
+        // scrolls sideways.
+        let most = MAX_COLUMN_WIDTH * self.typography.size(15.0) / 15.0;
+        let capped: Vec<f32> = natural.iter().map(|n| n.min(most)).collect();
+        let widths = if capped.iter().sum::<f32>() <= w {
+            fit_columns(&natural, w)
+        } else {
+            capped
+        };
         let table_w: f32 = widths.iter().sum();
+        let mark = self.out.mark();
         let mut frame = rect(x, y, table_w, 0.0, 8.0);
         frame.fill = Some(Ink::Role(ColorRole::Surface));
         let frame_index = self.out.rects.len();
@@ -578,7 +608,7 @@ impl Ctx<'_> {
                 let mut raised = rect(x, top, table_w, height, 0.0);
                 raised.radii = [8.0, 8.0, 0.0, 0.0];
                 raised.fill = Some(Ink::Role(ColorRole::Raised));
-                self.out.rects.insert(background, raised);
+                self.out.insert_rect(background, raised);
             }
             top += height;
         }
@@ -587,7 +617,35 @@ impl Ctx<'_> {
         let mut border = rect(x, y, table_w, height, 8.0);
         border.stroke = Some(Ink::Role(ColorRole::Border));
         self.out.rects.push(border);
+        self.scroller(mark, x, y, w, height, table_w);
         height
+    }
+
+    /// Makes the items added since `mark` scroll sideways inside
+    /// `x..x + w`, when they are wider than that.
+    fn scroller(
+        &mut self,
+        mark: super::display::Mark,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        content_w: f32,
+    ) {
+        if content_w <= w + 0.5 || w < 1.0 || h < 1.0 {
+            return;
+        }
+        let out = &mut self.out;
+        out.scrollers.push(Scroller {
+            x,
+            y,
+            w,
+            h,
+            content_w: content_w.min(MAX_SCROLL_WIDTH + 64.0),
+            runs: [mark.runs as u32, out.runs.len() as u32],
+            rects: [mark.rects as u32, out.rects.len() as u32],
+            links: [mark.links as u32, out.links.len() as u32],
+        });
     }
 
     /// The widest line of `para` without wrapping.
@@ -600,7 +658,7 @@ impl Ctx<'_> {
 
     /// An estimated single-line height for an empty cell.
     fn line_height(&self, size: f32) -> f32 {
-        size * self.scale * 1.2
+        self.typography.size(size) * 1.2
     }
 
     fn node(&mut self, node: &Node<()>, x: f32, y: f32, w: f32, tone: Ink, in_tool: bool) -> f32 {
@@ -724,7 +782,7 @@ impl Ctx<'_> {
                 let mut bubble = rect(x + w - bubble_w, y, bubble_w, content_h + 20.0, 18.0);
                 bubble.radii = [18.0, 18.0, 4.0, 18.0];
                 bubble.fill = Some(Ink::Role(ColorRole::Bubble));
-                self.out.rects.insert(mark.rects, bubble);
+                self.out.insert_rect(mark.rects, bubble);
                 let mut height = content_h + 20.0;
                 if let Some(note) = note {
                     let style = self.style(12.0, Weight::Regular, SECONDARY);

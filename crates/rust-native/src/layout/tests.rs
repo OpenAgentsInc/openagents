@@ -55,6 +55,7 @@ fn update(rows: Vec<Node<()>>, width: f32) -> Update {
         rows,
         expanded: vec![],
         earlier: None,
+        curve: vec![],
     }
 }
 
@@ -100,7 +101,7 @@ fn heights_offsets_and_ranges_are_exact() {
         let placement = layout.placement(index).unwrap();
         assert_eq!(placement.y, y);
         assert!(placement.height >= 1.0 && placement.height.fract() == 0.0);
-        let display = layout.display(index, &mut measurer).unwrap();
+        let display = layout.display(index).unwrap().clone();
         assert_eq!(display.height, placement.height);
         assert_eq!(display.version, placement.version);
         // Everything painted fits inside the row.
@@ -220,7 +221,7 @@ fn prepending_rows_keeps_existing_rows_and_moves_them_down() {
     let moved = layout.placement(layout.find("a2").unwrap()).unwrap();
     assert_eq!(moved.version, anchor.version);
     assert_eq!(moved.y, anchor.y + added + earlier_height + ROW_GAP);
-    let display = layout.display(0, &mut measurer).unwrap();
+    let display = layout.display(0).unwrap().clone();
     assert!(matches!(
         display.widgets.last().unwrap().kind,
         WidgetKind::Earlier { loading: false }
@@ -246,7 +247,7 @@ fn expanding_a_tool_lays_out_only_that_row() {
         .update(update(rows.clone(), 390.0), &mut measurer)
         .unwrap();
     let collapsed = layout.placement(1).unwrap();
-    let display = layout.display(1, &mut measurer).unwrap();
+    let display = layout.display(1).unwrap().clone();
     assert!(display.widgets.iter().any(|w| matches!(
         &w.kind,
         WidgetKind::Toggle { key, expanded: false } if key == "t1"
@@ -262,7 +263,7 @@ fn expanding_a_tool_lays_out_only_that_row() {
     let open = layout.placement(1).unwrap();
     assert!(open.height > collapsed.height);
     assert_ne!(open.version, collapsed.version);
-    let display = layout.display(1, &mut measurer).unwrap();
+    let display = layout.display(1).unwrap().clone();
     assert!(display.texts.iter().any(|t| t.contains("12 passed")));
 }
 
@@ -282,7 +283,7 @@ fn width_changes_relay_every_row_and_measurements_are_cached() {
     assert_eq!(summary.relaid, 12);
     assert!(layout.height() < narrow);
     // The wide reading width caps content at 720 points, centered.
-    let display = layout.display(2, &mut measurer).unwrap();
+    let display = layout.display(2).unwrap().clone();
     assert!(
         display
             .runs
@@ -295,7 +296,7 @@ fn width_changes_relay_every_row_and_measurements_are_cached() {
     assert!(before > calls);
     layout.update(update(rows, 390.0), &mut measurer).unwrap();
     for index in 0..layout.len() {
-        layout.display(index, &mut measurer).unwrap();
+        layout.display(index).unwrap();
     }
     assert_eq!(measurer.calls, before);
 }
@@ -310,7 +311,7 @@ fn user_bubbles_shrink_to_their_text_and_align_trailing() {
             &mut measurer,
         )
         .unwrap();
-    let display = layout.display(0, &mut measurer).unwrap();
+    let display = layout.display(0).unwrap().clone();
     let bubble = &display.rects[0];
     assert_eq!(
         bubble.fill,
@@ -335,7 +336,7 @@ fn runs_carry_utf8_and_utf16_ranges_styles_and_inert_links() {
     layout
         .update(update(vec![row], 390.0), &mut measurer)
         .unwrap();
-    let display = layout.display(0, &mut measurer).unwrap();
+    let display = layout.display(0).unwrap().clone();
     for run in &display.runs {
         let text = &display.texts[run.text as usize];
         let by8 = &text[run.start8 as usize..(run.start8 + run.len8) as usize];
@@ -442,9 +443,208 @@ fn builds_from_a_transcript_node_and_the_fixture() {
     let summary = layout.update(update, &mut measurer).unwrap();
     assert_eq!(summary.count, 6);
     for index in 0..layout.len() {
-        let display = layout.display(index, &mut measurer).unwrap();
+        let display = layout.display(index).unwrap().clone();
         assert!(!display.accessibility.label.is_empty(), "{}", display.key);
     }
+}
+
+#[test]
+fn a_frame_is_a_snapshot_readable_on_another_thread() {
+    fn sendable<T: Send>() {}
+    fn shared<T: Send + Sync>() {}
+    sendable::<TranscriptLayout>();
+    shared::<Frame>();
+    let mut layout = TranscriptLayout::new();
+    let mut measurer = FixedMeasurer::default();
+    let rows = conversation(8);
+    layout
+        .update(update(rows.clone(), 390.0), &mut measurer)
+        .unwrap();
+    let before = layout.frame();
+    assert!(
+        Arc::ptr_eq(&before, &layout.frame()),
+        "an unchanged layout reuses its frame"
+    );
+    let height = before.height();
+    let placement = before.placement(2).unwrap();
+    assert_eq!(placement, layout.placement(2).unwrap());
+    assert_eq!(before.key(2), Some("a2"));
+    assert_eq!(before.find("a2"), Some(2));
+    assert_eq!(before.rows_in(0.0, height), layout.rows_in(0.0, height));
+
+    // Lay out on a worker while this thread keeps reading the old frame.
+    let mut streamed = rows[2].clone();
+    let Element::Message { children, .. } = &mut streamed.element else {
+        unreachable!()
+    };
+    children[0].element = Element::Markdown {
+        blocks: markdown::parse(&format!("{REPLY}\n\n{}", "More streamed text. ".repeat(20))),
+    };
+    let worker = std::thread::spawn(move || {
+        let mut measurer = FixedMeasurer::default();
+        let mut token = update(vec![streamed], 390.0);
+        token.order = None;
+        layout.update(token, &mut measurer).unwrap();
+        (layout.frame(), layout)
+    });
+    let reader = {
+        let frame = before.clone();
+        std::thread::spawn(move || frame.display(2).map(|d| d.version))
+    };
+    let (after, _layout) = worker.join().unwrap();
+    assert_eq!(reader.join().unwrap(), Some(placement.version));
+    assert_eq!(before.height(), height, "a published frame never changes");
+    assert!(after.height() > height);
+    assert_ne!(after.placement(2).unwrap().version, placement.version);
+    assert_eq!(after.placement(1), before.placement(1));
+    assert_eq!(
+        after.display(2).unwrap().height,
+        after.placement(2).unwrap().height
+    );
+}
+
+fn code_row(key: &str, code: &str) -> Node<()> {
+    message(
+        key,
+        MessageRole::Assistant,
+        &format!("```rust\n{code}\n```"),
+    )
+}
+
+#[test]
+fn wide_code_blocks_scroll_sideways_and_keep_their_lines() {
+    let mut layout = TranscriptLayout::new();
+    let mut measurer = FixedMeasurer::default();
+    let long = format!("let value = {};\nshort();", "x + ".repeat(60));
+    layout
+        .update(
+            update(
+                vec![code_row("wide", &long), code_row("narrow", "ok();")],
+                390.0,
+            ),
+            &mut measurer,
+        )
+        .unwrap();
+    let wide = layout.display(0).unwrap();
+    assert_eq!(wide.scrollers.len(), 1);
+    let scroller = &wide.scrollers[0];
+    let (x, w) = content_band(390.0);
+    assert!(scroller.x >= x && scroller.x + scroller.w <= x + w + 0.01);
+    assert!(scroller.content_w > scroller.w + 100.0);
+    // One run per source line: code is not wrapped.
+    let runs = &wide.runs[scroller.runs[0] as usize..scroller.runs[1] as usize];
+    assert_eq!(runs.len(), 2);
+    assert!(runs[0].width > w);
+    for run in runs {
+        assert!(run.baseline > scroller.y && run.baseline < scroller.y + scroller.h);
+    }
+    // The header and its copy control stay outside the scroller.
+    assert!(
+        wide.runs[..scroller.runs[0] as usize]
+            .iter()
+            .any(|r| r.baseline < scroller.y)
+    );
+    assert!(
+        wide.widgets
+            .iter()
+            .any(|w| matches!(w.kind, WidgetKind::Copy { .. }))
+    );
+    assert!(layout.display(1).unwrap().scrollers.is_empty());
+}
+
+#[test]
+fn wide_tables_scroll_and_narrow_ones_fit() {
+    let mut layout = TranscriptLayout::new();
+    let mut measurer = FixedMeasurer::default();
+    let header = (0..8).map(|i| format!("Column {i}")).collect::<Vec<_>>();
+    let wide = format!(
+        "> {}\n> |{}|\n> |{}|",
+        "Quoted.",
+        header.join("|"),
+        header.iter().map(|_| "---").collect::<Vec<_>>().join("|")
+    );
+    layout
+        .update(
+            update(
+                vec![
+                    message(
+                        "wide",
+                        MessageRole::Assistant,
+                        &format!("{wide}\n> |{}|", header.join("|")),
+                    ),
+                    message(
+                        "narrow",
+                        MessageRole::Assistant,
+                        "| a | b |\n|---|---|\n| 1 | 2 |",
+                    ),
+                ],
+                390.0,
+            ),
+            &mut measurer,
+        )
+        .unwrap();
+    let display = layout.display(0).unwrap();
+    assert_eq!(display.scrollers.len(), 1);
+    let scroller = &display.scrollers[0];
+    assert!(scroller.content_w > scroller.w);
+    // The quote bar was inserted before the table; the range still names the
+    // table's own rectangles, from its surface to its border.
+    let rects = &display.rects[scroller.rects[0] as usize..scroller.rects[1] as usize];
+    assert_eq!(
+        rects.first().unwrap().fill,
+        Some(display::Ink::Role(display::ColorRole::Surface))
+    );
+    assert_eq!(
+        rects.last().unwrap().stroke,
+        Some(display::Ink::Role(display::ColorRole::Border))
+    );
+    assert!(
+        display.rects[..scroller.rects[0] as usize]
+            .iter()
+            .any(|r| r.w == 3.0 && r.fill == Some(display::Ink::Role(display::ColorRole::Border)))
+    );
+    let runs = &display.runs[scroller.runs[0] as usize..scroller.runs[1] as usize];
+    assert_eq!(runs.len(), 16, "every cell of the header and the row");
+    assert!(layout.display(1).unwrap().scrollers.is_empty());
+}
+
+#[test]
+fn a_text_size_curve_scales_each_size_and_relays_rows() {
+    let curve = Typography::new(1.0, &[[17.0, 23.0], [12.0, 15.0], [13.0, 16.0]]).unwrap();
+    assert!((curve.size(12.0) - 15.0).abs() < 1e-4);
+    assert!((curve.size(15.0) - (16.0 + 0.5 * 7.0)).abs() < 1e-4);
+    assert!((curve.size(22.0) - 22.0 * 23.0 / 17.0).abs() < 1e-3);
+    assert!((curve.size(6.0) - 6.0 * 15.0 / 12.0).abs() < 1e-4);
+    assert!((Typography::new(1.5, &[]).unwrap().size(10.0) - 15.0).abs() < 1e-4);
+    for bad in [
+        vec![[f32::NAN, 12.0]],
+        vec![[12.0, 60.0]],
+        vec![[0.0, 1.0]],
+        vec![[12.0, 12.0]; MAX_CURVE_POINTS + 1],
+    ] {
+        assert_eq!(Typography::new(1.0, &bad), Err(LayoutError::Geometry));
+    }
+
+    let mut layout = TranscriptLayout::new();
+    let mut measurer = FixedMeasurer::default();
+    let rows = conversation(8);
+    let mut plain = update(rows.clone(), 390.0);
+    layout.update(plain.clone(), &mut measurer).unwrap();
+    let height = layout.height();
+    let body = layout.display(2).unwrap().styles[0].font.size;
+    // Only small text grows: body rows keep their size.
+    plain.order = None;
+    plain.rows = vec![];
+    plain.curve = vec![[12.0, 20.0], [13.0, 21.0], [16.0, 16.0]];
+    let summary = layout.update(plain.clone(), &mut measurer).unwrap();
+    assert_eq!(summary.relaid, 8);
+    assert!(layout.height() > height);
+    assert_eq!(layout.display(2).unwrap().styles[0].font.size, body);
+    plain.curve.push([22.0, 900.0]);
+    assert_eq!(
+        layout.update(plain, &mut measurer),
+        Err(LayoutError::Geometry)
+    );
 }
 
 /// Layout of 3,000 rows and the cost of one streamed token. Run with
@@ -472,6 +672,8 @@ fn bench() {
         };
         let started = Instant::now();
         let summary = layout.update(next, &mut measurer).unwrap();
+        // Each token publishes a frame, as the adapter asks for one.
+        layout.frame();
         let spent = started.elapsed();
         assert_eq!(summary.relaid, 1);
         worst = worst.max(spent);
@@ -481,15 +683,16 @@ fn bench() {
     let visible = layout.rows_in(layout.height() - 900.0, layout.height());
     let count = visible.len();
     for index in visible {
-        layout.display(index, &mut measurer).unwrap();
+        serde_json::to_vec(layout.display(index).unwrap()).unwrap();
     }
     let display = started.elapsed();
     let started = Instant::now();
     layout.update(update(rows, 430.0), &mut measurer).unwrap();
     let rewidth = started.elapsed();
     println!(
-        "cold layout of {} rows: {:?} ({} measurements); streamed token: mean {:?}, worst {:?}; \
-         {count} visible displays: {:?}; width change: {:?}; height {}",
+        "cold layout of {} rows: {:?} ({} measurements); streamed token with its frame: \
+         mean {:?}, worst {:?}; {count} visible displays as JSON: {:?}; width change: {:?}; \
+         height {}",
         summary.count,
         cold,
         summary.measured,
@@ -635,6 +838,73 @@ mod ffi {
         assert!(empty.data.is_null());
         unsafe { rust_native_layout_destroy(handle) };
         assert!(calls > 0);
+    }
+
+    #[test]
+    fn frames_outlive_updates_and_answer_on_their_own() {
+        let mut calls = 0usize;
+        let handle = unsafe {
+            rust_native_layout_create(&mut calls as *mut usize as *mut c_void, Some(fixed))
+        };
+        let rows = conversation(12);
+        let request = serde_json::to_vec(&serde_json::json!({
+            "width": 390.0,
+            "scale": 1.0,
+            "order": rows.iter().map(|r| r.key.clone()).collect::<Vec<_>>(),
+            "rows": rows,
+            "curve": [[12.0, 13.0], [17.0, 18.0]],
+        }))
+        .unwrap();
+        json(unsafe { rust_native_layout_update(handle, request.as_ptr(), request.len()) });
+        let frame = unsafe { rust_native_layout_frame(handle) };
+        assert!(!frame.is_null());
+        assert_eq!(unsafe { rust_native_frame_count(frame) }, 12);
+        let height = unsafe { rust_native_frame_height(frame) };
+        assert_eq!(height, unsafe { rust_native_layout_height(handle) });
+
+        // Drop every row but one; the old frame still answers as it was.
+        let request = serde_json::to_vec(&serde_json::json!({
+            "width": 390.0, "scale": 1.0, "order": ["u0"],
+        }))
+        .unwrap();
+        let summary =
+            json(unsafe { rust_native_layout_update(handle, request.as_ptr(), request.len()) });
+        assert_eq!(summary["count"], 1);
+        unsafe { rust_native_layout_destroy(handle) };
+
+        let mut out = [RustNativeRowPlacement::default(); 32];
+        let count = unsafe { rust_native_frame_rows(frame, 0.0, height, out.as_mut_ptr(), 32) };
+        assert_eq!(count, 12);
+        let key = unsafe { rust_native_frame_key(frame, 5) };
+        let bytes = unsafe { std::slice::from_raw_parts(key.data, key.len) }.to_vec();
+        unsafe { rust_native_layout_buffer_free(key) };
+        assert_eq!(bytes, b"t5");
+        let mut found = RustNativeRowPlacement::default();
+        assert_eq!(
+            unsafe { rust_native_frame_find(frame, b"t5".as_ptr(), 2, &mut found) },
+            1
+        );
+        assert_eq!(found.index, 5);
+        assert_eq!(found.version, out[5].version);
+        let display = json(unsafe { rust_native_frame_display(frame, 5) });
+        assert_eq!(display["key"], "t5");
+        assert!(
+            unsafe { rust_native_frame_display(frame, 12) }
+                .data
+                .is_null()
+        );
+        assert!(unsafe { rust_native_frame_key(frame, 12) }.data.is_null());
+        unsafe { rust_native_frame_release(frame) };
+
+        // A null frame answers nothing.
+        let none = std::ptr::null();
+        assert_eq!(unsafe { rust_native_frame_count(none) }, 0);
+        assert_eq!(
+            unsafe { rust_native_frame_rows(none, 0.0, 1.0, out.as_mut_ptr(), 1) },
+            0
+        );
+        assert!(unsafe { rust_native_frame_display(none, 0) }.data.is_null());
+        unsafe { rust_native_frame_release(none) };
     }
 
     fn ptr_or_null() -> *const u8 {

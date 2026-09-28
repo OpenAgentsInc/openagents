@@ -71,11 +71,15 @@ subsequent work.
 The core also lays out transcripts. For a `Transcript`, Rust computes every
 row's exact height, cumulative offset, and display list (text runs with
 positions, rectangles, inert link rectangles, and native widgets) from the
-semantic rows, the viewport width, and the text scale. The adapter measures
-text for Rust through a platform callback (CoreText on iOS), paints the runs
-at Rust's positions, and owns scrolling, gestures, native widgets, and
-accessibility elements. Rows are pulled by visible range, and a streamed token
-lays out one row. The application's view contract is unchanged. The
+semantic rows, the viewport width, and the text sizes (a scale, or a curve
+per text style). Layout runs on a worker thread and publishes immutable frames
+that the UI thread reads, so a cold layout of thousands of rows never blocks
+scrolling. The adapter measures text for Rust through a platform callback
+(CoreText on iOS), paints the runs at Rust's positions, scrolls wide code
+blocks and tables sideways where Rust marks them, and owns scrolling,
+in-place text selection, gestures, native widgets, and accessibility
+elements. Rows are pulled by visible range, and a streamed token lays out one
+row. The application's view contract is unchanged. The
 [view specification](../../../crates/rust-native/docs/spec.md#transcript-layout)
 records the details.
 

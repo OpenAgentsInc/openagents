@@ -107,9 +107,11 @@ let nativeLayoutMeasure: RustNativeMeasure = { _, text, textLength, runs, runCou
 
 // MARK: - Rust layout handle
 
-/// One transcript's Rust layout. Calls stay on the main thread.
-@MainActor
-final class NativeTranscriptLayout {
+/// One transcript's Rust layout. Updates are encoded and laid out in order on
+/// a serial worker queue, so a cold layout of thousands of rows never blocks
+/// the main thread. Each finished update hands the main thread an immutable
+/// frame; the view keeps painting the previous frame until then.
+final class NativeTranscriptLayout: @unchecked Sendable {
     struct Summary: Decodable {
         let count: Int
         let height: CGFloat
@@ -118,42 +120,87 @@ final class NativeTranscriptLayout {
         let micros: Int
     }
 
+    /// What one update produced. `frame` is nil when Rust refused it.
+    struct Outcome {
+        let summary: Summary?
+        let frame: NativeTranscriptFrame?
+        /// Seconds spent encoding the rows, and in the whole update.
+        let encode: Double
+        let total: Double
+    }
+
     private let handle: UnsafeMutableRawPointer
+    private let queue = DispatchQueue(label: "com.openagents.transcript-layout", qos: .userInitiated)
 
     init?() {
         guard let handle = rust_native_layout_create(nil, nativeLayoutMeasure) else { return nil }
         self.handle = handle
     }
 
-    deinit { rust_native_layout_destroy(handle) }
+    deinit {
+        // Pending updates retain the layout, so none is running now.
+        rust_native_layout_destroy(handle)
+    }
 
-    private static func take(_ buffer: RustNativeBuffer) -> Data? {
+    static func take(_ buffer: RustNativeBuffer) -> Data? {
         guard let data = buffer.data, buffer.len > 0 else { return nil }
         let bytes = Data(bytes: data, count: buffer.len)
         rust_native_layout_buffer_free(buffer)
         return bytes
     }
 
-    func update(_ request: Data) -> Summary? {
-        let reply = request.withUnsafeBytes { bytes in
-            rust_native_layout_update(handle, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
+    /// Lays out `request` on the worker queue and calls `done` on the main
+    /// queue.
+    func update(_ request: NativeLayoutUpdate, done: @escaping @MainActor (Outcome) -> Void) {
+        queue.async {
+            let started = CACurrentMediaTime()
+            var summary: Summary?
+            var frame: NativeTranscriptFrame?
+            let data = try? JSONEncoder().encode(request)
+            let encoded = CACurrentMediaTime()
+            if let data {
+                let reply = data.withUnsafeBytes { bytes in
+                    rust_native_layout_update(self.handle, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
+                }
+                if let reply = Self.take(reply) {
+                    summary = try? JSONDecoder().decode(Summary.self, from: reply)
+                    #if DEBUG || targetEnvironment(simulator)
+                    if summary == nil {
+                        print("transcript layout refused an update: \(String(decoding: reply, as: UTF8.self))")
+                    }
+                    #endif
+                }
+                if summary != nil, let raw = rust_native_layout_frame(self.handle) {
+                    frame = NativeTranscriptFrame(raw)
+                }
+            }
+            let result = Outcome(summary: summary, frame: frame, encode: encoded - started,
+                                total: CACurrentMediaTime() - started)
+            DispatchQueue.main.async { MainActor.assumeIsolated { done(result) } }
         }
-        guard let data = Self.take(reply) else { return nil }
-        if let summary = try? JSONDecoder().decode(Summary.self, from: data) { return summary }
-        #if DEBUG || targetEnvironment(simulator)
-        print("transcript layout refused an update: \(String(decoding: data, as: UTF8.self))")
-        #endif
-        return nil
     }
+}
 
-    var height: CGFloat { CGFloat(rust_native_layout_height(handle)) }
+/// One immutable layout from Rust: keys, versions, offsets, and display
+/// lists. Reading it never waits for an update in progress.
+final class NativeTranscriptFrame: @unchecked Sendable {
+    private let raw: UnsafeRawPointer
+    private var keys: [UInt32: String] = [:]
+
+    init(_ raw: UnsafeRawPointer) { self.raw = raw }
+
+    deinit { rust_native_frame_release(raw) }
+
+    var height: CGFloat { CGFloat(rust_native_frame_height(raw)) }
+
+    var count: Int { rust_native_frame_count(raw) }
 
     func rows(_ y0: CGFloat, _ y1: CGFloat) -> [RustNativeRowPlacement] {
         var placements = [RustNativeRowPlacement](repeating: RustNativeRowPlacement(), count: 64)
-        var count = rust_native_layout_rows(handle, Float(y0), Float(y1), &placements, placements.count)
+        var count = rust_native_frame_rows(raw, Float(y0), Float(y1), &placements, placements.count)
         if count > placements.count {
             placements = [RustNativeRowPlacement](repeating: RustNativeRowPlacement(), count: count)
-            count = rust_native_layout_rows(handle, Float(y0), Float(y1), &placements, placements.count)
+            count = rust_native_frame_rows(raw, Float(y0), Float(y1), &placements, placements.count)
         }
         return Array(placements.prefix(min(count, placements.count)))
     }
@@ -161,11 +208,20 @@ final class NativeTranscriptLayout {
     func find(_ key: String) -> RustNativeRowPlacement? {
         var placement = RustNativeRowPlacement()
         let bytes = Array(key.utf8)
-        return rust_native_layout_find(handle, bytes, bytes.count, &placement) == 1 ? placement : nil
+        return rust_native_frame_find(raw, bytes, bytes.count, &placement) == 1 ? placement : nil
+    }
+
+    /// A row index's key; the earlier control is `NativeTranscriptView.earlierKey`.
+    func key(_ index: UInt32) -> String? {
+        if let key = keys[index] { return key }
+        guard let data = NativeTranscriptLayout.take(rust_native_frame_key(raw, index)) else { return nil }
+        let key = String(decoding: data, as: UTF8.self)
+        keys[index] = key
+        return key
     }
 
     func display(_ index: UInt32) -> NativeRowDisplay? {
-        guard let data = Self.take(rust_native_layout_display(handle, index)) else { return nil }
+        guard let data = NativeTranscriptLayout.take(rust_native_frame_display(raw, index)) else { return nil }
         return try? JSONDecoder().decode(NativeRowDisplay.self, from: data)
     }
 }
@@ -259,6 +315,19 @@ struct NativeRowDisplay: Decodable {
         var frame: CGRect { CGRect(x: x, y: y, width: w, height: h) }
     }
 
+    /// A region that scrolls sideways; its items are listed by range.
+    struct Scroller: Decodable {
+        let x: CGFloat
+        let y: CGFloat
+        let w: CGFloat
+        let h: CGFloat
+        let content_w: CGFloat
+        let runs: [Int]
+        let rects: [Int]
+
+        var frame: CGRect { CGRect(x: x, y: y, width: w, height: h) }
+    }
+
     struct Accessibility: Decodable {
         let label: String
         let value: String?
@@ -273,14 +342,27 @@ struct NativeRowDisplay: Decodable {
     let runs: [Run]
     let rects: [Rect]
     let widgets: [Widget]
+    let scrollers: [Scroller]?
     let accessibility: Accessibility
     let copy: String?
+}
+
+/// A place in a row's text: a run and a UTF-16 offset within it.
+struct NativeTextPosition: Comparable {
+    let run: Int
+    let offset: Int
+
+    static func < (a: Self, b: Self) -> Bool { (a.run, a.offset) < (b.run, b.offset) }
 }
 
 /// A display list with its CoreText lines, built once per row version.
 final class NativeRowModel {
     let display: NativeRowDisplay
+    let scrollers: [NativeRowDisplay.Scroller]
     private let lines: [CTLine?]
+    /// The scroller each run and rectangle belongs to, or -1 for the row.
+    private let runScroller: [Int]
+    private let rectScroller: [Int]
 
     init(_ display: NativeRowDisplay) {
         self.display = display
@@ -301,14 +383,31 @@ final class NativeRowModel {
             let ellipsis = CTLineCreateWithAttributedString(NSAttributedString(string: "\u{2026}", attributes: attributes))
             return CTLineCreateTruncatedLine(line, Double(max(0, limit)), .end, ellipsis) ?? line
         }
+        let scrollers = (display.scrollers ?? []).filter {
+            $0.runs.count == 2 && $0.rects.count == 2 && $0.runs[0] <= $0.runs[1] && $0.runs[1] <= display.runs.count
+                && $0.rects[0] <= $0.rects[1] && $0.rects[1] <= display.rects.count && $0.w > 0 && $0.h > 0
+        }
+        self.scrollers = scrollers
+        var runScroller = [Int](repeating: -1, count: display.runs.count)
+        var rectScroller = [Int](repeating: -1, count: display.rects.count)
+        for (index, scroller) in scrollers.enumerated() {
+            for run in scroller.runs[0]..<scroller.runs[1] { runScroller[run] = index }
+            for rect in scroller.rects[0]..<scroller.rects[1] { rectScroller[rect] = index }
+        }
+        self.runScroller = runScroller
+        self.rectScroller = rectScroller
     }
 
-    /// Paints the part of the row inside `band` (row coordinates) into a
-    /// context whose origin is the band's top-left.
-    func draw(_ band: CGRect, in context: CGContext, scale: CGFloat) {
+    var hasText: Bool { lines.contains { $0 != nil } }
+
+    /// Paints the items of `scroller` (-1 for the row itself) inside `band`
+    /// (row coordinates, unscrolled) into a context whose origin is the
+    /// band's top-left corner.
+    func draw(_ band: CGRect, in context: CGContext, scale: CGFloat, scroller: Int = -1) {
         context.saveGState()
-        context.translateBy(x: 0, y: -band.minY)
-        for rect in display.rects where rect.frame.intersects(band.insetBy(dx: 0, dy: -2)) {
+        context.translateBy(x: -band.minX, y: -band.minY)
+        for (index, rect) in display.rects.enumerated()
+            where rectScroller[index] == scroller && rect.frame.intersects(band.insetBy(dx: -2, dy: -2)) {
             let path = Self.path(rect.frame, radii: rect.radii)
             if let fill = rect.fill {
                 context.setFillColor(fill.color().cgColor)
@@ -324,11 +423,12 @@ final class NativeRowModel {
             }
         }
         context.textMatrix = .identity
-        for (index, run) in display.runs.enumerated() {
+        for (index, run) in display.runs.enumerated() where runScroller[index] == scroller {
             guard let line = lines[index], run.style < display.styles.count else { continue }
             let style = display.styles[run.style]
             let size = CGFloat(style.font.size)
-            guard run.baseline + size > band.minY, run.baseline - size * 1.2 < band.maxY else { continue }
+            guard run.baseline + size > band.minY, run.baseline - size * 1.2 < band.maxY,
+                  run.x < band.maxX, run.x + run.width > band.minX else { continue }
             let color = style.ink.color(opacity: style.opacity).cgColor
             context.saveGState()
             context.setFillColor(color)
@@ -348,6 +448,104 @@ final class NativeRowModel {
             }
         }
         context.restoreGState()
+    }
+
+    // MARK: Text positions
+
+    /// The scroller a run belongs to, or -1.
+    func scroller(ofRun run: Int) -> Int { run >= 0 && run < runScroller.count ? runScroller[run] : -1 }
+
+    private func metrics(_ run: Int) -> (ascent: CGFloat, descent: CGFloat) {
+        guard let line = lines[run] else { return (0, 0) }
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        _ = CTLineGetTypographicBounds(line, &ascent, &descent, nil)
+        return (ascent, descent)
+    }
+
+    /// A position's caret, unscrolled: x, and the line's top and bottom.
+    func caret(_ position: NativeTextPosition) -> (x: CGFloat, top: CGFloat, bottom: CGFloat)? {
+        guard position.run >= 0, position.run < lines.count, let line = lines[position.run] else { return nil }
+        let run = display.runs[position.run]
+        let x = run.x + CTLineGetOffsetForStringIndex(line, min(position.offset, run.len16), nil)
+        let (ascent, descent) = metrics(position.run)
+        return (x, run.baseline - ascent, run.baseline + descent)
+    }
+
+    /// The text position nearest `point` among the runs of `scroller`
+    /// (point in unscrolled row coordinates).
+    func position(at point: CGPoint, scroller: Int) -> NativeTextPosition? {
+        var best: (score: CGFloat, run: Int)?
+        for (index, run) in display.runs.enumerated() where runScroller[index] == scroller && lines[index] != nil {
+            let (ascent, descent) = metrics(index)
+            let top = run.baseline - ascent
+            let bottom = run.baseline + descent
+            let dy = point.y < top ? top - point.y : (point.y > bottom ? point.y - bottom : 0)
+            let dx = point.x < run.x ? run.x - point.x : (point.x > run.x + run.width ? point.x - run.x - run.width : 0)
+            let score = dy * 1_000 + dx
+            if best == nil || score < best!.score { best = (score, index) }
+        }
+        guard let index = best?.run, let line = lines[index] else { return nil }
+        let run = display.runs[index]
+        let offset = CTLineGetStringIndexForPosition(line, CGPoint(x: point.x - run.x, y: 0))
+        return NativeTextPosition(run: index, offset: max(0, min(run.len16, offset == kCFNotFound ? 0 : offset)))
+    }
+
+    /// The first and last positions of the row's text.
+    var textBounds: (NativeTextPosition, NativeTextPosition)? {
+        guard let first = lines.firstIndex(where: { $0 != nil }),
+              let last = lines.lastIndex(where: { $0 != nil }) else { return nil }
+        return (NativeTextPosition(run: first, offset: 0),
+                NativeTextPosition(run: last, offset: display.runs[last].len16))
+    }
+
+    /// The selection's highlight rectangles by scroller, unscrolled.
+    func highlights(_ start: NativeTextPosition, _ end: NativeTextPosition) -> [Int: [CGRect]] {
+        var out: [Int: [CGRect]] = [:]
+        guard start < end else { return out }
+        for index in start.run...min(end.run, lines.count - 1) {
+            guard let line = lines[index] else { continue }
+            let run = display.runs[index]
+            let a = index == start.run ? start.offset : 0
+            let b = index == end.run ? end.offset : run.len16
+            guard b > a else { continue }
+            let x0 = CTLineGetOffsetForStringIndex(line, a, nil)
+            let x1 = CTLineGetOffsetForStringIndex(line, b, nil)
+            let (ascent, descent) = metrics(index)
+            out[runScroller[index], default: []].append(
+                CGRect(x: run.x + x0, y: run.baseline - ascent, width: max(1, x1 - x0), height: ascent + descent))
+        }
+        return out
+    }
+
+    /// The selected text. Pieces of one paragraph join with the text between
+    /// them; separate paragraphs join with a tab on one baseline, else a line
+    /// break.
+    func text(_ start: NativeTextPosition, _ end: NativeTextPosition) -> String {
+        guard start < end else { return "" }
+        let texts = display.texts.map { $0 as NSString }
+        var out = ""
+        var previous: (text: Int, end: Int, baseline: CGFloat)?
+        for index in start.run...min(end.run, display.runs.count - 1) where lines[index] != nil {
+            let run = display.runs[index]
+            guard run.text < texts.count else { continue }
+            let a = index == start.run ? start.offset : 0
+            let b = index == end.run ? end.offset : run.len16
+            guard b > a else { continue }
+            let text = texts[run.text]
+            if let previous {
+                if previous.text == run.text, previous.end <= run.start16 + a {
+                    out += text.substring(with: NSRange(location: previous.end, length: run.start16 + a - previous.end))
+                } else {
+                    out += abs(previous.baseline - run.baseline) < 0.5 ? "\t" : "\n"
+                }
+            }
+            let range = NSRange(location: run.start16 + a, length: b - a)
+            guard NSMaxRange(range) <= text.length else { continue }
+            out += text.substring(with: range)
+            previous = (run.text, run.start16 + b, run.baseline)
+        }
+        return out
     }
 
     /// A rounded rectangle with radii: top leading, top trailing, bottom
@@ -379,11 +577,15 @@ final class NativeRowModel {
 
 // MARK: - Row views
 
-/// One horizontal stripe of a row's painting. Tall rows paint in stripes so
-/// no backing store grows with a long message.
+/// One tile of a row's painting, or of a scroller's content. Tall rows and
+/// wide scrollers paint in tiles so no backing store grows with a long
+/// message.
 private final class NativeRowStripe: UIView {
     var model: NativeRowModel?
+    /// The painted region, in unscrolled row coordinates.
     var band: CGRect = .zero
+    /// Which scroller's items this tile paints; -1 is the row itself.
+    var scroller = -1
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -399,42 +601,195 @@ private final class NativeRowStripe: UIView {
     override func draw(_ rect: CGRect) {
         guard let model, let context = UIGraphicsGetCurrentContext() else { return }
         traitCollection.performAsCurrent {
-            model.draw(band, in: context, scale: traitCollection.displayScale)
+            model.draw(band, in: context, scale: traitCollection.displayScale, scroller: scroller)
         }
+    }
+}
+
+/// A code block or table wider than its row: its items scroll sideways and
+/// paint in tiles.
+private final class NativeScrollerView: UIScrollView, UIScrollViewDelegate {
+    static let tile: CGFloat = 512
+
+    let index: Int
+    private(set) var model: NativeRowModel?
+    private var tiles: [Int: NativeRowStripe] = [:]
+    /// The row's visible band, in row coordinates.
+    private var visibleBand: CGRect = .zero
+    let highlight = CAShapeLayer()
+    var scrolled: (() -> Void)?
+
+    init(index: Int) {
+        self.index = index
+        super.init(frame: .zero)
+        delegate = self
+        backgroundColor = .clear
+        showsVerticalScrollIndicator = false
+        alwaysBounceVertical = false
+        isDirectionalLockEnabled = true
+        scrollsToTop = false
+        delaysContentTouches = false
+        highlight.fillColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        layer.addSublayer(highlight)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    func configure(_ model: NativeRowModel, scroller: NativeRowDisplay.Scroller) {
+        if frame != scroller.frame { frame = scroller.frame }
+        let size = CGSize(width: max(scroller.w, scroller.content_w), height: scroller.h)
+        if contentSize != size {
+            contentSize = size
+            if contentOffset.x > size.width - scroller.w { contentOffset.x = max(0, size.width - scroller.w) }
+        }
+        if self.model !== model {
+            self.model = model
+            for tile in tiles.values {
+                tile.model = model
+                tile.setNeedsDisplay()
+            }
+        }
+        retile()
+    }
+
+    func show(_ rowVisible: CGRect) {
+        visibleBand = rowVisible
+        retile()
+    }
+
+    func repaint() { tiles.values.forEach { $0.setNeedsDisplay() } }
+
+    private func retile() {
+        guard let model else { return }
+        let content = CGRect(origin: .zero, size: contentSize)
+        let visible = CGRect(x: contentOffset.x, y: visibleBand.minY - frame.minY,
+                             width: bounds.width, height: visibleBand.height).intersection(content)
+        var needed = Set<Int>()
+        if !visible.isNull, !visible.isEmpty {
+            let columns = Int(floor(visible.minX / Self.tile))...Int(floor(max(visible.minX, visible.maxX - 0.01) / Self.tile))
+            let rows = Int(floor(visible.minY / Self.tile))...Int(floor(max(visible.minY, visible.maxY - 0.01) / Self.tile))
+            for column in columns { for row in rows { needed.insert(column * 4_096 + row) } }
+        }
+        for (key, tile) in tiles where !needed.contains(key) {
+            tile.removeFromSuperview()
+            tiles[key] = nil
+        }
+        for key in needed {
+            let rect = CGRect(x: CGFloat(key / 4_096) * Self.tile, y: CGFloat(key % 4_096) * Self.tile,
+                              width: Self.tile, height: Self.tile).intersection(content)
+            guard !rect.isEmpty else { continue }
+            let tile = tiles[key] ?? {
+                let tile = NativeRowStripe(frame: rect)
+                tile.scroller = index
+                insertSubview(tile, at: 0)
+                tiles[key] = tile
+                return tile
+            }()
+            let band = rect.offsetBy(dx: frame.minX, dy: frame.minY)
+            if tile.frame != rect || tile.band != band || tile.model !== model {
+                tile.frame = rect
+                tile.band = band
+                tile.model = model
+                tile.setNeedsDisplay()
+            }
+        }
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        retile()
+        scrolled?()
+    }
+}
+
+/// A selection handle: a bar the height of the line with a knob above the
+/// start or below the end.
+private final class NativeSelectionHandle: UIView {
+    let start: Bool
+    private let bar = UIView()
+    private let knob = UIView()
+
+    init(start: Bool) {
+        self.start = start
+        super.init(frame: .zero)
+        bar.backgroundColor = .systemBlue
+        knob.backgroundColor = .systemBlue
+        knob.layer.cornerRadius = 5
+        addSubview(bar)
+        addSubview(knob)
+        isAccessibilityElement = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    /// Places the handle at a caret, in its superview's coordinates.
+    func place(x: CGFloat, top: CGFloat, bottom: CGFloat) {
+        // A generous touch target around a two-point bar.
+        frame = CGRect(x: x - 16, y: top - 12, width: 32, height: bottom - top + 24)
+        bar.frame = CGRect(x: 15, y: 12, width: 2, height: bottom - top)
+        knob.frame = CGRect(x: 11, y: start ? 2 : bottom - top + 12, width: 10, height: 10)
     }
 }
 
 /// A painted transcript row with its native widgets.
 @MainActor
-final class NativeRowView: UIView, UIContextMenuInteractionDelegate {
+final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuInteractionDelegate {
     static let stripeHeight: CGFloat = 512
 
     private(set) var key = ""
     private(set) var version: UInt64 = 0
+    /// The layout geometry the row was painted for; see `NativeTranscriptView`.
+    private(set) var epoch = 0
     private(set) var model: NativeRowModel?
     private var stripes: [Int: NativeRowStripe] = [:]
+    private var scrollers: [NativeScrollerView] = []
     private var widgetViews: [UIView] = []
+    private var visibleBand: CGRect = .zero
     var toggle: ((String) -> Void)?
     var loadEarlier: (() -> Void)?
+    /// Called when this row starts a selection, so others clear theirs.
+    var selecting: ((NativeRowView) -> Void)?
+
+    private var selection: (start: NativeTextPosition, end: NativeTextPosition)?
+    /// The selection's highlight, above the painted stripes.
+    private let highlightView = UIView()
+    private let highlight = CAShapeLayer()
+    private let startHandle = NativeSelectionHandle(start: true)
+    private let endHandle = NativeSelectionHandle(start: false)
+    private lazy var editMenu = UIEditMenuInteraction(delegate: self)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
         isAccessibilityElement = true
         addInteraction(UIContextMenuInteraction(delegate: self))
+        addInteraction(editMenu)
+        highlight.fillColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        highlightView.isUserInteractionEnabled = false
+        highlightView.layer.addSublayer(highlight)
+        addSubview(highlightView)
+        for handle in [startHandle, endHandle] {
+            handle.isHidden = true
+            handle.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(dragHandle(_:))))
+            addSubview(handle)
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
-    func apply(_ model: NativeRowModel, version: UInt64) {
+    func apply(_ model: NativeRowModel, version: UInt64, epoch: Int) {
+        clearSelection()
         self.model = model
         self.version = version
+        self.epoch = epoch
         key = model.display.key
         for stripe in stripes.values {
             stripe.model = model
             stripe.setNeedsDisplay()
         }
+        rebuildScrollers()
         rebuildWidgets()
         let access = model.display.accessibility
         accessibilityLabel = access.label
@@ -461,22 +816,29 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate {
 
     /// Clears a recycled row so it keeps no content or callbacks.
     func reset() {
+        clearSelection()
         model = nil
         version = 0
+        epoch = 0
         key = ""
         toggle = nil
         loadEarlier = nil
+        selecting = nil
         stripes.values.forEach { $0.removeFromSuperview() }
         stripes.removeAll()
+        scrollers.forEach { $0.removeFromSuperview() }
+        scrollers.removeAll()
         widgetViews.forEach { $0.removeFromSuperview() }
         widgetViews.removeAll()
         accessibilityLabel = nil
         accessibilityCustomActions = nil
+        layer.removeAnimation(forKey: "stream")
     }
 
     /// Materializes the stripes that intersect `visible` (row coordinates).
     func show(_ visible: CGRect) {
         guard let model else { return }
+        visibleBand = visible
         let height = bounds.height
         let first = max(0, Int(floor(max(0, visible.minY) / Self.stripeHeight)))
         let last = max(first, Int(floor(min(height, max(0, visible.maxY)) / Self.stripeHeight)))
@@ -502,9 +864,34 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate {
                 stripe.setNeedsDisplay()
             }
         }
+        scrollers.forEach { $0.show(visible) }
     }
 
-    func repaint() { stripes.values.forEach { $0.setNeedsDisplay() } }
+    func repaint() {
+        stripes.values.forEach { $0.setNeedsDisplay() }
+        scrollers.forEach { $0.repaint() }
+    }
+
+    private func rebuildScrollers() {
+        guard let model else { return }
+        // Keep existing scrollers, and their offsets, when the row streams.
+        while scrollers.count > model.scrollers.count { scrollers.removeLast().removeFromSuperview() }
+        for (index, scroller) in model.scrollers.enumerated() {
+            let view: NativeScrollerView
+            if index < scrollers.count {
+                view = scrollers[index]
+            } else {
+                view = NativeScrollerView(index: index)
+                view.scrolled = { [weak self] in self?.layoutSelection() }
+                addSubview(view)
+                scrollers.append(view)
+            }
+            view.configure(model, scroller: scroller)
+            view.show(visibleBand)
+        }
+        // Scrollers sit above the stripes and below widgets and handles.
+        for view in scrollers { bringSubviewToFront(view) }
+    }
 
     private func rebuildWidgets() {
         widgetViews.forEach { $0.removeFromSuperview() }
@@ -516,6 +903,8 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate {
             addSubview(view)
             widgetViews.append(view)
         }
+        bringSubviewToFront(startHandle)
+        bringSubviewToFront(endHandle)
     }
 
     private func makeWidget(_ widget: NativeRowDisplay.Widget) -> UIView? {
@@ -588,8 +977,8 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate {
         return false
     }
 
-    // A long press on a message offers Copy and Select Text. The painted text
-    // is not selectable in place; Select Text opens it in a text view.
+    // A long press on a message offers Copy and Select Text. Select Text
+    // selects the painted text in place, with handles to adjust it.
     func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
                                 configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
         guard let copy = model?.display.copy, !copy.isEmpty else { return nil }
@@ -599,53 +988,137 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate {
                     UIPasteboard.general.string = copy
                 },
                 UIAction(title: "Select Text", image: UIImage(systemName: "selection.pin.in.out")) { _ in
-                    self?.presentSelection(copy)
+                    // Let the menu finish dismissing before the edit menu shows.
+                    DispatchQueue.main.async { self?.selectAll(nil) }
                 },
             ])
         }
     }
 
-    private func presentSelection(_ text: String) {
-        var presenter = window?.rootViewController
-        while let next = presenter?.presentedViewController { presenter = next }
-        let controller = UINavigationController(rootViewController: NativeSelectTextController(text: text))
-        if let sheet = controller.sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.prefersGrabberVisible = true
+    // MARK: Selection
+
+    var hasSelection: Bool { selection != nil }
+
+    override var canBecomeFirstResponder: Bool { selection != nil }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        switch action {
+        case #selector(copy(_:)): return selection != nil
+        case #selector(selectAll(_:)): return model?.hasText == true
+        default: return false
         }
-        presenter?.present(controller, animated: true)
-    }
-}
-
-/// A message's text in a selectable text view.
-private final class NativeSelectTextController: UIViewController {
-    private let text: String
-
-    init(text: String) {
-        self.text = text
-        super.init(nibName: nil, bundle: nil)
-        title = "Select Text"
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
+    override func copy(_ sender: Any?) {
+        guard let model, let selection else { return }
+        UIPasteboard.general.string = model.text(selection.start, selection.end)
+    }
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .systemBackground
-        let textView = UITextView(frame: view.bounds)
-        textView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.dataDetectorTypes = []
-        textView.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 16))
-        textView.adjustsFontForContentSizeCategory = true
-        textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
-        textView.text = text
-        textView.accessibilityIdentifier = "transcript-select-text"
-        view.addSubview(textView)
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+    override func selectAll(_ sender: Any?) {
+        guard let bounds = model?.textBounds else { return }
+        select(bounds.0, bounds.1)
+    }
+
+    private func select(_ start: NativeTextPosition, _ end: NativeTextPosition) {
+        selection = start <= end ? (start, end) : (end, start)
+        selecting?(self)
+        layoutSelection()
+        becomeFirstResponder()
+        showMenu()
+    }
+
+    func clearSelection() {
+        guard selection != nil else { return }
+        selection = nil
+        editMenu.dismissMenu()
+        layoutSelection()
+        if isFirstResponder { resignFirstResponder() }
+    }
+
+    private func scrollOffset(_ scroller: Int) -> CGFloat {
+        scroller >= 0 && scroller < scrollers.count ? scrollers[scroller].contentOffset.x : 0
+    }
+
+    /// Draws the highlight and places the handles for the current selection.
+    private func layoutSelection() {
+        guard let model, let selection else {
+            highlight.path = nil
+            scrollers.forEach { $0.highlight.path = nil }
+            startHandle.isHidden = true
+            endHandle.isHidden = true
+            return
+        }
+        let rects = model.highlights(selection.start, selection.end)
+        let path = CGMutablePath()
+        rects[-1]?.forEach { path.addRect($0) }
+        highlightView.frame = bounds
+        highlight.path = path
+        for (index, scroller) in scrollers.enumerated() {
+            let path = CGMutablePath()
+            // Scroller content coordinates start at the scroller's origin.
+            let origin = scroller.frame.origin
+            rects[index]?.forEach { path.addRect($0.offsetBy(dx: -origin.x, dy: -origin.y)) }
+            scroller.highlight.path = path
+        }
+        for (handle, position) in [(startHandle, selection.start), (endHandle, selection.end)] {
+            guard let caret = model.caret(position) else { handle.isHidden = true; continue }
+            let scroller = model.scroller(ofRun: position.run)
+            var x = caret.x - scrollOffset(scroller)
+            if scroller >= 0, scroller < scrollers.count {
+                let frame = scrollers[scroller].frame
+                x = min(max(x, frame.minX), frame.maxX)
+            }
+            handle.place(x: x, top: caret.top, bottom: caret.bottom)
+            handle.isHidden = false
+            bringSubviewToFront(handle)
+        }
+    }
+
+    /// The text position under a point in this view.
+    private func position(at point: CGPoint) -> NativeTextPosition? {
+        guard let model else { return nil }
+        for (index, scroller) in scrollers.enumerated() where scroller.frame.contains(point) {
+            if let found = model.position(at: CGPoint(x: point.x + scroller.contentOffset.x, y: point.y),
+                                          scroller: index) {
+                return found
+            }
+        }
+        return model.position(at: point, scroller: -1)
+    }
+
+    @objc private func dragHandle(_ gesture: UIPanGestureRecognizer) {
+        guard let handle = gesture.view as? NativeSelectionHandle, let selection else { return }
+        switch gesture.state {
+        case .began:
+            editMenu.dismissMenu()
+        case .changed:
+            // Aim at the middle of the line, not the knob.
+            var point = gesture.location(in: self)
+            point.y += handle.start ? 8 : -8
+            guard let position = position(at: point) else { return }
+            if handle.start {
+                self.selection = position <= selection.end ? (position, selection.end) : (selection.end, position)
+            } else {
+                self.selection = position >= selection.start ? (selection.start, position) : (position, selection.start)
+            }
+            layoutSelection()
+        case .ended, .cancelled:
+            showMenu()
+        default:
+            break
+        }
+    }
+
+    private func showMenu() {
+        guard let model, let selection, let caret = model.caret(selection.start) else { return }
+        let point = CGPoint(x: min(max(caret.x - scrollOffset(model.scroller(ofRun: selection.start.run)), 0), bounds.width),
+                            y: caret.top)
+        editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: point))
+    }
+
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration,
+                             suggestedActions: [UIMenuElement]) -> UIMenu? {
+        UIMenu(children: suggestedActions)
     }
 }
 
@@ -729,13 +1202,21 @@ private final class NativeWorkingDots: UIView {
 /// A bottom-anchored conversation painted from Rust's layout. Rows are pulled
 /// by visible range, so only what is on screen (plus overscan) exists.
 @MainActor
-final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
+final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
     /// Matches `rust_native::layout::EARLIER_KEY`.
     static let earlierKey = "\u{1}earlier"
     /// How far beyond the screen rows are prepared.
     private static let overscan: CGFloat = 700
     /// Coming to rest this close to the bottom resumes following.
     private static let followBand: CGFloat = 70
+    /// How long a streamed row's new text takes to fade in.
+    private static let fade: CFTimeInterval = 0.18
+    /// Nominal sizes the layout uses, with the text style whose Dynamic Type
+    /// curve scales each.
+    private static let textStyles: [(CGFloat, UIFont.TextStyle)] = [
+        (12, .caption1), (13, .footnote), (15, .subheadline), (16, .callout), (17, .body), (19, .title3),
+        (22, .title2),
+    ]
 
     var transcriptKey = ""
     var activate: ((String) -> Void)?
@@ -745,20 +1226,31 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
     }
 
     private let layout: NativeTranscriptLayout?
+    /// The frame on screen. It changes only when an update finishes.
+    private var current: NativeTranscriptFrame?
+    /// The geometry the frame on screen was laid out for; it changes with the
+    /// width and the text size, not with content.
+    private var frameEpoch = 0
+    private var epoch = 0
     private var order: [String] = []
     private var nodes: [String: NativeNode] = [:]
     private var earlier: NativeEarlier?
     /// Rows whose current content Rust has not received.
     private var unsent: Set<String> = []
+    // What Rust has received, or will have once the queued update runs.
     private var sentWidth: CGFloat = 0
     private var sentScale: CGFloat = 0
+    private var sentCurve: [[Float]] = []
     private var sentExpanded: Set<String> = []
-    private var sentEarlier: NativeEarlier?
     private var sentOrder: [String] = []
     private var needsSync = true
+    /// One update runs at a time; changes that arrive meanwhile go in the next.
+    private var inFlight = false
+    private var pending = false
     private var rowViews: [String: NativeRowView] = [:]
     private var pool: [NativeRowView] = []
     private var models: [String: (version: UInt64, model: NativeRowModel)] = [:]
+    private weak var selectedRow: NativeRowView?
     private var expansion: AnyCancellable?
     private let bottomButton = UIButton(type: .system)
     private var buttonShown = false
@@ -767,6 +1259,7 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
     #if DEBUG || targetEnvironment(simulator)
     private var bench: NativeTranscriptBench?
     private var prependChecked = false
+    private var selectedOnce = false
     #endif
 
     override init(frame: CGRect) {
@@ -800,6 +1293,11 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
             fallback.textColor = .secondaryLabel
             addSubview(fallback)
         }
+        // A tap anywhere ends a selection.
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
+        tap.cancelsTouchesInView = false
+        tap.delegate = self
+        addGestureRecognizer(tap)
         // Text size changes scale every row; appearance changes only repaint.
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
             self.setNeedsLayout()
@@ -828,12 +1326,12 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
         return min(4, max(0.5, (scaled * 100).rounded() / 100))
     }
 
-    /// A row index's key in the layout Rust last received.
-    private func key(at index: Int) -> String? {
-        let offset = sentEarlier == nil ? 0 : 1
-        if offset == 1, index == 0 { return Self.earlierKey }
-        let row = index - offset
-        return row >= 0 && row < sentOrder.count ? sentOrder[row] : nil
+    /// Dynamic Type's size for each nominal size, from its own text style.
+    private var textCurve: [[Float]] {
+        Self.textStyles.map { size, style in
+            let scaled = UIFontMetrics(forTextStyle: style).scaledValue(for: size, compatibleWith: traitCollection)
+            return [Float(size), Float((scaled * 100).rounded() / 100)]
+        }
     }
 
     /// Takes a new revision's rows. Only rows whose content changed go to Rust.
@@ -848,64 +1346,101 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
         nodes = next
         unsent.formIntersection(next.keys)
         self.earlier = earlier
-        let anchor = changed && !following ? visibleAnchor() : nil
         order = newOrder
         if changed { needsSync = true }
-        sync(anchor: anchor)
+        sync()
     }
 
     private func expansionChanged() {
         guard NativeExpansion.shared.keys != sentExpanded else { return }
         needsSync = true
-        sync(anchor: following ? nil : visibleAnchor())
+        sync()
     }
 
-    /// Sends Rust what changed and lays out the visible rows.
-    private func sync(anchor: Anchor?) {
+    /// Sends Rust what changed. Layout runs on the worker queue; the new
+    /// frame replaces the one on screen when it is ready.
+    private func sync() {
         guard let layout, bounds.width > 0 else { return }
         let scale = textScale
+        let curve = textCurve
         let expanded = NativeExpansion.shared.keys
-        guard needsSync || bounds.width != sentWidth || scale != sentScale || expanded != sentExpanded else {
-            tile()
+        guard needsSync || bounds.width != sentWidth || scale != sentScale || curve != sentCurve
+                || expanded != sentExpanded else { return }
+        guard !inFlight else {
+            pending = true
             return
         }
-        let started = CACurrentMediaTime()
         let rows = unsent.compactMap { nodes[$0] }
         let request = NativeLayoutUpdate(
             width: Float(bounds.width), scale: Float(scale),
             // A streamed token keeps the order; Rust then updates in place.
             order: order == sentOrder && !sentOrder.isEmpty ? nil : order, rows: rows,
             expanded: Array(expanded.intersection(nodes.keys)),
-            earlier: earlier.map { NativeLayoutUpdate.Earlier(label: $0.label, loading: $0.loading) })
-        guard let data = try? JSONEncoder().encode(request), let summary = layout.update(data) else {
-            return
-        }
-        let encoded = CACurrentMediaTime()
+            earlier: earlier.map { NativeLayoutUpdate.Earlier(label: $0.label, loading: $0.loading) },
+            curve: curve)
+        if bounds.width != sentWidth || scale != sentScale || curve != sentCurve { epoch += 1 }
+        let requestEpoch = epoch
         unsent.removeAll()
         needsSync = false
         sentWidth = bounds.width
         sentScale = scale
+        sentCurve = curve
         sentExpanded = expanded
-        sentEarlier = earlier
         sentOrder = order
-        stats.record(update: summary, encode: encoded - started, total: CACurrentMediaTime() - started,
-                     rows: rows.count)
-        #if DEBUG || targetEnvironment(simulator)
-        if bench == nil, summary.count > 0, NativeTranscriptBench.requested {
-            bench = NativeTranscriptBench(view: self)
+        inFlight = true
+        layout.update(request) { [weak self] result in
+            guard let self else { return }
+            self.inFlight = false
+            if let summary = result.summary, let frame = result.frame {
+                self.present(frame, epoch: requestEpoch)
+                self.stats.record(update: summary, encode: result.encode, total: result.total, rows: rows.count)
+                #if DEBUG || targetEnvironment(simulator)
+                if self.bench == nil, summary.count > 0, NativeTranscriptBench.requested {
+                    self.bench = NativeTranscriptBench(view: self)
+                }
+                if !self.prependChecked, summary.count > 0, NativeTranscriptBench.prependRequested {
+                    self.prependChecked = true
+                    NativeTranscriptBench.checkPrepend(self)
+                }
+                if !self.prependChecked, summary.count > 0, let y = NativeTranscriptBench.startOffset {
+                    // Start the reader at a fixed offset, for screenshots.
+                    self.prependChecked = true
+                    self.following = false
+                    self.contentOffset = CGPoint(x: 0, y: min(y, self.bottomOffset))
+                }
+                if !self.selectedOnce, let key = NativeTranscriptBench.selectKey {
+                    self.selectedOnce = true
+                    // Select a row's text in place, for screenshots.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                        self?.rowViews[key]?.selectAll(nil)
+                    }
+                }
+                #endif
+            } else {
+                // Refused: send every row with its order next time. The next
+                // revision retries; a refusal does not loop.
+                self.unsent = Set(self.nodes.keys)
+                self.sentOrder = []
+            }
+            if self.pending {
+                self.pending = false
+                self.sync()
+            }
         }
-        if !prependChecked, summary.count > 0, NativeTranscriptBench.prependRequested {
-            prependChecked = true
-            NativeTranscriptBench.checkPrepend(self)
-        }
-        #endif
-        let height = summary.height
+    }
+
+    /// Puts a finished frame on screen, keeping the reader's place.
+    private func present(_ frame: NativeTranscriptFrame, epoch: Int) {
+        let anchor = following ? nil : visibleAnchor()
+        current = frame
+        frameEpoch = epoch
+        let height = frame.height
         if contentSize.height != height || contentSize.width != bounds.width {
             contentSize = CGSize(width: bounds.width, height: height)
         }
         if following {
             pin()
-        } else if let anchor, let placement = layout.find(anchor.key) {
+        } else if let anchor, let placement = frame.find(anchor.key) {
             // Shift the bounds, not the content offset, so a fling keeps its
             // momentum while rows arrive above.
             let top = -adjustedContentInset.top
@@ -913,6 +1448,7 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
             if abs(target - bounds.origin.y) > 0.25 { bounds.origin.y = target }
         }
         tile()
+        updateBottomButton()
     }
 
     private struct Anchor {
@@ -921,10 +1457,10 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
     }
 
     private func visibleAnchor() -> Anchor? {
-        guard let layout else { return nil }
+        guard let frame = current else { return nil }
         let top = contentOffset.y
-        for placement in layout.rows(top, top + bounds.height) {
-            guard let key = key(at: Int(placement.index)), key != Self.earlierKey else { continue }
+        for placement in frame.rows(top, top + bounds.height) {
+            guard let key = frame.key(placement.index), key != Self.earlierKey else { continue }
             if CGFloat(placement.y) + CGFloat(placement.height) > top {
                 return Anchor(key: key, offset: CGFloat(placement.y) - top)
             }
@@ -940,25 +1476,36 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
 
     /// Places the rows in the visible range plus overscan, reusing views.
     private func tile() {
-        guard let layout else { return }
+        guard let frame = current else { return }
         let started = CACurrentMediaTime()
         let visible = CGRect(x: 0, y: contentOffset.y, width: bounds.width, height: bounds.height)
-        let placements = layout.rows(visible.minY - Self.overscan, visible.maxY + Self.overscan)
+        let placements = frame.rows(visible.minY - Self.overscan, visible.maxY + Self.overscan)
         var keep = Set<String>()
         for placement in placements {
-            guard let key = key(at: Int(placement.index)) else { continue }
+            guard let key = frame.key(placement.index) else { continue }
             keep.insert(key)
             let view = rowViews[key] ?? dequeue(key)
             if view.version != placement.version || view.key != key {
-                guard let model = model(for: key, index: placement.index, version: placement.version) else { continue }
-                view.apply(model, version: placement.version)
+                guard let model = model(for: key, in: frame, index: placement.index, version: placement.version) else {
+                    continue
+                }
+                // New text in a row that keeps its geometry, such as a
+                // streamed reply, fades in; the unchanged text does not move.
+                if view.key == key, view.version != 0, view.epoch == frameEpoch {
+                    let transition = CATransition()
+                    transition.type = .fade
+                    transition.duration = Self.fade
+                    view.layer.add(transition, forKey: "stream")
+                }
+                view.apply(model, version: placement.version, epoch: frameEpoch)
                 stats.painted += 1
             }
-            let frame = CGRect(x: 0, y: CGFloat(placement.y), width: bounds.width, height: CGFloat(placement.height))
-            if view.frame != frame { view.frame = frame }
+            let rowFrame = CGRect(x: 0, y: CGFloat(placement.y), width: bounds.width, height: CGFloat(placement.height))
+            if view.frame != rowFrame { view.frame = rowFrame }
             view.toggle = { key in NativeExpansion.shared.toggle(key) }
             view.loadEarlier = { [weak self] in self?.loadEarlier() }
-            view.show(visible.offsetBy(dx: 0, dy: -frame.minY).insetBy(dx: 0, dy: -Self.overscan / 2))
+            view.selecting = { [weak self] row in self?.selected(row) }
+            view.show(visible.offsetBy(dx: 0, dy: -rowFrame.minY).insetBy(dx: 0, dy: -Self.overscan / 2))
         }
         for (key, view) in rowViews where !keep.contains(key) {
             view.reset()
@@ -970,6 +1517,24 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
         stats.record(tile: CACurrentMediaTime() - started)
     }
 
+    private func selected(_ row: NativeRowView) {
+        if selectedRow !== row { selectedRow?.clearSelection() }
+        selectedRow = row
+    }
+
+    @objc private func tapped(_ gesture: UITapGestureRecognizer) {
+        selectedRow?.clearSelection()
+        selectedRow = nil
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Only a selection needs the tap; its handles keep their drags.
+        selectedRow?.hasSelection == true && !(touch.view is NativeSelectionHandle)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
     #if DEBUG || targetEnvironment(simulator)
     /// The first visible row's key and its distance from the top of the
     /// screen, for the scripted prepend check.
@@ -979,7 +1544,7 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
 
     /// Where a row's top sits on screen now.
     func debugScreenOffset(of key: String) -> CGFloat? {
-        layout?.find(key).map { CGFloat($0.y) - contentOffset.y }
+        current?.find(key).map { CGFloat($0.y) - contentOffset.y }
     }
 
     func debugLoadEarlier() { loadEarlier() }
@@ -1000,9 +1565,10 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
         return view
     }
 
-    private func model(for key: String, index: UInt32, version: UInt64) -> NativeRowModel? {
+    private func model(for key: String, in frame: NativeTranscriptFrame, index: UInt32,
+                       version: UInt64) -> NativeRowModel? {
         if let cached = models[key], cached.version == version { return cached.model }
-        guard let display = layout?.display(index) else { return nil }
+        guard let display = frame.display(index) else { return nil }
         let model = NativeRowModel(display)
         if models.count > 400 { models.removeAll(keepingCapacity: true) }
         models[key] = (version, model)
@@ -1017,11 +1583,8 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         fallback.frame = bounds.insetBy(dx: 16, dy: 16)
-        if bounds.width != sentWidth || needsSync {
-            sync(anchor: following ? nil : visibleAnchor())
-        } else {
-            tile()
-        }
+        sync()
+        tile()
         if following, !isInteracting { pin() }
         updateBottomButton()
     }
@@ -1095,6 +1658,22 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate {
 final class NativeTranscriptBench {
     static var requested: Bool {
         ProcessInfo.processInfo.arguments.contains("--rust-native-transcript-bench")
+    }
+
+    /// `--rust-native-transcript-offset Y` starts the reader at Y points.
+    static var startOffset: CGFloat? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "--rust-native-transcript-offset"), index + 1 < arguments.count,
+              let y = Double(arguments[index + 1]) else { return nil }
+        return CGFloat(max(0, y))
+    }
+
+    /// `--rust-native-transcript-select KEY` selects that row's text.
+    static var selectKey: String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "--rust-native-transcript-select"), index + 1 < arguments.count
+        else { return nil }
+        return arguments[index + 1]
     }
 
     static var prependRequested: Bool {
@@ -1221,7 +1800,7 @@ struct NativeTranscriptStats {
 }
 
 /// The JSON update `rust_native_layout_update` reads.
-private struct NativeLayoutUpdate: Encodable {
+struct NativeLayoutUpdate: Encodable {
     struct Earlier: Encodable {
         let label: String
         let loading: Bool
@@ -1233,8 +1812,10 @@ private struct NativeLayoutUpdate: Encodable {
     let rows: [NativeNode]
     let expanded: [String]
     let earlier: Earlier?
+    /// Dynamic Type's `[nominal, scaled]` size for each text style.
+    let curve: [[Float]]
 
-    private enum Keys: String, CodingKey { case width, scale, order, rows, expanded, earlier }
+    private enum Keys: String, CodingKey { case width, scale, order, rows, expanded, earlier, curve }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: Keys.self)
@@ -1244,6 +1825,7 @@ private struct NativeLayoutUpdate: Encodable {
         try container.encode(rows, forKey: .rows)
         try container.encode(expanded, forKey: .expanded)
         if let earlier { try container.encode(earlier, forKey: .earlier) } else { try container.encodeNil(forKey: .earlier) }
+        try container.encode(curve, forKey: .curve)
     }
 }
 

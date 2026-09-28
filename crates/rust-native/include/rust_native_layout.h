@@ -6,9 +6,14 @@
 
 // Rust Native transcript layout (crates/rust-native/src/layout). An
 // application library exports these symbols when it enables rust-native's
-// `ffi` feature. A handle belongs to one transcript; create, call, and
-// destroy it on one thread. Output buffers belong to Rust and must be released
-// once with rust_native_layout_buffer_free; an empty buffer means failure.
+// `ffi` feature. A handle belongs to one transcript. Calls on one handle must
+// not overlap, but may come from any thread, so an adapter can lay out on a
+// worker queue. After an update, rust_native_layout_frame returns an
+// immutable frame that any thread may read while later updates run; release
+// it once with rust_native_frame_release. Output buffers belong to Rust and
+// must be released once with rust_native_layout_buffer_free; an empty buffer
+// means failure. The measurer is called only during an update, on the
+// updating thread.
 
 typedef struct {
     uint8_t *data;
@@ -63,8 +68,8 @@ typedef int32_t (*RustNativeMeasure)(void *context,
 void *rust_native_layout_create(void *context, RustNativeMeasure measure);
 // Applies a JSON update: {"width", "scale", "order": [keys], "rows": [nodes
 // that are new or changed], "expanded": [tool keys], "earlier": {"label",
-// "loading"} or null}. Returns {"count", "height", "relaid", "measured",
-// "micros"} or {"error"}.
+// "loading"} or null, "curve": [[nominal, scaled] sizes, at most 16]}.
+// Returns {"count", "height", "relaid", "measured", "micros"} or {"error"}.
 RustNativeBuffer rust_native_layout_update(void *handle, const uint8_t *update, size_t length);
 // Writes at most `capacity` placements of the rows intersecting y0..y1 and
 // returns how many rows intersect.
@@ -74,9 +79,23 @@ float rust_native_layout_height(const void *handle);
 int32_t rust_native_layout_find(const void *handle, const uint8_t *key, size_t length,
                                 RustNativeRowPlacement *out);
 // A row's display list as JSON: styles, texts, runs, rects, links, widgets,
-// accessibility, and copy text.
+// scrollers, accessibility, and copy text.
 RustNativeBuffer rust_native_layout_display(void *handle, uint32_t index);
 void rust_native_layout_buffer_free(RustNativeBuffer buffer);
 void rust_native_layout_destroy(void *handle);
+
+// The handle's current layout as an immutable frame, or null. The caller owns
+// it; it outlives later updates and the handle itself.
+const void *rust_native_layout_frame(void *handle);
+size_t rust_native_frame_count(const void *frame);
+float rust_native_frame_height(const void *frame);
+size_t rust_native_frame_rows(const void *frame, float y0, float y1,
+                              RustNativeRowPlacement *out, size_t capacity);
+int32_t rust_native_frame_find(const void *frame, const uint8_t *key, size_t length,
+                               RustNativeRowPlacement *out);
+// A row's key (UTF-8) and display list (JSON), or an empty buffer.
+RustNativeBuffer rust_native_frame_key(const void *frame, uint32_t index);
+RustNativeBuffer rust_native_frame_display(const void *frame, uint32_t index);
+void rust_native_frame_release(const void *frame);
 
 #endif

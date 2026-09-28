@@ -7,7 +7,7 @@
 
 use super::display::Font;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// One styled range of a paragraph, in UTF-16 code units.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -70,7 +70,7 @@ struct Key {
 /// rows laid out again at the same width, never call the platform.
 #[derive(Default)]
 pub struct MeasureCache {
-    entries: HashMap<Key, Rc<Measured>>,
+    entries: HashMap<Key, Arc<Measured>>,
     pub(crate) hits: u64,
     pub(crate) misses: u64,
 }
@@ -93,7 +93,7 @@ impl MeasureCache {
         text: &str,
         runs: &[MeasureRun],
         width: Option<f32>,
-    ) -> Rc<Measured> {
+    ) -> Arc<Measured> {
         let key = Key {
             text: text.into(),
             runs: runs
@@ -114,7 +114,7 @@ impl MeasureCache {
         if self.entries.len() >= MAX_ENTRIES {
             self.entries.clear();
         }
-        let measured = Rc::new(measured);
+        let measured = Arc::new(measured);
         self.entries.insert(key, measured.clone());
         measured
     }

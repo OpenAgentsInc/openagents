@@ -2,17 +2,21 @@
 //! libraries that link Rust Native enable the `ffi` feature, which exports
 //! these symbols; `include/rust_native_layout.h` declares them.
 //!
-//! A handle belongs to one transcript and one thread (the UI thread on iOS).
-//! Every call catches panics, bounds its input, and reports failure as an
-//! empty buffer, zero, or a null handle. The adapter's measurer is called
-//! only during `update` and `display`, on the calling thread.
+//! A handle belongs to one transcript. Calls on a handle must not overlap, but
+//! they may come from any thread, so an adapter can lay out on a worker. Each
+//! update publishes a frame (`rust_native_layout_frame`): an immutable,
+//! reference-counted snapshot that any thread may read while the next update
+//! runs. Every call catches panics, bounds its input, and reports failure as
+//! an empty buffer, zero, or a null handle. The adapter's measurer is called
+//! only during `update`, on the calling thread.
 
 use super::measure::{Line, MeasureRun, Measured, Measurer};
-use super::{Placement, TranscriptLayout, Update};
+use super::{Frame, Placement, TranscriptLayout, Update};
 use crate::layout::display::Weight;
 use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
+use std::sync::Arc;
 
 /// The most bytes one update may carry.
 pub const MAX_UPDATE_BYTES: usize = 32 * 1024 * 1024;
@@ -265,16 +269,28 @@ pub unsafe extern "C" fn rust_native_layout_rows(
     catch_unwind(AssertUnwindSafe(|| {
         let layout = unsafe { &(*handle).layout };
         let range = layout.rows_in(y0, y1);
-        if !out.is_null() {
-            for (slot, index) in range.clone().take(capacity).enumerate() {
-                if let Some(placement) = layout.placement(index) {
-                    unsafe { out.add(slot).write(placed(placement)) };
-                }
-            }
-        }
+        unsafe { write_placements(range.clone(), |i| layout.placement(i), out, capacity) };
         range.len()
     }))
     .unwrap_or(0)
+}
+
+/// # Safety
+/// `out` must be null or have room for `capacity` placements.
+unsafe fn write_placements(
+    range: std::ops::Range<usize>,
+    placement: impl Fn(usize) -> Option<Placement>,
+    out: *mut RustNativeRowPlacement,
+    capacity: usize,
+) {
+    if out.is_null() {
+        return;
+    }
+    for (slot, index) in range.take(capacity).enumerate() {
+        if let Some(placement) = placement(index) {
+            unsafe { out.add(slot).write(placed(placement)) };
+        }
+    }
 }
 
 fn placed(p: Placement) -> RustNativeRowPlacement {
@@ -345,15 +361,163 @@ pub unsafe extern "C" fn rust_native_layout_display(
         return buffer(vec![]);
     }
     catch_unwind(AssertUnwindSafe(|| {
-        let handle = unsafe { &mut *handle };
+        let handle = unsafe { &*handle };
         handle
             .layout
-            .display(index as usize, &mut handle.platform)
-            .and_then(|display| serde_json::to_vec(&display).ok())
+            .display(index as usize)
+            .and_then(|display| serde_json::to_vec(display).ok())
             .unwrap_or_default()
     }))
     .map(buffer)
     .unwrap_or_else(|_| buffer(vec![]))
+}
+
+/// Returns the frame for the handle's current layout, which the caller owns
+/// and releases once with `rust_native_frame_release`, or null on failure.
+///
+/// # Safety
+/// `handle` must be live, with no other call on it in progress.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_layout_frame(handle: *mut RustNativeLayout) -> *const Frame {
+    if handle.is_null() {
+        return ptr::null();
+    }
+    catch_unwind(AssertUnwindSafe(|| {
+        Arc::into_raw(unsafe { &mut *handle }.layout.frame())
+    }))
+    .unwrap_or(ptr::null())
+}
+
+/// Borrows a frame for the length of a call.
+///
+/// # Safety
+/// `frame` must be null or a live result of `rust_native_layout_frame`.
+unsafe fn frame<'a>(frame: *const Frame) -> Option<&'a Frame> {
+    unsafe { frame.as_ref() }
+}
+
+/// The number of rows in a frame, including the earlier control.
+///
+/// # Safety
+/// `frame` must be null or live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_frame_count(value: *const Frame) -> usize {
+    unsafe { frame(value) }.map_or(0, Frame::len)
+}
+
+/// A frame's content height, including the edge insets.
+///
+/// # Safety
+/// `frame` must be null or live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_frame_height(value: *const Frame) -> f32 {
+    unsafe { frame(value) }.map_or(0.0, Frame::height)
+}
+
+/// Writes at most `capacity` placements of the frame's rows intersecting
+/// `y0..y1`, and returns how many rows intersect.
+///
+/// # Safety
+/// `frame` must be null or live; `out` must be null or have room for
+/// `capacity` placements.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_frame_rows(
+    value: *const Frame,
+    y0: f32,
+    y1: f32,
+    out: *mut RustNativeRowPlacement,
+    capacity: usize,
+) -> usize {
+    let Some(frame) = (unsafe { frame(value) }) else {
+        return 0;
+    };
+    if !y0.is_finite() || !y1.is_finite() {
+        return 0;
+    }
+    catch_unwind(AssertUnwindSafe(|| {
+        let range = frame.rows_in(y0, y1);
+        unsafe { write_placements(range.clone(), |i| frame.placement(i), out, capacity) };
+        range.len()
+    }))
+    .unwrap_or(0)
+}
+
+/// Finds a row of the frame by key (UTF-8) and writes its placement.
+/// Returns 1 when found.
+///
+/// # Safety
+/// `frame` must be null or live; `key` must point to `len` bytes; `out` must
+/// be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_frame_find(
+    value: *const Frame,
+    key: *const u8,
+    len: usize,
+    out: *mut RustNativeRowPlacement,
+) -> i32 {
+    let Some(frame) = (unsafe { frame(value) }) else {
+        return 0;
+    };
+    if key.is_null() || out.is_null() || len > 256 {
+        return 0;
+    }
+    let key = unsafe { std::slice::from_raw_parts(key, len) };
+    let Ok(key) = std::str::from_utf8(key) else {
+        return 0;
+    };
+    match frame.find(key).and_then(|i| frame.placement(i)) {
+        Some(placement) => {
+            unsafe { out.write(placed(placement)) };
+            1
+        }
+        None => 0,
+    }
+}
+
+/// A frame row's key as UTF-8, or an empty buffer.
+///
+/// # Safety
+/// `frame` must be null or live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_frame_key(
+    value: *const Frame,
+    index: u32,
+) -> RustNativeBuffer {
+    let key = unsafe { frame(value) }.and_then(|f| f.key(index as usize));
+    buffer(key.map(|k| k.as_bytes().to_vec()).unwrap_or_default())
+}
+
+/// A frame row's display list as JSON, or an empty buffer.
+///
+/// # Safety
+/// `frame` must be null or live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_frame_display(
+    value: *const Frame,
+    index: u32,
+) -> RustNativeBuffer {
+    let Some(frame) = (unsafe { frame(value) }) else {
+        return buffer(vec![]);
+    };
+    catch_unwind(AssertUnwindSafe(|| {
+        frame
+            .display(index as usize)
+            .and_then(|display| serde_json::to_vec(display).ok())
+            .unwrap_or_default()
+    }))
+    .map(buffer)
+    .unwrap_or_else(|_| buffer(vec![]))
+}
+
+/// Releases a frame from `rust_native_layout_frame`.
+///
+/// # Safety
+/// `frame` must be null or an unreleased result of `rust_native_layout_frame`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_frame_release(value: *const Frame) {
+    if !value.is_null() {
+        drop(unsafe { Arc::from_raw(value) });
+    }
 }
 
 /// # Safety
