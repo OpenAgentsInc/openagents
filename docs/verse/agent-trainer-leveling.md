@@ -159,6 +159,7 @@ document or NIP defines it and no code does it yet.
 | Titles from achievement labels, shown only while the award counts and only when the award's referee signed the label | `xp::snapshot` | Implemented, desktop. |
 | Grid name tags: the first eight hex characters of each player's pubkey, then ` · lv n` when the key has XP under the OpenAgents referee | `crates/coder-mobile/src/verse_app.rs` (`player_tags`, `verse::xp::name_tag`), wrapped by `crates/openagents-mobile/src/verse.rs` | Implemented on iOS 2026-09-28; the mobile build links Verse's read-only XP reader, which since #9897 pulls in `crates/xp-ledger` rather than `knowledge`. The Android library builds with it under NDK 27.1. |
 | Account trainer card: level, XP, XP to next level, curve, titles, counted awards with links, and the trainer key (the Verse world key) with an explicit reveal | `crates/openagents-mobile/src/trainer.rs`, `bins/openagents-ios/host/App/AccountScreens.swift` | Implemented on iOS 2026-09-28. |
+| Trainer card (`30194`): export from **Account > Trainer > Export card** (signed JSON and an `naddr` link), and `openagents xp verify-card`, which re-derives it under the card's own trust list | NIP-XP, `verse::xp::trainer_card`, `verse::xp::check_card`, `crates/openagents-cli/src/quest.rs` | Implemented 2026-09-28 ([#9898](https://github.com/OpenAgentsInc/openagents/issues/9898)). |
 | Trainer profiles (`13193`): a key's opt-in to having its level shown. Grid name tags and desktop Verse tags on other players show a level only for a key whose newest profile says `shown: true`; **Account > Trainer > Show my level** publishes one after a confirmation, and **Hide my level** replaces it | NIP-XP, `crates/xp-ledger/src/trainers.rs`, `verse::xp::trainer_level_tag` | Implemented 2026-09-28 ([#9895](https://github.com/OpenAgentsInc/openagents/issues/9895)). |
 | Six tutorial `reproduce` quests, 50 XP each, season `tb21-tutorial-s1` | [tutorial quests](tutorial-quests.md), `knowledge/quests/tb21.*.reproduce@1.json` | Published 2026-09-28. No award yet. |
 | Classes Commander, Artisan, and Scout; stat points per level; grants unlocked in stages | [GDD](gdd.md#progression) | Specified for *agents*, not trainers. Draft, not committed scope. |
@@ -379,9 +380,17 @@ summary that anyone can verify without asking OpenAgents.
   Terminal-Bench, the run records behind the evidence.
 - The trainer signs the card with their primary key. The signature proves
   they published it, not that it's right: `openagents xp verify-card`
-  (proposed) re-derives the level from the relays and reports any
-  difference.
+  re-derives the level from the relays and reports any difference.
 - It exports as a JSON file and as a link to a public page.
+
+*Implemented 2026-09-28 ([#9898](https://github.com/OpenAgentsInc/openagents/issues/9898)):*
+the card is NIP-XP kind `30194` at the address `trainer-card`. **Account >
+Trainer > Export card** signs it with the world key from the phone's
+ledger, publishes it to `wss://relay.openagents.com` after a confirmation,
+and offers the JSON file and an `https://njump.me/naddr1…` link. Awards on
+the card name their award event, awardee, role, XP, and quest version; the
+quest, claim, and reproduction behind each are one hop from the award.
+`openagents xp verify-card` checks it.
 
 The level is the summary line; the awards are the credential. "Level 14
 trainer" means little on its own. "Wrote the knowledge entry that made a

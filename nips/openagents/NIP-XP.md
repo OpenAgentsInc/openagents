@@ -2,7 +2,8 @@
 
 `draft` `optional` — v1, 2026-09-26; the `reproduce` rule added
 2026-09-28; the `playtest` rule added 2026-09-28; the `per-awardee`
-uniqueness policy, trainer profiles, and key links added 2026-09-28. The
+uniqueness policy, trainer profiles, key links, and trainer cards added
+2026-09-28. The
 [shared contracts](contracts.md) are normative.
 
 This NIP publishes quests, a referee's acceptance of a completed quest, and
@@ -45,11 +46,12 @@ OpenAgents kind once.
 | `3196` | Regular | A moderator's record of a completed playtest session (the `playtest` rule). |
 | `3197` | Regular | A tester's content-free playtest report (the `playtest` rule). |
 | `13193` | Replaceable | A trainer profile: the key's opt-in to having its level shown, and its other keys. It carries no XP. |
+| `30194` | Addressable | A trainer card: the trainer's signed claim of its level, keys, trust list, and counted awards, for export. Readers re-derive it; it carries no XP. |
 | `13195` | Replaceable | A key link: the key names the trainer it belongs to. With the trainer's profile listing it, readers sum its XP into the trainer's. |
 
-Every XP body (`30193`, `3193`, `3194`, `13193`, `13195`) is a UTF-8 JSON object with `v: 1`,
+Every XP body (`30193`, `3193`, `3194`, `13193`, `13195`, `30194`) is a UTF-8 JSON object with `v: 1`,
 `requires` (the empty list in this version), and `type`: `quest`, `award`,
-`revocation`, `profile`, or `link`. Each event carries exactly one `t` marker
+`revocation`, `profile`, `link`, or `card`. Each event carries exactly one `t` marker
 `oa:xp:<type>:v1`. A body whose `type`, marker, and kind disagree is
 refused. Unknown body keys, rules, roles, and uniqueness policies are
 refused. Every `t` value is lowercase.
@@ -59,8 +61,9 @@ refused. Every `t` value is lowercase.
 `schemas/xp-recipe.v1.json` the recipe a `reproduce` quest pins, and
 `schemas/xp-playtest-report.v1.json` and
 `schemas/xp-playtest-session.v1.json` the two `playtest` records, and
-`schemas/xp-profile.v1.json` and `schemas/xp-link.v1.json` the trainer
-profile and the key link. The schema
+`schemas/xp-profile.v1.json`, `schemas/xp-link.v1.json`, and
+`schemas/xp-card.v1.json` the trainer profile, the key link, and the
+trainer card. The schema
 dialect has no `pattern` keyword, so the validator checks the ID grammar,
 the hex fields, and the coordinates itself.
 
@@ -643,6 +646,40 @@ count for no one through it. The ledger itself is unchanged: awards still
 credit the key they name, and a link moves no XP and forges no award; it
 only tells a reader which keys one trainer holds. A one-sided claim, a
 profile listing a key that never linked back, counts nothing.
+
+## Trainer cards (`30194`)
+
+A trainer card is a portable credential: the trainer's signed summary of
+what a reader would derive for it. It sits at the address `trainer-card`
+(tags: `d` `trainer-card` and the marker `oa:xp:card:v1`), so a link to
+it (`naddr`) always names the trainer's newest card, and it exports as a
+JSON file of the signed event.
+
+```json
+{
+  "v": 1, "requires": [], "type": "card",
+  "curve": "trainer-curve-v1",
+  "relays": ["wss://relay.openagents.com"],
+  "trust": {"referees": ["<hex>"], "runners": []},
+  "keys": ["<trainer hex>", "<linked key hex>"],
+  "xp": 300, "level": 3,
+  "awards": [{"id": "<3193 event id>", "pubkey": "<awardee hex>", "role": "reproducer", "xp": 50, "quest": "tb21.fix-git.reproduce@1"}],
+  "issued_at": 1790000000
+}
+```
+
+`keys` lists the trainer (the signer) first, then the keys linked to it
+both ways; every award's `pubkey` is one of them. `trust` names at least
+one referee. `curve` and `level` are the issuing client's reading of the
+ledger, carried only so a reader can compare them.
+
+The signature proves who published the card, not that it is right. A
+reader verifies a card by deriving the ledger from `relays` under the
+card's own `trust`, resolving the signer's linked keys, and comparing the
+keys, the counted awards, the XP, and, when it implements the named
+curve, the level. Any difference is reported; nothing on the card is
+taken on its word. A reader MAY also derive under its own trust list and
+show both.
 
 ## Trust
 

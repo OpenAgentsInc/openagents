@@ -309,7 +309,16 @@ openagents verse quests --json          # every quest, trusted referees first
 openagents verse xp                     # this identity's XP, level, titles
 openagents verse xp --pubkey npub1...   # another key's ledger
 openagents verse board                  # counts, standings, my level, quests
+openagents xp verify-card card.json     # re-derive a trainer card (or an naddr1…)
 ```
+
+`openagents xp verify-card` (also `openagents verse xp verify-card`) reads a
+signed trainer card (NIP-XP `30194`) from a JSON file, standard input
+(`-`), or an `naddr`; checks its signature; derives the ledger from the
+card's relay (or `--xp-relay`) under the card's own trust list; and compares
+the keys linked both ways, the counted awards, the XP, and the level under
+`trainer-curve-v1`. It prints every difference and exits 1 when there is
+one.
 
 `--xp-relay` chooses the XP relay (default `VERSE_XP_RELAY`, then the world
 relay); `--referee KEY` trusts another referee for this reading only.

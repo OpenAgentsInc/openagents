@@ -238,6 +238,9 @@ struct TrainerScreen: View {
     @State private var showWarning = false
     @State private var linking = false
     @State private var linkKey = ""
+    @State private var exporting = false
+    @State private var export: CardExport?
+    @State private var cardFile: ExitFile?
     private let refresh = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     private var progress: Double {
@@ -356,6 +359,37 @@ struct TrainerScreen: View {
                         .textSelection(.enabled)
                 }
             }
+            if let card {
+                Section {
+                    Button("Export card", systemImage: "square.and.arrow.up") { exporting = true }
+                        .accessibilityIdentifier("trainer-export")
+                    if let export {
+                        if let error = export.error {
+                            Text(error).font(.footnote).foregroundStyle(.red)
+                        }
+                        if let link = export.link, let url = URL(string: link) {
+                            ShareLink(item: url) { Label("Share link", systemImage: "link") }
+                            Text(link).font(.caption.monospaced()).foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        if let json = export.json, let name = export.file_name {
+                            Button("Save card JSON", systemImage: "doc") {
+                                cardFile = ExitFile(name: name, text: json)
+                            }
+                        }
+                        Text(export.preview ? "Preview: signed, not published."
+                             : card.card_status == "published" ? "Published to \(card.relay)."
+                             : card.card_status == "failed" ? "The relay didn't take the card. Export again."
+                             : "Publishing…")
+                            .font(.footnote)
+                            .foregroundStyle(card.card_status == "failed" ? .red : .secondary)
+                    }
+                } header: {
+                    Text("Trainer card")
+                } footer: {
+                    Text("A signed summary of your level, keys, and counted awards. Anyone can check it: openagents xp verify-card re-derives it from the relay.")
+                }
+            }
             if let card, !card.titles.isEmpty {
                 Section("Titles") {
                     Text(card.titles.joined(separator: ", "))
@@ -418,6 +452,17 @@ struct TrainerScreen: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.black.ignoresSafeArea())
+        .fileExporter(isPresented: Binding(get: { cardFile != nil }, set: { if !$0 { cardFile = nil } }),
+                      document: cardFile, contentType: .json,
+                      defaultFilename: cardFile?.name ?? "trainer-card.json") { _ in cardFile = nil }
+        .alert("Export your trainer card?", isPresented: $exporting) {
+            Button("Export") {
+                bridge.trainerExport { export = $0 }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This signs your card with your trainer key and publishes it to relay.openagents.com, so its link opens a public page. It lists your level, your linked keys, and your counted awards.")
+        }
         .alert("Link a key", isPresented: $linking) {
             TextField("npub1…", text: $linkKey)
                 .textInputAutocapitalization(.never)

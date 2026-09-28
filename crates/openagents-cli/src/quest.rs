@@ -53,12 +53,31 @@ pub fn read(args: &Args) -> Result<Reading, String> {
         .collect();
     let mine = my_keys(Some(identity.signer.pubkey()), &extra);
     let relay = xp_relay(args);
-    let mut client = Client::connect(&relay, identity.signer.clone());
+    let snapshot = read_under(&relay, &trust, &identity.signer)?;
+    Ok(Reading {
+        relay,
+        snapshot,
+        problem,
+        mine,
+    })
+}
+
+/// Reads `relay` once under `trust`: quests, awards, revocations, labels,
+/// trainer profiles, and key links, then the events the trusted awards
+/// name.
+fn read_under(
+    relay: &str,
+    trust: &verse::xp::XpTrust,
+    signer: &nostr::domain::RelaySigner,
+) -> Result<Snapshot, String> {
+    let trust = trust.clone();
+    let mut client = Client::connect(relay, signer.clone());
     let mut events: BTreeMap<String, Event> = BTreeMap::new();
     client.subscribe(
         vec![
             json!({"kinds": [kinds::QUEST_KIND, kinds::AWARD_KIND, kinds::REVOCATION_KIND], "limit": LIMIT}),
             json!({"kinds": [kinds::LABEL_KIND], "#L": [kinds::LABEL_NAMESPACE], "limit": LIMIT}),
+            json!({"kinds": [kinds::PROFILE_KIND, kinds::LINK_KIND], "limit": LIMIT}),
         ],
         false,
         DEFAULT_WAIT,
@@ -85,12 +104,123 @@ pub fn read(args: &Args) -> Result<Reading, String> {
     }
     client.close();
     let all: Vec<Event> = events.into_values().collect();
-    Ok(Reading {
-        relay,
-        snapshot: snapshot(&all, &trust),
-        problem,
-        mine,
-    })
+    Ok(snapshot(&all, &trust))
+}
+
+/// Reads a trainer card: a file holding the signed `30194` event (`-` for
+/// standard input), or an `naddr` fetched from its relay hint or `relay`.
+fn load_card(
+    source: &str,
+    relay: Option<&str>,
+    signer: &nostr::domain::RelaySigner,
+) -> Result<Event, String> {
+    if source.starts_with("naddr1") || source.starts_with("nostr:naddr1") {
+        let naddr = nostr::nip19::decode_naddr(source.trim_start_matches("nostr:"))
+            .map_err(|e| format!("{source} isn't an naddr: {e:?}"))?;
+        if naddr.kind != u32::from(kinds::CARD_KIND) {
+            return Err(format!(
+                "{source} names kind {}, not a trainer card",
+                naddr.kind
+            ));
+        }
+        let author: String = naddr.pubkey.iter().map(|b| format!("{b:02x}")).collect();
+        let url = relay
+            .map(str::to_owned)
+            .or_else(|| naddr.relays.first().cloned())
+            .ok_or("the naddr has no relay hint; pass --xp-relay URL")?;
+        let mut client = Client::connect(&url, signer.clone());
+        let mut found: Vec<Event> = Vec::new();
+        client.subscribe(
+            vec![json!({"kinds": [kinds::CARD_KIND], "authors": [author], "#d": [naddr.identifier], "limit": 8})],
+            false,
+            DEFAULT_WAIT,
+            |event| found.push(event.clone()),
+        )?;
+        client.close();
+        let valid = found.iter().filter(|e| kinds::parse_card(e).is_ok());
+        return kinds::trainer::newest(valid)
+            .cloned()
+            .ok_or(format!("{url} has no trainer card at {source}"));
+    }
+    let text = if source == "-" {
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+            .map_err(|e| format!("can't read standard input: {e}"))?;
+        text
+    } else {
+        std::fs::read_to_string(source).map_err(|e| format!("can't read {source}: {e}"))?
+    };
+    serde_json::from_str(&text).map_err(|e| format!("{source} isn't a signed Nostr event: {e}"))
+}
+
+/// `xp verify-card FILE|NADDR`: re-derives a trainer card's level from the
+/// relays under the card's own trust list and reports every difference.
+/// Exits 0 when the card matches and 1 when it doesn't.
+pub fn verify_card(output: &Output, args: &Args) -> Result<u8, String> {
+    let source = args
+        .positional()
+        .get(1)
+        .ok_or("name the card: openagents xp verify-card <card.json | naddr1… | ->")?;
+    let identity = identity_for(args.option("as"))?;
+    let explicit = args
+        .option("xp-relay")
+        .map(str::to_owned)
+        .or_else(|| args.option("relay").map(str::to_owned));
+    let event = load_card(source, explicit.as_deref(), &identity.signer)?;
+    let card = kinds::parse_card(&event).map_err(|e| format!("not a valid trainer card: {e}"))?;
+    let relay = explicit.unwrap_or_else(|| card.relays[0].clone());
+    let trust = verse::xp::XpTrust {
+        referees: card.referees.iter().cloned().collect(),
+        runners: card.runners.iter().cloned().collect(),
+    };
+    let snapshot = read_under(&relay, &trust, &identity.signer)?;
+    let check = verse::xp::check_card(&card, &event.pubkey, &snapshot);
+    let matches = check.differences.is_empty();
+    output.emit(
+        &json!({
+            "card": event.id,
+            "trainer": event.pubkey,
+            "relay": relay,
+            "curve": card.curve,
+            "claimed": {"keys": card.keys, "xp": card.xp, "level": card.level, "awards": card.awards.len()},
+            "derived": check,
+            "matches": matches,
+        }),
+        |value| {
+            let mut lines = vec![format!(
+                "card {} by {}: signature valid; derived from {} under the card's {} referee{}",
+                &event.id[..12],
+                &event.pubkey[..12],
+                value["relay"].as_str().unwrap_or_default(),
+                card.referees.len(),
+                if card.referees.len() == 1 { "" } else { "s" },
+            )];
+            lines.push(format!(
+                "claimed: level {} ({}) with {} XP from {} awards over {} keys",
+                card.level,
+                card.curve,
+                card.xp,
+                card.awards.len(),
+                card.keys.len()
+            ));
+            lines.push(format!(
+                "derived: level {} with {} XP from {} awards over {} keys",
+                check
+                    .level
+                    .map_or_else(|| "unknown".to_owned(), |l| l.to_string()),
+                check.xp,
+                check.awards,
+                check.keys.len()
+            ));
+            if matches {
+                lines.push("the card matches the relays".into());
+            } else {
+                lines.extend(check.differences.iter().map(|d| format!("difference: {d}")));
+            }
+            lines.join("\n")
+        },
+    );
+    Ok(u8::from(!matches))
 }
 
 fn quest_value(row: &QuestRow) -> Value {
@@ -223,6 +353,9 @@ fn ledger_value(snapshot: &Snapshot, keys: &[String]) -> Value {
 /// `verse xp [--pubkey KEY]...`: the ledger for this identity's keys, or for
 /// the keys given.
 pub fn xp(output: &Output, args: &Args) -> Result<u8, String> {
+    if args.positional().first().map(String::as_str) == Some("verify-card") {
+        return verify_card(output, args);
+    }
     let reading = read(args)?;
     let keys: Vec<String> = if args.options("pubkey").is_empty() {
         reading.mine.clone()

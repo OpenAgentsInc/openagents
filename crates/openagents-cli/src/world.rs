@@ -39,6 +39,11 @@ const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
   quests                    Every quest on the XP relay, trusted referees first.
   xp [--pubkey KEY]...      The XP ledger and level for this identity's keys,
                             or for the keys given.
+  xp verify-card CARD       Re-derive a trainer card (a signed 30194 as a JSON
+                            file, - for standard input, or an naddr) from the
+                            relays under the card's own trust list; report
+                            every difference and exit 1 when there is one.
+                            Also openagents xp verify-card.
   board                     What the plaza's quest board shows: counts,
                             standings, this identity's level, and the quests.
 Options for every command: --as PROFILE (key), --relay URL, --world ID

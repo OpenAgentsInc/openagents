@@ -146,6 +146,16 @@ struct TrainerAward: Decodable, Hashable {
     let link: String
 }
 
+/// The signed trainer card as a JSON file and its public link.
+struct CardExport: Decodable {
+    let schema: String
+    let file_name: String?
+    let json: String?
+    let link: String?
+    let preview: Bool
+    let error: String?
+}
+
 /// A key the trainer profile lists: `linked` once it signed a link back.
 struct LinkedKey: Decodable, Hashable {
     let npub: String
@@ -177,6 +187,7 @@ struct TrainerPacket: Decodable {
     let profile_error: String?
     let linked_keys: [LinkedKey]
     let linked_to: String?
+    let card_status: String
     let playtest: PlaytestXP
     let nsec: String?
 }
@@ -459,6 +470,18 @@ final class MobileBridge: ObservableObject {
             guard let packet = try? JSONDecoder().decode(TrainerPacket.self, from: data),
                   packet.schema == "openagents.trainer.v1" else { return }
             received(packet)
+        }
+    }
+
+    /// Sign the trainer card and publish it at its address, after the
+    /// person confirms.
+    func trainerExport(received: @escaping (CardExport) -> Void) {
+        guard let secret = try? DeviceKey.loadOrCreateVerse() else { return }
+        let hex = secret.map { String(format: "%02x", $0) }.joined()
+        call(["op": "trainer_export", "world_secret_hex": hex]) { data in
+            guard let reply = try? JSONDecoder().decode(CardExport.self, from: data),
+                  reply.schema == "openagents.trainer-card.v1" else { return }
+            received(reply)
         }
     }
 

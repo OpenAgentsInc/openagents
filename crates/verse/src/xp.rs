@@ -1103,6 +1103,146 @@ pub fn playtest_titles(snapshot: Option<&Snapshot>, pubkey: &str) -> BTreeSet<St
         .unwrap_or_default()
 }
 
+/// The keys a card for `key` sums: `key` and the keys linked to it both
+/// ways when it is its own trainer, else `key` alone. The signer is first.
+#[must_use]
+pub fn card_keys(snapshot: &Snapshot, key: &str) -> Vec<String> {
+    if snapshot.trainers.trainer_of(key) == Some(key) {
+        snapshot.trainers.keys_of(key)
+    } else {
+        vec![key.to_owned()]
+    }
+}
+
+/// The counted awards behind `keys`, as a card lists them, sorted.
+fn card_awards(snapshot: &Snapshot, keys: &[String]) -> Vec<xp::CardAward> {
+    let mine: BTreeSet<&String> = keys.iter().collect();
+    let mut awards: Vec<xp::CardAward> = snapshot
+        .credits
+        .iter()
+        .filter(|c| c.xp > 0 && mine.contains(&c.pubkey))
+        .map(|c| xp::CardAward {
+            id: c.award.clone(),
+            pubkey: c.pubkey.clone(),
+            role: c.role.clone(),
+            xp: c.xp,
+            quest: c.quest.clone(),
+        })
+        .collect();
+    awards.sort_by(|a, b| (&a.quest, &a.id, &a.pubkey).cmp(&(&b.quest, &b.id, &b.pubkey)));
+    awards.dedup();
+    awards
+}
+
+/// The trainer card `key` would sign: its keys, XP, level under
+/// [`CURVE`], and counted awards under `snapshot`, derived with `trust`
+/// from `relays`.
+#[must_use]
+pub fn trainer_card(
+    snapshot: &Snapshot,
+    key: &str,
+    trust: &XpTrust,
+    relays: &[String],
+    issued_at: u64,
+) -> xp::TrainerCard {
+    let keys = card_keys(snapshot, key);
+    let awards = card_awards(snapshot, &keys);
+    let total = snapshot.xp_of(&keys);
+    xp::TrainerCard {
+        curve: CURVE.to_owned(),
+        relays: relays.to_vec(),
+        referees: trust.referees.iter().cloned().collect(),
+        runners: trust.runners.iter().cloned().collect(),
+        keys,
+        xp: total,
+        level: u64::from(level_of(total)),
+        awards,
+        issued_at,
+    }
+}
+
+/// What a reader derived for a card, and every way the card differs.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct CardCheck {
+    pub keys: Vec<String>,
+    pub xp: u64,
+    /// The level under the card's curve, when this client implements it.
+    pub level: Option<u64>,
+    pub awards: usize,
+    /// Empty when the card matches.
+    pub differences: Vec<String>,
+}
+
+/// Compares `card`, signed by `signer`, with what `snapshot` derives. The
+/// snapshot must have been read under the card's own trust list.
+#[must_use]
+pub fn check_card(card: &xp::TrainerCard, signer: &str, snapshot: &Snapshot) -> CardCheck {
+    let keys = card_keys(snapshot, signer);
+    let total = snapshot.xp_of(&keys);
+    let awards = card_awards(snapshot, &keys);
+    let mut differences = Vec::new();
+    let claimed: BTreeSet<&String> = card.keys.iter().collect();
+    let derived: BTreeSet<&String> = keys.iter().collect();
+    for key in claimed.difference(&derived) {
+        differences.push(format!(
+            "key {} isn't linked to the trainer both ways",
+            short(key)
+        ));
+    }
+    for key in derived.difference(&claimed) {
+        differences.push(format!(
+            "key {} is linked to the trainer but the card leaves it out",
+            short(key)
+        ));
+    }
+    let claimed: BTreeSet<(&str, &str, u64)> = card
+        .awards
+        .iter()
+        .map(|a| (a.id.as_str(), a.pubkey.as_str(), a.xp))
+        .collect();
+    let counted: BTreeSet<(&str, &str, u64)> = awards
+        .iter()
+        .map(|a| (a.id.as_str(), a.pubkey.as_str(), a.xp))
+        .collect();
+    for (id, _, xp) in claimed.difference(&counted) {
+        differences.push(format!(
+            "award {} ({xp} XP) doesn't count under the card's trust list",
+            short(id)
+        ));
+    }
+    for (id, _, xp) in counted.difference(&claimed) {
+        differences.push(format!(
+            "award {} ({xp} XP) counts but the card leaves it out",
+            short(id)
+        ));
+    }
+    if card.xp != total {
+        differences.push(format!(
+            "the card claims {} XP; the relays give {total}",
+            card.xp
+        ));
+    }
+    let level = (card.curve == CURVE).then(|| u64::from(level_of(total)));
+    match level {
+        Some(level) if level != card.level => differences.push(format!(
+            "the card claims level {}; {CURVE} gives {level}",
+            card.level
+        )),
+        Some(_) => {}
+        None => differences.push(format!(
+            "the card's curve {} isn't one this reader implements, so its level wasn't checked",
+            card.curve
+        )),
+    }
+    CardCheck {
+        keys,
+        xp: total,
+        level,
+        awards: awards.len(),
+        differences,
+    }
+}
+
 pub mod fixture;
 
 #[cfg(test)]

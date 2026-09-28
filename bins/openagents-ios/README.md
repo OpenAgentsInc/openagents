@@ -127,6 +127,9 @@ publishes a trainer profile (NIP-XP `13193`) signed by your trainer key;
 **Hide my level** replaces it. **Link a key** lists a computer's key in
 that profile; once the computer runs `microcoder xp link --trainer <your
 npub>`, its XP counts toward your level without moving either secret key.
+**Export card** signs your trainer card, publishes it after a confirmation,
+and offers its JSON file and a public link; `openagents xp verify-card`
+checks it.
 Your trainer key is the
 Verse world key, the one over your head; **Reveal nsec** exports it, behind
 a warning, to sign a reproduction on a computer

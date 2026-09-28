@@ -203,6 +203,12 @@ pub enum Request {
         world_secret_hex: String,
         shown: bool,
     },
+    /// Sign the trainer card and publish it at its address; the direct
+    /// reply is the card as JSON and its link. The Trainer screen sends it
+    /// only after the person taps **Export card** and confirms.
+    TrainerExport {
+        world_secret_hex: String,
+    },
     /// Add a key to, or remove one from, the world key's trainer profile
     /// (NIP-XP key links) and publish it. The added key counts only after
     /// it signs a link back on its own device. The direct reply is the
@@ -854,6 +860,20 @@ impl App {
                 .unwrap_or_default(),
             };
         }
+        if let Request::TrainerExport { world_secret_hex } = request {
+            let reply = self
+                .trainer
+                .export(&world_secret_hex)
+                .unwrap_or_else(|error| crate::trainer::CardExport {
+                    schema: "openagents.trainer-card.v1",
+                    file_name: None,
+                    json: None,
+                    link: None,
+                    preview: false,
+                    error: Some(error),
+                });
+            return serde_json::to_vec(&reply).unwrap_or_default();
+        }
         if let Request::TrainerLink {
             world_secret_hex,
             add,
@@ -1124,6 +1144,7 @@ impl App {
             | Request::Trainer { .. }
             | Request::TrainerProfile { .. }
             | Request::TrainerLink { .. }
+            | Request::TrainerExport { .. }
             | Request::ReportDraft { .. }
             | Request::ReportSend { .. }
             | Request::Reports { .. }

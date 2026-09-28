@@ -97,6 +97,8 @@ pub const XP_QUEST: u16 = 30_193;
 pub const XP_PROFILE: u16 = 13_193;
 /// NIP-XP key link.
 pub const XP_LINK: u16 = 13_195;
+/// NIP-XP trainer card.
+pub const XP_CARD: u16 = 30_194;
 /// NIP-MV pose frame.
 pub const MV_FRAME: u16 = 23_300;
 /// NIP-MV gesture.
@@ -172,6 +174,7 @@ pub const REGISTRY: &[Claim] = &[
     claim(KB_HEAD, "NIP-KB", "Current entry head"),
     claim(MKT_HEAD, "NIP-MKT", "Current offering head"),
     claim(XP_QUEST, "NIP-XP", "Frozen quest version"),
+    claim(XP_CARD, "NIP-XP", "Trainer card"),
     claim(MV_WORLD, "NIP-MV", "World definition"),
     claim(MV_STATE, "NIP-MV", "Entity state"),
 ];

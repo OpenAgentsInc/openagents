@@ -447,3 +447,55 @@ fn a_linked_key_raises_the_trainers_level_over_both_heads() {
     assert_eq!(name_tag(Some(&snap), &p), format!("{} · lv 2", &p[..8]));
     assert_eq!(name_tag(Some(&snap), &l), format!("{} · lv 2", &l[..8]));
 }
+
+#[test]
+fn a_card_checks_clean_and_each_inflation_is_reported() {
+    let referee = fixture::signer(0x5e_7e);
+    let me = fixture::signer(0x3e);
+    let at = 1_790_000_000;
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.pubkey().to_owned()]),
+        runners: BTreeSet::new(),
+    };
+    let events = fixture::tutorial_events(&referee, &me, 3, at);
+    let snap = snapshot(&events, &trust);
+    let relays = vec!["wss://relay.openagents.com".to_owned()];
+    let card = trainer_card(&snap, me.pubkey(), &trust, &relays, at);
+    assert_eq!((card.xp, card.level, card.awards.len()), (150, 2, 3));
+    // Signed, it parses and checks clean.
+    let parts = xp::card(&card).unwrap();
+    let signed = me.sign(at, parts.kind, parts.tags, parts.content);
+    let parsed = xp::parse_card(&signed).unwrap();
+    let check = check_card(&parsed, me.pubkey(), &snap);
+    assert!(check.differences.is_empty(), "{:?}", check.differences);
+    assert_eq!((check.xp, check.level), (150, Some(2)));
+
+    // An inflated level, a stranger's key, and a made-up award each show.
+    let mut inflated = card.clone();
+    inflated.level = 9;
+    inflated.xp = 5_000;
+    let stranger = "cd".repeat(32);
+    inflated.keys.push(stranger.clone());
+    inflated.awards.push(xp::CardAward {
+        id: "ef".repeat(32),
+        pubkey: stranger,
+        role: "reproducer".into(),
+        xp: 50,
+        quest: "tb21.fix-git.reproduce@9".into(),
+    });
+    let check = check_card(&inflated, me.pubkey(), &snap);
+    let text = check.differences.join("\n");
+    for expected in [
+        "isn't linked",
+        "doesn't count",
+        "claims 5000 XP",
+        "claims level 9",
+    ] {
+        assert!(text.contains(expected), "{text}");
+    }
+    // Under another trust list, the awards don't count.
+    let other = snapshot(&events, &openagents_trust());
+    let check = check_card(&card, me.pubkey(), &other);
+    assert_eq!(check.xp, 0);
+    assert!(!check.differences.is_empty());
+}

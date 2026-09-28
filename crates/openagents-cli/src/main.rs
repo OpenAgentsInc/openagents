@@ -64,6 +64,8 @@ Coder:
 Verse (NIP-MV):
   verse        See who is around, listen, speak, move, gesture, drive owned
                entities, and read quests, XP, and the board.
+  xp           This identity's XP and level (openagents verse xp), and
+               verify-card to re-derive a trainer card from the relays.
   zone         Drive the Lagrange 1 construction zone.
   sov          Sovereign agents under NIP-SOV: profile, spawn, status.
 
@@ -125,6 +127,13 @@ fn main() -> ExitCode {
         "task" => runtime().block_on(coder::task::cli::run(&rest)),
         "computer" | "computers" => computer::run(&output, &rest),
         "verse" => world::run(&output, &rest),
+        // `openagents xp …` is `openagents verse xp …`.
+        "xp" => world::run(
+            &output,
+            &std::iter::once("xp".to_owned())
+                .chain(rest.iter().cloned())
+                .collect::<Vec<_>>(),
+        ),
         "zone" => zone::run(&output, &rest),
         "study" => study::run(&output, &rest),
         "session" | "sessions" => session::run(&output, &rest),

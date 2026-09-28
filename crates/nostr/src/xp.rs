@@ -1349,6 +1349,8 @@ pub use playtest::{
     check_playtest, parse_playtest_report, parse_playtest_session, playtest_award, playtest_report,
     playtest_session,
 };
+pub mod card;
+pub use card::{CARD_ADDRESS, CARD_KIND, CardAward, TrainerCard, card, parse_card};
 pub mod trainer;
 pub use trainer::{
     KeyLink, LINK_KIND, PROFILE_KIND, TrainerProfile, link, parse_link, parse_profile, profile,

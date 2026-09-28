@@ -1,5 +1,6 @@
 //! NIP-19 bech32 encoding of bare keys: `npub` for an x-only public key and
-//! `nsec` for a secret key.
+//! `nsec` for a secret key, and of `naddr` coordinates for addressable
+//! events.
 //!
 //! The bech32 codec is implemented here from BIP-173 with no padding
 //! leniency, and a decoded key is checked against the curve before it is
@@ -110,6 +111,99 @@ fn decode_key(text: &str, expected: &'static str) -> Result<[u8; 32], Nip19Error
 
 /// Encode bytes as a lowercase bech32 string under `prefix`.
 pub fn encode(prefix: &str, data: &[u8]) -> Result<String, Nip19Error> {
+    encode_within(prefix, data, MAX_ENCODED_CHARS)
+}
+
+/// The human-readable part of an addressable-event coordinate.
+pub const NADDR: &str = "naddr";
+/// The most characters a TLV entity such as `naddr` may have. NIP-19 lifts
+/// bech32's 90-character limit for these.
+const MAX_TLV_CHARS: usize = 5_000;
+
+/// A decoded `naddr`: an addressable event's coordinate and relay hints.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Naddr {
+    /// The `d` tag.
+    pub identifier: String,
+    pub pubkey: [u8; 32],
+    pub kind: u32,
+    pub relays: Vec<String>,
+}
+
+/// Encode an addressable event's coordinate as an `naddr` (NIP-19 TLV:
+/// `0` the `d` identifier, `1` a relay, `2` the author, `3` the kind).
+///
+/// # Errors
+///
+/// When a field is longer than 255 bytes or the result is too long.
+pub fn encode_naddr(naddr: &Naddr) -> Result<String, Nip19Error> {
+    let mut data = Vec::new();
+    let mut push = |tag: u8, value: &[u8]| -> Result<(), Nip19Error> {
+        let length = u8::try_from(value.len()).map_err(|_| Nip19Error::InvalidLength)?;
+        data.push(tag);
+        data.push(length);
+        data.extend_from_slice(value);
+        Ok(())
+    };
+    push(0, naddr.identifier.as_bytes())?;
+    for relay in &naddr.relays {
+        push(1, relay.as_bytes())?;
+    }
+    push(2, &naddr.pubkey)?;
+    push(3, &naddr.kind.to_be_bytes())?;
+    encode_within(NADDR, &data, MAX_TLV_CHARS)
+}
+
+/// Decode an `naddr`. Unknown TLV types are skipped, as NIP-19 asks.
+///
+/// # Errors
+///
+/// Another prefix, a truncated TLV, or a missing identifier, author, or
+/// kind.
+pub fn decode_naddr(text: &str) -> Result<Naddr, Nip19Error> {
+    let (prefix, data) = decode_within(text, MAX_TLV_CHARS)?;
+    if prefix != NADDR {
+        return Err(Nip19Error::WrongPrefix {
+            expected: NADDR,
+            actual: prefix,
+        });
+    }
+    let (mut identifier, mut pubkey, mut kind, mut relays) = (None, None, None, Vec::new());
+    let mut rest = data.as_slice();
+    while !rest.is_empty() {
+        let [tag, length, tail @ ..] = rest else {
+            return Err(Nip19Error::InvalidLength);
+        };
+        let length = usize::from(*length);
+        if tail.len() < length {
+            return Err(Nip19Error::InvalidLength);
+        }
+        let (value, next) = tail.split_at(length);
+        match tag {
+            0 => {
+                identifier =
+                    Some(String::from_utf8(value.to_vec()).map_err(|_| Nip19Error::InvalidLength)?);
+            }
+            1 => relays.push(String::from_utf8_lossy(value).into_owned()),
+            2 => pubkey = Some(<[u8; 32]>::try_from(value).map_err(|_| Nip19Error::InvalidLength)?),
+            3 => {
+                kind = Some(u32::from_be_bytes(
+                    <[u8; 4]>::try_from(value).map_err(|_| Nip19Error::InvalidLength)?,
+                ));
+            }
+            _ => {}
+        }
+        rest = next;
+    }
+    Ok(Naddr {
+        identifier: identifier.ok_or(Nip19Error::InvalidLength)?,
+        pubkey: pubkey.ok_or(Nip19Error::InvalidLength)?,
+        kind: kind.ok_or(Nip19Error::InvalidLength)?,
+        relays,
+    })
+}
+
+fn encode_within(prefix: &str, data: &[u8], max: usize) -> Result<String, Nip19Error> {
     if prefix.is_empty() || !prefix.bytes().all(|byte| (33..=126).contains(&byte)) {
         return Err(Nip19Error::MissingSeparator);
     }
@@ -123,7 +217,7 @@ pub fn encode(prefix: &str, data: &[u8]) -> Result<String, Nip19Error> {
     for word in words {
         encoded.push(char::from(CHARSET[usize::from(word)]));
     }
-    if encoded.len() > MAX_ENCODED_CHARS {
+    if encoded.len() > max {
         return Err(Nip19Error::InvalidLength);
     }
     Ok(encoded)
@@ -131,7 +225,11 @@ pub fn encode(prefix: &str, data: &[u8]) -> Result<String, Nip19Error> {
 
 /// Decode a bech32 string to its lowercase prefix and its bytes.
 pub fn decode(text: &str) -> Result<(String, Vec<u8>), Nip19Error> {
-    if text.len() > MAX_ENCODED_CHARS || !text.is_ascii() {
+    decode_within(text, MAX_ENCODED_CHARS)
+}
+
+fn decode_within(text: &str, max: usize) -> Result<(String, Vec<u8>), Nip19Error> {
+    if text.len() > max || !text.is_ascii() {
         return Err(Nip19Error::InvalidLength);
     }
     let has_lower = text.bytes().any(|byte| byte.is_ascii_lowercase());
@@ -239,6 +337,31 @@ fn from_words(words: &[u8]) -> Result<Vec<u8>, Nip19Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_naddr_round_trips_past_ninety_characters_and_skips_unknown_types() {
+        let naddr = Naddr {
+            identifier: "trainer-card".into(),
+            pubkey: [7; 32],
+            kind: 30_194,
+            relays: vec!["wss://relay.openagents.com".into()],
+        };
+        let text = encode_naddr(&naddr).unwrap();
+        assert!(text.starts_with("naddr1") && text.len() > 90);
+        assert_eq!(decode_naddr(&text).unwrap(), naddr);
+        assert!(matches!(
+            decode_naddr(&encode_npub(&[7; 32])),
+            Err(Nip19Error::WrongPrefix { .. })
+        ));
+        // An unknown TLV type is skipped; a truncated one is refused.
+        let mut data = vec![9, 1, 0xff, 0, 1, b'x', 2, 32];
+        data.extend_from_slice(&[7; 32]);
+        data.extend_from_slice(&[3, 4, 0, 0, 0x75, 0xf2]);
+        let decoded = decode_naddr(&encode_within(NADDR, &data, MAX_TLV_CHARS).unwrap()).unwrap();
+        assert_eq!((decoded.identifier.as_str(), decoded.kind), ("x", 30_194));
+        let truncated = encode_within(NADDR, &[0, 5, b'x'], MAX_TLV_CHARS).unwrap();
+        assert_eq!(decode_naddr(&truncated), Err(Nip19Error::InvalidLength));
+    }
 
     #[test]
     fn bip173_valid_strings_decode_and_round_trip() {

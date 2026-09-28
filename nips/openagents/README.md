@@ -289,6 +289,7 @@ NIP-32 `1985` labels or Block `24200` frames, aren't claims.
 | `30190` | [NIP-KB](NIP-KB.md) | Current entry head |
 | `30192` | [NIP-MKT](NIP-MKT.md) | Current offering head |
 | `30193` | [NIP-XP](NIP-XP.md) | Frozen quest version |
+| `30194` | [NIP-XP](NIP-XP.md) | Trainer card |
 | `33300` | [NIP-MV](NIP-MV.md) | World definition |
 | `33301` | [NIP-MV](NIP-MV.md) | Entity state |
 

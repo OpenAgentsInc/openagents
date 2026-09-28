@@ -9,7 +9,8 @@
 //! its level uses (`trainer-curve-v1`). It never spends or pays, and it
 //! publishes one thing: the trainer profile (NIP-XP `13193`), signed by the
 //! world key, and only after the person taps **Show my level** or **Hide
-//! my level** and confirms. Until a shown profile exists, no one's Grid
+//! my level** and confirms; the key list on **Link a key** and
+//! **Remove**; and the trainer card (`30194`) on **Export card**. Until a shown profile exists, no one's Grid
 //! shows a level over this player's head.
 //!
 //! The world key's secret reaches the interface only in the direct reply
@@ -85,6 +86,9 @@ pub struct TrainerPacket {
     /// it belongs to another key's trainer.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub linked_to: Option<String>,
+    /// The last card export: `idle`, `publishing`, `published`, or
+    /// `failed`.
+    pub card_status: &'static str,
     /// Playtest XP and titles from the separate playtest referee, shown
     /// beside the trainer XP above and never summed into its level.
     pub playtest: PlaytestSection,
@@ -111,6 +115,25 @@ pub struct PlaytestSection {
     pub diaries: usize,
     pub awards: Vec<AwardRow>,
     pub note: &'static str,
+}
+
+/// The direct reply to a `trainer_export` request: the signed card as a
+/// JSON file and its public link.
+#[derive(Serialize)]
+pub struct CardExport {
+    pub schema: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+    /// The signed `30194` event, pretty-printed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub json: Option<String>,
+    /// The card's `naddr` on a public Nostr gateway.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<String>,
+    /// A preview card is signed but never published.
+    pub preview: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// One key the trainer profile lists.
@@ -181,6 +204,14 @@ pub struct Trainer {
     /// The newest profile this phone published, until the reader sees it.
     published: Option<Event>,
     publish_error: Option<String>,
+    /// A card export on its way to the relay.
+    card_publishing: Option<Receiver<Result<(), String>>>,
+    card_status: &'static str,
+    /// When the last card was signed, so the next one is newer.
+    card_at: u64,
+    /// The trust list the ledger was read under, which a card names; the
+    /// OpenAgents referee unless a preview or a test says otherwise.
+    trust: Option<::verse::xp::XpTrust>,
     /// The playtest referee's reader, beside the trainer reader.
     playtest_board: Option<Board>,
     playtest_snapshot: Option<Snapshot>,
@@ -356,6 +387,91 @@ impl Trainer {
         self.set_profile(secret_hex, None, Some(keys))
     }
 
+    /// Signs the trainer card for the world key `secret_hex` from the
+    /// current ledger (the OpenAgents referee, the public relay, the keys
+    /// linked both ways) and publishes it at its address, so the link
+    /// resolves. A preview signs the labeled fixture's card and publishes
+    /// nothing.
+    ///
+    /// # Errors
+    ///
+    /// A bad key, no ledger read yet, or a card the protocol refuses.
+    pub fn export(&mut self, secret_hex: &str) -> Result<CardExport, String> {
+        let secret: SecretKey = secret_hex
+            .parse()
+            .map_err(|_| "Invalid trainer key".to_owned())?;
+        let signer = nostr::domain::RelaySigner::from_secret_hex(secret_hex)
+            .map_err(|_| "Invalid trainer key".to_owned())?;
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .ok_or("The card is still reading your XP. Try again in a moment.")?;
+        let relay = ::verse::session::PUBLIC_RELAY.to_owned();
+        let trust = self
+            .trust
+            .clone()
+            .unwrap_or_else(::verse::xp::openagents_trust);
+        let now = unix_now().max(self.card_at + 1);
+        let card = ::verse::xp::trainer_card(
+            snapshot,
+            signer.pubkey(),
+            &trust,
+            std::slice::from_ref(&relay),
+            now,
+        );
+        let parts = nostr::xp::card(&card).map_err(|e| e.to_string())?;
+        let event = signer.sign(now, parts.kind, parts.tags, parts.content);
+        self.card_at = now;
+        let mut pubkey = [0u8; 32];
+        for (i, byte) in pubkey.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&event.pubkey[2 * i..2 * i + 2], 16).unwrap_or(0);
+        }
+        let naddr = nostr::nip19::encode_naddr(&nostr::nip19::Naddr {
+            identifier: nostr::xp::CARD_ADDRESS.to_owned(),
+            pubkey,
+            kind: u32::from(nostr::xp::CARD_KIND),
+            relays: vec![relay],
+        })
+        .map_err(|_| "The card's link could not be made.".to_owned())?;
+        let export = CardExport {
+            schema: "openagents.trainer-card.v1",
+            file_name: Some(format!("trainer-card-{}.json", &event.pubkey[..8])),
+            json: serde_json::to_string_pretty(&event).ok(),
+            link: Some(format!("https://njump.me/{naddr}")),
+            preview: self.preview,
+            error: None,
+        };
+        if !self.preview {
+            let publisher = self
+                .publisher
+                .clone()
+                .unwrap_or_else(|| Arc::new(RelayPublish));
+            let (tx, rx) = mpsc::channel();
+            self.card_publishing = Some(rx);
+            self.card_status = "publishing";
+            std::thread::Builder::new()
+                .name("trainer-card".into())
+                .spawn(move || {
+                    let _ = tx.send(publisher.publish(&secret, &event));
+                })
+                .map_err(|_| "The phone could not start publishing.".to_owned())?;
+        }
+        Ok(export)
+    }
+
+    fn settle_card(&mut self) {
+        let Some(rx) = &self.card_publishing else {
+            return;
+        };
+        let status = match rx.try_recv() {
+            Ok(Ok(())) => "published",
+            Ok(Err(_)) | Err(mpsc::TryRecvError::Disconnected) => "failed",
+            Err(mpsc::TryRecvError::Empty) => return,
+        };
+        self.card_status = status;
+        self.card_publishing = None;
+    }
+
     /// Shows `error` on the card as the last change's failure, so the
     /// screen can say why nothing was published.
     ///
@@ -462,6 +578,7 @@ impl Trainer {
             let mut trust = ::verse::xp::openagents_trust();
             trust.referees = std::collections::BTreeSet::from([referee.pubkey().to_owned()]);
             self.snapshot = Some(::verse::xp::snapshot(&events, &trust));
+            self.trust = Some(trust);
             self.board = None;
             self.preview = true;
         }
@@ -499,6 +616,7 @@ impl Trainer {
             ::verse::xp::open_quests(snapshot, std::slice::from_ref(&public_hex), unix_now());
         let playtest = self.playtest(&public_hex, &signer);
         self.settle_publish();
+        self.settle_card();
         let own = self.own_profile(&public_hex);
         let linked_keys = own
             .as_ref()
@@ -552,6 +670,11 @@ impl Trainer {
             open_quests,
             linked_keys,
             linked_to,
+            card_status: if self.card_status.is_empty() {
+                "idle"
+            } else {
+                self.card_status
+            },
             note: NOTE,
             nsec: reveal.then(|| nostr::nip19::encode_nsec(&secret.secret_bytes())),
         })
@@ -751,6 +874,83 @@ mod tests {
         assert!(packet.linked_keys.is_empty());
         let sent = relay.0.lock().unwrap().clone();
         assert!(nostr::xp::parse_profile(&sent[1]).unwrap().keys.is_empty());
+    }
+
+    #[test]
+    fn exporting_signs_a_card_that_checks_and_publishes_it_with_a_link() {
+        let relay = Arc::new(Recorded::default());
+        let mut trainer = Trainer::with_publisher(relay.clone());
+        // Nothing to export before the ledger is read.
+        let mut empty = Trainer::with_publisher(relay.clone());
+        empty.board = None;
+        assert!(empty.export(WORLD).is_err());
+
+        // A real ledger: two tutorial awards to this key.
+        let referee = ::verse::xp::fixture::signer(0x0a_de_fe_ee);
+        let signer = nostr::domain::RelaySigner::from_secret_hex(WORLD).unwrap();
+        let events = ::verse::xp::fixture::tutorial_events(&referee, &signer, 2, unix_now());
+        let mut trust = ::verse::xp::openagents_trust();
+        trust.referees = std::collections::BTreeSet::from([referee.pubkey().to_owned()]);
+        let snapshot = ::verse::xp::snapshot(&events, &trust);
+        trainer.board = Some(Board::fixed("wss://test.invalid", snapshot.clone()));
+        trainer.trust = Some(trust.clone());
+        trainer.packet(WORLD, false, false).unwrap();
+        let export = trainer.export(WORLD).unwrap();
+        assert!(!export.preview);
+        let link = export.link.unwrap();
+        assert!(link.starts_with("https://njump.me/naddr1"));
+        let naddr =
+            nostr::nip19::decode_naddr(link.trim_start_matches("https://njump.me/")).unwrap();
+        assert_eq!(
+            (naddr.identifier.as_str(), naddr.kind),
+            ("trainer-card", 30_194)
+        );
+        let json = export.json.unwrap();
+        assert!(!json.contains(WORLD) && !json.contains("nsec1"));
+        let event: Event = serde_json::from_str(&json).unwrap();
+        let card = nostr::xp::parse_card(&event).unwrap();
+        // The card names the trust list its ledger was read under, and a
+        // reader under that list derives the same card.
+        assert_eq!(card.referees, [referee.pubkey().to_owned()]);
+        assert_eq!((card.xp, card.level), (100, 2));
+        let check = ::verse::xp::check_card(&card, &event.pubkey, &snapshot);
+        assert!(check.differences.is_empty(), "{:?}", check.differences);
+        // A reader trusting only the OpenAgents referee disagrees, and says so.
+        let other = ::verse::xp::snapshot(&events, &::verse::xp::openagents_trust());
+        assert!(
+            !::verse::xp::check_card(&card, &event.pubkey, &other)
+                .differences
+                .is_empty()
+        );
+        // It reached the relay, and the card says so.
+        for _ in 0..200 {
+            if trainer.packet(WORLD, false, false).unwrap().card_status != "publishing" {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(
+            trainer.packet(WORLD, false, false).unwrap().card_status,
+            "published"
+        );
+        assert_eq!(relay.0.lock().unwrap().last().unwrap().id, event.id);
+        // A second export is newer, so it replaces the first at its address.
+        let again: Event =
+            serde_json::from_str(&trainer.export(WORLD).unwrap().json.unwrap()).unwrap();
+        assert!(again.created_at > event.created_at);
+    }
+
+    #[test]
+    fn a_preview_card_is_signed_but_never_published() {
+        let relay = Arc::new(Recorded::default());
+        let mut trainer = Trainer::with_publisher(relay.clone());
+        trainer.packet(WORLD, false, true).unwrap();
+        let export = trainer.export(WORLD).unwrap();
+        assert!(export.preview);
+        let event: Event = serde_json::from_str(&export.json.unwrap()).unwrap();
+        let card = nostr::xp::parse_card(&event).unwrap();
+        assert_eq!((card.xp, card.level, card.awards.len()), (300, 3, 6));
+        assert!(relay.0.lock().unwrap().is_empty());
     }
 
     #[test]
