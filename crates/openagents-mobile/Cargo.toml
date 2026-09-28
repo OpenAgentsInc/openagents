@@ -29,6 +29,9 @@ coder-history = { path = "../coder-history", default-features = false }
 # The Verse tab: Coder's mobile Verse surface in its bare-world mode. Its
 # reader and C exports are not called; the app linker strips them.
 coder-mobile = { path = "../coder-mobile" }
+# The Account tab's trainer card: Verse's read-only NIP-XP reader and its
+# level curve, the same code that puts levels over heads in the Grid.
+verse = { path = "../verse", default-features = false, features = ["xp-host"] }
 base64 = "0.22"
 # The Wallet tab: Breez's Spark wallet, on Bitcoin mainnet. Its SQLite store
 # needs `rusqlite` 0.32, which cannot share a lock file with `ldk-node`'s

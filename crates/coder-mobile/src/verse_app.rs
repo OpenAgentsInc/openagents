@@ -62,6 +62,10 @@ pub(crate) struct Config {
     /// `synthetic_gym` preview as Coder's.
     #[serde(default)]
     pub bare: bool,
+    /// Levels come from the labeled tutorial fixture rather than the relay
+    /// ([`verse::xp::fixture::tutorial_events`]), for simulator checks.
+    #[serde(default)]
+    pub xp_preview: bool,
 }
 
 #[derive(Deserialize)]
@@ -581,7 +585,9 @@ const BARE_PRESENCE_MARGIN: Duration = Duration::from_millis(300);
 const WORLD_TAP_SECONDS: f64 = 0.25;
 /// Radius of the movement stick's drawn base, in logical points.
 const STICK_RADIUS_POINTS: f32 = 56.0;
-/// Characters of a player's hex pubkey shown over their head.
+/// Characters of a player's hex pubkey shown over their head, as
+/// [`verse::xp::name_tag`] shows them.
+#[cfg(test)]
 const PLAYER_TAG_CHARS: usize = 8;
 /// Players farther than this, in meters, carry no tag.
 const PLAYER_TAG_RANGE: f32 = 60.0;
@@ -718,13 +724,27 @@ pub(crate) struct Scene {
     /// The host shows the native results panel, so a tap on the RESULTS
     /// board may open it and the board shows its tap cue.
     pub(crate) results_panel: bool,
+    /// The read-only NIP-XP reader, while the world is online. It trusts
+    /// the OpenAgents referee alone and reads the public relay.
+    xp: Option<verse::xp::Board>,
+    /// The last ledger it derived, kept across tab switches for the tags.
+    pub(crate) xp_snapshot: Option<verse::xp::Snapshot>,
     pub frames: u64,
     pub error: Option<String>,
 }
 
-/// A player's tag: the first characters of their hex pubkey.
-fn player_tag(pubkey: &str) -> &str {
-    pubkey.get(..PLAYER_TAG_CHARS).unwrap_or(pubkey)
+/// The ledger the XP preview shows: six tutorial reproductions of 50 XP
+/// by `secret`'s key, from a throwaway referee the preview alone trusts.
+fn xp_preview(secret: secp256k1::SecretKey) -> Result<verse::xp::Snapshot, String> {
+    let referee = verse::xp::fixture::signer(0x0a_de_fe_ee);
+    let player = verse::identity::Identity::from_secret("phone", secret)?.signer;
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(1_790_000_000, |d| d.as_secs());
+    let events = verse::xp::fixture::tutorial_events(&referee, &player, 6, at);
+    let mut trust = verse::xp::openagents_trust();
+    trust.referees = std::collections::BTreeSet::from([referee.pubkey().to_owned()]);
+    Ok(verse::xp::snapshot(&events, &trust))
 }
 
 impl Scene {
@@ -864,6 +884,12 @@ impl Scene {
             }),
             results_open: false,
             results_panel: false,
+            xp: None,
+            xp_snapshot: if config.xp_preview {
+                Some(xp_preview(secret)?)
+            } else {
+                None
+            },
             frames: 0,
             error: initial_error,
         })
@@ -891,6 +917,7 @@ impl Scene {
             self.jump = false;
             self.sprint = false;
             self.session = None;
+            self.xp = None;
         } else if self.session.is_none()
             && self.relay.is_some()
             && !self.synthetic
@@ -947,12 +974,22 @@ impl Scene {
         self.gym_board.set_active(false);
         self.results.set_active(false);
         self.session = Some(session);
+        if self.world.is_bare() && self.xp.is_none() {
+            let signer = verse::identity::Identity::from_secret("phone", self.secret)?.signer;
+            self.xp = Some(verse::xp::Board::start_with(
+                verse::session::PUBLIC_RELAY,
+                verse::xp::openagents_trust(),
+                None,
+                Some(signer),
+            ));
+        }
         Ok(())
     }
 
     pub fn disconnect(&mut self) {
         self.presented_entities = verse::mesh::Mesh::default();
         self.session = None;
+        self.xp = None;
         self.relay = None;
         self.restore_spawn = false;
         self.spawn_pending = false;
@@ -1402,8 +1439,9 @@ impl Scene {
         );
     }
 
-    /// Every player's pubkey prefix over their head, this player's included
-    /// unless the camera is inside its head.
+    /// Every player's pubkey prefix over their head, and their level when
+    /// their key has XP under the OpenAgents referee (`650a2a22 · lv 3`),
+    /// this player's included unless the camera is inside its head.
     fn player_tags(&self) -> verse::ui::UiBatch {
         let mut ui = verse::ui::UiBatch::default();
         if !self.lifecycle.active() || self.panel_open() {
@@ -1436,13 +1474,13 @@ impl Scene {
             let Some([x, y]) = verse::hud::project(view_proj, size, head) else {
                 continue;
             };
-            let tag = player_tag(pubkey);
-            let width = self.atlas.measure(tag);
+            let tag = verse::xp::name_tag(self.xp_snapshot.as_ref(), pubkey);
+            let width = self.atlas.measure(&tag);
             ui.text(
                 &self.atlas,
                 x - width / 2.0,
                 y - self.atlas.line,
-                tag,
+                &tag,
                 [0.9, 0.9, 0.9, 1.0],
             );
         }
@@ -1583,6 +1621,12 @@ impl Scene {
         self.sync_gym_interest();
         self.gym_board.poll();
         self.results.poll();
+        if let Some(board) = &mut self.xp {
+            board.tick();
+            if let Some(snapshot) = board.snapshot.take() {
+                self.xp_snapshot = Some(snapshot);
+            }
+        }
         if self.results_open {
             self.results.tick(f64::from(dt));
         }
@@ -2652,6 +2696,7 @@ mod tests {
             computer_hud: true,
             hdr: false,
             bare: false,
+            xp_preview: false,
         })
         .unwrap()
     }
@@ -2881,6 +2926,7 @@ mod tests {
             computer_hud: true,
             hdr: false,
             bare: false,
+            xp_preview: false,
         })
         .unwrap()
     }
@@ -2957,6 +3003,7 @@ mod tests {
             computer_hud: true,
             hdr: false,
             bare: false,
+            xp_preview: false,
         })
         .unwrap();
         restored.activate(true).unwrap();
@@ -3848,6 +3895,7 @@ mod tests {
             computer_hud: false,
             hdr: false,
             bare: true,
+            xp_preview: false,
         };
         // Online, it selects the public relay unless another is named.
         let online = Scene::new(config(None, false)).unwrap();
@@ -3933,6 +3981,28 @@ mod tests {
     }
 
     /// An offline bare world, active and past its first frame.
+    fn bare_config(relay: Option<String>) -> Config {
+        Config {
+            secret_hex: "11".repeat(32),
+            width: 800,
+            height: 1200,
+            scale: 2.0,
+            synthetic: false,
+            gym_code: None,
+            synthetic_gym: false,
+            world_offline: relay.is_none(),
+            world_relay: relay,
+            door_preferences: None,
+            zone_cache_directory: None,
+            results_base: None,
+            results_cache_directory: None,
+            computer_hud: false,
+            hdr: false,
+            bare: true,
+            xp_preview: false,
+        }
+    }
+
     fn bare_scene() -> Scene {
         let mut scene = Scene::new(Config {
             secret_hex: "11".repeat(32),
@@ -3951,6 +4021,7 @@ mod tests {
             computer_hud: false,
             hdr: false,
             bare: true,
+            xp_preview: false,
         })
         .unwrap();
         scene.activate(true).unwrap();
@@ -3959,9 +4030,35 @@ mod tests {
     }
 
     #[test]
-    fn a_player_tag_is_the_first_eight_characters_of_the_pubkey() {
-        assert_eq!(player_tag("c25458d5b303d853"), "c25458d5");
-        assert_eq!(player_tag("abc"), "abc");
+    fn a_player_tag_is_the_pubkey_prefix_and_its_level_when_it_has_xp() {
+        // No ledger yet: the first eight characters of the pubkey.
+        let plain = bare_scene();
+        let key = plain.public_key.clone();
+        assert_eq!(
+            verse::xp::name_tag(plain.xp_snapshot.as_ref(), &key),
+            key[..8]
+        );
+        let plain_vertices = plain.player_tags().vertices.len();
+        assert_eq!(plain_vertices, PLAYER_TAG_CHARS * 6);
+
+        // The labeled preview credits this player six tutorial
+        // reproductions of 50 XP: level 3 under trainer-curve-v1.
+        let mut preview = Scene::new(Config {
+            xp_preview: true,
+            ..bare_config(None)
+        })
+        .unwrap();
+        preview.activate(true).unwrap();
+        preview.update(1.0).unwrap();
+        assert!(preview.session.is_none() && preview.xp.is_none());
+        let key = preview.public_key.clone();
+        let snapshot = preview.xp_snapshot.as_ref().unwrap();
+        assert_eq!(snapshot.xp_of(std::slice::from_ref(&key)), 300);
+        assert_eq!(
+            verse::xp::name_tag(Some(snapshot), &key),
+            format!("{} · lv 3", &key[..8])
+        );
+        assert!(preview.player_tags().vertices.len() > plain_vertices);
     }
 
     #[test]

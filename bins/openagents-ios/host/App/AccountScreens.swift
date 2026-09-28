@@ -1,5 +1,5 @@
-// The Account tab's own screens: identity keys, this device, and the
-// changelog. Rust derives every key form and owns the changelog; these views
+// The Account tab's own screens: the trainer card, identity keys, this
+// device, and the changelog. Rust derives every key form and owns the changelog; these views
 // only show and copy what it returns.
 import SwiftUI
 import UIKit
@@ -214,5 +214,152 @@ struct ChangelogScreen: View {
         .scrollContentBackground(.hidden)
         .background(Color.black.ignoresSafeArea())
         .onAppear { bridge.account { releases = $0.changelog } }
+    }
+}
+
+/// The trainer card: the level over this player's head in the Grid, the
+/// curve it uses, and the counted awards behind it, derived in Rust from
+/// signed NIP-XP awards by the OpenAgents referee. The trainer key is the
+/// Verse world key; its nsec shows only after an explicit reveal, to sign a
+/// reproduction with on a computer.
+struct TrainerScreen: View {
+    @ObservedObject var bridge: MobileBridge
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var card: TrainerPacket?
+    @State private var nsec: String?
+    @State private var warning = false
+    private let refresh = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+
+    private var progress: Double {
+        guard let card, card.next_level_at > 0 else { return 0 }
+        // Share of the way from this level's start to the next level.
+        let reached = Double(card.xp)
+        let next = Double(card.next_level_at)
+        let base = Self.levelStart(card)
+        return next > base ? min(1, max(0, (reached - base) / (next - base))) : 0
+    }
+
+    /// Cumulative XP at which the card's level starts, under
+    /// trainer-curve-v1: ceil(100 · (n - 1)^1.5).
+    private static func levelStart(_ card: TrainerPacket) -> Double {
+        let n = Double(card.level) - 1
+        return n <= 0 ? 0 : (100 * pow(n, 1.5)).rounded(.up)
+    }
+
+    var body: some View {
+        List {
+            if card?.state == "preview" {
+                Section {
+                    Label("Preview: a labeled fixture of six tutorial reproductions, not real awards.",
+                          systemImage: "flask")
+                        .font(.footnote)
+                        .foregroundStyle(.yellow)
+                }
+            }
+            Section {
+                if let card {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Level \(card.level)").font(.largeTitle.bold())
+                            Spacer()
+                            Text("\(card.xp) XP").font(.title3.monospacedDigit())
+                        }
+                        ProgressView(value: progress)
+                            .tint(.white)
+                            .accessibilityIdentifier("trainer-progress")
+                        Text("\(card.to_next) XP to level \(card.level + 1) · \(card.curve)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Text("Over your head in the Grid: \(card.tag)\(card.xp > 0 ? " · lv \(card.level)" : "")")
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                    .accessibilityIdentifier("trainer-card")
+                } else {
+                    Text("Reading your XP…").foregroundStyle(.secondary)
+                }
+            } footer: {
+                if let card, card.state != "ready", card.state != "preview" {
+                    Text("Reading awards from \(card.relay)…")
+                }
+            }
+            if let card, !card.titles.isEmpty {
+                Section("Titles") {
+                    Text(card.titles.joined(separator: ", "))
+                }
+            }
+            if let card {
+                Section {
+                    if card.awards.isEmpty {
+                        Text("No awards yet. Reproduce a published pass from its recipe to earn your first; a tutorial quest is worth 50 XP.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(card.awards, id: \.self) { award in
+                        if let url = URL(string: award.link) {
+                            Link(destination: url) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(alignment: .firstTextBaseline) {
+                                        Text(award.title).font(.body.weight(.semibold))
+                                        Spacer()
+                                        Text("+\(award.xp) XP").font(.subheadline.monospacedDigit())
+                                    }
+                                    Text("\(award.quest) · \(award.role) · \(award.season)")
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .foregroundStyle(.white)
+                        }
+                    }
+                    if let guide = URL(string: "https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/tutorial-quests.md") {
+                        Link(destination: guide) {
+                            Label(card.open_quests == 1 ? "1 open tutorial quest" : "\(card.open_quests) open quests",
+                                  systemImage: "flag.checkered")
+                        }
+                    }
+                } header: {
+                    Text("Counted awards")
+                } footer: {
+                    Text("Trusting the OpenAgents referee, \(String(card.referee_npub.prefix(16)))…, on \(card.relay). \(card.note)")
+                }
+                Section {
+                    KeyText(value: card.npub)
+                    CopyButton(title: "Copy npub", value: card.npub)
+                    if let nsec {
+                        KeyText(value: nsec, copyable: false)
+                        CopyButton(title: "Copy nsec", value: nsec, secret: true)
+                        Button("Hide nsec", systemImage: "eye.slash") { self.nsec = nil }
+                    } else {
+                        Button("Reveal nsec", systemImage: "eye") { warning = true }
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("trainer-reveal")
+                    }
+                } header: {
+                    Text("Trainer key")
+                } footer: {
+                    Text("Your trainer key is your Verse world key: the one over your head in the Grid. Sign a reproduction with it on your computer (`microcoder xp reproduce --key`), and the award shows here and in the Grid.")
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.black.ignoresSafeArea())
+        .alert("Reveal your trainer nsec?", isPresented: $warning) {
+            Button("Reveal", role: .destructive) {
+                bridge.trainer(reveal: true) { packet in nsec = packet.nsec }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Anyone with this nsec can act as you in Verse and sign work in your name. It can't reach your computers or your wallet. Never share it, and make sure no one can see your screen.")
+        }
+        .onAppear { bridge.trainer { card = $0 } }
+        .onReceive(refresh) { _ in
+            guard scenePhase == .active, card?.state != "preview" else { return }
+            bridge.trainer { card = $0 }
+        }
+        .onDisappear { nsec = nil }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { nsec = nil } }
     }
 }

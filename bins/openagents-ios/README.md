@@ -115,6 +115,18 @@ build with `--rust-native-fixture` to see the sample conversation from
 
 ## Account
 
+**Trainer** is your trainer card: your level, your XP, the XP to the next
+level, the curve (`trainer-curve-v1`), your titles, and the counted awards
+behind the level, each linked to its signed award. Rust derives it on the
+phone from NIP-XP events on `wss://relay.openagents.com`, trusting the
+OpenAgents referee alone, with the same reader that puts
+`<prefix> · lv <n>` over players' heads in the Grid. Your trainer key is the
+Verse world key, the one over your head; **Reveal nsec** exports it, behind
+a warning, to sign a reproduction on a computer
+([tutorial quests](../../docs/verse/tutorial-quests.md)). `--xp-preview`
+(debug or simulator) shows a labeled fixture instead of the relay
+([captures](verification/2026-09-28-trainer-levels/)).
+
 **Computers** lists your computers as a native list: each row names the
 computer and a one-word status with its route, and its menu switches it off
 or on, tries it now, opens its access, or forgets it. Tapping a row opens

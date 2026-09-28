@@ -128,6 +128,40 @@ struct AccountPacket: Decodable {
     let nsec: String?
 }
 
+/// One counted award on the trainer card.
+struct TrainerAward: Decodable, Hashable {
+    let title: String
+    let quest: String
+    let season: String
+    let rule: String
+    let role: String
+    let xp: UInt64
+    let award: String
+    let link: String
+}
+
+/// The Account tab's trainer card for the Verse world key: Rust derives the
+/// level from signed NIP-XP awards; this only shows it.
+struct TrainerPacket: Decodable {
+    let schema: String
+    let npub: String
+    let public_hex: String
+    let tag: String
+    let state: String
+    let relay: String
+    let referee_npub: String
+    let curve: String
+    let xp: UInt64
+    let level: UInt32
+    let next_level_at: UInt64
+    let to_next: UInt64
+    let titles: [String]
+    let awards: [TrainerAward]
+    let open_quests: Int
+    let note: String
+    let nsec: String?
+}
+
 struct TerminalPacket: Decodable {
     let schema: String
     let open: Bool
@@ -288,6 +322,21 @@ final class MobileBridge: ObservableObject {
         call(["op": "account", "reveal": reveal]) { data in
             guard let packet = try? JSONDecoder().decode(AccountPacket.self, from: data),
                   packet.schema == "openagents.account.v1" else { return }
+            received(packet)
+        }
+    }
+
+    /// The trainer card for the Verse world key, the key over this player's
+    /// head in the Grid. With `reveal`, the answer also carries that key's
+    /// nsec: ask for it only after the person chose to see it. Nothing here
+    /// logs it.
+    func trainer(reveal: Bool = false, received: @escaping (TrainerPacket) -> Void) {
+        guard let secret = try? DeviceKey.loadOrCreateVerse() else { return }
+        let hex = secret.map { String(format: "%02x", $0) }.joined()
+        call(["op": "trainer", "world_secret_hex": hex, "reveal": reveal,
+              "preview": AppTabLaunch.xpPreview]) { data in
+            guard let packet = try? JSONDecoder().decode(TrainerPacket.self, from: data),
+                  packet.schema == "openagents.trainer.v1" else { return }
             received(packet)
         }
     }

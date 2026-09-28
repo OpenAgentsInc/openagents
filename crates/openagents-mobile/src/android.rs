@@ -191,6 +191,7 @@ impl SurfaceConfig {
             results_panel: true,
             results_base: self.results_base.clone(),
             results_cache_directory: self.results_cache_directory.clone(),
+            xp_preview: false,
         })
     }
 }

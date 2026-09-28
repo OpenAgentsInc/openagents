@@ -274,16 +274,15 @@ impl Reproduction {
     }
 }
 
-/// The tasks [`tutorial_events`] reproduces, in order.
+/// The tasks [`tutorial_events`] reproduces, in order: the six published
+/// tutorial quests' tasks (`docs/verse/tutorial-quests.md`).
 pub const TUTORIAL_TASKS: &[&str] = &[
-    "build-pmars",
-    "fix-code-vulnerability",
-    "git-multibranch",
-    "hello-world",
-    "log-summary",
-    "openssl-selfsigned-cert",
     "prove-plus-comm",
-    "sqlite-with-gcov",
+    "fix-git",
+    "openssl-selfsigned-cert",
+    "regex-log",
+    "sqlite-db-truncate",
+    "build-pmars",
 ];
 
 /// Signed events in which `reproducer` completed `count` tutorial

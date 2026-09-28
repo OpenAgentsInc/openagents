@@ -28,7 +28,7 @@ enum AppTab: String, CaseIterable {
 
 /// A screen that the Account tab pushes.
 enum AccountRoute: String, Hashable {
-    case computers, tailnet, identity, device, changelog
+    case trainer, computers, tailnet, identity, device, changelog
 }
 
 /// Developer launch arguments that open a tab or an Account screen directly,
@@ -59,6 +59,16 @@ enum AppTabLaunch {
         return argument(name)
         #else
         return nil
+        #endif
+    }
+
+    /// `--xp-preview`: levels in the Grid and on the trainer card come from
+    /// the labeled tutorial fixture, offline, instead of the relay.
+    static var xpPreview: Bool {
+        #if DEBUG || targetEnvironment(simulator)
+        return ProcessInfo.processInfo.arguments.contains("--xp-preview")
+        #else
+        return false
         #endif
     }
 
@@ -129,6 +139,12 @@ struct AccountTab: View {
         NavigationStack(path: $path) {
             List {
                 Section {
+                    NavigationLink(value: AccountRoute.trainer) {
+                        Label("Trainer", systemImage: "star.circle")
+                    }
+                    .accessibilityIdentifier("account-trainer")
+                }
+                Section {
                     NavigationLink("Computers", value: AccountRoute.computers)
                     NavigationLink("Tailnet", value: AccountRoute.tailnet)
                 }
@@ -157,6 +173,7 @@ struct AccountTab: View {
 
     @ViewBuilder private func destination(_ route: AccountRoute) -> some View {
         switch route {
+        case .trainer: TrainerScreen(bridge: bridge).navigationTitle("Trainer")
         case .computers: ComputersTab(bridge: bridge) // It sets its own title.
         case .tailnet: TailnetTab(bridge: bridge).navigationTitle("") // The screen draws its own heading.
         case .identity: IdentityKeysScreen(bridge: bridge).navigationTitle("Identity keys")

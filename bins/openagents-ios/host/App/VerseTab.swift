@@ -452,6 +452,11 @@ final class VerseWorldView: UIView {
             // The Gym's saved connection, or in a debug build the labeled
             // synthetic board (`--gym-preview`), which keeps the world
             // offline and starts outside the Gym's doorway.
+            // `--xp-preview`: levels over heads from the labeled tutorial
+            // fixture, offline.
+            if AppTabLaunch.xpPreview {
+                configuration["xp_preview"] = true
+            }
             if Self.gymPreview {
                 configuration["gym_preview"] = true
             } else if let code = world.storedGymCode() {

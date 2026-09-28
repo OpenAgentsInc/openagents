@@ -17,7 +17,8 @@ coder-ui = { path = "../coder-ui" }
 coder-vt = { path = "../coder-vt" }
 # `ffi` exports Rust Native transcript layout to the iOS host.
 rust-native = { path = "../rust-native", features = ["ffi", "shaping"] }
-verse = { path = "../verse", default-features = false }
+# `xp-host` is Verse's read-only NIP-XP reader: levels over players' heads.
+verse = { path = "../verse", default-features = false, features = ["xp-host"] }
 nostr = { path = "../nostr" }
 # The device side of push wakes only; the gateway service is not linked.
 push-gateway = { path = "../push-gateway", default-features = false, features = ["client"] }

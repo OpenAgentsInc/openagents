@@ -1519,6 +1519,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-boundary"
+version = "0.1.0"
+dependencies = [
+ "errno",
+ "libc",
+ "serde",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "coder-computers"
 version = "0.1.0"
 dependencies = [
@@ -3733,6 +3744,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
+name = "knowledge"
+version = "0.1.0"
+dependencies = [
+ "microluna",
+ "nostr",
+ "openrouter",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "konst"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4007,6 +4031,22 @@ checksum = "89550ee9f79e88fef3119de263694973a8adb26c21d75322164fb8c493039fe2"
 dependencies = [
  "portable-atomic",
  "rapidhash",
+]
+
+[[package]]
+name = "microluna"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "base64 0.22.1",
+ "coder-boundary",
+ "futures-util",
+ "libc",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "supervise",
+ "tokio",
 ]
 
 [[package]]
@@ -4332,6 +4372,17 @@ dependencies = [
  "ts_keys",
  "url",
  "uuid",
+ "verse",
+]
+
+[[package]]
+name = "openrouter"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -6101,6 +6152,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
+name = "supervise"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tokio",
+]
+
+[[package]]
 name = "swash"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7279,6 +7338,7 @@ dependencies = [
  "glam",
  "gym-bridge",
  "gym-leaderboard",
+ "knowledge",
  "libc",
  "nostr",
  "objc2",

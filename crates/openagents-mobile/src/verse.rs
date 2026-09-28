@@ -16,6 +16,10 @@
 //! the host keeps in Keychain and passes at creation; a debug build may ask
 //! for the labeled synthetic preview instead.
 //!
+//! Players' name tags show their level when their key has XP under the
+//! OpenAgents referee (`650a2a22 · lv 3`): the world reads NIP-XP awards
+//! from the public relay while it is online, with Verse's read-only reader.
+//!
 //! Create, call, and destroy a handle on the main thread while its
 //! CAMetalLayer stays alive. Requests and replies are Coder's native Verse
 //! JSON (`coder.verse.v1`).
@@ -67,6 +71,10 @@ struct Config {
     /// checks against a mirror; the public repository by default.
     #[serde(default)]
     results_base: Option<String>,
+    /// Show levels over heads from the labeled tutorial fixture, offline.
+    /// For simulator checks only; a release build ignores it.
+    #[serde(default)]
+    xp_preview: bool,
 }
 
 impl Config {
@@ -118,6 +126,7 @@ pub unsafe extern "C" fn openagents_verse_create(
             results_panel: true,
             results_base: config.results_base,
             results_cache_directory: config.results_cache_directory,
+            xp_preview: config.xp_preview && cfg!(debug_assertions),
         };
         unsafe {
             VerseHandle::create_bare_with_gym(

@@ -45,6 +45,10 @@ pub struct BareGym {
     pub results_base: Option<String>,
     /// The app's cache directory for verified results.
     pub results_cache_directory: Option<String>,
+    /// Show levels from the labeled tutorial fixture instead of reading the
+    /// relay: six throwaway reproductions credited to this player. For
+    /// simulator checks only; the world stays offline.
+    pub xp_preview: bool,
 }
 
 #[cfg(test)]
@@ -87,7 +91,7 @@ pub(crate) fn bare_config_with_gym(
         gym_code: gym.code,
         synthetic_gym: gym.preview,
         world_relay,
-        world_offline: world_offline || gym.preview,
+        world_offline: world_offline || gym.preview || gym.xp_preview,
         door_preferences: None,
         zone_cache_directory: None,
         results_base: gym.results_base,
@@ -95,6 +99,7 @@ pub(crate) fn bare_config_with_gym(
         computer_hud: false,
         hdr,
         bare: true,
+        xp_preview: gym.xp_preview,
     }
 }
 
@@ -550,6 +555,7 @@ mod tests {
             computer_hud: true,
             hdr: false,
             bare: false,
+            xp_preview: false,
         })
         .unwrap();
         let mut handle = VerseHandle {

@@ -178,6 +178,18 @@ pub enum Request {
         #[serde(default)]
         reveal: bool,
     },
+    /// The Account tab's trainer card for the Verse world key, as 64 hex
+    /// characters from the platform's protected store. `reveal` returns
+    /// its secret too; the Trainer Key screen sends it only after the
+    /// person asks to see the nsec and confirms a warning. `preview` shows
+    /// the labeled tutorial fixture instead of reading the relay.
+    Trainer {
+        world_secret_hex: String,
+        #[serde(default)]
+        reveal: bool,
+        #[serde(default)]
+        preview: bool,
+    },
     /// Start the Wallet tab's wallet with its seed from the platform's
     /// protected store: BIP39 entropy, 16 or 32 bytes as hex. Never logged
     /// or stored. `replace` follows a restore: it stops the running wallet
@@ -499,6 +511,7 @@ pub struct App {
     /// How agent spend requests reach the computers; `None` without the
     /// live client.
     spend_transport: Option<Arc<dyn crate::spend::Transport>>,
+    trainer: crate::trainer::Trainer,
     notices: Vec<String>,
 }
 
@@ -661,6 +674,7 @@ impl App {
             },
             spend,
             spend_transport,
+            trainer: crate::trainer::Trainer::default(),
             notices,
         })
     }
@@ -675,6 +689,25 @@ impl App {
         if let Request::Account { reveal } = request {
             let packet = crate::account::packet(&self.secret, reveal);
             return serde_json::to_vec(&packet).unwrap_or_default();
+        }
+        if let Request::Trainer {
+            world_secret_hex,
+            reveal,
+            preview,
+        } = request
+        {
+            return match self.trainer.packet(
+                &world_secret_hex,
+                reveal,
+                preview && cfg!(debug_assertions),
+            ) {
+                Ok(packet) => serde_json::to_vec(&packet).unwrap_or_default(),
+                Err(error) => serde_json::to_vec(&serde_json::json!({
+                    "schema": "openagents.trainer.v1",
+                    "error": error,
+                }))
+                .unwrap_or_default(),
+            };
         }
         if matches!(
             request,
@@ -711,6 +744,9 @@ impl App {
             Request::Lifecycle { active } => {
                 if let Some(computers) = self.computers.as_mut() {
                     let _ = computers.set_active(active);
+                }
+                if !active {
+                    self.trainer.pause();
                 }
                 if active {
                     self.wallet.refresh_if_open();
@@ -854,7 +890,7 @@ impl App {
             }
             // `respond` answers it with the account packet; the app packet
             // never carries the secret key.
-            Request::Account { .. } => {}
+            Request::Account { .. } | Request::Trainer { .. } => {}
             Request::WalletOpen {
                 entropy_hex,
                 replace,

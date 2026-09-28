@@ -29,6 +29,7 @@ mod spark;
 mod spend;
 mod tailnet;
 mod tailnet_view;
+mod trainer;
 mod transcripts;
 mod verse;
 mod wallet;
