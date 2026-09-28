@@ -7,6 +7,10 @@ that ever existed in `OpenAgentsInc/openagents`, along with the matching work
 in the sibling `OpenAgentsInc/psionic` repository. It does not describe
 current direction. For that, see the [master roadmap](../roadmap.md).
 
+For a proposal on which Tassadar patterns to bring back into the current
+Gym, MVP, and Verse/XP plans, see
+[What to bring back from Tassadar](../roadmap/2026-09-28-tassadar-revival.md).
+
 Surveyed 2026-09-28 from git history:
 
 - openagents at `3943b45f62`: 352 commits whose messages mention
