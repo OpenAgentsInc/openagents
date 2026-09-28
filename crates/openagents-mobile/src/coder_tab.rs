@@ -784,23 +784,16 @@ impl CoderTab {
         if open.settled == sequence {
             return;
         }
-        // Ended: after the newest chats were read, one more read, which
-        // shows the turn's last reply.
+        // Ended: one more read, which shows the turn's last reply, while the
+        // newest chats are read in case the turn's transcript is a newer
+        // one; a move to it reads that too before the chat settles.
+        let ticket = *open.settle_read.get_or_insert_with(|| conversation.reads());
+        conversation.poll();
         let listed = open
             .head_round
             .is_some_and(|round| chats.head(&open.host, round) == Head::Read);
-        if !listed {
-            return;
-        }
-        match open.settle_read {
-            Some(ticket) if conversation.read_since(ticket) => open.settled = sequence,
-            Some(_) => {
-                conversation.poll();
-            }
-            None => {
-                open.settle_read = Some(conversation.reads());
-                conversation.poll();
-            }
+        if listed && conversation.read_since(ticket) {
+            open.settled = sequence;
         }
     }
 
