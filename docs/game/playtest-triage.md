@@ -58,6 +58,9 @@ openagents playtest session --tester NPUB --script session-2 --format moderated 
 
 # Which accepted contributions back which awards.
 openagents playtest log --acceptances --json
+
+# TestFlight feedback from App Store Connect (screenshots and crashes).
+openagents playtest testflight --asc-env ~/work/.secrets/appstoreconnect.env --since 2026-09-29
 ```
 
 `inbox` reads kind-1059 gift wraps addressed to the triage key from
@@ -67,6 +70,33 @@ triage key, and keeps a report only when the log has none with the same
 gift wrap ID, message ID, or content digest. It never guesses that two
 different reports describe the same problem: that is the triager's call,
 recorded with `decide --decision duplicate`.
+
+## TestFlight feedback
+
+`testflight` reads what TestFlight testers send with **Send Beta Feedback**
+or a shared screenshot, and crashes they chose to send, from App Store
+Connect ([#9905](https://github.com/OpenAgentsInc/openagents/issues/9905)).
+It signs a 20-minute App Store Connect API token (ES256) with the team's API
+key: `--asc-env FILE` names a file with `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`,
+and `ASC_API_PRIVATE_KEY_PATH` (the `.p8`), or the same variables come from
+the environment. The key is never printed. `--app` defaults to the
+OpenAgents app, `6748620735`; `--since` takes an ISO date and skips older
+submissions.
+
+Each submission the log doesn't hold yet gets a `TF-1A2B3C4D` code, a draft,
+and a `testflight` log entry (code, submission ID, `screenshot` or `crash`,
+build, and send time). Its screenshots (`drafts/CODE.jpg`,
+`drafts/CODE-2.jpg`, …), crash log (`drafts/CODE.crash.txt`), and the
+tester's comment (`drafts/CODE.testflight.json`) stay in the private drafts
+folder. Screenshot links expire after about a week, and old crash logs are
+no longer served, so the command counts what it couldn't download.
+
+The tester's Apple email and name are never read into a file or the log. A
+TestFlight draft never quotes the comment, because the tester wrote it to
+OpenAgents through Apple, not for a public issue: `file --approve` refuses
+it until a person writes the title and text in their own words. A TestFlight
+tester has no Nostr key, so a filed TestFlight entry is recorded but isn't
+among `log --acceptances` and backs no playtest award.
 
 ## Drafts
 
@@ -96,6 +126,7 @@ Each line is one event:
 | `decided` | code, decision (`duplicate`, `not-reproducible`, `design`, `idea`, `declined`), reason, issue | Not filed as a new issue. Earns nothing. |
 | `verified` | issue, fix build, `yes`, `no`, or `unverified` | The reporter checked the fix on the fixing build. |
 | `session` | tester, script, format (`unmoderated`, `moderated`, `group`, `diary`), build, code, moderator | A completed script or diary week with an accepted report. |
+| `testflight` | code, submission ID, source (`screenshot` or `crash`), build, created | TestFlight feedback arrived from App Store Connect and was drafted. Earns nothing; filing it backs no award. |
 
 Before appending, the command checks the entry against the log: a decision
 or filing names a received report that is still waiting; each issue has one

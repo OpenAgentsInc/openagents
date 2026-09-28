@@ -18,11 +18,16 @@
 //! deduplicating by exact identity only, and keeps the append-only triage
 //! log that records every acceptance with the tester's key.
 //!
+//! **TestFlight feedback** ([`testflight`]) that App Store Connect holds
+//! joins the same inbox as drafts and log entries, without the tester's
+//! Apple identity; it backs no award.
+//!
 //! This crate has no network and no storage: the app and the triage tool
 //! carry the events.
 
 pub mod report;
 pub mod session;
+pub mod testflight;
 pub mod triage;
 
 /// The OpenAgents triage key, in hex, that reports are sealed to.

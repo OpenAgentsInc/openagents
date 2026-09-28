@@ -1002,6 +1002,8 @@ each, `file` creates the `playtest` issue only with `--approve` (or records
 one a person filed with `--issue`), `decide`, `verify`, and `session`
 record the other outcomes, and `log --acceptances` lists the accepted
 contributions that back playtest awards. `keygen --out PATH` creates the
-triage key file (`0600`) and prints only its npub.
+triage key file (`0600`) and prints only its npub. `testflight` reads the
+app's TestFlight screenshot and crash feedback from App Store Connect with an
+App Store Connect API key and drafts each new submission the same way.
 [docs/game/playtest-triage.md](../game/playtest-triage.md) covers the loop,
 the files, and the triage log.

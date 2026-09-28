@@ -178,7 +178,7 @@ Status words follow the [glossary](../glossary.md).
 | The OpenAgents app on iOS (`com.openagents.app`) with four tabs: Coder, Verse (the Grid), Wallet, and Account ([README](../../bins/openagents-ios/README.md)) | Implemented. Version 1.0.0 builds 1 to 14 went to TestFlight on 2026-09-28; build 15 (`be94321643`) carries that day's fixes and follows build 14 to testers. |
 | OpenAgents for Android ([`bins/openagents-android`](../../bins/openagents-android/README.md)), the same Rust library | Partial ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)). Coder, Verse (with the Gym and RESULTS panels, `82663b935d`), Wallet (`e56d173480`, `e1aeec7413`; [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861) closed), and Account work. Verified on the emulator only; a live tailnet chat, QR scanning, the terminal, and motion look haven't been checked on a device. Distributed as a signed release APK (1.0.0, version code 16, the iPhone build number) from a GitHub release that testers install by hand. |
 | Public distribution | Planned for 2026-09-29: a public TestFlight link for iOS and a public APK download for Android (owner steps in the workspace's `NEEDS_OWNER.md`). |
-| TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. Nothing in this repository reads it. |
+| TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. `openagents playtest testflight` reads it into the triage inbox as drafts and log entries, without the tester's Apple identity ([#9905](https://github.com/OpenAgentsInc/openagents/issues/9905), [triage](playtest-triage.md#testflight-feedback)). |
 | The owner's build notes ("1.0.0 Build 13 Feedback") turned into commits by agents, followed by a build bump (for example `e84de16fd5`, `06d033d663`) | The current loop. It isn't written down anywhere except in commit history. |
 | **Changelog** in Account (`crates/openagents-mobile/src/account.rs`) | Implemented. One entry per TestFlight build with a **What to test** line, from build 16 (`a4aa3013de`); a test ties the newest entry to the build number in `project.yml`. |
 | **Report a problem**, **My reports**, and the opt-in **Playtest session** log in Account, and a long press on the tab bar (`crates/playtest`, `crates/openagents-mobile/src/playtest.rs`; iOS and Android) | Implemented in build 16 (`74f2f90be0`) on iOS, and on Android with the Account playtest card ([#9903](https://github.com/OpenAgentsInc/openagents/issues/9903)); Android reports name the `android` platform. Reports are sealed to the triage key, which the owner hasn't created yet, so until a build carries it reports wait on the phone. No telemetry: the app sends nothing but a report the tester files. |
@@ -985,9 +985,10 @@ Tracked in epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888)
 2. **Should playtest XP ever count toward the trainer level?** We say no.
    Revisit if players read the two numbers as one anyway.
 3. **Does App Store Connect's TestFlight feedback reach a tool we can
-   run?** Apple exposes screenshot and crash feedback in App Store Connect;
-   check the current App Store Connect API before building the triage tool
-   on it rather than on stage 1 reports.
+   run?** Yes: the App Store Connect API lists beta feedback screenshot and
+   crash submissions, and `openagents playtest testflight` reads them into
+   the triage inbox ([#9905](https://github.com/OpenAgentsInc/openagents/issues/9905)).
+   They carry no Nostr key, so they don't back playtest awards.
 4. **Android.** Android testers join from day 0 through the public APK.
    When does it move to a Play Store testing track, and when does its Wallet
    ([#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)) reach

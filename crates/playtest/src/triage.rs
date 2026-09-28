@@ -153,6 +153,20 @@ pub enum Entry {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         moderator: Option<String>,
     },
+    /// TestFlight feedback arrived from App Store Connect and was drafted.
+    /// It carries no tester identity and earns nothing.
+    Testflight {
+        at: u64,
+        /// `TF-1A2B3C4D`.
+        code: String,
+        /// The App Store Connect submission ID.
+        submission: String,
+        source: crate::testflight::Source,
+        /// `1.0.0 (16)`, as far as App Store Connect knew it.
+        build: String,
+        /// When the tester sent it, ISO 8601.
+        created: String,
+    },
     /// The fix for an issue shipped, and the reporter checked it or not.
     Verified {
         at: u64,
@@ -167,9 +181,10 @@ impl Entry {
     #[must_use]
     pub fn code(&self) -> Option<&str> {
         match self {
-            Self::Received { code, .. } | Self::Decided { code, .. } | Self::Filed { code, .. } => {
-                Some(code)
-            }
+            Self::Received { code, .. }
+            | Self::Decided { code, .. }
+            | Self::Filed { code, .. }
+            | Self::Testflight { code, .. } => Some(code),
             Self::Session { code, .. } => code.as_deref(),
             Self::Verified { .. } => None,
         }
@@ -273,12 +288,20 @@ impl Log {
         })
     }
 
-    /// The received entry for `code`.
+    /// The received entry for `code`: a report, or TestFlight feedback.
     #[must_use]
     pub fn report(&self, code: &str) -> Option<&Entry> {
+        self.entries.iter().find(|entry| {
+            matches!(entry, Entry::Received { code: c, .. } | Entry::Testflight { code: c, .. } if c == code)
+        })
+    }
+
+    /// Whether the TestFlight submission `submission` is already logged.
+    #[must_use]
+    pub fn has_submission(&self, submission: &str) -> bool {
         self.entries
             .iter()
-            .find(|entry| matches!(entry, Entry::Received { code: c, .. } if c == code))
+            .any(|e| matches!(e, Entry::Testflight { submission: s, .. } if s == submission))
     }
 
     /// Codes received with no decision or filing yet, in arrival order.
@@ -292,7 +315,7 @@ impl Log {
             .collect();
         self.entries
             .iter()
-            .filter(|e| matches!(e, Entry::Received { .. }))
+            .filter(|e| matches!(e, Entry::Received { .. } | Entry::Testflight { .. }))
             .filter_map(Entry::code)
             .filter(|code| !handled.contains(code))
             .collect()
@@ -308,15 +331,26 @@ impl Log {
     pub fn admit(&self, entry: &Entry) -> Result<(), String> {
         match entry {
             Entry::Received { .. } => Ok(()),
+            Entry::Testflight {
+                code, submission, ..
+            } => {
+                if self.has_submission(submission) || self.report(code).is_some() {
+                    Err(format!("{code} is already in the triage log"))
+                } else {
+                    Ok(())
+                }
+            }
             Entry::Decided { code, .. } | Entry::Filed { code, .. } => {
-                let Some(Entry::Received { tester, .. }) = self.report(code) else {
-                    return Err(format!("no report {code} in the triage log"));
+                let tester = match self.report(code) {
+                    Some(Entry::Received { tester, .. }) => Some(tester),
+                    Some(_) => None,
+                    None => return Err(format!("no report {code} in the triage log")),
                 };
                 if !self.pending().contains(&code.as_str()) {
                     return Err(format!("{code} is already decided or filed"));
                 }
                 if let Entry::Filed { issue, triager, .. } = entry {
-                    if triager.as_deref() == Some(tester.as_str()) {
+                    if tester.is_some() && triager.as_ref() == tester {
                         return Err("the triager can't accept their own report".into());
                     }
                     let taken = self
@@ -366,7 +400,8 @@ impl Log {
 
     /// Every accepted contribution, with the tester's key: each filed
     /// report, each fix its reporter verified, and each recorded session.
-    /// Duplicates, declines, and reports never decided don't appear.
+    /// Duplicates, declines, and reports never decided don't appear, and
+    /// neither does filed TestFlight feedback, which has no tester key.
     #[must_use]
     pub fn acceptances(&self) -> Vec<Acceptance> {
         let mut received: BTreeMap<&str, (&str, &str, &str)> = BTreeMap::new();

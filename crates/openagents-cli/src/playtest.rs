@@ -40,6 +40,12 @@ const USAGE: &str = "usage: openagents playtest COMMAND [OPTIONS]
   session --tester KEY --script NAME --format unmoderated|moderated|group|diary
         --build \"1.0.0 (15)\" [--code PT-…] [--moderator KEY]
   log [--acceptances | --pending]
+  testflight [--asc-env FILE] [--app ID] [--since 2026-09-28]
+                                Read TestFlight feedback (screenshots and
+                                crashes) from App Store Connect and draft each
+                                new one. The key comes from FILE or the
+                                ASC_API_KEY_ID, ASC_API_ISSUER_ID, and
+                                ASC_API_PRIVATE_KEY_PATH variables.
 Files live in ~/.openagents/playtest (OPENAGENTS_PLAYTEST_HOME overrides):
 log.jsonl, and drafts/CODE.md (edit it before filing), .json, .report.json,
 and .jpg (private; never published).";
@@ -77,6 +83,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "verify" => verify(&home, &args),
         "session" => session(&home, &args),
         "log" => log(&home, &args),
+        "testflight" => testflight::run(&home, &args),
         other => return output.usage("playtest", &format!("unknown command `{other}`"), USAGE),
     };
     match result {
@@ -622,6 +629,8 @@ fn log(home: &Path, args: &Args) -> Result<Value, Failure> {
         .join("\n");
     Ok(json!({"entries": entries, "text": text}))
 }
+
+mod testflight;
 
 #[cfg(test)]
 mod tests;

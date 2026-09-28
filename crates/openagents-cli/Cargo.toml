@@ -38,6 +38,8 @@ openagents-x402 = { path = "../x402" }
 # The playtest triage inbox: reports, drafts, and the triage log.
 playtest = { path = "../playtest" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# ES256 App Store Connect API tokens for `playtest testflight`.
+ring = "0.17"
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
