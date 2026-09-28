@@ -552,7 +552,9 @@ speeds, and a retained win read through the Gym. They do not need a GPU.
 
 The draft game design document is [`gdd.md`](gdd.md): an MMORPG plus
 agents. The trainer progression system is specified separately in
-[`agent-trainer-leveling.md`](agent-trainer-leveling.md). Each player builds an agent whose stats set how it decides, sends
+[`agent-trainer-leveling.md`](agent-trainer-leveling.md), and the
+[playtesting program](../game/playtesting.md) plans how players test the
+OpenAgents app and earn playtest XP. Each player builds an agent whose stats set how it decides, sends
 it on visible visits to do real work, and keeps its condition up.
 
 ## Next

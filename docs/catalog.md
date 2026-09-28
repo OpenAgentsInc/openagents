@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 504 documents plus itself as of September 28, 2026.
+This catalog lists 505 documents plus itself as of September 28, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -339,6 +339,7 @@ files are included below.
 | Document | Role | Topic |
 | --- | --- | --- |
 | [game/README.md](game/README.md) | Index | Games, MMORPGs, and 3D worlds in OpenAgents |
+| [game/playtesting.md](game/playtesting.md) | Design / plan | Playtesting program: cohorts, sessions, feedback, triage, and playtest XP |
 
 ## gym
 
