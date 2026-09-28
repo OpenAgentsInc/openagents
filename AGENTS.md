@@ -110,8 +110,11 @@ uses, and marks which are implemented and which are only specified.
   bounded trace bundles, generated from committed Terminal-Bench evidence
   into `bench/terminal-bench/published/` by `gym-leaderboard build`. Each
   adapter recomputes its study's verdicts and refuses to build on
-  disagreement. Regenerate after adding evidence; read
-  `docs/verse/gym-leaderboard.md` before changing the contract.
+  disagreement. A new study needs only a `study.json` descriptor and
+  `openagents.gym.attempt-row.v1` rows. Regenerate after adding evidence;
+  read `docs/verse/gym-leaderboard.md` before changing the contract. Apps
+  depend on it with `default-features = false, features = ["client"]` for
+  the fetch-verify-cache client, which never links the generator.
 - `crates/tenancy` — the tenant-to-artifact registry: a versioned,
   self-digested manifest binding a tenant identity to the door names it may
   reach, each bound to an artifact digest and its execution configuration.

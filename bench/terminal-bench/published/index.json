@@ -48,6 +48,19 @@
         "reference-harbor-hub-tb4",
         "reference-harbor-hub-tb21"
       ]
+    },
+    {
+      "digest": "bf451beee1b755cf6e655920ac6f3124ae42f62c86e97bbe64677bcd5d8425aa",
+      "commit": "6bfc94876de82ec6a8c1a684dc650cb76131c20a",
+      "boards": [
+        "tb4-fable-delegate-repro-9776",
+        "tb21-oos-microcoder-9683",
+        "tb4-fable-delegate-dev-9746",
+        "tb4-microcoder-shared-fact",
+        "tb4-oos-microcoder-9683",
+        "reference-harbor-hub-tb4",
+        "reference-harbor-hub-tb21"
+      ]
     }
   ]
 }

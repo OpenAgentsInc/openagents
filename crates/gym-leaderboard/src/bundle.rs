@@ -20,8 +20,7 @@ use crate::contract::{
 use crate::evidence::{Reader, Result, array, at, fail, opt_number, opt_string, opt_u64, string};
 use crate::scrub::Scrubber;
 
-/// A bundle's serialized size bound. A phone fetches one on demand.
-pub const MAX_BUNDLE_BYTES: usize = 256 * 1024;
+pub use crate::MAX_BUNDLE_BYTES;
 
 /// Per-field bounds tried in order until the bundle fits.
 const FIELD_BOUNDS: [usize; 5] = [4096, 2048, 1024, 512, 256];

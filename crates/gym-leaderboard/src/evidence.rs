@@ -27,6 +27,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 macro_rules! fail {
     ($($arg:tt)*) => { $crate::evidence::Error(format!($($arg)*)) };
 }
+#[cfg_attr(not(feature = "generate"), allow(unused_imports))]
 pub(crate) use fail;
 
 /// The repository root and every file read under it, in read order.

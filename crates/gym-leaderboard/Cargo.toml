@@ -6,20 +6,34 @@ rust-version.workspace = true
 description = "The Gym's published benchmark results: a typed, versioned leaderboard and scrubbed trace bundles generated from committed Terminal-Bench evidence."
 publish.workspace = true
 
+[features]
+default = ["generate"]
+# Build and check the publication from the committed evidence. A phone
+# depends with `default-features = false` and links none of it.
+generate = ["dep:gym", "dep:knowledge", "dep:regex"]
+# Fetch, verify, and cache the publication off the frame loop.
+client = ["dep:reqwest"]
+
 [dependencies]
 # Digests use ATIF's rule (object keys sorted at every depth, then SHA-256),
 # so a board digest and a trace digest agree with the rest of the Gym.
 atif = { path = "../atif" }
+serde = { version = "1", features = ["derive"] }
+# `float_roundtrip`: a reader recomputes the digest from the served JSON,
+# so every number must parse back to the exact value the generator wrote.
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+sha2 = "0.10"
+
 # The Microcoder event reader and the beats-winner rule are the Gym's own,
 # not second copies.
-gym = { path = "../gym" }
+gym = { path = "../gym", optional = true }
 # Knowledge entries' provenance decides which attempts are in-sample, with
 # the task-name rule the Gym uses.
-knowledge = { path = "../knowledge" }
-regex = "1"
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
-sha2 = "0.10"
+knowledge = { path = "../knowledge", optional = true }
+regex = { version = "1", optional = true }
+# The client's HTTP: blocking on its own worker thread, rustls, no cookie
+# store, the same build the Verse crate ships on iOS and Android.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
@@ -27,6 +41,7 @@ tempfile = "3"
 [[bin]]
 name = "gym-leaderboard"
 path = "src/bin/gym-leaderboard.rs"
+required-features = ["generate"]
 
 [lints]
 workspace = true

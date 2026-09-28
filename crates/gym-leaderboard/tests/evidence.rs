@@ -2,6 +2,8 @@
 //! must say what the reports say, fit its bounds, carry its labels, and
 //! match the committed files byte for byte.
 
+#![cfg(feature = "generate")]
+
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -957,13 +959,17 @@ fn reference_boards_are_labeled_snapshots_and_never_merged() {
 #[test]
 fn the_9776_board_is_unchanged_after_the_port() {
     // Pinned from the hand-written adapter before #9845 moved the board to
-    // a study descriptor and the generic adapter.
+    // a study descriptor and the generic adapter (4dbcfaf2…, equal after the
+    // port in 6bfc94876d). #9846 then turned on serde_json's exact float
+    // parsing, so a reader can recompute digests from served JSON; the
+    // bars `tasks.json` records as 2.5019092499999998 and the like had been
+    // read one ulp off, and this is the same board read exactly.
     // (The board as the adapter returns it, before bundles are attached;
     // `the_committed_publication_matches_the_evidence` covers the rest.)
     let (b, _) = tb4_delegate::build(&Reader::new(root())).unwrap();
     assert_eq!(
         atif::digest(&serde_json::to_value(&b).unwrap()),
-        "4dbcfaf27d6a02381d66fd6cea31a887ba8386ba39e607ab4766f2aabef7d74f"
+        "45d2ef6e3c93c48ab74aaa928f194de9fbc79126cc4eb6a2ef1df0a755480391"
     );
 }
 

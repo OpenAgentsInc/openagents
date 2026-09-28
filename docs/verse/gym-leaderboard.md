@@ -394,7 +394,10 @@ digests.
 - **Verification.** The app recomputes the leaderboard's digest and refuses
   one that doesn't match the index; it checks each bundle's SHA-256 against
   its `TraceRef`. A mismatch shows "can't verify this publication" and
-  keeps the cached one.
+  keeps the cached one. The digest is recomputed over the JSON exactly as
+  served, so fields and variants a reader doesn't know still count, and
+  `serde_json`'s exact float parsing (`float_roundtrip`) is on in the
+  crate, so every number parses back to the value the generator wrote.
 - **Caching.** Files are stored by digest in the app's cache directory. A
   cached leaderboard is shown at once, labeled with its age, while the
   index is checked. Bundles the player opened stay cached (a 16 MiB cap,
@@ -402,6 +405,26 @@ digests.
 - **Offline.** With no network, the cached publication is shown, labeled
   offline. Without a cache, the panel says the results need a connection
   once.
+- **Implemented** in [`client.rs`](../../crates/gym-leaderboard/src/client.rs)
+  ([#9846](https://github.com/OpenAgentsInc/openagents/issues/9846)). The
+  crate splits by feature: `generate` (default, and required by the binary)
+  links the generator, `gym`, `knowledge`, and `regex`; without it the
+  crate is the contract, [`verify.rs`](../../crates/gym-leaderboard/src/verify.rs),
+  and the view model; `client` adds the client over `reqwest`'s blocking
+  client with rustls, the build the Verse crate already ships on iOS and
+  Android. The phone depends with `default-features = false, features =
+  ["client"]`; it builds for `aarch64-apple-ios` and `aarch64-linux-android`.
+  `Config` takes the cache directory and the base URL, whose `{ref}` is
+  replaced by the index's ref (`main`) or a publication's commit. An index
+  entry records the commit its evidence was read at, and the files land in
+  the next commit, so the client tries that commit first and then the
+  index's ref; only the digest decides. `Fetcher` does the work, blocking;
+  `Client` runs it on its own thread with one request in flight (a new one
+  cancels the old, checked between 16 KiB reads), connect and request
+  timeouts, and the size caps enforced while reading (1 MiB for the index).
+  Requests send no `Authorization`, cookie, or `User-Agent`. `Freshness`
+  says current, cached (with the problem when a check failed), or offline,
+  and `Loaded::age_seconds` the age.
 - **Later: signed publication.** A Nostr publication signed by the
   OpenAgents key, carrying the leaderboard digest and commit, lets a client
   check who published it, not only that the bytes match. NIP-EVAL's Gym
@@ -495,6 +518,7 @@ Implemented now (`cargo test -p gym-leaderboard`):
 | `the_tb4_out_of_sample_board_says_no_held_out_pass_yet`, `a_study_table_the_numbers_dont_support_refuses_to_build` | 0 of 72 (0 of 24 per round), the code-built negative headline, coverage and exclusion caveats; a tampered win cell or tally refuses to build. |
 | `reference_boards_are_labeled_snapshots_and_never_merged` | Snapshot, host, and fetch time in the headline and caveat, both reconciliation flags per row as the file has them, no attempts or tasks, and no reference row on a subject board. |
 | `the_9776_board_is_unchanged_after_the_port`, `a_study_with_only_a_descriptor_and_rows_generates_a_board`, `a_study_that_names_an_unknown_rule_or_disagrees_with_its_rows_refuses` | #9776's board digest is the pre-port one; a fixture study with only a descriptor and rows builds; an unknown rule or placeholder, a wrong verdict, tally, or bar refuses. |
+| `happy_path_verifies_caches_and_reads_the_cache_back`, `a_leaderboard_that_doesnt_match_the_index_is_refused_and_the_cache_kept`, `an_oversize_body_is_refused_while_reading`, `offline_shows_the_cache_or_says_it_needs_a_connection`, `the_index_moving_to_a_new_digest_loads_the_new_publication`, `requests_carry_no_credential_cookie_or_identity`, `the_cache_evicts_least_recently_used_bundles_above_its_cap`, `a_cancelled_request_stops_and_the_worker_reports_the_latest` (`tests/client.rs`, a local HTTP fixture) | The client's fetch, verify, cache, offline, cancel, and no-identity behavior. |
 | `every_tb21_attempt_has_a_trace`, `a_tb21_pass_bundle_steps_through_the_loop_jev_and_the_verifier` | All 127 TB2.1 attempts reference a bundle whose SHA-256 and size match; one pass's model steps, Jev judgments with their probabilities, commands, tests, finish, verifier, and cost against the bar. |
 | `a_record_that_differs_from_its_manifest_refuses_to_bundle`, `a_review_holds_only_while_its_source_is_unchanged` | A Microcoder record that no longer matches its manifest refuses to bundle; a reviewed match lapses when its source changes. |
 | `generation_is_deterministic`, `the_committed_publication_matches_the_evidence` | Same bytes twice, and the committed files match. |
@@ -523,7 +547,7 @@ Epic [#9839](https://github.com/OpenAgentsInc/openagents/issues/9839).
 | #9843 | TB4 knowledge-assisted Microcoder board | #9840, #9841 | Done |
 | #9844 | TB4 out-of-sample board and reference boards | #9840 | Done |
 | #9845 | Shared attempt-row schema and study descriptor | #9840 | Done |
-| #9846 | Rust client: fetch, verify, cache | #9840 | Now |
+| #9846 | Rust client: fetch, verify, cache | #9840 | Done |
 | #9848 | Rust view model with the presentation rules | #9840, #9846 | After the Gym port |
 | #9849 | Grid **RESULTS** board and screens | #9846, #9848 | After the Gym port |
 | #9850 | Grid trace viewer | #9849 | After the Gym port |
