@@ -410,3 +410,96 @@ fn the_newest_message_error_is_read_with_its_status() {
     assert_eq!(last_error(&fixture.database(), ANSWERED), None);
     assert_eq!(last_error(&fixture.root.join("missing.db"), REFUSED), None);
 }
+
+/// A task's delegate copy in a Coder task directory.
+fn delegate_history(dir: &Path) -> History {
+    History::open(Config {
+        coder: Some(dir.to_path_buf()),
+        ..Config::default()
+    })
+    .unwrap()
+}
+
+#[test]
+fn a_delegate_copy_lists_under_its_task_grows_by_appending_and_restarts_when_rewritten() {
+    let fixture = Fixture::new();
+    let tasks = fixture.root.join("tasks");
+    std::fs::create_dir_all(&tasks).unwrap();
+    let task = "0a".repeat(32);
+    let path = tasks.join(crate::delegate::file_name(&task, Harness::OpenCode, ANSWERED).unwrap());
+    // The last reply is still running when the first copy is made.
+    let db = fixture.db();
+    db.execute(
+        "UPDATE message SET data = json_remove(data, '$.time.completed') \
+         WHERE id = 'msg_0e9f319b70015sWvmtp3aB6Dcs'",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "UPDATE part SET data = json_remove(data, '$.time.end') \
+         WHERE id = 'prt_0e9f31f270019DTBmacaQ0jH3L'",
+        [],
+    )
+    .unwrap();
+    assert!(delegate(&fixture.database(), ANSWERED, &path).unwrap());
+    assert!(
+        !delegate(&fixture.database(), ANSWERED, &path).unwrap(),
+        "nothing new"
+    );
+    let history = delegate_history(&tasks);
+    let chat = history
+        .catalog(CatalogRequest::default())
+        .unwrap()
+        .entries
+        .remove(0);
+    assert_eq!(
+        (chat.harness, chat.native_id.as_deref(), chat.subagent),
+        (Harness::OpenCode, Some(task.as_str()), true)
+    );
+    let source = chat.source_id.unwrap();
+    assert_eq!(texts(&history, &source).len(), 2);
+    let (before, inode) = (
+        std::fs::read(&path).unwrap(),
+        std::fs::metadata(&path).unwrap().ino(),
+    );
+    db.execute(
+        "UPDATE part SET data = json_set(data, '$.time.end', 1790631419697) \
+         WHERE id = 'prt_0e9f31f270019DTBmacaQ0jH3L'",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "UPDATE message SET data = json_set(data, '$.time.completed', 1790631419741) \
+         WHERE id = 'msg_0e9f319b70015sWvmtp3aB6Dcs'",
+        [],
+    )
+    .unwrap();
+    assert!(delegate(&fixture.database(), ANSWERED, &path).unwrap());
+    assert!(std::fs::read(&path).unwrap().starts_with(&before));
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().ino(),
+        inode,
+        "appended in place"
+    );
+    assert_eq!(
+        texts(&delegate_history(&tasks), &source).last().unwrap().2,
+        "done"
+    );
+    // OpenCode reverted the reply: the copy is a new file.
+    db.execute(
+        "DELETE FROM part WHERE message_id = 'msg_0e9f319b70015sWvmtp3aB6Dcs'",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "DELETE FROM message WHERE id = 'msg_0e9f319b70015sWvmtp3aB6Dcs'",
+        [],
+    )
+    .unwrap();
+    assert!(delegate(&fixture.database(), ANSWERED, &path).unwrap());
+    assert_ne!(std::fs::metadata(&path).unwrap().ino(), inode);
+    // Only the copy is in the directory: no scratch file is left.
+    assert_eq!(std::fs::read_dir(&tasks).unwrap().count(), 1);
+    assert!(delegate(&fixture.database(), "ses_absent", &path).is_err());
+    assert!(delegate(&fixture.database(), "../x", &path).is_err());
+}

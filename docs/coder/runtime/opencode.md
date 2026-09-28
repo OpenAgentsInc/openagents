@@ -12,10 +12,14 @@ host with its own logins, in two ways:
   --delegate-agent opencode` hands the explored task to `opencode run
   --format json` with a briefing, beside Claude Code and Codex.
 
-OpenCode sessions the owner starts in OpenCode itself list in the phone's
-chats through the host's OpenCode mirror; sessions Coder starts do not.
+The phone shows only Coder chats
+([#9920](https://github.com/OpenAgentsInc/openagents/issues/9920)): OpenCode
+sessions the owner starts in OpenCode itself do not list, and the host keeps
+no mirror of `opencode.db`. The OpenCode session a Coder task delegates to
+is kept beside the task and reads inside that task's chat (see
+[The chat list](#the-chat-list)).
 [Issue #9915](https://github.com/OpenAgentsInc/openagents/issues/9915)
-delivers it.
+delivers the route.
 
 The pieces:
 
@@ -26,7 +30,7 @@ The pieces:
 | The `opencode:PROVIDER/MODEL` route, its connection probe, and the capacity book | `coder::task::autostart`, `microcoder_loop::capacity::Provider::OpenCode` |
 | The delegate executor, `opencode run` | `coder_delegate::adapter` and `coder_delegate::stream` (`Agent::OpenCode`, `Format::OpenCode`) |
 | The steering rows | `coder_delegate::steering::OPENCODE_ACP` (a route), `OPENCODE_RUN` (the delegate) |
-| The phone's chats | `coder_history::opencode` (the host's mirror of `opencode.db`) |
+| The delegate session's copy beside its task | `coder_history::opencode::delegate`, `coder_history::delegate` |
 
 ## Turn it on
 
@@ -148,10 +152,19 @@ figure for the provider and model). The grant's capabilities say
 ## The chat list
 
 Coder's own OpenCode sessions are saved in the engine's database,
-`openagents-coder-engine.db`, never in the owner's `opencode.db`, which the
-host mirrors into the phone's chats, so they never list as chats: the task's
-own Coder transcript is the chat. The delegate executor's `opencode run`
-uses the same database.
+`openagents-coder-engine.db`, never in the owner's `opencode.db`. The
+delegate executor's `opencode run` uses the same database.
+
+The task's own Coder transcript is the chat, and OpenCode's streamed reply,
+reasoning, and tool calls are appended to it as they arrive. When the turn
+ends, the engine also copies the whole session from the engine's database
+into the task directory, beside the transcript, as
+`<task>.delegate.opencode.<session>.jsonl` (`coder_history::opencode::delegate`),
+and notes the copy on the transcript under `delegate_transcript`. The copy
+only grows while the session only grows, so a later turn that reattaches the
+session appends to it. The host's chat list names it as the task's subagent;
+[`crates/coder-history/README.md`](../../../crates/coder-history/README.md#delegate-sessions)
+has the shape a device reads.
 
 ## Tests and the live smoke
 

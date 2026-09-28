@@ -401,3 +401,60 @@ async fn a_direct_connection_nudges_the_catalog_when_any_harness_starts_a_chat()
         .unwrap();
     assert_eq!(change, Change::Catalog);
 }
+
+#[tokio::test]
+async fn a_coder_only_host_watches_only_the_coder_task_directory() {
+    let f = Fixture::new("wss://relay.example/");
+    let tasks = f.root.parent().unwrap().join("tasks");
+    std::fs::create_dir_all(&tasks).unwrap();
+    let device = SecretKey::new(&mut secp256k1::rand::rng());
+    let code = f
+        .host()
+        .pair(
+            &pubkey(&device),
+            &f.code.relay,
+            coder_history::Config {
+                codex: Some(f.root.clone()),
+                coder: Some(tasks.clone()),
+                ..coder_history::Config::default()
+            },
+            f.now,
+            f.now + 3600,
+        )
+        .unwrap();
+    let address = listener(Arc::new(f.host().coder_only())).await;
+    let client =
+        Arc::new(Client::new_with_policy(code, device, RelayPolicy::LoopbackTest).unwrap());
+    client.set_direct(Some(address));
+    let mut changes = client.changes();
+    client
+        .observe(Query::Catalog(CatalogRequest::default()))
+        .await
+        .unwrap();
+    // A Codex chat the grant names starts: the host does not watch it.
+    std::fs::write(
+        f.root.join("sessions/2026/01/01/two.jsonl"),
+        b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"second-chat\"}}\n",
+    )
+    .unwrap();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(700), changes.recv())
+            .await
+            .is_err()
+    );
+    // A Coder task delegates to OpenCode: its copy lists, so the list changed.
+    let task = "7d".repeat(32);
+    std::fs::write(
+        tasks.join(
+            coder_history::delegate::file_name(&task, coder_history::Harness::OpenCode, "ses_0e")
+                .unwrap(),
+        ),
+        b"{\"type\":\"opencode.session\",\"session_id\":\"ses_0e\"}\n",
+    )
+    .unwrap();
+    let change = tokio::time::timeout(std::time::Duration::from_secs(4), changes.recv())
+        .await
+        .expect("a nudge")
+        .unwrap();
+    assert_eq!(change, Change::Catalog);
+}

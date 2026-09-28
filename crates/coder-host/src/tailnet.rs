@@ -156,95 +156,21 @@ pub fn program() -> PathBuf {
 }
 
 #[cfg(feature = "host")]
-/// The history roots a chat invitation admits: `~/.codex`, `~/.claude`,
-/// Coder's task directory `~/.openagents/tasks`, and the host's OpenCode and
-/// Devin mirrors when they exist. A mirror is created when its agent's
-/// session store exists, so a host with OpenCode or the Devin CLI offers its
-/// sessions from the first invitation; [`mirror_opencode`] and
-/// [`mirror_devin`] fill them.
+/// The history root a chat invitation admits: Coder's task directory,
+/// `~/.openagents/tasks`, when it exists. The phone shows only Coder chats
+/// ([#9920](https://github.com/OpenAgentsInc/openagents/issues/9920)), so
+/// the host offers neither `~/.codex` nor `~/.claude` and keeps no copy of
+/// OpenCode's or Devin's session stores; a session Coder delegates to one
+/// of them is kept beside its task ([`coder_history::delegate`]).
 #[must_use]
 pub fn default_sources() -> coder_history::Config {
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    let root = |folder: &str| home.as_ref().map(|h| h.join(folder)).filter(|p| p.is_dir());
-    let mirror = |mirror: PathBuf, database: Option<PathBuf>| {
-        database
-            .is_some_and(|database| database.is_file())
-            .then_some(mirror)
-            .filter(|mirror| std::fs::create_dir_all(mirror).is_ok())
-    };
-    let opencode = home.as_ref().and_then(|home| {
-        mirror(
-            coder_history::opencode::default_mirror(home),
-            coder_history::opencode::default_database(),
-        )
-    });
-    let devin = home.as_ref().and_then(|home| {
-        mirror(
-            coder_history::devin::default_mirror(home),
-            coder_history::devin::default_database(),
-        )
-    });
     coder_history::Config {
-        codex: root(".codex"),
-        claude: root(".claude"),
-        coder: root(".openagents/tasks"),
-        opencode,
-        devin,
+        coder: home
+            .map(|home| home.join(".openagents/tasks"))
+            .filter(|path| path.is_dir()),
+        ..coder_history::Config::default()
     }
-}
-
-#[cfg(feature = "host")]
-/// How often the host brings its OpenCode and Devin mirrors up to date.
-pub const OPENCODE_MIRROR_EVERY: Duration = Duration::from_secs(5);
-
-#[cfg(feature = "host")]
-/// Keeps `mirror` up to date with the owner's OpenCode database, every
-/// [`OPENCODE_MIRROR_EVERY`], for as long as the host runs. A pass that
-/// fails is said once and tried again.
-pub fn mirror_opencode(mirror: PathBuf) {
-    if let Some(database) = coder_history::opencode::default_database() {
-        keep_mirrored(
-            "OpenCode",
-            database,
-            mirror,
-            coder_history::opencode::mirror,
-        );
-    }
-}
-
-#[cfg(feature = "host")]
-/// Keeps `mirror` up to date with the owner's Devin CLI session store, every
-/// [`OPENCODE_MIRROR_EVERY`], for as long as the host runs. A pass that
-/// fails is said once and tried again.
-pub fn mirror_devin(mirror: PathBuf) {
-    if let Some(database) = coder_history::devin::default_database() {
-        keep_mirrored("Devin", database, mirror, coder_history::devin::mirror);
-    }
-}
-
-#[cfg(feature = "host")]
-fn keep_mirrored<R: Send + 'static>(
-    agent: &'static str,
-    database: PathBuf,
-    mirror: PathBuf,
-    pass: fn(&Path, &Path) -> std::result::Result<R, String>,
-) {
-    tokio::spawn(async move {
-        let mut failing = false;
-        loop {
-            let (database, mirror) = (database.clone(), mirror.clone());
-            let done = tokio::task::spawn_blocking(move || pass(&database, &mirror)).await;
-            match done {
-                Ok(Ok(_)) => failing = false,
-                Ok(Err(why)) if !failing => {
-                    failing = true;
-                    eprintln!("coder host: the {agent} mirror failed: {why}");
-                }
-                _ => {}
-            }
-            tokio::time::sleep(OPENCODE_MIRROR_EVERY).await;
-        }
-    });
 }
 
 #[cfg(feature = "host")]
@@ -365,13 +291,8 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
     if let Some(chats) = &settings.chats {
         coder_connect::host::ensure_parent(&chats.observer)
             .map_err(|_| Error::Config("the chat history store cannot be created".into()))?;
-        let observer = coder_connect::host::Host::new(&chats.observer, settings.policy);
-        if let Some(mirror) = &chats.sources.opencode {
-            mirror_opencode(mirror.clone());
-        }
-        if let Some(mirror) = &chats.sources.devin {
-            mirror_devin(mirror.clone());
-        }
+        let observer =
+            coder_connect::host::Host::new(&chats.observer, settings.policy).coder_only();
         // Read the chat list once now, so the first device to ask finds each
         // session's head already read.
         let sources = chats.sources.clone();
@@ -397,10 +318,7 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
     }
     let host_key = coder_access::host::Host::new(&settings.state, settings.policy).public_key()?;
     let observer = settings.chats.as_ref().map(|chats| {
-        Arc::new(coder_connect::host::Host::new(
-            &chats.observer,
-            settings.policy,
-        ))
+        Arc::new(coder_connect::host::Host::new(&chats.observer, settings.policy).coder_only())
     });
     let shared = Arc::new(Shared {
         settings,

@@ -131,8 +131,8 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
                 codex: select(codex, args.no_codex, ".codex")?,
                 claude: select(claude, args.no_claude, ".claude")?,
                 coder,
-                // `coder host` keeps the OpenCode and Devin mirrors; this
-                // command does not.
+                // No OpenCode or Devin roots: `coder host` serves only
+                // Coder chats and their delegate sessions (#9920).
                 opencode: None,
                 devin: None,
             };

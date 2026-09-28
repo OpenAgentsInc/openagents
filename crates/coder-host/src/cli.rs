@@ -599,13 +599,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
                     coder: Some(tasks_dir.clone()).filter(|path| path.is_dir()),
                     ..crate::tailnet::default_sources()
                 })
-                .filter(|sources| {
-                    sources.codex.is_some()
-                        || sources.claude.is_some()
-                        || sources.coder.is_some()
-                        || sources.opencode.is_some()
-                        || sources.devin.is_some()
-                })
+                .filter(|sources| sources.coder.is_some())
                 .map(|sources| -> Result<_> {
                     Ok(crate::tailnet::Chats {
                         observer: home(".openagents/coder-connect")?,

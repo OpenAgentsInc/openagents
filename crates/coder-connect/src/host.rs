@@ -113,13 +113,34 @@ struct Book {
 pub struct Host {
     directory: PathBuf,
     policy: RelayPolicy,
+    /// Serve only a grant's Coder task roots ([`Host::coder_only`]).
+    coder_only: bool,
 }
 impl Host {
     pub fn new(directory: impl Into<PathBuf>, policy: RelayPolicy) -> Self {
         Self {
             directory: directory.into(),
             policy,
+            coder_only: false,
         }
+    }
+    /// Serve only Coder task chats: every read uses only the grant's Coder
+    /// roots, so a grant made when the host also offered Codex, Claude,
+    /// OpenCode, or Devin history lists only its Coder chats (none when it
+    /// names no Coder root), and a read of any other source is refused as
+    /// missing. `coder host` serves this way
+    /// ([#9920](https://github.com/OpenAgentsInc/openagents/issues/9920)).
+    #[must_use]
+    pub fn coder_only(mut self) -> Self {
+        self.coder_only = true;
+        self
+    }
+    /// The roots of a grant this host reads.
+    fn served<'a>(&self, roots: &'a [Root]) -> Vec<&'a Root> {
+        roots
+            .iter()
+            .filter(|root| !self.coder_only || root.scope.kind == SourceKind::Coder)
+            .collect()
     }
     /// The host key, read from the store once per process.
     pub fn key(&self) -> Result<SecretKey> {
@@ -500,7 +521,7 @@ impl Host {
             reads: admission.reads,
             reply: None,
         };
-        let roots = admission.roots.clone();
+        let roots: Vec<Root> = self.served(&admission.roots).into_iter().cloned().collect();
         if let Err(error) = reads.append(store.directory(), &record) {
             if let Some(admission) = book.admissions.get_mut(grant) {
                 admission.reads -= 1;
@@ -899,6 +920,9 @@ fn sources(roots: &[Root]) -> coder_history::Config {
     config
 }
 
+/// The snapshot of an empty chat list: the SHA-256 of nothing.
+const EMPTY_SNAPSHOT: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
 /// Where the chat list keeps what it read of each saved chat, so a host that
 /// restarts lists without reading every chat again.
 pub fn catalog_index(directory: &Path) -> PathBuf {
@@ -911,6 +935,22 @@ fn read(
     query: &Query,
     limits: coder_history::Limits,
 ) -> Result<Observation> {
+    if roots.is_empty() {
+        // A grant with nothing this host serves: an empty chat list, and
+        // no transcript.
+        return match query {
+            Query::Catalog(q) if q.cursor.is_none() => {
+                Ok(Observation::Catalog(coder_history::CatalogPage {
+                    snapshot: EMPTY_SNAPSHOT.into(),
+                    entries: Vec::new(),
+                    next: None,
+                    notices: Vec::new(),
+                }))
+            }
+            Query::Catalog(_) => fail(ErrorCode::Conflict, "admitted history read refused"),
+            Query::Page(_) => fail(ErrorCode::Unavailable, "admitted history read refused"),
+        };
+    }
     for root in roots {
         root.current()?;
     }

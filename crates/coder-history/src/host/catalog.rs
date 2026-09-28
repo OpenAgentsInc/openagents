@@ -373,7 +373,10 @@ fn tasks(
             return Err(Error::ResourceLimit);
         }
         let path = PathBuf::from(&name);
-        if !name.to_str().is_some_and(|n| n.ends_with(ATIF_SUFFIX)) {
+        // A task attempt's transcript, or a delegate session's copy beside
+        // it ([`crate::delegate`]), which lists as the task's subagent.
+        let delegate = name.to_str().and_then(crate::delegate::parse);
+        if delegate.is_none() && !name.to_str().is_some_and(|n| n.ends_with(ATIF_SUFFIX)) {
             continue;
         }
         match confined::entry(&directory, &name) {
@@ -382,8 +385,12 @@ fn tasks(
                 root: root_index,
                 id: root.source_id(&path),
                 harness: root.harness,
-                archived: task_id(&path).is_some_and(|task| archived.contains(&task)),
-                subagent: false,
+                archived: delegate
+                    .as_ref()
+                    .map(|(task, _, _)| task.clone())
+                    .or_else(|| task_id(&path))
+                    .is_some_and(|task| archived.contains(&task)),
+                subagent: delegate.is_some(),
                 relative: path,
             }),
             Ok((confined::Kind::Symlink, _)) => {
@@ -1195,8 +1202,15 @@ fn build(history: &History, key: &str) -> Result<Listing, Error> {
                 spawned,
             } = head(root, source);
             settled &= matches!(status, SourceStatus::Available | SourceStatus::Empty);
-            let native = match root.harness {
-                Harness::Coder => task_id(&source.relative),
+            // A delegate session's copy beside a Coder task: listed under
+            // its agent, with the task's ID, as the task's subagent.
+            let delegate = match root.harness {
+                Harness::Coder => source.relative.to_str().and_then(crate::delegate::parse),
+                _ => None,
+            };
+            let native = match (&delegate, root.harness) {
+                (Some((task, _, _)), _) => Some(task.clone()),
+                (None, Harness::Coder) => task_id(&source.relative),
                 _ => from_header.or_else(|| uuid_suffix(&source.relative)),
             };
             let title = native.as_ref().and_then(|id| title_map.get(id));
@@ -1215,7 +1229,17 @@ fn build(history: &History, key: &str) -> Result<Listing, Error> {
                 Harness::OpenCode => "Saved OpenCode chat",
                 Harness::Devin => "Saved Devin chat",
             };
-            let named = title.map(|t| t.name.as_str()).or(from_title.as_deref());
+            let delegate_title = delegate.as_ref().map(|(_, agent, session)| {
+                let agent = match agent {
+                    Harness::Devin => "Devin",
+                    _ => "OpenCode",
+                };
+                format!("{agent} session {session}")
+            });
+            let named = delegate_title
+                .as_deref()
+                .or(title.map(|t| t.name.as_str()))
+                .or(from_title.as_deref());
             if named.is_none() {
                 untitled.insert(
                     source.id.clone(),
@@ -1226,6 +1250,11 @@ fn build(history: &History, key: &str) -> Result<Listing, Error> {
             // Every attempt of a Coder task shares its task ID, so the
             // attempt, not the task, is the chat.
             let identity = match root.harness {
+                Harness::Coder if delegate.is_some() => source
+                    .relative
+                    .to_str()
+                    .and_then(|name| name.strip_suffix(".jsonl"))
+                    .map(str::to_owned),
                 Harness::Coder => native
                     .as_ref()
                     .and_then(|_| attempt(&source.relative))
@@ -1239,7 +1268,9 @@ fn build(history: &History, key: &str) -> Result<Listing, Error> {
                 source.id.clone(),
                 Chat {
                     id,
-                    harness: root.harness,
+                    harness: delegate
+                        .as_ref()
+                        .map_or(root.harness, |(_, agent, _)| *agent),
                     native_id: native,
                     title: name,
                     title_truncated: truncated,

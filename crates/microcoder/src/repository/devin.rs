@@ -367,6 +367,60 @@ impl Handler for Recorder<'_> {
     }
 }
 
+/// Copy the agent's session `session` from its store `database` into the
+/// task directory, beside the task's transcript, and note the copy on the
+/// transcript ([`coder_history::delegate`]), so a device reads the delegate's
+/// whole session from inside the Coder chat. A copy that fails is noted
+/// with why; the turn's own result stands either way.
+pub(super) fn keep_delegate(
+    host: &Host,
+    agent: coder_history::Harness,
+    session: &str,
+    database: Option<&std::path::Path>,
+    copy: fn(&std::path::Path, &str, &std::path::Path) -> Result<bool, String>,
+) {
+    let Some(name) = coder_history::delegate::file_name(host.task_id(), agent, session) else {
+        return;
+    };
+    let copied = match database {
+        Some(database) => copy(database, session, &host.store().join(&name)),
+        None => Err("no session store for this agent".to_owned()),
+    };
+    let word = match agent {
+        coder_history::Harness::Devin => "Devin",
+        _ => "OpenCode",
+    };
+    let (said, note) = match copied {
+        Ok(_) => (
+            format!("The {word} session's transcript is kept beside this task."),
+            json!({"agent": agent, "session": session, "file": name}),
+        ),
+        Err(why) => (
+            format!("The {word} session's transcript could not be kept."),
+            json!({"agent": agent, "session": session, "error": why}),
+        ),
+    };
+    let _ =
+        host.append(&Step::said(Source::System, &said).noting(coder_history::delegate::NOTE, note));
+}
+
+/// The Devin CLI's session store for the agent process's environment
+/// `variables` ([`environment`], which carries the whole environment):
+/// under its `XDG_DATA_HOME`, else its `HOME`.
+fn devin_database(variables: &[(String, String)]) -> Option<PathBuf> {
+    let lookup = |name: &str| {
+        variables
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| PathBuf::from(value))
+    };
+    let home = lookup("HOME")?;
+    Some(coder_history::devin::database(
+        &home,
+        lookup("XDG_DATA_HOME").as_deref(),
+    ))
+}
+
 /// The agent process's environment: the owner's login environment under
 /// full access, else this process's, less credential variables either way.
 pub(super) fn environment(host: &Host) -> Vec<(String, String)> {
@@ -502,10 +556,18 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     ended.stats = std::mem::take(&mut recorder.stats);
     ended.tool_calls = recorder.tool_calls;
     let stderr = session.stderr_tail();
+    let session_id = session.id().to_owned();
     let group_clear = session.close(STOP_GRACE).await;
     if !group_clear {
         host.fail("the Devin process group did not stop");
     }
+    keep_delegate(
+        host,
+        coder_history::Harness::Devin,
+        &session_id,
+        devin_database(&opening.spec.environment).as_deref(),
+        coder_history::devin::delegate,
+    );
     let refusal = match &result {
         Ok(reply) => {
             ended.stop = Some(reply.stop_reason);
@@ -558,6 +620,29 @@ mod tests {
     use super::super::tests::fixture_with;
     use super::super::{AgentEngine, Stage, run_stages};
     use super::*;
+
+    #[test]
+    fn the_delegate_copy_reads_devins_store_under_the_agents_data_home() {
+        let owned = |pairs: &[(&str, &str)]| {
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            devin_database(&owned(&[("HOME", "/home/owner")])),
+            Some(PathBuf::from(
+                "/home/owner/.local/share/devin/cli/sessions.db"
+            ))
+        );
+        assert_eq!(
+            devin_database(&owned(&[
+                ("HOME", "/home/owner"),
+                ("XDG_DATA_HOME", "/data")
+            ])),
+            Some(PathBuf::from("/data/devin/cli/sessions.db"))
+        );
+    }
     use acp_client::replay;
     use coder::task::adapter::Configuration;
     use coder::task::{self, Action, Command, Store};

@@ -93,12 +93,14 @@ pub enum SourceKind {
     Claude,
     /// Coder task transcripts, `*.atif.jsonl` in Coder's task directory.
     Coder,
-    /// OpenCode sessions, as the host mirrors them from OpenCode's database
-    /// (`coder_history::opencode`).
+    /// OpenCode sessions in a mirror of OpenCode's database
+    /// (`coder_history::opencode`). `coder host` no longer offers one; an
+    /// older grant may still name it.
     #[serde(rename = "opencode")]
     OpenCode,
-    /// Devin CLI sessions, as the host mirrors them from Devin's session
-    /// store (`coder_history::devin`).
+    /// Devin CLI sessions in a mirror of Devin's session store
+    /// (`coder_history::devin`). `coder host` no longer offers one; an
+    /// older grant may still name it.
     Devin,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

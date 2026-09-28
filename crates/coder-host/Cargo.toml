@@ -14,8 +14,7 @@ default = ["host"]
 host = [
     "coder-access/host",
     "coder-connect/host",
-    "coder-history/opencode",
-    "coder-history/devin",
+    "coder-history/host",
     "coder-pty/host",
     "tokio/signal",
     "tokio/process",

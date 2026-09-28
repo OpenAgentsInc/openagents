@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 acp-client = { path = "../acp-client" }
-coder-history = { path = "../coder-history", default-features = false, features = ["opencode"] }
+coder-history = { path = "../coder-history", default-features = false, features = ["opencode", "devin"] }
 atif = { path = "../atif" }
 coder = { path = "../coder" }
 futures-util = "0.3"

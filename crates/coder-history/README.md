@@ -1,7 +1,9 @@
 # Saved harness history
 
-`coder-history` reads saved Codex and Claude conversations and Coder task
-transcripts from explicitly selected desktop directories. It provides catalog pages and complete source
+`coder-history` reads saved Codex and Claude conversations, Coder task
+transcripts, and the delegate sessions kept beside them from explicitly
+selected desktop directories. `coder host` serves only Coder task chats
+and their delegate sessions. It provides catalog pages and complete source
 bytes in bounded transcript pages. It does not start, resume, interrupt, or
 modify a harness. It has no model or network client.
 
@@ -32,37 +34,28 @@ The Coder adapter reads Coder's task directory, such as `~/.openagents/tasks`.
 It lists only the `<task>.<attempt>.atif.jsonl` files directly inside that
 directory, one chat per task attempt, newest first by last write. Their native
 ID is the 64-hex task ID, and their title is the first line of the first
-`User` step. It ignores subdirectories and every other file there.
+`User` step. It also lists the delegate sessions kept beside them,
+`<task>.delegate.<agent>.<session>.jsonl` (see
+[Delegate sessions](#delegate-sessions)), and ignores subdirectories and
+every other file there.
 
-The OpenCode adapter reads the host's mirror of OpenCode's sessions, such
-as `~/.openagents/opencode/mirror`. OpenCode 1.2 and later keep sessions in
-a SQLite database, so `opencode::mirror` (feature `opencode`) copies each
-session into `ses_<id>.jsonl` there: an `opencode.session` header, then one
-`opencode.part` line per finished part in OpenCode's order, and an
-`opencode.error` line after a reply that failed. It opens the database
-read-only and writes only the mirror. The catalog lists the `ses_*.jsonl`
-files directly inside the mirror; titles, update times, and archiving come
-from its `session_index.jsonl`, and a session with a parent lists as a
-subagent. `coder host` runs a pass every five seconds. A part projects as a
-`message` (text, by the message's role), `reasoning`, `tool_call` (the
-tool's title or input, then its output or error), or an `adapter` record
-with no text; an error line is a `system` message.
-
-The Devin adapter reads the host's mirror of the Devin CLI's sessions, such
-as `~/.openagents/devin/mirror`. The Devin CLI keeps sessions in a SQLite
-store (`devin/cli/sessions.db` in its data directory) as a forest of message
-nodes, so `devin::mirror` (feature `devin`) copies each session's
-conversation, read from its `main_chain_id` back and across compactions
-(`summarized_from`, with a carried node called by the node it copies), into
-`<session id>.jsonl`: a `devin.session` header, then `devin.item` lines. It
-opens the store read-only, writes only the mirror, and never writes a session
-whose `metadata.client_meta` carries Coder's engine mark. The catalog lists
-the session files directly inside the mirror; titles, update times, and
-hidden sessions (as archived) come from its `session_index.jsonl`. An item
-projects as a `message` (the owner's typed prompt or the assistant's reply),
-`reasoning`, `tool_call` (the tool's name, and a summary of its arguments),
-or `tool_result`; Devin's system prompts and its own prompts to itself are
-not mirrored.
+The OpenCode and Devin adapters read a directory of sessions written in
+this crate's JSONL shapes (features `opencode` and `devin`): an
+`opencode.session` header, then one `opencode.part` line per finished part
+in OpenCode's order and an `opencode.error` line after a reply that failed;
+or a `devin.session` header, then `devin.item` lines for the conversation
+Devin shows, read across compactions, without its system prompts or its own
+prompts to itself. `opencode::mirror` and `devin::mirror` copy every session
+of the agent's SQLite store (opened read-only) into such a directory, with a
+`session_index.jsonl` of titles. `coder host` runs neither mirror and offers
+neither directory: the phone shows only Coder chats
+([#9920](https://github.com/OpenAgentsInc/openagents/issues/9920)). An
+OpenCode part projects as a `message` (text, by the message's role),
+`reasoning`, `tool_call` (the tool's title or input, then its output or
+error), or an `adapter` record with no text; an error line is a `system`
+message. A Devin item projects as a `message` (the owner's typed prompt or
+the assistant's reply), `reasoning`, `tool_call` (the tool's name, and a
+summary of its arguments), or `tool_result`.
 
 These adapters follow locally observed saved-file structures, not a guaranteed
 provider API. Unknown records remain available. The reader does not inspect
@@ -82,6 +75,55 @@ membership still refuses its cursor. `cargo test -p coder-history --release
 -- --ignored --nocapture catalog_bench` times the catalog
 (`CODER_HISTORY_BENCH_REAL=1` also times `~/.claude` and `~/.codex`,
 read-only).
+
+## Delegate sessions
+
+When a Coder task's turn runs on an OpenCode or Devin route, the agent
+keeps its session in its own SQLite store. The task's Coder transcript
+already carries the agent's streamed reply, reasoning, and tool calls as
+they arrive. At the end of each turn the engine (`microcoder`) also copies
+the whole session, with `opencode::delegate` or `devin::delegate`, into the
+task directory beside the transcript:
+
+```text
+~/.openagents/tasks/<task>.delegate.<agent>.<session>.jsonl
+```
+
+`<task>` is the task's 64-hex ID, `<agent>` is `opencode` or `devin`, and
+`<session>` is the agent's session ID (`ses_…` for OpenCode, Devin's
+hyphenated words). The file is in the agent's JSONL shape above.
+`delegate::file_name` and `delegate::parse` are the only spellings. The copy
+only grows while the session only grows, so a device's transcript cursor
+stays valid when a later turn reattaches the session; a session the agent
+rewound is written as a new file, and a cursor on the old one reports
+`SourceChanged`.
+
+The task's transcript notes each copy with a `System` step (projected as an
+`adapter` record with no text) whose extension `delegate_transcript` is
+`{"agent": "opencode" | "devin", "session": "<session>", "file": "<name>"}`,
+or `{"agent", "session", "error"}` when the copy failed.
+
+The Coder catalog lists each copy as its task's subagent:
+
+| Field | Value |
+| --- | --- |
+| `harness` | `opencode` or `devin` |
+| `native_id` | the task's 64-hex ID, the same as the task's own chats |
+| `subagent` | `true` |
+| `archived` | the task's archived state |
+| `title` | `OpenCode session <session>` or `Devin session <session>` |
+| `id` | stable for the file, distinct from the task's chats |
+| `source_id` | read it as any transcript, forward or backward |
+
+A device shows it inside the Coder chat whose `native_id` matches; a device
+that hides subagent chats hides it from its list. When a copy appears or
+grows, a direct connection watching the chat list gets a `catalog` nudge,
+and one reading the copy gets a change nudge for its source.
+
+A Claude Code or Codex route runs inside Coder's own loop (Claude Code with
+`--no-session-persistence` for each step, Codex over its HTTP transport), so
+its whole work is the task's transcript and there is no separate session to
+copy.
 
 ## Preserve the complete transcript
 

@@ -705,6 +705,61 @@ fn a_task_the_owner_archived_lists_as_an_archived_chat() {
 }
 
 #[test]
+fn a_delegate_session_beside_its_task_lists_as_the_tasks_subagent_and_reads() {
+    let fixture = Fixture::new();
+    let task = "ef".repeat(32);
+    fixture.write(&format!("{task}.1.atif.jsonl"), atif_lines());
+    let name = crate::delegate::file_name(&task, Harness::OpenCode, "ses_0Delegate").unwrap();
+    fixture.write(
+        &name,
+        concat!(
+            r#"{"type":"opencode.session","session_id":"ses_0Delegate","parent_id":null,"directory":"/w","version":"1.2","time":1}"#,
+            "\n",
+            r#"{"type":"opencode.part","session_id":"ses_0Delegate","message_id":"msg_1","part_id":"prt_1","role":"assistant","model":null,"time":2,"part":{"type":"text","text":"Delegated work done."}}"#,
+            "\n"
+        ),
+    );
+    // Neither another name in the directory nor a malformed delegate name lists.
+    fixture.write(&format!("{task}.delegate.opencode.bad.jsonl"), b"{}\n");
+    fixture.write(
+        &format!("{task}.delegate.opencode.ses_0Delegate.tmp-1"),
+        b"{}\n",
+    );
+    let history = coder_history(&fixture);
+    let page = history.catalog(CatalogRequest::default()).unwrap();
+    assert_eq!(page.entries.len(), 2, "{:?}", page.entries);
+    let chat = page.entries.iter().find(|c| !c.subagent).unwrap();
+    assert_eq!(chat.harness, Harness::Coder);
+    let delegate = page.entries.iter().find(|c| c.subagent).unwrap();
+    assert_eq!(delegate.harness, Harness::OpenCode);
+    assert_eq!(delegate.native_id.as_deref(), Some(task.as_str()));
+    assert_eq!(delegate.title, "OpenCode session ses_0Delegate");
+    assert_ne!(delegate.id, chat.id);
+    let page = read(
+        &history,
+        delegate.source_id.as_ref().unwrap(),
+        None,
+        MAX_PAGE_BYTES,
+    );
+    let texts: Vec<_> = page
+        .chunks
+        .iter()
+        .filter_map(|c| c.readable.clone())
+        .map(|r| (r.kind, r.text))
+        .collect();
+    assert_eq!(texts[1], ("message".into(), "Delegated work done.".into()));
+    // An archived task's delegate is archived with it.
+    fixture.write(
+        "archive.json",
+        format!(
+            r#"{{"schema":"openagents.coder.task-archive.v1","tasks":{{"{task}":{{"at":5}}}}}}"#
+        ),
+    );
+    let page = history.catalog(CatalogRequest::default()).unwrap();
+    assert!(page.entries.iter().all(|c| c.archived));
+}
+
+#[test]
 fn coder_steps_project_as_user_system_tool_and_assistant_records() {
     let fixture = Fixture::new();
     fixture.write(&format!("{}.1.atif.jsonl", "0".repeat(64)), atif_lines());

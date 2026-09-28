@@ -711,6 +711,11 @@ impl Host {
         &self.owner.dir
     }
 
+    /// The task this run belongs to, by its 64-hex ID.
+    pub fn task_id(&self) -> &str {
+        &self.task.task_id
+    }
+
     pub fn prompt(&self) -> &str {
         &self.admission.context.prompt
     }

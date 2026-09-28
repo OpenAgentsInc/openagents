@@ -1,4 +1,12 @@
-//! The host's mirror of the Devin CLI's saved sessions.
+//! The Devin CLI's saved sessions as pageable JSONL: one delegated session, or a mirror
+//! of every session.
+//!
+//! `coder host` no longer runs the mirror
+//! ([#9920](https://github.com/OpenAgentsInc/openagents/issues/9920)): the
+//! phone shows only Coder chats. [`delegate`] writes one session, the one a
+//! Coder task delegated to, in the same shape, beside its task
+//! ([`crate::delegate`]); [`mirror`] remains for a caller that wants every
+//! session.
 //!
 //! The Devin CLI keeps its local sessions in a SQLite store,
 //! `devin/cli/sessions.db` in its data directory, not in files a reader can
@@ -221,6 +229,42 @@ pub fn mirror(database: &Path, dir: &Path) -> Result<Report, String> {
         &serde_json::to_vec(&state).map_err(|e| e.to_string())?,
     )?;
     Ok(report)
+}
+
+/// Copy the Devin session `session` in `database` to `path`, the task's
+/// delegate transcript ([`crate::delegate`]), in the mirror's shape, engine
+/// session or not. The copy only grows while the conversation only grows; a
+/// rewound one is written again as a new file. Opens the store read-only.
+/// Returns whether `path` changed.
+///
+/// # Errors
+///
+/// When the session is not in the store, or a file can't be written.
+pub fn delegate(database: &Path, session: &str, path: &Path) -> Result<bool, String> {
+    if !safe_id(session) {
+        return Err("not a Devin session ID".into());
+    }
+    let connection = Connection::open_with_flags(
+        database,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("cannot open {}: {e}", database.display()))?;
+    connection
+        .busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| e.to_string())?;
+    let session = sessions(&connection)?
+        .into_iter()
+        .find(|s| s.id == session)
+        .ok_or_else(|| format!("no Devin session {session}"))?;
+    let head = session
+        .head
+        .ok_or_else(|| format!("the Devin session {} has no messages", session.id))?;
+    let fresh = path.with_extension(format!("fresh-{}", std::process::id()));
+    let _ = std::fs::remove_file(&fresh);
+    sync(&connection, &session, head, &fresh, Progress::default())?;
+    let changed = crate::delegate::settle(&fresh, path)?;
+    touch(path, session.activity.saturating_mul(1000));
+    Ok(changed)
 }
 
 fn sessions(connection: &Connection) -> Result<Vec<Session>, String> {

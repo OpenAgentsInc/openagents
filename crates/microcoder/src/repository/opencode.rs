@@ -25,8 +25,9 @@
 //!   command and reaches no network through its tools.
 //! - **Sessions**: an engine session is saved in the engine's own OpenCode
 //!   database (`OPENCODE_DB`, [`coder_history::engine::OPENCODE_DATABASE`]),
-//!   never the owner's `opencode.db`, which the host mirrors into the
-//!   phone's chats.
+//!   never the owner's `opencode.db`. When the turn ends the session is
+//!   copied beside the task ([`coder_history::delegate`]), so the phone
+//!   reads it inside the Coder chat.
 //! - **Cancellation**: a cancelled task, or one at its wall deadline, sends
 //!   `session/cancel`, waits a grace, and stops the agent's process group.
 //! - **Capacity**: OpenCode's ACP refusal names only its error
@@ -219,6 +220,13 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     if !group_clear {
         host.fail("the OpenCode process group did not stop");
     }
+    super::devin::keep_delegate(
+        host,
+        coder_history::Harness::OpenCode,
+        &session_id,
+        database.as_deref(),
+        coder_history::opencode::delegate,
+    );
     let refusal = match &result {
         Ok(reply) => {
             ended.stop = Some(reply.stop_reason);

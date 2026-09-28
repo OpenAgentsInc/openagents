@@ -553,139 +553,119 @@ fn coder_task_source_pairs_and_pages_backward_through_the_observer() {
 }
 
 #[test]
-fn opencode_mirror_source_pairs_and_lists_its_sessions_through_the_observer() {
+fn a_coder_only_host_serves_only_coder_chats_and_their_delegates_under_any_grant() {
     let f = Fixture::new("wss://relay.example/");
-    let mirror = f.root.parent().unwrap().join("opencode-mirror");
-    std::fs::create_dir_all(&mirror).unwrap();
-    // Two lines of the host's OpenCode mirror (`coder_history::opencode`).
+    let tasks = f.root.parent().unwrap().join("tasks");
+    std::fs::create_dir_all(&tasks).unwrap();
+    let task = "5c".repeat(32);
     std::fs::write(
-        mirror.join("ses_0synthetic.jsonl"),
+        tasks.join(format!("{task}.1.atif.jsonl")),
         concat!(
-            r#"{"type":"opencode.session","session_id":"ses_0synthetic","parent_id":null,"directory":"/work","version":"1.18.26","time":1}"#,
+            r#"{"record":"session","schema_version":"ATIF-v1.7","at":1,"session":{"id":"TASK-1"}}"#,
             "\n",
-            r#"{"type":"opencode.part","session_id":"ses_0synthetic","message_id":"msg_1","part_id":"prt_1","role":"user","model":"google/gemini-3.6-flash","time":2,"part":{"type":"text","text":"Synthetic OpenCode chat"}}"#,
+            r#"{"record":"step","step":{"at":2,"source":"User","message":"Synthetic Coder task"}}"#,
             "\n",
         ),
     )
     .unwrap();
+    // The OpenCode session the task delegated to, kept beside it.
+    std::fs::write(
+        tasks.join(
+            coder_history::delegate::file_name(&task, coder_history::Harness::OpenCode, "ses_0d")
+                .unwrap(),
+        ),
+        concat!(
+            r#"{"type":"opencode.session","session_id":"ses_0d","parent_id":null,"directory":"/w","version":"1.18.26","time":1}"#,
+            "\n",
+            r#"{"type":"opencode.part","session_id":"ses_0d","message_id":"msg_1","part_id":"prt_1","role":"assistant","model":null,"time":2,"part":{"type":"text","text":"Delegated."}}"#,
+            "\n",
+        ),
+    )
+    .unwrap();
+    // A grant made while the host also offered Codex history.
     let code = f
         .host()
         .invite(
             &f.code.relay,
             coder_history::Config {
                 codex: Some(f.root.clone()),
-                claude: None,
-                coder: None,
-                opencode: Some(mirror.clone()),
-                devin: None,
-            },
-            f.now,
-            f.now + 3600,
-        )
-        .unwrap();
-    let (invitation, pending) = prepare(&f, &code, &f.client_secret);
-    let connection = redeem_local(&f, &invitation, &pending, &f.client_secret).unwrap();
-    assert_eq!(
-        connection
-            .sources
-            .iter()
-            .map(|s| s.kind)
-            .collect::<Vec<_>>(),
-        [SourceKind::Codex, SourceKind::OpenCode]
-    );
-    let bytes = serde_json::to_vec(&connection).unwrap();
-    assert!(String::from_utf8_lossy(&bytes).contains("\"opencode\""));
-    let client = Client::new_with_policy(
-        connection.clone(),
-        f.client_secret,
-        RelayPolicy::LoopbackTest,
-    )
-    .unwrap();
-    let pending = client
-        .prepare(Query::Catalog(CatalogRequest::default()), f.now)
-        .unwrap();
-    let reply = f
-        .host()
-        .handle(&pending.event, &connection.relay, f.now)
-        .unwrap();
-    let Observation::Catalog(catalog) = client.verify_reply(&pending, &reply, f.now).unwrap()
-    else {
-        panic!("catalog expected")
-    };
-    let chat = catalog
-        .entries
-        .iter()
-        .find(|c| c.harness == coder_history::Harness::OpenCode)
-        .unwrap();
-    assert_eq!(chat.native_id.as_deref(), Some("ses_0synthetic"));
-    assert_eq!(chat.title, "Synthetic OpenCode chat");
-}
-
-#[test]
-fn devin_mirror_source_pairs_and_lists_its_sessions_through_the_observer() {
-    let f = Fixture::new("wss://relay.example/");
-    let mirror = f.root.parent().unwrap().join("devin-mirror");
-    std::fs::create_dir_all(&mirror).unwrap();
-    // Two lines of the host's Devin mirror (`coder_history::devin`).
-    std::fs::write(
-        mirror.join("synthetic-otter.jsonl"),
-        concat!(
-            r#"{"type":"devin.session","session_id":"synthetic-otter","directory":"/work","model":"swe-2-high","time":1000}"#,
-            "\n",
-            r#"{"type":"devin.item","session_id":"synthetic-otter","node_id":2,"time":2000,"item":"message","role":"user","text":"Synthetic Devin chat"}"#,
-            "\n",
-        ),
-    )
-    .unwrap();
-    let code = f
-        .host()
-        .invite(
-            &f.code.relay,
-            coder_history::Config {
-                codex: Some(f.root.clone()),
-                devin: Some(mirror.clone()),
+                coder: Some(tasks.clone()),
                 ..coder_history::Config::default()
             },
             f.now,
             f.now + 3600,
         )
         .unwrap();
-    let (invitation, pending) = prepare(&f, &code, &f.client_secret);
-    let connection = redeem_local(&f, &invitation, &pending, &f.client_secret).unwrap();
-    assert_eq!(
-        connection
-            .sources
-            .iter()
-            .map(|s| s.kind)
-            .collect::<Vec<_>>(),
-        [SourceKind::Codex, SourceKind::Devin]
-    );
-    let bytes = serde_json::to_vec(&connection).unwrap();
-    assert!(String::from_utf8_lossy(&bytes).contains("\"devin\""));
-    let client = Client::new_with_policy(
-        connection.clone(),
-        f.client_secret,
-        RelayPolicy::LoopbackTest,
-    )
-    .unwrap();
-    let pending = client
-        .prepare(Query::Catalog(CatalogRequest::default()), f.now)
-        .unwrap();
-    let reply = f
-        .host()
-        .handle(&pending.event, &connection.relay, f.now)
-        .unwrap();
-    let Observation::Catalog(catalog) = client.verify_reply(&pending, &reply, f.now).unwrap()
-    else {
-        panic!("catalog expected")
+    // A second device, so the fixture's own Codex-only grant stays.
+    let device = SecretKey::new(&mut secp256k1::rand::rng());
+    let (invitation, pending) = prepare(&f, &code, &device);
+    let connection = redeem_local(&f, &invitation, &pending, &device).unwrap();
+    let client =
+        Client::new_with_policy(connection.clone(), device, RelayPolicy::LoopbackTest).unwrap();
+    let ask = |host: &host::Host, query: Query| {
+        let pending = client.prepare(query, f.now).unwrap();
+        let reply = host
+            .handle(&pending.event, &connection.relay, f.now)
+            .unwrap();
+        client.verify_reply(&pending, &reply, f.now)
     };
-    let chat = catalog
+    let catalog = |host: &host::Host| match ask(host, Query::Catalog(CatalogRequest::default())) {
+        Ok(Observation::Catalog(catalog)) => catalog,
+        other => panic!("catalog expected, got {other:?}"),
+    };
+    // Every root of the grant, as a host that serves them all reads it.
+    let all = catalog(&f.host());
+    let codex = all
         .entries
         .iter()
-        .find(|c| c.harness == coder_history::Harness::Devin)
+        .find(|c| c.harness == coder_history::Harness::Codex)
+        .unwrap()
+        .source_id
+        .clone()
         .unwrap();
-    assert_eq!(chat.native_id.as_deref(), Some("synthetic-otter"));
-    assert_eq!(chat.title, "Synthetic Devin chat");
+    let coder_only = f.host().coder_only();
+    let listed = catalog(&coder_only);
+    let mut kinds: Vec<_> = listed
+        .entries
+        .iter()
+        .map(|c| (c.harness, c.subagent, c.native_id.clone().unwrap()))
+        .collect();
+    kinds.sort_by_key(|(_, subagent, _)| *subagent);
+    assert_eq!(
+        kinds,
+        [
+            (coder_history::Harness::Coder, false, task.clone()),
+            (coder_history::Harness::OpenCode, true, task.clone()),
+        ]
+    );
+    let delegate = listed.entries.iter().find(|c| c.subagent).unwrap();
+    let page = |source_id: String| {
+        ask(
+            &coder_only,
+            Query::Page(TranscriptRequest {
+                source_id,
+                cursor: None,
+                max_bytes: coder_history::MAX_PAGE_BYTES,
+                end: Some(coder_history::NEWEST),
+            }),
+        )
+    };
+    let Ok(Observation::Page(read)) = page(delegate.source_id.clone().unwrap()) else {
+        panic!("the delegate's transcript reads")
+    };
+    assert_eq!(read.chunks[1].readable.as_ref().unwrap().text, "Delegated.");
+    // The Codex chat the grant names is not read.
+    assert_eq!(page(codex).unwrap_err().code, ErrorCode::Unavailable);
+    // A grant that names no Coder root lists nothing, without an error.
+    let old = f.client();
+    let pending = f.catalog();
+    let reply = coder_only
+        .handle(&pending.event, &f.code.relay, f.now)
+        .unwrap();
+    let Observation::Catalog(empty) = old.verify_reply(&pending, &reply, f.now).unwrap() else {
+        panic!("catalog expected")
+    };
+    assert!(empty.entries.is_empty() && empty.next.is_none());
 }
 
 fn paired(f: &Fixture, client: &SecretKey, now: u64) -> ConnectionCode {

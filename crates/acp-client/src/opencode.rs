@@ -31,9 +31,8 @@
 //!   points OpenCode at a database of its own (`OPENCODE_DB` set to
 //!   `coder_history::engine::OPENCODE_DATABASE`, a name OpenCode resolves
 //!   in its data directory), so an engine session keeps OpenCode's logins
-//!   but is never saved in the owner's `opencode.db`, which the host
-//!   mirrors into the phone's chats. The `_meta` marker is sent anyway, as
-//!   for Devin.
+//!   but is never saved in the owner's `opencode.db`. The `_meta` marker is
+//!   sent anyway, as for Devin.
 //! - **Why a turn failed**: a refused `session/prompt` carries only
 //!   OpenCode's error name (`data.errorName`, such as `APIError`) and its
 //!   message; the HTTP status and headers stay in the failed assistant

@@ -432,3 +432,43 @@ fn only_devin_session_ids_are_file_names() {
         assert!(!crate::devin_session_id(bad), "{bad}");
     }
 }
+
+#[test]
+fn an_engine_session_is_copied_beside_its_task_and_a_next_turn_only_appends() {
+    let fixture = Fixture::new();
+    let tasks = fixture.root.join("tasks");
+    std::fs::create_dir_all(&tasks).unwrap();
+    let task = "0b".repeat(32);
+    let engine = tasks.join(crate::delegate::file_name(&task, Harness::Devin, ENGINES).unwrap());
+    let owners = tasks.join(crate::delegate::file_name(&task, Harness::Devin, OWNERS).unwrap());
+    // The engine's own session, which the mirror never writes, is copied.
+    assert!(delegate(&fixture.database(), ENGINES, &engine).unwrap());
+    assert!(delegate(&fixture.database(), OWNERS, &owners).unwrap());
+    let history = History::open(Config {
+        coder: Some(tasks.clone()),
+        ..Config::default()
+    })
+    .unwrap();
+    let entries = history.catalog(CatalogRequest::default()).unwrap().entries;
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().all(|c| c.harness == Harness::Devin
+        && c.subagent
+        && c.native_id.as_deref() == Some(task.as_str())));
+    let chat = entries
+        .into_iter()
+        .find(|c| c.title == format!("Devin session {OWNERS}"))
+        .unwrap();
+    let source = chat.source_id.unwrap();
+    let (before, inode) = (
+        std::fs::read(&owners).unwrap(),
+        std::fs::metadata(&owners).unwrap().ino(),
+    );
+    fixture.add(31, Some(30), &user("Now say bye."), None);
+    fixture.add(32, Some(31), &assistant("bye"), None);
+    assert!(delegate(&fixture.database(), OWNERS, &owners).unwrap());
+    assert!(std::fs::read(&owners).unwrap().starts_with(&before));
+    assert_eq!(std::fs::metadata(&owners).unwrap().ino(), inode);
+    let lines = said(&history, &source);
+    assert_eq!(lines.last().unwrap().2, "bye");
+    assert!(delegate(&fixture.database(), "absent-otter", &owners).is_err());
+}
