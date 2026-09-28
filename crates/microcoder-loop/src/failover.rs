@@ -78,8 +78,9 @@ impl<T: codex_transport::Transport> Lane for crate::models::CodexGenerator<Refus
     }
 }
 
-/// Generation through the `claude` binary that keeps the rate-limit
-/// refusal (an error result with API status 429) its last call met.
+/// Generation through the `claude` binary that keeps the usage or rate
+/// limit refusal (an error result with API status 429 or a rejected limit
+/// event) its last call met.
 pub struct ClaudeLane {
     pub inner: crate::claude::ClaudeGenerator,
     refusal: RefCell<Option<Refusal>>,
@@ -98,11 +99,7 @@ impl ClaudeLane {
 impl Generate for ClaudeLane {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
         let invocation = self.inner.invoke(system, prompt).await;
-        *self.refusal.borrow_mut() = Refusal::claude(
-            invocation.api_error_status.is_some(),
-            invocation.api_error_status,
-            unix_now(),
-        );
+        *self.refusal.borrow_mut() = invocation.refusal(unix_now());
         invocation.generated
     }
 }
@@ -331,6 +328,9 @@ impl<R: Admitted, L: Lane, J: Journal + ?Sized> Generate for Failover<'_, R, L, 
             let Some(refusal) = refusal else {
                 return merge(spent, generated);
             };
+            // A refusal without a reported reset takes the one a fresh
+            // usage probe reading shows, when the host keeps one.
+            let refusal = refusal.with_probed_reset(&crate::usage::Book::load(&self.book));
             let recorded = capacity::record(&self.book, refusal.clone()).err();
             self.refused.borrow_mut().push(refusal.clone());
             spent = Some(merge(spent, generated));
@@ -369,5 +369,130 @@ impl<R: Admitted, L: Lane, J: Journal + ?Sized> Generate for Failover<'_, R, L, 
 
     fn out_of_capacity(&self) -> Option<Exhausted> {
         self.exhausted.get()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capacity::Kind;
+
+    #[derive(Serialize)]
+    struct Route(Provider, &'static str);
+
+    impl Admitted for Route {
+        fn provider(&self) -> Option<Provider> {
+            Some(self.0)
+        }
+        fn model(&self) -> &str {
+            self.1
+        }
+    }
+
+    /// A lane that refuses once with `refusal`, then answers.
+    struct Once {
+        refusal: RefCell<Option<Refusal>>,
+        pending: RefCell<Option<Refusal>>,
+    }
+
+    impl Generate for Once {
+        async fn generate(&self, _system: &str, _prompt: &str) -> Generated {
+            match self.pending.borrow_mut().take() {
+                Some(refusal) => {
+                    *self.refusal.borrow_mut() = Some(refusal);
+                    refused_generation("m", false, "refused")
+                }
+                None => Generated {
+                    action: Ok(serde_json::from_value(
+                        json!({"rationale":"r","commands":[],"finished":true}),
+                    )
+                    .unwrap()),
+                    ..refused_generation("m", false, "")
+                },
+            }
+        }
+    }
+
+    impl Lane for Once {
+        fn refusal(&self) -> Option<Refusal> {
+            self.refusal.borrow_mut().take()
+        }
+    }
+
+    struct Quiet;
+    impl Journal for Quiet {
+        fn append(&self, _step: &Step) {}
+    }
+
+    const NOW: u64 = 1_790_572_210;
+
+    fn now() -> u64 {
+        NOW
+    }
+
+    #[tokio::test]
+    async fn a_claude_refusal_without_a_reset_records_the_probed_one() {
+        let dir = tempfile::tempdir().unwrap();
+        // The host's probe saw the five-hour window full, resetting in an hour.
+        let body = include_str!("../fixtures/usage/claude-oauth-usage.json");
+        let mut reading = crate::usage::parse_claude(body.as_bytes(), NOW - 60).unwrap();
+        reading.windows[0].used_fraction = 1.0;
+        reading.windows[0].resets_at = Some(NOW + 3_600);
+        let book = crate::usage::Book {
+            entries: vec![crate::usage::Entry {
+                provider: Provider::Claude,
+                attempted_at: NOW - 60,
+                next_probe_at: NOW,
+                reading: Some(reading),
+                failure: None,
+            }],
+            ..crate::usage::Book::default()
+        };
+        std::fs::write(
+            dir.path().join(crate::usage::FILE),
+            serde_json::to_vec(&book).unwrap(),
+        )
+        .unwrap();
+        let lanes = vec![
+            (
+                Route(Provider::Claude, "opus"),
+                Once {
+                    refusal: RefCell::new(None),
+                    pending: RefCell::new(Refusal::claude(true, Some(429), None, NOW)),
+                },
+            ),
+            (
+                Route(Provider::Codex, "gpt-6-luna"),
+                Once {
+                    refusal: RefCell::new(None),
+                    pending: RefCell::new(None),
+                },
+            ),
+        ];
+        let failover = Failover::new(&Quiet, dir.path().to_path_buf(), lanes, now);
+        let generated = failover.generate("s", "p").await;
+        assert!(generated.action.is_ok());
+        assert_eq!(failover.route().unwrap().0, Provider::Codex);
+        let recorded = capacity::Book::load(dir.path());
+        let refusal = recorded.blocking(Provider::Claude, NOW).unwrap();
+        assert_eq!(refusal.kind, Kind::UsageLimit);
+        assert_eq!(refusal.until, NOW + 3_600);
+        // Without a probe reading, the flat hold stays.
+        std::fs::remove_file(dir.path().join(crate::usage::FILE)).unwrap();
+        std::fs::remove_file(dir.path().join(capacity::FILE)).unwrap();
+        let lanes = vec![(
+            Route(Provider::Claude, "opus"),
+            Once {
+                refusal: RefCell::new(None),
+                pending: RefCell::new(Refusal::claude(true, Some(429), None, NOW)),
+            },
+        )];
+        let failover = Failover::new(&Quiet, dir.path().to_path_buf(), lanes, now);
+        let _ = failover.generate("s", "p").await;
+        let recorded = capacity::Book::load(dir.path());
+        assert_eq!(
+            recorded.blocking(Provider::Claude, NOW).unwrap().until,
+            NOW + capacity::UNKNOWN_RESET_HOLD
+        );
     }
 }

@@ -7,6 +7,12 @@
 //! (`--json-schema`). The binary reads the operator's OAuth login itself;
 //! Microcoder never reads the credential file.
 //!
+//! The binary prints its stream (`--output-format stream-json`), so a
+//! step reads both the final `result` event and the `rate_limit_event`s
+//! before it. When a usage limit refuses the call, the `rejected` event
+//! carries when the limit resets (`resetsAt`), which the capacity book
+//! records instead of a flat hold ([`crate::capacity::Refusal::claude`]).
+//!
 //! Claude Code reports the request's list-price cost (`total_cost_usd`) and
 //! its tokens, so a step's cost basis is [`Basis::ListPrice`]. A call that
 //! fails before a request is sent cost nothing; one that fails after may
@@ -97,7 +103,8 @@ impl ClaudeGenerator {
         let mut args = vec![
             "-p".to_string(),
             "--output-format".to_string(),
-            "json".to_string(),
+            "stream-json".to_string(),
+            "--verbose".to_string(),
             "--no-session-persistence".to_string(),
             "--tools".to_string(),
             String::new(),
@@ -154,7 +161,7 @@ fn find_binary() -> Result<PathBuf, String> {
     }
 }
 
-/// The fields of Claude Code's `--output-format json` result this reads.
+/// The fields of Claude Code's `result` event this reads.
 #[derive(Debug, Default, Deserialize)]
 pub struct Report {
     #[serde(default)]
@@ -174,6 +181,10 @@ pub struct Report {
     /// Keyed by the canonical model name, one entry per model that served.
     #[serde(default, rename = "modelUsage")]
     pub model_usage: serde_json::Map<String, Value>,
+    /// The last `rate_limit_event` before the result, when the stream
+    /// carried one.
+    #[serde(skip)]
+    pub rate_limit: Option<RateLimit>,
 }
 
 /// The token counts of one result.
@@ -189,14 +200,104 @@ pub struct Usage {
     pub output_tokens: u64,
 }
 
+/// Where a `rate_limit_event` says the login stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitStatus {
+    Allowed,
+    AllowedWarning,
+    /// The limit refused the request.
+    Rejected,
+    /// A status this reader doesn't know.
+    #[serde(other)]
+    Other,
+}
+
+/// The window a `rate_limit_event` names as the limiting one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitWindow {
+    FiveHour,
+    SevenDay,
+    SevenDayOpus,
+    SevenDaySonnet,
+    SevenDayOverageIncluded,
+    Overage,
+    /// A window this reader doesn't know.
+    #[serde(other)]
+    Other,
+}
+
+impl LimitWindow {
+    /// The window's length in minutes, when it is a fixed window.
+    #[must_use]
+    pub const fn minutes(self) -> Option<u64> {
+        match self {
+            LimitWindow::FiveHour => Some(5 * 60),
+            LimitWindow::SevenDay
+            | LimitWindow::SevenDayOpus
+            | LimitWindow::SevenDaySonnet
+            | LimitWindow::SevenDayOverageIncluded => Some(7 * 24 * 60),
+            LimitWindow::Overage | LimitWindow::Other => None,
+        }
+    }
+}
+
+/// A `rate_limit_event`'s `rate_limit_info`: the typed fields only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub struct RateLimit {
+    pub status: LimitStatus,
+    /// When the limiting window resets, in Unix seconds.
+    #[serde(default, rename = "resetsAt")]
+    pub resets_at: Option<u64>,
+    #[serde(default, rename = "rateLimitType")]
+    pub window: Option<LimitWindow>,
+}
+
+impl RateLimit {
+    /// Whether the event says the limit refused the request.
+    #[must_use]
+    pub fn rejected(&self) -> bool {
+        self.status == LimitStatus::Rejected
+    }
+}
+
+/// One line of the binary's stream, by its `type`.
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum Line {
+    Result(Box<Report>),
+    RateLimitEvent {
+        rate_limit_info: RateLimit,
+    },
+    #[serde(other)]
+    Other,
+}
+
 impl Report {
-    /// The report in the binary's stdout: its last JSON object, since a
-    /// warning may precede it.
+    /// The report in the binary's stdout: the stream's `result` event,
+    /// with the last `rate_limit_event` before it. Output with no typed
+    /// `result` event is read as a single result object, the binary's
+    /// `--output-format json`, taking the last JSON object, since a warning
+    /// may precede it.
     ///
     /// # Errors
     ///
-    /// When there is no JSON object.
+    /// When there is no result.
     pub fn parse(stdout: &str) -> Result<Report, String> {
+        let mut rate_limit = None;
+        let mut result = None;
+        for line in stdout.lines().map(str::trim).filter(|l| l.starts_with('{')) {
+            match serde_json::from_str::<Line>(line) {
+                Ok(Line::Result(report)) => result = Some(report),
+                Ok(Line::RateLimitEvent { rate_limit_info }) => rate_limit = Some(rate_limit_info),
+                Ok(Line::Other) | Err(_) => {}
+            }
+        }
+        if let Some(mut report) = result {
+            report.rate_limit = rate_limit;
+            return Ok(*report);
+        }
         let start = stdout
             .rfind("\n{")
             .map(|i| i + 1)
@@ -205,8 +306,10 @@ impl Report {
                 let excerpt: String = stdout.trim().chars().take(300).collect();
                 format!("claude printed no JSON result: {excerpt}")
             })?;
-        serde_json::from_str(stdout[start..].trim())
-            .map_err(|e| format!("claude's result isn't the expected JSON: {e}"))
+        let mut report: Report = serde_json::from_str(stdout[start..].trim())
+            .map_err(|e| format!("claude's result isn't the expected JSON: {e}"))?;
+        report.rate_limit = rate_limit;
+        Ok(report)
     }
 
     /// Every input token, cached or not.
@@ -234,8 +337,26 @@ pub struct Invocation {
     /// The API status of an error result, such as 429 for a usage or rate
     /// limit; `None` for a success or a call with no report.
     pub api_error_status: Option<u16>,
+    /// The last `rate_limit_event` the stream carried, if any.
+    pub rate_limit: Option<RateLimit>,
+    /// Whether the binary reported an error result.
+    pub is_error: bool,
     pub stdout: String,
     pub stderr: String,
+}
+
+impl Invocation {
+    /// The capacity refusal this call met, if a usage or rate limit
+    /// refused it, with the reset the stream reported.
+    #[must_use]
+    pub fn refusal(&self, now: u64) -> Option<crate::capacity::Refusal> {
+        crate::capacity::Refusal::claude(
+            self.is_error,
+            self.api_error_status,
+            self.rate_limit.as_ref(),
+            now,
+        )
+    }
 }
 
 impl Generate for ClaudeGenerator {
@@ -264,6 +385,8 @@ impl ClaudeGenerator {
             },
             status: None,
             api_error_status: None,
+            rate_limit: None,
+            is_error: false,
             stdout: String::new(),
             stderr: String::new(),
         };
@@ -364,6 +487,8 @@ impl ClaudeGenerator {
             },
             status: output.status.code(),
             api_error_status: report.is_error.then_some(report.api_error_status).flatten(),
+            rate_limit: report.rate_limit,
+            is_error: report.is_error,
             stdout,
             stderr,
         }
@@ -398,6 +523,8 @@ mod tests {
         };
         assert_eq!(at("--tools"), Some(String::new()));
         assert_eq!(at("--max-turns"), Some("1".into()));
+        assert_eq!(at("--output-format"), Some("stream-json".into()));
+        assert!(args.contains(&"--verbose".to_string()));
         assert_eq!(at("--setting-sources"), Some(String::new()));
         assert_eq!(at("--model"), Some("opus".into()));
         assert_eq!(at("--effort"), Some("xhigh".into()));
@@ -461,7 +588,53 @@ mod tests {
         )
         .unwrap();
         assert_eq!(limited.api_error_status, Some(429));
+        assert_eq!(limited.rate_limit, None);
         assert_eq!(report.result, "Not logged in · Please run /login");
         assert!(Report::parse("nothing here").is_err());
+    }
+
+    #[test]
+    fn a_recorded_session_limit_stream_carries_its_reset() {
+        let stdout = include_str!("../fixtures/claude/session-limit.stream.jsonl");
+        let report = Report::parse(stdout).unwrap();
+        assert!(report.is_error);
+        assert_eq!(report.api_error_status, Some(429));
+        let limit = report.rate_limit.unwrap();
+        assert!(limit.rejected());
+        assert_eq!(limit.resets_at, Some(1_790_164_200));
+        assert_eq!(limit.window, Some(LimitWindow::FiveHour));
+    }
+
+    #[test]
+    fn a_stream_takes_the_result_event_and_the_last_limit_event_before_it() {
+        let stdout = concat!(
+            r#"{"type":"system","subtype":"init","tools":[]}"#,
+            "\n",
+            r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1790715600,"rateLimitType":"seven_day","utilization":0.9,"unifiedWindows":{}}}"#,
+            "\n",
+            r#"{"type":"assistant","message":{"content":[]}}"#,
+            "\n",
+            r#"{"type":"result","subtype":"success","is_error":false,"structured_output":{"rationale":"r","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true,"reply":"hello"},"total_cost_usd":0.0199,"modelUsage":{"claude-haiku-4-5":{}}}"#,
+            "\n"
+        );
+        let report = Report::parse(stdout).unwrap();
+        assert!(!report.is_error);
+        assert_eq!(report.total_cost_usd, Some(0.0199));
+        assert_eq!(report.served_model().as_deref(), Some("claude-haiku-4-5"));
+        let limit = report.rate_limit.unwrap();
+        assert_eq!(limit.status, LimitStatus::AllowedWarning);
+        assert!(!limit.rejected());
+        // A status or window this reader doesn't know still parses.
+        let odd = Report::parse(concat!(
+            r#"{"type":"rate_limit_event","rate_limit_info":{"status":"paused","rateLimitType":"hourly"}}"#,
+            "\n",
+            r#"{"type":"result","is_error":true,"api_error_status":429,"result":"x"}"#
+        ))
+        .unwrap();
+        let limit = odd.rate_limit.unwrap();
+        assert_eq!(
+            (limit.status, limit.window),
+            (LimitStatus::Other, Some(LimitWindow::Other))
+        );
     }
 }

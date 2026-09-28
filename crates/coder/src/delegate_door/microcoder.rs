@@ -106,13 +106,20 @@ impl ProviderState {
     }
 }
 
-/// `is out of its usage limit until …` or `is rate limited until …`.
+/// `is out of its usage limit until …` or `is rate limited until …`, the
+/// recorded time. A refusal whose reset nobody reported says the time is a
+/// hold rather than the provider's.
 #[must_use]
 pub fn blocked(refusal: &Refusal) -> String {
     let until = capacity::utc(refusal.until);
+    let held = if refusal.resets_at.is_none() {
+        " (held 30 minutes; the reset wasn't reported)"
+    } else {
+        ""
+    };
     match refusal.kind {
-        Kind::UsageLimit => format!("is out of its usage limit until {until}"),
-        Kind::RateLimit => format!("is rate limited until {until}"),
+        Kind::UsageLimit => format!("is out of its usage limit until {until}{held}"),
+        Kind::RateLimit => format!("is rate limited until {until}{held}"),
     }
 }
 

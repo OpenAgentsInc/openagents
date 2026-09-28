@@ -151,11 +151,7 @@ impl Generate for Claude<'_> {
             Err(error) => return refused_generation(&self.inner.model, false, &error.to_string()),
         };
         let invocation = self.inner.invoke(system, prompt).await;
-        *self.refusal.borrow_mut() = Refusal::claude(
-            invocation.api_error_status.is_some(),
-            invocation.api_error_status,
-            task::autostart::unix_now(),
-        );
+        *self.refusal.borrow_mut() = invocation.refusal(task::autostart::unix_now());
         let observation = json!({"status":invocation.status,"stdout":invocation.stdout,"stderr":invocation.stderr,
             "model":invocation.generated.model,"usd":invocation.generated.usd,"billing":"provider-reported-list-price"});
         if let Err(error) = self.host.result(sequence, "claude_request", observation) {

@@ -899,7 +899,7 @@ async fn a_capacity_refusal_fails_over_to_the_next_admitted_route_and_is_recorde
 #[tokio::test]
 async fn with_every_route_exhausted_the_run_ends_as_no_capacity_with_the_earliest_reset() {
     let (_root, store, grant) = fixture();
-    let claude_refusal = Refusal::claude(true, Some(429), during_limit()).unwrap();
+    let claude_refusal = Refusal::claude(true, Some(429), None, during_limit()).unwrap();
     let codex = lane(
         "gpt-6-luna",
         0.0,

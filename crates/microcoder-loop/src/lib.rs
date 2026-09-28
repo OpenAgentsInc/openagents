@@ -32,6 +32,7 @@ pub mod gate;
 pub mod models;
 pub mod run;
 pub mod state;
+pub mod usage;
 pub mod vertex;
 
 /// The default model, reached through the operator's Codex login.

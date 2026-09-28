@@ -64,8 +64,12 @@ Codex's HTTP 429 `usage_limit_reached`, the loop records the refusal in the
 book with its reset time and generates the same step on the next connected
 provider with capacity. The turn's trace holds a `route_switch` step that
 names both providers and the refusal, and the next turn skips the refused
-provider without asking it again. A Claude Code refusal reports no reset,
-so it holds for 30 minutes.
+provider without asking it again. A Claude Code refusal records the reset
+from the stream's `rejected` `rate_limit_event` (`resetsAt`). When a
+refusal reports no reset, a fresh usage probe reading in the task store's
+`usage.json` supplies the reset of the window it shows at its limit, and
+only without either does it hold for 30 minutes, which the sentence and
+`coder doctor` say.
 
 When no provider is left, the turn ends with one sentence that names each
 provider and when it resets, such as "Microcoder has no provider to answer

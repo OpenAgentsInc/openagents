@@ -2165,8 +2165,12 @@ mod tests {
     /// The recorded usage answers: Codex at its limit, Claude at 66%.
     fn recorded(provider: Provider) -> Result<usage::Response, usage::Failure> {
         let body: &str = match provider {
-            Provider::Codex => include_str!("../../fixtures/usage/codex-wham-usage.json"),
-            Provider::Claude => include_str!("../../fixtures/usage/claude-oauth-usage.json"),
+            Provider::Codex => {
+                include_str!("../../../microcoder-loop/fixtures/usage/codex-wham-usage.json")
+            }
+            Provider::Claude => {
+                include_str!("../../../microcoder-loop/fixtures/usage/claude-oauth-usage.json")
+            }
         };
         Ok(usage::Response {
             status: 200,

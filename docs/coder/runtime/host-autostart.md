@@ -131,8 +131,10 @@ Each start chooses its route when it starts, not when the task was created:
    the capacity book, `capacity.json` in the task store (mode `0600`). The
    engine records a refusal there when a provider refuses a generation: a
    Codex HTTP 429 `usage_limit_reached` with its `resets_at`, or a Claude Code
-   error result with API status 429, which holds 30 minutes because Claude
-   Code does not report the reset. The book keeps one entry per provider:
+   error result with API status 429, with the `resetsAt` of the stream's
+   `rejected` `rate_limit_event`. A refusal without a reported reset takes
+   the reset of the window a fresh [usage probe](#usage-probes) reading shows
+   at 95% or more, and holds 30 minutes only when there is neither. The book keeps one entry per provider:
    the kind of limit, when it was observed, and until when it holds.
 3. **Grant.** The grant names the first connected route with capacity. The
    other connected routes follow as its `fallbacks`, in preference order.
@@ -337,9 +339,9 @@ the command line.
   diagnostic file, not in the journal.
 - Without usage probes, capacity is learned from refusals, so the first task
   after a limit is reached still makes one refused request. A Claude refusal
-  holds for 30 minutes at a time because its reset is not reported. With
-  probes, a reading only reorders routes; a probed Claude reset is not
-  copied into the capacity book.
+  records the reset Claude Code's stream reports. With probes, a reading
+  reorders routes, and supplies the reset only for a refusal that reported
+  none.
 - The phone does not show probed windows yet; read them with
   `coder host autostart show`.
 - A task the policy ended for lack of capacity stays ended. Create it again

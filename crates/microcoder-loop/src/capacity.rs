@@ -160,12 +160,66 @@ impl Refusal {
     }
 
     /// The refusal a Claude Code result carries: an error result whose API
-    /// status is 429. Claude Code's JSON result does not report the reset,
-    /// so it holds for [`UNKNOWN_RESET_HOLD`].
+    /// status is 429, or whose stream's last `rate_limit_event` is
+    /// `rejected`. The rejected event's `resetsAt` is the reset, and its
+    /// window (five-hour or seven-day) makes it a usage limit. Without a
+    /// rejected event the reset is unknown and it holds for
+    /// [`UNKNOWN_RESET_HOLD`], unless [`Refusal::with_probed_reset`] finds one.
     #[must_use]
-    pub fn claude(is_error: bool, api_error_status: Option<u16>, now: u64) -> Option<Refusal> {
-        (is_error && api_error_status == Some(429))
-            .then(|| Refusal::new(Provider::Claude, Kind::RateLimit, now, None))
+    pub fn claude(
+        is_error: bool,
+        api_error_status: Option<u16>,
+        rate_limit: Option<&crate::claude::RateLimit>,
+        now: u64,
+    ) -> Option<Refusal> {
+        let rejected = rate_limit.filter(|limit| limit.rejected());
+        if !is_error || (api_error_status != Some(429) && rejected.is_none()) {
+            return None;
+        }
+        let window = rejected.and_then(|limit| limit.window);
+        let minutes = window.and_then(crate::claude::LimitWindow::minutes);
+        let kind = if minutes.is_some() {
+            Kind::UsageLimit
+        } else {
+            Kind::RateLimit
+        };
+        let mut refusal = Refusal::new(
+            Provider::Claude,
+            kind,
+            now,
+            rejected.and_then(|limit| limit.resets_at),
+        );
+        refusal.window_minutes = minutes;
+        Some(refusal)
+    }
+
+    /// This refusal with the reset a usage probe read, when the provider
+    /// did not report one and `reading` is fresh at the refusal: the reset
+    /// of the window the reading shows at its limit (the latest, when
+    /// several are). Otherwise the refusal is unchanged.
+    #[must_use]
+    pub fn with_probed_reset(mut self, book: &crate::usage::Book) -> Refusal {
+        if self.resets_at.is_some() {
+            return self;
+        }
+        let Some(reset) = book
+            .reading(self.provider, self.observed_at)
+            .and_then(crate::usage::Reading::limiting_reset)
+        else {
+            return self;
+        };
+        let probed = Refusal::new(
+            self.provider,
+            Kind::UsageLimit,
+            self.observed_at,
+            Some(reset),
+        );
+        if probed.resets_at.is_some_and(|at| at > self.observed_at) {
+            self.kind = probed.kind;
+            self.resets_at = probed.resets_at;
+            self.until = probed.until;
+        }
+        self
     }
 
     /// Whether the refusal still holds at `now`.
@@ -431,14 +485,85 @@ mod tests {
         // An ordinary rate limit is not recorded.
         let body = r#"{"error":{"type":"rate_limit_exceeded"}}"#;
         assert_eq!(Refusal::codex(429, body, 1_000), None);
-        // Claude: only an error result with API status 429.
-        let claude = Refusal::claude(true, Some(429), 1_000).unwrap();
+        // Claude: only an error result with API status 429 or a rejected
+        // limit event; without a reported reset it holds 30 minutes.
+        let claude = Refusal::claude(true, Some(429), None, 1_000).unwrap();
         assert_eq!(
             (claude.kind, claude.until),
             (Kind::RateLimit, 1_000 + UNKNOWN_RESET_HOLD)
         );
-        assert_eq!(Refusal::claude(true, Some(529), 1_000), None);
-        assert_eq!(Refusal::claude(false, Some(429), 1_000), None);
+        assert_eq!(Refusal::claude(true, Some(529), None, 1_000), None);
+        assert_eq!(Refusal::claude(false, Some(429), None, 1_000), None);
+    }
+
+    #[test]
+    fn a_claude_refusal_records_the_reset_its_stream_reported() {
+        let stdout = include_str!("../fixtures/claude/session-limit.stream.jsonl");
+        let report = crate::claude::Report::parse(stdout).unwrap();
+        let now = 1_790_162_000;
+        let refusal = Refusal::claude(
+            report.is_error,
+            report.api_error_status,
+            report.rate_limit.as_ref(),
+            now,
+        )
+        .unwrap();
+        assert_eq!(refusal.kind, Kind::UsageLimit);
+        assert_eq!(refusal.resets_at, Some(1_790_164_200));
+        assert_eq!(refusal.until, 1_790_164_200);
+        assert_eq!(refusal.window_minutes, Some(300));
+        // A probe reading doesn't override a reported reset.
+        let probed = refusal.clone().with_probed_reset(&probe_book(now));
+        assert_eq!(probed, refusal);
+        // A rejected event alone is a refusal, even without status 429.
+        let rejected = report.rate_limit.as_ref();
+        assert!(Refusal::claude(true, None, rejected, now).is_some());
+        assert!(Refusal::claude(false, None, rejected, now).is_none());
+    }
+
+    /// A usage book holding the recorded Claude probe, observed at `now`,
+    /// with its five-hour window at its limit.
+    fn probe_book(now: u64) -> crate::usage::Book {
+        let body = include_str!("../fixtures/usage/claude-oauth-usage.json");
+        let mut reading = crate::usage::parse_claude(body.as_bytes(), now).unwrap();
+        reading.windows[0].used_fraction = 1.0;
+        reading.windows[0].resets_at = Some(now + 3_600);
+        crate::usage::Book {
+            entries: vec![crate::usage::Entry {
+                provider: Provider::Claude,
+                attempted_at: now,
+                next_probe_at: now + 60,
+                reading: Some(reading),
+                failure: None,
+            }],
+            ..crate::usage::Book::default()
+        }
+    }
+
+    #[test]
+    fn without_a_reported_reset_a_fresh_probe_reading_supplies_it() {
+        let now = 1_790_572_210;
+        let refusal = Refusal::claude(true, Some(429), None, now + 120).unwrap();
+        let probed = refusal.clone().with_probed_reset(&probe_book(now));
+        assert_eq!(probed.kind, Kind::UsageLimit);
+        assert_eq!(probed.resets_at, Some(now + 3_600));
+        assert_eq!(probed.until, now + 3_600);
+        // A stale reading, or one with no window at its limit, leaves the
+        // 30-minute hold.
+        let stale = refusal
+            .clone()
+            .with_probed_reset(&probe_book(now - crate::usage::STALE_AFTER));
+        assert_eq!(stale.until, now + 120 + UNKNOWN_RESET_HOLD);
+        let mut calm = probe_book(now);
+        calm.entries[0].reading.as_mut().unwrap().windows[0].used_fraction = 0.5;
+        let unchanged = refusal.clone().with_probed_reset(&calm);
+        assert_eq!(unchanged, refusal);
+        assert_eq!(
+            refusal
+                .with_probed_reset(&crate::usage::Book::default())
+                .until,
+            now + 120 + UNKNOWN_RESET_HOLD
+        );
     }
 
     #[test]

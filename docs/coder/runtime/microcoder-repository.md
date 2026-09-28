@@ -165,10 +165,13 @@ route, or the first route has no capacity, a System step with a
 route the run starts on, so a run that starts on a fallback says why. When a generation fails because the
 provider refused for a usage or rate limit (a Codex HTTP 429
 `usage_limit_reached`, which the transport no longer retries, or a Claude
-Code error result with API status 429), the host:
+Code error result with API status 429 or a `rejected` `rate_limit_event`),
+the host:
 
 1. Records the refusal in the capacity book, with the reset time the provider
-   reported, or 30 minutes when it reported none.
+   reported (Codex's `resets_at`, or the `resetsAt` of Claude Code's rejected
+   `rate_limit_event`), else the reset of the window a fresh usage probe
+   reading (`usage.json`) shows at its limit, else 30 minutes.
 2. Appends a System step with a `route_switch` extension naming the route it
    leaves, the route it takes, and the refusal.
 3. Generates the same step again on the next route with capacity. The step's
