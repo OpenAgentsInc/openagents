@@ -87,6 +87,77 @@ to pin the new revision.
 | `android.nix` | `coderos.desktop.android.*` | The Android emulator on KVM with one system image, launched by `bin/android-emulator`. It turns on Xwayland for the session and writes what it installed to `/etc/coderos/android.json`. Needs the desktop. |
 | `tailscale.nix` | `coderos.tailscale.*` | Joins the host to a tailnet so other machines reach it by a stable name. The auth key stays in a file on the host, never in the Nix store. Tailscale SSH stays off unless you turn it on. |
 | `cpu-limits.nix` | `coderos.cpuLimits.*` | Caps CPU package power, boost frequency, and build parallelism, and reapplies the caps every five minutes and after a resume. Every value is null until you set it. The file holds one measured example. |
+| `coder-host.nix` | `coderos.coderHost.*` | Runs the resident Coder host, `coder host serve`, as the systemd user unit that `coder-service` installs, and turns on linger so it starts at boot. See [Run the Coder host](#run-the-coder-host). |
+| `coder-update.nix` | `coderos.coderUpdate.*` | A timer that builds `coder` from a branch of this repository and hands it to `coder-service update`, which trials it and rolls back on failure. The build runs under `TasksMax`, `MemoryMax`, and a free-space floor. Runs `bin/coder-update`. |
+
+## Run the Coder host
+
+Turn on both modules for the account that runs the host:
+
+```nix
+coderos.coderHost = {
+  enable = true;
+  user = "you";
+};
+coderos.coderUpdate.enable = true;
+```
+
+`coderUpdate.user` defaults to the host's account.
+
+`coder-service` owns the host service: the unit, the launcher record, trial
+updates, and rollback. The [host service guide](../docs/coder/runtime/host-service.md)
+describes them. Nix does not render the unit. The host module declares
+linger for the account and a user unit, `coderos-coder-host-install`, that
+runs `coder-service service install` once and exits at once after that. A
+rebuild never restarts or reconfigures a running host.
+
+What happens on a new host:
+
+1. The first `coder-update` run builds `coder` and `coder-service` from
+   `main`, stages the binary as a bundle with `scripts/coder-host.py`, and
+   links `~/.openagents/bin/coder` and `~/.openagents/bin/coder-service`.
+2. The installer refuses until the host has an owner and relays. Run
+   `coder host init --owner KEY --relay URL`, then
+   `systemctl --user start coderos-coder-host-install`.
+3. The installer reads the host key with `coder host public-key` and runs
+   `coder-service service install`, which registers and starts the unit.
+4. Each later run that finds a new commit builds it and runs
+   `coder-service update --to <sha256> --wait 300`. On `committed`, the
+   `coder` command moves to the new build. On `rolled-back`, the host keeps
+   its previous version, and the run skips that commit until the branch
+   moves.
+
+Each run takes a lock, refuses to build with less than
+`freeSpaceFloorGb` (40) gigabytes free, and checks that the new binary's
+`--version` names its commit before it stages anything. The build runs at
+`Nice` 10 with idle I/O, under `TasksMax` 2048 and `MemoryMax` 48G, so a
+runaway build fails without taking the desktop down. `jobs` passes
+`--jobs` to cargo and is unset by default. The last `keepBundles` (5)
+bundles stay, along with any bundle the launcher record or the bundle
+selection names.
+
+The update does not run the test suite. A commit that compiles and fails a
+test can be staged; the trial rolls it back only if the host fails to
+report ready.
+
+Read what happened:
+
+```sh
+journalctl -u coder-update -n 50
+systemctl --user status org.openagents.coder-host
+coder-service service status
+coder-service descriptor
+```
+
+Limits:
+
+- The launcher binary that the unit runs is the copy `service install`
+  made. An update changes the `coder` the host runs, not the launcher. To
+  move the launcher to a newer `coder-service`, run
+  `coder-service service install` again with the committed version.
+- The installer passes the label, listen address, and ready timeout. Other
+  install options, such as extra state directories or host arguments, need
+  a manual `coder-service service install`.
 
 ## Checks
 

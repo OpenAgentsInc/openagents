@@ -16,6 +16,8 @@ in
     ./android.nix
     ./tailscale.nix
     ./cpu-limits.nix
+    ./coder-host.nix
+    ./coder-update.nix
   ];
 
   options.coderos = {

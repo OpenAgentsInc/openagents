@@ -32,5 +32,15 @@
       nixCores = 4;
       cargoJobs = 20;
     };
+
+    coderHost = {
+      enable = true;
+      user = "operator";
+    };
+
+    coderUpdate = {
+      enable = true;
+      jobs = 16;
+    };
   };
 }

@@ -1,0 +1,239 @@
+# Build `coder` from a branch of this repository and hand it to the Coder
+# host service, which runs it as a trial and keeps it only if it serves.
+#
+# This script builds and stages. It does not decide whether a build is good
+# enough to run: `coder-service` does, with a trial against a snapshot of the
+# host's state and a rollback when the trial fails. Read
+# `docs/coder/runtime/host-service.md` for that half.
+#
+# Each run:
+#
+#   1. Takes a lock, so one update runs at a time.
+#   2. Refuses to build when free space is under the floor.
+#   3. Fetches the branch, and exits when that commit is already installed.
+#   4. Builds `coder` and `coder-service` in release.
+#   5. Checks that the new `coder` answers `--version` with its commit.
+#   6. Stages the binary as a bundle with `scripts/coder-host.py`.
+#   7. Asks the host service for an update to that bundle and waits for the
+#      outcome. When no host service is installed, it installs the command
+#      only.
+#
+# The bounds, each from a failure a CoderOS host has had:
+#
+#   The lock.  Two builds sharing one target directory serialize inside
+#              cargo anyway, and the pair costs twice the disk.
+#   The floor. A build that starts on a nearly full disk fails as linker
+#              errors in crates the change never touched. On 2026-09-11 a
+#              leaked build directory on one host reached 140 GB.
+#   The check. A binary that cannot report its own commit is not staged,
+#              so the host service never trials it.
+#
+# The service that runs this bounds what it may spawn; see
+# `os/modules/coderos/coder-update.nix`.
+
+set -euo pipefail
+
+repository=${CODER_UPDATE_REPOSITORY:-https://github.com/OpenAgentsInc/openagents.git}
+branch=${CODER_UPDATE_BRANCH:-main}
+root=${CODER_UPDATE_ROOT:-$HOME/.openagents/update}
+bin_dir=${CODER_UPDATE_BIN:-$HOME/.openagents/bin}
+bundle_root=${CODER_UPDATE_BUNDLE_ROOT:-$HOME/.openagents/host-bundle}
+tasks=${CODER_UPDATE_TASKS:-$HOME/.openagents/tasks}
+host_root=${CODER_UPDATE_HOST_ROOT:-$HOME/.openagents/host}
+floor_gb=${CODER_UPDATE_FLOOR_GB:-40}
+jobs=${CODER_UPDATE_JOBS:-}
+wait_secs=${CODER_UPDATE_WAIT_SECS:-300}
+keep=${CODER_UPDATE_KEEP_BUNDLES:-5}
+install_unit=${CODER_UPDATE_HOST_INSTALL_UNIT:-}
+
+clone=$root/openagents
+installed=$root/installed
+rejected=$root/rejected
+
+# An installed host service names its own bundle root and state
+# directories. Staging goes where the service reads.
+if [ -f "$host_root/service.json" ]; then
+  bundle_root=$(jq -r '.bundle_root' "$host_root/service.json")
+  tasks=$(jq -r '.state_dirs[0]' "$host_root/service.json")
+fi
+
+mkdir -p "$root" "$bin_dir"
+
+# One at a time. A second run exits rather than waits: the next timer tick
+# is soon, and a queue of builds is how a machine falls behind itself.
+exec 9>"$root/lock"
+if ! flock -n 9; then
+  echo "Another update holds the lock. This run is skipped."
+  exit 0
+fi
+
+free_gb=$(df -BG --output=avail "$root" | tail -1 | tr -dc '0-9')
+if [ "$free_gb" -lt "$floor_gb" ]; then
+  echo "Only ${free_gb} GB is free under $root, and the floor is ${floor_gb} GB. Not building."
+  exit 1
+fi
+
+if [ -d "$clone/.git" ]; then
+  git -C "$clone" remote set-url origin "$repository"
+  git -C "$clone" fetch --quiet origin "$branch"
+else
+  git clone --quiet --branch "$branch" "$repository" "$clone"
+fi
+git -C "$clone" checkout --quiet --detach "origin/$branch"
+
+commit=$(git -C "$clone" rev-parse HEAD)
+short=$(git -C "$clone" rev-parse --short=10 HEAD)
+
+if [ -f "$installed" ] && [ "$(cat "$installed")" = "$commit" ] && [ -x "$bin_dir/coder" ]; then
+  echo "Commit $short is already installed. Nothing to build."
+  exit 0
+fi
+if [ -f "$rejected" ] && [ "$(cat "$rejected")" = "$commit" ]; then
+  echo "The host service rolled back commit $short. Waiting for a new commit on $branch."
+  exit 0
+fi
+
+# Find cargo. A systemd unit reads no shell profile, so the toolchain is
+# resolved here. The rustup shim comes first because it reads
+# `rust-toolchain.toml`; the nixpkgs rustc cannot resolve the pinned channel.
+# `CODER_UPDATE_CARGO` names another cargo, which tests use.
+channel=$(sed -n 's/^ *channel *= *"\(.*\)"/\1/p' "$clone/rust-toolchain.toml" | head -1)
+if [ -n "${CODER_UPDATE_CARGO:-}" ]; then
+  cargo=$CODER_UPDATE_CARGO
+elif [ -x "$HOME/.cargo/bin/cargo" ]; then
+  cargo=$HOME/.cargo/bin/cargo
+elif [ -n "$channel" ] && [ -x "$HOME/.rustup/toolchains/$channel-$(uname -m)-unknown-linux-gnu/bin/cargo" ]; then
+  cargo=$HOME/.rustup/toolchains/$channel-$(uname -m)-unknown-linux-gnu/bin/cargo
+elif command -v cargo >/dev/null 2>&1; then
+  cargo=$(command -v cargo)
+else
+  echo "No cargo was found for the ${channel:-pinned} toolchain. Install it with rustup."
+  exit 1
+fi
+# cargo runs `rustc` by name, so the toolchain's bin directory goes on PATH.
+PATH="$(dirname "$cargo"):$PATH"
+export PATH
+
+echo "Building $short with $cargo."
+
+build_args=(build --release --locked -p coder --bin coder -p coder-service --bin coder-service)
+if [ -n "$jobs" ]; then
+  build_args+=(--jobs "$jobs")
+fi
+if ! (cd "$clone" && CODER_BUILD_COMMIT="$commit" CODER_BUILD_DIRTY=clean "$cargo" "${build_args[@]}"); then
+  echo "The build of $short failed. The installed coder is unchanged."
+  exit 1
+fi
+
+built=$clone/target/release/coder
+built_service=$clone/target/release/coder-service
+
+# A binary that cannot report its own commit is broken in a way a person
+# meets on the next command, and one that reports another commit is not the
+# build this run thinks it made.
+reported=$("$built" --version 2>/dev/null || true)
+case "$reported" in
+  *"$short"*) ;;
+  *)
+    echo "The new coder printed '${reported:-nothing}' for --version, which does not name $short. Not staging it."
+    exit 1
+    ;;
+esac
+
+sha=$(sha256sum "$built" | cut -d' ' -f1)
+
+# Staging copies the binary into `versions/<sha256>/`, checks its digest and
+# its task interface, and records where it came from. The helper lives in
+# the checkout this run built, so its format matches the binary.
+python3 "$clone/scripts/coder-host.py" --root "$bundle_root" --tasks "$tasks" \
+  install --binary "$built" --sha256 "$sha" --source-revision "$commit"
+
+# Replace a file in `bin_dir` through a temporary name and a rename, so a
+# reader sees the old file or the new one and never a missing one.
+place_link() {
+  ln -sfn "$1" "$bin_dir/$2.next"
+  mv -T "$bin_dir/$2.next" "$bin_dir/$2"
+}
+
+# The command a person runs is the staged bundle's binary, which is
+# immutable, so the `coder` on PATH and the host run the same bytes.
+install_command() {
+  place_link "$bundle_root/versions/$sha/coder" coder
+  install -m 0755 "$built_service" "$bin_dir/coder-service.next"
+  mv -T "$bin_dir/coder-service.next" "$bin_dir/coder-service"
+  printf '%s\n' "$commit" > "$installed"
+  rm -f "$rejected"
+}
+
+# Keep the newest bundles and every bundle a record still names, so the
+# bundle directory does not grow by one release binary per commit.
+prune_bundles() {
+  local referenced=" $sha "
+  local file
+  for file in "$bundle_root/active.json" "$host_root/launcher.json"; do
+    if [ -f "$file" ]; then
+      referenced+=" $(jq -r '[.active, .previous, .committed] | map(select(type == "string")) | join(" ")' "$file") "
+    fi
+  done
+  find "$bundle_root/versions" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended \
+    -regex '.*/[0-9a-f]{64}' -printf '%T@ %f\n' \
+    | sort -rn | tail -n +"$((keep + 1))" | cut -d' ' -f2 | while read -r old; do
+    case "$referenced" in
+      *" $old "*) ;;
+      *) chmod -R u+w "$bundle_root/versions/$old" && rm -rf "${bundle_root:?}/versions/$old" ;;
+    esac
+  done
+}
+
+if [ ! -f "$host_root/launcher.json" ] || [ ! -f "$host_root/service.json" ]; then
+  install_command
+  prune_bundles
+  echo "coder is now $short. No host service is installed, so nothing else changed."
+  if [ -n "$install_unit" ]; then
+    # The Coder host module installs the service from a user unit, which
+    # runs inside the account's own service manager. Linger keeps that
+    # manager running without a login.
+    XDG_RUNTIME_DIR=/run/user/$(id -u)
+    export XDG_RUNTIME_DIR
+    if systemctl --user --no-block start "$install_unit"; then
+      echo "Started $install_unit to install the host service."
+    else
+      echo "Could not start $install_unit. Start it with: systemctl --user start $install_unit"
+    fi
+  fi
+  exit 0
+fi
+
+committed=$(jq -r '.committed' "$host_root/launcher.json")
+if [ "$committed" = "$sha" ]; then
+  install_command
+  echo "The host already runs $short."
+  exit 0
+fi
+
+# The launcher recorded at install time answers the request, so the request
+# goes through the same build of `coder-service` that reads it.
+launcher=$(jq -r '.launcher' "$host_root/service.json")
+echo "Asking the host service to run $short (bundle $sha) as a trial."
+status=0
+"$launcher" --root "$host_root" update --to "$sha" --wait "$wait_secs" || status=$?
+case "$status" in
+  0)
+    install_command
+    prune_bundles
+    echo "The host committed $short. coder is now $short."
+    ;;
+  2)
+    printf '%s\n' "$commit" > "$rejected"
+    echo "The host rolled back $short and still runs its previous version. See: coder-service descriptor"
+    exit 1
+    ;;
+  3)
+    echo "The trial of $short did not finish within ${wait_secs} seconds. The launcher decides it; the next run reads the outcome."
+    exit 1
+    ;;
+  *)
+    echo "The update request for $short failed with status $status."
+    exit 1
+    ;;
+esac

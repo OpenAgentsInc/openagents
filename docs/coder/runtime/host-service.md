@@ -119,6 +119,10 @@ an owner, relays, and workspaces, and pass `--host-key "$(coder host
 public-key)"` so the descriptor names the key the host signs with. Pass
 explicit host arguments after `--` for any other host program.
 
+On CoderOS, the `coderos.coderHost` and `coderos.coderUpdate` modules run
+this install and every later update for you. See
+[Run the Coder host](../../../os/README.md#run-the-coder-host).
+
 The service binds loopback only. Remote reach comes from the host reach and
 enrollment work, never from this service.
 

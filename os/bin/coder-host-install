@@ -1,0 +1,66 @@
+# Install the Coder host service for this account with `coder-service`'s own
+# installer, once. After that the service is `coder-service`'s: it starts
+# the host, and it changes versions only through `coder-service update`.
+#
+# Nothing here renders a unit. `coder-service service install` writes the
+# systemd user unit, the launcher record, and the host descriptor, and this
+# script only supplies the host key and the settings the NixOS module names.
+# Read `docs/coder/runtime/host-service.md` for what install does.
+
+set -euo pipefail
+
+host_root=${CODER_HOST_ROOT:-$HOME/.openagents/host}
+bin_dir=${CODER_HOST_BIN:-$HOME/.openagents/bin}
+label=${CODER_HOST_LABEL:-org.openagents.coder-host}
+listen=${CODER_HOST_LISTEN:-127.0.0.1:47100}
+ready_timeout=${CODER_HOST_READY_TIMEOUT:-60}
+config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+
+registration=$config_home/systemd/user/$label.service
+
+# Installed already. The service manager starts the host from the unit
+# `coder-service` registered, so there is nothing to do.
+if [ -f "$host_root/service.json" ] && [ -f "$host_root/launcher.json" ] && [ -L "$registration" ]; then
+  echo "The Coder host service $label is installed."
+  exit 0
+fi
+
+find_program() {
+  if [ -x "$bin_dir/$1" ]; then
+    printf '%s\n' "$bin_dir/$1"
+  elif command -v "$1" >/dev/null 2>&1; then
+    command -v "$1"
+  else
+    return 1
+  fi
+}
+
+if ! service=$(find_program coder-service); then
+  echo "coder-service was not found in $bin_dir or on PATH. Turn on coderos.coderUpdate, or build it with: cargo build --release -p coder-service"
+  exit 1
+fi
+if ! coder=$(find_program coder); then
+  echo "coder was not found in $bin_dir or on PATH. Turn on coderos.coderUpdate, or install it with scripts/install-coder.sh."
+  exit 1
+fi
+
+# `coder host serve` refuses to start without an owner and relays, so the
+# service is not installed until the host has them.
+if [ ! -f "$host_root/serve.json" ]; then
+  echo "This host has no owner or relays yet. Run 'coder host init --owner KEY --relay URL', then: systemctl --user start coderos-coder-host-install"
+  exit 1
+fi
+
+host_key=$("$coder" host public-key)
+
+args=(--root "$host_root" service install --host-key "$host_key" --label "$label" --listen "$listen" --ready-timeout "$ready_timeout")
+
+# A host that was installed and later uninstalled keeps its launcher record,
+# and install refuses any version other than the one that record committed.
+# Reinstalling that version keeps the record's history intact.
+if [ -f "$host_root/launcher.json" ]; then
+  args+=(--version "$(jq -r '.committed' "$host_root/launcher.json")")
+fi
+
+echo "Installing the Coder host service $label with $service."
+exec "$service" "${args[@]}"
