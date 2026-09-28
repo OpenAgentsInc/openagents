@@ -399,15 +399,15 @@ fn navigation_selects_by_id_and_backs_out_one_screen_at_a_time() {
     assert_eq!(nav.board(), Some(DELEGATE));
     nav.back();
     assert!(nav.board().is_none());
-    // A TB2.1 attempt has no bundle yet, so no trace opens.
+    // Every TB2.1 attempt has its Microcoder record bundled (#9841).
     nav.select_board(&lb, TB21).unwrap();
     nav.select_attempt(&lb, &lb.boards[1].attempts[0].id)
         .unwrap();
-    assert!(nav.open_trace(&lb).is_err());
+    assert!(nav.open_trace(&lb).is_ok());
     assert!(
         attempt_page_of(&lb, TB21, &lb.boards[1].attempts[0].id)
             .trace
-            .is_none()
+            .is_some()
     );
 }
 

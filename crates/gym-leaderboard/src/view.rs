@@ -1011,6 +1011,7 @@ fn status_text(status: TaskStatus) -> &'static str {
         TaskStatus::NotConfirmed => "not confirmed",
         TaskStatus::PassedWithoutBeat => "passed without a beat",
         TaskStatus::NeverPassed => "never passed",
+        TaskStatus::Other => "other",
     }
 }
 
@@ -1554,16 +1555,81 @@ fn agent_tab(bundle: &TraceBundle, nav: &TraceNav, step: usize) -> AgentTab {
             let at_ms = clock.rows[index];
             let (kind, text, exit_code, output, cut) = match &s.kind {
                 StepKind::Host { text } => ("host", text.text.clone(), None, None, cut_text(text)),
-                StepKind::Decision { name, duration_ms } => (
+                StepKind::Decision {
+                    name,
+                    duration_ms,
+                    answers,
+                    ..
+                } => (
                     "decision",
-                    match duration_ms {
-                        Some(ms) => format!("{name} decided in {ms} ms"),
-                        None => name.clone(),
+                    {
+                        let mut text = match duration_ms {
+                            Some(ms) => format!("{name} decided in {ms} ms"),
+                            None => name.clone(),
+                        };
+                        if !answers.is_empty() {
+                            let answers: Vec<String> = answers
+                                .iter()
+                                .map(|a| format!("{} {:.2}", a.name, a.p))
+                                .collect();
+                            text.push_str(&format!(": {}", answers.join(" · ")));
+                        }
+                        text
                     },
                     None,
                     None,
                     None,
                 ),
+                StepKind::ModelStep {
+                    step,
+                    model,
+                    milliseconds,
+                    ..
+                } => (
+                    "model_step",
+                    format!(
+                        "Step {}{}{}",
+                        step.map_or_else(|| "?".to_owned(), |n| n.to_string()),
+                        model
+                            .as_deref()
+                            .map_or_else(String::new, |m| format!(" on {m}")),
+                        milliseconds.map_or_else(String::new, |ms| format!(", {ms} ms"))
+                    ),
+                    None,
+                    None,
+                    None,
+                ),
+                StepKind::Retrieval { kept, .. } => (
+                    "retrieval",
+                    format!(
+                        "Kept {}",
+                        kept.iter()
+                            .map(|k| format!("{} {:.2}", k.name, k.p))
+                            .collect::<Vec<_>>()
+                            .join(" · ")
+                    ),
+                    None,
+                    None,
+                    None,
+                ),
+                StepKind::Tests { passed, total, .. } => (
+                    "tests",
+                    format!("Acceptance tests: {passed} of {total} pass"),
+                    None,
+                    None,
+                    None,
+                ),
+                StepKind::Ended { reason, steps } => (
+                    "ended",
+                    format!(
+                        "Ended: {reason}{}",
+                        steps.map_or_else(String::new, |n| format!(" after {n} steps"))
+                    ),
+                    None,
+                    None,
+                    None,
+                ),
+                StepKind::Other => ("other", String::new(), None, None, None),
                 StepKind::DelegateStarted { agent, model } => (
                     "delegate_started",
                     match model {
