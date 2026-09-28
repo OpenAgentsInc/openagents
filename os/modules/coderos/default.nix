@@ -13,6 +13,7 @@ in
   # contributes anything to a host that leaves its option off.
   imports = [
     ./desktop.nix
+    ./compositor.nix
     ./desk.nix
     ./capture.nix
     ./presentation.nix

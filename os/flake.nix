@@ -107,14 +107,59 @@
         stub-host-all = evaluates "stub-host-all" (stubHost [ ./tests/all-capabilities.nix ]);
 
         # The Coder compositor on tty1 and Hyprland on a trial TTY, with the
-        # compositor and its session script at their defaults.
-        coder-compositor-host = evaluates "coder-compositor-host" (stubHost [
-          ./tests/all-capabilities.nix
-          {
-            coderos.desktop.compositor = "coder";
-            coderos.desktop.trialTty = 2;
-          }
-        ]);
+        # compositor and its session script at their defaults. The host
+        # installs both, starts the session on tty1 and Hyprland on tty2,
+        # and puts `Xwayland` on `PATH` for the compositor to start.
+        coder-compositor-host =
+          let
+            host = stubHost [
+              ./tests/all-capabilities.nix
+              {
+                coderos.desktop.compositor = "coder";
+                coderos.desktop.trialTty = 2;
+              }
+            ];
+            config = host.config;
+            names = map (p: p.name or "") config.environment.systemPackages;
+            grant = builtins.fromJSON (builtins.unsafeDiscardStringContext
+              config.environment.etc."coderos/compositor.json".text);
+            ok =
+              lib.elem "coder-compositor-0.1.0" names
+              && lib.elem "coder-compositor-session" names
+              && config.programs.xwayland.enable
+              && lib.hasSuffix "/bin/coder-compositor" grant.compositor
+              && !(config.environment.variables ? LIBRARY_PATH);
+          in
+          if !ok then
+            throw "the Coder compositor host lacks its package, session, grant, or Xwayland: ${builtins.toJSON names}"
+          else
+            evaluates "coder-compositor-host" host;
+
+        # The Coder compositor built from a checkout: the host adds the
+        # libraries Smithay links, for the link and for the run through
+        # `nix-ld`, and installs no compositor package.
+        coder-compositor-checkout =
+          let
+            host = stubHost [
+              ./tests/all-capabilities.nix
+              {
+                coderos.desktop.compositor = "coder";
+                coderos.desktop.trialTty = 2;
+                coderos.desktop.compositorBinary = "/srv/checkouts/openagents/target/release/coder-compositor";
+              }
+            ];
+            config = host.config;
+            libraries = map (p: p.pname or p.name or "") config.programs.nix-ld.libraries;
+            ok =
+              config.environment.variables ? LIBRARY_PATH
+              && config.environment.variables ? PKG_CONFIG_PATH
+              && lib.all (name: lib.elem name libraries) [ "libinput" "seatd" "libxkbcommon" "wayland" ]
+              && !(lib.elem "coder-compositor-0.1.0" (map (p: p.name or "") config.environment.systemPackages));
+          in
+          if !ok then
+            throw "a checkout-built compositor lacks its libraries: ${builtins.toJSON libraries}"
+          else
+            evaluates "coder-compositor-checkout" host;
 
         # A host's own launchers and window rules, set through
         # `coderos.desktop.extraBinds` and `extraWindowRules` the way a
