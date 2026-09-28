@@ -263,7 +263,11 @@ fn rule_9_reference_conditions_beside_the_bar() {
         for task in &page.tasks {
             assert!(task.bar.starts_with(&board.reference.name), "{}", task.bar);
         }
-        let attempt = attempt_page_of(&lb, &board.id, &board.attempts[0].id);
+        // A reference snapshot (#9844) has rows, not attempts.
+        let Some(first) = board.attempts.first() else {
+            continue;
+        };
+        let attempt = attempt_page_of(&lb, &board.id, &first.id);
         assert_eq!(attempt.reference.conditions, board.reference.conditions);
         assert!(
             attempt
@@ -303,7 +307,11 @@ fn rule_10_first_dollar_figure_is_list_price() {
             dollars.iter().filter(|s| s.contains("list price")).count(),
             usize::from(page.headline_note.is_none())
         );
-        let attempt = attempt_page_of(&lb, &board.id, &board.attempts[0].id);
+        // A reference snapshot (#9844) has rows, not attempts.
+        let Some(first) = board.attempts.first() else {
+            continue;
+        };
+        let attempt = attempt_page_of(&lb, &board.id, &first.id);
         let figures = [attempt.header.cost.clone()]
             .into_iter()
             .chain(attempt.numbers.clone())

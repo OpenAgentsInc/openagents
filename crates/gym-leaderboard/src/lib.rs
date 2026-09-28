@@ -22,11 +22,13 @@ pub mod bundle;
 pub mod contract;
 pub mod evidence;
 pub mod microcoder;
+pub mod reference_boards;
 pub mod scrub;
 pub mod tb21_oos;
 pub mod tb4_delegate;
 pub mod tb4_delegate_dev;
 pub mod tb4_microcoder_kb;
+pub mod tb4_oos;
 pub mod view;
 
 use std::path::Path;
@@ -151,11 +153,17 @@ pub fn generate(root: &Path) -> Result<Output> {
     )?;
 
     let reviews = read_reviews(&reader)?;
-    // In publication order, never by score.
-    let boards = vec![delegate, tb21, dev, shared_fact];
+    // In publication order, never by score. The negative board and the
+    // reference snapshots stand beside the wins.
+    let mut boards = vec![delegate, tb21, dev, shared_fact, tb4_oos::build(&reader)?];
+    for (id, rel) in reference_boards::SNAPSHOTS {
+        boards.push(reference_boards::build(&reader, id, rel)?);
+    }
     let leaderboard = leaderboard(boards)?;
+    // Compact: a phone fetches it on entry, and the digest is over the
+    // value, not its layout. `jq .` reads it.
     let mut leaderboard_bytes =
-        serde_json::to_vec_pretty(&leaderboard).map_err(|e| fail!("serialize: {e}"))?;
+        serde_json::to_vec(&leaderboard).map_err(|e| fail!("serialize: {e}"))?;
     leaderboard_bytes.push(b'\n');
     if leaderboard_bytes.len() > MAX_LEADERBOARD_BYTES {
         return Err(fail!(

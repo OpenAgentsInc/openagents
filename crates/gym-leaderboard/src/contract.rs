@@ -295,6 +295,9 @@ pub enum CostBasis {
     /// Some attempts are list price and some billed; each attempt's
     /// `cost_basis` says which.
     Mixed,
+    /// As a public leaderboard published it. A reference board's spend is
+    /// zero: OpenAgents ran nothing for it.
+    Published,
     /// A basis this reader doesn't know.
     #[serde(other)]
     Other,

@@ -35,6 +35,19 @@
         "tb4-fable-delegate-dev-9746",
         "tb4-microcoder-shared-fact"
       ]
+    },
+    {
+      "digest": "5eb7f78ccd3e1d2c04210bc42e7a79a04de5d33a4861ad04a547dcab83addc70",
+      "commit": "d987232879cfe88757f738f90eefb599f203cf21",
+      "boards": [
+        "tb4-fable-delegate-repro-9776",
+        "tb21-oos-microcoder-9683",
+        "tb4-fable-delegate-dev-9746",
+        "tb4-microcoder-shared-fact",
+        "tb4-oos-microcoder-9683",
+        "reference-harbor-hub-tb4",
+        "reference-harbor-hub-tb21"
+      ]
     }
   ]
 }

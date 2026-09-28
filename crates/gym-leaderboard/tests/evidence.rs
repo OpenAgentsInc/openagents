@@ -8,8 +8,8 @@ use std::sync::OnceLock;
 
 use gym_leaderboard::contract::{Board, Cost, Label, Miss, StepKind, TaskStatus, TraceBundle};
 use gym_leaderboard::{
-    Output, PUBLISHED, bundle, check, evidence::Reader, generate, microcoder, tb4_delegate,
-    tb4_delegate_dev, tb4_microcoder_kb,
+    Output, PUBLISHED, bundle, check, evidence::Reader, generate, microcoder, reference_boards,
+    tb4_delegate, tb4_delegate_dev, tb4_microcoder_kb, tb4_oos,
 };
 use serde_json::Value;
 
@@ -809,4 +809,146 @@ fn the_shared_fact_board_says_what_the_showcase_and_the_gym_say() {
     );
     assert_eq!(b.spend.basis, gym_leaderboard::contract::CostBasis::Mixed);
     assert!(b.caveats.iter().any(|c| c.code == "retained_records_only"));
+}
+
+#[test]
+fn the_tb4_out_of_sample_board_says_no_held_out_pass_yet() {
+    let b = board(tb4_oos::BOARD_ID);
+    assert_eq!(
+        (
+            b.totals.attempts,
+            b.totals.passes,
+            b.totals.beats,
+            b.totals.faults
+        ),
+        (72, 0, 0, 2)
+    );
+    for s in &b.splits {
+        assert_eq!((s.tally.attempts, s.tally.passes), (24, 0), "{}", s.name);
+    }
+    // The negative headline is the code's, from the counts.
+    assert_eq!(
+        b.headline,
+        "No held-out TB4 pass yet: 0 of 72 graded held-out runs passed across 3 rounds (0 of 24 in round 2, 0 of 24 in round 3, 0 of 24 in round 4), so no cost win and no confirmed out-of-sample win."
+    );
+    assert!(b.labels.contains(&Label::PreRegistered) && b.labels.contains(&Label::OutOfSample));
+    // Exclusions and coverage are on the board.
+    for code in ["coverage", "exclusions", "fable_fails_pool", "round_1"] {
+        assert!(b.caveats.iter().any(|c| c.code == code), "{code}");
+    }
+    let coverage = &b
+        .caveats
+        .iter()
+        .find(|c| c.code == "coverage")
+        .unwrap()
+        .text;
+    assert!(coverage.contains("freecad-platform-drawing"), "{coverage}");
+    assert!(b.caveats.iter().any(|c| c.text.contains("ks-solver-cpp")));
+    // Unknown costs stay unknown and never beat.
+    for a in b.attempts.iter().filter(|a| a.cost.known().is_none()) {
+        assert!(a.misses.contains(&Miss::CostUnknown) && a.labels.contains(&Label::CostBound));
+    }
+}
+
+/// Copies the TB4 study's inputs into a scratch root.
+fn study_fixture() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    for rel in [
+        tb4_oos::RESULTS,
+        "docs/terminal-bench/2026-09-26-out-of-sample-study.md",
+        tb4_delegate_dev::REPLAYS,
+    ] {
+        let to = dir.path().join(rel);
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(root().join(rel), to).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn a_study_table_the_numbers_dont_support_refuses_to_build() {
+    let dir = study_fixture();
+    tb4_oos::build(&Reader::new(dir.path())).expect("the copied tables build");
+    let path = dir.path().join(tb4_oos::RESULTS);
+    let page = std::fs::read_to_string(&path).unwrap();
+    // A failing run whose row claims a cost win.
+    let row = page
+        .lines()
+        .find(|l| l.starts_with("| `atrx-vep-crispr`") && l.ends_with("| no | no |"))
+        .unwrap();
+    let edited = page.replacen(row, &row.replace("| no | no |", "| yes | no |"), 1);
+    std::fs::write(&path, edited).unwrap();
+    let err = tb4_oos::build(&Reader::new(dir.path())).unwrap_err();
+    assert!(err.0.contains("recomputed Cost win false"), "{err}");
+    // A generated tally that the rows don't add up to.
+    let edited = page.replacen(
+        "**So far:** 0 passes in 24 graded held-out runs",
+        "**So far:** 1 passes in 24 graded held-out runs",
+        1,
+    );
+    std::fs::write(&path, edited).unwrap();
+    let err = tb4_oos::build(&Reader::new(dir.path())).unwrap_err();
+    assert!(err.0.contains("generated tallies"), "{err}");
+}
+
+#[test]
+fn reference_boards_are_labeled_snapshots_and_never_merged() {
+    use gym_leaderboard::contract::BoardKind;
+    for (id, rel) in reference_boards::SNAPSHOTS {
+        let b = board(id);
+        assert_eq!(b.kind, BoardKind::Reference);
+        let snap = b.snapshot.as_ref().expect("a snapshot");
+        assert_eq!(snap.host, "hub.harborframework.com");
+        let date = &snap.fetched_at[..10];
+        // Snapshot, fetch time, and host, in the headline and a caveat.
+        assert!(
+            b.headline.contains("snapshot")
+                && b.headline.contains(date)
+                && b.headline.contains(&snap.host),
+            "{}",
+            b.headline
+        );
+        let caveat = &b
+            .caveats
+            .iter()
+            .find(|c| c.code == "snapshot")
+            .unwrap()
+            .text;
+        assert!(caveat.contains("not live") && caveat.contains(&snap.fetched_at));
+        assert!(b.caveats.iter().any(|c| c.code == "reconciliation"));
+        // No beats, attempts, or tasks of its own.
+        assert!(b.attempts.is_empty() && b.tasks.is_empty() && b.splits.is_empty());
+        assert_eq!(b.totals, gym_leaderboard::contract::Tally::default());
+        let doc: Value = serde_json::from_slice(&std::fs::read(root().join(rel)).unwrap()).unwrap();
+        let entries = doc["entries"].as_array().unwrap();
+        assert_eq!(b.reference_rows.len(), entries.len());
+        for (row, entry) in b.reference_rows.iter().zip(entries) {
+            assert_eq!(
+                row.per_task_consistent,
+                entry["per_task"]["consistent"].as_bool()
+            );
+            assert_eq!(
+                row.per_task_cost_consistent,
+                entry["per_task"]["cost_consistent"].as_bool()
+            );
+        }
+    }
+    let tb4 = board(reference_boards::SNAPSHOTS[0].0);
+    assert_eq!(
+        tb4.reference_rows
+            .iter()
+            .filter(|r| r.per_task_consistent == Some(false))
+            .count(),
+        1
+    );
+    // Subject boards carry no reference rows.
+    for b in &output().leaderboard.boards {
+        if b.kind != BoardKind::Reference {
+            assert!(
+                b.reference_rows.is_empty() && b.snapshot.is_none(),
+                "{}",
+                b.id
+            );
+        }
+    }
 }

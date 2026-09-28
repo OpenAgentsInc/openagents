@@ -60,8 +60,8 @@ scan, which only works on the host that ran the attempt.
 | `tb21-oos-microcoder-9683`: Microcoder on 65 held-out TB2.1 tasks, knowledge off ([results](../terminal-bench/2026-09-26-tb21-oos-results.md), #9683) | `studies/2026-09-26-out-of-sample/t1-report.json`, 127 run records | 127 Microcoder run records, bundled (#9841) | Generated |
 | `tb4-fable-delegate-dev-9746`: Fable delegate development on `sound-change-cascade`, `fin-saccr-rwa`, and `gsea-proteomics`, series 1 to 7 ([report](../terminal-bench/2026-09-27-fable-delegate.md), #9746) | `experiments/2026-09-27-fable-delegate/attempts*.json` (three row shapes), bars from `reference/fable-5.1-replays.json` | 13 retained episodes, bundled | Generated (#9842) |
 | `tb4-microcoder-shared-fact`: TB4 Microcoder knowledge-assisted wins ([showcase](../coder/beat-fable-showcase.md)), the "one shared fact" result | `microcoder-runs/coderos-4080`, the `beats-winner` rule in `crates/gym` | The 16 passing runs' records, bundled | Generated (#9843) |
-| TB4 prospective out-of-sample study ([results](../terminal-bench/2026-09-26-out-of-sample-study-results.md)): no held-out pass yet | the study's round reports | Microcoder run records | Next; a negative board is still a board |
-| Reference leaderboards | `reference/tb4-leaderboard.json`, `reference/tb21-leaderboard.json` | none | Next, labeled as a dated Harbor Hub snapshot |
+| `tb4-oos-microcoder-9683`: TB4 prospective out-of-sample study, rounds 2 to 4 ([results](../terminal-bench/2026-09-26-out-of-sample-study-results.md)): no held-out pass yet | the tables `report.py` generated into the results page | none: the rounds' records aren't retained | Generated (#9844); a negative board is still a board |
+| `reference-harbor-hub-tb4`, `reference-harbor-hub-tb21`: reference leaderboards | `reference/tb4-leaderboard.json`, `reference/tb21-leaderboard.json` | none | Generated (#9844), labeled as a dated Harbor Hub snapshot |
 
 The essay [Cheapest verified passes](../coder/cheapest-verified-passes.md)
 cites the first two boards and the showcase. Each of its numbers is a
@@ -78,7 +78,7 @@ three kinds of file:
 
 | File | Schema | Bound |
 | --- | --- | --- |
-| `leaderboard.v1.json` | `openagents.gym.leaderboard.v1` | 512 KiB (216 KiB today) |
+| `leaderboard.v1.json` | `openagents.gym.leaderboard.v1` | 512 KiB (285 KiB today, compact JSON) |
 | `traces/<board>/<attempt>.json` | `openagents.gym.trace-bundle.v1` | 256 KiB each (112 KiB largest today) |
 | `index.json` | `openagents.gym.leaderboard-index.v1` | Append-only list of publications |
 
@@ -91,8 +91,12 @@ ATIF-rule digest (object keys sorted at every depth, then SHA-256) of
 Each `Board` has:
 
 - **Identity:** `id`, `title`, `benchmark` (name and version), and `kind`,
-  which names the beat rule: `beat_cheapest_and_fastest_win` or
-  `cost_below_reference_per_trial`.
+  which names the beat rule: `beat_cheapest_and_fastest_win`,
+  `cost_below_reference_per_trial`, or `cost_below_cheapest_win` (a pass
+  with known cost below the reference's cheapest winning run; time is
+  shown but isn't in the rule), or `reference` for a public leaderboard
+  snapshot. The last two are optional additions to `v1`; a reader reads a
+  kind it doesn't know as `other`.
 - **Claim:** `question` (from the report) and `headline`, one sentence the
   code builds from the tallies.
 - **Provenance:** GitHub issues, the report path, the commit that froze the
@@ -121,6 +125,19 @@ Each `Board` has:
   beat, in rule order: `failed`, `cost_unknown`, `cost`, `time`), labels,
   how it ended, a Jev summary, the verifier's summary and failed tests,
   and a `trace` reference (path, SHA-256, bytes) when a bundle exists.
+
+A `reference` board isn't a subject's board. Its `reference_rows` are a
+public leaderboard's rows as published (rank, agent and version, model,
+effort, date, passes of trials, accuracy, cost, mean trial seconds) with
+the snapshot's two reconciliation flags per row (`per_task_consistent`,
+`per_task_cost_consistent`); its `snapshot` names the host, the page, when
+it was fetched, and how the snapshot counted. It has no tasks, attempts,
+splits, or beats, its spend is zero with basis `published`, and no row is
+merged into, ranked against, or pooled with a subject board. Its headline
+says "snapshot", the host, and the fetch date. `reference_rows`,
+`snapshot`, an attempt's `cost_basis` (`list_price` or `billed`, when a
+board's basis is `mixed`), and an attempt's `caveats` (codes of the board
+caveats its row must show) are optional `v1` additions.
 
 ### Trace bundle
 
@@ -217,6 +234,15 @@ recorded:
   the showcase table's counts that include such runs (0 of 10 and 4 of 4
   on `gsea-proteomics`, 0 of 6 and 4 of 4 on `fin-saccr-rwa`) aren't this
   board's, while the Gym's claims (8 of 9, 3 of 8, 5 of 9) are.
+- The TB4 study committed no machine-readable round file, so its adapter
+  reads only the tables `report.py` generated into the results page, under
+  each round's `### Tables (generated by report.py --round rN)` heading,
+  never the page's prose. It recomputes every held-out run's cost and time
+  win against the bars from the public replays and compares them with the
+  row's `Cost win` and `Time win` cells, checks each row's printed bar
+  against the computed one to its printed precision, and checks the rows
+  against the round's generated `So far` tallies. Its headline, "No
+  held-out TB4 pass yet: 0 of 72 ...", is built from the counts.
 - The TB2.1 adapter recomputes every cost win and compares it with
   `cost_win`, and checks graded runs, passes, cost wins, and confirmed wins
   against the report's `totals` and each task's `cost_wins`.
@@ -433,6 +459,8 @@ Implemented now (`cargo test -p gym-leaderboard`):
 | `every_bundle_fits_its_bound_and_matched_no_credential_rule`, `a_beat_bundle_steps_through_jev_the_delegate_and_the_verifier` | Bounds, no unreviewed credential match, and a beat's bundle has Jev, the briefing, the delegate's steps on a forward clock, and the verifier. |
 | `the_development_board_says_what_the_9746_report_says`, `a_development_row_whose_verdict_the_numbers_dont_support_refuses_to_build` | 2 of 13 beats, s5a2 and s7a1, one split per series, s7a1's cost, time, and Jev decision (5 of 12 kept, 3 of 6 flagged), s5a2 with no Jev decision, both in-sample and tuned; a tampered verdict refuses to build. |
 | `the_shared_fact_board_says_what_the_showcase_and_the_gym_say` | The Gym's beats-winner claims recomputed from the same records (8 of 9, 3 of 8, 5 of 9), the showcase's cost ranges and bars, 0 passes before the entry, and the same-task caveat, citing #9776's 4 of 28, on the board and every beat's row. |
+| `the_tb4_out_of_sample_board_says_no_held_out_pass_yet`, `a_study_table_the_numbers_dont_support_refuses_to_build` | 0 of 72 (0 of 24 per round), the code-built negative headline, coverage and exclusion caveats; a tampered win cell or tally refuses to build. |
+| `reference_boards_are_labeled_snapshots_and_never_merged` | Snapshot, host, and fetch time in the headline and caveat, both reconciliation flags per row as the file has them, no attempts or tasks, and no reference row on a subject board. |
 | `every_tb21_attempt_has_a_trace`, `a_tb21_pass_bundle_steps_through_the_loop_jev_and_the_verifier` | All 127 TB2.1 attempts reference a bundle whose SHA-256 and size match; one pass's model steps, Jev judgments with their probabilities, commands, tests, finish, verifier, and cost against the bar. |
 | `a_record_that_differs_from_its_manifest_refuses_to_bundle`, `a_review_holds_only_while_its_source_is_unchanged` | A Microcoder record that no longer matches its manifest refuses to bundle; a reviewed match lapses when its source changes. |
 | `generation_is_deterministic`, `the_committed_publication_matches_the_evidence` | Same bytes twice, and the committed files match. |
@@ -459,7 +487,7 @@ Epic [#9839](https://github.com/OpenAgentsInc/openagents/issues/9839).
 | #9841 | Bundle TB2.1 Microcoder run records | #9840 | Done |
 | #9842 | #9746 development board | #9840 | Done |
 | #9843 | TB4 knowledge-assisted Microcoder board | #9840, #9841 | Done |
-| #9844 | TB4 out-of-sample board and reference boards | #9840 | Now |
+| #9844 | TB4 out-of-sample board and reference boards | #9840 | Done |
 | #9845 | Shared attempt-row schema and study descriptor | #9840 | Now |
 | #9846 | Rust client: fetch, verify, cache | #9840 | Now |
 | #9848 | Rust view model with the presentation rules | #9840, #9846 | After the Gym port |
