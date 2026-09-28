@@ -18,6 +18,7 @@ const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
   init [--network NET] [--esplora URL] [--listen HOST:PORT]
        [--lsp NODE_ID@HOST:PORT|olympus [--lsp-protocol lsps1|lsps2]
         [--lsp-token TOKEN] [--lsp-min-msat N]] [--trust NODE_ID]...
+       [--mnemonic -]
                           Write config.json and a seed. NET is bitcoin,
                           testnet, signet, or regtest (default signet).
                           --lsp olympus picks the Olympus (ZEUS) LSPS1
@@ -27,8 +28,18 @@ const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
                           which x402 requires of payTo.
                           --trust lets that peer open anchor channels here
                           without an on-chain reserve (your own nodes).
-                          Running init again keeps the seed.
-  info                    Node id (the x402 payTo), network, balances, paths.
+                          Running init again keeps the seed. --mnemonic -
+                          reads a BIP39 mnemonic from stdin to restore a
+                          seed into a home that has none.
+  info                    Node id (the x402 payTo), network, balances, paths,
+                          and the last backup.
+  export --reveal         Print the seed mnemonic. Refuses without --reveal.
+  backup DIR              Copy the seed, config.json, and a consistent
+                          snapshot of the node store into a new directory
+                          DIR with a digest manifest; safe beside a resident.
+  restore DIR             Verify DIR's manifest and copy it into an empty
+                          wallet home. A restore from the seed alone leaves
+                          channels behind; see `channel close --force`.
   status                  Chain sync state and queued node events.
   fund                    Print a fresh on-chain funding address.
   channel open NODE_ID@HOST:PORT --sats N [--announce] [--wait SECONDS]
@@ -37,6 +48,11 @@ const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
                           broadcast (state `pending`), up to --wait
                           (default 60).
   channel list            List channels with capacity and readiness.
+  channel close USER_CHANNEL_ID COUNTERPARTY [--force]
+                          Close a channel cooperatively (peer online), or
+                          with --force broadcast the latest commitment.
+                          After a restore without the store, ask the
+                          counterparty to force-close and let the node sweep.
   channel buy --lsp-sats N [--our-sats N] [--expiry-blocks N] [--announce]
               [--pay lightning|onchain]
                           Order an inbound channel from the LSPS1 provider
@@ -61,11 +77,11 @@ const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
                           Run `wallet serve` as a launchd agent or systemd
                           user unit, started at login.
 Files live in ~/.openagents/wallet (OPENAGENTS_WALLET_HOME overrides). The
-seed is never printed. Add --json before `wallet` for one JSON document.
+seed is printed only by `export --reveal`. Add --json before `wallet` for one JSON document.
 While a resident serves, every other command acts through it and `info`
 reports `resident`; without one, each command opens and stops the node.";
 
-const SWITCHES: &[&str] = &["announce"];
+const SWITCHES: &[&str] = &["announce", "reveal", "force"];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
@@ -83,6 +99,14 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         }
         "init" => init(&args).map(|value| (value, render_info as fn(&Value) -> String)),
         "info" => with_node(info).map(|v| (v, render_info as _)),
+        "export" => export(&args).map(|v| {
+            (
+                v,
+                (|v: &Value| v["mnemonic"].as_str().unwrap_or("").to_owned()) as _,
+            )
+        }),
+        "backup" => backup(&args).map(|v| (v, render_json as _)),
+        "restore" => restore(&args).map(|v| (v, render_json as _)),
         "status" => with_node(|wallet| {
             let mut events = Vec::new();
             while let Some(event) = wallet.next_event()? {
@@ -227,14 +251,93 @@ fn init(args: &Args) -> Result<Value, Failure> {
             .map(config::parse_node_id)
             .collect::<Result<_, _>>()?
     };
+    let restored = match args.option("mnemonic") {
+        None => None,
+        Some("-") => {
+            if home.join(config::SEED_FILE).exists() {
+                return Err(Failure::Wallet(WalletError::Setup(format!(
+                    "{} already holds a seed; --mnemonic restores only into an empty home",
+                    home.display()
+                ))));
+            }
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+                .map_err(|error| Failure::Usage(format!("stdin: {error}")))?;
+            let words: Vec<&str> = text.split_whitespace().collect();
+            if !matches!(words.len(), 12 | 15 | 18 | 21 | 24) {
+                return Err(Failure::Usage(format!(
+                    "--mnemonic - read {} words; a BIP39 mnemonic has 12, 15, 18, 21, or 24",
+                    words.len()
+                )));
+            }
+            Some(words.join(" "))
+        }
+        Some(other) => {
+            return Err(Failure::Usage(format!(
+                "--mnemonic takes `-` (read stdin), not `{other}`; the seed never goes on a command line"
+            )));
+        }
+    };
     wallet_config.save(&home)?;
-    let (_, created) =
-        config::load_or_create_seed(&home, true, openagents_wallet::ldk::generate_mnemonic)?;
+    let (_, created) = config::load_or_create_seed(&home, true, || {
+        restored.unwrap_or_else(openagents_wallet::ldk::generate_mnemonic)
+    })?;
     let wallet = open(&home, &wallet_config)?;
     let mut value = info(&wallet)?;
     wallet.stop()?;
     value["created"] = Value::Bool(created);
     Ok(value)
+}
+
+fn export(args: &Args) -> Result<Value, Failure> {
+    if !args.switch("reveal") {
+        return Err(Failure::Usage(
+            "export prints the seed; add --reveal to confirm".to_string(),
+        ));
+    }
+    let home = config::home();
+    let (mnemonic, _) = config::load_or_create_seed(&home, false, String::new)?;
+    Ok(json!({ "mnemonic": mnemonic, "home": home.display().to_string() }))
+}
+
+fn backup(args: &Args) -> Result<Value, Failure> {
+    let dest = args
+        .positional()
+        .first()
+        .cloned()
+        .ok_or_else(|| "backup needs DIR".to_string())?;
+    let home = config::home();
+    let manifest = openagents_wallet::backup::write(&home, std::path::Path::new(&dest))?;
+    let resident = openagents_wallet::resident::RemoteWallet::probe(&home).is_some();
+    Ok(json!({
+        "path": dest,
+        "created_at": manifest.created_at,
+        "store": manifest.store,
+        "resident_running": resident,
+        "files": manifest.files,
+    }))
+}
+
+fn restore(args: &Args) -> Result<Value, Failure> {
+    let source = args
+        .positional()
+        .first()
+        .cloned()
+        .ok_or_else(|| "restore needs DIR".to_string())?;
+    let home = config::home();
+    let manifest = openagents_wallet::backup::restore(std::path::Path::new(&source), &home)?;
+    Ok(json!({
+        "path": source,
+        "home": home.display().to_string(),
+        "created_at": manifest.created_at,
+        "store": manifest.store,
+        "files": manifest.files,
+        "note": if manifest.store {
+            "start the node once (`wallet info`) so it resyncs; do not run the old copy again"
+        } else {
+            "seed only: channels are not restored; ask each counterparty to force-close"
+        },
+    }))
 }
 
 fn open(home: &std::path::Path, wallet_config: &WalletConfig) -> Result<Opened, Failure> {
@@ -279,6 +382,7 @@ fn info(wallet: &Opened) -> Result<Value, Failure> {
         "inbound_msat": channels.iter().map(|c| c.inbound_msat).sum::<u64>(),
         "outbound_msat": channels.iter().map(|c| c.outbound_msat).sum::<u64>(),
         "home": home.display().to_string(),
+        "last_backup": openagents_wallet::backup::last(&home),
     }))
 }
 
@@ -434,13 +538,31 @@ fn channel(args: &Args) -> Result<Value, Failure> {
                 Ok(order)
             })
         }
+        Some("close") => {
+            let user_channel_id = positional
+                .get(1)
+                .ok_or_else(|| "channel close needs USER_CHANNEL_ID COUNTERPARTY".to_string())?;
+            let counterparty = positional
+                .get(2)
+                .ok_or_else(|| "channel close needs USER_CHANNEL_ID COUNTERPARTY".to_string())?;
+            let force = args.switch("force");
+            with_node(|wallet| {
+                wallet.close_channel(user_channel_id, counterparty, force)?;
+                Ok(json!({
+                    "user_channel_id": user_channel_id,
+                    "counterparty": counterparty,
+                    "force": force,
+                    "state": if force { "force_closing" } else { "closing" },
+                }))
+            })
+        }
         Some("order") => {
             let order_id = positional
                 .get(1)
                 .ok_or_else(|| "channel order needs ORDER_ID".to_string())?;
             with_node(|wallet| Ok(wallet.channel_order(order_id)?))
         }
-        _ => Err("channel needs `open`, `list`, `buy`, or `order`"
+        _ => Err("channel needs `open`, `list`, `close`, `buy`, or `order`"
             .to_string()
             .into()),
     }

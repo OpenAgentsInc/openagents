@@ -176,4 +176,16 @@ impl LightningWallet for Opened {
             Self::Local(w) => w.open_channel(node_id, address, amount_sats, announce),
         }
     }
+
+    fn close_channel(
+        &self,
+        user_channel_id: &str,
+        counterparty: &str,
+        force: bool,
+    ) -> Result<(), WalletError> {
+        match self {
+            Self::Resident(w) => w.close_channel(user_channel_id, counterparty, force),
+            Self::Local(w) => w.close_channel(user_channel_id, counterparty, force),
+        }
+    }
 }

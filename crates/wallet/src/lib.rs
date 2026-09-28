@@ -10,6 +10,7 @@
 //! wallet mechanics: no facilitator, replay store, or Nostr record lives in
 //! this crate.
 
+pub mod backup;
 pub mod config;
 #[cfg(feature = "ldk")]
 pub mod ldk;
@@ -70,6 +71,17 @@ pub trait LightningWallet {
         amount_sats: u64,
         announce: bool,
     ) -> Result<String, WalletError>;
+
+    /// Close the channel `user_channel_id` with `counterparty`. A
+    /// cooperative close needs the peer online; `force` broadcasts the
+    /// latest commitment instead, which is the only way out after a
+    /// restore without the channel's store.
+    fn close_channel(
+        &self,
+        user_channel_id: &str,
+        counterparty: &str,
+        force: bool,
+    ) -> Result<(), WalletError>;
 }
 
 /// Decode 64 lowercase hex digits into a 32-byte hash.

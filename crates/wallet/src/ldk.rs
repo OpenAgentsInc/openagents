@@ -45,6 +45,33 @@ impl LdkWallet {
     /// Build and start the node from `config` with its store under
     /// `home/ldk`. The first start on a fresh store syncs against Esplora.
     pub fn open(home: &Path, config: &WalletConfig, mnemonic: &str) -> Result<Self, WalletError> {
+        let wallet = Self::build(home, config, mnemonic)?;
+        wallet
+            .node
+            .start()
+            .map_err(|error| WalletError::Node(format!("start: {error}")))?;
+        Ok(wallet)
+    }
+
+    /// The node id and the next `addresses` fresh funding addresses for
+    /// `mnemonic`, without starting the node or reaching the chain source.
+    /// This is what a restore compares against the wallet it came from: a
+    /// restored store continues the address sequence where the original
+    /// stopped; a seed alone starts it over.
+    pub fn identity(
+        home: &Path,
+        config: &WalletConfig,
+        mnemonic: &str,
+        addresses: usize,
+    ) -> Result<(String, Vec<String>), WalletError> {
+        let wallet = Self::build(home, config, mnemonic)?;
+        let addresses = (0..addresses)
+            .map(|_| wallet.funding_address())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((wallet.node_id(), addresses))
+    }
+
+    fn build(home: &Path, config: &WalletConfig, mnemonic: &str) -> Result<Self, WalletError> {
         let mnemonic = ldk_node::bip39::Mnemonic::from_str(mnemonic)
             .map_err(|error| WalletError::Setup(format!("seed: {error}")))?;
         let mut node_config = ldk_node::config::Config::default();
@@ -78,8 +105,6 @@ impl LdkWallet {
         let node = builder
             .build()
             .map_err(|error| WalletError::Setup(format!("node: {error}")))?;
-        node.start()
-            .map_err(|error| WalletError::Node(format!("start: {error}")))?;
         Ok(Self {
             node,
             network: config.network,
@@ -384,6 +409,30 @@ impl LightningWallet for LdkWallet {
             .map(|id| id.0.to_string())
             .map_err(|error| WalletError::Node(format!("open channel: {error}")))
     }
+
+    fn close_channel(
+        &self,
+        user_channel_id: &str,
+        counterparty: &str,
+        force: bool,
+    ) -> Result<(), WalletError> {
+        let id = ldk_node::UserChannelId(user_channel_id.parse::<u128>().map_err(|_| {
+            WalletError::Invalid(format!(
+                "channel id `{user_channel_id}` is not the decimal user_channel_id `channel list` prints"
+            ))
+        })?);
+        let counterparty = pubkey(counterparty)?;
+        let result = if force {
+            self.node.force_close_channel(
+                &id,
+                counterparty,
+                Some("openagents wallet channel close --force".to_owned()),
+            )
+        } else {
+            self.node.close_channel(&id, counterparty)
+        };
+        result.map_err(|error| WalletError::Node(format!("close channel: {error}")))
+    }
 }
 
 /// Parse `invoice` and refuse, before anything is dispatched, one that is
@@ -652,6 +701,52 @@ mod tests {
     // Issued by this wallet on signet at 1790542223 for 1000 msat with
     // description hash aa..aa and a 600 s expiry.
     const SIGNET: &str = "lntbs10n1p4tnqv0hp5424242424242424242424242424242424242424242424242424qnp4qgr8w0u4scfnaxrqv2hjaw6xvq7jfmqactz27fwnrju8x9e7vrar2pp5zf733s3jrl38kzspmmx038d6jkfce5psal06hvtrm0zwd20tu8lqsp5r3ctfk3dlesws3jjejl8qsj0uyl9a6ek7nwyr9vpuqx6z3v7a6ns9qyysgqcqzp2xqzjcuj9y7t5aae4z5g95mw2cdgzma3fxzjxjs9t9a8tj7ur53sc6eaczwhcz07aw82a6jl38ssjg7uyf60llg58aq0uqrxq8pszfzmk8lxqps636mq";
+
+    #[test]
+    fn restored_wallet_keeps_its_node_id_and_addresses() {
+        let root =
+            std::env::temp_dir().join(format!("openagents-wallet-restore-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (home, copy, seed_only, dest) = (
+            root.join("a"),
+            root.join("b"),
+            root.join("c"),
+            root.join("backup"),
+        );
+        std::fs::create_dir_all(&home).unwrap();
+        let config =
+            WalletConfig::new(crate::Network::Regtest, Some("http://127.0.0.1:1")).unwrap();
+        config.save(&home).unwrap();
+        let (mnemonic, created) =
+            crate::config::load_or_create_seed(&home, true, generate_mnemonic).unwrap();
+        assert!(created);
+        let (node_id, addresses) = LdkWallet::identity(&home, &config, &mnemonic, 3).unwrap();
+        assert_eq!(node_id.len(), 66);
+
+        let manifest = crate::backup::write(&home, &dest).unwrap();
+        assert!(manifest.store, "the built node left a store to snapshot");
+        let (_, next) = LdkWallet::identity(&home, &config, &mnemonic, 1).unwrap();
+        assert!(!addresses.contains(&next[0]));
+        crate::backup::restore(&dest, &copy).unwrap();
+        let (restored, _) = crate::config::load_or_create_seed(&copy, false, String::new).unwrap();
+        assert_eq!(restored, mnemonic);
+        let copied = WalletConfig::load(&copy).unwrap();
+        assert_eq!(
+            LdkWallet::identity(&copy, &copied, &restored, 1).unwrap(),
+            (node_id.clone(), next),
+            "the restored store continues the address sequence"
+        );
+
+        std::fs::create_dir_all(&seed_only).unwrap();
+        config.save(&seed_only).unwrap();
+        crate::config::load_or_create_seed(&seed_only, true, || mnemonic.clone()).unwrap();
+        assert_eq!(
+            LdkWallet::identity(&seed_only, &config, &mnemonic, 3).unwrap(),
+            (node_id, addresses),
+            "the seed alone gives the same node id and the same addresses from the start"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn refuses_before_dispatch() {

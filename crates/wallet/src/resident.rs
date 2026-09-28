@@ -67,6 +67,11 @@ pub enum Request {
         address: String,
         amount_sats: u64,
     },
+    CloseChannel {
+        user_channel_id: String,
+        counterparty: String,
+        force: bool,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -266,6 +271,14 @@ fn handle<W: Served>(
         } => Ok(serde_json::Value::String(
             wallet.send_onchain(&address, amount_sats)?,
         )),
+        Request::CloseChannel {
+            user_channel_id,
+            counterparty,
+            force,
+        } => {
+            wallet.close_channel(&user_channel_id, &counterparty, force)?;
+            Ok(serde_json::Value::Null)
+        }
     }
 }
 
@@ -458,6 +471,23 @@ impl LightningWallet for RemoteWallet {
             REPLY_WAIT,
         )
     }
+
+    fn close_channel(
+        &self,
+        user_channel_id: &str,
+        counterparty: &str,
+        force: bool,
+    ) -> Result<(), WalletError> {
+        self.call(
+            &Request::CloseChannel {
+                user_channel_id: user_channel_id.to_owned(),
+                counterparty: counterparty.to_owned(),
+                force,
+            },
+            REPLY_WAIT,
+        )
+        .map(|_| ())
+    }
 }
 
 #[cfg(test)]
@@ -516,6 +546,10 @@ mod tests {
             _: bool,
         ) -> Result<String, WalletError> {
             Ok(format!("channel-to-{node_id}"))
+        }
+
+        fn close_channel(&self, _: &str, _: &str, _: bool) -> Result<(), WalletError> {
+            Ok(())
         }
     }
 
