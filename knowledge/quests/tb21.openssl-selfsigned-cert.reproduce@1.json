@@ -1,0 +1,31 @@
+{
+  "id": "tb21.openssl-selfsigned-cert.reproduce",
+  "version": 1,
+  "season": {
+    "id": "tb21-tutorial-s1",
+    "opens_at": 1790553600,
+    "closes_at": 1798156800
+  },
+  "title": "Reproduce Microcoder's pass on openssl-selfsigned-cert",
+  "objective": "Rerun Microcoder's published pass on the Terminal-Bench 2.1 task openssl-selfsigned-cert from its pinned recipe (GPT-6 Luna, medium effort, knowledge off, on the task's image) with a run of your own that passes the task's tests, then publish it with microcoder xp reproduce. Tutorial quest: the first accepted reproduction earns 50 XP.",
+  "acceptance": {
+    "rule": "reproduce",
+    "task": "openssl-selfsigned-cert",
+    "recipe": "eee33480a728694ee4f161a8413f16e8e9b59322e7609f0f50c1b15f32ed7ae0",
+    "claim": {
+      "id": "567dd393cc47e59fa217d255c0068838bb70bf97d62af299c6f42a7280850b2a",
+      "pubkey": "a5873cd8abf950e937a0996e2e932b3fdf415201447276f8c1f77fe4f24cb618",
+      "kind": 3189
+    }
+  },
+  "reference": {
+    "label": "Microcoder with GPT-6 Luna, medium effort, knowledge off: passed openssl-selfsigned-cert",
+    "usd": 0.00596,
+    "seconds": 172,
+    "source": "bench/terminal-bench/microcoder-runs/coderos-4080-tb21/openssl-selfsigned-cert-1790465139801"
+  },
+  "award": {
+    "claimant": 0,
+    "reproducer": 50
+  }
+}

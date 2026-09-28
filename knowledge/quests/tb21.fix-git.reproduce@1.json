@@ -1,0 +1,31 @@
+{
+  "id": "tb21.fix-git.reproduce",
+  "version": 1,
+  "season": {
+    "id": "tb21-tutorial-s1",
+    "opens_at": 1790553600,
+    "closes_at": 1798156800
+  },
+  "title": "Reproduce Microcoder's pass on fix-git",
+  "objective": "Rerun Microcoder's published pass on the Terminal-Bench 2.1 task fix-git from its pinned recipe (GPT-6 Luna, medium effort, knowledge off, on the task's image) with a run of your own that passes the task's tests, then publish it with microcoder xp reproduce. Tutorial quest: the first accepted reproduction earns 50 XP.",
+  "acceptance": {
+    "rule": "reproduce",
+    "task": "fix-git",
+    "recipe": "4547d88235c266b897553965fb66f8846919be02733b13b8db2592cdce2a357f",
+    "claim": {
+      "id": "952615d4ea76adbde29ff62140db2f96880cbb9450797f0c383b92517187fe84",
+      "pubkey": "a5873cd8abf950e937a0996e2e932b3fdf415201447276f8c1f77fe4f24cb618",
+      "kind": 3189
+    }
+  },
+  "reference": {
+    "label": "Microcoder with GPT-6 Luna, medium effort, knowledge off: passed fix-git",
+    "usd": 0.003301,
+    "seconds": 67,
+    "source": "bench/terminal-bench/microcoder-runs/coderos-4080-tb21/fix-git-1790462479328"
+  },
+  "award": {
+    "claimant": 0,
+    "reproducer": 50
+  }
+}

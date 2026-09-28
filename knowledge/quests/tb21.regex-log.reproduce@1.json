@@ -1,0 +1,31 @@
+{
+  "id": "tb21.regex-log.reproduce",
+  "version": 1,
+  "season": {
+    "id": "tb21-tutorial-s1",
+    "opens_at": 1790553600,
+    "closes_at": 1798156800
+  },
+  "title": "Reproduce Microcoder's pass on regex-log",
+  "objective": "Rerun Microcoder's published pass on the Terminal-Bench 2.1 task regex-log from its pinned recipe (GPT-6 Luna, medium effort, knowledge off, on the task's image) with a run of your own that passes the task's tests, then publish it with microcoder xp reproduce. Tutorial quest: the first accepted reproduction earns 50 XP.",
+  "acceptance": {
+    "rule": "reproduce",
+    "task": "regex-log",
+    "recipe": "361eab70d03fbd4df270a9f765bf9b555e9408a4031cc329c9bcd59f4a8a7746",
+    "claim": {
+      "id": "2a3c345be09da3c6722aed8a6cc0aba463ce1cc056fc2aafd5de94b558324a0f",
+      "pubkey": "a5873cd8abf950e937a0996e2e932b3fdf415201447276f8c1f77fe4f24cb618",
+      "kind": 3189
+    }
+  },
+  "reference": {
+    "label": "Microcoder with GPT-6 Luna, medium effort, knowledge off: passed regex-log",
+    "usd": 0.00706,
+    "seconds": 182,
+    "source": "bench/terminal-bench/microcoder-runs/coderos-4080-tb21/regex-log-1790469395553"
+  },
+  "award": {
+    "claimant": 0,
+    "reproducer": 50
+  }
+}
