@@ -15,7 +15,8 @@ import java.util.concurrent.Executors
  * packets on the main thread. Rust owns every screen, grant, and connection;
  * this bridge only opens URLs Rust names and collects values Rust asks for.
  */
-class MobileBridge(private val context: Context, private val computersFixture: Boolean = false, private val changed: () -> Unit) {
+class MobileBridge(private val context: Context, private val computersFixture: Boolean = false,
+                   private val walletFixture: Boolean = false, private val changed: () -> Unit) {
     companion object {
         // Rust keeps each app handle on the thread that created it, so one
         // process-wide worker owns every handle for its whole lifetime.
@@ -47,6 +48,8 @@ class MobileBridge(private val context: Context, private val computersFixture: B
                 // Debug builds only: Coder's offline Computers fixture, which
                 // contacts no host or relay.
                 if (computersFixture) config.put("computers_fixture", true)
+                // Debug builds only: an offline wallet with no money.
+                if (walletFixture) config.put("wallet_fixture", true)
                 handle = OpenAgentsNative.create(config.toString())
                 check(handle != 0L) { "OpenAgents could not start." }
             }
@@ -128,6 +131,24 @@ class MobileBridge(private val context: Context, private val computersFixture: B
             text?.let { runCatching { JSONObject(it) }.getOrNull() }
                 ?.takeIf { it.optString("schema") == "openagents.trainer.v1" }?.let(received)
         }
+    }
+
+    /**
+     * An agent payment request's answer: `spend_approve` or `spend_deny`
+     * with `request`, `spend_block` or `spend_allow` with `host`, or
+     * `spend_dismiss`. Rust checks every field.
+     */
+    fun spend(op: String, vararg fields: Pair<String, Any?>) = send(json("op" to op, *fields))
+
+    /**
+     * The saved unilateral-exit backup, for a file export the person asked
+     * for: its file name and text, or why there is none. It arrives in
+     * Rust's direct reply, never in the app packet.
+     */
+    fun walletExitExport(received: (String?, String?, String?) -> Unit) = call(json("op" to "wallet_exit_export")) { text ->
+        val reply = text?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?.takeIf { it.optString("schema") == "openagents.wallet-file.v1" }
+        received(reply?.textOrNull("file_name"), reply?.textOrNull("text"), reply?.textOrNull("error"))
     }
 
     /** Open a computer from the native Computers list. */

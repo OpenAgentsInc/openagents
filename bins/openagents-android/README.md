@@ -54,9 +54,21 @@ The app has four tabs, shown as white icons on black:
   every amount to legacy BTC and a one-time note explaining the change), a
   balance warning above ₿1,000,000, **Receive** (a Lightning
   invoice, the Spark address, or the Bitcoin deposit address, each with a
-  QR code, Copy, and Share), **Send** (paste or scan a request, review the
-  amount and fee, then confirm), **Buy** (the provider's page opens in the
-  browser), deposits to claim, history, and **Recovery**. The info button
+  QR code, Copy, and Share, and **Nostr** with your npub and a switch to
+  publish your Spark address), **Send** (saved people, then paste or scan
+  an invoice, Lightning address, LNURL, npub, Spark, or Bitcoin address;
+  a Lightning address or LNURL asks for an amount and an optional comment
+  within the recipient's terms; review the person, amount, fee, and a fee
+  speed where one applies, then confirm; afterward save a new address as a
+  contact), **Buy** (the provider's page opens in the browser), deposits
+  that need attention (claim at a quoted fee, or refund on-chain to an
+  address at a chosen speed after a review), history, **Agent payments**
+  (the computers that may ask and their payments), **Recovery**, and the
+  **Exit backup**, exported to a file you pick. An agent's payment request
+  opens an approval sheet over any tab: the amount and fee, who asked and
+  why, the payee read from the invoice, and the computer's remaining
+  budget; above Rust's threshold, **Approve** asks for the screen lock
+  first. Nothing pays without the tap. The info button
   opens the trust note, and closing it acknowledges it. **Show recovery
   words** asks first, then shows the words from Rust's direct reply;
   **Restore** takes 12 or 24 words, which Rust checks, and asks again when
@@ -209,6 +221,8 @@ adb shell am start -n com.openagents.app/.MainActivity --es account_route traine
 # Coder's offline Computers fixture: sample computers, no host or relay.
 adb shell am start -n com.openagents.app/.MainActivity --es account_route computers --ez computers_fixture true
 adb shell am start -n com.openagents.app/.MainActivity --ez rust_native_fixture true
+# An offline fixture wallet with no money (a deposit needing attention, a contact).
+adb shell am start -n com.openagents.app/.MainActivity --es tab wallet --ez wallet_fixture true
 # Let captures include the recovery words and restore dialogs (debug only).
 adb shell am start -n com.openagents.app/.MainActivity --es tab wallet --ez allow_secret_captures true
 # The labeled synthetic Gym board, and a scripted walk up to it (steps as

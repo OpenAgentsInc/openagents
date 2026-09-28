@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var tabBar: LinearLayout
 
     private lateinit var wallet: WalletScreen
+    private lateinit var payments: AgentPayments
 
     // Coder tab.
     private lateinit var coderRenderer: NativeRenderer
@@ -109,11 +110,13 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
         scanner = QRScanner(this)
-        bridge = MobileBridge(applicationContext, BuildConfig.DEBUG && intent.getBooleanExtra("computers_fixture", false)) { render() }
+        bridge = MobileBridge(applicationContext, BuildConfig.DEBUG && intent.getBooleanExtra("computers_fixture", false),
+            BuildConfig.DEBUG && intent.getBooleanExtra("wallet_fixture", false)) { render() }
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
             { token, value -> bridge.submit("coder", token, value) })
         computersRenderer = NativeRenderer(this, { view, node -> bridge.activate("computers", view, node) }, scrolling = true)
         account = AccountScreens(this, bridge)
+        payments = AgentPayments(this, bridge)
         tailnetRenderer = NativeRenderer(this, { view, node -> bridge.activate("tailnet", view, node) })
         terminal = TerminalScreen(this, bridge)
 
@@ -478,6 +481,9 @@ class MainActivity : ComponentActivity() {
             null -> Unit
         }
         if (tab == AppTab.WALLET) wallet.update(packet)
+        // An agent's payment request shows over any tab until the owner
+        // approves or denies it; Rust closes it.
+        if (::payments.isInitialized) payments.update(packet)
         terminal.update(packet?.optBoolean("terminal") == true, bridge.terminalView)
         if (tab == AppTab.VERSE) renderVerse()
     }

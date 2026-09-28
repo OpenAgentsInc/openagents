@@ -30,7 +30,7 @@ import org.json.JSONObject
 
 class WalletScreen(private val activity: MainActivity, private val bridge: MobileBridge, private val scanner: QRScanner) {
     private enum class Section(val title: String) { RECEIVE("Receive"), SEND("Send"), BUY("Buy") }
-    private enum class Method(val title: String, val key: String) { LIGHTNING("Lightning", "lightning"), SPARK("Spark", "spark"), BITCOIN("Bitcoin", "bitcoin") }
+    private enum class Method(val title: String, val key: String) { LIGHTNING("Lightning", "lightning"), SPARK("Spark", "spark"), BITCOIN("Bitcoin", "bitcoin"), NOSTR("Nostr", "nostr") }
 
     val root = FrameLayout(activity)
     private val scroll = ScrollView(activity)
@@ -47,7 +47,25 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
 
     // Fields keep what the person typed across Rust's updates.
     private val invoiceAmount = field("Amount in ₿ (optional)", "wallet-invoice-amount", number = true)
-    private val payInput = field("Invoice, Lightning address, or Bitcoin address", "wallet-send-input", lines = 4)
+    private val payInput = field("Invoice, Lightning address, npub, LNURL, or Bitcoin address", "wallet-send-input", lines = 4)
+    private val payComment = field("Comment (optional)", "wallet-send-comment")
+    private val contactName = field("Name", "wallet-contact-name")
+    private val refundAddress = field("Bitcoin address to refund to", "wallet-refund-address")
+    private var refundSpeed = "medium"
+    private var exportError: String? = null
+    /** The exit backup waiting for the file the person picks; kept only until it is written. */
+    private var pendingExport: String? = null
+    private val exporter = activity.registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        val text = pendingExport; pendingExport = null
+        if (uri == null || text == null) return@registerForActivityResult
+        exportError = try {
+            activity.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) }
+                ?: throw IllegalStateException("The file couldn't be opened.")
+            null
+        } catch (problem: Exception) { problem.message ?: "The backup couldn't be saved." }
+        redraw()
+    }
     private val payAmount = field("Amount in ₿, if the request has none", "wallet-send-amount", number = true)
     private val buyAmount = field("Amount in ₿", "wallet-buy-amount", number = true)
     // Rust's amount format (`amounts::AmountsView`): BIP 177 or legacy BTC.
@@ -100,7 +118,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
         if (!force && key == shown) return
         shown = key
         applyFormat()
-        val focused = listOf(invoiceAmount, payInput, payAmount, buyAmount).firstOrNull { it.hasFocus() }
+        val focused = listOf(invoiceAmount, payInput, payAmount, buyAmount, payComment, contactName, refundAddress).firstOrNull { it.hasFocus() }
         val y = scroll.scrollY
         content.removeAllViews()
         infoButton.enabled(wallet?.objectOrNull("trust") != null)
@@ -176,10 +194,12 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
             Section.BUY -> buy(wallet)
         }
         val deposits = wallet.optJSONArray("deposits")?.objects() ?: emptyList()
-        if (deposits.isNotEmpty()) deposits(deposits, wallet.objectOrNull("claim"))
+        if (deposits.isNotEmpty()) deposits(deposits, wallet.objectOrNull("claim"), wallet.objectOrNull("refund"))
         history(wallet.optJSONArray("payments")?.objects() ?: emptyList())
+        bridge.packet?.objectOrNull("spend")?.let { AgentPayments.section(activity, content, it, bridge) }
         if (amounts != null) amountSetting()
         recovery(wallet)
+        wallet.objectOrNull("backup")?.let { backup(it) }
     }
 
     private fun balance(wallet: JSONObject) {
@@ -252,6 +272,21 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
             }
             Method.SPARK -> receive?.objectOrNull("spark")?.let { code(it) } ?: placeholder()
             Method.BITCOIN -> receive?.objectOrNull("bitcoin")?.let { code(it) } ?: placeholder()
+            Method.NOSTR -> {
+                receive?.objectOrNull("nostr")?.let { code(it) } ?: placeholder()
+                receive?.objectOrNull("publish")?.let { publish ->
+                    val on = publish.optBoolean("on"); val busy = publish.optBoolean("busy")
+                    content.add(android.widget.Switch(activity).apply {
+                        text = "Publish my Spark address"; setTextColor(Palette.PRIMARY); textSize = 15f
+                        isChecked = on; tag = "wallet-publish"
+                        isEnabled = !busy && starting.not()
+                        setOnCheckedChangeListener { _, value -> if (value != on) bridge.wallet("wallet_publish", "on" to value) }
+                    }, 14)
+                    content.add(activity.label(publish.optString("detail"), 13f, Palette.SECONDARY), 4)
+                    if (busy) content.add(ProgressBar(activity), 6, -2)
+                    publish.textOrNull("message")?.let { content.add(activity.label(it, 13f), 6) }
+                }
+            }
         }
     }
 
@@ -302,16 +337,49 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
             "sent" -> {
                 content.add(activity.label(send?.textOrNull("message") ?: "Sent.", 17f, bold = true), 12)
                 send?.objectOrNull("result")?.let { content.add(paymentRow(it), 8) }
+                send?.textOrNull("recipient_message")?.let { content.add(activity.label(it, 13f, key = "wallet-recipient-message", selectable = true), 8) }
+                send?.textOrNull("save_suggestion")?.let { address ->
+                    content.add(activity.label("Save $address as a contact?", 13f, Palette.SECONDARY), 12)
+                    val row = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
+                    (contactName.parent as? android.view.ViewGroup)?.removeView(contactName)
+                    row.addView(contactName, LinearLayout.LayoutParams(0, -2, 1f))
+                    row.addView(activity.pill("Save", "wallet-contact-save") {
+                        if (contactName.text.isNotBlank()) {
+                            bridge.wallet("wallet_save_contact", "name" to contactName.text.toString(), "address" to address)
+                            contactName.setText("")
+                        }
+                    }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(8) })
+                    content.add(row, 6)
+                }
                 content.add(activity.pill("Done", "wallet-send-done", primary = true) {
-                    payInput.setText(""); payAmount.setText(""); bridge.wallet("wallet_send_reset")
+                    payInput.setText(""); payAmount.setText(""); payComment.setText(""); bridge.wallet("wallet_send_reset")
                 }, 12, -2)
             }
             else -> {
                 if (scanning) {
-                    content.add(activity.label("Point the camera at a Lightning invoice, Lightning address, or Bitcoin QR code.", 13f, Palette.SECONDARY), 12)
+                    content.add(activity.label("Point the camera at a Lightning invoice, Lightning address, LNURL, Spark, Bitcoin, or Nostr (npub) QR code.", 13f, Palette.SECONDARY), 12)
                     place(camera, 8)
                     content.add(activity.pill("Type instead", "wallet-type") { stopScan() }, 8, -2)
                     return
+                }
+                val people = wallet.optJSONArray("people")?.objects() ?: emptyList()
+                if (people.isNotEmpty() && state == "idle") {
+                    val chips = activity.row()
+                    for (person in people) chips.addView(activity.column().apply {
+                        setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8))
+                        background = activity.rounded(0xFF1A1A1A.toInt(), 10f)
+                        add(activity.label(person.getString("name"), 14f))
+                        add(activity.label(person.getString("detail"), 11f, Palette.SECONDARY).apply { maxLines = 1 }, 2)
+                        contentDescription = "${person.getString("name")}, ${person.getString("detail")}"
+                        setOnClickListener {
+                            val input = person.getString("input")
+                            payInput.setText(input)
+                            quote(input)
+                        }
+                    }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = activity.dp(8) })
+                    content.add(android.widget.HorizontalScrollView(activity).apply {
+                        isHorizontalScrollBarEnabled = false; tag = "wallet-people"; addView(chips)
+                    }, 12)
                 }
                 place(payInput)
                 val actions = activity.row()
@@ -322,26 +390,66 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
                 actions.addView(activity.pill("Scan", "wallet-scan") { startScan() },
                     LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(12) })
                 content.add(actions, 10)
+                if (state == "needs_amount") send?.textOrNull("recipient")?.let { recipient ->
+                    content.add(activity.label(recipient, 14f, mono = true, key = "wallet-recipient"), 10)
+                    send.textOrNull("description")?.let { content.add(activity.label(it, 13f, Palette.SECONDARY), 2) }
+                }
                 place(payAmount, 10)
+                if (state == "needs_amount" && send?.has("comment_max") == true && !send.isNull("comment_max")) {
+                    val most = send.optInt("comment_max")
+                    payComment.hint = "Comment (optional, up to $most characters)"
+                    payComment.filters = arrayOf(android.text.InputFilter.LengthFilter(most))
+                    place(payComment, 10)
+                }
                 if (state != "idle") send?.textOrNull("message")?.let { content.add(activity.label(it, 13f), 8) }
                 val starting = wallet.textOrNull("status") != null
                 reviewReady = { state != "quoting" && !starting && payInput.text.isNotBlank() }
                 content.add(activity.pill(if (state == "quoting") "Preparing…" else "Review payment", "wallet-review", primary = true) {
                     hideKeyboard()
-                    bridge.wallet("wallet_quote", "input" to payInput.text.toString(), "amount" to payAmount.text.toString())
+                    quote(payInput.text.toString())
                 }.also { review = it }.enabled(reviewReady()), 12, -2)
             }
         }
     }
 
+    /** Quotes a payment to `input` with the typed amount and comment. */
+    private fun quote(input: String) = bridge.wallet("wallet_quote", "input" to input,
+        "amount" to payAmount.text.toString(), "comment" to payComment.text.toString())
+
+    /** One fee speed as a radio row. */
+    private fun speed(speed: JSONObject, chosen: Boolean, enabled: Boolean, choose: () -> Unit): View = activity.row().apply {
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, activity.dp(6), 0, activity.dp(6))
+        addView(activity.label(if (chosen) "◉" else "○", 16f), LinearLayout.LayoutParams(activity.dp(24), -2))
+        addView(activity.label(speed.getString("label"), 13f), LinearLayout.LayoutParams(0, -2, 1f))
+        addView(activity.label(speed.getString("fee"), 13f, mono = true))
+        isSelected = chosen
+        contentDescription = "${speed.getString("label")}, ${speed.getString("fee")}${if (chosen) ", selected" else ""}"
+        enabled(enabled)
+        setOnClickListener { if (isEnabled) choose() }
+    }
+
     private fun confirm(quote: JSONObject, paying: Boolean, message: String?) {
+        val send = bridge.packet?.objectOrNull("wallet")?.objectOrNull("send")
         val box = activity.column().apply {
             setPadding(activity.dp(14), activity.dp(14), activity.dp(14), activity.dp(14))
             background = activity.rounded(0xFF1A1A1A.toInt(), 14f)
             add(activity.label("Confirm payment", 17f, bold = true))
+            send?.textOrNull("person")?.let { add(line("Person", it), 10) }
             add(line("To", "${quote.getString("kind")}\n${quote.getString("destination")}", mono = true), 10)
+            send?.textOrNull("person_source")?.let { add(activity.label(it, 12f, Palette.SECONDARY), 4) }
             quote.textOrNull("note")?.let { add(line("For", it), 6) }
+            quote.textOrNull("comment")?.let { add(line("Comment", it), 6) }
             add(line("Amount", quote.getString("amount")), 6)
+            val speeds = quote.optJSONArray("speeds")?.objects() ?: emptyList()
+            if (speeds.isNotEmpty()) {
+                add(activity.label("Speed", 14f, Palette.SECONDARY), 8)
+                val list = activity.column().apply { tag = "wallet-speeds" }
+                for (option in speeds) list.add(speed(option, option.optBoolean("chosen"), !paying) {
+                    bridge.wallet("wallet_speed", "quote" to quote.getLong("id"), "speed" to option.getString("id"))
+                })
+                add(list, 2)
+            }
             add(line("Fee", quote.getString("fee")), 6)
             addDivider(8)
             add(line("Total", quote.getString("total"), bold = true), 8)
@@ -372,7 +480,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
                 stopScan()
                 result.onSuccess { value ->
                     payInput.setText(value)
-                    bridge.wallet("wallet_quote", "input" to value, "amount" to payAmount.text.toString())
+                    quote(value)
                 }
             }
         }
@@ -411,7 +519,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
 
     // Deposits, history, recovery
 
-    private fun deposits(deposits: List<JSONObject>, claim: JSONObject?) {
+    private fun deposits(deposits: List<JSONObject>, claim: JSONObject?, refund: JSONObject?) {
         content.add(activity.label("Bitcoin deposits", 17f, bold = true), 24)
         for (deposit in deposits) {
             val txid = deposit.getString("txid"); val vout = deposit.getInt("vout")
@@ -420,8 +528,15 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
                 background = activity.rounded(0xFF141414.toInt(), 12f)
                 val top = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
                 top.addView(activity.label(deposit.getString("amount"), 15f), LinearLayout.LayoutParams(0, -2, 1f))
-                top.addView(activity.pill("Claim", "wallet-claim-$txid") { bridge.wallet("wallet_claim_quote", "txid" to txid, "vout" to vout) }
-                    .enabled(claim?.optBoolean("busy") != true))
+                // A deposit that needs attention offers Claim and Refund.
+                if (deposit.optBoolean("actionable", true)) {
+                    top.addView(activity.pill("Claim", "wallet-claim-$txid") { bridge.wallet("wallet_claim_quote", "txid" to txid, "vout" to vout) }
+                        .enabled(claim?.optBoolean("busy") != true))
+                    top.addView(activity.pill("Refund", "wallet-refund") {
+                        refundAddress.setText(""); refundSpeed = "medium"
+                        bridge.wallet("wallet_refund_start", "txid" to txid, "vout" to vout)
+                    }.enabled(refund?.optBoolean("busy") != true), LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(8) })
+                }
                 add(top)
                 add(activity.label(deposit.getString("status"), 13f, Palette.SECONDARY), 4)
                 if (claim != null && claim.optString("txid") == txid && claim.optInt("vout") == vout) {
@@ -437,9 +552,65 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
                     }
                     claim.textOrNull("message")?.let { add(activity.label(it, 13f), 6) }
                 }
+                if (refund != null && refund.optString("txid") == txid && refund.optInt("vout") == vout) refundView(this, refund)
             }
             content.add(box, 10)
         }
+    }
+
+    private fun refundView(box: LinearLayout, refund: JSONObject) {
+        val txid = refund.getString("txid"); val vout = refund.getInt("vout")
+        val busy = refund.optBoolean("busy")
+        val speeds = refund.optJSONArray("speeds")?.objects() ?: emptyList()
+        val review = refund.textOrNull("review")
+        box.add(activity.label("Refund on-chain", 15f, bold = true), 10)
+        if (busy) box.add(ProgressBar(activity), 6, -2)
+        if (speeds.isNotEmpty() && review == null) {
+            (refundAddress.parent as? android.view.ViewGroup)?.removeView(refundAddress)
+            box.add(refundAddress, 8)
+            for (option in speeds) box.add(speed(option, option.getString("id") == refundSpeed, true) {
+                refundSpeed = option.getString("id"); redraw()
+            })
+            val actions = activity.row()
+            actions.addView(activity.pill("Review refund", "wallet-refund-review", primary = true) {
+                if (refundAddress.text.isNotBlank()) bridge.wallet("wallet_refund_review", "txid" to txid, "vout" to vout,
+                    "address" to refundAddress.text.toString().trim(), "speed" to refundSpeed)
+            })
+            actions.addView(activity.pill("Cancel") { bridge.wallet("wallet_refund_reset") },
+                LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(8) })
+            box.add(actions, 8)
+        }
+        review?.let {
+            box.add(activity.label(it, 13f), 8)
+            val actions = activity.row()
+            actions.addView(activity.pill("Refund", "wallet-refund-confirm", primary = true) {
+                bridge.wallet("wallet_refund", "txid" to txid, "vout" to vout) }.enabled(!busy))
+            actions.addView(activity.pill("Cancel") { bridge.wallet("wallet_refund_reset") },
+                LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(8) })
+            box.add(actions, 8)
+        }
+        refund.textOrNull("message")?.let { message ->
+            box.add(activity.label(message, 13f), 8)
+            if (review == null && speeds.isEmpty() && !busy) box.add(activity.pill("Close") { bridge.wallet("wallet_refund_reset") }, 6, -2)
+        }
+    }
+
+    /** The unilateral-exit backup, exported to a file the person picks. */
+    private fun backup(backup: JSONObject) {
+        content.add(activity.label(backup.getString("title"), 17f, bold = true, key = "wallet-backup"), 24)
+        content.add(activity.label(backup.getString("detail"), 13f, Palette.SECONDARY), 6)
+        val saved = if (backup.has("saved_at") && !backup.isNull("saved_at")) "Saved on this phone " +
+            DateUtils.getRelativeTimeSpanString(backup.getLong("saved_at") * 1000, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
+            else "Not saved yet. It saves after the wallet syncs."
+        content.add(activity.label(saved, 13f), 6)
+        (backup.textOrNull("error") ?: exportError)?.let { content.add(activity.label(it, 13f), 6) }
+        content.add(activity.pill("Export to a file", "wallet-export-exit") {
+            exportError = null
+            bridge.walletExitExport { name, text, error ->
+                if (text == null || name == null) { exportError = error ?: "The backup could not be read."; redraw() }
+                else { pendingExport = text; exporter.launch(name) }
+            }
+        }.enabled(backup.optBoolean("can_export")), 10, -2)
     }
 
     private fun history(payments: List<JSONObject>) {
