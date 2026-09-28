@@ -42,6 +42,7 @@ fn view(phase: Phase, revision: u64, turn_started: u64) -> View {
         turn_started,
         question: None,
         paused: false,
+        archived: false,
     }
 }
 
@@ -738,5 +739,70 @@ fn a_message_sent_now_stops_the_turn_and_runs_ahead_of_the_queue() {
     assert_eq!(
         decided(&edited, &view(Phase::Ended, 5, 5)),
         Decision::Dispatch(Effect::Continue("New.".into()))
+    );
+}
+
+#[test]
+fn a_queued_message_never_revives_an_archived_task() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("tasks");
+    ended_task(&dir);
+    let phone = sender("phone");
+    record(
+        &dir,
+        &phone,
+        &request("a", Kind::Send, 2, "First."),
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    record(
+        &dir,
+        &phone,
+        &request("b", Kind::Queue, 3, "Queued."),
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    // The turn is stopped and the task archived while the message waits.
+    end(&mut Store::open(&dir).unwrap(), "end-2", 3);
+    crate::task::archive::archive(
+        &dir,
+        "task",
+        "Archived by a test",
+        crate::task::archive::By::Owner,
+        NOW,
+    )
+    .unwrap();
+    assert!(
+        process(&dir, "task", &STEERING, &always, NOW)
+            .unwrap()
+            .is_empty()
+    );
+    let task = Store::open(&dir).unwrap().show("task").unwrap();
+    assert_eq!(task.status, Status::Cancelled);
+    assert_eq!(
+        entries(&dir).unwrap()[1].state,
+        State::Done(Outcome::Rejected {
+            reason: Rejection::Conflict
+        })
+    );
+    // A later send is refused the same way.
+    let (sent, _) = record(
+        &dir,
+        &phone,
+        &request("c", Kind::Send, 4, "Again."),
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(
+        sent.state,
+        State::Done(Outcome::Rejected {
+            reason: Rejection::Conflict
+        })
     );
 }

@@ -280,6 +280,8 @@ pub struct View {
     pub question: Option<super::interaction::Kind>,
     /// A device holds the queue's edit lease: queued messages wait.
     pub paused: bool,
+    /// The task is archived: nothing continues it.
+    pub archived: bool,
 }
 
 impl View {
@@ -297,6 +299,7 @@ impl View {
             turn_started: task.turn_started(),
             question: super::interaction::pending(task),
             paused: false,
+            archived: false,
         }
     }
 }
@@ -358,6 +361,10 @@ pub fn decide(
         return rejected(Rejection::Revoked);
     }
     let request = &entry.effective();
+    // An archived task left every list; a waiting message never revives it.
+    if view.archived && request.kind != Kind::Interrupt {
+        return rejected(Rejection::Conflict);
+    }
     let ended_turn = request.based_on < view.turn_started;
     match request.kind {
         Kind::Interrupt => {
@@ -795,6 +802,7 @@ fn evaluate(
     now: u64,
 ) -> Result<Vec<Continued>, Error> {
     let mut continued = Vec::new();
+    let archived = super::archive::archived(&store.dir).contains(task);
     // Each pass decides at most one entry's effect on the task, then reads
     // the task again, so a later entry sees the state an earlier one made.
     for _ in 0..journal.entries.len() + 1 {
@@ -803,6 +811,7 @@ fn evaluate(
         };
         let view = View {
             paused: journal.lease(task, now).is_some(),
+            archived,
             ..View::of(&current)
         };
         let indices: Vec<usize> = journal

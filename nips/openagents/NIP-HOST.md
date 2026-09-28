@@ -432,7 +432,9 @@ null and each item is `{command, device, text, priority}` in the order the
 items run, with `text` only for the requesting device's own messages and
 null for another's.
 `task.archive` carries `{task}`: it takes a finished or cancelled task off
-every device's lists and deletes nothing. The host stops publishing the
+every device's lists and deletes nothing. A message still waiting for the
+task, and any later `task.command` other than `interrupt`, refuses as
+`conflict`: nothing continues an archived task. The host stops publishing the
 task's activity summary, and its history observer lists the task's
 transcript as an archived chat, which chat lists leave out. A task that has
 not ended refuses as `conflict`, and archiving an archived task succeeds

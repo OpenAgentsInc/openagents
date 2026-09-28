@@ -945,6 +945,28 @@ fn until(
     }
 }
 
+/// The key of the button labeled `label` in the queue row showing `text`.
+fn queued_button(view: &serde_json::Value, text: &str, label: &str) -> String {
+    let mut pending = vec![&view["root"]];
+    while let Some(node) = pending.pop() {
+        let children = node["element"]["props"]["children"].as_array();
+        let is_row = node["key"]
+            .as_str()
+            .is_some_and(|key| key.starts_with("coder-queued-row-"));
+        if is_row
+            && values(&serde_json::json!({"root": node}))
+                .iter()
+                .any(|t| t == text)
+        {
+            return key_for(&serde_json::json!({"root": node}), label).expect("button");
+        }
+        if let Some(children) = children {
+            pending.extend(children.iter());
+        }
+    }
+    panic!("no queued row shows {text}")
+}
+
 fn tap(app: &mut App, view: &serde_json::Value, key: &str) -> serde_json::Value {
     app.call(Request::CoderActivate {
         instance: view["instance"].as_str().unwrap().into(),
@@ -1032,7 +1054,7 @@ fn live_coder_chat_edits_its_queue() {
             .find(|t| t.starts_with("Reply with only the word"))
             .unwrap();
         assert_eq!(first, "Reply with only the word two.");
-        let remove = key_for(&panel, "Remove").expect("remove");
+        let remove = queued_button(&panel, "Reply with only the word two.", "Remove");
         let panel = tap(app, &panel, &remove);
         assert!(!values(&panel).contains(&"Reply with only the word two.".to_owned()));
         let done = key_for(&panel, "Done").expect("done");
