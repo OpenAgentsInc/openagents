@@ -56,7 +56,39 @@ impl Network {
     }
 }
 
-/// An LSPS2 liquidity provider that opens inbound channels just in time.
+/// Which LSPS protocol the liquidity provider speaks.
+///
+/// `Lsps1` buys a channel in advance and the node still signs its own
+/// invoices, so the node id stays a valid x402 `payTo`. `Lsps2` opens a
+/// channel just in time on the first payment.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LspProtocol {
+    Lsps1,
+    #[default]
+    Lsps2,
+}
+
+impl LspProtocol {
+    pub fn parse(text: &str) -> Result<Self, WalletError> {
+        match text {
+            "lsps1" => Ok(Self::Lsps1),
+            "lsps2" => Ok(Self::Lsps2),
+            other => Err(WalletError::Invalid(format!(
+                "LSP protocol must be lsps1 or lsps2, not `{other}`"
+            ))),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Lsps1 => "lsps1",
+            Self::Lsps2 => "lsps2",
+        }
+    }
+}
+
+/// A liquidity provider the node buys inbound capacity from.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Lsp {
     /// 66 hex digits.
@@ -65,11 +97,62 @@ pub struct Lsp {
     pub address: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    #[serde(default)]
+    pub protocol: LspProtocol,
 }
 
+/// Olympus by ZEUS, LSPS1 endpoints from <https://docs.zeusln.app/lsp/api/lsps1/>.
+const OLYMPUS_LSPS1_MAINNET: &str =
+    "031b301307574bbe9b9ac7b79cbe1700e31e544513eae0b5d7497483083f99e581@45.79.192.236:9735";
+const OLYMPUS_LSPS1_TESTNET: &str =
+    "03e84a109cd70e57864274932fc87c5e6434c59ebb8e6e7d28532219ba38f7f6df@139.144.22.237:9735";
+
 impl Lsp {
+    /// The Olympus LSPS1 peer for `network`, or an error where Olympus
+    /// runs no LSPS1 service.
+    pub fn olympus(network: Network) -> Result<Self, WalletError> {
+        let peer = match network {
+            Network::Bitcoin => OLYMPUS_LSPS1_MAINNET,
+            Network::Testnet => OLYMPUS_LSPS1_TESTNET,
+            other => {
+                return Err(WalletError::Invalid(format!(
+                    "Olympus serves LSPS1 on bitcoin and testnet, not {}",
+                    other.as_str()
+                )));
+            }
+        };
+        Self::parse(peer, None, LspProtocol::Lsps1)
+    }
+
+    /// Parse `NODE_ID@HOST:PORT`, or the preset name `olympus` for
+    /// `network`.
+    pub fn parse_or_preset(
+        text: &str,
+        token: Option<&str>,
+        protocol: Option<LspProtocol>,
+        network: Network,
+    ) -> Result<Self, WalletError> {
+        if text.eq_ignore_ascii_case("olympus") {
+            let mut lsp = Self::olympus(network)?;
+            lsp.token = token.map(str::to_owned);
+            if let Some(protocol) = protocol
+                && protocol != LspProtocol::Lsps1
+            {
+                return Err(WalletError::Invalid(
+                    "the olympus preset is LSPS1; drop --lsp-protocol or give a peer".to_string(),
+                ));
+            }
+            return Ok(lsp);
+        }
+        Self::parse(text, token, protocol.unwrap_or_default())
+    }
+
     /// Parse `NODE_ID@HOST:PORT`.
-    pub fn parse(text: &str, token: Option<&str>) -> Result<Self, WalletError> {
+    pub fn parse(
+        text: &str,
+        token: Option<&str>,
+        protocol: LspProtocol,
+    ) -> Result<Self, WalletError> {
         let (node_id, address) = text
             .split_once('@')
             .ok_or_else(|| WalletError::Invalid("LSP must be NODE_ID@HOST:PORT".to_string()))?;
@@ -84,6 +167,7 @@ impl Lsp {
             node_id,
             address: address.to_string(),
             token: token.map(str::to_string),
+            protocol,
         })
     }
 }
@@ -235,8 +319,14 @@ mod tests {
     fn config_round_trips() {
         let home = temp_home("config");
         let mut config = WalletConfig::new(Network::Signet, None).unwrap();
-        config.lsp =
-            Some(Lsp::parse(&format!("{}@lsp.example:9735", "ab".repeat(33)), Some("t")).unwrap());
+        config.lsp = Some(
+            Lsp::parse(
+                &format!("{}@lsp.example:9735", "ab".repeat(33)),
+                Some("t"),
+                LspProtocol::Lsps2,
+            )
+            .unwrap(),
+        );
         config.trusted_peers = vec!["cd".repeat(33)];
         config.save(&home).unwrap();
         assert_eq!(WalletConfig::load(&home).unwrap(), config);
@@ -275,8 +365,29 @@ mod tests {
 
     #[test]
     fn lsp_is_validated() {
-        assert!(Lsp::parse("nope", None).is_err());
-        assert!(Lsp::parse(&format!("{}@host", "ab".repeat(33)), None).is_err());
-        assert!(Lsp::parse("abc@host:1", None).is_err());
+        assert!(Lsp::parse("nope", None, LspProtocol::Lsps2).is_err());
+        assert!(
+            Lsp::parse(
+                &format!("{}@host", "ab".repeat(33)),
+                None,
+                LspProtocol::Lsps2
+            )
+            .is_err()
+        );
+        assert!(Lsp::parse("abc@host:1", None, LspProtocol::Lsps2).is_err());
+        let olympus = Lsp::parse_or_preset("olympus", None, None, Network::Bitcoin).unwrap();
+        assert_eq!(olympus.protocol, LspProtocol::Lsps1);
+        assert!(olympus.node_id.starts_with("031b3013"));
+        assert!(Lsp::parse_or_preset("olympus", None, None, Network::Signet).is_err());
+        assert!(
+            Lsp::parse_or_preset("olympus", None, Some(LspProtocol::Lsps2), Network::Bitcoin)
+                .is_err()
+        );
+        let plain: Lsp = serde_json::from_str(&format!(
+            r#"{{"node_id":"{}","address":"h:1"}}"#,
+            "ab".repeat(33)
+        ))
+        .unwrap();
+        assert_eq!(plain.protocol, LspProtocol::Lsps2);
     }
 }

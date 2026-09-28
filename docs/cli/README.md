@@ -505,10 +505,42 @@ payment hash for `lookup`. An unpaid inbound preimage is never shown.
 Files live in `~/.openagents/wallet` (`OPENAGENTS_WALLET_HOME` overrides):
 `config.json`, the `seed` (mode 0600, never printed), and the `ldk/` store.
 The node needs an Esplora server to start, so every command except `init`
-needs the network; `init --lsp NODE_ID@HOST:PORT` adds LSPS2 inbound
-liquidity. The x402 validator admits only mainnet and testnet invoices
+needs the network. The x402 validator admits only mainnet and testnet invoices
 (`bc`, `tb`), so signet issues but does not validate. `openagents x402
 advertise` publishes the NIP-CAP `oa-x402-v1` head for a paid endpoint.
+
+### Inbound liquidity from an LSP
+
+A fresh node can pay but not receive until a peer has capacity toward it.
+`init --lsp` names a liquidity provider; `--lsp olympus` picks the Olympus
+(ZEUS) LSPS1 peer for the wallet's network (bitcoin or testnet), and a peer
+given as `NODE_ID@HOST:PORT` speaks LSPS2 unless `--lsp-protocol lsps1` says
+otherwise. LSPS1 is the x402 path: the LSP opens a channel in advance for a
+fee, and this node still signs its own invoices, so its node id stays a valid
+`payTo`. An LSPS2 or Olympus Flow just-in-time channel wraps the first
+payment in an invoice the LSP signs, which the x402 payee check refuses.
+
+```sh
+openagents wallet init --network bitcoin --lsp olympus
+# Quote 200 000 sats of inbound capacity; nothing is paid yet.
+openagents --json wallet channel buy --lsp-sats 200000
+# {"order_id":"a4ac…","bolt11":{"state":"expectpayment","fee_total_sat":7728,
+#   "invoice":"lnbc77280n1…"},"onchain":null,"channel":null,"paid":null}
+# Pay the order from this wallet and watch for the LSP to fund it.
+openagents --json wallet channel buy --lsp-sats 200000 --pay lightning
+openagents --json wallet channel order ORDER_ID
+```
+
+Against Olympus mainnet a 200 000 sat order quoted 7 728 sats, three
+confirmations required, and funding within six blocks, and offered BOLT11
+only (`onchain` was null). Olympus therefore expects the fee over
+Lightning, so a node with no channel first funds itself (`fund`), opens an
+outbound channel to Olympus with `channel open 031b30…@45.79.192.236:9735
+--sats N`, and pays the order through it; `--pay onchain` and `wallet send
+ADDRESS --sats N` serve LSPs that quote an on-chain address. The order document
+also reports `client_balance_sat` (`--our-sats`, sats the LSP pushes to this
+side), `channel_expiry_blocks` (`--expiry-blocks`, default 13 000, about 90
+days), and `channel` once the LSP has funded the channel.
 
 ## Paid HTTP (`openagents x402`, exact Lightning over `http:1`)
 
