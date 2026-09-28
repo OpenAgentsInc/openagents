@@ -729,6 +729,7 @@ fn follow(
     let mut outputs: HashMap<String, Vec<u8>> = HashMap::new();
     let mut newest: Option<Value> = None;
     let mut wanted: Option<String> = None;
+    let mut fetched: Option<String> = None;
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
@@ -748,6 +749,9 @@ fn follow(
                 && let Ok(bytes) = artifact_bytes(&value)
             {
                 outputs.insert(opened.digest.clone(), bytes);
+            }
+            if fetched.is_some() && wanted.as_deref() == Some(opened.digest.as_str()) {
+                break;
             }
         } else if let Some((record, _)) = opened.record()
             && record.purchase == receipt.purchase
@@ -792,6 +796,18 @@ fn follow(
                     .is_none_or(|digest| outputs.contains_key(digest))
             {
                 break;
+            }
+            // An output published before this subscription opened (a rerun
+            // after a provider restart, or a later `status`) is read by id.
+            if terminal
+                && let Some(id) = status
+                    .output
+                    .as_ref()
+                    .and_then(|reference| reference["event"]["id"].as_str())
+                && fetched.as_deref() != Some(id)
+            {
+                fetched = Some(id.to_owned());
+                let _ = client.listen(vec![json!({"ids": [id]})]);
             }
         }
     }

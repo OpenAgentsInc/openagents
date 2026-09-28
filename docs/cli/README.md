@@ -726,6 +726,43 @@ fee; `wallet lookup` on both machines holds preimage `070dba…26eb`
 (outbound here, inbound on coderos), and `x402 ledger` here shows the one
 entry in phase `completed`.
 
+### Provider recovery (`native-serve --rerun-safe`, `status --list`, `status --finish`)
+
+A provider that stops between admission and finish leaves purchases in
+`admitted` or `running` in its purchase store. On start, `native-serve`
+scans the store: without `--rerun-safe` each such purchase becomes
+`failed` with cause `provider_restarted` and the status is published to
+the buyer (`{"event":"recovered",...}`); with `--rerun-safe` a purchase
+whose `execute_until` has not passed is queued (`rerun_pending`), its
+input artifact is read back from the relay, and `CMD` runs again
+(`{"event":"rerun","phase":"completed"}`). `offered` and `claim_pending`
+purchases are the buyer's to settle and are left alone.
+
+```sh
+openagents x402 status --list --as PROFILE          # open purchases with their windows
+openagents x402 status --finish BUYER:PURCHASE \
+    --cause operator_cancelled --as PROFILE         # record and publish a terminal cause
+```
+
+Accepted causes are `provider_restarted`, `operator_cancelled`, and
+`execute_until_passed`. On the buyer side `status` tells a provider that
+answered (a terminal phase, exit 0 or 1) from one that has not; in the
+second case it says whether the provider's `recover_until` window is still
+open, and it never pays again. A `completed` status whose output artifact
+was published before `status` subscribed is read back by event id.
+
+Live check on 2026-09-27 (testnet, buyer here, provider on `coderos-4080`
+through `openagents computer exec`): purchase `bfffe9…7917` was paid and
+left `running` when the provider was killed; `status --list` showed it with
+`execute_window_open: true`; a restart without `--rerun-safe` published
+`failed/provider_restarted`, and the buyer's `status` ended with that phase
+(exit 1, ledger entry `failed`, no second payment). Purchase `1cde4a…ea1d`
+was left `running` the same way; a restart with `--rerun-safe` logged
+`rerun_pending` then `rerun … completed`, and the buyer's `status` printed
+the rerun's output. Purchase `68ca67…12c2` was closed by hand with
+`status --finish … --cause operator_cancelled`, after which `--list` was
+empty.
+
 ### Spending policy and ledger (`x402 policy`, `x402 ledger`)
 
 Every buyer (`fetch`, `call`, `buy`) reads `~/.openagents/x402/policy.json`
