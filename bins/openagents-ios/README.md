@@ -19,7 +19,22 @@ The app has four tabs, shown as icons:
   the commands it ran with their output, and how the run ended. While Coder
   works, the send control stops the task (`task.cancel`). A message in a
   finished chat starts a new chat.
-- **Verse** and **Wallet** are placeholders.
+- **Verse** (globe) is Verse's bare world: the plaza's ground grid in white
+  and gray on a dark field, with your character in the center and nothing
+  else. It fills the screen behind the status bar and the tab bar. The
+  controls are Coder's: drag anywhere to look, push the stick at the bottom
+  left to walk, double-tap to jump, and pinch to zoom. The hand/gyroscope
+  icon switches touch and motion look, and the crosshair recenters the
+  camera. It joins no relay and reads no computers or chats. Rust draws the
+  world through Coder's mobile Verse surface in its bare mode
+  (`coder_mobile::VerseHandle::create_bare`, carried by
+  `openagents_verse_create`, `openagents_verse_call`, and
+  `openagents_verse_destroy`); the host (`host/App/VerseTab.swift`) mounts
+  the Metal layer and forwards touches and motion samples, and reuses
+  Coder's `PinchAdmission.swift` and `DeviceMotion.swift`. In simulator
+  builds, `--verse-script look,walk,jump,zoom,recenter` drives those
+  controls through the same touch path without touching the screen.
+- **Wallet** is a placeholder.
 - **Account** holds **Computers** (Coder's shared Computers screens: add a
   computer, access, activity, order work, terminal), **Chats on your
   computers** (the Claude, Codex, and Coder chats saved on every connected

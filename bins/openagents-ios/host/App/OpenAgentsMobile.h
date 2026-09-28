@@ -17,4 +17,12 @@ OpenAgentsMobileBuffer openagents_mobile_call(void *handle, const uint8_t *reque
 void openagents_mobile_buffer_free(OpenAgentsMobileBuffer buffer);
 void openagents_mobile_destroy(void *handle);
 
+// The Verse tab's world. Create, call, and destroy it on the main thread while
+// its CAMetalLayer stays alive. Results are released with
+// openagents_mobile_buffer_free; an empty result means the call failed.
+void *openagents_verse_create(void *layer, const uint8_t *configuration, size_t length);
+OpenAgentsMobileBuffer openagents_verse_create_error(void);
+OpenAgentsMobileBuffer openagents_verse_call(void *handle, const uint8_t *request, size_t length);
+void openagents_verse_destroy(void *handle);
+
 #endif

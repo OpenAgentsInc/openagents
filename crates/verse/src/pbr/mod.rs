@@ -277,6 +277,15 @@ impl Neon {
             time,
         }
     }
+
+    /// The bare world's stage: the plaza's, over the neutral field.
+    #[must_use]
+    pub fn neutral(time: f32) -> Self {
+        Self {
+            field: crate::palette::neutral(crate::palette::field()),
+            ..Self::plaza(time)
+        }
+    }
 }
 
 /// Everything the physical renderer needs about light and sky for one frame.

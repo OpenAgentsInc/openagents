@@ -8,6 +8,12 @@ the application and plaza palette. Loaded zones may use their own appearance.
 No OpenAgents identity, theme, world, or network
 implementation belongs to the reusable `rust-native` crate.
 
+The OpenAgents app's **Verse** tab mounts the same surface in its bare mode
+(`WorldRuntime::bare`): only the plaza's ground grid, drawn in the neutral
+palette (each amber step's lightness in white light), and the player with the
+controls below. It has no relay, map, zones, doors, computer, Gym, or
+companion. See [OpenAgents for iOS](../../bins/openagents-ios/README.md).
+
 ## Walk the world
 
 The world fills the entire display behind the system clock and home indicator.

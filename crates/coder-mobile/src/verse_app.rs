@@ -45,6 +45,11 @@ pub(crate) struct Config {
     /// it: request an extended-range surface.
     #[serde(default)]
     pub hdr: bool,
+    /// Mount Verse's bare world: the plaza grid in the neutral palette with
+    /// the same player controls and nothing else. It joins no relay and has
+    /// no map, zones, doors, computer, Gym, or companion.
+    #[serde(default)]
+    pub bare: bool,
 }
 
 #[derive(Deserialize)]
@@ -610,7 +615,17 @@ impl Scene {
             viewport,
         )
         .map_err(|e| e.to_string())?;
-        let selected_relay = if config.world_offline {
+        if config.bare
+            && (config.world_relay.is_some()
+                || config.gym_code.is_some()
+                || config.synthetic_gym
+                || config.door_preferences.is_some()
+                || config.zone_cache_directory.is_some()
+                || config.computer_hud)
+        {
+            return Err("The bare world has no network, zones, or panels".into());
+        }
+        let selected_relay = if config.world_offline || config.bare {
             None
         } else {
             config
@@ -633,7 +648,11 @@ impl Scene {
         if config.synthetic_gym && !config.synthetic {
             return Err("The Gym preview requires synthetic mode".into());
         }
-        let mut world = WorldRuntime::new();
+        let mut world = if config.bare {
+            WorldRuntime::bare()
+        } else {
+            WorldRuntime::new()
+        };
         if let Some(directory) = config.zone_cache_directory {
             if directory.is_empty()
                 || directory.len() > 4096
@@ -863,7 +882,8 @@ impl Scene {
             }
             return Ok(());
         }
-        if matches!(phase, PointerPhase::Down) {
+        // The bare world draws no map, zone, or door controls to touch.
+        if matches!(phase, PointerPhase::Down) && !self.world.is_bare() {
             let snapshot = self.zone_hud_snapshot();
             if self.zone_hud.down(id, point, &snapshot) {
                 self.cancel_taps();
@@ -1598,6 +1618,10 @@ impl Scene {
     }
 
     pub fn map_ui(&self) -> verse::ui::UiBatch {
+        if self.world.is_bare() {
+            // The movement stick is the bare world's only control.
+            return self.stick_ui();
+        }
         let mut ui = self.map.draw(
             &self.atlas,
             &self.map_snapshot(),
@@ -2124,6 +2148,7 @@ mod tests {
             zone_cache_directory: None,
             computer_hud: true,
             hdr: false,
+            bare: false,
         })
         .unwrap()
     }
@@ -2350,6 +2375,7 @@ mod tests {
             zone_cache_directory: None,
             computer_hud: true,
             hdr: false,
+            bare: false,
         })
         .unwrap()
     }
@@ -2423,6 +2449,7 @@ mod tests {
             zone_cache_directory: None,
             computer_hud: true,
             hdr: false,
+            bare: false,
         })
         .unwrap();
         restored.activate(true).unwrap();
@@ -3293,6 +3320,68 @@ mod tests {
         scene.pointer(1, PointerPhase::Down, 70.0, 530.0).unwrap();
         scene.pointer(1, PointerPhase::Up, x, y).unwrap();
         assert!(!scene.computer_open, "a tap must start on the monitor");
+    }
+
+    #[test]
+    fn the_bare_world_keeps_the_player_controls_and_nothing_else() {
+        let config = |relay: Option<&str>| Config {
+            secret_hex: "11".repeat(32),
+            width: 800,
+            height: 1200,
+            scale: 2.0,
+            synthetic: false,
+            gym_code: None,
+            synthetic_gym: false,
+            world_relay: relay.map(str::to_owned),
+            world_offline: false,
+            door_preferences: None,
+            zone_cache_directory: None,
+            computer_hud: false,
+            hdr: false,
+            bare: true,
+        };
+        assert!(Scene::new(config(Some("wss://relay.example.com"))).is_err());
+        let mut scene = Scene::new(config(None)).unwrap();
+        scene.activate(true).unwrap();
+        assert!(scene.world.is_bare() && scene.relay.is_none() && scene.session.is_none());
+        assert_eq!(scene.packet().connection.state, "offline");
+        scene.update(1.0).unwrap();
+        // The stick is the only drawn control; the map's corner looks instead.
+        assert_eq!(
+            scene.map_ui().vertices.len(),
+            scene.stick_ui().vertices.len()
+        );
+        let yaw = scene.world.player.yaw;
+        scene.pointer(1, PointerPhase::Down, 340.0, 60.0).unwrap();
+        scene.pointer(1, PointerPhase::Move, 300.0, 60.0).unwrap();
+        scene.pointer(1, PointerPhase::Up, 300.0, 60.0).unwrap();
+        assert_ne!(scene.world.player.yaw, yaw);
+        assert!(!scene.map_snapshot().expanded);
+        // The stick walks the player forward.
+        let start = scene.world.player.pos;
+        scene.pointer(2, PointerPhase::Down, 80.0, 520.0).unwrap();
+        scene.pointer(2, PointerPhase::Move, 80.0, 440.0).unwrap();
+        for frame in 1..=30 {
+            scene.update(1.0 + f64::from(frame) / 60.0).unwrap();
+        }
+        scene.pointer(2, PointerPhase::Up, 80.0, 440.0).unwrap();
+        assert!(scene.world.player.pos.distance(start) > 1.0);
+        // A double tap on open ground jumps.
+        for (id, at) in [(3, 10.0), (4, 10.1)] {
+            scene
+                .pointer_at(id, PointerPhase::Down, 200.0, 200.0, at)
+                .unwrap();
+            scene
+                .pointer_at(id, PointerPhase::Up, 200.0, 200.0, at + 0.05)
+                .unwrap();
+        }
+        assert!(scene.jump);
+        // Standing at the plaza computer's place opens nothing.
+        let mut desk = verse::world::COMPUTER;
+        desk.z -= 2.0;
+        scene.world.set_spawn(desk, 0.0).unwrap();
+        assert!(scene.action(Request::InteractComputer).is_err());
+        assert!(scene.world_target(200.0, 300.0).is_none());
     }
 
     #[test]

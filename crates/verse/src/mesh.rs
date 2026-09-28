@@ -124,6 +124,14 @@ impl Mesh {
         self.polyline_loop(&points, step);
     }
 
+    /// Redraws the amber lines and faces in the neutral palette
+    /// ([`palette::neutral`]). Physically lit channels are unchanged.
+    pub fn neutralize(&mut self) {
+        for vertex in self.lines.iter_mut().chain(self.faces.iter_mut()) {
+            vertex.color = palette::neutral(vertex.color);
+        }
+    }
+
     /// Appends everything in `other`.
     pub fn extend(&mut self, other: &Mesh) {
         self.lines.extend_from_slice(&other.lines);

@@ -106,6 +106,9 @@ pub struct WorldRuntime {
     pub zone_revision: u64,
     pub(crate) zone_state: crate::zones::State,
     pub(crate) navigation: Navigation,
+    /// The bare world: the plaza grid alone, with no objects, companion,
+    /// portals, or interactions, drawn in the neutral palette.
+    bare: bool,
 }
 
 impl Default for WorldRuntime {
@@ -131,7 +134,40 @@ impl WorldRuntime {
             zone_revision: 0,
             zone_state: crate::zones::State::default(),
             navigation: Navigation::default(),
+            bare: false,
         }
+    }
+
+    /// The bare world: the plaza's ground grid in the neutral palette, with
+    /// the same player, controller, and camera and nothing else. Its plaza
+    /// has no computer, Gym, doors, companion, or portals to reach.
+    #[must_use]
+    pub fn bare() -> Self {
+        Self {
+            world: world::bare(),
+            bare: true,
+            ..Self::new()
+        }
+    }
+
+    #[must_use]
+    pub fn is_bare(&self) -> bool {
+        self.bare
+    }
+
+    /// The plaza with its objects: not a zone and not the bare world.
+    pub(crate) fn furnished_plaza(&self) -> bool {
+        self.is_plaza() && !self.bare
+    }
+
+    /// The fog and clear color of the current world.
+    #[must_use]
+    pub fn atmosphere(&self) -> crate::zones::Atmosphere {
+        let mut atmosphere = crate::zones::atmosphere(self.zone);
+        if self.bare {
+            atmosphere.color = crate::palette::neutral(atmosphere.color);
+        }
+        atmosphere
     }
 
     /// Start ordinary walking to an exact clear ground position.
@@ -343,7 +379,7 @@ impl WorldRuntime {
         let distance = offset.x.hypot(offset.z);
         let clip = self.view(aspect).view_proj * world::COMPUTER_SCREEN.extend(1.0);
         let mut result = Computer {
-            near: self.is_plaza() && distance <= world::COMPUTER_RANGE,
+            near: self.furnished_plaza() && distance <= world::COMPUTER_RANGE,
             visible: false,
             screen_x: 0.5,
             screen_y: 0.5,
@@ -353,7 +389,7 @@ impl WorldRuntime {
             let ndc = clip.truncate() / clip.w;
             result.screen_x = (ndc.x * 0.5 + 0.5).clamp(0.0, 1.0);
             result.screen_y = (0.5 - ndc.y * 0.5).clamp(0.0, 1.0);
-            result.visible = self.is_plaza()
+            result.visible = self.furnished_plaza()
                 && (-1.0..=1.0).contains(&ndc.x)
                 && (-1.0..=1.0).contains(&ndc.y)
                 && (0.0..=1.0).contains(&ndc.z);
@@ -369,7 +405,7 @@ impl WorldRuntime {
         let distance = center.distance(shoulder);
         let clip = self.view(aspect).view_proj * center.extend(1.0);
         let mut result = Companion {
-            near: distance.is_finite() && distance <= COMPANION_RANGE,
+            near: !self.bare && distance.is_finite() && distance <= COMPANION_RANGE,
             visible: false,
             screen_x: 0.5,
             screen_y: 0.5,
@@ -450,7 +486,7 @@ impl WorldRuntime {
         let clip = self.view(aspect).view_proj * anchor.extend(1.0);
         let mut result = DoorProjection {
             id,
-            near: self.is_plaza()
+            near: self.furnished_plaza()
                 && distance.is_finite()
                 && distance <= doors::RANGE
                 && (0.0..=3.0).contains(&self.player.pos.y),
@@ -655,7 +691,7 @@ impl WorldRuntime {
     #[must_use]
     pub fn gym(&self, aspect: f32) -> Gym {
         let position = self.player.pos;
-        let inside = self.is_plaza()
+        let inside = self.furnished_plaza()
             && (36.5..59.5).contains(&position.x)
             && (-8.5..8.5).contains(&position.z)
             && (0.0..=4.5).contains(&position.y);
@@ -674,7 +710,7 @@ impl WorldRuntime {
             let ndc = clip.truncate() / clip.w;
             result.screen_x = (ndc.x * 0.5 + 0.5).clamp(0.0, 1.0);
             result.screen_y = (0.5 - ndc.y * 0.5).clamp(0.0, 1.0);
-            result.visible = self.is_plaza()
+            result.visible = self.furnished_plaza()
                 && (-1.0..=1.0).contains(&ndc.x)
                 && (-1.0..=1.0).contains(&ndc.y)
                 && (0.0..=1.0).contains(&ndc.z);
@@ -742,6 +778,13 @@ impl WorldRuntime {
     /// This changes presentation alone, without admitting a tap or any service.
     #[must_use]
     pub fn dynamic_mesh_with_interactions(&self, computer: bool, gym: bool) -> Mesh {
+        if self.bare {
+            // The player alone, on the neutral stage.
+            let mut player = avatar::mesh(&self.player, &self.gait);
+            player.neutralize();
+            player.neon = Some(crate::pbr::Neon::neutral(0.0));
+            return player;
+        }
         let mut dynamic = if self.is_plaza() {
             avatar::mesh(&self.player, &self.gait)
         } else {
@@ -852,6 +895,82 @@ mod tests {
     fn projected(runtime: &WorldRuntime, aspect: f32, at: Vec3) -> [f32; 2] {
         let clip = runtime.view(aspect).view_proj * at.extend(1.0);
         [clip.x / clip.w * 0.5 + 0.5, 0.5 - clip.y / clip.w * 0.5]
+    }
+
+    #[test]
+    fn the_bare_world_is_a_neutral_grid_with_only_the_player() {
+        let mut runtime = WorldRuntime::bare();
+        assert!(runtime.is_bare() && runtime.is_plaza());
+        assert!(runtime.world.blockers.is_empty());
+        assert!(runtime.world.mesh.faces.is_empty());
+        let full = WorldRuntime::new();
+        assert!(runtime.world.mesh.lines.len() < full.world.mesh.lines.len() / 4);
+        let gray = |v: &crate::mesh::Vertex| v.color[0] == v.color[1] && v.color[1] == v.color[2];
+        assert!(
+            runtime
+                .world
+                .mesh
+                .lines
+                .iter()
+                .all(|v| v.pos[1] == 0.0 && gray(v))
+        );
+        let dynamic = runtime.dynamic_mesh_with_interactions(true, true);
+        assert!(!dynamic.lines.is_empty());
+        assert!(dynamic.lines.iter().chain(&dynamic.faces).all(gray));
+        assert!(dynamic.lit.is_empty() && dynamic.glow.is_empty());
+        assert_eq!(dynamic.neon, Some(crate::pbr::Neon::neutral(0.0)));
+        let [r, g, b] = runtime.atmosphere().color;
+        assert!(r == g && g == b);
+        // Standing where the plaza's objects would be reaches none of them.
+        runtime
+            .set_spawn(world::COMPUTER + Vec3::Z * -2.0, 0.0)
+            .unwrap();
+        let computer = runtime.computer(1.0);
+        assert!(!computer.near && !computer.visible);
+        assert!(!runtime.computer_hit(1.0, computer.screen_x, computer.screen_y));
+        assert!(!runtime.companion(1.0).near && !runtime.pet_companion());
+        runtime
+            .set_spawn(world::GYM_BOARD - Vec3::X * 3.0, 0.0)
+            .unwrap();
+        assert!(!runtime.gym(1.0).inside);
+        for id in DoorId::ALL {
+            runtime
+                .set_spawn(id.position() - Vec3::Z * 3.0, 0.0)
+                .unwrap();
+            assert!(!runtime.door(id, 1.0).near);
+            assert!(runtime.nearest_door(1.0).is_none());
+        }
+        for (_, portal) in crate::zones::ZoneId::Plaza.portals() {
+            runtime.set_spawn(portal - Vec3::Z * 2.0, 0.0).unwrap();
+            assert!(runtime.zone_intent(crate::zones::Intent::Enter).is_err());
+            assert!(runtime.is_plaza());
+        }
+        // The player still walks and jumps through the shared controller,
+        // straight through where the computer's desk would block it.
+        runtime.set_spawn(world::SPAWN, 0.0).unwrap();
+        let start = runtime.player.pos;
+        let walk = InputState {
+            forward: true,
+            ..InputState::default()
+        };
+        for _ in 0..60 {
+            runtime.tick(&walk, 1.0 / 60.0);
+        }
+        assert!(
+            runtime.player.pos.z > world::COMPUTER.z + 1.0,
+            "{:?}",
+            runtime.player.pos
+        );
+        assert!(runtime.player.pos.distance(start) > 3.0);
+        runtime.tick(
+            &InputState {
+                jump: true,
+                ..InputState::default()
+            },
+            1.0 / 60.0,
+        );
+        runtime.tick(&InputState::default(), 0.1);
+        assert!(runtime.player.airborne());
     }
 
     #[test]

@@ -12,10 +12,17 @@ use std::ptr;
 /// 512 KiB view bound) with its input request and QR code.
 const MAX_REQUEST_BYTES: usize = 640 * 1024;
 
+/// A mounted Verse world and its renderer.
 pub struct VerseHandle {
     pub(crate) scene: Scene,
     pub(crate) renderer: Option<verse::render::Renderer>,
     pub(crate) rendered_zone_revision: u64,
+}
+
+/// The initial surface projection, before a world is mounted.
+#[must_use]
+pub fn blueprint_bytes() -> Vec<u8> {
+    serde_json::to_vec(&crate::verse_app::blueprint()).unwrap_or_default()
 }
 
 fn failure() -> CoderMobileBuffer {
@@ -73,8 +80,9 @@ pub unsafe extern "C" fn coder_verse_create(
 #[cfg(target_os = "ios")]
 fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, String> {
     let viewport = scene.lifecycle.viewport();
+    let atmosphere = scene.world.atmosphere();
     // The FFI contract keeps the native layer alive for this renderer's mount.
-    let renderer = unsafe {
+    let mut renderer = unsafe {
         verse::render::Renderer::from_metal_layer(
             layer,
             viewport.width().max(1),
@@ -90,6 +98,7 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
             },
         )
     }?;
+    renderer.set_atmosphere(atmosphere)?;
     Ok(VerseHandle {
         rendered_zone_revision: scene.world.zone_revision,
         scene,
@@ -126,6 +135,47 @@ pub unsafe extern "C" fn coder_verse_call(
 }
 
 impl VerseHandle {
+    /// Mounts Verse's bare world on a Metal layer: the plaza's ground grid in
+    /// the neutral palette, with Coder's player, touch, and motion controls
+    /// and nothing else. It joins no relay and uses a throwaway identity.
+    ///
+    /// # Safety
+    /// As `coder_verse_create`: `layer` must be a live CAMetalLayer owned by
+    /// the calling main thread, and the handle must be dropped before it.
+    pub unsafe fn create_bare(
+        layer: *mut c_void,
+        width: u32,
+        height: u32,
+        scale: f32,
+        hdr: bool,
+    ) -> Result<Self, String> {
+        if layer.is_null() {
+            return Err("No native layer to draw in".into());
+        }
+        let secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+        let scene = Scene::new(Config {
+            secret_hex: secret
+                .secret_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect(),
+            width,
+            height,
+            scale,
+            synthetic: false,
+            gym_code: None,
+            synthetic_gym: false,
+            world_relay: None,
+            world_offline: true,
+            door_preferences: None,
+            zone_cache_directory: None,
+            computer_hud: false,
+            hdr,
+            bare: true,
+        })?;
+        create_renderer(layer, scene)
+    }
+
     /// Android can lose its native window while retaining the application scene.
     /// Suspend effects and release the renderer before its window is released.
     #[cfg(any(target_os = "android", test))]
@@ -135,7 +185,9 @@ impl VerseHandle {
         result
     }
 
-    pub(crate) fn call_bytes(&mut self, bytes: &[u8]) -> Result<Vec<u8>, String> {
+    /// Applies one JSON request and returns the JSON packet that follows it,
+    /// as `coder_verse_call` does. Call on the creating main thread.
+    pub fn call_bytes(&mut self, bytes: &[u8]) -> Result<Vec<u8>, String> {
         if bytes.is_empty() || bytes.len() > MAX_REQUEST_BYTES {
             return Err("Native Verse request exceeds its size limit".into());
         }
@@ -205,7 +257,7 @@ impl VerseHandle {
                 if let Some(dt) = self.scene.update(timestamp)? {
                     if self.rendered_zone_revision != self.scene.world.zone_revision {
                         renderer.replace_world(&self.scene.world.world.mesh)?;
-                        renderer.set_atmosphere(verse::zones::atmosphere(self.scene.world.zone))?;
+                        renderer.set_atmosphere(self.scene.world.atmosphere())?;
                         self.rendered_zone_revision = self.scene.world.zone_revision;
                     }
                     let mut mesh = self.scene.world.dynamic_mesh_with_interactions(true, true);
@@ -289,6 +341,7 @@ mod tests {
             zone_cache_directory: None,
             computer_hud: true,
             hdr: false,
+            bare: false,
         })
         .unwrap();
         let mut handle = VerseHandle {

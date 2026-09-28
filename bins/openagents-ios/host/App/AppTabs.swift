@@ -67,7 +67,7 @@ struct AppTabs: View {
         TabView(selection: $tab) {
             CoderTab(bridge: bridge)
                 .tabIcon(.coder)
-            ComingSoonScreen(title: "Verse")
+            VerseTab(selected: tab == .verse)
                 .tabIcon(.verse)
             ComingSoonScreen(title: "Wallet")
                 .tabIcon(.wallet)

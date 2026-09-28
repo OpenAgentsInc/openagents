@@ -21,6 +21,9 @@ coder-host = { path = "../coder-host", default-features = false }
 # transcript pages, and readable projections of Claude and Codex records.
 coder-connect = { path = "../coder-connect", default-features = false }
 coder-history = { path = "../coder-history", default-features = false }
+# The Verse tab: Coder's mobile Verse surface in its bare-world mode. Its
+# reader and C exports are not called; the app linker strips them.
+coder-mobile = { path = "../coder-mobile" }
 base64 = "0.22"
 rust-native = { path = "../rust-native" }
 # Linking tailscale-rs (aws-lc-rs) beside the host client (ring) enables two

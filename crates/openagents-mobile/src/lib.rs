@@ -8,7 +8,8 @@
 //! them (tasks and terminals). **Coder** starts a chat with Coder on a
 //! computer as a NIP-HOST task and follows it. **Chats** lists the Claude and Codex chats
 //! saved on every computer paired for reading. **Tailnet** lists the devices on the user's
-//! tailnet through Tailscale's control server.
+//! tailnet through Tailscale's control server. **Verse** mounts Verse's bare
+//! world, the plaza grid with Coder's player controls, on a native Metal layer.
 
 mod app;
 mod chats;
@@ -16,6 +17,7 @@ mod coder_tab;
 mod conversation;
 mod tailnet;
 mod tailnet_view;
+mod verse;
 
 pub use app::{App, Config, Packet, Request};
 

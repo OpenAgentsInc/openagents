@@ -584,7 +584,7 @@ impl WorldRuntime {
         let view = self.view(aspect);
         let clip = view.view_proj * anchor.extend(1.0);
         let mut p = PortalProjection {
-            near: self.portal_in_reach(at),
+            near: !self.is_bare() && self.portal_in_reach(at),
             visible: false,
             screen_x: 0.5,
             screen_y: 0.5,

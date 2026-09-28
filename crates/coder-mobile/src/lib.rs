@@ -13,6 +13,7 @@ mod verse_ffi;
 pub use app::{App, Config, Packet, Reply, Request};
 pub use coder_computers::terminal::screen::TerminalPacket;
 pub use push::PushConfig;
+pub use verse_ffi::{VerseHandle, blueprint_bytes as verse_blueprint};
 
 #[cfg(test)]
 mod tests;

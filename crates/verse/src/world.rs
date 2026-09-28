@@ -96,6 +96,16 @@ pub fn build() -> World {
     world
 }
 
+/// Builds the bare world: the plaza's ground grid alone, in the neutral
+/// palette. Nothing stands on it and nothing blocks walking.
+#[must_use]
+pub fn bare() -> World {
+    let mut world = World::default();
+    ground(&mut world.mesh);
+    world.mesh.neutralize();
+    world
+}
+
 fn computer(world: &mut World) {
     let c = COMPUTER;
     let mesh = &mut world.mesh;

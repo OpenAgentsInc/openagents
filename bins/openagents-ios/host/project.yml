@@ -29,6 +29,11 @@ targets:
         group: App/Shared
       - path: ../../coder-ios/host/App/TerminalKeyboard.swift
         group: App/Shared
+      # Coder's world controls: pinch admission and the motion sensor.
+      - path: ../../coder-ios/host/App/PinchAdmission.swift
+        group: App/Shared
+      - path: ../../coder-ios/host/App/DeviceMotion.swift
+        group: App/Shared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app
@@ -45,7 +50,7 @@ targets:
         INFOPLIST_FILE: App/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_OBJC_BRIDGING_HEADER: App/OpenAgentsMobile.h
-        OTHER_LDFLAGS: '$(inherited) "$(OPENAGENTS_RUST_LIBRARY_DIR)/libopenagents_mobile.a" -liconv'
+        OTHER_LDFLAGS: '$(inherited) "$(OPENAGENTS_RUST_LIBRARY_DIR)/libopenagents_mobile.a" -framework Metal -liconv'
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
         DEAD_CODE_STRIPPING: YES
 schemes:

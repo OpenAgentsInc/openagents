@@ -22,6 +22,17 @@ pub fn field() -> Linear {
     linear(NEAR_BLACK)
 }
 
+/// The neutral palette: the same ladder step in white light.
+///
+/// Every amber step keeps its full red channel, so the red channel alone is
+/// the step's lightness. Carrying it to all three channels turns `Full` into
+/// white, the lower steps into grays, and the near-black field into a
+/// neutral near-black. The bare world draws in this palette.
+#[must_use]
+pub fn neutral(color: Linear) -> Linear {
+    [color[0]; 3]
+}
+
 /// Converts a packed `0xRRGGBB` sRGB value into linear light.
 #[must_use]
 pub fn linear(rgb: u32) -> Linear {
@@ -47,6 +58,17 @@ mod tests {
         assert!((r - 1.0).abs() < 1e-6);
         assert!(g > 0.4 && g < 0.45, "0xb0 in linear light, got {g}");
         assert_eq!(b, 0.0);
+    }
+
+    #[test]
+    fn neutral_steps_are_gray_and_full_is_white() {
+        assert_eq!(neutral(amber(Intensity::Full)), [1.0; 3]);
+        for step in Intensity::ALL {
+            let [r, g, b] = neutral(amber(step));
+            assert!(r == g && g == b && r > 0.0);
+        }
+        let [r, g, b] = neutral(field());
+        assert!(r == g && g == b && r < 0.01);
     }
 
     #[test]
