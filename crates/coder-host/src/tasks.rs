@@ -12,8 +12,8 @@
 //! running context, and a cancel requests a stop.
 
 use coder_access::Code;
-use coder_access::protocol::{TaskCommand, TaskCreate};
-use nostr::activity_summary::Phase;
+use coder_access::protocol::{QueueEdit, TaskCommand, TaskCreate, TaskQueue};
+use nostr::activity_summary::{Attention, Phase};
 
 /// A task after an accepted operation.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,6 +35,11 @@ pub enum Note {
     /// running, or stopped when the last one refused. `until` is the
     /// earliest reset, in Unix seconds, when a provider reported one.
     NoCapacity { until: Option<u64> },
+    /// The engine ended its turn with a question and waits for an answer.
+    Question,
+    /// The engine ended its turn asking to approve a step and waits for the
+    /// answer.
+    Approval,
 }
 
 impl Note {
@@ -47,6 +52,19 @@ impl Note {
                 format!("No model capacity until {}", utc(until))
             }
             Note::NoCapacity { until: None } => "No model capacity".to_owned(),
+            Note::Question => "Coder asked a question".to_owned(),
+            Note::Approval => "Coder asked for approval".to_owned(),
+        }
+    }
+
+    /// The attention a summary with this note carries: a waiting question
+    /// asks for input, a waiting approval for an approval.
+    #[must_use]
+    pub fn attention(self) -> Option<Attention> {
+        match self {
+            Note::NoCapacity { .. } => None,
+            Note::Question => Some(Attention::Input),
+            Note::Approval => Some(Attention::Approval),
         }
     }
 }
@@ -123,11 +141,6 @@ pub trait Tasks: Send + Sync {
         Err(Code::Unsupported)
     }
 
-    /// Every listed task's current revision and phase, including changes
-    /// made outside a device operation, such as an auto-started run
-    /// finishing. Archived tasks are not listed.
-    /// The host publishes a summary when a revision changes. The default
-    /// reports none.
     /// Record and evaluate a durable task command. The device's command ID
     /// is its idempotency key across NIP-HOST requests: a replay returns
     /// the recorded disposition and never runs the command twice. The
@@ -135,7 +148,30 @@ pub trait Tasks: Send + Sync {
     ///
     /// # Errors
     /// Returns the NIP-HOST refusal code the device receives.
-    fn command(&self, _principal: &Principal, _command: &TaskCommand) -> Result<TaskRef, Code> {
+    fn command(
+        &self,
+        _principal: &Principal,
+        _command: &TaskCommand,
+        _standing: Standing<'_>,
+    ) -> Result<TaskRef, Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// List or edit a task's held messages for `principal`: the edit lease,
+    /// and changes to this device's own messages under it. `standing`
+    /// rechecks each sender whose held message the edit lets run. Returns
+    /// the queue, and the task when the edit changed it, such as a message
+    /// sent now. The default refuses as `unsupported`.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn queue(
+        &self,
+        _principal: &Principal,
+        _task: &str,
+        _edit: &QueueEdit,
+        _standing: Standing<'_>,
+    ) -> Result<(TaskQueue, Option<TaskRef>), Code> {
         Err(Code::Unsupported)
     }
 
@@ -145,6 +181,11 @@ pub trait Tasks: Send + Sync {
     /// async runtime. The default does nothing.
     fn tick(&self, _standing: Standing<'_>) {}
 
+    /// Every listed task's current revision and phase, including changes
+    /// made outside a device operation, such as an auto-started run
+    /// finishing. Archived tasks are not listed.
+    /// The host publishes a summary when a revision changes. The default
+    /// reports none.
     fn current(&self) -> Vec<TaskRef> {
         Vec::new()
     }
@@ -176,7 +217,7 @@ impl Tasks for NoTasks {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nostr::activity_summary::{self, Attention, SubjectKind, SummaryDraft};
+    use nostr::activity_summary::{self, SubjectKind, SummaryDraft};
 
     #[test]
     fn a_no_capacity_note_survives_the_summary_disclosure_rules() {
@@ -204,5 +245,29 @@ mod tests {
             Note::NoCapacity { until: None }.headline(),
             "No model capacity"
         );
+    }
+
+    #[test]
+    fn a_waiting_question_or_approval_asks_for_attention_without_its_text() {
+        for (note, attention) in [
+            (Note::Question, Attention::Input),
+            (Note::Approval, Attention::Approval),
+        ] {
+            assert_eq!(note.attention(), Some(attention));
+            let headline = note.headline();
+            let summary = activity_summary::encode(&SummaryDraft {
+                host: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+                subject_kind: SubjectKind::Task,
+                subject: &"a".repeat(64),
+                sequence: 3,
+                phase: Phase::Waiting,
+                headline: &headline,
+                attention,
+                updated_at: 1_790_572_210,
+            })
+            .unwrap();
+            assert_eq!(summary.attention, attention);
+        }
+        assert_eq!(Note::NoCapacity { until: None }.attention(), None);
     }
 }

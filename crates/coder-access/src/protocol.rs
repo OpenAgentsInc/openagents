@@ -301,6 +301,97 @@ impl TaskCommand {
     }
 }
 
+/// The most held messages a `queue` outcome lists, and a reorder names.
+pub const MAX_QUEUE: usize = 64;
+
+/// One change to a task's queued messages (`task.queue`). Changes need the
+/// device's current edit lease.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+pub enum QueueEdit {
+    /// Read the queue.
+    List {},
+    /// Take or renew the edit lease. While a device holds it, queued
+    /// messages wait even when the turn ends.
+    Lease {},
+    /// Give the lease up.
+    Release {},
+    /// Replace the text of this device's own held message.
+    Edit { command: String, text: String },
+    /// Remove this device's own held message.
+    Remove { command: String },
+    /// Put the queued messages in this exact order.
+    Reorder { commands: Vec<String> },
+    /// Send this device's own held message now, as the engine's emulated
+    /// steering: stop the turn and continue with it, ahead of the queue.
+    SendNow { command: String },
+}
+
+impl QueueEdit {
+    fn validate(&self) -> Result<()> {
+        match self {
+            Self::List {} | Self::Lease {} | Self::Release {} => Ok(()),
+            Self::Remove { command } | Self::SendNow { command } => {
+                identity(command).map_err(Error::from)
+            }
+            Self::Edit { command, text } => {
+                identity(command).map_err(Error::from)?;
+                if text.trim().is_empty() || text.len() > 16 * 1024 {
+                    return fail(Code::Bounds, "queued message exceeds its bound");
+                }
+                Ok(())
+            }
+            Self::Reorder { commands } => {
+                if commands.len() > MAX_QUEUE {
+                    return fail(Code::Bounds, "too many queued messages");
+                }
+                for (index, command) in commands.iter().enumerate() {
+                    identity(command).map_err(Error::from)?;
+                    if commands[..index].contains(command) {
+                        return fail(Code::Malformed, "a reorder names a message twice");
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+/// A device's edit lease on a task's queue.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QueueLease {
+    pub device: String,
+    /// Host time it lapses unless renewed.
+    pub expires_at: u64,
+}
+
+/// One held message.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QueueItem {
+    /// The command ID its device minted.
+    pub command: String,
+    /// The device that sent it.
+    pub device: String,
+    /// Its text, only for the device that sent it; null for another's.
+    pub text: Option<String>,
+    /// It runs before queued messages: an emulated steer waiting for its
+    /// stop, or a message sent now.
+    pub priority: bool,
+}
+
+/// A task's held messages, in the order they run.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskQueue {
+    pub task: String,
+    /// The task's revision.
+    pub revision: u64,
+    pub lease: Option<QueueLease>,
+    pub items: Vec<QueueItem>,
+}
+
 /// Typed operations. Each names the one right it requires.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
@@ -364,6 +455,9 @@ pub enum Operation {
     /// A durable task command: send, queue, steer, interrupt, or answer.
     #[serde(rename = "task.command")]
     CommandTask { command: TaskCommand },
+    /// List or edit a task's queued messages.
+    #[serde(rename = "task.queue")]
+    QueueTask { task: String, edit: QueueEdit },
 }
 impl Operation {
     pub fn name(&self) -> &'static str {
@@ -382,6 +476,7 @@ impl Operation {
             Self::ArchiveTask { .. } => "task.archive",
             Self::ListWorkspaces {} => "workspace.list",
             Self::CommandTask { .. } => "task.command",
+            Self::QueueTask { .. } => "task.queue",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -400,7 +495,8 @@ impl Operation {
             | Self::CancelTask { .. }
             | Self::ArchiveTask { .. }
             | Self::ListWorkspaces {}
-            | Self::CommandTask { .. } => Some(Right::Operate),
+            | Self::CommandTask { .. }
+            | Self::QueueTask { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -476,6 +572,10 @@ impl Operation {
             }
             Self::ArchiveTask { task } => identity(task).map_err(Error::from)?,
             Self::CommandTask { command } => command.validate()?,
+            Self::QueueTask { task, edit } => {
+                identity(task).map_err(Error::from)?;
+                edit.validate()?;
+            }
         }
         Ok(())
     }
@@ -582,6 +682,10 @@ pub enum Outcome {
     Workspaces {
         workspaces: Vec<String>,
     },
+    /// A task's held messages after a `task.queue` operation.
+    Queue {
+        queue: TaskQueue,
+    },
 }
 
 /// The most workspace labels a `workspaces` outcome carries.
@@ -595,6 +699,26 @@ impl Outcome {
     /// # Errors
     /// Refuses a list over its bounds, unsorted, or with a bad label.
     pub fn validate(&self) -> Result<()> {
+        if let Self::Queue { queue } = self {
+            identity(&queue.task).map_err(Error::from)?;
+            if queue.items.len() > MAX_QUEUE {
+                return fail(Code::Bounds, "too many queued messages");
+            }
+            for item in &queue.items {
+                identity(&item.command).map_err(Error::from)?;
+                public(&item.device)?;
+                if item
+                    .text
+                    .as_ref()
+                    .is_some_and(|text| text.len() > 16 * 1024)
+                {
+                    return fail(Code::Bounds, "queued message exceeds its bound");
+                }
+            }
+            if let Some(lease) = &queue.lease {
+                public(&lease.device)?;
+            }
+        }
         if let Self::Workspaces { workspaces } = self {
             if workspaces.len() > MAX_WORKSPACES {
                 return fail(Code::Bounds, "too many workspaces");
@@ -619,6 +743,7 @@ impl Outcome {
             | (Operation::ListDevices {}, Self::Devices { .. })
             | (Operation::Revoke { .. }, Self::Revoked { .. })
             | (Operation::ListWorkspaces {}, Self::Workspaces { .. }) => true,
+            (Operation::QueueTask { task, .. }, Self::Queue { queue }) => queue.task == *task,
             (
                 Operation::CreateTask { .. }
                 | Operation::OpenTerminal { .. }

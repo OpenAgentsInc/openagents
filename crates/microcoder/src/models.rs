@@ -284,6 +284,24 @@ pub struct NextAction {
     /// before the field existed.
     #[serde(default)]
     pub reply: String,
+    /// The step asks the user, whose answer starts the next turn: an open
+    /// question, or approval of a step before the engine takes it. The
+    /// question is `reply`. `none` on every other step; absent in replies
+    /// recorded before the field existed.
+    #[serde(default)]
+    pub ask: Ask,
+}
+
+/// What a step asks of the user.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Ask {
+    #[default]
+    None,
+    /// An open question; the user answers in words.
+    Question,
+    /// Approval of a step the reply names; the user approves or denies.
+    Approval,
 }
 
 /// The JSON schema of [`NextAction`].
@@ -321,10 +339,15 @@ pub fn next_action_schema() -> Value {
             },
             "reply": {
                 "type": "string",
-                "description": "Your reply to the user, the only text they see. When finished is true: the answer to their message, or what you did and found, written to them directly in plain prose or Markdown. Never describe your process, the task, or being finished. Empty on every other step."
+                "description": "Your reply to the user, the only text they see. When finished is true: the answer to their message, or what you did and found, written to them directly in plain prose or Markdown. When ask is not none: your question, or the step you want approved and why. Never describe your process, the task, or being finished. Empty on every other step."
+            },
+            "ask": {
+                "type": "string",
+                "enum": ["none", "question", "approval"],
+                "description": "none on almost every step. question when you cannot go on without an answer only the user has, such as a choice between approaches they must make; approval when a step has consequences the user should approve first, such as deleting data or pushing. Asking ends your turn with no commands; the reply holds the question, and the user's answer starts your next turn."
             }
         },
-        "required": ["rationale", "commands", "view", "freeze_tests", "expand", "finished", "reply"],
+        "required": ["rationale", "commands", "view", "freeze_tests", "expand", "finished", "reply", "ask"],
         "additionalProperties": false
     })
 }
@@ -823,7 +846,8 @@ mod tests {
                 "freeze_tests",
                 "expand",
                 "finished",
-                "reply"
+                "reply",
+                "ask"
             ])
         );
         // An action recorded before replies existed still parses.
@@ -831,7 +855,7 @@ mod tests {
             r#"{"rationale":"r","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true}"#,
         )
         .unwrap();
-        assert!(old.finished && old.reply.is_empty());
+        assert!(old.finished && old.reply.is_empty() && old.ask == Ask::None);
         assert_eq!(schema["additionalProperties"], false);
     }
 }

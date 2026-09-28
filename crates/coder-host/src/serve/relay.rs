@@ -6,6 +6,7 @@
 //! request or a terminal request is ignored, and an unknown key earns no
 //! reply.
 
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -37,6 +38,9 @@ pub(super) async fn serve(shared: Arc<Shared>, ready: oneshot::Sender<()>) {
 }
 
 async fn serve_one(shared: Arc<Shared>, relay: String, mut ready: Option<oneshot::Sender<()>>) {
+    // When the last subscription connected, by the wall clock, which keeps
+    // counting while the machine sleeps.
+    let mut connected_at: Option<u64> = None;
     loop {
         let mut receiver =
             match Receiver::connect(&relay, &shared.secret, shared.config.policy).await {
@@ -49,6 +53,14 @@ async fn serve_one(shared: Arc<Shared>, relay: String, mut ready: Option<oneshot
         if let Some(ready) = ready.take() {
             let _ = ready.send(());
         }
+        // A subscription replays its last minute, so an ordinary renewal
+        // misses nothing. After a longer gap, such as the machine sleeping,
+        // nudges sent meanwhile wait on the relay.
+        let now = unix_time().unwrap_or_default();
+        if connected_at.is_none_or(|at| now.saturating_sub(at) > CATCH_UP_GAP) {
+            tokio::spawn(catch_up(shared.clone(), relay.clone()));
+        }
+        connected_at = Some(now);
         // The subscription ends with the connection's lifetime or frame
         // budget; reconnecting replays the last minute, and every path below
         // answers an exact retry with its original result.
@@ -66,6 +78,10 @@ async fn serve_one(shared: Arc<Shared>, relay: String, mut ready: Option<oneshot
                 }
                 Some(schema) if schema.starts_with("openagents.terminal-") => {
                     tokio::spawn(terminal_request(shared.clone(), relay.clone(), event));
+                }
+                Some(crate::nudge::SCHEMA) => {
+                    let shared = shared.clone();
+                    tokio::spawn(async move { nudged(&shared, &event).await });
                 }
                 _ => {}
             }
@@ -193,5 +209,165 @@ impl FrameSink for RelaySink {
         } else {
             Err(SinkError::Full)
         }
+    }
+}
+
+/// The most nudge event IDs a host remembers answering.
+const REMEMBERED: usize = 1024;
+/// The wall-clock time between two subscriptions past which the host reads
+/// stored nudges: longer than a subscription's life and its renewal.
+const CATCH_UP_GAP: u64 = 150;
+/// How long a catch-up read of stored nudges may take.
+const CATCH_UP_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The nudges this process answered and when it last answered each device.
+#[derive(Debug, Default)]
+pub(crate) struct Answered {
+    events: BTreeSet<String>,
+    order: VecDeque<String>,
+    devices: BTreeMap<String, u64>,
+}
+
+impl Answered {
+    /// Whether to answer this nudge now: it is new to this process, and the
+    /// device was not answered in the last [`crate::nudge::MIN_INTERVAL`].
+    fn admit(&mut self, event: &str, device: &str, now: u64) -> bool {
+        if self.events.contains(event) {
+            return false;
+        }
+        self.events.insert(event.to_owned());
+        self.order.push_back(event.to_owned());
+        if self.order.len() > REMEMBERED
+            && let Some(oldest) = self.order.pop_front()
+        {
+            self.events.remove(&oldest);
+        }
+        let recent = self
+            .devices
+            .get(device)
+            .is_some_and(|at| now < at + crate::nudge::MIN_INTERVAL);
+        if !recent {
+            self.devices.insert(device.to_owned(), now);
+        }
+        !recent
+    }
+}
+
+/// Answer one nudge: from a device whose grant is current, evaluate held
+/// commands and publish presence and hints to that device now. Anything
+/// else is ignored.
+pub(super) async fn nudged(shared: &Arc<Shared>, event: &Event) {
+    let Ok(now) = unix_time() else { return };
+    let Ok(nudge) = crate::nudge::Nudge::open(event, &shared.secret, now) else {
+        return;
+    };
+    if !shared
+        .authority
+        .active_devices(None, now)
+        .contains(&nudge.device)
+    {
+        return;
+    }
+    let admitted = shared
+        .nudges
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .admit(&event.id, &nudge.device, now);
+    if !admitted {
+        return;
+    }
+    let tasks = shared.tasks.clone();
+    let authority = shared.authority.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        let standing = |principal: &crate::tasks::Principal| super::standing(&authority, principal);
+        tasks.tick(&standing);
+    })
+    .await;
+    super::publish_reach_to(shared, &nudge.device, now).await;
+}
+
+/// Read the nudges enrolled devices left on `relay` within a command's
+/// lifetime and answer each new one.
+async fn catch_up(shared: Arc<Shared>, relay: String) {
+    let Ok(now) = unix_time() else { return };
+    let mailboxes: Vec<String> = shared
+        .authority
+        .active_devices(None, now)
+        .iter()
+        .take(64)
+        .filter_map(|device| {
+            crate::mailbox::mailbox(&shared.secret, device, crate::mailbox::Stream::Nudges).ok()
+        })
+        .collect();
+    if mailboxes.is_empty() {
+        return;
+    }
+    let filter = serde_json::json!({
+        "kinds": [nostr::contracts::ARTIFACT_ENVELOPE_KIND],
+        "#p": [shared.host_key],
+        "#h": mailboxes,
+        "since": now.saturating_sub(crate::nudge::LIFETIME),
+    });
+    let read = tokio::time::timeout(CATCH_UP_TIMEOUT, async {
+        let mut socket =
+            nostr_transport::Connection::connect(&relay, &shared.secret, CATCH_UP_TIMEOUT)
+                .await
+                .ok()?;
+        let id = coder_reach::new_id();
+        socket
+            .send(serde_json::json!(["REQ", id, filter]))
+            .await
+            .ok()?;
+        let mut events = Vec::new();
+        loop {
+            let frame = socket.next().await.ok()?;
+            if frame[1] != id.as_str() {
+                continue;
+            }
+            match frame[0].as_str() {
+                Some("EVENT") if events.len() < 256 => {
+                    if let Ok(event) = serde_json::from_value::<Event>(frame[2].clone()) {
+                        events.push(event);
+                    }
+                }
+                Some("EOSE" | "CLOSED") => break,
+                _ => {}
+            }
+        }
+        let _ = socket.close().await;
+        Some(events)
+    })
+    .await;
+    let Ok(Some(mut events)) = read else { return };
+    // The newest nudge per device is enough.
+    events.sort_by_key(|event| std::cmp::Reverse(event.created_at));
+    let mut seen = BTreeSet::new();
+    for event in events {
+        if seen.insert(event.pubkey.clone()) {
+            nudged(&shared, &event).await;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_nudge_is_answered_once_and_a_device_at_most_every_interval() {
+        let mut answered = Answered::default();
+        let now = 1_790_000_000;
+        assert!(answered.admit("a", "phone", now));
+        // The same nudge read again after a reconnect.
+        assert!(!answered.admit("a", "phone", now + 600));
+        // Another nudge from the same device soon after.
+        assert!(!answered.admit("b", "phone", now + 1));
+        assert!(answered.admit("c", "tablet", now + 1));
+        assert!(answered.admit("d", "phone", now + crate::nudge::MIN_INTERVAL));
+        // The memory of answered nudges is bounded.
+        for index in 0..REMEMBERED + 10 {
+            answered.admit(&index.to_string(), "laptop", now);
+        }
+        assert!(answered.events.len() <= REMEMBERED);
     }
 }

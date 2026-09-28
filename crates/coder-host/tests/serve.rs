@@ -307,3 +307,35 @@ async fn a_channel_for_another_generation_or_an_unknown_grant_is_refused() {
     assert_eq!(refused.code, coder_host::reach::Refusal::NotAdmitted);
     fixture.running.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_nudge_from_an_enrolled_device_brings_fresh_presence_at_once() {
+    let fixture = fixture(3).await;
+    let device = fixture.enroll(Rights::standard()).await;
+    // The host publishes presence when the device set changes.
+    let mut first = None;
+    for _ in 0..100 {
+        if let Ok(reach) = fetch_reach(&device, &fixture.relay).await {
+            first = Some(reach.presence.presence.observed_at);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let first = first.expect("the host published presence");
+    // Presence repeats only every minute; a nudge brings it now.
+    tokio::time::sleep(Duration::from_millis(1_100)).await;
+    coder_host::client::nudge(&device, &fixture.relay)
+        .await
+        .unwrap();
+    let mut fresh = false;
+    for _ in 0..50 {
+        let reach = fetch_reach(&device, &fixture.relay).await.unwrap();
+        if reach.presence.presence.observed_at > first {
+            fresh = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(fresh, "the nudge brought no fresh presence");
+    fixture.running.shutdown().await;
+}

@@ -257,8 +257,11 @@ NIP-HOST `task.command` is the host-wide device form of these commands for
 the task owner's single-lineage tasks: `send` is `submit` of the next turn
 against an ended task, `queue` is `enqueue` with promotion when the turn
 ends, `steer` and `interrupt` keep the meanings here, and emulated steering
-runs only when the device set `emulate`. Its evaluation order and replay
-rules are in [HOST](NIP-HOST.md#operations).
+runs only when the device set `emulate`, and `answer` responds to the
+ended turn's question or approval request, where the first answer wins.
+HOST `task.queue` is the device form of `cancel_queued` and `reorder`, with
+an edit lease that holds promotion while a device edits. Its evaluation
+order and replay rules are in [HOST](NIP-HOST.md#operations).
 
 Interrupt asks the engine to stop the exact turn. Its receipt records the
 request, followed separately by observed stop, failure, or unknown state.

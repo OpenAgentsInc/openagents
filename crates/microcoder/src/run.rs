@@ -26,7 +26,7 @@ use serde_json::json;
 use crate::env::Env;
 use crate::gate::{Checked, GateState, Gates, OracleLimits, OracleReport, OracleStep};
 use crate::models::{
-    Generate, Generated, Judge, Judgment, NextAction, QuestionSet, conform_set, coverage_set,
+    Ask, Generate, Generated, Judge, Judgment, NextAction, QuestionSet, conform_set, coverage_set,
     dispute_set, knowledge_set, relevance_set,
 };
 use crate::state::{Action, CommandResult, Dropped, Kept, State, Test, cut};
@@ -60,6 +60,14 @@ empty one keeps them.";
 pub const CREDIBLE_SYSTEM: &str = " When you set `finished`, say in the rationale whether the \
 solution is credible: whether it meets every requirement the task states, not only whether the \
 tests pass, and name anything you doubt.";
+
+/// What every generation is also told when the user can answer a question
+/// ([`Limits::ask`]).
+pub const ASK_SYSTEM: &str = " When you cannot go on without the user, such as a choice \
+only they can make, set `ask` to question; before a step with consequences they should \
+approve, such as deleting data or pushing, set it to approval. Either way run no commands and \
+put the question, or the step and why, in `reply`: your turn ends, and their answer starts \
+the next one. Don't ask what you can find out yourself.";
 
 /// Knowledge-base candidates Jev judges each step, at most.
 pub const KB_CANDIDATES: usize = 20;
@@ -130,6 +138,10 @@ pub struct Limits {
     /// What a green run must get past before it ends, and the blind
     /// oracle. All off by default.
     pub gates: Gates,
+    /// Whether a step may end the turn by asking the user (see
+    /// [`ASK_SYSTEM`]). Off by default: in a run nobody answers, such as a
+    /// benchmark, a step that asks is told so and the loop goes on.
+    pub ask: bool,
 }
 
 /// When the stronger model writes the acceptance tests.
@@ -163,6 +175,7 @@ impl Default for Limits {
             route: Route::Never,
             strong_steps: 8,
             gates: Gates::default(),
+            ask: false,
         }
     }
 }
@@ -189,6 +202,11 @@ pub enum Ending {
     /// earliest one resets at `resets_at`, in Unix seconds, when known.
     NoCapacity {
         resets_at: Option<u64>,
+    },
+    /// The step asked the user, and the turn waits for the answer. The
+    /// question is the step's reply.
+    Asked {
+        ask: Ask,
     },
 }
 
@@ -1054,6 +1072,9 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     if limits.acceptance && limits.gates.credible {
         system.push_str(CREDIBLE_SYSTEM);
     }
+    if limits.ask {
+        system.push_str(ASK_SYSTEM);
+    }
     let mut gate_memory = GateState::default();
     if limits.acceptance && limits.gates.oracle {
         let oracle_limits = OracleLimits {
@@ -1244,6 +1265,28 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             if !ids.is_empty() {
                 state.expanded = ids;
             }
+        }
+        // A step that asks ends the turn when someone can answer.
+        if action.ask != Ask::None && !action.finished {
+            if limits.ask && action.commands.is_empty() && !action.reply.trim().is_empty() {
+                let ask = action.ask;
+                state.actions.push(Action {
+                    step,
+                    rationale: action.rationale,
+                    results: Vec::new(),
+                    skipped: Vec::new(),
+                });
+                break Ending::Asked { ask };
+            }
+            state.notes.push(if limits.ask {
+                format!(
+                    "Step {step} asked the user, but a question needs no commands and its text in reply; ask again that way, or carry on."
+                )
+            } else {
+                format!(
+                    "Step {step} asked the user, but nobody answers questions in this run; decide yourself and carry on."
+                )
+            });
         }
         if action.finished && action.commands.is_empty() && !limits.acceptance {
             state.actions.push(Action {

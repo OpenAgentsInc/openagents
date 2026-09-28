@@ -333,6 +333,7 @@ A request is `openagents.host-request.v1`:
 | `task.cancel` | `operate` | `dispatched` |
 | `task.archive` | `operate` | `dispatched` |
 | `task.command` | `operate` | `dispatched` |
+| `task.queue` | `operate` | `queue` |
 | `terminal.open` | `terminal` | `dispatched` |
 | `workspace.list` | `operate` | `workspaces` |
 
@@ -384,8 +385,12 @@ evaluates a task's commands in arrival order:
    lacks refuses as `unsupported` unless `emulate` chose the engine's
    cancel-and-continue emulation, which stops the turn and starts the next
    turn with the message before any queued message; a steer whose turn
-   already ended becomes the next turn. `answer` refuses as `unsupported`
-   until the engine raises approvals or questions a device can answer.
+   already ended becomes the next turn. `answer` starts the next turn with
+   the answer only while the task's ended turn asked a question or asked to
+   approve a step, and only when `based_on` is at least the revision that
+   turn started at; otherwise it refuses as `stale` (an earlier turn's
+   question) or `conflict` (no question waits, or a message is queued). The
+   first answer starts a new turn, so a competing or late answer refuses.
 
 The host records a command before it evaluates it, and records the exact
 task-owner command before it applies one, applying those bytes again after a
@@ -395,6 +400,37 @@ A turn a command starts is an inert submission unless the owner's auto-start
 policy admits it, under the same bounds as a new task. `dispatched`
 returns the task ID as its reference; a waiting command is dispatched too.
 An older host refuses `task.command` as `malformed` or `unsupported`.
+An engine that cannot go on without the person ends its turn with a
+question, or with a request to approve a step before it takes it; the turn's
+reply is the question, and the task's summary reports phase `waiting` with
+attention `input` or `approval` and a fixed headline, never the question's
+text. An answer is data for the engine: an approval answer never widens the
+task's grant, workspace, routes, or spend, and is not a [POL](NIP-POL.md)
+approval.
+`task.queue` carries `{task, edit}` and lists or edits the task's held
+messages: queued messages, and emulated steers or messages sent now that
+wait for the turn's stop. `edit` is one of `{action: "list"}`,
+`{action: "lease"}`, `{action: "release"}`,
+`{action: "edit", command, text}`, `{action: "remove", command}`,
+`{action: "reorder", commands}`, and `{action: "send_now", command}`. `lease`
+takes or renews the task's queue edit lease for 60 seconds; while a device
+holds it, queued messages wait even when the turn ends, so nothing runs a
+message being edited. Another device's lease refuses as `conflict`, and a
+device renews its own well within the minute, for example every 20 seconds.
+The other changes need the device's current lease, else `conflict`. `edit`
+replaces the text of the device's own held message (at most 16 KiB) and
+keeps the original request, so a replay of the command still matches;
+`remove` ends the device's own held message unrun, and removing it again
+succeeds; `send_now` turns the device's own queued message into the
+engine's emulated steering, ahead of the queue; and `reorder` names the
+exact permutation of the queued messages, at most 64, and moves only them. A
+command this device did not send refuses as `forbidden`, and a message that
+already ran as `conflict`. Every change evaluates the task's commands again,
+rechecking each waiting sender. The answer is `queue`:
+`{task, revision, lease, items}`, where `lease` is `{device, expires_at}` or
+null and each item is `{command, device, text, priority}` in the order the
+items run, with `text` only for the requesting device's own messages and
+null for another's.
 `task.archive` carries `{task}`: it takes a finished or cancelled task off
 every device's lists and deletes nothing. The host stops publishing the
 task's activity summary, and its history observer lists the task's
@@ -533,6 +569,29 @@ message is at most 256 KiB. Before it closes a channel whose grant stopped
 admitting it, the host sends `{v: "openagents.host-closing.v1", code}` with
 `revoked`, `stale`, or `not_admitted`.
 
+### Nudges
+
+A request lives 60 seconds, so a host that was asleep, offline, or
+reconnecting misses requests sent meanwhile. The device keeps its durable
+commands and sends them again with the same command IDs, but only while it
+runs. A nudge lets the host learn, when it comes back, that a device is
+waiting. It is an original signed private `3188` artifact from the device to
+the host, `openagents.host-nudge.v1`: `{v, requires: [], host, device,
+issued_at, expires_at}`, where `device` is the signer and `expires_at` is 24
+hours after `issued_at`. Its mailbox is
+`SHA-256("openagents.host-mailbox.nudges.v1\0" || conversation key)` in lowercase
+hex, which only the two keys can compute. A nudge carries no command, text,
+or task, and grants nothing.
+
+The host reads nudges addressed to it as they arrive, and after a gap in its
+relay subscription longer than a subscription's life it reads the nudges
+stored within their lifetime. For a current nudge from a device with an
+active grant, the host evaluates held commands and publishes its presence
+and hints to that device at once. It answers each nudge at most once and
+each device at most every 30 seconds, and ignores every other nudge. A device
+that sees presence newer than its last failed attempt sends its waiting
+commands again.
+
 ## Security considerations
 
 - The relay is transport, not authority. It sees the `p` and `h` tags, so it
@@ -598,8 +657,8 @@ checks them.
 [`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
 (`coder host serve`): it serves the direct artifact binding and the
 direct-channel binding, and dispatches `task.create`, `task.steer`,
-`task.cancel`, and `task.command` to the durable task inbox and `terminal.open` to its terminal
-host. It records each device's last-seen time for `device.list`. The
+`task.cancel`, `task.command`, and `task.queue` to the durable task inbox and `terminal.open` to its terminal
+host, and answers nudges. It records each device's last-seen time for `device.list`. The
 [Computers screens](../../crates/coder-computers/README.md) are its
 interface on iOS, Android, and the terminal: their live service redeems
 invitations, lists devices, creates narrowed invitations, and revokes

@@ -22,6 +22,8 @@ fn entry(request: Request) -> Entry {
         request,
         received_at: NOW,
         state: State::Received,
+        edited: None,
+        promoted: false,
     }
 }
 
@@ -38,6 +40,8 @@ fn view(phase: Phase, revision: u64, turn_started: u64) -> View {
         phase,
         revision,
         turn_started,
+        question: None,
+        paused: false,
     }
 }
 
@@ -162,11 +166,12 @@ fn a_steer_follows_the_engines_stated_semantics() {
         decided(&native, &view(Phase::Ended, 3, 1)),
         Decision::Dispatch(Effect::Continue("Only the parser.".into()))
     );
+    // No question waits while a turn runs.
     let answer = entry(request("b", Kind::Answer, 2, "Yes"));
     assert_eq!(
         decided(&answer, &running),
         Decision::Done(Outcome::Rejected {
-            reason: Rejection::Unsupported
+            reason: Rejection::Conflict
         })
     );
 }
@@ -434,5 +439,304 @@ fn a_recorded_dispatch_is_applied_again_byte_for_byte_after_a_crash() {
     assert_eq!(
         entries(&dir).unwrap()[0].state,
         State::Done(Outcome::Applied { revision: 3 })
+    );
+}
+
+#[test]
+fn an_answer_continues_only_a_turn_that_asked_and_the_first_one_wins() {
+    let answer = entry(request("a", Kind::Answer, 3, "Use the second option."));
+    let asked = View {
+        question: Some(crate::task::interaction::Kind::Question),
+        ..view(Phase::Ended, 3, 2)
+    };
+    assert_eq!(
+        decided(&answer, &asked),
+        Decision::Dispatch(Effect::Continue("Use the second option.".into()))
+    );
+    // A turn that asked nothing has no question to answer.
+    assert_eq!(
+        decided(&answer, &view(Phase::Ended, 3, 2)),
+        Decision::Done(Outcome::Rejected {
+            reason: Rejection::Conflict
+        })
+    );
+    // Once an answer continued the task, a competing one finds a new turn.
+    for phase in [Phase::Pending, Phase::Running] {
+        assert_eq!(
+            decided(&answer, &view(phase, 4, 4)),
+            Decision::Done(Outcome::Rejected {
+                reason: Rejection::Stale
+            })
+        );
+    }
+    // An answer to a question from an earlier turn is stale.
+    let late = entry(request("b", Kind::Answer, 1, "Yes."));
+    assert_eq!(
+        decided(&late, &asked),
+        Decision::Done(Outcome::Rejected {
+            reason: Rejection::Stale
+        })
+    );
+    assert_eq!(
+        decided(&answer, &view(Phase::Unknown, 3, 2)),
+        Decision::Done(Outcome::Rejected {
+            reason: Rejection::Unavailable
+        })
+    );
+}
+
+#[test]
+fn a_leased_queue_waits_and_an_edit_keeps_the_request_for_replay() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("tasks");
+    ended_task(&dir);
+    let (phone, tablet) = (sender("phone"), sender("tablet"));
+    record(
+        &dir,
+        &phone,
+        &request("a", Kind::Send, 2, "First."),
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    let second = request("b", Kind::Queue, 3, "Second.");
+    record(&dir, &phone, &second, &STEERING, &always, NOW).unwrap();
+    record(
+        &dir,
+        &tablet,
+        &request("c", Kind::Queue, 3, "Third."),
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    let edit = |sender: &Sender, edit: QueueEdit, now: u64| {
+        edit_queue(&dir, "task", sender, &edit, &STEERING, &always, now)
+    };
+    // Changes need the lease, and only one device holds it.
+    assert!(matches!(
+        edit(
+            &phone,
+            QueueEdit::Remove {
+                command: second.command.clone()
+            },
+            NOW
+        ),
+        Err(Error::Conflict)
+    ));
+    let (leased, _) = edit(&phone, QueueEdit::Lease, NOW).unwrap();
+    assert_eq!(leased.lease.as_ref().unwrap().expires_at, NOW + LEASE);
+    assert!(matches!(
+        edit(&tablet, QueueEdit::Lease, NOW),
+        Err(Error::Conflict)
+    ));
+    // A device edits only its own messages.
+    assert!(matches!(
+        edit(
+            &phone,
+            QueueEdit::Edit {
+                command: "c".repeat(64),
+                text: "Mine now.".into()
+            },
+            NOW
+        ),
+        Err(Error::NotFound)
+    ));
+    let (edited, _) = edit(
+        &phone,
+        QueueEdit::Edit {
+            command: second.command.clone(),
+            text: "Second, edited.".into(),
+        },
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(
+        edited
+            .items
+            .iter()
+            .map(|item| item.text.as_str())
+            .collect::<Vec<_>>(),
+        ["Second, edited.", "Third."]
+    );
+    // A reorder names the exact permutation of the queued messages.
+    assert!(matches!(
+        edit(
+            &phone,
+            QueueEdit::Reorder {
+                commands: vec![second.command.clone()]
+            },
+            NOW
+        ),
+        Err(Error::Conflict)
+    ));
+    let (reordered, _) = edit(
+        &phone,
+        QueueEdit::Reorder {
+            commands: vec!["c".repeat(64), second.command.clone()],
+        },
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(reordered.items[0].text, "Third.");
+    // The turn ends while the lease holds: nothing is promoted.
+    end(&mut Store::open(&dir).unwrap(), "end-2", 3);
+    assert!(
+        process(&dir, "task", &STEERING, &always, NOW + 1)
+            .unwrap()
+            .is_empty()
+    );
+    // A replay of the edited command still matches its request.
+    let (replayed, _) = record(&dir, &phone, &second, &STEERING, &always, NOW + 2).unwrap();
+    assert_eq!(replayed.state, State::Held { priority: false });
+    // Releasing the lease runs the queue in its new order.
+    let (released, continued) = edit(&phone, QueueEdit::Release, NOW + 3).unwrap();
+    assert!(released.lease.is_none());
+    assert_eq!(continued.len(), 1);
+    let task = Store::open(&dir).unwrap().show("task").unwrap();
+    assert_eq!(task.effective_prompt(), "Third.");
+    end(&mut Store::open(&dir).unwrap(), "end-3", 5);
+    process(&dir, "task", &STEERING, &always, NOW + 4).unwrap();
+    let task = Store::open(&dir).unwrap().show("task").unwrap();
+    assert_eq!(task.effective_prompt(), "Second, edited.");
+}
+
+#[test]
+fn a_lapsed_lease_lets_the_queue_run_and_a_removed_message_never_runs() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("tasks");
+    ended_task(&dir);
+    let phone = sender("phone");
+    record(
+        &dir,
+        &phone,
+        &request("a", Kind::Send, 2, "First."),
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    let dropped = request("b", Kind::Queue, 3, "Never mind.");
+    record(&dir, &phone, &dropped, &STEERING, &always, NOW).unwrap();
+    record(
+        &dir,
+        &phone,
+        &request("c", Kind::Queue, 3, "Kept."),
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    edit_queue(
+        &dir,
+        "task",
+        &phone,
+        &QueueEdit::Lease,
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    let removal = QueueEdit::Remove {
+        command: dropped.command.clone(),
+    };
+    let (removed, _) = edit_queue(&dir, "task", &phone, &removal, &STEERING, &always, NOW).unwrap();
+    assert_eq!(removed.items.len(), 1);
+    // Removing it again succeeds again.
+    edit_queue(&dir, "task", &phone, &removal, &STEERING, &always, NOW).unwrap();
+    end(&mut Store::open(&dir).unwrap(), "end-2", 3);
+    assert!(
+        process(&dir, "task", &STEERING, &always, NOW + LEASE - 1)
+            .unwrap()
+            .is_empty()
+    );
+    // The lease lapsed without a renewal.
+    let continued = process(&dir, "task", &STEERING, &always, NOW + LEASE).unwrap();
+    assert_eq!(continued.len(), 1);
+    let task = Store::open(&dir).unwrap().show("task").unwrap();
+    assert_eq!(task.effective_prompt(), "Kept.");
+    let removed = entries(&dir)
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.request.command == dropped.command)
+        .unwrap();
+    assert_eq!(removed.state, State::Done(Outcome::Cancelled));
+}
+
+#[test]
+fn a_message_sent_now_stops_the_turn_and_runs_ahead_of_the_queue() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("tasks");
+    ended_task(&dir);
+    let phone = sender("phone");
+    record(
+        &dir,
+        &phone,
+        &request("a", Kind::Send, 2, "First."),
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    record(
+        &dir,
+        &phone,
+        &request("b", Kind::Queue, 3, "Queued."),
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    let urgent = request("c", Kind::Queue, 3, "Urgent.");
+    record(&dir, &phone, &urgent, &STEERING, &always, NOW).unwrap();
+    edit_queue(
+        &dir,
+        "task",
+        &phone,
+        &QueueEdit::Lease,
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    end(&mut Store::open(&dir).unwrap(), "end-2", 3);
+    // The lease holds the queue, but a message sent now runs ahead of it.
+    let (sent, continued) = edit_queue(
+        &dir,
+        "task",
+        &phone,
+        &QueueEdit::SendNow {
+            command: urgent.command.clone(),
+        },
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(continued.len(), 1);
+    assert_eq!(sent.task.effective_prompt(), "Urgent.");
+    assert_eq!(
+        sent.items
+            .iter()
+            .map(|item| item.text.as_str())
+            .collect::<Vec<_>>(),
+        ["Queued."]
+    );
+    // While a turn runs, a message sent now is the engine's emulated
+    // steering: it stops the turn and continues with the message.
+    let mut promoted = entry(request("d", Kind::Queue, 5, "Now."));
+    promoted.promoted = true;
+    promoted.state = State::Held { priority: false };
+    assert_eq!(
+        decided(&promoted, &view(Phase::Running, 5, 5)),
+        Decision::Dispatch(Effect::CancelThenContinue("Now.".into()))
+    );
+    // An edited message runs with its new text.
+    let mut edited = entry(request("e", Kind::Queue, 5, "Old."));
+    edited.edited = Some("New.".into());
+    assert_eq!(
+        decided(&edited, &view(Phase::Ended, 5, 5)),
+        Decision::Dispatch(Effect::Continue("New.".into()))
     );
 }

@@ -269,6 +269,51 @@
         }
       }
     },
+    "request_task_queue": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "4444444444444444444444444444444444444444444444444444444444444444",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "task.queue",
+        "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "edit": {
+          "action": "reorder",
+          "commands": [
+            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          ]
+        }
+      }
+    },
+    "request_task_answer": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "6666666666666666666666666666666666666666666666666666666666666666",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "task.command",
+        "command": {
+          "command": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "answer",
+          "based_on": 5,
+          "text": "Use the second option.",
+          "emulate": false,
+          "issued_at": 1789999000
+        }
+      }
+    },
     "request_workspace_list": {
       "v": "openagents.host-request.v1",
       "requires": [],
@@ -345,6 +390,43 @@
             "openagents",
             "scratch"
           ]
+        }
+      }
+    },
+    "reply_queue": {
+      "v": "openagents.host-reply.v1",
+      "requires": [],
+      "request": "4444444444444444444444444444444444444444444444444444444444444444",
+      "request_event": "8888888888888888888888888888888888888888888888888888888888888888",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "result": {
+        "status": "ok",
+        "outcome": {
+          "kind": "queue",
+          "queue": {
+            "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "revision": 7,
+            "lease": {
+              "device": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "expires_at": 1790000060
+            },
+            "items": [
+              {
+                "command": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "device": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+                "text": "Then update the changelog.",
+                "priority": false
+              },
+              {
+                "command": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "device": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+                "text": null,
+                "priority": false
+              }
+            ]
+          }
         }
       }
     },
@@ -927,6 +1009,81 @@
             "text": "Then update the changelog.",
             "emulate": true,
             "issued_at": 1789999000
+          }
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "queue reorder naming a message twice",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "9999999999999999999999999999999999999999999999999999999999999999",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "task.queue",
+          "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "edit": {
+            "action": "reorder",
+            "commands": [
+              "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            ]
+          }
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "queue edit with empty text",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "9999999999999999999999999999999999999999999999999999999999999999",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "task.queue",
+          "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "edit": {
+            "action": "edit",
+            "command": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "text": " "
+          }
+        }
+      },
+      "code": "bounds"
+    },
+    {
+      "name": "queue edit with an unknown action",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "9999999999999999999999999999999999999999999999999999999999999999",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "task.queue",
+          "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "edit": {
+            "action": "promote_all"
           }
         }
       },

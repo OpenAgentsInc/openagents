@@ -243,6 +243,7 @@ fn act(rationale: &str, commands: &[&str], finished: bool) -> NextAction {
         expand: Vec::new(),
         finished,
         reply: String::new(),
+        ask: crate::models::Ask::None,
     }
 }
 
@@ -1294,4 +1295,45 @@ fn microcoder_states_that_it_steers_only_at_a_turn_boundary() {
         crate::STEERING.admit(Turn::Running, Request::Emulated),
         Ok(Plan::CancelAndContinue)
     );
+}
+
+fn asking(question: &str) -> NextAction {
+    NextAction {
+        reply: question.to_string(),
+        ask: crate::models::Ask::Question,
+        ..act("the user must choose", &[], false)
+    }
+}
+
+#[tokio::test]
+async fn a_question_ends_the_turn_only_when_someone_can_answer() {
+    let script = Script::new(vec![Ok(asking("One line or two?"))]);
+    let limits = Limits {
+        ask: true,
+        ..plain()
+    };
+    let (_, outcome, ran, _) = go(&script, &limits).await;
+    assert_eq!(
+        outcome.ending,
+        Ending::Asked {
+            ask: crate::models::Ask::Question
+        }
+    );
+    assert!(ran.is_empty());
+    // Nobody answers a benchmark: the step is told so and the loop goes on.
+    let script = Script::new(vec![
+        Ok(asking("One line or two?")),
+        Ok(act("decided", &[], true)),
+    ]);
+    let (state, outcome, _, _) = go(&script, &plain()).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(outcome.steps, 2);
+    assert!(state.actions.len() >= 2);
+    // A question must run nothing.
+    let mut with_commands = asking("One line or two?");
+    with_commands.commands = vec!["ls".into()];
+    let script = Script::new(vec![Ok(with_commands), Ok(act("done", &[], true))]);
+    let (_, outcome, ran, _) = go(&script, &limits).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(ran, ["ls"]);
 }

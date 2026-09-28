@@ -13,12 +13,14 @@ use sha2::{Digest, Sha256};
 
 use crate::{Error, Result};
 
-/// Which host-to-device stream a mailbox carries.
+/// Which stream a mailbox carries: host to device, except
+/// [`Stream::Nudges`], which a device sends its host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stream {
     Presence,
     Hints,
     Summaries,
+    Nudges,
 }
 
 impl Stream {
@@ -27,6 +29,7 @@ impl Stream {
             Self::Presence => b"openagents.host-mailbox.presence.v1\0",
             Self::Hints => b"openagents.host-mailbox.hints.v1\0",
             Self::Summaries => b"openagents.host-mailbox.summaries.v1\0",
+            Self::Nudges => b"openagents.host-mailbox.nudges.v1\0",
         }
     }
 }
@@ -90,7 +93,12 @@ mod tests {
         let (host, device) = (key(3), key(4));
         let host_key = coder_reach::pubkey(&host);
         let device_key = coder_reach::pubkey(&device);
-        for stream in [Stream::Presence, Stream::Hints, Stream::Summaries] {
+        for stream in [
+            Stream::Presence,
+            Stream::Hints,
+            Stream::Summaries,
+            Stream::Nudges,
+        ] {
             let from_host = mailbox(&host, &device_key, stream).unwrap();
             assert_eq!(from_host, mailbox(&device, &host_key, stream).unwrap());
             assert!(coder_reach::random_id(&from_host).is_ok());

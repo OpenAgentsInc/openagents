@@ -34,6 +34,7 @@ pub mod enroll;
 pub mod generation;
 pub mod mailbox;
 pub mod message;
+pub mod nudge;
 #[cfg(feature = "host")]
 mod publish;
 #[cfg(feature = "host")]
@@ -51,7 +52,9 @@ mod tls;
 pub use {coder_access as access, coder_link as link, coder_pty as pty, coder_reach as reach};
 
 pub use coder_access::Code;
-pub use coder_access::protocol::{CommandAction, TaskCommand, TaskCreate};
+pub use coder_access::protocol::{
+    CommandAction, QueueEdit, QueueItem, QueueLease, TaskCommand, TaskCreate, TaskQueue,
+};
 #[cfg(feature = "host")]
 pub use config::Config;
 #[cfg(feature = "host")]

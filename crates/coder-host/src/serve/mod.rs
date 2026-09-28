@@ -66,6 +66,9 @@ pub(crate) struct Shared {
     pub(crate) listen_websocket: Option<SocketAddr>,
     /// The workspace a NIP-HOST `terminal.open` uses: the first label.
     pub(crate) default_workspace: Option<String>,
+    /// The nudges this process answered, so a relay reconnect's catch-up
+    /// answers each once.
+    pub(crate) nudges: std::sync::Mutex<relay::Answered>,
 }
 
 /// A running host.
@@ -146,6 +149,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         publisher,
         listen,
         listen_websocket,
+        nudges: std::sync::Mutex::new(relay::Answered::default()),
     });
 
     let (ready, relay_ready) = tokio::sync::oneshot::channel();
@@ -263,9 +267,14 @@ async fn presence_loop(shared: Arc<Shared>) {
 async fn publish_reach(shared: &Shared) {
     let Ok(now) = unix_time() else { return };
     for device in shared.authority.active_devices(None, now) {
-        for event in reach_events(shared, &device, now).unwrap_or_default() {
-            shared.publisher.everywhere(&event).await;
-        }
+        publish_reach_to(shared, &device, now).await;
+    }
+}
+
+/// Publish presence and hints to one enrolled device now.
+pub(crate) async fn publish_reach_to(shared: &Shared, device: &str, now: u64) {
+    for event in reach_events(shared, device, now).unwrap_or_default() {
+        shared.publisher.everywhere(&event).await;
     }
 }
 
@@ -402,6 +411,20 @@ fn merge_hints(listeners: Vec<Hint>, advertised: Vec<Hint>, relays: Vec<Hint>) -
     merged
 }
 
+/// Whether `principal` still holds `operate` under the same grant and epoch
+/// now. The owner, with no grant, always does.
+pub(crate) fn standing(authority: &Authority, principal: &crate::tasks::Principal) -> bool {
+    match (&principal.grant, principal.epoch) {
+        (None, None) => true,
+        (Some(grant), Some(epoch)) => unix_time().is_ok_and(|now| {
+            authority
+                .check(&principal.device, grant, epoch, now)
+                .is_ok_and(|rights| rights.contains(coder_access::Right::Operate))
+        }),
+        _ => false,
+    }
+}
+
 /// The most task summaries the first sweep publishes.
 const FIRST_SWEEP_TASKS: usize = 50;
 
@@ -419,16 +442,7 @@ async fn summary_loop(shared: Arc<Shared>) {
         let Ok(current) = tokio::task::spawn_blocking(move || {
             // Held commands run only while their sender still holds
             // `operate` under the same grant and epoch.
-            let standing =
-                |principal: &crate::tasks::Principal| match (&principal.grant, principal.epoch) {
-                    (None, None) => true,
-                    (Some(grant), Some(epoch)) => unix_time().is_ok_and(|now| {
-                        authority
-                            .check(&principal.device, grant, epoch, now)
-                            .is_ok_and(|rights| rights.contains(coder_access::Right::Operate))
-                    }),
-                    _ => false,
-                };
+            let standing = |principal: &crate::tasks::Principal| standing(&authority, principal);
             tasks.tick(&standing);
             tasks.current()
         })
@@ -460,18 +474,21 @@ async fn summary_loop(shared: Arc<Shared>) {
 /// from a device, and a summary never carries sent text.
 pub(crate) async fn summarize(shared: &Shared, task: &TaskRef) {
     let Ok(now) = unix_time() else { return };
-    let attention = match task.phase {
-        Phase::Completed => Attention::Completed,
-        Phase::Failed => Attention::Failed,
-        _ => Attention::None,
-    };
     let tasks = shared.tasks.clone();
     let id = task.task.clone();
     let note = tokio::task::spawn_blocking(move || tasks.note(&id))
         .await
         .ok()
-        .flatten()
-        .map(crate::tasks::Note::headline);
+        .flatten();
+    // A waiting question or approval asks for the device's attention; the
+    // summary never carries the question itself.
+    let attention = match (task.phase, note.and_then(crate::tasks::Note::attention)) {
+        (Phase::Waiting, Some(attention)) => attention,
+        (Phase::Completed, _) => Attention::Completed,
+        (Phase::Failed, _) => Attention::Failed,
+        _ => Attention::None,
+    };
+    let note = note.map(crate::tasks::Note::headline);
     let draft = SummaryDraft {
         host: &shared.host_key,
         subject_kind: SubjectKind::Task,

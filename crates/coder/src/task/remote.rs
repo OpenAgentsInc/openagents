@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use coder_host::access::protocol::{QueueEdit, QueueItem, QueueLease, TaskQueue};
 use coder_host::{
     Code, CommandAction, Note, Principal, Standing, TaskCommand, TaskCreate, TaskRef, Tasks,
 };
@@ -187,14 +188,17 @@ impl Tasks for Inbox {
     }
 
     /// Record a device's durable command and evaluate its task's commands.
-    /// Microcoder's stated steering decides what a steer may do.
-    fn command(&self, principal: &Principal, command: &TaskCommand) -> Result<TaskRef, Code> {
-        use super::commands::{Kind, Outcome, Rejection, Request, Sender, State};
-        let sender = Sender {
-            device: principal.device.clone(),
-            grant: principal.grant.clone(),
-            epoch: principal.epoch,
-        };
+    /// Microcoder's stated steering decides what a steer may do. Every other
+    /// sender's held command that the evaluation lets run is rechecked with
+    /// `standing`.
+    fn command(
+        &self,
+        principal: &Principal,
+        command: &TaskCommand,
+        standing: Standing<'_>,
+    ) -> Result<TaskRef, Code> {
+        use super::commands::{Kind, Outcome, Rejection, Request, State};
+        let sender = sender(principal);
         let request = Request {
             command: command.command.clone(),
             task: command.task.clone(),
@@ -210,8 +214,10 @@ impl Tasks for Inbox {
             emulate: command.emulate,
             issued_at: command.issued_at,
         };
-        // The host admitted this request's grant a moment ago.
-        let admitted = |_: &Sender| true;
+        // The host admitted this request's grant a moment ago; any other
+        // sender's held command is rechecked.
+        let admitted =
+            |other: &super::commands::Sender| *other == sender || standing(&principal_of(other));
         let (recorded, continued) = super::commands::record(
             &self.store,
             &sender,
@@ -242,16 +248,84 @@ impl Tasks for Inbox {
         }
     }
 
+    /// List or edit a task's held messages. A device sees the text of its
+    /// own messages only.
+    fn queue(
+        &self,
+        principal: &Principal,
+        task: &str,
+        edit: &QueueEdit,
+        standing: Standing<'_>,
+    ) -> Result<(TaskQueue, Option<TaskRef>), Code> {
+        use super::commands::QueueEdit as Edit;
+        let sender = sender(principal);
+        let edit = match edit {
+            QueueEdit::List {} => Edit::List,
+            QueueEdit::Lease {} => Edit::Lease,
+            QueueEdit::Release {} => Edit::Release,
+            QueueEdit::Edit { command, text } => Edit::Edit {
+                command: command.clone(),
+                text: text.clone(),
+            },
+            QueueEdit::Remove { command } => Edit::Remove {
+                command: command.clone(),
+            },
+            QueueEdit::Reorder { commands } => Edit::Reorder {
+                commands: commands.clone(),
+            },
+            QueueEdit::SendNow { command } => Edit::SendNow {
+                command: command.clone(),
+            },
+        };
+        let before = Store::open(&self.store)
+            .and_then(|store| store.show(task))
+            .map_err(|error| match error {
+                Error::NotFound => Code::Forbidden,
+                other => refusal(other),
+            })?
+            .revision;
+        let admitted =
+            |other: &super::commands::Sender| *other == sender || standing(&principal_of(other));
+        let (state, continued) = super::commands::edit_queue(
+            &self.store,
+            task,
+            &sender,
+            &edit,
+            &super::adapter::STEERING,
+            &admitted,
+            super::autostart::unix_now(),
+        )
+        .map_err(|error| match error {
+            Error::NotFound => Code::Forbidden,
+            other => refusal(other),
+        })?;
+        self.continued(&continued);
+        let queue = TaskQueue {
+            task: task.to_owned(),
+            revision: state.task.revision,
+            lease: state.lease.map(|lease| QueueLease {
+                device: lease.device,
+                expires_at: lease.expires_at,
+            }),
+            items: state
+                .items
+                .into_iter()
+                .map(|item| QueueItem {
+                    text: (item.device == principal.device).then_some(item.text),
+                    command: item.command,
+                    device: item.device,
+                    priority: item.priority,
+                })
+                .collect(),
+        };
+        let changed = (state.task.revision != before).then(|| current(&state.task));
+        Ok((queue, changed))
+    }
+
     /// Evaluate held commands again, such as queued messages after a turn
     /// ends, with each sender's grant rechecked.
     fn tick(&self, standing: Standing<'_>) {
-        let check = |sender: &super::commands::Sender| {
-            standing(&Principal {
-                device: sender.device.clone(),
-                grant: sender.grant.clone(),
-                epoch: sender.epoch,
-            })
-        };
+        let check = |sender: &super::commands::Sender| standing(&principal_of(sender));
         let now = super::autostart::unix_now();
         for task in super::commands::open_tasks(&self.store) {
             match super::commands::process(
@@ -289,6 +363,11 @@ impl Tasks for Inbox {
     /// capacity book.
     fn note(&self, id: &str) -> Option<Note> {
         let task = Store::open(&self.store).ok()?.show(id).ok()?;
+        match super::interaction::pending(&task) {
+            Some(super::interaction::Kind::Question) => return Some(Note::Question),
+            Some(super::interaction::Kind::Approval) => return Some(Note::Approval),
+            None => {}
+        }
         if ended_without_capacity(&task) {
             let providers: Vec<Provider> = task
                 .run
@@ -341,9 +420,28 @@ fn ended_without_capacity(task: &super::Task) -> bool {
         .is_some_and(|result| result.ending == super::capacity::NO_CAPACITY_ENDING)
 }
 
+/// The journal's sender for a host principal.
+fn sender(principal: &Principal) -> super::commands::Sender {
+    super::commands::Sender {
+        device: principal.device.clone(),
+        grant: principal.grant.clone(),
+        epoch: principal.epoch,
+    }
+}
+
+/// The host principal of a journal sender.
+fn principal_of(sender: &super::commands::Sender) -> Principal {
+    Principal {
+        device: sender.device.clone(),
+        grant: sender.grant.clone(),
+        epoch: sender.epoch,
+    }
+}
+
 /// A stored task's revision and phase. A finished run that failed or was
 /// stopped reports that, not completion. A run that stopped for lack of
-/// model capacity reports a stop, so its summary can say why.
+/// model capacity reports a stop, so its summary can say why. A turn that
+/// ended with a question or an approval request waits for its answer.
 fn current(task: &super::Task) -> TaskRef {
     use super::Execution;
     TaskRef {
@@ -351,6 +449,7 @@ fn current(task: &super::Task) -> TaskRef {
         revision: task.revision,
         phase: match (task.status, task.execution) {
             (Status::Finished, _) if ended_without_capacity(task) => Phase::Cancelled,
+            (Status::Finished, _) if super::interaction::pending(task).is_some() => Phase::Waiting,
             (Status::Queued, _) => Phase::Queued,
             (Status::Running | Status::CancelRequested, _) => Phase::Running,
             (Status::Cancelled, _) | (Status::Finished, Execution::Stopped) => Phase::Cancelled,
@@ -507,5 +606,94 @@ mod tests {
         let shown = Store::open(inbox.store()).unwrap().show(&task).unwrap();
         assert_eq!(shown.effective_prompt(), "Only look at the parser.");
         assert_eq!(shown.status, Status::Cancelled);
+    }
+
+    fn command(
+        task: &str,
+        id: char,
+        action: CommandAction,
+        based_on: u64,
+        text: &str,
+    ) -> TaskCommand {
+        TaskCommand {
+            command: id.to_string().repeat(64),
+            task: task.into(),
+            action,
+            based_on,
+            text: text.into(),
+            emulate: false,
+            issued_at: super::super::autostart::unix_now(),
+        }
+    }
+
+    #[test]
+    fn a_queue_listing_shows_a_device_only_its_own_text() {
+        let temp = tempfile::tempdir().unwrap();
+        let inbox = inbox(temp.path());
+        let task = "c".repeat(64);
+        let (phone, tablet) = ("ab".repeat(32), "cd".repeat(32));
+        let principal = |device: &str| Principal {
+            device: device.into(),
+            grant: Some("1".repeat(64)),
+            epoch: Some(0),
+        };
+        let standing = |_: &Principal| true;
+        inbox.create(&task, &phone, &create()).unwrap();
+        inbox
+            .cancel(&"e".repeat(64), &phone, &task, 1, "Ended")
+            .unwrap();
+        inbox
+            .command(
+                &principal(&phone),
+                &command(&task, 'a', CommandAction::Send, 2, "First."),
+                &standing,
+            )
+            .unwrap();
+        for (device, id, text) in [(&phone, 'b', "Mine."), (&tablet, 'd', "Theirs.")] {
+            let held = inbox
+                .command(
+                    &principal(device),
+                    &command(&task, id, CommandAction::Queue, 3, text),
+                    &standing,
+                )
+                .unwrap();
+            assert_eq!(held.phase, Phase::Queued);
+        }
+        let (queue, changed) = inbox
+            .queue(&principal(&phone), &task, &QueueEdit::List {}, &standing)
+            .unwrap();
+        assert!(changed.is_none());
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .map(|item| item.text.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("Mine."), None]
+        );
+        // Another device cannot edit without the lease the phone holds.
+        inbox
+            .queue(&principal(&phone), &task, &QueueEdit::Lease {}, &standing)
+            .unwrap();
+        assert_eq!(
+            inbox
+                .queue(&principal(&tablet), &task, &QueueEdit::Lease {}, &standing)
+                .map(|_| ()),
+            Err(Code::Conflict)
+        );
+        // A revoked sender's held message is refused, never run, when an
+        // edit evaluates the queue again.
+        let revoked = |other: &Principal| other.device != tablet;
+        let (queue, _) = inbox
+            .queue(&principal(&phone), &task, &QueueEdit::Release {}, &revoked)
+            .unwrap();
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .map(|item| item.device.as_str())
+                .collect::<Vec<_>>(),
+            [phone.as_str()]
+        );
     }
 }

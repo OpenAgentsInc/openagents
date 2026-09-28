@@ -139,6 +139,7 @@ fn every_operation_has_a_fixture() {
         "task.cancel",
         "workspace.list",
         "task.command",
+        "task.queue",
     ] {
         assert!(kinds.contains(kind), "no request fixture for {kind}");
     }

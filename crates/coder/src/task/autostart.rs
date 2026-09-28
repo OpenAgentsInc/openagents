@@ -1643,10 +1643,8 @@ mod tests {
             .unwrap();
         // A follow-up in an admitted workspace starts its turn with a fresh
         // grant at the revision the turn started at.
-        let continued = s
-            .inbox
-            .command(&phone, &follow_up(&allowed, "a", 2))
-            .unwrap();
+        let first = follow_up(&allowed, "a", 2);
+        let continued = s.inbox.command(&phone, &first, &|_| true).unwrap();
         assert_eq!(
             (continued.revision, continued.phase),
             (3, nostr::activity_summary::Phase::Queued)
@@ -1665,16 +1663,15 @@ mod tests {
         assert_eq!(started, [None, Some(3)]);
         // A follow-up outside the policy's workspaces stays inert.
         s.inbox
-            .command(&phone, &follow_up(&outside, "c", 2))
+            .command(&phone, &follow_up(&outside, "c", 2), &|_| true)
             .unwrap();
         s.autostart.sweep();
         assert_eq!(s.launched.lock().unwrap().len(), 2);
         let task = Store::open(&s.store).unwrap().show(&outside).unwrap();
         assert_eq!((task.status, task.run.is_none()), (Status::Queued, true));
-        // A replay of the first follow-up starts nothing more.
-        s.inbox
-            .command(&phone, &follow_up(&allowed, "a", 2))
-            .unwrap();
+        // A replay of the first follow-up, byte for byte, starts nothing
+        // more.
+        s.inbox.command(&phone, &first, &|_| true).unwrap();
         s.autostart.sweep();
         assert_eq!(s.launched.lock().unwrap().len(), 2);
     }

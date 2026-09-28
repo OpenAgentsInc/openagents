@@ -221,6 +221,24 @@ pub async fn fetch_reach(device: &Device, relay: &str) -> Result<Reach> {
     })
 }
 
+/// Leave a nudge for the host on `relay`: a stored note that this device has
+/// commands waiting, which the host answers with fresh presence when it
+/// reads it, even after being away ([`crate::nudge`]).
+///
+/// # Errors
+/// Reports transport failures.
+pub async fn nudge(device: &Device, relay: &str) -> Result<()> {
+    crate::nudge::send(
+        relay,
+        &device.secret,
+        device.host(),
+        device.policy,
+        unix_time()?,
+    )
+    .await
+    .map(|_| ())
+}
+
 /// Read the activity summaries the host sealed to this device and keep the
 /// highest sequence per subject. A summary is a pointer, not evidence.
 ///

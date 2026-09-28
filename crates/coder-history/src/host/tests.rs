@@ -1114,3 +1114,47 @@ fn asked_who_it_is_the_chat_shows_the_answer_not_the_narration() {
     assert!(!readable.text.contains("Finished."));
     assert!(!readable.text.contains("marking the task complete"));
 }
+
+#[test]
+fn a_question_shows_as_coders_message_and_its_end_as_a_status_marker() {
+    let question = "Should result.txt hold one line or two?";
+    let asked = serde_json::json!({"record": "step", "step": {
+        "at": 1_790_570_162_027u64, "source": "System",
+        "message": "Microcoder loop observation.",
+        "extensions": {"microcoder": {"seconds": 3.1, "event": {
+            "event": "generated", "step": 1, "prompt_chars": 2048, "generated": {
+                "action": {"Ok": {
+                    "rationale": "The user must choose.", "commands": [], "view": [],
+                    "freeze_tests": false, "expand": [], "finished": false,
+                    "reply": question, "ask": "question"
+                }},
+                "model": "gpt-6-luna", "prompt_tokens": 900, "completion_tokens": 60,
+                "usd": 0.001, "known_usd": 0.001, "cost_unknown": null, "usd_upper": 0.001,
+                "cost_basis": "list_price", "milliseconds": 2400
+            }
+        }}}
+    }});
+    let readable = readable_record(asked.to_string().as_bytes()).unwrap();
+    assert_eq!(
+        (readable.kind.as_str(), readable.role.as_deref()),
+        ("message", Some("assistant"))
+    );
+    assert_eq!(readable.text, question);
+    for (ask, text) in [
+        ("question", "Coder is waiting for your answer."),
+        ("approval", "Coder is waiting for your approval."),
+    ] {
+        let ended = serde_json::json!({"record": "step", "step": {
+            "at": 1_790_570_163_027u64, "source": "System",
+            "message": "Microcoder loop observation.",
+            "extensions": {"microcoder": {"seconds": 3.2, "event": {
+                "event": "ended", "outcome": {
+                    "ending": {"reason": "asked", "detail": {"ask": ask}}, "steps": 1
+                }
+            }}}
+        }});
+        let readable = readable_record(ended.to_string().as_bytes()).unwrap();
+        assert_eq!(readable.kind, "task_complete");
+        assert_eq!(readable.text, text);
+    }
+}

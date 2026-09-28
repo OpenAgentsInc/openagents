@@ -27,8 +27,9 @@ operation; this README covers the crate.
 | `authority` | The grant store as the channel, terminal, and publication paths see it: serialized store access, a snapshot that reloads when the store file changes, and a device's standing. |
 | `message` | Direct-channel messages: host calls and answers, pings, the closing message, NIP-TERM bodies, and fragmentation. |
 | `mailbox` | Mailboxes derived from the host and device's NIP-44 conversation key, the terminal generation, and workspace IDs. |
-| `client` | `Device`, directory and reach fetches, summaries, `Link`, `Connector`, `Ordered` frame ordering, and the `websocket` hint dialer. |
-| `tasks` | The task-owner trait and `NoTasks`. |
+| `client` | `Device`, directory and reach fetches, summaries, nudges, `Link`, `Connector`, `Ordered` frame ordering, and the `websocket` hint dialer. |
+| `tasks` | The task-owner trait (creation, steering, cancellation, archiving, durable commands, and queue edits) and `NoTasks`. |
+| `nudge` | A device's stored note to its host that commands wait; the host answers with fresh presence when it reads one, even after being away. |
 | `config` | The host configuration. |
 | `tls` | Loads and checks the operator's certificate chain and key for the WebSocket listener. |
 | `telemetry` | Coarse CPU and memory samples for presence. |

@@ -280,7 +280,7 @@ first turn leaves it out.
 ## Follow-up turns
 
 A device continues a chat with NIP-HOST `task.command` (`send`, a `queue`
-promotion, or an emulated `steer`). Each starts the task's next turn, which
+promotion, an emulated `steer`, or an `answer` to the turn's question). Each starts the task's next turn, which
 is queued exactly like a new task: the inbox records it as `eligible` with
 its `turn`, and the sweep starts it only when the policy is on, lists the
 task's workspace, still names the task's model, and has a free slot, through

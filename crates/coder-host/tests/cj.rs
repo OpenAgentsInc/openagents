@@ -11,11 +11,14 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use coder_host::access::cj::{self, Capability, fetch_capability};
-use coder_host::access::protocol::{Operation, Outcome, REQUEST, Request, TaskCreate};
+use coder_host::access::protocol::{
+    CommandAction, Operation, Outcome, QueueEdit, REQUEST, Request, TaskCommand, TaskCreate,
+    TaskQueue,
+};
 use coder_host::access::{Access, Client, Code, Pending, RelayPolicy, Right, Rights};
 use coder_host::config::Config;
 use coder_host::reach::pubkey;
-use coder_host::{TaskRef, Tasks};
+use coder_host::{Principal, Standing, TaskRef, Tasks};
 use nostr::activity_summary::Phase;
 use nostr::domain::Event;
 use secp256k1::SecretKey;
@@ -34,9 +37,13 @@ fn now() -> u64 {
     coder_host::unix_time().unwrap()
 }
 
-/// A task owner that records each creation once per idempotency key.
+/// A task owner that records each creation once per idempotency key, and
+/// each durable command once per device and command ID.
 #[derive(Default)]
-struct Recorder(Mutex<BTreeMap<String, (TaskRef, TaskCreate)>>);
+struct Recorder(
+    Mutex<BTreeMap<String, (TaskRef, TaskCreate)>>,
+    Mutex<BTreeMap<(String, String), TaskCommand>>,
+);
 
 impl Recorder {
     fn created(&self) -> Vec<(TaskRef, TaskCreate)> {
@@ -62,6 +69,41 @@ impl Tasks for Recorder {
     }
     fn cancel(&self, _: &str, _: &str, _: &str, _: u64, _: &str) -> Result<TaskRef, Code> {
         Err(Code::Unavailable)
+    }
+    fn command(
+        &self,
+        principal: &Principal,
+        command: &TaskCommand,
+        _: Standing<'_>,
+    ) -> Result<TaskRef, Code> {
+        let mut commands = self.1.lock().unwrap();
+        let key = (principal.device.clone(), command.command.clone());
+        if commands.get(&key).is_some_and(|held| held != command) {
+            return Err(Code::Conflict);
+        }
+        commands.insert(key, command.clone());
+        Ok(TaskRef {
+            task: command.task.clone(),
+            revision: 2,
+            phase: Phase::Queued,
+        })
+    }
+    fn queue(
+        &self,
+        _: &Principal,
+        task: &str,
+        _: &QueueEdit,
+        _: Standing<'_>,
+    ) -> Result<(TaskQueue, Option<TaskRef>), Code> {
+        Ok((
+            TaskQueue {
+                task: task.into(),
+                revision: 2,
+                lease: None,
+                items: Vec::new(),
+            },
+            None,
+        ))
     }
 }
 
@@ -377,5 +419,50 @@ async fn the_binding_refuses_a_relayed_request_and_a_foreign_target() {
     let outcome = device.client.send_cj(&capability, &pending).await.unwrap();
     assert!(matches!(outcome, Outcome::Dispatched { .. }));
     assert_eq!(fixture.tasks.created().len(), 1);
+    fixture.running.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn durable_commands_and_queue_edits_travel_over_cj_as_over_the_artifact_binding() {
+    let fixture = fixture().await;
+    let device = fixture.enroll(Rights::standard(), key()).await;
+    let capability = fixture.capability(&device.secret).await;
+    for operation in ["task.command", "task.queue"] {
+        assert!(
+            capability.definition()["binding_contract"]["operations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|name| name == operation),
+            "the host advertises {operation}"
+        );
+    }
+    let task = "a".repeat(64);
+    let command = TaskCommand {
+        command: "c".repeat(64),
+        task: task.clone(),
+        action: CommandAction::Queue,
+        based_on: 1,
+        text: "Then update the changelog.".into(),
+        emulate: false,
+        issued_at: now(),
+    };
+    let queue = || Operation::CommandTask {
+        command: command.clone(),
+    };
+    let prepare = || device.client.prepare(queue(), now()).unwrap();
+    let (artifact, execution) = both(&capability, &device, prepare).await;
+    assert_eq!(artifact, "dispatched task.command");
+    assert_eq!(execution, artifact);
+    // Both requests carried one device-minted command: the owner holds it once.
+    assert_eq!(fixture.tasks.1.lock().unwrap().len(), 1);
+    let list = || Operation::QueueTask {
+        task: task.clone(),
+        edit: QueueEdit::List {},
+    };
+    let prepare = || device.client.prepare(list(), now()).unwrap();
+    let (artifact, execution) = both(&capability, &device, prepare).await;
+    assert!(artifact.starts_with("ok Queue"), "{artifact}");
+    assert_eq!(execution, artifact);
     fixture.running.shutdown().await;
 }

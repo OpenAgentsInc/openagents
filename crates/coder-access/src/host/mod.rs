@@ -53,6 +53,18 @@ pub trait Dispatch: Send {
     fn workspaces(&mut self) -> std::result::Result<Vec<String>, Code> {
         Err(Code::Unavailable)
     }
+    /// List or edit a task's queued messages for `device`, admitted under
+    /// `grant` (`None` for the owner). A host without a task owner has no
+    /// queue to offer.
+    fn queue(
+        &mut self,
+        _device: &str,
+        _grant: Option<(&str, u64)>,
+        _task: &str,
+        _edit: &crate::protocol::QueueEdit,
+    ) -> std::result::Result<crate::protocol::TaskQueue, Code> {
+        Err(Code::Unavailable)
+    }
 }
 /// The default dispatcher: task and terminal effects are not connected.
 pub struct Unconnected;
@@ -402,6 +414,24 @@ impl Host {
                 }
                 Err(code) => Err(Error::new(code, "the host lists no workspaces")),
             },
+            // Queue edits are idempotent: an exact retry after an uncertain
+            // save sets the same text, order, or lease again.
+            Operation::QueueTask { task, edit } => {
+                let grant = p.grant.as_deref().zip(request.epoch);
+                match dispatch.queue(&p.key, grant, task, edit) {
+                    Ok(queue) => {
+                        let outcome = Outcome::Queue { queue };
+                        match outcome.validate() {
+                            Ok(()) if outcome.answers(&request.op) => Ok(outcome),
+                            _ => Err(Error::new(
+                                Code::Unavailable,
+                                "the task owner's queue is invalid",
+                            )),
+                        }
+                    }
+                    Err(code) => Err(Error::new(code, "the task owner refused the queue edit")),
+                }
+            }
             Operation::CreateTask { .. }
             | Operation::OpenTerminal { .. }
             | Operation::SteerTask { .. }

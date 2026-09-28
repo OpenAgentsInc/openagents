@@ -420,6 +420,10 @@ impl Observer for Terminal {
             Event::Ended { outcome } => {
                 let why = match &outcome.ending {
                     Ending::Finished => "the model finished".to_string(),
+                    Ending::Asked {
+                        ask: crate::models::Ask::Approval,
+                    } => "a request for the user's approval".to_string(),
+                    Ending::Asked { .. } => "a question for the user".to_string(),
                     Ending::StepLimit => "the step limit".to_string(),
                     Ending::TimeLimit => "the time limit".to_string(),
                     Ending::SpendLimit => "the spend limit".to_string(),

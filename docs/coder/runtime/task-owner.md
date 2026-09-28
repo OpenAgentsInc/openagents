@@ -258,4 +258,18 @@ its state (`received`, `held`, `dispatching` with the exact task-owner
 command, or a final outcome). `commands::decide` is the pure evaluation; its
 rules are in [NIP-HOST](../../../nips/openagents/NIP-HOST.md#operations).
 The resident host evaluates held commands every few seconds and passes each
-continued turn to the auto-start policy.
+continued turn to the auto-start policy. `commands::edit_queue` lists and
+edits the held messages behind NIP-HOST `task.queue`: a 60-second edit lease
+per task, kept in the same journal, holds queued messages while a device
+edits them, and an edit keeps the original request beside the edited text
+so a device's replay still matches.
+
+A repository turn can end by asking. With `ask` on (the repository profile
+turns it on), a Microcoder step that sets `ask` to `question` or `approval`,
+runs no commands, and puts the question in `reply` ends the turn; the run's
+result ending is `asked_question` or `asked_approval`
+(`coder::task::interaction`), and the execution counts as finished. The
+task then waits: its summary reports `waiting`, and an `answer` command
+continues it with the answer as the next turn's message. In a run nobody
+answers, such as a benchmark, a step that asks is told so and the loop goes
+on.

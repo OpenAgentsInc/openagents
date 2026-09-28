@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use coder_access::Code;
 use coder_access::host::Dispatch;
-use coder_access::protocol::{Operation, Receipt};
+use coder_access::protocol::{Operation, QueueEdit, Receipt, TaskQueue};
 use coder_pty::wire::{Launch, Open, Reason, Size, Value};
 
 use super::Shared;
@@ -41,10 +41,41 @@ impl Dispatcher {
     }
 }
 
+/// The sender of a device operation, admitted under `grant` (`None` for the
+/// owner).
+fn principal(device: &str, grant: Option<(&str, u64)>) -> crate::tasks::Principal {
+    crate::tasks::Principal {
+        device: device.into(),
+        grant: grant.map(|(id, _)| id.to_owned()),
+        epoch: grant.map(|(_, epoch)| epoch),
+    }
+}
+
 impl Dispatch for Dispatcher {
     /// The configured workspace labels. The roots they name stay on the host.
     fn workspaces(&mut self) -> Result<Vec<String>, Code> {
         Ok(self.shared.config.workspaces.keys().cloned().collect())
+    }
+
+    /// The task owner lists or edits the queue. An edit that lets a held
+    /// message run changes the task, whose summary follows the reply.
+    fn queue(
+        &mut self,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        task: &str,
+        edit: &QueueEdit,
+    ) -> Result<TaskQueue, Code> {
+        let principal = principal(device, grant);
+        let authority = self.shared.authority.clone();
+        let standing = move |other: &crate::tasks::Principal| super::standing(&authority, other);
+        let (queue, changed) = self
+            .shared
+            .tasks
+            .clone()
+            .queue(&principal, task, edit, &standing)?;
+        self.changed.extend(changed);
+        Ok(queue)
     }
 
     fn dispatch_as(
@@ -56,12 +87,15 @@ impl Dispatch for Dispatcher {
     ) -> Result<Receipt, Code> {
         match op {
             Operation::CommandTask { command } => {
-                let principal = crate::tasks::Principal {
-                    device: device.into(),
-                    grant: grant.map(|(id, _)| id.to_owned()),
-                    epoch: grant.map(|(_, epoch)| epoch),
-                };
-                let result = self.shared.tasks.clone().command(&principal, command);
+                let principal = principal(device, grant);
+                let authority = self.shared.authority.clone();
+                let standing =
+                    move |other: &crate::tasks::Principal| super::standing(&authority, other);
+                let result = self
+                    .shared
+                    .tasks
+                    .clone()
+                    .command(&principal, command, &standing);
                 self.task(op, result)
             }
             _ => self.dispatch(request, device, op),

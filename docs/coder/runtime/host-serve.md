@@ -275,6 +275,13 @@ a relay-carried request, so the same request ID returns the same signed reply
 through either binding. A `completed` result means the operation answered;
 the reply inside it says whether it was admitted.
 
+A device with commands waiting for a host it cannot reach leaves a nudge
+(`coder_host::client::nudge`): a stored private artifact that the host
+reads when its relay subscription comes back after a gap, such as the
+computer waking. The host then evaluates held commands and publishes fresh
+presence and hints to that device, which sends its commands again. See
+[NIP-HOST](../../../nips/openagents/NIP-HOST.md#nudges).
+
 A handshake that the host refuses after proving its key blocks the
 connection instead of falling back: a revoked grant is revoked on every
 route. A relay link's probe fails while a direct route answers, so sending

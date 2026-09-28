@@ -478,6 +478,9 @@ async fn run_loop<G: Generate, J: Judge>(
         acceptance: false,
         route: Route::Never,
         gates: crate::gate::Gates::default(),
+        // A device can answer: a question ends the turn and the task
+        // waits (`coder::task::interaction`).
+        ask: true,
         ..Limits::default()
     };
     // A later turn carries the conversation's earlier turns.
@@ -529,9 +532,20 @@ fn finish(
     outcome: crate::run::Outcome,
 ) -> Result<task::Task, task::Error> {
     let configuration = host.configuration().clone();
-    let completed = outcome.ending == Ending::Finished;
+    // A turn that asked ended as it meant to; the task then waits for the
+    // answer.
+    let asked = match outcome.ending {
+        Ending::Asked {
+            ask: crate::models::Ask::Approval,
+        } => Some(task::interaction::Kind::Approval),
+        Ending::Asked { .. } => Some(task::interaction::Kind::Question),
+        _ => None,
+    };
+    let completed = outcome.ending == Ending::Finished || asked.is_some();
     let ending = if host.cancelled() {
         "cancelled_or_host_refusal"
+    } else if let Some(kind) = asked {
+        kind.ending()
     } else if completed {
         "model_finished"
     } else if matches!(outcome.ending, Ending::NoCapacity { .. }) {

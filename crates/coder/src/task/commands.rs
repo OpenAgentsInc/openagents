@@ -21,13 +21,26 @@
 //!    order; a steer corrects a turn that has not started, runs the
 //!    engine's emulation for a running turn only when the device chose it,
 //!    and is refused otherwise; a steer whose turn ended becomes the next
-//!    turn. An answer is refused: this engine raises no approvals or
-//!    questions a device can answer yet.
+//!    turn. An answer starts the next turn only while the task's ended turn
+//!    waits for one ([`super::interaction`]) and the device read that turn;
+//!    the first answer wins, and a later or competing one is refused.
 //!
 //! The host records a command's exact task-store command before it applies
 //! it, and applies those exact bytes again after a crash. The store returns
 //! the original receipt for an exact retry, so no command runs twice.
 //! Every deferred effect rechecks its sender's grant and epoch first.
+//!
+//! # Editing the queue
+//!
+//! [`edit_queue`] lists a task's held messages and edits them under an edit
+//! lease ([`LEASE`] seconds, renewed by the holder). While a device holds
+//! the lease, queued messages wait even when the turn ends, so nothing runs
+//! a message being edited. The holder may change the text of its own held
+//! message, remove it, send it now (the engine's emulated steering: stop the
+//! turn and continue with it, ahead of the queue), or reorder the held
+//! messages by naming their exact permutation. An edit keeps the command's
+//! original request, so a device's replay of it still matches; the journal
+//! records the edited text beside it.
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -52,6 +65,11 @@ pub const SKEW: u64 = 5 * 60;
 /// The most entries the journal keeps. Decided entries older than twice
 /// the time to live are pruned first; a replay after that expires anyway.
 pub const MAX_ENTRIES: usize = 4096;
+/// How long a queue edit lease lasts without renewal, in seconds. A holder
+/// renews it well within this, such as every 20 seconds.
+pub const LEASE: u64 = 60;
+/// The most held messages a queue listing carries.
+pub const MAX_LISTED: usize = 64;
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 
 /// What a command asks for.
@@ -125,6 +143,8 @@ pub enum Outcome {
     },
     Expired,
     Superseded,
+    /// Its device removed it from the queue before it ran.
+    Cancelled,
 }
 
 /// Where a command is.
@@ -157,6 +177,14 @@ pub struct Entry {
     /// Host time it was first recorded.
     pub received_at: u64,
     pub state: State,
+    /// Text its device put in place of the request's while it was held. The
+    /// request itself stays as sent, so a replay still matches it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edited: Option<String>,
+    /// Its device chose to send this held message now: it runs as the
+    /// engine's emulated steering, ahead of the queue.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub promoted: bool,
 }
 
 impl Entry {
@@ -169,6 +197,34 @@ impl Entry {
             _ => None,
         }
     }
+
+    /// The message this entry runs with: the edited text, else the sent one.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        self.edited.as_deref().unwrap_or(&self.request.text)
+    }
+
+    /// The request as it is evaluated now: the edited text, and for a
+    /// message sent now, an emulated steer.
+    fn effective(&self) -> Request {
+        let mut request = self.request.clone();
+        request.text = self.text().to_owned();
+        if self.promoted {
+            request.kind = Kind::Steer;
+            request.emulate = true;
+        }
+        request
+    }
+}
+
+/// A device's edit lease on one task's queue.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Lease {
+    pub task: String,
+    pub device: String,
+    /// Host time it lapses unless renewed.
+    pub expires_at: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -176,6 +232,8 @@ impl Entry {
 struct Journal {
     schema: String,
     entries: Vec<Entry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    leases: Vec<Lease>,
 }
 
 impl Default for Journal {
@@ -183,7 +241,17 @@ impl Default for Journal {
         Self {
             schema: SCHEMA.into(),
             entries: Vec::new(),
+            leases: Vec::new(),
         }
+    }
+}
+
+impl Journal {
+    /// The current lease on `task`'s queue, if one has not lapsed.
+    fn lease(&self, task: &str, now: u64) -> Option<&Lease> {
+        self.leases
+            .iter()
+            .find(|lease| lease.task == task && lease.expires_at > now)
     }
 }
 
@@ -208,6 +276,10 @@ pub struct View {
     pub revision: u64,
     /// The revision the current turn started at.
     pub turn_started: u64,
+    /// What the ended turn asked, while nothing has answered it.
+    pub question: Option<super::interaction::Kind>,
+    /// A device holds the queue's edit lease: queued messages wait.
+    pub paused: bool,
 }
 
 impl View {
@@ -223,6 +295,8 @@ impl View {
             },
             revision: task.revision,
             turn_started: task.turn_started(),
+            question: super::interaction::pending(task),
+            paused: false,
         }
     }
 }
@@ -283,6 +357,7 @@ pub fn decide(
     if !standing {
         return rejected(Rejection::Revoked);
     }
+    let request = &entry.effective();
     let ended_turn = request.based_on < view.turn_started;
     match request.kind {
         Kind::Interrupt => {
@@ -304,6 +379,8 @@ pub fn decide(
             Phase::Unknown => rejected(Rejection::Unavailable),
             _ => rejected(Rejection::Conflict),
         },
+        // A queue being edited waits, even after its turn ends.
+        Kind::Queue if view.paused => Decision::Hold { priority: false },
         Kind::Queue => continue_or_hold(view, held_ahead, false, &request.text),
         Kind::Steer => {
             let turn = match view.phase {
@@ -335,7 +412,17 @@ pub fn decide(
                 Err(_) => rejected(Rejection::Unsupported),
             }
         }
-        Kind::Answer => rejected(Rejection::Unsupported),
+        // An answer needs a question the device has read. The first answer
+        // continues the task, so a later or competing one finds no
+        // question waiting.
+        Kind::Answer => match view.phase {
+            Phase::Unknown => rejected(Rejection::Unavailable),
+            _ if ended_turn => rejected(Rejection::Stale),
+            Phase::Ended if view.question.is_some() && !held_ahead => {
+                Decision::Dispatch(Effect::Continue(request.text.clone()))
+            }
+            _ => rejected(Rejection::Conflict),
+        },
     }
 }
 
@@ -433,6 +520,8 @@ pub fn record(
         request: request.clone(),
         received_at: now,
         state: State::Received,
+        edited: None,
+        promoted: false,
     });
     // The command is durable before anything evaluates it.
     write(&store.dir, &journal)?;
@@ -486,6 +575,217 @@ pub fn entries(dir: &Path) -> Result<Vec<Entry>, Error> {
     Ok(read(dir)?.entries)
 }
 
+/// One change to a task's queue.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum QueueEdit {
+    /// Read the queue.
+    List,
+    /// Take or renew the edit lease.
+    Lease,
+    /// Give the lease up.
+    Release,
+    /// Replace the text of the device's own held message.
+    Edit { command: String, text: String },
+    /// Remove the device's own held message.
+    Remove { command: String },
+    /// Put the held queued messages in this exact order.
+    Reorder { commands: Vec<String> },
+    /// Send the device's own held message now, as emulated steering.
+    SendNow { command: String },
+}
+
+/// One held message, as a queue listing shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Queued {
+    pub command: String,
+    pub device: String,
+    /// The message the entry runs with.
+    pub text: String,
+    /// It goes before queued messages: an emulated steer waiting for its
+    /// stop, or a message sent now.
+    pub priority: bool,
+}
+
+/// A task's queue after a [`QueueEdit`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueueState {
+    pub task: Task,
+    pub lease: Option<Lease>,
+    /// Held messages in the order they run: priority first, then queued,
+    /// each in journal order.
+    pub items: Vec<Queued>,
+}
+
+/// List or edit `task`'s held messages for `sender`. Changes need the edit
+/// lease, and a device changes only its own messages, except that the
+/// lease holder may reorder every queued message. After a change the
+/// task's commands are evaluated again.
+///
+/// # Errors
+/// `NotFound` for an unknown task or a command this device has not queued,
+/// `Conflict` when another device holds the lease, this device does not,
+/// the message is no longer held, or a reorder is not an exact permutation
+/// of the queued messages; and I/O failures.
+pub fn edit_queue(
+    dir: &Path,
+    task: &str,
+    sender: &Sender,
+    edit: &QueueEdit,
+    steering: &Steering,
+    standing: &dyn Fn(&Sender) -> bool,
+    now: u64,
+) -> Result<(QueueState, Vec<Continued>), Error> {
+    let mut store = Store::open(dir)?;
+    store.show(task)?;
+    let mut journal = read(&store.dir)?;
+    journal.leases.retain(|lease| lease.expires_at > now);
+    let holder = journal.lease(task, now).map(|lease| lease.device.clone());
+    let mine = holder.as_deref() == Some(sender.device.as_str());
+    let own = |journal: &Journal, command: &str| {
+        journal
+            .entries
+            .iter()
+            .position(|entry| {
+                entry.request.task == task
+                    && entry.sender.device == sender.device
+                    && entry.request.command == command
+            })
+            .ok_or(Error::NotFound)
+    };
+    let queued = |journal: &Journal| -> Vec<usize> {
+        journal
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| {
+                entry.request.task == task && !entry.promoted && entry.held() == Some(false)
+            })
+            .map(|(index, _)| index)
+            .collect()
+    };
+    let changed = match edit {
+        QueueEdit::List => false,
+        QueueEdit::Lease => {
+            if holder
+                .as_ref()
+                .is_some_and(|device| *device != sender.device)
+            {
+                return Err(Error::Conflict);
+            }
+            journal.leases.retain(|lease| lease.task != task);
+            journal.leases.push(Lease {
+                task: task.into(),
+                device: sender.device.clone(),
+                expires_at: now + LEASE,
+            });
+            true
+        }
+        QueueEdit::Release => {
+            let before = journal.leases.len();
+            journal
+                .leases
+                .retain(|lease| !(lease.task == task && lease.device == sender.device));
+            journal.leases.len() != before
+        }
+        _ if !mine => return Err(Error::Conflict),
+        QueueEdit::Edit { command, text } => {
+            let index = own(&journal, command)?;
+            let entry = &mut journal.entries[index];
+            if entry.held().is_none() {
+                return Err(Error::Conflict);
+            }
+            entry.edited = (*text != entry.request.text).then(|| text.clone());
+            true
+        }
+        QueueEdit::Remove { command } => {
+            let index = own(&journal, command)?;
+            let entry = &mut journal.entries[index];
+            match entry.state {
+                // Removing it again succeeds again.
+                State::Done(Outcome::Cancelled) => false,
+                State::Held { .. } => {
+                    entry.state = State::Done(Outcome::Cancelled);
+                    true
+                }
+                _ => return Err(Error::Conflict),
+            }
+        }
+        QueueEdit::SendNow { command } => {
+            let index = own(&journal, command)?;
+            let entry = &mut journal.entries[index];
+            match entry.held() {
+                Some(_) if entry.promoted => false,
+                Some(false) => {
+                    entry.promoted = true;
+                    true
+                }
+                _ => return Err(Error::Conflict),
+            }
+        }
+        QueueEdit::Reorder { commands } => {
+            let slots = queued(&journal);
+            let mut order = Vec::with_capacity(commands.len());
+            for command in commands {
+                let found = slots
+                    .iter()
+                    .copied()
+                    .find(|&slot| journal.entries[slot].request.command == *command);
+                match found {
+                    Some(slot) if !order.contains(&slot) => order.push(slot),
+                    _ => return Err(Error::Conflict),
+                }
+            }
+            if order.len() != slots.len() {
+                return Err(Error::Conflict);
+            }
+            // The queued messages trade places among their own slots, so
+            // every other entry keeps its arrival order.
+            let moved: Vec<Entry> = order
+                .iter()
+                .map(|&slot| journal.entries[slot].clone())
+                .collect();
+            for (slot, entry) in slots.iter().zip(moved) {
+                journal.entries[*slot] = entry;
+            }
+            order != slots
+        }
+    };
+    let mut continued = Vec::new();
+    if changed {
+        write(&store.dir, &journal)?;
+        continued = evaluate(&mut store, &mut journal, task, steering, standing, now)?;
+    }
+    let mut items: Vec<(bool, usize)> = journal
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| entry.request.task == task)
+        .filter_map(|(index, entry)| entry.held().map(|priority| (!priority, index)))
+        .collect();
+    items.sort_unstable();
+    items.truncate(MAX_LISTED);
+    let items = items
+        .into_iter()
+        .map(|(queued, index)| {
+            let entry = &journal.entries[index];
+            Queued {
+                command: entry.request.command.clone(),
+                device: entry.sender.device.clone(),
+                text: entry.text().to_owned(),
+                priority: !queued,
+            }
+        })
+        .collect();
+    Ok((
+        QueueState {
+            task: store.show(task)?,
+            lease: journal.lease(task, now).cloned(),
+            items,
+        },
+        continued,
+    ))
+}
+
 fn evaluate(
     store: &mut Store,
     journal: &mut Journal,
@@ -501,7 +801,10 @@ fn evaluate(
         let Ok(current) = store.show(task) else {
             break;
         };
-        let view = View::of(&current);
+        let view = View {
+            paused: journal.lease(task, now).is_some(),
+            ..View::of(&current)
+        };
         let indices: Vec<usize> = journal
             .entries
             .iter()
@@ -524,7 +827,7 @@ fn evaluate(
             let newer_interrupt = later
                 .iter()
                 .any(|&other| journal.entries[other].request.kind == Kind::Interrupt);
-            let priority = entry.request.kind == Kind::Steer;
+            let priority = entry.promoted || entry.request.kind == Kind::Steer;
             // An emulated steer goes before every queued message; within
             // each kind, arrival order holds.
             let held_ahead = indices.iter().any(|&other| {

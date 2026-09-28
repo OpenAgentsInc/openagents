@@ -460,6 +460,21 @@ fn microcoder(
                     };
                     return Some(("task_complete", Some("system"), None, text));
                 }
+                // The question is the step's reply, already shown; the end
+                // is a status marker too.
+                "asked" => {
+                    let approval = ending
+                        .get("detail")
+                        .and_then(|detail| detail.get("ask"))
+                        .and_then(Value::as_str)
+                        == Some("approval");
+                    let text = if approval {
+                        "Coder is waiting for your approval."
+                    } else {
+                        "Coder is waiting for your answer."
+                    };
+                    return Some(("task_complete", Some("system"), None, text.to_owned()));
+                }
                 "bad_replies" => format!(
                     "Coder stopped: {}",
                     first_line(

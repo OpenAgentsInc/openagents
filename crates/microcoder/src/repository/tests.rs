@@ -127,6 +127,7 @@ fn generator(command: &str) -> Generator {
                 expand: Vec::new(),
                 finished: false,
                 reply: String::new(),
+                ask: crate::models::Ask::None,
             },
             NextAction {
                 rationale: "The requested file exists.".into(),
@@ -136,6 +137,7 @@ fn generator(command: &str) -> Generator {
                 expand: Vec::new(),
                 finished: true,
                 reply: String::new(),
+                ask: crate::models::Ask::None,
             },
         ])),
         model: "fixture-model",
@@ -445,6 +447,7 @@ impl Generate for MissingUsageGenerator {
             action: Ok(NextAction {
                 finished: true,
                 reply: String::new(),
+                ask: crate::models::Ask::None,
                 rationale: "Synthetic completion.".into(),
                 commands: Vec::new(),
                 view: Vec::new(),
@@ -529,6 +532,7 @@ impl Generate for ContextGenerator {
                 expand: Vec::new(),
                 finished: true,
                 reply: String::new(),
+                ask: crate::models::Ask::None,
             }),
             model: "fixture-model".into(),
             prompt_tokens: 0,
@@ -820,6 +824,7 @@ fn write(command: &str) -> NextAction {
         expand: Vec::new(),
         finished: false,
         reply: String::new(),
+        ask: crate::models::Ask::None,
     }
 }
 
@@ -832,6 +837,7 @@ fn done() -> NextAction {
         expand: Vec::new(),
         finished: true,
         reply: String::new(),
+        ask: crate::models::Ask::None,
     }
 }
 
@@ -1154,6 +1160,7 @@ async fn a_finished_reply_is_the_answer_and_the_rationale_is_not() {
             expand: Vec::new(),
             finished: true,
             reply: answer.into(),
+            ask: crate::models::Ask::None,
         }])),
         model: "fixture-model",
         calls: Cell::new(0),
@@ -1330,4 +1337,96 @@ async fn an_empty_directory_inside_a_repository_is_not_a_workspace() {
             .is_some_and(|error| error.contains("top level")),
         "{refused:?}"
     );
+}
+
+#[tokio::test]
+async fn a_question_ends_the_turn_waiting_and_the_first_answer_continues_it() {
+    use coder::task::commands::{self, Kind, Outcome, Rejection, Request, Sender, State};
+    use coder::task::interaction;
+    let (_root, store, grant) = fixture();
+    let asking = Generator {
+        actions: RefCell::new(VecDeque::from([NextAction {
+            rationale: "Two layouts fit; the user must choose.".into(),
+            commands: Vec::new(),
+            view: Vec::new(),
+            freeze_tests: false,
+            expand: Vec::new(),
+            finished: false,
+            reply: "Should result.txt hold one line or two?".into(),
+            ask: crate::models::Ask::Question,
+        }])),
+        model: "fixture-model",
+        calls: Cell::new(0),
+    };
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let waiting = run(host, &asking, &JudgeFixture).await.unwrap();
+    // The turn ended as meant, asking; nothing ran.
+    assert_eq!(waiting.execution, task::Execution::Finished);
+    assert_eq!(asking.calls.get(), 1);
+    let result = waiting.run.as_ref().unwrap().result.as_ref().unwrap();
+    assert_eq!(result.ending, interaction::QUESTION_ENDING);
+    assert_eq!(result.exit_code, Some(0));
+    assert_eq!(
+        interaction::pending(&waiting),
+        Some(interaction::Kind::Question)
+    );
+    let always = |_: &Sender| true;
+    let now = coder::task::autostart::unix_now();
+    let answer = |device: &str, id: &str, based_on: u64| {
+        (
+            Sender {
+                device: device.into(),
+                grant: None,
+                epoch: None,
+            },
+            Request {
+                command: id.repeat(64),
+                task: "fixture".into(),
+                kind: Kind::Answer,
+                based_on,
+                text: "One line.".into(),
+                emulate: false,
+                issued_at: now,
+            },
+        )
+    };
+    // An answer to an earlier turn's question is stale.
+    let (sender, stale) = answer("tablet", "a", 0);
+    let (recorded, _) =
+        commands::record(&store, &sender, &stale, &crate::STEERING, &always, now).unwrap();
+    assert_eq!(
+        recorded.state,
+        State::Done(Outcome::Rejected {
+            reason: Rejection::Stale
+        })
+    );
+    // The first answer continues the task with it.
+    let (sender, first) = answer("phone", "b", waiting.revision);
+    let (recorded, continued) =
+        commands::record(&store, &sender, &first, &crate::STEERING, &always, now).unwrap();
+    assert!(matches!(
+        recorded.state,
+        State::Done(Outcome::Applied { .. })
+    ));
+    assert_eq!(continued.len(), 1);
+    let task = recorded.task.unwrap();
+    assert_eq!(task.status, task::Status::Queued);
+    assert_eq!(interaction::pending(&task), None);
+    // A competing answer finds the question already answered.
+    let (sender, second) = answer("tablet", "c", waiting.revision);
+    let (recorded, _) =
+        commands::record(&store, &sender, &second, &crate::STEERING, &always, now).unwrap();
+    assert!(matches!(
+        recorded.state,
+        State::Done(Outcome::Rejected { .. })
+    ));
+    // The next turn sees its question and the answer.
+    let mut next: task::owner::Grant = serde_json::from_slice(&grant).unwrap();
+    next.expected_revision = task.revision;
+    let host = Host::admit(&store, &serde_json::to_vec(&next).unwrap())
+        .await
+        .unwrap();
+    let prompt = host.engine_prompt();
+    assert!(prompt.contains("Should result.txt hold one line or two?"));
+    assert!(prompt.ends_with("The user's new message:\nOne line."));
 }
