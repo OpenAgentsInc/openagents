@@ -1043,6 +1043,7 @@ version = "0.1.0"
 dependencies = [
  "coder-access",
  "coder-connect",
+ "coder-history",
  "coder-link",
  "coder-pty",
  "coder-reach",
@@ -5226,7 +5227,11 @@ dependencies = [
 name = "openagents-mobile"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "coder-computers",
+ "coder-connect",
+ "coder-history",
+ "coder-host",
  "coder-vt",
  "rust-native",
  "rustls",

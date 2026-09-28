@@ -153,10 +153,21 @@ fn key_for(view: &serde_json::Value, label: &str) -> Option<String> {
 #[test]
 fn paste_invitation_asks_for_the_invitation() {
     let (mut app, _dir) = app();
+    // The phone opens on the Computers list; adding by invitation is one
+    // step away.
     let view = app
         .call(Request::Snapshot)
         .computers
         .expect("computers view");
+    let node = key_for(&view, "Add a computer").expect("add control");
+    let view = app
+        .call(Request::ComputersActivate {
+            instance: view["instance"].as_str().expect("instance").into(),
+            revision: view["revision"].as_u64().expect("revision"),
+            node,
+        })
+        .computers
+        .expect("add screen");
     let node = key_for(&view, "Paste invitation").expect("paste control");
     let packet = app.call(Request::ComputersActivate {
         instance: view["instance"].as_str().expect("instance").into(),
@@ -174,4 +185,204 @@ fn paste_invitation_asks_for_the_invitation() {
         value: "not an invitation".into(),
     });
     assert!(packet.computers.is_some());
+}
+
+#[test]
+fn chats_start_by_asking_for_a_computer() {
+    let (mut app, _dir) = app();
+    let packet = app.call(Request::Snapshot);
+    let view = packet.chats.expect("chats view");
+    let text = values(&view);
+    assert!(text.contains(&"Add a computer".to_string()), "{text:?}");
+    let node = key_for(&view, "Add a computer").expect("add control");
+    let packet = app.call(Request::ChatsActivate {
+        instance: view["instance"].as_str().expect("instance").into(),
+        revision: view["revision"].as_u64().expect("revision"),
+        node,
+    });
+    let input = packet.chats_input.expect("input request");
+    assert!(input.scan);
+    // Not a pairing code: the pairing fails with a notice, off the queue.
+    let packet = app.call(Request::ChatsInput {
+        token: input.token.clone(),
+        value: "not an invitation".into(),
+    });
+    assert!(packet.chats_input.is_none());
+    for _ in 0..100 {
+        let packet = app.call(Request::Snapshot);
+        let text = values(&packet.chats.expect("chats view"));
+        if text.iter().any(|t| t.starts_with("Pairing failed")) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    panic!("no pairing notice");
+}
+
+/// Reads chats from a real observer. Set `OPENAGENTS_TEST_CHAT_SECRET` to the
+/// device secret hex and `OPENAGENTS_TEST_CHAT_CODE` to a connection code
+/// file from `coder-connect pair --client <device key>`, with
+/// `coder-connect serve` running.
+#[test]
+#[ignore = "network: needs a running coder-connect observer"]
+fn live_chats_from_an_observer() {
+    let secret = std::env::var("OPENAGENTS_TEST_CHAT_SECRET").expect("secret");
+    let code = std::fs::read_to_string(std::env::var("OPENAGENTS_TEST_CHAT_CODE").expect("code"))
+        .expect("code file");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut app = App::new(Config {
+        state_dir: dir.path().to_path_buf(),
+        secret_hex: secret,
+    })
+    .expect("app");
+    let view = app.call(Request::Snapshot).chats.expect("view");
+    let node = key_for(&view, "Add a computer").expect("add");
+    let input = app
+        .call(Request::ChatsActivate {
+            instance: view["instance"].as_str().expect("instance").into(),
+            revision: view["revision"].as_u64().expect("revision"),
+            node,
+        })
+        .chats_input
+        .expect("input");
+    app.call(Request::ChatsInput {
+        token: input.token,
+        value: code,
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let view = loop {
+        let packet = app.call(Request::Snapshot);
+        // Name the computer when asked.
+        if let Some(input) = packet.chats_input {
+            app.call(Request::ChatsInput {
+                token: input.token,
+                value: "This Mac".into(),
+            });
+            continue;
+        }
+        let view = packet.chats.expect("view");
+        if !packet.chats_loading && key_for(&view, "Forget").is_some() {
+            break view;
+        }
+        assert!(std::time::Instant::now() < deadline, "{:?}", values(&view));
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    };
+    let text = values(&view);
+    eprintln!("catalog: {:?}", &text[..text.len().min(8)]);
+    let chat = text
+        .iter()
+        .find(|t| t.contains("\nClaude · This Mac") || t.contains("\nCodex · This Mac"))
+        .expect("a chat from this computer")
+        .clone();
+    let node = key_for(&view, &chat).expect("chat row");
+    app.call(Request::ChatsActivate {
+        instance: view["instance"].as_str().expect("instance").into(),
+        revision: view["revision"].as_u64().expect("revision"),
+        node,
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    loop {
+        let packet = app.call(Request::Snapshot);
+        let view = packet.chats.expect("view");
+        let text = values(&view);
+        if !packet.chats_loading {
+            let messages = text
+                .iter()
+                .filter(|t| *t == "user" || *t == "assistant")
+                .count();
+            eprintln!(
+                "opened {chat:?}: {messages} user/assistant messages; tail {:?}",
+                text.last()
+            );
+            assert!(messages > 0, "{text:?}");
+            assert_eq!(packet.chats_follow, Some("chat-end"));
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "transcript did not load"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
+#[test]
+fn computers_screens_draw_in_neutral_colors() {
+    let (mut app, _dir) = app();
+    let view = app
+        .call(Request::Snapshot)
+        .computers
+        .expect("computers view");
+    let mut pending = vec![&view];
+    let mut colors = 0;
+    while let Some(value) = pending.pop() {
+        if let Some(object) = value.as_object() {
+            for field in ["foreground", "background"] {
+                if let Some(color) = value["style"][field].as_object() {
+                    colors += 1;
+                    assert_eq!(color["red"], color["green"]);
+                    assert_eq!(color["red"], color["blue"]);
+                }
+            }
+            pending.extend(object.values());
+        } else if let Some(items) = value.as_array() {
+            pending.extend(items.iter());
+        }
+    }
+    assert!(colors > 0);
+    assert!(
+        !values(&view)
+            .iter()
+            .any(|t| t.starts_with("Your directory")),
+        "the owner directory is left out"
+    );
+}
+
+/// Tailnet admission against a real host. Set `OPENAGENTS_TEST_ADMISSION`
+/// to a tailnet IPv4 address whose host runs
+/// `coder host serve --tailnet-admission standard` for this machine's
+/// Tailscale user, and `OPENAGENTS_TEST_ADMISSION_HOST` to its host key.
+#[test]
+#[ignore = "network: needs a host with tailnet admission"]
+fn live_tailnet_admission_adds_the_computer_and_its_chats() {
+    let address = std::env::var("OPENAGENTS_TEST_ADMISSION").expect("address");
+    let host = std::env::var("OPENAGENTS_TEST_ADMISSION_HOST").expect("host key");
+    let (mut app, _dir) = app();
+    app.set_tailnet(Screen::Devices(Tailnet {
+        name: None,
+        this_device: None,
+        devices: vec![Device {
+            name: "test-computer".into(),
+            os: "macOS".into(),
+            address,
+            online: Some(true),
+        }],
+    }));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
+    loop {
+        let packet = app.call(Request::Snapshot);
+        let tailnet = values(&packet.tailnet.expect("tailnet view"));
+        if tailnet.contains(&"OpenAgents connected".to_string()) {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "{tailnet:?}");
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    assert!(app.hosts().contains(&host), "{:?}", app.hosts());
+    let computers = values(&app.call(Request::Snapshot).computers.expect("computers"));
+    eprintln!("computers: {computers:?}");
+    loop {
+        let packet = app.call(Request::Snapshot);
+        let chats = values(&packet.chats.expect("chats"));
+        if !packet.chats_loading
+            && chats
+                .iter()
+                .any(|t| t.ends_with(" chats") && t != "0 chats")
+        {
+            eprintln!("chats: {:?}", &chats[..chats.len().min(6)]);
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "{chats:?}");
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
 }

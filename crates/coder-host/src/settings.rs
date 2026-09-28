@@ -42,6 +42,21 @@ pub struct ServeSettings {
     /// TLS for the WebSocket listener.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub websocket_tls: Option<TlsSetting>,
+    /// Tailnet admission: devices of this machine's own Tailscale user get
+    /// invitations with these rights. Absent is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tailnet_admission: Option<TailnetSetting>,
+}
+
+/// The recorded `--tailnet-admission RIGHTS` and `--no-tailnet-chats`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TailnetSetting {
+    /// A rights list as `--rights` takes it, such as `standard`.
+    pub rights: String,
+    /// Hand out no chat invitations.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_chats: bool,
 }
 
 /// One recorded `--advertise CLASS=ADDRESS`.

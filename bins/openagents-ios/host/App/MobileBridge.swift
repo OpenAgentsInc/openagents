@@ -38,6 +38,10 @@ struct AppPacket: Decodable {
     let computers: NativeView?
     let computers_input: ComputersInput?
     let computers_qr: ComputersQR?
+    let chats: NativeView?
+    let chats_input: ComputersInput?
+    let chats_follow: String?
+    let chats_loading: Bool
     let tailnet: NativeView?
     let tailnet_loading: Bool
     let open_url: String?
@@ -98,8 +102,13 @@ final class MobileBridge: ObservableObject {
         send(["op": "\(surface)_activate", "instance": view.instance, "revision": view.revision, "node": node])
     }
 
-    func submit(token: String, value: String) { send(["op": "computers_input", "token": token, "value": value]) }
-    func cancel(token: String) { send(["op": "computers_cancel", "token": token]) }
+    func refreshChats() { send(["op": "chats_refresh"]) }
+
+    /// Answer or close an input request on the Computers or Chats surface.
+    func submit(_ surface: String, token: String, value: String) {
+        send(["op": "\(surface)_input", "token": token, "value": value])
+    }
+    func cancel(_ surface: String, token: String) { send(["op": "\(surface)_cancel", "token": token]) }
 
     /// A terminal request: a resize, typed text, a key, or a paste.
     func terminal(_ request: [String: Any]) {

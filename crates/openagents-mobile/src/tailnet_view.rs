@@ -5,6 +5,7 @@ use crate::tailnet::Tailnet;
 use rust_native::style::{Color, Space, Style, TextWeight};
 use rust_native::{Axis, Element, Node, TextRole};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use url::Url;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -12,6 +13,18 @@ use url::Url;
 pub enum Intent {
     SignIn,
     Refresh,
+}
+
+/// What tailnet admission found on one device.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Admit {
+    Checking,
+    /// Added under Computers, with its chats when it serves them.
+    Connected,
+    /// No OpenAgents host answered.
+    NotRunning,
+    /// The host refused, with its code.
+    Refused(String),
 }
 
 pub enum Screen {
@@ -25,7 +38,7 @@ const WHITE: Color = Color::rgb(255, 255, 255);
 const GRAY: Color = Color::rgb(153, 153, 153);
 const GREEN: Color = Color::rgb(52, 199, 89);
 
-pub fn root(screen: &Screen) -> Node<Intent> {
+pub fn root(screen: &Screen, admits: &BTreeMap<String, Admit>) -> Node<Intent> {
     match screen {
         Screen::Loading => page(vec![
             heading("tailnet-title", "Tailnet"),
@@ -48,11 +61,11 @@ pub fn root(screen: &Screen) -> Node<Intent> {
             ),
             button("refresh", "Refresh", Intent::Refresh),
         ]),
-        Screen::Devices(tailnet) => devices(tailnet),
+        Screen::Devices(tailnet) => devices(tailnet, admits),
     }
 }
 
-fn devices(tailnet: &Tailnet) -> Node<Intent> {
+fn devices(tailnet: &Tailnet, admits: &BTreeMap<String, Admit>) -> Node<Intent> {
     let count = match tailnet.devices.len() {
         1 => "1 device".to_string(),
         n => format!("{n} devices"),
@@ -71,25 +84,34 @@ fn devices(tailnet: &Tailnet) -> Node<Intent> {
                 Some(false) => ("Offline", GRAY),
                 None => ("Status unknown", GRAY),
             };
-            stack(
-                &format!("device-{index}"),
-                Space::Xs,
-                vec![
-                    text(
-                        &format!("device-{index}-name"),
-                        &device.name,
-                        TextRole::Body,
-                        WHITE,
-                        true,
-                    ),
-                    status(
-                        &format!("device-{index}-detail"),
-                        &format!("{} · {}", device.os, device.address),
-                        GRAY,
-                    ),
-                    status(&format!("device-{index}-state"), state, color),
-                ],
-            )
+            let mut lines = vec![
+                text(
+                    &format!("device-{index}-name"),
+                    &device.name,
+                    TextRole::Body,
+                    WHITE,
+                    true,
+                ),
+                status(
+                    &format!("device-{index}-detail"),
+                    &format!("{} · {}", device.os, device.address),
+                    GRAY,
+                ),
+                status(&format!("device-{index}-state"), state, color),
+            ];
+            let admit = match admits.get(&device.address) {
+                Some(Admit::Checking) => Some(("Looking for OpenAgents…", GRAY)),
+                Some(Admit::Connected) => Some(("OpenAgents connected", GREEN)),
+                Some(Admit::Refused(code)) if code == "not_owner" => {
+                    Some(("Another Tailscale user's device", GRAY))
+                }
+                Some(Admit::Refused(_)) => Some(("OpenAgents refused this phone", GRAY)),
+                Some(Admit::NotRunning) | None => None,
+            };
+            if let Some((line, color)) = admit {
+                lines.push(status(&format!("device-{index}-openagents"), line, color));
+            }
+            stack(&format!("device-{index}"), Space::Xs, lines)
         })
         .collect();
     let mut children = vec![
@@ -105,7 +127,7 @@ fn devices(tailnet: &Tailnet) -> Node<Intent> {
         },
         status(
             "tailnet-hint",
-            "To command a device, run an OpenAgents host on it and add it under Computers.",
+            "Computers running `coder host serve --tailnet-admission standard` connect automatically.",
             GRAY,
         ),
     ];

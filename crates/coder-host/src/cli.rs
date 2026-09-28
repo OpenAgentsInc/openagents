@@ -14,7 +14,7 @@ use coder_access::host::Host;
 use coder_access::{RelayPolicy, Rights};
 
 use crate::config::{Config, Ready, WebsocketTls};
-use crate::settings::{ServeSettings, TlsSetting, parse_advertise};
+use crate::settings::{ServeSettings, TailnetSetting, TlsSetting, parse_advertise};
 use crate::tasks::Tasks;
 use crate::{Error, Result, generation};
 
@@ -27,6 +27,7 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   init --owner KEY --relay URL [--relay URL]... [--workspace LABEL=PATH]...
        [--listen-websocket ADDR] [--allow-nonloopback] [--advertise CLASS=HOST:PORT|URL]...
        [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]
+       [--tailnet-admission RIGHTS [--no-tailnet-chats]]
   public-key
   invite [--relay URL] [--rights LIST] [--grant-secs N]
   request [--relay URL] [--rights LIST]
@@ -36,6 +37,7 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
         [--listen-websocket ADDR] [--allow-nonloopback]
         [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]
         [--advertise lan|tailnet|public=HOST:PORT|URL]...
+        [--tailnet-admission RIGHTS [--no-tailnet-chats]]
         [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback]
         [--no-telemetry]
 Every command also takes --state DIR (the access store, default
@@ -286,6 +288,7 @@ fn init(common: &Common, options: &mut Options) -> Result<()> {
         name: tls.name,
     });
     settings.allow_nonloopback = options.flag("--allow-nonloopback");
+    settings.tailnet_admission = tailnet_admission(options)?;
     settings.advertise = options
         .all("--advertise")
         .iter()
@@ -315,6 +318,21 @@ fn init(common: &Common, options: &mut Options) -> Result<()> {
     settings.save(root)?;
     println!("{host}");
     Ok(())
+}
+
+/// `--tailnet-admission RIGHTS [--no-tailnet-chats]`: the rights are chosen
+/// explicitly, as for any invitation.
+fn tailnet_admission(options: &mut Options) -> Result<Option<TailnetSetting>> {
+    let rights = options.one("--tailnet-admission")?;
+    let no_chats = options.flag("--no-tailnet-chats");
+    match rights {
+        Some(rights) => {
+            Rights::parse_list(&rights)?;
+            Ok(Some(TailnetSetting { rights, no_chats }))
+        }
+        None if no_chats => Err(usage(" --no-tailnet-chats goes with --tailnet-admission")),
+        None => Ok(None),
+    }
 }
 
 fn listen_websocket(options: &mut Options) -> Result<Option<SocketAddr>> {
@@ -497,6 +515,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         }
     };
     let telemetry = !options.flag("--no-telemetry");
+    let tailnet = tailnet_admission(options)?.or_else(|| settings.tailnet_admission.clone());
     let mut advertise = options
         .all("--advertise")
         .iter()
@@ -547,10 +566,35 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     let tasks = open_tasks(&tasks_dir, &workspaces).map_err(Error::Config)?;
     // The last step before serving, so a refused start uses no generation.
     let generation = generation::resolve(&generation::counter_root(root), generation)?;
-    let mut config = Config::new(state, relays, generation);
+    let mut config = Config::new(state.clone(), relays.clone(), generation);
     config.policy = policy;
     config.listen = listen;
     config.listen_websocket = listen_websocket;
+    let admission = match &tailnet {
+        Some(setting) => Some(crate::tailnet::Settings {
+            state: state.clone(),
+            policy,
+            relay: relays
+                .first()
+                .cloned()
+                .ok_or_else(|| usage(" --tailnet-admission needs a relay"))?,
+            rights: Rights::parse_list(&setting.rights)?,
+            grant_secs: DEFAULT_GRANT_SECS,
+            port: crate::tailnet::PORT,
+            tailscale: crate::tailnet::program(),
+            chats: (!setting.no_chats)
+                .then(crate::tailnet::default_sources)
+                .filter(|sources| sources.codex.is_some() || sources.claude.is_some())
+                .map(|sources| -> Result<_> {
+                    Ok(crate::tailnet::Chats {
+                        observer: home(".openagents/coder-connect")?,
+                        sources,
+                    })
+                })
+                .transpose()?,
+        }),
+        None => None,
+    };
     config.websocket_tls = websocket_tls;
     config.allow_nonloopback = allow_nonloopback;
     config.telemetry = telemetry;
@@ -569,6 +613,16 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     );
     if let (Some(address), Some(url)) = (running.websocket_addr(), running.websocket_url()) {
         eprintln!("coder host: WebSocket direct channels on {address} as {url}");
+    }
+    if let Some(admission) = admission {
+        let chats = admission.chats.is_some();
+        match crate::tailnet::start(admission).await {
+            Ok(address) => eprintln!(
+                "coder host: tailnet admission on {address}{}",
+                if chats { " with chats" } else { "" }
+            ),
+            Err(error) => eprintln!("coder host: tailnet admission is off: {error}"),
+        }
     }
     wait_for_stop().await;
     running.shutdown().await;

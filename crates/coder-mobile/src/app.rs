@@ -474,7 +474,10 @@ impl App {
         }
     }
 
-    fn terminal_request(&mut self, request: Request) -> coder_computers::terminal::screen::TerminalPacket {
+    fn terminal_request(
+        &mut self,
+        request: Request,
+    ) -> coder_computers::terminal::screen::TerminalPacket {
         let Some(terminal) = self.terminal.as_mut() else {
             return coder_computers::terminal::screen::TerminalPacket::closed();
         };
@@ -577,7 +580,8 @@ impl App {
                     node,
                 };
                 if let Some(terminal) = self.terminal.as_mut()
-                    && terminal.activate(&event) == Ok(coder_computers::terminal::screen::Outcome::Closed)
+                    && terminal.activate(&event)
+                        == Ok(coder_computers::terminal::screen::Outcome::Closed)
                 {
                     self.terminal = None;
                 }

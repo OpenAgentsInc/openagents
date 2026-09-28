@@ -13,8 +13,10 @@ default = ["host"]
 # disables default features and keeps `client`, `mailbox`, and `message`.
 host = [
     "coder-access/host",
+    "coder-connect/host",
     "coder-pty/host",
     "tokio/signal",
+    "tokio/process",
     "dep:libc",
     "dep:coder-service",
     "dep:tokio-rustls",
@@ -23,6 +25,8 @@ host = [
 [dependencies]
 coder-access = { path = "../coder-access", default-features = false }
 coder-connect = { path = "../coder-connect", default-features = false }
+# Chat invitations handed out by tailnet admission (host feature only).
+coder-history = { path = "../coder-history", default-features = false }
 coder-link = { path = "../coder-link" }
 coder-pty = { path = "../coder-pty", default-features = false }
 # The host root's one generation counter, shared with the service launcher.

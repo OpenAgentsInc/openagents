@@ -1362,6 +1362,11 @@ impl ComputersService for Live {
         self.shared.redeem(&self.runtime, invitation, None, None)
     }
 
+    fn redeem_labeled(&mut self, invitation: &str, label: &str) -> Result<String> {
+        self.shared
+            .redeem(&self.runtime, invitation, Some(label.to_owned()), None)
+    }
+
     fn approve_enrollment(
         &mut self,
         host: &str,

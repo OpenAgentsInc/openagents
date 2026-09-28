@@ -56,8 +56,20 @@ coder-service service install --host-key "$(coder host public-key)"
 The read-only history observer in `coder-connect` stays a separate
 capability with its own key under `~/.openagents/coder-connect/` and its own
 `coder-pair:` pairing. A host grant never admits an observer read, and an
-observer grant never admits a host operation. The host process does not serve
-the observer.
+observer grant never admits a host operation. The host process serves the
+observer in-process only with tailnet admission and chats on (below).
+
+## Tailnet admission
+
+`coder host serve --tailnet-admission RIGHTS` (or `coder host init` with the
+same option, recorded in `serve.json`) listens on this machine's tailnet
+address, port 47109, and hands a single-use invitation with `RIGHTS` to a
+caller that `tailscale whois` names as this machine's own untagged Tailscale
+user ([NIP-HOST tailnet admission](../../nips/openagents/NIP-HOST.md#tailnet-admission)).
+Unless `--no-tailnet-chats` is given and `~/.codex` or `~/.claude` exists, it
+also returns a `coder-pair:` chat invitation and serves read-only history
+on the primary relay in-process. The `tailscale` command comes from `PATH`,
+else the macOS app. `tailnet::request` is the device side.
 
 ## Direct-channel binding
 

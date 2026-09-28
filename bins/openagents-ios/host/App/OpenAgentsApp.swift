@@ -27,6 +27,9 @@ struct HomeScreen: View {
             ComputersTab(bridge: bridge)
                 .tabItem { Label("Computers", systemImage: "desktopcomputer") }
                 .tag("computers")
+            ChatsTab(bridge: bridge)
+                .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
+                .tag("chats")
             TailnetTab(bridge: bridge)
                 .tabItem { Label("Tailnet", systemImage: "network") }
                 .tag("tailnet")
@@ -79,8 +82,8 @@ struct ComputersTab: View {
             }
             if let input = bridge.packet?.computers_input {
                 InputBar(input: input, busy: bridge.busy,
-                         submit: { bridge.submit(token: input.token, value: $0) },
-                         cancel: { bridge.cancel(token: input.token) })
+                         submit: { bridge.submit("computers", token: input.token, value: $0) },
+                         cancel: { bridge.cancel("computers", token: input.token) })
                     .id(input.token)
             }
         }
@@ -96,13 +99,58 @@ struct ComputersTab: View {
     }
 }
 
+/// Chats from every computer paired for reading. The surface holds its own
+/// lists, so it does not scroll as a whole.
+struct ChatsTab: View {
+    @ObservedObject var bridge: MobileBridge
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .topTrailing) {
+                if let view = bridge.packet?.chats {
+                    NativeRenderer(node: view.root, revision: view.revision,
+                                   followTarget: bridge.packet?.chats_follow, followChanged: nil,
+                                   activate: { node in bridge.activate("chats", view: view, node: node) })
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    Color.clear
+                }
+                if bridge.packet?.chats_loading == true {
+                    ProgressView().padding().accessibilityLabel("Loading chats")
+                }
+            }
+            if let input = bridge.packet?.chats_input {
+                InputBar(input: input, busy: bridge.busy,
+                         submit: { bridge.submit("chats", token: input.token, value: $0) },
+                         cancel: { bridge.cancel("chats", token: input.token) })
+                    .id(input.token)
+            }
+        }
+        .background(Color.black.ignoresSafeArea())
+        // Reads finish in the background; poll until they do.
+        .task(id: bridge.packet?.chats_loading == true) {
+            guard bridge.packet?.chats_loading == true else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                if !Task.isCancelled { bridge.snapshot() }
+            }
+        }
+    }
+}
+
 struct TailnetTab: View {
     @ObservedObject var bridge: MobileBridge
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            SurfaceView(view: bridge.packet?.tailnet) { view, node in
-                bridge.activate("tailnet", view: view, node: node)
+            Color.black.ignoresSafeArea()
+            // The device list is its own scrolling list; a surrounding
+            // scroll view would collapse it.
+            if let view = bridge.packet?.tailnet {
+                NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
+                               followChanged: nil,
+                               activate: { node in bridge.activate("tailnet", view: view, node: node) })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
             if bridge.packet?.tailnet_loading == true {
                 ProgressView().padding().accessibilityLabel("Checking your tailnet")

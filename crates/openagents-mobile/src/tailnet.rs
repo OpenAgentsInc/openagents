@@ -93,7 +93,10 @@ impl Client {
             }
             Err(e) => return Err(format!("Tailscale registration failed: {e}")),
         }
+        // Every map request carries the hostname; without it control
+        // renames the node to a default such as `node-1`.
         let request = MapRequestBuilder::new(&self.keys)
+            .hostname(HOSTNAME)
             .stream(false)
             .omit_peers(false)
             .build();

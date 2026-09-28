@@ -362,6 +362,53 @@ impl Computers {
         self.finish(result)
     }
 
+    /// Leave first run for the Computers screen, for a client that adds hosts
+    /// on its own, such as through NIP-HOST tailnet admission.
+    pub fn finish_first_run(&mut self) -> Result<(), Refusal> {
+        if self.ui.screen != Screen::FirstRun {
+            return Ok(());
+        }
+        self.service.complete_first_run().map_err(Refusal::Failed)?;
+        self.reload();
+        self.ui.screen = Screen::Computers;
+        self.rebuild().map_err(Refusal::Failed)
+    }
+
+    /// Add a host from an invitation a trusted local path delivered, such as
+    /// NIP-HOST tailnet admission, without an input request. Adding a host
+    /// finishes first run. The host still signs the grant on redemption.
+    pub fn admit(&mut self, invitation: &str, label: &str) -> Result<String, Refusal> {
+        let result = (|| {
+            if !invitation.starts_with(INVITATION_PREFIX) {
+                return Err(Refusal::Input(
+                    "This isn't a computer invitation. Computer invitations start with coder-host:."
+                        .into(),
+                ));
+            }
+            let host = self
+                .service
+                .redeem_labeled(invitation, label)
+                .map_err(Refusal::Failed)?;
+            self.service.complete_first_run().map_err(Refusal::Failed)?;
+            self.reload();
+            if matches!(self.ui.screen, Screen::FirstRun | Screen::Add) {
+                self.ui.screen = Screen::Computers;
+            }
+            let label = self.label(&host);
+            self.ui.notice = Some(Notice {
+                kind: NoticeKind::Done,
+                text: format!("Added {label}."),
+            });
+            Ok(host)
+        })();
+        let outcome = result
+            .as_ref()
+            .map(|_| Outcome::Updated)
+            .map_err(Clone::clone);
+        self.finish(outcome)?;
+        result
+    }
+
     /// Accept the value for the current input request.
     pub fn submit(&mut self, token: &str, value: &str) -> Result<Outcome, Refusal> {
         let result = self.accept(token, value);

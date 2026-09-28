@@ -11,8 +11,8 @@ mod verse_app;
 mod verse_ffi;
 
 pub use app::{App, Config, Packet, Reply, Request};
-pub use push::PushConfig;
 pub use coder_computers::terminal::screen::TerminalPacket;
+pub use push::PushConfig;
 
 #[cfg(test)]
 mod tests;

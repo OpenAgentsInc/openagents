@@ -21,7 +21,7 @@ login, or network membership can introduce a device; none of them is a login.
 | [CAP](NIP-CAP.md) | A host describes the HOST operations as CAP operation roles. Discovery never admits an operation. CAP forbids public local presence; HOST publishes no presence. |
 | [CJ](NIP-CJ.md) | The CAP binding below invokes HOST operations through CJ execution v1. A CJ `completed` result means the HOST operation answered; the embedded reply states whether it was admitted. |
 | [POL](NIP-POL.md) | Disclosure, action approvals, spending, and publication stay POL decisions. No HOST right approves a POL action, and `operate` does not raise a budget. |
-| [REACH](NIP-REACH.md) | Owner host directory, presence, reachability hints, and direct channels. A direct channel binds to one HOST grant ID and epoch. A route, address, or tailnet membership never grants access. |
+| [REACH](NIP-REACH.md) | Owner host directory, presence, reachability hints, and direct channels. A direct channel binds to one HOST grant ID and epoch. A route, address, or tailnet membership never grants access. The opt-in [tailnet admission](#tailnet-admission) uses Tailscale identity to hand out an invitation, never a grant. |
 | [TERM](NIP-TERM.md) | Terminal sessions, streams, and replay. TERM requires the HOST `terminal` right and defines no grant of its own. |
 | [RUN](NIP-RUN.md) and [ENV](NIP-ENV.md) | A task admitted through `task.create` is recorded and executed under the host's task owner, RUN, and ENV. HOST admission is not execution evidence. |
 | Official [NIP-46](../official/46.md) | A remote signer can hold the owner key. A permission to sign is not a HOST right; the host still checks the signer against its locally established owner. |
@@ -203,6 +203,60 @@ for the same device returns the same grant. An approval for another device
 refuses as `conflict`. Denial is terminal: later approvals refuse as
 `denied`. Only the host's own records decide the outcome; the request's
 public tags reveal a relationship between keys, not its state.
+
+## Tailnet admission
+
+Tailnet admission lets a device on the operator's own tailnet enroll
+without a QR code or a short code. It is off unless the host's operator
+turns it on with an explicit rights list, for example
+`coder host serve --tailnet-admission standard`.
+
+The host listens on its own tailnet IPv4 address, port 47109 by default,
+and bounds concurrent exchanges. Each exchange is one line of JSON in each
+direction over TCP, within 10 seconds:
+
+- The device sends `openagents.host-tailnet-admission-request.v1`:
+  `{v, requires: [], chats}`, at most 1,024 bytes. `chats` asks for a chat
+  invitation too.
+- The host answers `openagents.host-tailnet-admission.v1`:
+  `{v, host, label, invitation, chats, refused}`.
+
+The host refuses, with no invitation, when:
+
+- the request is malformed or names a required feature (`malformed`);
+- the caller's address is outside Tailscale's ranges, `100.64.0.0/10` and
+  `fd7a:115c:a1e0::/48` (`not_tailnet`);
+- its local `tailscale whois` cannot name the caller (`unavailable`);
+- the caller is a tagged device (`tagged`); or
+- the caller's Tailscale user differs from the user that owns the host
+  machine in `tailscale status` (`not_owner`).
+
+Otherwise the host issues an ordinary single-use host invitation with the
+operator's rights and a grant expiry of seven days, exactly as
+`invite.create` would, and returns it as `invitation`. The device redeems it
+over the relay with `enroll.redeem`, so the host signs the grant, and
+epochs, revocation, delegation limits, and device listing are unchanged.
+The invitation is a bearer capability for its five minutes, delivered only
+over the WireGuard-authenticated tailnet connection to the identified
+device. `host` is the host key the invitation names and `label` is the
+machine's tailnet name for display; neither is an identity.
+
+When `chats` is requested and the host serves retained history, the answer
+also carries a `coder-pair:` invitation from the read-only observer in
+`coder-connect` (the SESS observer profile). That grant is separate: it
+admits only history reads, and a HOST grant still never admits one. The
+host then runs the observer in-process on its primary relay.
+
+Tailscale identifies the caller; it never decides access by itself. The
+operator's opt-in, the explicit rights, and the host's signature on every
+grant do. A device that loses its grant, or a revoked device, can ask again
+only while it is still the same Tailscale user's untagged device on the
+tailnet and the operator keeps admission on. Turning admission off stops new
+invitations; it does not revoke grants already issued.
+
+`crates/coder-host/src/tailnet.rs` implements the listener and the client
+request; `crates/openagents-mobile` probes each device on the tailnet and
+redeems what it receives.
 
 ## Grants, epochs, and revocation
 

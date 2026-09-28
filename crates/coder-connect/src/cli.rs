@@ -238,6 +238,17 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
     }
     Ok(())
 }
+/// Serve read-only history on `relay` until the process is interrupted,
+/// without a pairing display. A resident host runs this in-process when it
+/// hands out chat invitations over its tailnet (NIP-HOST tailnet admission).
+pub async fn serve_observer(host: Host, relay: String, policy: RelayPolicy) -> Result<()> {
+    // The store appears with the first chat invitation.
+    while host.key().is_err() {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    serve(host, relay, policy, false, None).await
+}
+
 async fn serve(
     host: Host,
     relay: String,

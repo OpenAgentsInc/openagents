@@ -40,6 +40,7 @@ mod publish;
 pub mod serve;
 #[cfg(feature = "host")]
 pub mod settings;
+pub mod tailnet;
 pub mod tasks;
 #[cfg(feature = "host")]
 pub mod telemetry;

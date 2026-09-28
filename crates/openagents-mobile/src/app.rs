@@ -1,15 +1,18 @@
 //! One OpenAgents app lifetime: the Computers surface, the terminal screen
 //! it opens, and the Tailnet surface.
 
+use crate::chats::{Chats, Purpose as ChatsPurpose};
 use crate::tailnet::{Client, Outcome as TailnetOutcome};
-use crate::tailnet_view::{self, Intent as TailnetIntent, Screen as TailnetScreen};
+use crate::tailnet_view::{self, Admit, Intent as TailnetIntent, Screen as TailnetScreen};
 use coder_computers::cache::Cache;
 use coder_computers::live::{Live, Saved, Settings, Store, Terminals};
 use coder_computers::terminal::screen::{Outcome as TerminalOutcome, Terminal, TerminalPacket};
 use coder_computers::{Capabilities, Computers, InputRequest, LocalHost, Outcome, Platform};
+use coder_host::tailnet::Admission;
 use rust_native::{Activation, ValidatedView, View};
 use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -49,6 +52,19 @@ pub enum Request {
         token: String,
     },
     ComputersRefresh,
+    ChatsActivate {
+        instance: String,
+        revision: u64,
+        node: String,
+    },
+    ChatsInput {
+        token: String,
+        value: String,
+    },
+    ChatsCancel {
+        token: String,
+    },
+    ChatsRefresh,
     TailnetActivate {
         instance: String,
         revision: u64,
@@ -119,6 +135,13 @@ pub struct Packet {
     /// A value the Computers surface asks the host to collect.
     pub computers_input: Option<InputRequest>,
     pub computers_qr: Option<QrModules>,
+    pub chats: Option<serde_json::Value>,
+    /// A value the Chats surface asks the host to collect.
+    pub chats_input: Option<rust_native::input::InputRequest<ChatsPurpose>>,
+    /// The Chats node to keep in view, while a chat is open.
+    pub chats_follow: Option<&'static str>,
+    /// The Chats surface is reading in the background.
+    pub chats_loading: bool,
     pub tailnet: Option<serde_json::Value>,
     /// The Tailnet surface is reading in the background.
     pub tailnet_loading: bool,
@@ -145,18 +168,37 @@ impl Store for ComputersStore {
 struct TailnetState {
     screen: TailnetScreen,
     loading: bool,
+    /// A new device list: look for OpenAgents hosts on it.
+    probe: bool,
+    /// Admission status by tailnet address.
+    admits: BTreeMap<String, Admit>,
+    /// Admissions to apply on the app thread: address, label, answer.
+    answers: Vec<(String, String, Admission)>,
 }
+
+/// A device tailnet admission already added, by tailnet address.
+#[derive(Clone, Serialize, Deserialize)]
+struct Admitted {
+    host: String,
+    /// When its chat pairing ends; 0 when it serves none.
+    chats_until: u64,
+}
+
+const ADMISSION_LIMIT: Duration = Duration::from_secs(5);
 
 pub struct App {
     runtime: tokio::runtime::Runtime,
     device: String,
     computers: Option<Computers>,
+    chats: Chats,
     terminals: Option<Terminals>,
     terminal: Option<Terminal>,
     tailnet_client: Result<Arc<Client>, String>,
     tailnet: Arc<Mutex<TailnetState>>,
     tailnet_revision: u64,
     tailnet_view: Option<ValidatedView<TailnetIntent>>,
+    /// Records of what tailnet admission added, keyed by address.
+    admissions: Result<Cache, String>,
     notices: Vec<String>,
 }
 
@@ -209,24 +251,40 @@ impl App {
             camera: true,
         };
         let computers = match Computers::new(service, capabilities, format!("computers:{}", id())) {
-            Ok(computers) => Some(computers),
+            Ok(mut computers) => {
+                // Hosts arrive through tailnet admission or an invitation;
+                // the phone skips Coder's first-run page.
+                let _ = computers.finish_first_run();
+                Some(computers)
+            }
             Err(error) => {
                 notices.push(format!("Computers unavailable: {}", error.message));
                 None
             }
         };
+        let chats = Chats::new(
+            runtime.handle().clone(),
+            secret,
+            Cache::open(&config.state_dir.join("chats"), &secret),
+            format!("chats:{}", id()),
+        );
         let tailnet_client = Client::open(&config.state_dir.join("tailscale")).map(Arc::new);
         Ok(Self {
             runtime,
             device,
             computers,
+            chats,
             terminals,
             terminal: None,
             tailnet_client,
             tailnet: Arc::new(Mutex::new(TailnetState {
                 screen: TailnetScreen::Loading,
                 loading: false,
+                probe: false,
+                admits: BTreeMap::new(),
+                answers: vec![],
             })),
+            admissions: Cache::open(&config.state_dir.join("admissions"), &secret),
             tailnet_revision: 0,
             tailnet_view: None,
             notices,
@@ -245,6 +303,7 @@ impl App {
     }
 
     pub fn call(&mut self, request: Request) -> Packet {
+        self.admit();
         let mut open_url = None;
         match request {
             Request::Snapshot => {}
@@ -253,6 +312,7 @@ impl App {
                     let _ = computers.set_active(active);
                 }
                 if active {
+                    self.chats.refresh();
                     self.load_tailnet(None, TAILNET_REFRESH_LIMIT);
                 }
             }
@@ -287,6 +347,18 @@ impl App {
                     let _ = computers.refresh();
                 }
             }
+            Request::ChatsActivate {
+                instance,
+                revision,
+                node,
+            } => self.chats.activate(&Activation {
+                instance,
+                revision,
+                node,
+            }),
+            Request::ChatsInput { token, value } => self.chats.submit(&token, &value),
+            Request::ChatsCancel { token } => self.chats.cancel(&token),
+            Request::ChatsRefresh => self.chats.refresh(),
             Request::TailnetActivate {
                 instance,
                 revision,
@@ -372,6 +444,12 @@ impl App {
     }
 
     fn terminal_request(&mut self, request: Request) -> TerminalPacket {
+        let mut packet = self.terminal_packet(request);
+        packet.view = packet.view.map(neutral);
+        packet
+    }
+
+    fn terminal_packet(&mut self, request: Request) -> TerminalPacket {
         let Some(terminal) = self.terminal.as_mut() else {
             return TerminalPacket::closed();
         };
@@ -427,14 +505,132 @@ impl App {
                 Err(_) => TailnetScreen::Failed("Reading the tailnet failed.".into()),
             };
             let mut state = shared.lock().unwrap_or_else(|poison| poison.into_inner());
+            state.probe = matches!(screen, TailnetScreen::Devices(_));
             state.screen = screen;
             state.loading = false;
         });
     }
 
+    /// Tailnet admission (NIP-HOST): ask each device on the tailnet for
+    /// invitations, then redeem them here. Tailscale only identifies this
+    /// phone to the host; each host still signs the grant it issues.
+    fn admit(&mut self) {
+        let (candidates, answers) = {
+            let mut state = self.lock_tailnet();
+            let answers = std::mem::take(&mut state.answers);
+            let mut candidates = vec![];
+            if std::mem::take(&mut state.probe)
+                && let TailnetScreen::Devices(tailnet) = &state.screen
+            {
+                candidates = tailnet
+                    .devices
+                    .iter()
+                    .filter(|device| device.online != Some(false))
+                    .filter_map(|device| {
+                        let ip: std::net::Ipv4Addr = device.address.parse().ok()?;
+                        Some((device.address.clone(), device.name.clone(), ip))
+                    })
+                    .collect::<Vec<_>>();
+                for (address, _, _) in &candidates {
+                    state.admits.insert(address.clone(), Admit::Checking);
+                }
+            }
+            (candidates, answers)
+        };
+        let known: BTreeMap<String, Admitted> = self
+            .admissions
+            .as_ref()
+            .ok()
+            .and_then(|cache| cache.read("admitted").ok().flatten())
+            .unwrap_or_default();
+        let hosts: Vec<String> = self
+            .computers
+            .as_ref()
+            .map(|computers| {
+                computers
+                    .snapshot()
+                    .hosts
+                    .iter()
+                    .map(|h| h.key.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let soon = now().saturating_add(24 * 60 * 60);
+        for (address, name, ip) in candidates {
+            // Skip a device that is already added with current chats.
+            if let Some(admitted) = known.get(&address)
+                && hosts.contains(&admitted.host)
+                && admitted.chats_until > soon
+            {
+                self.lock_tailnet().admits.insert(address, Admit::Connected);
+                continue;
+            }
+            let shared = self.tailnet.clone();
+            self.runtime.spawn(async move {
+                let target = std::net::SocketAddr::from((ip, coder_host::tailnet::PORT));
+                let answer = coder_host::tailnet::request(target, true, ADMISSION_LIMIT).await;
+                let mut state = shared.lock().unwrap_or_else(|poison| poison.into_inner());
+                match answer {
+                    Ok(admission) => state.answers.push((address, name, admission)),
+                    Err(_) => {
+                        state.admits.insert(address, Admit::NotRunning);
+                    }
+                }
+            });
+        }
+        if answers.is_empty() {
+            return;
+        }
+        let mut known = known;
+        for (address, name, admission) in answers {
+            let status = match (&admission.refused, &admission.invitation) {
+                (Some(code), _) => Admit::Refused(code.clone()),
+                (None, Some(invitation)) => {
+                    let label = if admission.label.is_empty() {
+                        name
+                    } else {
+                        admission.label.clone()
+                    };
+                    let added = hosts.contains(&admission.host)
+                        || self
+                            .computers
+                            .as_mut()
+                            .is_some_and(|computers| computers.admit(invitation, &label).is_ok());
+                    if let Some(chats) = admission.chats.clone() {
+                        self.chats.pair(chats, Some(label));
+                    }
+                    if added {
+                        known.insert(
+                            address.clone(),
+                            Admitted {
+                                host: admission.host.clone(),
+                                chats_until: if admission.chats.is_some() {
+                                    now().saturating_add(29 * 24 * 60 * 60)
+                                } else {
+                                    0
+                                },
+                            },
+                        );
+                        Admit::Connected
+                    } else {
+                        Admit::Refused("unavailable".into())
+                    }
+                }
+                (None, None) => Admit::Refused("malformed".into()),
+            };
+            self.lock_tailnet().admits.insert(address, status);
+        }
+        if let Ok(cache) = &self.admissions {
+            let _ = cache.write("admitted", &known);
+        }
+    }
+
     fn render_tailnet(&mut self) -> Option<serde_json::Value> {
         self.tailnet_revision += 1;
-        let root = tailnet_view::root(&self.lock_tailnet().screen);
+        let root = {
+            let state = self.lock_tailnet();
+            tailnet_view::root(&state.screen, &state.admits)
+        };
         let view = View::new("openagents.tailnet", self.tailnet_revision, root)
             .validate()
             .ok()?;
@@ -444,14 +640,17 @@ impl App {
     }
 
     fn packet(&mut self, open_url: Option<String>) -> Packet {
+        self.chats.settle();
         let tailnet = self.render_tailnet();
+        let chats = self.chats.render();
         let computers = self.computers.as_ref();
         Packet {
             schema: "openagents.mobile.v1",
             device: self.device.clone(),
             computers: computers
                 .and_then(Computers::view)
-                .and_then(|view| serde_json::to_value(view.view()).ok()),
+                .and_then(|view| serde_json::to_value(view.view()).ok())
+                .map(|view| neutral(without(view, &["directory"]))),
             computers_input: computers.and_then(Computers::input).cloned(),
             computers_qr: computers
                 .and_then(Computers::invitation_qr)
@@ -466,8 +665,15 @@ impl App {
                         })
                         .collect(),
                 }),
+            chats,
+            chats_input: self.chats.input().cloned(),
+            chats_follow: self.chats.follow(),
+            chats_loading: self.chats.loading(),
             tailnet,
-            tailnet_loading: self.lock_tailnet().loading,
+            tailnet_loading: {
+                let state = self.lock_tailnet();
+                state.loading || state.admits.values().any(|a| *a == Admit::Checking)
+            },
             open_url,
             terminal: self.terminal.is_some(),
             notices: self.notices.clone(),
@@ -476,8 +682,70 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn set_tailnet(&mut self, screen: TailnetScreen) {
-        self.lock_tailnet().screen = screen;
+        let mut state = self.lock_tailnet();
+        state.probe = matches!(screen, TailnetScreen::Devices(_));
+        state.screen = screen;
     }
+
+    #[cfg(test)]
+    pub(crate) fn hosts(&self) -> Vec<String> {
+        self.computers
+            .as_ref()
+            .map(|c| c.snapshot().hosts.iter().map(|h| h.key.clone()).collect())
+            .unwrap_or_default()
+    }
+}
+
+/// Leave out sections this app does not offer, by node key: the owner
+/// directory, which asks for an owner secret key. Activations still resolve
+/// against the controller's full view.
+fn without(mut view: serde_json::Value, keys: &[&str]) -> serde_json::Value {
+    let mut pending = vec![&mut view];
+    while let Some(value) = pending.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                if let Some(serde_json::Value::Array(children)) = object
+                    .get_mut("element")
+                    .and_then(|element| element.get_mut("props"))
+                    .and_then(|props| props.get_mut("children"))
+                {
+                    children.retain(|child| {
+                        !child["key"].as_str().is_some_and(|key| keys.contains(&key))
+                    });
+                }
+                pending.extend(object.values_mut());
+            }
+            serde_json::Value::Array(items) => pending.extend(items.iter_mut()),
+            _ => {}
+        }
+    }
+    view
+}
+
+/// Draw Coder's shared screens in OpenAgents' neutral palette: each color
+/// keeps its brightness (the red channel of Coder's amber) as a gray.
+fn neutral(mut view: serde_json::Value) -> serde_json::Value {
+    let mut pending = vec![&mut view];
+    while let Some(value) = pending.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                if let Some(serde_json::Value::Object(style)) = object.get_mut("style") {
+                    for field in ["foreground", "background"] {
+                        if let Some(serde_json::Value::Object(color)) = style.get_mut(field)
+                            && let Some(red) = color.get("red").cloned()
+                        {
+                            color.insert("green".into(), red.clone());
+                            color.insert("blue".into(), red);
+                        }
+                    }
+                }
+                pending.extend(object.values_mut());
+            }
+            serde_json::Value::Array(items) => pending.extend(items.iter_mut()),
+            _ => {}
+        }
+    }
+    view
 }
 
 fn now() -> u64 {

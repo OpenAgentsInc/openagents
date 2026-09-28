@@ -33,6 +33,13 @@ pub trait ComputersService {
     /// Redeem a scanned or pasted `coder-host:` invitation. Returns the host
     /// key. The service parses, checks expiry, and verifies the grant.
     fn redeem_invitation(&mut self, invitation: &str) -> Result<String>;
+    /// Redeem an invitation a trusted local path delivered, such as NIP-HOST
+    /// tailnet admission, naming a new host `label`. A host already saved
+    /// keeps its label.
+    fn redeem_labeled(&mut self, invitation: &str, label: &str) -> Result<String> {
+        let _ = label;
+        self.redeem_invitation(invitation)
+    }
     /// Approve a headless host's enrollment request with the code shown on
     /// that host, admitting this device with `rights`.
     fn approve_enrollment(

@@ -14,6 +14,13 @@ crate-type = ["rlib", "staticlib"]
 # terminal screen: enrollment, presence, direct channels, and commands.
 coder-computers = { path = "../coder-computers" }
 coder-vt = { path = "../coder-vt" }
+# The tailnet admission client (NIP-HOST): no host code is linked.
+coder-host = { path = "../coder-host", default-features = false }
+# Coder's read-only chat observer: `coder-pair:` pairing, catalog and
+# transcript pages, and readable projections of Claude and Codex records.
+coder-connect = { path = "../coder-connect", default-features = false }
+coder-history = { path = "../coder-history", default-features = false }
+base64 = "0.22"
 rust-native = { path = "../rust-native" }
 # Linking tailscale-rs (aws-lc-rs) beside the host client (ring) enables two
 # rustls providers, so the app installs ring as the process default.
