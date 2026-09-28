@@ -217,6 +217,10 @@ pub(crate) struct Packet {
     camera_distance: f32,
     /// Zoomed all the way in: the camera is at the player's head.
     camera_first_person: bool,
+    /// The pointer holding the movement stick. The host keeps it out of
+    /// pinch arbitration, so zooming never releases the stick.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stick_pointer: Option<u64>,
     motion_needed: bool,
     companion: Companion,
     computer: Computer,
@@ -458,6 +462,7 @@ fn packet(
         camera_pitch: verse::camera::FollowCamera::default().pitch,
         camera_distance: verse::camera::FollowCamera::default().distance,
         camera_first_person: false,
+        stick_pointer: None,
         motion_needed: false,
         companion: Companion {
             near: false,
@@ -1408,7 +1413,9 @@ impl Scene {
                 }
             }
             Request::PinchZoom { scale } => {
-                self.touches.clear();
+                // A pinch owns its two fingers, never the stick: a thumb on
+                // the stick keeps walking while the other hand zooms.
+                self.touches.retain(|_, touch| touch.movement);
                 self.cancel_taps();
                 self.jump = false;
                 if !self.lifecycle.active() || self.panel_open() || self.spawn_pending {
@@ -1624,6 +1631,11 @@ impl Scene {
         packet.camera_pitch = self.world.camera.pitch;
         packet.camera_distance = self.world.camera.distance;
         packet.camera_first_person = self.world.first_person();
+        packet.stick_pointer = self
+            .touches
+            .iter()
+            .find(|(_, touch)| touch.movement && touch.target.is_none())
+            .map(|(id, _)| *id);
         packet.motion_needed = self.motion_needed();
         let companion = self.world.companion(self.aspect());
         packet.companion = Companion {
@@ -3570,6 +3582,37 @@ mod tests {
     }
 
     #[test]
+    fn the_stick_keeps_walking_while_the_other_hand_pinches() {
+        let mut grid = bare_scene();
+        let [sx, sy] = grid.stick_center();
+        grid.pointer(7, PointerPhase::Down, sx, sy).unwrap();
+        grid.pointer(7, PointerPhase::Move, sx, sy - 80.0).unwrap();
+        assert_eq!(grid.packet().stick_pointer, Some(7));
+        grid.update(1.1).unwrap();
+        let distance = grid.world.camera.distance;
+        // Two fingers land and pinch while the thumb holds the stick.
+        grid.pointer(8, PointerPhase::Down, 200.0, 300.0).unwrap();
+        grid.pointer(9, PointerPhase::Down, 500.0, 300.0).unwrap();
+        grid.pointer(8, PointerPhase::Cancel, 0.0, 0.0).unwrap();
+        grid.pointer(9, PointerPhase::Cancel, 0.0, 0.0).unwrap();
+        let start = grid.world.player.pos;
+        for frame in 1..=30 {
+            grid.action(Request::PinchZoom { scale: 1.02 }).unwrap();
+            grid.update(1.1 + f64::from(frame) / 60.0).unwrap();
+        }
+        assert!(grid.world.camera.distance < distance);
+        assert!(
+            grid.world.player.pos.distance(start) > 2.0,
+            "the stick stopped driving during the pinch"
+        );
+        assert!(grid.input().forward);
+        assert_eq!(grid.packet().stick_pointer, Some(7));
+        grid.pointer(7, PointerPhase::Up, sx, sy - 80.0).unwrap();
+        assert_eq!(grid.packet().stick_pointer, None);
+        assert!(!grid.input().forward);
+    }
+
+    #[test]
     fn whole_screen_looks_and_only_the_bottom_stick_moves() {
         let mut scene = scene();
         scene.activate(true).unwrap();
@@ -3896,7 +3939,8 @@ mod tests {
         scene.action(Request::PinchZoom { scale: 2.0 }).unwrap();
         assert_eq!(scene.world.camera.distance, initial / 2.0);
         assert_eq!(scene.packet().camera_distance, initial / 2.0);
-        assert!(scene.touches.is_empty());
+        // Only the stick's touch outlives a pinch.
+        assert!(scene.touches.len() == 1 && scene.touches[&1].movement);
         assert!(scene.last_world_tap.is_none());
         assert!(!scene.jump);
         scene.action(Request::PinchZoom { scale: 0.5 }).unwrap();

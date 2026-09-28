@@ -48,8 +48,9 @@ The app has four tabs, shown as icons:
   controls through the same touch path without touching the screen, and the
   log line `verse-world` reports the connection, live players, and the world
   public key. `push` holds the stick forward for a whole step, into the
-  ball, and `wait` pauses a step; the log line also reports the ball's
-  position, speed, and physics time.
+  ball, `closer` pinches in past the nearest orbit into first person,
+  `walkpinch` holds the stick while pinching in, and `wait` pauses a step;
+  the log line also reports the ball's position, speed, and physics time.
 - **Wallet** is a placeholder.
 - **Account** holds **Computers**, **Tailnet**, **Identity keys**, **About
   this device**, and **Changelog**, and links to the source code and to

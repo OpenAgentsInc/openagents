@@ -21,6 +21,8 @@ struct WorldPacket: Decodable {
     let camera_distance: Double
     /// Zoomed all the way in: the camera is at the player's head.
     let camera_first_person: Bool?
+    /// The pointer holding the movement stick, which pinch never claims.
+    let stick_pointer: UInt64?
     let motion_needed: Bool
     /// Other players' avatars with a recent pose.
     let live_remote_entities: UInt64?
@@ -194,6 +196,10 @@ final class VerseWorldView: UIView {
     private var pointers: [ObjectIdentifier: UInt64] = [:]
     private var nextPointer: UInt64 = 1
     private var pinchAdmission = PinchAdmission()
+    /// Pointers Rust took for the movement stick. They stay out of pinch
+    /// arbitration and always reach Rust, so walking continues while the
+    /// other hand pinches.
+    private var stickPointers: Set<UInt64> = []
     private var wantsHDR = false
     private lazy var script = VerseWorldScript.fromLaunchArguments()
 
@@ -419,10 +425,13 @@ final class VerseWorldView: UIView {
             nextPointer &+= 1
             pointers[ObjectIdentifier(touch)] = id
             let at = touch.location(in: self)
-            pointer(id, phase: "down", at: at)
-            pinchAdmission.down(id, x: Double(at.x), y: Double(at.y), time: touch.timestamp)
+            if pointer(id, phase: "down", at: at)?.stick_pointer == id {
+                stickPointers.insert(id)
+            } else {
+                pinchAdmission.down(id, x: Double(at.x), y: Double(at.y), time: touch.timestamp)
+            }
         }
-        if pinchAdmission.reserved { cancelRustPointers() }
+        if pinchAdmission.reserved { cancelRustPointers(keepingStick: true) }
         _ = pinchAdmission.scale()
     }
 
@@ -430,6 +439,10 @@ final class VerseWorldView: UIView {
         for touch in touches {
             guard let id = pointers[ObjectIdentifier(touch)] else { continue }
             let at = touch.location(in: self)
+            if stickPointers.contains(id) {
+                pointer(id, phase: "move", at: at)
+                continue
+            }
             pinchAdmission.move(id, x: Double(at.x), y: Double(at.y))
             if !pinchAdmission.reserved { pointer(id, phase: "move", at: at) }
         }
@@ -444,18 +457,24 @@ final class VerseWorldView: UIView {
     private func finish(_ touches: Set<UITouch>, phase: String) {
         for touch in touches {
             guard let id = pointers.removeValue(forKey: ObjectIdentifier(touch)) else { continue }
+            if stickPointers.remove(id) != nil {
+                pointer(id, phase: phase, at: touch.location(in: self))
+                continue
+            }
             if !pinchAdmission.reserved { pointer(id, phase: phase, at: touch.location(in: self)) }
             pinchAdmission.up(id)
         }
     }
 
-    fileprivate func pointer(_ id: UInt64, phase: String, at: CGPoint) {
-        guard at.x.isFinite, at.y.isFinite else { return }
-        send(["action": "pointer", "id": id, "phase": phase, "x": Double(at.x), "y": Double(at.y)])
+    @discardableResult
+    fileprivate func pointer(_ id: UInt64, phase: String, at: CGPoint) -> WorldPacket? {
+        guard at.x.isFinite, at.y.isFinite else { return nil }
+        return send(["action": "pointer", "id": id, "phase": phase, "x": Double(at.x), "y": Double(at.y)])
     }
 
-    private func cancelRustPointers() {
-        for id in pointers.values {
+    /// Cancels every pointer in Rust; a pinch keeps the stick's.
+    private func cancelRustPointers(keepingStick: Bool = false) {
+        for id in pointers.values where !(keepingStick && stickPointers.contains(id)) {
             send(["action": "pointer", "id": id, "phase": "cancel", "x": 0, "y": 0])
         }
     }
@@ -463,6 +482,7 @@ final class VerseWorldView: UIView {
     private func cancelPointers() {
         cancelRustPointers()
         pointers.removeAll()
+        stickPointers.removeAll()
         pinchAdmission.reset()
     }
 
@@ -505,7 +525,8 @@ final class VerseWorldView: UIView {
 /// controls can be checked on a simulator without touching the screen.
 /// `push` holds the stick forward for the whole step, walking into the ball
 /// ahead of the spawn, `closer` pinches in past the nearest orbit into first
-/// person, and `wait` does nothing for a step.
+/// person, `walkpinch` holds the stick forward while pinching in, and `wait`
+/// does nothing for a step.
 /// Debug and simulator builds only.
 @MainActor
 private final class VerseWorldScript {
@@ -533,9 +554,10 @@ private final class VerseWorldScript {
         frame += 1
         guard frame > 60, let current = steps.first else { return }
         let t = frame - 61
-        // The stick's center, as Rust places it: 24 + 56 points in from the
-        // bottom-left safe-area corner of the surface.
-        let stick = CGPoint(x: insets.leading + 80, y: bounds.height - insets.bottom - 80)
+        // The stick's center, as Rust places it in the bare world: centered
+        // between the safe-area sides, 24 + 56 points above the bottom inset.
+        let stick = CGPoint(x: insets.leading + (bounds.width - insets.leading - insets.trailing) / 2,
+                            y: bounds.height - insets.bottom - 80)
         let center = CGPoint(x: bounds.width * 0.5, y: bounds.height * 0.4)
         switch (current, t) {
         case ("look", 0): view.pointer(pointer, phase: "down", at: center)
@@ -552,6 +574,11 @@ private final class VerseWorldScript {
         case ("jump", 2), ("jump", 8): view.pointer(pointer + UInt64(t - 2), phase: "up", at: center)
         case ("zoom", 0..<20): view.send(["action": "pinch_zoom", "scale": 0.97])
         case ("closer", 0..<40): view.send(["action": "pinch_zoom", "scale": 1.1])
+        // Hold the stick forward and pinch in at the same time.
+        case ("walkpinch", 0): view.pointer(pointer, phase: "down", at: stick)
+        case ("walkpinch", 1): view.pointer(pointer, phase: "move", at: CGPoint(x: stick.x, y: stick.y - 56))
+        case ("walkpinch", 2..<60): view.send(["action": "pinch_zoom", "scale": 1.02])
+        case ("walkpinch", 89): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x, y: stick.y - 56))
         case ("recenter", 0): view.send(["action": "recenter_camera"])
         default: break
         }

@@ -141,7 +141,9 @@ shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
   the stick. You can also hold the stick and drag the camera at the same
   time. The computer keeps its single-tap action.
 - Place two fingers together, then spread them to zoom in or pinch inward to
-  zoom out. A deliberate pinch owns those touches until you lift them. Adding
+  zoom out. A deliberate pinch owns those touches until you lift them, but
+  never the stick's: in the OpenAgents app a thumb holding the stick keeps
+  walking while the other hand pinches. Adding
   a look drag after movement starts keeps independent controls active.
   The HUD has no walk/sprint toggle, jump button, or zoom buttons.
   In the OpenAgents app's bare world, keep spreading past the nearest orbit
