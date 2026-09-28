@@ -25,6 +25,7 @@ into one pass-rate denominator.
 
 | Date | Report |
 | --- | --- |
+| 2026-09-27 | [Jev-briefed Fable delegate on 14 more tasks: reproduction](2026-09-27-fable-delegate-repro.md) |
 | 2026-09-27 | [Coder delegates to Fable 5.1 low: declaration and results](2026-09-27-fable-delegate.md) |
 | 2026-09-26 | [Round 2 knowledge: what was added, and from where](2026-09-26-round2-knowledge.md) |
 | 2026-09-26 | [Out-of-sample knowledge and Microcoder study (pre-registration)](2026-09-26-out-of-sample-study.md) |

@@ -41,6 +41,15 @@ out of 13 attempts on this issue, not a pass rate. Series 1 is reported
 first below, then [series 2 to 5](#series-2-to-5-knowledge-in-the-briefing)
 and [series 6 and 7](#series-6-and-7-jev-decides-what-the-delegate-is-told).
 
+## Reproduction
+
+Issue [#9776](https://github.com/OpenAgentsInc/openagents/issues/9776)
+ran s7a1's arm, frozen, on the 14 other TB4 tasks that Fable 5.1 low
+passes outside the out-of-sample study's pools, in two pre-registered
+passes. It beat the bar on 4 of 28 attempts: 0 of 14 in pass 1 and 4 of
+14 in pass 2. Every beat was on a task with its own knowledge entries.
+See [Jev-briefed Fable delegate on 14 more tasks](2026-09-27-fable-delegate-repro.md).
+
 ## Question
 
 Can Coder One use Jev to prepare a Terminal-Bench 4 task, hand it to
