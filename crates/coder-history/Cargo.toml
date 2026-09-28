@@ -9,12 +9,15 @@ description = "Read-only, bounded saved-agent history and portable transcript pa
 [features]
 default = ["host"]
 host = ["dep:base64", "dep:libc"]
+# The host's mirror of OpenCode's SQLite session store (`opencode`).
+opencode = ["host", "dep:rusqlite"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = { version = "0.22", optional = true }
 libc = { version = "0.2", optional = true }
+rusqlite = { version = "0.31", features = ["bundled"], optional = true }
 sha2 = "0.11"
 
 [lints]

@@ -11,6 +11,7 @@ fn invite(f: &Fixture) -> String {
                 codex: Some(f.root.clone()),
                 claude: None,
                 coder: None,
+                opencode: None,
             },
             f.now,
             f.now + 3600,
@@ -366,6 +367,7 @@ fn expired_admissions_are_pruned_by_the_invitation_flow() {
                     codex: Some(f.root.clone()),
                     claude: None,
                     coder: None,
+                    opencode: None,
                 },
                 f.now,
                 f.now + 3600,
@@ -391,6 +393,7 @@ fn expired_admissions_are_pruned_by_the_invitation_flow() {
                 codex: Some(f.root.clone()),
                 claude: None,
                 coder: None,
+                opencode: None,
             },
             later,
             later + 3600,
@@ -473,6 +476,7 @@ fn coder_task_source_pairs_and_pages_backward_through_the_observer() {
                 codex: Some(f.root.clone()),
                 claude: None,
                 coder: Some(tasks.clone()),
+                opencode: None,
             },
             f.now,
             f.now + 3600,
@@ -544,6 +548,74 @@ fn coder_task_source_pairs_and_pages_backward_through_the_observer() {
     );
 }
 
+#[test]
+fn opencode_mirror_source_pairs_and_lists_its_sessions_through_the_observer() {
+    let f = Fixture::new("wss://relay.example/");
+    let mirror = f.root.parent().unwrap().join("opencode-mirror");
+    std::fs::create_dir_all(&mirror).unwrap();
+    // Two lines of the host's OpenCode mirror (`coder_history::opencode`).
+    std::fs::write(
+        mirror.join("ses_0synthetic.jsonl"),
+        concat!(
+            r#"{"type":"opencode.session","session_id":"ses_0synthetic","parent_id":null,"directory":"/work","version":"1.18.26","time":1}"#,
+            "\n",
+            r#"{"type":"opencode.part","session_id":"ses_0synthetic","message_id":"msg_1","part_id":"prt_1","role":"user","model":"google/gemini-3.6-flash","time":2,"part":{"type":"text","text":"Synthetic OpenCode chat"}}"#,
+            "\n",
+        ),
+    )
+    .unwrap();
+    let code = f
+        .host()
+        .invite(
+            &f.code.relay,
+            coder_history::Config {
+                codex: Some(f.root.clone()),
+                claude: None,
+                coder: None,
+                opencode: Some(mirror.clone()),
+            },
+            f.now,
+            f.now + 3600,
+        )
+        .unwrap();
+    let (invitation, pending) = prepare(&f, &code, &f.client_secret);
+    let connection = redeem_local(&f, &invitation, &pending, &f.client_secret).unwrap();
+    assert_eq!(
+        connection
+            .sources
+            .iter()
+            .map(|s| s.kind)
+            .collect::<Vec<_>>(),
+        [SourceKind::Codex, SourceKind::OpenCode]
+    );
+    let bytes = serde_json::to_vec(&connection).unwrap();
+    assert!(String::from_utf8_lossy(&bytes).contains("\"opencode\""));
+    let client = Client::new_with_policy(
+        connection.clone(),
+        f.client_secret,
+        RelayPolicy::LoopbackTest,
+    )
+    .unwrap();
+    let pending = client
+        .prepare(Query::Catalog(CatalogRequest::default()), f.now)
+        .unwrap();
+    let reply = f
+        .host()
+        .handle(&pending.event, &connection.relay, f.now)
+        .unwrap();
+    let Observation::Catalog(catalog) = client.verify_reply(&pending, &reply, f.now).unwrap()
+    else {
+        panic!("catalog expected")
+    };
+    let chat = catalog
+        .entries
+        .iter()
+        .find(|c| c.harness == coder_history::Harness::OpenCode)
+        .unwrap();
+    assert_eq!(chat.native_id.as_deref(), Some("ses_0synthetic"));
+    assert_eq!(chat.title, "Synthetic OpenCode chat");
+}
+
 fn paired(f: &Fixture, client: &SecretKey, now: u64) -> ConnectionCode {
     f.host()
         .pair(
@@ -553,6 +625,7 @@ fn paired(f: &Fixture, client: &SecretKey, now: u64) -> ConnectionCode {
                 codex: Some(f.root.clone()),
                 claude: None,
                 coder: None,
+                opencode: None,
             },
             now,
             now + 3600,
@@ -598,6 +671,7 @@ fn repair(f: &Fixture, secret: &SecretKey, now: u64) -> (pairing::Pending, Conne
                 codex: Some(f.root.clone()),
                 claude: None,
                 coder: None,
+                opencode: None,
             },
             now,
             now + 3600,
@@ -670,6 +744,7 @@ fn revoked_grants_never_block_a_new_pairing() {
             codex: Some(f.root.clone()),
             claude: None,
             coder: None,
+            opencode: None,
         },
         f.now,
         f.now + 3600,

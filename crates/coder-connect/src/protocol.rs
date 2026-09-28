@@ -81,6 +81,11 @@ impl RelayPolicy {
     }
 }
 
+/// The most source collections one grant names. Before OpenCode was a
+/// source it was three; a device built before then refuses a grant with
+/// more.
+pub const MAX_SOURCES: usize = 8;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
@@ -88,6 +93,10 @@ pub enum SourceKind {
     Claude,
     /// Coder task transcripts, `*.atif.jsonl` in Coder's task directory.
     Coder,
+    /// OpenCode sessions, as the host mirrors them from OpenCode's database
+    /// (`coder_history::opencode`).
+    #[serde(rename = "opencode")]
+    OpenCode,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -121,10 +130,10 @@ impl Grant {
         }
         policy.validate(&self.relay)?;
         window(self.issued_at, self.expires_at, MAX_GRANT_LIFETIME)?;
-        if self.sources.is_empty() || self.sources.len() > 3 {
+        if self.sources.is_empty() || self.sources.len() > MAX_SOURCES {
             return fail(
                 ErrorCode::Bounds,
-                "grant needs one to three explicit source collections",
+                "grant needs one to eight explicit source collections",
             );
         }
         for (i, source) in self.sources.iter().enumerate() {

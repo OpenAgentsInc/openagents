@@ -34,6 +34,20 @@ directory, one chat per task attempt, newest first by last write. Their native
 ID is the 64-hex task ID, and their title is the first line of the first
 `User` step. It ignores subdirectories and every other file there.
 
+The OpenCode adapter reads the host's mirror of OpenCode's sessions, such
+as `~/.openagents/opencode/mirror`. OpenCode 1.2 and later keep sessions in
+a SQLite database, so `opencode::mirror` (feature `opencode`) copies each
+session into `ses_<id>.jsonl` there: an `opencode.session` header, then one
+`opencode.part` line per finished part in OpenCode's order, and an
+`opencode.error` line after a reply that failed. It opens the database
+read-only and writes only the mirror. The catalog lists the `ses_*.jsonl`
+files directly inside the mirror; titles, update times, and archiving come
+from its `session_index.jsonl`, and a session with a parent lists as a
+subagent. `coder host` runs a pass every five seconds. A part projects as a
+`message` (text, by the message's role), `reasoning`, `tool_call` (the
+tool's title or input, then its output or error), or an `adapter` record
+with no text; an error line is a `system` message.
+
 These adapters follow locally observed saved-file structures, not a guaranteed
 provider API. Unknown records remain available. The reader does not inspect
 credentials or unrelated configuration files. Catalog requests rescan the

@@ -51,16 +51,22 @@ impl Limits {
 mod project;
 pub use project::{readable_record, readable_record_full};
 
-/// How Coder's engine marks a Claude Code or Codex session it starts for its
-/// own work (a delegated turn, an explorer handoff, a terminal answer), so
-/// the session's own file records that it is not a chat the user typed.
+/// How Coder's engine marks a Claude Code, Codex, or OpenCode session it
+/// starts for its own work (a delegated turn, an explorer handoff, a
+/// terminal answer, a repository run), so the session's own store records
+/// that it is not a chat the user typed.
 ///
 /// The engine sets [`CODEX_VARIABLE`](engine::CODEX_VARIABLE) or
 /// [`CLAUDE_VARIABLE`](engine::CLAUDE_VARIABLE) to [`MARK`](engine::MARK)
 /// when it launches the CLI. Codex records the value as the session's
 /// `originator` in its `session_meta` header; Claude Code records it as each
-/// record's `entrypoint`. The catalog leaves such a session out: the task's
-/// own Coder transcript is the chat.
+/// record's `entrypoint`. OpenCode records no caller in a session, so the
+/// engine gives it a database of its own instead: it sets
+/// [`OPENCODE_VARIABLE`](engine::OPENCODE_VARIABLE) to
+/// [`opencode_database`](engine::opencode_database), and the session is
+/// saved there, never in the owner's `opencode.db` that the catalog reads.
+/// The catalog leaves such a session out: the task's own Coder transcript is
+/// the chat.
 pub mod engine {
     /// The value both CLIs record.
     pub const MARK: &str = "openagents-coder-engine";
@@ -68,6 +74,17 @@ pub mod engine {
     pub const CODEX_VARIABLE: &str = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
     /// Claude Code's entry point, recorded as each record's `entrypoint`.
     pub const CLAUDE_VARIABLE: &str = "CLAUDE_CODE_ENTRYPOINT";
+    /// OpenCode's database path (`OPENCODE_DB`, OpenCode 1.2 and later).
+    pub const OPENCODE_VARIABLE: &str = "OPENCODE_DB";
+    /// The engine's OpenCode database, relative to the home directory.
+    pub const OPENCODE_DATABASE: &str = ".openagents/opencode/engine.db";
+
+    /// The engine's OpenCode database under `home`: the file every
+    /// engine-started OpenCode session is saved in.
+    #[must_use]
+    pub fn opencode_database(home: &std::path::Path) -> std::path::PathBuf {
+        home.join(OPENCODE_DATABASE)
+    }
 }
 
 /// Stable native record identity within one source-file incarnation. Clients
@@ -87,6 +104,10 @@ pub enum Harness {
     Claude,
     /// A Coder task attempt's transcript, `<task>.<attempt>.atif.jsonl`.
     Coder,
+    /// An OpenCode session, as the host mirrors it from OpenCode's database
+    /// (`opencode::mirror`, feature `opencode`).
+    #[serde(rename = "opencode")]
+    OpenCode,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -263,5 +284,7 @@ impl std::error::Error for Error {}
 
 #[cfg(feature = "host")]
 mod host;
+#[cfg(all(feature = "opencode", any(target_os = "linux", target_os = "macos")))]
+pub mod opencode;
 #[cfg(feature = "host")]
 pub use host::{Config, History};

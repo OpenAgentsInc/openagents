@@ -54,6 +54,9 @@ fn project(raw: &[u8], text_limit: usize) -> Option<Readable> {
     if let Some(readable) = atif(&value, text_limit) {
         return Some(readable);
     }
+    if let Some(readable) = opencode(&value, text_limit) {
+        return Some(readable);
+    }
     let outer = value
         .get("type")
         .and_then(Value::as_str)
@@ -532,6 +535,118 @@ fn atif_calls(step: &Value) -> Vec<AtifCall> {
         });
     }
     calls
+}
+
+/// Project one record of the host's OpenCode mirror (`opencode::mirror`):
+/// the `opencode.session` header, an `opencode.part`, or an
+/// `opencode.error`. Returns None for any other record.
+///
+/// | Record | `kind` | `role` | `text` |
+/// | --- | --- | --- | --- |
+/// | `opencode.session` | `session_meta` | none | empty; `native_id` is the session ID |
+/// | `text` part | `message` | the message's role | the text |
+/// | `text` part OpenCode added itself (`synthetic` or `ignored`) | `adapter` | none | empty |
+/// | `reasoning` part | `reasoning` | none | the reasoning |
+/// | `tool` part | `tool_call` (the tool's name) | none | the tool's title or input, then a blank line and its output or error |
+/// | any other part | `adapter` | none | empty |
+/// | `opencode.error` | `message` | `system` | `OpenCode stopped: ` and the error's message |
+fn opencode(value: &Value, text_limit: usize) -> Option<Readable> {
+    let kind = value.get("type").and_then(Value::as_str)?;
+    let at = value.get("time").and_then(Value::as_u64).map(iso_ms);
+    let readable = |kind: &str, role: Option<&str>, text: String| {
+        let (text, text_truncated) = trim(&text, text_limit);
+        Readable {
+            kind: kind.into(),
+            native_id: None,
+            role: role.map(str::to_owned),
+            timestamp: at.clone(),
+            tool_name: None,
+            call_id: None,
+            text,
+            text_truncated,
+            unknown: false,
+        }
+    };
+    match kind {
+        "opencode.session" => Some(Readable {
+            native_id: field(value, "session_id"),
+            ..readable("session_meta", None, String::new())
+        }),
+        "opencode.error" => {
+            let error = value.get("error").unwrap_or(&Value::Null);
+            let said = error
+                .pointer("/data/message")
+                .and_then(Value::as_str)
+                .or_else(|| error.get("name").and_then(Value::as_str))
+                .unwrap_or("an error");
+            Some(Readable {
+                native_id: field(value, "message_id"),
+                ..readable(
+                    "message",
+                    Some("system"),
+                    format!("OpenCode stopped: {said}"),
+                )
+            })
+        }
+        "opencode.part" => {
+            let part = value.get("part")?;
+            let role = value.get("role").and_then(Value::as_str);
+            let native_id = field(value, "part_id");
+            let projected = match part.get("type").and_then(Value::as_str) {
+                Some("text")
+                    if part.get("synthetic").and_then(Value::as_bool) != Some(true)
+                        && part.get("ignored").and_then(Value::as_bool) != Some(true) =>
+                {
+                    let role = role.filter(|r| matches!(*r, "user" | "assistant"));
+                    readable(
+                        "message",
+                        role,
+                        part.get("text")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_owned(),
+                    )
+                }
+                Some("reasoning") => readable(
+                    "reasoning",
+                    None,
+                    part.get("text")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                ),
+                Some("tool") => {
+                    let state = part.get("state").unwrap_or(&Value::Null);
+                    let heading = state
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .filter(|t| !t.is_empty())
+                        .map_or_else(|| summary(state.get("input")), str::to_owned);
+                    let result = state
+                        .get("output")
+                        .or_else(|| state.get("error"))
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    let text = if result.is_empty() {
+                        heading
+                    } else {
+                        format!("{heading}\n\n{result}")
+                    };
+                    Readable {
+                        tool_name: field(part, "tool"),
+                        call_id: field(part, "callID"),
+                        ..readable("tool_call", None, text)
+                    }
+                }
+                _ => readable("adapter", None, String::new()),
+            };
+            Some(Readable {
+                native_id,
+                ..projected
+            })
+        }
+        _ => None,
+    }
 }
 
 /// A short, single-line description of a call's arguments: a shell

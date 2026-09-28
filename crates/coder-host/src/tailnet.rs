@@ -156,17 +156,59 @@ pub fn program() -> PathBuf {
 }
 
 #[cfg(feature = "host")]
-/// The history roots a chat invitation admits: `~/.codex`, `~/.claude`, and
-/// Coder's task directory `~/.openagents/tasks` when they exist.
+/// The history roots a chat invitation admits: `~/.codex`, `~/.claude`,
+/// Coder's task directory `~/.openagents/tasks`, and the host's OpenCode
+/// mirror when they exist. The mirror is created when OpenCode's database
+/// exists, so a host with OpenCode offers its sessions from the first
+/// invitation; [`mirror_opencode`] fills it.
 #[must_use]
 pub fn default_sources() -> coder_history::Config {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let root = |folder: &str| home.as_ref().map(|h| h.join(folder)).filter(|p| p.is_dir());
+    let opencode = home.as_ref().and_then(|home| {
+        let mirror = coder_history::opencode::default_mirror(home);
+        let database = coder_history::opencode::default_database()?;
+        (database.is_file() && std::fs::create_dir_all(&mirror).is_ok()).then_some(mirror)
+    });
     coder_history::Config {
         codex: root(".codex"),
         claude: root(".claude"),
         coder: root(".openagents/tasks"),
+        opencode,
     }
+}
+
+#[cfg(feature = "host")]
+/// How often the host brings its OpenCode mirror up to date.
+pub const OPENCODE_MIRROR_EVERY: Duration = Duration::from_secs(5);
+
+#[cfg(feature = "host")]
+/// Keeps `mirror` up to date with the owner's OpenCode database, every
+/// [`OPENCODE_MIRROR_EVERY`], for as long as the host runs. A pass that
+/// fails is said once and tried again.
+pub fn mirror_opencode(mirror: PathBuf) {
+    let Some(database) = coder_history::opencode::default_database() else {
+        return;
+    };
+    tokio::spawn(async move {
+        let mut failing = false;
+        loop {
+            let (database, mirror) = (database.clone(), mirror.clone());
+            let pass = tokio::task::spawn_blocking(move || {
+                coder_history::opencode::mirror(&database, &mirror)
+            })
+            .await;
+            match pass {
+                Ok(Ok(_)) => failing = false,
+                Ok(Err(why)) if !failing => {
+                    failing = true;
+                    eprintln!("coder host: the OpenCode mirror failed: {why}");
+                }
+                _ => {}
+            }
+            tokio::time::sleep(OPENCODE_MIRROR_EVERY).await;
+        }
+    });
 }
 
 #[cfg(feature = "host")]
@@ -288,6 +330,9 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
         coder_connect::host::ensure_parent(&chats.observer)
             .map_err(|_| Error::Config("the chat history store cannot be created".into()))?;
         let observer = coder_connect::host::Host::new(&chats.observer, settings.policy);
+        if let Some(mirror) = &chats.sources.opencode {
+            mirror_opencode(mirror.clone());
+        }
         // Read the chat list once now, so the first device to ask finds each
         // session's head already read.
         let sources = chats.sources.clone();

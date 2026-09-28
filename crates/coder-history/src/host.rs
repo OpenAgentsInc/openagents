@@ -10,6 +10,11 @@ pub struct Config {
     /// Coder's task directory, such as `~/.openagents/tasks`. Only
     /// `*.atif.jsonl` files directly inside it are read.
     pub coder: Option<PathBuf>,
+    /// The host's mirror of OpenCode's sessions, such as
+    /// `~/.openagents/opencode/mirror`: one `ses_*.jsonl` per session and a
+    /// `session_index.jsonl` of titles, written by `opencode::mirror`. Only
+    /// those files directly inside it are read.
+    pub opencode: Option<PathBuf>,
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -35,6 +40,7 @@ impl History {
             (Harness::Codex, config.codex),
             (Harness::Claude, config.claude),
             (Harness::Coder, config.coder),
+            (Harness::OpenCode, config.opencode),
         ] {
             if let Some(path) = path {
                 roots.push(confined::Root::open(harness, path)?);

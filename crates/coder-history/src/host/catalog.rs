@@ -32,6 +32,10 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
                 tasks(root_index, root, &mut sources, &mut notices, &mut visited)?;
                 continue;
             }
+            Harness::OpenCode => {
+                opencode(root_index, root, &mut sources, &mut notices, &mut visited)?;
+                continue;
+            }
         };
         for start in starts {
             let mut pending = vec![PathBuf::from(start)];
@@ -276,6 +280,61 @@ fn tasks(
     Ok(())
 }
 
+/// The host's OpenCode mirror is flat: each `ses_*.jsonl` directly inside it
+/// is one session. The title index and every other file are not sources.
+fn opencode(
+    root_index: usize,
+    root: &confined::Root,
+    sources: &mut Vec<Source>,
+    notices: &mut Vec<Notice>,
+    visited: &mut usize,
+) -> Result<(), Error> {
+    let listed = root
+        .open_top()
+        .and_then(|directory| confined::names(&directory).map(|names| (directory, names)));
+    let (directory, names) = match listed {
+        Ok(listed) => listed,
+        Err(Error::ResourceLimit) => return Err(Error::ResourceLimit),
+        Err(_) => {
+            return notice(
+                notices,
+                "directory_unavailable",
+                Some(root.source_id(Path::new(""))),
+            );
+        }
+    };
+    for name in names {
+        *visited += 1;
+        if *visited > confined::MAX_ENTRIES {
+            return Err(Error::ResourceLimit);
+        }
+        let path = PathBuf::from(&name);
+        if !name
+            .to_str()
+            .is_some_and(|n| n.starts_with("ses_") && n.ends_with(".jsonl"))
+        {
+            continue;
+        }
+        match confined::entry(&directory, &name) {
+            Ok((confined::Kind::File, stat)) => sources.push(Source {
+                stat: Some(stat),
+                root: root_index,
+                id: root.source_id(&path),
+                harness: root.harness,
+                archived: false,
+                subagent: false,
+                relative: path,
+            }),
+            Ok((confined::Kind::Symlink, _)) => {
+                notice(notices, "symlink_refused", Some(root.source_id(&path)))?
+            }
+            Err(_) => notice(notices, "entry_unavailable", Some(root.source_id(&path)))?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 const ATIF_SUFFIX: &str = ".atif.jsonl";
 /// The task store's archive record (`openagents.coder.task-archive.v1`).
 const ARCHIVE_FILE: &str = "archive.json";
@@ -348,6 +407,8 @@ fn notice(out: &mut Vec<Notice>, code: &str, source_id: Option<String>) -> Resul
 struct Title {
     name: String,
     updated: Option<String>,
+    /// The index says the chat is archived (OpenCode's mirror index).
+    archived: bool,
 }
 
 /// A Codex title index as last read: its file's identity, length, and last
@@ -365,7 +426,7 @@ fn titles(
     root: &confined::Root,
     notices: &mut Vec<Notice>,
 ) -> Result<std::sync::Arc<BTreeMap<String, Title>>, Error> {
-    if root.harness != Harness::Codex {
+    if !matches!(root.harness, Harness::Codex | Harness::OpenCode) {
         return Ok(Default::default());
     }
     let stat = root
@@ -469,11 +530,16 @@ fn read_titles(
             .get("updated_at")
             .and_then(|x| x.as_str())
             .map(|x| bounded(x, 64).0);
+        let archived = value
+            .get("archived")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
         result.insert(
             id.to_owned(),
             Title {
                 name: name.to_owned(),
                 updated,
+                archived,
             },
         );
         if result.len() > confined::MAX_ENTRIES {
@@ -689,6 +755,9 @@ fn read_head(root: &confined::Root, source: &Source) -> (Head, bool) {
         sessionId: Option<serde_json::Value>,
         customTitle: Option<serde_json::Value>,
         summary: Option<serde_json::Value>,
+        /// The OpenCode mirror's header (`opencode.session`).
+        session_id: Option<serde_json::Value>,
+        parent_id: Option<serde_json::Value>,
     }
     let header = serde_json::from_slice::<Header>(&first).ok();
     let payload = header.as_ref().and_then(|h| h.payload.as_ref());
@@ -697,6 +766,7 @@ fn read_head(root: &confined::Root, source: &Source) -> (Head, bool) {
         Harness::Claude => header.as_ref().and_then(|h| h.sessionId.as_ref()),
         // The file name, not the header, names a Coder task.
         Harness::Coder => None,
+        Harness::OpenCode => header.as_ref().and_then(|h| h.session_id.as_ref()),
     }
     .and_then(|v| v.as_str())
     .filter(|v| !v.is_empty() && v.len() <= 128)
@@ -723,6 +793,17 @@ fn read_head(root: &confined::Root, source: &Source) -> (Head, bool) {
             (entrypoint.as_deref() == Some(crate::engine::MARK), false)
         }
         Harness::Coder => (false, false),
+        // The engine's OpenCode sessions live in their own database, which
+        // the mirror never reads ([`crate::engine`]). A session with a
+        // parent is a subagent's (OpenCode's `task` tool).
+        Harness::OpenCode => (
+            false,
+            header
+                .as_ref()
+                .and_then(|h| h.parent_id.as_ref())
+                .and_then(|p| p.as_str())
+                .is_some_and(|p| !p.is_empty()),
+        ),
     };
     (
         Head {
@@ -875,6 +956,7 @@ pub(super) fn page(
                 Harness::Codex => "Saved Codex chat",
                 Harness::Claude => "Saved Claude chat",
                 Harness::Coder => "Saved Coder chat",
+                Harness::OpenCode => "Saved OpenCode chat",
             };
             let named = title.map(|t| t.name.as_str()).or(from_title.as_deref());
             if named.is_none() {
@@ -906,7 +988,7 @@ pub(super) fn page(
                     title_truncated: truncated,
                     // The file's last write is its last activity.
                     updated_at: modified.or_else(|| title.and_then(|t| t.updated.clone())),
-                    archived: source.archived,
+                    archived: source.archived || title.is_some_and(|t| t.archived),
                     subagent: source.subagent || spawned,
                     source_id: Some(source.id.clone()),
                     status,
@@ -929,7 +1011,7 @@ pub(super) fn page(
                     title: title_name,
                     title_truncated: truncated,
                     updated_at: title.updated,
-                    archived: false,
+                    archived: title.archived,
                     subagent: false,
                     source_id: None,
                     status: SourceStatus::Missing,

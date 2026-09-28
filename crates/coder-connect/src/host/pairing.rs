@@ -49,6 +49,9 @@ impl Host {
         if let Some(path) = config.coder {
             roots.push(Root::admit(path, SourceKind::Coder)?);
         }
+        if let Some(path) = config.opencode {
+            roots.push(Root::admit(path, SourceKind::OpenCode)?);
+        }
         if roots.is_empty() {
             return fail(
                 ErrorCode::Forbidden,
