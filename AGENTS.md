@@ -35,6 +35,14 @@ checks for the affected code and its relevant consumers. A bare
 use `--crates` or `--phases` to choose the needed coverage. Direct focused
 Cargo commands are also valid. Record what ran and any remaining limitations.
 
+Close an issue as soon as its work is code-complete: merged to `main`, with its
+own checks passing and any host deploy it needs done. Never hold an issue open
+waiting on the owner — a real-money payment, a device run, a key only the owner
+can create, a store release, or any other owner-only verification. Put those
+steps in the workspace `NEEDS_OWNER.md`, say in the closing comment what the
+owner still has to do, and close the issue. If the owner's step later finds a
+defect, open a new issue for it.
+
 The full workspace gate (`./scripts/verify-rust.sh --release`) is for full
 releases only. Never require it before ordinary issue development, integration,
 commits, pushes, or closing an issue whose own acceptance checks pass. Never
