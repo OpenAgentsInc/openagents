@@ -348,7 +348,10 @@ impl Coder {
             tiles: Vec::new(),
             pending: Vec::new(),
             fullscreen: [None; 9],
-            binds: binds::table(session.launchers.as_deref()),
+            binds: binds::with_extra(
+                binds::table(session.launchers.as_deref()),
+                &session.extras.binds,
+            ),
             stack: Vec::new(),
             focused: None,
             drive: Default::default(),

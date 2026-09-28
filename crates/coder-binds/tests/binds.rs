@@ -1,11 +1,12 @@
 //! The desktop's chords live in one table, `coder_binds::BINDS`, and its
 //! window rules in another, `coder_binds::RULES`, and the copies that
 //! describe them stay equal to them: `desktop.nix` holds the Hyprland text
-//! the tables render until the compositor reads the tables itself.
+//! the tables render, and the Coder compositor reads the tables themselves.
 //!
-//! The comparisons with `desktop.nix` are ignored until
-//! `os/modules/coderos/desktop.nix` moves into this repository with the
-//! CoderOS desktop. Run them with `cargo test -p coder-binds -- --ignored`.
+//! A host's own launchers and window rules are not rows of either table.
+//! `desktop.nix` renders them from `coderos.desktop.extraBinds` and
+//! `extraWindowRules`, and the `extension-points` check in `os/flake.nix`
+//! holds what they render.
 use std::path::{Path, PathBuf};
 
 fn root() -> PathBuf {
@@ -83,7 +84,6 @@ fn nix_rule_lines() -> Vec<String> {
 }
 
 #[test]
-#[ignore = "os/modules/coderos/desktop.nix is not in this repository yet"]
 fn the_table_renders_the_hyprland_window_rules() {
     assert_eq!(
         coder_binds::hyprland_rule_lines(),
@@ -111,7 +111,6 @@ fn nix_launcher_options() -> Vec<String> {
 }
 
 #[test]
-#[ignore = "os/modules/coderos/desktop.nix is not in this repository yet"]
 fn the_grant_names_every_option_that_gates_a_launcher_row() {
     let gated: Vec<String> = coder_binds::BINDS
         .iter()
@@ -133,7 +132,6 @@ fn the_grant_names_every_option_that_gates_a_launcher_row() {
 }
 
 #[test]
-#[ignore = "os/modules/coderos/desktop.nix is not in this repository yet"]
 fn the_table_renders_the_hyprland_binds() {
     let rendered: Vec<String> = coder_binds::hyprland_lines()
         .iter()

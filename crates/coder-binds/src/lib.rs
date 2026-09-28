@@ -24,8 +24,8 @@ pub mod rules;
 
 pub use modifier::{Held, Modifier, Press, press};
 pub use rules::{
-    Case, EMULATOR_CLASS, Effects, Field, Match, Pattern, RULES, Rule, hyprland_rule,
-    hyprland_rule_lines, matching,
+    Case, EMULATOR_CLASS, Effects, ExtraPattern, ExtraRule, Field, Match, Pattern, RULES, Rule,
+    hyprland_rule, hyprland_rule_lines, matching, matching_with,
 };
 
 /// A direction a focus, move, or resize chord points at.
@@ -176,20 +176,6 @@ impl Key {
                 Dir::Up => "up".to_string(),
                 Dir::Down => "down".to_string(),
             },
-            Key::Mouse(button) => format!("mouse:{button}"),
-        }
-    }
-
-    /// The key's `sendshortcut` spelling inside a `coder-chord` argument:
-    /// `Return`, `space`, `Left`, or the lowercase letter.
-    fn chord(self) -> String {
-        match self {
-            Key::Return => "Return".to_string(),
-            Key::Space => "space".to_string(),
-            Key::Tab => "tab".to_string(),
-            Key::Char(c) => c.to_string(),
-            Key::Digit(d) => d.to_string(),
-            Key::Arrow(dir) => format!("{dir:?}"),
             Key::Mouse(button) => format!("mouse:{button}"),
         }
     }
@@ -422,12 +408,6 @@ pub struct Bind {
     pub kind: Kind,
     pub action: Action,
     pub surfaces: Surfaces,
-    /// Whether the compositor's copy routes through `coder-chord`, which
-    /// sends the press into a focused `coder-quest` window and runs the
-    /// bind's action on anything else. A chord a session level owns, such
-    /// as a desk or a monitor move, answers the compositor directly even
-    /// when CoderQuest handles the same press in a window.
-    pub routed: bool,
     /// The `coderos.desktop.*` option that gates the compositor's copy of
     /// the bind, such as `dictation` for `coderos.desktop.dictation`.
     pub option: Option<&'static str>,
@@ -440,16 +420,7 @@ const fn bind(mods: Mods, key: Key, action: Action, surfaces: Surfaces) -> Bind 
         kind: Kind::Once,
         action,
         surfaces,
-        routed: false,
         option: None,
-    }
-}
-
-impl Bind {
-    /// Mark the compositor's copy routed through `coder-chord`.
-    const fn routed(mut self) -> Bind {
-        self.routed = true;
-        self
     }
 }
 
@@ -490,41 +461,37 @@ const ALL: Surfaces = Surfaces::ALL;
 pub const BINDS: &[Bind] = &[
     // The default window: Super+Return opens another Coder beside the
     // focused one, or a tile or pane inside a Coder window.
-    bind(Mods::SUPER, Key::Return, Action::OpenCoder, ALL).routed(),
+    bind(Mods::SUPER, Key::Return, Action::OpenCoder, ALL),
     // Close asks the session before it closes a window with work in flight.
     // Coder Desktop's Command+Q quits instead, so its Close row is
     // Command+W alone.
-    bind(Mods::SUPER, Key::Char('w'), Action::Close, ALL).routed(),
-    bind(Mods::SUPER, Key::Char('q'), Action::Close, COMPOSITOR_QUEST).routed(),
+    bind(Mods::SUPER, Key::Char('w'), Action::Close, ALL),
+    bind(Mods::SUPER, Key::Char('q'), Action::Close, COMPOSITOR_QUEST),
     // Focus, desks, move, resize.
     bind(
         Mods::SUPER,
         Key::Arrow(Dir::Left),
         Action::Focus(Dir::Left),
         ALL,
-    )
-    .routed(),
+    ),
     bind(
         Mods::SUPER,
         Key::Arrow(Dir::Right),
         Action::Focus(Dir::Right),
         ALL,
-    )
-    .routed(),
+    ),
     bind(
         Mods::SUPER,
         Key::Arrow(Dir::Up),
         Action::Focus(Dir::Up),
         ALL,
-    )
-    .routed(),
+    ),
     bind(
         Mods::SUPER,
         Key::Arrow(Dir::Down),
         Action::Focus(Dir::Down),
         ALL,
-    )
-    .routed(),
+    ),
     bind(
         Mods::SUPER,
         Key::Digit(1),
@@ -638,57 +605,49 @@ pub const BINDS: &[Bind] = &[
         Key::Arrow(Dir::Left),
         Action::Move(Dir::Left),
         COMPOSITOR_QUEST,
-    )
-    .routed(),
+    ),
     bind(
         Mods::SUPER_SHIFT,
         Key::Arrow(Dir::Right),
         Action::Move(Dir::Right),
         COMPOSITOR_QUEST,
-    )
-    .routed(),
+    ),
     bind(
         Mods::SUPER_SHIFT,
         Key::Arrow(Dir::Up),
         Action::Move(Dir::Up),
         COMPOSITOR_QUEST,
-    )
-    .routed(),
+    ),
     bind(
         Mods::SUPER_SHIFT,
         Key::Arrow(Dir::Down),
         Action::Move(Dir::Down),
         COMPOSITOR_QUEST,
-    )
-    .routed(),
+    ),
     repeat(
         Mods::SUPER_CTRL,
         Key::Arrow(Dir::Left),
         Action::Resize(Dir::Left),
         COMPOSITOR_QUEST,
-    )
-    .routed(),
+    ),
     repeat(
         Mods::SUPER_CTRL,
         Key::Arrow(Dir::Right),
         Action::Resize(Dir::Right),
         COMPOSITOR_QUEST,
-    )
-    .routed(),
+    ),
     repeat(
         Mods::SUPER_CTRL,
         Key::Arrow(Dir::Up),
         Action::Resize(Dir::Up),
         COMPOSITOR_QUEST,
-    )
-    .routed(),
+    ),
     repeat(
         Mods::SUPER_CTRL,
         Key::Arrow(Dir::Down),
         Action::Resize(Dir::Down),
         COMPOSITOR_QUEST,
-    )
-    .routed(),
+    ),
     // Monitors: cycle, focus a direction, send the window, send the desk.
     bind(
         Mods::CTRL_ALT,
@@ -780,26 +739,26 @@ pub const BINDS: &[Bind] = &[
         Key::Char('j'),
         Action::FlipSplit,
         COMPOSITOR_QUEST,
-    )
-    .routed(),
-    bind(Mods::SUPER, Key::Space, Action::Float, COMPOSITOR_QUEST).routed(),
+    ),
+    bind(Mods::SUPER, Key::Space, Action::Float, COMPOSITOR_QUEST),
     bind(Mods::SUPER, Key::Char('d'), Action::Float, COMPOSITOR),
-    bind(Mods::SUPER, Key::Char('t'), Action::OpenShell, ALL).routed(),
+    bind(Mods::SUPER, Key::Char('t'), Action::OpenShell, ALL),
     bind(
         Mods::SUPER,
         Key::Char('f'),
         Action::Fullscreen,
         COMPOSITOR_QUEST,
-    )
-    .routed(),
+    ),
     bind(
         Mods::SUPER_CTRL,
         Key::Char('f'),
         Action::Maximize,
         COMPOSITOR_QUEST,
-    )
-    .routed(),
-    // The launchers, each behind its `coderos.desktop` option.
+    ),
+    // The launchers, each behind the `coderos.desktop` option that turns it
+    // on. A host's own launchers are not rows here: a module the public
+    // tree does not carry adds them through `coderos.desktop.extraBinds`,
+    // which [`ExtraBind`] reads.
     gated(
         "dictation",
         Mods::SUPER,
@@ -831,42 +790,12 @@ pub const BINDS: &[Bind] = &[
         COMPOSITOR,
     ),
     gated(
-        "deck",
-        Mods::SUPER_SHIFT,
-        Key::Char('d'),
-        Action::Exec {
-            command: "coder-deck-open",
-            doc: "deck",
-        },
-        COMPOSITOR,
-    ),
-    gated(
-        "zoom",
-        Mods::SUPER,
-        Key::Char('z'),
-        Action::Exec {
-            command: "coder-zoom",
-            doc: "zoom",
-        },
-        COMPOSITOR,
-    ),
-    gated(
         "android",
         Mods::SUPER,
         Key::Char('a'),
         Action::Exec {
             command: "android-emulator",
             doc: "emulator",
-        },
-        COMPOSITOR,
-    ),
-    gated(
-        "battlenet",
-        Mods::SUPER,
-        Key::Char('g'),
-        Action::Exec {
-            command: "coder-battlenet",
-            doc: "games",
         },
         COMPOSITOR,
     ),
@@ -922,9 +851,7 @@ pub fn find(surface: Surface, mods: Mods, key: Key) -> Option<Action> {
 }
 
 /// The `bind` line Hyprland reads for a compositor row, such as
-/// `bind = SUPER, RETURN, exec, ${openCoder}`. A routed row wraps its
-/// action in `coder-chord`, such as
-/// `bind = SUPER, RETURN, exec, ${coderChord}/bin/coder-chord 'SUPER, Return' exec ${openCoder}`.
+/// `bind = SUPER, RETURN, exec, ${openCoder}`.
 pub fn hyprland(bind: &Bind) -> Option<String> {
     let kind = match bind.kind {
         Kind::Once => "bind",
@@ -932,25 +859,12 @@ pub fn hyprland(bind: &Bind) -> Option<String> {
         Kind::Mouse => "bindm",
     };
     let dispatcher = bind.action.dispatcher()?;
-    let head = format!("{} = {}, {}", kind, bind.mods.hypr(), bind.key.hypr());
-    Some(match bind.routed {
-        false => format!("{head}{dispatcher}"),
-        true => {
-            // `, exec, <cmd>` becomes `exec <cmd>` inside the chord's
-            // argument, and `, <dispatcher>, <args>` becomes
-            // `dispatch <dispatcher> <args>`.
-            let body = dispatcher.strip_prefix(", ").unwrap_or(&dispatcher);
-            let tail = match body.strip_prefix("exec, ") {
-                Some(command) => format!("exec {command}"),
-                None => format!("dispatch {}", body.replace(", ", " ")),
-            };
-            format!(
-                "{head}, exec, ${{coderChord}}/bin/coder-chord '{}, {}' {tail}",
-                bind.mods.hypr(),
-                bind.key.chord()
-            )
-        }
-    })
+    Some(format!(
+        "{} = {}, {}{dispatcher}",
+        kind,
+        bind.mods.hypr(),
+        bind.key.hypr()
+    ))
 }
 
 /// The bind lines the table renders for the compositor, in table order.
@@ -960,6 +874,112 @@ pub fn hyprland_lines() -> Vec<String> {
         .filter(|bind| bind.surfaces.contains(Surface::Compositor))
         .filter_map(hyprland)
         .collect()
+}
+
+impl Mods {
+    /// The modifiers a Hyprland modifier field names, such as `SUPER SHIFT`,
+    /// in any order and case, or `None` for a word that is not one of the
+    /// four.
+    pub fn parse(text: &str) -> Option<Mods> {
+        let mut mods = Mods::default();
+        for word in text.split_whitespace() {
+            match word.to_ascii_uppercase().as_str() {
+                "SUPER" => mods.super_key = true,
+                "SHIFT" => mods.shift = true,
+                "CTRL" | "CONTROL" => mods.ctrl = true,
+                "ALT" => mods.alt = true,
+                _ => return None,
+            }
+        }
+        Some(mods)
+    }
+}
+
+impl Key {
+    /// The key a Hyprland key field names, such as `G`, `RETURN`, or
+    /// `left`, in any case, or `None` for a key the table has no shape for.
+    pub fn parse(text: &str) -> Option<Key> {
+        let lower = text.to_ascii_lowercase();
+        let mut chars = lower.chars();
+        Some(match (chars.next(), chars.next()) {
+            (Some(letter), None) if letter.is_ascii_lowercase() => Key::Char(letter),
+            (Some(digit), None) if ('1'..='9').contains(&digit) => Key::Digit(digit as u8 - b'0'),
+            _ => match lower.as_str() {
+                "return" | "enter" => Key::Return,
+                "space" => Key::Space,
+                "tab" => Key::Tab,
+                "left" => Key::Arrow(Dir::Left),
+                "right" => Key::Arrow(Dir::Right),
+                "up" => Key::Arrow(Dir::Up),
+                "down" => Key::Arrow(Dir::Down),
+                _ => return None,
+            },
+        })
+    }
+}
+
+/// A launcher chord a host adds beside the table, from
+/// `coderos.desktop.extraBinds`.
+///
+/// The table holds the launchers the public CoderOS modules carry. A module
+/// that lives in a host's own flake, such as a game launcher or a video
+/// client, adds its chord to that option instead. `desktop.nix` renders
+/// each entry as a Hyprland `bind` line and writes the same entries to the
+/// Coder compositor's grant, `/etc/coderos/compositor.json`, as
+/// `extraBinds`, where the compositor reads them with [`ExtraBind::parse`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExtraBind {
+    pub mods: Mods,
+    pub key: Key,
+    /// The command line the compositor runs, through a shell.
+    pub command: String,
+}
+
+impl ExtraBind {
+    /// An entry from its three grant fields, spelled the way a Hyprland
+    /// `bind` line spells them, or `None` when the modifiers or the key are
+    /// not ones the table can hold, or the command is empty.
+    pub fn parse(mods: &str, key: &str, command: &str) -> Option<ExtraBind> {
+        if command.trim().is_empty() {
+            return None;
+        }
+        Some(ExtraBind {
+            mods: Mods::parse(mods)?,
+            key: Key::parse(key)?,
+            command: command.to_string(),
+        })
+    }
+
+    /// Whether the entry takes a chord the table already binds on the
+    /// compositor. A host that adds such a chord runs two actions on one
+    /// press under Hyprland, so the module refuses it.
+    pub fn collides(&self) -> bool {
+        find(Surface::Compositor, self.mods, self.key).is_some()
+    }
+
+    /// The `bind` line Hyprland reads for the entry, such as
+    /// `bind = SUPER, G, exec, coder-battlenet`.
+    pub fn hyprland(&self) -> String {
+        format!(
+            "bind = {}, {}, exec, {}",
+            self.mods.hypr(),
+            self.key.hypr(),
+            self.command
+        )
+    }
+}
+
+/// The command a compositor chord runs, from the table's launcher rows or,
+/// failing those, from a host's extra binds.
+pub fn launcher(mods: Mods, key: Key, extra: &[ExtraBind]) -> Option<&str> {
+    match find(Surface::Compositor, mods, key) {
+        Some(Action::Exec { command, .. }) => Some(command),
+        Some(_) => None,
+        None => extra
+            .iter()
+            .find(|bind| bind.mods == mods && bind.key == key)
+            .map(|bind| bind.command.as_str()),
+    }
 }
 
 /// One row of the Markdown chord table: a chord label and the chords it
@@ -1094,17 +1114,11 @@ pub const GROUPS: &[Group] = &[
         chords: &[chord(Mods::SUPER, Key::Char('b'))],
     },
     Group {
-        chord: "Super+Shift+D",
-        chords: &[chord(Mods::SUPER_SHIFT, Key::Char('d'))],
-    },
-    Group {
-        chord: "Super+V, P, Z, A, G, C",
+        chord: "Super+V, P, A, C",
         chords: &[
             chord(Mods::SUPER, Key::Char('v')),
             chord(Mods::SUPER, Key::Char('p')),
-            chord(Mods::SUPER, Key::Char('z')),
             chord(Mods::SUPER, Key::Char('a')),
-            chord(Mods::SUPER, Key::Char('g')),
             chord(Mods::SUPER, Key::Char('c')),
         ],
     },
@@ -1301,21 +1315,57 @@ mod tests {
     #[test]
     fn hyprland_lines_render_the_compositor_set() {
         let lines = hyprland_lines();
-        assert_eq!(lines.len(), 64, "{lines:?}");
+        assert_eq!(lines.len(), 61, "{lines:?}");
+        assert_eq!(lines[0], "bind = SUPER, RETURN, exec, ${openCoder}");
         assert_eq!(
-            lines[0],
-            "bind = SUPER, RETURN, exec, ${coderChord}/bin/coder-chord 'SUPER, Return' exec ${openCoder}"
+            lines[1],
+            "bind = SUPER, W, exec, ${closeWindow}/bin/coder-close"
         );
-        assert_eq!(
-            lines[3],
-            "bind = SUPER, left, exec, ${coderChord}/bin/coder-chord 'SUPER, Left' dispatch movefocus l"
-        );
-        assert!(lines.contains(
-            &"binde = SUPER CTRL, left, exec, ${coderChord}/bin/coder-chord 'SUPER CTRL, Left' dispatch resizeactive -40 0".to_string()
-        ));
+        assert_eq!(lines[3], "bind = SUPER, left, movefocus, l");
+        assert!(lines.contains(&"binde = SUPER CTRL, left, resizeactive, -40 0".to_string()));
         assert!(lines.contains(&"bind = SUPER, D, togglefloating".to_string()));
         assert!(lines.contains(&"bindm = SUPER, mouse:272, movewindow".to_string()));
         assert_eq!(lines.last().unwrap(), "bind = SUPER SHIFT, E, exit");
+    }
+
+    #[test]
+    fn an_extra_bind_reads_the_hyprland_spelling() {
+        let games = ExtraBind::parse("SUPER", "G", "coder-battlenet").expect("an entry");
+        assert_eq!(games.mods, Mods::SUPER);
+        assert_eq!(games.key, Key::Char('g'));
+        assert_eq!(games.hyprland(), "bind = SUPER, G, exec, coder-battlenet");
+        assert!(!games.collides());
+
+        let deck = ExtraBind::parse("super shift", "d", "coder-deck-open").expect("an entry");
+        assert_eq!(deck.mods, Mods::SUPER_SHIFT);
+        assert_eq!(
+            deck.hyprland(),
+            "bind = SUPER SHIFT, D, exec, coder-deck-open"
+        );
+
+        assert_eq!(ExtraBind::parse("HYPER", "G", "x"), None);
+        assert_eq!(ExtraBind::parse("SUPER", "F13", "x"), None);
+        assert_eq!(ExtraBind::parse("SUPER", "G", " "), None);
+        let taken = ExtraBind::parse("SUPER", "W", "x").expect("an entry");
+        assert!(taken.collides(), "Super+W is the close key");
+    }
+
+    #[test]
+    fn a_launcher_chord_is_the_table_row_first_and_the_host_entry_after() {
+        let extra = [
+            ExtraBind::parse("SUPER", "G", "coder-battlenet").expect("an entry"),
+            ExtraBind::parse("SUPER", "V", "shadowed").expect("an entry"),
+        ];
+        assert_eq!(
+            launcher(Mods::SUPER, Key::Char('g'), &extra),
+            Some("coder-battlenet")
+        );
+        assert_eq!(
+            launcher(Mods::SUPER, Key::Char('v'), &extra),
+            Some("dictate-toggle")
+        );
+        assert_eq!(launcher(Mods::SUPER, Key::Char('w'), &extra), None);
+        assert_eq!(launcher(Mods::SUPER, Key::Char('z'), &extra), None);
     }
 
     #[test]

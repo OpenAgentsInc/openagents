@@ -1,0 +1,59 @@
+# The Coder Browser on a CoderOS desktop: open it, or focus it if it is open.
+#
+# SUPER + B runs this. The browser is ungoogled-chromium from nixpkgs, on
+# Wayland through Ozone, with the DevTools Protocol listening on a loopback
+# port. Every flag is here. The port comes from `CODER_BROWSER_PORT`, which
+# os/modules/coderos/browser.nix sets from `coderos.desktop.browser.port`.
+#
+# The launcher asks the desk whether the window is there before it starts
+# another. A second Chromium on the same profile would hand its arguments to
+# the first and exit, and a second on the same port would fail to bind it,
+# so one window is the rule either way.
+
+PORT="${CODER_BROWSER_PORT:-9222}"
+# Chromium announces this app id to the session, which is the `app_id` a
+# window carries and what `class:` names when this focuses one.
+CLASS="chromium-browser"
+
+# With the window open, a URL on the command line opens as a new tab through
+# the DevTools port, since a second Chromium on the same profile would hand
+# its arguments to the first and exit before this script could see whether
+# they arrived. Chromium 152 takes `/json/new` as a PUT. The window is then
+# focused either way. Any `xdg-open` on the host reaches this path, and so
+# does an application in a sandbox through os/bin/coder-open-url.
+if coder-desk list 2>/dev/null | jq -e --arg class "$CLASS" 'any(.[]; .app_id == $class)' >/dev/null 2>&1; then
+  for url in "$@"; do
+    case "$url" in
+      -*) ;;
+      *) curl -s -X PUT "http://127.0.0.1:${PORT}/json/new?${url}" >/dev/null || true ;;
+    esac
+  done
+  coder-desk focus "class:$CLASS" >/dev/null
+  exit 0
+fi
+
+# The profile is Chromium's own default under ~/.config/chromium. It is the
+# browser's file rather than Coder's, so it stays where Chromium keeps it.
+#
+# Dark, in both of Chromium's senses. `--force-dark-mode` darkens the
+# browser's own chrome, the toolbar and the menus, and
+# `--enable-features=WebContentsForceDark` darkens page content that
+# declares no dark scheme of its own (the "Auto Dark Mode for Web Contents"
+# entry on chrome://flags). Both names hold on Chromium 152; chrome://version
+# on the box shows them on the command line. The toolbar's colour is the
+# managed policy `BrowserThemeColor`, which os/modules/coderos/browser.nix
+# writes under /etc/chromium/policies/managed, because a policy takes a
+# theme without a Web Store extension and a flag cannot.
+# Chromium's Vulkan backend crashes on this host's Nvidia GPU under a
+# Wayland Ozone platform ("--ozone-platform=wayland is not compatible with
+# Vulkan"): the window dies seconds after the DevTools port opens, which took
+# the whole capability down with it. Disabling Vulkan keeps it up; the GL
+# backend renders fine for browsing and screen recording.
+exec chromium \
+  --ozone-platform=wayland \
+  --disable-features=Vulkan \
+  --force-dark-mode \
+  --enable-features=WebContentsForceDark \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port="$PORT" \
+  "$@"

@@ -282,7 +282,10 @@ uses, and marks which are implemented and which are only specified.
   command the CoderOS scripts run instead of `hyprctl`, and
   `os/pkgs/coder-desk.nix` builds it. `crates/coder-binds` is the one table
   of desktop chords and window rules the Hyprland configuration renders
-  from. Read the crate READMEs before changing a verb or the generation.
+  from and the Coder compositor reads. A launcher or window rule for a
+  module in a private host flake goes through `coderos.desktop.extraBinds`
+  and `extraWindowRules`, never a row of the table. Read the crate READMEs
+  before changing a verb or the generation.
 - `crates/coder-compositor` — the optional Coder Wayland compositor for
   CoderOS, on Smithay 0.7, with a nested and a hardware (DRM, `libinput`,
   `libseat`) backend, Xwayland, and the desk protocol through

@@ -6,6 +6,7 @@
 //! `coder-wm`'s manager, the one the compositor holds.
 
 use super::*;
+use crate::extras::tests::host_rules;
 use crate::layout::{Placed, Screen};
 use crate::xwayland::fraction;
 
@@ -56,7 +57,7 @@ fn the_battle_net_launcher_floats_in_the_middle_of_the_screen() {
     apply(
         &mut manager,
         id,
-        coder_binds::matching("battle.net.exe", "Battle.net"),
+        coder_binds::matching_with("battle.net.exe", "Battle.net", &host_rules()),
         asked,
     );
     assert!(manager.is_floating(id));
@@ -76,7 +77,7 @@ fn a_game_client_tiles_and_a_floating_one_goes_back_in_the_tree() {
         ("wine", "World of Warcraft"),
         ("wine", "StarCraft II"),
     ] {
-        let effects = coder_binds::matching(class, title);
+        let effects = coder_binds::matching_with(class, title, &host_rules());
         assert!(effects.suppress_fullscreen, "{class} {title}");
         let (mut manager, id) = layout_with_one();
         // A client that floated itself before its title named the game
@@ -134,7 +135,7 @@ fn a_window_that_has_not_sized_itself_floats_where_the_layout_had_it() {
     apply(
         &mut manager,
         id,
-        coder_binds::matching("battle.net.exe", ""),
+        coder_binds::matching_with("battle.net.exe", "", &host_rules()),
         None,
     );
     let rect = manager.rect_of(id).expect("the launcher is on the desk");

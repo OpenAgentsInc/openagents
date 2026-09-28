@@ -378,9 +378,9 @@ fn a_change_the_session_refuses_carries_what_it_said() {
 fn a_key_that_is_a_launcher_chord_starts_the_launcher_and_any_other_goes_to_the_window() {
     assert_eq!(
         requests(Verb::Key {
-            chord: "super+shift+d".to_string()
+            chord: "super+b".to_string()
         }),
-        vec!["/dispatch exec coder-deck-open"]
+        vec!["/dispatch exec coder-browser"]
     );
     assert_eq!(
         requests(Verb::Key {

@@ -9,6 +9,9 @@
     extraGroups = [ "wheel" ];
   };
 
+  # The console login on tty1 starts the desktop session.
+  services.getty.autologinUser = "operator";
+
   coderos = {
     sudo.wheelNeedsPassword = false;
     git.safeDirectories = [ "/srv/checkouts/openagents" ];
@@ -16,7 +19,23 @@
     desktop = {
       enable = true;
       user = "operator";
+      directory = "/srv/checkouts/openagents";
       android.enable = true;
+      presentation.enable = true;
+      browser.enable = true;
+      screenRecording.enable = true;
+      dictation.enable = true;
+      microphone = {
+        node = "alsa_input.usb-Example_Microphone.*";
+        name = "Desk mic";
+        exclude = [ "alsa_input.usb-Example_Webcam.*" ];
+        usbVendor = "1234";
+        usbProduct = "5678";
+        gain = {
+          card = "Microphone";
+          value = 10;
+        };
+      };
     };
 
     tailscale = {

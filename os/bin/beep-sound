@@ -1,0 +1,6 @@
+# A short, quiet tone: the chime dictation plays when the microphone opens
+# and closes. The first argument is the frequency in hertz, and the second
+# is the duration in seconds.
+FREQ="${1:-800}"
+DUR="${2:-0.08}"
+pw-play --volume 0.3 <(ffmpeg -f lavfi -i "sine=frequency=$FREQ:duration=$DUR" -f wav - 2>/dev/null) 2>/dev/null || true

@@ -1,0 +1,1217 @@
+# Record the screen, and the microphone beside it.
+#
+# The microphone is chosen by name. `CODEROS_MICROPHONE_NODE` is a regular
+# expression over PipeWire node names that `coderos.desktop.microphone.node`
+# exports to the session, and a recording reads the first capture node it
+# matches. The default source is the fallback when nothing matches, and the
+# recording says so: on 2026-09-07 a whole demo on coderos-4080 recorded the
+# webcam's microphone because the USB microphone on the desk had stopped delivering
+# audio and nothing pointed that out. Every start now names the microphone
+# it reads, checks that it delivers samples before the recording begins, and
+# warns out loud when either check fails. `screen-record microphone` reports
+# the same answer, which is what the recording HUD shows.
+#
+# The microphone is also kept. A node id is the handle `pw-record` takes, and
+# a node id dies with its node: unplug the microphone, or recover it from the
+# wedge that returns silent frames, and the kernel hands the device a new USB device number and
+# PipeWire mints a new node. The capture ends there, and until 2026-09-09
+# nothing restarted it — a 187.9-second take came back carrying 162.0 seconds
+# of sound, and the only sign of the hole was the drift line below. So the
+# capture is supervised: when it ends before `stop` was called, the
+# microphone is found again by node *name* rather than by the id it had, and
+# a new capture opens into the next segment file. Each segment remembers the
+# offset from the start of the take at which it opened, and `stop` places
+# every segment at that offset with silence in the holes, so the sound after
+# a hole stays where it was said instead of sliding earlier by the length of
+# the hole. The holes go into the file's comment tag by name, and `status`
+# reports one while it is open.
+#
+# The capture is watched, not only waited on. `pw-record` returning is one way
+# a take loses its sound and it is not the only one: on 2026-09-11 a
+# microphone left the USB bus 82.31s into a four-minute take, PipeWire held
+# the node across the two-second re-enumeration, the process never returned,
+# and 12.695s of sound went missing inside one segment. The ledger held one
+# line at offset 0, so the placement put that segment at zero, everything said
+# after 82.31s sat 12.695s early, and the tag named the hole at the end of the
+# take. Measuring the same file afterwards found five more losses, 0.29s to
+# 2.56s, each one against a freeze in the recorder's own drawing and none of
+# them against a device event at all. So a running capture is compared against
+# the clock while it runs: a capture whose file stops growing for longer than
+# `OUTAGE_MIN` ends its segment there, and so does a capture whose node goes
+# away while the process lives, which is the kernel's `USB disconnect` seen
+# one level above it. Either way the ledger carries where the sound stopped
+# and where it came back, which is what the placement and the comment tag
+# read.
+#
+# What nothing located is not placed. A take that comes back short of its
+# picture with no gap in its ledger has lost sound somewhere nobody watched,
+# and the file says that rather than naming the end: a window at the end says
+# the tail is silent and the rest is sound, and for the take above neither
+# half was true.
+#
+# The picture is the length of the take. The sound is fitted to it, never the
+# other way around: the mux carried `-shortest` until 2026-09-09, which meant
+# a take whose audio ended early ended the *video* there too. The owner's
+# 187.9-second take was delivered as 162.0 seconds of picture, 777 captured
+# frames discarded by the step that was supposed to add sound to them, and
+# the pre-mux halves are removed on success so they could not be recovered.
+# The audio is padded to the video's length and trimmed to it; nothing about
+# the sound can shorten the picture.
+#
+# The picture is a constant frame rate. wf-recorder stamps each frame with
+# the clock and writes whatever rate the compositor delivers, which is a
+# variable-rate stream tagged with the display's 59.94 Hz. A player that
+# honors the stamps plays it at speed; an editor that reads the tag and the
+# frame count does not, and a 235-second take with 13,912 frames becomes
+# 232 seconds of picture under 235 seconds of sound, worst at the end. That
+# was 281g on 2026-09-08. `-r` puts libavfilter's `fps` filter in
+# wf-recorder's graph, which duplicates and drops frames against the stamps
+# until every consumer counts the same seconds, and the rate is one the
+# compositor holds under a heavy demo rather than the display's.
+
+PID_FILE="${CODEROS_SCREEN_RECORD_PID:-/tmp/screen-record.pid}"
+META_FILE="${CODEROS_SCREEN_RECORD_META:-/tmp/screen-record.meta}"
+
+# The microphone this host names, and what to call it in a warning. Both come
+# from `coderos.desktop.microphone` through the session's environment, and
+# both are optional: with no pattern, the default source is the microphone.
+MIC_NODE="${CODEROS_MICROPHONE_NODE:-}"
+MIC_NAME="${CODEROS_MICROPHONE_NAME:-}"
+
+# The frame rate a recording is held to, from `coderos.desktop.screenRecording.
+# framerate` through the session. 30 is what coderos-4080 sustains with a
+# browser, an emulator, and a camera on screen; the display's 59.94 is not.
+FPS="${CODEROS_RECORD_FPS:-30}"
+
+# How far apart the audio and the video may end before the take is suspect,
+# in seconds. Both captures stop on the same signal, so the gap is the
+# difference in how the two clocks counted the take plus a few milliseconds
+# of signal latency; a clock that drifts a second over a take has drifted
+# audibly before the end. It is also the floor under a hole at the end of the
+# take: a shortfall inside the limit is drift, and a longer one is a window
+# the recording names.
+DRIFT_LIMIT="${CODEROS_RECORD_DRIFT_LIMIT:-0.5}"
+
+# How long the sound may be missing before the recording says so a second
+# time and harder, in seconds. A blip while a microphone re-enumerates is
+# worth one warning; two minutes without audio is worth interrupting for. It
+# never stops the recording: the picture is still being captured, and ending
+# a take nobody asked to end would lose more than it saved.
+OUTAGE_LIMIT="${CODEROS_RECORD_AUDIO_OUTAGE_LIMIT:-30}"
+
+# The shortest hole between two segments the recording bothers to name, in
+# seconds. A reattach takes at least the retry delay, so anything under this
+# is measurement noise rather than a hole in the sound. It is also the floor
+# under a live capture that has stopped delivering: a file that has not grown
+# for this long has stopped carrying the sound, and the segment ends there.
+# Raise it on a host whose `pw-record` writes its WAV in chunks longer than
+# this, because such a host stalls that long while it is working.
+OUTAGE_MIN="${CODEROS_RECORD_AUDIO_OUTAGE_MIN:-0.25}"
+
+# How often a running capture is looked at, in seconds. A look is one file
+# size and one clock reading, so the cost is a couple of processes ten times a
+# second, and the detection floor is `OUTAGE_MIN` plus one of these: at 0.1 a
+# capture that stops delivering ends its segment within 0.35s.
+AUDIO_POLL="${CODEROS_RECORD_AUDIO_POLL:-0.1}"
+
+# How often the node a capture is reading is looked for, in seconds. This one
+# costs a `pw-dump` of the whole graph, so it is slower than the file check
+# and it answers a different question: whether the device is still there at
+# all.
+DEVICE_POLL="${CODEROS_RECORD_AUDIO_DEVICE_POLL:-2}"
+
+# The bytes a WAV carries before its samples. A capture that opened and
+# delivered nothing is exactly this long, which is how a capture that has not
+# started yet is told from one that has stopped.
+AUDIO_HEADER_BYTES=44
+
+# The sample rate every capture and every piece of silence between them is
+# written at. It is the number the offsets are turned into samples with, so
+# the placement is exact rather than rounded to a millisecond.
+AUDIO_RATE=48000
+
+# What the running recording is capturing and the node name it opened on.
+# `start` sets both; the supervisor reads them to find the same source again
+# after the node behind it died. They are empty in every other command.
+AUDIO_KIND=""
+AUDIO_NAME=""
+
+# Whether a recording is running now, by the pid file and the process it names.
+is_recording() {
+    local pid
+    [ -f "$PID_FILE" ] || return 1
+    pid=$(cat "$PID_FILE" 2>/dev/null) || return 1
+    [ -n "$pid" ] || return 1
+    kill -0 "$pid" 2>/dev/null
+}
+
+# Seconds since the epoch, with fractions where the clock offers them.
+# `date +%s.%N` is GNU's; a date without it prints the format back, and whole
+# seconds still place a segment inside the second it opened in.
+epoch_now() {
+    local now
+    now=$(date +%s.%N 2>/dev/null || true)
+    case "$now" in
+        ''|*N|*%*) date +%s ;;
+        *) printf '%s' "$now" ;;
+    esac
+}
+
+# Whole microseconds since the epoch, as an integer.
+#
+# The capture watcher reads the clock ten times a second and compares two
+# readings, and this is the form that comparison takes without a process per
+# reading: bash 5 has the clock as a variable, and the arithmetic is the
+# shell's own. A host whose date has no fractions gives whole seconds, which
+# still measures a hole longer than a second.
+epoch_us() {
+    local now=${EPOCHREALTIME:-} whole frac
+    [ -n "$now" ] || now=$(epoch_now)
+    now=${now/,/.}
+    case "$now" in
+        *.*) whole=${now%%.*}; frac=${now#*.} ;;
+        *) whole=$now; frac=0 ;;
+    esac
+    frac="${frac}000000"
+    printf '%s' "$(( 10#${whole:-0} * 1000000 + 10#${frac:0:6} ))"
+}
+
+# A number of seconds as whole microseconds, for the same comparison.
+seconds_us() {
+    awk -v s="$1" 'BEGIN { printf "%d", s * 1000000 }'
+}
+
+# Seconds from a moment given by `epoch_now` until now.
+elapsed_since() {
+    awk -v a="$(epoch_now)" -v b="$1" 'BEGIN { d = a - b; if (d < 0) d = 0; printf "%.3f", d }'
+}
+
+# Every capture node PipeWire has, one JSON object per line with the node's
+# id, name, description, and short name. `pw-dump` is the whole graph; the
+# filter keeps the `Audio/Source` nodes, which are the microphones.
+microphone_sources() {
+    pw-dump 2>/dev/null | jq -c '
+        .[]
+        | select(.type == "PipeWire:Interface:Node"
+                 and .info.props["media.class"] == "Audio/Source")
+        | {
+            id: .id,
+            name: .info.props["node.name"],
+            description: (.info.props["node.description"] // .info.props["node.name"]),
+            nick: (.info.props["node.nick"] // .info.props["node.description"] // .info.props["node.name"])
+          }
+    ' 2>/dev/null || true
+}
+
+# The id of the default source, or nothing when there is none.
+default_source_id() {
+    wpctl inspect @DEFAULT_AUDIO_SOURCE@ 2>/dev/null | sed -n '1s/^id \([0-9]*\),.*/\1/p'
+}
+
+# The microphone a recording reads now, as one JSON object: the node's id,
+# name, description, and nick, and `preferred`, which is true when the node
+# is the one this host names. With no pattern configured the default source
+# is the microphone and counts as preferred. With no capture node at all the
+# id is null.
+#
+# The optional argument is a node name to prefer above everything else, which
+# is how a recording finds its microphone again after the device
+# re-enumerated. A node id is minted per node and dies with it; a node name is
+# built from the device's vendor, product, and serial
+# (`alsa_input.usb-<vendor>_<product>_<serial>-00.analog-stereo`)
+# and is the same string on the far side of a replug. PipeWire appends `.2`,
+# `.3`, and so on when the new node arrives before the old one is gone, so the
+# name is matched exactly first and then under that suffix.
+pick_microphone() {
+    local want=${1:-} sources default_id
+    sources=$(microphone_sources)
+    default_id=$(default_source_id)
+    printf '%s' "$sources" | jq -c -s \
+        --arg want "$want" --arg re "$MIC_NODE" --arg def "${default_id:-}" '
+        def named($p): .name != null and (try (.name | test($p)) catch false);
+        def bare: (.name // "") | sub("\\.[0-9]+$"; "");
+        . as $all
+        | ($want | sub("\\.[0-9]+$"; "")) as $bare
+        | (if $want == "" then null
+           else (first($all[] | select(.name == $want))
+                 // first($all[] | select($bare != "" and bare == $bare))
+                 // null)
+           end) as $by_name
+        | (if $re == "" then null
+           else (first($all[] | select(named($re))) // null) end) as $by_pattern
+        | (if $def == "" then null
+           else (first($all[] | select(.id == ($def | tonumber))) // null) end) as $by_default
+        | ($by_name // $by_pattern // $by_default) as $chosen
+        | if $chosen == null
+          then { id: null, name: null, description: null, nick: null, preferred: false }
+          else $chosen + { preferred: ($re == "" or ($chosen | named($re))) }
+          end
+    ' 2>/dev/null \
+        || echo '{"id":null,"name":null,"description":null,"nick":null,"preferred":false}'
+}
+
+# Whether a microphone delivers samples. A one-second capture from a working
+# microphone is about 96 KB at 48 kHz mono; a microphone whose USB stream has
+# stopped writes the 44-byte WAV header and nothing after it, which is what
+# the desk microphone did on 2026-09-07 until it was unplugged and plugged back in.
+microphone_delivers() {
+    local target=$1 probe size=0
+    probe=$(mktemp "${TMPDIR:-/tmp}/screen-record-probe.XXXXXX.wav")
+    timeout 1 pw-record --target="$target" --channels 1 --rate "$AUDIO_RATE" "$probe" > /dev/null 2>&1 || true
+    [ -f "$probe" ] && size=$(wc -c < "$probe" 2>/dev/null || echo 0)
+    rm -f "$probe"
+    [ "$size" -gt 4096 ]
+}
+
+# Say something is wrong with the microphone, on stderr and out of the
+# speaker. The session has no notification daemon, so the chime is what
+# reaches a person who is looking at the screen rather than a terminal, and
+# the recording HUD shows the same condition in red for as long as it holds.
+# Neither half may take the recording down with it: the supervisor warns from
+# a background process whose terminal may already be gone.
+warn_microphone() {
+    echo "$1" >&2 || true
+    if command -v beep-sound > /dev/null 2>&1; then
+        beep-sound 300 0.15 || true
+        beep-sound 300 0.15 || true
+        beep-sound 300 0.15 || true
+    fi
+}
+
+# What a person or the HUD asks about the microphone: while a recording with
+# audio runs, the microphone it reads and the checks made when it started;
+# otherwise, the microphone a recording started now would read.
+microphone_report() {
+    if is_recording && [ -f "${META_FILE}.mic" ]; then
+        cat "${META_FILE}.mic"
+    else
+        pick_microphone | jq -c '. + {recording: false}'
+    fi
+}
+
+# Where a piece of the audio capture is written. The first is the file a
+# recording has always written, so a take that never lost its microphone
+# leaves exactly the file, the muxing, and the comment tag it did before; a
+# reattach after a hole numbers the ones that follow it.
+audio_segment_path() {
+    local output=$1 index=$2
+    if [ "$index" -eq 0 ]; then
+        printf '%s.audio.wav' "$output"
+    else
+        printf '%s.audio.%03d.wav' "$output" "$index"
+    fi
+}
+
+# What `status`, `screen-record microphone`, and the recording HUD read while
+# a recording runs. Written again on every reattach, so the strip's meter
+# follows the node that is live now instead of holding the id that died and
+# reading nothing from it forever.
+write_mic_report() {
+    local pick=$1 live=$2 warning=$3
+    [ -n "$pick" ] || return 0
+    if printf '%s' "$pick" | jq -c --argjson live "$live" --arg warning "$warning" \
+        '. + {recording: true, live: $live, warning: $warning}' \
+        > "${META_FILE}.mic.next" 2>/dev/null; then
+        mv -f "${META_FILE}.mic.next" "${META_FILE}.mic" || true
+    else
+        rm -f "${META_FILE}.mic.next"
+    fi
+}
+
+# The same report, with the microphone marked as delivering nothing. The node
+# it names is the one that died, which is what the HUD is already metering and
+# already drawing red; this is the sentence `status` repeats.
+mark_mic_outage() {
+    local warning=$1
+    [ -f "${META_FILE}.mic" ] || return 0
+    if jq -c --arg warning "$warning" '. + {live: false, warning: $warning}' \
+        "${META_FILE}.mic" > "${META_FILE}.mic.next" 2>/dev/null; then
+        mv -f "${META_FILE}.mic.next" "${META_FILE}.mic" || true
+    else
+        rm -f "${META_FILE}.mic.next"
+    fi
+}
+
+# The node a capture should open now, as `id<TAB>json`. For the microphone
+# that is `pick_microphone` asked for the name the recording started on; for
+# system audio it is whatever sink is default at this moment, which is the
+# same re-resolution one level up.
+resolve_audio_target() {
+    local pick id
+    if [ "$AUDIO_KIND" = "system" ]; then
+        local sink
+        sink=$(pactl get-default-sink 2>/dev/null || true)
+        [ -n "$sink" ] || return 0
+        printf '%s\t\n' "${sink}.monitor"
+        return 0
+    fi
+    pick=$(pick_microphone "$AUDIO_NAME") || return 0
+    [ -n "$pick" ] || return 0
+    id=$(printf '%s' "$pick" | jq -r '.id // empty' 2>/dev/null || true)
+    [ -n "$id" ] || return 0
+    printf '%s\t%s\n' "$id" "$pick"
+}
+
+# Whether the node a capture was opened on is still in the graph.
+#
+# A node id dies with its node, so an id that has gone is the device event
+# itself: the kernel's `USB disconnect` reaches here as a node that is no
+# longer a capture source. Anything that is not an id is a sink monitor, which
+# this does not answer for, and a graph that cannot be read answers that the
+# node is there rather than inventing a hole out of a failed `pw-dump`.
+node_present() {
+    local want=$1 nodes
+    case "$want" in
+        ''|*[!0-9]*) return 0 ;;
+    esac
+    nodes=$(microphone_sources) || return 0
+    [ -n "$nodes" ] || return 0
+    printf '%s' "$nodes" | jq -e --argjson want "$want" 'select(.id == $want) | true' > /dev/null 2>&1
+}
+
+# End a capture this started, and wait for it to close its file.
+#
+# The interrupt is what `stop` sends and what closes a WAV cleanly, and the
+# process is named by the identifier this took when it launched it rather than
+# by anything it is called. Five seconds is the same bound `stop` gives.
+end_capture() {
+    local pid=$1 waited=0
+    kill -INT "$pid" 2>/dev/null || true
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 50 ]; do
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$pid" 2>/dev/null || true
+    fi
+    return 0
+}
+
+# Wait for a running capture, and come back when the sound stops rather than
+# only when the process does.
+#
+# Waiting on the process was the whole of this at first, and it misses every
+# hole that opens while `pw-record` lives: the microphone that re-enumerated
+# under a node PipeWire kept, and the five shorter losses in the same take
+# that lined up with freezes in the recorder's own drawing and with no device
+# event whatsoever. A hole with no signal from the process and none from the
+# kernel still changes one thing, which is that the capture stops writing.
+#
+# So two things are watched. The capture's own file, which a delivering
+# `pw-record` grows continuously and a stopped one does not; a file that has
+# not grown for longer than `OUTAGE_MIN` ends the segment there, so the next
+# offset in the ledger is where the sound came back instead of the hole being
+# hidden inside one segment placed at zero. And the node, on the slower clock,
+# because a capture node that is gone while the process lives is a hole that
+# carries its own moment.
+#
+# The watch arms on the first sample. A capture that writes its header and
+# nothing after it never delivered, which is the wedge that returns silent frames: `start`
+# refuses that microphone and `stop` drops the piece, and cutting it every
+# quarter second for the length of the take would help nobody.
+#
+# Returns 0 when the capture ended on its own or `stop` asked for it, and 1
+# when this ended it because the sound had stopped.
+watch_capture() {
+    local seg=$1 pid=$2 target=$3
+    local size=0 seen=0 armed=0 now floor looked device
+
+    floor=$(seconds_us "$OUTAGE_MIN")
+    device=$(seconds_us "$DEVICE_POLL")
+    now=$(epoch_us)
+    local grew=$now
+    looked=$now
+
+    while kill -0 "$pid" 2>/dev/null; do
+        [ -f "${PID_FILE}.audio.stop" ] && return 0
+        sleep "$AUDIO_POLL"
+        [ -f "${PID_FILE}.audio.stop" ] && return 0
+        kill -0 "$pid" 2>/dev/null || break
+
+        size=0
+        [ -f "$seg" ] && size=$(wc -c < "$seg" 2>/dev/null || echo 0)
+        now=$(epoch_us)
+        if [ "$size" -gt "$seen" ]; then
+            seen=$size
+            grew=$now
+            [ "$size" -gt "$AUDIO_HEADER_BYTES" ] && armed=1
+        elif [ "$armed" -eq 1 ] && [ "$((now - grew))" -gt "$floor" ]; then
+            end_capture "$pid"
+            return 1
+        fi
+
+        if [ "$((now - looked))" -ge "$device" ]; then
+            looked=$now
+            if ! node_present "$target"; then
+                end_capture "$pid"
+                return 1
+            fi
+        fi
+    done
+    return 0
+}
+
+# Keep the sound coming for as long as the picture does.
+#
+# `pw-record` reads one node and returns when that node goes away. This loop
+# is what turns "the capture ended" into "find the microphone and open the
+# next segment" instead of into the rest of a take running silently. It writes
+# a line per segment to the ledger `stop` reads — the index, the offset from
+# the start of the take at which the capture opened, and the file — and it
+# leaves `${META_FILE}.audio.outage` behind while it is looking, which is what
+# `status` reports and what the report the HUD reads is marked with.
+#
+# It is `stop` that ends this, through `${PID_FILE}.audio.stop`. The marker is
+# written before anything is signalled, so a capture that ended because it was
+# asked to is never mistaken for a microphone that vanished and never opens a
+# segment behind the stop.
+supervise_audio() {
+    local output=$1 t0=$2 target=$3 pick=$4
+    local index=0 delay=1 warned=0 seg off pid gap outage_at="" cut=0
+
+    while :; do
+        [ -f "${PID_FILE}.audio.stop" ] && break
+
+        if [ -n "$target" ]; then
+            seg=$(audio_segment_path "$output" "$index")
+            # The first segment is the take's own zero. Its true offset is the
+            # few milliseconds between the clock being read and pw-record being
+            # launched, and calling that zero keeps a single-segment take
+            # placed and measured exactly as it was before any of this.
+            if [ "$index" -eq 0 ]; then
+                off="0.000"
+            else
+                off=$(elapsed_since "$t0")
+            fi
+            pw-record --target="$target" --channels 1 --rate "$AUDIO_RATE" "$seg" > /dev/null 2>&1 &
+            pid=$!
+            echo "$pid" > "${PID_FILE}.audio"
+            printf '%s\t%s\t%s\n' "$index" "$off" "$seg" >> "${META_FILE}.audio.segments"
+            if [ -n "$outage_at" ]; then
+                gap=$(awk -v a="$off" -v b="$outage_at" 'BEGIN { printf "%.1f", a - b }')
+                echo "The microphone is back after ${gap}s; the recording carries on, and the hole is named in the file." >&2 || true
+                rm -f "${META_FILE}.audio.outage"
+                outage_at=""
+                warned=0
+                delay=1
+            fi
+            # `start` wrote the first report, warning and all. This is the
+            # one that moves the HUD's meter onto the node that is live now.
+            [ "$index" -gt 0 ] && [ -n "$pick" ] && write_mic_report "$pick" true ""
+            # The capture is watched rather than only waited on, so a hole
+            # that opens while `pw-record` lives ends the segment too. What
+            # `wait` then collects is a process this already ended.
+            cut=0
+            watch_capture "$seg" "$pid" "$target" || cut=1
+            wait "$pid" 2>/dev/null || true
+            index=$((index + 1))
+            target=""
+            pick=""
+            [ -f "${PID_FILE}.audio.stop" ] && break
+            outage_at=$(elapsed_since "$t0")
+            printf '%s\n' "$outage_at" > "${META_FILE}.audio.outage"
+        fi
+
+        if [ "$warned" -eq 0 ]; then
+            warned=1
+            warn_microphone "The microphone stopped delivering audio ${outage_at}s into the recording. Looking for it again; the picture carries on."
+            mark_mic_outage "No audio since ${outage_at}s into the take; looking for the microphone."
+        elif [ "$warned" -eq 1 ] \
+            && awk -v a="$(elapsed_since "$t0")" -v b="$outage_at" -v l="$OUTAGE_LIMIT" 'BEGIN { exit !(a - b > l) }'; then
+            warned=2
+            warn_microphone "This recording has had no audio for more than ${OUTAGE_LIMIT}s. It is still running and the picture is whole; stop it if the sound matters."
+        fi
+
+        # A bounded backoff: often at first, because a replug is over in a
+        # second, then every few seconds for as long as the take runs. A
+        # capture this ended is a different case — the microphone is still
+        # here and the sound is already missing — so the next segment opens
+        # without waiting first, and the hole is the length of the loss and
+        # not the loss plus a second.
+        if [ "$cut" -eq 1 ]; then
+            cut=0
+        else
+            sleep "$delay"
+            [ "$delay" -lt 3 ] && delay=$((delay + 1))
+        fi
+        [ -f "${PID_FILE}.audio.stop" ] && break
+        IFS=$'\t' read -r target pick < <(resolve_audio_target) || true
+    done
+}
+
+# Put the picture and the sound together, and write what the take was into
+# the file.
+#
+# `place` is `offset<TAB>duration<TAB>path` lines, oldest first: every piece
+# of audio the take captured and the offset from the start of the recording
+# at which each one opened. One line is the ordinary take. More than one is a
+# take whose microphone went away and came back.
+#
+# Two rules the file did not hold before 2026-09-09, both of which cost a
+# real take.
+#
+# The picture is the length of the take. `apad` fills whatever the sound does
+# not reach and `atrim` cuts whatever runs past it, so the audio track comes
+# out exactly as long as the video and nothing about the sound can shorten
+# the picture. The mux carried `-shortest` instead, which ended the *video*
+# at the audio's length: a 187.9-second take with 162.0 seconds of sound was
+# delivered as 162.0 seconds of picture, 777 captured frames discarded by the
+# step meant to add sound to them, and both pre-mux halves removed after.
+#
+# Every piece is placed, not concatenated. `adelay` puts each capture at its
+# own offset to the sample and `amix` with `normalize=0` sums them without
+# scaling, so a hole is silence in its true place and the sound after a hole
+# stays where it was said. Concatenating would pull everything after a hole
+# earlier by the length of it, which is the same desync from the other end.
+mux_recording() {
+    local output=$1 vdur=$2 note=$3 place=$4 shift_by=${5:-}
+    local muxed="${output%.*}.muxed.${output##*.}"
+    local count graph="" inputs="" tail="" afilter k=0 off dur path samples
+
+    count=$(awk 'END { print NR + 0 }' "$place" 2>/dev/null || echo 0)
+    [ "$count" -gt 0 ] || return 1
+
+    if awk -v v="$vdur" 'BEGIN { exit !(v + 0 > 0) }'; then
+        # Both or neither: `apad` alone pads forever and the mux never ends.
+        tail=",apad,atrim=end=${vdur}"
+    fi
+    afilter="aresample=async=1:first_pts=0${tail}"
+
+    local -a ff
+    ff=(ffmpeg -hide_banner -loglevel error -y -i "$output")
+    while IFS=$'\t' read -r off dur path; do
+        [ -n "$path" ] || continue
+        [ -n "$shift_by" ] && ff+=(-itsoffset "$shift_by")
+        ff+=(-i "$path")
+        samples=$(awk -v o="$off" -v r="$AUDIO_RATE" 'BEGIN { printf "%d", o * r + 0.5 }')
+        graph="${graph}[$((k + 1)):a]adelay=delays=${samples}S:all=1[s${k}];"
+        inputs="${inputs}[s${k}]"
+        k=$((k + 1))
+    done < "$place"
+    [ "$k" -gt 0 ] || return 1
+
+    if [ "$k" -eq 1 ]; then
+        # One capture, opening with the take: the command a recording that
+        # never lost its microphone has always run, minus `-shortest`.
+        ff+=(-map 0:v:0 -map 1:a:0 -c:v copy -af "$afilter")
+    else
+        graph="${graph}${inputs}amix=inputs=${k}:normalize=0:duration=longest,${afilter}[aout]"
+        ff+=(-filter_complex "$graph" -map 0:v:0 -map "[aout]" -c:v copy)
+    fi
+    ff+=(-c:a aac -b:a 128k -metadata comment="$note" "$muxed")
+
+    if "${ff[@]}" 2>/dev/null && [ -s "$muxed" ]; then
+        mv -f "$muxed" "$output"
+        return 0
+    fi
+    rm -f "$muxed"
+    return 1
+}
+
+# Write the note into a video that gets no audio track, without touching a
+# frame of it. A take whose microphone delivered nothing at all still says so
+# in its own metadata rather than only on the terminal that stopped it.
+tag_recording() {
+    local output=$1 note=$2
+    local tagged="${output%.*}.tagged.${output##*.}"
+    if ffmpeg -hide_banner -loglevel error -y -i "$output" -map 0 -c copy \
+        -metadata comment="$note" "$tagged" 2>/dev/null && [ -s "$tagged" ]; then
+        mv -f "$tagged" "$output"
+        return 0
+    fi
+    rm -f "$tagged"
+    return 1
+}
+
+# Every piece of the take's audio that holds sound, as
+# `offset<TAB>duration<TAB>path` lines, oldest first. The ledger the
+# supervisor wrote gives the order and the offsets; a piece that never
+# received a sample is a 44-byte WAV header, and it is dropped here so the
+# hole around it reads as one hole rather than as two.
+audio_segments() {
+    local output=$1 index off path size dur
+    if [ -f "${META_FILE}.audio.segments" ]; then
+        while IFS=$'\t' read -r index off path; do
+            [ -n "$path" ] || continue
+            [ -f "$path" ] || continue
+            size=$(wc -c < "$path" 2>/dev/null || echo 0)
+            if [ "$size" -gt 4096 ]; then
+                dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$path" 2>/dev/null || echo 0)
+                printf '%s\t%s\t%s\n' "$off" "${dur:-0}" "$path"
+            else
+                rm -f "$path"
+            fi
+        done < "${META_FILE}.audio.segments"
+    elif [ -f "${output}.audio.wav" ]; then
+        # A take whose supervisor never wrote a line: one capture, opening
+        # with the recording.
+        size=$(wc -c < "${output}.audio.wav" 2>/dev/null || echo 0)
+        if [ "$size" -gt 4096 ]; then
+            dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "${output}.audio.wav" 2>/dev/null || echo 0)
+            printf '0.000\t%s\t%s\n' "${dur:-0}" "${output}.audio.wav"
+        else
+            rm -f "${output}.audio.wav"
+        fi
+    fi
+}
+
+# The windows the sound is missing from, as `121.4s-147.3s` joined by commas.
+# A piece ends at its own offset plus its own length, so the time from there
+# to the next piece's offset is a hole; anything under `OUTAGE_MIN` is
+# measurement noise rather than a hole.
+#
+# A hole between two pieces needs nothing else: the next piece's offset is the
+# clock at the moment it opened, so the ledger locates it. A window at the end
+# of the take needs `proven`, which is where the sound stopped for good
+# according to something that watched it stop. Without that, a take that is
+# short of its picture has lost sound somewhere nobody saw, and naming the end
+# anyway costs this: a 12.695s hole at 82.31s of a four-minute take came out
+# as `audio missing 227.6s-240.3s`, which says the last 12.695s is silent and
+# the rest is sound, and which sent a take that needed repair out
+# reading as one that did not.
+audio_outages() {
+    local place=$1 vdur=$2 proven=${3:-}
+    awk -F'\t' -v v="$vdur" -v m="$OUTAGE_MIN" -v l="$DRIFT_LIMIT" -v p="$proven" '
+        BEGIN { end = 0; out = "" }
+        function add(a, b) { out = out (out == "" ? "" : ", ") sprintf("%.1fs-%.1fs", a, b) }
+        NF >= 3 {
+            if ($1 - end > m) add(end, $1)
+            end = $1 + $2
+        }
+        END { if (p != "" && v - end > l) add(end, v); print out }
+    ' "$place" 2>/dev/null || true
+}
+
+# How much sound the take is missing that nothing located, in seconds, or
+# nothing when every second is accounted for. This is the other half of the
+# rule above: the amount is known, the place is not, and the file says so in
+# those words rather than picking a place.
+audio_shortfall() {
+    local place=$1 vdur=$2 proven=${3:-}
+    [ -z "$proven" ] || return 0
+    awk -F'\t' -v v="$vdur" -v l="$DRIFT_LIMIT" '
+        BEGIN { end = 0 }
+        NF >= 3 { end = $1 + $2 }
+        END { if (v - end > l) printf "%.3f", v - end }
+    ' "$place" 2>/dev/null || true
+}
+
+# Where the sound stopped for good, or nothing when the take does not know.
+#
+# Two things say it. The marker the supervisor leaves while it is looking for
+# the microphone, which is still there at `stop` when it never found it again;
+# and a last capture that opened and delivered nothing, whose 44-byte file is
+# the supervisor saying it tried. Read this before `audio_segments`, which
+# removes the empty pieces it finds.
+trailing_outage() {
+    local last off path size=0
+    if [ -f "${META_FILE}.audio.outage" ]; then
+        cat "${META_FILE}.audio.outage" 2>/dev/null || true
+        return 0
+    fi
+    [ -f "${META_FILE}.audio.segments" ] || return 0
+    last=$(tail -n 1 "${META_FILE}.audio.segments" 2>/dev/null || true)
+    [ -n "$last" ] || return 0
+    off=$(printf '%s' "$last" | cut -f2)
+    path=$(printf '%s' "$last" | cut -f3)
+    [ -f "$path" ] && size=$(wc -c < "$path" 2>/dev/null || echo 0)
+    if [ "$size" -le 4096 ]; then
+        printf '%s' "$off"
+    fi
+    return 0
+}
+
+# Where the sound reached on the take's own clock: the last piece's offset
+# plus its length. For a take with one piece that is exactly the length of
+# the capture, which is the number the drift line has always carried.
+audio_end() {
+    awk -F'\t' 'BEGIN { e = 0 } NF >= 3 { e = $1 + $2 } END { printf "%.6f", e }' "$1" 2>/dev/null || echo 0
+}
+
+usage() {
+    cat << 'HELP'
+Usage: screen-record <start|stop|status> [options]
+
+Commands:
+  start [output.mp4] [flags]   Start recording in background.
+                               Flags:
+                                 -d, --duration <seconds>   Record for N seconds then stop
+                                 -a, --audio                Record the microphone this host names, or the default source
+                                 -A, --system-audio         Record system audio (default sink monitor)
+                                 -g, --geometry "X,Y WxH"   Record region (or "slurp" to pick interactively)
+                                 -s, --sync <seconds>       Delay the audio to match a camera overlay
+                                 -r, --fps <n>              Hold the picture to n frames per second (default 30)
+                                 -p, --presentation         Enter presentation mode first, and leave it on stop
+  stop                         Stop the currently running recording cleanly.
+  status                       Check if a recording session is active.
+  microphone                   Print the microphone a recording reads, as JSON.
+  repair [output.mp4]          Put a capture a take left beside a recording back into it.
+
+Examples:
+  screen-record start ~/Videos/demo.mp4
+  screen-record start ~/Videos/clip.mp4 --duration 10
+  screen-record start ~/demo.mp4 --audio            # with your voice
+  screen-record start ~/demo.mp4 --presentation     # set the screen up to be watched
+  screen-record stop
+  screen-record status
+  screen-record repair                              # every recording in ~/Videos
+HELP
+}
+
+start_recording() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "A recording is already running (PID: $PID)."
+            exit 1
+        else
+            rm -f "$PID_FILE" "$META_FILE"
+        fi
+    fi
+
+    local OUTPUT=""
+    local DURATION=""
+    local AUDIO=false
+    local SYSAUDIO=false
+    local GEOMETRY=""
+    local SYNC=""
+    local PRESENTATION=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -d|--duration)
+                DURATION="$2"
+                shift 2
+                ;;
+            -a|--audio)
+                AUDIO=true
+                shift
+                ;;
+            -A|--system-audio)
+                SYSAUDIO=true
+                shift
+                ;;
+            -g|--geometry)
+                GEOMETRY="$2"
+                shift 2
+                ;;
+            -s|--sync)
+                SYNC="$2"
+                shift 2
+                ;;
+            -r|--fps)
+                FPS="$2"
+                shift 2
+                ;;
+            -p|--presentation)
+                PRESENTATION=true
+                shift
+                ;;
+            -*)
+                echo "Unknown flag: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                if [ -z "$OUTPUT" ]; then
+                    OUTPUT="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    if [ -z "$OUTPUT" ]; then
+        mkdir -p ~/Videos
+        OUTPUT=~/Videos/recording-$(date +'%Y%m%d-%H%M%S').mp4
+    fi
+
+    # Expand relative / tilde paths
+    mkdir -p "$(dirname "$OUTPUT")"
+
+    # Nothing from a previous take may be read as part of this one: a stale
+    # ledger would place this recording's sound at another recording's offsets.
+    rm -f "${PID_FILE}.audio" "${PID_FILE}.audio.stop" "${PID_FILE}.audio.supervisor" \
+        "${META_FILE}.audio.segments" "${META_FILE}.audio.outage" "${META_FILE}.mic"
+    rm -f "${OUTPUT}".audio.wav "${OUTPUT}".audio.[0-9][0-9][0-9].wav
+
+    # Presentation mode is asked for, never assumed. A screencast is not the
+    # only reason to record, and a recording that rearranged the desktop by
+    # itself would startle whoever was using it. The mode goes on before the
+    # first frame and comes off after the last, and `stop` reads this marker
+    # so it does not have to be told twice.
+    if [ "$PRESENTATION" = true ]; then
+        if command -v presentation-mode > /dev/null 2>&1; then
+            presentation-mode on
+            echo "on" > "${META_FILE}.presentation"
+        else
+            echo "No presentation-mode command; recording the screen as it is." >&2
+        fi
+    fi
+
+    local WF_ARGS=("-f" "$OUTPUT" "--pixel-format" "yuv420p" "-r" "$FPS")
+
+    # Audio is captured beside the video, not through wf-recorder. Passing it
+    # `-a` produced a 48-byte file every time: it opens the source and creates
+    # the AAC stream, then the muxer waits on samples that never interleave and
+    # nothing at all is written, video included. Video alone works. So the two
+    # are recorded separately and muxed on stop, which also makes the sync
+    # offset a matter of arithmetic rather than of luck.
+    AUDIO_SRC=""
+    AUDIO_KIND=""
+    AUDIO_NAME=""
+    local MIC_JSON="" MIC_LIVE=true MIC_WARNING=""
+    if [ "$AUDIO" = true ]; then
+        # The microphone is named, checked, and reported before the first
+        # frame, so a warning comes before the recording rather than into it.
+        AUDIO_KIND="microphone"
+        MIC_JSON=$(pick_microphone)
+        AUDIO_SRC=$(printf '%s' "$MIC_JSON" | jq -r '.id // empty')
+        # The name is the handle the supervisor reattaches by, so it is read
+        # here and carried for the length of the take.
+        AUDIO_NAME=$(printf '%s' "$MIC_JSON" | jq -r '.name // empty')
+        local MIC_NICK MIC_PREFERRED
+        MIC_NICK=$(printf '%s' "$MIC_JSON" | jq -r '.nick // "the microphone"')
+        MIC_PREFERRED=$(printf '%s' "$MIC_JSON" | jq -r '.preferred')
+        if [ -z "$AUDIO_SRC" ]; then
+            MIC_LIVE=false
+            MIC_WARNING="No microphone is present; recording video only."
+        elif ! microphone_delivers "$AUDIO_SRC"; then
+            MIC_LIVE=false
+            MIC_WARNING="The $MIC_NICK is delivering no audio. Unplug it and plug it back in, then record again."
+        elif [ "$MIC_PREFERRED" != true ]; then
+            MIC_WARNING="The microphone is the $MIC_NICK; the ${MIC_NAME:-microphone this host names} is absent."
+        fi
+        [ -n "$MIC_WARNING" ] && warn_microphone "$MIC_WARNING"
+    elif [ "$SYSAUDIO" = true ]; then
+        AUDIO_KIND="system"
+        local SINK
+        SINK=$(pactl get-default-sink 2>/dev/null || true)
+        if [ -n "$SINK" ]; then
+            AUDIO_SRC="${SINK}.monitor"
+        else
+            echo "No default sink to record; recording without system audio." >&2
+        fi
+    fi
+
+    if [ -n "$GEOMETRY" ]; then
+        if [ "$GEOMETRY" = "slurp" ]; then
+            GEOMETRY=$(slurp)
+        fi
+        WF_ARGS+=("-g" "$GEOMETRY")
+    fi
+
+    if [ -n "$DURATION" ]; then
+        # Run with timeout in background
+        # wf-recorder runs directly, not under `timeout`, because `$!` after a
+        # wrapper is the wrapper's pid: `stop` then signalled `timeout` while
+        # wf-recorder carried on, and the file was left without its moov atom.
+        wf-recorder "${WF_ARGS[@]}" > /dev/null 2>&1 &
+        REC_PID=$!
+        # The watcher runs the same stop the person would, rather than
+        # signalling the processes itself. Killing both directly left the
+        # audio beside the video and never muxed them, because the muxing
+        # lives in stop and nothing called it.
+        (
+            sleep "$DURATION"
+            kill -0 "$REC_PID" 2>/dev/null && "$0" stop
+        ) > /dev/null 2>&1 &
+    else
+        wf-recorder "${WF_ARGS[@]}" > /dev/null 2>&1 &
+        REC_PID=$!
+    fi
+
+    if [ -n "$AUDIO_SRC" ]; then
+        # pw-record reads one node by id. ffmpeg's pulse input opened the
+        # source and wrote nothing; PipeWire's own tool records from it. The
+        # target is the microphone's node id, which pw-record accepts where
+        # a node name that does not match exactly gets a 44-byte file. The id
+        # is good until the node behind it dies, which is why the supervisor
+        # holds the *name* and resolves the id again every time it reattaches.
+        if [ -n "$MIC_JSON" ]; then
+            # What the recording reads, for `status`, for `microphone`, and
+            # for the HUD. Written before the supervisor starts, so the
+            # supervisor's own report on a reattach is the later one.
+            write_mic_report "$MIC_JSON" "$MIC_LIVE" "$MIC_WARNING"
+        fi
+        local T0
+        T0=$(epoch_now)
+        printf '%s\n' "$T0" > "${META_FILE}.audio.t0"
+        supervise_audio "$OUTPUT" "$T0" "$AUDIO_SRC" "$MIC_JSON" &
+        echo $! > "${PID_FILE}.audio.supervisor"
+    elif [ -n "$MIC_JSON" ]; then
+        # No source to open, but the recording still says which microphone it
+        # looked for and why it found nothing.
+        write_mic_report "$MIC_JSON" "$MIC_LIVE" "$MIC_WARNING"
+    fi
+
+    echo "$REC_PID" > "$PID_FILE"
+    echo "$OUTPUT" > "$META_FILE"
+    # Remembered so `stop` can shift the audio without being told again.
+    [ -n "$SYNC" ] && echo "$SYNC" > "${META_FILE}.sync"
+    echo "$FPS" > "${META_FILE}.fps"
+
+    echo "Recording started (PID: $REC_PID) -> $OUTPUT"
+    if [ -n "$MIC_JSON" ] && [ -n "$AUDIO_SRC" ]; then
+        echo "Microphone: $(printf '%s' "$MIC_JSON" | jq -r '.description')"
+    fi
+    if [ -n "$DURATION" ]; then
+        echo "Will record for $DURATION seconds."
+    fi
+}
+
+stop_recording() {
+    if [ ! -f "$PID_FILE" ]; then
+        echo "No recording in progress."
+        exit 0
+    fi
+
+    PID=$(cat "$PID_FILE")
+    OUTPUT=$(cat "$META_FILE" 2>/dev/null || echo "video")
+
+    if kill -0 "$PID" 2>/dev/null; then
+        echo "Stopping recording (PID: $PID)..."
+        # Both captures get the signal in the same instant, so the two files
+        # end at the same moment of the take and the gap between their
+        # lengths measures the clocks rather than the order of the kills.
+        # The supervisor is told first, and by a marker rather than by a
+        # signal, so it cannot read the capture's own clean exit as a
+        # microphone that vanished and open a segment behind the stop.
+        local APID SPID
+        SPID=$(cat "${PID_FILE}.audio.supervisor" 2>/dev/null || true)
+        APID=$(cat "${PID_FILE}.audio" 2>/dev/null || true)
+        : > "${PID_FILE}.audio.stop"
+        [ -n "$SPID" ] && kill -TERM "$SPID" 2>/dev/null || true
+        kill -INT "$PID" 2>/dev/null || true
+        [ -n "$APID" ] && kill -INT "$APID" 2>/dev/null || true
+        # Up to five seconds for wf-recorder to finalise the container, and
+        # the same for pw-record to close the WAV.
+        for _ in {1..50}; do
+            if ! kill -0 "$PID" 2>/dev/null; then
+                break
+            fi
+            sleep 0.1
+        done
+        if [ -n "$APID" ]; then
+            local w=0
+            while kill -0 "$APID" 2>/dev/null && [ $w -lt 30 ]; do sleep 0.2; w=$((w+1)); done
+        fi
+
+        # How long the take is. The video's length is the last frame's stamp
+        # plus one frame, and it is the length of the take: everything about
+        # the sound below is fitted to it.
+        local VDUR VFRAMES VFPS
+        VDUR=$(ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 "$OUTPUT" 2>/dev/null || echo 0)
+        VFRAMES=$(ffprobe -v error -select_streams v:0 -show_entries stream=nb_frames -of csv=p=0 "$OUTPUT" 2>/dev/null || echo 0)
+        VFPS=$(cat "${META_FILE}.fps" 2>/dev/null || echo "$FPS")
+
+        # A file exists the moment pw-record opens it, so `-s` is not enough:
+        # a stuck or muted microphone leaves a 44-byte WAV header with no
+        # samples. A real capture is tens of kilobytes even for a fraction of
+        # a second at 48 kHz mono, so a size floor cleanly tells a silent
+        # header from actual sound, and it is applied to every piece the take
+        # captured rather than only to the first.
+        local PLACE PIECES PROVEN
+        PLACE="${META_FILE}.audio.place"
+        # Read before the pieces are walked: `audio_segments` removes an empty
+        # last capture, which is one of the two things that proves where the
+        # sound stopped.
+        PROVEN=$(trailing_outage)
+        audio_segments "$OUTPUT" > "$PLACE"
+        PIECES=$(awk 'END { print NR + 0 }' "$PLACE" 2>/dev/null || echo 0)
+
+        if [ "$PIECES" -gt 0 ]; then
+            # A camera overlay is a picture that arrived over a network; the
+            # microphone did not. So the face lags the voice by however long the
+            # camera path takes, and the fix is to hold the audio back by the
+            # same amount. Find the number once with a clap: the gap between the
+            # sound and the hands meeting is what to pass to --sync.
+            local SHIFT
+            SHIFT=$(cat "${META_FILE}.sync" 2>/dev/null || true)
+            [ -n "$SHIFT" ] && echo "Holding the audio back ${SHIFT}s to match the camera..."
+            # The gap between the two clocks goes into the file's comment tag,
+            # so a take that ended out of step says so to anything that reads
+            # its metadata, and a gap past the limit is said out loud here.
+            # The windows the sound is missing from go in beside it, so an
+            # editor is told where the holes are rather than finding them.
+            local AEND MISSING SHORT DRIFT NOTE
+            AEND=$(audio_end "$PLACE")
+            MISSING=$(audio_outages "$PLACE" "$VDUR" "$PROVEN")
+            SHORT=$(audio_shortfall "$PLACE" "$VDUR" "$PROVEN")
+            DRIFT=$(awk -v a="$AEND" -v v="$VDUR" 'BEGIN { printf "%+.3f", a - v }')
+            NOTE="coderos: video ${VDUR}s, ${VFRAMES} frames at ${VFPS} fps constant; audio ${AEND}s; the audio ends ${DRIFT}s after the video"
+            [ -n "$MISSING" ] && NOTE="${NOTE}; audio missing ${MISSING}"
+            [ -n "$SHORT" ] && NOTE="${NOTE}; audio ${SHORT}s short, and the take does not say where"
+            echo "Video ${VDUR}s (${VFRAMES} frames at ${VFPS} fps), audio ${AEND}s, audio ends ${DRIFT}s after the video."
+            if [ "$PIECES" -gt 1 ]; then
+                echo "The microphone was reattached $((PIECES - 1)) time(s) during the take."
+            fi
+            if [ -n "$MISSING" ]; then
+                echo "The audio is missing ${MISSING}; the picture is whole."
+                echo "The audio is missing ${MISSING}." >&2
+            fi
+            if [ -n "$SHORT" ]; then
+                # The amount is known and the place is not, so neither the tag
+                # nor this line picks one. Anyone who ships the take on the
+                # strength of a window at the end ships sound that runs ahead
+                # of the picture from the hole onwards.
+                echo "The audio is ${SHORT}s short and the take does not say where; check the sound against the picture before you use it."
+                echo "The audio is ${SHORT}s short and the take does not say where." >&2
+            elif [ -z "$MISSING" ] && awk -v d="$DRIFT" -v l="$DRIFT_LIMIT" 'BEGIN { if (d < 0) d = -d; exit !(d > l) }'; then
+                echo "The audio and the video end ${DRIFT}s apart; check the sync at the end of the take." >&2
+            fi
+            if mux_recording "$OUTPUT" "$VDUR" "$NOTE" "$PLACE" "$SHIFT"; then
+                cut -f3 "$PLACE" | while IFS= read -r _seg; do rm -f "$_seg"; done
+            else
+                echo "Could not add the audio; it is beside the video at $(head -n 1 "$PLACE" | cut -f3)" >&2
+            fi
+        else
+            # No usable audio: the microphone captured nothing. Keep the video
+            # exactly as wf-recorder wrote it rather than muxing a zero-length
+            # track over it, and say in the file that the whole take is silent.
+            local NOTE
+            NOTE="coderos: video ${VDUR}s, ${VFRAMES} frames at ${VFPS} fps constant; audio missing 0.0s-${VDUR}s"
+            tag_recording "$OUTPUT" "$NOTE" || true
+            echo "The microphone captured no audio; saved video only." >&2
+        fi
+        rm -f "$PLACE"
+
+        echo "Recording saved: $OUTPUT"
+    else
+        echo "Recording process (PID: $PID) was not active."
+    fi
+
+    # The mode comes off after the file is closed, so the last frames still
+    # show the screen the recording was set up for.
+    if [ -f "${META_FILE}.presentation" ] && command -v presentation-mode > /dev/null 2>&1; then
+        presentation-mode off || true
+    fi
+
+    rm -f "$PID_FILE" "${PID_FILE}.audio" "${PID_FILE}.audio.stop" \
+        "${PID_FILE}.audio.supervisor" "$META_FILE" "${META_FILE}.sync" \
+        "${META_FILE}.presentation" "${META_FILE}.mic" "${META_FILE}.fps" \
+        "${META_FILE}.audio.segments" "${META_FILE}.audio.outage" \
+        "${META_FILE}.audio.t0" "${META_FILE}.audio.place"
+}
+
+status_recording() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            OUTPUT=$(cat "$META_FILE" 2>/dev/null || echo "unknown")
+            echo "Recording in progress (PID: $PID) -> $OUTPUT"
+            if [ -f "${META_FILE}.mic" ]; then
+                local MIC_DESC MIC_WARNING
+                MIC_DESC=$(jq -r '.description // "none"' "${META_FILE}.mic" 2>/dev/null || echo "unknown")
+                MIC_WARNING=$(jq -r '.warning // ""' "${META_FILE}.mic" 2>/dev/null || true)
+                echo "Microphone: $MIC_DESC"
+                [ -n "$MIC_WARNING" ] && echo "Warning: $MIC_WARNING"
+            fi
+            # A hole that is open right now, and the ones already behind this
+            # take. The HUD is drawing the same condition red at the same
+            # moment; this is the sentence for whoever is at a terminal.
+            if [ -f "${META_FILE}.audio.outage" ]; then
+                local SINCE
+                SINCE=$(cat "${META_FILE}.audio.outage" 2>/dev/null || echo "?")
+                echo "Audio: none since ${SINCE}s into the take; looking for the microphone."
+            fi
+            local PIECES=0
+            [ -f "${META_FILE}.audio.segments" ] && PIECES=$(awk 'END { print NR + 0 }' "${META_FILE}.audio.segments" 2>/dev/null || echo 0)
+            if [ "$PIECES" -gt 1 ]; then
+                echo "Audio: reattached $((PIECES - 1)) time(s); the file will name every hole."
+            fi
+            return 0
+        fi
+    fi
+    echo "No recording active."
+}
+
+# Put an orphaned capture back into its recording.
+#
+# A take that ends without its finish step leaves the picture written and the
+# sound beside it as `<output>.audio.wav`, because `wf-recorder` writes its own
+# file while the supervisor holds the sound. Nothing then tells you: the
+# recording plays with no audio and the sound sits next to it. Three takes on
+# `coderos-4080` were found that way on 2026-09-18, the oldest from 2026-09-08.
+#
+# With no argument this reads every recording in `~/Videos`. With one it reads
+# that file. A recording that already carries sound is left alone and its
+# leftover capture is named rather than removed, because only you know whether
+# it is worth keeping.
+repair_recordings() {
+    local target=${1:-} count=0 fixed=0 wav muxed streams note dur
+    local -a files=()
+    if [ -n "$target" ]; then
+        files=("$target")
+    else
+        for f in ~/Videos/*.mp4; do
+            [ -f "$f" ] && files+=("$f")
+        done
+    fi
+    for f in "${files[@]}"; do
+        wav="${f}.audio.wav"
+        [ -f "$wav" ] || continue
+        count=$((count + 1))
+        if [ "$(wc -c < "$wav" 2>/dev/null || echo 0)" -le 4096 ]; then
+            echo "empty capture beside $(basename "$f"); removing it"
+            rm -f "$wav"
+            continue
+        fi
+        streams=$(ffprobe -v error -select_streams a -show_entries stream=index \
+            -of csv=p=0 "$f" 2>/dev/null | wc -l)
+        if [ "$streams" -gt 0 ]; then
+            echo "$(basename "$f") already carries sound; its capture is still at $wav"
+            continue
+        fi
+        dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$wav" 2>/dev/null || echo 0)
+        note="coderos: the sound was put back from $(basename "$wav"), ${dur}s, by screen-record repair"
+        muxed="${f%.*}.repair.${f##*.}"
+        if ffmpeg -hide_banner -loglevel error -y -i "$f" -i "$wav" \
+            -map 0:v -map 1:a -c:v copy -c:a aac -b:a 128k -shortest \
+            -metadata comment="$note" "$muxed" 2>/dev/null && [ -s "$muxed" ]; then
+            mv -f "$muxed" "$f"
+            rm -f "$wav"
+            fixed=$((fixed + 1))
+            echo "put the sound back into $(basename "$f")"
+        else
+            rm -f "$muxed"
+            echo "could not put the sound back into $(basename "$f"); its capture is still at $wav"
+        fi
+    done
+    if [ "$count" -eq 0 ]; then
+        echo "no recording has a capture beside it."
+    else
+        echo "read $count, repaired $fixed."
+    fi
+}
+
+# The dispatch runs when the file is executed, and not when it is sourced.
+# `ops/tests/screen-record.sh` sources it with `SCREEN_RECORD_LIB` set to
+# reach `pick_microphone`, `supervise_audio`, and `mux_recording` with a stub
+# PipeWire.
+if [ -z "${SCREEN_RECORD_LIB:-}" ]; then
+    CMD="${1:-}"
+    shift || true
+
+    case "$CMD" in
+        start)
+            start_recording "$@"
+            ;;
+        stop)
+            stop_recording
+            ;;
+        status)
+            status_recording
+            ;;
+        microphone)
+            microphone_report
+            ;;
+        repair)
+            repair_recordings "${1:-}"
+            ;;
+        *)
+            usage
+            exit 1
+            ;;
+    esac
+fi

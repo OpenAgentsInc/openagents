@@ -200,6 +200,10 @@ in
     # from anywhere else.
     users.users.${desktop.user}.extraGroups = [ "kvm" ];
 
+    # SUPER + A, and the window rule that floats the phone, which
+    # `desktop.nix` writes for a launcher this list names.
+    coderos.desktop.launchers = [ "android" ];
+
     # The window is an X11 one, so the session needs Xwayland. The desktop
     # sets this to false with `mkDefault`, and this plain assignment wins.
     programs.hyprland.xwayland.enable = true;

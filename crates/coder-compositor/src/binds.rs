@@ -3,12 +3,14 @@
 //! The rows mirror the binds `os/modules/coderos/desktop.nix` writes for
 //! tiling, desks, floats, fullscreen, monitors, and the two `exec` rows, so
 //! a person who learned the Hyprland session learns nothing new. The
-//! launcher chords, Super+C for the camera and Super+Shift+D for the deck
+//! launcher chords, Super+C for the camera and Super+B for the browser
 //! among them, are read from `crates/coder-binds`, the table `desktop.nix`
 //! writes its `bind` lines from: each launcher row there names the
 //! `coderos.desktop` option that gates it, and the compositor answers the
 //! rows whose option the host turned on, which the session hands it in
-//! `CODER_COMPOSITOR_LAUNCHERS`.
+//! `CODER_COMPOSITOR_LAUNCHERS`. A host's own launchers, such as a game
+//! launcher on Super+G, come from the grant's `extraBinds`, which
+//! [`with_extra`] adds after them.
 //!
 //! The layout rows live in this crate for now. They move to the one table
 //! the compositor and Coder Desktop both read, `crates/coder-binds`, once
@@ -142,8 +144,8 @@ const ARROWS: [Dir; 4] = [Dir::Left, Dir::Right, Dir::Up, Dir::Down];
 
 /// Every chord the compositor answers, in the order `desktop.nix` writes
 /// them: the layout rows below, then the launcher rows of
-/// `crates/coder-binds` whose option `granted` names, such as `deck` for
-/// `coderos.desktop.deck`. With no list at all every launcher row joins,
+/// `crates/coder-binds` whose option `granted` names, such as `browser`
+/// for `coderos.desktop.browser`. With no list at all every launcher row joins,
 /// which is what a checkout run by hand answers; an empty list leaves
 /// every launcher chord to the client, the way a Hyprland session with
 /// every option off writes no `bind` line for them.
@@ -157,7 +159,7 @@ pub fn table(granted: Option<&[String]>) -> Vec<(Chord, Action)> {
 /// `coder_binds::BINDS` for the compositor surface whose option is in
 /// `granted`, or every one when `granted` is `None`, and the Super+H row
 /// under the same rule, since `coderos.desktop.hands` gates it the way
-/// `coderos.desktop.deck` gates the deck.
+/// `coderos.desktop.browser` gates the browser.
 fn launcher_rows(granted: Option<&[String]>) -> Vec<(Chord, Action)> {
     coder_binds::BINDS
         .iter()
@@ -179,6 +181,35 @@ fn launcher_rows(granted: Option<&[String]>) -> Vec<(Chord, Action)> {
             Some((chord(mods_from(bind.mods), key), action))
         })
         .collect()
+}
+
+/// The rows with a host's own launchers added after them, from the grant's
+/// `extraBinds`. An entry whose chord a row already holds is skipped and
+/// logged, the way `desktop.nix` refuses it for Hyprland.
+///
+/// A row holds its command as `&'static str`, because the table's own
+/// rows are constants. The host's commands are read once when the
+/// compositor starts, so each one is leaked for the life of the process.
+pub fn with_extra(
+    mut rows: Vec<(Chord, Action)>,
+    extra: &[coder_binds::ExtraBind],
+) -> Vec<(Chord, Action)> {
+    for bind in extra {
+        let Some(key) = key_from(bind.key) else {
+            continue;
+        };
+        let at = chord(mods_from(bind.mods), key);
+        if action(&rows, at).is_some() {
+            log::warn!(
+                "the host's launcher {:?} takes a chord the table already binds, so it is skipped",
+                bind.command
+            );
+            continue;
+        }
+        let command: &'static str = Box::leak(bind.command.clone().into_boxed_str());
+        rows.push((at, Action::Exec(command)));
+    }
+    rows
 }
 
 /// The modifiers of a row in the shared table, as this table holds them.
@@ -307,20 +338,13 @@ mod tests {
         names.iter().map(|name| name.to_string()).collect()
     }
 
-    /// The eight launcher chords and the command each one runs, in the
+    /// The five launcher chords and the command each one runs, in the
     /// order the shared table holds them.
-    const LAUNCHERS: [(Mods, char, &str); 8] = [
+    const LAUNCHERS: [(Mods, char, &str); 5] = [
         (Mods::logo(), 'v', "dictate-toggle"),
         (Mods::logo(), 'p', "presentation-mode toggle"),
         (Mods::logo(), 'b', "coder-browser"),
-        (
-            Mods::logo().with(true, false, false),
-            'd',
-            "coder-deck-open",
-        ),
-        (Mods::logo(), 'z', "coder-zoom"),
         (Mods::logo(), 'a', "android-emulator"),
-        (Mods::logo(), 'g', "coder-battlenet"),
         (Mods::logo(), 'c', "camera-toggle"),
     ];
 
@@ -337,25 +361,25 @@ mod tests {
 
     #[test]
     fn the_launchers_the_host_granted_join_the_table_and_the_others_stay_out() {
-        let rows = table(Some(&granted(&["deck", "camera"])));
-        let deck = Chord {
-            mods: Mods::logo().with(true, false, false),
-            key: Key::Letter('d'),
+        let rows = table(Some(&granted(&["browser", "camera"])));
+        let browser = Chord {
+            mods: Mods::logo(),
+            key: Key::Letter('b'),
         };
-        assert_eq!(action(&rows, deck), Some(Action::Exec("coder-deck-open")));
+        assert_eq!(action(&rows, browser), Some(Action::Exec("coder-browser")));
         let camera = Chord {
             mods: Mods::logo(),
             key: Key::Letter('c'),
         };
         assert_eq!(action(&rows, camera), Some(Action::Exec("camera-toggle")));
-        for letter in ['v', 'p', 'b', 'z', 'a', 'g'] {
+        for letter in ['v', 'p', 'a'] {
             let chord = Chord {
                 mods: Mods::logo(),
                 key: Key::Letter(letter),
             };
             assert_eq!(action(&rows, chord), None, "Super+{letter} is not granted");
         }
-        // Super+D floats the window whether or not the deck is granted.
+        // Super+D floats the window whatever the host granted.
         let float = Chord {
             mods: Mods::logo(),
             key: Key::Letter('d'),
@@ -379,6 +403,32 @@ mod tests {
             );
         }
         assert_eq!(rows.len(), layout_rows().len());
+    }
+
+    #[test]
+    fn a_hosts_own_launchers_join_after_the_table_and_never_replace_a_row() {
+        let extras = crate::extras::Extras::from_json(crate::extras::tests::HOST_GRANT);
+        let rows = with_extra(table(Some(&[])), &extras.binds);
+        let deck = Chord {
+            mods: Mods::logo().with(true, false, false),
+            key: Key::Letter('d'),
+        };
+        assert_eq!(action(&rows, deck), Some(Action::Exec("coder-deck-open")));
+        for (letter, command) in [('z', "coder-zoom"), ('g', "coder-battlenet")] {
+            let chord = Chord {
+                mods: Mods::logo(),
+                key: Key::Letter(letter),
+            };
+            assert_eq!(action(&rows, chord), Some(Action::Exec(command)));
+        }
+        let taken = [coder_binds::ExtraBind::parse("SUPER", "W", "not-close").expect("an entry")];
+        let rows = with_extra(table(None), &taken);
+        let close = Chord {
+            mods: Mods::logo(),
+            key: Key::Letter('w'),
+        };
+        assert_eq!(action(&rows, close), Some(Action::Close));
+        assert_eq!(rows.len(), table(None).len());
     }
 
     #[test]

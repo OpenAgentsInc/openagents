@@ -14,6 +14,8 @@ use std::process::{Command, Stdio};
 
 use coder_desk::protocol::SOCKET_VAR;
 
+use crate::extras::Extras;
+
 /// What the two `exec` rows run.
 ///
 /// The Hyprland session builds these lines in Nix from the store path of
@@ -40,10 +42,13 @@ pub struct Session {
     /// or `None` when no server is running.
     pub x11_display: Option<String>,
     /// The launchers the host granted, by the `coderos.desktop` option
-    /// that gates each one, such as `deck`: the rows of
+    /// that gates each one, such as `camera`: the rows of
     /// `crates/coder-binds` the bind table answers. `None` when the
     /// session named no list, which grants every launcher.
     pub launchers: Option<Vec<String>>,
+    /// The host's own launchers and window rules, from the grant's
+    /// `extraBinds` and `extraRules`.
+    pub extras: Extras,
 }
 
 /// The window a tile opens when nothing names one: `os/bin/coder-pane`,
@@ -66,7 +71,7 @@ pub const DISPLAY_VAR: &str = "DISPLAY";
 
 /// The environment variable that names the launchers the host granted,
 /// as the options that gate them separated by spaces, such as
-/// `camera deck`. `os/bin/coder-compositor-session` sets it from the
+/// `camera browser`. `os/bin/coder-compositor-session` sets it from the
 /// grant's `launchers` list; a run with it unset answers every launcher.
 pub const LAUNCHERS_VAR: &str = "CODER_COMPOSITOR_LAUNCHERS";
 
@@ -83,6 +88,7 @@ impl Session {
             desk_socket: desk_socket.to_path_buf(),
             x11_display: None,
             launchers: launchers_from(std::env::var(LAUNCHERS_VAR).ok()),
+            extras: Extras::read(),
         }
     }
 
@@ -184,6 +190,7 @@ mod tests {
             desk_socket: PathBuf::from("/run/user/1000/coder-desk/7.sock"),
             x11_display: None,
             launchers: None,
+            extras: Extras::default(),
         }
     }
 

@@ -805,10 +805,7 @@ mod tests {
     fn the_chord_a_launcher_is_bound_to_runs_its_row() {
         assert_eq!(action_of("super+t"), Some(Action::OpenShell));
         assert_eq!(action_of("super+return"), Some(Action::OpenCoder));
-        assert_eq!(
-            action_of("super+shift+d"),
-            Some(Action::Exec("coder-deck-open"))
-        );
+        assert_eq!(action_of("super+b"), Some(Action::Exec("coder-browser")));
         assert_eq!(action_of("super+1"), Some(Action::Desk(1)));
     }
 

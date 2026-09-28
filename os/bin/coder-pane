@@ -1,0 +1,71 @@
+# The tile's terminal on a CoderOS host: a terminal emulator running Coder.
+#
+# Super+Return and Super+T open a window here, and so does the session's own
+# first window. Each is the terminal emulator the session keeps, `foot` by
+# default, running this repository's `coder` or a bare shell, in the Coder
+# palette and font that `os/modules/coderos/desktop.nix` writes to
+# /etc/coderos/foot.ini.
+#
+# What it takes:
+#
+#   coder-pane                              a pane running Coder
+#   coder-pane --shell                      a pane running a bare shell
+#   --app-id <id>                           what a desk names the window by
+#   --title <title>                         the window's title
+#
+# What the session grants it, each with the default this file uses when the
+# session names none:
+#
+#   CODER_PANE_TERMINAL         foot                   the terminal emulator
+#   CODER_PANE_TERMINAL_CONFIG  /etc/coderos/foot.ini  the palette and the font a
+#                                                      `foot` window reads
+#   CODER_PANE_CLIENT           coder                  the client a pane runs
+#   CODER_PANE_DIRECTORY        unset                  where a pane opens
+
+client="${CODER_PANE_CLIENT:-coder}"
+read -r -a terminal <<< "${CODER_PANE_TERMINAL:-foot}"
+config="${CODER_PANE_TERMINAL_CONFIG:-/etc/coderos/foot.ini}"
+
+app_id=""
+title=""
+shell_pane=0
+
+while (($#)); do
+    case "$1" in
+        --shell) shell_pane=1 ;;
+        --app-id) shift; app_id="${1:-}" ;;
+        --app-id=*) app_id="${1#*=}" ;;
+        --title) shift; title="${1:-}" ;;
+        --title=*) title="${1#*=}" ;;
+        *)
+            printf 'coder-pane: %s is not a flag this takes\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
+# The flags are the terminal emulator's own `--app-id` and `--title`, and
+# `--` ends its arguments so nothing after them reaches it. One array
+# carries the whole line, because a shell with `set -u` refuses to expand an
+# empty one and a bare shell pane passes no flags at all.
+line=("${terminal[@]}")
+# The Coder palette and the font. `os/modules/coderos/desktop.nix` writes
+# the file on a CoderOS host; a host without it opens the emulator on its
+# own configuration. The flag is foot's, so another emulator gets none.
+if [[ ${terminal[0]##*/} == foot && -r $config ]]; then
+    line+=("--config=$config")
+fi
+if [[ -n $app_id ]]; then
+    line+=("--app-id=$app_id")
+fi
+if [[ -n $title ]]; then
+    line+=("--title=$title")
+fi
+if [[ -n ${CODER_PANE_DIRECTORY:-} ]]; then
+    line+=("--working-directory=$CODER_PANE_DIRECTORY")
+fi
+if ((shell_pane == 0)); then
+    line+=("--" "$client")
+fi
+exec "${line[@]}"

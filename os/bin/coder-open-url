@@ -1,0 +1,33 @@
+# Open a URL in the Coder Browser from an application in a sandbox.
+#
+# An application running in a pressure-vessel or bwrap container, such as a
+# game launcher under Wine, sees neither the host's Nix store paths nor its
+# session, so it cannot start `coder-browser` itself. The desk's socket is
+# forwarded into the container, so this asks the desk to run
+# `coder-browser` in the host's session instead. A host that runs such an
+# application names this command as the container's URL handler.
+
+if [ "$#" -lt 1 ]; then
+  echo "usage: coder-open-url <url>" >&2
+  exit 2
+fi
+
+raw="$*"
+# The URL, when Wine passes it inside a longer argument.
+if [[ "$raw" =~ (https?://[a-zA-Z0-9./?=_%&:\+#~-]+) ]]; then
+  url="${BASH_REMATCH[1]}"
+else
+  url="$1"
+fi
+
+# The session runs the command through a shell, so the URL travels in single
+# quotes, with any single quote inside it closed, escaped, and reopened. The
+# replacement is unquoted, because inside double quotes a backslash before a
+# single quote stays in the result.
+escaped=${url//\'/\'\\\'\'}
+quoted="'$escaped'"
+
+# Ask the desk to run coder-browser in the host's session.
+if command -v coder-desk &>/dev/null; then
+  coder-desk open -- "coder-browser $quoted" >/dev/null 2>&1 || true
+fi

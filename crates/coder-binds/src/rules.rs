@@ -27,7 +27,8 @@ pub enum Case {
     /// Byte for byte.
     Exact,
     /// ASCII case ignored. Wine reports a class as the executable's name in
-    /// whichever case the launcher spelled it.
+    /// whichever case the launcher spelled it, so a host's rule for a game
+    /// under Wine reads it this way.
     Any,
 }
 
@@ -52,7 +53,15 @@ pub enum Pattern {
     },
 }
 
-impl Pattern {
+/// A literal as one comparison, whichever table holds it.
+#[derive(Clone, Copy)]
+enum Literal<'a> {
+    Exact(&'a str),
+    Prefix(&'a str),
+    PrefixHolding { prefix: &'a str, holds: &'a str },
+}
+
+impl Literal<'_> {
     /// Whether one string matches this literal under `case`.
     fn matches(self, text: &str, case: Case) -> bool {
         let fold = |s: &str| match case {
@@ -61,9 +70,9 @@ impl Pattern {
         };
         let text = fold(text);
         match self {
-            Pattern::Exact(want) | Pattern::Configured { default: want, .. } => text == fold(want),
-            Pattern::Prefix(want) => text.starts_with(&fold(want)),
-            Pattern::PrefixHolding { prefix, holds } => text
+            Literal::Exact(want) => text == fold(want),
+            Literal::Prefix(want) => text.starts_with(&fold(want)),
+            Literal::PrefixHolding { prefix, holds } => text
                 .strip_prefix(&fold(prefix))
                 .is_some_and(|rest| rest.contains(&fold(holds))),
         }
@@ -72,10 +81,36 @@ impl Pattern {
     /// The literal as one alternative of a Hyprland regular expression.
     fn hypr(self) -> String {
         match self {
-            Pattern::Exact(want) => escape(want),
-            Pattern::Prefix(want) => format!("{}.*", escape(want)),
-            Pattern::PrefixHolding { prefix, holds } => {
+            Literal::Exact(want) => escape(want),
+            Literal::Prefix(want) => format!("{}.*", escape(want)),
+            Literal::PrefixHolding { prefix, holds } => {
                 format!("{}.*{}.*", escape(prefix), escape(holds))
+            }
+        }
+    }
+}
+
+impl Pattern {
+    /// Whether one string matches this literal under `case`.
+    fn matches(self, text: &str, case: Case) -> bool {
+        match self {
+            Pattern::Exact(want) | Pattern::Configured { default: want, .. } => {
+                Literal::Exact(want).matches(text, case)
+            }
+            Pattern::Prefix(want) => Literal::Prefix(want).matches(text, case),
+            Pattern::PrefixHolding { prefix, holds } => {
+                Literal::PrefixHolding { prefix, holds }.matches(text, case)
+            }
+        }
+    }
+
+    /// The literal as one alternative of a Hyprland regular expression.
+    fn hypr(self) -> String {
+        match self {
+            Pattern::Exact(want) => Literal::Exact(want).hypr(),
+            Pattern::Prefix(want) => Literal::Prefix(want).hypr(),
+            Pattern::PrefixHolding { prefix, holds } => {
+                Literal::PrefixHolding { prefix, holds }.hypr()
             }
             Pattern::Configured { nix, .. } => format!("${{{nix}}}"),
         }
@@ -118,17 +153,22 @@ impl Match {
     /// The `match:` field of a Hyprland `windowrule` line, such as
     /// `match:title ^(selfie)$`.
     fn hypr(&self) -> String {
-        let field = match self.field {
-            Field::AppId => "class",
-            Field::Title => "title",
-        };
-        let flag = match self.case {
-            Case::Exact => "",
-            Case::Any => "(?i)",
-        };
         let alternatives: Vec<String> = self.patterns.iter().map(|p| p.hypr()).collect();
-        format!("match:{field} {flag}^({})$", alternatives.join("|"))
+        match_field(self.field, self.case, &alternatives)
     }
+}
+
+/// The `match:` field of a Hyprland `windowrule` line from its parts.
+fn match_field(field: Field, case: Case, alternatives: &[String]) -> String {
+    let field = match field {
+        Field::AppId => "class",
+        Field::Title => "title",
+    };
+    let flag = match case {
+        Case::Exact => "",
+        Case::Any => "(?i)",
+    };
+    format!("match:{field} {flag}^({})$", alternatives.join("|"))
 }
 
 /// What the desktop does to a window a rule matches. Every field left at
@@ -235,14 +275,6 @@ const OVERLAY: Effects = Effects {
     ..NONE
 };
 
-/// A game client: a tile that a fullscreen or maximize request leaves in
-/// its tile.
-const GAME: Effects = Effects {
-    float: Some(false),
-    suppress_fullscreen: true,
-    ..NONE
-};
-
 /// The class the Android emulator's windows announce, the default of
 /// `coderos.desktop.android.windowClass`.
 pub const EMULATOR_CLASS: &str = "Emulator";
@@ -267,84 +299,6 @@ pub const RULES: &[Rule] = &[
             ..NONE
         },
         option: "android",
-    },
-    // The Battle.net login and launcher windows float in the middle of the
-    // screen.
-    Rule {
-        name: "Battle.net launcher",
-        matches: Match {
-            field: Field::AppId,
-            patterns: &[
-                Pattern::Exact("battle.net.exe"),
-                Pattern::Exact("Battle.net.exe"),
-                Pattern::Exact("steam_app_battlenet"),
-            ],
-            case: Case::Exact,
-        },
-        effects: Effects {
-            float: Some(true),
-            center: true,
-            ..NONE
-        },
-        option: "battlenet",
-    },
-    // A game client tiles as a pane without taking over the screen. Its
-    // class is the executable's name, in the case Wine reports it, and its
-    // title is the game's, so each game carries a class rule and a title
-    // rule.
-    Rule {
-        name: "World of Warcraft client, by class",
-        matches: Match {
-            field: Field::AppId,
-            patterns: &[
-                Pattern::Prefix("wow"),
-                Pattern::Prefix("world of warcraft"),
-                Pattern::PrefixHolding {
-                    prefix: "steam_app_",
-                    holds: "wow",
-                },
-            ],
-            case: Case::Any,
-        },
-        effects: GAME,
-        option: "battlenet",
-    },
-    Rule {
-        name: "World of Warcraft client, by title",
-        matches: Match {
-            field: Field::Title,
-            patterns: &[Pattern::Prefix("World of Warcraft")],
-            case: Case::Any,
-        },
-        effects: GAME,
-        option: "battlenet",
-    },
-    Rule {
-        name: "StarCraft II client, by class",
-        matches: Match {
-            field: Field::AppId,
-            patterns: &[
-                Pattern::Prefix("sc2"),
-                Pattern::Prefix("starcraft"),
-                Pattern::PrefixHolding {
-                    prefix: "steam_app_",
-                    holds: "sc2",
-                },
-            ],
-            case: Case::Any,
-        },
-        effects: GAME,
-        option: "battlenet",
-    },
-    Rule {
-        name: "StarCraft II client, by title",
-        matches: Match {
-            field: Field::Title,
-            patterns: &[Pattern::Prefix("StarCraft II")],
-            case: Case::Any,
-        },
-        effects: GAME,
-        option: "battlenet",
     },
     // The camera circle: `os/bin/camera-overlay` titles the window
     // `selfie` and sizes it square, and the rule keeps it square.
@@ -378,10 +332,90 @@ pub const RULES: &[Rule] = &[
 /// The effects every rule that matches a window applies, folded in table
 /// order, or [`Effects::default`] when none matches.
 pub fn matching(app_id: &str, title: &str) -> Effects {
-    RULES
+    matching_with(app_id, title, &[])
+}
+
+/// The effects of the table's rules and then a host's extra rules, folded
+/// in that order, so a host's rule wins where the two disagree.
+pub fn matching_with(app_id: &str, title: &str, extra: &[ExtraRule]) -> Effects {
+    let table = RULES
         .iter()
         .filter(|rule| rule.matches.matches(app_id, title))
-        .fold(Effects::default(), |held, rule| held.merge(rule.effects))
+        .map(|rule| rule.effects);
+    let host = extra
+        .iter()
+        .filter(|rule| rule.matches(app_id, title))
+        .map(|rule| rule.effects);
+    table
+        .chain(host)
+        .fold(Effects::default(), |held, effects| held.merge(effects))
+}
+
+/// One literal of an [`ExtraRule`], owned because it comes from a grant
+/// rather than from this table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExtraPattern {
+    /// The whole string.
+    Exact(String),
+    /// The start of the string.
+    Prefix(String),
+    /// The start of the string, and a word somewhere after it.
+    PrefixHolding { prefix: String, holds: String },
+}
+
+impl ExtraPattern {
+    fn literal(&self) -> Literal<'_> {
+        match self {
+            ExtraPattern::Exact(want) => Literal::Exact(want),
+            ExtraPattern::Prefix(want) => Literal::Prefix(want),
+            ExtraPattern::PrefixHolding { prefix, holds } => {
+                Literal::PrefixHolding { prefix, holds }
+            }
+        }
+    }
+}
+
+/// A window rule a host adds beside the table, from
+/// `coderos.desktop.extraWindowRules`.
+///
+/// The table holds the rules for the windows the public CoderOS modules
+/// open. A module in a host's own flake, such as a game launcher, adds the
+/// rules for its windows to that option. `desktop.nix` renders each entry
+/// as a Hyprland `windowrule` line the same way [`ExtraRule::hyprland`]
+/// does, and writes the entries to the Coder compositor's grant as
+/// `extraRules`, which the compositor folds in with [`matching_with`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExtraRule {
+    pub name: String,
+    pub field: Field,
+    pub patterns: Vec<ExtraPattern>,
+    pub case: Case,
+    pub effects: Effects,
+}
+
+impl ExtraRule {
+    /// Whether a window with this app-id and title matches.
+    pub fn matches(&self, app_id: &str, title: &str) -> bool {
+        let text = match self.field {
+            Field::AppId => app_id,
+            Field::Title => title,
+        };
+        self.patterns
+            .iter()
+            .any(|pattern| pattern.literal().matches(text, self.case))
+    }
+
+    /// The `windowrule` line Hyprland 0.55 reads for the entry.
+    pub fn hyprland(&self) -> String {
+        let alternatives: Vec<String> = self
+            .patterns
+            .iter()
+            .map(|pattern| pattern.literal().hypr())
+            .collect();
+        let mut fields = vec![match_field(self.field, self.case, &alternatives)];
+        fields.extend(self.effects.hypr());
+        format!("windowrule = {}", fields.join(", "))
+    }
 }
 
 /// The `windowrule` line Hyprland 0.55 reads for one rule, such as
@@ -405,9 +439,7 @@ mod tests {
     fn a_window_with_no_rule_gets_no_effects() {
         assert_eq!(matching("foot", "~"), Effects::default());
         assert_eq!(matching("XTerm", "xterm"), Effects::default());
-        // A class that holds a game's name past its start is not a game's,
-        // and the emulator's class is matched in its case.
-        assert_eq!(matching("firewow", ""), Effects::default());
+        // The emulator's class is matched in its case.
         assert_eq!(matching("emulator", ""), Effects::default());
         assert_eq!(matching("", "selfies"), Effects::default());
     }
@@ -431,10 +463,62 @@ mod tests {
         );
     }
 
+    /// The rules a host with Battle.net adds through
+    /// `coderos.desktop.extraWindowRules`, as `os/tests/extension-points.nix`
+    /// sets them: the launcher floats in the middle of the screen, and a
+    /// game client tiles as a pane that a fullscreen request leaves there.
+    fn game_rules() -> Vec<ExtraRule> {
+        let game = Effects {
+            float: Some(false),
+            suppress_fullscreen: true,
+            ..NONE
+        };
+        let owned = |text: &str| text.to_string();
+        vec![
+            ExtraRule {
+                name: owned("Battle.net launcher"),
+                field: Field::AppId,
+                patterns: vec![
+                    ExtraPattern::Exact(owned("battle.net.exe")),
+                    ExtraPattern::Exact(owned("Battle.net.exe")),
+                    ExtraPattern::Exact(owned("steam_app_battlenet")),
+                ],
+                case: Case::Exact,
+                effects: Effects {
+                    float: Some(true),
+                    center: true,
+                    ..NONE
+                },
+            },
+            ExtraRule {
+                name: owned("World of Warcraft client, by class"),
+                field: Field::AppId,
+                patterns: vec![
+                    ExtraPattern::Prefix(owned("wow")),
+                    ExtraPattern::Prefix(owned("world of warcraft")),
+                    ExtraPattern::PrefixHolding {
+                        prefix: owned("steam_app_"),
+                        holds: owned("wow"),
+                    },
+                ],
+                case: Case::Any,
+                effects: game,
+            },
+            ExtraRule {
+                name: owned("World of Warcraft client, by title"),
+                field: Field::Title,
+                patterns: vec![ExtraPattern::Prefix(owned("World of Warcraft"))],
+                case: Case::Any,
+                effects: game,
+            },
+        ]
+    }
+
     #[test]
-    fn the_launcher_floats_in_the_middle_and_the_games_tile() {
+    fn a_host_rule_floats_the_launcher_and_tiles_the_game() {
+        let extra = game_rules();
         for class in ["battle.net.exe", "Battle.net.exe", "steam_app_battlenet"] {
-            let launcher = matching(class, "Battle.net");
+            let launcher = matching_with(class, "Battle.net", &extra);
             assert_eq!(launcher.float, Some(true), "{class}");
             assert!(launcher.center, "{class}");
             assert!(!launcher.suppress_fullscreen, "{class}");
@@ -445,21 +529,45 @@ mod tests {
             ("WOW.EXE", ""),
             ("World of Warcraft", ""),
             ("steam_app_wow", ""),
-            ("SC2_x64.exe", ""),
-            ("SC2.exe", ""),
-            ("StarCraft II", ""),
-            ("steam_app_sc2", ""),
             ("wine", "World of Warcraft"),
-            ("wine", "StarCraft II"),
         ] {
-            let game = matching(class, title);
+            let game = matching_with(class, title, &extra);
             assert_eq!(game.float, Some(false), "{class} {title}");
             assert!(game.suppress_fullscreen, "{class} {title}");
             assert!(!game.pin, "{class} {title}");
         }
-        // A window that matches a class rule and a title rule folds the
-        // two, which for a game are the same effects.
-        assert_eq!(matching("wow.exe", "World of Warcraft"), GAME);
+        // Without the host's rules the table has nothing to say about a
+        // game, and a class that holds a game's name past its start is not
+        // a game's.
+        assert_eq!(matching("Wow.exe", ""), Effects::default());
+        assert_eq!(matching_with("firewow", "", &extra), Effects::default());
+        // A host rule folds after the table's, so it wins where they meet.
+        let over = [ExtraRule {
+            name: "selfie tiles".to_string(),
+            field: Field::Title,
+            patterns: vec![ExtraPattern::Exact("selfie".to_string())],
+            case: Case::Exact,
+            effects: Effects {
+                float: Some(false),
+                ..NONE
+            },
+        }];
+        let camera = matching_with("mpv", "selfie", &over);
+        assert_eq!(camera.float, Some(false));
+        assert!(camera.pin);
+    }
+
+    #[test]
+    fn a_host_rule_renders_the_line_desktop_nix_writes_for_it() {
+        let lines: Vec<String> = game_rules().iter().map(ExtraRule::hyprland).collect();
+        assert_eq!(
+            lines,
+            [
+                r"windowrule = match:class ^(battle\.net\.exe|Battle\.net\.exe|steam_app_battlenet)$, float on, center on",
+                "windowrule = match:class (?i)^(wow.*|world of warcraft.*|steam_app_.*wow.*)$, tile on, suppress_event maximize fullscreen",
+                "windowrule = match:title (?i)^(World of Warcraft.*)$, tile on, suppress_event maximize fullscreen",
+            ]
+        );
     }
 
     #[test]
@@ -502,22 +610,10 @@ mod tests {
         );
         assert_eq!(
             lines[1],
-            r"windowrule = match:class ^(battle\.net\.exe|Battle\.net\.exe|steam_app_battlenet)$, float on, center on"
-        );
-        assert_eq!(
-            lines[2],
-            "windowrule = match:class (?i)^(wow.*|world of warcraft.*|steam_app_.*wow.*)$, tile on, suppress_event maximize fullscreen"
-        );
-        assert_eq!(
-            lines[3],
-            "windowrule = match:title (?i)^(World of Warcraft.*)$, tile on, suppress_event maximize fullscreen"
-        );
-        assert_eq!(
-            lines[6],
             "windowrule = match:title ^(selfie)$, float on, keep_aspect_ratio on, border_size 0, no_shadow on, pin on"
         );
         assert_eq!(
-            lines[7],
+            lines[2],
             "windowrule = match:title ^(recording-hud)$, float on, border_size 0, no_shadow on, pin on"
         );
     }

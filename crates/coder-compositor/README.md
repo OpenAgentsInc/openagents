@@ -258,9 +258,13 @@ coder-desk shot /tmp/screen.png
   surface reads, once that crate holds layout rows. The launcher rows come
   from that table already: each names the `coderos.desktop`
   option that gates it, the grant lists the options the host turned on,
-  and the compositor answers those chords, Super+Shift+D for the deck and
+  and the compositor answers those chords, Super+B for the browser and
   Super+C for the camera among them. A run
-  with `CODER_COMPOSITOR_LAUNCHERS` unset answers every launcher.
+  with `CODER_COMPOSITOR_LAUNCHERS` unset answers every launcher. A host's
+  own launchers, which a module in its private flake sets through
+  `coderos.desktop.extraBinds`, come from the grant's `extraBinds` and
+  join after the table's; `src/extras.rs` reads them, and an entry whose
+  chord the table already holds is skipped.
 - The two mouse rows of that table, the ones `desktop.nix` writes as
   `bindm` lines: Super with the left button drags a window and Super with
   the right button resizes it. The press
@@ -275,9 +279,11 @@ coder-desk shot /tmp/screen.png
 - The window rules `desktop.nix` writes, read from
   [`crates/coder-binds`](../../crates/coder-binds/README.md) when a window
   maps and when its app-id or title changes: the camera circle and the
-  recording HUD float pinned with no border, the Battle.net launcher floats
-  in the middle of the screen, a game client tiles and is refused
-  fullscreen, and the emulator floats. `src/rules.rs` applies them.
+  recording HUD float pinned with no border, and the emulator floats. A
+  host's own rules, from the grant's `extraRules`, fold in after them, so a
+  host whose flake adds Battle.net floats its launcher in the middle of the
+  screen and tiles a game client that asks for fullscreen.
+  `src/rules.rs` applies them.
 - A tile for every child agent of the main session that wants one, and a
   close chord that asks the session in a window before it closes it. Both
   are below.
@@ -347,21 +353,24 @@ window manager. `src/xwayland.rs` is the module.
 | `coder-battlenet` | the class Wine sets, such as `battle.net.exe` | an app-id that matches its pattern |
 
 The last three launchers belong to a host flake rather than to this
-repository; the bind table keeps their rows so that a host that adds them
-gets the chords.
+repository. The host adds their chords and their windows' rules through
+`coderos.desktop.extraBinds` and `extraWindowRules`, which reach this
+compositor as the grant's `extraBinds` and `extraRules`.
 
 The window rules an X11 window maps under are the rows of
 [`crates/coder-binds`](../../crates/coder-binds/README.md), the same rows
-`os/modules/coderos/desktop.nix` writes for Hyprland. `src/rules.rs` reads
-the table when a window maps, with the rectangle the window asked for, and
-again when its class or title changes, which is when a Wine window names
-its game. The rules the launchers' windows match:
+`os/modules/coderos/desktop.nix` writes for Hyprland, followed by the
+host's own rules. `src/rules.rs` reads them when a window maps, with the
+rectangle the window asked for, and again when its class or title changes,
+which is when a Wine window names its game. The rules the launchers'
+windows match, the first from the table and the others from a host that
+adds Battle.net as `os/tests/extension-points.nix` does:
 
 | Window | Rule |
 | --- | --- |
+| Class `Emulator` | Floats where it asked, at the size it asked for. The aspect ratio the rule keeps is recorded; the layout crate has no ratio to hold yet. |
 | Class `battle.net.exe`, `Battle.net.exe`, or `steam_app_battlenet` | Floats in the middle of the screen at the size it asked for. |
 | A class that starts with `wow`, `world of warcraft`, `sc2`, or `starcraft` in any case, a `steam_app_` class holding `wow` or `sc2`, or a title that starts with `World of Warcraft` or `StarCraft II` in any case | Tiles. A fullscreen or maximize request leaves it in its tile. |
-| Class `Emulator` | Floats where it asked, at the size it asked for. The aspect ratio the rule keeps is recorded; the layout crate has no ratio to hold yet. |
 
 The clipboard and the primary selection do not cross between an X11
 program and a Wayland one: the compositor answers no selection request from

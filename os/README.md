@@ -84,12 +84,103 @@ to pin the new revision.
 | File | Option | What it does |
 | --- | --- | --- |
 | `default.nix` | `coderos.authorizedKeys`, `coderos.sudo.wheelNeedsPassword`, `coderos.git.safeDirectories` | The base system: systemd-boot, flakes, `nix-ld` for rustup toolchains, SSH with keys only, NetworkManager, Docker, the amber console palette, quiet kernel messages on the console, and base developer packages. Sudo asks `wheel` for a password unless a host turns that off. Root's git trusts only the checkouts you name. |
-| `desktop.nix` | `coderos.desktop.enable`, `coderos.desktop.user` | For now, only the two desktop options that other modules read. The Hyprland session replaces this file in [#9869](https://github.com/OpenAgentsInc/openagents/issues/9869). |
+| `desktop.nix` | `coderos.desktop.*` | The Hyprland session on tty1, started under `uwsm` by the console autologin, with Coder in a foot pane as its first window, the tiling binds, the amber palette, and a notification daemon. Holds the hooks for the Coder compositor and the extension points for a host's own launchers and window rules. See [The desktop](#the-desktop). |
+| `desk.nix` | `coderos.desktop.deskPackage` | Puts `coder-desk`, the command every script asks the session through, in the session. |
+| `capture.nix` | `coderos.desktop.screenRecording.*`, `coderos.desktop.dictation.*`, `coderos.desktop.microphone.*` | Screen recording with `bin/screen-record`, push-to-talk dictation on SUPER + V with `bin/dictate-toggle`, and the rules that pick, keep, and set the gain of the microphone you name. Every microphone value is empty until you set it. |
+| `presentation.nix` | `coderos.desktop.presentation.*` | SUPER + P sets the screen up to be watched and puts it back, with `bin/presentation-mode`. |
+| `browser.nix` | `coderos.desktop.browser.*` | The Coder Browser on SUPER + B: ungoogled-chromium, dark, with the DevTools Protocol on a loopback port, launched by `bin/coder-browser`. Every browser name on the host opens it, and `coder-open-url` opens a URL in it from a sandboxed application. |
 | `android.nix` | `coderos.desktop.android.*` | The Android emulator on KVM with one system image, launched by `bin/android-emulator`. It turns on Xwayland for the session and writes what it installed to `/etc/coderos/android.json`. Needs the desktop. |
 | `tailscale.nix` | `coderos.tailscale.*` | Joins the host to a tailnet so other machines reach it by a stable name. The auth key stays in a file on the host, never in the Nix store. Tailscale SSH stays off unless you turn it on. |
 | `cpu-limits.nix` | `coderos.cpuLimits.*` | Caps CPU package power, boost frequency, and build parallelism, and reapplies the caps every five minutes and after a resume. Every value is null until you set it. The file holds one measured example. |
 | `coder-host.nix` | `coderos.coderHost.*` | Runs the resident Coder host, `coder host serve`, as the systemd user unit that `coder-service` installs, and turns on linger so it starts at boot. See [Run the Coder host](#run-the-coder-host). |
 | `coder-update.nix` | `coderos.coderUpdate.*` | A timer that builds `coder` from a branch of this repository and hands it to `coder-service update`, which trials it and rolls back on failure. The build runs under `TasksMax`, `MemoryMax`, and a free-space floor. Runs `bin/coder-update`. |
+
+## The desktop
+
+Turn the desktop on for the account the console logs in as:
+
+```nix
+services.getty.autologinUser = "you";
+coderos.desktop = {
+  enable = true;
+  user = "you";
+  directory = "/home/you/openagents";
+  presentation.enable = true;
+  browser.enable = true;
+  screenRecording.enable = true;
+  dictation.enable = true;
+};
+```
+
+The tty1 login starts Hyprland with `/etc/coderos/hyprland.conf`, which the
+module writes, and asks a running session to reload it after every switch.
+The first window is `bin/coder-pane`: foot, in the Coder palette from
+`/etc/coderos/foot.ini`, running `coderos.desktop.command`, which is this
+repository's `coder` found on the session's PATH. Point `directory` at a
+checkout so that writing delegations each get a worktree.
+
+The keys follow Omarchy's tiling set:
+
+| Keys | What they do |
+| --- | --- |
+| SUPER + RETURN, SUPER + T | Open a Coder pane, or a pane on a bare shell. |
+| SUPER + W, SUPER + Q | Close the focused window with `bin/coder-close`. A window whose Coder session has a turn streaming or a delegation that has not reported shows a notice first and closes on the second press. |
+| SUPER + arrows, SUPER + SHIFT + arrows, SUPER + CTRL + arrows | Move the focus, move the tile, and resize it. |
+| SUPER + 1 to 9, SUPER + SHIFT + 1 to 9 | Go to a workspace, and send the window to one. |
+| SUPER + J, SUPER + SPACE or D, SUPER + F, SUPER + CTRL + F | Turn the split, float, fullscreen, and fill the tiling area. |
+| CTRL + ALT + TAB, SUPER + ALT + arrows, SUPER + SHIFT + ALT + arrows, SUPER + CTRL + ALT + arrows | Focus another monitor, send the window to one, and send the whole workspace to one. |
+| SUPER + V, P, B, A | Dictation, presentation mode, the browser, and the Android emulator, when each is on. |
+| SUPER + mouse | Move a float with the left button and resize it with the right. |
+| SUPER + SHIFT + E | End the session. |
+
+Every bind and window rule is a row of
+[`crates/coder-binds`](../crates/coder-binds/README.md), and a test there
+fails when `desktop.nix` and the table disagree.
+
+### Add your own launchers and window rules
+
+A module that stays in your private host flake, such as a video client or
+a game launcher, adds its chord and its window rules through two options.
+It never needs an option that this flake does not declare:
+
+```nix
+coderos.desktop.extraBinds = [
+  { mods = "SUPER"; key = "G"; command = "coder-battlenet"; }
+];
+coderos.desktop.extraWindowRules = [
+  {
+    name = "World of Warcraft client, by title";
+    field = "title";
+    patterns = [ { prefix = "World of Warcraft"; } ];
+    ignoreCase = true;
+    float = false;
+    suppressFullscreen = true;
+  }
+];
+```
+
+Hyprland gets a `bind` or `windowrule` line for each entry, and the Coder
+compositor reads the same entries from its grant. A pattern sets `exact`,
+or `prefix` with an optional `holds`, and the module escapes it for
+Hyprland's regular expressions. A chord that is already bound fails the
+build, because Hyprland runs every bind a press matches.
+`tests/extension-points.nix` sets the launchers and rules of a host with
+Zoom, a slide deck, and Battle.net, and the `extension-points` check holds
+the exact lines they render.
+
+### The Coder compositor
+
+`coderos.desktop.compositor = "coder"` starts the Coder compositor on tty1
+instead, and `coderos.desktop.trialTty` runs the other compositor on a
+second TTY as a trial or a way back. Either one writes the compositor's
+grant to `/etc/coderos/compositor.json`: the pane, the terminal, the
+command, the start list, the launchers that are on, and the host's extra
+binds and rules. The compositor is `crates/coder-compositor`, built by
+`pkgs/coder-compositor.nix`, and its session is
+`bin/coder-compositor-session`; `compositorPackage` and
+`compositorSessionPackage` name them by default, and a host that runs
+neither compositor option builds neither. `compositorBinary` runs a build
+from a checkout instead.
 
 ## Run the Coder host
 
@@ -171,11 +262,24 @@ nix flake check ./os
 A check evaluates a stub host's toplevel without building it. The stub,
 `tests/stub-host.nix`, supplies only file systems, a host name, and a state
 version. `tests/all-capabilities.nix` turns every capability on. When you add
-a module, add its option to that file.
+a module, add its option to that file. `tests/extension-points.nix` adds a
+host's own launchers and window rules, and the `extension-points` check
+compares what they render with the lines such a host reads today. The
+`coder-compositor-host` check evaluates a host that runs the Coder
+compositor on tty1 and Hyprland on a trial TTY.
 
 The scripts under `bin/` have shell tests under `tests/` that stub every
-program they call, so they need no desktop. Run one by hand, such as
-`os/tests/coder-compositor-session.sh`.
+program they call, so they need no desktop. Run them by hand:
+
+```sh
+os/tests/coder-pane.sh
+os/tests/coder-close.sh
+os/tests/coder-compositor-session.sh
+os/tests/coder-browser.sh
+os/tests/dictate-toggle.sh
+os/tests/presentation-mode.sh
+os/tests/screen-record.sh
+```
 
 ## Nix and shell in this repository
 

@@ -38,6 +38,7 @@ mod desk_server;
 mod drag;
 mod drive;
 mod exec;
+mod extras;
 mod focus;
 mod handlers;
 mod hands;

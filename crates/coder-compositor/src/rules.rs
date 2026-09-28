@@ -1,7 +1,8 @@
 //! The window rules, applied.
 //!
 //! The rules are data in `crates/coder-binds`, the same rows
-//! `os/modules/coderos/desktop.nix` writes for Hyprland. The compositor
+//! `os/modules/coderos/desktop.nix` writes for Hyprland, followed by the
+//! host's own rules from the grant, which `crate::extras` reads. The compositor
 //! reads the table for a window when it maps and again when its app-id
 //! or title changes, and applies what the read changed: a float, a tile,
 //! the middle of the screen, a pin, no border. Each tile holds two copies
@@ -52,7 +53,7 @@ impl Coder {
     pub fn read_rules(&mut self, id: WinId, asked: Option<Rect>) -> bool {
         let app_id = self.app_id(id);
         let title = self.title(id);
-        let now = coder_binds::matching(&app_id, &title);
+        let now = coder_binds::matching_with(&app_id, &title, &self.session.extras.rules);
         let Some(tile) = self.tiles.iter_mut().find(|tile| tile.id == id) else {
             return false;
         };

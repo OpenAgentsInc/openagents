@@ -1,0 +1,429 @@
+# Presentation mode: set the screen up to be watched, and put it back.
+#
+# One command makes the desktop legible to somebody watching a recording, and
+# one command returns it to what it was. The second command is the feature.
+#
+# What is in the set, and why it is this small. Every item is a thing that can
+# fail to restore, so the mode changes three:
+#
+#   1. The screen's scale. The desk reports the scale and accepts it back, so
+#      the value written down is the value that comes back. What is written
+#      down is the screen's name and its scale, and nothing else: the desk's
+#      `scale` verb sets a scale, so the mode neither reads nor restores a
+#      mode or a position, and a screen driven at other than its preferred
+#      mode is left where the session puts it. foot's font size
+#      is not in the set: foot has no way to report the size a running window
+#      is drawn at, so a font size can be changed and cannot be captured, and
+#      leaving would restore to a guess. The font chords in
+#      /etc/coderos/foot.ini are for a person to press by hand; the two do
+#      not collide.
+#   2. The camera view: whether it was up, and where it sat. Entering starts
+#      it when it is absent and moves it to the top right of the smaller
+#      logical screen the new scale makes. Leaving puts back the corner it
+#      had, or closes the view when there was none.
+#   3. The focused window. Starting the camera view takes focus, so the mode
+#      gives it back.
+#
+# Where the captured state lives, and why it is a file. `~/.openagents` is
+# where OpenAgents keeps a person's files, beside Coder's traces and activity
+# records. It is a file rather than a variable in this process because the
+# process that would have restored the desktop is the thing most likely to
+# die: `presentation-mode off` reads the file and needs
+# nothing that `presentation-mode on` left running.
+#
+# The order matters. The state is captured and written before anything is
+# changed, so a run that dies partway leaves a file that describes the desktop
+# it started from. Restoring an item that was never changed is a no-op, so
+# leaving works from any point in between.
+#
+# Entering twice does not capture the presentation state. `on` refuses when
+# the state file exists, before it reads the desktop at all. That is the
+# failure this mode exists to avoid: a second capture would record the large
+# scale as the thing to return to, and no command could undo it.
+#
+# This reaches the desk and nothing else, so it works over SSH once it finds
+# the session's socket, which it does the way the desk client does: the
+# socket CODER_DESK_SOCKET names, the newest live socket under
+# $XDG_RUNTIME_DIR/coder-desk/, then the Hyprland signature a session on
+# Hyprland still announces. A person stranded in presentation mode can leave
+# it from a login on another machine.
+
+STATE_FILE="${HOME}/.openagents/presentation-mode.json"
+
+# The scale entering asks for. A session snaps a scale that would give a
+# fractional buffer to the nearest one that does not, so a request is a
+# request. 1.25 divides 2560x1440 and 1920x1080 exactly.
+PRESENTATION_SCALE="${CODEROS_PRESENTATION_SCALE:-1.25}"
+
+# The camera view's corner, in the logical pixels the scale defines. The
+# defaults match camera-overlay's, so leaving a camera that was already up
+# returns it to the corner it chose.
+CAMERA_SIZE="${CODEROS_CAMERA_SIZE:-560}"
+CAMERA_MARGIN="${CODEROS_CAMERA_MARGIN:-140}"
+
+usage() {
+    cat << 'HELP'
+Usage: presentation-mode <on|off|toggle|status> [options]
+
+Commands:
+  on [--scale N]   Set the screen up to be watched: raise the monitor scale,
+                   put the camera view in the top right, and write down what
+                   the desktop was.
+  off              Put the desktop back from what was written down.
+  toggle           Enter when out, leave when in.
+  status           Say whether the mode is on, and since when.
+
+The state lives in ~/.openagents/presentation-mode.json. Leaving reads that
+file and needs nothing that entering left running, so `presentation-mode off`
+works from a fresh process after whatever set the mode up has died.
+HELP
+}
+
+# The session's socket, so this works from a login that is not in the
+# session. The desk client reads CODER_DESK_SOCKET, and a login that no
+# session started has none set; this names the newest socket in the
+# session's directory that answers, so a socket a dead session left is
+# passed over. A host that still runs Hyprland holds no desk socket, and
+# the signature its session announces is the fallback, not the first
+# choice: on a host where the Coder compositor is the default, the newest
+# Hyprland instance is the trial TTY's fallback session, and scaling it
+# changes a screen nobody is looking at.
+newest_desk_socket() {
+    local newest="" candidate
+    for candidate in "${XDG_RUNTIME_DIR}"/coder-desk/*.sock; do
+        [ -e "$candidate" ] || continue
+        if [ -n "$newest" ] && [ ! "$candidate" -nt "$newest" ]; then
+            continue
+        fi
+        if CODER_DESK_SOCKET="$candidate" coder-desk screens > /dev/null 2>&1; then
+            newest="$candidate"
+        fi
+    done
+    printf '%s\n' "$newest"
+}
+
+newest_signature() {
+    local newest="" candidate
+    for candidate in "${XDG_RUNTIME_DIR}"/hypr/*; do
+        if [ -d "$candidate" ] && { [ -z "$newest" ] || [ "$candidate" -nt "$newest" ]; }; then
+            newest="$candidate"
+        fi
+    done
+    if [ -n "$newest" ]; then
+        basename "$newest"
+    fi
+    return 0
+}
+
+find_session() {
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    if [ -z "${CODER_DESK_SOCKET:-}" ]; then
+        local socket
+        socket=$(newest_desk_socket)
+        if [ -n "$socket" ]; then
+            export CODER_DESK_SOCKET="$socket"
+        elif [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+            local signature
+            signature=$(newest_signature)
+            if [ -n "$signature" ]; then
+                export HYPRLAND_INSTANCE_SIGNATURE="$signature"
+            fi
+        fi
+    fi
+    if ! coder-desk screens > /dev/null 2>&1; then
+        echo "No desktop session to change. This runs on a CoderOS desktop." >&2
+        exit 1
+    fi
+}
+
+# What the screens are now: each one's name and the scale to put back. A
+# state file an older build wrote carries more than this, and restores the
+# same, because these are the two fields both shapes hold.
+read_monitors() {
+    coder-desk screens | jq -c '[.[] | {name: .name, scale: (.scale | tostring)}]'
+}
+
+# Where the camera view is, or that there is none. The window is the one
+# camera-overlay titles `selfie`.
+read_camera() {
+    coder-desk list | jq -c '
+        map(select(.title == "selfie"))
+        | if length == 0 then {running: false}
+          else (.[0] | {running: true, x: .at.x, y: .at.y, width: .size.width, height: .size.height})
+          end'
+}
+
+read_focus() {
+    coder-desk focused 2>/dev/null | jq -r '.handle // ""' 2>/dev/null || true
+}
+
+# The logical size of the focused screen: what a window's coordinates are in
+# once the scale divides the panel. Generation 1 of the protocol does not say
+# which screen has the focus in a `screens` row, so this reads it from
+# `reading`, which answers that and the screens together.
+logical_width() {
+    coder-desk reading | jq -r '
+        . as $desk
+        | (($desk.screens | map(select(.name == $desk.focused)) | first) // $desk.screens[0])
+        | (.size.width / .scale) | floor'
+}
+
+write_state() {
+    local text="$1" directory temporary
+    directory=$(dirname "$STATE_FILE")
+    mkdir -p "$directory"
+    temporary="${STATE_FILE}.writing.$$"
+    printf '%s\n' "$text" > "$temporary"
+    mv -f "$temporary" "$STATE_FILE"
+}
+
+# Whether the scale a monitor reports is the one written down. Both sides go
+# through the same format, so 1 and 1.00 agree.
+same_scale() {
+    [ "$(printf '%.2f' "$1")" = "$(printf '%.2f' "$2")" ]
+}
+
+# Put the camera view in the top right of the logical screen, and keep
+# putting it there until it stays. camera-overlay places its own window a
+# moment after the window appears, and it measures the panel rather than the
+# logical screen, so a single move made while that is still coming loses to
+# it and leaves the view off the right edge.
+place_camera() {
+    local width x y tries=0 at
+    width=$(logical_width)
+    x=$((width - CAMERA_SIZE - CAMERA_MARGIN))
+    y=$CAMERA_MARGIN
+    while [ "$tries" -lt 6 ]; do
+        coder-desk shape title:selfie --size "${CAMERA_SIZE}x${CAMERA_SIZE}" \
+            --at "$x,$y" > /dev/null
+        sleep 0.4
+        at=$(coder-desk list | jq -c 'map(select(.title == "selfie")) | .[0].at // {}')
+        if [ "$at" = "{\"x\":$x,\"y\":$y}" ]; then
+            return 0
+        fi
+        tries=$((tries + 1))
+    done
+    echo "The camera view would not stay at $x,$y; it is at $at." >&2
+    return 0
+}
+
+wait_for_camera() {
+    local tries=0
+    while [ "$tries" -lt 40 ]; do
+        if [ "$(coder-desk list | jq -r 'map(select(.title == "selfie")) | length')" != "0" ]; then
+            return 0
+        fi
+        sleep 0.25
+        tries=$((tries + 1))
+    done
+    return 1
+}
+
+enter_mode() {
+    local requested="$PRESENTATION_SCALE"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --scale)
+                requested="$2"
+                shift 2
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1" >&2
+                usage
+                exit 2
+                ;;
+        esac
+    done
+
+    # The idempotence gate, ahead of every read of the desktop. A second
+    # entry that captured anything would record the presentation scale as the
+    # scale to return to, and nothing could undo that.
+    if [ -e "$STATE_FILE" ]; then
+        echo "Presentation mode is already on. Run 'presentation-mode off' to leave it."
+        return 0
+    fi
+
+    find_session
+
+    local monitors camera focus state
+    monitors=$(read_monitors)
+    camera=$(read_camera)
+    focus=$(read_focus)
+    state=$(jq -n \
+        --arg entered "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --argjson monitors "$monitors" \
+        --argjson camera "$camera" \
+        --arg focus "$focus" \
+        '{version: 1, entered: $entered, monitors: $monitors, camera: $camera, focus: $focus}')
+    write_state "$state"
+
+    local name
+    while read -r name; do
+        [ -n "$name" ] || continue
+        coder-desk scale "$name" "$requested" > /dev/null
+    done << EOF
+$(printf '%s' "$monitors" | jq -r '.[] | .name')
+EOF
+
+    local started=false
+    if [ "$(printf '%s' "$camera" | jq -r '.running')" = "true" ]; then
+        started=true
+    elif command -v camera-overlay > /dev/null 2>&1; then
+        # Through the desk, so mpv is a client of the session rather than of
+        # whatever shell ran this.
+        coder-desk open -- "camera-overlay start" > /dev/null
+        if wait_for_camera; then
+            started=true
+        else
+            echo "The camera view did not appear; the rest of the mode is on." >&2
+        fi
+    fi
+    if [ "$started" = true ]; then
+        place_camera
+    fi
+
+    local handle
+    handle=$(printf '%s' "$state" | jq -r '.focus')
+    if [ -n "$handle" ]; then
+        coder-desk focus "$handle" > /dev/null 2>&1 || true
+    fi
+
+    echo "Presentation mode is on."
+    coder-desk screens | jq -r '.[] | "  \(.name) scale \(.scale)"'
+    if [ "$started" = true ]; then
+        echo "  camera view in the top right"
+    fi
+    echo "  state written to $STATE_FILE"
+}
+
+leave_mode() {
+    if [ ! -e "$STATE_FILE" ]; then
+        echo "Presentation mode is off. Nothing to put back."
+        return 0
+    fi
+
+    find_session
+
+    local state
+    state=$(cat "$STATE_FILE")
+
+    local name want
+    while read -r name want; do
+        [ -n "$name" ] || continue
+        coder-desk scale "$name" "$want" > /dev/null
+    done << EOF
+$(printf '%s' "$state" | jq -r '.monitors[] | "\(.name) \(.scale)"')
+EOF
+
+    local was_running
+    was_running=$(printf '%s' "$state" | jq -r '.camera.running')
+    if [ "$was_running" = "true" ]; then
+        local x y width height
+        x=$(printf '%s' "$state" | jq -r '.camera.x')
+        y=$(printf '%s' "$state" | jq -r '.camera.y')
+        width=$(printf '%s' "$state" | jq -r '.camera.width')
+        height=$(printf '%s' "$state" | jq -r '.camera.height')
+        coder-desk shape title:selfie --size "${width}x${height}" --at "$x,$y" > /dev/null
+    elif command -v camera-overlay > /dev/null 2>&1; then
+        camera-overlay stop > /dev/null 2>&1 || true
+    fi
+
+    local handle
+    handle=$(printf '%s' "$state" | jq -r '.focus')
+    if [ -n "$handle" ]; then
+        coder-desk focus "$handle" > /dev/null 2>&1 || true
+    fi
+
+    sleep 0.3
+
+    # Every item is checked against what was written down rather than looked
+    # at. An item that did not come back keeps the state file, so leaving can
+    # be run again; removing the file on a partial restore is what strands a
+    # person.
+    local failures=0 current
+    while read -r name want; do
+        [ -n "$name" ] || continue
+        current=$(coder-desk screens | jq -r --arg name "$name" \
+            '(map(select(.name == $name)) | first | .scale) // "none"')
+        if [ "$current" = "none" ]; then
+            echo "Screen $name is gone, so its scale was not put back." >&2
+            failures=$((failures + 1))
+        elif same_scale "$current" "$want"; then
+            echo "  $name scale $want"
+        else
+            echo "Screen $name is at scale $current, not $want." >&2
+            failures=$((failures + 1))
+        fi
+    done << EOF
+$(printf '%s' "$state" | jq -r '.monitors[] | "\(.name) \(.scale)"')
+EOF
+
+    local now
+    now=$(read_camera)
+    if [ "$was_running" = "true" ]; then
+        local wanted
+        wanted=$(printf '%s' "$state" | jq -c '{x: .camera.x, y: .camera.y, width: .camera.width, height: .camera.height}')
+        if [ "$(printf '%s' "$now" | jq -c '{x, y, width, height}')" = "$wanted" ]; then
+            echo "  camera view back at $(printf '%s' "$wanted" | jq -r '"\(.x),\(.y) \(.width)x\(.height)"')"
+        else
+            echo "The camera view is not where it was: $now, not $wanted." >&2
+            failures=$((failures + 1))
+        fi
+    elif [ "$(printf '%s' "$now" | jq -r '.running')" = "true" ]; then
+        echo "The camera view is still up, and there was none before." >&2
+        failures=$((failures + 1))
+    else
+        echo "  no camera view, as before"
+    fi
+
+    if [ "$failures" -gt 0 ]; then
+        echo "Left $failures item(s) unrestored. The state file stays at $STATE_FILE; run 'presentation-mode off' again." >&2
+        return 1
+    fi
+
+    rm -f "$STATE_FILE"
+    echo "Presentation mode is off."
+}
+
+status_mode() {
+    if [ -e "$STATE_FILE" ]; then
+        echo "Presentation mode is on since $(jq -r '.entered' "$STATE_FILE")."
+        jq -r '"  monitors: " + ([.monitors[] | "\(.name) at scale \(.scale)"] | join(", "))' "$STATE_FILE"
+        jq -r 'if .camera.running then "  camera view was up at \(.camera.x),\(.camera.y)" else "  no camera view before" end' "$STATE_FILE"
+    else
+        echo "Presentation mode is off."
+    fi
+}
+
+COMMAND="${1:-}"
+shift || true
+
+case "$COMMAND" in
+    on)
+        enter_mode "$@"
+        ;;
+    off)
+        leave_mode
+        ;;
+    toggle)
+        if [ -e "$STATE_FILE" ]; then
+            leave_mode
+        else
+            enter_mode "$@"
+        fi
+        ;;
+    status)
+        status_mode
+        ;;
+    -h|--help)
+        usage
+        ;;
+    *)
+        usage
+        exit 2
+        ;;
+esac

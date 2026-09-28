@@ -105,6 +105,52 @@
       checks.${system} = {
         stub-host = evaluates "stub-host" (stubHost [ ]);
         stub-host-all = evaluates "stub-host-all" (stubHost [ ./tests/all-capabilities.nix ]);
+
+        # The Coder compositor on tty1 and Hyprland on a trial TTY, with the
+        # compositor and its session script at their defaults.
+        coder-compositor-host = evaluates "coder-compositor-host" (stubHost [
+          ./tests/all-capabilities.nix
+          {
+            coderos.desktop.compositor = "coder";
+            coderos.desktop.trialTty = 2;
+          }
+        ]);
+
+        # A host's own launchers and window rules, set through
+        # `coderos.desktop.extraBinds` and `extraWindowRules` the way a
+        # private host flake sets them, reach Hyprland as the exact lines
+        # such a host's session reads today, and reach the Coder
+        # compositor's grant as the same entries.
+        extension-points =
+          let
+            host = stubHost [ ./tests/extension-points.nix ];
+            etc = host.config.environment.etc;
+            conf = etc."coderos/hyprland.conf".text;
+            grant = builtins.fromJSON (builtins.unsafeDiscardStringContext etc."coderos/compositor.json".text);
+            expected = [
+              "bind = SUPER SHIFT, D, exec, coder-deck-open"
+              "bind = SUPER, Z, exec, coder-zoom"
+              "bind = SUPER, G, exec, coder-battlenet"
+              "windowrule = match:class ^(battle\\.net\\.exe|Battle\\.net\\.exe|steam_app_battlenet)$, float on, center on"
+              "windowrule = match:class (?i)^(wow.*|world of warcraft.*|steam_app_.*wow.*)$, tile on, suppress_event maximize fullscreen"
+              "windowrule = match:title (?i)^(World of Warcraft.*)$, tile on, suppress_event maximize fullscreen"
+              "windowrule = match:class (?i)^(sc2.*|starcraft.*|steam_app_.*sc2.*)$, tile on, suppress_event maximize fullscreen"
+              "windowrule = match:title (?i)^(StarCraft II.*)$, tile on, suppress_event maximize fullscreen"
+            ];
+            lines = map lib.trim (lib.splitString "\n" conf);
+            missing = lib.filter (line: !(lib.elem line lines)) expected;
+            grantOk =
+              map (bind: bind.key) grant.extraBinds == [ "D" "Z" "G" ]
+              && builtins.length grant.extraRules == 5
+              && (lib.head grant.extraRules).effects.center
+              && grant.launchers == [ "dictation" "presentation" "browser" "android" ];
+          in
+          if missing != [ ] then
+            throw "hyprland.conf is missing: ${lib.concatStringsSep "; " missing}"
+          else if !grantOk then
+            throw "compositor.json does not carry the host's entries: ${builtins.toJSON grant}"
+          else
+            evaluates "extension-points" host;
       };
 
       # The shell that builds the Android apps: `nix develop ./os#android`

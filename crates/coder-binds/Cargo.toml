@@ -1,7 +1,7 @@
 # The one table of desktop chords. The CoderOS compositor configuration and
-# every desk that binds keys read the rows for their surface. Once
-# os/modules/coderos/desktop.nix is in this repository, a test keeps its
-# Hyprland text equal to what this table renders.
+# every desk that binds keys read the rows for their surface, and a test
+# keeps the Hyprland text in os/modules/coderos/desktop.nix equal to what
+# this table renders.
 [package]
 name = "coder-binds"
 version.workspace = true

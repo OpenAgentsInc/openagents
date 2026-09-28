@@ -1,0 +1,401 @@
+# Dictation: one key opens the microphone, and the next press transcribes what
+# it heard into the window that has focus.
+#
+# Two things this file holds against the way it used to work.
+#
+# It reads the process, not the file. The toggle used to choose its half by
+# whether the record at /tmp/dictation_recording.pid existed, and nothing
+# checked that the process it named was alive. A recorder that ended any other
+# way left the record behind, and the next press took the stop path against a
+# process that was gone: no signal landed, no audio was found, the record was
+# removed, and nothing recorded. The press after that started one, so the
+# toggle ran backwards until the two lined up again. On 2026-09-11 on
+# coderos-4080 the record held 161846 after that process was gone, and the
+# operator pressed the key twice with nothing happening. The check now sits
+# above the branch: a record whose pid is not alive is swept, the press starts
+# a recording, and the sweep says what it found.
+#
+# It says on screen that the microphone is open. The only indicator used to be
+# an 80-millisecond tone, played in the background with its errors discarded,
+# which fails silently when output is muted, when headphones are out, when a
+# video holds the sink, and when pw-play is absent. On 2026-09-11 an operator
+# pressed the key, saw nothing, pressed it again, saw nothing, and went back to
+# work; the microphone stayed open for six minutes and thirty seconds, and they
+# found out when transcribed speech began arriving in their composer.
+# Three things answer that now: a notification the session draws for as
+# long as the capture runs, the recording HUD's own indicator when that strip
+# is up, and `dictate-toggle status` for a person or a script that wants to
+# ask. The tone stays, and its failure reaches stderr rather than /dev/null.
+#
+# The capture is also bounded. ffmpeg is given `-t`, so the microphone closes
+# at the limit whether or not anyone presses the key again, and a watcher says
+# so when it happens. What the microphone heard is kept either way: a capture
+# is a recording of the room a person is sitting in, and deleting one quietly
+# is the wrong default.
+
+# Where the toggle keeps what it knows. The defaults are the paths the desktop
+# has used; the overrides are for the tests, which point them at a scratch
+# directory so a run does not touch /tmp. The recording HUD reads the record
+# at the same path.
+RECORD_FILE="${CODEROS_DICTATION_PID:-/tmp/dictation_recording.pid}"
+AUDIO_FILE="${CODEROS_DICTATION_AUDIO:-/tmp/dictation_input.wav}"
+
+# The module sets CODEROS_WHISPER_MODEL. Weights are data, not
+# configuration: they stay out of the repository and out of the system
+# closure, the way the CoderOS notes keep model weights out of an image,
+# and are fetched once on first use.
+MODEL="${CODEROS_WHISPER_MODEL:-$HOME/.cache/whisper.cpp/ggml-base.en.bin}"
+
+# How long a capture may run, in seconds. A recording past a few minutes is
+# more likely a toggle nobody saw than a person still talking. The module sets
+# CODEROS_DICTATION_LIMIT from `coderos.desktop.dictation.limitSeconds`.
+LIMIT="${CODEROS_DICTATION_LIMIT:-180}"
+
+# What the notifications call themselves. The tag is mako's replace key, so a
+# later notification takes the place of the banner that says the microphone is
+# open rather than stacking under it.
+APP="Dictation"
+NOTIFY_TAG="x-canonical-private-synchronous:dictation"
+
+# Where keep_audio put a capture it moved aside, for the caller that wants to
+# name the path.
+KEPT_AUDIO=""
+
+# A line for the person reading the session's log.
+warn() {
+    printf 'dictate-toggle: %s\n' "$*" >&2
+}
+
+# One notification, for as long as `expire` says in milliseconds; 0 stays up
+# until something replaces it. A session without a notification daemon gets
+# the stderr line alone, which is what a host without a desktop has.
+notify() {
+    local urgency=$1 expire=$2 body=$3
+    if ! command -v notify-send > /dev/null 2>&1; then
+        return 0
+    fi
+    if ! notify-send \
+        --app-name="$APP" \
+        --urgency="$urgency" \
+        --expire-time="$expire" \
+        --hint=string:"$NOTIFY_TAG" \
+        "$APP" "$body" > /dev/null 2>&1; then
+        warn "the dictation notification could not be raised"
+    fi
+}
+
+# The tone. It is a cue and not the indicator: it fails when output is muted,
+# when headphones are out, when a video holds the sink, and when pw-play is
+# absent, and on 2026-09-11 it was the only signal there was. It plays beside
+# the press so the capture does not wait for it, and it says on stderr when it
+# does not sound.
+play_cue() {
+    local freq=$1 dur=$2
+    (
+        local reason=""
+        if ! command -v pw-play > /dev/null 2>&1; then
+            warn "pw-play is absent, so the dictation tone did not sound"
+            exit 0
+        fi
+        if ! reason=$(pw-play --volume 0.25 \
+            <(ffmpeg -f lavfi -i "sine=frequency=${freq}:duration=${dur}" -f wav - 2> /dev/null) 2>&1); then
+            warn "the dictation tone did not sound${reason:+: $reason}"
+        fi
+    ) &
+}
+
+# The record the toggle keeps while it captures: the recorder's process id on
+# the first line, and the second it started on the second. The second line is
+# what `status` counts from and what the bound's watcher reports.
+write_record() {
+    printf '%s\n%s\n' "$1" "$2" > "$RECORD_FILE"
+}
+
+# One line of the record, as a number. A line that is absent or is not a
+# number fails, so a record an older build wrote, a truncated one, and a
+# corrupt one all read as no record rather than as a recording.
+record_field() {
+    local wanted=$1 seen=0 value=""
+    if [ ! -f "$RECORD_FILE" ]; then
+        return 1
+    fi
+    while IFS= read -r value || [ -n "$value" ]; do
+        seen=$((seen + 1))
+        if [ "$seen" -eq "$wanted" ]; then
+            case $value in
+                '' | *[!0-9]*) return 1 ;;
+            esac
+            printf '%s\n' "$value"
+            return 0
+        fi
+    done < "$RECORD_FILE"
+    return 1
+}
+
+record_pid() {
+    record_field 1
+}
+
+record_started() {
+    record_field 2
+}
+
+# Whether a recording is running now. The answer is the process, not the file:
+# a record whose pid names nothing is not a recording.
+recording_live() {
+    local pid
+    if ! pid=$(record_pid); then
+        return 1
+    fi
+    kill -0 "$pid" 2> /dev/null
+}
+
+# How long the capture in the record has run, in seconds. A record without a
+# start time fails rather than reporting a length it cannot know.
+elapsed() {
+    local started
+    if ! started=$(record_started); then
+        return 1
+    fi
+    printf '%s\n' "$(($(date +%s) - started))"
+}
+
+# A length a person reads.
+duration_text() {
+    local total=$1
+    if [ "$total" -lt 0 ]; then
+        total=0
+    fi
+    if [ "$total" -lt 60 ]; then
+        printf '%ds\n' "$total"
+    else
+        printf '%dm %ds\n' "$((total / 60))" "$((total % 60))"
+    fi
+}
+
+# Move a capture aside rather than delete it. What is in the file is what the
+# microphone heard in the room the person was sitting in, so a run that did
+# not transcribe it keeps it and says where. An empty file holds nothing and
+# goes. `KEPT_AUDIO` names the path a caller can repeat.
+keep_audio() {
+    local kept
+    KEPT_AUDIO=""
+    if [ ! -f "$AUDIO_FILE" ]; then
+        return 0
+    fi
+    if [ ! -s "$AUDIO_FILE" ]; then
+        rm -f "$AUDIO_FILE"
+        return 0
+    fi
+    kept="${AUDIO_FILE%.wav}-$(date +%Y%m%d-%H%M%S)-$$.wav"
+    if mv "$AUDIO_FILE" "$kept" 2> /dev/null; then
+        KEPT_AUDIO=$kept
+        warn "kept what an earlier recording captured at $kept"
+    else
+        warn "could not keep what an earlier recording captured at $AUDIO_FILE"
+    fi
+}
+
+# A record whose recorder is gone is not a recording. Remove it, say what was
+# found, and let the press take the start path, so one press does what the
+# person expected.
+sweep_record() {
+    local pid=""
+    if [ ! -f "$RECORD_FILE" ]; then
+        return 0
+    fi
+    if ! pid=$(record_pid); then
+        pid=""
+    fi
+    rm -f "$RECORD_FILE"
+    if [ -n "$pid" ]; then
+        warn "the recorder at pid $pid is gone, so this press starts a recording"
+    else
+        warn "the dictation record named no process, so this press starts a recording"
+    fi
+}
+
+# Watch the recorder this press started. ffmpeg's own `-t` closes the
+# microphone at the limit, so this does not have to signal anything; what it
+# adds is the line that says the microphone closed, the capture kept, and a
+# record cleared, so the next press starts a recording rather than stopping
+# one that is already over. A stop press removes the record before it signals,
+# so the watcher it ends reads no record of its own and stays quiet.
+supervise() {
+    local pid=$1 held ran="" started
+    while kill -0 "$pid" 2> /dev/null; do
+        sleep 1
+    done
+    if ! held=$(record_pid); then
+        return 0
+    fi
+    if [ "$held" != "$pid" ]; then
+        return 0
+    fi
+    if started=$(record_started); then
+        ran=$(duration_text "$(($(date +%s) - started))")
+    fi
+    rm -f "$RECORD_FILE"
+    keep_audio
+    warn "the microphone closed${ran:+ after $ran}"
+    notify critical 0 "The microphone closed${ran:+ after $ran}. What it heard is kept${KEPT_AUDIO:+ at $KEPT_AUDIO}."
+}
+
+# Open the microphone. The capture is bounded, so it closes at the limit
+# whether or not anyone presses the key again, and anything an
+# earlier run left is moved aside before the new capture is written.
+start_recording() {
+    local pid
+    play_cue 900 0.08
+    keep_audio
+    rm -f "$AUDIO_FILE"
+    ffmpeg -nostats -loglevel error -f pulse -i default -ac 1 -ar 16000 \
+        -t "$LIMIT" -y "$AUDIO_FILE" &
+    pid=$!
+    write_record "$pid" "$(date +%s)"
+    notify normal 0 "The microphone is open. Press the dictation key again to transcribe."
+    supervise "$pid" &
+}
+
+# Wait up to two seconds for one process to leave, reading the process rather
+# than a clock. It returns as soon as the process is gone, so a recorder that
+# closes at once costs one look.
+wait_for_exit() {
+    local pid=$1 tries=0
+    while kill -0 "$pid" 2> /dev/null && [ "$tries" -lt 40 ]; do
+        sleep 0.05
+        tries=$((tries + 1))
+    done
+}
+
+# Close the microphone, transcribe what it heard, and type the text into the
+# window that has focus.
+stop_recording() {
+    local pid started ran=""
+    if ! pid=$(record_pid); then
+        pid=""
+    fi
+    if started=$(record_started); then
+        ran=$(duration_text "$(($(date +%s) - started))")
+    fi
+    # The record goes before the signal, so the watcher this press ends finds
+    # no record and stays quiet.
+    rm -f "$RECORD_FILE"
+    play_cue 500 0.08
+    if [ -n "$pid" ] && kill -0 "$pid" 2> /dev/null; then
+        # An interrupt is what closes a capture cleanly. Give the recorder a
+        # moment to write out what it holds: `wait` reaches a child alone, and
+        # the recorder belongs to the press that started it, so this reads the
+        # process instead.
+        kill -INT "$pid" 2> /dev/null || true
+        wait_for_exit "$pid"
+        # A recorder that does not answer an interrupt holds the microphone
+        # open, which is the harm this file exists to bound, so the signal
+        # hardens rather than being left to the next press.
+        if kill -0 "$pid" 2> /dev/null; then
+            warn "the recorder at pid $pid did not close on an interrupt, so it is being stopped"
+            kill -TERM "$pid" 2> /dev/null || true
+            wait_for_exit "$pid"
+        fi
+        if kill -0 "$pid" 2> /dev/null; then
+            warn "the recorder at pid $pid is still running, so the microphone may still be open"
+            notify critical 0 "The recorder did not stop. The microphone may still be open."
+        fi
+    fi
+    notify low 2000 "The microphone is closed${ran:+ after $ran}."
+    transcribe
+}
+
+# Read the capture and type it. A capture with no speech in it is said out
+# loud rather than passed over in silence.
+transcribe() {
+    local text
+    if [ ! -f "$AUDIO_FILE" ] || [ ! -s "$AUDIO_FILE" ]; then
+        warn "the recording captured no audio, so there is nothing to transcribe"
+        return 0
+    fi
+    fetch_model
+    if ! text=$(whisper-cli -m "$MODEL" -f "$AUDIO_FILE" --no-timestamps --threads 8 2> /dev/null \
+        | tr '\n' ' ' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'); then
+        warn "the transcription failed, so nothing was typed"
+        keep_audio
+        return 0
+    fi
+    if [ -n "$text" ]; then
+        # A short delay, so the key's modifiers are no longer held down.
+        sleep 0.1
+        wtype "$text "
+        rm -f "$AUDIO_FILE"
+    else
+        warn "the transcription found no speech"
+        keep_audio
+    fi
+}
+
+# Fetch the speech model once, when the transcription needs it. `status` and a
+# press that starts a recording need no model, and neither reaches the network.
+fetch_model() {
+    if [ -s "$MODEL" ]; then
+        return 0
+    fi
+    mkdir -p "$(dirname "$MODEL")"
+    warn "fetching the speech model once, to $MODEL"
+    curl -fsSL -o "$MODEL" \
+        https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+}
+
+# Whether dictation is on, and for how long. A person reads the line and a
+# script reads the exit status: 0 while a recording runs, non-zero otherwise.
+status_line() {
+    local pid ran
+    if recording_live; then
+        pid=$(record_pid)
+        if ran=$(elapsed); then
+            printf 'Dictation is recording, for %s, as pid %s.\n' "$(duration_text "$ran")" "$pid"
+        else
+            printf 'Dictation is recording, as pid %s.\n' "$pid"
+        fi
+        return 0
+    fi
+    if [ -f "$RECORD_FILE" ]; then
+        printf 'Dictation is not recording. The record at %s names a process that is gone.\n' "$RECORD_FILE"
+        return 1
+    fi
+    printf 'Dictation is not recording.\n'
+    return 1
+}
+
+# One press. The branch reads the process rather than the record, so a record
+# left by a recorder that died starts a recording instead of stopping one that
+# is not there.
+toggle() {
+    if recording_live; then
+        stop_recording
+        return 0
+    fi
+    sweep_record
+    start_recording
+}
+
+usage() {
+    printf 'Usage: dictate-toggle [toggle|status]\n' >&2
+}
+
+# The dispatch runs when the file is executed, and not when it is sourced. The
+# test sources it with `DICTATE_TOGGLE_LIB` set to reach `recording_live`,
+# `record_pid`, and `duration_text` with a stub recorder, which a host running
+# the tests has no microphone for.
+if [ -z "${DICTATE_TOGGLE_LIB:-}" ]; then
+    case "${1:-toggle}" in
+        toggle)
+            toggle
+            ;;
+        status)
+            status_line
+            ;;
+        *)
+            usage
+            exit 2
+            ;;
+    esac
+fi
