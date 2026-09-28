@@ -234,6 +234,10 @@ pub struct Acceptance {
     pub fix_build: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verified: Option<Verified>,
+    /// The key that accepted it, hex: the triager who filed the report, or
+    /// the moderator who recorded the session. A playtest award names it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub triager: Option<String>,
 }
 
 /// The triage log, in order.
@@ -438,7 +442,7 @@ impl Log {
                     issue,
                     contribution,
                     severity,
-                    ..
+                    triager,
                 } => {
                     let Some((tester, digest, build)) = received.get(code.as_str()) else {
                         continue;
@@ -456,6 +460,7 @@ impl Log {
                         accepted_at: *at,
                         fix_build: check.map(|c| c.0.to_owned()),
                         verified: check.map(|c| c.1),
+                        triager: triager.clone(),
                     };
                     if let Some((fix_build, Verified::Yes, verified_at)) = check {
                         out.push(Acceptance {
@@ -475,6 +480,7 @@ impl Log {
                     format,
                     build,
                     code,
+                    moderator,
                     ..
                 } => out.push(Acceptance {
                     tester: tester.clone(),
@@ -495,6 +501,7 @@ impl Log {
                     accepted_at: *at,
                     fix_build: None,
                     verified: None,
+                    triager: moderator.clone(),
                 }),
                 _ => {}
             }

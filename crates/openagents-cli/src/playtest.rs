@@ -40,6 +40,13 @@ const USAGE: &str = "usage: openagents playtest COMMAND [OPTIONS]
   session --tester KEY --script NAME --format unmoderated|moderated|group|diary
         --build \"1.0.0 (15)\" [--code PT-…] [--moderator KEY]
   log [--acceptances | --pending]
+  award (CODE | --issue N [--verified] | --script NAME --tester KEY)
+        --quest ID@VERSION [--session ID] [--triager KEY] [--commit SHA]
+        [--referee-key PATH] [--relay URL] [--repo OWNER/REPO] [--publish]
+                                Sign the NIP-XP playtest award for an accepted
+                                contribution with the playtest referee key;
+                                without --publish, show it. Off until the
+                                playtest referee key exists.
   testflight [--asc-env FILE] [--app ID] [--since 2026-09-28]
                                 Read TestFlight feedback (screenshots and
                                 crashes) from App Store Connect and draft each
@@ -66,7 +73,17 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
         return output.usage("playtest", "a command is required", USAGE);
     };
-    let args = match Args::parse(rest, &["approve", "acceptances", "pending", "help"]) {
+    let args = match Args::parse(
+        rest,
+        &[
+            "approve",
+            "acceptances",
+            "pending",
+            "help",
+            "verified",
+            "publish",
+        ],
+    ) {
         Ok(args) => args,
         Err(message) => return output.usage("playtest", &message, USAGE),
     };
@@ -84,6 +101,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "session" => session(&home, &args),
         "log" => log(&home, &args),
         "testflight" => testflight::run(&home, &args),
+        "award" => award::run(&home, &args),
         other => return output.usage("playtest", &format!("unknown command `{other}`"), USAGE),
     };
     match result {
@@ -630,6 +648,7 @@ fn log(home: &Path, args: &Args) -> Result<Value, Failure> {
     Ok(json!({"entries": entries, "text": text}))
 }
 
+mod award;
 mod testflight;
 
 #[cfg(test)]

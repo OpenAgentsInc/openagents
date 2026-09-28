@@ -137,6 +137,36 @@ once per tester; and a verification names an issue filed from a report.
 `log --acceptances` joins the log into the accepted contributions an award
 needs: the tester's key, the contribution, the issue or script, the
 severity, the build, the acceptance time, and for a verified fix the fixing
-build. Once the NIP-XP `playtest` rule and the playtest referee key exist
-([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)), awards
-are signed from these rows.
+build.
+
+## Awards
+
+`award` signs the NIP-XP `playtest` award for one accepted contribution
+([#9906](https://github.com/OpenAgentsInc/openagents/issues/9906)):
+
+```sh
+openagents playtest award --issue 9950 --quest playtest-s1.bug@1            # dry run
+openagents playtest award --issue 9950 --quest playtest-s1.bug@1 --publish
+openagents playtest award --issue 9950 --verified --quest playtest-s1.verified-fix@1 --publish
+openagents playtest award --script session-2 --tester NPUB --quest playtest-s1.session-2@1 \
+  --session RECORD-ID --publish
+```
+
+It names the acceptance by report code, `--issue` (with `--verified` for a
+verified fix), or `--script` and `--tester`, then reads from the relay
+(`wss://relay.openagents.com` unless `--relay`) the referee's quest at
+`--quest`, the tester's public playtest report (kind `3197`, which the app
+publishes with every sent report, found by the tester's key and the accepted
+report's digest), the session record named by `--session`, and the referee's
+awards and revocations. It builds the award from the triage log's row, with
+the issue as `OWNER/REPO#N` (`--repo`), the severity, the triager
+(`--triager` if the log has none), and `--commit` for a design change;
+checks it against the NIP-XP `playtest` rule; and refuses a key that
+already has a live award or a quest version at its `max_awards`. Without
+`--publish` it prints the signed award and publishes nothing.
+
+The command is off until the playtest referee key exists: while
+`verse::xp::PLAYTEST_REFEREE` is unset it refuses before reading anything,
+and afterwards it signs only with that key (`--referee-key`, by default
+`~/.openagents/nostr/playtest-referee-key`). A TestFlight entry has no
+tester key, so it can't be awarded.

@@ -18,6 +18,10 @@
 //! deduplicating by exact identity only, and keeps the append-only triage
 //! log that records every acceptance with the tester's key.
 //!
+//! **Awards** ([`award`]) join an accepted contribution in the triage log
+//! to the tester's public playtest report and a `playtest` quest, and are
+//! signed only with the playtest referee key.
+//!
 //! **TestFlight feedback** ([`testflight`]) that App Store Connect holds
 //! joins the same inbox as drafts and log entries, without the tester's
 //! Apple identity; it backs no award.
@@ -25,6 +29,7 @@
 //! This crate has no network and no storage: the app and the triage tool
 //! carry the events.
 
+pub mod award;
 pub mod report;
 pub mod session;
 pub mod testflight;
