@@ -598,9 +598,9 @@ const STICK_DEAD_POINTS: f32 = 12.0;
 /// opacity, so they stay faint over the world.
 const BARE_STICK_FAINTNESS: f32 = 0.5;
 /// The look stick's turn rate at full deflection, in radians per second.
-const LOOK_STICK_YAW_RATE: f32 = 1.2;
+const LOOK_STICK_YAW_RATE: f32 = 1.9;
 /// The look stick's pitch rate at full deflection, in radians per second.
-const LOOK_STICK_PITCH_RATE: f32 = 0.75;
+const LOOK_STICK_PITCH_RATE: f32 = 1.15;
 /// Time constant, in seconds, of the look stick's rate smoothing.
 const LOOK_STICK_SMOOTHING_SECONDS: f32 = 0.12;
 const DOUBLE_TAP_SECONDS: f64 = 0.35;

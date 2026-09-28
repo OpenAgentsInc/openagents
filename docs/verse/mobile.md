@@ -29,8 +29,8 @@ of Coder's stick, above the bottom safe area:
   back up, and sideways to strafe.
 - **Look**, at the bottom right, in touch look only: push right to turn
   right and up to look up. Nothing turns inside a 12-point dead zone; past
-  it the turn rate rises with the square of the deflection, to 1.2 rad/s of
-  turn and 0.75 rad/s of pitch at the rim, smoothed over about 0.12 s while
+  it the turn rate rises with the square of the deflection, to 1.9 rad/s of
+  turn and 1.15 rad/s of pitch at the rim, smoothed over about 0.12 s while
   held and stopped at once on release. It works in first person too. Motion
   look turns the camera with the phone, so there the stick is hidden.
 
