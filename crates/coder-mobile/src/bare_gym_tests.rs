@@ -17,6 +17,7 @@ fn preview() -> Scene {
             code: None,
             preview: true,
             panel: true,
+            ..BareGym::default()
         },
     ))
     .unwrap()
@@ -58,6 +59,7 @@ fn the_bare_world_takes_a_gym_connection_and_still_refuses_other_panels() {
             code: Some("gym-connect:not-a-grant".into()),
             preview: false,
             panel: true,
+            ..BareGym::default()
         },
     ))
     .unwrap();

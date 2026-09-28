@@ -28,6 +28,11 @@ glam = "0.30.10"
 # Gym's own readers, so a replay and `gym runs` agree on every number.
 gym = { path = "../gym", optional = true }
 gym-bridge = { path = "../gym-bridge", default-features = false }
+# The Gym's published results: the leaderboard contract and the results
+# panel's view model. The loader recomputes the leaderboard's digest with
+# ATIF's rule, as the generator does.
+gym-leaderboard = { path = "../gym-leaderboard" }
+atif = { path = "../atif" }
 knowledge = { path = "../knowledge", optional = true }
 libc = "0.2"
 nostr = { path = "../nostr" }
@@ -49,6 +54,7 @@ wgpu = "29.0.4"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
 
 [dev-dependencies]
+tempfile = "3"
 # The GLES test translates every shader with the naga release wgpu uses.
 naga = { version = "29.0.4", features = ["wgsl-in", "glsl-out", "msl-out"] }
 

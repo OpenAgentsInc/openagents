@@ -37,6 +37,13 @@ pub const GYM_BOARD_SCREEN: Vec3 = Vec3::new(58.788, 2.8, 0.0);
 pub const GYM_BOARD_HALF: [f32; 2] = [2.5, 1.55];
 /// Maximum ground-plane distance for opening the board from inside the hall.
 pub const GYM_BOARD_RANGE: f32 = 6.0;
+/// Center of the Grid's RESULTS board: the right-hand plot panel beside the
+/// central board, which the Grid letters and opens for published results.
+pub const GYM_RESULTS_BOARD: Vec3 = Vec3::new(58.8, 2.8, 5.7);
+/// The RESULTS board's readable front, in line with the central board's.
+pub const GYM_RESULTS_SCREEN: Vec3 = Vec3::new(58.788, 2.8, 5.7);
+/// Half width along Z and half height of the RESULTS board, in meters.
+pub const GYM_RESULTS_HALF: [f32; 2] = [2.3, 1.55];
 /// How far ahead of the spawn the Grid's Gym doorway stands, m. The hall
 /// lies beyond it along the spawn's heading, past the ball, the stack, and
 /// the dominoes, with the doorway facing the spawn between the stack and the
@@ -221,7 +228,7 @@ pub fn build() -> World {
     ground(&mut world.mesh);
     city(&mut world);
     computer(&mut world);
-    gym(&mut world, GymSite::PLAZA);
+    gym(&mut world, GymSite::PLAZA, false);
     pylon(&mut world);
     quest_board(&mut world);
     workbench(&mut world);
@@ -251,7 +258,7 @@ pub fn build() -> World {
 pub fn bare() -> World {
     let mut world = World::default();
     ground(&mut world.mesh);
-    gym(&mut world, GymSite::GRID);
+    gym(&mut world, GymSite::GRID, true);
     world.mesh.neutralize();
     world
 }
@@ -499,8 +506,41 @@ pub(crate) fn gym_display(site: GymSite, interaction: Option<bool>) -> Mesh {
     mesh
 }
 
-/// Builds the Gym in its own frame and stands it at `site`.
-fn gym(world: &mut World, site: GymSite) {
+/// Depth-tested lettering on the Grid's RESULTS board at `site`, with the
+/// tap cue for a host that opens its panel. Coder's plaza has no RESULTS
+/// board.
+pub(crate) fn results_display(site: GymSite, interaction: Option<bool>) -> Mesh {
+    let mut mesh = Mesh::default();
+    let step = if interaction == Some(true) {
+        Intensity::Full
+    } else {
+        Intensity::Half
+    };
+    display_text(
+        &mut mesh,
+        "RESULTS",
+        GYM_RESULTS_SCREEN + Vec3::Y * 1.1,
+        Vec3::Z,
+        0.3,
+        step,
+    );
+    if let Some(near) = interaction {
+        display_text(
+            &mut mesh,
+            if near { "TAP TO OPEN" } else { "WALK CLOSER" },
+            GYM_RESULTS_SCREEN - Vec3::Y * 0.2,
+            Vec3::Z,
+            0.36,
+            step,
+        );
+    }
+    site.transform(&mut mesh);
+    mesh
+}
+
+/// Builds the Gym in its own frame and stands it at `site`. With
+/// `results`, its right-hand plot panel is the RESULTS board instead.
+fn gym(world: &mut World, site: GymSite, results: bool) {
     let mut mesh = Mesh::default();
     // Low solid walls keep the third-person camera usable. Upper posts and
     // beams define a hall without an opaque roof hiding the player.
@@ -517,12 +557,12 @@ fn gym(world: &mut World, site: GymSite) {
         );
     }
     world.blockers.extend(site.walls());
-    gym_structure(&mut mesh);
+    gym_structure(&mut mesh, results);
     site.transform(&mut mesh);
     world.mesh.extend(&mesh);
 }
 
-fn gym_structure(mesh: &mut Mesh) {
+fn gym_structure(mesh: &mut Mesh, results: bool) {
     for (x, z) in [
         (36.25, -8.75),
         (36.25, -3.25),
@@ -557,7 +597,7 @@ fn gym_structure(mesh: &mut Mesh) {
         );
     }
     gym_sign(mesh);
-    gym_boards(mesh);
+    gym_boards(mesh, results);
 }
 
 fn gym_sign(mesh: &mut Mesh) {
@@ -605,7 +645,7 @@ fn gym_sign(mesh: &mut Mesh) {
     }
 }
 
-fn gym_boards(mesh: &mut Mesh) {
+fn gym_boards(mesh: &mut Mesh, results: bool) {
     let at = |u: f32, v: f32| GYM_BOARD + Vec3::new(0.0, v, u);
     let panel = |mesh: &mut Mesh, center: f32, half_width: f32| {
         let corners = [
@@ -625,8 +665,12 @@ fn gym_boards(mesh: &mut Mesh) {
     // A central bulletin and two plot panels. Empty axes denote
     // surfaces awaiting admitted data; they do not depict invented results.
     panel(mesh, 0.0, GYM_BOARD_HALF[0]);
-    for center in [-5.7, 5.7] {
-        panel(mesh, center, 2.3);
+    for center in [-5.7, GYM_RESULTS_BOARD.z] {
+        panel(mesh, center, GYM_RESULTS_HALF[0]);
+        // The RESULTS board is lettered by its display, without axes.
+        if results && center == GYM_RESULTS_BOARD.z {
+            continue;
+        }
         mesh.line(
             at(center - 1.85, -1.1),
             at(center + 1.8, -1.1),

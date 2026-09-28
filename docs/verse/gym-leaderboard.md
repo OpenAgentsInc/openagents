@@ -1,8 +1,10 @@
 # Gym leaderboard and trace viewer
 
 Specified September 28, 2026. Status: the data contract and generator are
-implemented in [`crates/gym-leaderboard`](../../crates/gym-leaderboard/); the
-Grid user interface waits for the Gym port into the OpenAgents app.
+implemented in [`crates/gym-leaderboard`](../../crates/gym-leaderboard/), and
+the OpenAgents app's Grid has the **RESULTS** board with its boards list,
+board, and attempt screens on iOS
+([captures](../../bins/openagents-ios/verification/2026-09-28-gym-results/)).
 
 The Gym building shows live run observations from a host the player
 connected. It doesn't show what OpenAgents has measured and published:
@@ -306,6 +308,25 @@ board. It needs no Gym connection: it works for every player. Tapping it
 results panel. Entering the building starts the leaderboard fetch; leaving
 cancels it. The live board's connection, grant, and polling are
 unaffected.
+
+In the Grid, the **RESULTS** board is the right-hand plot panel beside the
+central board (`verse::world::GYM_RESULTS_BOARD`), lettered **RESULTS** and,
+for a host with the panel, **TAP TO OPEN** from within 6 m. Coder's plaza
+Gym keeps its empty plot panel. The panel's state and loader are
+[`crates/verse/src/gym_results.rs`](../../crates/verse/src/gym_results.rs):
+it shows a verified cached copy at once, reads `index.json` from `main`,
+and fetches `leaderboard.v1.json` from `main` only when the index names a
+digest it doesn't have, accepting it only when the digest recomputed over
+the file's own `boards` JSON (not a typed round trip, so an added optional
+field still verifies) equals the index's. The index's `commit` is the
+commit the evidence was read at, which predates the publication files, so
+the files can't be fetched at that commit; the digest pins them instead.
+Bundles are fetched when a trace opens and checked against `TraceRef`.
+Verified copies stay in the app's cache (`gym-results/`, bundles capped at
+16 MiB, least recently used first out). The host passes the cache
+directory; `results_base` overrides the source for checks against a mirror
+or a local directory. This loader stands in for #9846's client until it
+lands.
 
 ### Screens
 

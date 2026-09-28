@@ -766,12 +766,26 @@ impl WorldRuntime {
     /// Hosts gate Gym reads on `inside` and their own active-surface state.
     #[must_use]
     pub fn gym(&self, aspect: f32) -> Gym {
+        self.board_state(aspect, self.gym_site(), world::GYM_BOARD)
+    }
+
+    /// Where the Grid's RESULTS board stands: the Grid's Gym, and nowhere
+    /// else. Coder's plaza has none.
+    fn results_site(&self) -> Option<world::GymSite> {
+        self.gym_site().filter(|_| self.bare)
+    }
+
+    /// As [`Self::gym`], for the Grid's RESULTS board beside the central
+    /// board. Outside the Grid it is never inside, near, or visible.
+    #[must_use]
+    pub fn results(&self, aspect: f32) -> Gym {
+        self.board_state(aspect, self.results_site(), world::GYM_RESULTS_BOARD)
+    }
+
+    fn board_state(&self, aspect: f32, site: Option<world::GymSite>, local: Vec3) -> Gym {
         let position = self.player.pos;
-        let site = self.gym_site();
         let inside = site.is_some_and(|site| site.inside(position));
-        let board = site
-            .unwrap_or(world::GymSite::PLAZA)
-            .point(world::GYM_BOARD);
+        let board = site.unwrap_or(world::GymSite::PLAZA).point(local);
         let offset = position - board;
         let distance = offset.x.hypot(offset.z);
         let clip = self.view(aspect).view_proj * board.extend(1.0);
@@ -805,16 +819,47 @@ impl WorldRuntime {
     /// Opening a board is separate from granting observation or run authority.
     #[must_use]
     pub fn gym_hit_with_entities(&self, aspect: f32, x: f32, y: f32, entities: &Mesh) -> bool {
-        let Some(site) = self.gym_site() else {
+        self.gym(aspect).near
+            && self.board_hit(
+                aspect,
+                [x, y],
+                self.gym_site(),
+                world::GYM_BOARD_SCREEN,
+                world::GYM_BOARD_HALF,
+                entities,
+            )
+    }
+
+    /// Pick the Grid's RESULTS board front from inside its reach, with the
+    /// same unobstructed-view rule as the central board.
+    #[must_use]
+    pub fn results_hit_with_entities(&self, aspect: f32, x: f32, y: f32, entities: &Mesh) -> bool {
+        self.results(aspect).near
+            && self.board_hit(
+                aspect,
+                [x, y],
+                self.results_site(),
+                world::GYM_RESULTS_SCREEN,
+                world::GYM_RESULTS_HALF,
+                entities,
+            )
+    }
+
+    fn board_hit(
+        &self,
+        aspect: f32,
+        [x, y]: [f32; 2],
+        site: Option<world::GymSite>,
+        plane: Vec3,
+        half: [f32; 2],
+        entities: &Mesh,
+    ) -> bool {
+        let Some(site) = site else {
             return false;
         };
-        if !self.gym(aspect).near {
-            return false;
-        }
         let view = self.view(aspect);
-        let plane = world::GYM_BOARD_SCREEN;
-        // The central board faces the doorway (west in the Gym's frame). Its
-        // back never opens the private panel.
+        // The boards face the doorway (west in the Gym's frame). Their
+        // backs never open a panel.
         if site.local(view.eye).x >= plane.x {
             return false;
         }
@@ -830,10 +875,7 @@ impl WorldRuntime {
         let distance = (plane.x - local_eye.x) / local_direction.x;
         let offset = local_eye + local_direction * distance - plane;
         let target = eye + direction * distance;
-        if !target.is_finite()
-            || offset.z.abs() > world::GYM_BOARD_HALF[0]
-            || offset.y.abs() > world::GYM_BOARD_HALF[1]
-        {
+        if !target.is_finite() || offset.z.abs() > half[0] || offset.y.abs() > half[1] {
             return false;
         }
         let clip = view.view_proj * target.extend(1.0);
@@ -862,6 +904,13 @@ impl WorldRuntime {
     /// This changes presentation alone, without admitting a tap or any service.
     #[must_use]
     pub fn dynamic_mesh_with_interactions(&self, computer: bool, gym: bool) -> Mesh {
+        self.dynamic_mesh_with_panels(computer, gym, false)
+    }
+
+    /// As [`Self::dynamic_mesh_with_interactions`], with the Grid's RESULTS
+    /// board's tap cue for a host that opens its panel.
+    #[must_use]
+    pub fn dynamic_mesh_with_panels(&self, computer: bool, gym: bool, results: bool) -> Mesh {
         if self.bare && self.is_plaza() {
             // The player, the ball and blocks, and the portal to Lagrange 1,
             // on the neutral stage; in first person the camera is inside the
@@ -881,6 +930,10 @@ impl WorldRuntime {
             // opens the board.
             let mut display =
                 world::gym_display(world::GymSite::GRID, gym.then_some(self.gym(1.0).near));
+            display.extend(&world::results_display(
+                world::GymSite::GRID,
+                results.then_some(self.results(1.0).near),
+            ));
             display.neutralize();
             player.extend(&display);
             return player;
@@ -1205,6 +1258,9 @@ mod tests {
             mesh.faces.len(),
             runtime.grid_portal_mesh().faces.len()
                 + world::gym_display(world::GymSite::GRID, None).faces.len()
+                + world::results_display(world::GymSite::GRID, None)
+                    .faces
+                    .len()
         );
         assert!(!mesh.lit.is_empty());
         // Walking keeps the eye on the head.
@@ -1761,6 +1817,52 @@ mod tests {
         let nearby = runtime.dynamic_mesh_with_interactions(false, true);
         assert!(nearby.faces.len() > runtime.dynamic_mesh().faces.len());
         assert_ne!(distant.faces.len(), nearby.faces.len());
+    }
+
+    #[test]
+    fn the_grids_results_board_picks_apart_from_the_live_board_and_only_in_the_grid() {
+        let mut runtime = WorldRuntime::bare();
+        let site = world::GymSite::GRID;
+        // Inside the hall, facing the boards from between them.
+        let stand = site.point(Vec3::new(54.0, 0.0, 2.8));
+        runtime
+            .set_spawn(stand, site.yaw_of(std::f32::consts::FRAC_PI_2))
+            .unwrap();
+        let screen = site.point(world::GYM_RESULTS_SCREEN);
+        for aspect in [0.46, 1.0, 2.2] {
+            let results = runtime.results(aspect);
+            assert!(results.inside && results.near, "{results:?}");
+            let [x, y] = projected(&runtime, aspect, screen);
+            if !((0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y)) {
+                continue;
+            }
+            assert!(runtime.results_hit_with_entities(aspect, x, y, &Mesh::default()));
+            assert!(
+                !runtime.gym_hit(aspect, x, y),
+                "the RESULTS board isn't the live board"
+            );
+            let [x, y] = projected(&runtime, aspect, site.point(world::GYM_BOARD_SCREEN));
+            assert!(!runtime.results_hit_with_entities(aspect, x, y, &Mesh::default()));
+        }
+        // Its lettering and cue turn with the building, on its face.
+        let display = world::results_display(site, Some(true));
+        assert!(!display.faces.is_empty());
+        for vertex in &display.faces {
+            let local = site.local(Vec3::from(vertex.pos)) - world::GYM_RESULTS_SCREEN;
+            assert!(local.x.abs() < 1e-3 && local.z.abs() < world::GYM_RESULTS_HALF[0]);
+            assert!(local.y.abs() < world::GYM_RESULTS_HALF[1]);
+        }
+        // Outside the hall it is neither near nor tappable.
+        runtime.set_spawn(world::SPAWN, 0.0).unwrap();
+        assert!(!runtime.results(1.0).near);
+        // Coder's plaza has no RESULTS board.
+        let mut plaza = WorldRuntime::new();
+        plaza
+            .set_spawn(Vec3::new(54.0, 0.0, 2.8), std::f32::consts::FRAC_PI_2)
+            .unwrap();
+        assert!(!plaza.results(1.0).inside);
+        let [x, y] = projected(&plaza, 1.0, world::GYM_RESULTS_SCREEN);
+        assert!(!plaza.results_hit_with_entities(1.0, x, y, &Mesh::default()));
     }
 
     #[test]

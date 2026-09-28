@@ -3,7 +3,7 @@
 // the Metal layer, the display clock, touches, the motion sensor, and the
 // world key and Gym connection in Keychain; Rust owns the world, the player,
 // the camera, the movement and look sticks, world presence on the relay, the Gym board,
-// and every frame.
+// the Gym's published results, and every frame.
 import QuartzCore
 import SwiftUI
 import UIKit
@@ -43,6 +43,14 @@ struct WorldPacket: Decodable {
     let gym_active: Bool?
     let gym_revision: UInt64?
     let gym_board: GymBoardView?
+    /// The Gym's RESULTS board, beside the live board: where it is, and
+    /// whether its panel is open. The panel's screen comes only in answer to
+    /// `results_view` and the results requests.
+    let results: GymPacket?
+    let results_open: Bool?
+    let results_active: Bool?
+    let results_revision: UInt64?
+    let results_view: ResultsView?
 
     struct GymPacket: Decodable {
         let inside: Bool
@@ -69,7 +77,7 @@ struct WorldPacket: Decodable {
         schema == "coder.verse.v1" && position.count == 3 && position.allSatisfy(\.isFinite)
             && ["touch", "motion"].contains(camera_mode) && camera_yaw.isFinite
             && camera_pitch.isFinite && camera_distance.isFinite && camera_distance > 0
-            && (gym?.valid ?? true) && (gym_board?.valid ?? true)
+            && (gym?.valid ?? true) && (gym_board?.valid ?? true) && (results?.valid ?? true)
     }
 }
 
@@ -91,6 +99,11 @@ final class VerseWorld: ObservableObject {
     @Published private(set) var gymBoard: GymBoardView?
     @Published private(set) var gymStorageError: String?
     private var gymRequestedRevision: UInt64?
+    /// The RESULTS board's panel is open, with the board's anchor on screen.
+    @Published private(set) var resultsOpen = false
+    @Published private(set) var resultsAnchor = CGPoint(x: 0.5, y: 0.5)
+    @Published private(set) var resultsView: ResultsView?
+    private var resultsRequestedRevision: UInt64?
     let motionDriver = DeviceMotionDriver(source: CoreMotionSource())
     var motionAvailable: Bool { motionDriver.available }
     fileprivate weak var surface: VerseWorldView?
@@ -115,6 +128,11 @@ final class VerseWorld: ObservableObject {
 
     @discardableResult
     func send(_ request: [String: Any]) -> WorldPacket? { surface?.send(request) }
+
+    /// Sends a choice in the results panel to Rust.
+    func results(_ command: [String: Any]) {
+        send(["action": "results", "command": command])
+    }
 
     /// The saved Gym connection for this world key, if any.
     func storedGymCode() -> String? {
@@ -163,6 +181,29 @@ final class VerseWorld: ObservableObject {
                 self.send(["action": "gym_view"])
             }
         }
+        let resultsOpen = packet.results_open == true
+        if self.resultsOpen != resultsOpen { self.resultsOpen = resultsOpen }
+        if resultsOpen, let results = packet.results {
+            let anchor = CGPoint(x: results.screen_x, y: results.screen_y)
+            if resultsAnchor != anchor { resultsAnchor = anchor }
+        }
+        if !(packet.results_active == true && resultsOpen) {
+            if resultsView != nil { resultsView = nil }
+            resultsRequestedRevision = nil
+        } else if let view = packet.results_view {
+            resultsView = view
+            resultsRequestedRevision = view.revision
+        }
+        // A frame carries only the panel's revision; ask for the screen when
+        // it changed while open.
+        if resultsOpen, packet.results_active == true, let revision = packet.results_revision,
+           resultsView?.revision != revision, resultsRequestedRevision != revision {
+            resultsRequestedRevision = revision
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.resultsOpen else { return }
+                self.send(["action": "results_view"])
+            }
+        }
     }
 
     fileprivate func fail(_ message: String) {
@@ -191,23 +232,32 @@ struct VerseTab: View {
                 VerseWorldSurface(world: world, active: active, insets: safe)
                     .ignoresSafeArea()
                     .overlay {
+                        // The board's anchor is in the full surface's
+                        // coordinates, safe areas included.
                         if world.gymOpen {
-                            // The board's anchor is in the full surface's
-                            // coordinates, safe areas included.
-                            GeometryReader { full in gymPanel(size: full.size, safe: safe) }
-                                .ignoresSafeArea()
+                            GeometryReader { full in
+                                anchoredPanel(size: full.size, safe: safe, anchor: world.gymAnchor) {
+                                    VerseGymPanel(world: world) { world.send(["action": "close_gym"]) }
+                                }
+                            }.ignoresSafeArea()
+                        } else if world.resultsOpen {
+                            GeometryReader { full in
+                                anchoredPanel(size: full.size, safe: safe, anchor: world.resultsAnchor) {
+                                    VerseResultsPanel(world: world) { world.send(["action": "close_results"]) }
+                                }
+                            }.ignoresSafeArea()
                         }
                     }
                 // Bottom center, between the movement stick at the bottom
                 // left and the look stick at the bottom right.
-                if !world.gymOpen {
+                if !world.gymOpen && !world.resultsOpen {
                     controls
                         .padding(.bottom, 12)
                 }
             }
             .overlay(alignment: .top) {
-                // The Gym panel shows its own errors.
-                if let error = world.error, !world.gymOpen {
+                // The Gym and results panels show their own errors.
+                if let error = world.error, !world.gymOpen, !world.resultsOpen {
                     VStack(spacing: 8) {
                         Text(error).font(.callout).textSelection(.enabled)
                             .accessibilityIdentifier("verse-error")
@@ -221,22 +271,23 @@ struct VerseTab: View {
         .background(Color.black.ignoresSafeArea())
     }
 
-    /// The Gym board's panel over the world, with a leader line from the
-    /// board it belongs to. Touches on it never reach the world.
-    private func gymPanel(size: CGSize, safe: EdgeInsets) -> some View {
+    /// A board's panel over the world, with a leader line from the board it
+    /// belongs to. Touches on it never reach the world.
+    private func anchoredPanel<Panel: View>(size: CGSize, safe: EdgeInsets, anchor unit: CGPoint,
+                                            @ViewBuilder panel: () -> Panel) -> some View {
         let top = safe.top + 12
         let bounds = CGRect(x: safe.leading + 12, y: top,
                             width: max(1, size.width - safe.leading - safe.trailing - 24),
                             height: max(80, size.height - top - safe.bottom - 16))
         let width = min(bounds.width, 540)
-        let anchor = CGPoint(x: world.gymAnchor.x * size.width, y: world.gymAnchor.y * size.height)
+        let anchor = CGPoint(x: unit.x * size.width, y: unit.y * size.height)
         let left = min(max(anchor.x - width / 2, bounds.minX), max(bounds.minX, bounds.maxX - width))
         return ZStack(alignment: .topLeading) {
             Path { path in
                 path.move(to: anchor)
                 path.addLine(to: CGPoint(x: min(max(anchor.x, left + 20), left + width - 20), y: bounds.minY))
             }.stroke(.white.opacity(0.6), lineWidth: 2).allowsHitTesting(false)
-            VerseGymPanel(world: world) { world.send(["action": "close_gym"]) }
+            panel()
                 .frame(width: width, height: bounds.height)
                 .position(x: left + width / 2, y: bounds.minY + bounds.height / 2)
         }
@@ -320,7 +371,10 @@ final class VerseWorldView: UIView {
     private lazy var script = VerseWorldScript.fromLaunchArguments()
     /// The Gym board's place on screen in the last packet.
     fileprivate private(set) var latestGym: WorldPacket.GymPacket?
+    /// The RESULTS board's place on screen in the last packet.
+    fileprivate private(set) var latestResults: WorldPacket.GymPacket?
     private var gymAccessible = false
+    private var resultsAccessible = false
 
     init(world: VerseWorld) {
         self.world = world
@@ -402,6 +456,11 @@ final class VerseWorldView: UIView {
                 configuration["gym_preview"] = true
             } else if let code = world.storedGymCode() {
                 configuration["gym_code"] = code
+            }
+            // Verified copies of the Gym's published results stay in the
+            // app's cache between visits.
+            if let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+                configuration["results_cache_directory"] = caches.path
             }
             guard let data = try? JSONSerialization.data(withJSONObject: configuration) else { return }
             handle = data.withUnsafeBytes {
@@ -507,6 +566,7 @@ final class VerseWorldView: UIView {
         if accessibilityHint != hint { accessibilityHint = hint }
         syncMotion(packet)
         latestGym = packet.gym
+        latestResults = packet.results
         updateGymAccessibility(packet)
         observe(packet)
         return packet
@@ -534,16 +594,32 @@ final class VerseWorldView: UIView {
         #endif
     }
 
-    /// VoiceOver opens the Gym board with the same checks as a tap on it.
+    /// VoiceOver opens the Gym board and the RESULTS board with the same
+    /// checks as a tap on them.
     private func updateGymAccessibility(_ packet: WorldPacket) {
+        let panelOpen = packet.gym_open == true || packet.results_open == true
         let available = running && packet.gym_active == true && packet.gym?.inside == true
-            && packet.gym?.near == true && packet.gym?.visible == true && packet.gym_open != true
-        guard available != gymAccessible else { return }
+            && packet.gym?.near == true && packet.gym?.visible == true && !panelOpen
+        let results = running && packet.results_active == true && packet.results?.inside == true
+            && packet.results?.near == true && packet.results?.visible == true && !panelOpen
+        guard available != gymAccessible || results != resultsAccessible else { return }
         gymAccessible = available
-        accessibilityCustomActions = available
-            ? [UIAccessibilityCustomAction(name: "Open Gym board", target: self,
-                                           selector: #selector(openGymAccessibly))]
-            : []
+        resultsAccessible = results
+        var actions: [UIAccessibilityCustomAction] = []
+        if available {
+            actions.append(UIAccessibilityCustomAction(name: "Open Gym board", target: self,
+                                                       selector: #selector(openGymAccessibly)))
+        }
+        if results {
+            actions.append(UIAccessibilityCustomAction(name: "Open results board", target: self,
+                                                       selector: #selector(openResultsAccessibly)))
+        }
+        accessibilityCustomActions = actions
+    }
+
+    @objc private func openResultsAccessibly() -> Bool {
+        guard running, resultsAccessible else { return false }
+        return send(["action": "interact_results"])?.results_open == true
     }
 
     @objc private func openGymAccessibly() -> Bool {
@@ -698,8 +774,12 @@ final class VerseWorldView: UIView {
 /// turns toward the Grid's portal to Lagrange 1 (39° right of the spawn's
 /// heading; `walk,walk` then goes through it), `board` taps the Gym's board
 /// where the last packet placed it (with `--gym-preview`, `walk,walk,walk`
-/// first walks into the Gym and up to it), and `wait` does nothing for a
-/// step.
+/// first walks into the Gym and up to it), `right` holds the stick right,
+/// `results` taps the RESULTS board beside it (`walk,walk,walk,right`
+/// first), `r=do:value` sends a results choice (`r=board:<id>`,
+/// `r=attempt:<id>`, `r=filter:beats`, `r=caveats`, `r=trace`,
+/// `r=tab:agent`, `r=step`, `r=seek:0.5`, `r=play`, `r=back`), and `wait`
+/// does nothing for a step.
 /// Debug and simulator builds only.
 @MainActor
 private final class VerseWorldScript {
@@ -767,6 +847,16 @@ private final class VerseWorldScript {
             view.pointer(pointer + 1, phase: "up", at: CGPoint(x: look.x + 40, y: look.y))
         case ("motion", 0): view.send(["action": "camera_mode", "mode": "motion"])
         case ("touch", 0): view.send(["action": "camera_mode", "mode": "touch"])
+        case ("right", 0): view.pointer(pointer, phase: "down", at: stick)
+        case ("right", 1): view.pointer(pointer, phase: "move", at: CGPoint(x: stick.x + 56, y: stick.y))
+        case ("right", 40): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x + 56, y: stick.y))
+        case ("results", 0), ("results", 2):
+            if let results = view.latestResults {
+                let at = CGPoint(x: results.screen_x * bounds.width, y: results.screen_y * bounds.height)
+                view.pointer(pointer, phase: t == 0 ? "down" : "up", at: at)
+            }
+        case (let choice, 0) where choice.hasPrefix("r="):
+            view.send(["action": "results", "command": Self.resultsCommand(String(choice.dropFirst(2)))])
         case ("board", 0), ("board", 2):
             if let gym = view.latestGym {
                 let at = CGPoint(x: gym.screen_x * bounds.width, y: gym.screen_y * bounds.height)
@@ -782,6 +872,25 @@ private final class VerseWorldScript {
         if t == 89 {
             steps.removeFirst()
             frame = 60
+        }
+    }
+
+    /// `do:value` as a results choice: the value is the choice's one field.
+    private static func resultsCommand(_ text: String) -> [String: Any] {
+        let parts = text.split(separator: ":", maxSplits: 1).map(String.init)
+        let action = parts[0]
+        let value = parts.count > 1 ? parts[1] : nil
+        switch action {
+        case "board", "attempt": return ["do": action, "id": value ?? ""]
+        case "filter": return ["do": action, "filter": value ?? "all"]
+        case "tab": return ["do": action, "tab": value ?? "jev"]
+        case "caveats": return ["do": action, "open": value != "close"]
+        case "step": return ["do": action, "forward": value != "back"]
+        case "seek": return ["do": action, "fraction": Double(value ?? "0") ?? 0]
+        case "play": return ["do": action, "playing": value != "pause"]
+        case "page": return ["do": action, "page": Int(value ?? "0") ?? 0]
+        case "expand": return ["do": action, "index": Int(value ?? "0") ?? 0]
+        default: return ["do": action]
         }
     }
 }

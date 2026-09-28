@@ -153,6 +153,16 @@ Coder's plaza Gym is unchanged and amber.
   synthetic board, offline, starting just outside the doorway.
   `--verse-script walk,walk,walk,wait,board` walks up to the board and taps
   it.
+- **Results.** Beside the central board stands the **RESULTS** board, the
+  Gym's [published Terminal-Bench results](gym-leaderboard.md#gym-ux-in-the-grid).
+  It needs no Gym connection. Entering the Gym starts loading them (a
+  verified cached copy shows at once), leaving cancels it, and a tap on the
+  board (or VoiceOver's **Open results board**) opens the white-on-black
+  results panel: the boards list, a board, and an attempt, each drawn from
+  Rust's view model. `--verse-script walk,walk,walk,right,wait,results`
+  opens it in the preview, and `r=board:<id>`, `r=attempt:<id>`, and the
+  other `r=` steps choose in it. A host without the panel (Android, for
+  now) shows the lettering but no tap cue, and loads nothing.
 
 ### The Grid's portal to Lagrange 1
 

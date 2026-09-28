@@ -37,6 +37,14 @@ pub(crate) struct Config {
     pub door_preferences: Option<String>,
     #[serde(default)]
     pub zone_cache_directory: Option<String>,
+    /// Where the Grid's RESULTS board reads the Gym's published results: an
+    /// `https://` base ending in `/`, or a local directory. The default is
+    /// the public repository's publication.
+    #[serde(default)]
+    pub results_base: Option<String>,
+    /// The app's cache directory for verified results, kept between visits.
+    #[serde(default)]
+    pub results_cache_directory: Option<String>,
     /// Draw the world computer's screen in the HUD. A host that keeps its
     /// native computer panel leaves this off.
     #[serde(default)]
@@ -170,6 +178,16 @@ pub(crate) enum Request {
     GymLaunch,
     GymRetry,
     GymCloseDetail,
+    /// Open the Grid's RESULTS board, as VoiceOver does: the same reach and
+    /// line-of-sight checks as a tap on it.
+    InteractResults,
+    CloseResults,
+    /// Read the results panel's current screen.
+    ResultsView,
+    /// A choice in the results panel.
+    Results {
+        command: verse::gym_results::Action,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -241,6 +259,14 @@ pub(crate) struct Packet {
     gym_active: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gym_board: Option<verse::gym::BoardView>,
+    /// The Grid's RESULTS board: where it is, and whether its panel is open.
+    /// The panel's screen comes only in answer to the results requests.
+    results: Gym,
+    results_open: bool,
+    results_revision: u64,
+    results_active: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub results_view: Option<verse::gym_results::ResultsView>,
     view: View<()>,
 }
 
@@ -504,6 +530,18 @@ fn packet(
         gym_revision: 0,
         gym_active: false,
         gym_board: None,
+        results: Gym {
+            inside: false,
+            near: false,
+            visible: false,
+            screen_x: 0.5,
+            screen_y: 0.5,
+            distance: 60.0,
+        },
+        results_open: false,
+        results_revision: 0,
+        results_active: false,
+        results_view: None,
         view,
     }
 }
@@ -512,6 +550,7 @@ fn packet(
 enum WorldTarget {
     Computer,
     Gym,
+    Results,
     Companion,
     Door(DoorId),
     Portal,
@@ -673,6 +712,12 @@ pub(crate) struct Scene {
     /// it and the board shows its tap cue. A host without the panel keeps the
     /// building but never opens a panel it cannot close.
     pub(crate) gym_panel: bool,
+    /// The Grid's RESULTS board and its panel. It needs no Gym connection.
+    results: verse::gym_results::Results,
+    results_open: bool,
+    /// The host shows the native results panel, so a tap on the RESULTS
+    /// board may open it and the board shows its tap cue.
+    pub(crate) results_panel: bool,
     pub frames: u64,
     pub error: Option<String>,
 }
@@ -807,6 +852,18 @@ impl Scene {
             gym_configuration_error: initial_gym_error,
             gym_board,
             gym_panel: true,
+            results: verse::gym_results::Results::new(verse::gym_results::Config {
+                base: config
+                    .results_base
+                    .clone()
+                    .unwrap_or_else(|| verse::gym_results::DEFAULT_BASE_URL.into()),
+                cache_directory: config
+                    .results_cache_directory
+                    .as_ref()
+                    .map(std::path::PathBuf::from),
+            }),
+            results_open: false,
+            results_panel: false,
             frames: 0,
             error: initial_error,
         })
@@ -888,6 +945,7 @@ impl Scene {
         }
         self.reset_motion();
         self.gym_board.set_active(false);
+        self.results.set_active(false);
         self.session = Some(session);
         Ok(())
     }
@@ -1073,6 +1131,7 @@ impl Scene {
                     }
                     Some(WorldTarget::Computer) => self.open_computer(),
                     Some(WorldTarget::Gym) => self.open_gym(),
+                    Some(WorldTarget::Results) => self.open_results(),
                     Some(WorldTarget::Companion) => {
                         self.world.pet_companion();
                     }
@@ -1461,6 +1520,7 @@ impl Scene {
         self.frame_timestamp = Some(timestamp);
         if self.spawn_pending {
             self.gym_board.set_active(false);
+            self.results.set_active(false);
             if let Some(session) = &mut self.session {
                 if let Some(spawn) =
                     session.poll_spawn(&self.world.world.blockers, self.world.zone_half())
@@ -1515,12 +1575,17 @@ impl Scene {
         }
         if !self.gym().inside {
             self.gym_open = false;
+            self.results_open = false;
         }
         if panel_was_open != self.panel_open() {
             self.reset_motion();
         }
         self.sync_gym_interest();
         self.gym_board.poll();
+        self.results.poll();
+        if self.results_open {
+            self.results.tick(f64::from(dt));
+        }
         let now = Instant::now();
         if let Some(session) = &mut self.session
             && self.world.is_bare()
@@ -1733,6 +1798,29 @@ impl Scene {
                 self.gym_board.close_detail();
                 Ok(())
             }
+            Request::InteractResults => {
+                let results = self.world.results(self.aspect());
+                let size = self.lifecycle.viewport().logical_size();
+                if !self.lifecycle.active()
+                    || !self.results_hit(results.screen_x * size[0], results.screen_y * size[1])
+                {
+                    return Err(
+                        "Walk inside the Gym and approach its RESULTS board to open it".into(),
+                    );
+                }
+                self.open_results();
+                Ok(())
+            }
+            Request::CloseResults => {
+                self.reset_motion();
+                self.results_open = false;
+                Ok(())
+            }
+            Request::ResultsView => Ok(()),
+            Request::Results { command } => {
+                self.require_results_panel()?;
+                self.results.act(command)
+            }
             Request::Snapshot | Request::ZoneCredits => Ok(()),
             Request::Frame { .. } | Request::Resize { .. } => {
                 Err("Request requires a native renderer".into())
@@ -1863,6 +1951,10 @@ impl Scene {
             && self.plaza_online_allowed()
             && !self.spawn_pending
             && self.gym().inside;
+        packet.results = self.world.results(self.aspect()).into();
+        packet.results_open = self.results_open;
+        packet.results_revision = self.results.revision();
+        packet.results_active = self.results_panel && packet.gym_active;
         packet
     }
 
@@ -1988,7 +2080,11 @@ impl Scene {
         self.zone_hud.snapshot(
             self.lifecycle.viewport().logical_size(),
             &self.zone_snapshot(),
-            self.lifecycle.active() && !self.computer_open && !self.gym_open && !self.map.expanded,
+            self.lifecycle.active()
+                && !self.computer_open
+                && !self.gym_open
+                && !self.results_open
+                && !self.map.expanded,
         )
     }
 
@@ -2028,6 +2124,7 @@ impl Scene {
         self.sprint = false;
         self.computer_open = false;
         self.gym_open = false;
+        self.results_open = false;
         self.reset_motion();
         self.restore_spawn = false;
         self.spawn_pending = false;
@@ -2059,7 +2156,12 @@ impl Scene {
         intent: ZoneIntent,
         point: Option<[f32; 2]>,
     ) -> Result<(), String> {
-        if !self.lifecycle.active() || self.computer_open || self.gym_open || self.map.expanded {
+        if !self.lifecycle.active()
+            || self.computer_open
+            || self.gym_open
+            || self.results_open
+            || self.map.expanded
+        {
             return Err("Return to the world to use the portal".into());
         }
         if intent == ZoneIntent::Enter {
@@ -2273,7 +2375,7 @@ impl Scene {
     }
 
     fn panel_open(&self) -> bool {
-        self.computer_open || self.gym_open || self.world.zone_loading()
+        self.computer_open || self.gym_open || self.results_open || self.world.zone_loading()
     }
 
     fn require_gym_panel(&self) -> Result<(), String> {
@@ -2290,12 +2392,42 @@ impl Scene {
     }
 
     fn sync_gym_interest(&mut self) {
-        self.gym_board.set_active(
-            self.lifecycle.active()
-                && self.plaza_online_allowed()
-                && !self.spawn_pending
-                && self.gym().inside,
-        );
+        let inside = self.lifecycle.active()
+            && self.plaza_online_allowed()
+            && !self.spawn_pending
+            && self.gym().inside;
+        self.gym_board.set_active(inside);
+        // Entering the Gym starts the results load; leaving cancels it. It
+        // needs no Gym connection.
+        self.results.set_active(inside && self.results_panel);
+    }
+
+    fn require_results_panel(&self) -> Result<(), String> {
+        if self.results_panel
+            && self.lifecycle.active()
+            && self.plaza_online_allowed()
+            && !self.spawn_pending
+            && self.results_open
+            && self.gym().inside
+        {
+            Ok(())
+        } else {
+            Err("Open the RESULTS board while inside to use it".into())
+        }
+    }
+
+    /// The results panel's current screen, while it is open.
+    pub fn results_view(&self) -> Option<verse::gym_results::ResultsView> {
+        self.require_results_panel()
+            .ok()
+            .map(|()| self.results.view())
+    }
+
+    /// Called only after pointer or accessibility picking validates the board.
+    fn open_results(&mut self) {
+        self.open_gym();
+        self.gym_open = false;
+        self.results_open = true;
     }
 
     fn gym(&self) -> verse::runtime::Gym {
@@ -2315,6 +2447,7 @@ impl Scene {
         self.computer_open = true;
         self.computer_hud.open();
         self.gym_open = false;
+        self.results_open = false;
         self.touches.clear();
         self.jump = false;
         self.sprint = false;
@@ -2344,6 +2477,7 @@ impl Scene {
         self.world.cancel_door_interactions();
         self.zone_hud.clear_contacts();
         self.gym_open = true;
+        self.results_open = false;
         self.computer_open = false;
         self.touches.clear();
         self.jump = false;
@@ -2362,6 +2496,8 @@ impl Scene {
             Some(WorldTarget::Computer)
         } else if self.gym_hit(x, y) {
             Some(WorldTarget::Gym)
+        } else if self.results_hit(x, y) {
+            Some(WorldTarget::Results)
         } else if self.portal_hit(x, y) {
             Some(WorldTarget::Portal)
         } else {
@@ -2429,6 +2565,21 @@ impl Scene {
             )
     }
 
+    fn results_hit(&self, x: f32, y: f32) -> bool {
+        let size = self.lifecycle.viewport().logical_size();
+        self.results_panel
+            && self.world.is_plaza()
+            && !self.spawn_pending
+            && size[0] > 0.0
+            && size[1] > 0.0
+            && self.world.results_hit_with_entities(
+                size[0] / size[1],
+                x / size[0],
+                y / size[1],
+                &self.presented_entities,
+            )
+    }
+
     fn computer_hit(&self, x: f32, y: f32) -> bool {
         let size = self.lifecycle.viewport().logical_size();
         self.world.is_plaza()
@@ -2463,6 +2614,9 @@ mod bare_gym_tests;
 #[cfg(test)]
 #[path = "bare_presence_tests.rs"]
 mod bare_presence_tests;
+#[cfg(test)]
+#[path = "bare_results_tests.rs"]
+mod bare_results_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2480,6 +2634,8 @@ mod tests {
             world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
+            results_base: None,
+            results_cache_directory: None,
             computer_hud: true,
             hdr: false,
             bare: false,
@@ -2707,6 +2863,8 @@ mod tests {
             world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
+            results_base: None,
+            results_cache_directory: None,
             computer_hud: true,
             hdr: false,
             bare: false,
@@ -2781,6 +2939,8 @@ mod tests {
             world_offline: false,
             door_preferences: Some(saved.clone()),
             zone_cache_directory: None,
+            results_base: None,
+            results_cache_directory: None,
             computer_hud: true,
             hdr: false,
             bare: false,
@@ -3670,6 +3830,8 @@ mod tests {
             world_offline: offline,
             door_preferences: None,
             zone_cache_directory: None,
+            results_base: None,
+            results_cache_directory: None,
             computer_hud: false,
             hdr: false,
             bare: true,
@@ -3771,6 +3933,8 @@ mod tests {
             world_offline: true,
             door_preferences: None,
             zone_cache_directory: None,
+            results_base: None,
+            results_cache_directory: None,
             computer_hud: false,
             hdr: false,
             bare: true,

@@ -59,6 +59,14 @@ struct Config {
     /// doorway, offline. For simulator checks only.
     #[serde(default)]
     gym_preview: bool,
+    /// The app's cache directory, where the Gym's RESULTS board keeps
+    /// verified copies of the published results between visits.
+    #[serde(default)]
+    results_cache_directory: Option<String>,
+    /// Where the RESULTS board reads the published results, for simulator
+    /// checks against a mirror; the public repository by default.
+    #[serde(default)]
+    results_base: Option<String>,
 }
 
 impl Config {
@@ -107,6 +115,9 @@ pub unsafe extern "C" fn openagents_verse_create(
             code: config.gym_code,
             preview: config.gym_preview,
             panel: true,
+            results_panel: true,
+            results_base: config.results_base,
+            results_cache_directory: config.results_cache_directory,
         };
         unsafe {
             VerseHandle::create_bare_with_gym(

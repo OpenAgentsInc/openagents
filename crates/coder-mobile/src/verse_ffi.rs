@@ -36,6 +36,15 @@ pub struct BareGym {
     /// the Gym stands in the world, but its board shows no tap cue and never
     /// opens.
     pub panel: bool,
+    /// The host shows the native results panel for the Gym's RESULTS
+    /// board. Without it the board stands with its lettering but no tap
+    /// cue, never opens, and loads nothing.
+    pub results_panel: bool,
+    /// Where the RESULTS board reads the published results; the public
+    /// repository's publication when `None`.
+    pub results_base: Option<String>,
+    /// The app's cache directory for verified results.
+    pub results_cache_directory: Option<String>,
 }
 
 #[cfg(test)]
@@ -81,6 +90,8 @@ pub(crate) fn bare_config_with_gym(
         world_offline: world_offline || gym.preview,
         door_preferences: None,
         zone_cache_directory: None,
+        results_base: gym.results_base,
+        results_cache_directory: gym.results_cache_directory,
         computer_hud: false,
         hdr,
         bare: true,
@@ -329,11 +340,12 @@ impl VerseHandle {
         if layer.is_null() {
             return Err("No native layer to draw in".into());
         }
-        let panel = gym.panel;
+        let (panel, results_panel) = (gym.panel, gym.results_panel);
         let mut scene = Scene::new(bare_config_with_gym(
             width, height, scale, hdr, presence, gym,
         ))?;
         scene.gym_panel = panel;
+        scene.results_panel = results_panel;
         create_renderer(layer, scene)
     }
 
@@ -376,12 +388,17 @@ impl VerseHandle {
                 | Request::GymRetry
                 | Request::GymCloseDetail
         );
+        let include_results = matches!(
+            &request,
+            Request::ResultsView | Request::InteractResults | Request::Results { .. }
+        );
         let clear_error = !matches!(
             &request,
             Request::Frame { .. }
                 | Request::DeviceMotion { .. }
                 | Request::Snapshot
                 | Request::GymView
+                | Request::ResultsView
         );
         match self.call(request) {
             Err(error) => self.scene.error = Some(error),
@@ -397,9 +414,18 @@ impl VerseHandle {
         if include_gym {
             packet.gym_board = self.scene.gym_view();
         }
+        if include_results {
+            packet.results_view = self.scene.results_view();
+        }
         let bytes = serde_json::to_vec(&packet)
             .map_err(|_| "Cannot encode native Verse state".to_owned())?;
-        if bytes.len() > if include_gym { 1024 * 1024 } else { 64 * 1024 } {
+        if bytes.len()
+            > if include_gym || include_results {
+                1024 * 1024
+            } else {
+                64 * 1024
+            }
+        {
             return Err("Native Verse state exceeds its size limit".into());
         }
         Ok(bytes)
@@ -421,10 +447,11 @@ impl VerseHandle {
                         renderer.set_atmosphere(self.scene.world.atmosphere())?;
                         self.rendered_zone_revision = self.scene.world.zone_revision;
                     }
-                    let mut mesh = self
-                        .scene
-                        .world
-                        .dynamic_mesh_with_interactions(true, self.scene.gym_panel);
+                    let mut mesh = self.scene.world.dynamic_mesh_with_panels(
+                        true,
+                        self.scene.gym_panel,
+                        self.scene.results_panel,
+                    );
                     let entities = self
                         .scene
                         .session
@@ -518,6 +545,8 @@ mod tests {
             world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
+            results_base: None,
+            results_cache_directory: None,
             computer_hud: true,
             hdr: false,
             bare: false,
