@@ -104,7 +104,8 @@ fn report() -> (Vec<String>, bool) {
                 coder::task::capacity::Provider::Codex => format!(" · {}", codex_state()),
                 coder::task::capacity::Provider::Claude
                 | coder::task::capacity::Provider::Vertex
-                | coder::task::capacity::Provider::Devin => String::new(),
+                | coder::task::capacity::Provider::Devin
+                | coder::task::capacity::Provider::OpenCode => String::new(),
             };
             lines.push(format!(
                 "    {:<10} {} · {standing}{login}",

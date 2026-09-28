@@ -1336,6 +1336,11 @@ fn parse_route(text: &str) -> std::result::Result<Route, String> {
                 "usage: `{text}`: this build does not run repository turns on devin"
             ));
         }
+        Some(Provider::OpenCode) => {
+            return Err(format!(
+                "usage: `{text}`: this build does not run repository turns on opencode"
+            ));
+        }
         None => {
             return Err(format!(
                 "usage: the provider in `{text}` is not codex or claude"
@@ -2115,7 +2120,7 @@ mod tests {
         let book = capacity::Book::default();
         let only_codex = |provider: Provider| match provider {
             Provider::Codex => Connection::Connected,
-            Provider::Claude | Provider::Vertex | Provider::Devin => {
+            Provider::Claude | Provider::Vertex | Provider::Devin | Provider::OpenCode => {
                 Connection::Missing("not signed in".into())
             }
         };
@@ -2274,7 +2279,9 @@ mod tests {
             Provider::Claude => {
                 include_str!("../../../microcoder-loop/fixtures/usage/claude-oauth-usage.json")
             }
-            Provider::Vertex | Provider::Devin => return Err(usage::Failure::Unsupported),
+            Provider::Vertex | Provider::Devin | Provider::OpenCode => {
+                return Err(usage::Failure::Unsupported);
+            }
         };
         Ok(usage::Response {
             status: 200,

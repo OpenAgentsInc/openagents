@@ -1,0 +1,24 @@
+{
+ "name": "APIError",
+ "data": {
+  "message": "Rate limit exceeded",
+  "statusCode": 429,
+  "isRetryable": true,
+  "responseHeaders": {
+   "cf-placement": "remote-ORD",
+   "cf-ray": "a425e2a1be174757-DFW",
+   "connection": "keep-alive",
+   "content-encoding": "br",
+   "content-type": "application/json",
+   "date": "Mon, 28 Sep 2026 21:36:44 GMT",
+   "server": "cloudflare",
+   "transfer-encoding": "chunked",
+   "x-opencode-log-id": "b268d305-5ae2-44fe-8c7e-9a962c32baa9",
+   "retry-after": "120"
+  },
+  "responseBody": "{\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded\"}}",
+  "metadata": {
+   "url": "https://opencode.ai/zen/v1/responses"
+  }
+ }
+}

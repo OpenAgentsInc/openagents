@@ -133,6 +133,7 @@ impl ProviderState {
             Provider::Claude => "the Claude Code login",
             Provider::Vertex => "Vertex",
             Provider::Devin => "the Devin CLI login",
+            Provider::OpenCode => "OpenCode",
         }
     }
 
@@ -355,6 +356,7 @@ fn provided(state: &ProviderState, session: &str) -> Result<Provided, String> {
         // Devin is a whole coding agent; the loop's steps don't generate
         // through it, and the lineup never names it.
         Provider::Devin => Err("the loop does not generate through Devin".into()),
+        Provider::OpenCode => Err("the loop does not generate through OpenCode".into()),
     }
 }
 

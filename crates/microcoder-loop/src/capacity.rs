@@ -26,6 +26,7 @@ use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// The book in the task store directory.
 pub const FILE: &str = "capacity.json";
@@ -50,6 +51,11 @@ pub const NO_CAPACITY_ENDING: &str = "no_capacity";
 /// URL, and no request goes to it from Microcoder.
 pub const DEVIN_ENDPOINT: &str = "local:devin-acp";
 
+/// The endpoint a grant names for an OpenCode route: the local `opencode
+/// acp` process, which reaches the route's own provider with OpenCode's
+/// login. It is not a URL, and no request goes to it from Microcoder.
+pub const OPENCODE_ENDPOINT: &str = "local:opencode-acp";
+
 /// A model provider a repository run can generate through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -65,15 +71,22 @@ pub enum Provider {
     /// is a whole coding agent, not a model a loop step generates through:
     /// a repository run on a Devin route hands Devin the turn.
     Devin,
+    /// OpenCode over ACP (`opencode acp`), with OpenCode's own logins. Like
+    /// Devin it is a whole coding agent: a repository run on an OpenCode
+    /// route hands OpenCode the turn. A route names OpenCode's own
+    /// `provider/model`, and one refusal holds every OpenCode route.
+    #[serde(rename = "opencode")]
+    OpenCode,
 }
 
 impl Provider {
     /// Every provider, in a fixed order.
-    pub const ALL: [Provider; 4] = [
+    pub const ALL: [Provider; 5] = [
         Provider::Codex,
         Provider::Claude,
         Provider::Vertex,
         Provider::Devin,
+        Provider::OpenCode,
     ];
 
     /// The providers with a usage endpoint a probe can ask.
@@ -89,6 +102,7 @@ impl Provider {
             "claude" => Some(Provider::Claude),
             "vertex" => Some(Provider::Vertex),
             "devin" => Some(Provider::Devin),
+            "opencode" => Some(Provider::OpenCode),
             _ => None,
         }
     }
@@ -101,6 +115,7 @@ impl Provider {
             Provider::Claude => "claude",
             Provider::Vertex => "vertex",
             Provider::Devin => "devin",
+            Provider::OpenCode => "opencode",
         }
     }
 
@@ -112,6 +127,7 @@ impl Provider {
             Provider::Claude => "https://api.anthropic.com",
             Provider::Vertex => crate::vertex::BASE_URL,
             Provider::Devin => DEVIN_ENDPOINT,
+            Provider::OpenCode => OPENCODE_ENDPOINT,
         }
     }
 
@@ -119,7 +135,9 @@ impl Provider {
     #[must_use]
     pub const fn unknown_hold(self) -> u64 {
         match self {
-            Provider::Codex | Provider::Claude | Provider::Devin => UNKNOWN_RESET_HOLD,
+            Provider::Codex | Provider::Claude | Provider::Devin | Provider::OpenCode => {
+                UNKNOWN_RESET_HOLD
+            }
             Provider::Vertex => VERTEX_UNKNOWN_RESET_HOLD,
         }
     }
@@ -292,6 +310,56 @@ impl Refusal {
             Kind::RateLimit
         };
         Some(Refusal::new(Provider::Vertex, kind, now, resets_at))
+    }
+
+    /// The refusal an OpenCode error carries: an `APIError` whose HTTP
+    /// status is 429, which OpenCode reports only after its own retries
+    /// ran out. The reset is the provider's `retry-after-ms` or
+    /// `retry-after` header (seconds), else [`UNKNOWN_RESET_HOLD`]. Only
+    /// the error's name, status, and those two headers are read, never
+    /// the message. OpenCode saves the error on the failed assistant
+    /// message, and `opencode run --format json` prints it in its `error`
+    /// event.
+    #[must_use]
+    pub fn opencode(error: &Value, now: u64) -> Option<Refusal> {
+        #[derive(Deserialize)]
+        struct Error {
+            name: String,
+            #[serde(default)]
+            data: Data,
+        }
+        #[derive(Default, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Data {
+            #[serde(default)]
+            status_code: Option<u16>,
+            #[serde(default)]
+            response_headers: std::collections::BTreeMap<String, Value>,
+        }
+        let error: Error = serde_json::from_value(error.clone()).ok()?;
+        if error.name != "APIError" || error.data.status_code != Some(429) {
+            return None;
+        }
+        let header = |name: &str| {
+            error
+                .data
+                .response_headers
+                .iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case(name))
+                .and_then(|(_, value)| value.as_str())
+                .and_then(|value| value.trim().parse::<f64>().ok())
+                .filter(|value| value.is_finite() && *value >= 0.0)
+        };
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let delay = header("retry-after-ms")
+            .map(|ms| (ms / 1000.0).ceil() as u64)
+            .or_else(|| header("retry-after").map(|s| s.ceil() as u64));
+        Some(Refusal::new(
+            Provider::OpenCode,
+            Kind::RateLimit,
+            now,
+            delay.map(|s| now.saturating_add(s)),
+        ))
     }
 
     /// Whether the refusal still holds at `now`.
@@ -515,6 +583,11 @@ impl Connection {
 ///   `~/.local/share/devin/credentials.toml` (or under `XDG_DATA_HOME`),
 ///   which is checked for presence and never read.
 ///
+/// - **OpenCode**: an `opencode` binary (`OPENCODE_BIN`, `PATH`,
+///   `~/.opencode/bin`, or `~/.local/bin`). Each route's own provider login
+///   is OpenCode's to find; `acp_client::opencode::login` names a stored or
+///   configured one by name without reading it.
+///
 /// - **Vertex**: the access token file (`VERTEX_TOKEN_FILE`, else
 ///   `~/.openagents/vertex-token`) is present and not empty. Its content is
 ///   read only to check that, never logged.
@@ -544,6 +617,17 @@ pub fn probe(provider: Provider) -> Connection {
                 )),
             },
         },
+        Provider::OpenCode => {
+            let variable = |name: &str| std::env::var_os(name);
+            if acp_client::opencode::binary(&variable).is_none() {
+                Connection::Missing(
+                    "no opencode binary in OPENCODE_BIN, PATH, ~/.opencode/bin, or ~/.local/bin"
+                        .into(),
+                )
+            } else {
+                Connection::Connected
+            }
+        }
         Provider::Devin => {
             let variable = |name: &str| std::env::var_os(name);
             if acp_client::devin::binary(&variable).is_none() {
@@ -653,6 +737,48 @@ mod tests {
         assert_eq!(meta.permissions().mode() & 0o777, 0o600);
         let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
         assert!(!text.contains("message"));
+    }
+
+    #[test]
+    fn an_opencode_rate_limit_holds_every_opencode_route_until_its_retry_after() {
+        let dir = tempfile::tempdir().unwrap();
+        let limited: Value =
+            serde_json::from_str(include_str!("../fixtures/opencode/rate-limited.error.json"))
+                .unwrap();
+        let now = 1_790_631_000;
+        let refusal = Refusal::opencode(&limited, now).unwrap();
+        assert_eq!(refusal.provider, Provider::OpenCode);
+        assert_eq!(refusal.kind, Kind::RateLimit);
+        assert_eq!(refusal.resets_at, Some(now + 120));
+        record(dir.path(), refusal).unwrap();
+        let book = Book::load(dir.path());
+        assert!(!book.has_capacity(Provider::OpenCode, now + 60));
+        assert!(book.has_capacity(Provider::Codex, now + 60));
+        assert!(book.has_capacity(Provider::OpenCode, now + 120));
+        // A refusal that isn't a capacity limit, as recorded live.
+        let disabled: Value = serde_json::from_str(include_str!(
+            "../fixtures/opencode/model-access-disabled.error.json"
+        ))
+        .unwrap();
+        assert_eq!(Refusal::opencode(&disabled, now), None);
+        // No retry header: the unknown hold; milliseconds win when given.
+        let mut bare = limited.clone();
+        bare["data"]["responseHeaders"] = serde_json::json!({});
+        assert_eq!(
+            Refusal::opencode(&bare, now).unwrap().until,
+            now + UNKNOWN_RESET_HOLD
+        );
+        bare["data"]["responseHeaders"] = serde_json::json!({"Retry-After-Ms": "1500"});
+        assert_eq!(
+            Refusal::opencode(&bare, now).unwrap().resets_at,
+            Some(now + 2)
+        );
+        assert_eq!(
+            Refusal::opencode(&serde_json::json!({"name": "ProviderAuthError"}), now),
+            None
+        );
+        assert_eq!(Provider::from_config("opencode"), Some(Provider::OpenCode));
+        assert_eq!(Provider::OpenCode.endpoint(), OPENCODE_ENDPOINT);
     }
 
     #[test]

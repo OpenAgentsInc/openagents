@@ -1,0 +1,23 @@
+{
+ "name": "APIError",
+ "data": {
+  "message": "Upstream request failed: Model access is disabled",
+  "statusCode": 403,
+  "isRetryable": false,
+  "responseHeaders": {
+   "cf-placement": "remote-ORD",
+   "cf-ray": "a425e2a1be174757-DFW",
+   "connection": "keep-alive",
+   "content-encoding": "br",
+   "content-type": "application/json",
+   "date": "Mon, 28 Sep 2026 21:36:44 GMT",
+   "server": "cloudflare",
+   "transfer-encoding": "chunked",
+   "x-opencode-log-id": "b268d305-5ae2-44fe-8c7e-9a962c32baa9"
+  },
+  "responseBody": "{\"error\":{\"type\":\"server_error\",\"message\":\"Upstream request failed: Model access is disabled\"}}",
+  "metadata": {
+   "url": "https://opencode.ai/zen/v1/responses"
+  }
+ }
+}
