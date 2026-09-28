@@ -1210,3 +1210,87 @@ fn a_question_shows_as_coders_message_and_its_end_as_a_status_marker() {
         assert_eq!(readable.text, text);
     }
 }
+
+/// The catalog keeps what it read of each source and directory while the
+/// file or directory is the same, and reads again whatever changed: a
+/// header still being written, a new session in a listed directory, a
+/// rewritten title index, and a file replaced under the same name.
+#[test]
+fn remembered_heads_and_listings_follow_every_change() {
+    let fixture = Fixture::new();
+    // A header without its newline yet: no native ID from it.
+    let path = fixture.write(
+        "sessions/2026/01/01/rollout-partial.jsonl",
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"grown\"",
+    );
+    let history = fixture.history();
+    assert_eq!(first(&history).native_id.as_deref(), None);
+    // The header's newline arrives: the head is read again.
+    OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .unwrap()
+        .write_all(b"}}\n")
+        .unwrap();
+    assert_eq!(first(&history).native_id.as_deref(), Some("grown"));
+    // A new session in the same, already listed, directory.
+    fixture.codex("second", "");
+    let page = history.catalog(CatalogRequest::default()).unwrap();
+    assert_eq!(page.entries.len(), 2);
+    // A title index written again with a new title.
+    fixture.write(
+        "session_index.jsonl",
+        b"{\"id\":\"second\",\"thread_name\":\"Named\"}\n",
+    );
+    let named = |history: &History| {
+        history
+            .catalog(CatalogRequest::default())
+            .unwrap()
+            .entries
+            .into_iter()
+            .any(|chat| chat.title == "Named")
+    };
+    assert!(named(&history));
+    fixture.write(
+        "session_index.jsonl",
+        b"{\"id\":\"second\",\"thread_name\":\"Renamed again\"}\n",
+    );
+    assert!(!named(&history));
+    // The same name, a new file with another header.
+    fs::remove_file(&path).unwrap();
+    fixture.write(
+        "sessions/2026/01/01/rollout-partial.jsonl",
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"replaced\"}}\n",
+    );
+    let ids: Vec<_> = history
+        .catalog(CatalogRequest::default())
+        .unwrap()
+        .entries
+        .into_iter()
+        .filter_map(|chat| chat.native_id)
+        .collect();
+    assert!(ids.contains(&"replaced".to_string()), "{ids:?}");
+    assert!(!ids.contains(&"grown".to_string()), "{ids:?}");
+}
+
+/// A transcript read finds its source where a listing found it, and a
+/// source moved since then is found by listing again.
+#[test]
+fn a_transcript_read_finds_a_moved_source_by_listing_again() {
+    let fixture = Fixture::new();
+    let path = fixture.codex("moving", "");
+    let history = fixture.history();
+    let chat = first(&history);
+    let source = chat.source_id.unwrap();
+    read(&history, &source, None, 1024);
+    fs::remove_file(&path).unwrap();
+    let refused = history
+        .transcript(TranscriptRequest {
+            source_id: source,
+            cursor: None,
+            max_bytes: 1024,
+            end: None,
+        })
+        .unwrap_err();
+    assert_eq!(refused, Error::SourceMissing);
+}

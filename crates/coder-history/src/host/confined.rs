@@ -207,6 +207,7 @@ pub fn incarnation(metadata: &Metadata) -> String {
     digest(format!("{}:{}:{created:?}", metadata.dev(), metadata.ino()).as_bytes())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Directory,
     File,
@@ -214,7 +215,19 @@ pub enum Kind {
     Other,
 }
 
-pub fn kind(directory: &File, name: &std::ffi::OsStr) -> Result<Kind, Error> {
+/// What the catalog needs of a file without opening it: its identity, its
+/// length, and its last write.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stat {
+    pub dev: u64,
+    pub ino: u64,
+    pub size: u64,
+    pub mtime: i64,
+    pub mtime_nsec: i64,
+}
+
+/// An entry's kind and, from the same `fstatat`, its [`Stat`].
+pub fn entry(directory: &File, name: &std::ffi::OsStr) -> Result<(Kind, Stat), Error> {
     let name = CString::new(name.as_bytes()).map_err(|_| Error::InvalidRequest)?;
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: the descriptor and C string are live, and fstatat initializes
@@ -231,11 +244,20 @@ pub fn kind(directory: &File, name: &std::ffi::OsStr) -> Result<Kind, Error> {
         return Err(Error::SourceUnreadable);
     }
     // SAFETY: fstatat succeeded and initialized the structure.
-    let mode = unsafe { stat.assume_init() }.st_mode & libc::S_IFMT;
-    Ok(match mode {
+    let stat = unsafe { stat.assume_init() };
+    let kind = match stat.st_mode & libc::S_IFMT {
         libc::S_IFDIR => Kind::Directory,
         libc::S_IFREG => Kind::File,
         libc::S_IFLNK => Kind::Symlink,
         _ => Kind::Other,
-    })
+    };
+    #[allow(clippy::unnecessary_cast)]
+    let stat = Stat {
+        dev: stat.st_dev as u64,
+        ino: stat.st_ino as u64,
+        size: stat.st_size as u64,
+        mtime: stat.st_mtime as i64,
+        mtime_nsec: stat.st_mtime_nsec as i64,
+    };
+    Ok((kind, stat))
 }

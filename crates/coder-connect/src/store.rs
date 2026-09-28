@@ -10,6 +10,9 @@ use std::{
 };
 
 const MAX_STORE: usize = 64 * 1024 * 1024;
+/// A state file's device, inode, length, and modification and change times.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stamp([u64; 7]);
 pub struct Store {
     directory: PathBuf,
     name: &'static str,
@@ -154,6 +157,25 @@ impl Store {
         self.sync()?;
         self.poisoned = false;
         Ok(())
+    }
+    /// The state file's identity, which changes with every save and with any
+    /// other writer's replacement: a reader that validated this exact file
+    /// can reuse what it validated while the stamp is unchanged.
+    pub fn stamp(&self) -> Option<Stamp> {
+        let m = std::fs::symlink_metadata(self.state_path()).ok()?;
+        Some(Stamp([
+            m.dev(),
+            m.ino(),
+            m.len(),
+            m.mtime() as u64,
+            m.mtime_nsec() as u64,
+            m.ctime() as u64,
+            m.ctime_nsec() as u64,
+        ]))
+    }
+    /// The canonical store directory.
+    pub fn directory(&self) -> &Path {
+        &self.directory
     }
     fn state_path(&self) -> PathBuf {
         self.directory.join(format!("{}.json", self.name))

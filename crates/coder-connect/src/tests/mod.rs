@@ -350,6 +350,80 @@ fn request_expiry_rechecked_after_read_and_rate_is_durable() {
     );
 }
 
+/// The host reuses the book it validated only while the file is the one it
+/// validated: a revocation that another writer saved takes effect on the
+/// next read, and a cached retry is refused too.
+#[test]
+fn a_revocation_another_writer_saved_ends_reads_at_once() {
+    let f = Fixture::new("wss://relay.example/");
+    let pending = f.catalog();
+    let host = f.host();
+    host.handle(&pending.event, &f.code.relay, f.now).unwrap();
+    {
+        let mut store = crate::store::Store::open(&f.state, false).unwrap();
+        let mut book: serde_json::Value = store.load().unwrap().unwrap();
+        book["admissions"][&f.code.grant]["revoked_at"] = serde_json::json!(f.now);
+        store.save(&book).unwrap();
+    }
+    for pending in [pending, f.catalog()] {
+        let reply = host.handle(&pending.event, &f.code.relay, f.now).unwrap();
+        assert_eq!(
+            f.client()
+                .verify_reply(&pending, &reply, f.now)
+                .unwrap_err()
+                .code,
+            ErrorCode::Revoked
+        );
+    }
+}
+
+/// A reply is retained only through its request's lifetime, for every
+/// grant: a read under one grant drops another grant's expired replies, so
+/// the book does not grow with every read ever answered.
+#[test]
+fn expired_replies_of_every_grant_leave_the_book() {
+    let f = Fixture::new("wss://relay.example/");
+    let pending = f.catalog();
+    f.host()
+        .handle(&pending.event, &f.code.relay, f.now)
+        .unwrap();
+    let replies = |f: &Fixture| {
+        let store = crate::store::Store::open(&f.state, false).unwrap();
+        let book: serde_json::Value = store.load().unwrap().unwrap();
+        book["admissions"]
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|a| a["replies"].as_object().unwrap().len())
+            .sum::<usize>()
+    };
+    assert_eq!(replies(&f), 1);
+    // A second grant reads after the first reply's request expired.
+    let later = f.now + MAX_REQUEST_LIFETIME + 1;
+    let other = SecretKey::new(&mut secp256k1::rand::rng());
+    let code = f
+        .host()
+        .pair(
+            &pubkey(&other),
+            &f.code.relay,
+            coder_history::Config {
+                codex: Some(f.root.clone()),
+                claude: None,
+                coder: None,
+            },
+            f.now,
+            f.now + 3600,
+        )
+        .unwrap();
+    let client = Client::new_with_policy(code.clone(), other, RelayPolicy::LoopbackTest).unwrap();
+    let pending = client
+        .prepare(Query::Catalog(CatalogRequest::default()), later)
+        .unwrap();
+    let reply = f.host().handle(&pending.event, &code.relay, later).unwrap();
+    assert!(client.verify_reply(&pending, &reply, later).is_ok());
+    assert_eq!(replies(&f), 1);
+}
+
 #[test]
 fn strict_destinations_schemas_and_private_store_permissions() {
     for bad in [

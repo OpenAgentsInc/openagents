@@ -3,7 +3,7 @@ use super::*;
 use crate::pairing::{self, Invitation};
 use nostr::contracts::digest_bytes;
 const MAX_PAIR_REPLIES: usize = 32;
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RetainedInvitation {
     capability_digest: String,
@@ -90,7 +90,7 @@ impl Host {
                 replies: BTreeMap::new(),
             },
         );
-        store.save(&book)?;
+        self.save(&mut store, &book)?;
         Ok(code)
     }
     /// Cancel only an unused invitation. A paired grant needs explicit revocation.
@@ -105,7 +105,7 @@ impl Host {
             invitation.cancelled = true;
             invitation.replies.clear();
         }
-        store.save(&book)
+        self.save(&mut store, &book)
     }
     /// The original grant ID, once consumption has been committed durably.
     pub fn invitation_grant(&self, id: &str) -> Result<Option<String>> {
@@ -300,7 +300,7 @@ impl Host {
         );
         // Consumption, grant, and exact reply commit together; no success escapes
         // a failed save. A retry reopens this book rather than reusing memory.
-        store.save(&book)?;
+        self.save(&mut store, &book)?;
         Ok(event)
     }
     pub(super) fn validate_invitations(&self, book: &Book, secret: &SecretKey) -> Result<()> {

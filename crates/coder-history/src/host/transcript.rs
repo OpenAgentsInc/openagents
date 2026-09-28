@@ -66,13 +66,21 @@ pub(super) fn page(history: &History, request: TranscriptRequest) -> Result<Tran
     {
         return Err(Error::InvalidRequest);
     }
-    let (sources, _) = catalog::scan(history)?;
-    let source = sources
-        .into_iter()
-        .find(|s| s.id == request.source_id)
-        .ok_or(Error::SourceMissing)?;
+    let mut source = catalog::find(history, &request.source_id)?;
+    let mut file = match history.roots[source.root].open_file(&source.relative) {
+        Ok(file) => file,
+        // A remembered place can be gone: list again before refusing.
+        Err(_) if source.stat.is_none() => {
+            let (sources, _) = catalog::scan(history)?;
+            source = sources
+                .into_iter()
+                .find(|s| s.id == request.source_id)
+                .ok_or(Error::SourceMissing)?;
+            history.roots[source.root].open_file(&source.relative)?
+        }
+        Err(error) => return Err(error),
+    };
     let root = &history.roots[source.root];
-    let mut file = root.open_file(&source.relative)?;
     let meta = file.metadata().map_err(|_| Error::SourceUnreadable)?;
     if meta.len() > confined::MAX_SOURCE_BYTES {
         return Err(Error::ResourceLimit);

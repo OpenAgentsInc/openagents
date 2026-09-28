@@ -288,6 +288,17 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
         coder_connect::host::ensure_parent(&chats.observer)
             .map_err(|_| Error::Config("the chat history store cannot be created".into()))?;
         let observer = coder_connect::host::Host::new(&chats.observer, settings.policy);
+        // Read the chat list once now, so the first device to ask finds each
+        // session's head already read.
+        let sources = chats.sources.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Ok(history) = coder_history::History::open(sources) {
+                let _ = history.catalog(coder_history::CatalogRequest {
+                    cursor: None,
+                    limit: coder_history::MAX_CATALOG_PAGE,
+                });
+            }
+        });
         let (relay, policy) = (settings.relay.clone(), settings.policy);
         tokio::spawn(async move {
             if coder_connect::cli::serve_observer(observer, relay, policy)

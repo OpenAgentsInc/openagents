@@ -92,7 +92,7 @@ struct Admission {
     reads: u32,
     replies: BTreeMap<String, RetainedReply>,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Book {
     v: String,
@@ -197,7 +197,7 @@ impl Host {
                 replies: BTreeMap::new(),
             },
         );
-        store.save(&book)?;
+        self.save(&mut store, &book)?;
         Ok(code)
     }
     pub fn revoke(&self, grant: &str, source: Option<&str>, now: u64) -> Result<()> {
@@ -214,7 +214,7 @@ impl Host {
         admission.revoked_at.get_or_insert(now);
         // Previously encrypted replies can no longer be served by this host.
         admission.replies.clear();
-        store.save(&book)
+        self.save(&mut store, &book)
     }
     pub fn relays(&self, now: u64) -> Result<Vec<String>> {
         let store = Store::open(&self.directory, false)?;
@@ -275,6 +275,11 @@ impl Host {
                 "request lifetime or mailbox differs from envelope",
             );
         }
+        // A reply is retained only through its request's lifetime: drop every
+        // grant's expired replies, so the book stays small.
+        for admission in book.admissions.values_mut() {
+            admission.replies.retain(|_, r| r.expires_at > now);
+        }
         let admission = book
             .admissions
             .get_mut(&request.grant)
@@ -302,7 +307,6 @@ impl Host {
         if let Err(code) = current {
             return self.reply(&secret, event, &request, ReplyResult::Refused { code }, now);
         }
-        admission.replies.retain(|_, r| r.expires_at > now);
         if let Some(old) = admission.replies.get(&request.request) {
             if old.request_event == event.id {
                 return Ok(old.event.clone());
@@ -355,7 +359,7 @@ impl Host {
                 event: response.clone(),
             },
         );
-        store.save(&book)?;
+        self.save(&mut store, &book)?;
         Ok(response)
     }
     fn reply(
@@ -386,7 +390,47 @@ impl Host {
             request.expires_at,
         )
     }
+    /// Save `book` and remember it as the validated state of the new file.
+    fn save(&self, store: &mut Store, book: &Book) -> Result<()> {
+        let mut memo = memo();
+        memo.remove(store.directory());
+        store.save(book)?;
+        if let Some(stamp) = store.stamp() {
+            memo.insert(
+                store.directory().to_path_buf(),
+                Memo {
+                    stamp,
+                    book: book.clone(),
+                },
+            );
+        }
+        Ok(())
+    }
+    /// The store's book, validated. A book this process saved or validated is
+    /// reused while its file is unchanged; any other writer's save replaces
+    /// the file, which is then read and validated again.
     fn book(&self, store: &Store, secret: &SecretKey, initialize: bool) -> Result<Book> {
+        let stamp = store.stamp();
+        if let Some(stamp) = stamp
+            && let Some(known) = memo().get(store.directory())
+            && known.stamp == stamp
+            && known.book.host == pubkey(secret)
+        {
+            return Ok(known.book.clone());
+        }
+        let book = self.load(store, secret, initialize)?;
+        if let Some(stamp) = stamp {
+            memo().insert(
+                store.directory().to_path_buf(),
+                Memo {
+                    stamp,
+                    book: book.clone(),
+                },
+            );
+        }
+        Ok(book)
+    }
+    fn load(&self, store: &Store, secret: &SecretKey, initialize: bool) -> Result<Book> {
         let book: Book = match store.load()? {
             Some(book) => book,
             None if initialize => Book {
@@ -441,6 +485,18 @@ impl Host {
         self.validate_invitations(&book, secret)?;
         Ok(book)
     }
+}
+/// A validated book and the exact file it was read from or saved to.
+struct Memo {
+    stamp: crate::store::Stamp,
+    book: Book,
+}
+fn memo() -> std::sync::MutexGuard<'static, std::collections::HashMap<PathBuf, Memo>> {
+    static MEMO: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<PathBuf, Memo>>> =
+        std::sync::OnceLock::new();
+    MEMO.get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
 }
 fn read(roots: &[Root], query: &Query) -> Result<Observation> {
     let mut config = coder_history::Config::default();

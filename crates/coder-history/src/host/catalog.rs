@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 const MAX_INDEX_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_NOTICES: usize = 128;
 
+#[derive(Clone)]
 pub(super) struct Source {
     pub root: usize,
     pub relative: PathBuf,
@@ -15,6 +16,8 @@ pub(super) struct Source {
     pub harness: Harness,
     pub archived: bool,
     pub subagent: bool,
+    /// The file's identity, length, and last write when it was listed.
+    pub stat: Option<confined::Stat>,
 }
 
 pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Error> {
@@ -45,7 +48,7 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
                         continue;
                     }
                 };
-                let names = match confined::names(&directory) {
+                let names = match entries(root, &relative, &directory) {
                     Ok(names) => names,
                     Err(Error::ResourceLimit) => return Err(Error::ResourceLimit),
                     Err(_) => {
@@ -57,23 +60,24 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
                         continue;
                     }
                 };
-                for name in names {
+                for (name, found) in names {
                     visited += 1;
                     if visited > confined::MAX_ENTRIES {
                         return Err(Error::ResourceLimit);
                     }
                     let path = relative.join(&name);
-                    match confined::kind(&directory, &name) {
-                        Ok(confined::Kind::Directory) => {
+                    match found {
+                        Ok((confined::Kind::Directory, _)) => {
                             if path.components().count() >= 16 {
                                 return Err(Error::ResourceLimit);
                             }
                             pending.push(path);
                         }
-                        Ok(confined::Kind::File)
+                        Ok((confined::Kind::File, stat))
                             if path.extension().is_some_and(|e| e == "jsonl") =>
                         {
                             sources.push(Source {
+                                stat,
                                 root: root_index,
                                 id: root.source_id(&path),
                                 harness: root.harness,
@@ -82,7 +86,7 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
                                 relative: path,
                             });
                         }
-                        Ok(confined::Kind::Symlink) => {
+                        Ok((confined::Kind::Symlink, _)) => {
                             notice(&mut notices, "symlink_refused", Some(root.source_id(&path)))?
                         }
                         Err(_) => notice(
@@ -98,7 +102,124 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
     }
     sources.sort_by(|a, b| a.id.cmp(&b.id));
     notices.sort_by(|a, b| (&a.code, &a.source_id).cmp(&(&b.code, &b.source_id)));
+    let mut places = memo(&PLACES);
+    for source in &sources {
+        if !places.contains_key(&source.id) {
+            places.insert(
+                source.id.clone(),
+                (
+                    history.roots[source.root].id.clone(),
+                    source.relative.clone(),
+                ),
+            );
+        }
+    }
+    drop(places);
     Ok((sources, notices))
+}
+
+/// A directory's entries and their kinds, as listed when its identity and
+/// last change were `stat`. Adding, removing, or renaming an entry changes a
+/// directory's last change, so an unchanged directory lists the same.
+struct KnownDirectory {
+    stat: (u64, u64, i64, i64),
+    entries: Vec<(std::ffi::OsString, confined::Kind)>,
+}
+
+static DIRECTORIES: std::sync::OnceLock<Memo<(String, PathBuf), KnownDirectory>> =
+    std::sync::OnceLock::new();
+
+/// A directory's entries with their kinds, and each file's [`confined::Stat`]:
+/// an unchanged directory's names and kinds come from its last listing, and
+/// only its files are looked at again.
+#[allow(clippy::type_complexity)]
+fn entries(
+    root: &confined::Root,
+    relative: &Path,
+    directory: &std::fs::File,
+) -> Result<
+    Vec<(
+        std::ffi::OsString,
+        Result<(confined::Kind, Option<confined::Stat>), Error>,
+    )>,
+    Error,
+> {
+    use std::os::unix::fs::MetadataExt;
+    let stat = directory
+        .metadata()
+        .map(|m| (m.dev(), m.ino(), m.mtime(), m.mtime_nsec()))
+        .map_err(|_| Error::SourceUnreadable)?;
+    let key = (root.id.clone(), relative.to_path_buf());
+    let known = memo(&DIRECTORIES)
+        .get(&key)
+        .filter(|known| known.stat == stat)
+        .map(|known| known.entries.clone());
+    if let Some(known) = known {
+        return Ok(known
+            .into_iter()
+            .map(|(name, kind)| {
+                let found = match kind {
+                    confined::Kind::File => {
+                        confined::entry(directory, &name).map(|(kind, stat)| (kind, Some(stat)))
+                    }
+                    kind => Ok((kind, None)),
+                };
+                (name, found)
+            })
+            .collect());
+    }
+    let names = confined::names(directory)?;
+    let mut listed = Vec::with_capacity(names.len());
+    let mut whole = true;
+    for name in names {
+        let found = confined::entry(directory, &name).map(|(kind, stat)| (kind, Some(stat)));
+        whole &= found.is_ok();
+        listed.push((name, found));
+    }
+    if whole {
+        memo(&DIRECTORIES).insert(
+            key,
+            KnownDirectory {
+                stat,
+                entries: listed
+                    .iter()
+                    .filter_map(|(name, found)| {
+                        found.as_ref().ok().map(|(kind, _)| (name.clone(), *kind))
+                    })
+                    .collect(),
+            },
+        );
+    }
+    Ok(listed)
+}
+
+/// Where each listed source ID was found: its root's ID and its path in
+/// that root. Only a scan adds a place, so a place was admitted by the same
+/// rules as a listing.
+static PLACES: std::sync::OnceLock<Memo<String, (String, PathBuf)>> = std::sync::OnceLock::new();
+
+/// The source `id` names, where a scan found it before; else a new scan.
+pub(super) fn find(history: &History, id: &str) -> Result<Source, Error> {
+    let known = memo(&PLACES).get(id).cloned();
+    if let Some((root_id, relative)) = known
+        && let Some(root) = history.roots.iter().position(|r| r.id == root_id)
+        && history.roots[root].source_id(&relative) == id
+    {
+        return Ok(Source {
+            root,
+            id: id.to_owned(),
+            harness: history.roots[root].harness,
+            archived: false,
+            subagent: false,
+            relative,
+            stat: None,
+        });
+    }
+    let (sources, _) = scan(history)?;
+    sources
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or(Error::SourceMissing)
 }
 
 /// Coder's task directory is flat: each `*.atif.jsonl` directly inside it is
@@ -135,8 +256,9 @@ fn tasks(
         if !name.to_str().is_some_and(|n| n.ends_with(ATIF_SUFFIX)) {
             continue;
         }
-        match confined::kind(&directory, &name) {
-            Ok(confined::Kind::File) => sources.push(Source {
+        match confined::entry(&directory, &name) {
+            Ok((confined::Kind::File, stat)) => sources.push(Source {
+                stat: Some(stat),
                 root: root_index,
                 id: root.source_id(&path),
                 harness: root.harness,
@@ -144,7 +266,7 @@ fn tasks(
                 subagent: false,
                 relative: path,
             }),
-            Ok(confined::Kind::Symlink) => {
+            Ok((confined::Kind::Symlink, _)) => {
                 notice(notices, "symlink_refused", Some(root.source_id(&path)))?
             }
             Err(_) => notice(notices, "entry_unavailable", Some(root.source_id(&path)))?,
@@ -222,20 +344,73 @@ fn notice(out: &mut Vec<Notice>, code: &str, source_id: Option<String>) -> Resul
     Ok(())
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Title {
     name: String,
     updated: Option<String>,
 }
 
+/// A Codex title index as last read: its file's identity, length, and last
+/// write, the titles, and the notices reading it left.
+struct KnownTitles {
+    stat: (u64, u64, u64, i64, i64),
+    titles: std::sync::Arc<BTreeMap<String, Title>>,
+    notices: Vec<(String, Option<String>)>,
+}
+
+static TITLES: std::sync::OnceLock<Memo<String, KnownTitles>> = std::sync::OnceLock::new();
+
+/// A root's titles, read again only when its index file changed.
 fn titles(
+    root: &confined::Root,
+    notices: &mut Vec<Notice>,
+) -> Result<std::sync::Arc<BTreeMap<String, Title>>, Error> {
+    if root.harness != Harness::Codex {
+        return Ok(Default::default());
+    }
+    let stat = root
+        .open_file(Path::new("session_index.jsonl"))
+        .ok()
+        .and_then(|file| file.metadata().ok())
+        .map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            (m.dev(), m.ino(), m.len(), m.mtime(), m.mtime_nsec())
+        });
+    if let Some(stat) = stat
+        && let Some(known) = memo(&TITLES).get(&root.id)
+        && known.stat == stat
+    {
+        for (code, source) in &known.notices {
+            notice(notices, code, source.clone())?;
+        }
+        return Ok(known.titles.clone());
+    }
+    let mut own = Vec::new();
+    let titles = std::sync::Arc::new(read_titles(root, &mut own)?);
+    if let Some(stat) = stat {
+        memo(&TITLES).insert(
+            root.id.clone(),
+            KnownTitles {
+                stat,
+                titles: titles.clone(),
+                notices: own
+                    .iter()
+                    .map(|n| (n.code.clone(), n.source_id.clone()))
+                    .collect(),
+            },
+        );
+    }
+    for n in own {
+        notice(notices, &n.code, n.source_id)?;
+    }
+    Ok(titles)
+}
+
+fn read_titles(
     root: &confined::Root,
     notices: &mut Vec<Notice>,
 ) -> Result<BTreeMap<String, Title>, Error> {
     let mut result = BTreeMap::new();
-    if root.harness != Harness::Codex {
-        return Ok(result);
-    }
     let path = Path::new("session_index.jsonl");
     let file = match root.open_file(path) {
         Ok(file) => file,
@@ -371,19 +546,104 @@ const HEADER_BYTES: u64 = crate::MAX_READABLE_RECORD_BYTES as u64;
 const ENTRYPOINT_SCAN_BYTES: u64 = 1024 * 1024;
 const ENTRYPOINT_SCAN_RECORDS: usize = 16;
 
+/// What a source's head was when last read, kept while its file is the same
+/// one: `settled` when a longer file cannot change it (its first record, and
+/// a Claude session's entry point, were read whole), else only while its
+/// length is unchanged.
+#[derive(Clone)]
+struct KnownHead {
+    dev: u64,
+    ino: u64,
+    size: u64,
+    settled: bool,
+    native: Option<String>,
+    title: Option<String>,
+    engine: bool,
+    spawned: bool,
+}
+
+type Memo<K, V> = std::sync::Mutex<std::collections::HashMap<K, V>>;
+
+fn memo<K, V>(
+    cell: &'static std::sync::OnceLock<Memo<K, V>>,
+) -> std::sync::MutexGuard<'static, std::collections::HashMap<K, V>> {
+    let mut guard = cell
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    // Bound the memo: sources come and go, and a full memo starts over.
+    if guard.len() > 4 * confined::MAX_ENTRIES {
+        guard.clear();
+    }
+    guard
+}
+
+static HEADS: std::sync::OnceLock<Memo<(String, PathBuf), KnownHead>> = std::sync::OnceLock::new();
+
+/// A source's head, from what was read before when its file is the same.
 fn head(root: &confined::Root, source: &Source) -> Head {
+    let Some(stat) = source.stat else {
+        return read_head(root, source).0;
+    };
+    let key = (root.id.clone(), source.relative.clone());
+    let modified = u64::try_from(stat.mtime).ok().map(utc);
+    if stat.size == 0 {
+        return Head {
+            status: SourceStatus::Empty,
+            modified,
+            ..Head::default()
+        };
+    }
+    if let Some(known) = memo(&HEADS).get(&key)
+        && known.dev == stat.dev
+        && known.ino == stat.ino
+        && (known.settled && stat.size >= known.size || known.size == stat.size)
+    {
+        return Head {
+            native: known.native.clone(),
+            title: known.title.clone(),
+            status: SourceStatus::Available,
+            modified,
+            engine: known.engine,
+            spawned: known.spawned,
+        };
+    }
+    let (head, settled) = read_head(root, source);
+    if head.status == SourceStatus::Available {
+        memo(&HEADS).insert(
+            key,
+            KnownHead {
+                dev: stat.dev,
+                ino: stat.ino,
+                size: stat.size,
+                settled,
+                native: head.native.clone(),
+                title: head.title.clone(),
+                engine: head.engine,
+                spawned: head.spawned,
+            },
+        );
+    }
+    head
+}
+
+/// Read a source's head, and whether more bytes cannot change it.
+fn read_head(root: &confined::Root, source: &Source) -> (Head, bool) {
     let file = match root.open_file(&source.relative) {
         Ok(file) => file,
         Err(Error::SourceMissing) => {
-            return Head {
-                status: SourceStatus::Missing,
-                ..Head::default()
-            };
+            return (
+                Head {
+                    status: SourceStatus::Missing,
+                    ..Head::default()
+                },
+                false,
+            );
         }
-        Err(_) => return Head::default(),
+        Err(_) => return (Head::default(), false),
     };
     let Ok(meta) = file.metadata() else {
-        return Head::default();
+        return (Head::default(), false);
     };
     let modified = meta
         .modified()
@@ -391,20 +651,28 @@ fn head(root: &confined::Root, source: &Source) -> Head {
         .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|elapsed| utc(elapsed.as_secs()));
     if meta.len() == 0 {
-        return Head {
-            status: SourceStatus::Empty,
-            modified,
-            ..Head::default()
-        };
+        return (
+            Head {
+                status: SourceStatus::Empty,
+                modified,
+                ..Head::default()
+            },
+            false,
+        );
     }
     let mut first = Vec::new();
     let read = BufReader::new(file.take(HEADER_BYTES)).read_until(b'\n', &mut first);
     if read.is_err() {
-        return Head {
-            modified,
-            ..Head::default()
-        };
+        return (
+            Head {
+                modified,
+                ..Head::default()
+            },
+            false,
+        );
     }
+    // A header longer than the bound never parses, however long the file.
+    let mut settled = first.ends_with(b"\n") || first.len() as u64 >= HEADER_BYTES;
     // Only the fields the catalog uses are kept: a Codex header's base
     // instructions are skipped, not copied.
     #[derive(serde::Deserialize)]
@@ -449,59 +717,104 @@ fn head(root: &confined::Root, source: &Source) -> Head {
                 .and_then(|s| s.as_object())
                 .is_some_and(|s| s.contains_key("subagent")),
         ),
-        Harness::Claude => (
-            claude_entrypoint(root, source).as_deref() == Some(crate::engine::MARK),
-            false,
-        ),
+        Harness::Claude => {
+            let (entrypoint, known) = claude_entrypoint(root, source);
+            settled &= known;
+            (entrypoint.as_deref() == Some(crate::engine::MARK), false)
+        }
         Harness::Coder => (false, false),
     };
-    Head {
-        native,
-        title,
-        status: SourceStatus::Available,
-        modified,
-        engine,
-        spawned,
-    }
+    (
+        Head {
+            native,
+            title,
+            status: SourceStatus::Available,
+            modified,
+            engine,
+            spawned,
+        },
+        settled,
+    )
 }
 
 /// The entry point Claude Code recorded for a session: the `entrypoint` of
 /// its first record that has one, within the first
 /// [`ENTRYPOINT_SCAN_RECORDS`] records and [`ENTRYPOINT_SCAN_BYTES`].
-fn claude_entrypoint(root: &confined::Root, source: &Source) -> Option<String> {
+fn claude_entrypoint(root: &confined::Root, source: &Source) -> (Option<String>, bool) {
     #[derive(serde::Deserialize)]
     struct Record {
         entrypoint: Option<String>,
     }
-    let file = root.open_file(&source.relative).ok()?;
+    let Ok(file) = root.open_file(&source.relative) else {
+        return (None, false);
+    };
     let mut reader = BufReader::new(file.take(ENTRYPOINT_SCAN_BYTES));
     let mut line = Vec::new();
+    let mut read = 0;
     for _ in 0..ENTRYPOINT_SCAN_RECORDS {
         line.clear();
-        if reader.read_until(b'\n', &mut line).ok()? == 0 || !line.ends_with(b"\n") {
-            return None;
+        match reader.read_until(b'\n', &mut line) {
+            Ok(0) | Err(_) => return (None, false),
+            Ok(count) => read += count as u64,
+        }
+        if !line.ends_with(b"\n") {
+            // The scan's bound ends inside a record: nothing later counts.
+            return (None, read >= ENTRYPOINT_SCAN_BYTES);
         }
         if let Ok(Record {
             entrypoint: Some(entrypoint),
         }) = serde_json::from_slice(&line)
         {
-            return Some(entrypoint);
+            return (Some(entrypoint), true);
         }
     }
-    None
+    (None, true)
 }
 
 /// The first line of the chat's first prompt, for a chat with no title:
 /// the first user message within the first 64 KiB that is not injected
 /// context (text that opens with `<`, such as `<environment_context>`).
 fn first_prompt(root: &confined::Root, source: &Source) -> Option<String> {
-    let file = root.open_file(&source.relative).ok()?;
-    let mut reader = BufReader::new(file.take(64 * 1024));
+    /// Identity, length, settled, and the prompt read.
+    type KnownPrompt = (u64, u64, u64, bool, Option<String>);
+    static PROMPTS: std::sync::OnceLock<Memo<(String, PathBuf), KnownPrompt>> =
+        std::sync::OnceLock::new();
+    let key = (root.id.clone(), source.relative.clone());
+    if let Some(stat) = source.stat
+        && let Some((dev, ino, size, settled, prompt)) = memo(&PROMPTS).get(&key)
+        && *dev == stat.dev
+        && *ino == stat.ino
+        && (*settled && stat.size >= *size || *size == stat.size)
+    {
+        return prompt.clone();
+    }
+    let (prompt, settled) = read_first_prompt(root, source);
+    if let Some(stat) = source.stat {
+        memo(&PROMPTS).insert(
+            key,
+            (stat.dev, stat.ino, stat.size, settled, prompt.clone()),
+        );
+    }
+    prompt
+}
+
+/// The first prompt, and whether more bytes cannot change it.
+fn read_first_prompt(root: &confined::Root, source: &Source) -> (Option<String>, bool) {
+    const SCAN: u64 = 64 * 1024;
+    let Ok(file) = root.open_file(&source.relative) else {
+        return (None, false);
+    };
+    let mut reader = BufReader::new(file.take(SCAN));
     let mut line = Vec::new();
+    let mut read = 0;
     loop {
         line.clear();
-        if reader.read_until(b'\n', &mut line).ok()? == 0 || !line.ends_with(b"\n") {
-            return None;
+        match reader.read_until(b'\n', &mut line) {
+            Ok(0) | Err(_) => return (None, read >= SCAN),
+            Ok(count) => read += count as u64,
+        }
+        if !line.ends_with(b"\n") {
+            return (None, read >= SCAN);
         }
         let Some(readable) = crate::readable_record(&line) else {
             continue;
@@ -518,7 +831,7 @@ fn first_prompt(root: &confined::Root, source: &Source) -> Option<String> {
             continue;
         }
         let first = text.lines().next().unwrap_or(text).trim();
-        return Some(bounded(first, 120).0);
+        return (Some(bounded(first, 120).0), true);
     }
 }
 
@@ -528,7 +841,7 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
     }
     let (sources, mut notices) = scan(history)?;
     let mut entries: Vec<(String, Chat)> = Vec::new();
-    let mut untitled: BTreeMap<String, (usize, PathBuf)> = BTreeMap::new();
+    let mut untitled: BTreeMap<String, (usize, PathBuf, Option<confined::Stat>)> = BTreeMap::new();
     for (root_index, root) in history.roots.iter().enumerate() {
         let title_map = titles(root, &mut notices)?;
         let mut present = HashSet::new();
@@ -561,7 +874,10 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
             };
             let named = title.map(|t| t.name.as_str()).or(from_title.as_deref());
             if named.is_none() {
-                untitled.insert(source.id.clone(), (root_index, source.relative.clone()));
+                untitled.insert(
+                    source.id.clone(),
+                    (root_index, source.relative.clone(), source.stat),
+                );
             }
             let (name, truncated) = bounded(named.unwrap_or(default), 256);
             // Every attempt of a Coder task shares its task ID, so the
@@ -594,8 +910,9 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
             ));
         }
         for (native, title) in title_map
-            .into_iter()
-            .filter(|(native, _)| !present.contains(native))
+            .iter()
+            .filter(|(native, _)| !present.contains(*native))
+            .map(|(native, title)| (native.clone(), title.clone()))
         {
             let id = digest(format!("{}\0{native}", root.id).as_bytes());
             let (title_name, truncated) = bounded(&title.name, 256);
@@ -681,7 +998,8 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
     }
     // Name untitled chats on this page from their first prompt.
     for chat in &mut page.entries {
-        if let Some((root, relative)) = chat.source_id.as_ref().and_then(|id| untitled.get(id))
+        if let Some((root, relative, stat)) =
+            chat.source_id.as_ref().and_then(|id| untitled.get(id))
             && let Some(prompt) = first_prompt(
                 &history.roots[*root],
                 &Source {
@@ -691,6 +1009,7 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
                     harness: chat.harness,
                     archived: chat.archived,
                     subagent: chat.subagent,
+                    stat: *stat,
                 },
             )
         {
