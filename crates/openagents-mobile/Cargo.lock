@@ -2973,6 +2973,7 @@ name = "gym-leaderboard"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "nostr",
  "reqwest",
  "serde",
  "serde_json",
