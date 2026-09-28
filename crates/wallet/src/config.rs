@@ -58,15 +58,18 @@ impl Network {
 
 /// Which LSPS protocol the liquidity provider speaks.
 ///
-/// `Lsps1` buys a channel in advance and the node still signs its own
-/// invoices, so the node id stays a valid x402 `payTo`. `Lsps2` opens a
-/// channel just in time on the first payment.
+/// `Lsps1` buys a channel in advance. `Lsps2` and `Lsps4` open a channel
+/// just in time on the first payment: the invoice carries a route hint
+/// through the LSP and this node signs it, so the node id stays a valid
+/// x402 `payTo` on every protocol. `Lsps4` is MoneyDevKit's JIT channel
+/// negotiation, which their fork of `ldk-node` implements.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LspProtocol {
     Lsps1,
     #[default]
     Lsps2,
+    Lsps4,
 }
 
 impl LspProtocol {
@@ -74,8 +77,9 @@ impl LspProtocol {
         match text {
             "lsps1" => Ok(Self::Lsps1),
             "lsps2" => Ok(Self::Lsps2),
+            "lsps4" => Ok(Self::Lsps4),
             other => Err(WalletError::Invalid(format!(
-                "LSP protocol must be lsps1 or lsps2, not `{other}`"
+                "LSP protocol must be lsps1, lsps2, or lsps4, not `{other}`"
             ))),
         }
     }
@@ -84,7 +88,14 @@ impl LspProtocol {
         match self {
             Self::Lsps1 => "lsps1",
             Self::Lsps2 => "lsps2",
+            Self::Lsps4 => "lsps4",
         }
+    }
+
+    /// Whether the LSP opens a channel just in time, so an invoice can be
+    /// issued before any channel exists.
+    pub fn just_in_time(self) -> bool {
+        matches!(self, Self::Lsps2 | Self::Lsps4)
     }
 }
 
@@ -112,6 +123,13 @@ const OLYMPUS_LSPS1_MAINNET: &str =
 const OLYMPUS_LSPS1_TESTNET: &str =
     "03e84a109cd70e57864274932fc87c5e6434c59ebb8e6e7d28532219ba38f7f6df@139.144.22.237:9735";
 
+/// MoneyDevKit's LSPS4 peers, from `moneydevkit/mdkd` (`NetworkInfra`).
+/// Its signet is Mutinynet, a separate signet chain with its own Esplora.
+const MDK_LSPS4_MAINNET: &str =
+    "02a63339cc6b913b6330bd61b2f469af8785a6011a6305bb102298a8e76697473b@lsp.moneydevkit.com:9735";
+const MDK_LSPS4_SIGNET: &str = "03fd9a377576df94cc7e458471c43c400630655083dee89df66c6ad38d1b7acffd@lsp.staging.moneydevkit.com:9735";
+pub const MUTINYNET_ESPLORA: &str = "https://mutinynet.com/api";
+
 impl Lsp {
     /// The Olympus LSPS1 peer for `network`, or an error where Olympus
     /// runs no LSPS1 service.
@@ -129,23 +147,53 @@ impl Lsp {
         Self::parse(peer, None, LspProtocol::Lsps1)
     }
 
-    /// Parse `NODE_ID@HOST:PORT`, or the preset name `olympus` for
-    /// `network`.
+    /// The MoneyDevKit LSPS4 peer for `network`: mainnet, or Mutinynet
+    /// for signet. `token` is an optional signed fee claim.
+    pub fn mdk(network: Network) -> Result<Self, WalletError> {
+        let peer = match network {
+            Network::Bitcoin => MDK_LSPS4_MAINNET,
+            Network::Signet => MDK_LSPS4_SIGNET,
+            other => {
+                return Err(WalletError::Invalid(format!(
+                    "MoneyDevKit serves LSPS4 on bitcoin and signet (Mutinynet), not {}",
+                    other.as_str()
+                )));
+            }
+        };
+        Self::parse(peer, None, LspProtocol::Lsps4)
+    }
+
+    /// The Esplora server this LSP's chain needs where it differs from the
+    /// network default: MoneyDevKit's signet is Mutinynet.
+    pub fn esplora_override(&self, network: Network) -> Option<&'static str> {
+        (network == Network::Signet && self.node_id == MDK_LSPS4_SIGNET[..66])
+            .then_some(MUTINYNET_ESPLORA)
+    }
+
+    /// Parse `NODE_ID@HOST:PORT`, or the preset names `olympus` (LSPS1) or
+    /// `mdk` (LSPS4) for `network`.
     pub fn parse_or_preset(
         text: &str,
         token: Option<&str>,
         protocol: Option<LspProtocol>,
         network: Network,
     ) -> Result<Self, WalletError> {
-        if text.eq_ignore_ascii_case("olympus") {
-            let mut lsp = Self::olympus(network)?;
+        let preset = if text.eq_ignore_ascii_case("olympus") {
+            Some(("olympus", Self::olympus(network)?))
+        } else if text.eq_ignore_ascii_case("mdk") {
+            Some(("mdk", Self::mdk(network)?))
+        } else {
+            None
+        };
+        if let Some((name, mut lsp)) = preset {
             lsp.token = token.map(str::to_owned);
             if let Some(protocol) = protocol
-                && protocol != LspProtocol::Lsps1
+                && protocol != lsp.protocol
             {
-                return Err(WalletError::Invalid(
-                    "the olympus preset is LSPS1; drop --lsp-protocol or give a peer".to_string(),
-                ));
+                return Err(WalletError::Invalid(format!(
+                    "the {name} preset is {}; drop --lsp-protocol or give a peer",
+                    lsp.protocol.as_str().to_uppercase()
+                )));
             }
             return Ok(lsp);
         }
@@ -395,5 +443,28 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(plain.protocol, LspProtocol::Lsps2);
+    }
+
+    #[test]
+    fn mdk_preset_is_lsps4_and_picks_mutinynet_on_signet() {
+        let mainnet = Lsp::parse_or_preset("mdk", None, None, Network::Bitcoin).unwrap();
+        assert_eq!(mainnet.protocol, LspProtocol::Lsps4);
+        assert!(mainnet.protocol.just_in_time());
+        assert!(mainnet.node_id.starts_with("02a63339"));
+        assert_eq!(mainnet.address, "lsp.moneydevkit.com:9735");
+        assert_eq!(mainnet.esplora_override(Network::Bitcoin), None);
+        let signet = Lsp::parse_or_preset("mdk", Some("claim"), None, Network::Signet).unwrap();
+        assert!(signet.node_id.starts_with("03fd9a37"));
+        assert_eq!(signet.token.as_deref(), Some("claim"));
+        assert_eq!(
+            signet.esplora_override(Network::Signet),
+            Some(MUTINYNET_ESPLORA)
+        );
+        assert!(Lsp::parse_or_preset("mdk", None, None, Network::Testnet).is_err());
+        assert!(
+            Lsp::parse_or_preset("mdk", None, Some(LspProtocol::Lsps2), Network::Bitcoin).is_err()
+        );
+        assert_eq!(LspProtocol::parse("lsps4").unwrap(), LspProtocol::Lsps4);
+        assert!(!LspProtocol::Lsps1.just_in_time());
     }
 }

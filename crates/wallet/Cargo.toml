@@ -17,7 +17,10 @@ thiserror = "2"
 hex = "0.4"
 sha2 = "0.10"
 rusqlite = { version = "0.31", features = ["bundled"] }
-ldk-node = { version = "0.7.0", optional = true }
+# MoneyDevKit's fork of ldk-node 0.7.0. It adds the LSPS4 client, whose
+# JIT-channel invoices the local node signs itself, so the node id stays
+# a valid x402 `payTo`.
+ldk-node = { git = "https://github.com/moneydevkit/ldk-node", rev = "799e5be2ffaaaf2524d848ea1ba37bd15769f403", optional = true }
 
 [features]
 default = ["ldk"]

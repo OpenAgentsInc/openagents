@@ -34,6 +34,8 @@ const PEER_DIAL_INTERVAL: Duration = Duration::from_secs(5);
 pub struct LdkWallet {
     node: Node,
     network: crate::config::Network,
+    /// The configured LSP's protocol, when one opens channels just in time.
+    jit: Option<LspProtocol>,
 }
 
 /// A new 24-word BIP39 mnemonic.
@@ -79,6 +81,15 @@ impl LdkWallet {
             for peer in &config.trusted_peers {
                 anchors.trusted_peers_no_reserve.push(pubkey(peer)?);
             }
+            // A just-in-time LSP opens its channel toward a node that holds
+            // no coins yet, so the anchor reserve check would refuse it.
+            if let Some(lsp) = config
+                .lsp
+                .as_ref()
+                .filter(|lsp| lsp.protocol.just_in_time())
+            {
+                anchors.trusted_peers_no_reserve.push(pubkey(&lsp.node_id)?);
+            }
         }
         let mut builder = Builder::from_config(node_config);
         builder.set_network(network(config.network));
@@ -100,6 +111,9 @@ impl LdkWallet {
                 LspProtocol::Lsps2 => {
                     builder.set_liquidity_source_lsps2(node_id, address, lsp.token.clone());
                 }
+                LspProtocol::Lsps4 => {
+                    builder.set_liquidity_source_lsps4(node_id, address, lsp.token.clone());
+                }
             }
         }
         let node = builder
@@ -108,6 +122,11 @@ impl LdkWallet {
         Ok(Self {
             node,
             network: config.network,
+            jit: config
+                .lsp
+                .as_ref()
+                .map(|lsp| lsp.protocol)
+                .filter(|protocol| protocol.just_in_time()),
         })
     }
 
@@ -246,6 +265,16 @@ impl LdkWallet {
         PEER_DIAL_INTERVAL
     }
 
+    /// Whether a usable channel already has `amount_msat` of inbound
+    /// capacity, so a plain invoice can be paid without the LSP opening a
+    /// channel.
+    fn can_receive(&self, amount_msat: u64) -> bool {
+        self.node
+            .list_channels()
+            .iter()
+            .any(|channel| channel.is_usable && channel.inbound_capacity_msat >= amount_msat)
+    }
+
     fn payment(&self, hash: [u8; 32]) -> Option<PaymentDetails> {
         self.node
             .payment(&ldk_node::lightning::ln::channelmanager::PaymentId(hash))
@@ -268,11 +297,18 @@ impl LightningWallet for LdkWallet {
         }
         let description =
             Bolt11InvoiceDescription::Hash(Sha256(sha256::Hash::from_byte_array(request_hash)));
-        let invoice = self
-            .node
-            .bolt11_payment()
-            .receive(amount_msat, &description, expiry_secs)
-            .map_err(|error| WalletError::Node(format!("receive: {error}")))?;
+        let payment = self.node.bolt11_payment();
+        let invoice = match self.jit.filter(|_| !self.can_receive(amount_msat)) {
+            None => payment
+                .receive(amount_msat, &description, expiry_secs)
+                .map_err(|error| WalletError::Node(format!("receive: {error}")))?,
+            Some(LspProtocol::Lsps4) => payment
+                .receive_via_lsps4_jit_channel(Some(amount_msat), &description, expiry_secs)
+                .map_err(|error| WalletError::Node(format!("lsps4 receive: {error}")))?,
+            Some(_) => payment
+                .receive_via_jit_channel(amount_msat, &description, expiry_secs, None)
+                .map_err(|error| WalletError::Node(format!("lsps2 receive: {error}")))?,
+        };
         Ok(IssuedInvoice {
             bolt11: invoice.to_string(),
             payment_hash: hex::encode(invoice.payment_hash().to_byte_array()),

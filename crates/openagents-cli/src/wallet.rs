@@ -16,16 +16,20 @@ use crate::{Args, Output};
 
 const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
   init [--network NET] [--esplora URL] [--listen HOST:PORT]
-       [--lsp NODE_ID@HOST:PORT|olympus [--lsp-protocol lsps1|lsps2]
+       [--lsp NODE_ID@HOST:PORT|olympus|mdk [--lsp-protocol lsps1|lsps2|lsps4]
         [--lsp-token TOKEN] [--lsp-min-msat N]] [--trust NODE_ID]...
        [--mnemonic -]
                           Write config.json and a seed. NET is bitcoin,
                           testnet, signet, or regtest (default signet).
                           --lsp olympus picks the Olympus (ZEUS) LSPS1
-                          peer for the network; a peer given by hand is
-                          LSPS2 (just-in-time) unless --lsp-protocol says
-                          lsps1. LSPS1 keeps this node the invoice signer,
-                          which x402 requires of payTo.
+                          peer for the network; --lsp mdk picks the
+                          MoneyDevKit LSPS4 peer (bitcoin, or Mutinynet
+                          on signet, which also sets --esplora), whose
+                          just-in-time channel needs no funding first. A
+                          peer given by hand is LSPS2 unless
+                          --lsp-protocol says otherwise. This node signs
+                          its invoices on every protocol, as x402 requires
+                          of payTo.
                           --trust lets that peer open anchor channels here
                           without an on-chain reserve (your own nodes).
                           Running init again keeps the seed. --mnemonic -
@@ -207,20 +211,11 @@ fn init(args: &Args) -> Result<Value, Failure> {
             existing.network.as_str()
         ))));
     }
-    let mut wallet_config = WalletConfig::new(
-        network,
-        args.option("esplora")
-            .or(existing.as_ref().map(|c| c.esplora_url.as_str())),
-    )?;
-    wallet_config.listen = args
-        .option("listen")
-        .map(str::to_owned)
-        .or(existing.as_ref().and_then(|c| c.listen.clone()));
     let lsp_protocol = args
         .option("lsp-protocol")
         .map(config::LspProtocol::parse)
         .transpose()?;
-    wallet_config.lsp = match args.option("lsp") {
+    let lsp = match args.option("lsp") {
         Some(text) => Some(config::Lsp::parse_or_preset(
             text,
             args.option("lsp-token"),
@@ -229,6 +224,20 @@ fn init(args: &Args) -> Result<Value, Failure> {
         )?),
         None => existing.as_ref().and_then(|c| c.lsp.clone()),
     };
+    let esplora = args
+        .option("esplora")
+        .or_else(|| {
+            lsp.as_ref()
+                .filter(|_| args.option("lsp").is_some())
+                .and_then(|lsp| lsp.esplora_override(network))
+        })
+        .or(existing.as_ref().map(|c| c.esplora_url.as_str()));
+    let mut wallet_config = WalletConfig::new(network, esplora)?;
+    wallet_config.listen = args
+        .option("listen")
+        .map(str::to_owned)
+        .or(existing.as_ref().and_then(|c| c.listen.clone()));
+    wallet_config.lsp = lsp;
     if let Some(text) = args.option("lsp-min-msat") {
         let min: u64 = text
             .parse()
