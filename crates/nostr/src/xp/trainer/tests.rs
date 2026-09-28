@@ -100,3 +100,42 @@ fn the_newest_replaceable_event_wins_by_time_then_lowest_id() {
     assert_eq!(newest([&new, &twin]).unwrap().id, lowest.id);
     assert_eq!(newest([&twin, &new]).unwrap().id, lowest.id);
 }
+
+#[test]
+fn a_key_link_names_its_trainer_or_withdraws() {
+    let trainer = signer(1).pubkey().to_owned();
+    let laptop = signer(2);
+    let event = sign(&laptop, 10, link(laptop.pubkey(), Some(&trainer)).unwrap());
+    assert_eq!(event.kind, 13_195);
+    assert_eq!(
+        parse_link(&event).unwrap().trainer.as_deref(),
+        Some(trainer.as_str())
+    );
+    assert_eq!(
+        event.tag_values("p").collect::<Vec<_>>(),
+        [trainer.as_str()]
+    );
+    let body: serde_json::Value = serde_json::from_str(&event.content).unwrap();
+    let file = include_bytes!("../../../../../nips/openagents/schemas/xp-link.v1.json");
+    let digest = crate::contracts::digest_bytes(file);
+    let closure = crate::contracts::prepare_closure(&std::collections::BTreeMap::from([(
+        digest.clone(),
+        file.to_vec(),
+    )]))
+    .unwrap();
+    crate::contracts::validate_instance(&closure, &digest, &body).unwrap();
+    let withdrawn = sign(&laptop, 11, link(laptop.pubkey(), None).unwrap());
+    assert_eq!(parse_link(&withdrawn).unwrap().trainer, None);
+    // A key can't link to itself, and the tag must agree.
+    assert!(link(laptop.pubkey(), Some(laptop.pubkey())).is_err());
+    let untagged = laptop.sign(
+        10,
+        LINK_KIND,
+        vec![tag(&["t", "oa:xp:link:v1"])],
+        event.content.clone(),
+    );
+    assert_eq!(
+        parse_link(&untagged).unwrap_err().code,
+        RefusalCode::IdentityMismatch
+    );
+}

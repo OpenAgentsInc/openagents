@@ -1350,7 +1350,9 @@ pub use playtest::{
     playtest_session,
 };
 pub mod trainer;
-pub use trainer::{PROFILE_KIND, TrainerProfile, parse_profile, profile};
+pub use trainer::{
+    KeyLink, LINK_KIND, PROFILE_KIND, TrainerProfile, link, parse_link, parse_profile, profile,
+};
 pub mod reproduce;
 pub use reproduce::{
     RECIPE_SCHEMA, RUN_MARKER, Recipe, RunEvidence, RunRecord, bind_reproduction, check_reproduce,

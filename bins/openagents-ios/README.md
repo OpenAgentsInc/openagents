@@ -124,7 +124,10 @@ OpenAgents referee alone, with the same reader that puts
 `<prefix> · lv <n>` over players' heads in the Grid. Other players see
 your level there only after you tap **Show my level** and confirm, which
 publishes a trainer profile (NIP-XP `13193`) signed by your trainer key;
-**Hide my level** replaces it. Your trainer key is the
+**Hide my level** replaces it. **Link a key** lists a computer's key in
+that profile; once the computer runs `microcoder xp link --trainer <your
+npub>`, its XP counts toward your level without moving either secret key.
+Your trainer key is the
 Verse world key, the one over your head; **Reveal nsec** exports it, behind
 a warning, to sign a reproduction on a computer
 ([tutorial quests](../../docs/verse/tutorial-quests.md)). `--xp-preview`

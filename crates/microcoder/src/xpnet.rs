@@ -67,6 +67,12 @@ Run evidence (signed with your knowledge key, or --key):
                            publish your rerun of a reproduce quest's claim as
                            a reproduction that cites it; then send the run's
                            summary.json to the referee
+  link --trainer KEY | --unlink
+                           link this key to your trainer key (NIP-XP 13195),
+                           so readers sum its XP into the trainer's once the
+                           trainer's profile lists it too (OpenAgents app:
+                           Account > Trainer > Link a key); --unlink
+                           withdraws it
 
 Reading:
   ledger [--referee KEY]... [--runner KEY]... [--json]
@@ -110,6 +116,10 @@ pub struct XpOptions {
     pub format: Option<String>,
     pub build: Option<String>,
     pub tester: Option<String>,
+    /// `link`: the trainer key this key belongs to.
+    pub trainer: Option<String>,
+    /// `link`: withdraw this key's link.
+    pub unlink: bool,
     pub json: bool,
     /// Words that aren't options, in order.
     pub words: Vec<String>,
@@ -146,6 +156,8 @@ pub fn parse(args: &[String]) -> Result<XpOptions, String> {
             "--format" => o.format = Some(value()?),
             "--build" => o.build = Some(value()?),
             "--tester" => o.tester = Some(value()?),
+            "--trainer" => o.trainer = Some(value()?),
+            "--unlink" => o.unlink = true,
             "--json" => o.json = true,
             "-h" | "--help" => return Err(USAGE.to_string()),
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
@@ -303,6 +315,7 @@ pub async fn main(args: &[String]) -> u8 {
             "revoke" => revoke(&o, &referee_key(&o)?).await,
             "claim" => claim(&o, &trainer_key(&o)?).await,
             "reproduce" => reproduce(&o, &trainer_key(&o)?).await,
+            "link" => link(&o, &trainer_key(&o)?).await,
             "ledger" => {
                 let key = remote::key_file().ok_or("HOME isn't set, so there's no key file")?;
                 ledger(&o, &key, &trust_for(&o)?).await
@@ -868,6 +881,73 @@ it checks the file before it awards the quest.",
         event.id,
         path.display(),
         npub(&referee)
+    );
+    Ok(0)
+}
+
+/// `xp link`: publishes this key's link to `--trainer`, or withdraws it
+/// with `--unlink`, and says whether the trainer's profile lists this key
+/// yet: a link counts only when both keys signed it.
+///
+/// # Errors
+///
+/// A bad usage, key, or relay.
+pub async fn link(o: &XpOptions, key: &Path) -> Result<u8, String> {
+    let url = relay_url(o)?;
+    let trainer = match (&o.trainer, o.unlink) {
+        (Some(_), true) => return Err("pass --trainer KEY or --unlink, not both".into()),
+        (None, false) => {
+            return Err(
+                "name your trainer key with --trainer KEY (an npub or hex key), \
+or withdraw the link with --unlink"
+                    .into(),
+            );
+        }
+        (Some(text), false) => {
+            Some(parse_author(text).ok_or(format!("--trainer {text} isn't an npub or a hex key"))?)
+        }
+        (None, true) => None,
+    };
+    let identity = load_key(key, "signing as")?;
+    let me = identity.pubkey().to_string();
+    let parts = xp::link(&me, trainer.as_deref()).map_err(|e| e.to_string())?;
+    let mut relay = Relay::open(url, &identity).await?;
+    println!("connected to {url}");
+    // A replaceable event must be newer than the one it replaces.
+    let existing = relay
+        .query(json!({"kinds": [xp::LINK_KIND], "authors": [&me], "limit": LIMIT}))
+        .await?;
+    let created_at = existing
+        .iter()
+        .map(|e| e.created_at + 1)
+        .fold(now(), u64::max);
+    let event = identity
+        .signer()
+        .sign(created_at, parts.kind, parts.tags, parts.content);
+    relay.publish(&event).await?;
+    let Some(trainer) = trainer else {
+        println!(
+            "link withdrawn ({}); this key's XP counts only as its own",
+            short(&event.id)
+        );
+        return Ok(0);
+    };
+    let profiles = relay
+        .query(json!({"kinds": [xp::PROFILE_KIND], "authors": [&trainer], "limit": LIMIT}))
+        .await?;
+    let listed = xp::trainer::newest(profiles.iter().filter(|e| xp::parse_profile(e).is_ok()))
+        .and_then(|e| xp::parse_profile(e).ok())
+        .is_some_and(|p| p.keys.contains(&me));
+    println!(
+        "link to {} published ({}); {}",
+        npub(&trainer),
+        short(&event.id),
+        if listed {
+            "the trainer's profile lists this key, so readers now sum its XP into the trainer's"
+        } else {
+            "waiting for the trainer's profile to list this key: in the OpenAgents app, open \
+Account > Trainer > Link a key and enter this key's npub"
+        }
     );
     Ok(0)
 }

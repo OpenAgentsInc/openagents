@@ -203,6 +203,17 @@ pub enum Request {
         world_secret_hex: String,
         shown: bool,
     },
+    /// Add a key to, or remove one from, the world key's trainer profile
+    /// (NIP-XP key links) and publish it. The added key counts only after
+    /// it signs a link back on its own device. The direct reply is the
+    /// trainer packet.
+    TrainerLink {
+        world_secret_hex: String,
+        #[serde(default)]
+        add: Option<String>,
+        #[serde(default)]
+        remove: Option<String>,
+    },
     /// Report a problem: the form for the tab and screen the tester is on.
     /// The direct reply is a draft packet, never the app packet.
     ReportDraft {
@@ -832,6 +843,27 @@ impl App {
             let packet = self
                 .trainer
                 .set_profile(&world_secret_hex, Some(shown), None)
+                .or_else(|error| self.trainer.refuse(error))
+                .and_then(|()| self.trainer.packet(&world_secret_hex, false, false));
+            return match packet {
+                Ok(packet) => serde_json::to_vec(&packet).unwrap_or_default(),
+                Err(error) => serde_json::to_vec(&serde_json::json!({
+                    "schema": "openagents.trainer.v1",
+                    "error": error,
+                }))
+                .unwrap_or_default(),
+            };
+        }
+        if let Request::TrainerLink {
+            world_secret_hex,
+            add,
+            remove,
+        } = request
+        {
+            let packet = self
+                .trainer
+                .set_link(&world_secret_hex, add.as_deref(), remove.as_deref())
+                .or_else(|error| self.trainer.refuse(error))
                 .and_then(|()| self.trainer.packet(&world_secret_hex, false, false));
             return match packet {
                 Ok(packet) => serde_json::to_vec(&packet).unwrap_or_default(),
@@ -1091,6 +1123,7 @@ impl App {
             Request::Account { .. }
             | Request::Trainer { .. }
             | Request::TrainerProfile { .. }
+            | Request::TrainerLink { .. }
             | Request::ReportDraft { .. }
             | Request::ReportSend { .. }
             | Request::Reports { .. }

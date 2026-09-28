@@ -416,3 +416,34 @@ fn a_level_shows_over_a_head_only_after_the_trainer_opts_in() {
     // The trainer's own card still counts its XP.
     assert_eq!(card(&snap, std::slice::from_ref(&key)).xp, 100);
 }
+
+#[test]
+fn a_linked_key_raises_the_trainers_level_over_both_heads() {
+    let referee = fixture::signer(0x5e_7e);
+    let laptop = fixture::signer(0x1a_97);
+    let phone = fixture::signer(0x9f);
+    let at = 1_790_000_000;
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.pubkey().to_owned()]),
+        runners: BTreeSet::new(),
+    };
+    // The laptop earned 100 XP; the phone is the trainer, shown.
+    let mut events: Vec<Event> = fixture::tutorial_events(&referee, &laptop, 2, at)
+        .into_iter()
+        .filter(|e| e.kind != xp::PROFILE_KIND)
+        .collect();
+    let (p, l) = (phone.pubkey().to_owned(), laptop.pubkey().to_owned());
+    let parts = xp::profile(&p, true, std::slice::from_ref(&l)).unwrap();
+    events.push(phone.sign(at, parts.kind, parts.tags, parts.content));
+    let snap = snapshot(&events, &trust);
+    // One-sided: the phone's level is its own.
+    assert_eq!(name_tag(Some(&snap), &p), p[..8]);
+    assert_eq!(trainer_keys(&snap, &p), std::slice::from_ref(&p));
+    // Two-sided: both heads show the trainer's level.
+    let parts = xp::link(&l, Some(&p)).unwrap();
+    events.push(laptop.sign(at, parts.kind, parts.tags, parts.content));
+    let snap = snapshot(&events, &trust);
+    assert_eq!(trainer_keys(&snap, &l), [p.clone(), l.clone()]);
+    assert_eq!(name_tag(Some(&snap), &p), format!("{} · lv 2", &p[..8]));
+    assert_eq!(name_tag(Some(&snap), &l), format!("{} · lv 2", &l[..8]));
+}

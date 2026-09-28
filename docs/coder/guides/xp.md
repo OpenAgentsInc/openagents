@@ -366,3 +366,17 @@ n + 1 at `ceil(100 · n^1.5)` cumulative XP. Every display of a level names
 it: Verse's HUD, `openagents xp`, and the OpenAgents app's trainer card.
 Verse only reads; it never publishes quests, awards, or labels, and
 nothing in it spends or converts XP.
+
+## Link a computer key to your trainer key
+
+Your trainer key can stay on your phone. List the computer's key in your
+trainer profile (OpenAgents app: **Account > Trainer > Link a key**), then
+sign the link back on the computer:
+
+```sh
+microcoder xp link --relay wss://relay.openagents.com --trainer <trainer npub>
+```
+
+Readers sum the computer key's XP into the trainer's only while both
+sides stand (NIP-XP key links, kind `13195`). `microcoder xp link --unlink`
+withdraws the computer's side.

@@ -675,3 +675,110 @@ fn only_a_shown_profile_advertises_a_trainer() {
     forged.pubkey = stranger.pubkey().to_owned();
     assert!(!Trainers::read(&[forged]).shown(stranger.pubkey()));
 }
+
+fn profile_of(key: &RelaySigner, at: u64, keys: &[&RelaySigner]) -> Event {
+    let keys: Vec<String> = keys.iter().map(|k| k.pubkey().to_owned()).collect();
+    let parts = xp::profile(key.pubkey(), true, &keys).unwrap();
+    key.sign(at, parts.kind, parts.tags, parts.content)
+}
+
+fn link_of(key: &RelaySigner, at: u64, trainer: Option<&RelaySigner>) -> Event {
+    let parts = xp::link(key.pubkey(), trainer.map(RelaySigner::pubkey)).unwrap();
+    key.sign(at, parts.kind, parts.tags, parts.content)
+}
+
+#[test]
+fn a_key_counts_toward_a_trainer_only_when_both_keys_signed() {
+    let phone = signer("phone");
+    let laptop = signer("laptop");
+    let stranger = signer("stranger");
+    let key = |s: &RelaySigner| s.pubkey().to_owned();
+
+    // The profile alone claims nothing.
+    let listed = profile_of(&phone, AT, &[&laptop, &stranger]);
+    let trainers = Trainers::read(std::slice::from_ref(&listed));
+    assert_eq!(trainers.keys_of(phone.pubkey()), [key(&phone)]);
+    assert_eq!(
+        trainers.waiting(phone.pubkey()),
+        [key(&laptop), key(&stranger)]
+    );
+    assert_eq!(trainers.trainer_of(laptop.pubkey()), None);
+
+    // The laptop links back; the stranger never does.
+    let back = link_of(&laptop, AT, Some(&phone));
+    let trainers = Trainers::read(&[listed.clone(), back.clone()]);
+    assert_eq!(
+        trainers.keys_of(phone.pubkey()),
+        [key(&phone), key(&laptop)]
+    );
+    assert_eq!(trainers.trainer_of(laptop.pubkey()), Some(phone.pubkey()));
+    assert!(trainers.shown(laptop.pubkey()));
+    assert_eq!(trainers.waiting(phone.pubkey()), [key(&stranger)]);
+
+    // A link to a trainer whose profile doesn't list the key counts nothing.
+    let pushy = link_of(&stranger, AT, Some(&phone));
+    let unlisted = profile_of(&phone, AT, &[&laptop]);
+    let trainers = Trainers::read(&[unlisted, back.clone(), pushy]);
+    assert_eq!(
+        trainers.keys_of(phone.pubkey()),
+        [key(&phone), key(&laptop)]
+    );
+
+    // Either side ends it: the laptop withdraws, or the trainer drops it.
+    let withdrawn = link_of(&laptop, AT + 1, None);
+    let trainers = Trainers::read(&[listed.clone(), back.clone(), withdrawn]);
+    assert_eq!(trainers.keys_of(phone.pubkey()), [key(&phone)]);
+    let dropped = profile_of(&phone, AT + 1, &[]);
+    let trainers = Trainers::read(&[listed, back, dropped]);
+    assert_eq!(trainers.keys_of(phone.pubkey()), [key(&phone)]);
+}
+
+#[test]
+fn links_are_one_level_deep() {
+    let (a, b, c) = (signer("a"), signer("b"), signer("c"));
+    // b is linked to a, and c to b: b belongs to a, so c belongs to no one.
+    let events = vec![
+        profile_of(&a, AT, &[&b]),
+        link_of(&b, AT, Some(&a)),
+        profile_of(&b, AT, &[&c]),
+        link_of(&c, AT, Some(&b)),
+    ];
+    let trainers = Trainers::read(&events);
+    assert_eq!(trainers.trainer_of(b.pubkey()), Some(a.pubkey()));
+    assert_eq!(trainers.trainer_of(c.pubkey()), None);
+    assert_eq!(trainers.keys_of(a.pubkey()).len(), 2);
+    // Two keys linked to each other: neither is a trainer.
+    let events = vec![
+        profile_of(&a, AT, &[&b]),
+        link_of(&b, AT, Some(&a)),
+        profile_of(&b, AT, &[&a]),
+        link_of(&a, AT, Some(&b)),
+    ];
+    let trainers = Trainers::read(&events);
+    assert_eq!(trainers.trainer_of(a.pubkey()), None);
+    assert_eq!(trainers.trainer_of(b.pubkey()), None);
+}
+
+#[test]
+fn a_linked_trainer_sums_xp_across_its_keys() {
+    let r = Reproduction::new();
+    let phone = signer("phone");
+    let events = vec![
+        r.quest.clone(),
+        r.claim.clone(),
+        r.reproduction.clone(),
+        r.award(),
+        profile_of(&phone, AT, &[&r.reproducer]),
+        link_of(&r.reproducer, AT, Some(&phone)),
+    ];
+    let ledger = derive(&events, &r.trust());
+    let trainers = Trainers::read(&events);
+    let total: u64 = trainers
+        .keys_of(phone.pubkey())
+        .iter()
+        .filter_map(|k| ledger.totals.get(k))
+        .sum();
+    assert_eq!(total, 50);
+    // The award still credits the key it names.
+    assert_eq!(ledger.totals.get(phone.pubkey()), None);
+}

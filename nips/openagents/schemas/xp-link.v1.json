@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.xp-link.v1",
+  "title": "NIP-XP key link (kind 13195) body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "requires", "type", "trainer"],
+  "properties": {
+    "v": { "const": 1 },
+    "requires": { "type": "array", "maxItems": 0 },
+    "type": { "const": "link" },
+    "trainer": {
+      "description": "The trainer key this key belongs to (64 lowercase hex characters, never the signer), or null to withdraw the link.",
+      "type": ["string", "null"],
+      "minLength": 64,
+      "maxLength": 64
+    }
+  }
+}

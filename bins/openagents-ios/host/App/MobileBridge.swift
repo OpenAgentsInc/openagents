@@ -146,6 +146,13 @@ struct TrainerAward: Decodable, Hashable {
     let link: String
 }
 
+/// A key the trainer profile lists: `linked` once it signed a link back.
+struct LinkedKey: Decodable, Hashable {
+    let npub: String
+    let public_hex: String
+    let status: String
+}
+
 /// The Account tab's trainer card for the Verse world key: Rust derives the
 /// level from signed NIP-XP awards; this only shows it.
 struct TrainerPacket: Decodable {
@@ -168,6 +175,8 @@ struct TrainerPacket: Decodable {
     let profile: String
     let profile_status: String
     let profile_error: String?
+    let linked_keys: [LinkedKey]
+    let linked_to: String?
     let playtest: PlaytestXP
     let nsec: String?
 }
@@ -447,6 +456,21 @@ final class MobileBridge: ObservableObject {
         guard let secret = try? DeviceKey.loadOrCreateVerse() else { return }
         let hex = secret.map { String(format: "%02x", $0) }.joined()
         call(["op": "trainer_profile", "world_secret_hex": hex, "shown": shown]) { data in
+            guard let packet = try? JSONDecoder().decode(TrainerPacket.self, from: data),
+                  packet.schema == "openagents.trainer.v1" else { return }
+            received(packet)
+        }
+    }
+
+    /// Add a key to, or remove one from, the trainer profile, and publish it.
+    func trainerLink(add: String? = nil, remove: String? = nil,
+                     received: @escaping (TrainerPacket) -> Void) {
+        guard let secret = try? DeviceKey.loadOrCreateVerse() else { return }
+        let hex = secret.map { String(format: "%02x", $0) }.joined()
+        var request: [String: Any] = ["op": "trainer_link", "world_secret_hex": hex]
+        if let add { request["add"] = add }
+        if let remove { request["remove"] = remove }
+        call(request) { data in
             guard let packet = try? JSONDecoder().decode(TrainerPacket.self, from: data),
                   packet.schema == "openagents.trainer.v1" else { return }
             received(packet)

@@ -236,6 +236,8 @@ struct TrainerScreen: View {
     @State private var nsec: String?
     @State private var warning = false
     @State private var showWarning = false
+    @State private var linking = false
+    @State private var linkKey = ""
     private let refresh = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     private var progress: Double {
@@ -320,6 +322,40 @@ struct TrainerScreen: View {
                     Text("Other players see your level only after you choose to show it. Your XP stays public either way: anyone can compute it from the relay.")
                 }
             }
+            if let card {
+                Section {
+                    if let trainer = card.linked_to {
+                        Text("This key is linked to the trainer \(String(trainer.prefix(16)))…, so its XP counts there.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(card.linked_keys, id: \.self) { key in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(key.npub.prefix(20)) + "…").font(.body.monospaced())
+                                Text(key.status == "linked" ? "Linked both ways: its XP counts here"
+                                                            : "Waiting for this key to link back")
+                                    .font(.caption)
+                                    .foregroundStyle(key.status == "linked" ? .green : .secondary)
+                            }
+                            Spacer()
+                            Button("Remove", role: .destructive) {
+                                bridge.trainerLink(remove: key.public_hex) { self.card = $0 }
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(card.profile_status == "publishing")
+                        }
+                    }
+                    Button("Link a key", systemImage: "link") { linkKey = ""; linking = true }
+                        .disabled(card.profile_status == "publishing")
+                        .accessibilityIdentifier("trainer-link-key")
+                } header: {
+                    Text("Linked keys")
+                } footer: {
+                    Text("Sign work on a computer with its own key and have it count here, without moving your trainer key. Enter that key's npub, then on the computer run: microcoder xp link --relay \(card.relay) --trainer \(card.npub)")
+                        .textSelection(.enabled)
+                }
+            }
             if let card, !card.titles.isEmpty {
                 Section("Titles") {
                     Text(card.titles.joined(separator: ", "))
@@ -382,6 +418,17 @@ struct TrainerScreen: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.black.ignoresSafeArea())
+        .alert("Link a key", isPresented: $linking) {
+            TextField("npub1…", text: $linkKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button("Link") {
+                bridge.trainerLink(add: linkKey) { self.card = $0 }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This publishes your trainer profile listing the key. Its XP counts here only after that key signs a link back to you.")
+        }
         .alert("Show your level?", isPresented: $showWarning) {
             Button("Show") {
                 bridge.trainerProfile(shown: true) { self.card = $0 }

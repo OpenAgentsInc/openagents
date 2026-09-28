@@ -57,8 +57,12 @@ You need:
 - Your trainer key. In the OpenAgents app, it's the key over your head in
   the Grid: open **Account > Trainer**, tap **Reveal nsec**, and save the
   nsec in a file with mode `0600` on your computer. `--key` reads an nsec
-  or 64 hex characters. Any Nostr key works, but only an award to your
-  trainer key shows in the app.
+  or 64 hex characters. Or keep the trainer key on the phone and link a
+  computer key to it instead: tap **Account > Trainer > Link a key**, enter
+  the computer key's npub, then run `microcoder xp link --relay
+  wss://relay.openagents.com --trainer <your trainer npub>` on the
+  computer (it signs with `~/.openagents/nostr/knowledge-key`, or
+  `--key`). An award to a linked key counts toward your level.
 
 ## Complete a quest
 

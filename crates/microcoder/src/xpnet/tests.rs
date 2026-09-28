@@ -908,3 +908,56 @@ async fn a_playtest_referee_accepts_a_testers_report_once() {
     assert_eq!(derived.totals.get(tester.pubkey()), Some(&20));
     assert!(!derived.totals.contains_key(triager.pubkey()));
 }
+
+#[tokio::test]
+async fn a_computer_key_links_to_its_trainer_and_can_withdraw() {
+    let (url, store) = relay().await;
+    let home = scratch("xp-link");
+    let laptop_key = home.join("laptop-key");
+    let phone = signer(0x9f);
+    let npub_phone = remote::npub(phone.pubkey());
+    // Usage errors.
+    assert!(
+        link(&options(&["--relay", &url]), &laptop_key)
+            .await
+            .is_err()
+    );
+    assert!(
+        link(
+            &options(&["--relay", &url, "--trainer", &npub_phone, "--unlink"]),
+            &laptop_key
+        )
+        .await
+        .is_err()
+    );
+    // Linking before the trainer lists the key publishes a one-sided link.
+    let linked = options(&["--relay", &url, "--trainer", &npub_phone]);
+    assert_eq!(link(&linked, &laptop_key).await.unwrap(), 0);
+    let laptop = remote::own_pubkey(&laptop_key).unwrap();
+    // The trainer lists it: both sides signed.
+    put(
+        &store,
+        &phone,
+        xp::profile(phone.pubkey(), true, std::slice::from_ref(&laptop)).unwrap(),
+    );
+    let events: Vec<Event> = store.lock().unwrap().clone();
+    let trainers = ledger_xp::Trainers::read(&events);
+    assert_eq!(trainers.trainer_of(&laptop), Some(phone.pubkey()));
+    // Withdrawing ends it, even with the profile still listing it.
+    assert_eq!(
+        link(&options(&["--relay", &url, "--unlink"]), &laptop_key)
+            .await
+            .unwrap(),
+        0
+    );
+    let events: Vec<Event> = store.lock().unwrap().clone();
+    let links: Vec<&Event> = events.iter().filter(|e| e.kind == xp::LINK_KIND).collect();
+    assert_eq!(links.len(), 2);
+    assert_ne!(links[0].created_at, links[1].created_at);
+    let trainers = ledger_xp::Trainers::read(&events);
+    assert_eq!(trainers.trainer_of(&laptop), None);
+    assert_eq!(
+        trainers.keys_of(phone.pubkey()),
+        [phone.pubkey().to_owned()]
+    );
+}

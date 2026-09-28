@@ -534,7 +534,7 @@ fn filters() -> Vec<serde_json::Value> {
     vec![
         json!({"kinds": [xp::QUEST_KIND, xp::AWARD_KIND, xp::REVOCATION_KIND], "limit": LIMIT}),
         json!({"kinds": [xp::LABEL_KIND], "#L": [xp::LABEL_NAMESPACE], "limit": LIMIT}),
-        json!({"kinds": [xp::PROFILE_KIND], "limit": LIMIT}),
+        json!({"kinds": [xp::PROFILE_KIND, xp::LINK_KIND], "limit": LIMIT}),
     ]
 }
 
@@ -904,6 +904,17 @@ pub fn open_quests(snapshot: &Snapshot, keys: &[String], now: u64) -> usize {
 pub fn level_tag(snapshot: Option<&Snapshot>, keys: &[String]) -> Option<String> {
     let xp = snapshot?.xp_of(keys);
     (xp > 0).then(|| format!("lv {}", level_of(xp)))
+}
+
+/// The keys whose XP counts as `key`'s trainer's: the trainer's key and
+/// the keys linked to it both ways (NIP-XP `13195`), or `key` alone when
+/// it belongs to no trainer.
+#[must_use]
+pub fn trainer_keys(snapshot: &Snapshot, key: &str) -> Vec<String> {
+    snapshot
+        .trainers
+        .trainer_of(key)
+        .map_or_else(|| vec![key.to_owned()], |t| snapshot.trainers.keys_of(t))
 }
 
 /// Another player's level for a name tag: only when `pubkey`'s trainer

@@ -221,7 +221,7 @@ Verse already sums XP across your keys: the Verse profile key, the knowledge
 key, and any `--xp-key`. That is fine for your own HUD, but it's unverifiable
 for anyone else: nothing stops a client from claiming a stranger's key.
 
-Proposed: a **key link** is valid only when both keys sign it. A trainer
+Implemented 2026-09-28 ([#9896](https://github.com/OpenAgentsInc/openagents/issues/9896)): a **key link** is valid only when both keys sign it. A trainer
 publishes a trainer profile that lists linked keys, and each linked key
 publishes a matching link back. Readers sum XP only across mutually linked
 keys. See [Proposed NIP-XP changes](#proposed-nip-xp-changes).
@@ -487,7 +487,9 @@ Each is a new, versioned addition; none changes an existing event's meaning.
    the award.
 5. **A `mentor` role** whose share comes out of the fixed award.
 6. **Key links:** a two-sided link between a trainer's keys, so readers can
-   sum XP across keys a trainer proves they control.
+   sum XP across keys a trainer proves they control. *Implemented
+   2026-09-28: the profile's `keys` and the key's link (`13195`); links
+   are one level deep.*
 
 Levels, curves, and classes stay out of the NIP. They are this document's
 reading of the ledger.

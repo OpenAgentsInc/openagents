@@ -20,3 +20,8 @@ over a head in the live Grid needs the first accepted reproduction.
 - `profile-not-shown-live.png`: a fresh world key on the live relay: no
   profile yet, so the Grid tag is the prefix alone and the screen offers
   **Show my level** (published only after a confirmation).
+
+## Key links (#9896)
+
+- `linked-keys-live.png`: **Linked keys** with **Link a key** and the
+  `microcoder xp link` command the other key runs to link back.

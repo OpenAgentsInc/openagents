@@ -78,6 +78,13 @@ pub struct TrainerPacket {
     pub profile_status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_error: Option<String>,
+    /// The other keys this trainer's profile lists, each `linked` (it
+    /// signed a link back, so its XP counts here) or `waiting`.
+    pub linked_keys: Vec<LinkedKey>,
+    /// The trainer this world key is linked to both ways, as an npub, when
+    /// it belongs to another key's trainer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub linked_to: Option<String>,
     /// Playtest XP and titles from the separate playtest referee, shown
     /// beside the trainer XP above and never summed into its level.
     pub playtest: PlaytestSection,
@@ -104,6 +111,31 @@ pub struct PlaytestSection {
     pub diaries: usize,
     pub awards: Vec<AwardRow>,
     pub note: &'static str,
+}
+
+/// One key the trainer profile lists.
+#[derive(Serialize)]
+pub struct LinkedKey {
+    pub npub: String,
+    pub public_hex: String,
+    /// `linked` or `waiting` (no link back yet).
+    pub status: &'static str,
+}
+
+fn npub_of(hex: &str) -> String {
+    hex.parse::<secp256k1::XOnlyPublicKey>()
+        .map(|k| nostr::nip19::encode_npub(&k.serialize()))
+        .unwrap_or_else(|_| hex.to_owned())
+}
+
+/// A public key typed as an npub or 64 hex characters, as lowercase hex.
+fn parse_key(text: &str) -> Option<String> {
+    let text = text.trim();
+    if let Ok(bytes) = nostr::nip19::decode_npub(text) {
+        return Some(bytes.iter().map(|b| format!("{b:02x}")).collect());
+    }
+    let hex = text.to_ascii_lowercase();
+    (hex.len() == 64 && hex.parse::<secp256k1::XOnlyPublicKey>().is_ok()).then_some(hex)
 }
 
 /// Publishes an event signed by the world key. Blocking.
@@ -289,6 +321,53 @@ impl Trainer {
         Ok(())
     }
 
+    /// Adds `add` (an npub or hex key) to, or removes `remove` from, the
+    /// keys the world key's trainer profile lists, and publishes it. The
+    /// added key counts only after it signs a link back on its own device
+    /// (`microcoder xp link`).
+    ///
+    /// # Errors
+    ///
+    /// A key that isn't a public key, the world key itself, or anything
+    /// [`Trainer::set_profile`] refuses.
+    pub fn set_link(
+        &mut self,
+        secret_hex: &str,
+        add: Option<&str>,
+        remove: Option<&str>,
+    ) -> Result<(), String> {
+        let signer = nostr::domain::RelaySigner::from_secret_hex(secret_hex)
+            .map_err(|_| "Invalid trainer key".to_owned())?;
+        let own = signer.pubkey().to_owned();
+        let mut keys = self.own_profile(&own).map(|p| p.2).unwrap_or_default();
+        if let Some(add) = add {
+            let key = parse_key(add).ok_or("That isn't an npub or a hex public key.")?;
+            if key == own {
+                return Err("That's this phone's trainer key.".into());
+            }
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+        }
+        if let Some(remove) = remove {
+            let key = parse_key(remove).ok_or("That isn't an npub or a hex public key.")?;
+            keys.retain(|k| *k != key);
+        }
+        self.set_profile(secret_hex, None, Some(keys))
+    }
+
+    /// Shows `error` on the card as the last change's failure, so the
+    /// screen can say why nothing was published.
+    ///
+    /// # Errors
+    ///
+    /// Never; it returns `Ok` so the caller answers with the card.
+    #[allow(clippy::unnecessary_wraps)]
+    pub fn refuse(&mut self, error: String) -> Result<(), String> {
+        self.publish_error = Some(error);
+        Ok(())
+    }
+
     /// The app left the foreground: close the relay connection.
     pub fn pause(&mut self) {
         self.board = None;
@@ -408,11 +487,36 @@ impl Trainer {
         };
         let empty = Snapshot::default();
         let snapshot = self.snapshot.as_ref().unwrap_or(&empty);
-        let card = ::verse::xp::card(snapshot, std::slice::from_ref(&public_hex));
+        // XP sums over the keys linked to this trainer both ways.
+        let keys = ::verse::xp::trainer_keys(snapshot, &public_hex);
+        let card = ::verse::xp::card(snapshot, &keys);
+        let linked_to = snapshot
+            .trainers
+            .trainer_of(&public_hex)
+            .filter(|t| *t != public_hex)
+            .map(npub_of);
         let open_quests =
             ::verse::xp::open_quests(snapshot, std::slice::from_ref(&public_hex), unix_now());
         let playtest = self.playtest(&public_hex, &signer);
         self.settle_publish();
+        let own = self.own_profile(&public_hex);
+        let linked_keys = own
+            .as_ref()
+            .map(|p| p.2.clone())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|key| LinkedKey {
+                npub: npub_of(&key),
+                status: if self.snapshot.as_ref().is_some_and(|s| {
+                    s.trainers.linked.get(&key).map(String::as_str) == Some(public_hex.as_str())
+                }) {
+                    "linked"
+                } else {
+                    "waiting"
+                },
+                public_hex: key,
+            })
+            .collect();
         let profile = match self.own_profile(&public_hex) {
             None => "none",
             Some((_, true, _)) => "shown",
@@ -446,6 +550,8 @@ impl Trainer {
             titles: card.titles,
             awards: card.awards.into_iter().map(row).collect(),
             open_quests,
+            linked_keys,
+            linked_to,
             note: NOTE,
             nsec: reveal.then(|| nostr::nip19::encode_nsec(&secret.secret_bytes())),
         })
@@ -596,6 +702,55 @@ mod tests {
             "hidden"
         );
         assert!(relay.0.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn linking_a_key_lists_it_and_its_link_back_counts_its_xp() {
+        let relay = Arc::new(Recorded::default());
+        let mut trainer = Trainer::with_publisher(relay.clone());
+        let laptop = ::verse::xp::fixture::signer(0x1a_97);
+        let laptop_hex = laptop.pubkey().to_owned();
+        let laptop_npub = npub_of(&laptop_hex);
+        // Bad keys and this phone's own key are refused.
+        assert!(trainer.set_link(WORLD, Some("npub1nope"), None).is_err());
+        let world = WORLD.parse::<SecretKey>().unwrap();
+        let own = world.x_only_public_key(&Secp256k1::new()).0.to_string();
+        assert!(trainer.set_link(WORLD, Some(&own), None).is_err());
+        assert!(relay.0.lock().unwrap().is_empty());
+
+        trainer.set_link(WORLD, Some(&laptop_npub), None).unwrap();
+        let packet = settle(&mut trainer);
+        assert_eq!(packet.linked_keys.len(), 1);
+        assert_eq!(packet.linked_keys[0].status, "waiting");
+        assert_eq!(packet.linked_keys[0].npub, laptop_npub);
+        // Adding a key keeps the level hidden until the person shows it.
+        assert_eq!(packet.profile, "hidden");
+        let sent = relay.0.lock().unwrap().clone();
+        let profile = nostr::xp::parse_profile(&sent[0]).unwrap();
+        assert_eq!(profile.keys, std::slice::from_ref(&laptop_hex));
+
+        // The laptop signs its link back; its tutorial XP counts here.
+        let referee = ::verse::xp::fixture::signer(0x0a_de_fe_ee);
+        let mut events = ::verse::xp::fixture::tutorial_events(&referee, &laptop, 2, unix_now());
+        events.push(sent[0].clone());
+        let parts = nostr::xp::link(&laptop_hex, Some(&own)).unwrap();
+        events.push(laptop.sign(unix_now(), parts.kind, parts.tags, parts.content));
+        let mut trust = ::verse::xp::openagents_trust();
+        trust.referees = std::collections::BTreeSet::from([referee.pubkey().to_owned()]);
+        trainer.board = Some(Board::fixed(
+            "wss://test.invalid",
+            ::verse::xp::snapshot(&events, &trust),
+        ));
+        let packet = trainer.packet(WORLD, false, false).unwrap();
+        assert_eq!(packet.linked_keys[0].status, "linked");
+        assert_eq!((packet.xp, packet.level), (100, 2));
+
+        // Removing it publishes a profile without it.
+        trainer.set_link(WORLD, None, Some(&laptop_hex)).unwrap();
+        let packet = settle(&mut trainer);
+        assert!(packet.linked_keys.is_empty());
+        let sent = relay.0.lock().unwrap().clone();
+        assert!(nostr::xp::parse_profile(&sent[1]).unwrap().keys.is_empty());
     }
 
     #[test]
