@@ -177,8 +177,8 @@ pub mod defaults {
     pub const TOTAL_MAX: u64 = 500_000_000;
     /// 100 sats.
     pub const FEE_ABSOLUTE: u64 = 100_000;
-    /// Half the amount.
-    pub const FEE_PPM: u32 = 500_000;
+    /// Never more than the amount itself.
+    pub const FEE_PPM: u32 = 1_000_000;
     /// 30 days.
     pub const LIFETIME: u64 = super::MAX_GRANT_LIFETIME;
 }

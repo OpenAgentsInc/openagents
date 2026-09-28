@@ -15,15 +15,14 @@ pub const USAGE: &str = "usage: coder host spend COMMAND [OPTIONS]
           [--note TEXT] [--ttl SECS] [--id HEX] [--wait SECS] [--json]
       Ask the phone that gave this computer a spend grant to pay a mainnet
       invoice. The owner approves or denies it on the phone; nothing pays
-      without that tap. With --wait, wait up to SECS for the answer and print
+      without that tap. The fee ceiling is the lower of --fee-max-msat and
+      the grant's for the amount. With --wait, wait up to SECS for the answer and print
       the receipt (a paid receipt carries the preimage); the exit code is 0
       only when it was paid.
   list [--json]              Every request this computer holds, newest first.
   show --request ID [--json] One request's receipt.
 Every command also takes --state DIR (the access store, default
 ~/.openagents/coder-access).";
-
-const DEFAULT_FEE_MAX_MSAT: u64 = 10_000;
 
 /// Run `coder host spend ARGS` against the access store at `state`.
 pub fn run(args: &[String], state: &Path) -> u8 {
@@ -126,7 +125,13 @@ fn request(state: &Path, flags: &mut Flags) -> Result<u8, Usage> {
     };
     let ask = Ask {
         payment,
-        fee_max_msat: flags.number("--fee-max-msat", DEFAULT_FEE_MAX_MSAT)?,
+        fee_max_msat: flags
+            .take("--fee-max-msat")
+            .map(|text| {
+                text.parse()
+                    .map_err(|_| Usage("--fee-max-msat takes a whole number".into()))
+            })
+            .transpose()?,
         purpose,
         context: Context {
             task: flags.take("--task"),

@@ -137,7 +137,7 @@ fn every_check_refuses_with_its_own_code() {
     listed.payees = vec![hex(&payee())];
     assert!(ledger.check(Some(&listed), &ok, now).is_ok());
     let mut greedy = ok.clone();
-    greedy.fee_max_msat = 12_501; // above half of 25,000 msat
+    greedy.fee_max_msat = 25_001; // above the 25,000 msat amount
     assert_eq!(refuse(Some(&current), &greedy, now), Refusal::FeeTooHigh);
     // Caps: one payment, the period, and the total.
     let big = request(&current, 2, "lnbc100u", 10_000_000);

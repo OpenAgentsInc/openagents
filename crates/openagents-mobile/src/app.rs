@@ -1210,7 +1210,7 @@ impl App {
     }
 
     /// Read agents' spend requests from the computers this phone may
-    /// operate that are online now, in the background.
+    /// operate, in the background.
     fn poll_spends(&mut self) {
         let (Some(transport), Some(computers)) = (self.spend_transport.clone(), &self.computers)
         else {
@@ -1220,13 +1220,15 @@ impl App {
         let hosts = snapshot
             .hosts
             .iter()
+            // The controller's snapshot can be older than the live links,
+            // so a computer that is not connected is left to its
+            // transport, which fails at once and waits a little.
             .filter(|record| {
-                coder_computers::HostStatus::derive(record, snapshot.now).online()
-                    && matches!(
-                        &record.enrollment,
-                        coder_computers::Enrollment::Enrolled { rights, .. }
-                            if rights.contains(coder_host::access::Right::Operate)
-                    )
+                matches!(
+                    &record.enrollment,
+                    coder_computers::Enrollment::Enrolled { rights, .. }
+                        if rights.contains(coder_host::access::Right::Operate)
+                )
             })
             .map(|record| (record.key.clone(), record.label.clone()))
             .collect();

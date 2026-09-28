@@ -25,7 +25,7 @@ fn invoice(preimage: u8, created_at: u64) -> String {
 fn ask(preimage: u8) -> Ask {
     Ask {
         payment: invoice(preimage, T0),
-        fee_max_msat: 1_000,
+        fee_max_msat: Some(1_000),
         purpose: Purpose::X402Purchase,
         context: Context {
             task: Some(hex(&[0xaa; 32])),
@@ -99,12 +99,14 @@ fn the_host_refuses_what_the_grant_forbids_before_asking() {
         Err(Refused::Refusal(Refusal::PurposeNotAllowed))
     );
     book.list(PHONE, &grant(0, PHONE), T0).unwrap();
+    // The lower fee ceiling wins: 30 sats asked, the grant's for 25 sats.
     let mut greedy = ask(1);
-    greedy.fee_max_msat = 20_000;
-    assert_eq!(
-        book.request(HOST, &greedy, T0),
-        Err(Refused::Refusal(Refusal::FeeTooHigh))
-    );
+    greedy.fee_max_msat = Some(30_000);
+    let clamped = book.request(HOST, &greedy, T0).unwrap();
+    assert_eq!(clamped.fee_max_msat, 25_000);
+    let mut open = ask(9);
+    open.fee_max_msat = None;
+    assert_eq!(book.request(HOST, &open, T0).unwrap().fee_max_msat, 25_000);
     let mut late = ask(1);
     late.payment = invoice(1, T0 - 600);
     assert_eq!(

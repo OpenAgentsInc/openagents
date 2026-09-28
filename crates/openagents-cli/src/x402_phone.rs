@@ -85,7 +85,7 @@ impl LightningWallet for PhonePayer {
     fn pay(&self, invoice: &str, max_fee_msat: u64, wait: Duration) -> Result<Proof, WalletError> {
         let ask = Ask {
             payment: invoice.to_owned(),
-            fee_max_msat: max_fee_msat,
+            fee_max_msat: Some(max_fee_msat),
             purpose: self.purpose,
             context: self.context.clone(),
             ttl: DEFAULT_TTL,

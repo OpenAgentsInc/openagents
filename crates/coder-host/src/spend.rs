@@ -43,8 +43,10 @@ const MAX_BOOK: u64 = 16 * 1024 * 1024;
 pub struct Ask {
     /// The BOLT11 invoice to pay.
     pub payment: String,
-    /// The most fee the asker accepts, in msat.
-    pub fee_max_msat: u64,
+    /// The most fee the asker accepts, in msat. The request carries the
+    /// lower of it and the grant's ceiling for the amount; `None` takes the
+    /// grant's.
+    pub fee_max_msat: Option<u64>,
     pub purpose: Purpose,
     pub context: Context,
     /// Seconds the request stays open, at most an hour and never past the
@@ -246,7 +248,7 @@ impl Book {
                 grantee: host.into(),
                 payment: ask.payment.trim().into(),
                 amount_msat: 0,
-                fee_max_msat: ask.fee_max_msat,
+                fee_max_msat: 0,
                 purpose: ask.purpose,
                 context: ask.context.clone(),
                 issued_at: now,
@@ -260,6 +262,9 @@ impl Book {
                 })
             })?;
             request.amount_msat = invoice.amount_msat;
+            // The lower fee ceiling wins: the asker's or the grant's.
+            let ceiling = grant.fee_max.ceiling(request.amount_msat);
+            request.fee_max_msat = ask.fee_max_msat.map_or(ceiling, |asked| asked.min(ceiling));
             request.expires_at = now
                 .saturating_add(ask.ttl.clamp(1, MAX_REQUEST_LIFETIME))
                 .min(invoice.expires_at())
@@ -272,9 +277,6 @@ impl Book {
                 .map_err(|_| Refused::Refusal(Refusal::Malformed))?;
             if !grant.purposes.contains(&request.purpose) {
                 return Err(Refused::Refusal(Refusal::PurposeNotAllowed));
-            }
-            if request.fee_max_msat > grant.fee_max.ceiling(request.amount_msat) {
-                return Err(Refused::Refusal(Refusal::FeeTooHigh));
             }
             if request.amount_msat.saturating_add(request.fee_max_msat) > grant.per_payment_max {
                 return Err(Refused::Refusal(Refusal::OverPaymentCap));

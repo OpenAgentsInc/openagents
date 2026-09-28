@@ -37,8 +37,9 @@ Code:
    --task ID --wait 300`, or `openagents x402 fetch|call --pay-with phone`,
    whose payer does the same after the computer's own x402 policy (ceilings,
    allowlist, daily cap) has admitted the payment. The host checks what the
-   grant states (purpose, fee ceiling, one payment's cap, invoice expiry)
-   and refuses at once when it can.
+   grant states (purpose, one payment's cap, invoice expiry) and refuses at
+   once when it can; the request's fee ceiling is the lower of the asker's
+   and the grant's.
 3. **Check.** The next `spend.list` returns the request. The phone decodes
    the invoice itself and checks the request against its grant and ledger.
    A request that fails a check is refused with its code right away; a
@@ -81,7 +82,7 @@ NIP-HOST `spend.list` request, encrypted to the host. Unknown fields refuse.
 | `per_payment_max` | Ceiling for one payment, fee ceiling included. Default ₿10,000. |
 | `period`, `period_max` | Rolling window in seconds and its ceiling. Default 24 hours, ₿50,000. |
 | `total_max` | Ceiling over the grant's life. Default ₿500,000. |
-| `fee_max` | `{absolute, ppm}`; a fee above either ceiling refuses. Default ₿100 and 500,000 ppm (half the amount). |
+| `fee_max` | `{absolute, ppm}`; a fee above either ceiling refuses. Default ₿100 and 1,000,000 ppm (never more than the amount). |
 | `rails` | `["lightning"]`. |
 | `payees`, `any_payee` | Allowed Lightning node keys; empty means none unless `any_payee`. `any_payee` is allowed only in `request` mode, where the owner sees the decoded payee and approves each payment. Phase 1 grants set it. |
 | `purposes` | Sorted subset of `x402_purchase`, `labor_payment`, `tip`, `transfer`. Phase 1 grants list all four. |
@@ -106,7 +107,7 @@ Made by the host and returned in its signed `spend.list` reply.
 | `grantee` | The host key. |
 | `payment` | The exact mainnet BOLT11 invoice, at most 4,096 bytes. It may carry an inline description or a description hash. |
 | `amount_msat` | Exactly the invoice's amount. |
-| `fee_max_msat` | The asker's fee ceiling, never above the grant's for this amount. |
+| `fee_max_msat` | The fee ceiling: the lower of the asker's and the grant's for this amount (the host takes the grant's when the asker names none). |
 | `purpose` | One of the grant's purposes. |
 | `context` | `{task, title, resource, note}`, each optional: the host task ID, a host-authored title (≤ 200 bytes), the x402 resource URI (≤ 512), and the agent's note (≤ 280). The sheet shows the note as the agent's words, never as the payee. |
 | `issued_at`, `expires_at` | At most one hour apart, and never past the invoice's expiry or the grant's. |

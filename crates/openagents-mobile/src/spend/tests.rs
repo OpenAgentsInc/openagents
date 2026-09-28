@@ -310,7 +310,7 @@ fn what_the_grant_refuses_is_answered_without_asking_the_owner() {
     // 10,000 sats plus its fee ceiling is above one payment's cap.
     computer.ask(request(&grant, 5, "lnbc100u", 10_000_000));
     let mut greedy = request(&grant, 6, "lnbc250n", 25_000);
-    greedy.fee_max_msat = 20_000;
+    greedy.fee_max_msat = 25_001;
     computer.ask(greedy);
     spending.poll_now(&hosts(), &computer, Some(&wallet));
     assert!(spending.view().sheet.is_none());
@@ -495,25 +495,25 @@ fn live_a_spend_request_reaches_the_sheet_and_is_denied() {
 
     let address = std::env::var("OPENAGENTS_TEST_ADMISSION").expect("address");
     let spend = std::env::var("OPENAGENTS_TEST_SPEND").expect("spend command");
-    let run = |args: &str| -> serde_json::Value {
+    let try_run = |args: &str| -> Result<serde_json::Value, String> {
         let output = Command::new("sh")
             .arg("-c")
             .arg(format!("{spend} {args}"))
             .output()
             .expect("run coder host spend");
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        serde_json::from_slice(&output.stdout).expect("JSON")
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+        }
+        Ok(serde_json::from_slice(&output.stdout).expect("JSON"))
     };
+    let run = |args: &str| try_run(args).unwrap_or_else(|error| panic!("{error}"));
     let dir = tempfile::tempdir().unwrap();
     let mut app = App::new(Config {
         state_dir: dir.path().to_path_buf(),
         secret_hex: "11".repeat(32),
     })
     .unwrap();
+    app.call(Request::Lifecycle { active: true });
     app.set_tailnet(Screen::Devices(Tailnet {
         name: None,
         this_device: None,
@@ -539,10 +539,21 @@ fn live_a_spend_request_reaches_the_sheet_and_is_denied() {
         false,
         now(),
     );
-    let asked = run(&format!(
-        "request --invoice {invoice} --purpose x402_purchase --fee-max-msat 1000 \
-         --note 'Live test: deny this' --ttl 300 --json"
-    ));
+    // The host holds the grant once the phone's first `spend.list` reached
+    // it; until then it refuses to ask.
+    let asked = loop {
+        match try_run(&format!(
+            "request --invoice {invoice} --purpose x402_purchase --fee-max-msat 1000 \
+             --note live-test-deny-this --ttl 300 --json"
+        )) {
+            Ok(asked) => break asked,
+            Err(error) => {
+                assert!(Instant::now() < deadline, "{error}");
+                app.call(Request::Snapshot);
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        }
+    };
     let id = asked["request"]["request"]
         .as_str()
         .expect("request ID")
@@ -564,7 +575,7 @@ fn live_a_spend_request_reaches_the_sheet_and_is_denied() {
         sheet.amount, sheet.payee, sheet.computer
     );
     assert_eq!(sheet.amount, "₿1");
-    assert_eq!(sheet.note.as_deref(), Some("Live test: deny this"));
+    assert_eq!(sheet.note.as_deref(), Some("live-test-deny-this"));
     app.call(Request::SpendDeny {
         request: id.clone(),
     });

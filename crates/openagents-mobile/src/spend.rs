@@ -37,7 +37,7 @@ use std::time::{Duration, Instant};
 /// How often the phone reads a computer's requests while the app is open.
 const POLL_EVERY: Duration = Duration::from_secs(10);
 /// How long a computer that could not be read is left alone.
-const BACKOFF: Duration = Duration::from_secs(300);
+const BACKOFF: Duration = Duration::from_secs(30);
 /// Above this amount (1,000 sats) Approve asks for Face ID or the passcode.
 pub const AUTHENTICATE_ABOVE_MSAT: u64 = 1_000_000;
 /// The most ledger entries the phone keeps; the oldest settled go first.
@@ -365,7 +365,7 @@ impl Spending {
 
     /// Read the connected computers' requests in the background, at most
     /// every [`POLL_EVERY`]. `hosts` are the computers this phone may
-    /// operate that are online now, with their labels.
+    /// operate, with their labels.
     pub fn poll(
         &self,
         hosts: Vec<(String, String)>,
