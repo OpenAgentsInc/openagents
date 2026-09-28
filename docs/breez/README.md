@@ -13,8 +13,9 @@ Computers keep `crates/wallet` (`ldk-node`) and `crates/x402`; see
    keeps a plain-language trust note (the Wallet's **i** button).
 2. Separate agent seeds only if needed; postponed.
 3. Code is not blocked on a NIP. The spend grant, request, and receipt
-   format in [the wallet design](wallet-design.md#spending-grants) is the
-   contract phase 1 implements; it becomes a NIP later.
+   format in [the spend protocol](spend-protocol.md), narrowed from
+   [the wallet design](wallet-design.md#spending-grants), is the contract
+   phase 1 implements; it becomes a NIP later.
 4. No regulatory review.
 5. The Breez API key is a basic validation key that can't be hidden,
    confirmed with the Breez team. It is committed in source, which replaces
@@ -40,6 +41,9 @@ Computers keep `crates/wallet` (`ldk-node`) and `crates/x402`; see
 - [Wallet design](wallet-design.md): human wallets, agent wallets, spending
   grants, approval flows, peer payments, x402, key custody, testing, a phased
   plan, and open questions.
+- [Agent spend protocol, phase 1](spend-protocol.md): the grant, request, and
+  receipt formats, refusal codes, ledger, and revocation that phase 1 runs
+  (an agent asks; the owner approves each payment on the phone).
 
 ## Positions in brief
 

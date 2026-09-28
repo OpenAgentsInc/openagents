@@ -24,6 +24,7 @@ secp256k1 = { version = "0.31.1", features = ["rand"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 
 [dev-dependencies]
+nostr = { path = "../nostr", features = ["test-invoice"] }
 tempfile = "3"
 futures-util = "0.3"
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }

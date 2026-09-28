@@ -20,13 +20,17 @@ use crate::tasks::TaskRef;
 pub(crate) struct Dispatcher {
     shared: Arc<Shared>,
     pub(crate) changed: Vec<TaskRef>,
+    /// Agent spend requests, beside the access store.
+    spends: crate::spend::Book,
 }
 
 impl Dispatcher {
     pub(crate) fn new(shared: Arc<Shared>) -> Self {
+        let spends = crate::spend::Book::open(&shared.config.access);
         Self {
             shared,
             changed: Vec::new(),
+            spends,
         }
     }
 
@@ -52,6 +56,11 @@ fn principal(device: &str, grant: Option<(&str, u64)>) -> crate::tasks::Principa
 }
 
 impl Dispatch for Dispatcher {
+    /// The book of agent spend requests the phone answers.
+    fn spends(&mut self) -> Option<&mut dyn coder_access::host::Spends> {
+        Some(&mut self.spends)
+    }
+
     /// The configured workspace labels. The roots they name stay on the host.
     fn workspaces(&mut self) -> Result<Vec<String>, Code> {
         Ok(self.shared.config.workspaces.keys().cloned().collect())

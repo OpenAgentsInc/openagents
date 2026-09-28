@@ -341,6 +341,8 @@ A request is `openagents.host-request.v1`:
 | `task.queue` | `operate` | `queue` |
 | `terminal.open` | `terminal` | `dispatched` |
 | `workspace.list` | `operate` | `workspaces` |
+| `spend.list` | `operate` | `spends` |
+| `spend.settle` | `operate` | `settled` |
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
 bytes, the prompt at most 16 KiB, and the workspace a host-scoped label of at
@@ -444,7 +446,25 @@ task's activity summary, and its history observer lists the task's
 transcript as an archived chat, which chat lists leave out. A task that has
 not ended refuses as `conflict`, and archiving an archived task succeeds
 again. Only the host's owner restores an archived task. An older host that
-predates it refuses it as `malformed` or `unsupported`. `dispatched` returns
+predates it refuses it as `malformed` or `unsupported`.
+`spend.list` and `spend.settle` carry agent spending phase 1, in which an
+agent on the host asks and the owner approves each payment on the phone; the
+formats are `openagents.spend-grant.v1`, `openagents.spend-request.v1`, and
+`openagents.spend-receipt.v1` in
+[the spend protocol](../../docs/breez/spend-protocol.md). `spend.list`
+carries `{grant}`, the device's current spend grant for this host; the host
+refuses it as `forbidden` unless the grant's `issuer` is the requesting key
+and its `grantee` is the host, and as `stale` when its epoch is below the
+last one that device sent. The host keeps it as the device's grant and
+answers `spends`: `{spends}`, at most 16 `{request, receipt}` entries that
+draw on that device's grants and have no final receipt yet. `spend.settle`
+carries `{receipt}` for one of them; the host records it only from the
+device whose grant the request draws on, refuses a `paid` receipt whose
+preimage does not hash to the invoice's payment hash as `forbidden`, keeps
+the first final receipt (a different later one refuses as `conflict`), and
+answers `settled` with the recorded receipt. Neither operation moves money
+or grants anything; the phone's wallet pays, after the owner's tap. They are
+not carried over CAP/CJ in phase 1. `dispatched` returns
 `{operation, reference}`: the handling receipt, not evidence that a task ran
 or a terminal produced output. Other profiles can register further
 operations with exactly one required right each.
@@ -665,7 +685,8 @@ checks them.
 (`coder host serve`): it serves the direct artifact binding and the
 direct-channel binding, and dispatches `task.create`, `task.steer`,
 `task.cancel`, `task.command`, and `task.queue` to the durable task inbox and `terminal.open` to its terminal
-host, and answers nudges. It records each device's last-seen time for `device.list`. The
+host, answers nudges, and keeps agent spend requests for `spend.list` and
+`spend.settle` beside its access store (`coder host spend`). It records each device's last-seen time for `device.list`. The
 [Computers screens](../../crates/coder-computers/README.md) are its
 interface on iOS, Android, and the terminal: their live service redeems
 invitations, lists devices, creates narrowed invitations, and revokes

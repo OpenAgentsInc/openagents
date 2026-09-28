@@ -275,6 +275,26 @@ pub enum Request {
     WalletRestoreCheck {
         words: String,
     },
+    /// Pay the agent's spend request on the approval sheet. The host sends
+    /// it only after the owner's tap on Approve (and Face ID or the passcode
+    /// when the sheet asks for it).
+    SpendApprove {
+        request: String,
+    },
+    /// Refuse the request on the sheet: `declined_by_owner`.
+    SpendDeny {
+        request: String,
+    },
+    /// Stop a computer's payment requests; its epoch advances.
+    SpendBlock {
+        host: String,
+    },
+    /// Let a blocked computer ask for payments again.
+    SpendAllow {
+        host: String,
+    },
+    /// Clear the last agent payment's notice.
+    SpendDismiss,
 }
 
 /// The direct reply to [`Request::WalletWords`] and
@@ -417,6 +437,9 @@ pub struct Packet {
     pub wallet_loading: bool,
     /// A bitcoin purchase page to open in the browser, once. Always `https`.
     pub wallet_open_url: Option<String>,
+    /// Agents' payment requests: the approval sheet, the computers that may
+    /// ask, and the payments they asked for.
+    pub spend: crate::spend::View,
 }
 
 /// The encrypted store for the Computers record, keyed by the device key.
@@ -472,6 +495,10 @@ pub struct App {
     /// Records of what tailnet admission added, keyed by address.
     admissions: Result<Cache, String>,
     wallet: crate::wallet::Wallet,
+    spend: crate::spend::Spending,
+    /// How agent spend requests reach the computers; `None` without the
+    /// live client.
+    spend_transport: Option<Arc<dyn crate::spend::Transport>>,
     notices: Vec<String>,
 }
 
@@ -564,6 +591,14 @@ impl App {
             }
         }
         let tailnet_client = Client::open(&config.state_dir.join("tailscale")).map(Arc::new);
+        let spend_transport = terminals.clone().map(|terminals| {
+            Arc::new(crate::spend::Live::new(terminals, runtime.handle().clone()))
+                as Arc<dyn crate::spend::Transport>
+        });
+        let spend = crate::spend::Spending::new(
+            device.clone(),
+            Cache::open(&config.state_dir.join("spend"), &secret).ok(),
+        );
         // The Spark wallet replaced the Mutinynet test wallet, whose store
         // held only signet test coins; remove it. Its Keychain item goes too.
         let _ = std::fs::remove_dir_all(config.state_dir.join("wallet"));
@@ -624,6 +659,8 @@ impl App {
                     Err(_) => wallet,
                 }
             },
+            spend,
+            spend_transport,
             notices,
         })
     }
@@ -855,6 +892,14 @@ impl App {
             Request::WalletWords
             | Request::WalletRestoreCheck { .. }
             | Request::WalletExitExport => {}
+            Request::SpendApprove { request } => {
+                self.spend
+                    .approve(&request, self.payer(), self.spend_transport.clone())
+            }
+            Request::SpendDeny { request } => self.spend.deny(&request),
+            Request::SpendBlock { host } => self.spend.block(&host),
+            Request::SpendAllow { host } => self.spend.allow(&host),
+            Request::SpendDismiss => self.spend.dismiss(),
         }
         self.packet(open_url)
     }
@@ -1105,8 +1150,40 @@ impl App {
         value
     }
 
+    /// Read agents' spend requests from the computers this phone may
+    /// operate that are online now, in the background.
+    fn poll_spends(&mut self) {
+        let (Some(transport), Some(computers)) = (self.spend_transport.clone(), &self.computers)
+        else {
+            return;
+        };
+        let snapshot = computers.snapshot();
+        let hosts = snapshot
+            .hosts
+            .iter()
+            .filter(|record| {
+                coder_computers::HostStatus::derive(record, snapshot.now).online()
+                    && matches!(
+                        &record.enrollment,
+                        coder_computers::Enrollment::Enrolled { rights, .. }
+                            if rights.contains(coder_host::access::Right::Operate)
+                    )
+            })
+            .map(|record| (record.key.clone(), record.label.clone()))
+            .collect();
+        self.spend.poll(hosts, transport, self.payer());
+    }
+
+    /// The running wallet as agent spending's payer.
+    fn payer(&self) -> Option<Arc<dyn crate::spend::Payer>> {
+        self.wallet
+            .node()
+            .map(|node| Arc::new(crate::spend::NodePayer(node)) as Arc<dyn crate::spend::Payer>)
+    }
+
     fn packet(&mut self, open_url: Option<String>) -> Packet {
         self.chats.settle();
+        self.poll_spends();
         let tailnet = self.render_tailnet();
         let chats = self.chats.render();
         // Chat commands that waited for their computer try again.
@@ -1154,7 +1231,8 @@ impl App {
                         .collect(),
                 }),
             coder,
-            coder_live: self.coder.live(self.computers.as_ref()),
+            // A payment request on the sheet keeps packets coming too.
+            coder_live: self.coder.live(self.computers.as_ref()) || self.spend.live(),
             chats,
             chats_input: self.chats.input().cloned(),
             chats_loading: self.chats.loading(),
@@ -1169,6 +1247,7 @@ impl App {
             wallet: self.wallet.screen(),
             wallet_loading: self.wallet.loading(),
             wallet_open_url: self.wallet.take_open_url(),
+            spend: self.spend.view(),
         }
     }
 

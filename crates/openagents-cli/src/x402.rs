@@ -43,11 +43,16 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           invoice settles once; a replay is duplicate_settlement.
   fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
+        [--pay-with wallet|phone]
                           Buy one call: read the 402, check the invoice against
                           this request, refuse above the ceiling, pay from the
                           wallet, retry with the preimage, print the body. With
                           --cap, resolve that NIP-CAP head first and refuse a
                           challenge whose payTo or URL it does not advertise.
+                          --pay-with phone asks the owner's phone to pay
+                          through this computer's Coder host instead (mainnet
+                          only; the owner approves each payment there, and the
+                          wait is at least 300 seconds).
   mcp-serve --server URI --msat N [--tool GROUP]... [--expiry SECONDS]
                           Serve `openagents mcp serve` over stdio with a toll
                           (x402 exact/lnbtc, mcp:1): a tools/call without
@@ -59,6 +64,7 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           the buyer must bind to; it is not connected to.
   call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS]
         [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
+        [--pay-with wallet|phone]
         -- CMD [ARGS...]
                           Buy one tools/call: start CMD as a stdio MCP server,
                           call TOOL with {\"args\": [WORD...]}, check the
@@ -428,6 +434,11 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
         Ok(wait) => wait,
         Err(message) => return output.usage("x402", &message, USAGE),
     };
+    let phone = match args.option("pay-with") {
+        None | Some("wallet") => false,
+        Some("phone") => true,
+        Some(_) => return output.usage("x402", "--pay-with takes wallet or phone", USAGE),
+    };
     let show_proof = args.switch("show-proof");
     let descriptor = match args.option("cap") {
         None => None,
@@ -534,6 +545,7 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
             wait,
             binding: "http:1",
             resource: url.clone(),
+            phone,
         },
     ) {
         Ok(bought) => bought,
@@ -576,6 +588,9 @@ pub(crate) struct Spend {
     pub(crate) wait: u64,
     pub(crate) binding: &'static str,
     pub(crate) resource: String,
+    /// Pay through the owner's phone (`--pay-with phone`) instead of this
+    /// computer's wallet.
+    pub(crate) phone: bool,
 }
 
 /// Read `--max-msat` and `--max-fee-msat`, both optional.
@@ -762,7 +777,17 @@ fn buy(
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    let proof = pay_invoice(&bolt11, &terms.network, limits.max_fee_msat, spend.wait)?;
+    let proof = if spend.phone {
+        crate::x402_phone::pay(
+            &bolt11,
+            &terms.network,
+            limits.max_fee_msat,
+            spend.wait,
+            &spend.resource,
+        )?
+    } else {
+        pay_invoice(&bolt11, &terms.network, limits.max_fee_msat, spend.wait)?
+    };
     record_payment(&spend, &terms.network, &terms.pay_to, &proof, "paid");
 
     let mut payload = Map::new();
@@ -1037,6 +1062,11 @@ fn call(output: &Output, words: &[String]) -> u8 {
         Ok(wait) => wait,
         Err(message) => return output.usage("x402", &message, USAGE),
     };
+    let phone = match args.option("pay-with") {
+        None | Some("wallet") => false,
+        Some("phone") => true,
+        Some(_) => return output.usage("x402", "--pay-with takes wallet or phone", USAGE),
+    };
     let show_proof = args.switch("show-proof");
     let descriptor = match args.option("cap") {
         None => None,
@@ -1096,6 +1126,7 @@ fn call(output: &Output, words: &[String]) -> u8 {
             wait,
             binding: "mcp:1",
             resource: format!("{server} {tool}"),
+            phone,
         },
     ) {
         Ok(bought) => bought,

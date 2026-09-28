@@ -30,12 +30,13 @@ operation; this README covers the crate.
 | `client` | `Device`, directory and reach fetches, summaries, nudges, `Link`, `Connector`, `Ordered` frame ordering, and the `websocket` hint dialer. |
 | `tasks` | The task-owner trait (creation, steering, cancellation, archiving, durable commands, and queue edits) and `NoTasks`. |
 | `nudge` | A device's stored note to its host that commands wait; the host answers with fresh presence when it reads one, even after being away. |
+| `spend` | Agent spending, phase 1: the book of spend requests an agent asks the owner's phone to pay (`coder host spend request|list|show`), which the phone reads and answers with NIP-HOST `spend.list` and `spend.settle`. Nothing here pays. See [the spend protocol](../../docs/breez/spend-protocol.md). |
 | `config` | The host configuration. |
 | `tls` | Loads and checks the operator's certificate chain and key for the WebSocket listener. |
 | `telemetry` | Coarse CPU and memory samples for presence. |
 | `generation` | Which NIP-REACH generation `serve` runs as, from the host root's one counter in `coder_service::generation`. |
 | `enroll` | Reverse enrollment for a host without a screen: publish a request, show its code, and read the outcome the running host recorded. |
-| `cli` | `coder host init`, `public-key`, `invite`, `request`, `list`, `revoke`, and `serve`. |
+| `cli` | `coder host init`, `public-key`, `invite`, `request`, `list`, `revoke`, `serve`, and `spend`. |
 
 The default `host` feature builds the host: `serve`, `cli`, `authority`,
 `config`, `telemetry`, `generation`, `enroll`, and `tls`. A client, such as the mobile library through

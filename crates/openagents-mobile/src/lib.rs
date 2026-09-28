@@ -26,6 +26,7 @@ mod conversation;
 mod outbox;
 mod payees;
 mod spark;
+mod spend;
 mod tailnet;
 mod tailnet_view;
 mod transcripts;

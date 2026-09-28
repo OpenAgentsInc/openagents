@@ -458,6 +458,14 @@ pub enum Operation {
     /// List or edit a task's queued messages.
     #[serde(rename = "task.queue")]
     QueueTask { task: String, edit: QueueEdit },
+    /// List the spend requests this host holds for the sender, and give it
+    /// the sender's current spend grant for this host (phase 1 agent
+    /// spending: `crate::spend`).
+    #[serde(rename = "spend.list")]
+    ListSpends { grant: Box<crate::spend::Grant> },
+    /// Record the sender's receipt for one of those requests.
+    #[serde(rename = "spend.settle")]
+    SettleSpend { receipt: Box<crate::spend::Receipt> },
 }
 impl Operation {
     pub fn name(&self) -> &'static str {
@@ -477,6 +485,8 @@ impl Operation {
             Self::ListWorkspaces {} => "workspace.list",
             Self::CommandTask { .. } => "task.command",
             Self::QueueTask { .. } => "task.queue",
+            Self::ListSpends { .. } => "spend.list",
+            Self::SettleSpend { .. } => "spend.settle",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -496,7 +506,9 @@ impl Operation {
             | Self::ArchiveTask { .. }
             | Self::ListWorkspaces {}
             | Self::CommandTask { .. }
-            | Self::QueueTask { .. } => Some(Right::Operate),
+            | Self::QueueTask { .. }
+            | Self::ListSpends { .. }
+            | Self::SettleSpend { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -576,6 +588,8 @@ impl Operation {
                 identity(task).map_err(Error::from)?;
                 edit.validate()?;
             }
+            Self::ListSpends { grant } => grant.validate()?,
+            Self::SettleSpend { receipt } => receipt.validate()?,
         }
         Ok(())
     }
@@ -686,6 +700,16 @@ pub enum Outcome {
     Queue {
         queue: TaskQueue,
     },
+    /// The spend requests the host holds for the sender (`spend.list`), at
+    /// most [`crate::spend::MAX_LISTED`].
+    Spends {
+        spends: Vec<crate::spend::Entry>,
+    },
+    /// The receipt the host recorded (`spend.settle`): the one sent, or an
+    /// earlier final one for the same request.
+    Settled {
+        receipt: Box<crate::spend::Receipt>,
+    },
 }
 
 /// The most workspace labels a `workspaces` outcome carries.
@@ -719,6 +743,20 @@ impl Outcome {
                 public(&lease.device)?;
             }
         }
+        if let Self::Spends { spends } = self {
+            if spends.len() > crate::spend::MAX_LISTED {
+                return fail(Code::Bounds, "too many spend requests");
+            }
+            for entry in spends {
+                entry.request.validate()?;
+                if let Some(receipt) = &entry.receipt {
+                    receipt.answers(&entry.request)?;
+                }
+            }
+        }
+        if let Self::Settled { receipt } = self {
+            receipt.validate()?;
+        }
         if let Self::Workspaces { workspaces } = self {
             if workspaces.len() > MAX_WORKSPACES {
                 return fail(Code::Bounds, "too many workspaces");
@@ -744,6 +782,10 @@ impl Outcome {
             | (Operation::Revoke { .. }, Self::Revoked { .. })
             | (Operation::ListWorkspaces {}, Self::Workspaces { .. }) => true,
             (Operation::QueueTask { task, .. }, Self::Queue { queue }) => queue.task == *task,
+            (Operation::ListSpends { .. }, Self::Spends { .. }) => true,
+            (Operation::SettleSpend { receipt }, Self::Settled { receipt: recorded }) => {
+                recorded.request == receipt.request && recorded.grant == receipt.grant
+            }
             (
                 Operation::CreateTask { .. }
                 | Operation::OpenTerminal { .. }

@@ -33,6 +33,7 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   request [--relay URL] [--rights LIST]
   list [--json]
   revoke --device KEY
+  spend request|list|show ...   ask the owner's phone to pay (`coder host spend help`)
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
         [--listen-websocket ADDR] [--allow-nonloopback]
         [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]
@@ -57,6 +58,16 @@ pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
         eprintln!("{USAGE}");
         return EXIT_USAGE;
     };
+    if command == "spend" {
+        let state = match home(".openagents/coder-access") {
+            Ok(state) => state,
+            Err(error) => {
+                eprintln!("coder host: {error}");
+                return EXIT_FAILED;
+            }
+        };
+        return crate::spend::cli::run(rest, &state);
+    }
     let mut options = match Options::parse(rest) {
         Ok(options) => options,
         Err(message) => {

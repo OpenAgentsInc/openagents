@@ -65,6 +65,8 @@ libc = "0.2"
 ndk-sys = "0.6"
 
 [dev-dependencies]
+# Signed BOLT11 invoices for the agent-spending tests.
+nostr = { path = "../nostr", features = ["test-invoice"] }
 tempfile = "3"
 
 # This crate is its own workspace, excluded from the repository's: Breez's

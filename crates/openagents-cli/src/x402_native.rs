@@ -1351,6 +1351,7 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
             wait,
             binding: PROFILE,
             resource: format!("{provider} {slug} {purchase}"),
+            phone: false,
         },
         &terms.requirements.network,
         &terms.requirements.pay_to,

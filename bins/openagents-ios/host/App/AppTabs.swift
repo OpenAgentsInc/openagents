@@ -86,6 +86,12 @@ struct AppTabs: View {
             AccountTab(bridge: bridge)
                 .tabIcon(.account)
         }
+        // An agent's payment request shows over any tab until the owner
+        // approves or denies it; Rust closes it.
+        .sheet(item: Binding(get: { bridge.packet?.spend?.sheet }, set: { _ in })) { sheet in
+            SpendApprovalSheet(sheet: sheet, waiting: bridge.packet?.spend?.waiting ?? 0,
+                               busy: bridge.packet?.spend?.busy ?? false, bridge: bridge)
+        }
     }
 }
 

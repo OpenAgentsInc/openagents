@@ -27,8 +27,43 @@ pub(super) fn now() -> u64 {
 
 /// Records admitted dispatches keyed by request ID, like an idempotent task owner.
 #[derive(Clone, Default)]
-pub(super) struct Recorder(Arc<Mutex<Vec<(String, String, String)>>>);
+pub(super) struct Recorder(Arc<Mutex<Vec<(String, String, String)>>>, SpendStub);
+
+/// Answers `spend.list` with no requests and records the sender and grant;
+/// records a receipt as sent.
+#[derive(Clone, Default)]
+pub(super) struct SpendStub(pub Arc<Mutex<Vec<(String, String)>>>);
+impl crate::host::Spends for SpendStub {
+    fn list(
+        &mut self,
+        device: &str,
+        grant: &crate::spend::Grant,
+        _now: u64,
+    ) -> std::result::Result<Vec<crate::spend::Entry>, Code> {
+        self.0
+            .lock()
+            .unwrap()
+            .push((device.into(), grant.grant.clone()));
+        Ok(vec![])
+    }
+    fn settle(
+        &mut self,
+        device: &str,
+        receipt: &crate::spend::Receipt,
+        _now: u64,
+    ) -> std::result::Result<crate::spend::Receipt, Code> {
+        self.0
+            .lock()
+            .unwrap()
+            .push((device.into(), receipt.request.clone()));
+        Ok(receipt.clone())
+    }
+}
+
 impl Dispatch for Recorder {
+    fn spends(&mut self) -> Option<&mut dyn crate::host::Spends> {
+        Some(&mut self.1)
+    }
     fn dispatch(
         &mut self,
         request: &str,

@@ -39,6 +39,7 @@ mod wallet;
 mod world;
 mod x402;
 mod x402_native;
+mod x402_phone;
 mod zone;
 
 pub use args::Args;

@@ -313,6 +313,9 @@ struct WalletTab: View {
             depositsView(deposits, claim: wallet.claim, refund: wallet.refund)
         }
         history(wallet.payments ?? [])
+        if let spend = bridge.packet?.spend {
+            AgentPaymentsSection(spend: spend, bridge: bridge)
+        }
         recovery(wallet)
         if let backup = wallet.backup { backupView(backup) }
     }

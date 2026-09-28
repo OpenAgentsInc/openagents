@@ -132,6 +132,10 @@ Positions:
 
 ## Spending grants
 
+Phase 1 (mode A) runs the narrowed formats in
+[the spend protocol](spend-protocol.md); where they differ from this
+section, that page is what the code does.
+
 A grant is a signed statement from the wallet's owner that an agent may cause
 payments within stated bounds. It follows NIP-HOST's shape and inherits its
 rules: the issuer is the only source of authority, a grant is not a bearer

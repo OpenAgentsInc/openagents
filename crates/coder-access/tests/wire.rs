@@ -140,6 +140,8 @@ fn every_operation_has_a_fixture() {
         "workspace.list",
         "task.command",
         "task.queue",
+        "spend.list",
+        "spend.settle",
     ] {
         assert!(kinds.contains(kind), "no request fixture for {kind}");
     }

@@ -9,7 +9,7 @@
 mod invoice;
 #[cfg(any(test, feature = "test-invoice"))]
 pub use invoice::test_invoice;
-pub use invoice::{Invoice, decode_invoice};
+pub use invoice::{Invoice, PaymentRequest, decode_invoice, decode_payment_request};
 
 use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};

@@ -41,6 +41,8 @@ mod publish;
 pub mod serve;
 #[cfg(feature = "host")]
 pub mod settings;
+#[cfg(feature = "host")]
+pub mod spend;
 pub mod tailnet;
 pub mod tasks;
 #[cfg(feature = "host")]

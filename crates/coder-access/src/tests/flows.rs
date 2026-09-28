@@ -608,3 +608,72 @@ async fn a_task_command_reaches_the_owner_with_its_grant_and_epoch() {
     command.text = "x".repeat(16 * 1024 + 1);
     assert!(Operation::CommandTask { command }.validate().is_err());
 }
+
+#[tokio::test]
+async fn spend_lists_carry_the_senders_own_grant_and_need_operate() {
+    let f = Fixture::served(0, false).await;
+    let (phone, operator) = f.enroll("standard").await;
+    let grant =
+        crate::spend::Grant::request_mode(random_id(), &pubkey(&phone), &f.host_key, 0, now());
+    let Outcome::Spends { spends } = operator
+        .call(Operation::ListSpends {
+            grant: Box::new(grant.clone()),
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("spends expected")
+    };
+    assert!(spends.is_empty());
+    assert_eq!(
+        f.recorder.1.0.lock().unwrap()[0],
+        (pubkey(&phone), grant.grant.clone())
+    );
+    // A grant another key issued, or one naming another host, is refused.
+    let mut foreign = grant.clone();
+    foreign.issuer = pubkey(&key());
+    let refused = operator
+        .call(Operation::ListSpends {
+            grant: Box::new(foreign),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, Code::Forbidden);
+    let mut elsewhere = grant.clone();
+    elsewhere.grantee = pubkey(&key());
+    let refused = operator
+        .call(Operation::ListSpends {
+            grant: Box::new(elsewhere),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, Code::Forbidden);
+    // A receipt reaches the host's book and comes back as recorded.
+    let receipt = crate::spend::Receipt::refused(
+        &random_id(),
+        &grant.grant,
+        crate::spend::Refusal::DeclinedByOwner,
+        now(),
+    );
+    let Outcome::Settled { receipt: recorded } = operator
+        .call(Operation::SettleSpend {
+            receipt: Box::new(receipt.clone()),
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("settled expected")
+    };
+    assert_eq!(*recorded, receipt);
+    // A device that may only observe cannot list or settle.
+    let (watcher, observer) = f.enroll("observe").await;
+    let own =
+        crate::spend::Grant::request_mode(random_id(), &pubkey(&watcher), &f.host_key, 0, now());
+    let refused = observer
+        .call(Operation::ListSpends {
+            grant: Box::new(own),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, Code::MissingRight);
+}

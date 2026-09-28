@@ -64,6 +64,51 @@ impl Invoice {
 /// and supported mandatory invoice features. It accepts unknown odd features
 /// and unknown optional tagged fields as BOLT11 requires. It performs no payment.
 pub fn decode_invoice(text: &str) -> Result<Invoice, PaymentError> {
+    let (invoice, _) = decode(text, true)?;
+    Ok(invoice)
+}
+
+/// An authenticated BOLT11 payment request as a wallet pays it, outside the
+/// x402 profile: it may carry an inline description instead of a
+/// description hash. Signature, payee, amount, and fixed-field rules are the
+/// same as [`decode_invoice`]'s.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaymentRequest {
+    pub currency: String,
+    pub amount_msat: u64,
+    pub created_at: u64,
+    pub expiry_seconds: u64,
+    pub payment_hash: [u8; 32],
+    pub payee: [u8; 33],
+    /// The inline description, when the invoice has one.
+    pub description: Option<String>,
+}
+
+impl PaymentRequest {
+    /// Unix seconds at which the invoice expires.
+    #[must_use]
+    pub fn expires_at(&self) -> u64 {
+        self.created_at.saturating_add(self.expiry_seconds)
+    }
+}
+
+/// Strictly authenticate a BOLT11 invoice on the two x402 Lightning
+/// networks, allowing an inline description (at most 639 bytes of UTF-8) in
+/// place of a description hash. It performs no payment.
+pub fn decode_payment_request(text: &str) -> Result<PaymentRequest, PaymentError> {
+    let (invoice, description) = decode(text, false)?;
+    Ok(PaymentRequest {
+        currency: invoice.currency,
+        amount_msat: invoice.amount_msat,
+        created_at: invoice.created_at,
+        expiry_seconds: invoice.expiry_seconds,
+        payment_hash: invoice.payment_hash,
+        payee: invoice.payee.serialize(),
+        description,
+    })
+}
+
+fn decode(text: &str, x402: bool) -> Result<(Invoice, Option<String>), PaymentError> {
     let (hrp, words) = decode_bech32(text)?;
     let (currency, amount_msat) = amount(&hrp)?;
     if words.len() < 7 + 104 {
@@ -78,6 +123,7 @@ pub fn decode_invoice(text: &str) -> Result<Invoice, PaymentError> {
     let mut payment_hash = None;
     let mut payment_secret = None;
     let mut description_hash = None;
+    let mut description = None;
     let mut payee = None;
     let mut expiry = None;
     let mut cltv = None;
@@ -107,7 +153,13 @@ pub fn decode_invoice(text: &str) -> Result<Invoice, PaymentError> {
                 }
                 description_hash = Some(fixed::<32>(data, 52)?);
             }
-            13 => return Err(PaymentError::InvoiceDescription),
+            13 if x402 => return Err(PaymentError::InvoiceDescription),
+            13 => {
+                let bytes = words_to_bytes(data, false)?;
+                let text =
+                    String::from_utf8(bytes).map_err(|_| PaymentError::InvoiceDescription)?;
+                set_once(&mut description, text)?;
+            }
             19 => {
                 let key = fixed::<33>(data, 53)?;
                 if !matches!(key[0], 2 | 3) {
@@ -141,7 +193,11 @@ pub fn decode_invoice(text: &str) -> Result<Invoice, PaymentError> {
     }
     let payment_hash = payment_hash.ok_or(PaymentError::InvoiceDecode)?;
     payment_secret.ok_or(PaymentError::InvoiceDecode)?;
-    let description_hash = description_hash.ok_or(PaymentError::InvoiceDescription)?;
+    let description_hash = match description_hash {
+        Some(hash) => hash,
+        None if !x402 => [0; 32],
+        None => return Err(PaymentError::InvoiceDescription),
+    };
     let mut signing = hrp.as_bytes().to_vec();
     signing.extend(words_to_bytes(unsigned, true)?);
     let message = Message::from_digest(Sha256::digest(signing).into());
@@ -173,15 +229,18 @@ pub fn decode_invoice(text: &str) -> Result<Invoice, PaymentError> {
             .map_err(|_| PaymentError::InvoiceSignature)?;
         payee
     };
-    Ok(Invoice {
-        currency,
-        amount_msat,
-        created_at,
-        expiry_seconds: expiry.unwrap_or(3600),
-        payment_hash,
-        description_hash,
-        payee,
-    })
+    Ok((
+        Invoice {
+            currency,
+            amount_msat,
+            created_at,
+            expiry_seconds: expiry.unwrap_or(3600),
+            payment_hash,
+            description_hash,
+            payee,
+        },
+        description,
+    ))
 }
 
 fn set_once<T>(slot: &mut Option<T>, value: T) -> Result<(), PaymentError> {
@@ -443,10 +502,34 @@ pub mod test_invoice {
         )
     }
     pub fn signed(hrp: &str, fields: Vec<u8>, explicit: bool, high_s: bool) -> String {
+        signed_at(hrp, fields, explicit, high_s, 1_700_000_000)
+    }
+    /// Fields for a wallet invoice: the payment hash of `preimage`, a
+    /// payment secret, an inline `description`, and `expiry` seconds.
+    pub fn described(preimage: [u8; 32], description: &str, expiry: u64) -> Vec<u8> {
+        let mut fields = tag(1, &words(&Sha256::digest(preimage)));
+        fields.extend(tag(16, &words(&[2; 32])));
+        fields.extend(tag(13, &words(description.as_bytes())));
+        fields.extend(tag(6, &number(expiry)));
+        fields
+    }
+    /// The payee key [`signed`] and [`signed_at`] sign with, compressed.
+    pub fn payee() -> [u8; 33] {
+        let secp = Secp256k1::new();
+        let secret = SecretKey::from_byte_array([1; 32]).unwrap();
+        PublicKey::from_secret_key(&secp, &secret).serialize()
+    }
+    pub fn signed_at(
+        hrp: &str,
+        fields: Vec<u8>,
+        explicit: bool,
+        high_s: bool,
+        created_at: u64,
+    ) -> String {
         let secp = Secp256k1::new();
         let secret = SecretKey::from_byte_array([1; 32]).unwrap();
         let mut unsigned = vec![0; 7];
-        let time = number(1_700_000_000);
+        let time = number(created_at);
         unsigned[7 - time.len()..].copy_from_slice(&time);
         unsigned.extend(fields);
         if explicit {
@@ -522,6 +605,35 @@ pub mod test_invoice {
                 .amount_msat,
             1
         );
+    }
+
+    #[test]
+    fn a_wallet_invoice_may_describe_itself_inline_but_not_for_x402() {
+        let text = signed(
+            "lnbc250n",
+            described([9; 32], "Coffee for the agent", 600),
+            false,
+            false,
+        );
+        assert!(matches!(
+            decode_invoice(&text),
+            Err(PaymentError::InvoiceDescription)
+        ));
+        let request = decode_payment_request(&text).unwrap();
+        assert_eq!(request.amount_msat, 25_000);
+        assert_eq!(request.description.as_deref(), Some("Coffee for the agent"));
+        assert_eq!(
+            request.payment_hash,
+            <[u8; 32]>::from(Sha256::digest([9; 32]))
+        );
+        assert_eq!(request.payee, payee());
+        assert_eq!(request.expires_at(), 1_700_000_600);
+        // An x402 invoice reads the same way.
+        let strict = signed("lnbc250n", fields([3; 32]), false, false);
+        assert_eq!(decode_payment_request(&strict).unwrap().description, None);
+        let mut both = described([9; 32], "a", 600);
+        both.extend(tag(13, &words(b"b")));
+        assert!(decode_payment_request(&signed("lnbc250n", both, false, false)).is_err());
     }
 
     #[test]

@@ -82,6 +82,8 @@ struct AppPacket: Decodable {
     let wallet_loading: Bool?
     /// A bitcoin purchase page to open once.
     let wallet_open_url: String?
+    /// Agents' payment requests (`spend::View`).
+    let spend: SpendState?
 }
 
 /// Rust's direct reply with the recovery words or a checked restore. It is
@@ -197,6 +199,14 @@ final class MobileBridge: ObservableObject {
         send(["op": "wallet_open", "entropy_hex": entropy.map { String(format: "%02x", $0) }.joined()])
     }
     func refreshWallet() { send(["op": "wallet_refresh"]) }
+    /// An agent payment request's answer: `spend_approve` or `spend_deny`
+    /// with `request`, `spend_block` or `spend_allow` with `host`, or
+    /// `spend_dismiss`. Rust checks every field.
+    func spend(_ op: String, _ fields: [String: Any] = [:]) {
+        var request = fields
+        request["op"] = op
+        send(request)
+    }
     /// A Wallet request whose fields Rust checks.
     func wallet(_ op: String, _ fields: [String: Any] = [:]) {
         var request = fields

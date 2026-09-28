@@ -89,7 +89,16 @@ The app has four tabs, shown as icons:
   money), `--wallet-refund ADDRESS` with `--wallet-refund-review 1` and
   `--wallet-backup 1`. On-chain withdrawals show three speeds; deposits that
   need attention offer a quoted claim or an on-chain refund; the exit backup
-  exports to Files.
+  exports to Files. **Agent payments** lists what agents on the owner's
+  computers asked the phone to pay, and which
+  computers may ask. A request shows as a **Payment request** sheet over any
+  tab (`host/App/AgentPayments.swift` over
+  `crates/openagents-mobile/src/spend.rs`): the computer, task, purpose, the
+  payee and amount decoded from the invoice, the fee, and what the
+  computer's grant has left. Nothing pays until the owner taps Approve (with
+  Face ID or the passcode above 1,000 sats); Deny refuses it, and **Stop
+  payment requests** revokes the computer. See
+  [the spend protocol](../../docs/breez/spend-protocol.md).
 - **Account** holds **Computers**, **Tailnet**, **Identity keys**, **About
   this device**, and **Changelog**, and links to the source code and to
   OpenAgents on X. See [Account](#account).

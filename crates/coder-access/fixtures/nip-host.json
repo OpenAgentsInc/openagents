@@ -328,6 +328,83 @@
         "kind": "workspace.list"
       }
     },
+    "request_spend_list": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "spend.list",
+        "grant": {
+          "v": "openagents.spend-grant.v1",
+          "requires": [],
+          "grant": "8888888888888888888888888888888888888888888888888888888888888888",
+          "issuer": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "grantee": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "wallet": {
+            "kind": "spark",
+            "network": "bitcoin"
+          },
+          "mode": "request",
+          "unit": "msat",
+          "per_payment_max": 10000000,
+          "period": 86400,
+          "period_max": 50000000,
+          "total_max": 500000000,
+          "fee_max": {
+            "absolute": 100000,
+            "ppm": 500000
+          },
+          "rails": [
+            "lightning"
+          ],
+          "payees": [],
+          "any_payee": true,
+          "purposes": [
+            "x402_purchase",
+            "labor_payment",
+            "tip",
+            "transfer"
+          ],
+          "epoch": 0,
+          "issued_at": 1790000000,
+          "expires_at": 1792592000
+        }
+      }
+    },
+    "request_spend_settle": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "spend.settle",
+        "receipt": {
+          "v": "openagents.spend-receipt.v1",
+          "requires": [],
+          "request": "9999999999999999999999999999999999999999999999999999999999999999",
+          "grant": "8888888888888888888888888888888888888888888888888888888888888888",
+          "outcome": "refused",
+          "code": "declined_by_owner",
+          "payment_id": null,
+          "amount_msat": null,
+          "fees_msat": null,
+          "proof": null,
+          "remaining": null,
+          "at": 1790000000
+        }
+      }
+    },
     "reply_devices": {
       "v": "openagents.host-reply.v1",
       "requires": [],
@@ -495,6 +572,51 @@
         "status": "refused",
         "code": "revoked",
         "missing": null
+      }
+    },
+    "reply_spends": {
+      "v": "openagents.host-reply.v1",
+      "requires": [],
+      "request": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "request_event": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "result": {
+        "status": "ok",
+        "outcome": {
+          "kind": "spends",
+          "spends": []
+        }
+      }
+    },
+    "reply_settled": {
+      "v": "openagents.host-reply.v1",
+      "requires": [],
+      "request": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+      "request_event": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "result": {
+        "status": "ok",
+        "outcome": {
+          "kind": "settled",
+          "receipt": {
+            "v": "openagents.spend-receipt.v1",
+            "requires": [],
+            "request": "9999999999999999999999999999999999999999999999999999999999999999",
+            "grant": "8888888888888888888888888888888888888888888888888888888888888888",
+            "outcome": "refused",
+            "code": "declined_by_owner",
+            "payment_id": null,
+            "amount_msat": null,
+            "fees_msat": null,
+            "proof": null,
+            "remaining": null,
+            "at": 1790000000
+          }
+        }
       }
     }
   },
@@ -1084,6 +1206,93 @@
           "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "edit": {
             "action": "promote_all"
+          }
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "spend grant in sats",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "spend.list",
+          "grant": {
+            "v": "openagents.spend-grant.v1",
+            "requires": [],
+            "grant": "8888888888888888888888888888888888888888888888888888888888888888",
+            "issuer": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "grantee": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "wallet": {
+              "kind": "spark",
+              "network": "bitcoin"
+            },
+            "mode": "request",
+            "unit": "sat",
+            "per_payment_max": 10000000,
+            "period": 86400,
+            "period_max": 50000000,
+            "total_max": 500000000,
+            "fee_max": {
+              "absolute": 100000,
+              "ppm": 500000
+            },
+            "rails": [
+              "lightning"
+            ],
+            "payees": [],
+            "any_payee": true,
+            "purposes": [
+              "x402_purchase",
+              "labor_payment",
+              "tip",
+              "transfer"
+            ],
+            "epoch": 0,
+            "issued_at": 1790000000,
+            "expires_at": 1792592000
+          }
+        }
+      },
+      "code": "unsupported"
+    },
+    {
+      "name": "refused receipt without a code",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "spend.settle",
+          "receipt": {
+            "v": "openagents.spend-receipt.v1",
+            "requires": [],
+            "request": "9999999999999999999999999999999999999999999999999999999999999999",
+            "grant": "8888888888888888888888888888888888888888888888888888888888888888",
+            "outcome": "refused",
+            "code": null,
+            "payment_id": null,
+            "amount_msat": null,
+            "fees_msat": null,
+            "proof": null,
+            "remaining": null,
+            "at": 1790000000
           }
         }
       },

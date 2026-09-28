@@ -52,6 +52,7 @@ tokio-rustls = { version = "0.26", default-features = false, optional = true }
 # The ready record test decodes with the host service's own reader.
 coder-service = { path = "../coder-service" }
 futures-util = "0.3"
+nostr = { path = "../nostr", features = ["test-invoice"] }
 tempfile = "3"
 
 [[test]]

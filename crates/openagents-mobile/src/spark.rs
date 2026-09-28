@@ -8,19 +8,19 @@
 //! traces is written anywhere.
 
 use crate::wallet::{
-    Ask, ClaimQuote, Contact, DepositRow, Destination, FeeRates, LnurlTerms, Node, Paid,
-    PaymentRow, Provider, Quote, QuoteFailure, SendRequest, Speed,
+    AgentPayFailure, Ask, ClaimQuote, Contact, DepositRow, Destination, FeeRates, InvoicePayment,
+    LnurlTerms, Node, Paid, PaymentRow, Provider, Quote, QuoteFailure, SendRequest, Speed,
 };
 use breez_sdk_spark::{
     AddContactRequest, BreezSdk, BuyBitcoinRequest, ClaimDepositOutcome, ClaimDepositRequest,
     DepositClaimError, EventListener, Fee, FetchClaimDepositQuoteRequest, GetInfoRequest,
     InputType, ListContactsRequest, ListPaymentsRequest, ListUnclaimedDepositsRequest,
-    LnurlPayRequest, MaxFee, Network, OnchainConfirmationSpeed, Payment, PaymentMethod,
-    PaymentRequest, PaymentStatus, PaymentType, PrepareLnurlPayRequest, PrepareLnurlPayResponse,
-    PrepareSendPaymentRequest, PrepareSendPaymentResponse, ReceivePaymentMethod,
-    ReceivePaymentRequest, RefundDepositRequest, SdkBuilder, SdkEvent, Seed, SendPaymentMethod,
-    SendPaymentOptions, SendPaymentRequest, SuccessActionProcessed, SyncWalletRequest,
-    default_config,
+    LnurlPayRequest, MaxFee, Network, OnchainConfirmationSpeed, Payment, PaymentDetails,
+    PaymentMethod, PaymentRequest, PaymentStatus, PaymentType, PrepareLnurlPayRequest,
+    PrepareLnurlPayResponse, PrepareSendPaymentRequest, PrepareSendPaymentResponse,
+    ReceivePaymentMethod, ReceivePaymentRequest, RefundDepositRequest, SdkBuilder, SdkEvent, Seed,
+    SendPaymentMethod, SendPaymentOptions, SendPaymentRequest, SuccessActionProcessed,
+    SyncWalletRequest, default_config,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -698,9 +698,107 @@ impl Node for SparkNode {
         self.runtime
             .block_on(self.sdk.add_event_listener(Box::new(Listener(notify))));
     }
+
+    fn invoice_fee(&self, invoice: &str) -> Result<u64, String> {
+        self.prepare_invoice(invoice)
+            .map(|(_, _, fee)| fee)
+            .map_err(|failure| match failure {
+                AgentPayFailure::InsufficientFunds => {
+                    "The wallet doesn't hold enough to pay this and its fee.".into()
+                }
+                AgentPayFailure::FeeTooHigh(_) => "The fee is above the ceiling.".into(),
+                AgentPayFailure::Failed(message) => message,
+            })
+    }
+
+    fn pay_invoice(
+        &self,
+        invoice: &str,
+        max_fee_sats: u64,
+        idempotency_key: &str,
+    ) -> Result<InvoicePayment, AgentPayFailure> {
+        let (prepared, options, fee) = self.prepare_invoice(invoice)?;
+        if fee > max_fee_sats {
+            return Err(AgentPayFailure::FeeTooHigh(fee));
+        }
+        let payment = self
+            .runtime
+            .block_on(self.sdk.send_payment(SendPaymentRequest {
+                prepare_response: prepared,
+                options: Some(options),
+                idempotency_key: Some(idempotency_key.to_owned()),
+            }))
+            .map(|response| response.payment)
+            .map_err(|error| failure(&error.to_string()))?;
+        let preimage = match &payment.details {
+            Some(PaymentDetails::Lightning { htlc_details, .. }) => htlc_details.preimage.clone(),
+            Some(PaymentDetails::Spark {
+                htlc_details: Some(htlc_details),
+                ..
+            }) => htlc_details.preimage.clone(),
+            _ => None,
+        };
+        Ok(InvoicePayment {
+            row: row(&payment),
+            preimage: preimage.map(|p| p.to_ascii_lowercase()),
+        })
+    }
+}
+
+/// An SDK failure while paying an agent's invoice.
+fn failure(detail: &str) -> AgentPayFailure {
+    if detail.to_ascii_lowercase().contains("insufficient") {
+        AgentPayFailure::InsufficientFunds
+    } else {
+        AgentPayFailure::Failed(describe("pay", detail))
+    }
 }
 
 impl SparkNode {
+    /// Prepare an agent's BOLT11 payment: the prepared send, its options,
+    /// and its fee in sats. A payee on Spark is paid directly when cheaper.
+    fn prepare_invoice(
+        &self,
+        invoice: &str,
+    ) -> Result<(PrepareSendPaymentResponse, SendPaymentOptions, u64), AgentPayFailure> {
+        let prepared = self
+            .runtime
+            .block_on(self.sdk.prepare_send_payment(PrepareSendPaymentRequest {
+                payment_request: PaymentRequest::Input {
+                    input: invoice.to_owned(),
+                },
+                amount: None,
+                token_identifier: None,
+                conversion_options: None,
+                fee_policy: None,
+            }))
+            .map_err(|error| failure(&error.to_string()))?;
+        let SendPaymentMethod::Bolt11Invoice {
+            spark_transfer_fee_sats,
+            lightning_fee_sats,
+            ..
+        } = &prepared.payment_method
+        else {
+            return Err(AgentPayFailure::Failed(
+                "The request isn't a Lightning invoice.".into(),
+            ));
+        };
+        if prepared.token_identifier.is_some() || prepared.conversion_estimate.is_some() {
+            return Err(AgentPayFailure::Failed(
+                "Token payments aren't available in this app yet.".into(),
+            ));
+        }
+        let (fee, prefer_spark) = match spark_transfer_fee_sats {
+            Some(fee) if fee <= lightning_fee_sats => (*fee, true),
+            _ => (*lightning_fee_sats, false),
+        };
+        let options = SendPaymentOptions::Bolt11Invoice {
+            prefer_spark,
+            completion_timeout_secs: Some(SEND_WAIT_SECS),
+        };
+        Ok((prepared, options, fee))
+    }
+
     fn receive(&self, payment_method: ReceivePaymentMethod) -> Result<String, String> {
         self.runtime
             .block_on(

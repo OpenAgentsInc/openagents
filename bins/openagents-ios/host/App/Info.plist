@@ -22,6 +22,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan the invitation shown on your computer to add it.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Confirm larger payments your agents ask you to approve.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Use the phone's orientation to look around the world when you turn on motion look.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

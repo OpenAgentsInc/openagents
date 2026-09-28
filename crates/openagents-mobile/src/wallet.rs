@@ -104,6 +104,42 @@ pub trait Node: Send + Sync {
     /// Call `notify` when the wallet syncs, a payment changes, or a deposit
     /// arrives.
     fn subscribe(&self, notify: Arc<dyn Fn() + Send + Sync>);
+    /// Quote the fee, in sats, to pay a BOLT11 invoice now, keeping no quote
+    /// (an agent's payment request; see `crate::spend`).
+    fn invoice_fee(&self, invoice: &str) -> Result<u64, String> {
+        let _ = invoice;
+        Err("This wallet can't pay an agent's request.".into())
+    }
+    /// Pay a BOLT11 invoice for at most `max_fee_sats`, once per
+    /// `idempotency_key` (a UUID): a repeat returns the same payment.
+    fn pay_invoice(
+        &self,
+        invoice: &str,
+        max_fee_sats: u64,
+        idempotency_key: &str,
+    ) -> Result<InvoicePayment, AgentPayFailure> {
+        let _ = (invoice, max_fee_sats, idempotency_key);
+        Err(AgentPayFailure::Failed(
+            "This wallet can't pay an agent's request.".into(),
+        ))
+    }
+}
+
+/// An invoice the wallet paid for an agent: the payment and, once the
+/// payee released it, its preimage (lowercase hex).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InvoicePayment {
+    pub row: PaymentRow,
+    pub preimage: Option<String>,
+}
+
+/// Why the wallet did not pay an agent's invoice.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AgentPayFailure {
+    /// The quoted fee, in sats, is above the ceiling.
+    FeeTooHigh(u64),
+    InsufficientFunds,
+    Failed(String),
 }
 
 /// Who sells bitcoin for dollars. Both are Breez integrations on mainnet.
@@ -964,6 +1000,11 @@ impl Wallet {
 
     fn lock(&self) -> MutexGuard<'_, Shared> {
         lock(&self.shared)
+    }
+
+    /// The running wallet, for an agent payment the owner approved.
+    pub fn node(&self) -> Option<Arc<dyn Node>> {
+        self.lock().node.clone()
     }
 
     /// Take the wallet key and start the wallet. A later call with the same

@@ -65,7 +65,32 @@ pub trait Dispatch: Send {
     ) -> std::result::Result<crate::protocol::TaskQueue, Code> {
         Err(Code::Unavailable)
     }
+    /// The host's spend requests. A host without them has none to offer.
+    fn spends(&mut self) -> Option<&mut dyn Spends> {
+        None
+    }
 }
+/// Where the host keeps agent spend requests (phase 1 agent spending). The
+/// host has checked the sender's `operate` right, and for `spend.list` that
+/// the grant is the sender's own and names this host, before it calls here.
+pub trait Spends: Send {
+    /// Take `grant` as `device`'s current spend grant for this host, and
+    /// list the requests awaiting `device`'s answer.
+    fn list(
+        &mut self,
+        device: &str,
+        grant: &crate::spend::Grant,
+        now: u64,
+    ) -> std::result::Result<Vec<crate::spend::Entry>, Code>;
+    /// Record `device`'s receipt; returns the recorded one.
+    fn settle(
+        &mut self,
+        device: &str,
+        receipt: &crate::spend::Receipt,
+        now: u64,
+    ) -> std::result::Result<crate::spend::Receipt, Code>;
+}
+
 /// The default dispatcher: task and terminal effects are not connected.
 pub struct Unconnected;
 impl Dispatch for Unconnected {
@@ -430,6 +455,41 @@ impl Host {
                         }
                     }
                     Err(code) => Err(Error::new(code, "the task owner refused the queue edit")),
+                }
+            }
+            Operation::ListSpends { grant } => {
+                if grant.issuer != p.key || grant.grantee != book.host {
+                    Err(Error::new(
+                        Code::Forbidden,
+                        "a spend grant must be the sender's own and name this host",
+                    ))
+                } else {
+                    match dispatch.spends().map(|s| s.list(&p.key, grant, now)) {
+                        Some(Ok(spends)) => {
+                            let outcome = Outcome::Spends { spends };
+                            outcome.validate().map(|()| outcome)
+                        }
+                        Some(Err(code)) => Err(Error::new(code, "the host refused the spend list")),
+                        None => Err(Error::new(Code::Unavailable, "the host holds no spends")),
+                    }
+                }
+            }
+            Operation::SettleSpend { receipt } => {
+                match dispatch.spends().map(|s| s.settle(&p.key, receipt, now)) {
+                    Some(Ok(recorded)) => {
+                        let outcome = Outcome::Settled {
+                            receipt: Box::new(recorded),
+                        };
+                        match outcome.validate() {
+                            Ok(()) if outcome.answers(&request.op) => Ok(outcome),
+                            _ => Err(Error::new(
+                                Code::Unavailable,
+                                "the recorded receipt is invalid",
+                            )),
+                        }
+                    }
+                    Some(Err(code)) => Err(Error::new(code, "the host refused the receipt")),
+                    None => Err(Error::new(Code::Unavailable, "the host holds no spends")),
                 }
             }
             Operation::CreateTask { .. }

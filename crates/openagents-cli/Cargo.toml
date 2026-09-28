@@ -41,5 +41,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"
 verse = { path = "../verse", default-features = false, features = ["xp-host"] }
 verse-lagrange = { path = "../verse-lagrange" }
 
+[dev-dependencies]
+nostr = { path = "../nostr", features = ["test-invoice"] }
+tempfile = "3"
+
 [lints]
 workspace = true
