@@ -6,7 +6,7 @@ Roles identify how to read a document; they are not implementation or deployment
 status. Dated reports and designs can describe work that is partial, superseded,
 negative, or deferred. Use their scope statements and linked current guides.
 
-Start with the [documentation index](README.md), [master roadmap](roadmap.md),
+Start with the [documentation index](README.md), [master roadmap](roadmap.md), [launch roadmap](roadmap/2026-09-29-launch-roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
@@ -339,7 +339,7 @@ files are included below.
 | Document | Role | Topic |
 | --- | --- | --- |
 | [game/README.md](game/README.md) | Index | Games, MMORPGs, and 3D worlds in OpenAgents |
-| [game/playtesting.md](game/playtesting.md) | Design / plan | Playtesting program: cohorts, sessions, feedback, triage, and playtest XP |
+| [game/playtesting.md](game/playtesting.md) | Design / plan | Playtesting program: open launch 2026-09-29, sessions, feedback, triage, and playtest XP |
 
 ## gym
 
@@ -514,6 +514,12 @@ files are included below.
 | [research/unreal/2026-09-27-lagrange-realism-audit.md](research/unreal/2026-09-27-lagrange-realism-audit.md) | Audit / roadmap | Lagrange 1 realism audit and roadmap |
 | [research/unreal/AGENTS.md](research/unreal/AGENTS.md) | Runbook / policy | Studying Unreal Engine source |
 | [research/unreal/README.md](research/unreal/README.md) | Index | Unreal Engine research |
+
+## roadmap
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [roadmap/2026-09-29-launch-roadmap.md](roadmap/2026-09-29-launch-roadmap.md) | Design / plan | Launch roadmap: the OpenAgents app MVP for playtesters on 2026-09-29 and the milestones after it |
 
 ## terminal-bench
 

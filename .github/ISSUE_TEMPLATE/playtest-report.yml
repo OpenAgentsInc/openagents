@@ -1,0 +1,54 @@
+name: Playtest report
+description: Report a problem, a confusing moment, or an idea from the OpenAgents app (iOS TestFlight or Android APK).
+title: "[playtest] "
+labels: ["playtest"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for playtesting. This issue is public. Never paste recovery words, an nsec, invoices, addresses, or screenshots of the Wallet or Identity keys.
+        Joining earns nothing by itself; accepted, reproducible reports can earn playtest XP and titles later. See docs/game/playtesting.md.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [iOS (TestFlight), Android (APK)]
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: Account > About this device, for example 1.0.0 (15).
+    validations:
+      required: true
+  - type: dropdown
+    id: tab
+    attributes:
+      label: Where
+      options: [Coder, Verse (the Grid, Gym, Lagrange 1), Wallet, Account, First run, Other]
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options: [Bug, Confusing, Idea, Felt good]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from opening the app. Reproducible reports are the ones that earn XP.
+  - type: input
+    id: npub
+    attributes:
+      label: npub to credit (optional)
+      description: The public key that should receive playtest XP if this report is accepted.

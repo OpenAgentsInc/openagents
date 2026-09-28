@@ -1,19 +1,24 @@
 # Playtesting program
 
-> **Status: Proposed, written 2026-09-28.** This document designs a
-> playtesting program for the OpenAgents app (iOS first) and ties it to the
-> XP system in [agent trainer leveling](../verse/agent-trainer-leveling.md).
-> What exists today is listed in [What exists today](#what-exists-today);
-> everything else is proposed. Nothing in this document pays testers, and no
-> payout is promised. Implementation is tracked in
-> [Implementation tasks](#implementation-tasks) and epic
-> [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888).
+> **Status: Active from 2026-09-29.** Written 2026-09-28 and revised the same
+> day with the owner's decisions: the program is **open** (a public
+> TestFlight link and a public Android APK; anyone can join), and **joining
+> earns nothing by itself**: the **PLAYTESTER** title, other titles, and
+> playtest XP come only from contributions. Coder and Verse launch to
+> playtesters on **Tuesday 2026-09-29**; see the
+> [day-0 launch checklist](#day-0-launch-checklist-2026-09-29) and the
+> [launch roadmap](../roadmap/2026-09-29-launch-roadmap.md), which ties this
+> program to the MVP and the milestones after it. What exists today is listed
+> in [What exists today](#what-exists-today); everything else is planned.
+> Nothing in this document pays testers, and no payout is promised.
+> Implementation is tracked in [Implementation tasks](#implementation-tasks)
+> and epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888).
 
-The OpenAgents app went from build 1 to build 14 on TestFlight in one day.
+The OpenAgents app went from build 1 to build 15 on TestFlight in two days.
 Each build so far was tested by the same person who asked for it: the owner
 installs it, writes notes such as "1.0.0 Build 13 Feedback", and agents turn
 the notes into commits and the next build. That loop is fast and it works,
-but it has one player. This document turns it into a program with many
+but it has one player. This document turns it into an open program with many
 players, a method, and a reward that fits the rest of the game: XP for
 evidence-backed, accepted contributions, titles and cosmetics in the Grid, and
 no money.
@@ -31,7 +36,8 @@ no money.
 - [Feedback capture in the app](#feedback-capture-in-the-app)
 - [Triage: from report to the next build](#triage-from-report-to-the-next-build)
 - [Rewards](#rewards)
-- [The first four weeks](#the-first-four-weeks)
+- [Day-0 launch checklist (2026-09-29)](#day-0-launch-checklist-2026-09-29)
+- [Season 1, week by week](#season-1-week-by-week)
 - [Session scripts](#session-scripts)
 - [Questionnaire](#questionnaire)
 - [Success metrics and the first milestone](#success-metrics-and-the-first-milestone)
@@ -100,7 +106,7 @@ the book says under them.
    interesting at this point, you are stuck with it." It advises testing
    "from the very moment you begin," cheaply, with "your own time and some
    volunteers." For us, that means testing the agent trainer loop now, on
-   paper, before its code exists (see [week 3](#week-3-raids-and-the-paper-trainer-loop)).
+   paper, before its code exists (see [week 3](#week-3-2026-10-13-to-10-19-raids-and-the-paper-trainer-loop)).
 7. **Start with yourself, with a fresh mind, and keep a notebook.**
    Self-testing is "most valuable in the foundation stage" and is "where you
    create solutions to glaring problems"; the goal is "to make the game work,
@@ -169,8 +175,9 @@ Status words follow the [glossary](../glossary.md).
 
 | Piece | Status |
 | --- | --- |
-| The OpenAgents app on iOS with four tabs: Coder, Verse (the Grid), Wallet, and Account ([README](../../bins/openagents-ios/README.md)) | Implemented. Builds 1 to 14 of version 1.0.0 went to TestFlight on 2026-09-28. |
-| Android host with the same Rust library | Implemented, but no distribution channel in this program. The Grid's Gym panels don't open on Android yet. |
+| The OpenAgents app on iOS (`com.openagents.app`) with four tabs: Coder, Verse (the Grid), Wallet, and Account ([README](../../bins/openagents-ios/README.md)) | Implemented. Version 1.0.0 builds 1 to 14 went to TestFlight on 2026-09-28; build 15 (`be94321643`) carries that day's fixes and follows build 14 to testers. |
+| OpenAgents for Android ([`bins/openagents-android`](../../bins/openagents-android/README.md)), the same Rust library | Partial ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)). Coder, Verse (with the Gym and RESULTS panels, `82663b935d`), and Account work; the **Wallet** tab is a "Coming soon" placeholder ([#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)). Verified on the emulator only; a live tailnet chat, QR scanning, the terminal, and motion look haven't been checked on a device. Distributed as a signed APK that testers install by hand. |
+| Public distribution | Planned for 2026-09-29: a public TestFlight link for iOS and a public APK download for Android (owner steps in the workspace's `NEEDS_OWNER.md`). |
 | TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. Nothing in this repository reads it. |
 | The owner's build notes ("1.0.0 Build 13 Feedback") turned into commits by agents, followed by a build bump (for example `e84de16fd5`, `06d033d663`) | The current loop. It isn't written down anywhere except in commit history. |
 | **Changelog** in Account (`crates/openagents-mobile/src/account.rs`) | Implemented. One entry, "First release". |
@@ -198,39 +205,52 @@ the stage decides the kind of test and the kind of report we want.
 
 ## Testers and cohorts
 
-Recruit in the book's widening circles. Each cohort is a TestFlight group, so
-a build can go to one circle before the next.
+The program is **open**. Anyone can join: on iOS through the public
+TestFlight link, on Android by installing the public APK. There's no
+application, no invite list, and no cohort that gates access. Every tester
+gets every build that goes to the public link.
 
-| Cohort | Who | Size | TestFlight group | When |
-| --- | --- | --- | --- | --- |
-| 0. Self | The owner and anyone building the app, playing "with a fresh mind" | 1 to 3 | Internal | Every build |
-| 1. Confidants | Friends and colleagues who don't work on the app | 5 | External, "Playtest S1 confidants" | Week 1 |
-| 2. Community | People who follow OpenAgents on Nostr and X and ask to join, and past contributors | 10 to 15 | External, "Playtest S1 community" | Week 2 |
-| 3. Target players | People matching the thesis in [docs/game](README.md): gamers who raid or grind and who use a coding agent; people who already run a Lightning wallet | 10 to 20 | External, "Playtest S1 target" | Week 3 onward |
-| 4. Public link | Anyone with the TestFlight public link | Capped by the link | External, public link | Not in the first four weeks |
+The book's widening circles still shape *who we talk to and when*, not who
+may install:
+
+| Circle | Who | How they arrive | When |
+| --- | --- | --- | --- |
+| 0. Self | The owner and anyone building the app, playing "with a fresh mind" | Internal TestFlight group | Every build |
+| 1. Confidants (informal) | Friends and colleagues who don't work on the app | The same public link, plus a personal ask for a moderated session | Day 0 to week 1 |
+| 2. Public testers | Anyone who installs from the public link or APK: people who follow OpenAgents on Nostr and X, past contributors, strangers | The public TestFlight link and APK, posted publicly on 2026-09-29 | From day 0 |
+| 3. Target players | People matching the thesis in [docs/game](README.md): gamers who raid or grind and who use a coding agent; people who already run a Lightning wallet | The same link; we invite them to moderated and group sessions | Week 2 onward |
 
 Positions:
 
-- **Wean off confidants fast.** Cohort 1 gets one week. The book is blunt
-  that friends are "too harsh or too forgiving."
-- **Recruit for Coder separately.** The Coder tab needs a computer running
-  the Coder host. Ask every applicant whether they have a Mac or Linux
-  machine they are willing to pair. Testers without one test the Grid,
-  the Gym, and the Wallet, and that is a full program.
-- **Adults only.** The Wallet runs on Bitcoin mainnet. Every tester confirms
-  they are 18 or older.
-- **Recruiting text says what testers get: XP and titles, not money.** See
-  [Rewards](#rewards).
-- **TestFlight limits apply.** External groups need Apple's Beta App Review
-  on the first build of a version, which can take a day, so external builds
-  move slower than the internal loop. Plan cohorts around it: not every
-  internal build goes external.
+- **Open by default, moderated by invitation.** Installing is open.
+  Moderated think-aloud sessions and group sessions ("raids") take a
+  moderator's time, so we invite testers into them from whoever has joined,
+  favoring circles 1 and 3. Anyone can run the unmoderated task lists.
+- **Wean off confidants fast.** Confidants are an early, informal round, not
+  a gate. The book is blunt that friends are "too harsh or too forgiving."
+- **Coder needs a computer.** The Coder tab needs a Mac or Linux computer
+  running the Coder host on the same tailnet. Testers without one test the
+  Grid, the Gym, the Wallet (iOS), and Account, and that is a full program.
+- **Adults only for the Wallet.** The Wallet runs on Bitcoin mainnet. The
+  brief says so, and the scripted wallet session is only for testers who
+  confirm they are 18 or older.
+- **Say plainly what testers get:** nothing for joining, and XP and titles
+  for accepted contributions; never money. See [Rewards](#rewards).
+- **TestFlight limits apply.** The public link is an external group, so the
+  first build of a version goes through Apple's Beta App Review, which can
+  take a day, and the public link has a tester cap that the owner sets (up
+  to Apple's 10,000). Not every internal build goes to the public link.
+- **Android is behind iOS.** Android testers get Coder, Verse, and Account;
+  the Wallet is a placeholder until
+  [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861). Reports
+  name the platform.
 
 ## Onboarding, consent, and privacy
 
-Every tester gets the same one-page brief before their first build, and
-agrees to it by replying (or, later, by tapping **I agree** in the app).
-It says, in plain words:
+Every tester gets the same one-page brief. It's published next to the public
+TestFlight link and APK, so joining means reading it; testers in a moderated
+session also agree to it aloud at the start (or, later, by tapping **I
+agree** in the app). It says, in plain words:
 
 1. **What this is.** You are testing an early app. Things will break. We are
    testing the app, not you; there are no wrong answers.
@@ -283,9 +303,9 @@ Privacy positions for the program:
 
 | Format | What it is | Best for | Cohorts | Cost per tester |
 | --- | --- | --- | --- | --- |
-| **Moderated think-aloud** | One tester, one moderator, a call with screen sharing, the five-part session from the book | First run, Coder pairing, Wallet | 1, 2, 3 | 45 to 50 minutes of moderator time |
-| **Unmoderated tasks** | A task list sent with a build; the tester plays alone and sends reports | Grid, Gym, regressions after a fix | 2, 3 | 20 minutes of triage time |
-| **Async diary** | Five short entries over a week: what you opened the app for, what you did, what annoyed you | Whether anyone comes back; the Grid's pull | 2, 3 | One read-through a week |
+| **Moderated think-aloud** | One tester, one moderator, a call with screen sharing, the five-part session from the book | First run, Coder pairing, Wallet | 1, 2, 3 (invited) | 45 to 50 minutes of moderator time |
+| **Unmoderated tasks** | A published task list for the current build; any tester plays alone and sends a report | Grid, Gym, regressions after a fix | Anyone | 20 minutes of triage time |
+| **Async diary** | Five short entries over a week: what you opened the app for, what you did, what annoyed you | Whether anyone comes back; the Grid's pull | Volunteers | One read-through a week |
 | **Group session ("raid")** | Five to eight testers in the Grid at the same time, on a voice call, with a script | Presence, the shared ball and blocks, the reset pillar, social fun | 2, 3 | One hour, two moderators |
 | **Paper prototype** | Printed or on-screen mockups of the trainer card, quest board, and titles; testers "play" a week of agent training on paper | The agent training loop before it's built | 1, 2, 3 | 30 minutes |
 
@@ -322,7 +342,7 @@ Rules for every moderated format, from the book's usability techniques:
 
 | Metric | Source |
 | --- | --- |
-| Testers active per week, per cohort | TestFlight installs and sessions held |
+| Testers active per week, per platform | TestFlight installs, APK downloads, and sessions held |
 | Unaided completion rate per scripted task | Play-matrix notes |
 | Interventions per session | Play-matrix notes |
 | Reports received, accepted, duplicate, and declined | Triage log |
@@ -339,14 +359,28 @@ in privacy.
 
 We stage it, so testing starts today and the app catches up.
 
-### Stage 0: what works today
+### Stage 0: what works today (launch day)
 
-- **TestFlight feedback.** Testers take a screenshot in the app and tap
+The in-app **Report a problem** action
+([#9882](https://github.com/OpenAgentsInc/openagents/issues/9882)) isn't built
+yet, so on 2026-09-29 testers give feedback three ways:
+
+- **TestFlight feedback (iOS).** Take a screenshot in the app and tap
   **Share Beta Feedback**, or use **Send Beta Feedback** in the TestFlight
   app. It arrives in App Store Connect with the build number, device, and
-  OS. Tell testers not to use it on the Wallet tab or **Identity keys**.
-- **The owner's build notes**, as today.
-- **A reply to the session email or DM**, for anything else.
+  OS. Don't use it on the Wallet tab or **Identity keys**: describe those
+  problems in words instead.
+- **A GitHub issue** from the **Playtest report** template
+  (`.github/ISSUE_TEMPLATE/playtest-report.yml` in `OpenAgentsInc/openagents`,
+  label `playtest`). It asks for the platform, the build (Account, **About
+  this device**), the tab, what happened, what you expected, and the steps.
+  This is the only channel that works for Android testers who have a GitHub
+  account, and it's public: never paste keys, recovery words, invoices, or
+  addresses. A tester who wants XP later adds the npub they want credited.
+- **Email** to the playtest address published with the public link, for
+  anything that shouldn't be public or for testers without GitHub.
+
+The owner's own build notes continue as before.
 
 ### Stage 1: a Report action in the app
 
@@ -388,7 +422,8 @@ time. The award cites that event and the GitHub issue. See
 Today's loop, written down, then widened to many testers.
 
 1. **Collect.** Once a day, the triage owner (an agent with the triage key,
-   supervised by the owner) reads new reports: TestFlight feedback, the
+   supervised by the owner) reads new reports: TestFlight feedback, GitHub
+   issues from the **Playtest report** template, the playtest email, the
    owner's notes, and, from stage 1, the triage inbox.
 2. **Deduplicate and classify.** Each report is one of: *new bug*,
    *duplicate* (linked to the first), *not reproducible yet*, *design
@@ -420,10 +455,16 @@ Today's loop, written down, then widened to many testers.
 
 ### Positions
 
+- **Joining earns nothing.** Installing from the public link or the APK,
+  opening the app, reading the brief, or being in the TestFlight group
+  earns no XP, no title, and no **PLAYTESTER** tag. There's no automatic
+  tag for testers.
 - **XP only for evidence-backed, accepted contributions**, as
   [agent trainer leveling](../verse/agent-trainer-leveling.md#principles)
   requires. Never for time in the app, sessions started, reports filed,
-  words written, or builds installed.
+  words written, or builds installed. A contribution counts only after a
+  person on the OpenAgents side (a moderator or triager who isn't the
+  tester) accepts it and records the acceptance.
 - **A separate playtest referee key.** Playtest awards are signed by an
   OpenAgents *playtest* referee, not the agent-trainer referee. A reader
   that trusts only the trainer referee sees a trainer level unaffected by
@@ -444,23 +485,29 @@ Today's loop, written down, then widened to many testers.
 ### What earns playtest XP
 
 Every row is a quest version published by the playtest referee in season
-`playtest-s1` (four weeks). The amounts sit in the leveling spec's tutorial
-and daily tiers.
+`playtest-s1` (2026-09-29 to 2026-10-26). The amounts sit in the leveling
+spec's tutorial and daily tiers. Each row names the contribution, not the
+activity: a session that produces no report, or a report that isn't
+accepted, earns nothing.
 
-| Contribution | Evidence the award cites | XP | Uniqueness |
-| --- | --- | --- | --- |
-| Completed a moderated session (per script) | The moderator's signed session record naming the tester's key and the script | 25 | Once per tester per script |
-| Completed an unmoderated task list | At least one accepted report or a completed questionnaire from that list | 15 | Once per tester per list |
-| Completed a diary week | Five entries on five different days, accepted by the facilitator | 20 | Once per tester per season |
-| Took part in a group session | The moderator's session record listing the party | 25 | Once per tester per group script |
-| Accepted bug report, P2 or P3 | The tester's playtest report event and the GitHub issue labeled `playtest`, filed from it | 20 | First accepted reporter per issue |
-| Accepted bug report, P0 or P1 | Same, with the severity label | 50 | First accepted reporter per issue |
-| Accepted design finding | Same, where the issue led to a change that shipped | 30 | First accepted reporter per issue |
-| Fix verified | The tester's confirmation on the fixing build, recorded on the issue | 10 | Once per issue |
+| Contribution | Counts when | Evidence the award cites | XP | Uniqueness |
+| --- | --- | --- | --- | --- |
+| Accepted feedback | Submitted feedback (bug, confusing state, or design point) is accepted by a triager as a new `playtest` issue | The tester's report (TestFlight feedback, GitHub issue, email, or later the in-app report) and the `playtest` issue filed or kept from it | 10 | First accepted reporter per issue |
+| Reproducible bug report, P2 or P3 | The triager reproduces the bug from the tester's steps and labels its severity | Same, with the `reproduced` note and the severity label | 20 | First accepted reporter per issue |
+| Reproducible bug report, P0 or P1 | Same | Same | 50 | First accepted reporter per issue |
+| Design finding that shipped | An accepted design finding led to a change in a shipped build | The issue and the commit that closes it | 30 | First accepted reporter per issue |
+| Verified fix | The reporter confirms the fix on the fixing build and the triager records it | The confirmation comment on the issue naming the build | 10 | Once per issue |
+| Completed session script with a report | A moderated session, an unmoderated task list, or a group session is completed **and** the tester's written report on it is accepted | The moderator's signed session record (moderated and group) or the accepted report naming the script and build (unmoderated) | 15 (unmoderated), 25 (moderated or group) | Once per tester per script per season |
+| Completed diary week with a report | Five entries on five different days plus a short summary, accepted by the facilitator | The accepted diary summary | 20 | Once per tester per season |
 
-A full, active season (three sessions, two task lists, a diary, a group
-session, a few accepted bugs, and verifications) comes to roughly 300 to 400
-playtest XP.
+These earn nothing: joining, installing a build, opening the app, a session
+with no accepted report, a duplicate, a declined report, a report that can't
+be reproduced (it can earn later if it's reproduced), and a verification of
+someone else's issue.
+
+A full, active season (three scripts with reports, a diary, a few
+reproducible bugs, and verifications) comes to roughly 250 to 400 playtest
+XP.
 
 ### How it fits NIP-XP
 
@@ -494,11 +541,11 @@ and pointing at one counted award, as NIP-XP specifies.
 
 | Title | Earned by | Cosmetic in the Grid |
 | --- | --- | --- |
-| `playtester` | Any counted playtest award | The word **PLAYTESTER** under the name tag |
-| `founding-playtester` | A counted award in `playtest-s1` | A thin white ring on the ground under the avatar, forever |
+| `playtester` | The tester's first counted playtest award, which means a first accepted contribution; never joining | The word **PLAYTESTER** under the name tag |
+| `founding-playtester` | A counted contribution award in `playtest-s1` | A thin white ring on the ground under the avatar, forever |
 | `bug-hunter` | Three counted accepted-bug awards in one season | A small crosshair mark beside the name tag |
 | `fix-verifier` | Five counted fix-verified awards | A check mark beside the name tag |
-| `raider` | A counted group-session award | The ball glows briefly when this player pushes it |
+| `raider` | A counted group-session award (the session plus an accepted report) | The ball glows briefly when this player pushes it |
 
 All of these read labels through the mobile XP reader that phase 1 of
 [#9847](https://github.com/OpenAgentsInc/openagents/issues/9847) adds, and
@@ -521,7 +568,10 @@ The leveling spec's defenses apply. In addition, for playtesting:
   with commit access, get titles for the record but no playtest XP, and the
   referee never awards a key it controls.
 - **Sessions are capped** by uniqueness: one award per tester per script,
-  per season.
+  per season, and only with an accepted report.
+- **An open program means more keys, not more XP.** Anyone can join, so
+  every award still needs a person to accept a contribution; installing
+  from many keys earns nothing.
 - **Sybil testers are a recruiting decision.** Moderated and group awards
   need a human on a call. Report awards need a human triager to accept an
   issue. That caps what a farm of keys can earn to what it can get past a
@@ -529,43 +579,129 @@ The leveling spec's defenses apply. In addition, for playtesting:
 - **Revocation is public.** A fabricated report or session is revoked with a
   reason, and its titles and cosmetics go with it.
 
-## The first four weeks
+## Day-0 launch checklist (2026-09-29)
 
-The program starts the week after this document lands. Each week has a goal,
-the book's circle it belongs to, and an exit check.
+Coder and Verse launch to playtesters on Tuesday 2026-09-29. Season 1
+(`playtest-s1`) starts the same day and runs four weeks, to 2026-10-26.
 
-### Week 1: self and confidants
+### What testers get
 
-- **Goal:** the app can be played by someone who isn't us, with minimal
-  help, on the first-run and Grid scripts.
-- Self-test the current build with a fresh mind: the owner and one agent
-  each run [session 1](#session-1-first-run-and-coder-chat) and
-  [session 2](#session-2-the-grid-the-gym-and-lagrange-1) as if new,
-  writing the playtesting notebook the book's Exercise 9.1 asks for.
-- Create the TestFlight external group "Playtest S1 confidants", send the
-  brief, and recruit five confidants.
-- Run five moderated sessions: three of session 1 (the two with computers
-  pair one), and two of session 2.
-- Start the triage log and the `playtest` label; file every finding.
+- **iOS:** the OpenAgents app (`com.openagents.app`), version 1.0.0 build 14
+  or later, from the **public TestFlight link**. Build 15 (`be94321643`),
+  with the fixes from 2026-09-28, follows as soon as it clears processing
+  and Beta App Review; testers update from TestFlight.
+- **Android:** the signed OpenAgents APK from
+  [`bins/openagents-android`](../../bins/openagents-android/README.md),
+  linked publicly next to the TestFlight link. Android has Coder, Verse (the
+  Grid, the Gym and RESULTS panels, Lagrange 1), and Account; the Wallet is
+  a placeholder ([#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)),
+  and the build has run on the emulator but not yet on a range of devices
+  ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)).
+- **The brief** from [Onboarding, consent, and privacy](#onboarding-consent-and-privacy),
+  the known issues below, and the three ways to give feedback.
+- **Nothing for joining.** XP and titles come only from accepted
+  contributions ([Rewards](#rewards)).
+
+### What to test first
+
+1. **First run, no help** (everyone): install, open, and say what the app is
+   for; find the build in Account, **About this device**; read the
+   **Changelog**.
+2. **The Grid** (everyone): walk, look, jump, zoom; push the ball; knock the
+   blocks over and use the reset pillar; open the Gym's **RESULTS** board and
+   play a trace; go through the **LAGRANGE 1** arch and come back. With
+   another tester online, check that you see each other and share the ball.
+3. **Coder** (testers with a Mac or Linux computer on a tailnet): run
+   `coder host serve --tailnet-admission standard`, sign in on the phone's
+   **Tailnet** screen, start a new chat, send a follow-up while it works,
+   steer or queue from the long press on send, answer a question, stop a
+   run, and open an older chat from **Chats on your computers**.
+4. **Wallet** (iOS, adults, tiny amounts only): read the trust note, back up
+   the recovery words, receive a small Lightning payment, send part of it
+   back, and find both in history.
+
+Session scripts [1](#session-1-first-run-and-coder-chat),
+[2](#session-2-the-grid-the-gym-and-lagrange-1), and
+[3](#session-3-wallet-receive-and-send-tiny-amounts) are the long form; the
+unmoderated task list is the four items above.
+
+### Known issues on day 0
+
+Published with the link so testers don't spend reports on them:
+
+- **No in-app report yet.** Use TestFlight feedback, the GitHub template, or
+  email ([Stage 0](#stage-0-what-works-today-launch-day)).
+- **Chat loading over the tailnet can be slow** on long chats; faster reads
+  are in progress (host side landed in `4ef967aa40`; the Rust-laid-out
+  transcript is [#9833](https://github.com/OpenAgentsInc/openagents/issues/9833)).
+  A chat shows at most its newest 240 rows; replies arrive by polling every
+  few seconds, not token streaming.
+- **Coder needs your own computer** on the same tailnet, running the Coder
+  host; there's no hosted computer. No photo attachments, voice dictation,
+  model picker, or push notifications yet
+  ([what comes later](../../bins/openagents-ios/docs/chat-later.md)).
+- **The Grid has no chat** and no name-tag levels; presence shows a pubkey
+  prefix. Shared ball and block state can lag between players.
+- **Wallet:** real mainnet bitcoin; use amounts you can lose. Receiving to a
+  Lightning address, paying other users by npub, and unclaimed on-chain
+  deposits aren't built yet
+  ([#9859](https://github.com/OpenAgentsInc/openagents/issues/9859),
+  [#9860](https://github.com/OpenAgentsInc/openagents/issues/9860),
+  [#9862](https://github.com/OpenAgentsInc/openagents/issues/9862)). Amounts
+  show in sats and BTC; the BIP 177 display is
+  [#9881](https://github.com/OpenAgentsInc/openagents/issues/9881).
+- **Android:** no Wallet; not yet checked on physical devices for Vulkan,
+  QR scanning, the terminal, or motion look.
+- **Rewards aren't visible in the app yet.** Accepted contributions are
+  recorded in the triage log and signed later
+  ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885),
+  [#9886](https://github.com/OpenAgentsInc/openagents/issues/9886),
+  [#9887](https://github.com/OpenAgentsInc/openagents/issues/9887)).
+
+### Launch-day steps
+
+1. Owner: turn on the public link for the external group with build 14,
+   submit build 15, and publish the APK (workspace `NEEDS_OWNER.md`).
+2. Post the TestFlight link, the APK link, the brief, and the known issues
+   publicly (Nostr and X).
+3. Open the triage log; read TestFlight feedback, new `playtest` issues, and
+   the playtest inbox at least once on day 0.
+4. Owner self-test with a fresh mind (sessions 1 and 2), notebook open.
+5. Ask two or three confidants for a moderated session this week.
+
+## Season 1, week by week
+
+Each week has a goal, the book's circle it leans on, and an exit check.
+
+### Week 1 (2026-09-29 to 10-05): open launch, self, and confidants
+
+- **Goal:** strangers can install and play without us; every P0 and P1
+  from launch is fixed in a new build.
+- Day-0 checklist above. Daily triage of all three channels.
+- Three to five moderated sessions with informal confidants (session 1 and
+  session 2); the owner's own fresh-mind notebook.
+- Ship build 15 to the public link, then a build with the week's P0 and P1
+  fixes, each with a Changelog line saying what to test.
 - Draft the paper prototype for week 3.
-- **Exit:** every P0 and P1 from the week is fixed in a new build, and
-  each confidant has installed at least one build.
+- **Exit:** no open P0; every P1 has a fix in a build or a stated reason;
+  at least ten outside testers have installed a build.
 
-### Week 2: people we don't know
+### Week 2 (2026-10-06 to 10-12): people we don't know
 
 - **Goal:** strangers finish the first-run and Grid tasks unaided, and the
   wallet session is safe.
-- Recruit ten to fifteen community testers from Nostr and X; ask the
-  computer question and the age question.
-- Send the unmoderated Grid task list with the build.
-- Run three moderated [wallet sessions](#session-3-wallet-receive-and-send-tiny-amounts)
-  with testers who already use a Lightning wallet.
-- Start diaries with five testers.
-- Build the stage 1 **Report** action if it's ready; otherwise keep stage 0.
+- Invite public testers who already use a Lightning wallet to three
+  moderated [wallet sessions](#session-3-wallet-receive-and-send-tiny-amounts).
+- Publish the unmoderated task list for the current build.
+- Start diaries with five volunteers.
+- Land the **Report a problem** action
+  ([#9882](https://github.com/OpenAgentsInc/openagents/issues/9882)) if it's
+  ready, and the triage inbox
+  ([#9884](https://github.com/OpenAgentsInc/openagents/issues/9884)).
 - **Exit:** unaided completion of session 1's pairing-free tasks is at least
   60 percent, and no wallet session lost sats to an app error.
 
-### Week 3: raids and the paper trainer loop
+### Week 3 (2026-10-13 to 10-19): raids and the paper trainer loop
 
 - **Goal:** find out whether the Grid is fun with others, and whether the
   agent training loop is worth building as specified.
@@ -574,24 +710,26 @@ the book's circle it belongs to, and an exit check.
   Lagrange 1 arch, reset with the pillar, and meet in the Gym at the
   RESULTS board.
 - Run six paper-prototype sessions of agent training: show a trainer card,
-  the quest board, a reproduce quest, a raid charter, and the titles;
-  ask testers to plan a week and explain what they'd chase and why.
-- Recruit the target cohort (gamers who use a coding agent).
+  the quest board, a reproduce quest, a raid charter, and the titles; ask
+  testers to plan a week and explain what they'd chase and why.
+- Invite target players (gamers who use a coding agent) into sessions.
 - **Exit:** a written decision on what to change in
   [agent trainer leveling](../verse/agent-trainer-leveling.md) before its
   phase 1 ships, and a list of Grid changes ranked by how often testers
   asked for them.
 
-### Week 4: verify, measure, reward
+### Week 4 (2026-10-20 to 10-26): verify, measure, reward
 
 - **Goal:** close the loop: fixes verified by the people who found them,
-  the questionnaire in, and the first awards recorded.
+  the questionnaire in, and the first acceptances recorded as awards.
 - Ask every reporter to verify their fixed issues on the latest build.
 - Send the [questionnaire](#questionnaire) to every tester who played.
-- Run a retrospective: what the numbers and the notes say, what we change
-  for season 2, and who moves to the next cohort.
-- Record acceptances and, if the `playtest` rule and referee key are ready,
-  sign the first playtest awards.
+- Run a retrospective: what the numbers and the notes say, and what we
+  change for season 2 (including Android Wallet testers once
+  [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861) ships).
+- If the `playtest` rule and referee key are ready
+  ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)), sign
+  the first awards from the triage log.
 - **Exit:** the [first milestone](#success-metrics-and-the-first-milestone).
 
 ## Session scripts
@@ -734,12 +872,12 @@ from 1 (strongly disagree) to 5 (strongly agree).
 
 ## Success metrics and the first milestone
 
-For season 1 (four weeks):
+For season 1 (2026-09-29 to 2026-10-26):
 
 | Metric | Target |
 | --- | --- |
 | Outside testers who complete at least one moderated session | 12 |
-| Outside testers who install at least two builds | 15 |
+| Outside testers who install at least two builds (iOS or Android) | 25 |
 | Unaided completion on session 1's tasks without a computer | 80 percent by week 4 |
 | Unaided pairing of a computer (session 1, task 3) | 50 percent by week 4, up from whatever week 1 shows |
 | Accepted `playtest` issues | 30 |
@@ -751,7 +889,7 @@ For season 1 (four weeks):
 | A written decision on agent trainer leveling from the paper sessions | Yes |
 
 **First milestone:** by the end of week 4, a person outside OpenAgents has a
-bug report accepted from a TestFlight build, verifies the fix on a later
+reproducible bug report accepted from a public TestFlight or APK build, verifies the fix on a later
 build, and holds a recorded playtest acceptance for it. When the `playtest`
 rule and the mobile XP reader from
 [#9847](https://github.com/OpenAgentsInc/openagents/issues/9847) land, that
@@ -789,9 +927,10 @@ Tracked in epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888)
    playtest XP (not summed into the trainer level), and titles.
 7. **Changelog per build.** ([#9887](https://github.com/OpenAgentsInc/openagents/issues/9887)) Give each TestFlight build a Changelog entry with
    a "What to test" line, so testers know where to look.
-8. **Program operations (not code).** The external TestFlight groups, the
-   brief, the scripts, the triage log, and the weekly note. Owner steps are
-   in the workspace's `NEEDS_OWNER.md`.
+8. **Program operations (not code).** The public TestFlight link, the
+   public APK, the brief, the known issues list, the `playtest` label and
+   GitHub issue template, the playtest email, the scripts, the triage log,
+   and the weekly note. Owner steps are in the workspace's `NEEDS_OWNER.md`.
 
 ## Open questions
 
@@ -804,14 +943,18 @@ Tracked in epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888)
    run?** Apple exposes screenshot and crash feedback in App Store Connect;
    check the current App Store Connect API before building the triage tool
    on it rather than on stage 1 reports.
-4. **Android.** When does the Android build get a distribution channel, and
-   do Android testers join season 2?
+4. **Android.** Android testers join from day 0 through the public APK.
+   When does it move to a Play Store testing track, and when does its Wallet
+   ([#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)) reach
+   parity?
 5. **Who moderates?** The owner can't run 20 sessions a week. Can an agent
    run unmoderated task lists and triage, and a small group of trusted
    players moderate sessions, earning `moderator` titles?
 
 ## Related documents
 
+- [Launch roadmap, 2026-09-29](../roadmap/2026-09-29-launch-roadmap.md): the
+  MVP that ships to playtesters and the milestones after it
 - [Agent trainer leveling](../verse/agent-trainer-leveling.md) and epic
   [#9847](https://github.com/OpenAgentsInc/openagents/issues/9847)
 - [NIP-XP](../../nips/openagents/NIP-XP.md)

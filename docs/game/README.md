@@ -5,7 +5,8 @@ and [Voyager](../voyager/README.md) guides own current runtime instructions;
 the [Minecraft index](../minecraft/README.md) separates shipped slices from
 the proposed guild profile. Do not infer implementation from a historical
 product name, concept, or transcript. The [playtesting program](playtesting.md)
-is the current plan for testing the OpenAgents app with players.
+is the current plan for testing the OpenAgents app with players; it opens
+to anyone on 2026-09-29 (see the [launch roadmap](../roadmap/2026-09-29-launch-roadmap.md)).
 
 Source map, dated 2026-09-24, of everything OpenAgents has said, planned, or
 built about games, MMORPGs, and 3D worlds. It covers the video transcripts in

@@ -13,6 +13,11 @@ a high-priority parallel track. Shared knowledge and reusable programs should
 improve accepted work across operators; their existence alone is not a network
 effect or proof of better coding performance.
 
+The [launch roadmap](roadmap/2026-09-29-launch-roadmap.md) holds the OpenAgents
+app MVP that ships to playtesters on 2026-09-29, its known limits, and the
+dated milestones after it; the [playtesting program](game/playtesting.md) runs
+that launch.
+
 The earlier [transcript-derived roadmap](history/2026-09-25-transcript-roadmap.md)
 is retained as historical analysis. Its issue statuses, model results, and
 calendar estimates are not current commitments. The transcript archive itself

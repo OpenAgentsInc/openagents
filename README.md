@@ -96,7 +96,7 @@ and [full-screen release evidence](docs/coder/verification/2026-09-26-fullscreen
 
 | Goal | Guide |
 | --- | --- |
-| Find documentation and the complete direction | [Documentation index](docs/README.md), [master roadmap](docs/roadmap.md), [catalog](docs/catalog.md), [glossary](docs/glossary.md) |
+| Find documentation and the complete direction | [Documentation index](docs/README.md), [master roadmap](docs/roadmap.md), [launch roadmap](docs/roadmap/2026-09-29-launch-roadmap.md), [playtesting program](docs/game/playtesting.md), [catalog](docs/catalog.md), [glossary](docs/glossary.md) |
 | Run the coding agent | [Install Coder](docs/coder/guides/install.md), [headless mode](docs/coder/guides/headless.md) |
 | Track suite implementation and next work | [Migration status and issue map](docs/coder/migration-status.md), [local task commands](docs/coder/guides/tasks.md), [execution owner and evidence](docs/coder/runtime/task-owner.md) |
 | Control an existing task over Nostr | [Scoped host/client bridge](docs/coder/runtime/nostr-task-control.md): explicit pairing, observe/steer/cancel rights, retained retries, and bounded private history |
