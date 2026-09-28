@@ -117,7 +117,11 @@ station itself. The renderer works in physical units:
 - **Materials:** white thermal paint, bare and brushed aluminium, crinkled
   aluminized-Kapton insulation, solar cells under a thin-film coated cover
   glass, a gold visor, suit fabric with sheen, a silvered radiator plate, and
-  safety paint, with albedos from measured solar absorptance.
+  safety paint, with albedos from measured solar absorptance. A solar wing's
+  glint is its cover glass alone, a sharp image of the Sun; the textured,
+  antireflection-coated cells beneath return about 1% of the light, scattered
+  widely, so the wing stays blue around the glint instead of washing out into
+  a broad gray sheen.
 - **Shadows:** a sun shadow map whose penumbra follows the Sun's 0.27°
   radius, so edges are sharp at contact and soften with distance.
 - **Bounce light:** irradiance probes baked on a worker thread from one diffuse
@@ -499,7 +503,9 @@ cargo run --release -p verse --example lagrange_capture -- out.png [VIEW]
 
 Views are the player's `spawn`, `jig`, `carry`, `sun`, and `earth`, fixed
 cameras `sunside` and `wide`, and telephoto `earthzoom`, `moonzoom`, and
-`sunzoom`. The capture waits for the light bake and runs a few frames so the
+`sunzoom`. `look EX,EY,EZ TX,TY,TZ [FOV]` aims a camera from any eye at any
+target, with a vertical field of view in radians; for example,
+`look 21,6,-12 21,6,-1.1` faces the +x solar wing from the sunward side. The capture waits for the light bake and runs a few frames so the
 exposure settles. Set `VERSE_PHOTO_DEBUG` to 1 (direct light), 2 (probe
 diffuse), 3 (probe specular), 4 (ambient occlusion), 5 (sun shadow), or 6
 (N·V, N·L, N·H) to inspect one term, and `VERSE_PHOTO_RGBA16` to force a

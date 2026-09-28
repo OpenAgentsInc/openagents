@@ -6,6 +6,8 @@
 //! view of the whole station), and telephoto views earthzoom, moonzoom, and
 //! sunzoom, which frame each body at a narrow field of view. `stars` uses
 //! the art preset and looks away from the Sun toward the galactic center.
+//! `look EX,EY,EZ TX,TY,TZ [FOV]` places a camera at the eye, aimed at the
+//! target, with a vertical field of view in radians (default 1).
 use std::path::PathBuf;
 use verse::{
     controller::InputState,
@@ -17,6 +19,28 @@ fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let output = PathBuf::from(args.next().ok_or("Expected an output PNG path")?);
     let view = args.next().unwrap_or_else(|| "spawn".into());
+    let point = |text: Option<String>| -> Result<glam::Vec3, String> {
+        let text = text.ok_or("look takes EX,EY,EZ TX,TY,TZ [FOV]")?;
+        let v: Vec<f32> = text
+            .split(',')
+            .map(str::parse)
+            .collect::<Result<_, _>>()
+            .map_err(|e| format!("{text}: {e}"))?;
+        match v.as_slice() {
+            [x, y, z] => Ok(glam::Vec3::new(*x, *y, *z)),
+            _ => Err(format!("{text}: expected X,Y,Z")),
+        }
+    };
+    let look = if view == "look" {
+        let eye = point(args.next())?;
+        let target = point(args.next())?;
+        let fov = args
+            .next()
+            .map_or(Ok(1.0), |f| f.parse::<f32>().map_err(|e| e.to_string()))?;
+        Some((eye, target, fov))
+    } else {
+        None
+    };
     let mut runtime = WorldRuntime::new();
     runtime.set_spawn(glam::Vec3::new(12.0, 0.0, 9.0), 0.0)?;
     runtime.zone_intent(zones::Intent::Enter)?;
@@ -95,6 +119,10 @@ fn main() -> Result<(), String> {
     };
     let sky = dynamic.sky.as_ref();
     let view = match (view.as_str(), sky) {
+        ("look", _) => {
+            let (eye, target, fov) = look.ok_or("look needs an eye and a target")?;
+            fixed(eye, target - eye, fov)
+        }
         ("sunside", _) => {
             let eye = glam::Vec3::new(-14.0, 14.0, -34.0);
             fixed(eye, glam::Vec3::new(2.0, 0.0, 6.0) - eye, 1.0)

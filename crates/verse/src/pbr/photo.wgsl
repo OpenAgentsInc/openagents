@@ -468,7 +468,12 @@ fn fs_lit(i: LitOut) -> @location(0) vec4<f32> {
     let a2 = min(a * a + variance, 1.0);
     a = sqrt(a2);
 
-    let f0 = mix(vec3<f32>(0.04), base, metallic);
+    // A solar cell's glint is the cover glass, drawn as the coat below.
+    // Beneath the glass, textured silicon under its antireflection coating
+    // returns about 1% of the light, scattered widely, so a broad glossy
+    // lobe there would wash the blue cells out into a gray sheen.
+    let dielectric = select(0.04, 0.01, code == 3);
+    let f0 = mix(vec3<f32>(dielectric), base, metallic);
     let diffuse_color = base * (1.0 - metallic);
     let env = env_brdf(nov, roughness);
     let e_spec = f0 * env.x + env.y;
