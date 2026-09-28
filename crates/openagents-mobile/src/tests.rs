@@ -306,6 +306,21 @@ fn new_chat(
             });
             continue;
         }
+        // A new chat starts with the basic Coder; this one runs on the
+        // computer.
+        if let Some(start) = nodes_of(&coder, "button").into_iter().find(|node| {
+            node["key"] == "coder-where"
+                && node["element"]["props"]["label"]
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("Start on"))
+        }) {
+            app.call(Request::CoderActivate {
+                instance: coder["instance"].as_str().unwrap().into(),
+                revision: coder["revision"].as_u64().unwrap(),
+                node: start["key"].as_str().unwrap().into(),
+            });
+            continue;
+        }
         if !nodes_of(&coder, "composer").is_empty() && ready(&values(&coder)) {
             return coder;
         }
@@ -562,17 +577,22 @@ fn live_tailnet_admission_adds_the_computer_and_its_chats() {
     }
 }
 
+/// With no computer, the Chat tab still offers a chat: the list and its
+/// New chat button, and never a request to add a computer first.
 #[test]
-fn coder_asks_for_a_computer_before_a_chat() {
+fn the_chat_tab_needs_no_computer() {
     let (mut app, _dir) = app();
     let packet = app.call(Request::Snapshot);
-    let text = values(&packet.coder.expect("coder view"));
-    assert!(text.contains(&"Coder".to_string()));
+    let coder = packet.coder.expect("coder view");
+    let text = values(&coder);
+    assert!(text.contains(&"Chats".to_string()), "{text:?}");
     assert!(
-        text.iter()
-            .any(|t| t.starts_with("Add a computer under Account")),
+        !text.iter().any(|t| t.contains("Add a computer")),
         "{text:?}"
     );
+    assert!(key_for(&coder, "New chat").is_some(), "{text:?}");
+    assert!(!packet.chat_streaming);
+    assert!(packet.coder_go.is_none());
 }
 
 /// Chats against a real host with tailnet admission, as in
@@ -698,7 +718,7 @@ fn live_coder_chat_creates_a_task() {
         assert_eq!(composer["busy"], false);
         assert_eq!(composer["enabled"], true);
         // Back on the list, the host's activity summary lists it.
-        let back = key_for(&chat, "Coder").expect("back");
+        let back = key_for(&chat, "Chats").expect("back");
         app.call(Request::CoderActivate {
             instance: chat["instance"].as_str().unwrap().into(),
             revision: chat["revision"].as_u64().unwrap(),
@@ -1265,7 +1285,7 @@ fn live_coder_chat_starts_promptly_follows_its_turns_and_reopens_at_once() {
         });
         // Back on the list and in again: the messages show at once.
         let chat = app.call(Request::Snapshot).coder.unwrap();
-        let list = tap(app, &chat, &key_for(&chat, "Coder").expect("back"));
+        let list = tap(app, &chat, &key_for(&chat, "Chats").expect("back"));
         let row = format!("task-{}", &task.1[..16]);
         let reopened = tap(app, &list, &row);
         let text = values(&reopened);

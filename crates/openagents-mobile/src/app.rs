@@ -65,11 +65,37 @@ pub struct Launch {
     /// reaches no network.
     #[serde(default)]
     pub wallet_fixture: bool,
+    /// The basic Coder's relay and worker key, in place of the OpenAgents
+    /// chat worker, for tests against a local worker. Honored only in debug
+    /// builds.
+    #[serde(default)]
+    pub chat_relay: Option<String>,
+    #[serde(default)]
+    pub chat_worker: Option<String>,
     /// Push wakes through a relay's NIP-PL executor and a push gateway, so
     /// a computer's spend request reaches a phone that is not looking.
     /// Absent, the default, leaves push off.
     #[serde(default)]
     pub push: Option<coder_mobile::PushConfig>,
+}
+
+/// The basic Coder's door: the OpenAgents chat worker on its relay, or, in
+/// a debug build, the relay and worker the launch names.
+fn basic_door(launch: &Launch, secret: SecretKey) -> Option<Arc<dyn crate::basic_coder::Door>> {
+    let debug = cfg!(debug_assertions);
+    let relay = launch
+        .chat_relay
+        .as_deref()
+        .filter(|_| debug)
+        .unwrap_or(crate::basic_coder::RELAY);
+    let worker = launch
+        .chat_worker
+        .as_deref()
+        .filter(|_| debug)
+        .unwrap_or(crate::basic_coder::WORKER);
+    crate::basic_coder::Relay::new(relay, worker, secret)
+        .ok()
+        .map(|door| Arc::new(door) as Arc<dyn crate::basic_coder::Door>)
 }
 
 /// What this phone's Computers screens can do.
@@ -524,6 +550,12 @@ pub struct Packet {
     /// The open Coder chat changes on its own, as while its task runs: ask
     /// for a packet again soon.
     pub coder_live: bool,
+    /// A basic Coder reply is streaming: ask for a packet every few hundred
+    /// milliseconds.
+    pub chat_streaming: bool,
+    /// Show this screen of another tab, once: `computers` is Account >
+    /// Computers, where a computer is connected.
+    pub coder_go: Option<crate::coder_tab::Go>,
     pub chats: Option<serde_json::Value>,
     /// A value the Chats surface asks the host to collect.
     pub chats_input: Option<rust_native::input::InputRequest<ChatsPurpose>>,
@@ -724,6 +756,11 @@ impl App {
         let _ = std::fs::remove_dir_all(config.state_dir.join("wallet"));
         let amounts = crate::amounts::Amounts::open(&config.state_dir);
         spend.set_format(amounts.format());
+        let basic = crate::basic_chats::BasicChats::new(
+            Some(runtime.handle().clone()),
+            basic_door(&launch, secret),
+            Cache::open(&config.state_dir.join("basic-chats"), &secret).ok(),
+        );
         // Loopback relay and gateway URLs are for simulator tests only.
         let (push, push_status) = match launch.push {
             None => (None, None),
@@ -750,6 +787,7 @@ impl App {
             chats,
             coder: CoderTab::new(format!("coder:{}", id()))
                 .with_pulled_transcripts(launch.pulled_transcripts)
+                .with_basic(basic)
                 .with_list(crate::coder_list::Store::open(
                     Cache::open(&config.state_dir.join("coder-list"), &secret).ok(),
                 ))
@@ -932,7 +970,7 @@ impl App {
         route: playtest::session::Route,
     ) -> playtest::session::Route {
         use playtest::session::{Route, Tab};
-        if tab == Tab::Coder && route == Route::Home && self.coder.open_task().is_some() {
+        if tab == Tab::Coder && route == Route::Home && self.coder.in_chat() {
             Route::Chat
         } else {
             route
@@ -1576,6 +1614,8 @@ impl App {
             coder,
             // A payment request on the sheet keeps packets coming too.
             coder_live: self.coder.live(self.computers.as_ref()) || self.spend.live(),
+            chat_streaming: self.coder.streaming(),
+            coder_go: self.coder.take_go(),
             chats,
             chats_input: self.chats.input().cloned(),
             chats_loading: self.chats.loading(),

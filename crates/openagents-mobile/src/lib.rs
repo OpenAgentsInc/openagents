@@ -5,8 +5,9 @@
 //! The app has four surfaces. **Computers** is Coder's shared Computers
 //! controller over the live host client: it enrolls this phone with hosts
 //! (NIP-HOST), follows their presence and routes (NIP-REACH), and commands
-//! them (tasks and terminals). **Coder** starts a chat with Coder on a
-//! computer as a NIP-HOST task and follows it. **Chats** lists the Claude and Codex chats
+//! them (tasks and terminals). **Chat** starts with the basic Coder, a
+//! hosted chat that needs no computer (NIP-CJ), and runs Coder on a
+//! computer as a NIP-HOST task when the person asks, following it. **Chats** lists the Claude and Codex chats
 //! saved on every computer paired for reading. **Tailnet** lists the devices on the user's
 //! tailnet through Tailscale's control server. **Verse** mounts Verse's bare
 //! world, the plaza grid with Coder's player controls, on a native Metal layer.
@@ -19,6 +20,8 @@ mod amounts;
 #[cfg(any(target_os = "android", test))]
 mod android;
 mod app;
+mod basic_chats;
+mod basic_coder;
 mod chats;
 mod coder_list;
 mod coder_tab;

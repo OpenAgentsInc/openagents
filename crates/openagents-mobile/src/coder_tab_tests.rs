@@ -129,7 +129,7 @@ fn an_open_chat_has_a_breadcrumb_back_to_the_list() {
     let chat = fixture.tap(&first_task(&list));
     let back = node(&chat, "coder-back").expect("breadcrumb back");
     let props = &back["element"]["props"];
-    assert_eq!(props["label"], "Coder");
+    assert_eq!(props["label"], "Chats");
     assert_eq!(props["icon"]["glyph"], "back");
     assert_eq!(props["icon"]["circular"], false);
     let list = fixture.tap("coder-back");
@@ -327,6 +327,10 @@ fn new_chat_is_its_own_screen() {
     assert_eq!(props["icon"]["circular"], true);
     let screen = fixture.tap("coder-new");
     assert_eq!(kinds(&screen, "composer"), 1);
+    // A new chat starts with the basic Coder, and offers the computer.
+    assert!(texts(&screen).contains(&"Chat with Coder".to_owned()));
+    assert!(texts(&screen).contains(&"Start on Studio Mac".to_owned()));
+    let screen = fixture.tap("coder-where");
     assert!(texts(&screen).contains(&"On Studio Mac · openagents".to_owned()));
     let composer = nodes(&screen)
         .into_iter()
@@ -860,4 +864,305 @@ fn a_pulled_chat_publishes_its_rows_for_the_layout_instead_of_listing_them() {
     // Back to the list, the chat's source is retired.
     pulled.tap("coder-back");
     assert!(rust_native::layout::source::get("coder:pulled:coder-transcript").is_none());
+}
+
+/// A basic Coder the test answers by hand: each question's reply waits in
+/// `replies` for the test to stream into and end.
+/// Each question the test's basic Coder was asked, with its reply.
+type Asked = Vec<(
+    Vec<String>,
+    std::sync::Arc<std::sync::Mutex<crate::basic_coder::Reply>>,
+)>;
+
+#[derive(Clone, Default)]
+struct Hand {
+    replies: std::sync::Arc<std::sync::Mutex<Asked>>,
+}
+
+impl crate::basic_coder::Door for Hand {
+    fn ask(
+        &self,
+        turns: Vec<crate::basic_coder::Turn>,
+        reply: std::sync::Arc<std::sync::Mutex<crate::basic_coder::Reply>>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let texts = turns.into_iter().map(|turn| turn.text).collect();
+        self.replies.lock().unwrap().push((texts, reply));
+        Box::pin(async {})
+    }
+}
+
+impl Hand {
+    /// Stream `text` into the newest reply, ending it when `done`.
+    fn say(&self, text: &str, done: bool) {
+        let replies = self.replies.lock().unwrap();
+        let (_, reply) = replies.last().expect("a question");
+        let mut reply = reply.lock().unwrap();
+        reply.text = text.into();
+        reply.done = done;
+    }
+
+    fn asked(&self) -> Vec<Vec<String>> {
+        self.replies
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(texts, _)| texts.clone())
+            .collect()
+    }
+}
+
+impl Fixture {
+    /// The fixture with a basic Coder answered by `hand`.
+    fn answered_by(mut self, hand: &Hand) -> Self {
+        let basic = crate::basic_chats::BasicChats::new(
+            Some(self._runtime.handle().clone()),
+            Some(std::sync::Arc::new(hand.clone())),
+            None,
+        );
+        self.coder = std::mem::replace(&mut self.coder, CoderTab::new("coder:test".into()))
+            .with_basic(basic);
+        self
+    }
+
+    /// Send `text` from the current view's composer.
+    fn say(&mut self, text: &str) -> Value {
+        let view = self.render();
+        let composer = nodes(&view)
+            .into_iter()
+            .find(|node| node["element"]["kind"] == "composer")
+            .expect("composer");
+        let token = composer["element"]["props"]["token"].as_str().unwrap();
+        self.coder
+            .submit(token, text, Some(&mut self.computers), &mut self.chats);
+        self._runtime.block_on(tokio::task::yield_now());
+        self.render()
+    }
+}
+
+/// Every host of the fixture removed: a phone with no computer.
+struct NoComputers(Synthetic);
+
+impl ComputersService for NoComputers {
+    fn snapshot(&mut self) -> Answer<coder_computers::Snapshot> {
+        let mut snapshot = self.0.snapshot()?;
+        snapshot.hosts.clear();
+        snapshot.activity.clear();
+        Ok(snapshot)
+    }
+    fn set_enabled(&mut self, host: &str, enabled: bool) -> Answer<()> {
+        self.0.set_enabled(host, enabled)
+    }
+    fn retry_now(&mut self, host: &str) -> Answer<()> {
+        self.0.retry_now(host)
+    }
+    fn forget(&mut self, host: &str) -> Answer<()> {
+        self.0.forget(host)
+    }
+    fn redeem_invitation(&mut self, invitation: &str) -> Answer<String> {
+        self.0.redeem_invitation(invitation)
+    }
+    fn approve_enrollment(
+        &mut self,
+        host: &str,
+        enrollment: &str,
+        code: &str,
+        rights: &coder_host::access::Rights,
+        grant_expires_at: u64,
+    ) -> Answer<()> {
+        self.0
+            .approve_enrollment(host, enrollment, code, rights, grant_expires_at)
+    }
+    fn deny_enrollment(&mut self, host: &str, enrollment: &str) -> Answer<()> {
+        self.0.deny_enrollment(host, enrollment)
+    }
+    fn connect_ssh(&mut self, destination: &str) -> Answer<()> {
+        self.0.connect_ssh(destination)
+    }
+    fn run_without_local_host(&mut self) -> Answer<()> {
+        self.0.run_without_local_host()
+    }
+    fn refresh_devices(&mut self, host: &str) -> Answer<()> {
+        self.0.refresh_devices(host)
+    }
+    fn create_invitation(
+        &mut self,
+        host: &str,
+        rights: &coder_host::access::Rights,
+        grant_expires_at: u64,
+    ) -> Answer<coder_computers::CreatedInvitation> {
+        self.0.create_invitation(host, rights, grant_expires_at)
+    }
+    fn cancel_invitation(&mut self, host: &str, invitation: &str) -> Answer<()> {
+        self.0.cancel_invitation(host, invitation)
+    }
+    fn revoke(&mut self, host: &str, device: &str) -> Answer<()> {
+        self.0.revoke(host, device)
+    }
+    fn complete_first_run(&mut self) -> Answer<()> {
+        self.0.complete_first_run()
+    }
+}
+
+fn composer_of(view: &Value) -> Value {
+    nodes(view)
+        .into_iter()
+        .find(|node| node["element"]["kind"] == "composer")
+        .expect("composer")["element"]["props"]
+        .clone()
+}
+
+/// A fresh install with no computer chats at once: the first message
+/// starts a conversation with the basic Coder, its reply streams in as
+/// Markdown, and the chat offers to connect a computer for Coder.
+#[test]
+fn a_first_chat_needs_no_computer_and_streams_its_reply() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    let list = fixture.render();
+    assert!(texts(&list).contains(&"Chats".to_owned()));
+    assert!(texts(&list).contains(&"No chats yet. Tap New chat to start one.".to_owned()));
+    let screen = fixture.tap("coder-new");
+    assert!(texts(&screen).contains(&"Chat with Coder".to_owned()));
+    assert!(
+        node(&screen, "coder-where").is_none(),
+        "no computer to offer"
+    );
+    assert_eq!(composer_of(&screen)["enabled"], true);
+    assert_eq!(composer_of(&screen)["placeholder"], "Message Coder");
+
+    let chat = fixture.say("What is a **relay**?");
+    assert_eq!(hand.asked(), vec![vec!["What is a **relay**?".to_owned()]]);
+    assert!(node(&chat, "talk-working").is_some(), "{:?}", keys(&chat));
+    assert_eq!(composer_of(&chat)["busy"], true);
+    assert!(fixture.coder.streaming());
+    assert!(fixture.coder.live(Some(&fixture.computers)));
+
+    // Half-written Markdown shows styled while it streams.
+    hand.say("A relay **stores", false);
+    let chat = fixture.render();
+    let streamed = node(&chat, "talk-m1-md").expect("streaming reply");
+    let blocks = serde_json::to_string(&streamed["element"]["props"]["blocks"]).unwrap();
+    assert!(blocks.contains("\"bold\":true"), "{blocks}");
+    assert!(node(&chat, "talk-working").is_none());
+
+    hand.say("A relay **stores** and forwards events.", true);
+    let chat = fixture.render();
+    assert!(!fixture.coder.streaming());
+    assert_eq!(composer_of(&chat)["busy"], false);
+    assert!(node(&chat, "talk-m1").is_some());
+
+    // No computer: the chat offers to connect one for Coder.
+    let connect = node(&chat, "coder-connect").expect("connect a computer");
+    assert_eq!(
+        connect["element"]["props"]["label"],
+        "Connect a computer to run Coder"
+    );
+    fixture.tap("coder-connect");
+    assert_eq!(
+        fixture.coder.take_go(),
+        Some(crate::coder_tab::Go::Computers)
+    );
+    assert_eq!(fixture.coder.take_go(), None);
+
+    // A follow-up carries the conversation.
+    fixture.say("And a worker?");
+    assert_eq!(hand.asked()[1].len(), 3);
+
+    let list = fixture.tap("coder-back");
+    let row = keys(&list)
+        .into_iter()
+        .find(|key| key.starts_with("talk-"))
+        .expect("the conversation in the list");
+    let label = node(&list, &row).unwrap()["element"]["props"]["label"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        label.starts_with("What is a **relay**?\nCoder · "),
+        "{label}"
+    );
+}
+
+/// A failed reply says why and offers to try again; stopping keeps what
+/// streamed.
+#[test]
+fn a_failed_reply_offers_to_try_again() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    fixture.tap("coder-new");
+    fixture.say("hi");
+    {
+        let replies = hand.replies.lock().unwrap();
+        replies[0].1.lock().unwrap().failure = Some(crate::basic_coder::Failure::Refused {
+            code: "rate_limited".into(),
+            message: "slow".into(),
+            retry_after_ms: Some(9_000),
+        });
+    }
+    let chat = fixture.render();
+    assert!(
+        texts(&chat)
+            .contains(&"You're sending messages quickly. Try again in 9 seconds.".to_owned())
+    );
+    let chat = fixture.tap("talk-retry");
+    assert_eq!(hand.asked().len(), 2);
+    assert!(node(&chat, "talk-retry").is_none());
+    hand.say("Hel", false);
+    fixture.render();
+    let chat = fixture.tap("coder-composer");
+    // Stop kept the partial reply as the answer.
+    assert!(!fixture.coder.streaming());
+    assert!(node(&chat, "talk-m1").is_some(), "{:?}", keys(&chat));
+}
+
+/// From a conversation, Coder runs on the connected computer: a task there
+/// that starts from the conversation, which opens, and which the
+/// conversation remembers.
+#[test]
+fn run_coder_starts_a_task_with_the_conversation() {
+    let hand = Hand::default();
+    let mut fixture = Fixture::hosts().answered_by(&hand);
+    fixture.tap("coder-new");
+    fixture.say("Run the tests in my repo");
+    hand.say("That needs a computer: tap Run Coder below.", true);
+    let chat = fixture.render();
+    let run = node(&chat, "coder-run").expect("run coder");
+    assert_eq!(run["element"]["props"]["label"], "Run Coder on Studio Mac");
+    let opened = fixture.tap("coder-run");
+    let (host, task) = fixture.coder.open_task().expect("the task's chat opens");
+    assert_eq!(
+        fixture.computers.snapshot().host(&host).unwrap().label,
+        "Studio Mac"
+    );
+    // The chat shows what was sent until the computer's transcript does.
+    let sent = serde_json::to_string(&node(&opened, "coder-transcript").unwrap()).unwrap();
+    assert!(sent.contains("User: Run the tests in my repo"), "{sent}");
+    assert!(sent.contains("Coder: That needs a computer"), "{sent}");
+    // Back in the list, the task's row carries the conversation's title,
+    // and the conversation says where Coder runs.
+    let list = fixture.tap("coder-back");
+    let labels: Vec<String> = texts(&list);
+    assert!(
+        labels
+            .iter()
+            .any(|label| label
+                .starts_with("Run the tests in my repo\nCoder · running on Studio Mac")),
+        "{labels:?}"
+    );
+    assert!(
+        labels
+            .iter()
+            .any(|label| label.starts_with("Run the tests in my repo\nQueued · Studio Mac")),
+        "{labels:?}"
+    );
+    let talk = keys(&list)
+        .into_iter()
+        .find(|key| key.starts_with("talk-"))
+        .unwrap();
+    let chat = fixture.tap(&talk);
+    assert!(node(&chat, "coder-spawned").is_some());
+    fixture.tap("coder-spawned");
+    assert_eq!(fixture.coder.open_task(), Some((host, task)));
 }
