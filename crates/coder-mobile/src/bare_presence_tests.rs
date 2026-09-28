@@ -80,6 +80,8 @@ fn bare_world_players_see_each_other_move_and_pausing_stops_publishing() {
         },
     );
     assert!(appeared, "the peer's avatar never appeared");
+    // The peer carries its key's first letters overhead.
+    assert!(!scene.player_tags().vertices.is_empty(), "the peer has no tag");
     let entities = crate::verse_ffi::bare_entities(
         scene
             .session
@@ -145,8 +147,9 @@ fn bare_world_players_see_each_other_move_and_pausing_stops_publishing() {
     // The local player walks with the stick; the peer sees the scene's avatar
     // follow at the mobile cadence.
     let from = scene.world.player.pos;
-    scene.pointer(9, PointerPhase::Down, 80.0, 520.0).unwrap();
-    scene.pointer(9, PointerPhase::Move, 80.0, 440.0).unwrap();
+    let [sx, sy] = scene.stick_center();
+    scene.pointer(9, PointerPhase::Down, sx, sy).unwrap();
+    scene.pointer(9, PointerPhase::Move, sx, sy - 80.0).unwrap();
     run(
         &mut scene,
         &mut peer,
@@ -155,7 +158,7 @@ fn bare_world_players_see_each_other_move_and_pausing_stops_publishing() {
         Duration::from_millis(700),
         |_, _, _| false,
     );
-    scene.pointer(9, PointerPhase::Up, 80.0, 440.0).unwrap();
+    scene.pointer(9, PointerPhase::Up, sx, sy - 80.0).unwrap();
     let walked_to = scene.world.player.pos;
     assert!(walked_to.distance(from) > 1.0);
     let followed = run(

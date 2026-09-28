@@ -521,6 +521,10 @@ const BARE_PRESENCE_MARGIN: Duration = Duration::from_millis(300);
 const WORLD_TAP_SECONDS: f64 = 0.25;
 /// Radius of the movement stick's drawn base, in logical points.
 const STICK_RADIUS_POINTS: f32 = 56.0;
+/// Players farther than this, in meters, carry no tag.
+const PLAYER_TAG_RANGE: f32 = 60.0;
+/// Height of a player's tag above their feet, in meters, as on desktop.
+const PLAYER_TAG_LIFT: f32 = 2.2;
 /// Gap between the stick's base and the safe area, in logical points.
 const STICK_MARGIN_POINTS: f32 = 24.0;
 /// Touches this far from the stick's center take the stick.
@@ -693,7 +697,13 @@ impl Scene {
         }
         Ok(Self {
             world,
-            atlas: verse::ui::Atlas::new(12.0),
+            // The bare world's only text is players' tags over the world, so
+            // its font is rasterized at the screen's pixel scale.
+            atlas: verse::ui::Atlas::new(if config.bare {
+                12.0 * config.scale.clamp(1.0, 4.0)
+            } else {
+                12.0
+            }),
             map: verse::minimap::MapHud::default(),
             map_error: None,
             door_hud: verse::doors::hud::DoorHud::default(),
@@ -794,6 +804,8 @@ impl Scene {
             session
                 .crowd
                 .set_delay(intervals.moving + BARE_PRESENCE_MARGIN);
+            // Only players there now: nobody who left stays behind as a figure.
+            session.crowd.set_live_only(true);
             session
         } else {
             Session::start_with_identity(identity, relay)?
@@ -1091,11 +1103,17 @@ impl Scene {
         Ok(())
     }
 
-    /// Center of the movement stick, above the bottom-left safe area.
+    /// Center of the movement stick, above the bottom safe area: centered in
+    /// the bare world, where it is the only control, and at the left otherwise.
     fn stick_center(&self) -> [f32; 2] {
         let size = self.lifecycle.viewport().logical_size();
+        let x = if self.world.is_bare() {
+            self.insets[3] + (size[0] - self.insets[3] - self.insets[1]) / 2.0
+        } else {
+            self.insets[3] + STICK_MARGIN_POINTS + STICK_RADIUS_POINTS
+        };
         [
-            self.insets[3] + STICK_MARGIN_POINTS + STICK_RADIUS_POINTS,
+            x,
             size[1] - self.insets[2] - STICK_MARGIN_POINTS - STICK_RADIUS_POINTS,
         ]
     }
@@ -1135,24 +1153,51 @@ impl Scene {
         let alpha = if held.is_some() { 0.55 } else { 0.3 };
         let x = center[0] * scale;
         let y = center[1] * scale;
-        ui.frame(
+        ui.ring(&self.atlas, x, y, base, 2.0 * scale, [1.0, 1.0, 1.0, alpha]);
+        ui.disc(
             &self.atlas,
-            x - base,
-            y - base,
-            base * 2.0,
-            base * 2.0,
-            2.0 * scale,
-            [1.0, 1.0, 1.0, alpha],
-        );
-        let knob_half = base * 0.35;
-        ui.rect(
-            &self.atlas,
-            x + knob[0] * scale - knob_half,
-            y + knob[1] * scale - knob_half,
-            knob_half * 2.0,
-            knob_half * 2.0,
+            x + knob[0] * scale,
+            y + knob[1] * scale,
+            base * 0.35,
             [1.0, 1.0, 1.0, alpha + 0.25],
         );
+        ui
+    }
+
+    /// Each other player's pubkey prefix over their head, as desktop Verse
+    /// tags players with no profile name.
+    fn player_tags(&self) -> verse::ui::UiBatch {
+        let mut ui = verse::ui::UiBatch::default();
+        let Some(session) = &self.session else {
+            return ui;
+        };
+        if !self.lifecycle.active() || self.panel_open() {
+            return ui;
+        }
+        let viewport = self.lifecycle.viewport();
+        let size = viewport.logical_size().map(|v| v * viewport.scale());
+        let view_proj = self.world.view(self.aspect()).view_proj;
+        for shown in session.crowd.shown(Instant::now()) {
+            if shown.role != "avatar"
+                || shown.pos.distance(self.world.player.pos) > PLAYER_TAG_RANGE
+            {
+                continue;
+            }
+            let mut head = shown.pos;
+            head.y += PLAYER_TAG_LIFT;
+            let Some([x, y]) = verse::hud::project(view_proj, size, head) else {
+                continue;
+            };
+            let tag = session.name_of(&shown.pubkey);
+            let width = self.atlas.measure(&tag);
+            ui.text(
+                &self.atlas,
+                x - width / 2.0,
+                y - self.atlas.line,
+                &tag,
+                [0.9, 0.9, 0.9, 1.0],
+            );
+        }
         ui
     }
 
@@ -1662,8 +1707,11 @@ impl Scene {
 
     pub fn map_ui(&self) -> verse::ui::UiBatch {
         if self.world.is_bare() {
-            // The movement stick is the bare world's only control.
-            return self.stick_ui();
+            // The movement stick is the bare world's only control; the
+            // players there carry their key's first letters overhead.
+            let mut ui = self.player_tags();
+            ui.vertices.extend(self.stick_ui().vertices);
+            return ui;
         }
         let mut ui = self.map.draw(
             &self.atlas,
@@ -3415,14 +3463,18 @@ mod tests {
         scene.pointer(1, PointerPhase::Up, 300.0, 60.0).unwrap();
         assert_ne!(scene.world.player.yaw, yaw);
         assert!(!scene.map_snapshot().expanded);
+        // The stick is a circle centered above the bottom edge.
+        let size = scene.lifecycle.viewport().logical_size();
+        let [sx, sy] = scene.stick_center();
+        assert_eq!(sx, size[0] / 2.0);
         // The stick walks the player forward.
         let start = scene.world.player.pos;
-        scene.pointer(2, PointerPhase::Down, 80.0, 520.0).unwrap();
-        scene.pointer(2, PointerPhase::Move, 80.0, 440.0).unwrap();
+        scene.pointer(2, PointerPhase::Down, sx, sy).unwrap();
+        scene.pointer(2, PointerPhase::Move, sx, sy - 80.0).unwrap();
         for frame in 1..=30 {
             scene.update(1.0 + f64::from(frame) / 60.0).unwrap();
         }
-        scene.pointer(2, PointerPhase::Up, 80.0, 440.0).unwrap();
+        scene.pointer(2, PointerPhase::Up, sx, sy - 80.0).unwrap();
         assert!(scene.world.player.pos.distance(start) > 1.0);
         // Walking on into the ball ahead pushes it.
         let ball = scene
@@ -3431,12 +3483,12 @@ mod tests {
             .expect("the bare world's ball")
             .body()
             .pos;
-        scene.pointer(5, PointerPhase::Down, 80.0, 520.0).unwrap();
-        scene.pointer(5, PointerPhase::Move, 80.0, 440.0).unwrap();
+        scene.pointer(5, PointerPhase::Down, sx, sy).unwrap();
+        scene.pointer(5, PointerPhase::Move, sx, sy - 80.0).unwrap();
         for frame in 31..=180 {
             scene.update(1.0 + f64::from(frame) / 60.0).unwrap();
         }
-        scene.pointer(5, PointerPhase::Up, 80.0, 440.0).unwrap();
+        scene.pointer(5, PointerPhase::Up, sx, sy - 80.0).unwrap();
         let pushed = scene.world.ball().unwrap().body().pos;
         assert!(pushed.z > ball.z + 1.0, "{ball:?} {pushed:?}");
         let packet = serde_json::to_value(scene.packet()).unwrap();

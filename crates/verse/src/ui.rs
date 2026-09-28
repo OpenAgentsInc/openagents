@@ -273,6 +273,18 @@ pub fn field(alpha: f32) -> [f32; 4] {
     [r, g, b, alpha]
 }
 
+/// Segments in a drawn circle: smooth at the sizes the HUD draws.
+const CIRCLE_SEGMENTS: usize = 64;
+
+/// Consecutive point pairs around a circle of radius `r` at the origin.
+fn circle_edges(r: f32) -> impl Iterator<Item = [[f32; 2]; 2]> {
+    let point = move |i: usize| {
+        let a = i as f32 / CIRCLE_SEGMENTS as f32 * std::f32::consts::TAU;
+        [r * a.cos(), r * a.sin()]
+    };
+    (0..CIRCLE_SEGMENTS).map(move |i| [point(i), point(i + 1)])
+}
+
 /// Quads to draw over the world this frame.
 #[derive(Clone, Debug, Default)]
 pub struct UiBatch {
@@ -315,6 +327,39 @@ impl UiBatch {
         self.rect(atlas, x, y + h - t, w, t, color);
         self.rect(atlas, x, y, t, h, color);
         self.rect(atlas, x + w - t, y, t, h, color);
+    }
+
+    /// A filled circle centered at `(cx, cy)`.
+    pub fn disc(&mut self, atlas: &Atlas, cx: f32, cy: f32, r: f32, color: [f32; 4]) {
+        let v = |x: f32, y: f32| UiVertex {
+            pos: [x, y],
+            uv: atlas.solid,
+            color,
+        };
+        for [a, b] in circle_edges(r) {
+            self.vertices.extend_from_slice(&[
+                v(cx, cy),
+                v(cx + a[0], cy + a[1]),
+                v(cx + b[0], cy + b[1]),
+            ]);
+        }
+    }
+
+    /// A circle outline of radius `r`, `t` pixels thick inward.
+    #[allow(clippy::too_many_arguments)]
+    pub fn ring(&mut self, atlas: &Atlas, cx: f32, cy: f32, r: f32, t: f32, color: [f32; 4]) {
+        let v = |x: f32, y: f32| UiVertex {
+            pos: [x, y],
+            uv: atlas.solid,
+            color,
+        };
+        let k = ((r - t) / r).max(0.0);
+        for [a, b] in circle_edges(r) {
+            let (oa, ob) = (v(cx + a[0], cy + a[1]), v(cx + b[0], cy + b[1]));
+            let ia = v(cx + a[0] * k, cy + a[1] * k);
+            let ib = v(cx + b[0] * k, cy + b[1] * k);
+            self.vertices.extend_from_slice(&[oa, ob, ib, oa, ib, ia]);
+        }
     }
 
     /// One line of text with its top-left at `(x, y)`. Returns its width.

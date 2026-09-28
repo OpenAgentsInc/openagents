@@ -81,6 +81,8 @@ pub struct Crowd {
     sessions: HashMap<String, SessionOrder>,
     /// How far in the past entities are drawn; [`DELAY`] unless set.
     delay: Duration,
+    /// Whether offline entities are hidden instead of drawn dim.
+    live_only: bool,
 }
 
 impl Crowd {
@@ -92,7 +94,14 @@ impl Crowd {
             entities: HashMap::new(),
             sessions: HashMap::new(),
             delay: DELAY,
+            live_only: false,
         }
+    }
+
+    /// Hides offline entities instead of drawing them dim where their owners
+    /// left them. A world with presence alone shows only who is there now.
+    pub fn set_live_only(&mut self, live_only: bool) {
+        self.live_only = live_only;
     }
 
     /// Draws entities `delay` in the past instead of [`DELAY`]. Publishers
@@ -234,6 +243,9 @@ impl Crowd {
             .iter()
             .filter_map(|((pubkey, id), remote)| {
                 let (pos, rot, online) = remote.at(now, self.delay)?;
+                if self.live_only && !online {
+                    return None;
+                }
                 Some(Shown {
                     pubkey: pubkey.clone(),
                     id: id.clone(),
@@ -268,6 +280,9 @@ impl Crowd {
             let Some((pos, rot, online)) = remote.at(now, self.delay) else {
                 continue;
             };
+            if self.live_only && !online {
+                continue;
+            }
             let bright = if online {
                 Intensity::Full
             } else {
@@ -474,6 +489,11 @@ mod tests {
         assert_eq!(shown[0].pos, Vec3::new(7.0, 0.0, 7.0));
         assert_eq!(crowd.nearby(Vec3::ZERO, 20.0, later).len(), 1);
         assert!(crowd.nearby(Vec3::ZERO, 5.0, later).is_empty());
+        // Presence alone shows only who is there now.
+        crowd.set_live_only(true);
+        assert!(crowd.shown(t0).first().is_some_and(|s| s.online));
+        assert!(crowd.shown(later).is_empty());
+        assert!(crowd.mesh(later, 0.016).faces.is_empty());
     }
 
     #[test]
