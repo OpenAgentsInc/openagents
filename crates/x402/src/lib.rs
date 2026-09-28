@@ -11,11 +11,13 @@
 //! `server` binds one paid resource: challenge, reconstruct, settle, execute,
 //! over the smallest HTTP/1.1 loop; `mcp` is the same toll on one MCP
 //! server's `tools/call`, over the upstream MCP transport's `_meta` names.
-//! Nothing here pays.
+//! `policy` is the buyer's standing ceilings, allowlist, and daily cap, and
+//! the ledger of what it paid. Nothing here pays.
 
 pub mod facilitator;
 pub mod mcp;
 pub mod native;
+pub mod policy;
 pub mod replay;
 pub mod server;
 pub mod wire;

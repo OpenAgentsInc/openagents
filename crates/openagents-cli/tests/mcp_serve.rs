@@ -160,3 +160,76 @@ fn x402_refuses_bad_arguments_with_json() {
     assert_eq!(no_max.status.code(), Some(64));
     let _ = std::fs::remove_dir_all(&home);
 }
+
+#[test]
+fn x402_policy_and_ledger_round_trip() {
+    let home = std::env::temp_dir().join(format!("openagents-x402-policy-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let run = |args: &[&str]| {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
+            .env("OPENAGENTS_WALLET_HOME", home.join("wallet"))
+            .env("OPENAGENTS_X402_HOME", home.join("x402"))
+            .arg("--json")
+            .arg("x402")
+            .args(args)
+            .output()
+            .unwrap();
+        let doc: Value = serde_json::from_slice(&out.stdout).unwrap_or(Value::Null);
+        (out.status.code(), doc)
+    };
+    let (code, doc) = run(&["policy"]);
+    assert_eq!(code, Some(0));
+    assert_eq!(doc["present"], false);
+
+    let (code, _) = run(&["policy", "set"]);
+    assert_eq!(code, Some(64));
+    let (code, _) = run(&["policy", "set", "--max-msat", "x"]);
+    assert_eq!(code, Some(64));
+
+    let provider = format!("02{}", "ab".repeat(32));
+    let (code, doc) = run(&[
+        "policy",
+        "set",
+        "--max-msat",
+        "5000",
+        "--daily-cap-msat",
+        "100000",
+    ]);
+    assert_eq!(code, Some(0), "{doc}");
+    let (code, doc) = run(&[
+        "policy",
+        "set",
+        "--max-msat",
+        "20000",
+        "--max-fee-msat",
+        "40",
+        "--provider",
+        &provider,
+    ]);
+    assert_eq!(code, Some(0), "{doc}");
+    let (code, doc) = run(&["policy", "allow", &provider]);
+    assert_eq!(code, Some(0), "{doc}");
+    assert_eq!(doc["policy"]["default"]["max_msat"], 5000);
+    assert_eq!(doc["policy"]["daily_cap_msat"], 100000);
+    assert_eq!(doc["policy"]["providers"][&provider]["max_fee_msat"], 40);
+    assert_eq!(doc["policy"]["allow"][0], provider);
+
+    let (code, doc) = run(&["policy", "deny", &provider]);
+    assert_eq!(code, Some(0));
+    assert!(doc["policy"]["allow"].is_null(), "{doc}");
+    let (code, doc) = run(&["policy", "set", "--max-msat", "-", "--provider", &provider]);
+    assert_eq!(code, Some(0));
+    assert_eq!(doc["policy"]["providers"][&provider]["max_fee_msat"], 40);
+
+    // With a policy present, a buyer no longer needs --max-msat to be
+    // admitted past argument parsing (it then fails on the network).
+    let (code, doc) = run(&["fetch", "http://127.0.0.1:9/run"]);
+    assert_eq!(code, Some(1), "{doc}");
+
+    let (code, doc) = run(&["ledger"]);
+    assert_eq!(code, Some(0), "{doc}");
+    assert_eq!(doc["count"], 0);
+    let (code, _) = run(&["ledger", "--since", "x"]);
+    assert_eq!(code, Some(64));
+    let _ = std::fs::remove_dir_all(&home);
+}

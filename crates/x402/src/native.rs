@@ -663,6 +663,33 @@ impl PurchaseStore {
         }
         Ok(out)
     }
+
+    /// How many purchases `buyer` requested at or after `since`, by the
+    /// request record's `issued_at`.
+    pub fn requested_since(&self, buyer: &str, since: u64) -> Result<usize, StoreError> {
+        let prefix = format!("{buyer}-");
+        let mut count = 0;
+        for item in fs::read_dir(&self.dir)? {
+            let path = item?.path();
+            let is_theirs = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(&prefix) && name.ends_with(".json"));
+            if !is_theirs {
+                continue;
+            }
+            let purchase: Purchase = serde_json::from_slice(&fs::read(path)?)?;
+            let issued_at = purchase
+                .request
+                .value()
+                .ok()
+                .and_then(|value| value.get("issued_at").and_then(Value::as_u64));
+            if issued_at.is_some_and(|at| at >= since) {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
 }
 
 /// What the provider sells: one operation of one capability at one price.
@@ -673,6 +700,9 @@ pub struct Offer {
     pub amount_msat: u64,
     pub timeout_secs: u32,
     pub description: String,
+    /// Most new purchases one buyer may request per rolling hour; `None`
+    /// is no limit.
+    pub per_buyer_hourly: Option<u32>,
 }
 
 /// Records the provider must publish next, as unsigned record values in order.
@@ -848,6 +878,15 @@ impl<S: ReplayStore> Provider<'_, S> {
         }
         if self.offer.amount_msat > parsed.ceiling_msat {
             return Err(refused(&mut purchase, "ceiling_below_price"));
+        }
+        if let Some(limit) = self.offer.per_buyer_hourly {
+            let recent = self
+                .store
+                .requested_since(&incoming.buyer, now.saturating_sub(3_600))
+                .map_err(|_| refuse("purchase ledger read failed"))?;
+            if recent >= limit as usize {
+                return Err(refused(&mut purchase, "rate_limited"));
+            }
         }
         let mut request_hash_bytes = [0u8; 32];
         for (i, byte) in hex_vec(&hash)
@@ -1465,6 +1504,7 @@ mod tests {
                     amount_msat: 25_000,
                     timeout_secs: 300,
                     description: "echo".into(),
+                    per_buyer_hourly: None,
                 },
                 receiver: &Signing,
                 facilitator: &self.facilitator,
@@ -1491,6 +1531,10 @@ mod tests {
     }
 
     fn request(purchase: &str, ceiling: u64) -> Signed {
+        request_at(purchase, ceiling, NOW)
+    }
+
+    fn request_at(purchase: &str, ceiling: u64, issued_at: u64) -> Signed {
         let value = buyer::request(
             purchase,
             BUYER,
@@ -1500,7 +1544,7 @@ mod tests {
             input(),
             ceiling,
             1_000,
-            NOW,
+            issued_at,
             600,
             600,
             3_600,
@@ -1678,6 +1722,31 @@ mod tests {
         assert_eq!(phase_of(&refusal.emit.records[0]), Phase::Refused);
         let entry = bench.store.get(BUYER, &purchase_id(3)).unwrap().unwrap();
         assert_eq!(entry.phase().unwrap(), Phase::Refused);
+    }
+
+    #[test]
+    fn refuses_a_buyer_over_its_hourly_rate() {
+        let bench = Bench::new("rate");
+        let mut provider = bench.provider();
+        provider.offer.per_buyer_hourly = Some(2);
+        provider
+            .offer(&request(&purchase_id(31), 40_000), NOW)
+            .unwrap();
+        provider
+            .offer(&request(&purchase_id(32), 40_000), NOW + 1)
+            .unwrap();
+        let refusal = provider
+            .offer(&request(&purchase_id(33), 40_000), NOW + 2)
+            .unwrap_err();
+        assert_eq!(refusal.cause, "rate_limited");
+        assert_eq!(phase_of(&refusal.emit.records[0]), Phase::Refused);
+        // An hour later the window has moved on.
+        provider
+            .offer(
+                &request_at(&purchase_id(34), 40_000, NOW + 3_601),
+                NOW + 3_601,
+            )
+            .unwrap();
     }
 
     #[test]

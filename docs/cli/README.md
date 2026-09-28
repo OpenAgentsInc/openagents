@@ -519,6 +519,8 @@ otherwise. LSPS1 is the x402 path: the LSP opens a channel in advance for a
 fee, and this node still signs its own invoices, so its node id stays a valid
 `payTo`. An LSPS2 or Olympus Flow just-in-time channel wraps the first
 payment in an invoice the LSP signs, which the x402 payee check refuses.
+`--lsp-min-msat N` records the smallest payment the LSP forwards (from its
+published fee policy); x402 providers then refuse a toll below it.
 
 ```sh
 openagents wallet init --network bitcoin --lsp olympus
@@ -708,6 +710,47 @@ buyer, inbound on the provider). Two things had to be fixed on the way:
 `channel open` now stays online until the funding transaction is
 broadcast, and `pay` waits up to 20 s for a just-started node to reconnect
 its channel peers before it sends.
+
+### Spending policy and ledger (`x402 policy`, `x402 ledger`)
+
+Every buyer (`fetch`, `call`, `buy`) reads `~/.openagents/x402/policy.json`
+(`OPENAGENTS_X402_HOME` overrides the directory) before it pays. The
+policy holds a default ceiling, per-provider ceilings keyed by the `payTo`
+node id, per-capability ceilings keyed by `PUBKEY:x402/SLUG`, a rolling
+24-hour spending cap counted in amount plus fee, and a provider allowlist.
+A ceiling has `max_msat` and `max_fee_msat`; the capability entry wins over
+the provider entry over the default, field by field, and `--max-msat` or
+`--max-fee-msat` on the command line wins over all of them. Without a
+`max_fee_msat` anywhere the fee cap is `max_msat / 100 + 1000`. A call
+with no ceiling from any source is refused before any request goes out.
+
+```sh
+openagents x402 policy set --max-msat 5000 --daily-cap-msat 200000
+openagents x402 policy set --max-msat 20000 --max-fee-msat 50 --provider 02dc6c…b75d
+openagents x402 policy set --max-msat 1000 --cap PUBKEY:x402/echo
+openagents x402 policy allow 02dc6c…b75d       # empty list admits everyone
+openagents x402 policy set --max-msat - --provider 02dc6c…b75d   # `-` clears
+openagents x402 policy --json
+openagents x402 ledger --since 86400 --binding nostr:openagents:1 --json
+```
+
+Refusals name the rule: above the ceiling and which source set it, the
+provider off the allowlist, or the daily cap the payment would cross.
+Nothing is paid on a refusal. Every payment appends one line to
+`~/.openagents/x402/ledger.ndjson` — time, binding, network, provider,
+capability, resource, amount, fee, payment hash, and phase — and the phase
+is updated when the call ends (`http_200`, `completed`, `tool_error`,
+`retry_failed`, or the native status name). `x402 ledger` sums and lists it,
+filtered by `--since SECONDS`, `--binding`, and `--provider`.
+
+Providers take `--expiry SECONDS` (default 300, `--timeout` still works)
+for the invoice and challenge lifetime. `native-serve --per-buyer N`
+refuses a buyer's request with `rate_limited` after N requests within an
+hour, counted from the purchase store. When the wallet's LSP is recorded
+with `wallet init --lsp … --lsp-min-msat N`, every provider refuses to
+start with `--msat` below N: buyers could never settle such a toll through
+that LSP. There is no pricing discovery or negotiation: the provider sets
+its toll, the policy decides whether the buyer pays it.
 
 ## Keys and relays
 

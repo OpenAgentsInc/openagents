@@ -17,7 +17,7 @@ use crate::{Args, Output};
 const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
   init [--network NET] [--esplora URL] [--listen HOST:PORT]
        [--lsp NODE_ID@HOST:PORT|olympus [--lsp-protocol lsps1|lsps2]
-        [--lsp-token TOKEN]] [--trust NODE_ID]...
+        [--lsp-token TOKEN] [--lsp-min-msat N]] [--trust NODE_ID]...
                           Write config.json and a seed. NET is bitcoin,
                           testnet, signet, or regtest (default signet).
                           --lsp olympus picks the Olympus (ZEUS) LSPS1
@@ -205,6 +205,19 @@ fn init(args: &Args) -> Result<Value, Failure> {
         )?),
         None => existing.as_ref().and_then(|c| c.lsp.clone()),
     };
+    if let Some(text) = args.option("lsp-min-msat") {
+        let min: u64 = text
+            .parse()
+            .map_err(|_| Failure::Usage(format!("--lsp-min-msat takes a number, not `{text}`")))?;
+        match wallet_config.lsp.as_mut() {
+            Some(lsp) => lsp.min_payment_msat = (min > 0).then_some(min),
+            None => {
+                return Err(Failure::Usage(
+                    "--lsp-min-msat needs an LSP (--lsp)".to_string(),
+                ));
+            }
+        }
+    }
     let trusted = args.options("trust");
     wallet_config.trusted_peers = if trusted.is_empty() {
         existing.map(|c| c.trusted_peers).unwrap_or_default()
