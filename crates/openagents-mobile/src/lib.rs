@@ -18,6 +18,7 @@ mod account;
 mod android;
 mod app;
 mod chats;
+mod coder_list;
 mod coder_tab;
 mod conversation;
 mod outbox;

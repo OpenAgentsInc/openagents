@@ -2,9 +2,11 @@
 //! every status, with activity summaries, and no network.
 
 use crate::chats::Chats;
+use crate::coder_list::Store;
 use crate::coder_tab::CoderTab;
+use coder_computers::cache::Cache;
 use coder_computers::synthetic::Synthetic;
-use coder_computers::{Capabilities, Computers, Platform};
+use coder_computers::{Capabilities, Computers, ComputersService, Platform};
 use rust_native::Activation;
 use serde_json::Value;
 
@@ -24,8 +26,13 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn new(service: Synthetic) -> Self {
+    fn new(service: impl ComputersService + Send + 'static) -> Self {
         let dir = tempfile::tempdir().expect("temp dir");
+        Self::in_dir(service, dir)
+    }
+
+    /// A fixture whose Coder list lives in `dir`, as the app's store does.
+    fn in_dir(service: impl ComputersService + Send + 'static, dir: tempfile::TempDir) -> Self {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -47,7 +54,9 @@ impl Fixture {
             "chats:test".into(),
         );
         Self {
-            coder: CoderTab::new("coder:test".into()),
+            coder: CoderTab::new("coder:test".into()).with_list(Store::open(
+                Cache::open(&dir.path().join("coder-list"), &secret).ok(),
+            )),
             computers,
             chats,
             _runtime: runtime,
@@ -173,7 +182,6 @@ fn times_read_rfc3339_and_bare_dates() {
 /// published the summary, which a host restart resets for every task.
 #[test]
 fn each_chat_shows_the_time_of_its_last_message() {
-    use std::collections::BTreeMap;
     let fixture = Fixture::hosts();
     let mut snapshot = fixture.computers.snapshot().clone();
     // A host restart republishes every summary at the same moment.
@@ -215,8 +223,12 @@ fn each_chat_shows_the_time_of_its_last_message() {
         crate::coder_tab::unix_seconds("2026-09-21T14:13:20Z"),
         Some(NOW)
     );
-    let sent = BTreeMap::new();
-    let rows = crate::coder_tab::tasks(&snapshot, &BTreeMap::new(), &sent, &saved);
+    let rows = crate::coder_tab::tasks(
+        &snapshot,
+        &snapshot.activity,
+        &crate::coder_list::List::default(),
+        &saved,
+    );
     let labels: Vec<String> = rows
         .iter()
         .map(|row| match &row.element {
@@ -325,4 +337,113 @@ fn new_chat_is_its_own_screen() {
     let list = fixture.tap("coder-back");
     assert!(node(&list, "coder-new").is_some());
     assert_eq!(kinds(&list, "composer"), 0);
+}
+
+/// The fixture's hosts right after a relaunch: every computer is added, and
+/// no host has sent a summary yet.
+struct Relaunched(Synthetic);
+
+type Answer<T> = coder_computers::service::Result<T>;
+
+impl ComputersService for Relaunched {
+    fn snapshot(&mut self) -> Answer<coder_computers::Snapshot> {
+        let mut snapshot = self.0.snapshot()?;
+        snapshot.activity.clear();
+        Ok(snapshot)
+    }
+    fn set_enabled(&mut self, host: &str, enabled: bool) -> Answer<()> {
+        self.0.set_enabled(host, enabled)
+    }
+    fn retry_now(&mut self, host: &str) -> Answer<()> {
+        self.0.retry_now(host)
+    }
+    fn forget(&mut self, host: &str) -> Answer<()> {
+        self.0.forget(host)
+    }
+    fn redeem_invitation(&mut self, invitation: &str) -> Answer<String> {
+        self.0.redeem_invitation(invitation)
+    }
+    fn approve_enrollment(
+        &mut self,
+        host: &str,
+        enrollment: &str,
+        code: &str,
+        rights: &coder_host::access::Rights,
+        grant_expires_at: u64,
+    ) -> Answer<()> {
+        self.0
+            .approve_enrollment(host, enrollment, code, rights, grant_expires_at)
+    }
+    fn deny_enrollment(&mut self, host: &str, enrollment: &str) -> Answer<()> {
+        self.0.deny_enrollment(host, enrollment)
+    }
+    fn connect_ssh(&mut self, destination: &str) -> Answer<()> {
+        self.0.connect_ssh(destination)
+    }
+    fn run_without_local_host(&mut self) -> Answer<()> {
+        self.0.run_without_local_host()
+    }
+    fn refresh_devices(&mut self, host: &str) -> Answer<()> {
+        self.0.refresh_devices(host)
+    }
+    fn create_invitation(
+        &mut self,
+        host: &str,
+        rights: &coder_host::access::Rights,
+        grant_expires_at: u64,
+    ) -> Answer<coder_computers::CreatedInvitation> {
+        self.0.create_invitation(host, rights, grant_expires_at)
+    }
+    fn cancel_invitation(&mut self, host: &str, invitation: &str) -> Answer<()> {
+        self.0.cancel_invitation(host, invitation)
+    }
+    fn revoke(&mut self, host: &str, device: &str) -> Answer<()> {
+        self.0.revoke(host, device)
+    }
+    fn complete_first_run(&mut self) -> Answer<()> {
+        self.0.complete_first_run()
+    }
+}
+
+/// A relaunch shows the chats list as it was at once, before any computer
+/// sends a summary, and live summaries replace it as they arrive.
+#[test]
+fn a_relaunch_shows_the_last_chats_list_at_once() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().to_path_buf();
+    let mut first = Fixture::in_dir(Synthetic::fixture(Platform::Phone, now), dir);
+    let before = first.render();
+    let rows = |view: &Value| -> Vec<String> {
+        nodes(view)
+            .into_iter()
+            .filter(|node| node["key"].as_str().is_some_and(|k| k.starts_with("task-")))
+            .map(|node| {
+                node["element"]["props"]["label"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect()
+    };
+    let shown = rows(&before);
+    assert_eq!(shown.len(), 3, "{shown:?}");
+    // The app ends; its store stays.
+    let Fixture { _dir: dir, .. } = first;
+    assert_eq!(dir.path(), path);
+    let mut again = Fixture::in_dir(Relaunched(Synthetic::fixture(Platform::Phone, now)), dir);
+    let after = again.render();
+    assert!(again.computers.snapshot().activity.is_empty());
+    assert_eq!(rows(&after), shown);
+    // A cached chat opens like a live one.
+    let chat = again.tap(&first_task(&after));
+    assert!(node(&chat, "coder-back").is_some());
+}
+
+/// Without a saved list, a first launch has no rows until a host sends
+/// summaries.
+#[test]
+fn a_first_launch_with_no_summaries_has_no_rows() {
+    let mut fixture = Fixture::new(Relaunched(Synthetic::fixture(Platform::Phone, now)));
+    let view = fixture.render();
+    assert!(!keys(&view).iter().any(|key| key.starts_with("task-")));
 }

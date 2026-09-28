@@ -323,11 +323,13 @@ impl App {
             device_npub,
             computers,
             chats,
-            coder: CoderTab::new(format!("coder:{}", id())).with_outbox(
-                crate::outbox::Outbox::open(
+            coder: CoderTab::new(format!("coder:{}", id()))
+                .with_list(crate::coder_list::Store::open(
+                    Cache::open(&config.state_dir.join("coder-list"), &secret).ok(),
+                ))
+                .with_outbox(crate::outbox::Outbox::open(
                     Cache::open(&config.state_dir.join("coder-outbox"), &secret).ok(),
-                ),
-            ),
+                )),
             terminals,
             terminal: None,
             tailnet_client,

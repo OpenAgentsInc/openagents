@@ -19,6 +19,7 @@
 //! current turn.
 
 use crate::chats::Chats;
+use crate::coder_list::{List, Row, Store};
 use crate::conversation::Conversation;
 use crate::outbox::{Attempt, Draft, Outbox};
 use coder_computers::{
@@ -32,7 +33,6 @@ use rust_native::{
     Activation, Axis, Element, Glyph, Icon, MessageRole, Node, TextRole, ValidatedView, View,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 /// The largest message, as NIP-HOST `task.create` allows.
 const MAX_PROMPT_BYTES: usize = 16 * 1024;
@@ -76,11 +76,9 @@ pub struct CoderTab {
     selected: Option<String>,
     notice: Option<String>,
     composers: u64,
-    /// The first line of each chat this device started, by task ID.
-    titles: BTreeMap<String, String>,
-    /// When this device sent each chat's first message, by task ID: its last
-    /// message until the computer lists the chat.
-    sent: BTreeMap<String, u64>,
+    /// The chats list as last seen, with the first line and send time of
+    /// each chat this device started; it survives a relaunch.
+    list: Store,
     open: Option<Open>,
     /// The New chat screen shows, where a first message starts a chat.
     composing: bool,
@@ -96,12 +94,17 @@ impl CoderTab {
             selected: None,
             notice: None,
             composers: 1,
-            titles: BTreeMap::new(),
-            sent: BTreeMap::new(),
+            list: Store::open(None),
             open: None,
             composing: false,
             outbox: Outbox::open(None),
         }
+    }
+
+    /// Keep the chats list in `list`, which survives a relaunch.
+    pub fn with_list(mut self, list: Store) -> Self {
+        self.list = list;
+        self
     }
 
     /// Keep chat commands in `outbox`, which survives a relaunch.
@@ -389,8 +392,10 @@ impl CoderTab {
                     .chars()
                     .take(80)
                     .collect();
-                self.titles.insert(task.clone(), title);
-                self.sent.insert(task.clone(), computers.snapshot().now);
+                let now = computers.snapshot().now;
+                self.list.list.titles.insert(task.clone(), title);
+                self.list.list.sent.insert(task.clone(), now);
+                self.list.save();
                 self.notice = None;
                 self.composing = false;
                 self.open(host, task, chats);
@@ -399,11 +404,88 @@ impl CoderTab {
         }
     }
 
+    /// The task summaries the list shows: every live one, and the cached
+    /// row of each task on an added computer that no live summary names
+    /// yet, as right after a relaunch.
+    fn activity(&self, computers: &Computers) -> Vec<ActivitySummary> {
+        let snapshot = computers.snapshot();
+        let mut activity = snapshot.activity.clone();
+        for row in &self.list.list.rows {
+            let live = snapshot
+                .activity
+                .iter()
+                .any(|s| s.host == row.host && s.subject == row.task);
+            if !live && snapshot.host(&row.host).is_some() {
+                activity.push(row.summary());
+            }
+        }
+        activity
+    }
+
+    /// Keep the list as shown, with each chat's catalog title and last
+    /// message time, for the next launch.
+    fn remember(&mut self, computers: &Computers, chats: &Chats) {
+        let snapshot = computers.snapshot();
+        let mut newest: Vec<ActivitySummary> = vec![];
+        for summary in self.activity(computers) {
+            if summary.subject_kind != SubjectKind::Task {
+                continue;
+            }
+            match newest
+                .iter_mut()
+                .find(|known| known.host == summary.host && known.subject == summary.subject)
+            {
+                Some(known) if known.sequence < summary.sequence => *known = summary,
+                Some(_) => {}
+                None => newest.push(summary),
+            }
+        }
+        let mut rows: Vec<Row> = newest
+            .iter()
+            .filter(|summary| snapshot.host(&summary.host).is_some())
+            .filter_map(|summary| {
+                let chat = chats.coder_chat(&summary.host, &summary.subject);
+                let chat = chat.map(|(_, _, chat)| chat);
+                if archived(chat.as_ref()) {
+                    return None;
+                }
+                let cached = self
+                    .list
+                    .list
+                    .rows
+                    .iter()
+                    .find(|row| row.host == summary.host && row.task == summary.subject);
+                let title = chat
+                    .as_ref()
+                    .map(|chat| chat.title.clone())
+                    .filter(|title| named(title))
+                    .or_else(|| cached.and_then(|row| row.title.clone()));
+                let last = chat
+                    .as_ref()
+                    .and_then(|chat| chat.updated_at.as_deref().and_then(unix_seconds))
+                    .or_else(|| cached.and_then(|row| row.last));
+                Some(Row::of(summary, title, last))
+            })
+            .collect();
+        rows.sort_by_key(|row| {
+            std::cmp::Reverse((
+                row.last
+                    .or_else(|| self.list.list.sent.get(&row.task).copied()),
+                row.updated_at,
+            ))
+        });
+        self.list.list.rows = rows;
+        self.list.save();
+    }
+
     pub fn render(
         &mut self,
         computers: Option<&Computers>,
         chats: &mut Chats,
     ) -> Option<serde_json::Value> {
+        if let Some(computers) = computers {
+            self.remember(computers, chats);
+        }
         self.follow(computers, chats);
         self.attach(chats);
         // Follow a running chat's transcript.
@@ -491,7 +573,12 @@ impl CoderTab {
             children.push(status("coder-notice", notice));
         }
         let saved = |host: &str, task: &str| chats.coder_chat(host, task).map(|(_, _, chat)| chat);
-        let rows = tasks(computers.snapshot(), &self.titles, &self.sent, &saved);
+        let rows = tasks(
+            computers.snapshot(),
+            &self.activity(computers),
+            &self.list.list,
+            &saved,
+        );
         if rows.is_empty() {
             children.push(status(
                 "coder-none",
@@ -635,7 +722,7 @@ impl CoderTab {
                 // The computer has not listed the transcript yet: show the
                 // message this device sent.
                 let mut rows = vec![];
-                if let Some(title) = self.titles.get(&open.task) {
+                if let Some(title) = self.list.list.titles.get(&open.task) {
                     rows.push(node(
                         "coder-sent",
                         Element::Message {
@@ -801,13 +888,12 @@ pub(crate) type Saved<'a> = dyn Fn(&str, &str) -> Option<coder_history::Chat> + 
 /// of each. Archived tasks are left out.
 pub(crate) fn tasks(
     snapshot: &Snapshot,
-    titles: &BTreeMap<String, String>,
-    sent: &BTreeMap<String, u64>,
+    activity: &[ActivitySummary],
+    known: &List,
     saved: &Saved<'_>,
 ) -> Vec<Node<Intent>> {
     let mut newest: Vec<&ActivitySummary> = vec![];
-    for summary in snapshot
-        .activity
+    for summary in activity
         .iter()
         .filter(|s| s.subject_kind == SubjectKind::Task)
     {
@@ -821,12 +907,19 @@ pub(crate) fn tasks(
         }
     }
     newest.retain(|summary| !archived(saved(&summary.host, &summary.subject).as_ref()));
+    let cached = |summary: &ActivitySummary| {
+        known
+            .rows
+            .iter()
+            .find(|row| row.host == summary.host && row.task == summary.subject)
+    };
     // A summary's time is when the host last published it, which a host
     // restart resets for every task; a chat's time is its last message.
     let last = |summary: &ActivitySummary| {
         saved(&summary.host, &summary.subject)
             .and_then(|chat| chat.updated_at.as_deref().and_then(unix_seconds))
-            .or_else(|| sent.get(&summary.subject).copied())
+            .or_else(|| cached(summary).and_then(|row| row.last))
+            .or_else(|| known.sent.get(&summary.subject).copied())
     };
     let mut newest: Vec<(&ActivitySummary, Option<u64>)> =
         newest.into_iter().map(|s| (s, last(s))).collect();
@@ -839,14 +932,19 @@ pub(crate) fn tasks(
             let label = snapshot
                 .host(&summary.host)
                 .map_or("a computer", |host| host.label.as_str());
-            // The first line this device sent, else the transcript's title,
-            // else the host's generic headline.
-            let title = titles.get(&summary.subject).cloned().unwrap_or_else(|| {
-                saved(&summary.host, &summary.subject)
-                    .map(|chat| chat.title)
-                    .filter(|title| !title.is_empty() && !title.starts_with("Saved "))
-                    .unwrap_or_else(|| summary.headline.clone())
-            });
+            // The first line this device sent, else the transcript's title
+            // (as last listed), else the host's generic headline.
+            let title = known
+                .titles
+                .get(&summary.subject)
+                .cloned()
+                .unwrap_or_else(|| {
+                    saved(&summary.host, &summary.subject)
+                        .map(|chat| chat.title)
+                        .filter(|title| named(title))
+                        .or_else(|| cached(summary).and_then(|row| row.title.clone()))
+                        .unwrap_or_else(|| summary.headline.clone())
+                });
             // A host's own note, such as "No model capacity until ...",
             // shows under the phase; the generic phrase adds nothing.
             let note = if summary.headline != title
@@ -883,6 +981,11 @@ fn phase_label(phase: Phase) -> &'static str {
         Phase::Cancelled => "Stopped",
         Phase::Unknown => "Unknown",
     }
+}
+
+/// Whether a catalog title names the chat, rather than a generic one.
+fn named(title: &str) -> bool {
+    !title.is_empty() && !title.starts_with("Saved ")
 }
 
 /// Unix seconds of an RFC 3339 time (`2026-09-28T07:21:00Z`, with an
