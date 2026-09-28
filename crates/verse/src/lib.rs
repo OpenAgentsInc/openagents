@@ -11,6 +11,7 @@ pub mod agent;
 #[cfg(feature = "desktop")]
 pub mod app;
 pub mod avatar;
+pub mod ball;
 #[cfg(feature = "model-host")]
 pub mod brain;
 pub mod camera;

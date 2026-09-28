@@ -83,6 +83,13 @@ pub enum Material {
     SafetyPaint,
     /// Dark anodized or composite hardware.
     Dark,
+    /// Paint under a clear lacquer coat, as on a bowling ball: the base's own
+    /// roughness beneath a thin glossy layer.
+    Lacquer,
+    /// A matte stage floor under a studio light. Its occlusion channel fades
+    /// it into the stage's field, not only its bounce light, so a pool of
+    /// light on it ends softly at the pool's rim.
+    Stage,
 }
 
 impl Material {
@@ -96,7 +103,9 @@ impl Material {
             Self::SolarCell => 3.0,
             Self::Visor => 4.0,
             Self::Fabric => 5.0,
-            Self::Radiator => 6.0,
+            // The shader gives code 6 a clear coat over the base layer.
+            Self::Radiator | Self::Lacquer => 6.0,
+            Self::Stage => 7.0,
         }
     }
 
@@ -115,6 +124,8 @@ impl Material {
             Self::Radiator => ([0.97, 0.96, 0.92], 1.0, 0.12),
             Self::SafetyPaint => ([0.80, 0.50, 0.04], 0.0, 0.6),
             Self::Dark => ([0.06, 0.06, 0.07], 0.0, 0.55),
+            Self::Lacquer => ([0.80, 0.80, 0.78], 0.0, 0.4),
+            Self::Stage => ([0.07, 0.07, 0.07], 0.0, 0.8),
         }
     }
 
@@ -260,6 +271,66 @@ pub struct Neon {
     pub vignette: f32,
     /// Seconds, for animated effects.
     pub time: f32,
+    /// Studio light for physically lit geometry on the stage. Without it the
+    /// stage draws no lit geometry.
+    pub key: Option<Key>,
+}
+
+/// Studio light for lit geometry on a neon stage: a shadowed key light, an
+/// unshadowed rim light, and an ambient sky, each a small source in lux.
+///
+/// The stage's lines are display colors at unit exposure, so the renderer
+/// scales these lux by [`exposure`]`(ev100)` before shading: a white surface
+/// facing the key then reads near display white beside the lines.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Key {
+    /// Unit direction toward the key light, which casts shadows.
+    pub dir: Vec3,
+    /// Key illuminance on a surface facing it, lux.
+    pub illuminance: f32,
+    /// The key's angular radius, radians: it sets penumbra and highlight size.
+    pub angular_radius: f32,
+    /// Unit direction toward the rim light, which casts no shadow.
+    pub rim_dir: Vec3,
+    pub rim_illuminance: f32,
+    pub rim_angular_radius: f32,
+    /// Ambient irradiance on surfaces facing straight up and straight down, lux.
+    pub sky: f32,
+    pub ground: f32,
+    /// Exposure value at ISO 100 that carries these lux onto the stage.
+    pub ev100: f32,
+    /// Center and half extent of the region that casts and receives shadows.
+    pub shadow_center: Vec3,
+    pub shadow_half: f32,
+}
+
+impl Key {
+    /// Uniform ambient probes for this light, pre-exposed: the sky from
+    /// above and the ground from below, as the linear function the lit
+    /// shader reads. The version changes only when the light does.
+    #[must_use]
+    pub fn probes(&self) -> ProbeGrid {
+        let exposure = exposure(self.ev100);
+        let e0 = (self.sky + self.ground) * 0.5 * exposure;
+        let e1 = (self.sky - self.ground) * 0.5 * exposure;
+        let channel = [e0, 0.0, e1, 0.0];
+        let mut probe = [0.0; 12];
+        for c in 0..3 {
+            probe[c * 4..c * 4 + 4].copy_from_slice(&channel);
+        }
+        // Tagged apart from baked grids, whose versions count up from one.
+        let version = (1 << 63)
+            ^ (u64::from(self.sky.to_bits()) << 32)
+            ^ u64::from(self.ground.to_bits())
+            ^ (u64::from(self.ev100.to_bits()) << 16);
+        ProbeGrid {
+            origin: self.shadow_center - Vec3::splat(500.0),
+            cell: 1000.0,
+            dims: [2, 2, 2],
+            data: vec![probe; 8],
+            version,
+        }
+    }
 }
 
 impl Neon {
@@ -275,6 +346,7 @@ impl Neon {
             bloom: 0.07,
             vignette: 0.2,
             time,
+            key: None,
         }
     }
 

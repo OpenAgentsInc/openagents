@@ -208,6 +208,9 @@ pub(crate) struct Packet {
     pub hdr_output: bool,
     frames_presented: u64,
     position: [f32; 3],
+    /// The bare world's ball, for the host's diagnostics.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ball: Option<BallPacket>,
     camera_mode: CameraMode,
     camera_yaw: f32,
     camera_pitch: f32,
@@ -227,6 +230,16 @@ pub(crate) struct Packet {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gym_board: Option<verse::gym::BoardView>,
     view: View<()>,
+}
+
+/// The bare world's ball: where it is, how fast it moves, and what its last
+/// physics frame cost.
+#[derive(Serialize)]
+struct BallPacket {
+    position: [f32; 3],
+    speed: f32,
+    asleep: bool,
+    step_ms: f32,
 }
 
 #[derive(Serialize)]
@@ -434,6 +447,7 @@ fn packet(
         hdr_output: false,
         frames_presented: frames,
         position,
+        ball: None,
         camera_mode: CameraMode::Touch,
         camera_yaw: 0.0,
         camera_pitch: verse::camera::FollowCamera::default().pitch,
@@ -1490,6 +1504,15 @@ impl Scene {
             self.frames,
             self.world.player.pos.to_array(),
         );
+        packet.ball = self.world.ball().map(|ball| {
+            let body = ball.body();
+            BallPacket {
+                position: body.pos.as_vec3().to_array(),
+                speed: body.vel.length() as f32,
+                asleep: body.sleeping,
+                step_ms: ball.step_time.as_secs_f32() * 1_000.0,
+            }
+        });
         packet.connection = connection(
             self.relay.as_deref(),
             self.lifecycle.active(),
@@ -3401,6 +3424,27 @@ mod tests {
         }
         scene.pointer(2, PointerPhase::Up, 80.0, 440.0).unwrap();
         assert!(scene.world.player.pos.distance(start) > 1.0);
+        // Walking on into the ball ahead pushes it.
+        let ball = scene
+            .world
+            .ball()
+            .expect("the bare world's ball")
+            .body()
+            .pos;
+        scene.pointer(5, PointerPhase::Down, 80.0, 520.0).unwrap();
+        scene.pointer(5, PointerPhase::Move, 80.0, 440.0).unwrap();
+        for frame in 31..=180 {
+            scene.update(1.0 + f64::from(frame) / 60.0).unwrap();
+        }
+        scene.pointer(5, PointerPhase::Up, 80.0, 440.0).unwrap();
+        let pushed = scene.world.ball().unwrap().body().pos;
+        assert!(pushed.z > ball.z + 1.0, "{ball:?} {pushed:?}");
+        let packet = serde_json::to_value(scene.packet()).unwrap();
+        assert!(
+            packet["ball"]["speed"]
+                .as_f64()
+                .is_some_and(|speed| speed > 0.5)
+        );
         // A double tap on open ground jumps.
         for (id, at) in [(3, 10.0), (4, 10.1)] {
             scene

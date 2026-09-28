@@ -995,7 +995,7 @@ impl Photo {
                 self.encode_space(device, queue, encoder, output, targets, view, sky, world)
             }
             Stage::Neon(neon) => {
-                self.encode_neon(queue, encoder, output, targets, view, neon, world)
+                self.encode_neon(device, queue, encoder, output, targets, view, neon, world)
             }
         }
         if let Some((pipeline, group, buffer, count)) = ui
@@ -1040,29 +1040,8 @@ impl Photo {
         let [width, height] = targets.size;
         let camera = &sky.camera;
         let exposure = camera.exposure();
-        // Sun shadow: an orthographic map fitted to the station, snapped to
-        // whole texels so edges do not shimmer as the camera moves.
         let sun = sky.sun_dir.normalize();
-        let half = sky.shadow_half.max(1.0);
-        let reach = half * 2.0;
-        let up = if sun.y.abs() > 0.9 { Vec3::X } else { Vec3::Y };
-        let look = Mat4::look_to_rh(Vec3::ZERO, -sun, up);
-        let texel = 2.0 * half / SHADOW_SIZE as f32;
-        let center = look.transform_point3(sky.shadow_center);
-        let snapped = Vec3::new(
-            (center.x / texel).round() * texel,
-            (center.y / texel).round() * texel,
-            center.z,
-        );
-        let proj = Mat4::orthographic_rh(
-            snapped.x - half,
-            snapped.x + half,
-            snapped.y - half,
-            snapped.y + half,
-            -snapped.z - reach,
-            -snapped.z + reach,
-        );
-        let light = proj * look;
+        let (light, texel, reach) = shadow_fit(sun, sky.shadow_center, sky.shadow_half);
         // The projection's vertical scale is 1 / tan(fov / 2); read it from the
         // combined matrix, whose rotation part is orthonormal.
         let m = view.view_proj;
@@ -1134,35 +1113,7 @@ impl Photo {
         };
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
 
-        // Shadow pass.
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("verse sun shadow"),
-                color_attachments: &[],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.shadow,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_bind_group(0, &self.frame_group, &[]);
-            pass.set_pipeline(&self.pipelines.shadow);
-            for (buffer, count) in [
-                world.lit,
-                (&self.dynamic_lit.buffer, self.dynamic_lit.count),
-            ] {
-                if count > 0 {
-                    pass.set_vertex_buffer(0, buffer.slice(..));
-                    pass.draw(0..count, 0..1);
-                }
-            }
-        }
+        self.encode_shadow(encoder, world.lit);
 
         // Scene pass.
         let direct = self.post.is_none();
@@ -1274,11 +1225,44 @@ impl Photo {
         );
     }
 
+    /// The sun or key light's shadow map, from every lit triangle.
+    fn encode_shadow(&self, encoder: &mut wgpu::CommandEncoder, world_lit: (&wgpu::Buffer, u32)) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("verse sun shadow"),
+            color_attachments: &[],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &self.shadow,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_bind_group(0, &self.frame_group, &[]);
+        pass.set_pipeline(&self.pipelines.shadow);
+        for (buffer, count) in [
+            world_lit,
+            (&self.dynamic_lit.buffer, self.dynamic_lit.count),
+        ] {
+            if count > 0 {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw(0..count, 0..1);
+            }
+        }
+    }
+
     /// The neon stage: faces, emissive lines, and the post chain with a
-    /// hue-preserving curve.
+    /// hue-preserving curve. With a studio [`Key`](super::Key), lit geometry
+    /// is shaded by it, with its shadow map and ambient probes, before the
+    /// lines.
     #[allow(clippy::too_many_arguments)]
     fn encode_neon(
         &mut self,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         output: &wgpu::TextureView,
@@ -1321,11 +1305,43 @@ impl Photo {
             neon: [neon.fog_start, neon.fog_end, width_px, mode],
             field: [neon.field[0], neon.field[1], neon.field[2], 0.0],
         };
-        queue.write_buffer(
-            &self.frame,
-            0,
-            bytemuck::bytes_of(&frame(reversed, neon.line_width, 1.0)),
-        );
+        let mut uniform = frame(reversed, neon.line_width, 1.0);
+        let lit = neon
+            .key
+            .filter(|_| world.lit.1 > 0 || self.dynamic_lit.count > 0);
+        if let Some(key) = &lit {
+            // Pre-exposed lux: the stage's lines stay at unit exposure.
+            let exposure = super::exposure(key.ev100);
+            let probes = key.probes();
+            self.update_probes(device, queue, Some(&probes));
+            let (light, texel, reach) =
+                shadow_fit(key.dir.normalize(), key.shadow_center, key.shadow_half);
+            let rim = key.rim_illuminance * exposure;
+            uniform.light = light.to_cols_array_2d();
+            uniform.sun = key
+                .dir
+                .normalize()
+                .extend(key.illuminance * exposure)
+                .to_array();
+            uniform.sun_disc = [key.angular_radius, 0.0, 0.0, texel];
+            uniform.earth = key
+                .rim_dir
+                .normalize()
+                .extend(key.rim_angular_radius)
+                .to_array();
+            uniform.earth_light = [rim, rim, rim, reach * 2.0];
+            uniform.probe_origin = probes.origin.extend(probes.cell).to_array();
+            uniform.probe_dims = [
+                probes.dims[0] as f32,
+                probes.dims[1] as f32,
+                probes.dims[2] as f32,
+                1.0,
+            ];
+        }
+        queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));
+        if lit.is_some() {
+            self.encode_shadow(encoder, world.lit);
+        }
         let direct = self.post.is_none();
         let (target, resolve) = match (&targets.msaa, direct) {
             (Some(msaa), false) => (msaa, Some(&targets.scene)),
@@ -1382,6 +1398,18 @@ impl Photo {
             };
             pass.set_bind_group(1, &targets.guide_groups[0], &[]);
             pass.set_bind_group(0, &self.scene_group, &[]);
+            if lit.is_some() {
+                pass.set_pipeline(&self.pipelines.lit);
+                for (buffer, count) in [
+                    world.lit,
+                    (&self.dynamic_lit.buffer, self.dynamic_lit.count),
+                ] {
+                    if count > 0 {
+                        pass.set_vertex_buffer(0, buffer.slice(..));
+                        pass.draw(0..count, 0..1);
+                    }
+                }
+            }
             draw_world(&mut pass);
             if self.glow.count > 0 {
                 pass.set_pipeline(&self.pipelines.glow);
@@ -1547,6 +1575,37 @@ struct Look {
 pub(crate) enum Stage<'a> {
     Space(&'a Sky),
     Neon(&'a Neon),
+}
+
+/// An orthographic shadow map along `toward` (unit, toward the light) fitted
+/// to a cube of half extent `half` about `center`, snapped to whole texels so
+/// edges do not shimmer as the camera moves. Returns the light matrix, the
+/// texel size, and the depth reach, in meters.
+fn shadow_fit(toward: Vec3, center: Vec3, half: f32) -> (Mat4, f32, f32) {
+    let half = half.max(1.0);
+    let reach = half * 2.0;
+    let up = if toward.y.abs() > 0.9 {
+        Vec3::X
+    } else {
+        Vec3::Y
+    };
+    let look = Mat4::look_to_rh(Vec3::ZERO, -toward, up);
+    let texel = 2.0 * half / SHADOW_SIZE as f32;
+    let center = look.transform_point3(center);
+    let snapped = Vec3::new(
+        (center.x / texel).round() * texel,
+        (center.y / texel).round() * texel,
+        center.z,
+    );
+    let proj = Mat4::orthographic_rh(
+        snapped.x - half,
+        snapped.x + half,
+        snapped.y - half,
+        snapped.y + half,
+        -snapped.z - reach,
+        -snapped.z + reach,
+    );
+    (proj * look, texel, reach)
 }
 
 /// Reversed depth (Reed 2015): map depth d to 1 − d so a float buffer keeps

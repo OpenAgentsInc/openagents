@@ -25,6 +25,15 @@ struct WorldPacket: Decodable {
     /// The world identity's public key, hex.
     let world_public_key: String?
     let connection: WorldConnectionPacket?
+    /// The bare world's ball, for diagnostics.
+    let ball: BallPacket?
+
+    struct BallPacket: Decodable {
+        let position: [Double]
+        let speed: Double
+        let asleep: Bool
+        let step_ms: Double
+    }
 
     var valid: Bool {
         schema == "coder.verse.v1" && position.count == 3 && position.allSatisfy(\.isFinite)
@@ -356,7 +365,15 @@ final class VerseWorldView: UIView {
                            packet.connection?.state ?? "unknown", packet.live_remote_entities ?? 0,
                            packet.world_public_key ?? "")
         if accessibilityValue != value { accessibilityValue = value }
-        if script != nil, packet.frames_presented % 30 == 0 { NSLog("verse-world %@", value) }
+        if script != nil, packet.frames_presented % 30 == 0 {
+            if let ball = packet.ball, ball.position.count == 3 {
+                NSLog("verse-world %@ ball %.2f %.2f %.2f speed %.2f %@ step %.3f ms", value,
+                      ball.position[0], ball.position[1], ball.position[2], ball.speed,
+                      ball.asleep ? "asleep" : "awake", ball.step_ms)
+            } else {
+                NSLog("verse-world %@", value)
+            }
+        }
         #endif
     }
 
@@ -483,6 +500,8 @@ final class VerseWorldView: UIView {
 /// A developer launch argument, `--verse-script look,walk,jump,zoom`, that
 /// drives the world through the same pointer path as a finger, so the
 /// controls can be checked on a simulator without touching the screen.
+/// `push` holds the stick forward for the whole step, walking into the ball
+/// ahead of the spawn, and `wait` does nothing for a step.
 /// Debug and simulator builds only.
 @MainActor
 private final class VerseWorldScript {
@@ -522,6 +541,9 @@ private final class VerseWorldScript {
         case ("walk", 0): view.pointer(pointer, phase: "down", at: stick)
         case ("walk", 1): view.pointer(pointer, phase: "move", at: CGPoint(x: stick.x, y: stick.y - 56))
         case ("walk", 80): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x, y: stick.y - 56))
+        case ("push", 0): view.pointer(pointer, phase: "down", at: stick)
+        case ("push", 1): view.pointer(pointer, phase: "move", at: CGPoint(x: stick.x, y: stick.y - 56))
+        case ("push", 89): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x, y: stick.y - 56))
         case ("jump", 0), ("jump", 6): view.pointer(pointer + UInt64(t), phase: "down", at: center)
         case ("jump", 2), ("jump", 8): view.pointer(pointer + UInt64(t - 2), phase: "up", at: center)
         case ("zoom", 0..<20): view.send(["action": "pinch_zoom", "scale": 0.97])

@@ -531,7 +531,13 @@ fn fs_lit(i: LitOut) -> @location(0) vec4<f32> {
         let hs = normalize(f.sun.xyz + v);
         return vec4<f32>(nov, max(dot(n, f.sun.xyz), 0.0), max(dot(n, hs), 0.0), 1.0);
     }
-    return vec4<f32>(expose(radiance), 1.0);
+    var shaded = expose(radiance);
+    // A stage floor fades by its occlusion channel into the field behind it.
+    if code == 7 {
+        shaded = mix(f.field.rgb, shaded, ao);
+    }
+    // On a neon stage, lit geometry fades into the field like the lines.
+    return vec4<f32>(neon_fog(shaded, i.world, 1.0), 1.0);
 }
 
 // ---------------------------------------------------------------------------

@@ -109,6 +109,8 @@ pub struct WorldRuntime {
     /// The bare world: the plaza grid alone, with no objects, companion,
     /// portals, or interactions, drawn in the neutral palette.
     bare: bool,
+    /// The bare world's ball, which the player pushes.
+    ball: Option<Box<crate::ball::Ball>>,
 }
 
 impl Default for WorldRuntime {
@@ -135,6 +137,7 @@ impl WorldRuntime {
             zone_state: crate::zones::State::default(),
             navigation: Navigation::default(),
             bare: false,
+            ball: None,
         }
     }
 
@@ -146,6 +149,7 @@ impl WorldRuntime {
         Self {
             world: world::bare(),
             bare: true,
+            ball: Some(Box::default()),
             ..Self::new()
         }
     }
@@ -153,6 +157,12 @@ impl WorldRuntime {
     #[must_use]
     pub fn is_bare(&self) -> bool {
         self.bare
+    }
+
+    /// The bare world's ball; other worlds have none.
+    #[must_use]
+    pub fn ball(&self) -> Option<&crate::ball::Ball> {
+        self.ball.as_deref()
     }
 
     /// The plaza with its objects: not a zone and not the bare world.
@@ -278,6 +288,9 @@ impl WorldRuntime {
             self.walk_route(dt);
         } else {
             self.update_player(input, dt);
+        }
+        if let Some(ball) = &mut self.ball {
+            ball.advance(previous.pos, &mut self.player, dt);
         }
         if self.player.speed > 0.1
             && !orbiting
@@ -783,6 +796,9 @@ impl WorldRuntime {
             let mut player = avatar::mesh(&self.player, &self.gait);
             player.neutralize();
             player.neon = Some(crate::pbr::Neon::neutral(0.0));
+            if let Some(ball) = &self.ball {
+                ball.draw(&mut player);
+            }
             return player;
         }
         let mut dynamic = if self.is_plaza() {
@@ -818,6 +834,10 @@ impl WorldRuntime {
         self.cancel_navigation();
         self.doors.cancel_transient();
         self.player = PlayerController::new(position, wrap(yaw));
+        // A restored or chosen spawn finds the bare world's ball ahead.
+        if let Some(ball) = &mut self.ball {
+            ball.place_ahead(self.player.pos, self.player.yaw);
+        }
         self.agent = Agent::new(&self.player);
         self.gait = Gait::default();
         Ok(())
@@ -917,8 +937,28 @@ mod tests {
         let dynamic = runtime.dynamic_mesh_with_interactions(true, true);
         assert!(!dynamic.lines.is_empty());
         assert!(dynamic.lines.iter().chain(&dynamic.faces).all(gray));
-        assert!(dynamic.lit.is_empty() && dynamic.glow.is_empty());
-        assert_eq!(dynamic.neon, Some(crate::pbr::Neon::neutral(0.0)));
+        // The ball and its pool of light are the only lit geometry, gray
+        // lacquer under a studio key.
+        assert!(!dynamic.lit.is_empty() && dynamic.glow.is_empty());
+        assert!(
+            dynamic
+                .lit
+                .iter()
+                .all(|v| v.color.iter().all(|c| (c - v.color[0]).abs() < 0.03))
+        );
+        let neon = dynamic.neon.expect("the neutral stage");
+        assert!(neon.key.is_some());
+        assert_eq!(
+            crate::pbr::Neon { key: None, ..neon },
+            crate::pbr::Neon::neutral(0.0)
+        );
+        assert!(WorldRuntime::new().ball().is_none());
+        assert!(
+            WorldRuntime::new()
+                .dynamic_mesh()
+                .neon
+                .is_some_and(|n| n.key.is_none())
+        );
         let [r, g, b] = runtime.atmosphere().color;
         assert!(r == g && g == b);
         // Standing where the plaza's objects would be reaches none of them.

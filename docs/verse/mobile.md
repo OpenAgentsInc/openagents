@@ -16,6 +16,66 @@ doors, computer, Gym, or companion. See
 [presence in the OpenAgents app](#presence-in-the-openagents-app) and
 [OpenAgents for iOS](../../bins/openagents-ios/README.md).
 
+### The ball
+
+The bare world has one object: a 2.4 m ball resting 7 m ahead of where you
+start, including a restored position (or behind you when you face the
+world's edge). Walk into it to push it. It slides, spins up, rolls, and comes to rest on its
+own. It lives in [`verse::ball`](../../crates/verse/src/ball.rs) on the shared
+[`physics`](../../crates/physics/) crate, the one Lagrange 1 and the Physics
+Lab use:
+
+- The ground is a static box, the grid's edges are invisible static walls,
+  and the player is a kinematic capsule (0.45 m radius, 1.8 m tall) that
+  sweeps the path the shared player controller walks each frame. The player
+  is then moved clear of the ball, so the ball cannot be walked through.
+- The ball is a thin rubber shell: 40 kg, radius 1.2 m, I = 2/3 m r²,
+  friction 0.8, restitution 0.35, torsional friction 0.02 m. The crate's
+  contacts, friction cone, and island sleep do the rest.
+- The crate has no rolling resistance or air, so the ball module adds both:
+  a rolling-resistance moment of 0.1 × the measured ground reaction × the
+  radius, bounded so it never turns the ball backward, and quadratic drag
+  (Cd 0.47, air 1.2 kg/m³). Pushed at running speed (6.4 m/s), the ball
+  rolls about 22 m and sleeps within 15 s.
+- Steps are 1/120 s with at most 12 per frame, as in Lagrange 1; the ball is
+  drawn between its last two poses. A step takes about 20 µs in a debug
+  build (`cargo test -p verse --lib ball -- --nocapture` prints it), and the
+  iOS simulator's debug build reports 0.02 ms asleep and 0.06 to 0.08 ms per
+  frame while rolling.
+
+The ball is drawn through the physical renderer on the neon stage. A studio
+[`pbr::Key`](../../crates/verse/src/pbr/mod.rs) lights lit geometry with
+Lagrange 1's shading: a shadowed key light (4,200 lux, 0.035 rad source, so
+soft contact shadows), an unshadowed rim light behind, and a dim ambient sky,
+pre-exposed at EV 10 so white reads near display white beside the lines. The
+ball is white and charcoal lacquer (`Material::Lacquer`, a clear coat over
+paint) in alternating octants, so its rotation shows. A disc of stage floor
+(`Material::Stage`) under the ball catches the key as a soft pool of light
+and the ball's shadow, and fades into the field at its rim; the grid's lines
+stay on top. Coder's plaza has no key light and draws exactly as before.
+
+To render it offline:
+
+```sh
+cargo run -p verse --release --features capture --example bare_capture -- target/verse/ball.png 1.2 0.6 90
+```
+
+The arguments are seconds of walking forward, seconds of waiting, and a
+sideways camera orbit in pixels.
+
+#### Sharing the ball
+
+The ball is local: each player pushes their own, and other players' avatars
+pass through it. Bare-world presence (`verse-bare`) shares only avatars.
+NIP-MV's pose frame admits an `object` role, but objects are owned per
+publisher and nothing decides who controls a shared one. Sharing the ball
+needs a new, reviewed protocol step: one owner simulates it and publishes
+snapshots with angular velocity and a tick, ownership passes to the last
+player in push range under an ordered claim, and receivers validate speed,
+bounds, and range before blending. Mobile presence's three-second cadence is
+also far too slow for a rolling ball, so the owner would publish faster
+while it moves. This is the next step, not part of this change.
+
 ## Walk the world
 
 The world fills the entire display behind the system clock and home indicator.
