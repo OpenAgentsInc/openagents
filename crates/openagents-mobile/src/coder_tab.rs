@@ -1007,10 +1007,12 @@ impl CoderTab {
         let phase = summary.map(|s| s.phase);
         let attention = summary.map(|s| s.attention);
         let mode = Mode::of(phase, attention);
-        // The host's typed note, such as a missing model capacity.
+        // The host's typed note, such as a missing model capacity. A
+        // waiting question says so below instead.
         let note = summary
             .filter(|s| {
                 s.headline != nostr::activity_summary::generic_headline(SubjectKind::Task, s.phase)
+                    && mode != Mode::Answer
             })
             .map(|s| s.headline.clone());
         let running = phase.is_none_or(Self::running);

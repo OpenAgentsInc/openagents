@@ -1430,3 +1430,23 @@ async fn a_question_ends_the_turn_waiting_and_the_first_answer_continues_it() {
     assert!(prompt.contains("Should result.txt hold one line or two?"));
     assert!(prompt.ends_with("The user's new message:\nOne line."));
 }
+
+#[tokio::test]
+async fn a_store_another_process_holds_is_not_a_stop() {
+    let (_root, store, grant) = fixture();
+    let host = Host::admit(&store, &grant).await.unwrap();
+    assert!(!host.cancelled());
+    // Hold the store past the lock wait, as a slow disk sync can.
+    let held = Store::open(&store).unwrap();
+    assert!(!host.cancelled(), "a busy store is not a stop request");
+    drop(held);
+    assert!(!host.cancelled());
+    let task = run(
+        host,
+        &generator("printf output > result.txt"),
+        &JudgeFixture,
+    )
+    .await
+    .unwrap();
+    assert_eq!(task.execution, task::Execution::Finished);
+}

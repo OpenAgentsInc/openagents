@@ -702,6 +702,10 @@ impl Host {
                 self.stopped.set(true);
                 true
             }
+            // Another process held the store past the lock wait, as a slow
+            // disk sync can. That says nothing about a stop; the next check
+            // reads the store again, and the wall deadline still applies.
+            Err(Error::Busy) => false,
             Err(error) => {
                 self.fail(error.to_string());
                 true
