@@ -2279,6 +2279,8 @@ impl App {
         };
         dynamic.extend(&entities);
         if let Some(renderer) = &mut self.renderer {
+            #[cfg(target_os = "macos")]
+            renderer.set_headroom(crate::edr::current_headroom());
             match renderer.draw(view, &dynamic, &ui) {
                 render::DrawStatus::Presented => self.presented_entities = entities,
                 render::DrawStatus::Error(error) => self.error = Some(error),

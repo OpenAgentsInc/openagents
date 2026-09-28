@@ -20,6 +20,9 @@ struct Post {
     // x target signal for auto exposure; y min gain; z max gain; w 1 for the
     // hue-preserving output curve.
     adapt: vec4<f32>,
+    // x the output ceiling: 1.0 on a standard display, the headroom over
+    // reference white on an extended-range (HDR) surface.
+    output: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> p: Post;
@@ -138,8 +141,11 @@ fn fs_adapt(i: Out) -> @location(0) vec4<f32> {
     return vec4<f32>(value, 0.0, 0.0, 1.0);
 }
 
-// Khronos PBR Neutral.
-fn neutral(color: vec3<f32>) -> vec3<f32> {
+// Khronos PBR Neutral, with its shoulder generalized to approach `ceiling`
+// instead of 1.0. Below the shoulder's start the curve is unchanged, so
+// standard-range content looks the same on an HDR display; highlights above
+// it keep rising into the display's headroom.
+fn neutral(color: vec3<f32>, ceiling: f32) -> vec3<f32> {
     let start = 0.8 - 0.04;
     let desaturation = 0.15;
     let x = min(color.r, min(color.g, color.b));
@@ -149,8 +155,8 @@ fn neutral(color: vec3<f32>) -> vec3<f32> {
     if peak < start {
         return c;
     }
-    let d = 1.0 - start;
-    let new_peak = 1.0 - d * d / (peak + d - start);
+    let d = ceiling - start;
+    let new_peak = ceiling - d * d / (peak + d - start);
     c *= new_peak / peak;
     let g = 1.0 - 1.0 / (desaturation * (peak - new_peak) + 1.0);
     return mix(c, vec3<f32>(new_peak), g);
@@ -158,14 +164,14 @@ fn neutral(color: vec3<f32>) -> vec3<f32> {
 
 // Hue-preserving shoulder for the neon stage: a bright amber core compresses
 // along its own hue instead of washing toward white.
-fn hue_shoulder(color: vec3<f32>) -> vec3<f32> {
+fn hue_shoulder(color: vec3<f32>, ceiling: f32) -> vec3<f32> {
     let peak = max(color.r, max(color.g, color.b));
     let start = 0.76;
     if peak < start {
         return color;
     }
-    let d = 1.0 - start;
-    return color * ((1.0 - d * d / (peak + d - start)) / peak);
+    let d = ceiling - start;
+    return color * ((ceiling - d * d / (peak + d - start)) / peak);
 }
 
 fn hash(q: vec2<f32>) -> f32 {
@@ -223,9 +229,9 @@ fn fs_output(i: Out) -> @location(0) vec4<f32> {
     c *= mix(1.0, pow(1.0 / (1.0 + r2), 2.0), p.look.w);
     var o: vec3<f32>;
     if p.adapt.w > 0.5 {
-        o = hue_shoulder(max(c, vec3<f32>(0.0)));
+        o = hue_shoulder(max(c, vec3<f32>(0.0)), p.output.x);
     } else {
-        o = neutral(max(c, vec3<f32>(0.0)));
+        o = neutral(max(c, vec3<f32>(0.0)), p.output.x);
     }
     // Sensor grain, stronger in shadows, applied in display space.
     if p.look.z > 0.0 {
@@ -233,5 +239,5 @@ fn fs_output(i: Out) -> @location(0) vec4<f32> {
         let shadow = 1.0 - smoothstep(0.0, 0.5, luma(o));
         o += vec3<f32>(n) * 0.03 * p.look.z * (0.3 + shadow);
     }
-    return vec4<f32>(clamp(o, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+    return vec4<f32>(clamp(o, vec3<f32>(0.0), vec3<f32>(p.output.x)), 1.0);
 }

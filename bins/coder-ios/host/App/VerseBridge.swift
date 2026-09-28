@@ -13,6 +13,8 @@ struct VersePacket: Decodable {
     let live_remote_entities: UInt64
     let presented_remote_vertices: UInt64
     let error: String?
+    /// The renderer draws to an extended-range (HDR) surface.
+    let hdr_output: Bool?
     let frames_presented: UInt64
     let position: [Double]
     let view: NativeView?

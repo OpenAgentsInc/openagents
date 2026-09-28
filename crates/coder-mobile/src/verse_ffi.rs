@@ -84,6 +84,9 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
             verse::render::RenderOptions {
                 sample_count: 1,
                 max_extent: 4096,
+                // The native host sets an extended linear sRGB color space
+                // on the layer when the screen offers EDR headroom.
+                hdr: scene.hdr_requested,
             },
         )
     }?;
@@ -173,6 +176,7 @@ impl VerseHandle {
             Ok(()) => {}
         }
         let mut packet = self.scene.packet();
+        packet.hdr_output = self.renderer.as_ref().is_some_and(|r| r.hdr());
         packet.computer_commands = self.scene.take_computer_commands();
         if include_credits {
             packet.credits = Some(verse::zones::CREDITS);
@@ -190,10 +194,14 @@ impl VerseHandle {
 
     fn call(&mut self, request: Request) -> Result<(), String> {
         match request {
-            Request::Frame { timestamp } => {
+            Request::Frame {
+                timestamp,
+                headroom,
+            } => {
                 let Some(renderer) = &mut self.renderer else {
                     return Ok(());
                 };
+                renderer.set_headroom(headroom.unwrap_or(1.0) as f32);
                 if let Some(dt) = self.scene.update(timestamp)? {
                     if self.rendered_zone_revision != self.scene.world.zone_revision {
                         renderer.replace_world(&self.scene.world.world.mesh)?;
@@ -280,6 +288,7 @@ mod tests {
             door_preferences: None,
             zone_cache_directory: None,
             computer_hud: true,
+            hdr: false,
         })
         .unwrap();
         let mut handle = VerseHandle {
@@ -320,7 +329,12 @@ mod tests {
         handle.detach_renderer().unwrap();
         assert!(!handle.scene.lifecycle.active());
         assert!(handle.call(Request::Active { active: true }).is_err());
-        handle.call(Request::Frame { timestamp: 5000.0 }).unwrap();
+        handle
+            .call(Request::Frame {
+                timestamp: 5000.0,
+                headroom: None,
+            })
+            .unwrap();
         handle.detach_renderer().unwrap();
         let after: serde_json::Value =
             serde_json::from_slice(&handle.call_bytes(br#"{"action":"snapshot"}"#).unwrap())

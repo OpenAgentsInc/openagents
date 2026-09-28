@@ -7594,6 +7594,7 @@ dependencies = [
  "knowledge",
  "libc",
  "nostr",
+ "objc2 0.6.4",
  "physics",
  "png",
  "pollster",

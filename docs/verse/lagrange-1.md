@@ -131,6 +131,15 @@ station itself. The renderer works in physical units:
   anti-sunward under radiation pressure and glint as they tumble. Every effect
   follows from the physics tick, so a replay shows the same frames.
 
+On a display with extended dynamic range (an iPhone or Mac with an XDR or
+OLED screen), the Sun, glints, and sunlit white render brighter than reference
+white. The renderer draws to an RGBA16F extended linear sRGB surface and bends
+the tone curve's shoulder toward the screen's current headroom, so everything
+below the shoulder looks exactly as it does in standard range. Launch iOS with
+`--sdr` or set `VERSE_SDR=1` on the desktop to force standard range, and run
+`cargo run --release -p verse --example hdr_probe` to check the extended
+output offscreen.
+
 Guides (latch outlines, routes, the refill ring, the reticle, and the forces
 overlay) keep their display colors. Adapters that cannot render a
 floating-point target tone-map each draw directly and skip post-processing.

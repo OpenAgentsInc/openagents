@@ -52,7 +52,7 @@ The runtime guide is [Lagrange 1](../../verse/lagrange-1.md).
 | V8 camera-relative positions | Not adopted: the zone spans under 200 m, where single precision holds 20 µm; the sky is direction-only. |
 | C11 TAA | Not adopted: with 4× MSAA, specular antialiasing, and wide guide lines, captures show no crawl on the thinnest members (see the truss in `after-wide.jpg`). |
 | C12 motion blur | Not adopted: an action camera in full sun at EV 15 and f/2.8 exposes about 1/4,000 s, under 0.1 px of blur at the zone's speeds. |
-| C13 HDR display output | Deferred to [#9806](https://github.com/OpenAgentsInc/openagents/issues/9806): it needs native layer changes on iOS and device validation. |
+| C13 HDR display output | Landed under [#9806](https://github.com/OpenAgentsInc/openagents/issues/9806): an RGBA16F extended linear sRGB surface on EDR screens (iOS through the host layer, macOS through wgpu's layer), and a tone-curve shoulder that bends toward the live headroom. `hdr_probe` shows highlights reaching the ceiling with zero change below the shoulder, and the plaza stays in standard range. |
 | E9 MLI flaps | Not adopted: station blankets are taped and stitched, and a cloth solver for a cosmetic edge is not worth its cost on mobile. |
 
 **Changed from the plan.** The station now holds a 30° pitch about its truss

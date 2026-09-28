@@ -122,6 +122,7 @@ final class VerseMetalView: UIView {
         metal.drawableSize = CGSize(width: Int(width), height: Int(height))
         metal.framebufferOnly = true
         metal.presentsWithTransaction = false
+        if handle == nil, !creationFailed { configureDynamicRange(metal) }
         let changed = extent?.width != width || extent?.height != height || extent?.scale != scale
         extent = (width, height, scale)
         if handle == nil, !creationFailed {
@@ -134,6 +135,9 @@ final class VerseMetalView: UIView {
                     "synthetic_gym": bridge.synthetic && ProcessInfo.processInfo.arguments.contains("--gym-preview"),
                     // Rust draws the world computer's screen in the HUD.
                     "computer_hud": true,
+                    // An EDR screen gets an extended-range surface; Rust
+                    // reports whether it took it in `hdr_output`.
+                    "hdr": wantsHDR,
                 ]
                 let cache = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                     .appendingPathComponent("VerseZones", isDirectory: true)
@@ -211,11 +215,34 @@ final class VerseMetalView: UIView {
         displayLink?.isPaused = !active
     }
 
+    /// Whether this mount asked Rust for an extended-range surface.
+    private var wantsHDR = false
+
+    /// On a screen with EDR headroom, tag the layer as extended linear sRGB
+    /// so values above 1.0 reach the display as highlights. Rust then renders
+    /// into an RGBA16F surface and rolls highlights off toward the headroom.
+    private func configureDynamicRange(_ metal: CAMetalLayer) {
+        let screen = window?.windowScene?.screen ?? UIScreen.main
+        wantsHDR = screen.potentialEDRHeadroom > 1.01
+            && !ProcessInfo.processInfo.arguments.contains("--sdr")
+        if wantsHDR {
+            metal.wantsExtendedDynamicRangeContent = true
+            metal.colorspace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)
+        }
+    }
+
+    /// The screen's current headroom over reference white; 1.0 in SDR.
+    private func currentHeadroom() -> Double {
+        guard wantsHDR else { return 1.0 }
+        let screen = window?.windowScene?.screen ?? UIScreen.main
+        return Double(max(1.0, screen.currentEDRHeadroom))
+    }
+
     func frame(_ link: CADisplayLink) {
         guard running, window != nil else { return }
         autoreleasepool {
             pollMotion(now: CACurrentMediaTime())
-            send(["action": "frame", "timestamp": link.timestamp], forcePublish: false)
+            send(["action": "frame", "timestamp": link.timestamp, "headroom": currentHeadroom()], forcePublish: false)
         }
     }
 
@@ -238,6 +265,12 @@ final class VerseMetalView: UIView {
             result = .success(try VerseBridge.decode(output))
         } catch { result = .failure(error) }
         if case let .success(packet) = result {
+            if wantsHDR, packet.hdr_output == false, let metal = layer as? CAMetalLayer {
+                // The surface stayed in standard range: undo the layer setup.
+                wantsHDR = false
+                metal.wantsExtendedDynamicRangeContent = false
+                metal.colorspace = nil
+            }
             bridge.retainDoorPreferences(packet, from: self)
             syncMotion(packet)
             syncAccessibility(packet)

@@ -99,6 +99,8 @@ struct Scene {
     /// Created on the first frame that carries a sky.
     photo: Option<Photo>,
     photo_failed: bool,
+    /// Extended-range headroom for photographic highlights, 1.0 in SDR.
+    headroom: f32,
 }
 
 /// Color and depth attachments at one size.
@@ -115,6 +117,10 @@ struct Targets {
 pub struct RenderOptions {
     pub sample_count: u32,
     pub max_extent: u32,
+    /// Request an extended-range surface (RGBA16F, linear) for an HDR
+    /// display. The host must give its layer an extended linear sRGB color
+    /// space; [`Renderer::hdr`] reports whether the surface accepted it.
+    pub hdr: bool,
 }
 
 impl Default for RenderOptions {
@@ -122,6 +128,7 @@ impl Default for RenderOptions {
         Self {
             sample_count: 4,
             max_extent: 8192,
+            hdr: false,
         }
     }
 }
@@ -155,6 +162,7 @@ pub struct Renderer {
     targets: Targets,
     max_extent: u32,
     drawable: bool,
+    hdr: bool,
 }
 
 impl Renderer {
@@ -166,15 +174,36 @@ impl Renderer {
         let surface = instance
             .create_surface(window)
             .map_err(|e| format!("cannot create a surface: {e}"))?;
-        Self::from_surface(
+        #[cfg(target_os = "macos")]
+        let options = RenderOptions {
+            hdr: crate::edr::potential_headroom() > 1.01 && std::env::var_os("VERSE_SDR").is_none(),
+            ..RenderOptions::default()
+        };
+        #[cfg(not(target_os = "macos"))]
+        let options = RenderOptions::default();
+        let renderer = Self::from_surface(
             instance,
             surface,
             size.width,
             size.height,
             world,
             atlas,
-            RenderOptions::default(),
-        )
+            options,
+        )?;
+        #[cfg(target_os = "macos")]
+        if renderer.hdr {
+            // SAFETY: the surface is Metal on macOS, alive for this call, and
+            // used on the main thread.
+            unsafe {
+                if let Some(hal) = renderer.surface.as_hal::<wgpu::hal::api::Metal>() {
+                    let layer = hal.render_layer().lock();
+                    crate::edr::tag_extended_linear(
+                        objc2::rc::Retained::as_ptr(&layer).cast_mut().cast(),
+                    );
+                }
+            }
+        }
+        Ok(renderer)
     }
 
     /// Creates an Apple surface from the native host's CAMetalLayer.
@@ -261,13 +290,18 @@ impl Renderer {
             .min(device.limits().max_texture_dimension_2d);
         validate_extent(width, height, max_extent)?;
         let caps = surface.get_capabilities(&adapter);
-        let format = caps
-            .formats
-            .iter()
-            .copied()
-            .find(wgpu::TextureFormat::is_srgb)
-            .or_else(|| caps.formats.first().copied())
-            .ok_or("the surface reports no formats")?;
+        let extended = wgpu::TextureFormat::Rgba16Float;
+        let hdr = options.hdr && caps.formats.contains(&extended);
+        let format = if hdr {
+            extended
+        } else {
+            caps.formats
+                .iter()
+                .copied()
+                .find(wgpu::TextureFormat::is_srgb)
+                .or_else(|| caps.formats.first().copied())
+                .ok_or("the surface reports no formats")?
+        };
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
@@ -302,6 +336,7 @@ impl Renderer {
             targets,
             max_extent,
             drawable: true,
+            hdr,
         })
     }
 
@@ -322,6 +357,24 @@ impl Renderer {
     #[must_use]
     pub fn sample_count(&self) -> u32 {
         self.scene.samples
+    }
+
+    /// Whether the surface is extended range: output values above 1.0 reach
+    /// the display as highlights brighter than reference white.
+    #[must_use]
+    pub fn hdr(&self) -> bool {
+        self.hdr
+    }
+
+    /// The display's current headroom: how many times brighter than
+    /// reference white it can show now. Photographic frames roll their
+    /// highlights off toward it; 1.0 keeps standard range.
+    pub fn set_headroom(&mut self, headroom: f32) {
+        self.scene.headroom = if self.hdr && headroom.is_finite() {
+            headroom.clamp(1.0, 16.0)
+        } else {
+            1.0
+        };
     }
 
     /// A zero extent suspends presentation until a valid size returns.
@@ -572,28 +625,72 @@ pub fn capture_with_atmosphere(
     atlas: &Atlas,
     atmosphere: crate::zones::Atmosphere,
 ) -> Result<(), String> {
+    let pixels = offscreen(
+        width,
+        height,
+        world,
+        view,
+        dynamic,
+        ui,
+        atlas,
+        atmosphere,
+        CAPTURE_FORMAT,
+        1.0,
+    )?;
+    let file = std::fs::File::create(path)
+        .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
+    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
+    encoder
+        .write_header()
+        .and_then(|mut writer| writer.write_image_data(&pixels))
+        .map_err(|e| format!("cannot write {}: {e}", path.display()))
+}
+
+/// Renders one frame offscreen in `format` and returns its tightly packed
+/// texels, `headroom` giving photographic frames their output ceiling.
+#[cfg(feature = "capture")]
+#[allow(clippy::too_many_arguments)]
+fn offscreen(
+    width: u32,
+    height: u32,
+    world: &Mesh,
+    view: View,
+    dynamic: &Mesh,
+    ui: &UiBatch,
+    atlas: &Atlas,
+    atmosphere: crate::zones::Atmosphere,
+    format: wgpu::TextureFormat,
+    headroom: f32,
+) -> Result<Vec<u8>, String> {
+    let texel = format
+        .block_copy_size(None)
+        .ok_or("capture format has no fixed size")?;
     let atmosphere = atmosphere.validate()?;
     validate_extent(width, height, RenderOptions::default().max_extent)?;
     validate_frame(view, dynamic, ui)?;
     let instance = instance();
     let (adapter, device, queue) = open(&instance, None)?;
     validate_extent(width, height, device.limits().max_texture_dimension_2d)?;
-    let mut scene = Scene::new(&device, &queue, &adapter, CAPTURE_FORMAT, world, atlas, 4);
+    let mut scene = Scene::new(&device, &queue, &adapter, format, world, atlas, 4);
     scene.atmosphere = atmosphere;
-    let mut targets = Targets::new(&device, CAPTURE_FORMAT, width, height, scene.samples);
+    scene.headroom = headroom;
+    let mut targets = Targets::new(&device, format, width, height, scene.samples);
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("verse capture"),
         size: extent(width, height),
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: CAPTURE_FORMAT,
+        format,
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
     let output = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-    let row = (width * 4).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+    let row = (width * texel).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
         * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("verse capture readback"),
@@ -662,24 +759,67 @@ pub fn capture_with_atmosphere(
         })
         .map_err(|e| format!("the GPU did not finish: {e}"))?;
     let mapped = slice.get_mapped_range();
-    let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+    let mut pixels = Vec::with_capacity((width * height * texel) as usize);
     for y in 0..height as usize {
         let start = y * row as usize;
-        pixels.extend_from_slice(&mapped[start..start + width as usize * 4]);
+        pixels.extend_from_slice(&mapped[start..start + width as usize * texel as usize]);
     }
     drop(mapped);
     readback.unmap();
 
-    let file = std::fs::File::create(path)
-        .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
-    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
-    encoder
-        .write_header()
-        .and_then(|mut writer| writer.write_image_data(&pixels))
-        .map_err(|e| format!("cannot write {}: {e}", path.display()))
+    Ok(pixels)
+}
+
+/// Renders one frame into an extended-range (RGBA16F, linear) target, as an
+/// HDR display surface receives it, and returns linear RGBA values. Values
+/// above 1.0 are highlights brighter than reference white; `headroom` is the
+/// display's ceiling.
+///
+/// # Errors
+///
+/// Returns a message when no GPU is available.
+#[cfg(feature = "capture")]
+#[allow(clippy::too_many_arguments)]
+pub fn capture_extended(
+    width: u32,
+    height: u32,
+    world: &Mesh,
+    view: View,
+    dynamic: &Mesh,
+    ui: &UiBatch,
+    atlas: &Atlas,
+    atmosphere: crate::zones::Atmosphere,
+    headroom: f32,
+) -> Result<Vec<[f32; 4]>, String> {
+    let bytes = offscreen(
+        width,
+        height,
+        world,
+        view,
+        dynamic,
+        ui,
+        atlas,
+        atmosphere,
+        wgpu::TextureFormat::Rgba16Float,
+        headroom.clamp(1.0, 16.0),
+    )?;
+    Ok(bytes
+        .chunks_exact(8)
+        .map(|t| std::array::from_fn(|i| half_to_f32(u16::from_le_bytes([t[i * 2], t[i * 2 + 1]]))))
+        .collect())
+}
+
+/// IEEE 754 binary16 to f32.
+#[cfg(feature = "capture")]
+fn half_to_f32(bits: u16) -> f32 {
+    let sign = if bits & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exponent = i32::from((bits >> 10) & 0x1f);
+    let mantissa = f32::from(bits & 0x03ff);
+    sign * match exponent {
+        0 => mantissa * 2f32.powi(-24),
+        0x1f => f32::INFINITY,
+        e => (1.0 + mantissa / 1024.0) * 2f32.powi(e - 15),
+    }
 }
 
 #[cfg(any(target_vendor = "apple", feature = "desktop", feature = "capture"))]
@@ -886,6 +1026,7 @@ impl Scene {
             world_lit: upload_lit(device, &world.lit),
             photo: None,
             photo_failed: false,
+            headroom: 1.0,
             ui_pipeline,
             ui_bind_group,
             ui_screen,
@@ -1077,6 +1218,7 @@ impl Scene {
                 (&self.dynamic_lines.buffer, self.dynamic_lines.count),
             ],
         };
+        photo.headroom = self.headroom;
         photo.encode(
             device,
             queue,
@@ -1360,7 +1502,8 @@ mod tests {
         assert!(
             RenderOptions {
                 sample_count: 2,
-                max_extent: 8192
+                max_extent: 8192,
+                hdr: false,
             }
             .validate()
             .is_err()
@@ -1368,7 +1511,8 @@ mod tests {
         assert!(
             RenderOptions {
                 sample_count: 1,
-                max_extent: 0
+                max_extent: 0,
+                hdr: false,
             }
             .validate()
             .is_err()

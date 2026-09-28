@@ -18,6 +18,8 @@ pub mod chat;
 pub mod controller;
 pub mod crowd;
 pub mod doors;
+#[cfg(all(target_os = "macos", feature = "desktop"))]
+pub mod edr;
 pub mod feed;
 pub mod gym;
 pub mod hud;

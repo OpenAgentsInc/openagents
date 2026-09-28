@@ -147,6 +147,7 @@ impl AndroidVerse {
                 verse::render::RenderOptions {
                     sample_count: 1,
                     max_extent: 4096,
+                    hdr: false,
                 },
             )
         }?;

@@ -48,6 +48,10 @@ wgpu = "29.0.4"
 # `wayland-csd-adwaita` is off: it pulls BSD-2-Clause `arrayref`, which deny.toml refuses.
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# Tags the desktop window's layer for extended dynamic range (src/edr.rs).
+objc2 = "0.6"
+
 [lints]
 workspace = true
 
@@ -74,6 +78,10 @@ required-features = ["capture"]
 
 [[example]]
 name = "lagrange_capture"
+required-features = ["capture"]
+
+[[example]]
+name = "hdr_probe"
 required-features = ["capture"]
 
 [[example]]

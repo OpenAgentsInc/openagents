@@ -41,6 +41,10 @@ pub(crate) struct Config {
     /// native computer panel leaves this off.
     #[serde(default)]
     pub computer_hud: bool,
+    /// The screen offers extended dynamic range and the layer is set up for
+    /// it: request an extended-range surface.
+    #[serde(default)]
+    pub hdr: bool,
 }
 
 #[derive(Deserialize)]
@@ -50,6 +54,10 @@ pub(crate) enum Request {
     ZoneCredits,
     Frame {
         timestamp: f64,
+        /// The screen's current extended-range headroom over reference
+        /// white; absent or 1.0 on a standard-range display.
+        #[serde(default)]
+        headroom: Option<f64>,
     },
     Resize {
         width: u32,
@@ -189,6 +197,8 @@ pub(crate) struct Packet {
     door_preferences: String,
     door_preferences_revision: u64,
     pub error: Option<String>,
+    /// The renderer draws to an extended-range surface.
+    pub hdr_output: bool,
     frames_presented: u64,
     position: [f32; 3],
     camera_mode: CameraMode,
@@ -414,6 +424,7 @@ fn packet(
         door_preferences: verse::doors::Doors::default().document(),
         door_preferences_revision: 0,
         error,
+        hdr_output: false,
         frames_presented: frames,
         position,
         camera_mode: CameraMode::Touch,
@@ -547,6 +558,9 @@ fn motion_angles(quaternion: [f32; 4]) -> Option<MotionOrientation> {
 }
 
 pub(crate) struct Scene {
+    /// The host asked for an extended-range surface (read by the iOS mount).
+    #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+    pub hdr_requested: bool,
     pub world: WorldRuntime,
     pub atlas: verse::ui::Atlas,
     map: verse::minimap::MapHud,
@@ -671,6 +685,7 @@ impl Scene {
             sprint: false,
             computer_open: false,
             computer_hud: crate::computer_hud::ComputerHud::new(config.computer_hud),
+            hdr_requested: config.hdr,
             gym_open: false,
             gym_configuration_error: initial_gym_error,
             gym_board,
@@ -2108,6 +2123,7 @@ mod tests {
             door_preferences: None,
             zone_cache_directory: None,
             computer_hud: true,
+            hdr: false,
         })
         .unwrap()
     }
@@ -2333,6 +2349,7 @@ mod tests {
             door_preferences: None,
             zone_cache_directory: None,
             computer_hud: true,
+            hdr: false,
         })
         .unwrap()
     }
@@ -2405,6 +2422,7 @@ mod tests {
             door_preferences: Some(saved.clone()),
             zone_cache_directory: None,
             computer_hud: true,
+            hdr: false,
         })
         .unwrap();
         restored.activate(true).unwrap();

@@ -55,6 +55,8 @@ struct Post {
     lens: [f32; 4],
     balance: [f32; 4],
     adapt: [f32; 4],
+    /// x: the output ceiling, the display's headroom over reference white.
+    output: [f32; 4],
 }
 
 #[repr(C)]
@@ -232,6 +234,8 @@ pub(crate) struct Photo {
     star_count: u32,
     pub dynamic_lit: Stream,
     pub glow: Stream,
+    /// The display's headroom over reference white for space frames.
+    pub headroom: f32,
     last_time: Option<f32>,
 }
 
@@ -704,6 +708,7 @@ impl Photo {
             star_count: 0,
             dynamic_lit: Stream::new(device, "verse dynamic lit"),
             glow: Stream::new(device, "verse glow"),
+            headroom: 1.0,
             last_time: None,
         })
     }
@@ -895,6 +900,7 @@ impl Photo {
                     lens: [0.0; 4],
                     balance: [1.0, 1.0, 1.0, 0.0],
                     adapt: [0.0; 4],
+                    output: [1.0, 0.0, 0.0, 0.0],
                 };
                 device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("verse bloom pass"),
@@ -1262,6 +1268,7 @@ impl Photo {
                 gain_min: 2f32.powf(camera.ev100 - camera.ev_max),
                 gain_max: 2f32.powf(camera.ev100 - camera.ev_min),
                 hue_preserving: false,
+                ceiling: self.headroom,
                 time: sky.time,
             },
         );
@@ -1399,6 +1406,8 @@ impl Photo {
                 gain_min: 1.0,
                 gain_max: 1.0,
                 hue_preserving: true,
+                // The plaza keeps its standard-range look on HDR displays.
+                ceiling: 1.0,
                 time: neon.time,
             },
         );
@@ -1446,6 +1455,7 @@ impl Photo {
                     look.gain_max,
                     f32::from(u8::from(look.hue_preserving)),
                 ],
+                output: [look.ceiling, 0.0, 0.0, 0.0],
             };
             queue.write_buffer(&targets.frame_post, 0, bytemuck::bytes_of(&uniform));
             let pass = |encoder: &mut wgpu::CommandEncoder,
@@ -1527,6 +1537,8 @@ struct Look {
     gain_min: f32,
     gain_max: f32,
     hue_preserving: bool,
+    /// Highest output value: 1.0 on standard displays, the headroom on HDR.
+    ceiling: f32,
     time: f32,
 }
 

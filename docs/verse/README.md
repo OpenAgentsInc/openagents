@@ -449,6 +449,9 @@ keeps its application palette. Neither palette belongs to Rust Native.
 - A custom renderer: one WGSL shader with a face pipeline and a line
   pipeline, 4× MSAA when the adapter supports it, and an sRGB surface, plus
   the physical path (`pbr`) that draws the plaza's neon stage and Lagrange 1.
+  On EDR displays the surface is RGBA16F in extended linear sRGB, and
+  photographic highlights use the screen's headroom; the plaza stays in
+  standard range.
 - `glam` for math.
 
 The winit `wayland-csd-adwaita` feature is off because it pulls
