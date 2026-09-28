@@ -18,11 +18,13 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.text.TextPaint
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AnimationUtils
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.PopupMenu
@@ -159,6 +161,21 @@ internal class RowModel(val json: JSONObject, private val context: Context) {
         })
     }
 
+    /** The runs and boxes as the streaming fade compares them (StreamFade.kt). */
+    val fadeRuns: List<FadeRun> by lazy {
+        runs.mapIndexed { index, run ->
+            val text = texts.getOrNull(run.text) ?: ""
+            val usable = run.start >= 0 && run.length > 0 && run.start + run.length <= text.length
+            FadeRun(runScroller[index], run.style, run.x, run.baseline, run.width, text,
+                if (usable) run.start else 0, if (usable) run.length else 0)
+        }
+    }
+    val fadeRects: List<FadeRect> by lazy {
+        rects.mapIndexed { index, rect ->
+            FadeRect(rectScroller[index], rect.box.left, rect.box.top, rect.box.right, rect.fill, rect.stroke)
+        }
+    }
+
     private fun JSONObject.f(name: String) = getDouble(name).toFloat()
 
     private fun ink(ink: JSONObject, opacity: Float): Int {
@@ -198,17 +215,18 @@ internal class RowModel(val json: JSONObject, private val context: Context) {
      * coordinates, which are points, into a canvas in pixels.
      */
     fun draw(canvas: Canvas, scroller: Int = -1, top: Float = Float.NEGATIVE_INFINITY, bottom: Float = Float.POSITIVE_INFINITY,
-             highlights: List<TextBox>? = null) {
+             highlights: List<TextBox>? = null, fade: RowFade? = null, now: Long = 0L) {
         val d = pixels
         val fill = Paint(Paint.ANTI_ALIAS_FLAG)
         canvas.save()
         canvas.scale(d, d)
         rects.forEachIndexed { index, rect ->
             if (rectScroller[index] != scroller || rect.box.bottom < top || rect.box.top > bottom) return@forEachIndexed
+            val alpha = fade?.rects?.getOrNull(index)?.let { fade.alpha(it, now) } ?: 1f
             val path = path(rect.box, rect.radii)
-            rect.fill?.let { fill.style = Paint.Style.FILL; fill.color = it; canvas.drawPath(path, fill) }
+            rect.fill?.let { fill.style = Paint.Style.FILL; fill.color = faded(it, alpha); canvas.drawPath(path, fill) }
             rect.stroke?.let {
-                fill.style = Paint.Style.STROKE; fill.strokeWidth = 1f; fill.color = it
+                fill.style = Paint.Style.STROKE; fill.strokeWidth = 1f; fill.color = faded(it, alpha)
                 canvas.drawPath(path(RectF(rect.box).apply { inset(0.5f, 0.5f) }, rect.radii.map { r -> maxOf(0f, r - 0.5f) }.toFloatArray()), fill)
             }
         }
@@ -224,21 +242,46 @@ internal class RowModel(val json: JSONObject, private val context: Context) {
             val text = texts[run.text]
             val end = run.start + run.length
             if (run.start < 0 || end > text.length || run.length <= 0) return@forEachIndexed
-            val limit = run.truncate
-            if (limit != null) {
-                val shown = clipped[index] ?: TextUtils.ellipsize(text.substring(run.start, end), style.paint,
-                    maxOf(0f, limit) * d, TextUtils.TruncateAt.END).also { clipped[index] = it }
-                canvas.drawText(shown, 0, shown.length, run.x * d, run.baseline * d, style.paint)
-            } else {
-                canvas.drawText(text, run.start, end, run.x * d, run.baseline * d, style.paint)
-            }
-            if (style.underline) canvas.drawRect(run.x * d, (run.baseline + 2f) * d, (run.x + run.width) * d, (run.baseline + 2f) * d + maxOf(1f, d), style.paint)
-            if (style.strike) {
-                val y = (run.baseline - style.size * 0.3f) * d
-                canvas.drawRect(run.x * d, y, (run.x + run.width) * d, y + maxOf(1f, d), style.paint)
+            val segments = fade?.runs?.getOrNull(index)
+            if (segments == null) { drawRun(canvas, index, run, style, text); return@forEachIndexed }
+            // New text fades in; the text already shown keeps full strength.
+            // Each segment is clipped to its stretch of the run.
+            val base = style.paint.alpha
+            segments.forEachIndexed { i, segment ->
+                val alpha = fade.alpha(segment.start, now)
+                if (alpha <= 0f) return@forEachIndexed
+                val left = if (i == 0) Float.NEGATIVE_INFINITY else (run.x + segment.from) * d
+                val right = segments.getOrNull(i + 1)?.let { (run.x + it.from) * d } ?: Float.POSITIVE_INFINITY
+                canvas.save()
+                canvas.clipRect(maxOf(left, -1e7f), -1e7f, minOf(right, 1e7f), 1e7f)
+                style.paint.alpha = Math.round(base * alpha)
+                drawRun(canvas, index, run, style, text)
+                style.paint.alpha = base
+                canvas.restore()
             }
         }
     }
+
+    private fun drawRun(canvas: Canvas, index: Int, run: Run, style: Style, text: String) {
+        val d = pixels
+        val end = run.start + run.length
+        val limit = run.truncate
+        if (limit != null) {
+            val shown = clipped[index] ?: TextUtils.ellipsize(text.substring(run.start, end), style.paint,
+                maxOf(0f, limit) * d, TextUtils.TruncateAt.END).also { clipped[index] = it }
+            canvas.drawText(shown, 0, shown.length, run.x * d, run.baseline * d, style.paint)
+        } else {
+            canvas.drawText(text, run.start, end, run.x * d, run.baseline * d, style.paint)
+        }
+        if (style.underline) canvas.drawRect(run.x * d, (run.baseline + 2f) * d, (run.x + run.width) * d, (run.baseline + 2f) * d + maxOf(1f, d), style.paint)
+        if (style.strike) {
+            val y = (run.baseline - style.size * 0.3f) * d
+            canvas.drawRect(run.x * d, y, (run.x + run.width) * d, y + maxOf(1f, d), style.paint)
+        }
+    }
+
+    private fun faded(color: Int, alpha: Float): Int =
+        if (alpha >= 1f) color else Color.argb(Math.round(Color.alpha(color) * alpha), Color.red(color), Color.green(color), Color.blue(color))
 
     private fun path(box: RectF, radii: FloatArray): Path {
         val limit = minOf(box.width(), box.height()) / 2
@@ -262,6 +305,10 @@ internal class RowView(context: Context) : FrameLayout(context) {
     private val scrollViews = ArrayList<HorizontalScrollView>()
     private val scrollContents = ArrayList<View>()
     private val density = context.resources.displayMetrics.density
+    /** The layout epoch the model came from; a new width or text scale starts a new one. */
+    private var epoch = 0
+    /** New text that is fading in, or null. */
+    private var fade: RowFade? = null
 
     init {
         setWillNotDraw(false)
@@ -269,8 +316,17 @@ internal class RowView(context: Context) : FrameLayout(context) {
         setOnLongClickListener { offerCopy(); true }
     }
 
-    fun bind(model: RowModel) {
+    fun bind(model: RowModel, epoch: Int) {
         if (this.model === model) return
+        val old = this.model
+        // New content in a row that keeps its layout, such as a streamed
+        // reply, fades in; the text already shown does not fade again.
+        val now = AnimationUtils.currentAnimationTimeMillis()
+        fade = if (old != null && old.key == model.key && epoch == this.epoch) {
+            StreamFade.carry(old.fadeRuns, old.fadeRects, fade?.takeIf { it.active(now) }, model.fadeRuns, model.fadeRects,
+                now, fadeDuration())
+        } else null
+        this.epoch = epoch
         clearSelection()
         this.model = model
         removeAllViews()
@@ -294,7 +350,29 @@ internal class RowView(context: Context) : FrameLayout(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        model?.draw(canvas, highlights = highlights[-1])
+        val now = AnimationUtils.currentAnimationTimeMillis()
+        val fade = fade?.takeIf { it.active(now) }
+        if (fade == null) this.fade = null
+        model?.draw(canvas, highlights = highlights[-1], fade = fade, now = now)
+        if (fade != null) {
+            postInvalidateOnAnimation()
+            scrollContents.forEach { it.postInvalidateOnAnimation() }
+        }
+    }
+
+    /**
+     * The fade's length under the system's animator duration scale; zero
+     * when animations are off (Remove animations, or a scale of 0).
+     */
+    private fun fadeDuration(): Long {
+        if (!ValueAnimator.areAnimatorsEnabled()) return 0L
+        // Debug builds: `--ez rust_native_transcript_fade false` turns it off, to compare frame times.
+        if (TranscriptDebug.ENABLED && (context as? android.app.Activity)?.intent
+                ?.getBooleanExtra("rust_native_transcript_fade", true) == false) return 0L
+        val scale = runCatching {
+            Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        }.getOrDefault(1f)
+        return Math.round(StreamFade.DURATION_MS * scale.coerceIn(0f, 10f).toDouble())
     }
 
     private fun scrollerView(model: RowModel, index: Int, scroller: RowModel.Scroller): View {
@@ -306,7 +384,8 @@ internal class RowView(context: Context) : FrameLayout(context) {
             override fun onDraw(canvas: Canvas) {
                 canvas.save()
                 canvas.translate(-scroller.box.left * density, -scroller.box.top * density)
-                model.draw(canvas, index, highlights = highlights[index])
+                val now = AnimationUtils.currentAnimationTimeMillis()
+                model.draw(canvas, index, highlights = highlights[index], fade = fade?.takeIf { it.active(now) }, now = now)
                 canvas.restore()
             }
         }
@@ -559,6 +638,11 @@ class RustTranscript(private val context: Context, private val activate: (String
     private var following = true
     private var dirty = true
     private var sentWidth = 0f
+    private var sentScale = 0f
+    /** Counts layouts at a new width or text scale; rows fade new text only within one. */
+    private var epoch = 0
+    /** The epoch of the frame on screen. */
+    private var frameEpoch = 0
     private var inFlight = false
     private var pending = false
     private var disposed = false
@@ -578,7 +662,7 @@ class RustTranscript(private val context: Context, private val activate: (String
             val view = holder.itemView as RowView
             val item = items[position]
             val started = System.nanoTime()
-            model(item)?.let { view.bind(it) }
+            model(item)?.let { view.bind(it, frameEpoch) }
             worstBind = maxOf(worstBind, System.nanoTime() - started)
             view.toggle = { key -> if (!expanded.remove(key)) expanded.add(key); dirty = true; sync() }
             view.loadEarlier = { if (earlier?.optBoolean("loading") == false && key.isNotEmpty()) activate(key) }
@@ -685,7 +769,10 @@ class RustTranscript(private val context: Context, private val activate: (String
             }
         }.toString()
         dirty = false
+        if (width != sentWidth || scale != sentScale) epoch += 1
+        val requestEpoch = epoch
         sentWidth = width
+        sentScale = scale
         inFlight = true
         val old = items
         worker.execute {
@@ -714,17 +801,18 @@ class RustTranscript(private val context: Context, private val activate: (String
                 worstUpdate = maxOf(worstUpdate, spent)
                 inFlight = false
                 if (disposed) { outcome?.let { TranscriptNative.frameRelease(it.first) }; return@post }
-                if (outcome != null) present(outcome.first, outcome.second, outcome.third)
+                if (outcome != null) present(outcome.first, outcome.second, outcome.third, requestEpoch)
                 // A refusal waits for the next revision; it does not loop.
                 if (pending) { pending = false; sync() }
             }
         }
     }
 
-    private fun present(next: Long, fresh: List<Item>, diff: DiffUtil.DiffResult) {
+    private fun present(next: Long, fresh: List<Item>, diff: DiffUtil.DiffResult, epoch: Int) {
         val anchor = if (following) null else anchor()
         val previous = frame
         frame = next
+        frameEpoch = epoch
         items = fresh
         diff.dispatchUpdatesTo(adapter)
         if (previous != 0L) TranscriptNative.frameRelease(previous)
@@ -882,6 +970,57 @@ internal object TranscriptFixture {
         return view
     }
 
+    private val streamWords = ("The scheduler holds its queue lock while it waits for the next job, so every worker " +
+        "blocks behind it. Releasing the lock before waiting lets the others make progress, and the stall under " +
+        "load goes away. The retry loop also needs a bound, or a poisoned job spins forever.").split(' ')
+
+    /**
+     * Debug builds only (`rust_native_transcript_stream`): streams a long
+     * assistant reply into the fixture's transcript, before its working
+     * row, as a chat's streamed reply arrives. Each step adds three words;
+     * every 60 words start a paragraph, and a code block grows by a line
+     * every 12 steps from step 60. Returns false once the reply is done.
+     */
+    fun stream(view: JSONObject, step: Int, steps: Int): Boolean {
+        fun find(node: JSONObject): JSONObject? {
+            val element = node.getJSONObject("element")
+            if (element.getString("kind") == "transcript") return element.getJSONObject("props")
+            val children = element.optJSONObject("props")?.optJSONArray("children") ?: return null
+            return children.objects().firstNotNullOfOrNull { find(it) }
+        }
+        val props = find(view.getJSONObject("root")) ?: return false
+        val words = (step + 1) * 3
+        val blocks = JSONArray()
+        var written = 0
+        while (written < words) {
+            val take = minOf(60, words - written)
+            val text = (written until written + take).joinToString(" ") { streamWords[it % streamWords.size] }
+            blocks.put(JSONObject().put("kind", "paragraph").put("spans", JSONArray().put(JSONObject().put("text", text))))
+            written += take
+            if (written == 120 && step >= 60) {
+                val lines = (0..minOf(8, (step - 60) / 12)).joinToString("") { "let job$it = queue.pop_front(); // line $it\n" }
+                blocks.put(JSONObject().put("kind", "code").put("language", "rust").put("text", lines))
+            }
+        }
+        val message = JSONObject().put("key", "stream").put("style", JSONObject())
+            .put("element", JSONObject().put("kind", "message").put("props", JSONObject().put("role", "assistant").put("note", JSONObject.NULL)
+                .put("children", JSONArray().put(JSONObject().put("key", "stream-md").put("style", JSONObject())
+                    .put("element", JSONObject().put("kind", "markdown").put("props", JSONObject().put("blocks", blocks)))))))
+        val children = props.getJSONArray("children")
+        val rows = JSONArray()
+        var placed = false
+        for (i in 0 until children.length()) {
+            val row = children.getJSONObject(i)
+            if (row.getString("key") == "stream") continue
+            if (row.getString("key") == "working") { rows.put(message); placed = true }
+            rows.put(row)
+        }
+        if (!placed) rows.put(message)
+        props.put("children", rows)
+        view.put("revision", view.optLong("revision") + 1)
+        return step + 1 < steps
+    }
+
     private fun withRows(view: JSONObject, count: Int): JSONObject {
         if (count <= 0) return view
         fun find(node: JSONObject): JSONObject? {
@@ -957,5 +1096,35 @@ internal class TranscriptBench(private val list: RecyclerView, private val begin
         android.util.Log.i("TranscriptBench", String.format(java.util.Locale.ROOT,
             "%d frames in %.2f s, mean %.2f ms, worst %.2f ms, %d hitches; %s", deltas.size, total / 1e9,
             total / 1e6 / deltas.size, deltas.max() / 1e6, hitches, stats()))
+    }
+}
+
+/**
+ * Debug builds only: frame times on the frame clock between start and
+ * finish, logged under `tag`. A hitch is a frame later than 1.5 times the
+ * display's frame budget.
+ */
+internal class TranscriptFrameStats(private val tag: String, private val view: View) : android.view.Choreographer.FrameCallback {
+    private val choreographer = android.view.Choreographer.getInstance()
+    private val budget = 1_000_000_000L / (view.display?.refreshRate?.takeIf { it > 0 } ?: 60f).toLong()
+    private val deltas = ArrayList<Long>()
+    private var last = 0L
+    private var running = false
+
+    fun start() { running = true; choreographer.postFrameCallback(this) }
+
+    override fun doFrame(now: Long) {
+        if (!running) return
+        if (last != 0L) deltas.add(now - last)
+        last = now
+        choreographer.postFrameCallback(this)
+    }
+
+    fun finish() {
+        running = false
+        if (deltas.isEmpty()) return
+        val total = deltas.sum()
+        android.util.Log.i(tag, String.format(java.util.Locale.ROOT, "%d frames in %.2f s, mean %.2f ms, worst %.2f ms, %d hitches",
+            deltas.size, total / 1e9, total / 1e6 / deltas.size, deltas.max() / 1e6, deltas.count { it > budget * 3 / 2 }))
     }
 }

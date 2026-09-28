@@ -133,12 +133,24 @@ see the transcript layout section of
   so a caret never lands inside a surrogate pair or a ligature. A selection
   stays in one row, like iOS's; a tap elsewhere or a new version of the row
   ends it, and Copy copies and ends it, as Android text does.
+- New text in a streamed reply fades in over 0.18 s, as on iOS
+  ([`StreamFade.kt`](host/app/src/main/java/com/openagents/app/StreamFade.kt)).
+  When a row keeps its key and layout width, each run that begins with the
+  text it showed before keeps that text at full strength and fades in only
+  what follows; a new line, paragraph, or box fades in whole. Each stretch
+  keeps the time it arrived, so updates faster than the fade never restart
+  one, and text shown in full never fades again. The fade follows the
+  system's animator duration scale and is off when animations are removed.
 - Debug launch extras: `--ez rust_native_fixture true` shows the sample
   conversation, `--ei rust_native_fixture_rows N` adds N rows,
   `--ez rust_native_transcript_pull true` sends the rows through a transcript
   source, `--ez rust_native_transcript_bench true` flings through the
   list and logs frame times under `TranscriptBench`, and
-  `--es rust_native_transcript_select KEY` selects that row's text.
+  `--es rust_native_transcript_select KEY` selects that row's text, and
+  `--ei rust_native_transcript_stream N` streams a long reply into the
+  fixture in N steps of three words, 60 ms apart, logging frame times under
+  `TranscriptStream` (`--ez rust_native_transcript_fade false` turns the
+  fade off to compare).
 - `scripts/build-openagents-android.sh bench` builds release Rust and a
   separate, non-debuggable app with these extras,
   `com.openagents.app.bench` ("OpenAgents Bench", signed with the debug key),
@@ -431,6 +443,18 @@ are in `verification/2026-09-28-release`.
   stayed inside a wide code block while it scrolled sideways and followed
   the list when it scrolled. Captures are in
   `verification/2026-09-28-transcript-selection`.
+- Streaming fade (later on 2026-09-28): with
+  `rust_native_transcript_stream 200`, a 600-word reply streamed into the
+  fixture three words every 60 ms. The newest words showed at stepped
+  strengths while earlier text stayed at full strength; a new code block's
+  box and lines faded in as it grew. At an animator duration scale of 10,
+  the fade stretched over several updates; with animations off, every word
+  appeared at full strength. Recording the growing row's display list took
+  0.75 ms on average with the fade and 0.93 ms without it (emulator, 80
+  runs). Stream frame times with and without the fade
+  (`rust_native_transcript_fade false`) were within the emulator's noise
+  (software rendering on a loaded host). Captures are in
+  `verification/2026-09-28-streaming-fade`.
 
 Rust: `cargo test`, `cargo clippy`, and `cargo fmt --check` for
 `openagents-mobile` on the host; `cargo ndk clippy` for `aarch64-linux-android`
@@ -446,7 +470,6 @@ checked: the emulator isn't on a tailnet.
   been exercised on an emulator or a device.
 - Text with the Markdown role outside the conversation elements shows as
   plain text; iOS styles its inline Markdown.
-- The transcript's streaming fade isn't built on Android (#9833).
 - No Android device numbers for the transcript yet; use the bench build.
 - Two-thumb sticks with a pinch from other fingers are covered by unit
   tests (`PinchAdmissionTest`) but not by an emulator run, since `adb`

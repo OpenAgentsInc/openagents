@@ -198,6 +198,9 @@ class MainActivity : ComponentActivity() {
             fixture = runCatching { JSONObject(assets.open("conversation.json").bufferedReader().readText()) }.getOrNull()
                 ?.let { TranscriptFixture.prepare(it, intent.getIntExtra("rust_native_fixture_rows", 0),
                     intent.getBooleanExtra("rust_native_transcript_pull", false)) }
+            // Streams a long reply into the fixture (not with a transcript source).
+            val steps = intent.getIntExtra("rust_native_transcript_stream", 0)
+            if (steps > 0 && !intent.getBooleanExtra("rust_native_transcript_pull", false)) streamFixture(0, steps)
         }
         select(tab)
         open(route)
@@ -233,6 +236,23 @@ class MainActivity : ComponentActivity() {
 
     /** Debug builds only: Rust Native's sample conversation in place of the Coder surface. */
     private var fixture: JSONObject? = null
+
+    /**
+     * Debug builds only: adds a step of the fixture's streamed reply every
+     * 60 ms from two seconds after launch, and logs the frame times while it
+     * streams under `TranscriptStream`.
+     */
+    private fun streamFixture(step: Int, steps: Int) {
+        val handler = android.os.Handler(mainLooper)
+        val stats = TranscriptFrameStats("TranscriptStream", window.decorView)
+        fun next(step: Int) {
+            val view = fixture ?: return
+            val more = TranscriptFixture.stream(view, step, steps)
+            render()
+            if (more) handler.postDelayed({ next(step + 1) }, 60) else handler.postDelayed({ stats.finish() }, 500)
+        }
+        handler.postDelayed({ stats.start(); next(step) }, 2_000)
+    }
 
     // Tabs
 
