@@ -21,6 +21,10 @@ use crate::model::{
 };
 use crate::{LightningWallet, parse_hash32};
 
+/// How long a send waits for the node to reconnect its channel peers
+/// after a start.
+const PEER_RECONNECT_WAIT: Duration = Duration::from_secs(20);
+
 pub struct LdkWallet {
     node: Node,
     network: crate::config::Network,
@@ -111,6 +115,25 @@ impl LdkWallet {
         while let Ok(Some(_)) = self.next_event() {}
     }
 
+    /// A node that just started has channels but no connected peers yet;
+    /// give reconnection up to `wait` before a send that needs a usable
+    /// channel. Returns as soon as one channel is usable, or when the node
+    /// has no channels at all.
+    fn await_usable_channel(&self, wait: Duration) {
+        let deadline = Instant::now() + wait;
+        loop {
+            let channels = self.node.list_channels();
+            if channels.is_empty() || channels.iter().any(|channel| channel.is_usable) {
+                return;
+            }
+            if Instant::now() >= deadline {
+                return;
+            }
+            self.drain_events();
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+
     fn payment(&self, hash: [u8; 32]) -> Option<PaymentDetails> {
         self.node
             .payment(&ldk_node::lightning::ln::channelmanager::PaymentId(hash))
@@ -168,6 +191,7 @@ impl LightningWallet for LdkWallet {
                 });
             }
         } else {
+            self.await_usable_channel(PEER_RECONNECT_WAIT);
             let route =
                 RouteParametersConfig::default().with_max_total_routing_fee_msat(max_fee_msat);
             self.node

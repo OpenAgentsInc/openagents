@@ -647,6 +647,19 @@ is not terminal. Neither command pays or reruns on a timeout; reconcile with
 `status` first. `buy` and the paid `http:1`/`mcp:1` commands refuse each
 other's challenges.
 
+First paid round trip on record (testnet, 2026-09-28, relay
+`wss://relay.openagents.com`): two `openagents wallet` nodes on one
+machine, a 100,000 sat private channel between them (funding
+`329336d0…1944`, block 5151355), provider `native-serve --slug echo
+--msat 1000 -- cat` on the receiving node, buyer `buy … --as buyer` on the
+other. Purchase `5403a3fb…d1af` went `offered → claim_pending → admitted →
+running → completed`; payment hash `bdd4e980…d993`, 1000 msat, 0 msat fee,
+and both nodes' `wallet lookup` hold the same preimage (outbound on the
+buyer, inbound on the provider). Two things had to be fixed on the way:
+`channel open` now stays online until the funding transaction is
+broadcast, and `pay` waits up to 20 s for a just-started node to reconnect
+its channel peers before it sends.
+
 ## Keys and relays
 
 ```sh
