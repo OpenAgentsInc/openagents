@@ -285,7 +285,7 @@ pub struct Spend {
 }
 
 /// How a cost figure was produced.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CostBasis {
     /// List price applied to reported tokens.

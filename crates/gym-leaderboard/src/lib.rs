@@ -26,6 +26,7 @@ pub mod scrub;
 pub mod tb21_oos;
 pub mod tb4_delegate;
 pub mod tb4_delegate_dev;
+pub mod tb4_microcoder_kb;
 pub mod view;
 
 use std::path::Path;
@@ -139,9 +140,19 @@ pub fn generate(root: &Path) -> Result<Output> {
         attach(&mut dev, &job.attempt.id, &bundle, &mut bundles)?;
     }
 
+    let mut shared_fact = tb4_microcoder_kb::build(&reader, &delegate)?;
+    let manifest = microcoder::Manifest::read(&reader, tb4_microcoder_kb::RUNS)?;
+    bundle_microcoder(
+        &reader,
+        &mut shared_fact,
+        &manifest,
+        |a| a.passed,
+        &mut bundles,
+    )?;
+
     let reviews = read_reviews(&reader)?;
     // In publication order, never by score.
-    let boards = vec![delegate, tb21, dev];
+    let boards = vec![delegate, tb21, dev, shared_fact];
     let leaderboard = leaderboard(boards)?;
     let mut leaderboard_bytes =
         serde_json::to_vec_pretty(&leaderboard).map_err(|e| fail!("serialize: {e}"))?;

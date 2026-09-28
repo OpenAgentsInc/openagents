@@ -25,6 +25,16 @@
         "tb21-oos-microcoder-9683",
         "tb4-fable-delegate-dev-9746"
       ]
+    },
+    {
+      "digest": "9ccdd810322584c855c5ceb513aa89f04b4c418a2f3233c5b71f504cc91810e8",
+      "commit": "88d083427932e10ef6bb5bee7e7d1d161200beda",
+      "boards": [
+        "tb4-fable-delegate-repro-9776",
+        "tb21-oos-microcoder-9683",
+        "tb4-fable-delegate-dev-9746",
+        "tb4-microcoder-shared-fact"
+      ]
     }
   ]
 }

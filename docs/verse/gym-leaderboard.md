@@ -59,7 +59,7 @@ scan, which only works on the host that ran the attempt.
 | `tb4-fable-delegate-repro-9776`: Coder One's Jev-briefed Fable 5.1 low delegate on 14 TB4 tasks, two passes ([report](../terminal-bench/2026-09-27-fable-delegate-repro.md), #9776) | `experiments/2026-09-27-fable-delegate-repro/attempts.json`, `tasks.json` (frozen in e0414c3356) | 28 retained episodes, bundled | Generated |
 | `tb21-oos-microcoder-9683`: Microcoder on 65 held-out TB2.1 tasks, knowledge off ([results](../terminal-bench/2026-09-26-tb21-oos-results.md), #9683) | `studies/2026-09-26-out-of-sample/t1-report.json`, 127 run records | 127 Microcoder run records, bundled (#9841) | Generated |
 | `tb4-fable-delegate-dev-9746`: Fable delegate development on `sound-change-cascade`, `fin-saccr-rwa`, and `gsea-proteomics`, series 1 to 7 ([report](../terminal-bench/2026-09-27-fable-delegate.md), #9746) | `experiments/2026-09-27-fable-delegate/attempts*.json` (three row shapes), bars from `reference/fable-5.1-replays.json` | 13 retained episodes, bundled | Generated (#9842) |
-| TB4 Microcoder knowledge-assisted wins ([showcase](../coder/beat-fable-showcase.md)): the "one shared fact" result | `microcoder-runs/coderos-4080`, the `beats-winner` rule in `crates/gym` | Microcoder run records | Next |
+| `tb4-microcoder-shared-fact`: TB4 Microcoder knowledge-assisted wins ([showcase](../coder/beat-fable-showcase.md)), the "one shared fact" result | `microcoder-runs/coderos-4080`, the `beats-winner` rule in `crates/gym` | The 16 passing runs' records, bundled | Generated (#9843) |
 | TB4 prospective out-of-sample study ([results](../terminal-bench/2026-09-26-out-of-sample-study-results.md)): no held-out pass yet | the study's round reports | Microcoder run records | Next; a negative board is still a board |
 | Reference leaderboards | `reference/tb4-leaderboard.json`, `reference/tb21-leaderboard.json` | none | Next, labeled as a dated Harbor Hub snapshot |
 
@@ -204,6 +204,19 @@ recorded:
   (series 2 to 7). Its beats carry `in_sample`, and the same-task tuning
   (`tuned_on_task`) and no-Jev-decision (`no_jev_decision`) caveats on
   their rows.
+- The shared-fact adapter runs the Gym's own `beats-winner` rule
+  (`gym::runs_beats_winner::beats_winner`) over the retained
+  `coderos-4080` records, read with `gym`'s reader and the checkout's
+  knowledge provenance. Each task with an in-sample, knowledge-assisted
+  claim is a row; the claim's group is the `with the entry` split and the
+  task's other graded runs are `before the entry`. It recomputes each
+  beat (a pass with known cost below the cheapest winning run, kind
+  `cost_below_cheapest_win`) and refuses to build when its counts or pass
+  list differ from the claim's. Mixed and ungraded run directories are
+  left out, as the Gym leaves them out, and the board says how many; so
+  the showcase table's counts that include such runs (0 of 10 and 4 of 4
+  on `gsea-proteomics`, 0 of 6 and 4 of 4 on `fin-saccr-rwa`) aren't this
+  board's, while the Gym's claims (8 of 9, 3 of 8, 5 of 9) are.
 - The TB2.1 adapter recomputes every cost win and compares it with
   `cost_win`, and checks graded runs, passes, cost wins, and confirmed wins
   against the report's `totals` and each task's `cost_wins`.
@@ -419,6 +432,7 @@ Implemented now (`cargo test -p gym-leaderboard`):
 | `a_planted_credential_is_redacted_and_fails_the_check` | A planted token is redacted, counted, and fails `check`. |
 | `every_bundle_fits_its_bound_and_matched_no_credential_rule`, `a_beat_bundle_steps_through_jev_the_delegate_and_the_verifier` | Bounds, no unreviewed credential match, and a beat's bundle has Jev, the briefing, the delegate's steps on a forward clock, and the verifier. |
 | `the_development_board_says_what_the_9746_report_says`, `a_development_row_whose_verdict_the_numbers_dont_support_refuses_to_build` | 2 of 13 beats, s5a2 and s7a1, one split per series, s7a1's cost, time, and Jev decision (5 of 12 kept, 3 of 6 flagged), s5a2 with no Jev decision, both in-sample and tuned; a tampered verdict refuses to build. |
+| `the_shared_fact_board_says_what_the_showcase_and_the_gym_say` | The Gym's beats-winner claims recomputed from the same records (8 of 9, 3 of 8, 5 of 9), the showcase's cost ranges and bars, 0 passes before the entry, and the same-task caveat, citing #9776's 4 of 28, on the board and every beat's row. |
 | `every_tb21_attempt_has_a_trace`, `a_tb21_pass_bundle_steps_through_the_loop_jev_and_the_verifier` | All 127 TB2.1 attempts reference a bundle whose SHA-256 and size match; one pass's model steps, Jev judgments with their probabilities, commands, tests, finish, verifier, and cost against the bar. |
 | `a_record_that_differs_from_its_manifest_refuses_to_bundle`, `a_review_holds_only_while_its_source_is_unchanged` | A Microcoder record that no longer matches its manifest refuses to bundle; a reviewed match lapses when its source changes. |
 | `generation_is_deterministic`, `the_committed_publication_matches_the_evidence` | Same bytes twice, and the committed files match. |
@@ -444,7 +458,7 @@ Epic [#9839](https://github.com/OpenAgentsInc/openagents/issues/9839).
 | #9840 | Contract and generator (this change) | none | Done |
 | #9841 | Bundle TB2.1 Microcoder run records | #9840 | Done |
 | #9842 | #9746 development board | #9840 | Done |
-| #9843 | TB4 knowledge-assisted Microcoder board | #9840, #9841 | Now |
+| #9843 | TB4 knowledge-assisted Microcoder board | #9840, #9841 | Done |
 | #9844 | TB4 out-of-sample board and reference boards | #9840 | Now |
 | #9845 | Shared attempt-row schema and study descriptor | #9840 | Now |
 | #9846 | Rust client: fetch, verify, cache | #9840 | Now |

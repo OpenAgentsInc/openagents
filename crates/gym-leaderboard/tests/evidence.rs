@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 use gym_leaderboard::contract::{Board, Cost, Label, Miss, StepKind, TaskStatus, TraceBundle};
 use gym_leaderboard::{
     Output, PUBLISHED, bundle, check, evidence::Reader, generate, microcoder, tb4_delegate,
-    tb4_delegate_dev,
+    tb4_delegate_dev, tb4_microcoder_kb,
 };
 use serde_json::Value;
 
@@ -175,7 +175,7 @@ fn the_tb21_board_says_what_the_essay_says() {
 #[test]
 fn every_bundle_fits_its_bound_and_matched_no_credential_rule() {
     let credential = gym_leaderboard::scrub::credential_rules();
-    assert_eq!(output().bundles.len(), 28 + 127 + 13);
+    assert_eq!(output().bundles.len(), 28 + 127 + 13 + 16);
     for (path, bytes) in &output().bundles {
         assert!(
             bytes.len() <= bundle::MAX_BUNDLE_BYTES,
@@ -702,4 +702,111 @@ fn a_development_row_whose_verdict_the_numbers_dont_support_refuses_to_build() {
     );
     let err = tb4_delegate_dev::build(&Reader::new(dir.path())).unwrap_err();
     assert!(err.0.contains("recomputed beat false"), "{err}");
+}
+
+#[test]
+fn the_shared_fact_board_says_what_the_showcase_and_the_gym_say() {
+    use tb4_microcoder_kb::{BEFORE, WITH};
+    let b = board(tb4_microcoder_kb::BOARD_ID);
+    assert_eq!(
+        b.kind,
+        gym_leaderboard::contract::BoardKind::CostBelowCheapestWin
+    );
+    let split = |name: &str| b.splits.iter().find(|s| s.name == name).unwrap().tally;
+
+    // The Gym's own claims, recomputed from the same records: the showcase
+    // prints them as "8 of 9", "3 of 8", and "5 of 9" graded runs.
+    let root = root();
+    let knowledge = gym::runs_microcoder::Knowledge::read(&root.join("knowledge"));
+    let runs = gym::runs_microcoder::read_all(
+        &[root.join(tb4_microcoder_kb::RUNS)],
+        &knowledge,
+        i64::MAX / 4,
+    );
+    let replays: Value =
+        serde_json::from_slice(&std::fs::read(root.join(tb4_delegate_dev::REPLAYS)).unwrap())
+            .unwrap();
+    let highlights = gym::runs_beats_winner::beats_winner(&gym::runs_highlights::Inputs {
+        runs: &runs,
+        answers: &std::collections::HashMap::new(),
+        reference: None,
+        marks: &gym::runs_marks::Marks::default(),
+        fable: Some(&replays),
+    });
+    for (task, passes, graded, low, high, bar) in [
+        ("embedding-drift-monitor", 8, 9, 0.0165, 0.34, 0.74),
+        ("fin-saccr-rwa", 3, 8, 0.0404, 0.0518, 1.22),
+        ("gsea-proteomics", 5, 9, 0.0491, 0.0691, 0.69),
+    ] {
+        let with = split(&format!("{task}, {WITH}"));
+        assert_eq!(
+            (with.passes, with.beats, with.attempts),
+            (passes, passes, graded),
+            "{task}"
+        );
+        let claim = highlights
+            .iter()
+            .find(|h| h.task.as_deref() == Some(task) && h.claim.starts_with("[in-sample"))
+            .unwrap();
+        assert!(
+            claim.claim.contains(&format!(
+                "passed {task} in {passes} of {graded} graded runs"
+            )),
+            "{}",
+            claim.claim
+        );
+        let costs: Vec<f64> = b
+            .attempts
+            .iter()
+            .filter(|a| a.task == task && a.beat)
+            .filter_map(|a| a.cost.known())
+            .collect();
+        let (min, max) = costs
+            .iter()
+            .fold((f64::MAX, 0.0_f64), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
+        assert!(
+            (min - low).abs() < 0.00005 && (max - high).abs() < 0.005,
+            "{task}: {min} {max}"
+        );
+        let row = b.tasks.iter().find(|t| t.task == task).unwrap();
+        assert!((row.bar.cost_usd.unwrap() - bar).abs() < 0.005, "{task}");
+        assert_eq!(row.status, TaskStatus::Beat);
+    }
+    // Before the entry, no graded run passed; without any knowledge, the
+    // showcase's 0 of 6 on embedding-drift-monitor and 0 of 1 on
+    // gsea-proteomics.
+    assert_eq!(split(BEFORE).passes, 0);
+    let off = |task: &str| {
+        let set: Vec<_> = b
+            .attempts
+            .iter()
+            .filter(|a| a.task == task && a.labels.contains(&Label::KnowledgeOff))
+            .collect();
+        (set.iter().filter(|a| a.passed).count(), set.len())
+    };
+    assert_eq!(off("embedding-drift-monitor"), (0, 6));
+    assert_eq!(off("gsea-proteomics"), (0, 1));
+
+    // The same-task caveat is on the board and on every beat's row, and
+    // it cites the #9776 reproduction's own numbers.
+    let same = b.caveats.iter().find(|c| c.code == "same_task").unwrap();
+    assert!(same.text.contains("4 of 28 attempts"), "{}", same.text);
+    for a in b.attempts.iter().filter(|a| a.beat) {
+        assert!(a.caveats.contains(&"same_task".to_owned()), "{}", a.id);
+        assert!(
+            a.labels.contains(&Label::InSample) && a.labels.contains(&Label::KnowledgeAssisted)
+        );
+        assert!(a.trace.as_ref().is_some_and(|t| t.bytes > 0), "{}", a.id);
+    }
+    for label in [Label::InSample, Label::KnowledgeAssisted] {
+        assert!(b.labels.contains(&label));
+    }
+    // The Codex-login pass is list price; the rest are billed.
+    assert!(
+        b.attempts
+            .iter()
+            .any(|a| a.cost_basis == Some(gym_leaderboard::contract::CostBasis::ListPrice))
+    );
+    assert_eq!(b.spend.basis, gym_leaderboard::contract::CostBasis::Mixed);
+    assert!(b.caveats.iter().any(|c| c.code == "retained_records_only"));
 }
