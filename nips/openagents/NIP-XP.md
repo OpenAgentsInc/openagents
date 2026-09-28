@@ -8,7 +8,7 @@ the experience points (XP) that acceptance carries, as signed Nostr events.
 A reader fetches them from relays, re-checks each acceptance against the
 signed evidence it names, and computes XP only from referees it trusts.
 `crates/nostr` (`xp`) is the conformance implementation;
-`knowledge::xp` derives a ledger and `microcoder xp` publishes and reads
+`xp_ledger` (`crates/xp-ledger`) derives a ledger and `microcoder xp` publishes and reads
 over a relay. `docs/coder/guides/xp.md` is the operator's guide.
 
 XP is evidence of verified accepted work. It is never a balance: it can't
@@ -632,7 +632,7 @@ script, a key the rule doesn't derive, one issue paid by two quests, and a
 quest version over its `max_awards`.
 `crates/nostr/src/xp/tests.rs`, `crates/nostr/src/xp/reproduce/tests.rs`,
 `crates/nostr/src/xp/playtest/tests.rs`,
-`crates/knowledge/src/xp/tests.rs`, and
+`crates/xp-ledger/src/tests.rs`, and
 `crates/microcoder/src/xpnet/tests.rs` hold them.
 
 Advertise `nip-xp-v1` in NIP-11 `supported_extensions` only for a relay

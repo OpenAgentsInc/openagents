@@ -18,10 +18,10 @@
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use knowledge::remote::npub;
 use nostr::domain::Event;
 use verse::net::{In, Link, Out};
 use verse::xp::fixture::Completion;
+use xp_ledger::npub;
 
 fn publish(link: &Link, events: &[&Event]) -> Result<(), String> {
     let start = Instant::now();

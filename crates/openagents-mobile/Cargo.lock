@@ -1667,18 +1667,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-transport"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "libc",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "collision_static"
 version = "0.1.0"
 dependencies = [
@@ -3749,19 +3737,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
-name = "knowledge"
-version = "0.1.0"
-dependencies = [
- "codex-transport",
- "nostr",
- "openrouter",
- "secp256k1 0.31.1",
- "serde",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
 name = "konst"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4364,16 +4339,6 @@ dependencies = [
  "url",
  "uuid",
  "verse",
-]
-
-[[package]]
-name = "openrouter"
-version = "0.1.0"
-dependencies = [
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -7332,7 +7297,6 @@ dependencies = [
  "glam",
  "gym-bridge",
  "gym-leaderboard",
- "knowledge",
  "libc",
  "nostr",
  "objc2",
@@ -7353,6 +7317,7 @@ dependencies = [
  "verse-ruins",
  "webpki-roots 1.0.9",
  "wgpu",
+ "xp-ledger",
 ]
 
 [[package]]
@@ -8016,6 +7981,16 @@ name = "xml-rs"
 version = "0.8.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
+
+[[package]]
+name = "xp-ledger"
+version = "0.1.0"
+dependencies = [
+ "nostr",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
 
 [[package]]
 name = "yazi"

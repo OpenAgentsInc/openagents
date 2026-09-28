@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use knowledge::xp::XpTrust;
+use xp_ledger::XpTrust;
 
 use super::fixture::{Completion, Reproduction, signer, tutorial_events};
 use super::*;

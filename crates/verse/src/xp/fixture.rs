@@ -131,7 +131,7 @@ impl Completion {
     /// When `at` is outside the quest's season.
     #[must_use]
     pub fn award(&self, at: u64) -> Event {
-        let excluded = knowledge::xp::excluded_tasks(&self.entry).expect("a valid entry");
+        let excluded = xp_ledger::excluded_tasks(&self.entry).expect("a valid entry");
         let parts = xp::award(&self.quest, &self.entry, &self.evidence, &excluded, at)
             .expect("the rule accepts the completion");
         self.referee.sign(at, parts.kind, parts.tags, parts.content)

@@ -12,7 +12,7 @@
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use knowledge::xp::XpTrust;
+use xp_ledger::XpTrust;
 use verse::net::{In, Link, Out};
 use verse::xp::Board;
 use verse::xp::fixture::Completion;

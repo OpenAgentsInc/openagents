@@ -10,7 +10,7 @@ publish.workspace = true
 default = ["desktop"]
 desktop = ["dep:winit", "model-host", "xp-host", "replay-host", "capture"]
 model-host = ["dep:coder", "dep:coder-one"]
-xp-host = ["dep:knowledge"]
+xp-host = ["dep:xp-ledger"]
 replay-host = ["dep:gym", "dep:knowledge"]
 capture = []
 
@@ -32,6 +32,9 @@ gym-bridge = { path = "../gym-bridge", default-features = false }
 # model, and the fetch-verify-cache client, without the generator.
 gym-leaderboard = { path = "../gym-leaderboard", default-features = false, features = ["client"] }
 knowledge = { path = "../knowledge", optional = true }
+# The XP ledger alone, so the phone reads XP without the knowledge base's
+# model clients.
+xp-ledger = { path = "../xp-ledger", optional = true }
 libc = "0.2"
 nostr = { path = "../nostr" }
 png = "0.18.1"

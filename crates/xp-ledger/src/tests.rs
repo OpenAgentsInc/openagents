@@ -231,7 +231,7 @@ fn the_trust_file_reads_npubs_and_hex() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("xp-trust.json");
     let referee = signer("referee");
-    let npub = crate::remote::npub(referee.pubkey());
+    let npub = crate::npub(referee.pubkey());
     std::fs::write(
         &path,
         json!({"referees": [npub], "runners": [signer("runner").pubkey()]}).to_string(),

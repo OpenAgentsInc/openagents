@@ -45,17 +45,7 @@ pub fn default_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/knowledge/evidence"))
 }
 
-/// The task a run ID names: the ID without its trailing `-<digits>`. A
-/// bare task name is returned as it is.
-#[must_use]
-pub fn task_of(run: &str) -> String {
-    match run.rsplit_once('-') {
-        Some((task, stamp)) if !stamp.is_empty() && stamp.chars().all(|c| c.is_ascii_digit()) => {
-            task.to_string()
-        }
-        _ => run.to_string(),
-    }
-}
+pub use xp_ledger::entry::task_of;
 
 /// One arm of a paired task.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]

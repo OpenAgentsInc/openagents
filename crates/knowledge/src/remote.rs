@@ -36,47 +36,7 @@ pub fn trust_file() -> Option<PathBuf> {
         .map(|home| PathBuf::from(home).join(".openagents/knowledge/trust.json"))
 }
 
-/// `~/.openagents/nostr/knowledge-key`, the secret key entries are signed
-/// with. It's created on first use with mode 0600.
-#[must_use]
-pub fn key_file() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/nostr/knowledge-key"))
-}
-
-/// The public key of the secret key in `path`, without creating one.
-#[must_use]
-pub fn own_pubkey(path: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let signer = nostr::domain::RelaySigner::from_secret_hex(text.trim()).ok()?;
-    Some(signer.pubkey().to_string())
-}
-
-/// A public key written as an `npub` or 64 lowercase hex characters, as hex.
-#[must_use]
-pub fn parse_author(text: &str) -> Option<String> {
-    let text = text.trim();
-    if let Ok(bytes) = nostr::nip19::decode_npub(text) {
-        return Some(bytes.iter().map(|b| format!("{b:02x}")).collect());
-    }
-    (text.len() == 64
-        && text
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
-    .then(|| text.to_string())
-}
-
-/// A hex public key as an `npub`.
-#[must_use]
-pub fn npub(pubkey: &str) -> String {
-    let mut bytes = [0u8; 32];
-    for (i, pair) in pubkey.as_bytes().chunks(2).take(32).enumerate() {
-        bytes[i] = std::str::from_utf8(pair)
-            .ok()
-            .and_then(|p| u8::from_str_radix(p, 16).ok())
-            .unwrap_or(0);
-    }
-    nostr::nip19::encode_npub(&bytes)
-}
+pub use xp_ledger::{key_file, npub, own_pubkey, parse_key as parse_author};
 
 /// Which remote entries a reader shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -209,7 +209,7 @@ The mouse wheel over the panel, or Page Up and Page Down, scrolls it.
 
 **XP and levels.** A background thread reads the relay, fetches the
 entries and evidence the trusted referees' awards name, and derives your
-ledger with `knowledge::xp::derive`: the same checks `microcoder xp ledger`
+ledger with `xp_ledger::derive`: the same checks `microcoder xp ledger`
 runs, so the frame never waits on the network or on signature checks. The
 top left of the screen shows your XP, level, titles, and how many quests
 and referees the board has. Your XP is the sum over your keys: this

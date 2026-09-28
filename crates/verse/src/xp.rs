@@ -4,7 +4,7 @@
 //! A background thread subscribes to a relay for quests (`30193`), awards
 //! (`3193`), revocations (`3194`), and `openagents.xp` achievement labels
 //! (`1985`). It fetches the entries and evidence the trusted referees'
-//! awards name, derives the reader's ledger with [`knowledge::xp::derive`]
+//! awards name, derives the reader's ledger with [`xp_ledger::derive`]
 //! under the reader's trust list, and hands the game thread a finished
 //! [`Snapshot`]. The game thread only drains snapshots, so the network and
 //! the signature checks never stall a frame.
@@ -23,12 +23,13 @@ use std::sync::{
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use coder_ui::theme::Intensity;
-use knowledge::remote::{own_pubkey, parse_author};
-pub use knowledge::xp::XpTrust;
-use knowledge::xp::{Credit, derive, referee_key_file, trust_file};
 use nostr::domain::{Event, RelaySigner, Tag};
 use nostr::xp;
 use serde_json::json;
+pub use xp_ledger::XpTrust;
+use xp_ledger::{
+    Credit, derive, own_pubkey, parse_key as parse_author, referee_key_file, trust_file,
+};
 
 use crate::net::{In, Link, Out};
 
@@ -394,7 +395,7 @@ pub fn load_trust(referees: &[String]) -> (XpTrust, Option<String>) {
 #[must_use]
 pub fn my_keys(profile: Option<&str>, extra: &[String]) -> Vec<String> {
     let mut keys: Vec<String> = profile.map(str::to_owned).into_iter().collect();
-    if let Some(own) = knowledge::remote::key_file().and_then(|k| own_pubkey(&k)) {
+    if let Some(own) = xp_ledger::key_file().and_then(|k| own_pubkey(&k)) {
         keys.push(own);
     }
     keys.extend(extra.iter().filter_map(|k| parse_author(k)));

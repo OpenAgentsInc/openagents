@@ -4059,6 +4059,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "xp-ledger",
 ]
 
 [[package]]
@@ -8528,6 +8529,7 @@ dependencies = [
  "webpki-roots 1.0.9",
  "wgpu",
  "winit",
+ "xp-ledger",
 ]
 
 [[package]]
@@ -10048,6 +10050,16 @@ name = "xml-rs"
 version = "0.8.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
+
+[[package]]
+name = "xp-ledger"
+version = "0.1.0"
+dependencies = [
+ "nostr",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
 
 [[package]]
 name = "yazi"

@@ -545,6 +545,13 @@ uses, and marks which are implemented and which are only specified.
   NIP-C7, NIP-29, and NIP-17 (`docs/verse/chat.md`). Read `docs/verse/`
   before changing the controller, the palette, the world, chat, or the wire
   format.
+- `crates/xp-ledger` — the NIP-XP ledger a reader derives
+  (`nips/openagents/NIP-XP.md`): trust lists, the per-award re-checks, and
+  the knowledge-entry parser the `kb-transfer` rule needs. `knowledge`
+  re-exports it as `knowledge::xp` and `knowledge::Entry`. It depends on
+  `nostr`, `serde`, and `sha2` only, so the phones read XP through Verse's
+  `xp-host` feature without linking the knowledge base's model and
+  embedding clients; keep it that way.
 - `crates/verse-ruins` — the retained Ruins of Atlantis Wizard Woods ECS,
   original player controller, and pinned terrain. Its adapter exposes portable
   gameplay snapshots and destructible meshes. Keep source provenance and

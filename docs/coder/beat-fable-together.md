@@ -302,7 +302,7 @@ Status, 2026-09-26: Verse shows the first slice
 lists the live NIP-XP quests from `relay.openagents.com`, with each quest's
 task, bar, Fable 5.1 low reference cost and time, award, season, and award
 count. The HUD shows the player's XP, level, and achievement titles,
-derived with `knowledge::xp` under the player's trust list, and name tags
+derived with `xp_ledger` (`crates/xp-ledger`) under the player's trust list, and name tags
 show other players' levels. Run replays are in too
 ([how](../verse/README.md#run-replays)): `R` lists the retained Microcoder
 passes the `beats-winner` rule cites, and a replay plays one as the spade's

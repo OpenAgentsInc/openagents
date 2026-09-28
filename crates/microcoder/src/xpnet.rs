@@ -5,7 +5,7 @@
 //! the quest's rule before signing its award, and revokes an award it got
 //! wrong. A reader derives XP from the awards of the referees it trusts,
 //! re-checking each one. Events are built and checked by `nostr::xp`, the
-//! ledger is `knowledge::xp`, and the relay connection is the one
+//! ledger is `xp_ledger` (as `knowledge::xp`), and the relay connection is the one
 //! `kb publish` and `kb sync` use. Quests, awards, and revocations are
 //! signed with `~/.openagents/nostr/referee-key`, created on first use with
 //! mode 0600; the key is never printed.

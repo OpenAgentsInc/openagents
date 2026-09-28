@@ -140,7 +140,7 @@ document or NIP defines it and no code does it yet.
 | Quests (`30193`), awards (`3193`), revocations (`3194`), achievement labels (NIP-32 `1985`, `L=openagents.xp`) | [NIP-XP](../../nips/openagents/NIP-XP.md) | Implemented: `crates/nostr/src/xp*` validates the events. |
 | Acceptance rules `kb-transfer` (roles `author`, `runner`) and `reproduce` (roles `claimant`, `reproducer`; run evidence marked `oa:xp:run:v1`) | NIP-XP | Implemented; `reproduce` added 2026-09-28. Readers refuse unknown rules. |
 | Uniqueness policy `first`: one award per quest version | NIP-XP | Implemented. No other policy exists. |
-| Ledger derivation under a reader's trust list (referees, optional runners) | `crates/knowledge/src/xp*`, `knowledge::xp::derive` | Implemented. |
+| Ledger derivation under a reader's trust list (referees, optional runners) | `crates/xp-ledger`, `xp_ledger::derive` (re-exported as `knowledge::xp`) | Implemented. Split from `knowledge` on 2026-09-28 so the phone doesn't link the knowledge base's model clients ([#9897](https://github.com/OpenAgentsInc/openagents/issues/9897)). |
 | Referee tool: `microcoder xp quest`, `award`, `revoke`, `ledger`, and the trainer's `claim` and `reproduce` | `crates/microcoder/src/xpnet.rs`, [XP guide](../coder/guides/xp.md) | Implemented. |
 | Reader commands: `openagents quests`, `xp`, and `board` | `crates/openagents-cli/src/quest.rs` | Implemented, read-only. |
 | OpenAgents referee key `npub1v59z5gk…rusf6k` and 11 TB4 quests, season `tb4-s1` (2026-09-26 to 2026-12-25), 10 XP each (author 6, runner 4) | [quest board](../terminal-bench/quest-board.md), `knowledge/quests/` | Published. Every quest was open when the board was generated; no award is recorded. |
@@ -156,7 +156,7 @@ document or NIP defines it and no code does it yet.
 | Quest board on the plaza, 22 m west of center, `B` to open | `xp::board_lines`, [Verse README](README.md#quests-and-xp) | Implemented, desktop. Read-only; Verse never publishes XP events. |
 | Name tags with `lv n` for players whose Verse key has XP | `crates/verse/src/app.rs` (`xp::level_tag`) | Implemented, desktop. |
 | Titles from achievement labels, shown only while the award counts and only when the award's referee signed the label | `xp::snapshot` | Implemented, desktop. |
-| Grid name tags: the first eight hex characters of each player's pubkey, then ` · lv n` when the key has XP under the OpenAgents referee | `crates/coder-mobile/src/verse_app.rs` (`player_tags`, `verse::xp::name_tag`), wrapped by `crates/openagents-mobile/src/verse.rs` | Implemented on iOS 2026-09-28; the mobile build links Verse's read-only XP reader. |
+| Grid name tags: the first eight hex characters of each player's pubkey, then ` · lv n` when the key has XP under the OpenAgents referee | `crates/coder-mobile/src/verse_app.rs` (`player_tags`, `verse::xp::name_tag`), wrapped by `crates/openagents-mobile/src/verse.rs` | Implemented on iOS 2026-09-28; the mobile build links Verse's read-only XP reader, which since #9897 pulls in `crates/xp-ledger` rather than `knowledge`. The Android library builds with it under NDK 27.1. |
 | Account trainer card: level, XP, XP to next level, curve, titles, counted awards with links, and the trainer key (the Verse world key) with an explicit reveal | `crates/openagents-mobile/src/trainer.rs`, `bins/openagents-ios/host/App/AccountScreens.swift` | Implemented on iOS 2026-09-28. |
 | Six tutorial `reproduce` quests, 50 XP each, season `tb21-tutorial-s1` | [tutorial quests](tutorial-quests.md), `knowledge/quests/tb21.*.reproduce@1.json` | Published 2026-09-28. No award yet. |
 | Classes Commander, Artisan, and Scout; stat points per level; grants unlocked in stages | [GDD](gdd.md#progression) | Specified for *agents*, not trainers. Draft, not committed scope. |
@@ -507,7 +507,7 @@ OpenAgents app's Grid and on their Account trainer card.
 2. Publish tutorial quests: reproduce one of the retained TB2.1 passes under
    its recipe.
 3. Add a read-only XP reader to the mobile build, sharing
-   `knowledge::xp::derive`, and show `prefix · lv n` in the Grid.
+   `xp_ledger::derive`, and show `prefix · lv n` in the Grid.
 4. Add the trainer card to the Account tab: level, XP, titles, and counted
    awards. Export comes in phase 2.
 5. Name the curve `trainer-curve-v1` in every display.

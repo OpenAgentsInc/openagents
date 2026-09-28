@@ -10,7 +10,10 @@
 //! and titles are the client's reading of the totals.
 //!
 //! Signing and the relay connection are the caller's; nothing here opens a
-//! socket.
+//! socket. The crate is small on purpose: the phone links it through
+//! Verse's read-only XP reader, and it must not pull in the knowledge
+//! base's model and embedding clients. `knowledge` re-exports it as
+//! `knowledge::xp`, and its entry parser as `knowledge::Entry`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -20,9 +23,52 @@ use nostr::kb;
 use nostr::xp::{self, Award};
 use serde::Serialize;
 
-use crate::Entry;
-use crate::evidence::task_of;
-use crate::remote::parse_author;
+pub mod entry;
+pub mod front;
+
+use crate::entry::{Entry, task_of};
+
+/// `~/.openagents/nostr/knowledge-key`, the secret key entries are signed
+/// with. It's created on first use with mode 0600.
+#[must_use]
+pub fn key_file() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/nostr/knowledge-key"))
+}
+
+/// The public key of the secret key in `path`, without creating one.
+#[must_use]
+pub fn own_pubkey(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let signer = nostr::domain::RelaySigner::from_secret_hex(text.trim()).ok()?;
+    Some(signer.pubkey().to_string())
+}
+
+/// A hex public key as an `npub`.
+#[must_use]
+pub fn npub(pubkey: &str) -> String {
+    let mut bytes = [0u8; 32];
+    for (i, pair) in pubkey.as_bytes().chunks(2).take(32).enumerate() {
+        bytes[i] = std::str::from_utf8(pair)
+            .ok()
+            .and_then(|p| u8::from_str_radix(p, 16).ok())
+            .unwrap_or(0);
+    }
+    nostr::nip19::encode_npub(&bytes)
+}
+
+/// A public key written as an `npub` or 64 lowercase hex characters, as hex.
+#[must_use]
+pub fn parse_key(text: &str) -> Option<String> {
+    let text = text.trim();
+    if let Ok(bytes) = nostr::nip19::decode_npub(text) {
+        return Some(bytes.iter().map(|b| format!("{b:02x}")).collect());
+    }
+    (text.len() == 64
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+    .then(|| text.to_string())
+}
 
 /// `~/.openagents/knowledge/xp-trust.json`.
 #[must_use]
@@ -78,7 +124,7 @@ impl XpTrust {
         ] {
             for key in value[field].as_array().cloned().unwrap_or_default() {
                 let text = key.as_str().unwrap_or_default();
-                set.insert(parse_author(text).ok_or(format!(
+                set.insert(parse_key(text).ok_or(format!(
                     "{}: {text} isn't an npub or a hex public key",
                     path.display()
                 ))?);
