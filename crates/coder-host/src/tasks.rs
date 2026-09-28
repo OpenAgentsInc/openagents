@@ -195,6 +195,16 @@ pub trait Tasks: Send + Sync {
     fn note(&self, _task: &str) -> Option<Note> {
         None
     }
+
+    /// A cheap fingerprint of the task store, such as its files' lengths and
+    /// modification times, that changes whenever a task or a held command
+    /// may have. The host reads it often and runs [`Tasks::tick`] and
+    /// [`Tasks::current`] as soon as it moves, so a device hears of a run
+    /// starting or ending at once. The default, `None`, leaves the host to
+    /// its periodic sweep.
+    fn stamp(&self) -> Option<Vec<u8>> {
+        None
+    }
 }
 
 /// A host without a task owner. Every task operation refuses as

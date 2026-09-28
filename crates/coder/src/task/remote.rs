@@ -357,6 +357,32 @@ impl Tasks for Inbox {
             .unwrap_or_default()
     }
 
+    /// The length and modification time of the store's task, command, and
+    /// archive files: every change a summary reports writes one of them.
+    fn stamp(&self) -> Option<Vec<u8>> {
+        let mut stamp = Vec::new();
+        for name in [
+            super::STORE_FILE,
+            super::commands::FILE,
+            super::archive::FILE,
+        ] {
+            let (length, modified) = match std::fs::metadata(self.store.join(name)) {
+                Ok(metadata) => (
+                    metadata.len(),
+                    metadata
+                        .modified()
+                        .ok()
+                        .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map_or(0, |at| at.as_nanos()),
+                ),
+                Err(_) => (u64::MAX, 0),
+            };
+            stamp.extend_from_slice(&length.to_le_bytes());
+            stamp.extend_from_slice(&modified.to_le_bytes());
+        }
+        Some(stamp)
+    }
+
     /// A task that ended for lack of model capacity: the auto-start policy
     /// ended it before a run, or its run stopped when the last admitted
     /// provider refused. The reset comes from the policy's record or the
@@ -538,6 +564,21 @@ mod tests {
             inbox.create(&"b".repeat(64), "device", &unknown),
             Err(Code::Forbidden)
         );
+    }
+
+    /// The host sweeps as soon as the store's stamp moves: a new task moves
+    /// it, and reading changes nothing.
+    #[test]
+    fn the_store_stamp_moves_when_a_task_changes() {
+        let temp = tempfile::tempdir().unwrap();
+        let inbox = inbox(temp.path());
+        let empty = inbox.stamp().expect("a stamp");
+        assert_eq!(inbox.stamp(), Some(empty.clone()));
+        inbox.create(&"a".repeat(64), "device", &create()).unwrap();
+        let created = inbox.stamp().expect("a stamp");
+        assert_ne!(created, empty);
+        let _ = inbox.current();
+        assert_eq!(inbox.stamp(), Some(created));
     }
 
     #[test]

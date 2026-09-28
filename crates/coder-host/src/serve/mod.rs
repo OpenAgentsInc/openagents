@@ -428,15 +428,36 @@ pub(crate) fn standing(authority: &Authority, principal: &crate::tasks::Principa
 /// The most task summaries the first sweep publishes.
 const FIRST_SWEEP_TASKS: usize = 50;
 
+/// How often the summary loop reads the task store's stamp.
+const STAMP_EVERY: Duration = Duration::from_millis(250);
+/// How often the summary loop sweeps whether or not the stamp moved, so
+/// time-based command decisions, such as a lapsed queue lease, still run.
+const SWEEP_EVERY: Duration = Duration::from_secs(5);
+
 /// Publish a summary whenever a task's revision changes outside a device
-/// operation, such as an auto-started run starting or finishing. The first
-/// sweep publishes the newest tasks so devices catch up after a restart.
+/// operation, such as an auto-started run starting or finishing. The loop
+/// sweeps as soon as the task store's stamp moves, and every
+/// [`SWEEP_EVERY`] regardless. The first sweep publishes the newest tasks
+/// so devices catch up after a restart.
 async fn summary_loop(shared: Arc<Shared>) {
     let mut known: BTreeMap<String, u64> = BTreeMap::new();
     let mut first = true;
-    let mut ticker = tokio::time::interval(Duration::from_secs(5));
+    let mut ticker = tokio::time::interval(STAMP_EVERY);
+    let mut swept: Option<(Instant, Option<Vec<u8>>)> = None;
     loop {
         ticker.tick().await;
+        let tasks = shared.tasks.clone();
+        let stamp = tokio::task::spawn_blocking(move || tasks.stamp())
+            .await
+            .ok()
+            .flatten();
+        let due = swept.as_ref().is_none_or(|(at, seen)| {
+            at.elapsed() >= SWEEP_EVERY || stamp.is_some() && *seen != stamp
+        });
+        if !due {
+            continue;
+        }
+        swept = Some((Instant::now(), stamp));
         let tasks = shared.tasks.clone();
         let authority = shared.authority.clone();
         let Ok(current) = tokio::task::spawn_blocking(move || {
