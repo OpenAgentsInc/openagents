@@ -4,6 +4,15 @@
 //! spans. Links stay inert text with a destination the adapter may show;
 //! images appear as their alternative text; raw HTML is dropped. Nothing in a
 //! document can load a resource or run code.
+//!
+//! [`IncrementalMarkdown`] keeps a streaming message's blocks current while
+//! text arrives, reparsing only the tail, and offers a mended display copy of
+//! the tail's half-written syntax.
+
+mod incremental;
+mod mend;
+
+pub use incremental::IncrementalMarkdown;
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use serde::{Deserialize, Serialize};
@@ -172,13 +181,42 @@ pub fn depth(blocks: &[Block]) -> usize {
 
 /// Parse CommonMark with tables, strikethrough, and task lists.
 pub fn parse(markdown: &str) -> Vec<Block> {
+    parse_starts(markdown).0
+}
+
+/// Where a top-level block begins: the byte offset of the line it starts on,
+/// and how many top-level blocks come before it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Start {
+    offset: usize,
+    before: usize,
+}
+
+/// Parse `markdown` and report where each top-level block begins.
+fn parse_starts(markdown: &str) -> (Vec<Block>, Vec<Start>) {
     let options =
         Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
     let mut builder = Builder::default();
-    for event in Parser::new_ext(markdown, options) {
+    let mut starts = Vec::new();
+    let mut depth = 0usize;
+    for (event, range) in Parser::new_ext(markdown, options).into_offset_iter() {
+        if depth == 0 && !matches!(event, Event::End(_)) {
+            let offset = markdown[..range.start]
+                .rfind(['\n', '\r'])
+                .map_or(0, |at| at + 1);
+            starts.push(Start {
+                offset,
+                before: builder.root_len(),
+            });
+        }
+        match event {
+            Event::Start(_) => depth += 1,
+            Event::End(_) => depth = depth.saturating_sub(1),
+            _ => {}
+        }
         builder.event(event);
     }
-    builder.finish()
+    (builder.finish(), starts)
 }
 
 /// A container being built: its blocks, and the inline runs of the block
@@ -230,6 +268,14 @@ struct Style {
 }
 
 impl Builder {
+    /// Finished top-level blocks.
+    fn root_len(&self) -> usize {
+        match self.frames.first() {
+            Some(Frame::Root(blocks)) => blocks.len(),
+            _ => 0,
+        }
+    }
+
     fn push_block(&mut self, block: Block) {
         if self.frames.is_empty() {
             self.frames.push(Frame::Root(vec![]));
@@ -348,6 +394,8 @@ impl Builder {
                 };
                 self.leaf = Some(Leaf::Code(language, String::new()));
             }
+            // Each HTML block is its own paragraph of code text.
+            Tag::HtmlBlock => self.close_leaf(),
             Tag::BlockQuote(_) => {
                 self.close_leaf();
                 self.frames.push(Frame::Quote(vec![]));
@@ -412,7 +460,9 @@ impl Builder {
 
     fn end(&mut self, tag: TagEnd) {
         match tag {
-            TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::CodeBlock => self.close_leaf(),
+            TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::CodeBlock | TagEnd::HtmlBlock => {
+                self.close_leaf()
+            }
             TagEnd::BlockQuote(_) => {
                 self.close_leaf();
                 if let Some(Frame::Quote(blocks)) = self.frames.pop() {

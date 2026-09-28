@@ -55,6 +55,8 @@ pub struct Row {
     pub end: u64,
     pub part: u8,
     pub entry: Entry,
+    /// A message's Markdown, parsed once when the row is made.
+    pub blocks: Vec<markdown::Block>,
 }
 
 #[derive(Default)]
@@ -373,11 +375,18 @@ pub fn rows(chunks: &[RecordChunk]) -> Vec<Row> {
             continue;
         };
         for (part, entry) in entries(&readable).into_iter().enumerate() {
+            let blocks = match &entry {
+                Entry::Message { role, text } if *role != MessageRole::System => {
+                    markdown::parse(text)
+                }
+                _ => vec![],
+            };
             out.push(Row {
                 offset: record,
                 end,
                 part: part as u8,
                 entry,
+                blocks,
             });
         }
     }
@@ -515,7 +524,7 @@ fn draw<I>(row: &Row) -> Node<I> {
             role: MessageRole::System,
             text,
         } => system(&key, text),
-        Entry::Message { role, text } => node(
+        Entry::Message { role, .. } => node(
             &key,
             Element::Message {
                 role: *role,
@@ -527,7 +536,7 @@ fn draw<I>(row: &Row) -> Node<I> {
                         ..Style::default()
                     },
                     element: Element::Markdown {
-                        blocks: markdown::parse(text),
+                        blocks: row.blocks.clone(),
                     },
                 }],
             },
