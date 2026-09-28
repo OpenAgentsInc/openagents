@@ -11,6 +11,7 @@
 //! reply to [`crate::Request::WalletWords`], which the host sends after the
 //! person confirms a warning.
 
+use crate::amounts::Format;
 use breez_sdk_spark::Network;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -55,7 +56,7 @@ pub const TRUST_LINES: [&str; 5] = [
 /// What the screen needs from a running wallet. `SparkNode` is the real one;
 /// tests supply their own. Every call blocks.
 pub trait Node: Send + Sync {
-    /// The balance in sats, as last synced.
+    /// The balance in base units, as last synced.
     fn balance(&self) -> Result<u64, String>;
     fn sync(&self) -> Result<(), String>;
     /// The wallet's static Spark address.
@@ -77,7 +78,8 @@ pub trait Node: Send + Sync {
     fn deposits(&self) -> Result<Vec<DepositRow>, String>;
     /// What claiming a deposit now would cost.
     fn claim_quote(&self, txid: &str, vout: u32) -> Result<ClaimQuote, String>;
-    /// Claim a deposit for at most `max_fee_sats`; what happened, in words.
+    /// Claim a deposit for at most `max_fee_sats` base units; what happened,
+    /// in words.
     fn claim(&self, txid: &str, vout: u32, max_fee_sats: u64) -> Result<String, String>;
     /// The network's recommended on-chain fee rates.
     fn fee_rates(&self) -> Result<FeeRates, String>;
@@ -171,11 +173,23 @@ pub struct DepositRow {
     pub amount_sats: u64,
     /// It has the confirmations a claim at maturity needs.
     pub mature: bool,
-    /// Why the last claim failed, in words.
-    pub problem: Option<String>,
+    /// Why the last claim failed.
+    pub problem: Option<DepositProblem>,
     /// A refund of it was broadcast in this transaction.
     #[serde(default)]
     pub refund_txid: Option<String>,
+}
+
+/// Why the SDK's last automatic claim of a deposit failed. The screen words
+/// it in the person's amount format.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DepositProblem {
+    /// Claiming costs this many base units, above the automatic limit.
+    FeeAboveLimit(u64),
+    /// The deposit wasn't found on the chain.
+    Missing,
+    /// Another failure, in the SDK's words.
+    Failed(String),
 }
 
 /// A saved contact: a name and a Lightning address.
@@ -293,13 +307,14 @@ pub enum Destination {
 }
 
 /// What the person asked to pay: a request as pasted or scanned, the amount
-/// they typed when the request carries none, and a comment for a recipient
-/// that takes one.
+/// they typed when the request carries none (base units), a comment for a
+/// recipient that takes one, and the format to word amounts in.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SendRequest {
     pub input: String,
     pub amount_sats: Option<u64>,
     pub comment: Option<String>,
+    pub format: Format,
 }
 
 /// A prepared payment and its fee.
@@ -364,7 +379,8 @@ pub struct Paid {
 pub struct LnurlTerms {
     /// The Lightning address, or the service's domain.
     pub recipient: String,
-    /// Whole sats: the minimum rounded up, the maximum rounded down.
+    /// Whole base units: the minimum rounded up, the maximum rounded down.
+    /// LNURL states them in msat (LUD-06), which stays the wire unit.
     pub min_sats: u64,
     pub max_sats: u64,
     /// The longest comment it takes (LUD-12); 0 takes none.
@@ -383,8 +399,8 @@ impl LnurlTerms {
     ) -> Self {
         Self {
             recipient,
-            min_sats: min_msat.div_ceil(1000),
-            max_sats: max_msat / 1000,
+            min_sats: bitcoin_amount::from_msat_ceil(min_msat),
+            max_sats: bitcoin_amount::from_msat_floor(max_msat),
             comment_max,
             description: lnurl_description(metadata),
         }
@@ -400,11 +416,13 @@ impl LnurlTerms {
     }
 
     /// The amount and comment to prepare, or what to ask the person. A
-    /// recipient that takes one amount only is paid that amount.
+    /// recipient that takes one amount only is paid that amount. Amounts in
+    /// what it asks are worded in `format`.
     pub fn check(
         &self,
         amount: Option<u64>,
         comment: Option<&str>,
+        format: Format,
     ) -> Result<(u64, Option<String>), QuoteFailure> {
         if self.max_sats == 0 || self.min_sats > self.max_sats {
             return Err(QuoteFailure::Refused(format!(
@@ -413,13 +431,17 @@ impl LnurlTerms {
             )));
         }
         let range = if self.min_sats == self.max_sats {
-            format!("{} takes exactly {}.", self.recipient, sats(self.min_sats))
+            format!(
+                "{} takes exactly {}.",
+                self.recipient,
+                format.show(self.min_sats)
+            )
         } else {
             format!(
                 "{} takes from {} to {}.",
                 self.recipient,
-                sats(self.min_sats),
-                sats(self.max_sats)
+                format.show(self.min_sats),
+                format.show(self.max_sats)
             )
         };
         let amount = match amount {
@@ -637,6 +659,8 @@ struct Shared {
     buy_error: Option<String>,
     /// A purchase page for the host to open once.
     open_url: Option<String>,
+    /// How amounts are shown and read; the app's choice.
+    format: Format,
 }
 
 /// A balance read by an earlier sync, shown until this launch reads again.
@@ -703,12 +727,15 @@ pub enum Screen {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Summary {
     pub network: &'static str,
+    /// The balance in base units (machine-readable; the name is kept).
     pub balance_sats: u64,
-    /// "12,345 sats".
+    /// In the chosen format: "₿12,345" or "0.00012345 BTC".
     pub balance: String,
-    /// "0.00012345 BTC".
-    pub balance_btc: String,
-    /// No sats yet: the screen explains how to receive some.
+    /// In the other format, for the transitional dual display.
+    pub balance_alternate: String,
+    /// For a screen reader: "12,345 bitcoin" or "0.00012345 BTC".
+    pub balance_spoken: String,
+    /// No bitcoin yet: the screen explains how to receive some.
     pub empty: bool,
     /// When the last sync finished, in Unix seconds.
     pub synced_at: Option<u64>,
@@ -806,7 +833,7 @@ pub struct ClaimView {
     pub txid: String,
     pub vout: u32,
     pub busy: bool,
-    /// "Claim now for a 1,200 sats fee; 48,800 sats reach your balance."
+    /// "Claim now for a ₿1,200 fee; ₿48,800 reaches your balance."
     pub quote: Option<String>,
     pub message: Option<String>,
 }
@@ -826,7 +853,7 @@ pub struct Code {
     pub text: String,
     pub uri: String,
     pub qr: Option<crate::app::QrModules>,
-    /// "Invoice for 1,000 sats", or what the code is for.
+    /// "Lightning invoice for ₿1,000", or what the code is for.
     pub caption: String,
 }
 
@@ -915,7 +942,7 @@ pub struct PaymentView {
     pub id: String,
     /// "Received" or "Sent".
     pub title: &'static str,
-    /// "+1,000 sats" or "-1,000 sats".
+    /// "+₿1,000" or "-₿1,000" (or legacy BTC).
     pub amount: String,
     pub fee: Option<String>,
     pub method: String,
@@ -964,6 +991,7 @@ impl Wallet {
             buy_busy: false,
             buy_error: None,
             open_url: None,
+            format: Format::default(),
         };
         Self {
             home,
@@ -1005,6 +1033,11 @@ impl Wallet {
     /// The running wallet, for an agent payment the owner approved.
     pub fn node(&self) -> Option<Arc<dyn Node>> {
         self.lock().node.clone()
+    }
+
+    /// Show and read amounts in `format` from now on.
+    pub fn set_format(&mut self, format: Format) {
+        self.lock().format = format;
     }
 
     /// Take the wallet key and start the wallet. A later call with the same
@@ -1192,7 +1225,8 @@ impl Wallet {
     /// Make a Lightning invoice. `amount` is what the person typed; empty
     /// means any amount.
     pub fn invoice(&mut self, amount: &str) {
-        let amount = match parse_amount(amount) {
+        let format = self.lock().format;
+        let amount = match parse_amount(amount, format) {
             Ok(amount) => amount,
             Err(message) => {
                 self.lock().invoice_error = Some(message);
@@ -1235,7 +1269,8 @@ impl Wallet {
             self.lock().send = Sending::Idle;
             return;
         }
-        let amount = match parse_amount(amount) {
+        let format = self.lock().format;
+        let amount = match parse_amount(amount, format) {
             Ok(amount) => amount,
             Err(message) => {
                 let mut shared = self.lock();
@@ -1254,6 +1289,7 @@ impl Wallet {
             input,
             amount_sats: amount,
             comment: Some(comment.trim().to_owned()).filter(|comment| !comment.is_empty()),
+            format,
         };
         let (node, directory, generation) = {
             let mut shared = self.lock();
@@ -1454,10 +1490,11 @@ impl Wallet {
             self.lock().buy_error = Some("Choose MoonPay or Cash App.".into());
             return;
         };
-        let amount = match parse_amount(amount) {
+        let format = self.lock().format;
+        let amount = match parse_amount(amount, format) {
             Ok(Some(amount)) => amount,
             Ok(None) => {
-                self.lock().buy_error = Some("Enter how many sats to buy.".into());
+                self.lock().buy_error = Some("Enter how much bitcoin to buy.".into());
                 return;
             }
             Err(message) => {
@@ -1829,16 +1866,18 @@ impl Wallet {
         if status.is_none() && !shared.synced && error.is_none() {
             error = Some("The wallet has not read Spark yet.".into());
         }
+        let format = shared.format;
         let shown = shared.last;
         let total = shown.map_or(0, |last| last.total);
         let addresses = &shared.addresses;
         Screen::Ready(Box::new(Summary {
             network: NETWORK_LABEL,
             balance_sats: total,
-            balance: shown.map(|_| sats(total)).unwrap_or_default(),
-            balance_btc: shown
-                .map(|_| format!("{} BTC", btc(total)))
+            balance: shown.map(|_| format.show(total)).unwrap_or_default(),
+            balance_alternate: shown
+                .map(|_| format.other().show(total))
                 .unwrap_or_default(),
+            balance_spoken: shown.map(|_| format.spoken(total)).unwrap_or_default(),
             empty: shown.is_some() && total == 0,
             synced_at: shown.and_then(|last| last.synced_at),
             refreshing: shared.refreshing || shared.starting,
@@ -1848,7 +1887,7 @@ impl Wallet {
             warning: (total > BALANCE_WARNING_SATS).then(|| {
                 format!(
                     "This phone wallet holds more than {}. Keep only what you'd carry, and make sure your recovery words are written down.",
-                    sats(BALANCE_WARNING_SATS)
+                    format.show(BALANCE_WARNING_SATS)
                 )
             }),
             trust: Trust {
@@ -1862,7 +1901,9 @@ impl Wallet {
                         invoice,
                         &format!("lightning:{invoice}"),
                         match amount {
-                            Some(amount) => format!("Lightning invoice for {}", sats(*amount)),
+                            Some(amount) => {
+                                format!("Lightning invoice for {}", format.show(*amount))
+                            }
                             None => "Lightning invoice for any amount".into(),
                         },
                     )
@@ -1902,7 +1943,7 @@ impl Wallet {
                 }),
             },
             send: {
-                let mut view = send_view(&shared.send);
+                let mut view = send_view(&shared.send, format);
                 if matches!(shared.send, Sending::Quoted(_) | Sending::Paying(_) | Sending::Sent(_))
                     && let Some(person) = &shared.person
                 {
@@ -1912,7 +1953,11 @@ impl Wallet {
                 view.save_suggestion = shared.save_suggestion.clone();
                 view
             },
-            payments: shared.payments.iter().map(payment_view).collect(),
+            payments: shared
+                .payments
+                .iter()
+                .map(|row| payment_view(row, format))
+                .collect(),
             can_show_words: self.seed.is_some(),
             buy: BuyView {
                 busy: shared.buy_busy,
@@ -1930,9 +1975,13 @@ impl Wallet {
                     },
                 ],
             },
-            deposits: shared.deposits.iter().map(deposit_view).collect(),
-            claim: shared.claim.as_ref().map(claim_view),
-            refund: shared.refund.as_ref().map(refund_view),
+            deposits: shared
+                .deposits
+                .iter()
+                .map(|row| deposit_view(row, format))
+                .collect(),
+            claim: shared.claim.as_ref().map(|claim| claim_view(claim, format)),
+            refund: shared.refund.as_ref().map(|refund| refund_view(refund, format)),
             people: shared
                 .contacts
                 .iter()
@@ -2075,7 +2124,7 @@ fn code(text: &str, uri: &str, caption: String) -> Code {
     }
 }
 
-fn send_view(send: &Sending) -> SendView {
+fn send_view(send: &Sending, format: Format) -> SendView {
     let mut view = SendView {
         state: "idle",
         message: None,
@@ -2104,12 +2153,12 @@ fn send_view(send: &Sending) -> SendView {
         }
         Sending::Quoted(quote) => {
             view.state = "quoted";
-            view.quote = Some(quote_view(quote));
+            view.quote = Some(quote_view(quote, format));
         }
         Sending::Paying(quote) => {
             view.state = "paying";
             view.message = Some("Sending…".into());
-            view.quote = Some(quote_view(quote));
+            view.quote = Some(quote_view(quote, format));
         }
         Sending::Sent(paid) => {
             view.state = "sent";
@@ -2118,7 +2167,7 @@ fn send_view(send: &Sending) -> SendView {
                 "failed" => "The payment failed.".to_string(),
                 _ => "Sent.".to_string(),
             });
-            view.result = Some(payment_view(&paid.row));
+            view.result = Some(payment_view(&paid.row, format));
             view.recipient_message = paid.message.clone();
         }
         Sending::Failed(message) => {
@@ -2129,17 +2178,27 @@ fn send_view(send: &Sending) -> SendView {
     view
 }
 
-fn deposit_view(row: &DepositRow) -> DepositView {
+fn deposit_view(row: &DepositRow, format: Format) -> DepositView {
     DepositView {
         txid: row.txid.clone(),
         vout: row.vout,
-        amount: sats(row.amount_sats),
+        amount: format.show(row.amount_sats),
         status: match (&row.refund_txid, &row.problem, row.mature) {
             (Some(refund), _, _) => format!(
                 "Refund sent in transaction {}. It leaves the wallet once it confirms.",
                 shorten(refund)
             ),
             (None, Some(problem), _) => {
+                let problem = match problem {
+                    DepositProblem::FeeAboveLimit(fee) => format!(
+                        "Claiming it costs {}, above the automatic limit.",
+                        format.show(*fee)
+                    ),
+                    DepositProblem::Missing => "The deposit wasn't found on the chain.".into(),
+                    DepositProblem::Failed(message) => {
+                        format!("The last claim failed ({message}).")
+                    }
+                };
                 format!("{problem} Claim it at a quoted fee, or refund it on-chain.")
             }
             (None, None, false) => "Waiting for 3 confirmations.".into(),
@@ -2149,7 +2208,7 @@ fn deposit_view(row: &DepositRow) -> DepositView {
     }
 }
 
-fn refund_view(refund: &Refund) -> RefundView {
+fn refund_view(refund: &Refund, format: Format) -> RefundView {
     RefundView {
         txid: refund.txid.clone(),
         vout: refund.vout,
@@ -2164,7 +2223,7 @@ fn refund_view(refund: &Refund) -> RefundView {
                         label: speed.label(),
                         fee: format!(
                             "about {} at {rate} sat/vB",
-                            sats(rate.saturating_mul(REFUND_VBYTES))
+                            format.show(rate.saturating_mul(REFUND_VBYTES))
                         ),
                         chosen: refund
                             .review
@@ -2177,9 +2236,9 @@ fn refund_view(refund: &Refund) -> RefundView {
         review: refund.review.as_ref().map(|review| {
             format!(
                 "Refund {} to {}; about {} fee at {} sat/vB.",
-                sats(review.amount_sats.saturating_sub(review.fee_sats)),
+                format.show(review.amount_sats.saturating_sub(review.fee_sats)),
                 shorten(&review.address),
-                sats(review.fee_sats),
+                format.show(review.fee_sats),
                 review.rate
             )
         }),
@@ -2187,7 +2246,7 @@ fn refund_view(refund: &Refund) -> RefundView {
     }
 }
 
-fn claim_view(claim: &Claim) -> ClaimView {
+fn claim_view(claim: &Claim, format: Format) -> ClaimView {
     ClaimView {
         txid: claim.txid.clone(),
         vout: claim.vout,
@@ -2201,16 +2260,16 @@ fn claim_view(claim: &Claim) -> ClaimView {
                 "Claim at 3 confirmations"
             };
             format!(
-                "{when} for a {} fee; {} reach your balance.",
-                sats(quote.fee_sats),
-                sats(quote.credit_sats)
+                "{when} for a {} fee; {} reaches your balance.",
+                format.show(quote.fee_sats),
+                format.show(quote.credit_sats)
             )
         }),
         message: claim.message.clone(),
     }
 }
 
-fn quote_view(quote: &Quote) -> QuoteView {
+fn quote_view(quote: &Quote, format: Format) -> QuoteView {
     let (kind, destination) = match &quote.destination {
         Destination::Lightning(invoice) => ("Lightning invoice", shorten(invoice)),
         Destination::LightningAddress(address) => ("Lightning address", address.clone()),
@@ -2221,9 +2280,9 @@ fn quote_view(quote: &Quote) -> QuoteView {
         id: quote.id,
         kind,
         destination,
-        amount: sats(quote.amount_sats),
-        fee: sats(quote.fee_sats),
-        total: sats(quote.amount_sats.saturating_add(quote.fee_sats)),
+        amount: format.show(quote.amount_sats),
+        fee: format.show(quote.fee_sats),
+        total: format.show(quote.amount_sats.saturating_add(quote.fee_sats)),
         note: quote.note.clone(),
         comment: quote.comment.clone(),
         speeds: quote
@@ -2232,23 +2291,20 @@ fn quote_view(quote: &Quote) -> QuoteView {
             .map(|(speed, fee)| SpeedView {
                 id: speed.id(),
                 label: speed.label(),
-                fee: sats(*fee),
+                fee: format.show(*fee),
                 chosen: quote.speed == Some(*speed),
             })
             .collect(),
     }
 }
 
-fn payment_view(row: &PaymentRow) -> PaymentView {
+fn payment_view(row: &PaymentRow, format: Format) -> PaymentView {
     PaymentView {
         id: row.id.clone(),
         title: if row.received { "Received" } else { "Sent" },
-        amount: format!(
-            "{}{}",
-            if row.received { "+" } else { "-" },
-            sats(row.amount_sats)
-        ),
-        fee: (!row.received && row.fee_sats > 0).then(|| format!("{} fee", sats(row.fee_sats))),
+        amount: format.show_signed(row.amount_sats, row.received),
+        fee: (!row.received && row.fee_sats > 0)
+            .then(|| format!("{} fee", format.show(row.fee_sats))),
         method: row.method.clone(),
         status: row.status.clone(),
         at: row.at,
@@ -2284,24 +2340,10 @@ fn shorten(text: &str) -> String {
     format!("{head}…{tail}")
 }
 
-/// An amount the person typed, in whole sats. Empty means none; digits may
-/// carry thousands separators.
-fn parse_amount(text: &str) -> Result<Option<u64>, String> {
-    let digits: String = text
-        .trim()
-        .trim_end_matches("sats")
-        .trim_end_matches("sat")
-        .chars()
-        .filter(|c| !matches!(c, ',' | '_' | ' '))
-        .collect();
-    if digits.is_empty() {
-        return Ok(None);
-    }
-    match digits.parse::<u64>() {
-        Ok(0) => Err("Enter an amount above zero.".into()),
-        Ok(amount) if amount <= 2_100_000_000_000_000 => Ok(Some(amount)),
-        _ => Err("Enter the amount in whole sats, such as 1,000.".into()),
-    }
+/// An amount the person typed, as base units, in the app's format: whole
+/// base units (BIP 177) or decimal BTC (legacy). Empty means none.
+fn parse_amount(text: &str, format: Format) -> Result<Option<u64>, String> {
+    format.parse(text).map_err(|error| error.message(format))
 }
 
 fn decode(hex_text: &str) -> Result<Vec<u8>, String> {
@@ -2318,28 +2360,6 @@ fn decode(hex_text: &str) -> Result<Vec<u8>, String> {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-/// "12,345 sats", with thousands separators.
-pub fn sats(value: u64) -> String {
-    let digits = value.to_string();
-    let mut grouped = String::new();
-    for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index).is_multiple_of(3) {
-            grouped.push(',');
-        }
-        grouped.push(digit);
-    }
-    if value == 1 {
-        "1 sat".into()
-    } else {
-        format!("{grouped} sats")
-    }
-}
-
-/// Bitcoin with eight decimals: "0.00012345".
-pub fn btc(value: u64) -> String {
-    format!("{}.{:08}", value / 100_000_000, value % 100_000_000)
 }
 
 fn qr(text: &str) -> Option<crate::app::QrModules> {
@@ -2460,7 +2480,8 @@ mod tests {
                     } else {
                         LnurlTerms::of("shop.example".into(), 21_000_000, 21_000_000, 0, "[]")
                     };
-                    let (amount, comment) = terms.check(amount, request.comment.as_deref())?;
+                    let (amount, comment) =
+                        terms.check(amount, request.comment.as_deref(), request.format)?;
                     Ok(Quote {
                         id: 9,
                         destination: Destination::LightningAddress(terms.recipient.clone()),
@@ -2600,7 +2621,7 @@ mod tests {
     fn deposit(
         txid: &str,
         mature: bool,
-        problem: Option<&str>,
+        problem: Option<DepositProblem>,
         refund: Option<&str>,
     ) -> DepositRow {
         DepositRow {
@@ -2608,7 +2629,7 @@ mod tests {
             vout: 0,
             amount_sats: 40_000,
             mature,
-            problem: problem.map(str::to_owned),
+            problem,
             refund_txid: refund.map(str::to_owned),
         }
     }
@@ -2850,19 +2871,14 @@ mod tests {
         *node.deposits.lock().unwrap() = vec![
             deposit("aa", false, None, None),
             deposit("bb", true, None, None),
+            deposit("cc", true, Some(DepositProblem::FeeAboveLimit(1_200)), None),
+            deposit("dd", true, Some(DepositProblem::Missing), None),
             deposit(
-                "cc",
+                "ee",
                 true,
-                Some("Claiming it costs 1,200 sats, above the automatic limit."),
+                Some(DepositProblem::Failed("timeout".into())),
                 None,
             ),
-            deposit(
-                "dd",
-                true,
-                Some("The deposit wasn't found on the chain."),
-                None,
-            ),
-            deposit("ee", true, Some("The last claim failed (timeout)."), None),
             deposit("ff", true, None, Some(&"12".repeat(32))),
         ];
         let mut wallet = Wallet::new(
@@ -2882,7 +2898,7 @@ mod tests {
                 ("Waiting for 3 confirmations.".into(), true),
                 ("Confirmed; the wallet is claiming it.".into(), true),
                 (
-                    "Claiming it costs 1,200 sats, above the automatic limit. Claim it at a quoted fee, or refund it on-chain.".into(),
+                    "Claiming it costs ₿1,200, above the automatic limit. Claim it at a quoted fee, or refund it on-chain.".into(),
                     true
                 ),
                 (
@@ -2908,7 +2924,12 @@ mod tests {
     fn a_refund_is_sent_once_to_a_reviewed_address_at_a_chosen_speed() {
         let home = tempfile::tempdir().expect("temp dir");
         let node = Arc::new(Fake::default());
-        *node.deposits.lock().unwrap() = vec![deposit("cc", true, Some("Too costly."), None)];
+        *node.deposits.lock().unwrap() = vec![deposit(
+            "cc",
+            true,
+            Some(DepositProblem::Failed("too costly".into())),
+            None,
+        )];
         let mut wallet = Wallet::new(
             home.path().to_path_buf(),
             opener(node.clone(), Arc::new(Mutex::new(vec![]))),
@@ -2935,9 +2956,9 @@ mod tests {
         assert_eq!(
             speeds,
             vec![
-                ("slow", "about 111 sats at 1 sat/vB".to_string()),
-                ("medium", "about 888 sats at 8 sat/vB".to_string()),
-                ("fast", "about 2,220 sats at 20 sat/vB".to_string()),
+                ("slow", "about ₿111 at 1 sat/vB".to_string()),
+                ("medium", "about ₿888 at 8 sat/vB".to_string()),
+                ("fast", "about ₿2,220 at 20 sat/vB".to_string()),
             ]
         );
         for (address, expected) in [
@@ -2979,9 +3000,7 @@ mod tests {
         let reviewed = ready(&wallet).refund.expect("refund");
         assert_eq!(
             reviewed.review.as_deref(),
-            Some(
-                "Refund 39,112 sats to bc1qar0srrr7xf…gtzzwf5mdq; about 888 sats fee at 8 sat/vB."
-            )
+            Some("Refund ₿39,112 to bc1qar0srrr7xf…gtzzwf5mdq; about ₿888 fee at 8 sat/vB.")
         );
         assert!(
             reviewed
@@ -3060,9 +3079,9 @@ mod tests {
         assert_eq!(
             speeds,
             vec![
-                ("slow", "250 sats", false),
-                ("medium", "400 sats", true),
-                ("fast", "900 sats", false)
+                ("slow", "₿250", false),
+                ("medium", "₿400", true),
+                ("fast", "₿900", false)
             ]
         );
         wallet.speed(quote.id, "fast");
@@ -3071,7 +3090,7 @@ mod tests {
         let fast = ready(&wallet).send.quote.expect("quote");
         assert_eq!(
             (fast.fee.as_str(), fast.total.as_str()),
-            ("900 sats", "50,900 sats")
+            ("₿900", "₿50,900")
         );
         assert_eq!(*node.speeds.lock().unwrap(), vec![(10, Speed::Fast)]);
         wallet.pay(fast.id);
@@ -3181,7 +3200,8 @@ mod tests {
         settle(&wallet);
         let empty = ready(&wallet);
         assert!(empty.empty);
-        assert_eq!(empty.balance, "0 sats");
+        assert_eq!(empty.balance, "₿0");
+        assert_eq!(empty.balance_alternate, "0.00000000 BTC");
         assert_eq!(empty.network, "Bitcoin · Spark");
         let spark = empty.receive.spark.expect("spark address");
         assert_eq!(spark.text, "spark1fakeaddress");
@@ -3210,10 +3230,11 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         let funded = ready(&wallet);
-        assert_eq!(funded.balance, "123,456 sats");
-        assert_eq!(funded.balance_btc, "0.00123456 BTC");
+        assert_eq!(funded.balance, "₿123,456");
+        assert_eq!(funded.balance_alternate, "0.00123456 BTC");
+        assert_eq!(funded.balance_spoken, "123,456 bitcoin");
         assert_eq!(funded.payments.len(), 1);
-        assert_eq!(funded.payments[0].amount, "+123,456 sats");
+        assert_eq!(funded.payments[0].amount, "+₿123,456");
         assert_eq!(funded.payments[0].title, "Received");
         assert_eq!(funded.warning, None);
 
@@ -3221,7 +3242,7 @@ mod tests {
         // before its wallet starts.
         let again = Wallet::new(home.path().join("spark"), opener(node, seen));
         let cached = ready(&again);
-        assert_eq!(cached.balance, "123,456 sats");
+        assert_eq!(cached.balance, "₿123,456");
         assert!(!cached.balance_unknown);
         assert_eq!(
             cached.receive.spark.map(|code| code.text).as_deref(),
@@ -3255,7 +3276,7 @@ mod tests {
         wallet.invoice("2,500");
         settle(&wallet);
         let fixed = ready(&wallet).receive.lightning.expect("invoice");
-        assert_eq!(fixed.caption, "Lightning invoice for 2,500 sats");
+        assert_eq!(fixed.caption, "Lightning invoice for ₿2,500");
         assert!(fixed.text.ends_with("2500"));
         wallet.invoice("a lot");
         assert!(ready(&wallet).receive.lightning_error.is_some());
@@ -3297,7 +3318,7 @@ mod tests {
         let spark = ready(&wallet).send.quote.expect("quote");
         assert_eq!(
             (spark.kind, spark.amount.as_str(), spark.fee.as_str()),
-            ("Spark address", "1,500 sats", "0 sats")
+            ("Spark address", "₿1,500", "₿0")
         );
 
         wallet.quote("lnbc-with-amount", "", "");
@@ -3312,7 +3333,7 @@ mod tests {
                 quote.fee.as_str(),
                 quote.total.as_str()
             ),
-            ("1,000 sats", "3 sats", "1,003 sats")
+            ("₿1,000", "₿3", "₿1,003")
         );
         assert_eq!(quote.note.as_deref(), Some("Coffee"));
 
@@ -3331,10 +3352,10 @@ mod tests {
         assert_eq!(sent.send.message.as_deref(), Some("Sent."));
         assert_eq!(
             sent.send.result.map(|row| row.amount).as_deref(),
-            Some("-1,000 sats")
+            Some("-₿1,000")
         );
-        assert_eq!(sent.balance, "48,997 sats");
-        assert_eq!(sent.payments[0].fee.as_deref(), Some("3 sats fee"));
+        assert_eq!(sent.balance, "₿48,997");
+        assert_eq!(sent.payments[0].fee.as_deref(), Some("₿3 fee"));
         wallet.reset_send();
         assert_eq!(ready(&wallet).send.state, "idle");
     }
@@ -3359,7 +3380,7 @@ mod tests {
         assert_eq!(asked.state, "needs_amount");
         assert_eq!(
             asked.message.as_deref(),
-            Some("Enter an amount. alice@example.com takes from 1 sat to 5,000 sats.")
+            Some("Enter an amount. alice@example.com takes from ₿1 to ₿5,000.")
         );
         assert_eq!(asked.recipient.as_deref(), Some("alice@example.com"));
         assert_eq!(asked.description.as_deref(), Some("Sats for Alice"));
@@ -3370,7 +3391,7 @@ mod tests {
         settle(&wallet);
         assert_eq!(
             ready(&wallet).send.message.as_deref(),
-            Some("alice@example.com takes from 1 sat to 5,000 sats.")
+            Some("alice@example.com takes from ₿1 to ₿5,000.")
         );
         wallet.quote("alice@example.com", "2000", &"x".repeat(21));
         settle(&wallet);
@@ -3395,7 +3416,7 @@ mod tests {
                 quote.fee.as_str(),
                 quote.total.as_str()
             ),
-            ("2,000 sats", "2 sats", "2,002 sats")
+            ("₿2,000", "₿2", "₿2,002")
         );
         assert_eq!(quote.note.as_deref(), Some("Sats for Alice"));
         assert_eq!(quote.comment.as_deref(), Some("for lunch"));
@@ -3415,7 +3436,7 @@ mod tests {
         wallet.quote("lnurl1fixedprice", "", "hello");
         settle(&wallet);
         let fixed = ready(&wallet).send.quote.expect("quote");
-        assert_eq!(fixed.amount, "21,000 sats");
+        assert_eq!(fixed.amount, "₿21,000");
         assert_eq!(fixed.destination, "shop.example");
         assert_eq!(fixed.comment, None);
     }
@@ -3423,20 +3444,34 @@ mod tests {
     #[test]
     fn lnurl_terms_read_ranges_comments_and_metadata() {
         let terms = LnurlTerms::of("bob@example.com".into(), 1_500, 2_999, 0, "not json");
-        // Millisats round inward: at least 2 sats, at most 2.
+        // Millisats round inward: at least ₿2, at most ₿2.
         assert_eq!((terms.min_sats, terms.max_sats), (2, 2));
         assert_eq!(terms.description, None);
-        assert_eq!(terms.check(None, None), Ok((2, None)));
+        assert_eq!(terms.check(None, None, Format::Bip177), Ok((2, None)));
+        // What it asks is worded in the person's format.
+        let range = LnurlTerms::of("bob@example.com".into(), 1_000, 100_000_000_000, 0, "[]");
+        let asked = |format| match range.check(None, None, format) {
+            Err(QuoteFailure::NeedsAmount(ask)) => ask.message,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(
+            asked(Format::Bip177),
+            "Enter an amount. bob@example.com takes from ₿1 to ₿100,000,000."
+        );
+        assert_eq!(
+            asked(Format::LegacyBtc),
+            "Enter an amount. bob@example.com takes from 0.00000001 BTC to 1.00000000 BTC."
+        );
         let closed = LnurlTerms::of("bob@example.com".into(), 1_000, 0, 0, "[]");
         assert_eq!(
-            closed.check(Some(10), None),
+            closed.check(Some(10), None, Format::Bip177),
             Err(QuoteFailure::Refused(
                 "bob@example.com isn't taking payments right now.".into()
             ))
         );
         let inverted = LnurlTerms::of("bob@example.com".into(), 9_000, 1_000, 0, "[]");
         assert!(matches!(
-            inverted.check(Some(5), None),
+            inverted.check(Some(5), None, Format::Bip177),
             Err(QuoteFailure::Refused(_))
         ));
         assert_eq!(
@@ -3451,7 +3486,7 @@ mod tests {
         // Comments count characters, not bytes.
         let terms = LnurlTerms::of("c@example.com".into(), 1_000, 10_000, 3, "[]");
         assert_eq!(
-            terms.check(Some(5), Some("éèê")),
+            terms.check(Some(5), Some("éèê"), Format::Bip177),
             Ok((5, Some("éèê".into())))
         );
     }
@@ -3555,7 +3590,7 @@ mod tests {
         let mut wallet = Wallet::new(home.path().to_path_buf(), opener(node, seen.clone()));
         wallet.open(ENTROPY, false);
         settle(&wallet);
-        assert_eq!(ready(&wallet).balance, "900 sats");
+        assert_eq!(ready(&wallet).balance, "₿900");
         wallet.open(&long, true);
         assert!(ready(&wallet).balance_unknown, "the old balance is gone");
         assert!(!home.path().join(BALANCE_FILE).exists());
@@ -3587,7 +3622,7 @@ mod tests {
         assert!(
             warned
                 .warning
-                .is_some_and(|warning| warning.contains("1,000,000 sats"))
+                .is_some_and(|warning| warning.contains("₿1,000,000"))
         );
     }
 
@@ -3600,7 +3635,7 @@ mod tests {
             vout: 1,
             amount_sats: 50_000,
             mature: true,
-            problem: Some("Claiming it costs 1,200 sats, above the automatic limit.".into()),
+            problem: Some(DepositProblem::FeeAboveLimit(1_200)),
             refund_txid: None,
         });
         let mut wallet = Wallet::new(
@@ -3612,13 +3647,16 @@ mod tests {
         let summary = ready(&wallet);
         assert_eq!(summary.buy.providers.len(), 2);
         assert_eq!(summary.deposits.len(), 1);
-        assert_eq!(summary.deposits[0].amount, "50,000 sats");
-        assert!(summary.deposits[0].status.contains("1,200 sats"));
+        assert_eq!(summary.deposits[0].amount, "₿50,000");
+        assert_eq!(
+            summary.deposits[0].status,
+            "Claiming it costs ₿1,200, above the automatic limit. Claim it at a quoted fee, or refund it on-chain."
+        );
 
         wallet.buy("moonpay", "");
         assert_eq!(
             ready(&wallet).buy.error.as_deref(),
-            Some("Enter how many sats to buy.")
+            Some("Enter how much bitcoin to buy.")
         );
         wallet.buy("paypal", "1000");
         assert!(ready(&wallet).buy.error.is_some());
@@ -3656,7 +3694,7 @@ mod tests {
                 .claim
                 .and_then(|claim| claim.quote)
                 .as_deref(),
-            Some("Claim for a 1,200 sats fee; 48,800 sats reach your balance.")
+            Some("Claim for a ₿1,200 fee; ₿48,800 reaches your balance.")
         );
         wallet.claim(&txid, 1);
         settle(&wallet);
@@ -3667,21 +3705,95 @@ mod tests {
             Some("Claimed. It's in your balance.")
         );
         assert!(claimed.deposits.is_empty());
-        assert_eq!(claimed.balance, "48,800 sats");
+        assert_eq!(claimed.balance, "₿48,800");
         wallet.claim_reset();
         assert!(ready(&wallet).claim.is_none());
     }
 
     #[test]
+    fn the_legacy_btc_format_shows_and_reads_decimal_btc() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        node.balance.store(123_456, Ordering::SeqCst);
+        node.deposits.lock().unwrap().push(DepositRow {
+            txid: "cd".repeat(32),
+            vout: 0,
+            amount_sats: 50_000,
+            mature: false,
+            problem: None,
+            refund_txid: None,
+        });
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        wallet.set_format(Format::LegacyBtc);
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        let summary = ready(&wallet);
+        assert_eq!(summary.balance, "0.00123456 BTC");
+        assert_eq!(summary.balance_alternate, "₿123,456");
+        assert_eq!(summary.balance_spoken, "0.00123456 BTC");
+        assert_eq!(summary.balance_sats, 123_456, "stored as base units");
+        assert_eq!(summary.deposits[0].amount, "0.00050000 BTC");
+        // Amounts are typed as decimal BTC and quoted as base units.
+        wallet.quote("spark1friend", "0.00002", "");
+        settle(&wallet);
+        let quote = ready(&wallet).send.quote.expect("quote");
+        assert_eq!(
+            (
+                quote.amount.as_str(),
+                quote.fee.as_str(),
+                quote.total.as_str()
+            ),
+            ("0.00002000 BTC", "0.00000000 BTC", "0.00002000 BTC")
+        );
+        wallet.reset_send();
+        wallet.quote("spark1friend", "2000", "");
+        settle(&wallet);
+        assert_eq!(
+            ready(&wallet).send.quote.expect("quote").amount,
+            "2,000.00000000 BTC"
+        );
+        wallet.reset_send();
+        wallet.quote("spark1friend", "0.000000001", "");
+        assert_eq!(
+            ready(&wallet).send.message.as_deref(),
+            Some("BTC amounts have at most eight decimals.")
+        );
+        wallet.invoice("0.0001");
+        settle(&wallet);
+        assert_eq!(
+            ready(&wallet).receive.lightning.expect("invoice").caption,
+            "Lightning invoice for 0.00010000 BTC"
+        );
+        // Switching back changes every amount on the next screen.
+        wallet.set_format(Format::Bip177);
+        let summary = ready(&wallet);
+        assert_eq!(summary.balance, "₿123,456");
+        assert_eq!(
+            summary.receive.lightning.expect("invoice").caption,
+            "Lightning invoice for ₿10,000"
+        );
+        wallet.invoice("0.0001");
+        assert_eq!(
+            ready(&wallet).receive.lightning_error.as_deref(),
+            Some("Enter the amount in whole bitcoin base units, such as ₿1,000.")
+        );
+    }
+
+    #[test]
     fn amounts_read_plainly() {
-        assert_eq!(sats(0), "0 sats");
-        assert_eq!(sats(1), "1 sat");
-        assert_eq!(sats(1_000), "1,000 sats");
-        assert_eq!(sats(21_000_000), "21,000,000 sats");
-        assert_eq!(btc(150_000_000), "1.50000000");
-        assert_eq!(parse_amount(""), Ok(None));
-        assert_eq!(parse_amount(" 1,000 sats"), Ok(Some(1_000)));
-        assert!(parse_amount("1.5").is_err());
+        let (bip177, legacy) = (Format::Bip177, Format::LegacyBtc);
+        assert_eq!(parse_amount("", bip177), Ok(None));
+        assert_eq!(parse_amount(" ₿1,000", bip177), Ok(Some(1_000)));
+        assert_eq!(
+            parse_amount("1.5", bip177),
+            Err("Enter the amount in whole bitcoin base units, such as ₿1,000.".into())
+        );
+        assert_eq!(parse_amount("1.5", legacy), Ok(Some(150_000_000)));
+        assert_eq!(parse_amount("0.00001 BTC", legacy), Ok(Some(1_000)));
+        assert!(parse_amount("21000001", legacy).is_err());
         assert_eq!(shorten("short"), "short");
         assert_eq!(
             shorten("lnbc1234567890abcdefghijklmnopqrstuvwxyz"),
@@ -3786,12 +3898,13 @@ mod tests {
                 input: "hello@getalby.com".into(),
                 amount_sats: amount,
                 comment: comment.map(str::to_owned),
+                format: Format::Bip177,
             })
         };
         match ask(None, None) {
             Err(QuoteFailure::NeedsAmount(ask)) => {
                 assert_eq!(ask.recipient.as_deref(), Some("hello@getalby.com"));
-                assert!(ask.message.contains("takes from 1 sat"), "{}", ask.message);
+                assert!(ask.message.contains("takes from ₿1 "), "{}", ask.message);
                 assert!(ask.comment_max > 0);
                 eprintln!("asked: {ask:?}");
             }

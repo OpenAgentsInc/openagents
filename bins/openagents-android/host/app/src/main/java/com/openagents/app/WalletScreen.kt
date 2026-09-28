@@ -46,10 +46,12 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
     private var copied: String? = null
 
     // Fields keep what the person typed across Rust's updates.
-    private val invoiceAmount = field("Amount in sats (optional)", "wallet-invoice-amount", number = true)
+    private val invoiceAmount = field("Amount in ₿ (optional)", "wallet-invoice-amount", number = true)
     private val payInput = field("Invoice, Lightning address, or Bitcoin address", "wallet-send-input", lines = 4)
-    private val payAmount = field("Amount in sats, if the request has none", "wallet-send-amount", number = true)
-    private val buyAmount = field("Amount in sats", "wallet-buy-amount", number = true)
+    private val payAmount = field("Amount in ₿, if the request has none", "wallet-send-amount", number = true)
+    private val buyAmount = field("Amount in ₿", "wallet-buy-amount", number = true)
+    // Rust's amount format (`amounts::AmountsView`): BIP 177 or legacy BTC.
+    private var amounts: JSONObject? = null
     private val camera = FrameLayout(activity)
     private var review: View? = null
     private var reviewReady: () -> Boolean = { false }
@@ -93,9 +95,11 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
     /** Redraws when Rust's Wallet state changed. */
     fun update(packet: JSONObject?, force: Boolean = false) {
         val wallet = packet?.objectOrNull("wallet")
-        val key = "${wallet?.toString()}|$section|$method|$scanning|$copied"
+        amounts = packet?.objectOrNull("amounts")
+        val key = "${wallet?.toString()}|${amounts?.toString()}|$section|$method|$scanning|$copied"
         if (!force && key == shown) return
         shown = key
+        applyFormat()
         val focused = listOf(invoiceAmount, payInput, payAmount, buyAmount).firstOrNull { it.hasFocus() }
         val y = scroll.scrollY
         content.removeAllViews()
@@ -106,6 +110,46 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
     }
 
     private fun redraw() = update(bridge.packet, force = true)
+
+    /** Amount fields name the unit and take a decimal point in legacy BTC. */
+    private fun applyFormat() {
+        val unit = amounts?.textOrNull("unit") ?: "₿"
+        val decimal = amounts?.optBoolean("decimal") == true
+        listOf(invoiceAmount to "Amount in $unit (optional)", payAmount to "Amount in $unit, if the request has none",
+            buyAmount to "Amount in $unit").forEach { (field, hint) ->
+            field.hint = hint; field.contentDescription = hint
+            field.inputType = if (decimal) InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL else InputType.TYPE_CLASS_NUMBER
+        }
+    }
+
+    /** The one-time note on BIP 177 amounts, with the choice beside it. */
+    private fun amountNote(note: JSONObject) {
+        val card = activity.column().apply {
+            setPadding(activity.dp(12), activity.dp(12), activity.dp(12), activity.dp(12))
+            background = activity.rounded(0xFF1F1F1F.toInt(), 12f); tag = "amount-note"
+        }
+        card.add(activity.label(note.optString("title"), 16f, bold = true))
+        note.optJSONArray("lines")?.let { lines -> for (i in 0 until lines.length()) card.add(activity.label(lines.getString(i), 13f), 6) }
+        card.add(formatPicker(), 10)
+        card.add(activity.pill("Got it", "amount-note-done") { bridge.wallet("amount_note_acknowledge") }, 10, -2)
+        content.add(card, 16)
+    }
+
+    private fun amountSetting() {
+        content.add(activity.label("Show amounts as", 17f, bold = true), 24)
+        content.add(formatPicker(), 10)
+        content.add(activity.label("Applies everywhere in the app. Stored amounts don't change.", 13f, Palette.SECONDARY), 6)
+    }
+
+    private fun formatPicker(): View {
+        val choices = amounts?.optJSONArray("choices")?.objects() ?: emptyList()
+        val selected = choices.indexOfFirst { it.optBoolean("selected") }.coerceAtLeast(0)
+        return segments(choices.map { it.optString("label") }, selected, "amount-format") { index ->
+            // What was typed was in the old format; start over.
+            listOf(invoiceAmount, payAmount, buyAmount).forEach { it.setText("") }
+            bridge.wallet("amount_format", "format" to choices[index].optString("id"))
+        }
+    }
 
     private fun opening() = json("state" to "ready", "network" to "Bitcoin · Spark", "refreshing" to true,
         "balance_unknown" to true, "status" to "Opening the wallet…", "can_show_words" to false)
@@ -118,6 +162,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
 
     private fun ready(wallet: JSONObject) {
         balance(wallet)
+        amounts?.objectOrNull("note")?.let { amountNote(it) }
         wallet.textOrNull("warning")?.let { warning ->
             content.add(activity.label(warning, 13f, key = "wallet-warning").apply {
                 setPadding(activity.dp(12), activity.dp(12), activity.dp(12), activity.dp(12))
@@ -133,17 +178,18 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
         val deposits = wallet.optJSONArray("deposits")?.objects() ?: emptyList()
         if (deposits.isNotEmpty()) deposits(deposits, wallet.objectOrNull("claim"))
         history(wallet.optJSONArray("payments")?.objects() ?: emptyList())
+        if (amounts != null) amountSetting()
         recovery(wallet)
     }
 
     private fun balance(wallet: JSONObject) {
         val unknown = wallet.optBoolean("balance_unknown")
         content.add(activity.label(wallet.optString("network", "Bitcoin · Spark").uppercase(), 12f, Palette.SECONDARY, bold = true), 8)
-        content.add(activity.label(if (unknown) "— sats" else wallet.optString("balance"), 40f, bold = true, key = "wallet-balance").apply {
+        content.add(activity.label(if (unknown) "₿—" else wallet.optString("balance"), 40f, bold = true, key = "wallet-balance").apply {
             maxLines = 1; if (unknown) setTextColor(Palette.TERTIARY)
-            contentDescription = if (unknown) "Balance not read yet" else wallet.optString("balance")
+            contentDescription = if (unknown) "Balance not read yet" else wallet.optString("balance_spoken", wallet.optString("balance"))
         }, 4)
-        content.add(activity.label(if (unknown) "— BTC" else wallet.optString("balance_btc"), 14f,
+        content.add(activity.label(if (unknown) "— BTC" else wallet.optString("balance_alternate"), 14f,
             if (unknown) Palette.TERTIARY else Palette.SECONDARY, mono = true), 2)
         val status = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
         val busy = wallet.textOrNull("status") ?: if (wallet.optBoolean("refreshing")) "Refreshing…" else null

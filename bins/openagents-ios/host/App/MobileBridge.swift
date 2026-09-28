@@ -84,6 +84,8 @@ struct AppPacket: Decodable {
     let wallet_open_url: String?
     /// Agents' payment requests (`spend::View`).
     let spend: SpendState?
+    /// How bitcoin amounts show and are typed, app-wide (BIP 177 or BTC).
+    let amounts: AmountsState?
 }
 
 /// Rust's direct reply with the recovery words or a checked restore. It is

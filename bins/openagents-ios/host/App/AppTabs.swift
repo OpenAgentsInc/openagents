@@ -52,7 +52,8 @@ enum AppTabLaunch {
 
     /// Wallet screenshots: `--wallet-section send`, `--wallet-method spark`,
     /// `--wallet-send TEXT` (reviewed once the wallet runs), and
-    /// `--wallet-invoice AMOUNT` (made once the wallet runs), and `--wallet-info 1`
+    /// `--wallet-invoice AMOUNT` (made once the wallet runs), `--amount-format btc`
+    /// (the amount format, saved), and `--wallet-info 1`
     /// (the trust note).
     static func wallet(_ name: String) -> String? {
         #if DEBUG || targetEnvironment(simulator)

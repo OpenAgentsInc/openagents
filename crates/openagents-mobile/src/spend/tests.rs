@@ -196,9 +196,15 @@ fn a_request_waits_for_the_owners_tap_and_approve_pays_once() {
     assert!(wallet.paid().is_empty());
     let sheet = spending.view().sheet.expect("the approval sheet");
     assert_eq!(sheet.computer, "Studio Mac");
-    assert_eq!(sheet.amount, "25 sats");
-    assert_eq!(sheet.fee, "1 sat");
-    assert_eq!(sheet.fee_ceiling, "2 sats");
+    assert_eq!(sheet.amount, "₿25");
+    assert_eq!(sheet.fee, "₿1");
+    assert_eq!(sheet.fee_ceiling, "₿2");
+    // The legacy BTC choice reaches the approval sheet too.
+    spending.set_format(crate::amounts::Format::LegacyBtc);
+    let legacy = spending.view().sheet.expect("the approval sheet");
+    assert_eq!(legacy.amount, "0.00000025 BTC");
+    assert_eq!(legacy.fee, "0.00000001 BTC");
+    spending.set_format(crate::amounts::Format::Bip177);
     assert_eq!(sheet.payee, short(&hex(&payee())));
     assert!(sheet.payee_new);
     assert_eq!(sheet.purpose, "Paid tool or API (x402)");
@@ -272,7 +278,7 @@ fn approve_through_the_app_pays_in_the_background_and_delivers() {
     assert_eq!(computer.receipts()[0].outcome, Settlement::Paid);
     assert_eq!(
         spending.view().notice.as_deref(),
-        Some("Paid 25 sats for Studio Mac.")
+        Some("Paid ₿25 for Studio Mac.")
     );
     // Without a running wallet, Approve pays nothing and says why.
     computer.ask(request(&grant, 4, "lnbc250n", 25_000));
@@ -557,7 +563,7 @@ fn live_a_spend_request_reaches_the_sheet_and_is_denied() {
         "sheet: {} to {} from {}",
         sheet.amount, sheet.payee, sheet.computer
     );
-    assert_eq!(sheet.amount, "1 sat");
+    assert_eq!(sheet.amount, "₿1");
     assert_eq!(sheet.note.as_deref(), Some("Live test: deny this"));
     app.call(Request::SpendDeny {
         request: id.clone(),

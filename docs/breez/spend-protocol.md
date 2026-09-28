@@ -47,7 +47,7 @@ Code:
    computer, task, purpose, the payee as decoded from the invoice (and
    whether it is new), the invoice's own description, the agent's note, the
    amount, the wallet's fee quote and the ceiling, and what the grant has
-   left. Above 1,000 sats Approve asks for Face ID or the passcode first.
+   left. Above ₿1,000 Approve asks for Face ID or the passcode first.
    **Approve** checks and reserves again, then pays once through the Spark
    wallet with an idempotency key derived from the request ID. **Deny**
    refuses as `declined_by_owner`. **Stop payment requests** revokes (below).
@@ -78,10 +78,10 @@ NIP-HOST `spend.list` request, encrypted to the host. Unknown fields refuse.
 | `wallet` | `{kind: "spark", network: "bitcoin"}`. |
 | `mode` | `request`. |
 | `unit` | `msat`. |
-| `per_payment_max` | Ceiling for one payment, fee ceiling included. Default 10,000 sats. |
-| `period`, `period_max` | Rolling window in seconds and its ceiling. Default 24 hours, 50,000 sats. |
-| `total_max` | Ceiling over the grant's life. Default 500,000 sats. |
-| `fee_max` | `{absolute, ppm}`; a fee above either ceiling refuses. Default 100 sats and 500,000 ppm (half the amount). |
+| `per_payment_max` | Ceiling for one payment, fee ceiling included. Default ₿10,000. |
+| `period`, `period_max` | Rolling window in seconds and its ceiling. Default 24 hours, ₿50,000. |
+| `total_max` | Ceiling over the grant's life. Default ₿500,000. |
+| `fee_max` | `{absolute, ppm}`; a fee above either ceiling refuses. Default ₿100 and 500,000 ppm (half the amount). |
 | `rails` | `["lightning"]`. |
 | `payees`, `any_payee` | Allowed Lightning node keys; empty means none unless `any_payee`. `any_payee` is allowed only in `request` mode, where the owner sees the decoded payee and approves each payment. Phase 1 grants set it. |
 | `purposes` | Sorted subset of `x402_purchase`, `labor_payment`, `tip`, `transfer`. Phase 1 grants list all four. |
@@ -191,8 +191,8 @@ new epoch. A grant at an epoch below the last one a phone sent refuses as
   which task asked.
 - The host's x402 policy and the phone's grant are independent limits; the
   lower wins.
-- A Spark wallet pays whole sats over Lightning. An invoice for a fraction of
-  a sat may be refused by the wallet as `payment_failed`.
+- A Spark wallet pays whole base units (BIP 177 bitcoin) over Lightning. An
+  invoice for a fraction of a base unit may be refused by the wallet as `payment_failed`.
 - The only live check a test may make is to create a request and deny it:
   tests never move the owner's funds. The first real purchase is the owner's
   (see `NEEDS_OWNER.md` at the workspace root).

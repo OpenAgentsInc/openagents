@@ -222,7 +222,8 @@ pub enum Request {
     /// Close the send review or its result.
     WalletSendReset,
     /// Buy bitcoin with dollars: `provider` is `moonpay` or `cashapp`, and
-    /// `amount` is in sats. The page to open arrives as `wallet_open_url`.
+    /// `amount` is typed in the app's amount format. The page to open
+    /// arrives as `wallet_open_url`.
     WalletBuy {
         provider: String,
         amount: String,
@@ -307,6 +308,13 @@ pub enum Request {
     },
     /// Clear the last agent payment's notice.
     SpendDismiss,
+    /// Show and read amounts app-wide as `bip177` (₿12,345) or `btc`
+    /// (0.00012345 BTC). The choice is saved.
+    AmountFormat {
+        format: String,
+    },
+    /// The person read the note that explains BIP 177 amounts.
+    AmountNoteAcknowledge,
 }
 
 /// The direct reply to [`Request::WalletWords`] and
@@ -452,6 +460,8 @@ pub struct Packet {
     /// Agents' payment requests: the approval sheet, the computers that may
     /// ask, and the payments they asked for.
     pub spend: crate::spend::View,
+    /// How amounts show and are typed, app-wide, and the transitional note.
+    pub amounts: crate::amounts::AmountsView,
 }
 
 /// The encrypted store for the Computers record, keyed by the device key.
@@ -512,6 +522,8 @@ pub struct App {
     /// live client.
     spend_transport: Option<Arc<dyn crate::spend::Transport>>,
     trainer: crate::trainer::Trainer,
+    /// The amount format, applied to every surface that shows bitcoin.
+    amounts: crate::amounts::Amounts,
     notices: Vec<String>,
 }
 
@@ -615,6 +627,8 @@ impl App {
         // The Spark wallet replaced the Mutinynet test wallet, whose store
         // held only signet test coins; remove it. Its Keychain item goes too.
         let _ = std::fs::remove_dir_all(config.state_dir.join("wallet"));
+        let amounts = crate::amounts::Amounts::open(&config.state_dir);
+        spend.set_format(amounts.format());
         Ok(Self {
             runtime,
             native_computers: launch.native_computers,
@@ -665,8 +679,9 @@ impl App {
                 } else {
                     Arc::new(crate::payees::NostrDirectory::new(secret))
                 };
-                let wallet = crate::wallet::Wallet::new(config.state_dir.join(home), opener)
+                let mut wallet = crate::wallet::Wallet::new(config.state_dir.join(home), opener)
                     .with_directory(directory, device_npub.clone());
+                wallet.set_format(amounts.format());
                 match Cache::open(&config.state_dir.join(exit), &secret) {
                     Ok(cache) => wallet.with_vault(Arc::new(ExitVault(cache))),
                     Err(_) => wallet,
@@ -675,6 +690,7 @@ impl App {
             spend,
             spend_transport,
             trainer: crate::trainer::Trainer::default(),
+            amounts,
             notices,
         })
     }
@@ -923,6 +939,13 @@ impl App {
                 self.wallet.save_contact(&name, &address)
             }
             Request::WalletAcknowledge => self.wallet.acknowledge(),
+            Request::AmountFormat { format } => {
+                if let Some(format) = self.amounts.choose(&format) {
+                    self.wallet.set_format(format);
+                    self.spend.set_format(format);
+                }
+            }
+            Request::AmountNoteAcknowledge => self.amounts.acknowledge(),
             // `respond` answers these directly; the app packet never
             // carries recovery words or a seed.
             Request::WalletWords
@@ -1284,6 +1307,7 @@ impl App {
             wallet_loading: self.wallet.loading(),
             wallet_open_url: self.wallet.take_open_url(),
             spend: self.spend.view(),
+            amounts: self.amounts.view(),
         }
     }
 

@@ -84,7 +84,8 @@ The app has four tabs, shown as icons:
   (`com.openagents.app.spark`). The **i** button opens the trust note.
   Simulator arguments: `--wallet-section receive|send|buy`,
   `--wallet-method lightning|spark|bitcoin`, `--wallet-invoice AMOUNT`,
-  `--wallet-send TEXT` (with `--wallet-amount SATS`), `--wallet-info 1`, and,
+  `--wallet-send TEXT` (with `--wallet-amount AMOUNT`, typed in the amount
+  format), `--wallet-info 1`, `--amount-format bip177|btc`, and,
   on the offline fixture wallet `--wallet-fixture 1` (debug builds, no
   money), `--wallet-refund ADDRESS` with `--wallet-refund-review 1` and
   `--wallet-backup 1`. On-chain withdrawals show three speeds; deposits that
@@ -96,7 +97,7 @@ The app has four tabs, shown as icons:
   `crates/openagents-mobile/src/spend.rs`): the computer, task, purpose, the
   payee and amount decoded from the invoice, the fee, and what the
   computer's grant has left. Nothing pays until the owner taps Approve (with
-  Face ID or the passcode above 1,000 sats); Deny refuses it, and **Stop
+  Face ID or the passcode above ₿1,000); Deny refuses it, and **Stop
   payment requests** revokes the computer. See
   [the spend protocol](../../docs/breez/spend-protocol.md).
 - **Account** holds **Computers**, **Tailnet**, **Identity keys**, **About

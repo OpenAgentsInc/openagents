@@ -95,6 +95,17 @@ impl Format {
         }
     }
 
+    /// An amount in millisatoshis: shown like [`Format::show`] when it is a
+    /// whole number of base units, else as `N msat`, since neither format
+    /// can show a fraction of a base unit without rounding.
+    pub fn show_msat(self, msat: u64) -> String {
+        if msat.is_multiple_of(1000) {
+            self.show(msat / 1000)
+        } else {
+            format!("{} msat", group(msat))
+        }
+    }
+
     /// `amount` with a sign: `+₿1,000`, `-0.00001000 BTC`.
     pub fn show_signed(self, amount: u64, incoming: bool) -> String {
         format!("{}{}", if incoming { "+" } else { "-" }, self.show(amount))

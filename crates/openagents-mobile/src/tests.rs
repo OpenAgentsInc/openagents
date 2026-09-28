@@ -93,6 +93,58 @@ fn computers_surface_opens_with_the_device_key() {
 }
 
 #[test]
+fn the_amount_format_is_saved_and_reaches_the_wallet() {
+    let (mut app, dir) = app();
+    let invoice_error = |app: &mut App, amount: &str| {
+        let packet = app.call(Request::WalletInvoice {
+            amount: amount.into(),
+        });
+        match packet.wallet {
+            crate::wallet::Screen::Ready(summary) => summary.receive.lightning_error,
+            crate::wallet::Screen::Failed { message } => Some(message),
+        }
+    };
+    let packet = app.call(Request::Snapshot);
+    assert_eq!(packet.amounts.format, "bip177");
+    assert!(packet.amounts.note.is_some(), "the transitional note shows");
+    // BIP 177 mode takes whole base units only.
+    assert_eq!(
+        invoice_error(&mut app, "1.5").as_deref(),
+        Some("Enter the amount in whole bitcoin base units, such as ₿1,000.")
+    );
+    let request: Request =
+        serde_json::from_str(r#"{"op":"amount_format","format":"btc"}"#).expect("request");
+    let packet = app.call(request);
+    assert_eq!((packet.amounts.format, packet.amounts.unit), ("btc", "BTC"));
+    assert!(packet.amounts.decimal && packet.amounts.note.is_none());
+    // Legacy mode reads decimal BTC, so the amount passes and the wallet,
+    // which has no key here, is what stops it.
+    assert_eq!(
+        invoice_error(&mut app, "1.5").as_deref(),
+        Some("The wallet is still starting.")
+    );
+    drop(app);
+    let mut reopened = App::open(
+        Config {
+            state_dir: dir.path().to_path_buf(),
+            secret_hex: "11".repeat(32),
+        },
+        crate::app::Launch::default(),
+    )
+    .expect("app");
+    assert_eq!(reopened.call(Request::Snapshot).amounts.format, "btc");
+    assert_eq!(
+        reopened
+            .call(Request::AmountFormat {
+                format: "bip177".into()
+            })
+            .amounts
+            .format,
+        "bip177"
+    );
+}
+
+#[test]
 fn lists_tailnet_devices_with_names_and_types() {
     let (mut app, _dir) = app();
     app.set_tailnet(Screen::Devices(Tailnet {

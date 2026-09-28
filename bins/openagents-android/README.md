@@ -50,7 +50,9 @@ The app has four tabs, shown as white icons on black:
   verified results are cached in the app's cache directory.
 - **Wallet** runs Breez's Spark SDK on Bitcoin mainnet, as the iPhone
   app's Wallet tab does, from the same Rust state: the balance and sync
-  status, a balance warning above 1,000,000 sats, **Receive** (a Lightning
+  status in BIP 177 amounts (`₿12,345`, with **Show amounts as** switching
+  every amount to legacy BTC and a one-time note explaining the change), a
+  balance warning above ₿1,000,000, **Receive** (a Lightning
   invoice, the Spark address, or the Bitcoin deposit address, each with a
   QR code, Copy, and Share), **Send** (paste or scan a request, review the
   amount and fee, then confirm), **Buy** (the provider's page opens in the

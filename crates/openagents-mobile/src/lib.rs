@@ -15,6 +15,7 @@
 //! platform's key store.
 
 mod account;
+mod amounts;
 #[cfg(any(target_os = "android", test))]
 mod android;
 mod app;

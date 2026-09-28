@@ -10,6 +10,32 @@ import UniformTypeIdentifiers
 /// Rust's Wallet screen (`wallet::Screen`): `failed`, or `ready` with the
 /// summary. `ready` shows from launch: while the wallet starts it carries
 /// the last balance read (or `balance_unknown`) and a `status`.
+/// Rust's amount format (`amounts::AmountsView`): BIP 177 integer base units
+/// (`₿12,345`) or legacy BTC (`0.00012345 BTC`), saved and applied app-wide,
+/// with the transitional note until the person reads it.
+struct AmountsState: Decodable, Equatable {
+    struct Choice: Decodable, Equatable, Identifiable {
+        let id: String
+        let label: String
+        let selected: Bool
+    }
+    struct Note: Decodable, Equatable {
+        let title: String
+        let lines: [String]
+    }
+    let format: String
+    let unit: String
+    let decimal: Bool
+    let choices: [Choice]
+    let note: Note?
+
+    static let standard = AmountsState(
+        format: "bip177", unit: "₿", decimal: false,
+        choices: [Choice(id: "bip177", label: "₿ bitcoin (BIP 177)", selected: true),
+                  Choice(id: "btc", label: "BTC (legacy)", selected: false)],
+        note: nil)
+}
+
 struct WalletState: Decodable, Equatable {
     struct Trust: Decodable, Equatable {
         let acknowledged: Bool
@@ -132,7 +158,10 @@ struct WalletState: Decodable, Equatable {
     let message: String?
     let network: String?
     let balance: String?
-    let balance_btc: String?
+    /// The balance in the other format, for the transitional dual display.
+    let balance_alternate: String?
+    /// "12,345 bitcoin", for VoiceOver.
+    let balance_spoken: String?
     let empty: Bool?
     let synced_at: UInt64?
     let refreshing: Bool?
@@ -178,6 +207,8 @@ struct WalletTab: View {
     @State private var exportError: String?
 
     private var wallet: WalletState? { bridge.packet?.wallet }
+    private var amounts: AmountsState { bridge.packet?.amounts ?? .standard }
+    private var amountKeyboard: UIKeyboardType { amounts.decimal ? .decimalPad : .numberPad }
     private var loading: Bool { bridge.packet?.wallet_loading == true }
 
     var body: some View {
@@ -230,6 +261,7 @@ struct WalletTab: View {
             if let value = AppTabLaunch.wallet("--wallet-section"), let chosen = Section(rawValue: value.capitalized) { section = chosen }
             if let value = AppTabLaunch.wallet("--wallet-method"), let chosen = Method(rawValue: value.capitalized) { method = chosen }
             if AppTabLaunch.wallet("--wallet-info") != nil { showTrust = true }
+            if let format = AppTabLaunch.wallet("--amount-format") { bridge.wallet("amount_format", ["format": format]) }
         }
         .task {
             // Simulator checks: act once the wallet runs.
@@ -295,6 +327,7 @@ struct WalletTab: View {
 
     @ViewBuilder private func ready(_ wallet: WalletState) -> some View {
         balance(wallet)
+        if let note = amounts.note { amountNote(note) }
         if let warning = wallet.warning {
             Text(warning).font(.footnote).foregroundStyle(.white)
                 .padding(12).background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 12))
@@ -316,8 +349,49 @@ struct WalletTab: View {
         if let spend = bridge.packet?.spend {
             AgentPaymentsSection(spend: spend, bridge: bridge)
         }
+        amountSetting()
         recovery(wallet)
         if let backup = wallet.backup { backupView(backup) }
+    }
+
+    // MARK: Amount format
+
+    /// The one-time note on BIP 177 amounts, with the choice beside it.
+    private func amountNote(_ note: AmountsState.Note) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(note.title).font(.headline).foregroundStyle(.white)
+            ForEach(note.lines, id: \.self) { Text($0).font(.footnote).foregroundStyle(.white) }
+            formatPicker()
+            Button("Got it") { bridge.wallet("amount_note_acknowledge") }
+                .buttonStyle(.bordered).tint(.white)
+                .accessibilityIdentifier("amount-note-done")
+        }
+        .padding(12)
+        .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityIdentifier("amount-note")
+    }
+
+    private func amountSetting() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Show amounts as").font(.headline).foregroundStyle(.white)
+            formatPicker()
+            Text("Applies everywhere in the app. Stored amounts don't change.")
+                .font(.footnote).foregroundStyle(.gray)
+        }
+    }
+
+    private func formatPicker() -> some View {
+        Picker("Show amounts as", selection: Binding(
+            get: { amounts.format },
+            set: { chosen in
+                // What was typed was in the old format; start over.
+                invoiceAmount = ""; payAmount = ""; buyAmount = ""
+                bridge.wallet("amount_format", ["format": chosen])
+            })) {
+            ForEach(amounts.choices) { Text($0.label).tag($0.id) }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("amount-format")
     }
 
     private func balance(_ wallet: WalletState) -> some View {
@@ -325,13 +399,14 @@ struct WalletTab: View {
             Text((wallet.network ?? "Bitcoin · Spark").uppercased())
                 .font(.caption.weight(.semibold)).foregroundStyle(.gray)
             let unknown = wallet.balance_unknown == true
-            Text(unknown ? "000,000 sats" : wallet.balance ?? "")
+            Text(unknown ? "₿000,000" : wallet.balance ?? "")
                 .font(.system(size: 44, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .minimumScaleFactor(0.5).lineLimit(1)
                 .redacted(reason: unknown ? .placeholder : [])
+                .accessibilityLabel(unknown ? "Balance not read yet" : wallet.balance_spoken ?? wallet.balance ?? "")
                 .accessibilityIdentifier("wallet-balance")
-            Text(unknown ? "0.00000000 BTC" : wallet.balance_btc ?? "")
+            Text(unknown ? "0.00000000 BTC" : wallet.balance_alternate ?? "")
                 .font(.callout.monospacedDigit()).foregroundStyle(.gray)
                 .redacted(reason: unknown ? .placeholder : [])
             HStack(spacing: 8) {
@@ -372,8 +447,8 @@ struct WalletTab: View {
             switch method {
             case .lightning:
                 HStack {
-                    TextField("Amount in sats (optional)", text: $invoiceAmount)
-                        .keyboardType(.numberPad)
+                    TextField("Amount in \(amounts.unit) (optional)", text: $invoiceAmount)
+                        .keyboardType(amountKeyboard)
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("wallet-invoice-amount")
                     Button(receive?.lightning_busy == true ? "Making…" : "New invoice") {
@@ -540,8 +615,8 @@ struct WalletTab: View {
                         }
                         .accessibilityIdentifier("wallet-recipient")
                     }
-                    TextField("Amount in sats, if the request has none", text: $payAmount)
-                        .keyboardType(.numberPad)
+                    TextField("Amount in \(amounts.unit), if the request has none", text: $payAmount)
+                        .keyboardType(amountKeyboard)
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("wallet-send-amount")
                     if send?.state == "needs_amount", let most = send?.comment_max {
@@ -640,8 +715,8 @@ struct WalletTab: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Buy bitcoin with dollars. The provider's page opens in your browser.")
                 .font(.footnote).foregroundStyle(.gray)
-            TextField("Amount in sats", text: $buyAmount)
-                .keyboardType(.numberPad)
+            TextField("Amount in \(amounts.unit)", text: $buyAmount)
+                .keyboardType(amountKeyboard)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("wallet-buy-amount")
             ForEach(wallet.buy?.providers ?? []) { provider in
@@ -984,7 +1059,8 @@ struct ExitFile: FileDocument {
 extension WalletState {
     /// The screen before Rust's first packet arrives.
     static let opening = WalletState(
-        state: "ready", message: nil, network: "Bitcoin · Spark", balance: nil, balance_btc: nil,
+        state: "ready", message: nil, network: "Bitcoin · Spark", balance: nil,
+        balance_alternate: nil, balance_spoken: nil,
         empty: nil, synced_at: nil, refreshing: true, error: nil, balance_unknown: true,
         status: "Opening the wallet…", warning: nil, trust: nil, receive: nil, send: nil,
         payments: nil, can_show_words: false, buy: nil, deposits: nil, claim: nil, refund: nil, backup: nil, people: nil)

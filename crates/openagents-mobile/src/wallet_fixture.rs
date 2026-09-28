@@ -45,7 +45,7 @@ impl Default for Fixture {
                 vout: 0,
                 amount_sats: 40_000,
                 mature: true,
-                problem: Some("Claiming it costs 1,210 sats, above the automatic limit.".into()),
+                problem: Some(crate::wallet::DepositProblem::FeeAboveLimit(1_210)),
                 refund_txid: None,
             }],
             fee: 400,
@@ -121,7 +121,8 @@ impl Node for Fixture {
                 140,
                 r#"[["text/plain","Sats for the fixture"]]"#,
             );
-            let (amount, comment) = terms.check(amount, request.comment.as_deref())?;
+            let (amount, comment) =
+                terms.check(amount, request.comment.as_deref(), request.format)?;
             return Ok(Quote {
                 note: terms.description,
                 comment,

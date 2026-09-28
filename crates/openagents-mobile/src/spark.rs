@@ -8,8 +8,9 @@
 //! traces is written anywhere.
 
 use crate::wallet::{
-    AgentPayFailure, Ask, ClaimQuote, Contact, DepositRow, Destination, FeeRates, InvoicePayment,
-    LnurlTerms, Node, Paid, PaymentRow, Provider, Quote, QuoteFailure, SendRequest, Speed,
+    AgentPayFailure, Ask, ClaimQuote, Contact, DepositProblem, DepositRow, Destination, FeeRates,
+    InvoicePayment, LnurlTerms, Node, Paid, PaymentRow, Provider, Quote, QuoteFailure, SendRequest,
+    Speed,
 };
 use breez_sdk_spark::{
     AddContactRequest, BreezSdk, BuyBitcoinRequest, ClaimDepositOutcome, ClaimDepositRequest,
@@ -336,7 +337,11 @@ impl SparkNode {
             pay_request.comment_allowed,
             &pay_request.metadata_str,
         );
-        let (amount, comment) = terms.check(request.amount_sats, request.comment.as_deref())?;
+        let (amount, comment) = terms.check(
+            request.amount_sats,
+            request.comment.as_deref(),
+            request.format,
+        )?;
         let prepared = self
             .runtime
             .block_on(self.sdk.prepare_lnurl_pay(PrepareLnurlPayRequest {
@@ -543,15 +548,10 @@ impl Node for SparkNode {
                 problem: deposit.claim_error.as_ref().map(|error| match error {
                     DepositClaimError::MaxDepositClaimFeeExceeded {
                         required_fee_sats, ..
-                    } => format!(
-                        "Claiming it costs {}, above the automatic limit.",
-                        crate::wallet::sats(*required_fee_sats)
-                    ),
-                    DepositClaimError::MissingUtxo { .. } => {
-                        "The deposit wasn't found on the chain.".to_string()
-                    }
+                    } => DepositProblem::FeeAboveLimit(*required_fee_sats),
+                    DepositClaimError::MissingUtxo { .. } => DepositProblem::Missing,
                     DepositClaimError::Generic { message } => {
-                        format!("The last claim failed ({message}).")
+                        DepositProblem::Failed(message.clone())
                     }
                 }),
                 txid: deposit.txid,

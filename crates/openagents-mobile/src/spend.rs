@@ -196,6 +196,8 @@ struct Shared {
     backoff: BTreeMap<String, Instant>,
     /// Pending payments to ask the wallet about on this pass.
     recheck: Vec<(String, SpendRequest)>,
+    /// How amounts are shown; the app's choice.
+    format: crate::amounts::Format,
 }
 
 /// Agent spending on the phone.
@@ -271,20 +273,16 @@ pub struct View {
     pub history: Vec<HistoryRow>,
 }
 
-/// An amount in msat, in sats when whole.
-pub fn amount(msat: u64) -> String {
-    if msat.is_multiple_of(1000) {
-        crate::wallet::sats(msat / 1000)
-    } else {
-        format!("{} msat", msat)
-    }
+/// An amount in msat, in the app's format when it is whole base units.
+pub fn amount(msat: u64, format: crate::amounts::Format) -> String {
+    format.show_msat(msat)
 }
 
-fn remaining_text(remaining: Remaining) -> String {
+fn remaining_text(remaining: Remaining, format: crate::amounts::Format) -> String {
     format!(
         "{} left today, {} in all",
-        amount(remaining.period_msat),
-        amount(remaining.total_msat)
+        amount(remaining.period_msat, format),
+        amount(remaining.total_msat, format)
     )
 }
 
@@ -344,6 +342,7 @@ impl Spending {
                 last_poll: None,
                 backoff: BTreeMap::new(),
                 recheck: vec![],
+                format: crate::amounts::Format::default(),
             })),
             clock: now,
         }
@@ -357,6 +356,11 @@ impl Spending {
 
     fn lock(&self) -> MutexGuard<'_, Shared> {
         lock(&self.shared)
+    }
+
+    /// Show amounts in `format` from now on.
+    pub fn set_format(&self, format: crate::amounts::Format) {
+        self.lock().format = format;
     }
 
     /// Read the connected computers' requests in the background, at most
@@ -759,7 +763,10 @@ impl Spending {
                     .insert(request.request.clone(), (host.to_owned(), receipt));
                 shared.notice = Some(match outcome {
                     Settlement::Paid => {
-                        format!("Paid {} for {label}.", amount(request.amount_msat))
+                        format!(
+                            "Paid {} for {label}.",
+                            amount(request.amount_msat, shared.format)
+                        )
                     }
                     Settlement::Pending => format!("The payment for {label} is on its way."),
                     _ => format!("Paid for {label}, but the wallet has no proof yet."),
@@ -852,6 +859,7 @@ impl Spending {
     pub fn view(&self) -> View {
         let now = (self.clock)();
         let shared = self.lock();
+        let format = shared.format;
         let label = |host: &str| {
             shared
                 .saved
@@ -869,12 +877,12 @@ impl Spending {
                 Some(Ok(fee)) if fee.saturating_mul(1000) > ceiling => (
                     format!(
                         "{} (above the {} ceiling)",
-                        crate::wallet::sats(*fee),
-                        amount(ceiling)
+                        format.show(*fee),
+                        amount(ceiling, format)
                     ),
                     false,
                 ),
-                Some(Ok(fee)) => (crate::wallet::sats(*fee), true),
+                Some(Ok(fee)) => (format.show(*fee), true),
                 Some(Err(message)) => (message.clone(), false),
             };
             Sheet {
@@ -889,11 +897,11 @@ impl Spending {
                 description: invoice.description.clone(),
                 note: w.request.context.note.clone(),
                 resource: w.request.context.resource.clone(),
-                amount: amount(w.request.amount_msat),
+                amount: amount(w.request.amount_msat, format),
                 amount_msat: w.request.amount_msat,
                 fee,
-                fee_ceiling: amount(ceiling),
-                remaining: remaining_text(w.admitted.remaining),
+                fee_ceiling: amount(ceiling, format),
+                remaining: remaining_text(w.admitted.remaining, format),
                 expires_at: w.request.expires_at,
                 authenticate: w.request.amount_msat > AUTHENTICATE_ABOVE_MSAT,
                 ready: ready && shared.busy.is_none(),
@@ -910,7 +918,7 @@ impl Spending {
                 remaining: if held.blocked {
                     "Can't ask for payments".into()
                 } else {
-                    remaining_text(shared.saved.ledger.remaining(&held.grant, now))
+                    remaining_text(shared.saved.ledger.remaining(&held.grant, now), format)
                 },
             })
             .collect();
@@ -924,8 +932,8 @@ impl Spending {
                 computer: label(&e.host),
                 title: e.title.clone(),
                 purpose: e.purpose.label(),
-                amount: amount(e.amount_msat),
-                fee: e.fee_msat.map(amount),
+                amount: amount(e.amount_msat, format),
+                fee: e.fee_msat.map(|fee| amount(fee, format)),
                 state: match e.state {
                     State::Paid => "paid",
                     State::Pending => "pending",

@@ -138,6 +138,14 @@ fn every_shown_amount_parses_back() {
 }
 
 #[test]
+fn msat_amounts_show_whole_base_units_or_msat() {
+    assert_eq!(B.show_msat(21_000), "₿21");
+    assert_eq!(L.show_msat(21_000), "0.00000021 BTC");
+    assert_eq!(B.show_msat(1_500), "1,500 msat");
+    assert_eq!(L.show_msat(0), "0.00000000 BTC");
+}
+
+#[test]
 fn msat_rounding() {
     assert_eq!(from_msat_floor(1_999), 1);
     assert_eq!(from_msat_ceil(1_001), 2);

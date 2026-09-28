@@ -33,6 +33,8 @@ coder-mobile = { path = "../coder-mobile" }
 # level curve, the same code that puts levels over heads in the Grid.
 verse = { path = "../verse", default-features = false, features = ["xp-host"] }
 base64 = "0.22"
+# Every amount on screen: BIP 177 integer base units, or legacy BTC.
+bitcoin-amount = { path = "../bitcoin-amount" }
 # The Wallet tab: Breez's Spark wallet, on Bitcoin mainnet. Its SQLite store
 # needs `rusqlite` 0.32, which cannot share a lock file with `ldk-node`'s
 # 0.31, so this crate is its own workspace; see the note at the end.
