@@ -75,7 +75,8 @@ semantic rows, the viewport width, and the text sizes (a scale, or a curve
 per text style). Layout runs on a worker thread and publishes immutable frames
 that the UI thread reads, so a cold layout of thousands of rows never blocks
 scrolling. The adapter measures text for Rust through a platform callback
-(CoreText on iOS), paints the runs at Rust's positions, scrolls wide code
+(CoreText on iOS), or Rust shapes it with bundled fonts (Android, and iOS
+with `--rust-native-shaped`), paints the runs at Rust's positions, scrolls wide code
 blocks and tables sideways where Rust marks them, and owns scrolling,
 in-place text selection, gestures, native widgets, and accessibility
 elements. Rows are pulled by visible range, and a streamed token lays out one

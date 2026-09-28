@@ -44,7 +44,9 @@ class MobileBridge(private val context: Context, private val computersFixture: B
                 val config = json("state_dir" to DeviceKey.stateDirectory(context).path,
                     "secret_hex" to DeviceKey.loadOrCreate(context),
                     // This host draws the Computers list and its navigation.
-                    "native_computers" to true)
+                    "native_computers" to true,
+                    // Its transcript painter reads chat rows from Rust.
+                    "pulled_transcripts" to true)
                 // Debug builds only: Coder's offline Computers fixture, which
                 // contacts no host or relay.
                 if (computersFixture) config.put("computers_fixture", true)

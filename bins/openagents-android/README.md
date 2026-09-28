@@ -98,14 +98,30 @@ running `coder host serve --tailnet-admission standard` adds itself and its
 chats. The phone must be on the tailnet through the Tailscale app to reach
 the computer.
 
-The conversation elements (transcript, message, Markdown, tool, working, and
-composer) follow the iOS design in
-[`NativeChat.swift`](../coder-ios/host/App/NativeChat.swift):
+The transcript is painted from Rust's layout, as on iOS
+([`TranscriptPainter.kt`](host/app/src/main/java/com/openagents/app/TranscriptPainter.kt);
+see the transcript layout section of
+[the Rust Native spec](../../crates/rust-native/docs/spec.md#transcript-layout)):
 
-- The transcript is a bottom-anchored `RecyclerView` that rebinds only rows
-  whose content changed. It follows new rows while you are at the bottom,
-  stops when you scroll up, and then shows a jump-to-bottom button. **Load
-  earlier** is its first row.
+- Rust holds each chat's rows in a transcript source, so they never cross
+  the view, and lays them out on a worker thread: it shapes text with the
+  bundled Inter and JetBrains Mono fonts, decides every row's exact height,
+  and returns display lists with each text run's position. The app draws the
+  runs with the same fonts at those positions.
+- The list is a `RecyclerView` whose rows take Rust's heights, so it follows
+  new rows while you are at the bottom, stops when you scroll up, shows a
+  jump-to-bottom button, and keeps your place when rows arrive above. Wide
+  code blocks and tables scroll sideways. **Load earlier** is its first row.
+  Long-press a row to copy its text.
+- Debug launch extras: `--ez rust_native_fixture true` shows the sample
+  conversation, `--ei rust_native_fixture_rows N` adds N rows,
+  `--ez rust_native_transcript_pull true` sends the rows through a transcript
+  source, and `--ez rust_native_transcript_bench true` flings through the
+  list and logs frame times under `TranscriptBench`.
+
+Messages, Markdown, tool rows, and the composer outside a transcript follow
+the iOS design in [`NativeChat.swift`](../coder-ios/host/App/NativeChat.swift):
+
 - A user message is a trailing bubble, an assistant message is full width,
   and a system message is a quiet centered row. Long-press a message to copy
   its text.

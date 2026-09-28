@@ -2,11 +2,12 @@
 use super::{
     BridgeError, MAX_CONFIG_BYTES, MAX_HANDLES, MAX_REQUEST_BYTES, MAX_VERSE_CONFIG_BYTES,
     MAX_VERSE_REQUEST_BYTES, create_app, error, guarded, packet_text, respond, surface_config,
+    transcripts,
 };
 use crate::App;
 use coder_mobile::VerseHandle;
 use jni::errors::ThrowRuntimeExAndDefault;
-use jni::objects::{JClass, JObject, JString};
+use jni::objects::{JByteArray, JClass, JFloatArray, JLongArray, JObject, JString};
 use jni::{Env, EnvUnowned, jni_sig, jni_str};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -368,6 +369,196 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseDestroy<'lo
                     Ok(())
                 })
             })
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+// Transcript layout (`super::transcripts`), for `TranscriptNative` in the
+// host. A transcript is updated on its own worker; frames are read on the UI
+// thread.
+
+fn long_array<'local>(
+    env: &mut Env<'local>,
+    values: &[i64],
+) -> Result<JLongArray<'local>, BridgeError> {
+    let array = JLongArray::new(env, values.len())?;
+    array.set_region(env, 0, values)?;
+    Ok(array)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_create<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+) -> i64 {
+    unowned
+        .with_env(|_| -> Result<_, BridgeError> { guarded(transcripts::create) })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_update<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: i64,
+    request: JString<'local>,
+) -> JString<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            let request = input(env, &request, transcripts::MAX_UPDATE_BYTES)?;
+            let bytes = guarded(|| transcripts::update(handle, &request))?;
+            output(env, bytes)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_destroy<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: i64,
+) {
+    unowned
+        .with_env(|_| -> Result<_, BridgeError> {
+            guarded(|| {
+                transcripts::destroy(handle);
+                Ok(())
+            })
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_frameRelease<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    frame: i64,
+) {
+    unowned
+        .with_env(|_| -> Result<_, BridgeError> {
+            guarded(|| {
+                transcripts::release(frame);
+                Ok(())
+            })
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_frameHeight<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    frame: i64,
+) -> f32 {
+    unowned
+        .with_env(|_| -> Result<_, BridgeError> { guarded(|| transcripts::height(frame)) })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_frameAll<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    frame: i64,
+) -> JLongArray<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            let values = guarded(|| transcripts::all(frame))?;
+            long_array(env, &values)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_frameRows<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    frame: i64,
+    y0: f32,
+    y1: f32,
+) -> JLongArray<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            let values = guarded(|| transcripts::rows(frame, y0, y1))?;
+            long_array(env, &values)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_frameKeys<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    frame: i64,
+) -> JString<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            let keys = guarded(|| transcripts::keys(frame))?;
+            Ok(JString::from_str(env, keys)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_frameDisplay<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    frame: i64,
+    index: i32,
+) -> JString<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            let bytes = guarded(|| transcripts::display(frame, index))?;
+            output(env, bytes)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_fontSpec<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    size: f32,
+    weight: i32,
+    italic: bool,
+    mono: bool,
+) -> JFloatArray<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            let spec = transcripts::font_spec(size, weight, italic, mono);
+            let array = JFloatArray::new(env, spec.len())?;
+            array.set_region(env, 0, &spec)?;
+            Ok(array)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_fontData<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    face: i32,
+) -> JByteArray<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            let data = transcripts::font(face)?;
+            Ok(env.byte_array_from_slice(data)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_TranscriptNative_publish<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    name: JString<'local>,
+    node: JString<'local>,
+) {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            let name = input(env, &name, 96)?;
+            let node = input(env, &node, transcripts::MAX_UPDATE_BYTES)?;
+            guarded(|| transcripts::publish(&name, &node))
         })
         .resolve::<ThrowRuntimeExAndDefault>()
 }

@@ -11,6 +11,8 @@ use crate::{App, Config, Launch, Request};
 
 #[cfg(target_os = "android")]
 mod exports;
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) mod transcripts;
 
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub(crate) const MAX_HANDLES: usize = 4;

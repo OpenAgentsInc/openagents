@@ -1,0 +1,797 @@
+// The transcript painter. Rust lays out every row (crates/rust-native,
+// `layout`): exact heights, offsets, and display lists with each text run's
+// position, measured by Rust's shaper with the bundled fonts. This file only
+// paints the runs at Rust's positions with the same fonts, scrolls, and
+// handles taps. It mirrors bins/coder-ios/host/App/NativeTranscriptPainter.swift.
+package com.openagents.app
+
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.os.Handler
+import android.os.Looper
+import android.text.TextPaint
+import android.text.TextUtils
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.PopupMenu
+import android.widget.ProgressBar
+import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.Executors
+
+/**
+ * Transcript layout in `openagents-mobile` (`src/android/transcripts.rs`). A
+ * transcript is updated on its own worker; frames are read on the UI thread
+ * and released once. A failed call throws a RuntimeException.
+ */
+object TranscriptNative {
+    init { System.loadLibrary("openagents_mobile") }
+    @JvmStatic external fun create(): Long
+    @JvmStatic external fun update(handle: Long, request: String): String
+    @JvmStatic external fun destroy(handle: Long)
+    @JvmStatic external fun frameRelease(frame: Long)
+    @JvmStatic external fun frameHeight(frame: Long): Float
+    /** Four values per row: index, version, and the float bits of its top and height. */
+    @JvmStatic external fun frameAll(frame: Long): LongArray
+    @JvmStatic external fun frameRows(frame: Long, y0: Float, y1: Float): LongArray
+    /** Row keys joined by line feeds. */
+    @JvmStatic external fun frameKeys(frame: Long): String
+    @JvmStatic external fun frameDisplay(frame: Long, index: Int): String
+    /** Face, `wght`, `opsz`, and `calt` (1 or 0). */
+    @JvmStatic external fun fontSpec(size: Float, weight: Int, italic: Boolean, mono: Boolean): FloatArray
+    @JvmStatic external fun fontData(face: Int): ByteArray
+    /** Debug fixture only: publishes a transcript node's rows as the source `name`. */
+    @JvmStatic external fun publish(name: String, node: String)
+}
+
+/** The bundled faces at the variations Rust measured with. */
+internal object TranscriptFonts {
+    private val typefaces = HashMap<String, Pair<Typeface, Boolean>>()
+    private val files = HashMap<Int, File>()
+
+    @Synchronized private fun file(context: Context, face: Int): File = files.getOrPut(face) {
+        val data = TranscriptNative.fontData(face)
+        val file = File(File(context.cacheDir, "transcript-fonts").apply { mkdirs() }, "face-$face.ttf")
+        if (file.length() != data.size.toLong()) file.writeBytes(data)
+        file
+    }
+
+    /** A typeface for Rust's font, and whether contextual alternates stay on. */
+    @Synchronized fun of(context: Context, size: Float, weight: Int, italic: Boolean, mono: Boolean): Pair<Typeface, Boolean> {
+        val key = "$size/$weight/$italic/$mono"
+        return typefaces.getOrPut(key) {
+            val spec = TranscriptNative.fontSpec(size, weight, italic, mono)
+            val variations = buildString {
+                append("'wght' ${spec[1]}")
+                if (spec[2] > 0f) append(", 'opsz' ${spec[2]}")
+            }
+            val typeface = Typeface.Builder(file(context, spec[0].toInt()))
+                .setFontVariationSettings(variations).build() ?: Typeface.DEFAULT
+            typeface to (spec[3] != 0f)
+        }
+    }
+}
+
+/** A row's display list (`rust_native::layout::display`), ready to paint. */
+internal class RowModel(val json: JSONObject, private val context: Context) {
+    class Style(val paint: TextPaint, val size: Float, val underline: Boolean, val strike: Boolean)
+    class Run(val text: Int, val start: Int, val length: Int, val x: Float, val baseline: Float,
+              val width: Float, val style: Int, val truncate: Float?)
+    class Rect(val box: RectF, val radii: FloatArray, val fill: Int?, val stroke: Int?)
+    class Widget(val box: RectF, val kind: String, val json: JSONObject)
+    class Scroller(val box: RectF, val contentWidth: Float, val runs: IntRange, val rects: IntRange)
+
+    /** Pixels per point. Text is drawn in pixels: a scaled canvas makes Android rasterize glyphs slowly. */
+    private val pixels = context.resources.displayMetrics.density
+    val key: String = json.getString("key")
+    val height = json.getDouble("height").toFloat()
+    private val texts = json.getJSONArray("texts").let { a -> List(a.length()) { a.getString(it) } }
+    private val styles: List<Style> = json.getJSONArray("styles").objects().map { style(it) }
+    private val runs = json.getJSONArray("runs").objects().map {
+        Run(it.getInt("text"), it.getInt("start16"), it.getInt("len16"), it.f("x"), it.f("baseline"),
+            it.f("width"), it.getInt("style"), if (it.has("truncate")) it.f("truncate") else null)
+    }
+    private val rects = json.getJSONArray("rects").objects().map { r ->
+        val radii = r.getJSONArray("radii").let { a -> FloatArray(4) { a.getDouble(it).toFloat() } }
+        Rect(RectF(r.f("x"), r.f("y"), r.f("x") + r.f("w"), r.f("y") + r.f("h")), radii,
+            r.objectOrNull("fill")?.let { ink(it, 1f) }, r.objectOrNull("stroke")?.let { ink(it, 1f) })
+    }
+    val widgets = json.getJSONArray("widgets").objects().map {
+        Widget(RectF(it.f("x"), it.f("y"), it.f("x") + it.f("w"), it.f("y") + it.f("h")), it.getString("kind"), it)
+    }
+    val scrollers = (json.optJSONArray("scrollers") ?: JSONArray()).objects().map {
+        val r = it.getJSONArray("runs"); val q = it.getJSONArray("rects")
+        Scroller(RectF(it.f("x"), it.f("y"), it.f("x") + it.f("w"), it.f("y") + it.f("h")), it.f("content_w"),
+            r.getInt(0) until r.getInt(1), q.getInt(0) until q.getInt(1))
+    }.filter { it.runs.last < runs.size && it.rects.last < rects.size && it.box.width() > 0 }
+    private val runScroller = IntArray(runs.size) { -1 }
+    private val rectScroller = IntArray(rects.size) { -1 }
+    private val clipped = arrayOfNulls<CharSequence>(runs.size)
+    val label: String = json.getJSONObject("accessibility").let { a ->
+        listOf(a.optString("label"), a.optString("value")).filter { it.isNotEmpty() }.joinToString(", ")
+    }
+    val copy: String? = if (json.has("copy") && !json.isNull("copy")) json.getString("copy") else null
+
+    init {
+        scrollers.forEachIndexed { index, s ->
+            for (run in s.runs) runScroller[run] = index
+            for (rect in s.rects) rectScroller[rect] = index
+        }
+    }
+
+    private fun JSONObject.f(name: String) = getDouble(name).toFloat()
+
+    private fun ink(ink: JSONObject, opacity: Float): Int {
+        val base = ink.optJSONArray("rgba")?.let { Color.argb(it.getInt(3), it.getInt(0), it.getInt(1), it.getInt(2)) }
+            ?: when (ink.optString("role")) {
+                "secondary" -> Palette.SECONDARY
+                "tertiary" -> Palette.TERTIARY
+                "link" -> Palette.LINK
+                "bubble" -> Palette.BUBBLE
+                "surface" -> Palette.SURFACE
+                "raised" -> Palette.RAISED
+                "border" -> Palette.BORDER
+                "inline_code" -> Palette.INLINE_CODE
+                else -> Palette.PRIMARY
+            }
+        if (opacity >= 1f) return base
+        return Color.argb((Color.alpha(base) * opacity).toInt(), Color.red(base), Color.green(base), Color.blue(base))
+    }
+
+    private fun style(style: JSONObject): Style {
+        val font = style.getJSONObject("font")
+        val size = font.getDouble("size").toFloat()
+        val weight = when (font.getString("weight")) { "medium" -> 1; "semibold" -> 2; "bold" -> 3; else -> 0 }
+        val (typeface, calt) = TranscriptFonts.of(context, size, weight, font.optBoolean("italic"), font.optBoolean("mono"))
+        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+            this.typeface = typeface
+            // TextPaint has its own `density` field, so name ours apart.
+            textSize = size * pixels
+            color = ink(style.getJSONObject("ink"), style.getDouble("opacity").toFloat())
+            if (!calt) fontFeatureSettings = "'calt' 0"
+        }
+        return Style(paint, size, style.optBoolean("underline"), style.optBoolean("strike"))
+    }
+
+    /**
+     * Paints the items of `scroller` (-1 for the row itself) at row
+     * coordinates, which are points, into a canvas in pixels.
+     */
+    fun draw(canvas: Canvas, scroller: Int = -1, top: Float = Float.NEGATIVE_INFINITY, bottom: Float = Float.POSITIVE_INFINITY) {
+        val d = pixels
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+        canvas.save()
+        canvas.scale(d, d)
+        rects.forEachIndexed { index, rect ->
+            if (rectScroller[index] != scroller || rect.box.bottom < top || rect.box.top > bottom) return@forEachIndexed
+            val path = path(rect.box, rect.radii)
+            rect.fill?.let { fill.style = Paint.Style.FILL; fill.color = it; canvas.drawPath(path, fill) }
+            rect.stroke?.let {
+                fill.style = Paint.Style.STROKE; fill.strokeWidth = 1f; fill.color = it
+                canvas.drawPath(path(RectF(rect.box).apply { inset(0.5f, 0.5f) }, rect.radii.map { r -> maxOf(0f, r - 0.5f) }.toFloatArray()), fill)
+            }
+        }
+        canvas.restore()
+        runs.forEachIndexed { index, run ->
+            if (runScroller[index] != scroller || run.style >= styles.size || run.text >= texts.size) return@forEachIndexed
+            val style = styles[run.style]
+            if (run.baseline + style.size < top || run.baseline - style.size * 1.2f > bottom) return@forEachIndexed
+            val text = texts[run.text]
+            val end = run.start + run.length
+            if (run.start < 0 || end > text.length || run.length <= 0) return@forEachIndexed
+            val limit = run.truncate
+            if (limit != null) {
+                val shown = clipped[index] ?: TextUtils.ellipsize(text.substring(run.start, end), style.paint,
+                    maxOf(0f, limit) * d, TextUtils.TruncateAt.END).also { clipped[index] = it }
+                canvas.drawText(shown, 0, shown.length, run.x * d, run.baseline * d, style.paint)
+            } else {
+                canvas.drawText(text, run.start, end, run.x * d, run.baseline * d, style.paint)
+            }
+            if (style.underline) canvas.drawRect(run.x * d, (run.baseline + 2f) * d, (run.x + run.width) * d, (run.baseline + 2f) * d + maxOf(1f, d), style.paint)
+            if (style.strike) {
+                val y = (run.baseline - style.size * 0.3f) * d
+                canvas.drawRect(run.x * d, y, (run.x + run.width) * d, y + maxOf(1f, d), style.paint)
+            }
+        }
+    }
+
+    private fun path(box: RectF, radii: FloatArray): Path {
+        val limit = minOf(box.width(), box.height()) / 2
+        val r = FloatArray(4) { minOf(limit, maxOf(0f, radii.getOrElse(it) { 0f })) }
+        return Path().apply {
+            addRoundRect(box, floatArrayOf(r[0], r[0], r[1], r[1], r[2], r[2], r[3], r[3]), Path.Direction.CW)
+        }
+    }
+}
+
+/** One transcript row: its painting, widgets, and sideways scrollers. */
+internal class RowView(context: Context) : FrameLayout(context) {
+    var model: RowModel? = null; private set
+    var toggle: (String) -> Unit = {}
+    var loadEarlier: () -> Unit = {}
+    private val density = context.resources.displayMetrics.density
+
+    init {
+        setWillNotDraw(false)
+        isFocusable = true
+        setOnLongClickListener { offerCopy(); true }
+    }
+
+    fun bind(model: RowModel) {
+        if (this.model === model) return
+        this.model = model
+        removeAllViews()
+        contentDescription = model.label
+        for (scroller in model.scrollers.withIndex()) addView(scrollerView(model, scroller.index, scroller.value))
+        for (widget in model.widgets) widgetView(widget)?.let { view ->
+            addView(view, LayoutParams(px(widget.box.width()), px(widget.box.height())).apply {
+                leftMargin = px(widget.box.left); topMargin = px(widget.box.top)
+            })
+        }
+        invalidate()
+    }
+
+    private fun px(points: Float) = Math.round(points * density)
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val height = px(model?.height ?: 0f)
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY))
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        model?.draw(canvas)
+    }
+
+    private fun scrollerView(model: RowModel, index: Int, scroller: RowModel.Scroller): View {
+        val content = object : View(context) {
+            // A horizontal scroller measures its child's width unspecified.
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) =
+                setMeasuredDimension(px(scroller.contentWidth), px(scroller.box.height()))
+
+            override fun onDraw(canvas: Canvas) {
+                canvas.save()
+                canvas.translate(-scroller.box.left * density, -scroller.box.top * density)
+                model.draw(canvas, index)
+                canvas.restore()
+            }
+        }
+        return HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = true
+            overScrollMode = OVER_SCROLL_NEVER
+            addView(content, LayoutParams(px(scroller.contentWidth), px(scroller.box.height())))
+            layoutParams = LayoutParams(px(scroller.box.width()), px(scroller.box.height())).apply {
+                leftMargin = px(scroller.box.left); topMargin = px(scroller.box.top)
+            }
+        }
+    }
+
+    private fun widgetView(widget: RowModel.Widget): View? = when (widget.kind) {
+        "copy" -> TextView(context).apply {
+            text = "Copy"; textSize = 12f; setTextColor(Palette.SECONDARY); gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            contentDescription = "Copy code"
+            val code = widget.json.optString("text")
+            setOnClickListener {
+                clipboard(code)
+                text = "Copied"
+                postDelayed({ text = "Copy" }, 1_500)
+            }
+        }
+        "toggle" -> View(context).apply {
+            val key = widget.json.optString("key")
+            importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+            setOnClickListener { toggle(key) }
+        }
+        "chevron" -> Glyph(context, if (widget.json.optBoolean("expanded")) Glyph.Shape.DOWN else Glyph.Shape.RIGHT, Palette.TERTIARY)
+        "status" -> when (widget.json.optString("state")) {
+            "running" -> ProgressBar(context).apply { isIndeterminate = true; scaleX = 0.75f; scaleY = 0.75f }
+            "failed" -> Glyph(context, Glyph.Shape.CROSS, Palette.FAILURE)
+            else -> Glyph(context, Glyph.Shape.CHECK, Palette.SUCCESS)
+        }
+        "checkbox" -> Glyph(context, if (widget.json.optBoolean("checked")) Glyph.Shape.CHECKED else Glyph.Shape.BOX,
+            if (widget.json.optBoolean("checked")) Palette.SUCCESS else Palette.SECONDARY)
+        "working" -> WorkingDots(context)
+        "spinner" -> ProgressBar(context).apply { isIndeterminate = true; scaleX = 0.8f; scaleY = 0.8f }
+        "earlier" -> if (widget.json.optBoolean("loading")) null else View(context).apply {
+            importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+            setOnClickListener { loadEarlier() }
+        }
+        else -> null
+    }
+
+    override fun performClick(): Boolean {
+        model?.widgets?.firstOrNull { it.kind == "earlier" && !it.json.optBoolean("loading") }?.let { loadEarlier() }
+        return super.performClick()
+    }
+
+    private fun offerCopy() {
+        val model = model ?: return
+        val text = model.copy ?: model.label
+        if (text.isEmpty()) return
+        val menu = PopupMenu(context, this)
+        menu.menu.add(0, 0, 0, "Copy")
+        menu.setOnMenuItemClickListener { clipboard(text); true }
+        menu.show()
+    }
+
+    private fun clipboard(text: String) {
+        (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+            .setPrimaryClip(ClipData.newPlainText("Message", text))
+    }
+}
+
+/** A small drawn mark: a check or cross in a circle, a checkbox, or a chevron. */
+internal class Glyph(context: Context, private val shape: Shape, private val tint: Int) : View(context) {
+    enum class Shape { CHECK, CROSS, CHECKED, BOX, RIGHT, DOWN }
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint; strokeCap = Paint.Cap.ROUND }
+
+    init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
+
+    override fun onDraw(canvas: Canvas) {
+        val d = resources.displayMetrics.density
+        val cx = width / 2f; val cy = height / 2f; val r = 7.5f * d
+        val mark = Paint(paint).apply { style = Paint.Style.STROKE; strokeWidth = 1.8f * d }
+        when (shape) {
+            Shape.CHECK, Shape.CROSS -> {
+                canvas.drawCircle(cx, cy, r, paint)
+                mark.color = Palette.BACKGROUND
+                if (shape == Shape.CHECK) {
+                    canvas.drawPath(Path().apply { moveTo(cx - 3.5f * d, cy); lineTo(cx - 1f * d, cy + 2.5f * d); lineTo(cx + 3.5f * d, cy - 2.5f * d) }, mark)
+                } else {
+                    canvas.drawLine(cx - 3f * d, cy - 3f * d, cx + 3f * d, cy + 3f * d, mark)
+                    canvas.drawLine(cx + 3f * d, cy - 3f * d, cx - 3f * d, cy + 3f * d, mark)
+                }
+            }
+            Shape.CHECKED, Shape.BOX -> {
+                val box = RectF(cx - r + d, cy - r + d, cx + r - d, cy + r - d)
+                if (shape == Shape.CHECKED) {
+                    canvas.drawRoundRect(box, 3 * d, 3 * d, paint)
+                    mark.color = Palette.BACKGROUND
+                    canvas.drawPath(Path().apply { moveTo(cx - 3.5f * d, cy); lineTo(cx - 1f * d, cy + 2.5f * d); lineTo(cx + 3.5f * d, cy - 2.5f * d) }, mark)
+                } else {
+                    mark.color = tint; mark.strokeWidth = 1.2f * d
+                    canvas.drawRoundRect(box, 3 * d, 3 * d, mark)
+                }
+            }
+            Shape.RIGHT -> canvas.drawPath(Path().apply { moveTo(cx - 2f * d, cy - 4f * d); lineTo(cx + 2f * d, cy); lineTo(cx - 2f * d, cy + 4f * d) }, mark)
+            Shape.DOWN -> canvas.drawPath(Path().apply { moveTo(cx - 4f * d, cy - 2f * d); lineTo(cx, cy + 2f * d); lineTo(cx + 4f * d, cy - 2f * d) }, mark)
+        }
+    }
+}
+
+/** The animated working indicator: three pulsing dots. */
+internal class WorkingDots(context: Context) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Palette.SECONDARY }
+    private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = 1_200; repeatCount = ValueAnimator.INFINITE
+        addUpdateListener { invalidate() }
+    }
+
+    init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
+
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); animator.start() }
+    override fun onDetachedFromWindow() { animator.cancel(); super.onDetachedFromWindow() }
+
+    override fun onDraw(canvas: Canvas) {
+        val d = resources.displayMetrics.density
+        val t = animator.animatedValue as Float
+        for (index in 0 until 3) {
+            val phase = ((t - index * 0.17f) % 1f + 1f) % 1f
+            paint.alpha = (255 * (0.25f + 0.75f * (1 - kotlin.math.abs(phase * 2 - 1)))).toInt()
+            canvas.drawCircle(3 * d + index * 10 * d, height / 2f, 3 * d, paint)
+        }
+    }
+}
+
+/**
+ * A bottom-anchored conversation painted from Rust's layout. Rust lays out
+ * on a worker; the list shows each finished frame's rows at their exact
+ * heights, so following the newest row, jumping to the bottom, and keeping
+ * the reader's place when rows arrive above need no estimates. With a
+ * transcript source (`rust_native::layout::source`), the rows never cross
+ * the view: the update names the source, and Rust reads them.
+ */
+class RustTranscript(private val context: Context, private val activate: (String) -> Unit) {
+    private data class Item(val key: String, val version: Long, val index: Int, val height: Float, val top: Float)
+
+    val root = FrameLayout(context)
+    private val list = RecyclerView(context)
+    private val layout = LinearLayoutManager(context)
+    private val jump = context.text("↓", 18f).apply {
+        gravity = Gravity.CENTER
+        background = context.rounded(Palette.RAISED, 20f, Palette.BORDER)
+        elevation = context.dpf(6f)
+        contentDescription = "Scroll to bottom"
+        tag = "transcript-scroll-to-bottom"
+        visibility = View.GONE
+    }
+    private val main = Handler(Looper.getMainLooper())
+    private val density = context.resources.displayMetrics.density
+    private var handle = 0L
+    private var items: List<Item> = emptyList()
+    private var frame = 0L
+    /** Row models by key and version; the prefetcher fills it off the UI thread. */
+    private val models = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, RowModel>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, RowModel>?) = size > 240
+    })
+    private var prefetched = -1
+    private var key = ""
+    private var source: String? = null
+    private var children: JSONArray? = null
+    private var earlier: JSONObject? = null
+    private val expanded = HashSet<String>()
+    private var following = true
+    private var dirty = true
+    private var sentWidth = 0f
+    private var inFlight = false
+    private var pending = false
+    private var disposed = false
+    /** Debug timings: the slowest update on the worker and the slowest bind, in nanoseconds. */
+    private var worstUpdate = 0L
+    private var worstBind = 0L
+    private var bench: TranscriptBench? = null
+
+    private val adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        override fun getItemCount() = items.size
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
+            object : RecyclerView.ViewHolder(RowView(parent.context).apply {
+                layoutParams = RecyclerView.LayoutParams(-1, -2)
+            }) {}
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            val view = holder.itemView as RowView
+            val item = items[position]
+            val started = System.nanoTime()
+            model(item)?.let { view.bind(it) }
+            worstBind = maxOf(worstBind, System.nanoTime() - started)
+            view.toggle = { key -> if (!expanded.remove(key)) expanded.add(key); dirty = true; sync() }
+            view.loadEarlier = { if (earlier?.optBoolean("loading") == false && key.isNotEmpty()) activate(key) }
+        }
+    }
+
+    init {
+        list.layoutManager = layout
+        list.adapter = adapter
+        list.itemAnimator = null
+        list.clipToPadding = false
+        list.overScrollMode = View.OVER_SCROLL_NEVER
+        list.addItemDecoration(object : RecyclerView.ItemDecoration() {
+            override fun getItemOffsets(outRect: android.graphics.Rect, view: View, parent: RecyclerView, state: RecyclerView.State) {
+                val position = parent.getChildAdapterPosition(view)
+                outRect.top = Math.round((if (position == 0) EDGE else GAP) * density)
+                outRect.bottom = if (position == items.size - 1) Math.round(EDGE * density) else 0
+            }
+        })
+        list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(view: RecyclerView, state: Int) {
+                when (state) {
+                    RecyclerView.SCROLL_STATE_DRAGGING -> following = false
+                    RecyclerView.SCROLL_STATE_IDLE -> if (!following) following = distanceFromBottom() < FOLLOW * density
+                }
+                if (following) pin()
+                updateJump()
+            }
+            override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) {
+                updateJump()
+                prefetch()
+            }
+        })
+        list.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            if (right - left != oldRight - oldLeft) sync()
+            if (following) pin()
+        }
+        root.addView(list, FrameLayout.LayoutParams(-1, -1))
+        root.addView(jump, FrameLayout.LayoutParams(context.dp(40), context.dp(40)).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; bottomMargin = context.dp(12)
+        })
+        jump.setOnClickListener { following = true; pin(); updateJump() }
+        // The layout lives while the view is attached; reattaching lays out
+        // again from the current revision.
+        root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) {
+                if (handle != 0L) return
+                handle = runCatching { TranscriptNative.create() }.getOrDefault(0L)
+                disposed = false
+                dirty = true
+                sync()
+            }
+            override fun onViewDetachedFromWindow(view: View) = dispose()
+        })
+    }
+
+    /** Takes a new revision: a transcript source's name, or the rows themselves. */
+    fun update(props: JSONObject) {
+        list.contentDescription = props.getString("label")
+        key = root.getTag(R.id.native_key) as? String ?: key
+        earlier = props.objectOrNull("earlier")
+        val named = if (props.has("source") && !props.isNull("source")) props.getString("source") else null
+        source = named
+        children = if (named == null) props.optJSONArray("children") else null
+        dirty = true
+        sync()
+    }
+
+    private val scale get() = context.resources.configuration.fontScale.coerceIn(0.5f, 4f)
+
+    /** Sends Rust what changed; the finished frame replaces the one on screen. */
+    private fun sync() {
+        if (handle == 0L || disposed) return
+        val handle = handle
+        val width = list.width / density
+        if (width <= 0f) return
+        if (!dirty && width == sentWidth) return
+        if (inFlight) { pending = true; return }
+        val request = JSONObject().apply {
+            put("width", width.toDouble())
+            put("scale", scale.toDouble())
+            put("expanded", JSONArray(expanded.toList()))
+            val named = source
+            if (named != null) put("source", named) else {
+                val rows = children ?: JSONArray()
+                put("order", JSONArray((0 until rows.length()).map { rows.getJSONObject(it).getString("key") }))
+                put("rows", rows)
+                earlier?.let { put("earlier", JSONObject().put("label", it.getString("label")).put("loading", it.optBoolean("loading"))) }
+            }
+        }.toString()
+        dirty = false
+        sentWidth = width
+        inFlight = true
+        val old = items
+        worker.execute {
+            val started = System.nanoTime()
+            val outcome = runCatching {
+                val reply = JSONObject(TranscriptNative.update(handle, request))
+                if (reply.has("error")) null else {
+                    val next = reply.getLong("frame")
+                    val keys = TranscriptNative.frameKeys(next).let { if (it.isEmpty()) emptyList() else it.split('\n') }
+                    val all = TranscriptNative.frameAll(next)
+                    val fresh = List(keys.size) { i ->
+                        Item(keys[i], all[4 * i + 1], all[4 * i].toInt(),
+                            Float.fromBits(all[4 * i + 3].toInt()), Float.fromBits(all[4 * i + 2].toInt()))
+                    }
+                    val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+                        override fun getOldListSize() = old.size
+                        override fun getNewListSize() = fresh.size
+                        override fun areItemsTheSame(a: Int, b: Int) = old[a].key == fresh[b].key
+                        override fun areContentsTheSame(a: Int, b: Int) = old[a].version == fresh[b].version
+                    }, false)
+                    Triple(next, fresh, diff)
+                }
+            }.getOrNull()
+            val spent = System.nanoTime() - started
+            main.post {
+                worstUpdate = maxOf(worstUpdate, spent)
+                inFlight = false
+                if (disposed) { outcome?.let { TranscriptNative.frameRelease(it.first) }; return@post }
+                if (outcome != null) present(outcome.first, outcome.second, outcome.third)
+                // A refusal waits for the next revision; it does not loop.
+                if (pending) { pending = false; sync() }
+            }
+        }
+    }
+
+    private fun present(next: Long, fresh: List<Item>, diff: DiffUtil.DiffResult) {
+        val anchor = if (following) null else anchor()
+        val previous = frame
+        frame = next
+        items = fresh
+        diff.dispatchUpdatesTo(adapter)
+        if (previous != 0L) TranscriptNative.frameRelease(previous)
+        prefetched = -1
+        prefetch()
+        if (BuildConfig.DEBUG && bench == null && fresh.isNotEmpty() &&
+            (context as? android.app.Activity)?.intent?.getBooleanExtra("rust_native_transcript_bench", false) == true) {
+            worstBind = 0
+            bench = TranscriptBench(list, { following = false; updateJump() }) {
+                String.format(java.util.Locale.ROOT, "worst update %.2f ms, worst bind %.2f ms",
+                    worstUpdate / 1e6, worstBind / 1e6)
+            }.also { it.start() }
+        }
+        if (following) pin()
+        else if (anchor != null) {
+            val index = fresh.indexOfFirst { it.key == anchor.first }
+            if (index >= 0) layout.scrollToPositionWithOffset(index, anchor.second)
+        }
+        updateJump()
+    }
+
+    /** The first visible row's key and its view's top on screen. */
+    private fun anchor(): Pair<String, Int>? {
+        val position = layout.findFirstVisibleItemPosition()
+        if (position == RecyclerView.NO_POSITION || position >= items.size) return null
+        val view = layout.findViewByPosition(position) ?: return null
+        return items[position].key to (view.top - list.paddingTop)
+    }
+
+    private fun model(item: Item): RowModel? {
+        models["${item.key}/${item.version}"]?.let { return it }
+        return build(frame, item)
+    }
+
+    /** A row's model from `frame`, kept for later binds. Safe off the UI thread. */
+    private fun build(frame: Long, item: Item): RowModel? {
+        if (frame == 0L) return null
+        val display = runCatching { TranscriptNative.frameDisplay(frame, item.index) }.getOrNull() ?: return null
+        return RowModel(JSONObject(display), context).also { models["${item.key}/${item.version}"] = it }
+    }
+
+    /**
+     * Builds the models of rows near the screen on a background thread, so
+     * binding a row rarely parses its display list on the UI thread.
+     */
+    private fun prefetch() {
+        val first = layout.findFirstVisibleItemPosition()
+        if (first == RecyclerView.NO_POSITION || kotlin.math.abs(first - prefetched) < 4) return
+        prefetched = first
+        val last = maxOf(first, layout.findLastVisibleItemPosition())
+        val wanted = items.subList(maxOf(0, first - PREFETCH), minOf(items.size, last + PREFETCH + 1))
+            .filter { !models.containsKey("${it.key}/${it.version}") }
+        if (wanted.isEmpty()) return
+        val frame = frame
+        prefetcher.execute { for (item in wanted) if (!models.containsKey("${item.key}/${item.version}")) build(frame, item) }
+    }
+
+    private fun distanceFromBottom() =
+        list.computeVerticalScrollRange() - list.computeVerticalScrollOffset() - list.computeVerticalScrollExtent()
+
+    private fun pin() {
+        if (items.isEmpty() || list.scrollState != RecyclerView.SCROLL_STATE_IDLE) return
+        list.post {
+            if (!following || items.isEmpty()) return@post
+            // Heights are exact, so the last row's position is the bottom.
+            layout.scrollToPosition(items.size - 1)
+            list.post { if (following && list.canScrollVertically(1)) list.scrollBy(0, distanceFromBottom()) }
+        }
+    }
+
+    private fun updateJump() {
+        val show = !following && list.height > context.dp(120) && distanceFromBottom() > context.dp(80)
+        val visible = if (show) View.VISIBLE else View.GONE
+        if (jump.visibility != visible) {
+            jump.visibility = visible
+            if (show) ObjectAnimator.ofFloat(jump, "alpha", 0f, 1f).setDuration(150).start()
+        }
+    }
+
+    private fun dispose() {
+        if (disposed || handle == 0L) return
+        disposed = true
+        val (h, f) = handle to frame
+        handle = 0L
+        frame = 0L
+        items = emptyList()
+        adapter.notifyDataSetChanged()
+        worker.execute {
+            if (f != 0L) TranscriptNative.frameRelease(f)
+            if (h != 0L) TranscriptNative.destroy(h)
+        }
+    }
+
+    private companion object {
+        /** Matches `rust_native::layout::EDGE_INSET` and `ROW_GAP`. */
+        const val EDGE = 16f
+        const val GAP = 18f
+        /** Coming to rest this close to the bottom resumes following, in points. */
+        const val FOLLOW = 70f
+        val worker = Executors.newSingleThreadExecutor { Thread(it, "openagents-transcript-layout") }
+        val prefetcher = Executors.newSingleThreadExecutor { Thread(it, "openagents-transcript-rows") }
+        /** Rows prepared beyond each edge of the screen. */
+        const val PREFETCH = 12
+    }
+}
+
+/** Debug builds only: synthetic rows for the fixture, to check scrolling over a long transcript. */
+internal object TranscriptFixture {
+    /**
+     * `view` with `count` synthetic rows before its transcript's own; with
+     * `pull`, the rows are published to a Rust transcript source and the
+     * transcript names it, as the app's chats do.
+     */
+    fun prepare(view: JSONObject, count: Int, pull: Boolean): JSONObject {
+        withRows(view, count)
+        if (!pull) return view
+        fun find(node: JSONObject): JSONObject? {
+            val element = node.getJSONObject("element")
+            if (element.getString("kind") == "transcript") return node
+            val children = element.optJSONObject("props")?.optJSONArray("children") ?: return null
+            return children.objects().firstNotNullOfOrNull { find(it) }
+        }
+        val node = find(view.getJSONObject("root")) ?: return view
+        val name = "fixture:" + node.getString("key")
+        TranscriptNative.publish(name, node.toString())
+        node.getJSONObject("element").getJSONObject("props").put("children", JSONArray()).put("source", name)
+        return view
+    }
+
+    private fun withRows(view: JSONObject, count: Int): JSONObject {
+        if (count <= 0) return view
+        fun find(node: JSONObject): JSONObject? {
+            val element = node.getJSONObject("element")
+            if (element.getString("kind") == "transcript") return element.getJSONObject("props")
+            val children = element.optJSONObject("props")?.optJSONArray("children") ?: return null
+            return children.objects().firstNotNullOfOrNull { find(it) }
+        }
+        val props = find(view.getJSONObject("root")) ?: return view
+        fun span(text: String, flag: String? = null) = JSONObject().put("text", text).apply { flag?.let { put(it, true) } }
+        fun paragraph(vararg spans: JSONObject) = JSONObject().put("kind", "paragraph").put("spans", JSONArray(spans.toList()))
+        fun message(key: String, role: String, vararg blocks: JSONObject) = JSONObject().put("key", key).put("style", JSONObject())
+            .put("element", JSONObject().put("kind", "message").put("props", JSONObject().put("role", role).put("note", JSONObject.NULL)
+                .put("children", JSONArray().put(JSONObject().put("key", "$key-md").put("style", JSONObject())
+                    .put("element", JSONObject().put("kind", "markdown").put("props", JSONObject().put("blocks", JSONArray(blocks.toList()))))))))
+        val rows = JSONArray()
+        for (index in 0 until count.coerceAtMost(20_000)) {
+            val key = "s$index"
+            rows.put(when (index % 4) {
+                0 -> message(key, "user", paragraph(span("Question $index: why does the "), span("scheduler", "code"), span(" stall under load?")))
+                1 -> message(key, "assistant", paragraph(span("The queue holds a lock while it "), span("waits", "italic"),
+                    span(" for the next job, so every worker blocks behind it. "), span("Release the lock before waiting", "bold"), span(".")))
+                2 -> message(key, "assistant", JSONObject().put("kind", "code").put("language", "rust")
+                    .put("text", "let job = queue.lock().expect(\"the scheduler queue lock is poisoned\").pop_front().unwrap_or_default();\nready.wait();\n"))
+                else -> message(key, "assistant", paragraph(span("Short reply $index.")))
+            })
+        }
+        val own = props.getJSONArray("children")
+        for (i in 0 until own.length()) rows.put(own.get(i))
+        props.put("children", rows)
+        return view
+    }
+}
+
+/**
+ * Debug builds only: a scripted fling. Two seconds after the first frame,
+ * it scrolls the list up for four seconds and back down at a fixed speed on
+ * the frame clock, then logs frame times under `TranscriptBench`. A hitch
+ * is a frame later than 1.5 times the display's frame budget.
+ */
+internal class TranscriptBench(private val list: RecyclerView, private val begin: () -> Unit,
+                                private val stats: () -> String) :
+    android.view.Choreographer.FrameCallback {
+    private val choreographer = android.view.Choreographer.getInstance()
+    private val speed = 5_200f * list.resources.displayMetrics.density
+    private val budget = 1_000_000_000L / (list.display?.refreshRate?.takeIf { it > 0 } ?: 60f).toLong()
+    private var last = 0L
+    private var direction = -1
+    private var legs = 0
+    private var legTime = 0L
+    private val deltas = ArrayList<Long>()
+
+    fun start() = list.postDelayed({ begin(); choreographer.postFrameCallback(this) }, 2_000)
+
+    override fun doFrame(now: Long) {
+        if (last != 0L) {
+            val delta = now - last
+            deltas.add(delta)
+            legTime += delta
+            val step = (speed * delta / 1e9f).toInt() * direction
+            val moved = list.canScrollVertically(direction)
+            list.scrollBy(0, step)
+            if (!moved || legTime >= 4_000_000_000L) { direction = -direction; legs += 1; legTime = 0 }
+        }
+        last = now
+        if (legs < 2) choreographer.postFrameCallback(this) else finish()
+    }
+
+    private fun finish() {
+        if (deltas.isEmpty()) return
+        val total = deltas.sum()
+        val hitches = deltas.count { it > budget * 3 / 2 }
+        android.util.Log.i("TranscriptBench", String.format(java.util.Locale.ROOT,
+            "%d frames in %.2f s, mean %.2f ms, worst %.2f ms, %d hitches; %s", deltas.size, total / 1e9,
+            total / 1e6 / deltas.size, deltas.max() / 1e6, hitches, stats()))
+    }
+}

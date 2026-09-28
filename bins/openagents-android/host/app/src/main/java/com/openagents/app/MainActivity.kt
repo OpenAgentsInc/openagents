@@ -191,6 +191,8 @@ class MainActivity : ComponentActivity() {
         }
         if (BuildConfig.DEBUG && intent.getBooleanExtra("rust_native_fixture", false)) {
             fixture = runCatching { JSONObject(assets.open("conversation.json").bufferedReader().readText()) }.getOrNull()
+                ?.let { TranscriptFixture.prepare(it, intent.getIntExtra("rust_native_fixture_rows", 0),
+                    intent.getBooleanExtra("rust_native_transcript_pull", false)) }
         }
         select(tab)
         open(route)

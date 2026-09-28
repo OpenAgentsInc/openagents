@@ -35,7 +35,7 @@ class NativeRenderer(
         var value: String? = null
         var text: TextView? = null
         var rows: LinearLayout? = null
-        var transcript: Transcript? = null
+        var transcript: RustTranscript? = null
         var composer: Composer? = null
     }
 
@@ -136,7 +136,7 @@ class NativeRenderer(
                 inner.requestLayout()
             }
             "surface" -> (view as TextView).text = "This device can't display ${props.getString("label")}."
-            "transcript" -> mounted.transcript!!.update(props, chat)
+            "transcript" -> mounted.transcript!!.update(props)
             "composer" -> mounted.composer!!.update(props)
             else -> if (kind.startsWith("text:")) {
                 val value = props.getString("value")
@@ -221,7 +221,7 @@ class NativeRenderer(
         }
         kind == "surface" -> Mounted(kind, context.text("", 14f, Palette.SECONDARY))
         kind == "transcript" -> {
-            val transcript = Transcript(context) { key -> activateNode(key) }
+            val transcript = RustTranscript(context) { key -> activateNode(key) }
             Mounted(kind, transcript.root).also { it.transcript = transcript }
         }
         kind == "composer" -> {

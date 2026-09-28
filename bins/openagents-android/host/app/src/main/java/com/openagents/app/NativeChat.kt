@@ -1,6 +1,7 @@
-// Native conversation elements for Rust Native: transcript, message,
-// Markdown, tool, working, and composer. Rust decides what each row says;
-// this file only paints, scrolls, and handles gestures. It follows the iOS
+// Native conversation elements for Rust Native: message, Markdown, tool,
+// working, and composer, as they appear outside a transcript; the transcript
+// itself is painted from Rust's layout (TranscriptPainter.kt). Rust decides
+// what each row says; this file only paints, scrolls, and handles gestures. It follows the iOS
 // renderer's design (bins/coder-ios/host/App/NativeChat.swift), which
 // reimplements the t3code iOS chat (pingdotgg/t3code, MIT).
 package com.openagents.app
@@ -37,9 +38,6 @@ import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
-import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -415,144 +413,6 @@ class ChatViews(
 
 private fun View.stateDescriptionCompat(value: String) {
     if (android.os.Build.VERSION.SDK_INT >= 30) stateDescription = value
-}
-
-/**
- * A bottom-anchored conversation. Rows are diffed by node key, and only rows
- * whose content changed are rebound. While the reader is at the bottom, the
- * newest row stays in view; scrolling up stops following and offers a jump
- * back to the bottom.
- */
-class Transcript(private val context: Context, private val activate: (String) -> Unit) {
-    private data class Row(val id: String, val content: String, val node: JSONObject?)
-
-    val root = FrameLayout(context)
-    private val list = RecyclerView(context)
-    private val layout = LinearLayoutManager(context).apply { stackFromEnd = true }
-    private val jump = context.text("↓", 18f).apply {
-        gravity = Gravity.CENTER
-        background = context.rounded(Palette.RAISED, 20f, Palette.BORDER)
-        elevation = context.dpf(6f)
-        contentDescription = "Scroll to bottom"
-        tag = "transcript-scroll-to-bottom"
-        visibility = View.GONE
-    }
-    private var rows: List<Row> = emptyList()
-    private var key = ""
-    private var chat: ChatViews? = null
-    private var earlier: JSONObject? = null
-    private var following = true
-
-    private val adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-        override fun getItemCount() = rows.size
-        override fun getItemViewType(position: Int) = if (rows[position].node == null) 1 else 0
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
-            object : RecyclerView.ViewHolder(FrameLayout(parent.context).apply {
-                layoutParams = RecyclerView.LayoutParams(-1, -2)
-            }) {}
-        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            val cell = holder.itemView as FrameLayout
-            cell.removeAllViews()
-            val row = rows[position]
-            val view = row.node?.let { chat?.build(it) } ?: earlierRow()
-            cell.addView(view, FrameLayout.LayoutParams(-1, -2))
-        }
-    }
-
-    init {
-        list.layoutManager = layout
-        list.adapter = adapter
-        list.itemAnimator = null
-        list.clipToPadding = false
-        list.overScrollMode = View.OVER_SCROLL_NEVER
-        list.addItemDecoration(object : RecyclerView.ItemDecoration() {
-            override fun getItemOffsets(outRect: android.graphics.Rect, view: View, parent: RecyclerView, state: RecyclerView.State) {
-                val width = parent.width
-                val side = maxOf(context.dp(16), (width - context.dp(Palette.READING_WIDTH_DP)) / 2)
-                outRect.left = side; outRect.right = side
-                outRect.top = if (parent.getChildAdapterPosition(view) == 0) context.dp(16) else context.dp(18)
-                outRect.bottom = if (parent.getChildAdapterPosition(view) == rows.size - 1) context.dp(16) else 0
-            }
-        })
-        list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrollStateChanged(view: RecyclerView, state: Int) {
-                when (state) {
-                    RecyclerView.SCROLL_STATE_DRAGGING -> following = false
-                    RecyclerView.SCROLL_STATE_IDLE -> following = distanceFromBottom() < context.dp(24)
-                }
-                updateJump()
-            }
-            override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) = updateJump()
-        })
-        // Rows measure themselves after they appear; hold the bottom while following.
-        list.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (following) pin() }
-        root.addView(list, FrameLayout.LayoutParams(-1, -1))
-        root.addView(jump, FrameLayout.LayoutParams(context.dp(40), context.dp(40)).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; bottomMargin = context.dp(12)
-        })
-        jump.setOnClickListener { following = true; pin(); updateJump() }
-    }
-
-    fun update(props: JSONObject, views: ChatViews) {
-        chat = views
-        list.contentDescription = props.getString("label")
-        key = root.getTag(R.id.native_key) as? String ?: key
-        val nextEarlier = props.objectOrNull("earlier")
-        val next = buildList {
-            if (nextEarlier != null) add(Row(EARLIER, nextEarlier.toString(), null))
-            props.getJSONArray("children").objects().forEach { add(Row(it.getString("key"), it.toString(), it)) }
-        }
-        val previous = rows
-        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
-            override fun getOldListSize() = previous.size
-            override fun getNewListSize() = next.size
-            override fun areItemsTheSame(old: Int, new: Int) = previous[old].id == next[new].id
-            override fun areContentsTheSame(old: Int, new: Int) = previous[old].content == next[new].content
-        })
-        earlier = nextEarlier
-        rows = next
-        diff.dispatchUpdatesTo(adapter)
-        if (following) pin()
-    }
-
-    private fun earlierRow(): View {
-        val earlier = earlier ?: return View(context)
-        val loading = earlier.optBoolean("loading")
-        return context.row().apply {
-            gravity = Gravity.CENTER
-            minimumHeight = context.dp(44)
-            tag = "transcript-earlier"
-            if (loading) addView(ProgressBar(context), LinearLayout.LayoutParams(context.dp(18), context.dp(18)).apply {
-                marginEnd = context.dp(8) })
-            addView(context.text(earlier.getString("label"), 15f, Palette.SECONDARY))
-            isEnabled = !loading
-            setOnClickListener {
-                val current = key.ifEmpty { root.getTag(R.id.native_key) as? String ?: "" }
-                if (this@Transcript.earlier?.optBoolean("loading") == false && current.isNotEmpty()) activate(current)
-            }
-        }
-    }
-
-    private fun distanceFromBottom() =
-        list.computeVerticalScrollRange() - list.computeVerticalScrollOffset() - list.computeVerticalScrollExtent()
-
-    private fun pin() {
-        if (rows.isEmpty() || list.scrollState != RecyclerView.SCROLL_STATE_IDLE) return
-        // Jump without animating so long transcripts don't lay out every row.
-        list.post {
-            if (!following || rows.isEmpty()) return@post
-            val last = rows.size - 1
-            if (layout.findLastVisibleItemPosition() != last) list.scrollToPosition(last)
-            else if (list.canScrollVertically(1)) list.scrollBy(0, distanceFromBottom().coerceAtLeast(1))
-        }
-    }
-
-    private fun updateJump() {
-        val show = !following && list.height > context.dp(120) && distanceFromBottom() > context.dp(80)
-        jump.visibility = if (show) View.VISIBLE else View.GONE
-    }
-
-    private companion object { const val EARLIER = "\u0001earlier" }
 }
 
 /**
