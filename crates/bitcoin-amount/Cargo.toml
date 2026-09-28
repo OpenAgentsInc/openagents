@@ -1,0 +1,18 @@
+[package]
+name = "bitcoin-amount"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "CC-0"
+publish = false
+description = "Bitcoin amounts for OpenAgents screens: BIP 177 integer base units (₿12,345) by default, legacy BTC (0.00012345 BTC) on request, parsed and shown without floating point"
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
