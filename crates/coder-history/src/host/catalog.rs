@@ -338,29 +338,46 @@ struct Head {
     title: Option<String>,
     status: SourceStatus,
     modified: Option<String>,
+    /// The session records that Coder's engine started it
+    /// ([`crate::engine`]), so it is not a chat of its own.
+    engine: bool,
+    /// Codex recorded the session as a thread another session spawned.
+    spawned: bool,
 }
 
-fn head(root: &confined::Root, source: &Source) -> Head {
-    let (native, title, status, modified) = head_parts(root, source);
-    Head {
-        native,
-        title,
-        status,
-        modified,
+/// An unreadable source's head, which the other cases start from.
+impl Default for Head {
+    fn default() -> Self {
+        Self {
+            native: None,
+            title: None,
+            status: SourceStatus::Unreadable,
+            modified: None,
+            engine: false,
+            spawned: false,
+        }
     }
 }
 
-fn head_parts(
-    root: &confined::Root,
-    source: &Source,
-) -> (Option<String>, Option<String>, SourceStatus, Option<String>) {
+/// How far into a Claude session [`claude_entrypoint`] looks for the first
+/// record that names its entry point: the first user record carries it, and
+/// an engine briefing can be long.
+const ENTRYPOINT_SCAN_BYTES: u64 = 1024 * 1024;
+const ENTRYPOINT_SCAN_RECORDS: usize = 16;
+
+fn head(root: &confined::Root, source: &Source) -> Head {
     let file = match root.open_file(&source.relative) {
         Ok(file) => file,
-        Err(Error::SourceMissing) => return (None, None, SourceStatus::Missing, None),
-        Err(_) => return (None, None, SourceStatus::Unreadable, None),
+        Err(Error::SourceMissing) => {
+            return Head {
+                status: SourceStatus::Missing,
+                ..Head::default()
+            };
+        }
+        Err(_) => return Head::default(),
     };
     let Ok(meta) = file.metadata() else {
-        return (None, None, SourceStatus::Unreadable, None);
+        return Head::default();
     };
     let modified = meta
         .modified()
@@ -368,12 +385,19 @@ fn head_parts(
         .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|elapsed| utc(elapsed.as_secs()));
     if meta.len() == 0 {
-        return (None, None, SourceStatus::Empty, modified);
+        return Head {
+            status: SourceStatus::Empty,
+            modified,
+            ..Head::default()
+        };
     }
     let mut first = Vec::new();
     let read = BufReader::new(file.take(16 * 1024)).read_until(b'\n', &mut first);
     if read.is_err() {
-        return (None, None, SourceStatus::Unreadable, modified);
+        return Head {
+            modified,
+            ..Head::default()
+        };
     }
     let value = serde_json::from_slice::<serde_json::Value>(&first).ok();
     let native = value
@@ -394,7 +418,58 @@ fn head_parts(
         .and_then(|v| v.get("customTitle").or_else(|| v.get("summary")))
         .and_then(|v| v.as_str())
         .map(str::to_owned);
-    (native, title, SourceStatus::Available, modified)
+    let payload = value.as_ref().and_then(|v| v.get("payload"));
+    let (engine, spawned) = match source.harness {
+        Harness::Codex => (
+            payload
+                .and_then(|p| p.get("originator"))
+                .and_then(|o| o.as_str())
+                == Some(crate::engine::MARK),
+            payload
+                .and_then(|p| p.get("source"))
+                .and_then(|s| s.as_object())
+                .is_some_and(|s| s.contains_key("subagent")),
+        ),
+        Harness::Claude => (
+            claude_entrypoint(root, source).as_deref() == Some(crate::engine::MARK),
+            false,
+        ),
+        Harness::Coder => (false, false),
+    };
+    Head {
+        native,
+        title,
+        status: SourceStatus::Available,
+        modified,
+        engine,
+        spawned,
+    }
+}
+
+/// The entry point Claude Code recorded for a session: the `entrypoint` of
+/// its first record that has one, within the first
+/// [`ENTRYPOINT_SCAN_RECORDS`] records and [`ENTRYPOINT_SCAN_BYTES`].
+fn claude_entrypoint(root: &confined::Root, source: &Source) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Record {
+        entrypoint: Option<String>,
+    }
+    let file = root.open_file(&source.relative).ok()?;
+    let mut reader = BufReader::new(file.take(ENTRYPOINT_SCAN_BYTES));
+    let mut line = Vec::new();
+    for _ in 0..ENTRYPOINT_SCAN_RECORDS {
+        line.clear();
+        if reader.read_until(b'\n', &mut line).ok()? == 0 || !line.ends_with(b"\n") {
+            return None;
+        }
+        if let Ok(Record {
+            entrypoint: Some(entrypoint),
+        }) = serde_json::from_slice(&line)
+        {
+            return Some(entrypoint);
+        }
+    }
+    None
 }
 
 /// The first line of the chat's first prompt, for a chat with no title:
@@ -444,6 +519,8 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
                 title: from_title,
                 status,
                 modified,
+                engine,
+                spawned,
             } = head(root, source);
             let native = match root.harness {
                 Harness::Coder => task_id(&source.relative),
@@ -452,6 +529,11 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
             let title = native.as_ref().and_then(|id| title_map.get(id));
             if let Some(id) = &native {
                 present.insert(id.clone());
+            }
+            // A session Coder's engine started for a task is the task's
+            // work, not a chat: the task's own transcript is the chat.
+            if engine {
+                continue;
             }
             let default = match root.harness {
                 Harness::Codex => "Saved Codex chat",
@@ -486,7 +568,7 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
                     // The file's last write is its last activity.
                     updated_at: modified.or_else(|| title.and_then(|t| t.updated.clone())),
                     archived: source.archived,
-                    subagent: source.subagent,
+                    subagent: source.subagent || spawned,
                     source_id: Some(source.id.clone()),
                     status,
                 },

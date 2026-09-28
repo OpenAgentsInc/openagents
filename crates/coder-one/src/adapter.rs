@@ -929,6 +929,39 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    #[test]
+    fn every_launch_marks_its_session_as_the_engines() {
+        let dir = scratch("engine-mark");
+        let env = |command: &std::process::Command, name: &str| {
+            command
+                .get_envs()
+                .find(|(key, _)| *key == name)
+                .and_then(|(_, value)| value)
+                .map(|value| value.to_string_lossy().into_owned())
+        };
+        let launch = Launch {
+            session: SessionArg::New(None),
+            steerable: false,
+        };
+        for (agent, variable) in [
+            (Agent::ClaudeCode, "CLAUDE_CODE_ENTRYPOINT"),
+            (Agent::Codex, "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"),
+        ] {
+            let cli = cli(agent, &dir, &[]);
+            let binary = cli.binary.clone().unwrap();
+            let batch = cli.command(&binary, &dir.join("b"), &dir.join("s"));
+            let live = cli.live_command(&binary, &launch);
+            for command in [&batch, &live] {
+                assert_eq!(
+                    env(command, variable).as_deref(),
+                    Some(coder_history::engine::MARK),
+                    "{agent:?}"
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[tokio::test]
     async fn claude_code_starts_under_the_hosts_session_id_and_is_observed_as_it_runs() {
         let dir = scratch("claude-observe");

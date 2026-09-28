@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 atif = { path = "../atif" }
 coder-boundary = { path = "../coder-boundary" }
+coder-history = { path = "../coder-history", default-features = false }
 futures-util = "0.3"
 indexmap = "2"
 jev = { path = "../jev" }

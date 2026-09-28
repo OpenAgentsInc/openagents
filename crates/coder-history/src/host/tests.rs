@@ -974,3 +974,82 @@ fn coder_loop_events_project_as_replies_commands_and_endings() {
         ("message".into(), s("system"), None, "Note.".into(), false)
     );
 }
+
+#[test]
+fn a_codex_session_the_engine_started_is_not_a_chat_and_a_spawned_thread_is_a_subagent() {
+    let fixture = Fixture::new();
+    let mark = crate::engine::MARK;
+    fixture.codex("typed", "");
+    fixture.write(
+        "sessions/2026/01/01/rollout-engine.jsonl",
+        format!(
+            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"engine\",\"originator\":\"{mark}\",\"source\":\"exec\"}}}}\n"
+        ),
+    );
+    fixture.write(
+        "sessions/2026/01/01/rollout-exec.jsonl",
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"exec\",\"originator\":\"codex_exec\",\"source\":\"exec\"}}\n",
+    );
+    fixture.write(
+        "sessions/2026/01/01/rollout-thread.jsonl",
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"thread\",\"originator\":\"codex-tui\",\"source\":{\"subagent\":{\"thread_spawn\":{\"parent_thread_id\":\"typed\"}}}}}\n",
+    );
+    // A title in the index does not bring the engine's session back as a
+    // missing chat.
+    fixture.write(
+        "session_index.jsonl",
+        "{\"id\":\"engine\",\"thread_name\":\"Engine work\"}\n",
+    );
+    let page = fixture
+        .history()
+        .catalog(CatalogRequest::default())
+        .unwrap();
+    let mut listed: Vec<(String, bool)> = page
+        .entries
+        .iter()
+        .map(|c| (c.native_id.clone().unwrap(), c.subagent))
+        .collect();
+    listed.sort();
+    assert_eq!(
+        listed,
+        [
+            ("exec".to_owned(), false),
+            ("thread".to_owned(), true),
+            ("typed".to_owned(), false),
+        ]
+    );
+}
+
+#[test]
+fn a_claude_session_the_engine_started_is_not_a_chat() {
+    let fixture = Fixture::new();
+    let mark = crate::engine::MARK;
+    // Claude Code's first records can carry no entry point, and the first
+    // user record, which does, holds the whole briefing.
+    let queued =
+        "{\"type\":\"queue-operation\",\"operation\":\"enqueue\",\"sessionId\":\"{id}\"}\n";
+    let user = |id: &str, entrypoint: &str| {
+        format!(
+            "{}{{\"type\":\"user\",\"sessionId\":\"{id}\",\"message\":{{\"role\":\"user\",\"content\":\"{}\"}},\"entrypoint\":\"{entrypoint}\"}}\n",
+            queued.replace("{id}", id),
+            "x".repeat(200 * 1024)
+        )
+    };
+    fixture.write("projects/p/engine.jsonl", user("engine", mark));
+    fixture.write("projects/p/print.jsonl", user("print", "sdk-cli"));
+    fixture.write("projects/p/typed.jsonl", user("typed", "cli"));
+    let history = History::open(Config {
+        codex: None,
+        claude: Some(fixture.0.clone()),
+        coder: None,
+    })
+    .unwrap();
+    let page = history.catalog(CatalogRequest::default()).unwrap();
+    let mut listed: Vec<String> = page
+        .entries
+        .iter()
+        .map(|c| c.native_id.clone().unwrap())
+        .collect();
+    listed.sort();
+    assert_eq!(listed, ["print", "typed"]);
+}

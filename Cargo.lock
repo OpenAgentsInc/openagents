@@ -1141,6 +1141,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "coder-boundary",
+ "coder-history",
  "futures-util",
  "indexmap 2.14.2",
  "jev",

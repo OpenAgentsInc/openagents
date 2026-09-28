@@ -270,6 +270,8 @@ impl Setup<'_> {
             // The executor needs neither of Coder One's own credentials.
             .env_remove("TYPESAFE_API_KEY")
             .env_remove("OPENAGENTS_API_KEY");
+        let (mark, value) = self.which.agent().engine_mark();
+        command.env(mark, value);
         if self.credential == Credential::OauthToken {
             command
                 .env_remove("ANTHROPIC_API_KEY")

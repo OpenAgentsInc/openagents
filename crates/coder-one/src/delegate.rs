@@ -95,6 +95,19 @@ impl Agent {
         }
     }
 
+    /// The variable and value that make the CLI record, in the session
+    /// file it saves, that Coder's engine started the session
+    /// ([`coder_history::engine`]), so the history catalog never lists the
+    /// session as a chat of its own.
+    #[must_use]
+    pub fn engine_mark(self) -> (&'static str, &'static str) {
+        use coder_history::engine;
+        match self {
+            Agent::ClaudeCode => (engine::CLAUDE_VARIABLE, engine::MARK),
+            Agent::Codex | Agent::Microluna => (engine::CODEX_VARIABLE, engine::MARK),
+        }
+    }
+
     /// The variable that names the binary explicitly.
     #[must_use]
     pub fn binary_variable(self) -> &'static str {
@@ -1842,6 +1855,8 @@ impl Cli {
             // Bytecode the delegate's test runs leave behind is not part of
             // the change, and in issue mode the host would commit it.
             .env("PYTHONDONTWRITEBYTECODE", "1");
+        let (mark, value) = self.agent.engine_mark();
+        command.env(mark, value);
         if self.agent == Agent::ClaudeCode {
             // A signed-in Claude Code attaches the account's claude.ai
             // connectors partway through a session, and their tool lists

@@ -20,6 +20,25 @@ pub const MAX_READABLE_RECORD_BYTES: usize = 256 * 1024;
 mod project;
 pub use project::{readable_record, readable_record_full};
 
+/// How Coder's engine marks a Claude Code or Codex session it starts for its
+/// own work (a delegated turn, an explorer handoff, a terminal answer), so
+/// the session's own file records that it is not a chat the user typed.
+///
+/// The engine sets [`CODEX_VARIABLE`](engine::CODEX_VARIABLE) or
+/// [`CLAUDE_VARIABLE`](engine::CLAUDE_VARIABLE) to [`MARK`](engine::MARK)
+/// when it launches the CLI. Codex records the value as the session's
+/// `originator` in its `session_meta` header; Claude Code records it as each
+/// record's `entrypoint`. The catalog leaves such a session out: the task's
+/// own Coder transcript is the chat.
+pub mod engine {
+    /// The value both CLIs record.
+    pub const MARK: &str = "openagents-coder-engine";
+    /// Codex's originator override, recorded as `session_meta.originator`.
+    pub const CODEX_VARIABLE: &str = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
+    /// Claude Code's entry point, recorded as each record's `entrypoint`.
+    pub const CLAUDE_VARIABLE: &str = "CLAUDE_CODE_ENTRYPOINT";
+}
+
 /// Stable native record identity within one source-file incarnation. Clients
 /// use this same formula to validate chunks before assembling a transcript.
 pub fn record_id(source_id: &str, incarnation: &str, record_offset: u64) -> String {
