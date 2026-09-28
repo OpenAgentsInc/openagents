@@ -234,6 +234,37 @@ impl Options {
     }
 }
 
+/// Check each recorded workspace root before the host serves. A root under
+/// the host's own directory is created; any other missing or unreadable
+/// root is reported so a later `terminal.open` refusal has a cause in the
+/// log. Returns one line per problem or repair.
+fn check_workspaces(workspaces: &BTreeMap<String, PathBuf>, root: &Path) -> Vec<String> {
+    let mut lines = Vec::new();
+    for (label, path) in workspaces {
+        if path.is_dir() {
+            continue;
+        }
+        if path.starts_with(root) {
+            match std::fs::create_dir_all(path) {
+                Ok(()) => lines.push(format!(
+                    "created workspace `{label}` at {}",
+                    path.display()
+                )),
+                Err(error) => lines.push(format!(
+                    "workspace `{label}` at {} cannot be created ({error}); terminal.open is refused until it exists",
+                    path.display()
+                )),
+            }
+        } else {
+            lines.push(format!(
+                "workspace `{label}` root {} is missing; terminal.open is refused until it exists",
+                path.display()
+            ));
+        }
+    }
+    lines
+}
+
 fn home(relative: &str) -> Result<PathBuf> {
     std::env::var_os("HOME")
         .map(|home| PathBuf::from(home).join(relative))
@@ -434,6 +465,9 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     let mut workspaces = options.workspaces()?;
     if workspaces.is_empty() {
         workspaces = settings.workspaces.clone();
+    }
+    for line in check_workspaces(&workspaces, root) {
+        eprintln!("coder host: {line}");
     }
     let listen = match options
         .one("--listen")?
@@ -666,6 +700,35 @@ mod tests {
         Box::new(|_: &Path, _: &BTreeMap<String, PathBuf>| {
             Ok(Arc::new(crate::NoTasks) as Arc<dyn Tasks>)
         })
+    }
+
+    #[test]
+    fn missing_workspace_roots_are_named_or_created_under_the_host_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("host");
+        let present = dir.path().join("present");
+        std::fs::create_dir_all(&present).unwrap();
+        let gone = dir.path().join("gone");
+        let owned = root.join("tasks");
+        let workspaces: BTreeMap<String, PathBuf> = [
+            ("a".to_owned(), present.clone()),
+            ("b".to_owned(), gone.clone()),
+            ("c".to_owned(), owned.clone()),
+        ]
+        .into_iter()
+        .collect();
+        let lines = check_workspaces(&workspaces, &root);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0].contains("`b`") && lines[0].contains(gone.to_str().unwrap()));
+        assert!(lines[0].contains("missing"), "{}", lines[0]);
+        assert!(
+            lines[1].starts_with("created workspace `c`"),
+            "{}",
+            lines[1]
+        );
+        assert!(owned.is_dir());
+        assert!(!gone.exists());
+        assert!(check_workspaces(&workspaces, &root).len() == 1);
     }
 
     #[tokio::test]

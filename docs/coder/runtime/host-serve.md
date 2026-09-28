@@ -70,6 +70,16 @@ Every `coder host` command also takes `--state DIR` for the access store,
 `SIGTERM` or `SIGINT` stops the host: every terminal's process tree ends, and
 the runtime record is removed.
 
+### Workspace roots
+
+At start the host checks each workspace root. A root under `--root` that does
+not exist is created and logged as `created workspace`. Any other missing root
+is logged as `workspace LABEL root PATH is missing`, and the host still
+serves. `terminal.open` then answers `unavailable` until the directory exists
+again, which needs no restart; a host with no workspace at all answers
+`unsupported`. The `openagents computer exec` message names which of the two
+happened.
+
 ### Host generation
 
 Clients refuse a host generation lower than one they already hold, so a
