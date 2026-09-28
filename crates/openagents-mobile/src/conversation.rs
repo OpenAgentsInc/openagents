@@ -205,7 +205,16 @@ impl Conversation {
             children.push(system(&format!("{key}-error"), error));
         }
         children.extend(inner.rows.iter().map(|row| draw(row)));
-        if inner.loading {
+        // One working row at most: the task's own state when it has one,
+        // since it says more than the read that is still loading.
+        if let Some(label) = working {
+            children.push(node(
+                &format!("{key}-working"),
+                Element::Working {
+                    label: label.into(),
+                },
+            ));
+        } else if inner.loading {
             children.push(node(
                 &format!("{key}-loading"),
                 Element::Working {
@@ -214,14 +223,6 @@ impl Conversation {
             ));
         } else if inner.rows.is_empty() && inner.error.is_none() {
             children.push(system(&format!("{key}-empty"), "No messages yet."));
-        }
-        if let Some(label) = working {
-            children.push(node(
-                &format!("{key}-working"),
-                Element::Working {
-                    label: label.into(),
-                },
-            ));
         }
         node(
             key,
