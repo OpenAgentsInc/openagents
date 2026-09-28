@@ -410,7 +410,12 @@ impl Host {
             }
         } else {
             admission.reads += 1;
-            match read(&admission.roots, &request.query, route.limits()) {
+            match read(
+                &self.directory,
+                &admission.roots,
+                &request.query,
+                route.limits(),
+            ) {
                 Ok(observation) => {
                     answered = Some(match &observation {
                         Observation::Page(page) => {
@@ -783,11 +788,24 @@ fn sources(roots: &[Root]) -> coder_history::Config {
     config
 }
 
-fn read(roots: &[Root], query: &Query, limits: coder_history::Limits) -> Result<Observation> {
+/// Where the chat list keeps what it read of each saved chat, so a host that
+/// restarts lists without reading every chat again.
+pub fn catalog_index(directory: &Path) -> PathBuf {
+    directory.join("catalog-index.json")
+}
+
+fn read(
+    directory: &Path,
+    roots: &[Root],
+    query: &Query,
+    limits: coder_history::Limits,
+) -> Result<Observation> {
     for root in roots {
         root.current()?;
     }
-    let history = coder_history::History::open(sources(roots)).map_err(history_error)?;
+    let history = coder_history::History::open(sources(roots))
+        .map_err(history_error)?
+        .with_catalog_index(catalog_index(directory));
     let observation = match query {
         Query::Catalog(q) => Observation::Catalog(
             history

@@ -375,8 +375,10 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
         // Read the chat list once now, so the first device to ask finds each
         // session's head already read.
         let sources = chats.sources.clone();
+        let index = coder_connect::host::catalog_index(&chats.observer);
         tokio::task::spawn_blocking(move || {
             if let Ok(history) = coder_history::History::open(sources) {
+                let history = history.with_catalog_index(index);
                 let _ = history.catalog(coder_history::CatalogRequest {
                     cursor: None,
                     limit: coder_history::MAX_CATALOG_PAGE,

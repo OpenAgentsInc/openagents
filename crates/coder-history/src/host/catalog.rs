@@ -5,6 +5,10 @@ use std::collections::{BTreeMap, HashSet};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 
+mod index;
+#[cfg(test)]
+mod tests;
+
 const MAX_INDEX_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_NOTICES: usize = 128;
 
@@ -21,6 +25,80 @@ pub(super) struct Source {
 }
 
 pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Error> {
+    scan_witnessed(history, &mut Vec::new())
+}
+
+/// What a listing depends on besides its files' own stats: each directory it
+/// listed and each index file it read, as they were just before. A listing
+/// whose witnesses all look the same has the same members.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct Witness {
+    root: usize,
+    /// Empty for the root directory itself.
+    relative: PathBuf,
+    directory: bool,
+    /// Identity, length (files only), and last change; `None` when absent.
+    stat: Option<(u64, u64, u64, i64, i64)>,
+}
+
+impl Witness {
+    fn observe(root_index: usize, root: &confined::Root, relative: &Path, directory: bool) -> Self {
+        Self {
+            root: root_index,
+            relative: relative.to_path_buf(),
+            directory,
+            // What could not be looked at matches nothing later.
+            stat: Self::stat(root, relative, directory).unwrap_or(Some((u64::MAX, 0, 0, 0, 0))),
+        }
+    }
+
+    /// `Err` when it cannot be looked at, which never matches.
+    #[allow(clippy::type_complexity)]
+    fn stat(
+        root: &confined::Root,
+        relative: &Path,
+        directory: bool,
+    ) -> Result<Option<(u64, u64, u64, i64, i64)>, ()> {
+        match root.stat(relative) {
+            Ok((kind, stat)) => Ok(Some((
+                stat.dev,
+                stat.ino,
+                if directory || kind != confined::Kind::File {
+                    0
+                } else {
+                    stat.size
+                },
+                stat.mtime,
+                stat.mtime_nsec,
+            ))),
+            Err(Error::SourceMissing) => Ok(None),
+            Err(_) => Err(()),
+        }
+    }
+
+    fn unchanged(&self, history: &History) -> bool {
+        history
+            .roots
+            .get(self.root)
+            .is_some_and(|root| Self::stat(root, &self.relative, self.directory) == Ok(self.stat))
+    }
+}
+
+fn dir_or_file_stat(meta: &std::fs::Metadata, directory: bool) -> (u64, u64, u64, i64, i64) {
+    use std::os::unix::fs::MetadataExt;
+    (
+        meta.dev(),
+        meta.ino(),
+        if directory { 0 } else { meta.len() },
+        meta.mtime(),
+        meta.mtime_nsec(),
+    )
+}
+
+fn scan_witnessed(
+    history: &History,
+    witnesses: &mut Vec<Witness>,
+) -> Result<(Vec<Source>, Vec<Notice>), Error> {
     let mut sources = Vec::new();
     let mut notices = Vec::new();
     let mut visited = 0;
@@ -29,20 +107,44 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
             Harness::Codex => &["sessions", "archived_sessions"],
             Harness::Claude => &["projects"],
             Harness::Coder => {
-                tasks(root_index, root, &mut sources, &mut notices, &mut visited)?;
+                tasks(
+                    root_index,
+                    root,
+                    &mut sources,
+                    &mut notices,
+                    &mut visited,
+                    witnesses,
+                )?;
                 continue;
             }
             Harness::OpenCode | Harness::Devin => {
-                mirrored(root_index, root, &mut sources, &mut notices, &mut visited)?;
+                mirrored(
+                    root_index,
+                    root,
+                    &mut sources,
+                    &mut notices,
+                    &mut visited,
+                    witnesses,
+                )?;
                 continue;
             }
         };
+        // A start directory replaced changes the root's last change.
+        witnesses.push(Witness::observe(root_index, root, Path::new(""), true));
         for start in starts {
             let mut pending = vec![PathBuf::from(start)];
             while let Some(relative) = pending.pop() {
                 let directory = match root.open_dir(&relative) {
                     Ok(file) => file,
-                    Err(Error::SourceMissing) if relative == Path::new(start) => continue,
+                    Err(Error::SourceMissing) if relative == Path::new(start) => {
+                        witnesses.push(Witness {
+                            root: root_index,
+                            relative,
+                            directory: true,
+                            stat: None,
+                        });
+                        continue;
+                    }
                     Err(_) => {
                         notice(
                             &mut notices,
@@ -52,7 +154,7 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
                         continue;
                     }
                 };
-                let names = match entries(root, &relative, &directory) {
+                let names = match entries(root, root_index, &relative, &directory, witnesses) {
                     Ok(names) => names,
                     Err(Error::ResourceLimit) => return Err(Error::ResourceLimit),
                     Err(_) => {
@@ -139,8 +241,10 @@ static DIRECTORIES: std::sync::OnceLock<Memo<(String, PathBuf), KnownDirectory>>
 #[allow(clippy::type_complexity)]
 fn entries(
     root: &confined::Root,
+    root_index: usize,
     relative: &Path,
     directory: &std::fs::File,
+    witnesses: &mut Vec<Witness>,
 ) -> Result<
     Vec<(
         std::ffi::OsString,
@@ -148,11 +252,15 @@ fn entries(
     )>,
     Error,
 > {
-    use std::os::unix::fs::MetadataExt;
-    let stat = directory
-        .metadata()
-        .map(|m| (m.dev(), m.ino(), m.mtime(), m.mtime_nsec()))
-        .map_err(|_| Error::SourceUnreadable)?;
+    let meta = directory.metadata().map_err(|_| Error::SourceUnreadable)?;
+    let witnessed = dir_or_file_stat(&meta, true);
+    witnesses.push(Witness {
+        root: root_index,
+        relative: relative.to_path_buf(),
+        directory: true,
+        stat: Some(witnessed),
+    });
+    let stat = (witnessed.0, witnessed.1, witnessed.3, witnessed.4);
     let key = (root.id.clone(), relative.to_path_buf());
     let known = memo(&DIRECTORIES)
         .get(&key)
@@ -235,7 +343,9 @@ fn tasks(
     sources: &mut Vec<Source>,
     notices: &mut Vec<Notice>,
     visited: &mut usize,
+    witnesses: &mut Vec<Witness>,
 ) -> Result<(), Error> {
+    witnesses.push(Witness::observe(root_index, root, Path::new(""), true));
     let listed = root
         .open_top()
         .and_then(|directory| confined::names(&directory).map(|names| (directory, names)));
@@ -250,6 +360,12 @@ fn tasks(
             );
         }
     };
+    witnesses.push(Witness::observe(
+        root_index,
+        root,
+        Path::new(ARCHIVE_FILE),
+        false,
+    ));
     let archived = archived_tasks(root, notices)?;
     for name in names {
         *visited += 1;
@@ -289,7 +405,9 @@ fn mirrored(
     sources: &mut Vec<Source>,
     notices: &mut Vec<Notice>,
     visited: &mut usize,
+    witnesses: &mut Vec<Witness>,
 ) -> Result<(), Error> {
+    witnesses.push(Witness::observe(root_index, root, Path::new(""), true));
     let listed = root
         .open_top()
         .and_then(|directory| confined::names(&directory).map(|names| (directory, names)));
@@ -696,6 +814,7 @@ fn head(root: &confined::Root, source: &Source) -> Head {
                 spawned: head.spawned,
             },
         );
+        index::changed();
     }
     head
 }
@@ -864,14 +983,16 @@ fn claude_entrypoint(root: &confined::Root, source: &Source) -> (Option<String>,
     (None, true)
 }
 
+/// A first prompt as last read: identity, length, settled, and the prompt.
+type KnownPrompt = (u64, u64, u64, bool, Option<String>);
+
+static PROMPTS: std::sync::OnceLock<Memo<(String, PathBuf), KnownPrompt>> =
+    std::sync::OnceLock::new();
+
 /// The first line of the chat's first prompt, for a chat with no title:
 /// the first user message within the first 64 KiB that is not injected
 /// context (text that opens with `<`, such as `<environment_context>`).
 fn first_prompt(root: &confined::Root, source: &Source) -> Option<String> {
-    /// Identity, length, settled, and the prompt read.
-    type KnownPrompt = (u64, u64, u64, bool, Option<String>);
-    static PROMPTS: std::sync::OnceLock<Memo<(String, PathBuf), KnownPrompt>> =
-        std::sync::OnceLock::new();
     let key = (root.id.clone(), source.relative.clone());
     if let Some(stat) = source.stat
         && let Some((dev, ino, size, settled, prompt)) = memo(&PROMPTS).get(&key)
@@ -887,6 +1008,7 @@ fn first_prompt(root: &confined::Root, source: &Source) -> Option<String> {
             key,
             (stat.dev, stat.ino, stat.size, settled, prompt.clone()),
         );
+        index::changed();
     }
     prompt
 }
@@ -928,6 +1050,46 @@ fn read_first_prompt(root: &confined::Root, source: &Source) -> (Option<String>,
     }
 }
 
+/// Untitled chats' sources by source ID, to name from their first prompt.
+type Untitled = BTreeMap<String, (usize, PathBuf, Option<confined::Stat>)>;
+
+/// A built catalog: every chat in page order with its snapshot, and what it
+/// was built from.
+struct Listing {
+    /// A hash of the stats and index files the listing was built from; a
+    /// scan with the same one builds the same listing.
+    fingerprint: u64,
+    snapshot: String,
+    /// Newest first, keyed by the cursor's `after`.
+    entries: std::sync::Arc<Vec<(String, Chat)>>,
+    untitled: std::sync::Arc<Untitled>,
+    notices: Vec<Notice>,
+    witnesses: Vec<Witness>,
+    /// Nothing in it was unreadable or unavailable, so its witnesses alone
+    /// say whether its members changed.
+    reusable: bool,
+    /// When a full scan last found it current.
+    verified: std::time::Instant,
+}
+
+/// The last listing built for each set of roots.
+static LISTINGS: std::sync::OnceLock<Memo<String, std::sync::Arc<Listing>>> =
+    std::sync::OnceLock::new();
+
+/// How long after a full scan a cursor page may be answered from the same
+/// listing when its directories and index files are unchanged. Its members
+/// are checked on every page; only order and times can be this old.
+const CURSOR_REUSE: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn roots_key(history: &History) -> String {
+    history
+        .roots
+        .iter()
+        .map(|r| r.id.as_str())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 pub(super) fn page(
     history: &History,
     request: CatalogRequest,
@@ -936,9 +1098,90 @@ pub(super) fn page(
     if request.limit == 0 || request.limit > limits.catalog_page {
         return Err(Error::InvalidRequest);
     }
-    let (sources, mut notices) = scan(history)?;
+    if let Some(path) = &history.index {
+        index::load(path);
+    }
+    let key = roots_key(history);
+    // A later page of a listing read moments ago, whose directories and
+    // index files are unchanged, has the same members: it is a slice.
+    let reused = request.cursor.as_ref().and_then(|cursor| {
+        let listing = memo(&LISTINGS).get(&key).cloned()?;
+        (listing.reusable
+            && listing.snapshot == cursor.snapshot
+            && listing.verified.elapsed() < CURSOR_REUSE
+            && listing.witnesses.iter().all(|w| w.unchanged(history)))
+        .then_some(listing)
+    });
+    let listing = match reused {
+        Some(listing) => listing,
+        None => {
+            let listing = std::sync::Arc::new(build(history, &key)?);
+            memo(&LISTINGS).insert(key, listing.clone());
+            listing
+        }
+    };
+    let result = slice(history, &listing, request, limits);
+    if let Some(path) = &history.index {
+        index::save(path);
+    }
+    result
+}
+
+/// Scan the roots and build their listing, reusing the last one's chats when
+/// nothing it was built from changed.
+fn build(history: &History, key: &str) -> Result<Listing, Error> {
+    use std::hash::{Hash, Hasher};
+    let mut witnesses = Vec::new();
+    let (sources, mut notices) = scan_witnessed(history, &mut witnesses)?;
+    for (root_index, root) in history.roots.iter().enumerate() {
+        if matches!(
+            root.harness,
+            Harness::Codex | Harness::OpenCode | Harness::Devin
+        ) {
+            witnesses.push(Witness::observe(
+                root_index,
+                root,
+                Path::new("session_index.jsonl"),
+                false,
+            ));
+        }
+    }
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for source in &sources {
+        (&source.id, source.stat, source.archived, source.subagent).hash(&mut hasher);
+    }
+    for n in &notices {
+        (&n.code, &n.source_id).hash(&mut hasher);
+    }
+    witnesses
+        .iter()
+        .filter(|w| !w.directory)
+        .for_each(|w| w.hash(&mut hasher));
+    let fingerprint = hasher.finish();
+    let unavailable = notices.iter().any(|n| {
+        matches!(
+            n.code.as_str(),
+            "directory_unavailable" | "entry_unavailable"
+        )
+    });
+    if let Some(last) = memo(&LISTINGS).get(key).cloned()
+        && last.fingerprint == fingerprint
+        && last.reusable
+    {
+        return Ok(Listing {
+            fingerprint,
+            snapshot: last.snapshot.clone(),
+            entries: last.entries.clone(),
+            untitled: last.untitled.clone(),
+            notices: last.notices.clone(),
+            witnesses,
+            reusable: !unavailable,
+            verified: std::time::Instant::now(),
+        });
+    }
     let mut entries: Vec<(String, Chat)> = Vec::new();
-    let mut untitled: BTreeMap<String, (usize, PathBuf, Option<confined::Stat>)> = BTreeMap::new();
+    let mut untitled = Untitled::new();
+    let mut settled = true;
     for (root_index, root) in history.roots.iter().enumerate() {
         let title_map = titles(root, &mut notices)?;
         let mut present = HashSet::new();
@@ -951,6 +1194,7 @@ pub(super) fn page(
                 engine,
                 spawned,
             } = head(root, source);
+            settled &= matches!(status, SourceStatus::Available | SourceStatus::Empty);
             let native = match root.harness {
                 Harness::Coder => task_id(&source.relative),
                 _ => from_header.or_else(|| uuid_suffix(&source.relative)),
@@ -1052,8 +1296,29 @@ pub(super) fn page(
             .cmp(&a.1.updated_at)
             .then_with(|| a.0.cmp(&b.0))
     });
+    Ok(Listing {
+        fingerprint,
+        snapshot,
+        entries: std::sync::Arc::new(entries),
+        untitled: std::sync::Arc::new(untitled),
+        notices,
+        witnesses,
+        reusable: settled && !unavailable,
+        verified: std::time::Instant::now(),
+    })
+}
+
+/// The page `request` asks for from `listing`.
+fn slice(
+    history: &History,
+    listing: &Listing,
+    request: CatalogRequest,
+    limits: Limits,
+) -> Result<CatalogPage, Error> {
+    let entries = &listing.entries;
+    let snapshot = &listing.snapshot;
     let start = if let Some(cursor) = request.cursor {
-        if cursor.snapshot != snapshot {
+        if cursor.snapshot != *snapshot {
             return Err(Error::CursorStale);
         }
         entries
@@ -1068,9 +1333,23 @@ pub(super) fn page(
         snapshot: snapshot.clone(),
         entries: Vec::new(),
         next: None,
-        notices,
+        notices: listing.notices.clone(),
     };
     let mut end = start;
+    // Most pages fit whole: take the rows at once, and only when they do not
+    // fit add them one by one to find where the page ends.
+    let whole = (start + usize::from(request.limit)).min(entries.len());
+    page.entries = entries[start..whole].iter().map(|e| e.1.clone()).collect();
+    page.next = (whole < entries.len()).then(|| CatalogCursor {
+        snapshot: snapshot.clone(),
+        after: entries[whole - 1].0.clone(),
+    });
+    if whole > start && encoded_len(&page)? <= limits.response_bytes {
+        end = whole;
+    } else {
+        page.entries.clear();
+        page.next = None;
+    }
     while end < entries.len() && page.entries.len() < usize::from(request.limit) {
         page.entries.push(entries[end].1.clone());
         let after = entries[end].0.clone();
@@ -1097,8 +1376,10 @@ pub(super) fn page(
     }
     // Name untitled chats on this page from their first prompt.
     for chat in &mut page.entries {
-        if let Some((root, relative, stat)) =
-            chat.source_id.as_ref().and_then(|id| untitled.get(id))
+        if let Some((root, relative, stat)) = chat
+            .source_id
+            .as_ref()
+            .and_then(|id| listing.untitled.get(id))
             && let Some(prompt) = first_prompt(
                 &history.roots[*root],
                 &Source {
@@ -1119,4 +1400,16 @@ pub(super) fn page(
         return Err(Error::ResourceLimit);
     }
     Ok(page)
+}
+
+/// Forget everything remembered in memory, as a process that just started.
+#[cfg(test)]
+pub(super) fn forget() {
+    memo(&DIRECTORIES).clear();
+    memo(&HEADS).clear();
+    memo(&PROMPTS).clear();
+    memo(&TITLES).clear();
+    memo(&PLACES).clear();
+    memo(&LISTINGS).clear();
+    index::forget();
 }

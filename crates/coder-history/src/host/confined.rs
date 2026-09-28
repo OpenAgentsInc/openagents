@@ -64,6 +64,21 @@ impl Root {
         Ok(file)
     }
 
+    /// The kind and [`Stat`] of `relative` (empty for the root itself), from
+    /// one `fstatat` that does not follow its last component. Only a check
+    /// for change uses it: an intermediate component could be a symlink, so
+    /// nothing is read through it.
+    pub fn stat(&self, relative: &Path) -> Result<(Kind, Stat), Error> {
+        if relative.as_os_str().is_empty() {
+            return entry(&self.directory, std::ffi::OsStr::new("."));
+        }
+        let parts: Vec<_> = relative.components().collect();
+        if parts.len() > 16 || parts.iter().any(|p| !matches!(p, Component::Normal(_))) {
+            return Err(Error::InvalidRequest);
+        }
+        entry(&self.directory, relative.as_os_str())
+    }
+
     pub fn open_dir(&self, relative: &Path) -> Result<File, Error> {
         self.open_relative(relative, true)
     }
@@ -217,7 +232,7 @@ pub enum Kind {
 
 /// What the catalog needs of a file without opening it: its identity, its
 /// length, and its last write.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Stat {
     pub dev: u64,
     pub ino: u64,
@@ -241,7 +256,13 @@ pub fn entry(directory: &File, name: &std::ffi::OsStr) -> Result<(Kind, Stat), E
         )
     } != 0
     {
-        return Err(Error::SourceUnreadable);
+        return Err(
+            if std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
+                Error::SourceMissing
+            } else {
+                Error::SourceUnreadable
+            },
+        );
     }
     // SAFETY: fstatat succeeded and initialized the structure.
     let stat = unsafe { stat.assume_init() };

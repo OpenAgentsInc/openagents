@@ -69,6 +69,20 @@ provider API. Unknown records remain available. The reader does not inspect
 credentials or unrelated configuration files. Catalog requests rescan the
 selected source trees, so newly saved chats appear without restarting the host.
 
+A first catalog page stats every source, so newly saved chats and new
+activity appear without restarting the host; it reads a source's first
+record and first prompt only when the file is new or changed.
+`History::with_catalog_index(path)` keeps those reads in a private file
+(`coder host` uses `catalog-index.json` in its observer directory), so a
+restarted host lists without reading every source again; entries are used
+only while the file keeps the identity and length they were read at. A later
+page is a slice of the listing its first page built, for up to 30 seconds,
+while every directory and index file behind it is unchanged; a changed
+membership still refuses its cursor. `cargo test -p coder-history --release
+-- --ignored --nocapture catalog_bench` times the catalog
+(`CODER_HISTORY_BENCH_REAL=1` also times `~/.claude` and `~/.codex`,
+read-only).
+
 ## Preserve the complete transcript
 
 `RecordChunk.raw_base64` is the exact source byte sequence, including its newline

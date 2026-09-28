@@ -32,6 +32,9 @@ mod transcript;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub struct History {
     roots: Vec<confined::Root>,
+    /// Where the catalog keeps what it read of each source between
+    /// processes ([`History::with_catalog_index`]).
+    index: Option<PathBuf>,
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -55,7 +58,17 @@ impl History {
         if roots.is_empty() {
             return Err(Error::InvalidRoot);
         }
-        Ok(Self { roots })
+        Ok(Self { roots, index: None })
+    }
+
+    /// Keep what the catalog reads of each source (its first record, its
+    /// first prompt) in the file at `path`, so a new process lists without
+    /// reading every source again. The file lives in the caller's private
+    /// state directory; it is rewritten whole, and an unreadable one is
+    /// ignored.
+    pub fn with_catalog_index(mut self, path: PathBuf) -> Self {
+        self.index = Some(path);
+        self
     }
 
     pub fn catalog(&self, request: CatalogRequest) -> Result<CatalogPage, Error> {
@@ -101,6 +114,9 @@ impl History {
     pub fn open(_: Config) -> Result<Self, Error> {
         Err(Error::UnsupportedPlatform)
     }
+    pub fn with_catalog_index(self, _: std::path::PathBuf) -> Self {
+        self
+    }
     pub fn catalog(&self, _: CatalogRequest) -> Result<CatalogPage, Error> {
         Err(Error::UnsupportedPlatform)
     }
@@ -125,10 +141,13 @@ impl History {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn digest(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(64);
+    for byte in Sha256::digest(bytes) {
+        out.push(char::from(HEX[usize::from(byte >> 4)]));
+        out.push(char::from(HEX[usize::from(byte & 15)]));
+    }
+    out
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -147,5 +166,7 @@ fn encoded_len<T: Serialize>(value: &T) -> Result<usize, Error> {
         .map_err(|_| Error::Encoding)
 }
 
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+mod bench;
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests;
