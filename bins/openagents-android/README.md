@@ -53,12 +53,20 @@ The app has four tabs, shown as white icons on black:
   words** asks first, then shows the words from Rust's direct reply;
   **Restore** takes 12 or 24 words, which Rust checks, and asks again when
   the wallet holds bitcoin.
-- **Account** holds **Computers** (Coder's shared Computers screens, with
-  their input requests, QR scanning, secret fields, and the invitation QR
-  code), **Chats on your computers**, **Tailnet** (Tailscale sign-in with
-  `tailscale-rs`; **Sign in with Tailscale** opens the sign-in page in the
-  browser and then waits for approval), and **About this device** (the
-  device's public key and the app version).
+- **Account** holds **Computers** (a native list of your computers with a
+  status dot and short status; a tap opens a computer's shared screens, a
+  long press offers its menu, and a destructive choice asks first; the
+  header's **More** menu has Activity, Refresh, and the owner-directory
+  controls, and **+** adds a computer, with its input requests, QR
+  scanning, secret fields, and the invitation QR code), **Tailnet**
+  (Tailscale sign-in with `tailscale-rs`; **Sign in with Tailscale** opens
+  the sign-in page in the browser and then waits for approval),
+  **Identity keys** (the npub, the hex key, and the nsec only after
+  **Reveal nsec** and a warning), **About this device** (the device's npub
+  and hex key, where the key comes from, and the app version),
+  **Changelog**, and links to the source code and to OpenAgents on X. The
+  Coder tab reads your computers' chats, as on iOS; Account no longer
+  lists them.
 
 Tailnet admission works as on iOS: after you sign in on the Tailnet screen,
 the app asks each device on the tailnet for an invitation, and a computer
@@ -88,7 +96,7 @@ composer) follow the iOS design in
 
 The host polls as the iPhone app does: the Computers surface every 3 seconds
 while the Coder tab or the Computers screen shows (not while a value is being
-entered), and a snapshot every second while the Chats or Tailnet screen is
+entered), and a snapshot every second while the Tailnet screen is
 loading. The terminal opens full screen when Rust reports one; it sizes the
 grid from the monospace cell, polls every 120 ms, and forwards typed text,
 Backspace, Enter, and hardware keys with their modifiers.
@@ -179,6 +187,8 @@ one that shows Rust Native's sample conversation
 ```sh
 adb shell am start -n com.openagents.app/.MainActivity --es tab verse
 adb shell am start -n com.openagents.app/.MainActivity --es account_route tailnet
+# Coder's offline Computers fixture: sample computers, no host or relay.
+adb shell am start -n com.openagents.app/.MainActivity --es account_route computers --ez computers_fixture true
 adb shell am start -n com.openagents.app/.MainActivity --ez rust_native_fixture true
 # Let captures include the recovery words and restore dialogs (debug only).
 adb shell am start -n com.openagents.app/.MainActivity --es tab wallet --ez allow_secret_captures true
@@ -255,9 +265,14 @@ On 2026-09-28, the debug APK ran on the `coder_mobile_api35` emulator
   stop state.
 - Account: the screen list; Computers with its tabs, **Add a computer**, a
   paste input request, and Rust's refusal of a malformed invitation;
-  Chats; Tailnet, where `tailscale-rs` reached Tailscale's control server
+  Tailnet, where `tailscale-rs` reached Tailscale's control server
   from the emulator, returned a sign-in URL, and **Sign in with Tailscale**
   opened it in Chrome; About this device with the key and `1.0.0 (1)`.
+  Later on 2026-09-28: the new Account list, Identity keys with the reveal
+  warning and the nsec, Changelog, About this device with the npub, and
+  the native Computers list on Coder's offline fixture (rows, a row's
+  menu, a computer's screen, More, and Add). Captures are in
+  `verification/2026-09-28-account`.
 - Wallet (2026-09-28, on mainnet): a fresh wallet opened and synced,
   showed its Spark address and a new Lightning invoice as QR codes, the
   trust note, Send, the recovery words after the warning, Rust's refusal

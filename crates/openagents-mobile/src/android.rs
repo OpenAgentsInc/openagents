@@ -7,7 +7,7 @@
 //! input and turns a Rust error or panic into a Java `RuntimeException`.
 //! The JNI exports are in `exports`, built for Android only; the checks they
 //! share are here, so host tests cover them.
-use crate::{App, Config, Request};
+use crate::{App, Config, Launch, Request};
 
 #[cfg(target_os = "android")]
 mod exports;
@@ -100,14 +100,17 @@ pub(crate) fn packet_text(bytes: Vec<u8>) -> Result<String, BridgeError> {
     String::from_utf8(bytes).map_err(|_| error("Native state is not valid UTF-8"))
 }
 
-/// Creates the app from `{"state_dir": ..., "secret_hex": ...}`.
+/// Creates the app from `{"state_dir": ..., "secret_hex": ...}` and the
+/// same launch options as the C ABI, such as `native_computers`.
 pub(crate) fn create_app(config: &str) -> Result<App, BridgeError> {
     if config.is_empty() || config.len() > MAX_CONFIG_BYTES {
         return Err(error("Native input exceeds its size limit"));
     }
+    let launch: Launch =
+        serde_json::from_str(config).map_err(|_| error("Invalid native app configuration"))?;
     let config: Config =
         serde_json::from_str(config).map_err(|_| error("Invalid native app configuration"))?;
-    App::new(config).map_err(BridgeError::from)
+    App::open(config, launch).map_err(BridgeError::from)
 }
 
 /// Answers one request as the iOS bridge does: the app packet, or the
@@ -244,6 +247,29 @@ mod tests {
             crate::openagents_mobile_destroy(raw);
         }
         assert_eq!(c_packet["schema"], "openagents.mobile.v1");
+    }
+
+    #[test]
+    fn launch_options_reach_the_app_as_through_the_c_abi() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let native = serde_json::json!({"state_dir": dir.path(), "secret_hex": "11".repeat(32),
+            "native_computers": true})
+        .to_string();
+        let mut app = create_app(&native).expect("app");
+        let packet: serde_json::Value = serde_json::from_str(
+            &packet_text(respond(&mut app, r#"{"op":"snapshot"}"#).expect("snapshot"))
+                .expect("packet"),
+        )
+        .expect("json");
+        // The host draws the Computers list, so Rust sends it as rows.
+        assert!(packet["computers_home"].is_object(), "{packet}");
+        let mut shared = create_app(&config(&dir)).expect("app");
+        let packet: serde_json::Value = serde_json::from_str(
+            &packet_text(respond(&mut shared, r#"{"op":"snapshot"}"#).expect("snapshot"))
+                .expect("packet"),
+        )
+        .expect("json");
+        assert!(packet["computers_home"].is_null());
     }
 
     #[test]

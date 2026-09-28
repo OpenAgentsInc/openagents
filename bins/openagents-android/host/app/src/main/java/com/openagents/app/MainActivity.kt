@@ -38,7 +38,7 @@ enum class AppTab(val title: String, val icon: Int) {
 
 /** A screen that the Account tab opens. */
 enum class AccountRoute(val title: String) {
-    COMPUTERS("Computers"), CHATS("Chats on your computers"), TAILNET("Tailnet"), DEVICE("About this device"),
+    COMPUTERS("Computers"), TAILNET("Tailnet"), IDENTITY("Identity keys"), DEVICE("About this device"), CHANGELOG("Changelog"),
 }
 
 class MainActivity : ComponentActivity() {
@@ -66,15 +66,21 @@ class MainActivity : ComponentActivity() {
     // Account tab and its screens.
     private val accountPage by lazy { FrameLayout(this) }
     private lateinit var computersRenderer: NativeRenderer
-    private lateinit var chatsRenderer: NativeRenderer
     private lateinit var tailnetRenderer: NativeRenderer
+    private lateinit var account: AccountScreens
+    private var routeBody: FrameLayout? = null
+    private var routeBack: TextView? = null
+    private var routeTitle: TextView? = null
+    private var routeActions: LinearLayout? = null
+    private var routeHome: FrameLayout? = null
+    private var routeShared: View? = null
+    private var shownHome: String? = null
     private var routeContent: FrameLayout? = null
     private var routeNotices: LinearLayout? = null
     private var routeQr: ImageView? = null
     private var shownQr: String? = null
     private var routeProgress: ProgressBar? = null
     private var routeInput: InputBar? = null
-    private var deviceKey: TextView? = null
 
     // Verse tab controls.
     private lateinit var cameraButton: ImageButton
@@ -103,11 +109,11 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
         scanner = QRScanner(this)
-        bridge = MobileBridge(applicationContext) { render() }
+        bridge = MobileBridge(applicationContext, BuildConfig.DEBUG && intent.getBooleanExtra("computers_fixture", false)) { render() }
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
             { token, value -> bridge.submit("coder", token, value) })
         computersRenderer = NativeRenderer(this, { view, node -> bridge.activate("computers", view, node) }, scrolling = true)
-        chatsRenderer = NativeRenderer(this, { view, node -> bridge.activate("chats", view, node) })
+        account = AccountScreens(this, bridge)
         tailnetRenderer = NativeRenderer(this, { view, node -> bridge.activate("tailnet", view, node) })
         terminal = TerminalScreen(this, bridge)
 
@@ -163,6 +169,8 @@ class MainActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
+                    tab == AppTab.ACCOUNT && route == AccountRoute.COMPUTERS && bridge.packet != null &&
+                        bridge.packet?.objectOrNull("computers_home") == null -> bridge.computersGo("home")
                     tab == AppTab.ACCOUNT && route != null -> open(null)
                     tab == AppTab.VERSE && panels.showing -> panels.back()
                     tab != AppTab.CODER -> select(AppTab.CODER)
@@ -259,111 +267,155 @@ class MainActivity : ComponentActivity() {
 
     private fun open(next: AccountRoute?) {
         if (next != route) routeInput?.dispose()
+        if (route == AccountRoute.IDENTITY && next != route) account.hideNsec()
         route = next
         accountPage.removeAllViews()
         routeContent = null; routeNotices = null; routeQr = null; shownQr = null
-        routeProgress = null; routeInput = null; deviceKey = null
-        computersRenderer.clear(); chatsRenderer.clear(); tailnetRenderer.clear()
+        routeProgress = null; routeInput = null; routeBody = null; routeBack = null; routeTitle = null
+        routeActions = null; routeHome = null; routeShared = null; shownHome = null
+        computersRenderer.clear(); tailnetRenderer.clear()
         if (next == null) { accountPage.addView(accountList(), FrameLayout.LayoutParams(-1, -1)); render(); return }
         val screen = column()
         val header = row().apply {
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = dp(48)
-            addView(text("‹ Account", 17f).apply {
-                setPadding(dp(12), dp(10), dp(16), dp(10)); contentDescription = "Back to Account"; tag = "account-back"
-                setOnClickListener { open(null) }
-            })
-            // The Computers, Chats, and Tailnet screens draw their own headings.
-            if (next == AccountRoute.DEVICE) addView(text(next.title, 17f).bold(), LinearLayout.LayoutParams(0, -2, 1f))
         }
+        routeBack = text("‹ Account", 17f).apply {
+            setPadding(dp(12), dp(10), dp(16), dp(10)); contentDescription = "Back to Account"; tag = "account-back"
+            setOnClickListener {
+                if (route == AccountRoute.COMPUTERS && bridge.packet?.objectOrNull("computers_home") == null) bridge.computersGo("home")
+                else open(null)
+            }
+        }
+        header.addView(routeBack)
+        // The Tailnet screen draws its own heading.
+        routeTitle = text(if (next == AccountRoute.TAILNET) "" else next.title, 17f).bold().apply { gravity = Gravity.CENTER }
+        header.addView(routeTitle, LinearLayout.LayoutParams(0, -2, 1f))
+        routeActions = row().apply { gravity = Gravity.CENTER_VERTICAL; minimumWidth = dp(96) }
+        header.addView(routeActions, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) })
         screen.addView(header)
         val body = FrameLayout(this)
+        routeBody = body
         screen.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         when (next) {
             AccountRoute.COMPUTERS -> {
                 val column = column()
                 routeNotices = column().also { column.addView(it) }
+                val stack = FrameLayout(this)
+                routeHome = FrameLayout(this).also { stack.addView(it, FrameLayout.LayoutParams(-1, -1)) }
                 val content = FrameLayout(this)
                 routeContent = content
-                column.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+                val shared = column()
+                shared.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
                 routeQr = ImageView(this).apply {
                     visibility = View.GONE; contentDescription = "Invitation QR code"; tag = "computers-qr"
                     scaleType = ImageView.ScaleType.FIT_CENTER
                 }
-                column.addView(routeQr, LinearLayout.LayoutParams(dp(220), dp(220)).apply {
+                shared.addView(routeQr, LinearLayout.LayoutParams(dp(220), dp(220)).apply {
                     gravity = Gravity.CENTER_HORIZONTAL; setMargins(0, dp(12), 0, dp(12)) })
+                routeShared = shared
+                stack.addView(shared, FrameLayout.LayoutParams(-1, -1))
+                column.addView(stack, LinearLayout.LayoutParams(-1, 0, 1f))
                 routeInput = InputBar(this, scanner).also { input ->
                     column.addView(input.root, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(8), dp(8), dp(8), dp(8)) })
                 }
                 body.addView(column, FrameLayout.LayoutParams(-1, -1))
             }
-            AccountRoute.CHATS, AccountRoute.TAILNET -> {
+            AccountRoute.TAILNET -> {
                 val column = column()
                 routeNotices = column().also { column.addView(it) }
                 val content = FrameLayout(this)
                 routeContent = content
                 val stack = FrameLayout(this)
                 stack.addView(content, FrameLayout.LayoutParams(-1, -1))
-                routeProgress = ProgressBar(this).apply {
-                    visibility = View.GONE
-                    contentDescription = if (next == AccountRoute.CHATS) "Loading chats" else "Checking your tailnet"
-                }
+                routeProgress = ProgressBar(this).apply { visibility = View.GONE; contentDescription = "Checking your tailnet" }
                 stack.addView(routeProgress, FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.END).apply {
                     setMargins(dp(16), dp(16), dp(16), dp(16)) })
                 column.addView(stack, LinearLayout.LayoutParams(-1, 0, 1f))
-                if (next == AccountRoute.CHATS) routeInput = InputBar(this, scanner).also { input ->
-                    column.addView(input.root, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(8), dp(8), dp(8), dp(8)) })
-                }
                 body.addView(column, FrameLayout.LayoutParams(-1, -1))
             }
-            AccountRoute.DEVICE -> body.addView(ScrollView(this).apply { addView(aboutDevice()) }, FrameLayout.LayoutParams(-1, -1))
+            AccountRoute.IDENTITY, AccountRoute.DEVICE, AccountRoute.CHANGELOG -> {
+                redrawAccountScreen()
+                account.load { redrawAccountScreen() }
+            }
         }
         accountPage.addView(screen, FrameLayout.LayoutParams(-1, -1))
-        if (next == AccountRoute.COMPUTERS && !bridge.busy) bridge.refreshComputers()
-        if (next == AccountRoute.CHATS || next == AccountRoute.TAILNET) bridge.snapshot()
+        if (next == AccountRoute.COMPUTERS) bridge.computersGo("home")
+        if (next == AccountRoute.TAILNET) bridge.snapshot()
         render()
+    }
+
+    /** Rebuilds the Identity keys, About this device, or Changelog screen. */
+    private fun redrawAccountScreen() {
+        val body = routeBody ?: return
+        val view = when (route) {
+            AccountRoute.IDENTITY -> account.identity { redrawAccountScreen() }
+            AccountRoute.DEVICE -> account.about(bridge.packet)
+            AccountRoute.CHANGELOG -> account.changelog()
+            else -> return
+        }
+        body.removeAllViews()
+        body.addView(view, FrameLayout.LayoutParams(-1, -1))
     }
 
     private fun accountList(): View = ScrollView(this).apply {
         addView(column().apply {
             setPadding(dp(16), dp(12), dp(16), dp(24))
             addView(text("Account", 32f).bold(), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
-            addView(group(listOf(AccountRoute.COMPUTERS, AccountRoute.CHATS, AccountRoute.TAILNET)))
-            addView(group(listOf(AccountRoute.DEVICE)), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
+            addView(group(listOf(AccountRoute.COMPUTERS, AccountRoute.TAILNET).map { it.title to "account-${it.name.lowercase()}" to { open(it) } }))
+            addView(group(listOf(AccountRoute.IDENTITY, AccountRoute.DEVICE, AccountRoute.CHANGELOG).map {
+                it.title to "account-${it.name.lowercase()}" to { open(it) } }),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
+            addView(group(listOf(
+                "Source code" to "account-source" to { browse("https://github.com/OpenAgentsInc/openagents") },
+                "Follow us on X" to "account-x" to { browse("https://x.com/OpenAgentsInc") },
+            ), external = true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
         })
     }
 
-    private fun group(routes: List<AccountRoute>): View = column().apply {
+    private fun browse(link: String) {
+        try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link))) }
+        catch (_: android.content.ActivityNotFoundException) {}
+    }
+
+    private fun group(rows: List<Pair<Pair<String, String>, () -> Unit>>, external: Boolean = false): View = column().apply {
         background = rounded(Palette.SURFACE, 12f)
-        routes.forEachIndexed { index, value ->
+        rows.forEachIndexed { index, (labels, action) ->
+            val (title, key) = labels
             if (index > 0) addView(View(this@MainActivity).apply { setBackgroundColor(Palette.BORDER) },
                 LinearLayout.LayoutParams(-1, 1).apply { marginStart = dp(16) })
             addView(row().apply {
                 gravity = Gravity.CENTER_VERTICAL
                 minimumHeight = dp(52)
                 setPadding(dp(16), 0, dp(16), 0)
-                tag = "account-${value.name.lowercase()}"
-                addView(text(value.title, 17f), LinearLayout.LayoutParams(0, -2, 1f))
-                addView(text("›", 22f, Palette.TERTIARY))
-                setOnClickListener { open(value) }
+                tag = key
+                addView(text(title, 17f), LinearLayout.LayoutParams(0, -2, 1f))
+                addView(text(if (external) "↗" else "›", if (external) 17f else 22f, Palette.TERTIARY))
+                contentDescription = if (external) "$title, opens in the browser" else title
+                setOnClickListener { action() }
             }, LinearLayout.LayoutParams(-1, -2))
         }
     }
 
-    private fun aboutDevice(): View = column().apply {
-        setPadding(dp(16), dp(12), dp(16), dp(24))
-        addView(text("DEVICE PUBLIC KEY", 13f, Palette.SECONDARY))
-        deviceKey = text("Not available yet.", 14f).apply {
-            typeface = Typeface.MONOSPACE; setTextIsSelectable(true)
-            background = rounded(Palette.SURFACE, 12f); setPadding(dp(16), dp(14), dp(16), dp(14))
-            tag = "device-key"
-        }
-        addView(deviceKey, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        addView(text("APP VERSION", 13f, Palette.SECONDARY), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
-        addView(text("${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", 16f).apply {
-            setTextIsSelectable(true)
-            background = rounded(Palette.SURFACE, 12f); setPadding(dp(16), dp(14), dp(16), dp(14))
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+    /** The Computers header: the list's menu and Add, or back to the list past it. */
+    private fun computersHeader(home: JSONObject?) {
+        val actions = routeActions ?: return
+        routeBack?.text = if (home == null && bridge.packet != null) "‹ Computers" else "‹ Account"
+        routeBack?.contentDescription = if (home == null && bridge.packet != null) "Back to Computers" else "Back to Account"
+        routeTitle?.text = if (home != null) "Computers" else ""
+        val wanted = if (home != null) "list" else "none"
+        if (actions.tag == wanted) return
+        actions.tag = wanted
+        actions.removeAllViews()
+        if (home == null) return
+        actions.addView(text("⋯", 22f).apply {
+            gravity = Gravity.CENTER; contentDescription = "More"; tag = "computers-more"
+            setOnClickListener { v -> bridge.packet?.objectOrNull("computers_home")?.let { account.listMenu(v, it) } }
+        }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        actions.addView(text("+", 26f).apply {
+            gravity = Gravity.CENTER; contentDescription = "Add a computer"; tag = "computers-add"
+            setOnClickListener { bridge.computersGo("add") }
+        }, LinearLayout.LayoutParams(dp(44), dp(44)))
     }
 
     // Rendering
@@ -374,7 +426,21 @@ class MainActivity : ComponentActivity() {
         mount(coderRenderer, coderContent, fixture ?: packet?.objectOrNull("coder"))
         when (route) {
             AccountRoute.COMPUTERS -> {
-                routeContent?.let { mount(computersRenderer, it, packet?.objectOrNull("computers")) }
+                val home = packet?.objectOrNull("computers_home")
+                computersHeader(home)
+                routeHome?.visibility = if (home != null) View.VISIBLE else View.GONE
+                routeShared?.visibility = if (home != null) View.GONE else View.VISIBLE
+                if (home != null) {
+                    val encoded = home.toString()
+                    if (encoded != shownHome) {
+                        shownHome = encoded
+                        routeHome?.let { it.removeAllViews(); it.addView(account.computers(home), FrameLayout.LayoutParams(-1, -1)) }
+                    }
+                    computersRenderer.clear(); routeContent?.removeAllViews()
+                } else {
+                    shownHome = null
+                    routeContent?.let { mount(computersRenderer, it, packet?.objectOrNull("computers")) }
+                }
                 notices(packet, true)
                 val qr = packet?.objectOrNull("computers_qr")
                 routeQr?.let { image ->
@@ -390,20 +456,13 @@ class MainActivity : ComponentActivity() {
                 routeInput?.show(input, bridge.busy, { bridge.submit("computers", input!!.getString("token"), it) },
                     { bridge.cancel("computers", input!!.getString("token")) })
             }
-            AccountRoute.CHATS -> {
-                routeContent?.let { mount(chatsRenderer, it, packet?.objectOrNull("chats")) }
-                notices(packet, false)
-                routeProgress?.visibility = if (packet?.optBoolean("chats_loading") == true) View.VISIBLE else View.GONE
-                val input = packet?.objectOrNull("chats_input")
-                routeInput?.show(input, bridge.busy, { bridge.submit("chats", input!!.getString("token"), it) },
-                    { bridge.cancel("chats", input!!.getString("token")) })
-            }
             AccountRoute.TAILNET -> {
                 routeContent?.let { mount(tailnetRenderer, it, packet?.objectOrNull("tailnet")) }
                 notices(packet, false)
                 routeProgress?.visibility = if (packet?.optBoolean("tailnet_loading") == true) View.VISIBLE else View.GONE
             }
-            AccountRoute.DEVICE -> deviceKey?.text = packet?.textOrNull("device") ?: "Not available yet."
+            AccountRoute.DEVICE -> if (routeBody?.findViewWithTag<View>("device-key")?.contentDescription != packet?.textOrNull("device")) redrawAccountScreen()
+            AccountRoute.IDENTITY, AccountRoute.CHANGELOG -> Unit
             null -> Unit
         }
         if (tab == AppTab.WALLET) wallet.update(packet)
@@ -442,7 +501,6 @@ class MainActivity : ComponentActivity() {
             val live = tab == AppTab.CODER && packet?.optBoolean("coder_live", false) == true
             if ((live || ticks % 3 == 0) && computersPolling && !bridge.busy) bridge.refreshComputers()
             val loading = tab == AppTab.ACCOUNT && (
-                (route == AccountRoute.CHATS && packet?.optBoolean("chats_loading") == true) ||
                 (route == AccountRoute.TAILNET && packet?.optBoolean("tailnet_loading") == true))
             if (loading && bridge.pending < 2) bridge.snapshot()
             // Starts, syncs, quotes, and payments finish in the background:
@@ -465,6 +523,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         resumed = false
+        // The nsec shows only while its screen is open and in front.
+        if (account.nsec != null) { account.hideNsec(); if (route == AccountRoute.IDENTITY) redrawAccountScreen() }
         main.removeCallbacks(tick)
         world.setResumed(false)
         bridge.lifecycle(false)

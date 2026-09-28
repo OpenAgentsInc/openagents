@@ -15,7 +15,7 @@ import java.util.concurrent.Executors
  * packets on the main thread. Rust owns every screen, grant, and connection;
  * this bridge only opens URLs Rust names and collects values Rust asks for.
  */
-class MobileBridge(private val context: Context, private val changed: () -> Unit) {
+class MobileBridge(private val context: Context, private val computersFixture: Boolean = false, private val changed: () -> Unit) {
     companion object {
         // Rust keeps each app handle on the thread that created it, so one
         // process-wide worker owns every handle for its whole lifetime.
@@ -41,7 +41,12 @@ class MobileBridge(private val context: Context, private val changed: () -> Unit
         worker.execute {
             val result = runCatching {
                 val config = json("state_dir" to DeviceKey.stateDirectory(context).path,
-                    "secret_hex" to DeviceKey.loadOrCreate(context))
+                    "secret_hex" to DeviceKey.loadOrCreate(context),
+                    // This host draws the Computers list and its navigation.
+                    "native_computers" to true)
+                // Debug builds only: Coder's offline Computers fixture, which
+                // contacts no host or relay.
+                if (computersFixture) config.put("computers_fixture", true)
                 handle = OpenAgentsNative.create(config.toString())
                 check(handle != 0L) { "OpenAgents could not start." }
             }
