@@ -281,7 +281,6 @@ fn a_connecting_computer_is_not_a_missing_one() {
     assert_eq!(label(availability(&only(&[]), None)), "not configured");
 }
 
-#[allow(dead_code)]
 fn texts(view: &Value) -> Vec<String> {
     nodes(view)
         .into_iter()
@@ -293,4 +292,37 @@ fn texts(view: &Value) -> Vec<String> {
                 .map(str::to_owned)
         })
         .collect()
+}
+
+fn kinds(view: &Value, kind: &str) -> usize {
+    nodes(view)
+        .into_iter()
+        .filter(|node| node["element"]["kind"] == kind)
+        .count()
+}
+
+/// The chats list has a circular New chat button and no text field; the
+/// New chat screen has the field.
+#[test]
+fn new_chat_is_its_own_screen() {
+    let mut fixture = Fixture::hosts();
+    let list = fixture.render();
+    assert_eq!(kinds(&list, "composer"), 0, "{:?}", keys(&list));
+    let new = node(&list, "coder-new").expect("New chat button");
+    let props = &new["element"]["props"];
+    assert_eq!(props["label"], "New chat");
+    assert_eq!(props["icon"]["glyph"], "compose");
+    assert_eq!(props["icon"]["circular"], true);
+    let screen = fixture.tap("coder-new");
+    assert_eq!(kinds(&screen, "composer"), 1);
+    assert!(texts(&screen).contains(&"On Studio Mac · openagents".to_owned()));
+    let composer = nodes(&screen)
+        .into_iter()
+        .find(|node| node["element"]["kind"] == "composer")
+        .expect("composer");
+    assert_eq!(composer["element"]["props"]["enabled"], true);
+    assert!(node(&screen, "coder-chats").is_none());
+    let list = fixture.tap("coder-back");
+    assert!(node(&list, "coder-new").is_some());
+    assert_eq!(kinds(&list, "composer"), 0);
 }

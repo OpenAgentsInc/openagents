@@ -171,6 +171,35 @@ fn nodes_of<'a>(view: &'a serde_json::Value, kind: &str) -> Vec<&'a serde_json::
     out
 }
 
+/// Open the Coder tab's New chat screen and wait until its computer can take
+/// a chat, as `ready` says of the screen's text. Returns the screen.
+fn new_chat(
+    app: &mut App,
+    deadline: std::time::Instant,
+    ready: impl Fn(&[String]) -> bool,
+) -> serde_json::Value {
+    loop {
+        let coder = app.call(Request::ComputersRefresh).coder.unwrap();
+        if let Some(new) = nodes_of(&coder, "button")
+            .into_iter()
+            .find(|node| node["key"] == "coder-new")
+            .cloned()
+        {
+            app.call(Request::CoderActivate {
+                instance: coder["instance"].as_str().unwrap().into(),
+                revision: coder["revision"].as_u64().unwrap(),
+                node: new["key"].as_str().unwrap().into(),
+            });
+            continue;
+        }
+        if !nodes_of(&coder, "composer").is_empty() && ready(&values(&coder)) {
+            return coder;
+        }
+        assert!(std::time::Instant::now() < deadline, "{:?}", values(&coder));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
 fn key_for(view: &serde_json::Value, label: &str) -> Option<String> {
     let mut pending = vec![&view["root"]];
     while let Some(node) = pending.pop() {
@@ -517,20 +546,10 @@ fn live_coder_chat_creates_a_task() {
     // The app reports the foreground, as the host does at launch.
     app.call(Request::Lifecycle { active: true });
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-    let coder = loop {
-        // The app refreshes Computers every few seconds while a tab shows.
-        let coder = app.call(Request::ComputersRefresh).coder.unwrap();
-        if values(&coder).contains(&"On test-host · openagents".to_string()) {
-            break coder;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "{:?} {:?}",
-            values(&coder),
-            values(&app.call(Request::Snapshot).computers.unwrap())
-        );
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    };
+    // The app refreshes Computers every few seconds while a tab shows.
+    let coder = new_chat(&mut app, deadline, |text| {
+        text.contains(&"On test-host · openagents".to_string())
+    });
     // Send from the composer: the chat opens on the new task.
     let composer = nodes_of(&coder, "composer")[0].clone();
     let token = composer["element"]["props"]["token"]
@@ -659,17 +678,10 @@ fn live_coder_chat_runs_a_task() {
         }],
     }));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(900);
-    let coder = loop {
-        let coder = app.call(Request::ComputersRefresh).coder.unwrap();
-        if values(&coder)
-            .iter()
+    let coder = new_chat(&mut app, deadline, |text| {
+        text.iter()
             .any(|t| t.starts_with("On ") && t.contains(" · "))
-        {
-            break coder;
-        }
-        assert!(std::time::Instant::now() < deadline, "{:?}", values(&coder));
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    };
+    });
     let composer = nodes_of(&coder, "composer")[0].clone();
     let token = composer["element"]["props"]["token"]
         .as_str()
@@ -801,17 +813,10 @@ fn live_coder_chat_continues_with_a_follow_up() {
         assert!(std::time::Instant::now() < deadline, "{text:?}");
         std::thread::sleep(std::time::Duration::from_secs(3));
     };
-    let coder = loop {
-        let coder = app.call(Request::ComputersRefresh).coder.unwrap();
-        if values(&coder)
-            .iter()
+    let coder = new_chat(&mut app, deadline, |text| {
+        text.iter()
             .any(|t| t.starts_with("On ") && t.contains(" · "))
-        {
-            break coder;
-        }
-        assert!(std::time::Instant::now() < deadline, "{:?}", values(&coder));
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    };
+    });
     send(&mut app, &coder, &prompt);
     let task = app.open_coder_task().expect("the chat opens on its task");
     archiving(&mut app, task.clone(), |app| {

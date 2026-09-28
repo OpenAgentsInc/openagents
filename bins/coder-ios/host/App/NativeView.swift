@@ -225,8 +225,14 @@ struct NativeRenderer: View {
                                      followTarget: followTarget, followChanged: followChanged,
                                      surface: surface, activate: activate))
         case let .button(label, enabled, icon?) where icon.symbol != nil:
-            return AnyView(NativeIconButton(key: node.key, label: label, enabled: enabled, icon: icon,
-                                            activate: activate))
+            // An end-aligned glyph button takes the rest of its row and sits
+            // at its end, as a toolbar button does.
+            let button = NativeIconButton(key: node.key, label: label, enabled: enabled, icon: icon,
+                                          activate: activate)
+            if node.style.align == "end" {
+                return AnyView(button.frame(maxWidth: .infinity, alignment: .trailing))
+            }
+            return AnyView(button)
         case let .button(label, enabled, _):
             return AnyView(Button(label) { activate(node.key) }.disabled(!enabled)
                 .accessibilityIdentifier(node.key))
