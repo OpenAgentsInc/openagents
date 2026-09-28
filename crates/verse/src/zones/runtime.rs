@@ -12,6 +12,9 @@ use glam::{DVec3, Vec3};
 use serde_json::{Value, json};
 use verse_lagrange::{Input, PartState};
 
+/// The display name of the OpenAgents app's bare world.
+pub const GRID_LABEL: &str = "The Grid";
+
 impl WorldRuntime {
     pub(crate) fn update_player(&mut self, input: &InputState, dt: f32) {
         if let Some(ruins) = &mut self.zone_state.ruins {
@@ -577,7 +580,7 @@ impl WorldRuntime {
         };
         Snapshot {
             id: self.zone,
-            label: self.zone.label(),
+            label: self.zone_label(),
             state: self.zone_state.loading,
             progress: self.zone_state.progress,
             error: self.zone_state.error.clone(),
@@ -683,7 +686,18 @@ impl WorldRuntime {
 
     /// The label of the control that leaves a zone.
     fn return_label(&self) -> &'static str {
-        if self.is_bare() { "The Grid" } else { "Plaza" }
+        if self.is_bare() { GRID_LABEL } else { "Plaza" }
+    }
+
+    /// The display name of where the player is. The bare world's grid is
+    /// "The Grid"; Coder's plaza and every zone keep their own names.
+    #[must_use]
+    pub fn zone_label(&self) -> &'static str {
+        if self.is_bare() && self.is_plaza() {
+            GRID_LABEL
+        } else {
+            self.zone.label()
+        }
     }
 
     /// The walk-in arches in the neutral palette: the Grid's portal to

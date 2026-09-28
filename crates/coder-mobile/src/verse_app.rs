@@ -1629,7 +1629,7 @@ impl Scene {
             packet.connection.label = if self.world.zone_loading() {
                 "Loading zone"
             } else {
-                self.world.zone.label()
+                self.world.zone_label()
             };
         }
         packet.zone = ZonePacket {

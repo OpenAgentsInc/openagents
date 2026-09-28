@@ -428,3 +428,13 @@ fn coder_plaza_arches_still_need_their_button_and_stay_amber() {
             .any(|c| c.action == Intent::Return && c.label == "Plaza")
     );
 }
+
+#[test]
+fn the_bare_world_is_named_the_grid_and_coders_plaza_keeps_its_name() {
+    let grid = WorldRuntime::bare();
+    assert_eq!(grid.zone_label(), "The Grid");
+    assert_eq!(grid.zone_snapshot(1.0).label, "The Grid");
+    let plaza = WorldRuntime::new();
+    assert_eq!(plaza.zone_label(), ZoneId::Plaza.label());
+    assert_eq!(plaza.zone_snapshot(1.0).label, "Amber plaza");
+}

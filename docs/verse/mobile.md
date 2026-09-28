@@ -9,7 +9,9 @@ No OpenAgents identity, theme, world, or network
 implementation belongs to the reusable `rust-native` crate.
 
 The OpenAgents app's **Verse** tab mounts the same surface in its bare mode
-(`WorldRuntime::bare`): only the plaza's ground grid, drawn in the neutral
+(`WorldRuntime::bare`), named **The Grid** wherever it is shown
+(`WorldRuntime::zone_label`, the zone snapshot's label, and the return
+controls); Coder's plaza keeps its own name. The Grid has only the plaza's ground grid, drawn in the neutral
 palette (each amber step's lightness in white light), and the player with the
 controls below, and other players' avatars. It has no chat, map, doors,
 computer, Gym, or companion, and one zone: a walk-in portal to Lagrange 1
