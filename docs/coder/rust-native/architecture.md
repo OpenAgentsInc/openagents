@@ -61,10 +61,23 @@ subsequent work.
 
 | Layer | Owns | Must leave elsewhere |
 | --- | --- | --- |
-| `rust-native` | Semantic component vocabulary, style composition, generic color values, immutable validated views, interaction identity. | Network clients, credentials, task execution, clocks, persistence, platform objects. |
+| `rust-native` | Semantic component vocabulary, style composition, generic color values, immutable validated views, interaction identity, transcript layout. | Network clients, credentials, task execution, clocks, persistence, platform objects. |
 | Application projection | Maps task, ATIF, replay, or account state into a view; defines its closed intent enum. | Platform handles and a second source of truth for task outcomes. |
 | Application host | State transitions, current view identity, subscriptions, effect dispatch, durable task controls, disclosure and authorization. | Native layout and direct component-specific drawing. |
-| Platform adapter | Native widgets, layout, focus, accessibility, input composition, mounting, event translation. | Inferring success, granting permission, calling models, or inventing task lifecycle transitions. |
+| Platform adapter | Native widgets, layout outside transcripts, text measurement and painting for transcript layout, focus, accessibility, input composition, mounting, event translation. | Inferring success, granting permission, calling models, or inventing task lifecycle transitions. |
+
+### Transcript layout boundary
+
+The core also lays out transcripts. For a `Transcript`, Rust computes every
+row's exact height, cumulative offset, and display list (text runs with
+positions, rectangles, inert link rectangles, and native widgets) from the
+semantic rows, the viewport width, and the text scale. The adapter measures
+text for Rust through a platform callback (CoreText on iOS), paints the runs
+at Rust's positions, and owns scrolling, gestures, native widgets, and
+accessibility elements. Rows are pulled by visible range, and a streamed token
+lays out one row. The application's view contract is unchanged. The
+[view specification](../../../crates/rust-native/docs/spec.md#transcript-layout)
+records the details.
 
 The core has no dependency on `coder`, `gym`, `atif`, or Nostr. An application
 can depend on those libraries to form a projection. Keep application widgets

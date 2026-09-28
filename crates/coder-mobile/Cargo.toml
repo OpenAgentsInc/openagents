@@ -15,7 +15,8 @@ coder-connect = { path = "../coder-connect", default-features = false }
 coder-history = { path = "../coder-history", default-features = false }
 coder-ui = { path = "../coder-ui" }
 coder-vt = { path = "../coder-vt" }
-rust-native = { path = "../rust-native" }
+# `ffi` exports Rust Native transcript layout to the iOS host.
+rust-native = { path = "../rust-native", features = ["ffi"] }
 verse = { path = "../verse", default-features = false }
 nostr = { path = "../nostr" }
 # The device side of push wakes only; the gateway service is not linked.

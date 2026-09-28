@@ -25,7 +25,8 @@ coder-history = { path = "../coder-history", default-features = false }
 # reader and C exports are not called; the app linker strips them.
 coder-mobile = { path = "../coder-mobile" }
 base64 = "0.22"
-rust-native = { path = "../rust-native" }
+# `ffi` exports Rust Native transcript layout to the iOS host.
+rust-native = { path = "../rust-native", features = ["ffi"] }
 # Linking tailscale-rs (aws-lc-rs) beside the host client (ring) enables two
 # rustls providers, so the app installs ring as the process default.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

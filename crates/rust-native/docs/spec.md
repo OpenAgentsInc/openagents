@@ -1,8 +1,9 @@
 # View and adapter specification
 
 Rust Native separates semantic presentation from application state and native
-widget ownership. The implemented core validates and serializes views; it does
-not mount them or provide an application runtime.
+widget ownership. The implemented core validates and serializes views, and it
+lays out transcripts for adapters (see [Transcript layout](#transcript-layout)).
+It does not mount views or provide an application runtime.
 
 ## View and interaction contract
 
@@ -94,6 +95,52 @@ stale updates. Those semantics are not implemented by serializing a string.
 The shared core owns neither network access, persistence, a palette, clock sources,
 credentials, nor task execution. Platform objects belong to adapters;
 application-specific components and effects belong to their application.
+
+## Transcript layout
+
+The `layout` module lays out a `Transcript`'s rows on the adapter's behalf.
+Applications still emit the semantic elements above; layout is part of how an
+adapter presents them, not a separate wire contract.
+
+- **Input.** An `Update` carries the viewport width (1–16,384 points), a text
+  scale (0.5–4), the row order (or none, to keep the previous order), the rows
+  that are new or changed as intent-free `Node<()>` values, the expanded tool
+  keys, and the `earlier` control's label and loading state. Each row passes
+  the same checks as a one-node view. A layout holds at most 20,000 rows.
+- **Measurement.** Text goes through the adapter's `Measurer`, which breaks a
+  styled paragraph into lines and reports each line's UTF-16 range, width,
+  ascent, descent, and leading, plus the x offset of each style boundary. The
+  iOS adapter implements it with CoreText. Results are cached by paragraph
+  text, fonts, and width, so a row laid out again at the same width, or a
+  display list for a laid-out row, does not measure again.
+- **Frame.** Every row has a key, a content version, an exact height, and a
+  cumulative offset. `rows_in(y0, y1)` is a binary search. A row is laid out
+  again only when its content, the width, the text scale, or its expansion
+  changes, so a streamed token lays out one row.
+- **Display lists.** `display(i)` returns what to paint: paragraph texts,
+  styles (font size, weight, italic, monospace, a palette role or explicit
+  color, opacity, underline, and strikethrough), text runs with UTF-8 and
+  UTF-16 ranges, `x`, and baseline, rounded rectangles for bubbles, code
+  blocks, quotes, tables, rules, and inline code, inert link rectangles, and
+  native widgets (copy, disclosure toggle and chevron, tool state, checkbox,
+  working indicator, spinner, and the earlier control). It also carries the
+  row's accessibility label, value, hint, and button trait, and the plain text
+  a Copy action uses.
+
+The adapter paints runs at the given positions with the same fonts it
+measured with, supplies the widgets, scrolls, and keeps each row an
+accessibility element built from the display list. It keeps these behaviors:
+follow the newest row while the reader is at the bottom; stop following when
+the reader drags; resume when a scroll comes to rest, or momentum carries the
+list, within 70 points of the bottom; offer a jump to the bottom; and keep the
+first visible row still on screen when rows are prepended or change above it.
+Tool expansion stays adapter state that the adapter passes to each update.
+
+The C interface (`include/rust_native_layout.h`, the `ffi` feature) exposes
+one handle per transcript: create with a measurer callback, update with JSON,
+query placements into a caller array, find a row by key, and fetch a display
+list as JSON. Calls catch panics and bound their input; the measurer runs only
+during update and display calls, on the calling thread.
 
 ## Input requests
 

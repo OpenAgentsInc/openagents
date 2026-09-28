@@ -1,0 +1,622 @@
+//! Transcript layout: exact row heights and display lists, computed in Rust.
+//!
+//! An adapter hands a transcript's rows (the `Transcript` element's children)
+//! to a [`TranscriptLayout`] with a viewport width and a text scale. The
+//! layout measures text through the adapter's [`Measurer`], keeps every row's
+//! exact height and cumulative offset, and answers two questions: which rows
+//! intersect a vertical range ([`TranscriptLayout::rows_in`]), and how to
+//! paint one row ([`TranscriptLayout::display`]). A row is laid out again only
+//! when its content version, the width, the text scale, or its expansion
+//! changes, so a streamed token re-measures one row.
+//!
+//! The semantic contract does not change: applications still emit
+//! `Transcript`, `Message`, `Markdown`, and `Tool` nodes. Layout is an adapter
+//! implementation detail that Rust performs on the adapter's behalf.
+
+pub mod display;
+#[cfg(feature = "ffi")]
+pub mod ffi;
+mod measure;
+mod rows;
+pub mod testing;
+
+pub use display::RowDisplay;
+pub use measure::{Line, MeasureCache, MeasureRun, Measured, Measurer};
+pub use rows::{EARLIER_KEY, READING_WIDTH, content_band};
+
+use crate::view::{Earlier, Element, Node, View, ViewError};
+use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::io::{self, Write};
+use std::ops::Range;
+use std::sync::Arc;
+use std::time::Instant;
+
+/// Space above the first row and below the last.
+pub const EDGE_INSET: f32 = 16.0;
+/// Space between rows.
+pub const ROW_GAP: f32 = 18.0;
+/// The most rows one layout holds.
+pub const MAX_ROWS: usize = 20_000;
+
+/// The older-rows control as the layout sees it: no intent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EarlierRow {
+    pub label: String,
+    pub loading: bool,
+}
+
+impl<I> From<&Earlier<I>> for EarlierRow {
+    fn from(earlier: &Earlier<I>) -> Self {
+        Self {
+            label: earlier.label.clone(),
+            loading: earlier.loading,
+        }
+    }
+}
+
+/// One update. `order` names every row, oldest first; `None` keeps the
+/// previous order, so a streamed token need not resend every key. `rows`
+/// carries the nodes that are new or whose content changed; a row in the
+/// order but not in `rows` keeps its previous content.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Update {
+    pub width: f32,
+    pub scale: f32,
+    #[serde(default)]
+    pub order: Option<Vec<String>>,
+    #[serde(default)]
+    pub rows: Vec<Node<()>>,
+    /// Tool rows the reader expanded. Expansion is adapter state.
+    #[serde(default)]
+    pub expanded: Vec<String>,
+    #[serde(default)]
+    pub earlier: Option<EarlierRow>,
+}
+
+impl Update {
+    /// An update that carries every row of a transcript node.
+    pub fn from_transcript<I>(node: &Node<I>, width: f32, scale: f32) -> Option<Self> {
+        let Element::Transcript {
+            children, earlier, ..
+        } = &node.element
+        else {
+            return None;
+        };
+        Some(Self {
+            width,
+            scale,
+            order: Some(children.iter().map(|c| c.key.clone()).collect()),
+            rows: children.iter().map(without_intents).collect(),
+            expanded: vec![],
+            earlier: earlier.as_ref().map(EarlierRow::from),
+        })
+    }
+}
+
+/// What an update did.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Summary {
+    /// Rows, including the earlier control.
+    pub count: usize,
+    /// The content height, including the edge insets.
+    pub height: f32,
+    /// Rows laid out again by this update.
+    pub relaid: usize,
+    /// Platform measurements this update requested.
+    pub measured: u64,
+    pub micros: u64,
+}
+
+/// A row's place in the frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Placement {
+    pub index: usize,
+    /// Changes whenever the row's painted content can change.
+    pub version: u64,
+    pub y: f32,
+    pub height: f32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum LayoutError {
+    /// Width must be finite and 1–16,384 points; scale 0.5–4.
+    Geometry,
+    Limit,
+    DuplicateRow(String),
+    /// `order` names a row the layout has never received.
+    UnknownRow(String),
+    Row(ViewError),
+}
+
+impl fmt::Display for LayoutError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Geometry => f.write_str("layout width or text scale is out of range"),
+            Self::Limit => f.write_str("transcript exceeds the layout's row bound"),
+            Self::DuplicateRow(key) => write!(f, "duplicate transcript row: {key}"),
+            Self::UnknownRow(key) => write!(f, "transcript row has no content: {key}"),
+            Self::Row(error) => write!(f, "invalid transcript row: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for LayoutError {}
+
+enum Source {
+    Node(Arc<Node<()>>),
+    Earlier(EarlierRow),
+}
+
+struct Row {
+    key: String,
+    source: Source,
+    /// A hash of the row's content.
+    content: u64,
+    expanded: bool,
+    height: f32,
+    /// The inputs the height was computed for: content, width and scale
+    /// bits, and expansion.
+    laid: Option<(u64, u32, u32, bool)>,
+}
+
+/// Exact heights and display lists for one transcript. Use one per mounted
+/// transcript, on one thread.
+pub struct TranscriptLayout {
+    width: f32,
+    scale: f32,
+    rows: Vec<Row>,
+    index: HashMap<String, usize>,
+    /// Each row's top, then the content height.
+    tops: Vec<f32>,
+    expanded: HashSet<String>,
+    cache: MeasureCache,
+}
+
+impl Default for TranscriptLayout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TranscriptLayout {
+    pub fn new() -> Self {
+        Self {
+            width: 0.0,
+            scale: 1.0,
+            rows: vec![],
+            index: HashMap::new(),
+            tops: vec![2.0 * EDGE_INSET],
+            expanded: HashSet::new(),
+            cache: MeasureCache::default(),
+        }
+    }
+
+    /// Applies an update and lays out the rows it invalidates.
+    pub fn update(
+        &mut self,
+        update: Update,
+        measurer: &mut dyn Measurer,
+    ) -> Result<Summary, LayoutError> {
+        let started = Instant::now();
+        let misses = self.cache.misses;
+        if !update.width.is_finite()
+            || !(1.0..=16_384.0).contains(&update.width)
+            || !update.scale.is_finite()
+            || !(0.5..=4.0).contains(&update.scale)
+        {
+            return Err(LayoutError::Geometry);
+        }
+        let expanded: HashSet<String> = update.expanded.into_iter().collect();
+        let has_earlier = self.rows.first().is_some_and(|row| row.key == EARLIER_KEY);
+        if update.order.is_none() && update.earlier.is_some() == has_earlier {
+            return self.update_in_place(
+                update.rows,
+                update.earlier,
+                expanded,
+                update.width,
+                update.scale,
+                measurer,
+                started,
+                misses,
+            );
+        }
+        let order = match update.order {
+            Some(order) => order,
+            None => self
+                .rows
+                .iter()
+                .filter(|row| row.key != EARLIER_KEY)
+                .map(|row| row.key.clone())
+                .collect(),
+        };
+        if order.len() > MAX_ROWS || update.rows.len() > MAX_ROWS {
+            return Err(LayoutError::Limit);
+        }
+        let mut incoming = checked_rows(update.rows)?;
+        let mut previous_earlier = None;
+        let mut previous: HashMap<String, Row> = HashMap::with_capacity(self.rows.len());
+        for row in self.rows.drain(..) {
+            if row.key == EARLIER_KEY {
+                previous_earlier = Some(row);
+            } else {
+                previous.insert(row.key.clone(), row);
+            }
+        }
+        let mut rows = Vec::with_capacity(order.len() + 1);
+        if let Some(earlier) = update.earlier {
+            let content = hash_of(&(earlier.label.as_str(), earlier.loading));
+            rows.push(match previous_earlier {
+                Some(old) if old.content == content => old,
+                _ => Row {
+                    key: EARLIER_KEY.into(),
+                    source: Source::Earlier(earlier),
+                    content,
+                    expanded: false,
+                    height: 0.0,
+                    laid: None,
+                },
+            });
+        }
+        let mut seen = HashSet::with_capacity(order.len());
+        for key in order {
+            if !seen.insert(key.clone()) {
+                return Err(LayoutError::DuplicateRow(key));
+            }
+            let open = expanded.contains(&key);
+            let row = match (incoming.remove(&key), previous.remove(&key)) {
+                (Some((_, content)), Some(old)) if old.content == content => Row {
+                    expanded: open,
+                    ..old
+                },
+                (Some((node, content)), _) => Row {
+                    key,
+                    source: Source::Node(Arc::new(node)),
+                    content,
+                    expanded: open,
+                    height: 0.0,
+                    laid: None,
+                },
+                (None, Some(old)) => Row {
+                    expanded: open,
+                    ..old
+                },
+                (None, None) => return Err(LayoutError::UnknownRow(key)),
+            };
+            rows.push(row);
+        }
+        self.rows = rows;
+        self.index = self
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(i, row)| (row.key.clone(), i))
+            .collect();
+        self.expanded = expanded;
+        Ok(self.relayout(update.width, update.scale, measurer, started, misses))
+    }
+
+    /// The streaming path: the order is unchanged, so changed rows are
+    /// replaced where they stand.
+    #[allow(clippy::too_many_arguments)]
+    fn update_in_place(
+        &mut self,
+        rows: Vec<Node<()>>,
+        earlier: Option<EarlierRow>,
+        expanded: HashSet<String>,
+        width: f32,
+        scale: f32,
+        measurer: &mut dyn Measurer,
+        started: Instant,
+        misses: u64,
+    ) -> Result<Summary, LayoutError> {
+        if rows.len() > MAX_ROWS {
+            return Err(LayoutError::Limit);
+        }
+        let incoming = checked_rows(rows)?;
+        for key in incoming.keys() {
+            if !self.index.contains_key(key) {
+                return Err(LayoutError::UnknownRow(key.clone()));
+            }
+        }
+        for (key, (node, content)) in incoming {
+            let row = &mut self.rows[self.index[&key]];
+            if row.content != content {
+                row.source = Source::Node(Arc::new(node));
+                row.content = content;
+            }
+        }
+        if let Some(earlier) = earlier {
+            let content = hash_of(&(earlier.label.as_str(), earlier.loading));
+            let row = &mut self.rows[0];
+            if row.content != content {
+                row.source = Source::Earlier(earlier);
+                row.content = content;
+            }
+        }
+        if expanded != self.expanded {
+            for row in &mut self.rows {
+                row.expanded = row.key != EARLIER_KEY && expanded.contains(&row.key);
+            }
+            self.expanded = expanded;
+        }
+        Ok(self.relayout(width, scale, measurer, started, misses))
+    }
+
+    /// Lays out every row whose inputs changed, then recomputes offsets.
+    fn relayout(
+        &mut self,
+        width: f32,
+        scale: f32,
+        measurer: &mut dyn Measurer,
+        started: Instant,
+        misses: u64,
+    ) -> Summary {
+        self.width = width;
+        self.scale = scale;
+        let mut relaid = 0;
+        for row in &mut self.rows {
+            let inputs = (row.content, width.to_bits(), scale.to_bits(), row.expanded);
+            if row.laid != Some(inputs) {
+                row.height = lay(row, width, scale, &mut self.cache, measurer).height;
+                row.laid = Some(inputs);
+                relaid += 1;
+            }
+        }
+        self.offsets();
+        Summary {
+            count: self.rows.len(),
+            height: self.height(),
+            relaid,
+            measured: self.cache.misses - misses,
+            micros: started.elapsed().as_micros() as u64,
+        }
+    }
+
+    fn offsets(&mut self) {
+        self.tops.clear();
+        let mut y = EDGE_INSET;
+        for row in &self.rows {
+            self.tops.push(y);
+            y += row.height + ROW_GAP;
+        }
+        let end = if self.rows.is_empty() {
+            2.0 * EDGE_INSET
+        } else {
+            y - ROW_GAP + EDGE_INSET
+        };
+        self.tops.push(end);
+    }
+
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    /// The content height, including the edge insets.
+    pub fn height(&self) -> f32 {
+        *self.tops.last().unwrap_or(&0.0)
+    }
+
+    pub fn width(&self) -> f32 {
+        self.width
+    }
+
+    /// The measurement cache, for diagnostics.
+    pub fn cache(&self) -> &MeasureCache {
+        &self.cache
+    }
+
+    pub fn placement(&self, index: usize) -> Option<Placement> {
+        let row = self.rows.get(index)?;
+        Some(Placement {
+            index,
+            version: paint_version(row, self.width, self.scale),
+            y: self.tops[index],
+            height: row.height,
+        })
+    }
+
+    /// The row index for a key; the earlier control is `EARLIER_KEY`.
+    pub fn find(&self, key: &str) -> Option<usize> {
+        self.index.get(key).copied()
+    }
+
+    pub fn key(&self, index: usize) -> Option<&str> {
+        self.rows.get(index).map(|row| row.key.as_str())
+    }
+
+    /// The rows that intersect `y0..y1`, by binary search.
+    pub fn rows_in(&self, y0: f32, y1: f32) -> Range<usize> {
+        let count = self.rows.len();
+        let first = self.tops[..count]
+            .partition_point(|top| *top <= y0)
+            .saturating_sub(1);
+        let first = if first < count && self.tops[first] + self.rows[first].height < y0 {
+            first + 1
+        } else {
+            first
+        };
+        let last = self.tops[..count].partition_point(|top| *top < y1);
+        first.min(last)..last
+    }
+
+    /// Paints one row. Measurements come from the cache when the row was laid
+    /// out at this width.
+    pub fn display(&mut self, index: usize, measurer: &mut dyn Measurer) -> Option<RowDisplay> {
+        let row = self.rows.get(index)?;
+        let mut display = lay(row, self.width, self.scale, &mut self.cache, measurer);
+        display.version = paint_version(row, self.width, self.scale);
+        // A platform that answered differently since layout must not move
+        // rows under the reader; the frame keeps the laid-out height.
+        display.height = row.height;
+        Some(display)
+    }
+}
+
+/// Validates each row as a one-node view and hashes its content.
+fn checked_rows(rows: Vec<Node<()>>) -> Result<HashMap<String, (Node<()>, u64)>, LayoutError> {
+    let mut incoming = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let checked = View::new("layout", 1, row)
+            .validate()
+            .map_err(LayoutError::Row)?;
+        let row = checked.view().root.clone();
+        let content = content_hash(&row);
+        incoming.insert(row.key.clone(), (row, content));
+    }
+    Ok(incoming)
+}
+
+fn lay(
+    row: &Row,
+    width: f32,
+    scale: f32,
+    cache: &mut MeasureCache,
+    measurer: &mut dyn Measurer,
+) -> RowDisplay {
+    let mut ctx = rows::Ctx {
+        measurer,
+        cache,
+        scale,
+        out: RowDisplay {
+            key: row.key.clone(),
+            ..RowDisplay::default()
+        },
+    };
+    let height = match &row.source {
+        Source::Node(node) => rows::lay_row(&mut ctx, node, row.expanded, width),
+        Source::Earlier(earlier) => {
+            rows::lay_earlier(&mut ctx, &earlier.label, earlier.loading, width)
+        }
+    };
+    ctx.out.height = height;
+    ctx.out
+}
+
+fn paint_version(row: &Row, width: f32, scale: f32) -> u64 {
+    hash_of(&(row.content, width.to_bits(), scale.to_bits(), row.expanded))
+}
+
+fn hash_of(value: &impl Hash) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// A hash of a row's serialized content, so an unchanged row resent by the
+/// adapter keeps its version and is not measured again.
+fn content_hash(node: &Node<()>) -> u64 {
+    struct Hashing(DefaultHasher);
+    impl Write for Hashing {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.write(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut hashing = Hashing(DefaultHasher::new());
+    // Serializing a validated node cannot fail.
+    let _ = serde_json::to_writer(&mut hashing, node);
+    hashing.0.finish()
+}
+
+/// The same node without its application intents, which layout never reads.
+pub fn without_intents<I>(node: &Node<I>) -> Node<()> {
+    let children = |nodes: &[Node<I>]| nodes.iter().map(without_intents).collect();
+    let element = match &node.element {
+        Element::Surface { resource, label } => Element::Surface {
+            resource: resource.clone(),
+            label: label.clone(),
+        },
+        Element::Stack { axis, children: c } => Element::Stack {
+            axis: *axis,
+            children: children(c),
+        },
+        Element::List { label, children: c } => Element::List {
+            label: label.clone(),
+            children: children(c),
+        },
+        Element::Text { value, role } => Element::Text {
+            value: value.clone(),
+            role: *role,
+        },
+        Element::Button { label, enabled, .. } => Element::Button {
+            label: label.clone(),
+            enabled: *enabled,
+            intent: (),
+        },
+        Element::Transcript {
+            label,
+            children: c,
+            earlier,
+        } => Element::Transcript {
+            label: label.clone(),
+            children: children(c),
+            earlier: earlier.as_ref().map(|e| Earlier {
+                label: e.label.clone(),
+                loading: e.loading,
+                intent: (),
+            }),
+        },
+        Element::Message {
+            role,
+            note,
+            children: c,
+        } => Element::Message {
+            role: *role,
+            note: note.clone(),
+            children: children(c),
+        },
+        Element::Markdown { blocks } => Element::Markdown {
+            blocks: blocks.clone(),
+        },
+        Element::Tool {
+            name,
+            detail,
+            state,
+            children: c,
+        } => Element::Tool {
+            name: name.clone(),
+            detail: detail.clone(),
+            state: *state,
+            children: children(c),
+        },
+        Element::Working { label } => Element::Working {
+            label: label.clone(),
+        },
+        Element::Composer {
+            token,
+            placeholder,
+            max_bytes,
+            enabled,
+            busy,
+            stop,
+        } => Element::Composer {
+            token: token.clone(),
+            placeholder: placeholder.clone(),
+            max_bytes: *max_bytes,
+            enabled: *enabled,
+            busy: *busy,
+            stop: stop.as_ref().map(|_| ()),
+        },
+    };
+    Node {
+        key: node.key.clone(),
+        style: node.style,
+        element,
+    }
+}
+
+#[cfg(test)]
+mod tests;

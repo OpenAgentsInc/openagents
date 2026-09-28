@@ -1,11 +1,14 @@
 //! Rust Native's experimental renderer-independent foundation.
 //!
 //! Applications describe semantic views and typed intents. Platform adapters
-//! own native controls, layout, focus, input composition, and mounting. This
-//! crate does not start an application runtime, execute an intent, or render
-//! a native screen. See the crate's docs for implemented and planned layers.
+//! own native controls, focus, input composition, and mounting. The `layout`
+//! module lays out transcripts on an adapter's behalf: exact row heights and
+//! display lists the adapter paints. This crate does not start an application
+//! runtime, execute an intent, or render a native screen. See the crate's
+//! docs for implemented and planned layers.
 
 pub mod input;
+pub mod layout;
 pub mod markdown;
 pub mod style;
 pub mod surface;

@@ -7,7 +7,12 @@ publish = false
 license = "Apache-2.0"
 readme = "README.md"
 description = "Experimental reusable semantic views, typed intents, styles, and native-renderer contracts."
-include = ["src/**", "examples/**", "docs/**", "README.md", "LICENSE"]
+include = ["src/**", "include/**", "examples/**", "docs/**", "README.md", "LICENSE"]
+
+[features]
+# Exports the transcript layout's C interface (`include/rust_native_layout.h`)
+# from the application library that links this crate.
+ffi = []
 
 [dependencies]
 # Markdown is parsed in Rust into typed blocks; adapters only lay them out.
