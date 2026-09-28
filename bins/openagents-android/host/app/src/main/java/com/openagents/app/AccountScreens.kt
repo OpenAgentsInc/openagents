@@ -165,10 +165,14 @@ internal class AccountScreens(private val activity: MainActivity, private val br
                 progressTintList = android.content.res.ColorStateList.valueOf(Palette.PRIMARY)
             }, 8)
             add(activity.label("${card.optLong("to_next")} XP to level ${level + 1} · ${card.optString("curve")}", 13f, Palette.SECONDARY), 4)
-            add(activity.label("Over your head in the Grid: ${card.optString("tag")}${if (xp > 0) " · lv $level" else ""}", 13f,
+            val shown = xp > 0 && card.optString("profile") == "shown"
+            add(activity.label("Over your head in the Grid: ${card.optString("tag")}${if (shown) " · lv $level" else ""}", 13f,
                 Palette.SECONDARY, mono = true).apply { setPadding(0, 0, 0, activity.dp(10)) }, 2)
         }
         card ?: return ScrollView(activity).apply { addView(body) }
+        profileSection(body, card, refresh)
+        linkedKeysSection(body, card, refresh)
+        exportSection(body, card, refresh)
         val titles = card.optJSONArray("titles").strings()
         if (titles.isNotEmpty()) body.section("Titles") {
             add(activity.label(titles.joinToString(", "), 16f).apply { setPadding(0, activity.dp(12), 0, activity.dp(12)) })
@@ -221,6 +225,153 @@ internal class AccountScreens(private val activity: MainActivity, private val br
             })
         }
         return ScrollView(activity).apply { addView(body) }
+    }
+
+    /** A tappable row in a section card. */
+    private fun action(title: String, key: String?, color: Int = Palette.LINK, enabled: Boolean = true, onClick: () -> Unit): TextView =
+        activity.label(title, 16f, color, key = key).apply {
+            setPadding(0, activity.dp(12), 0, activity.dp(12))
+            enabled(enabled)
+            setOnClickListener { if (isEnabled) onClick() }
+        }
+
+    private fun note(text: String, color: Int = Palette.SECONDARY, mono: Boolean = false, selectable: Boolean = false): TextView =
+        activity.label(text, 13f, color, mono = mono, selectable = selectable).apply { setPadding(0, activity.dp(8), 0, activity.dp(8)) }
+
+    /** Asks first, then runs `confirmed`: every trainer publish waits for this. */
+    private fun confirm(title: String, message: String, button: String, confirmed: () -> Unit) {
+        dialog().setTitle(title).setMessage(message)
+            .setPositiveButton(button) { _, _ -> confirmed() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Show my level / Hide my level: publishing the trainer profile, after a confirmation to show it. */
+    private fun profileSection(body: LinearLayout, card: JSONObject, refresh: () -> Unit) {
+        val publishing = card.optString("profile_status") == "publishing"
+        val update: (JSONObject) -> Unit = { next -> this.card = next; refresh() }
+        body.section("Level over your head", "Other players see your level only after you choose to show it. " +
+            "Your XP stays public either way: anyone can compute it from the relay.") {
+            if (card.optString("profile") == "shown") {
+                add(note("Shown in the Grid and on boards", Palette.PRIMARY)); rowDivider()
+                add(action("Hide my level", "trainer-hide-level", enabled = !publishing) { bridge.trainerProfile(false, update) })
+            } else {
+                add(note(if (card.optString("profile") == "hidden") "Hidden" else "Not shown yet")); rowDivider()
+                add(action("Show my level", "trainer-show-level", enabled = !publishing) {
+                    confirm("Show your level?", "This publishes a trainer profile signed by your trainer key to relay.openagents.com. " +
+                        "Your level then shows over your head in the Grid and on boards. You can hide it again at any time.", "Show") {
+                        bridge.trainerProfile(true, update)
+                    }
+                })
+            }
+            if (publishing) { rowDivider(); add(note("Publishing…")) }
+            card.textOrNull("profile_error")?.let { rowDivider(); add(note(it, Palette.FAILURE)) }
+        }
+    }
+
+    /** Linked keys: each key the profile lists, linked both ways or waiting, with Remove, and Link a key. */
+    private fun linkedKeysSection(body: LinearLayout, card: JSONObject, refresh: () -> Unit) {
+        val publishing = card.optString("profile_status") == "publishing"
+        val update: (JSONObject) -> Unit = { next -> this.card = next; refresh() }
+        body.section("Linked keys", "Sign work on a computer with its own key and have it count here, without moving your trainer key. " +
+            "Enter that key's npub, then on the computer run: microcoder xp link --relay ${card.optString("relay")} --trainer ${card.optString("npub")}") {
+            card.textOrNull("linked_to")?.let {
+                add(note("This key is linked to the trainer ${it.take(16)}…, so its XP counts there.")); rowDivider()
+            }
+            for (linked in card.optJSONArray("linked_keys")?.objects() ?: emptyList()) {
+                val isLinked = linked.optString("status") == "linked"
+                add(activity.row().apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, activity.dp(8), 0, activity.dp(8))
+                    tag = "trainer-linked-${linked.optString("public_hex").take(16)}"
+                    addView(activity.column().apply {
+                        add(activity.label(linked.optString("npub").take(20) + "…", 14f, mono = true))
+                        add(activity.label(if (isLinked) "Linked both ways: its XP counts here" else "Waiting for this key to link back",
+                            12f, if (isLinked) Palette.SUCCESS else Palette.SECONDARY), 2)
+                    }, LinearLayout.LayoutParams(0, -2, 1f))
+                    addView(action("Remove", null, Palette.FAILURE, enabled = !publishing) {
+                        bridge.trainerLink(remove = linked.optString("public_hex"), received = update)
+                    })
+                })
+                rowDivider()
+            }
+            add(action("Link a key", "trainer-link-key", enabled = !publishing) { askLinkKey(update) })
+        }
+    }
+
+    private fun askLinkKey(update: (JSONObject) -> Unit) {
+        val field = android.widget.EditText(activity).apply {
+            hint = "npub1…"; tag = "trainer-link-field"; isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+        }
+        val frame = android.widget.FrameLayout(activity).apply {
+            setPadding(activity.dp(20), activity.dp(8), activity.dp(20), 0); addView(field)
+        }
+        dialog().setTitle("Link a key")
+            .setMessage("This publishes your trainer profile listing the key. Its XP counts here only after that key signs a link back to you.")
+            .setView(frame)
+            .setPositiveButton("Link") { _, _ -> bridge.trainerLink(add = field.text.toString().trim(), received = update) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** The last export's reply: the signed card's JSON, file name, and link, or an error. */
+    private var export: JSONObject? = null
+    /** The card JSON waiting for the file the person picks; kept only until it is written. */
+    private var pendingCard: String? = null
+    private var saveRefresh: (() -> Unit)? = null
+    private val cardSaver = activity.registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        val text = pendingCard; pendingCard = null
+        if (uri == null || text == null) return@registerForActivityResult
+        try {
+            activity.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) }
+                ?: throw IllegalStateException("The file couldn't be opened.")
+        } catch (problem: Exception) {
+            export = export?.put("error", problem.message ?: "The card couldn't be saved.")
+            saveRefresh?.invoke()
+        }
+    }
+
+    /** Export card: signs and publishes the card after a confirmation; then Share link and Save card JSON. */
+    private fun exportSection(body: LinearLayout, card: JSONObject, refresh: () -> Unit) {
+        body.section("Trainer card", "A signed summary of your level, keys, and counted awards. " +
+            "Anyone can check it: openagents xp verify-card re-derives it from the relay.") {
+            add(action("Export card", "trainer-export") {
+                confirm("Export your trainer card?", "This signs your card with your trainer key and publishes it to relay.openagents.com, " +
+                    "so its link opens a public page. It lists your level, your linked keys, and your counted awards.", "Export") {
+                    bridge.trainerExport { reply -> export = reply; refresh() }
+                }
+            })
+            val export = export ?: return@section
+            export.textOrNull("error")?.let { rowDivider(); add(note(it, Palette.FAILURE)) }
+            export.textOrNull("link")?.let { link ->
+                rowDivider()
+                add(action("Share link", "trainer-share-link") {
+                    activity.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND)
+                        .setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, link), "Share"))
+                })
+                add(note(link, mono = true, selectable = true).apply { tag = "trainer-card-link" })
+            }
+            val cardJson = export.textOrNull("json")
+            val name = export.textOrNull("file_name")
+            if (cardJson != null && name != null) {
+                rowDivider()
+                add(action("Save card JSON", "trainer-save-card") {
+                    pendingCard = cardJson; saveRefresh = refresh
+                    cardSaver.launch(name)
+                })
+            }
+            val status = card.optString("card_status")
+            rowDivider()
+            add(note(when {
+                export.optBoolean("preview") -> "Preview: signed, not published."
+                status == "published" -> "Published to ${card.optString("relay")}."
+                status == "failed" -> "The relay didn't take the card. Export again."
+                else -> "Publishing…"
+            }, if (status == "failed" && !export.optBoolean("preview")) Palette.FAILURE else Palette.SECONDARY).apply { tag = "trainer-card-status" })
+        }
     }
 
     // About this device

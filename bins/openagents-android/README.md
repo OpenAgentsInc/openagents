@@ -76,8 +76,13 @@ The app has four tabs, shown as white icons on black:
 - **Account** holds **Trainer** (the trainer card for the Verse world key:
   level, XP and the way to the next level under `trainer-curve-v1`,
   titles, the counted awards with links, and the trainer key with a
-  warned **Reveal nsec**; the level also shows over each player's head in
-  the Grid), **Computers** (a native list of your computers with a
+  warned **Reveal nsec**; **Show my level** / **Hide my level** publishes
+  the trainer profile, **Linked keys** adds (npub or hex) or removes a key
+  and shows it linked or waiting, and **Export card** signs and publishes
+  the card, then offers **Share link** and **Save card JSON**; each publish
+  that shows or adds something asks first, with the iPhone app's words; the
+  level also shows over each player's head in the Grid once shown),
+  **Computers** (a native list of your computers with a
   status dot and short status; a tap opens a computer's shared screens, a
   long press offers its menu, and a destructive choice asks first; the
   header's **More** menu has Activity, Refresh, and the owner-directory

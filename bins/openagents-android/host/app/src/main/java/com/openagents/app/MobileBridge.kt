@@ -135,6 +135,34 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         }
     }
 
+    /**
+     * Publishes the trainer profile after the person confirms: `shown` puts
+     * their level over their head in other players' Grids. The answer is
+     * the trainer packet.
+     */
+    fun trainerProfile(shown: Boolean, received: (JSONObject) -> Unit) = trainerCall(json("op" to "trainer_profile", "shown" to shown), received)
+
+    /** Adds a key (npub or hex) to, or removes one from, the trainer profile, and publishes it. */
+    fun trainerLink(add: String? = null, remove: String? = null, received: (JSONObject) -> Unit) =
+        trainerCall(json("op" to "trainer_link", "add" to add, "remove" to remove), received)
+
+    /**
+     * Signs the trainer card and publishes it at its address, after the
+     * person confirms (`openagents.trainer-card.v1`: the JSON, its file
+     * name, and its link, or an error).
+     */
+    fun trainerExport(received: (JSONObject) -> Unit) {
+        val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { return }
+        call(json("op" to "trainer_export", "world_secret_hex" to secret)) { reply(it, "openagents.trainer-card.v1")?.let(received) }
+    }
+
+    private fun trainerCall(request: JSONObject, received: (JSONObject) -> Unit) {
+        val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { return }
+        call(request.put("world_secret_hex", secret)) { text ->
+            reply(text, "openagents.trainer.v1")?.takeIf { it.has("npub") }?.let(received)
+        }
+    }
+
     /** The Report a problem form for `tab` and `route` (`openagents.report-draft.v1`). */
     fun reportDraft(tab: String, route: String, received: (JSONObject) -> Unit) =
         call(json("op" to "report_draft", "tab" to tab, "route" to route)) { reply(it, "openagents.report-draft.v1")?.let(received) }
