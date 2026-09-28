@@ -1,6 +1,6 @@
 //! Executor event streams, normalized, and the files they wrote.
 //!
-//! Claude Code and Codex each write their own event stream. A host that
+//! Claude Code, Codex, and OpenCode each write their own event stream. A host that
 //! watches a session, a scripted executor that replays one, and a checker
 //! that recovers a candidate from one all need the same few facts, so this
 //! module reads both formats into [`Event`]s: session started, command
@@ -28,6 +28,11 @@ pub enum Format {
     Codex,
     /// Claude Code's `--output-format stream-json`.
     Claude,
+    /// `opencode run --format json`: one line per finished part
+    /// (`step_start`, `text`, `reasoning`, `tool_use`, `step_finish`) or an
+    /// `error`, each with the session's `sessionID`.
+    #[serde(rename = "opencode")]
+    OpenCode,
 }
 
 impl Format {
@@ -37,6 +42,7 @@ impl Format {
         match self {
             Format::Codex => "codex",
             Format::Claude => "claude",
+            Format::OpenCode => "opencode",
         }
     }
 
@@ -47,6 +53,9 @@ impl Format {
             let Ok(event) = serde_json::from_str::<Value>(line) else {
                 continue;
             };
+            if event.get("sessionID").is_some() && event.get("timestamp").is_some() {
+                return Some(Format::OpenCode);
+            }
             return match event.get("type").and_then(Value::as_str) {
                 Some(kind) if kind.contains('.') => Some(Format::Codex),
                 Some("system" | "assistant" | "user" | "result") => Some(Format::Claude),
@@ -143,10 +152,21 @@ pub fn normalize_line(format: Format, text: &str, line: usize, seq: &mut u64) ->
     let Ok(event) = serde_json::from_str::<Value>(text) else {
         return Vec::new();
     };
-    let kinds = match format {
+    let mut kinds = match format {
         Format::Codex => codex(&event),
         Format::Claude => claude(&event),
+        Format::OpenCode => opencode(&event),
     };
+    // Every OpenCode line names its session and none announces it, so a
+    // stream's first event is the session's start.
+    if format == Format::OpenCode && *seq == 0 {
+        kinds.insert(
+            0,
+            Kind::SessionStarted {
+                session_id: text_of(&event, "sessionID"),
+            },
+        );
+    }
     kinds
         .into_iter()
         .map(|kind| {
@@ -230,6 +250,73 @@ fn codex(event: &Value) -> Vec<Kind> {
                 .pointer("/error/message")
                 .and_then(Value::as_str)
                 .map(str::to_string),
+        }],
+        _ => Vec::new(),
+    }
+}
+
+/// One `opencode run --format json` line. A tool's part arrives once it
+/// completed or failed, so a command starts and completes in one line.
+fn opencode(event: &Value) -> Vec<Kind> {
+    let part = &event["part"];
+    match event.get("type").and_then(Value::as_str) {
+        Some("text") => vec![Kind::AssistantClaim {
+            text: clip(&text_of(part, "text").unwrap_or_default(), CLAIM_CHARS),
+        }],
+        Some("step_finish") => vec![Kind::UsageUpdate {
+            usage: json!({
+                "tokens": part.get("tokens").cloned().unwrap_or(Value::Null),
+                "cost": part.get("cost").cloned().unwrap_or(Value::Null),
+            }),
+        }],
+        Some("tool_use") => {
+            let state = &part["state"];
+            let input = &state["input"];
+            let failed = state.get("status").and_then(Value::as_str) == Some("error");
+            match part.get("tool").and_then(Value::as_str) {
+                Some("bash") => {
+                    let command = text_of(input, "command").unwrap_or_default();
+                    let exit_code = state
+                        .pointer("/metadata/exit")
+                        .and_then(Value::as_i64)
+                        .or(failed.then_some(1));
+                    let output = text_of(state, "output")
+                        .or_else(|| text_of(state, "error"))
+                        .unwrap_or_default();
+                    let mut kinds = vec![
+                        Kind::CommandStarted {
+                            command: command.clone(),
+                        },
+                        Kind::CommandCompleted {
+                            command: command.clone(),
+                            exit_code,
+                            output: clip(&output, OUTPUT_CHARS),
+                        },
+                    ];
+                    kinds.extend(shell_writes(&command).into_iter().map(|write| {
+                        Kind::ArtifactChanged {
+                            path: write.path,
+                            change: "write".to_string(),
+                        }
+                    }));
+                    kinds
+                }
+                Some(tool @ ("write" | "edit" | "multiedit")) if !failed => {
+                    vec![Kind::ArtifactChanged {
+                        path: text_of(input, "filePath").unwrap_or_default(),
+                        change: if tool == "write" { "write" } else { "update" }.to_string(),
+                    }]
+                }
+                _ => Vec::new(),
+            }
+        }
+        Some("error") => vec![Kind::SessionEnded {
+            error: true,
+            result: event
+                .pointer("/error/data/message")
+                .or_else(|| event.pointer("/error/name"))
+                .and_then(Value::as_str)
+                .map(|text| clip(text, CLAIM_CHARS)),
         }],
         _ => Vec::new(),
     }
@@ -367,6 +454,75 @@ pub fn writes(format: Format, stream: &str) -> Vec<Write> {
                         write.line = i + 1;
                         write
                     }));
+                }
+            }
+            Format::OpenCode => {
+                let part = &event["part"];
+                let input = &part["state"]["input"];
+                let done = event.get("type").and_then(Value::as_str) == Some("tool_use")
+                    && part.pointer("/state/status").and_then(Value::as_str) == Some("completed");
+                match part.get("tool").and_then(Value::as_str).filter(|_| done) {
+                    Some("write") => {
+                        if let (Some(path), Some(content)) =
+                            (text_of(input, "filePath"), text_of(input, "content"))
+                        {
+                            out.push(Write {
+                                line: i + 1,
+                                path,
+                                content,
+                                how: "write_tool".to_string(),
+                            });
+                        }
+                    }
+                    Some("bash") => {
+                        let command = text_of(input, "command").unwrap_or_default();
+                        out.extend(shell_writes(&command).into_iter().map(|mut write| {
+                            write.line = i + 1;
+                            write
+                        }));
+                    }
+                    Some("edit") => {
+                        let Some(path) = text_of(input, "filePath") else {
+                            continue;
+                        };
+                        let edited = out
+                            .iter()
+                            .rev()
+                            .find(|w| w.path == path)
+                            .filter(|w| w.how != UNKNOWN)
+                            .map(|w| w.content.clone())
+                            .and_then(|content| {
+                                let old = text_of(input, "oldString")?;
+                                let new = text_of(input, "newString").unwrap_or_default();
+                                if old.is_empty() || !content.contains(&old) {
+                                    return None;
+                                }
+                                Some(
+                                    if input.get("replaceAll").and_then(Value::as_bool)
+                                        == Some(true)
+                                    {
+                                        content.replace(&old, &new)
+                                    } else {
+                                        content.replacen(&old, &new, 1)
+                                    },
+                                )
+                            });
+                        out.push(match edited {
+                            Some(content) => Write {
+                                line: i + 1,
+                                path,
+                                content,
+                                how: "edit_replayed".to_string(),
+                            },
+                            None => Write {
+                                line: i + 1,
+                                path,
+                                content: String::new(),
+                                how: UNKNOWN.to_string(),
+                            },
+                        });
+                    }
+                    _ => {}
                 }
             }
             Format::Claude => {
@@ -837,6 +993,78 @@ mod tests {
         );
         let written = writes(Format::Claude, &claude);
         assert_eq!(written[0].content, "print(2)\n");
+    }
+
+    /// `opencode run --format json` from OpenCode 1.18.26, recorded on
+    /// 2026-09-28: `cat note.txt` through the bash tool, then `done`.
+    const OPENCODE_RUN: &str = include_str!("../fixtures/opencode/run.jsonl");
+    /// The same CLI when the provider refused the model with HTTP 403.
+    const OPENCODE_REFUSED: &str = include_str!("../fixtures/opencode/run-403.jsonl");
+
+    #[test]
+    fn a_recorded_opencode_run_normalizes_to_the_same_kinds() {
+        assert_eq!(Format::detect(OPENCODE_RUN), Some(Format::OpenCode));
+        let events = normalize(Format::OpenCode, OPENCODE_RUN);
+        let kinds: Vec<&str> = events.iter().map(|e| e.kind.word()).collect();
+        assert_eq!(
+            kinds,
+            [
+                "session_started",
+                "command_started",
+                "command_completed",
+                "usage_update",
+                "assistant_claim",
+                "usage_update"
+            ]
+        );
+        assert_eq!(
+            events[0].kind,
+            Kind::SessionStarted {
+                session_id: Some("ses_f160cfbc3ffeFQ1TJ4BLDKGbNo".into())
+            }
+        );
+        assert_eq!(
+            events[2].kind,
+            Kind::CommandCompleted {
+                command: "cat note.txt".into(),
+                exit_code: Some(0),
+                output: "hello\n".into()
+            }
+        );
+        assert_eq!(events[4].kind, Kind::AssistantClaim { text: "done".into() });
+        let refused = normalize(Format::OpenCode, OPENCODE_REFUSED);
+        assert!(matches!(
+            &refused.last().unwrap().kind,
+            Kind::SessionEnded { error: true, result: Some(said) } if said.contains("Model access is disabled")
+        ));
+    }
+
+    #[test]
+    fn an_opencode_write_and_edit_are_recovered() {
+        let tool = |tool: &str, input: Value| {
+            json!({"type":"tool_use","timestamp":1,"sessionID":"ses_1","part":{"type":"tool","tool":tool,
+                "state":{"status":"completed","input":input,"output":""}}})
+            .to_string()
+        };
+        let stream = [
+            tool("write", json!({"filePath":"/w/a.py","content":"print(1)\n"})),
+            tool("edit", json!({"filePath":"/w/a.py","oldString":"1","newString":"2"})),
+        ]
+        .join("\n");
+        let files = final_files(&writes(Format::OpenCode, &stream));
+        assert_eq!(files[0].content, "print(2)\n");
+        assert_eq!(files[0].how, "edit_replayed");
+        let kinds: Vec<Kind> = normalize(Format::OpenCode, &stream)
+            .into_iter()
+            .map(|e| e.kind)
+            .collect();
+        assert_eq!(
+            kinds[1],
+            Kind::ArtifactChanged {
+                path: "/w/a.py".into(),
+                change: "write".into()
+            }
+        );
     }
 
     #[test]

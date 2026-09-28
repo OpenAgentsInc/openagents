@@ -37,8 +37,8 @@
 //! mirrored chats by their own activity.
 //!
 //! Sessions Coder's engine starts are saved in the engine's own database
-//! ([`crate::engine::opencode_database`]), which the mirror never reads, so
-//! they never list as chats.
+//! ([`crate::engine::OPENCODE_DATABASE`], beside the owner's), which the
+//! mirror never reads, so they never list as chats.
 
 use std::collections::BTreeMap;
 use std::io::Write as _;

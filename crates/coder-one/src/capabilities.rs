@@ -239,6 +239,11 @@ async fn demonstrate_in(agent: Agent, binary: &Path, scratch: &Path) -> Result<V
         Agent::Microluna => {
             return Err("Microluna runs in this process and has no CLI to demonstrate".to_string());
         }
+        Agent::OpenCode => {
+            return Err(
+                "OpenCode's capabilities are demonstrated by coder_delegate::adapter's tests and a live smoke, not against the local model server".to_string(),
+            );
+        }
         Agent::Codex => {
             let catalog = scratch.join("catalog.json");
             let cache = std::env::var_os("HOME")
@@ -262,6 +267,7 @@ async fn demonstrate_in(agent: Agent, binary: &Path, scratch: &Path) -> Result<V
         credential: match agent {
             Agent::ClaudeCode => Credential::OauthToken,
             Agent::Codex | Agent::Microluna => Credential::OpenAiKey,
+            Agent::OpenCode => Credential::OpenCodeLogin,
         },
         effort: None,
         tools: None,

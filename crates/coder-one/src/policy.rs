@@ -532,11 +532,7 @@ impl Manifest {
         }
         if let Some(handoff) = &self.policy.control.handoff {
             let first = crate::handoff::Tier::new(
-                match executor.agent {
-                    AgentName::ClaudeCode => "claude-code",
-                    AgentName::Codex => "codex",
-                    AgentName::Microluna => "microluna",
-                },
+                executor.agent.agent().word(),
                 &executor.model,
             );
             if let Err(problem) = handoff.check(&first) {

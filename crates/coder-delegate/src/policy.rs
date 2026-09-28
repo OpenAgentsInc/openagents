@@ -290,6 +290,8 @@ pub enum AgentName {
     ClaudeCode,
     Codex,
     Microluna,
+    #[serde(rename = "opencode")]
+    OpenCode,
 }
 
 impl AgentName {
@@ -299,6 +301,7 @@ impl AgentName {
             AgentName::ClaudeCode => Agent::ClaudeCode,
             AgentName::Codex => Agent::Codex,
             AgentName::Microluna => Agent::Microluna,
+            AgentName::OpenCode => Agent::OpenCode,
         }
     }
 
@@ -309,6 +312,7 @@ impl AgentName {
             Agent::ClaudeCode => AgentName::ClaudeCode,
             Agent::Codex => AgentName::Codex,
             Agent::Microluna => AgentName::Microluna,
+            Agent::OpenCode => AgentName::OpenCode,
         }
     }
 }

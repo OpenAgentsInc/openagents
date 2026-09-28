@@ -5010,6 +5010,7 @@ impl Executor for Micro {
                 cost_provenance: Some("price_estimate"),
                 cost_note: Some(microluna::price::COST_NOTE),
                 limit: None,
+                refusal: None,
             },
             milliseconds,
             stderr: String::new(),

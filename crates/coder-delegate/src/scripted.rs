@@ -363,8 +363,17 @@ impl Scripted {
                 json!({"type":"assistant","message":{"id":format!("msg_{id}"),"content":[{"type":"tool_use","id":id,"name":"Bash","input":{"command":command}}]}}),
                 json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":id,"content":output,"is_error":exit_code != 0}]}}),
             ],
+            Format::OpenCode => vec![self.opencode_line(
+                "tool_use",
+                json!({"type":"tool","tool":"bash","callID":id,"state":{"status":"completed","input":{"command":command},"output":output,"metadata":{"exit":exit_code},"title":command}}),
+            )],
         };
         self.emit_all(&lines);
+    }
+
+    /// One `opencode run --format json` line for `part`.
+    fn opencode_line(&self, kind: &str, part: Value) -> Value {
+        json!({"type": kind, "timestamp": 0, "sessionID": self.session_id, "part": part})
     }
 
     fn next_id(&self) -> String {
@@ -401,6 +410,10 @@ impl Scripted {
                     Format::Claude => vec![
                         json!({"type":"assistant","message":{"id":format!("msg_{id}"),"content":[{"type":"text","text":text}]}}),
                     ],
+                    Format::OpenCode => vec![self.opencode_line(
+                        "text",
+                        json!({"type":"text","text":text,"time":{"start":0,"end":0}}),
+                    )],
                 };
                 self.emit_all(&lines);
             }
@@ -432,6 +445,10 @@ impl Scripted {
                             Format::Claude => vec![
                                 json!({"type":"assistant","message":{"id":format!("msg_{id}"),"content":[{"type":"tool_use","id":id,"name":"Write","input":{"file_path":path,"content":content}}]}}),
                             ],
+                            Format::OpenCode => vec![self.opencode_line(
+                                "tool_use",
+                                json!({"type":"tool","tool":"write","callID":id,"state":{"status":"completed","input":{"filePath":path,"content":content},"output":"","title":path}}),
+                            )],
                         };
                         self.emit_all(&lines);
                     }
@@ -481,6 +498,12 @@ impl Scripted {
                     (Format::Claude, error) => {
                         json!({"type":"result","subtype": if error { "error_during_execution" } else { "success" },"is_error":error,"result":self.last_claim,"num_turns":self.lines.len(),"total_cost_usd":0.0,"session_id":self.session_id,"usage":{"input_tokens":0,"output_tokens":0}})
                     }
+                    (Format::OpenCode, false) => self.opencode_line(
+                        "step_finish",
+                        json!({"type":"step-finish","reason":"stop","tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"cost":0.0}),
+                    ),
+                    (Format::OpenCode, true) => json!({"type":"error","timestamp":0,"sessionID":self.session_id,
+                        "error":{"name":"UnknownError","data":{"message":"the scripted turn failed"}}}),
                 };
                 self.emit(&line);
                 self.queue.clear();
@@ -505,6 +528,7 @@ impl Scripted {
             Format::Claude => {
                 json!({"type":"system","subtype":"init","session_id":self.session_id,"model":self.script.model,"claude_code_version":"scripted"})
             }
+            Format::OpenCode => self.opencode_line("step_start", json!({"type":"step-start"})),
         };
         self.emit(&line);
         if self.script.format == Format::Codex {
@@ -518,6 +542,7 @@ impl Scripted {
         let summary = match self.script.format {
             Format::Codex => Summary::parse_codex(&text, &self.script.model),
             Format::Claude => Summary::parse(&text),
+            Format::OpenCode => Summary::parse_opencode(&text, &self.script.model),
         };
         let stderr = self.errors.join("\n");
         let status = match &self.state {
@@ -678,6 +703,7 @@ impl Session for Scripted {
             Format::Claude => {
                 json!({"type":"system","subtype":"init","session_id":self.session_id,"model":self.script.model,"claude_code_version":"scripted"})
             }
+            Format::OpenCode => self.opencode_line("step_start", json!({"type":"step-start"})),
         };
         self.emit(&line);
         let list = self.script.on_resume.clone();

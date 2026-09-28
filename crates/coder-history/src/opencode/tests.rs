@@ -363,8 +363,9 @@ fn a_missing_database_writes_nothing() {
 #[test]
 fn the_engine_database_is_never_the_owners() {
     let home = Path::new("/home/owner");
+    let data = database(home, None).parent().unwrap().to_path_buf();
     assert_ne!(
-        crate::engine::opencode_database(home),
+        crate::engine::opencode_database(&data),
         database(home, None),
         "the mirror reads the owner's database; the engine writes its own"
     );

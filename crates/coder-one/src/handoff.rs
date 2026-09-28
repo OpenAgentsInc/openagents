@@ -2087,11 +2087,7 @@ pub fn manifest_candidate(manifest: &crate::policy::Manifest) -> Candidate {
             .clone()
             .unwrap_or_else(Policy::single),
         first: Tier::new(
-            match executor.agent {
-                crate::policy::AgentName::ClaudeCode => "claude-code",
-                crate::policy::AgentName::Codex => "codex",
-                crate::policy::AgentName::Microluna => "microluna",
-            },
+            executor.agent.agent().word(),
             &executor.model,
         ),
     }

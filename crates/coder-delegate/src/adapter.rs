@@ -5,13 +5,13 @@
 //! reads its stream as it arrives, and can stop it with a cleanup
 //! acknowledgement. What each adapter can do, and the tests that show it:
 //!
-//! | Capability | Claude Code 2.1.280 | Codex 0.155.1 |
-//! | --- | --- | --- |
-//! | Start | `claude -p --session-id <uuid>`; the host picks the ID | `codex exec --json -`; the ID is the stream's `thread_id` |
-//! | Observe | stream-json read as it arrives | `--json` read as it arrives |
-//! | Stop | `SIGTERM`, then `SIGKILL`, to the process group; acknowledged once the group is empty | The same |
-//! | Resume | `claude -p --resume <id>` | `codex exec resume <id> -` |
-//! | Steer | `--input-format stream-json`: a user message written into the running process | Refused: `codex exec` reads one prompt and closes its input |
+//! | Capability | Claude Code 2.1.280 | Codex 0.155.1 | OpenCode 1.18.26 |
+//! | --- | --- | --- | --- |
+//! | Start | `claude -p --session-id <uuid>`; the host picks the ID | `codex exec --json -`; the ID is the stream's `thread_id` | `opencode run --format json`, the message on input; the ID is every line's `sessionID` |
+//! | Observe | stream-json read as it arrives | `--json` read as it arrives | `--format json` read as it arrives, one line per finished part |
+//! | Stop | `SIGTERM`, then `SIGKILL`, to the process group; acknowledged once the group is empty | The same | The same |
+//! | Resume | `claude -p --resume <id>` | `codex exec resume <id> -` | `opencode run --session <id>` |
+//! | Steer | `--input-format stream-json`: a user message written into the running process | Refused: `codex exec` reads one prompt and closes its input | Refused: `opencode run` reads its whole input before the turn |
 //!
 //! Steering needs Claude Code's stream-json input, which keeps the process
 //! reading after its first message. The adapter uses it only when a policy
@@ -75,6 +75,13 @@ pub fn capabilities(agent: Agent) -> (Capabilities, &'static str) {
             },
             "Demonstrated by coder_one::adapter's tests against a stand-in CLI and, with `coder-one capabilities --demonstrate`, against Codex 0.155.1 and a local model server: start, observe, stop with an empty process group, and resume with `codex exec resume`. Steering is refused: `codex exec` reads one prompt and closes its input.",
         ),
+        Agent::OpenCode => (
+            Capabilities {
+                steer: false,
+                ..Capabilities::all()
+            },
+            "Demonstrated by coder_delegate::adapter's tests against a stand-in CLI that replays OpenCode 1.18.26's recorded stream, and live against OpenCode 1.18.26: start, observe, stop with an empty process group, and resume with `opencode run --session`. Steering is refused: `opencode run` reads its whole input before the turn.",
+        ),
     }
 }
 
@@ -87,6 +94,7 @@ pub fn steering(agent: Agent) -> crate::steering::Steering {
         Agent::ClaudeCode => crate::steering::CLAUDE_CODE,
         Agent::Codex => crate::steering::CODEX_EXEC,
         Agent::Microluna => crate::steering::MICROLUNA,
+        Agent::OpenCode => crate::steering::OPENCODE_RUN,
     }
 }
 
@@ -306,6 +314,7 @@ impl<'a> CliSession<'a> {
         match self.cli.agent {
             Agent::ClaudeCode => Format::Claude,
             Agent::Codex | Agent::Microluna => Format::Codex,
+            Agent::OpenCode => Format::OpenCode,
         }
     }
 
@@ -416,9 +425,10 @@ impl<'a> CliSession<'a> {
         };
         let summary = &mut process.summary;
         let mut events = process.normalizer.finish(&mut |line| summary.line(line));
-        if !process.said_ended && format == Format::Codex {
-            // Codex ends a successful turn with `turn.completed` and no
-            // end event; the process ending is the session ending.
+        if !process.said_ended && matches!(format, Format::Codex | Format::OpenCode) {
+            // Codex ends a successful turn with `turn.completed`, and
+            // OpenCode with a `step_finish`, and no end event; the process
+            // ending is the session ending.
             let seq = events
                 .last()
                 .map_or(process.normalizer.seq(), |event| event.seq)
@@ -487,7 +497,7 @@ impl Session for CliSession<'_> {
                 self.session_id = Some(id.clone());
                 SessionArg::New(Some(id))
             }
-            (None, Agent::Codex | Agent::Microluna) => SessionArg::New(None),
+            (None, Agent::Codex | Agent::Microluna | Agent::OpenCode) => SessionArg::New(None),
         };
         let started = self.launch(session, &briefing.text).await;
         if let Err(error) = &started {
@@ -779,6 +789,38 @@ sleep "${STANDIN_DELAY:-0}"
 echo "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"cached_input_tokens\":0,\"output_tokens\":2}}"
 "#;
 
+    /// `opencode run --format json`, with `--session <id>` to continue: one
+    /// turn per process, the message read from input, a `bash` tool call
+    /// that fails, and a text that answers `heard <word>`, in the shape of
+    /// OpenCode 1.18.26's recorded stream (`fixtures/opencode/run.jsonl`).
+    /// `STANDIN_DELAY` and `STANDIN_HANG` work as in [`CODEX`].
+    pub const OPENCODE: &str = r#"#!/bin/sh
+id="ses_0standin00000000000000001"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --session|-s) id=$2; shift ;;
+  esac
+  shift
+done
+line() { echo "{\"type\":\"$1\",\"timestamp\":1790631417763,\"sessionID\":\"$id\",\"part\":$2}"; }
+# The first step starts before the whole input is read, so a test's stop
+# finds the session named however slowly the shell starts.
+line step_start '{"type":"step-start"}'
+input=$(cat)
+case "$input" in *resume*) what=resume ;; *) what=briefing ;; esac
+sleep "${STANDIN_DELAY:-0}"
+if [ -n "$STANDIN_HANG" ] && [ "$what" = briefing ]; then
+  (sleep 2; printf harmless > "$STANDIN_HANG") &
+  wait
+fi
+line tool_use '{"type":"tool","tool":"bash","callID":"c1","state":{"status":"completed","input":{"command":"false"},"output":"","metadata":{"exit":1},"title":"false"}}'
+line step_finish '{"type":"step-finish","reason":"tool-calls","tokens":{"total":12,"input":10,"output":2,"reasoning":0,"cache":{"write":0,"read":0}},"cost":0.001}'
+line step_start '{"type":"step-start"}'
+line text "{\"type\":\"text\",\"text\":\"heard $what\",\"time\":{\"start\":1,\"end\":2}}"
+sleep "${STANDIN_DELAY:-0}"
+line step_finish '{"type":"step-finish","reason":"stop","tokens":{"total":13,"input":10,"output":3,"reasoning":0,"cache":{"write":0,"read":4}},"cost":0.002}'
+"#;
+
     /// Writes `script` as an executable `name` under `dir`.
     ///
     /// # Panics
@@ -833,6 +875,7 @@ mod tests {
         let (name, script) = match agent {
             Agent::ClaudeCode => ("claude", standin::CLAUDE),
             Agent::Codex | Agent::Microluna => ("codex", standin::CODEX),
+            Agent::OpenCode => ("opencode", standin::OPENCODE),
         };
         let binary = standin::install(&dir.join("bin"), name, script);
         Cli {
@@ -943,20 +986,31 @@ mod tests {
             session: SessionArg::New(None),
             steerable: false,
         };
-        for (agent, variable) in [
-            (Agent::ClaudeCode, "CLAUDE_CODE_ENTRYPOINT"),
-            (Agent::Codex, "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"),
+        for (agent, variable, value) in [
+            (
+                Agent::ClaudeCode,
+                "CLAUDE_CODE_ENTRYPOINT",
+                coder_history::engine::MARK,
+            ),
+            (
+                Agent::Codex,
+                "CODEX_INTERNAL_ORIGINATOR_OVERRIDE",
+                coder_history::engine::MARK,
+            ),
+            // OpenCode records no caller: the engine's sessions are saved
+            // in the engine's own database, never the one the host mirrors.
+            (
+                Agent::OpenCode,
+                "OPENCODE_DB",
+                coder_history::engine::OPENCODE_DATABASE,
+            ),
         ] {
             let cli = cli(agent, &dir, &[]);
             let binary = cli.binary.clone().unwrap();
             let batch = cli.command(&binary, &dir.join("b"), &dir.join("s"));
             let live = cli.live_command(&binary, &launch);
             for command in [&batch, &live] {
-                assert_eq!(
-                    env(command, variable).as_deref(),
-                    Some(coder_history::engine::MARK),
-                    "{agent:?}"
-                );
+                assert_eq!(env(command, variable).as_deref(), Some(value), "{agent:?}");
             }
         }
         let _ = std::fs::remove_dir_all(dir);
@@ -1030,13 +1084,17 @@ mod tests {
 
     #[tokio::test]
     async fn a_stop_ends_the_process_group_and_a_resume_continues_the_same_session() {
-        for agent in [Agent::ClaudeCode, Agent::Codex] {
+        for agent in [Agent::ClaudeCode, Agent::Codex, Agent::OpenCode] {
             let dir = scratch(&format!("{}-stop", agent.word()));
             let marker = dir.join("marker");
             let marker_text = marker.to_string_lossy().into_owned();
             let cli = cli(agent, &dir, &[("STANDIN_HANG", &marker_text)]);
+            // OpenCode names its session only in its stream, so the stop
+            // waits long enough for a loaded machine's first line, still
+            // well before the hang's marker at two seconds.
+            let stop_ms = if agent == Agent::OpenCode { 1_200 } else { 400 };
             let controls = Controls {
-                stop_when: Some(Trigger::After { ms: 400 }),
+                stop_when: Some(Trigger::After { ms: stop_ms }),
                 resume: Some("Please resume and finish.".to_string()),
                 ..controls()
             };
@@ -1172,6 +1230,70 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    #[tokio::test]
+    async fn opencode_is_observed_as_it_runs_and_reports_its_cost() {
+        let dir = scratch("opencode-observe");
+        let cli = cli(Agent::OpenCode, &dir, &[("STANDIN_DELAY", "0.3")]);
+        let (driven, _) = run(&cli, &controls(), false).await;
+        assert_eq!(
+            driven.report.status,
+            Status::Answered,
+            "{:?}",
+            driven.report
+        );
+        assert_eq!(
+            driven.session_id.as_deref(),
+            Some("ses_0standin00000000000000001")
+        );
+        let kinds: Vec<&str> = driven.events.iter().map(|e| e.kind.word()).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                "session_started",
+                "command_started",
+                "command_completed",
+                "usage_update",
+                "assistant_claim",
+                "usage_update",
+                "session_ended"
+            ]
+        );
+        assert_eq!(claims(&driven), vec!["heard briefing"]);
+        let summary = &driven.report.summary;
+        assert_eq!(summary.num_turns, Some(2));
+        assert_eq!(summary.api_calls, Some(2));
+        assert!((summary.total_cost_usd.unwrap() - 0.003).abs() < 1e-9);
+        assert_eq!(summary.cost_provenance, Some("cli_list_price"));
+        assert_eq!(summary.tokens("cache_read_input_tokens"), Some(4));
+        assert_eq!(summary.result.as_deref(), Some("heard briefing"));
+        // The briefing went in as input, never as an argument.
+        let launch = Launch {
+            session: SessionArg::New(None),
+            steerable: false,
+        };
+        let args = cli.live_args(&launch);
+        assert_eq!(args, ["run", "--format", "json", "-m", "stand-in", "--auto"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn opencode_refuses_a_steer_it_has_not_demonstrated_and_still_runs() {
+        let dir = scratch("opencode-steer");
+        let cli = cli(Agent::OpenCode, &dir, &[("STANDIN_DELAY", "0.3")]);
+        let controls = Controls {
+            steer: Some(Steer {
+                when: Trigger::CommandFailed,
+                message: "Check the exit code.".to_string(),
+            }),
+            ..controls()
+        };
+        let (driven, _) = run(&cli, &controls, true).await;
+        let steer = action(&driven, Capability::Steer).unwrap();
+        assert_eq!(steer.outcome, "refused");
+        assert_eq!(driven.report.status, Status::Answered);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn the_matrix_is_what_the_tests_demonstrate() {
         let (claude, _) = capabilities(Agent::ClaudeCode);
@@ -1185,7 +1307,12 @@ mod tests {
     #[test]
     fn each_adapter_reports_a_steering_mode_that_matches_what_it_demonstrated() {
         use crate::steering::{Native, Plan, Refusal, Request, Turn};
-        for agent in [Agent::ClaudeCode, Agent::Codex, Agent::Microluna] {
+        for agent in [
+            Agent::ClaudeCode,
+            Agent::Codex,
+            Agent::Microluna,
+            Agent::OpenCode,
+        ] {
             let (demonstrated, _) = capabilities(agent);
             let steering = steering(agent);
             assert_eq!(steering.native == Native::MidTurn, demonstrated.steer);

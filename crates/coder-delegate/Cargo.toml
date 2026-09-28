@@ -7,6 +7,8 @@ description = "What Coder's terminal turn runs, split from Coder One without Mic
 publish.workspace = true
 
 [dependencies]
+# OpenCode's model names and login lookup (`acp_client::opencode`).
+acp-client = { path = "../acp-client" }
 atif = { path = "../atif" }
 coder-boundary = { path = "../coder-boundary" }
 coder-history = { path = "../coder-history", default-features = false }

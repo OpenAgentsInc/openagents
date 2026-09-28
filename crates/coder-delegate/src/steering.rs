@@ -197,6 +197,19 @@ pub const DEVIN_ACP: Steering = Steering {
     ],
 };
 
+/// OpenCode driven through `opencode run --format json`.
+pub const OPENCODE_RUN: Steering = Steering {
+    adapter: "opencode",
+    native: Native::TurnBoundary,
+    emulation: Some(Emulation::CancelAndContinue),
+    acknowledgment: Acknowledgment::NextTurnStart,
+    limitations: &[
+        "opencode run reads its whole message from its input before the turn starts; a running turn takes no message.",
+        "A new turn is opencode run --session with the message.",
+        "Emulation stops the process group and continues the session with --session.",
+    ],
+};
+
 /// Microluna in process.
 pub const MICROLUNA: Steering = Steering {
     adapter: "microluna",

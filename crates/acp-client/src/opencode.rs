@@ -28,10 +28,12 @@
 //!   `session/request_permission`, which the caller's handler answers.
 //! - **The engine's sessions**: OpenCode records no caller in a session, and
 //!   its ACP server ignores `session/new`'s `_meta`. The engine therefore
-//!   points OpenCode at a database of its own (`OPENCODE_DB`,
-//!   `coder_history::engine::opencode_database`), so an engine session is
-//!   never saved in the owner's `opencode.db`, which the host mirrors into
-//!   the phone's chats. The `_meta` marker is sent anyway, as for Devin.
+//!   points OpenCode at a database of its own (`OPENCODE_DB` set to
+//!   `coder_history::engine::OPENCODE_DATABASE`, a name OpenCode resolves
+//!   in its data directory), so an engine session keeps OpenCode's logins
+//!   but is never saved in the owner's `opencode.db`, which the host
+//!   mirrors into the phone's chats. The `_meta` marker is sent anyway, as
+//!   for Devin.
 //! - **Why a turn failed**: a refused `session/prompt` carries only
 //!   OpenCode's error name (`data.errorName`, such as `APIError`) and its
 //!   message; the HTTP status and headers stay in the failed assistant
@@ -127,7 +129,8 @@ pub fn config(model: &Model, permission: Permission) -> Value {
 }
 
 /// The variables an engine session adds to its environment: the inline
-/// configuration and the engine's own database.
+/// configuration and the engine's own database, an absolute path or a
+/// name OpenCode resolves in its data directory.
 #[must_use]
 pub fn environment(
     model: &Model,
@@ -239,6 +242,36 @@ pub fn login(provider: &str, variable: &dyn Fn(&str) -> Option<OsString>) -> Log
     } else {
         Login::Unknown
     }
+}
+
+/// Whether OpenCode has any login here: a stored one in its `auth.json`, or
+/// a provider or default model in the owner's configuration. Names only,
+/// as [`login`] reads them.
+#[must_use]
+pub fn any_login(variable: &dyn Fn(&str) -> Option<OsString>) -> bool {
+    #[derive(Deserialize)]
+    struct Configured {
+        #[serde(default)]
+        provider: std::collections::BTreeMap<String, serde::de::IgnoredAny>,
+        #[serde(default)]
+        model: Option<String>,
+    }
+    let stored = data_dir(variable)
+        .and_then(|dir| std::fs::read(dir.join("auth.json")).ok())
+        .and_then(|bytes| {
+            serde_json::from_slice::<std::collections::BTreeMap<String, serde::de::IgnoredAny>>(
+                &bytes,
+            )
+            .ok()
+        })
+        .is_some_and(|names| !names.is_empty());
+    stored
+        || config_files(variable).into_iter().any(|path| {
+            std::fs::read(&path)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<Configured>(&bytes).ok())
+                .is_some_and(|config| !config.provider.is_empty() || config.model.is_some())
+        })
 }
 
 /// Whether the model a session reports is the route's.

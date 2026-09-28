@@ -1166,6 +1166,7 @@ dependencies = [
 name = "coder-delegate"
 version = "0.1.0"
 dependencies = [
+ "acp-client",
  "atif",
  "coder-boundary",
  "coder-history",

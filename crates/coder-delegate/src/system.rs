@@ -386,6 +386,8 @@ pub fn defaults(agent: Agent) -> &'static [Section] {
     match agent {
         Agent::ClaudeCode => CLAUDE_CODE_DEFAULT,
         Agent::Codex | Agent::Microluna => CODEX_DEFAULT,
+        // OpenCode keeps its own prompt; the library holds none of it.
+        Agent::OpenCode => &[],
     }
 }
 
@@ -407,6 +409,7 @@ pub fn default_label(agent: Agent) -> String {
     match agent {
         Agent::ClaudeCode => format!("claude-code {CLAUDE_CODE_VERSION}"),
         Agent::Codex | Agent::Microluna => format!("codex {CODEX_VERSION} ({CODEX_MODEL})"),
+        Agent::OpenCode => "opencode (its own prompt)".to_string(),
     }
 }
 
@@ -447,6 +450,7 @@ impl Mode {
             (Agent::ClaudeCode, Mode::Append) => "--append-system-prompt-file",
             (Agent::Codex | Agent::Microluna, Mode::Replace) => "model_instructions_file",
             (Agent::Codex | Agent::Microluna, Mode::Append) => "developer_instructions",
+            (Agent::OpenCode, _) => "none: opencode run takes no system prompt",
         }
     }
 }
@@ -497,6 +501,14 @@ impl Policy {
             problems.push(
                 "executor.system applies to claude-code and codex; Microluna sends its own \
                  instructions"
+                    .to_string(),
+            );
+            return problems;
+        }
+        if agent == Agent::OpenCode {
+            problems.push(
+                "executor.system applies to claude-code and codex; opencode run takes no \
+                 system prompt"
                     .to_string(),
             );
             return problems;

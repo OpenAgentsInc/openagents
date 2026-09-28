@@ -148,8 +148,8 @@ impl Setup<'_> {
     #[must_use]
     pub fn args(&self) -> Vec<String> {
         let toml = |value: &Value| value.to_string();
-        match self.which.agent() {
-            Agent::Codex | Agent::Microluna => {
+        match self.which {
+            Which::Luna => {
                 let mut args: Vec<String> = [
                     "exec",
                     "--json",
@@ -182,7 +182,7 @@ impl Setup<'_> {
                 ]);
                 args
             }
-            Agent::ClaudeCode => {
+            Which::Opus => {
                 let config = json!({
                     "mcpServers": {
                         "ask": {

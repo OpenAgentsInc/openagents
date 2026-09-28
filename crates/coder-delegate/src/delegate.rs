@@ -1,6 +1,6 @@
 //! Delegate mode: the cheap loop explores, then code hands the task to a
-//! strong executor, Claude Code or Codex CLI, with a briefing built from
-//! what the explorer found.
+//! strong executor, Claude Code, Codex CLI, or OpenCode, with a briefing
+//! built from what the explorer found.
 //!
 //! ```text
 //! explore  the loop runs, bounded by --explore-steps
@@ -41,6 +41,11 @@ pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
 /// The model the Codex delegate runs on unless the operator names another.
 pub const DEFAULT_CODEX_MODEL: &str = "gpt-6-luna";
 
+/// The model the OpenCode delegate runs on unless the operator names
+/// another: empty, which keeps the model the owner configured in OpenCode.
+/// A named model is OpenCode's `provider/model`.
+pub const DEFAULT_OPENCODE_MODEL: &str = "";
+
 /// Which CLI runs the briefing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Agent {
@@ -51,6 +56,8 @@ pub enum Agent {
     /// Microluna, in this process: short GPT-6 Luna sessions on the Codex
     /// login, with no CLI ([`crate::micro`]).
     Microluna,
+    /// OpenCode, `opencode run --format json`, with OpenCode's own logins.
+    OpenCode,
 }
 
 impl Agent {
@@ -60,8 +67,9 @@ impl Agent {
             "claude-code" | "claude" | "" => Ok(Agent::ClaudeCode),
             "codex" => Ok(Agent::Codex),
             "microluna" => Ok(Agent::Microluna),
+            "opencode" => Ok(Agent::OpenCode),
             other => Err(format!(
-                "delegate agent must be claude-code, codex, or microluna, not {other}"
+                "delegate agent must be claude-code, codex, opencode, or microluna, not {other}"
             )),
         }
     }
@@ -73,6 +81,7 @@ impl Agent {
             Agent::ClaudeCode => "claude-code",
             Agent::Codex => "codex",
             Agent::Microluna => "microluna",
+            Agent::OpenCode => "opencode",
         }
     }
 
@@ -82,6 +91,7 @@ impl Agent {
         match self {
             Agent::ClaudeCode => DEFAULT_MODEL,
             Agent::Codex | Agent::Microluna => DEFAULT_CODEX_MODEL,
+            Agent::OpenCode => DEFAULT_OPENCODE_MODEL,
         }
     }
 
@@ -92,19 +102,23 @@ impl Agent {
             Agent::ClaudeCode => "claude",
             Agent::Codex => "codex",
             Agent::Microluna => "microluna",
+            Agent::OpenCode => "opencode",
         }
     }
 
     /// The variable and value that make the CLI record, in the session
     /// file it saves, that Coder's engine started the session
     /// ([`coder_history::engine`]), so the history catalog never lists the
-    /// session as a chat of its own.
+    /// session as a chat of its own. OpenCode records no caller, so its
+    /// mark is the engine's own database, which OpenCode resolves in its
+    /// data directory and the host never mirrors.
     #[must_use]
     pub fn engine_mark(self) -> (&'static str, &'static str) {
         use coder_history::engine;
         match self {
             Agent::ClaudeCode => (engine::CLAUDE_VARIABLE, engine::MARK),
             Agent::Codex | Agent::Microluna => (engine::CODEX_VARIABLE, engine::MARK),
+            Agent::OpenCode => (engine::OPENCODE_VARIABLE, engine::OPENCODE_DATABASE),
         }
     }
 
@@ -115,6 +129,7 @@ impl Agent {
             Agent::ClaudeCode => "CODER_ONE_CLAUDE_BIN",
             Agent::Codex => "CODER_ONE_CODEX_BIN",
             Agent::Microluna => "CODER_ONE_MICROLUNA_BIN",
+            Agent::OpenCode => "CODER_ONE_OPENCODE_BIN",
         }
     }
 
@@ -1013,6 +1028,9 @@ pub struct Summary {
     pub cost_note: Option<&'static str>,
     /// The usage or rate limit that ended the session, when one did.
     pub limit: Option<crate::limit::Limit>,
+    /// The refusal code a typed error names, such as OpenCode's
+    /// `ProviderAuthError` (`not_logged_in`), when the stream reported one.
+    pub refusal: Option<&'static str>,
 }
 
 impl Summary {
@@ -1030,6 +1048,17 @@ impl Summary {
     #[must_use]
     pub fn tokens(&self, key: &str) -> Option<u64> {
         self.usage.as_ref()?.get(key)?.as_u64()
+    }
+
+    /// Reads an `opencode run --format json` transcript for a run on
+    /// `model` (empty for OpenCode's configured default).
+    #[must_use]
+    pub fn parse_opencode(stream: &str, model: &str) -> Self {
+        let mut reader = SummaryReader::opencode(model);
+        for line in stream.lines() {
+            reader.line(line);
+        }
+        reader.finish()
     }
 
     /// Reads a `codex exec --json` transcript, one JSON event per line, for
@@ -1060,6 +1089,8 @@ impl Summary {
 #[derive(Debug, Clone)]
 pub struct SummaryReader {
     codex: bool,
+    /// Reading `opencode run --format json`.
+    opencode: Option<OpenCodeReading>,
     summary: Summary,
     calls: BTreeMap<String, u64>,
     order: Vec<String>,
@@ -1072,6 +1103,27 @@ pub struct SummaryReader {
     /// ended on it.
     limits: LimitEvidence,
 }
+
+/// What an OpenCode stream said, summed as it arrives.
+#[derive(Debug, Clone, Default)]
+struct OpenCodeReading {
+    /// Model steps, one per `step_finish`: each is one model call.
+    steps: u64,
+    cost: f64,
+    input: u64,
+    output: u64,
+    reasoning: u64,
+    cache_read: u64,
+    cache_write: u64,
+    /// The last step's finish reason, such as `stop` or `tool-calls`.
+    reason: Option<String>,
+    /// The error that ended the run, as OpenCode typed it.
+    error: Option<Value>,
+}
+
+/// What an OpenCode cost is.
+pub const OPENCODE_COST_NOTE: &str = "OpenCode's own figure: its model catalog's \
+list prices for the tokens each step reported, summed over the steps.";
 
 /// What a stream said about a usage or rate limit.
 #[derive(Debug, Clone, Default)]
@@ -1093,6 +1145,7 @@ impl SummaryReader {
     pub fn claude() -> Self {
         SummaryReader {
             codex: false,
+            opencode: None,
             summary: Summary::default(),
             calls: BTreeMap::new(),
             order: Vec::new(),
@@ -1114,12 +1167,22 @@ impl SummaryReader {
         reader
     }
 
+    /// A reader for `opencode run --format json` on `model`.
+    #[must_use]
+    pub fn opencode(model: &str) -> Self {
+        let mut reader = Self::claude();
+        reader.opencode = Some(OpenCodeReading::default());
+        reader.summary.model = Some(model.to_string()).filter(|model| !model.is_empty());
+        reader
+    }
+
     /// A reader for `agent`'s stream.
     #[must_use]
     pub fn of(agent: Agent, model: &str) -> Self {
         match agent {
             Agent::ClaudeCode => Self::claude(),
             Agent::Codex | Agent::Microluna => Self::codex(model),
+            Agent::OpenCode => Self::opencode(model),
         }
     }
 
@@ -1128,10 +1191,54 @@ impl SummaryReader {
         let Ok(event) = serde_json::from_str::<Value>(line) else {
             return;
         };
-        if self.codex {
+        if self.opencode.is_some() {
+            self.opencode_event(&event);
+        } else if self.codex {
             self.codex_event(&event);
         } else {
             self.claude_event(&event);
+        }
+    }
+
+    fn opencode_event(&mut self, event: &Value) {
+        let Some(reading) = self.opencode.as_mut() else {
+            return;
+        };
+        if self.summary.session_id.is_none() {
+            self.summary.session_id = event
+                .get("sessionID")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+        }
+        let part = &event["part"];
+        match event.get("type").and_then(Value::as_str) {
+            Some("text") => {
+                self.summary.result = part.get("text").and_then(Value::as_str).map(str::to_string);
+            }
+            Some("tool_use") => self.items += 1,
+            Some("step_finish") => {
+                reading.steps += 1;
+                reading.cost += part.get("cost").and_then(Value::as_f64).unwrap_or(0.0);
+                let tokens = |pointer: &str| {
+                    part.pointer(pointer)
+                        .and_then(Value::as_u64)
+                        .unwrap_or_default()
+                };
+                let (input, read, write) = (
+                    tokens("/tokens/input"),
+                    tokens("/tokens/cache/read"),
+                    tokens("/tokens/cache/write"),
+                );
+                reading.input += input;
+                reading.cache_read += read;
+                reading.cache_write += write;
+                reading.output += tokens("/tokens/output");
+                reading.reasoning += tokens("/tokens/reasoning");
+                self.summary.input_per_call.push(input + read + write);
+                reading.reason = part.get("reason").and_then(Value::as_str).map(str::to_string);
+            }
+            Some("error") => reading.error = event.get("error").cloned(),
+            _ => {}
         }
     }
 
@@ -1277,6 +1384,9 @@ impl SummaryReader {
     /// The summary of every line read.
     #[must_use]
     pub fn finish(self) -> Summary {
+        if self.opencode.is_some() {
+            return self.finish_opencode();
+        }
         if self.codex {
             return self.finish_codex();
         }
@@ -1290,6 +1400,72 @@ impl SummaryReader {
         let ended_clean = summary.has_result && summary.is_error == Some(false);
         if !ended_clean {
             summary.limit = self.limits.limit("anthropic");
+        }
+        summary
+    }
+
+    fn finish_opencode(self) -> Summary {
+        let SummaryReader {
+            mut summary,
+            opencode,
+            items,
+            ..
+        } = self;
+        let reading = opencode.unwrap_or_default();
+        let failed = reading.error.is_some();
+        summary.has_result = reading.steps > 0 && !failed;
+        summary.is_error = if failed {
+            Some(true)
+        } else if reading.steps > 0 {
+            Some(false)
+        } else {
+            None
+        };
+        summary.subtype = reading.reason.clone();
+        if let Some(error) = &reading.error {
+            let name = error.get("name").and_then(Value::as_str).unwrap_or_default();
+            let status = error.pointer("/data/statusCode").and_then(Value::as_u64);
+            let said = error
+                .pointer("/data/message")
+                .and_then(Value::as_str)
+                .unwrap_or(name)
+                .to_string();
+            summary.refusal = match (name, status) {
+                ("ProviderAuthError", _) | ("APIError", Some(401)) => Some("not_logged_in"),
+                ("APIError", Some(403 | 404)) => Some("model_unavailable"),
+                _ => None,
+            };
+            if name == "APIError" && status == Some(429) {
+                let now = crate::limit::now();
+                let refusal = retry_after(error);
+                let mut limit = crate::limit::Limit::from_message("opencode", &said, now);
+                limit.status = status;
+                if let Some(seconds) = refusal {
+                    limit.resets_at = Some(now.saturating_add(seconds));
+                    limit.reset_source = Some("retry_after".to_string());
+                }
+                summary.limit = Some(limit);
+            }
+            summary.result = Some(match summary.result.take() {
+                Some(text) => format!("{said}\n\n{text}"),
+                None => said,
+            });
+        }
+        if reading.steps > 0 {
+            summary.num_turns = Some(reading.steps);
+            summary.api_calls = Some(reading.steps);
+            summary.completed_items = Some(items);
+            summary.usage = Some(json!({
+                "input_tokens": reading.input,
+                "cache_read_input_tokens": reading.cache_read,
+                "cache_creation_input_tokens": reading.cache_write,
+                "output_tokens": reading.output,
+                "reasoning_output_tokens": reading.reasoning,
+                "opencode_steps": reading.steps,
+            }));
+            summary.total_cost_usd = Some(reading.cost);
+            summary.cost_provenance = Some("cli_list_price");
+            summary.cost_note = Some(OPENCODE_COST_NOTE);
         }
         summary
     }
@@ -1374,6 +1550,24 @@ impl LimitEvidence {
     }
 }
 
+/// The seconds an OpenCode error's `retry-after-ms` or `retry-after`
+/// header asks to wait, when it names a number.
+fn retry_after(error: &Value) -> Option<u64> {
+    let headers = error.pointer("/data/responseHeaders")?.as_object()?;
+    let header = |name: &str| {
+        headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .and_then(|(_, value)| value.as_str())
+            .and_then(|value| value.trim().parse::<f64>().ok())
+            .filter(|value| value.is_finite() && *value >= 0.0)
+    };
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    header("retry-after-ms")
+        .map(|ms| (ms / 1000.0).ceil() as u64)
+        .or_else(|| header("retry-after").map(|s| s.ceil() as u64))
+}
+
 /// Codes for refusals the CLI declares in what it prints, matched on its
 /// words. A refusal is an answer: the executor ran and declined.
 const REFUSALS: &[(&str, &str)] = &[
@@ -1420,6 +1614,9 @@ pub fn classify(ending: &supervise::Ending, summary: &Summary, stderr: &str) -> 
             if summary.limit.is_some() {
                 return Status::Refused(USAGE_LIMIT.to_string());
             }
+            if let Some(code) = summary.refusal {
+                return Status::Refused(code.to_string());
+            }
             let said = format!(
                 "{}\n{stderr}",
                 summary.result.as_deref().unwrap_or_default()
@@ -1448,6 +1645,9 @@ pub enum Credential {
     CodexAuthFile,
     /// `OPENAI_API_KEY`: API billing for Codex.
     OpenAiKey,
+    /// OpenCode's stored login or a provider the owner configured in
+    /// OpenCode, found by name only.
+    OpenCodeLogin,
     /// None found.
     Missing,
 }
@@ -1491,6 +1691,7 @@ impl Credential {
             Credential::CliLogin => "cli_login",
             Credential::CodexAuthFile => "codex_auth_json",
             Credential::OpenAiKey => "openai_api_key",
+            Credential::OpenCodeLogin => "opencode_login",
             Credential::Missing => "missing",
         }
     }
@@ -1535,9 +1736,35 @@ pub fn resolve(
                 Credential::Missing
             }
         }
+        Agent::OpenCode => opencode_credential(&env),
     };
     let found = if agent.is_cli() { found } else { None };
     (found, credential)
+}
+
+/// The variable that names the OpenCode delegate's model, OpenCode's
+/// `provider/model`; unset keeps OpenCode's configured default.
+pub const OPENCODE_MODEL_VAR: &str = "CODER_OPENCODE_MODEL";
+
+/// OpenCode's credential for the delegate's model: a stored or configured
+/// login for the model's provider, found by name only. With no model named,
+/// any stored login or configured provider counts, since OpenCode then
+/// runs its own default.
+fn opencode_credential(env: &impl Fn(&str) -> Option<String>) -> Credential {
+    use acp_client::opencode::{Login, Model, login};
+    let variable = |name: &str| env(name).map(std::ffi::OsString::from);
+    let named = env(OPENCODE_MODEL_VAR)
+        .filter(|model| !model.trim().is_empty())
+        .and_then(|model| Model::parse(model.trim()).ok());
+    let found = match named {
+        Some(model) => login(&model.provider, &variable) != Login::Unknown,
+        None => acp_client::opencode::any_login(&variable),
+    };
+    if found {
+        Credential::OpenCodeLogin
+    } else {
+        Credential::Missing
+    }
 }
 
 /// Codex's `auth.json`: under `CODEX_HOME` when that is set, else under
@@ -1572,9 +1799,13 @@ pub fn binary(agent: Agent, env: impl Fn(&str) -> Option<String>) -> Option<Path
             }
         }
     }
-    let local = PathBuf::from(env("HOME")?)
-        .join(".local/bin")
-        .join(agent.program());
+    let home = PathBuf::from(env("HOME")?);
+    let local = home.join(".local/bin").join(agent.program());
+    if agent == Agent::OpenCode && !local.is_file() {
+        // OpenCode's installer puts it in `~/.opencode/bin`.
+        let installed = home.join(".opencode/bin").join(agent.program());
+        return installed.is_file().then_some(installed);
+    }
     local.is_file().then_some(local)
 }
 
@@ -1774,6 +2005,10 @@ impl Cli {
         if self.agent == Agent::Codex && variant.policy.mode == crate::system::Mode::Append {
             return Ok(());
         }
+        // `opencode run` takes no system prompt; OpenCode keeps its own.
+        if self.agent == Agent::OpenCode {
+            return Ok(());
+        }
         let path = self.system_path();
         std::fs::write(&path, variant.text())
             .map_err(|error| format!("cannot write {}: {error}", path.display()))
@@ -1801,6 +2036,7 @@ impl Cli {
                 String::new(),
                 format!("developer_instructions={}", toml(&variant.text())),
             ),
+            (Agent::OpenCode, _) => (String::new(), String::new()),
         }
     }
 
@@ -1825,6 +2061,13 @@ impl Cli {
                 "exec \"$0\" exec --json --skip-git-repo-check -m \"$1\" \
                  ${5:+-c \"model_reasoning_effort=$5\"} ${6:+-c \"$6\"} ${7:+-c \"$7\"} \
                  --dangerously-bypass-approvals-and-sandbox - < \"$2\" > \"$3\""
+            }
+            // The same boundary holds OpenCode, so it approves its own
+            // permission requests (`--auto`). The briefing is its input:
+            // `opencode run` quotes a positional message.
+            Agent::OpenCode => {
+                "exec \"$0\" run --format json ${1:+-m \"$1\"} ${5:+--variant \"$5\"} \
+                 --auto < \"$2\" > \"$3\""
             }
         };
         let mut command = std::process::Command::new("sh");
@@ -1857,6 +2100,12 @@ impl Cli {
             .env("PYTHONDONTWRITEBYTECODE", "1");
         let (mark, value) = self.agent.engine_mark();
         command.env(mark, value);
+        if self.agent == Agent::OpenCode {
+            // A delegated session neither shares itself nor updates the CLI.
+            command
+                .env("OPENCODE_DISABLE_AUTOUPDATE", "1")
+                .env("OPENCODE_DISABLE_SHARE", "1");
+        }
         if self.agent == Agent::ClaudeCode {
             // A signed-in Claude Code attaches the account's claude.ai
             // connectors partway through a session, and their tool lists
@@ -1956,6 +2205,20 @@ impl Cli {
                     "-".to_string(),
                 ]);
             }
+            // The message is the process's input, never an argument.
+            Agent::OpenCode => {
+                args.extend(["run", "--format", "json"].map(str::to_string));
+                if let SessionArg::Resume(id) = &launch.session {
+                    args.extend(["--session".to_string(), id.clone()]);
+                }
+                if !self.model.is_empty() {
+                    args.extend(["-m".to_string(), self.model.clone()]);
+                }
+                if let Some(effort) = &self.effort {
+                    args.extend(["--variant".to_string(), effort.clone()]);
+                }
+                args.push("--auto".to_string());
+            }
         }
         args
     }
@@ -2001,6 +2264,7 @@ impl Executor for Cli {
         match self.agent {
             Agent::ClaudeCode => self.credential.cost_provenance(),
             Agent::Codex | Agent::Microluna => "price_estimate",
+            Agent::OpenCode => "cli_list_price",
         }
     }
 
@@ -3735,6 +3999,97 @@ pub mod tests {
         let unknown = Summary::parse_codex(CODEX, "gpt-9-unknown");
         assert_eq!(unknown.total_cost_usd, None);
         assert_eq!(unknown.tokens("output_tokens"), Some(400));
+    }
+
+    #[test]
+    fn a_recorded_opencode_run_summarizes_its_answer_steps_and_cost() {
+        let summary = Summary::parse_opencode(
+            include_str!("../fixtures/opencode/run.jsonl"),
+            "google/gemini-3.6-flash",
+        );
+        assert!(summary.has_result);
+        assert_eq!(summary.is_error, Some(false));
+        assert_eq!(summary.result.as_deref(), Some("done"));
+        assert_eq!(
+            summary.session_id.as_deref(),
+            Some("ses_f160cfbc3ffeFQ1TJ4BLDKGbNo")
+        );
+        assert_eq!(summary.num_turns, Some(2));
+        assert_eq!(summary.api_calls, Some(2));
+        assert_eq!(summary.completed_items, Some(1));
+        assert_eq!(summary.subtype.as_deref(), Some("stop"));
+        assert_eq!(summary.tokens("input_tokens"), Some(22_756 + 6_779));
+        assert_eq!(summary.tokens("cache_read_input_tokens"), Some(16_369));
+        assert_eq!(summary.input_per_call, vec![22_756, 6_779 + 16_369]);
+        let cost = summary.total_cost_usd.unwrap();
+        assert!((cost - (0.018_128_25 + 0.006_746_925)).abs() < 1e-12);
+        assert_eq!(summary.cost_note, Some(OPENCODE_COST_NOTE));
+        assert_eq!(
+            classify(&supervise::Ending::Exited(Some(0)), &summary, ""),
+            Status::Answered
+        );
+    }
+
+    #[test]
+    fn an_opencode_error_is_typed_into_a_refusal_or_a_limit() {
+        let refused = Summary::parse_opencode(
+            include_str!("../fixtures/opencode/run-403.jsonl"),
+            "opencode/gpt-5-nano",
+        );
+        assert!(!refused.has_result);
+        assert_eq!(refused.refusal, Some("model_unavailable"));
+        assert!(refused.result.unwrap().contains("Model access is disabled"));
+        let refused = Summary::parse_opencode(
+            include_str!("../fixtures/opencode/run-403.jsonl"),
+            "opencode/gpt-5-nano",
+        );
+        assert_eq!(
+            classify(&supervise::Ending::Exited(Some(1)), &refused, ""),
+            Status::Refused("model_unavailable".into())
+        );
+        let limited = include_str!("../fixtures/opencode/run-403.jsonl")
+            .replace("\"statusCode\":403", "\"statusCode\":429")
+            .replace("\"cf-placement\"", "\"retry-after\":\"90\",\"cf-placement\"");
+        let summary = Summary::parse_opencode(&limited, "opencode/gpt-5-nano");
+        let limit = summary.limit.clone().unwrap();
+        assert_eq!(limit.provider, "opencode");
+        assert_eq!(limit.status, Some(429));
+        assert_eq!(limit.reset_source.as_deref(), Some("retry_after"));
+        assert!(limit.resets_at.is_some());
+        assert_eq!(
+            classify(&supervise::Ending::Exited(Some(1)), &summary, ""),
+            Status::Refused(USAGE_LIMIT.into())
+        );
+        let auth = Summary::parse_opencode(
+            r#"{"type":"error","timestamp":1,"sessionID":"ses_1","error":{"name":"ProviderAuthError","data":{"providerID":"anthropic","message":"no key"}}}"#,
+            "anthropic/claude-sonnet-5",
+        );
+        assert_eq!(auth.refusal, Some("not_logged_in"));
+    }
+
+    #[test]
+    fn opencode_is_chosen_by_name_and_found_with_its_login() {
+        assert_eq!(Agent::parse("opencode"), Ok(Agent::OpenCode));
+        assert_eq!(Agent::OpenCode.default_model(), "");
+        let dir = tempfile::tempdir().unwrap();
+        let installed = dir.path().join(".opencode/bin");
+        std::fs::create_dir_all(&installed).unwrap();
+        std::fs::write(installed.join("opencode"), "").unwrap();
+        let home = dir.path().to_string_lossy().into_owned();
+        let env = |name: &str| (name == "HOME").then(|| home.clone());
+        let (found, credential) = resolve(Agent::OpenCode, env);
+        assert_eq!(found, Some(installed.join("opencode")));
+        assert_eq!(credential, Credential::Missing);
+        let data = dir.path().join(".local/share/opencode");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(data.join("auth.json"), r#"{"google":{"type":"api","key":"k"}}"#).unwrap();
+        assert_eq!(resolve(Agent::OpenCode, env).1, Credential::OpenCodeLogin);
+        let named = |name: &str| match name {
+            "HOME" => Some(home.clone()),
+            OPENCODE_MODEL_VAR => Some("anthropic/claude-sonnet-5".into()),
+            _ => None,
+        };
+        assert_eq!(resolve(Agent::OpenCode, named).1, Credential::Missing);
     }
 
     #[test]

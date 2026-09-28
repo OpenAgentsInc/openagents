@@ -63,8 +63,11 @@ pub use project::{readable_record, readable_record_full};
 /// record's `entrypoint`. OpenCode records no caller in a session, so the
 /// engine gives it a database of its own instead: it sets
 /// [`OPENCODE_VARIABLE`](engine::OPENCODE_VARIABLE) to
-/// [`opencode_database`](engine::opencode_database), and the session is
-/// saved there, never in the owner's `opencode.db` that the catalog reads.
+/// [`OPENCODE_DATABASE`](engine::OPENCODE_DATABASE), a name OpenCode
+/// resolves in its own data directory beside the owner's `opencode.db`, so
+/// the session keeps OpenCode's logins but is saved in
+/// `openagents-coder-engine.db`, never in the `opencode.db` the host
+/// mirrors into the catalog.
 /// The catalog leaves such a session out: the task's own Coder transcript is
 /// the chat.
 pub mod engine {
@@ -76,14 +79,15 @@ pub mod engine {
     pub const CLAUDE_VARIABLE: &str = "CLAUDE_CODE_ENTRYPOINT";
     /// OpenCode's database path (`OPENCODE_DB`, OpenCode 1.2 and later).
     pub const OPENCODE_VARIABLE: &str = "OPENCODE_DB";
-    /// The engine's OpenCode database, relative to the home directory.
-    pub const OPENCODE_DATABASE: &str = ".openagents/opencode/engine.db";
+    /// The engine's OpenCode database: a relative name, which OpenCode
+    /// resolves in its data directory (`~/.local/share/opencode`).
+    pub const OPENCODE_DATABASE: &str = "openagents-coder-engine.db";
 
-    /// The engine's OpenCode database under `home`: the file every
-    /// engine-started OpenCode session is saved in.
+    /// The engine's OpenCode database in OpenCode's data directory `data`:
+    /// the file every engine-started OpenCode session is saved in.
     #[must_use]
-    pub fn opencode_database(home: &std::path::Path) -> std::path::PathBuf {
-        home.join(OPENCODE_DATABASE)
+    pub fn opencode_database(data: &std::path::Path) -> std::path::PathBuf {
+        data.join(OPENCODE_DATABASE)
     }
 }
 

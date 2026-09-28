@@ -388,7 +388,8 @@ async fn check_cli(
                     .skip(1)
                     .collect::<Vec<_>>()
                     .join(" "),
-                Agent::ClaudeCode => text.clone(),
+                // Claude Code and OpenCode print the version first.
+                Agent::ClaudeCode | Agent::OpenCode => text.clone(),
             };
             let installed = version_text.split_whitespace().next().unwrap_or_default();
             if ended.ending.success()

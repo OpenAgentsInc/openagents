@@ -400,6 +400,9 @@ fn capture_in(plan: &Plan, scratch: &Path) -> Result<Capture, String> {
         Agent::Microluna => {
             return Err("Microluna runs in this process and has no CLI to capture".to_string());
         }
+        Agent::OpenCode => {
+            return Err("capture sends Claude Code or Codex requests to a local server; OpenCode reaches its own providers".to_string());
+        }
         Agent::Codex => codex_wrapper(
             scratch,
             &plan.binary,
@@ -419,6 +422,7 @@ fn capture_in(plan: &Plan, scratch: &Path) -> Result<Capture, String> {
         credential: match plan.agent {
             Agent::ClaudeCode => Credential::OauthToken,
             Agent::Codex | Agent::Microluna => Credential::OpenAiKey,
+            Agent::OpenCode => Credential::OpenCodeLogin,
         },
         effort: plan.effort.clone(),
         tools: plan.tools.clone(),
@@ -545,7 +549,7 @@ fn capture_in(plan: &Plan, scratch: &Path) -> Result<Capture, String> {
         map.insert(
             "catalog".to_string(),
             json!(match plan.agent {
-                Agent::ClaudeCode => Value::Null,
+                Agent::ClaudeCode | Agent::OpenCode => Value::Null,
                 Agent::Codex if plan.codex_catalog.is_some() => json!("codex models cache"),
                 Agent::Codex | Agent::Microluna => json!("fallback metadata"),
             }),
@@ -569,6 +573,7 @@ fn model_path(agent: Agent, path: &str) -> bool {
         Agent::Codex | Agent::Microluna => {
             path.ends_with("/responses") || path.contains("/responses?")
         }
+        Agent::OpenCode => false,
     }
 }
 
@@ -797,6 +802,8 @@ pub fn measure(agent: Agent, body: &Value, variant: Option<&Variant>) -> Value {
                 markers.push(json!({ "at": "prompt_cache_key", "type": "automatic prefix cache", "ttl": Value::Null }));
             }
         }
+        // Capture never runs OpenCode (see `run`), so no request exists.
+        Agent::OpenCode => {}
     }
     let total: usize = parts
         .iter()
