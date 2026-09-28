@@ -980,10 +980,13 @@ fn a_codex_session_the_engine_started_is_not_a_chat_and_a_spawned_thread_is_a_su
     let fixture = Fixture::new();
     let mark = crate::engine::MARK;
     fixture.codex("typed", "");
+    // Codex writes its base instructions into the header ahead of the
+    // originator and source, so the header is longer than 16 KiB.
+    let instructions = "i".repeat(24 * 1024);
     fixture.write(
         "sessions/2026/01/01/rollout-engine.jsonl",
         format!(
-            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"engine\",\"originator\":\"{mark}\",\"source\":\"exec\"}}}}\n"
+            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"engine\",\"base_instructions\":{{\"text\":\"{instructions}\"}},\"originator\":\"{mark}\",\"source\":\"exec\"}}}}\n"
         ),
     );
     fixture.write(
@@ -992,7 +995,9 @@ fn a_codex_session_the_engine_started_is_not_a_chat_and_a_spawned_thread_is_a_su
     );
     fixture.write(
         "sessions/2026/01/01/rollout-thread.jsonl",
-        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"thread\",\"originator\":\"codex-tui\",\"source\":{\"subagent\":{\"thread_spawn\":{\"parent_thread_id\":\"typed\"}}}}}\n",
+        format!(
+            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"thread\",\"base_instructions\":{{\"text\":\"{instructions}\"}},\"originator\":\"codex-tui\",\"source\":{{\"subagent\":{{\"thread_spawn\":{{\"parent_thread_id\":\"typed\"}}}}}}}}}}\n"
+        ),
     );
     // A title in the index does not bring the engine's session back as a
     // missing chat.

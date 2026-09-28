@@ -359,6 +359,12 @@ impl Default for Head {
     }
 }
 
+/// How much of a source's first record the catalog reads. A Codex
+/// `session_meta` header carries the session's base instructions, about
+/// 20 KiB, ahead of nothing else the catalog needs, so a shorter bound
+/// would lose its originator and source.
+const HEADER_BYTES: u64 = crate::MAX_READABLE_RECORD_BYTES as u64;
+
 /// How far into a Claude session [`claude_entrypoint`] looks for the first
 /// record that names its entry point: the first user record carries it, and
 /// an engine briefing can be long.
@@ -392,7 +398,7 @@ fn head(root: &confined::Root, source: &Source) -> Head {
         };
     }
     let mut first = Vec::new();
-    let read = BufReader::new(file.take(16 * 1024)).read_until(b'\n', &mut first);
+    let read = BufReader::new(file.take(HEADER_BYTES)).read_until(b'\n', &mut first);
     if read.is_err() {
         return Head {
             modified,
