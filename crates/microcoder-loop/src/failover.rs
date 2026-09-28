@@ -110,6 +110,37 @@ impl Lane for ClaudeLane {
     }
 }
 
+/// Generation on Vertex that keeps the quota or rate-limit refusal (HTTP
+/// 429 `RESOURCE_EXHAUSTED`) its last call met.
+pub struct VertexLane {
+    pub inner: crate::vertex::VertexGenerator,
+    refusal: RefCell<Option<Refusal>>,
+}
+
+impl VertexLane {
+    #[must_use]
+    pub fn new(inner: crate::vertex::VertexGenerator) -> Self {
+        VertexLane {
+            inner,
+            refusal: RefCell::new(None),
+        }
+    }
+}
+
+impl Generate for VertexLane {
+    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        let (generated, refusal) = self.inner.attempt(system, prompt).await;
+        *self.refusal.borrow_mut() = refusal;
+        generated
+    }
+}
+
+impl Lane for VertexLane {
+    fn refusal(&self) -> Option<Refusal> {
+        self.refusal.borrow_mut().take()
+    }
+}
+
 /// A generator with no capacity signal, such as an in-process fixture.
 pub struct Plain<'a, G>(pub &'a G);
 

@@ -148,10 +148,14 @@ async fn an_error_status_keeps_its_class_and_message_and_never_the_key() {
             kind,
             status,
             message,
+            retry_after,
+            body,
         } => {
             assert_eq!(*kind, ApiErrorKind::PaymentRequired);
             assert_eq!(*status, 402);
             assert_eq!(message, "Insufficient credits");
+            assert_eq!(*retry_after, None);
+            assert!(body.contains("Insufficient credits"));
         }
         other => panic!("{other:?}"),
     }
@@ -180,6 +184,35 @@ async fn a_rate_limit_is_retried_after_its_wait() {
         .unwrap();
     assert_eq!(reply.value.rationale, "ok");
     assert_eq!(seen.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn a_refusal_keeps_its_retry_after_and_body() {
+    let (url, _) = serve(vec![(
+        429,
+        vec![("retry-after", "42")],
+        r#"[{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"quota"}}]"#.to_string(),
+    )])
+    .await;
+    let mut config = Config::new(ApiKey::new("k")).base_url(&url);
+    config.retries = 0;
+    let request = ChatRequest::new("m", vec![Message::user("go")]);
+    let error = Client::new(config)
+        .unwrap()
+        .chat(&request)
+        .await
+        .unwrap_err();
+    let Error::Api {
+        status,
+        retry_after,
+        body,
+        ..
+    } = error
+    else {
+        panic!("{error}");
+    };
+    assert_eq!((status, retry_after), (429, Some(42)));
+    assert!(body.contains("RESOURCE_EXHAUSTED"));
 }
 
 #[tokio::test]

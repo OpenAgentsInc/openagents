@@ -359,8 +359,15 @@ pub fn targets(
     now: u64,
 ) -> Vec<Target> {
     let recorded = capacity::Book::load(book);
+    let vertex = microcoder::vertex_model(
+        env(microcoder_loop::vertex::MODEL_VAR),
+        microcoder::vertex_token_exists(),
+    );
     let mut found = vec![Target::microcoder(microcoder::providers(
-        model, book, probe, now,
+        &microcoder::lineup(model, vertex.as_deref()),
+        book,
+        probe,
+        now,
     ))];
     found.extend(
         [Cli::ClaudeCode, Cli::Codex]
@@ -967,8 +974,14 @@ impl DelegateDoor {
     ) -> Result<Delegated, GenerateError> {
         // The book is read again at each turn, so a refusal an earlier
         // turn or another process recorded is honored.
+        let lineup: Vec<(Provider, String)> = self
+            .target
+            .providers
+            .iter()
+            .map(|state| (state.provider, state.model.clone()))
+            .collect();
         let providers = microcoder::providers(
-            self.named_model.as_deref(),
+            &lineup,
             &self.book,
             &|provider| {
                 self.target
@@ -1915,6 +1928,159 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             .unwrap();
         assert!(matches!(done.failure, Some(GenerateError::NoCapacity(_))));
         assert_eq!(done.cost_usd, Some(0.0));
+    }
+
+    /// The recorded Vertex quota refusal, observed at 2000.
+    fn vertex_refusal() -> Refusal {
+        Refusal::vertex(
+            429,
+            None,
+            include_str!("../../microcoder-loop/fixtures/vertex/quota-exceeded.json"),
+            2_000,
+        )
+        .unwrap()
+    }
+
+    /// Vertex first, then Claude, both connected.
+    fn vertex_then_claude() -> Vec<ProviderState> {
+        vec![
+            ProviderState {
+                provider: Provider::Vertex,
+                model: microcoder::VERTEX_MODEL.to_string(),
+                connection: Connection::Connected,
+                refusal: None,
+            },
+            ProviderState {
+                provider: Provider::Claude,
+                model: microcoder::CLAUDE_MODEL.to_string(),
+                connection: Connection::Connected,
+                refusal: None,
+            },
+        ]
+    }
+
+    fn after_the_vertex_reset() -> u64 {
+        2_100
+    }
+
+    #[tokio::test]
+    async fn a_vertex_refusal_mid_turn_is_recorded_and_the_next_provider_finishes() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = vec![
+            (Provider::Vertex, vec![Err(vertex_refusal())]),
+            (Provider::Claude, vec![Ok(finish("Hello from Claude."))]),
+        ];
+        let Some((door, _)) = microcoder_door(dir.path(), vertex_then_claude(), script) else {
+            return;
+        };
+        let done = door
+            .answer("hello", "", true, false, &mut |_| {})
+            .await
+            .unwrap();
+        assert!(done.failure.is_none(), "{:?}", done.failure);
+        assert_eq!(done.text, "Hello from Claude.");
+        // The book holds Vertex's quota refusal until its retry delay ends.
+        let book = capacity::Book::load(&dir.path().join("tasks"));
+        let held = book.blocking(Provider::Vertex, 2_000).unwrap();
+        assert_eq!(held.kind, capacity::Kind::UsageLimit);
+        assert_eq!(held.until, 2_041);
+        // The next turn skips Vertex without asking it, and says why.
+        let providers = microcoder::providers(
+            &microcoder::lineup(None, Some(microcoder::VERTEX_MODEL)),
+            &dir.path().join("tasks"),
+            &|_| Connection::Connected,
+            2_000,
+        );
+        let vertex = providers
+            .iter()
+            .find(|state| state.provider == Provider::Vertex)
+            .unwrap();
+        assert!(!vertex.usable());
+        assert!(
+            vertex
+                .describe()
+                .starts_with("Vertex is out of its usage limit until 1970-01-01 00:34 UTC"),
+            "{}",
+            vertex.describe()
+        );
+        let script = vec![(Provider::Claude, vec![Ok(finish("Again."))])];
+        let door = DelegateDoor::new(
+            Target::microcoder(vertex_then_claude()),
+            None,
+            dir.path().join("work"),
+            None,
+            String::new(),
+        )
+        .reading_capacity_in(dir.path().join("tasks"))
+        .clocked(at_two_thousand)
+        .scripting(script);
+        let done = door
+            .answer("hello", "", true, false, &mut |_| {})
+            .await
+            .unwrap();
+        assert_eq!(done.text, "Again.");
+        // After the reset, Vertex answers first again.
+        let script = vec![(Provider::Vertex, vec![Ok(finish("From Vertex."))])];
+        let door = DelegateDoor::new(
+            Target::microcoder(vertex_then_claude()),
+            None,
+            dir.path().join("work"),
+            None,
+            String::new(),
+        )
+        .reading_capacity_in(dir.path().join("tasks"))
+        .clocked(after_the_vertex_reset)
+        .scripting(script);
+        let done = door
+            .answer("hello", "", true, false, &mut |_| {})
+            .await
+            .unwrap();
+        assert_eq!(done.text, "From Vertex.");
+    }
+
+    #[test]
+    fn vertex_joins_the_providers_only_when_configured() {
+        let dir = tempfile::tempdir().unwrap();
+        let connected = |_: Provider| Connection::Connected;
+        let names = |vertex: Option<&str>| {
+            microcoder::providers(
+                &microcoder::lineup(None, vertex),
+                dir.path(),
+                &connected,
+                2_000,
+            )
+            .into_iter()
+            .map(|state| (state.provider, state.model))
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            names(None).iter().map(|(p, _)| *p).collect::<Vec<_>>(),
+            [Provider::Codex, Provider::Claude]
+        );
+        assert_eq!(
+            names(Some("zai-org/glm-5-maas")).last().unwrap(),
+            &(Provider::Vertex, "zai-org/glm-5-maas".to_string())
+        );
+        assert_eq!(microcoder::vertex_model(None, false), None);
+        assert_eq!(
+            microcoder::vertex_model(None, true).as_deref(),
+            Some(microcoder::VERTEX_MODEL)
+        );
+        assert_eq!(
+            microcoder::vertex_model(Some("zai-org/glm-5-maas".into()), false).as_deref(),
+            Some("zai-org/glm-5-maas")
+        );
+        // Without a token, Vertex says why it can't be used.
+        let state = ProviderState {
+            provider: Provider::Vertex,
+            model: microcoder::VERTEX_MODEL.to_string(),
+            connection: Connection::Missing("no Vertex access token".to_string()),
+            refusal: None,
+        };
+        assert_eq!(
+            state.describe(),
+            "Vertex can't be used (no Vertex access token)"
+        );
     }
 
     #[tokio::test]

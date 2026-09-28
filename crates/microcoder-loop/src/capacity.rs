@@ -31,8 +31,13 @@ use serde::{Deserialize, Serialize};
 pub const FILE: &str = "capacity.json";
 /// The book's format.
 pub const SCHEMA: &str = "openagents.coder.provider-capacity.v1";
-/// How long a refusal with no reported reset holds, in seconds.
+/// How long a Codex or Claude refusal with no reported reset holds, in
+/// seconds.
 pub const UNKNOWN_RESET_HOLD: u64 = 30 * 60;
+/// How long a Vertex refusal with no reported reset holds, in seconds.
+/// Vertex's throttling is per minute and its shared quota frees within
+/// minutes, so a half-hour hold would pass it over for no reason.
+pub const VERTEX_UNKNOWN_RESET_HOLD: u64 = 5 * 60;
 /// The latest reset the book accepts: 31 days after the refusal. A later
 /// reported time is held to this bound.
 pub const MAX_HOLD: u64 = 31 * 24 * 60 * 60;
@@ -48,11 +53,17 @@ pub enum Provider {
     Codex,
     /// The operator's Claude Code login, through the `claude` binary.
     Claude,
+    /// Vertex AI's OpenAI-compatible endpoint, with the operator's access
+    /// token file ([`crate::vertex`]).
+    Vertex,
 }
 
 impl Provider {
     /// Every provider, in a fixed order.
-    pub const ALL: [Provider; 2] = [Provider::Codex, Provider::Claude];
+    pub const ALL: [Provider; 3] = [Provider::Codex, Provider::Claude, Provider::Vertex];
+
+    /// The providers with a usage endpoint a probe can ask.
+    pub const PROBED: [Provider; 2] = [Provider::Codex, Provider::Claude];
 
     /// The provider an adapter configuration names, or `None` for one
     /// without durable capacity, such as `synthetic` fixtures. The names
@@ -62,6 +73,7 @@ impl Provider {
         match name {
             "codex" => Some(Provider::Codex),
             "claude" => Some(Provider::Claude),
+            "vertex" => Some(Provider::Vertex),
             _ => None,
         }
     }
@@ -72,6 +84,7 @@ impl Provider {
         match self {
             Provider::Codex => "codex",
             Provider::Claude => "claude",
+            Provider::Vertex => "vertex",
         }
     }
 
@@ -81,6 +94,16 @@ impl Provider {
         match self {
             Provider::Codex => codex_transport::codex::BASE_URL,
             Provider::Claude => "https://api.anthropic.com",
+            Provider::Vertex => crate::vertex::BASE_URL,
+        }
+    }
+
+    /// How long a refusal that reported no reset holds, in seconds.
+    #[must_use]
+    pub const fn unknown_hold(self) -> u64 {
+        match self {
+            Provider::Codex | Provider::Claude => UNKNOWN_RESET_HOLD,
+            Provider::Vertex => VERTEX_UNKNOWN_RESET_HOLD,
         }
     }
 }
@@ -131,7 +154,7 @@ impl Refusal {
     pub fn new(provider: Provider, kind: Kind, now: u64, resets_at: Option<u64>) -> Refusal {
         let until = resets_at
             .filter(|at| *at > now)
-            .unwrap_or(now + UNKNOWN_RESET_HOLD)
+            .unwrap_or(now + provider.unknown_hold())
             .min(now + MAX_HOLD);
         Refusal {
             provider,
@@ -222,11 +245,123 @@ impl Refusal {
         self
     }
 
+    /// The refusal a Vertex error response carries: HTTP 429 with the
+    /// `google.rpc.Status` code `RESOURCE_EXHAUSTED`, as an object or the
+    /// one-element list the OpenAI-compatible endpoint answers with. A
+    /// `google.rpc.QuotaFailure` detail makes it a usage limit (a quota),
+    /// otherwise a rate limit. The reset is the `google.rpc.RetryInfo`
+    /// detail's `retryDelay`, else the `Retry-After` header, else
+    /// [`VERTEX_UNKNOWN_RESET_HOLD`]. Only these typed fields are read,
+    /// never the message.
+    #[must_use]
+    pub fn vertex(status: u16, retry_after: Option<u64>, body: &str, now: u64) -> Option<Refusal> {
+        let error = VertexError::parse(body)?;
+        if status != 429 || error.status != Code::ResourceExhausted {
+            return None;
+        }
+        let quota = error
+            .details
+            .iter()
+            .any(|detail| detail.kind == DetailType::QuotaFailure && !detail.violations.is_empty());
+        let delay = error
+            .details
+            .iter()
+            .filter(|detail| detail.kind == DetailType::RetryInfo)
+            .find_map(|detail| detail.retry_delay.as_deref().and_then(duration_seconds));
+        let resets_at = delay.or(retry_after).map(|s| now.saturating_add(s));
+        let kind = if quota {
+            Kind::UsageLimit
+        } else {
+            Kind::RateLimit
+        };
+        Some(Refusal::new(Provider::Vertex, kind, now, resets_at))
+    }
+
     /// Whether the refusal still holds at `now`.
     #[must_use]
     pub fn holds(&self, now: u64) -> bool {
         now < self.until
     }
+}
+
+/// A `google.rpc.Code` name, as far as a refusal needs it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+enum Code {
+    #[serde(rename = "RESOURCE_EXHAUSTED")]
+    ResourceExhausted,
+    #[default]
+    #[serde(other)]
+    Other,
+}
+
+/// A `google.rpc.Status` detail's `@type`, as far as a refusal needs it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+enum DetailType {
+    #[serde(rename = "type.googleapis.com/google.rpc.QuotaFailure")]
+    QuotaFailure,
+    #[serde(rename = "type.googleapis.com/google.rpc.RetryInfo")]
+    RetryInfo,
+    #[default]
+    #[serde(other)]
+    Other,
+}
+
+/// A Google API error's typed fields (`google.rpc.Status`).
+#[derive(Deserialize)]
+struct VertexError {
+    #[serde(default)]
+    status: Code,
+    #[serde(default)]
+    details: Vec<VertexDetail>,
+}
+
+#[derive(Deserialize)]
+struct VertexDetail {
+    #[serde(rename = "@type", default)]
+    kind: DetailType,
+    #[serde(default, rename = "retryDelay")]
+    retry_delay: Option<String>,
+    #[serde(default)]
+    violations: Vec<serde::de::IgnoredAny>,
+}
+
+impl VertexError {
+    /// `{"error":{...}}`, or `[{"error":{...}}]` as the OpenAI-compatible
+    /// endpoint answers.
+    fn parse(body: &str) -> Option<VertexError> {
+        #[derive(Deserialize)]
+        struct Envelope {
+            error: VertexError,
+        }
+        // The list comes first: serde reads a struct from a sequence too,
+        // so `One` would take a list and miss its fields.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Body {
+            List(Vec<Envelope>),
+            One(Envelope),
+        }
+        match serde_json::from_str::<Body>(body).ok()? {
+            Body::One(envelope) => Some(envelope.error),
+            Body::List(list) => list.into_iter().next().map(|envelope| envelope.error),
+        }
+    }
+}
+
+/// Whole seconds in a protobuf JSON duration such as `41s` or `0.5s`,
+/// rounded up.
+fn duration_seconds(text: &str) -> Option<u64> {
+    let number = text.strip_suffix('s')?;
+    let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
+    if whole.is_empty() || !whole.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    if !fraction.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let whole: u64 = whole.parse().ok()?;
+    let partial = fraction.bytes().any(|b| b != b'0');
+    Some(whole + u64::from(partial))
 }
 
 /// Every recorded refusal, at most one per provider.
@@ -358,6 +493,10 @@ impl Connection {
 ///   `~/.claude.json`, or `~/.claude/.credentials.json`. The credential
 ///   itself, in the macOS keychain or that file, is not read.
 ///
+/// - **Vertex**: the access token file (`VERTEX_TOKEN_FILE`, else
+///   `~/.openagents/vertex-token`) is present and not empty. Its content is
+///   read only to check that, never logged.
+///
 /// A connected provider can still refuse: the login may have been revoked.
 /// That refusal then ends the generation as any other error does.
 #[must_use]
@@ -373,6 +512,16 @@ pub fn probe(provider: Provider) -> Connection {
                 Err(error) => Connection::Missing(error.to_string()),
             }
         }
+        Provider::Vertex => match crate::vertex::token_path() {
+            None => Connection::Missing("HOME is not set".into()),
+            Some(path) => match crate::vertex::read_token(&path) {
+                Ok(_) => Connection::Connected,
+                Err(_) => Connection::Missing(format!(
+                    "no Vertex access token in {}; write one there with `gcloud auth print-access-token`",
+                    path.display()
+                )),
+            },
+        },
         Provider::Claude => {
             if claude_binary(home.as_deref()).is_none() {
                 return Connection::Missing(
@@ -564,6 +713,39 @@ mod tests {
                 .until,
             now + 120 + UNKNOWN_RESET_HOLD
         );
+    }
+
+    #[test]
+    fn a_vertex_quota_refusal_records_its_retry_delay() {
+        let quota = include_str!("../fixtures/vertex/quota-exceeded.json");
+        let refusal = Refusal::vertex(429, None, quota, 1_000).unwrap();
+        assert_eq!(refusal.provider, Provider::Vertex);
+        assert_eq!(refusal.kind, Kind::UsageLimit);
+        assert_eq!(refusal.resets_at, Some(1_041));
+        let dir = tempfile::tempdir().unwrap();
+        record(dir.path(), refusal).unwrap();
+        let book = Book::load(dir.path());
+        assert!(!book.has_capacity(Provider::Vertex, 1_040));
+        assert!(book.has_capacity(Provider::Vertex, 1_041));
+        assert!(book.has_capacity(Provider::Codex, 1_040));
+    }
+
+    #[test]
+    fn a_vertex_rate_limit_takes_retry_after_or_a_short_hold() {
+        let limited = include_str!("../fixtures/vertex/resource-exhausted.openai.json");
+        let refusal = Refusal::vertex(429, Some(90), limited, 1_000).unwrap();
+        assert_eq!((refusal.kind, refusal.until), (Kind::RateLimit, 1_090));
+        let refusal = Refusal::vertex(429, None, limited, 1_000).unwrap();
+        assert_eq!(refusal.until, 1_000 + VERTEX_UNKNOWN_RESET_HOLD);
+        // Other statuses and shapes are not refusals.
+        assert_eq!(Refusal::vertex(500, None, limited, 1_000), None);
+        let denied = r#"{"error":{"code":403,"status":"PERMISSION_DENIED"}}"#;
+        assert_eq!(Refusal::vertex(429, None, denied, 1_000), None);
+        assert_eq!(Refusal::vertex(429, None, "Too Many Requests", 1_000), None);
+        assert_eq!(duration_seconds("0.5s"), Some(1));
+        assert_eq!(duration_seconds("12s"), Some(12));
+        assert_eq!(duration_seconds("12"), None);
+        assert_eq!(duration_seconds("-1s"), None);
     }
 
     #[test]

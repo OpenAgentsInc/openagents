@@ -381,7 +381,7 @@ uses, and marks which are implemented and which are only specified.
   policy there rather than in what the model is told. `delegate_door`
   answers a turn through Microcoder's loop in process, on the first
   connected provider with capacity in the capacity book (the Codex login,
-  then Claude Code's login), failing over mid-turn when one refuses for a
+  then Claude Code's login, then Vertex when configured), failing over mid-turn when one refuses for a
   usage or rate limit; else through Coder One's probes, Jev's judgments, a
   briefing, and Claude Code or Codex when one is installed, signed in, and
   has capacity, with the Open Responses door as the fallback. The permit

@@ -33,6 +33,26 @@ pub const URL_VAR: &str = "VERTEX_BASE_URL";
 /// The variable that names the token file.
 pub const TOKEN_VAR: &str = "VERTEX_TOKEN_FILE";
 
+/// The model Coder's delegate door asks Vertex for unless `MODEL_VAR`
+/// names another: Qwen3-Coder, the Vertex model that gave usable replies
+/// in the round 2 loop study (`docs/terminal-bench/2026-09-26-round2-loop.md`).
+pub const DEFAULT_MODEL: &str = "qwen/qwen3-coder-480b-a35b-instruct-maas";
+
+/// The variable that names the Vertex model Coder's delegate door uses.
+pub const MODEL_VAR: &str = "CODER_VERTEX_MODEL";
+
+/// The token file: `VERTEX_TOKEN_FILE`, else `~/.openagents/vertex-token`.
+#[must_use]
+pub fn token_path() -> Option<PathBuf> {
+    std::env::var_os(TOKEN_VAR)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(|home| PathBuf::from(home).join(".openagents/vertex-token"))
+        })
+}
+
 /// Tokens a reply may use, reasoning included: gpt-oss reasons before it
 /// writes the reply, and a reply cut short has no JSON.
 pub const MAX_TOKENS: u32 = 32_000;
@@ -78,13 +98,7 @@ impl VertexGenerator {
     ///
     /// When the token file can't be read now.
     pub fn from_env(model: &str, effort: Option<String>) -> Result<Self, String> {
-        let token_file = std::env::var_os(TOKEN_VAR)
-            .map(PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("HOME")
-                    .map(|home| PathBuf::from(home).join(".openagents/vertex-token"))
-            })
-            .ok_or("no home directory for the Vertex token")?;
+        let token_file = token_path().ok_or("no home directory for the Vertex token")?;
         read_token(&token_file)?;
         Ok(VertexGenerator {
             model: model.to_string(),
@@ -98,7 +112,13 @@ impl VertexGenerator {
     }
 }
 
-fn read_token(path: &std::path::Path) -> Result<String, String> {
+/// The token in `path`, trimmed.
+///
+/// # Errors
+///
+/// When the file can't be read or is empty. The error never holds the
+/// token.
+pub fn read_token(path: &std::path::Path) -> Result<String, String> {
     let token = std::fs::read_to_string(path)
         .map_err(|e| format!("can't read the Vertex token at {}: {e}", path.display()))?;
     let token = token.trim().to_string();
@@ -110,6 +130,18 @@ fn read_token(path: &std::path::Path) -> Result<String, String> {
 
 impl Generate for VertexGenerator {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        self.attempt(system, prompt).await.0
+    }
+}
+
+impl VertexGenerator {
+    /// One step's call, with the capacity refusal it met: a 429
+    /// `RESOURCE_EXHAUSTED` read by [`crate::capacity::Refusal::vertex`].
+    pub async fn attempt(
+        &self,
+        system: &str,
+        prompt: &str,
+    ) -> (Generated, Option<crate::capacity::Refusal>) {
         let started = Instant::now();
         let milliseconds = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let failed = |why: String, usd: Option<f64>| Generated {
@@ -127,7 +159,7 @@ impl Generate for VertexGenerator {
         let token = match read_token(&self.token_file) {
             Ok(token) => token,
             // Nothing was sent.
-            Err(why) => return failed(why, Some(0.0)),
+            Err(why) => return (failed(why, Some(0.0)), None),
         };
         let mut config = openrouter::Config::new(openrouter::ApiKey::new(&token));
         config.base_url = self.base_url.clone();
@@ -135,7 +167,7 @@ impl Generate for VertexGenerator {
         config.title = None;
         let client = match openrouter::Client::new(config) {
             Ok(client) => client,
-            Err(error) => return failed(error.to_string(), Some(0.0)),
+            Err(error) => return (failed(error.to_string(), Some(0.0)), None),
         };
         let mut request = openrouter::ChatRequest::new(
             &self.model,
@@ -152,10 +184,24 @@ impl Generate for VertexGenerator {
             cost(&self.model, usage.prompt_tokens, usage.completion_tokens)
         };
         let no_price = || format!("{} has no list price in microcoder::vertex", self.model);
-        match client
+        let answer = client
             .structured::<NextAction>(request, "next_action", next_action_schema())
-            .await
-        {
+            .await;
+        let refusal = match &answer {
+            Err(openrouter::Error::Api {
+                status,
+                retry_after,
+                body,
+                ..
+            }) => crate::capacity::Refusal::vertex(
+                *status,
+                *retry_after,
+                body,
+                crate::failover::unix_now(),
+            ),
+            _ => None,
+        };
+        let generated = match answer {
             Ok(reply) => {
                 let usd = priced(&reply.usage);
                 Generated {
@@ -202,7 +248,8 @@ impl Generate for VertexGenerator {
             ),
             // An error status: refused, so not billed.
             Err(error) => failed(error.to_string(), Some(0.0)),
-        }
+        };
+        (generated, refusal)
     }
 }
 

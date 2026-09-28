@@ -1132,7 +1132,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                     .flatten()
                     .is_some_and(|policy| policy.engine.usage_probe.is_some());
             let usage_book = if probing {
-                usage::refresh(&store, &Provider::ALL, now, usage::fetch)
+                usage::refresh(&store, &Provider::PROBED, now, usage::fetch)
             } else {
                 usage::Book::load(&store)
             };
@@ -1300,8 +1300,19 @@ fn parse_route(text: &str) -> std::result::Result<Route, String> {
     let (provider, model) = text
         .split_once(':')
         .ok_or_else(|| format!("usage: --route takes PROVIDER:MODEL, not `{text}`"))?;
-    let provider = Provider::from_config(provider)
-        .ok_or_else(|| format!("usage: the provider in `{text}` is not codex or claude"))?;
+    let provider = match Provider::from_config(provider) {
+        Some(provider @ (Provider::Codex | Provider::Claude)) => provider,
+        Some(Provider::Vertex) => {
+            return Err(format!(
+                "usage: `{text}`: repository runs don't generate through vertex; use codex or claude"
+            ));
+        }
+        None => {
+            return Err(format!(
+                "usage: the provider in `{text}` is not codex or claude"
+            ));
+        }
+    };
     if model.is_empty() {
         return Err(format!("usage: `{text}` names no model"));
     }
@@ -2015,7 +2026,7 @@ mod tests {
         let book = capacity::Book::default();
         let only_codex = |provider: Provider| match provider {
             Provider::Codex => Connection::Connected,
-            Provider::Claude => Connection::Missing("not signed in".into()),
+            Provider::Claude | Provider::Vertex => Connection::Missing("not signed in".into()),
         };
         let usage = usage::Book::default();
         match policy.choose(&book, &usage, &only_codex, 1) {
@@ -2160,6 +2171,7 @@ mod tests {
         assert_eq!(on(&["--usage-threshold", "most"]), 2);
         assert_eq!(on(&["--route", "codex:a", "--model", "b"]), 2);
         assert_eq!(on(&["--route", "gemini:x"]), 2);
+        assert_eq!(on(&["--route", "vertex:qwen/qwen3"]), 2);
         assert_eq!(on(&["--route", "codex:a", "--route", "codex:a"]), 1);
     }
     /// The recorded usage answers: Codex at its limit, Claude at 66%.
@@ -2171,6 +2183,7 @@ mod tests {
             Provider::Claude => {
                 include_str!("../../../microcoder-loop/fixtures/usage/claude-oauth-usage.json")
             }
+            Provider::Vertex => return Err(usage::Failure::Unsupported),
         };
         Ok(usage::Response {
             status: 200,

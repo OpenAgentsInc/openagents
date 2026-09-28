@@ -425,6 +425,11 @@ pub enum Error {
         kind: ApiErrorKind,
         status: u16,
         message: String,
+        /// The response's `Retry-After`, in seconds, when it held a number.
+        retry_after: Option<u64>,
+        /// The response body, at most [`ERROR_BODY_LIMIT`] bytes, for a
+        /// caller that reads a provider's typed error detail.
+        body: String,
     },
     /// The request didn't reach OpenRouter, or the connection broke.
     Connection(String),
@@ -510,6 +515,7 @@ impl fmt::Display for Error {
                 kind,
                 status,
                 message,
+                ..
             } => write!(f, "OpenRouter returned HTTP {status} ({kind:?}): {message}"),
             Error::Connection(why) => write!(f, "couldn't reach OpenRouter: {why}"),
             Error::Timeout => f.write_str("the request to OpenRouter timed out"),
@@ -532,6 +538,18 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+/// The most bytes of an error response's body [`Error::Api`] keeps.
+pub const ERROR_BODY_LIMIT: usize = 8 * 1024;
+
+/// `text`, cut to [`ERROR_BODY_LIMIT`] bytes at a character boundary.
+fn bounded_body(text: &str) -> String {
+    let mut end = text.len().min(ERROR_BODY_LIMIT);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_string()
+}
 
 /// The first `max` characters of `text`.
 fn excerpt(text: &str, max: usize) -> String {
@@ -708,6 +726,8 @@ impl Client {
                     kind: ApiErrorKind::of(status),
                     status,
                     message,
+                    retry_after: wait.map(|wait| wait.as_secs()),
+                    body: bounded_body(&text),
                 },
                 wait,
             ));
@@ -732,6 +752,8 @@ impl Client {
                     kind: ApiErrorKind::of(status),
                     status,
                     message: message.to_string(),
+                    retry_after: None,
+                    body: bounded_body(&text),
                 },
                 None,
             ));

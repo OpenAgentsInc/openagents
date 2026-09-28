@@ -162,6 +162,8 @@ pub enum Failure {
     Malformed,
     /// The request did not complete.
     Network,
+    /// The provider has no usage endpoint to ask (Vertex).
+    Unsupported,
 }
 
 impl Failure {
@@ -175,6 +177,7 @@ impl Failure {
             Failure::Status => "status",
             Failure::Malformed => "malformed",
             Failure::Network => "network",
+            Failure::Unsupported => "unsupported",
         }
     }
 }
@@ -362,6 +365,7 @@ pub fn outcome(provider: Provider, fetched: Result<Response, Failure>, now: u64)
                 let result = match provider {
                     Provider::Claude => parse_claude(&response.body, now),
                     Provider::Codex => parse_codex(&response.body, now),
+                    Provider::Vertex => Err(Failure::Unsupported),
                 };
                 let next_probe_at = if result.is_ok() {
                     now + MIN_INTERVAL
@@ -397,7 +401,10 @@ pub fn refresh(dir: &Path, providers: &[Provider], now: u64, fetch: Fetch) -> Bo
     let before = Book::load(dir);
     let mut learned: Vec<(Provider, Outcome)> = Vec::new();
     for provider in providers {
-        if learned.iter().any(|(p, _)| p == provider) || !before.due(*provider, now) {
+        if learned.iter().any(|(p, _)| p == provider)
+            || !before.due(*provider, now)
+            || !Provider::PROBED.contains(provider)
+        {
             continue;
         }
         learned.push((*provider, outcome(*provider, fetch(*provider), now)));
@@ -828,6 +835,7 @@ mod tests {
             match provider {
                 Provider::Claude => ok(CLAUDE),
                 Provider::Codex => Err(Failure::NoCredential),
+                Provider::Vertex => Err(Failure::Unsupported),
             }
         }
         let dir = tempfile::tempdir().unwrap();

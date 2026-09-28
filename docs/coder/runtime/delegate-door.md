@@ -50,6 +50,14 @@ The door lists Microcoder's providers in preference order:
 | --- | --- | --- |
 | Codex | `gpt-6-luna`, or `CODER_DELEGATE_MODEL` | `~/.codex/auth.json` (or `$CODEX_HOME/auth.json`) is a ChatGPT sign-in whose access token has more than ten minutes left |
 | Claude | Claude Code's `opus` alias | a `claude` binary (`CLAUDE_BIN`, `PATH`, or `~/.local/bin`) and a Claude Code sign-in |
+| Vertex | `qwen/qwen3-coder-480b-a35b-instruct-maas`, or `CODER_VERTEX_MODEL` | Vertex AI's OpenAI-compatible endpoint (`VERTEX_BASE_URL` overrides it) with an access token in `VERTEX_TOKEN_FILE` or `~/.openagents/vertex-token` |
+
+Vertex joins the list only when it is configured: `CODER_VERTEX_MODEL` is
+set, or the token file exists. The token is an OAuth access token that
+expires after about an hour, so the operator keeps the file fresh, for
+example with `gcloud auth print-access-token > ~/.openagents/vertex-token`.
+`coder doctor` lists Vertex either way, and says what configures it when
+it isn't.
 
 Before each turn, the door reads the capacity book,
 `~/.openagents/tasks/capacity.json`, the same book the auto-start policy
@@ -60,7 +68,8 @@ until 2026-10-03 18:07 UTC". The turn starts on the first connected
 provider with capacity.
 
 When a provider refuses for a usage or rate limit during the turn, such as
-Codex's HTTP 429 `usage_limit_reached`, the loop records the refusal in the
+Codex's HTTP 429 `usage_limit_reached` or Vertex's HTTP 429
+`RESOURCE_EXHAUSTED`, the loop records the refusal in the
 book with its reset time and generates the same step on the next connected
 provider with capacity. The turn's trace holds a `route_switch` step that
 names both providers and the refusal, and the next turn skips the refused
@@ -69,7 +78,10 @@ from the stream's `rejected` `rate_limit_event` (`resetsAt`). When a
 refusal reports no reset, a fresh usage probe reading in the task store's
 `usage.json` supplies the reset of the window it shows at its limit, and
 only without either does it hold for 30 minutes, which the sentence and
-`coder doctor` say.
+`coder doctor` say. A Vertex refusal is a usage limit when it carries a
+`google.rpc.QuotaFailure` detail and a rate limit otherwise; its reset is
+the `google.rpc.RetryInfo` detail's `retryDelay`, else `Retry-After`, else a
+five-minute hold, since Vertex's throttling is per minute.
 
 When no provider is left, the turn ends with one sentence that names each
 provider and when it resets, such as "Microcoder has no provider to answer

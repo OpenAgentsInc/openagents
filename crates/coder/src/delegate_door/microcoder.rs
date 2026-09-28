@@ -9,8 +9,9 @@
 //! # Which provider generates
 //!
 //! [`providers`] lists the providers in preference order, Codex (GPT-6 Luna
-//! on the operator's Codex login) and then Claude (through the `claude`
-//! binary), each with whether it has a usable login and whether the
+//! on the operator's Codex login), then Claude (through the `claude`
+//! binary), then Vertex (Vertex AI's OpenAI-compatible endpoint with the
+//! operator's access token file) when it is configured, each with whether it has a usable login and whether the
 //! capacity book (`capacity.json` in the task store, the book the
 //! auto-start policy reads) holds a refusal for it. The turn starts on the
 //! first connected provider with capacity. When a provider refuses for a
@@ -30,7 +31,9 @@ use std::rc::Rc;
 
 use atif::{Source, Step};
 use microcoder_loop::capacity::{self, Connection, Kind, Provider, Refusal};
-use microcoder_loop::failover::{self, Admitted, ClaudeLane, Failover, Journal, Lane, Refusing};
+use microcoder_loop::failover::{
+    self, Admitted, ClaudeLane, Failover, Journal, Lane, Refusing, VertexLane,
+};
 use microcoder_loop::models::{
     Basis, CodexGenerator, Generate, Generated, JevJudge, Judge, Judgment, NextAction, QuestionSet,
 };
@@ -51,6 +54,26 @@ pub const CODEX_MODEL: &str = microcoder_loop::MODEL;
 
 /// The Claude model a turn generates with: Claude Code's `opus` alias.
 pub const CLAUDE_MODEL: &str = microcoder_loop::claude::DEFAULT_ALIAS;
+
+/// The Vertex model a turn generates with unless `CODER_VERTEX_MODEL`
+/// names one.
+pub const VERTEX_MODEL: &str = microcoder_loop::vertex::DEFAULT_MODEL;
+
+/// The Vertex model Microcoder asks for, when Vertex is configured on this
+/// host: `named` (from `CODER_VERTEX_MODEL`), else [`VERTEX_MODEL`] when
+/// the Vertex token file exists. `None` leaves Vertex out of the providers.
+#[must_use]
+pub fn vertex_model(named: Option<String>, token_exists: bool) -> Option<String> {
+    named
+        .filter(|model| !model.trim().is_empty())
+        .or_else(|| token_exists.then(|| VERTEX_MODEL.to_string()))
+}
+
+/// Whether the Vertex token file exists here, without reading it.
+#[must_use]
+pub fn vertex_token_exists() -> bool {
+    microcoder_loop::vertex::token_path().is_some_and(|path| path.is_file())
+}
 
 /// The reasoning effort a Codex step asks for, as `microcoder` defaults.
 pub const CODEX_EFFORT: &str = "medium";
@@ -85,6 +108,7 @@ impl ProviderState {
         match self.provider {
             Provider::Codex => "the Codex login",
             Provider::Claude => "the Claude Code login",
+            Provider::Vertex => "Vertex",
         }
     }
 
@@ -123,30 +147,43 @@ pub fn blocked(refusal: &Refusal) -> String {
     }
 }
 
-/// The providers a turn may use, in preference order: Codex, then Claude.
-/// `model` names the Codex model when the operator named one. `probe`
-/// says whether each is connected; `book` is the capacity book's
-/// directory, read at `now`.
+/// The providers a turn may use and the model each is asked for, in
+/// preference order: Codex, then Claude, then Vertex when `vertex` names
+/// its model ([`vertex_model`]). `model` names the Codex model when the
+/// operator named one.
+#[must_use]
+pub fn lineup(model: Option<&str>, vertex: Option<&str>) -> Vec<(Provider, String)> {
+    [
+        Some((Provider::Codex, model.unwrap_or(CODEX_MODEL).to_string())),
+        Some((Provider::Claude, CLAUDE_MODEL.to_string())),
+        vertex.map(|model| (Provider::Vertex, model.to_string())),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+/// Where each of `lineup`'s providers stands, in its order. `probe` says
+/// whether each is connected; `book` is the capacity book's directory,
+/// read at `now`.
 #[must_use]
 pub fn providers(
-    model: Option<&str>,
+    lineup: &[(Provider, String)],
     book: &std::path::Path,
     probe: &dyn Fn(Provider) -> Connection,
     now: u64,
 ) -> Vec<ProviderState> {
     let recorded = capacity::Book::load(book);
-    [
-        (Provider::Codex, model.unwrap_or(CODEX_MODEL).to_string()),
-        (Provider::Claude, CLAUDE_MODEL.to_string()),
-    ]
-    .into_iter()
-    .map(|(provider, model)| ProviderState {
-        provider,
-        model,
-        connection: probe(provider),
-        refusal: recorded.blocking(provider, now).cloned(),
-    })
-    .collect()
+    lineup
+        .iter()
+        .cloned()
+        .map(|(provider, model)| ProviderState {
+            provider,
+            model,
+            connection: probe(provider),
+            refusal: recorded.blocking(provider, now).cloned(),
+        })
+        .collect()
 }
 
 /// Every provider, in one sentence: why each can't answer, and when those
@@ -245,6 +282,7 @@ impl Lane for ScriptedLane {
 enum Provided {
     Codex(Box<CodexGenerator<Refusing<codex_transport::codex::CodexTransport>>>),
     Claude(ClaudeLane),
+    Vertex(VertexLane),
     Scripted(ScriptedLane),
 }
 
@@ -253,6 +291,7 @@ impl Generate for Provided {
         match self {
             Provided::Codex(lane) => lane.generate(system, prompt).await,
             Provided::Claude(lane) => lane.generate(system, prompt).await,
+            Provided::Vertex(lane) => lane.generate(system, prompt).await,
             Provided::Scripted(lane) => lane.generate(system, prompt).await,
         }
     }
@@ -263,6 +302,7 @@ impl Lane for Provided {
         match self {
             Provided::Codex(lane) => lane.refusal(),
             Provided::Claude(lane) => lane.refusal(),
+            Provided::Vertex(lane) => lane.refusal(),
             Provided::Scripted(lane) => lane.refusal(),
         }
     }
@@ -286,6 +326,8 @@ fn provided(state: &ProviderState, session: &str) -> Result<Provided, String> {
         }
         Provider::Claude => microcoder_loop::claude::ClaudeGenerator::from_env(&state.model, None)
             .map(|generator| Provided::Claude(ClaudeLane::new(generator))),
+        Provider::Vertex => microcoder_loop::vertex::VertexGenerator::from_env(&state.model, None)
+            .map(|generator| Provided::Vertex(VertexLane::new(generator))),
     }
 }
 

@@ -1,0 +1,36 @@
+{
+  "error": {
+    "code": 429,
+    "message": "Quota exceeded for aiplatform.googleapis.com/generate_content_requests_per_minute_per_project_per_base_model with base model: qwen3-coder-480b-a35b-instruct-maas. Please submit a quota increase request.",
+    "status": "RESOURCE_EXHAUSTED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "RATE_LIMIT_EXCEEDED",
+        "domain": "aiplatform.googleapis.com",
+        "metadata": {
+          "quota_limit": "GenerateContentRequestsPerMinutePerProjectPerBaseModel",
+          "quota_location": "global"
+        }
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+        "violations": [
+          {
+            "quotaMetric": "aiplatform.googleapis.com/generate_content_requests_per_minute_per_project_per_base_model",
+            "quotaId": "GenerateContentRequestsPerMinutePerProjectPerBaseModel",
+            "quotaDimensions": {
+              "base_model": "qwen3-coder-480b-a35b-instruct-maas",
+              "location": "global"
+            },
+            "quotaValue": "60"
+          }
+        ]
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.RetryInfo",
+        "retryDelay": "41s"
+      }
+    ]
+  }
+}
