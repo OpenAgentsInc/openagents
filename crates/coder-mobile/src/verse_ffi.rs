@@ -153,9 +153,82 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
     })
 }
 
-#[cfg(not(target_os = "ios"))]
+/// On Android, `layer` is an acquired `ANativeWindow` that the caller keeps
+/// until the handle is dropped or detached.
+#[cfg(target_os = "android")]
+fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, String> {
+    let viewport = scene.lifecycle.viewport();
+    let mut handle = VerseHandle {
+        scene,
+        renderer: None,
+        rendered_zone_revision: u64::MAX,
+    };
+    // SAFETY: the caller's contract is the same as `attach_android`'s.
+    unsafe { handle.attach_android(layer, viewport.width(), viewport.height(), viewport.scale()) }?;
+    Ok(handle)
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 fn create_renderer(_layer: *mut c_void, _scene: Scene) -> Result<VerseHandle, String> {
     Err("Metal native surfaces require an iOS host".into())
+}
+
+#[cfg(target_os = "android")]
+impl VerseHandle {
+    /// Draws the retained scene in a new Android window, after
+    /// `detach_android` or at creation. The window is Android's
+    /// `ANativeWindow`.
+    ///
+    /// # Safety
+    /// `window` must be an acquired native window on the calling main thread,
+    /// kept until `detach_android` returns or this handle is dropped.
+    pub unsafe fn attach_android(
+        &mut self,
+        window: *mut c_void,
+        width: u32,
+        height: u32,
+        scale: f32,
+    ) -> Result<(), String> {
+        if self.renderer.is_some() {
+            return Err("The native Verse surface is already attached".into());
+        }
+        let viewport = rust_native::surface::Viewport::new(width, height, scale)
+            .map_err(|error| error.to_string())?;
+        if !viewport.drawable() || width > 4096 || height > 4096 {
+            return Err("Native Verse surface dimensions exceed their bounds".into());
+        }
+        self.scene.activate(false)?;
+        // SAFETY: the caller keeps the window alive past the renderer.
+        let renderer = unsafe {
+            verse::render::Renderer::from_android_window(
+                window,
+                width,
+                height,
+                &self.scene.world.world.mesh,
+                &self.scene.atlas,
+                verse::render::RenderOptions {
+                    sample_count: 1,
+                    max_extent: 4096,
+                    hdr: false,
+                },
+            )
+        }?;
+        self.scene
+            .lifecycle
+            .resize(viewport)
+            .map_err(|error| error.to_string())?;
+        self.scene.action(Request::ResetMotion)?;
+        self.renderer = Some(renderer);
+        // The next frame applies the world's mesh and atmosphere.
+        self.rendered_zone_revision = u64::MAX;
+        Ok(())
+    }
+
+    /// Suspends the scene and drops the renderer, so the caller can release
+    /// the window Android is taking away. The scene and its pose remain.
+    pub fn detach_android(&mut self) -> Result<(), String> {
+        self.detach_renderer()
+    }
 }
 
 /// # Safety

@@ -11,6 +11,8 @@
 //! tailnet through Tailscale's control server. **Verse** mounts Verse's bare
 //! world, the plaza grid with Coder's player controls, on a native Metal layer.
 
+#[cfg(any(target_os = "android", test))]
+mod android;
 mod app;
 mod chats;
 mod coder_tab;
