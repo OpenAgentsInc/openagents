@@ -860,26 +860,43 @@ fn coder_loop_events_project_as_replies_commands_and_endings() {
         )
     );
 
-    // A run that worked, built from microcoder's structs.
+    // A run that worked, built from microcoder's structs. A working step's
+    // rationale is the loop's own note.
     assert_eq!(
         view(&event(generated(serde_json::json!({"Ok": {
             "rationale": "Read the README heading.", "commands": ["head -1 README.md"],
-            "view": [], "freeze_tests": false, "expand": [], "finished": false
+            "view": [], "freeze_tests": false, "expand": [], "finished": false, "reply": ""
         }})))),
         (
-            "message".into(),
-            s("assistant"),
+            "reasoning".into(),
+            None,
             None,
             "Read the README heading.".into(),
             false
         )
     );
+    // The finishing step's reply is the message, with no status marker.
+    assert_eq!(
+        view(&event(generated(serde_json::json!({"Ok": {
+            "rationale": "The heading is Synthetic.", "commands": [], "finished": true,
+            "reply": "The README's heading is **Synthetic**."
+        }})))),
+        (
+            "message".into(),
+            s("assistant"),
+            None,
+            "The README's heading is **Synthetic**.".into(),
+            false
+        )
+    );
+    // A finishing step recorded before replies existed shows its rationale,
+    // still without a marker.
     assert_eq!(
         view(&event(generated(serde_json::json!({"Ok": {
             "rationale": "The heading is Synthetic.", "commands": [], "finished": true
         }}))))
         .3,
-        "The heading is Synthetic.\nFinished."
+        "The heading is Synthetic."
     );
     let ran = |exit: serde_json::Value, timed_out: bool| {
         view(&event(
@@ -931,6 +948,14 @@ fn coder_loop_events_project_as_replies_commands_and_endings() {
     assert_eq!(
         ended(serde_json::json!({"reason": "finished"}), 2),
         "Coder finished in 2 steps."
+    );
+    // Finishing is a status record, not a message in the conversation.
+    assert_eq!(
+        view(&event(serde_json::json!({"event": "ended", "outcome": {
+            "ending": {"reason": "finished"}, "steps": 1, "seconds": 9.0
+        }})))
+        .0,
+        "task_complete"
     );
     assert_eq!(
         ended(serde_json::json!({"reason": "finished"}), 1),
@@ -1057,4 +1082,35 @@ fn a_claude_session_the_engine_started_is_not_a_chat() {
         .collect();
     listed.sort();
     assert_eq!(listed, ["print", "typed"]);
+}
+
+/// The owner asked "who are you" and the chat showed the loop's rationale
+/// and `Finished.` instead of an answer. The reply is the only message the
+/// finishing step shows.
+#[test]
+fn asked_who_it_is_the_chat_shows_the_answer_not_the_narration() {
+    let rationale = "This is a question about my identity, so no commands are needed; \
+                     I'm answering it directly and marking the task complete.";
+    let answer = "I'm Coder, the OpenAgents coding agent, running on your computer.";
+    let line = serde_json::json!({"record": "step", "step": {
+        "at": 1_790_570_162_027u64, "source": "System",
+        "message": "Microcoder loop observation.",
+        "extensions": {"microcoder": {"seconds": 3.1, "event": {
+            "event": "generated", "step": 1, "prompt_chars": 2048, "generated": {
+                "action": {"Ok": {
+                    "rationale": rationale, "commands": [], "view": [],
+                    "freeze_tests": false, "expand": [], "finished": true, "reply": answer
+                }},
+                "model": "gpt-6-luna", "prompt_tokens": 900, "completion_tokens": 60,
+                "usd": 0.001, "known_usd": 0.001, "cost_unknown": null, "usd_upper": 0.001,
+                "cost_basis": "list_price", "milliseconds": 2400
+            }
+        }}}
+    }});
+    let readable = readable_record(line.to_string().as_bytes()).unwrap();
+    assert_eq!(readable.kind, "message");
+    assert_eq!(readable.role.as_deref(), Some("assistant"));
+    assert_eq!(readable.text, answer);
+    assert!(!readable.text.contains("Finished."));
+    assert!(!readable.text.contains("marking the task complete"));
 }

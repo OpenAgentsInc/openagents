@@ -337,7 +337,11 @@ fn atif_step(step: &Value, text_limit: usize) -> Option<Readable> {
 /// `(kind, role, tool_name, text)`:
 ///
 /// - `generated` with an `Ok` action: an `assistant` message with the
-///   action's rationale, then a `Finished.` line when the model finished.
+///   action's `reply`, the text the engine addresses to the user. Without a
+///   reply, a finishing step (recorded before replies existed) shows its
+///   rationale as the message, and a working step's rationale is
+///   `reasoning`, the loop's own note, which conversation readers hide. No
+///   status marker is appended.
 /// - `generated` with an `Err`: a `system` message, `The model call failed: `
 ///   and the error's first line, at most 300 bytes.
 /// - `ran`: a `shell` tool call whose text is the command, then `exit N`,
@@ -345,8 +349,9 @@ fn atif_step(step: &Value, text_limit: usize) -> Option<Readable> {
 ///   a blank line and the command's output.
 /// - `tested`: a `tests` tool call with one `COMMAND: exit N` line per
 ///   acceptance test, naming each command by its first line.
-/// - `ended`: a `system` message, `Coder finished in N steps.` or
-///   `Coder stopped: ` and the reason.
+/// - `ended`: a `system` record, `Coder finished in N steps.` as a
+///   `task_complete` status record, or a `Coder stopped: ` message with the
+///   reason.
 ///
 /// Returns None for every other event, which the caller projects as an
 /// `adapter` record.
@@ -372,18 +377,27 @@ fn microcoder(
         "generated" => {
             let action = event.get("generated")?.get("action")?;
             if let Some(next) = action.get("Ok") {
-                let mut text = next
-                    .get("rationale")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned();
-                if next.get("finished").and_then(Value::as_bool) == Some(true) {
-                    if !text.is_empty() {
-                        text.push('\n');
+                let text = |name: &str| {
+                    next.get(name)
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|text| !text.is_empty())
+                        .map(str::to_owned)
+                };
+                let finished = next.get("finished").and_then(Value::as_bool) == Some(true);
+                match (text("reply"), text("rationale")) {
+                    // The engine's reply to the user is the message.
+                    (Some(reply), _) => Some(("message", Some("assistant"), None, reply)),
+                    // A finishing step recorded before replies existed has
+                    // only its rationale to show.
+                    (None, Some(rationale)) if finished => {
+                        Some(("message", Some("assistant"), None, rationale))
                     }
-                    text.push_str("Finished.");
+                    // A working step's rationale is the loop's own note.
+                    (None, rationale) => {
+                        Some(("reasoning", None, None, rationale.unwrap_or_default()))
+                    }
                 }
-                Some(("message", Some("assistant"), None, text))
             } else {
                 let error = action.get("Err")?.as_str()?;
                 Some((
@@ -436,11 +450,16 @@ fn microcoder(
                 .and_then(Value::as_str)
                 .or_else(|| ending.as_str())?;
             let text = match reason {
-                "finished" => match outcome.get("steps").and_then(Value::as_u64) {
-                    Some(1) => "Coder finished in 1 step.".to_owned(),
-                    Some(steps) => format!("Coder finished in {steps} steps."),
-                    None => "Coder finished.".to_owned(),
-                },
+                // A status marker, not a message: readers that show only
+                // the conversation leave `task_complete` records out.
+                "finished" => {
+                    let text = match outcome.get("steps").and_then(Value::as_u64) {
+                        Some(1) => "Coder finished in 1 step.".to_owned(),
+                        Some(steps) => format!("Coder finished in {steps} steps."),
+                        None => "Coder finished.".to_owned(),
+                    };
+                    return Some(("task_complete", Some("system"), None, text));
+                }
                 "bad_replies" => format!(
                     "Coder stopped: {}",
                     first_line(

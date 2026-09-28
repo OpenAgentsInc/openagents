@@ -166,8 +166,11 @@ compose-sidecar --check-grading`.
    prompt as evidence.
 3. **Generate.** One Codex Responses request declares one strict native
    tool, `next_action`, whose parameters are `rationale`, `commands`,
-   `view`, `expand`, `freeze_tests`, and `finished`; the model's call to it
-   is the action. The cost shown is Luna's list price for the reported
+   `view`, `expand`, `freeze_tests`, `finished`, and `reply`; the model's
+   call to it is the action. `reply` is the only text a chat shows as
+   Coder's answer: on the finishing step, the answer to the user's message
+   or what was done and found. The `rationale` is the loop's own note; a
+   chat hides it and never appends a status marker. The cost shown is Luna's list price for the reported
    tokens, since the subscription doesn't bill per call; a call whose cost
    isn't known shows "cost unknown", not $0.
 4. **Run.** Each command is a bash script fed to the container's shell,

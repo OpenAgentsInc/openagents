@@ -304,13 +304,15 @@ fn last_reply(path: &Path) -> Option<String> {
         let step = &record["step"];
         let message = step["message"].as_str().unwrap_or_default();
         let agent = matches!(step["source"].as_str(), Some("Agent" | "agent"));
+        let action = &step["extensions"]["microcoder"]["event"]["generated"]["action"]["Ok"];
+        let said = |name: &str| action[name].as_str().filter(|text| !text.trim().is_empty());
         if agent && !message.trim().is_empty() {
             reply = Some(message.to_owned());
-        } else if let Some(rationale) =
-            step["extensions"]["microcoder"]["event"]["generated"]["action"]["Ok"]["rationale"]
-                .as_str()
-                .filter(|text| !text.trim().is_empty())
-        {
+        } else if let Some(text) = said("reply") {
+            // The engine's reply to the user; its rationale is the loop's
+            // own note, carried only from a trace recorded before replies.
+            reply = Some(text.to_owned());
+        } else if let Some(rationale) = said("rationale") {
             reply = Some(rationale.to_owned());
         }
     }

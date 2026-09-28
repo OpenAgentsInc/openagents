@@ -277,6 +277,13 @@ pub struct NextAction {
     #[serde(default)]
     pub expand: Vec<String>,
     pub finished: bool,
+    /// What the user reads as Coder's reply: on the finishing step, the
+    /// answer to their message or an account of what was done and found,
+    /// addressed to them. `rationale` is the loop's own note and is never
+    /// shown as the reply. Empty on other steps; absent in replies recorded
+    /// before the field existed.
+    #[serde(default)]
+    pub reply: String,
 }
 
 /// The JSON schema of [`NextAction`].
@@ -287,7 +294,7 @@ pub fn next_action_schema() -> Value {
         "properties": {
             "rationale": {
                 "type": "string",
-                "description": "Why these commands, in one or two sentences."
+                "description": "Why these commands, in one or two sentences: a note for the loop that the user never sees."
             },
             "commands": {
                 "type": "array",
@@ -311,9 +318,13 @@ pub fn next_action_schema() -> Value {
             "finished": {
                 "type": "boolean",
                 "description": "True only when the task is complete and nothing is left to run. With acceptance tests on, the host accepts it only when every frozen test passes."
+            },
+            "reply": {
+                "type": "string",
+                "description": "Your reply to the user, the only text they see. When finished is true: the answer to their message, or what you did and found, written to them directly in plain prose or Markdown. Never describe your process, the task, or being finished. Empty on every other step."
             }
         },
-        "required": ["rationale", "commands", "view", "freeze_tests", "expand", "finished"],
+        "required": ["rationale", "commands", "view", "freeze_tests", "expand", "finished", "reply"],
         "additionalProperties": false
     })
 }
@@ -811,9 +822,16 @@ mod tests {
                 "view",
                 "freeze_tests",
                 "expand",
-                "finished"
+                "finished",
+                "reply"
             ])
         );
+        // An action recorded before replies existed still parses.
+        let old = parse_action(
+            r#"{"rationale":"r","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true}"#,
+        )
+        .unwrap();
+        assert!(old.finished && old.reply.is_empty());
         assert_eq!(schema["additionalProperties"], false);
     }
 }

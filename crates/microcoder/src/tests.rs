@@ -242,6 +242,7 @@ fn act(rationale: &str, commands: &[&str], finished: bool) -> NextAction {
         freeze_tests: false,
         expand: Vec::new(),
         finished,
+        reply: String::new(),
     }
 }
 

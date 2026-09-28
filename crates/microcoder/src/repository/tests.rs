@@ -125,6 +125,7 @@ fn generator(command: &str) -> Generator {
                 freeze_tests: false,
                 expand: Vec::new(),
                 finished: false,
+                reply: String::new(),
             },
             NextAction {
                 rationale: "The requested file exists.".into(),
@@ -133,6 +134,7 @@ fn generator(command: &str) -> Generator {
                 freeze_tests: false,
                 expand: Vec::new(),
                 finished: true,
+                reply: String::new(),
             },
         ])),
         model: "fixture-model",
@@ -441,6 +443,7 @@ impl Generate for MissingUsageGenerator {
         Generated {
             action: Ok(NextAction {
                 finished: true,
+                reply: String::new(),
                 rationale: "Synthetic completion.".into(),
                 commands: Vec::new(),
                 view: Vec::new(),
@@ -524,6 +527,7 @@ impl Generate for ContextGenerator {
                 freeze_tests: false,
                 expand: Vec::new(),
                 finished: true,
+                reply: String::new(),
             }),
             model: "fixture-model".into(),
             prompt_tokens: 0,
@@ -814,6 +818,7 @@ fn write(command: &str) -> NextAction {
         freeze_tests: false,
         expand: Vec::new(),
         finished: false,
+        reply: String::new(),
     }
 }
 
@@ -825,6 +830,7 @@ fn done() -> NextAction {
         freeze_tests: false,
         expand: Vec::new(),
         finished: true,
+        reply: String::new(),
     }
 }
 
@@ -1126,4 +1132,55 @@ async fn an_emulated_steer_stops_the_running_turn_and_continues_with_the_message
     assert_eq!(task.status, task::Status::Queued);
     assert_eq!(task.effective_prompt(), "Write steered.txt instead.");
     assert_eq!(task.earlier.len(), 1);
+}
+
+/// The owner's report: asked "who are you", the chat showed the loop's
+/// rationale and a `Finished.` marker instead of an answer. The engine's
+/// reply is what a later turn carries as Coder's answer; the rationale is
+/// not.
+#[tokio::test]
+async fn a_finished_reply_is_the_answer_and_the_rationale_is_not() {
+    let (_root, store, grant) = fixture();
+    let rationale = "This is a question about my identity, so no commands are needed; \
+                     I'm answering it directly and marking the task complete.";
+    let answer = "I'm Coder, the OpenAgents coding agent, running on this computer.";
+    let generator = Generator {
+        actions: RefCell::new(VecDeque::from([NextAction {
+            rationale: rationale.into(),
+            commands: Vec::new(),
+            view: Vec::new(),
+            freeze_tests: false,
+            expand: Vec::new(),
+            finished: true,
+            reply: answer.into(),
+        }])),
+        model: "fixture-model",
+        calls: Cell::new(0),
+    };
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let ended = run(host, &generator, &JudgeFixture).await.unwrap();
+    assert_eq!(ended.execution, task::Execution::Finished);
+    let follow_up = Command {
+        schema: task::COMMAND_SCHEMA.into(),
+        command_id: "follow-up-who".into(),
+        task_id: "fixture".into(),
+        expected_revision: Some(ended.revision),
+        action: Action::Continue {
+            prompt: "And what can you do?".into(),
+        },
+    };
+    let receipt = Store::open(&store)
+        .unwrap()
+        .apply(&serde_json::to_vec(&follow_up).unwrap())
+        .unwrap();
+    let mut next: task::owner::Grant = serde_json::from_slice(&grant).unwrap();
+    next.expected_revision = receipt.revision;
+    let host = Host::admit(&store, &serde_json::to_vec(&next).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(host.earlier()[0].reply.as_deref(), Some(answer));
+    let prompt = host.engine_prompt();
+    assert!(prompt.contains(answer));
+    assert!(!prompt.contains(rationale) && !prompt.contains("Finished."));
+    host.finish("fixture_complete", false, json!({})).unwrap();
 }
