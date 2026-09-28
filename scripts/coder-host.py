@@ -42,10 +42,13 @@ def ordinary(path, mode):
     return os.fdopen(fd, mode)
 
 
-def read_json(path):
+TASK_STORE_BYTES = 16 * 1024 * 1024
+
+
+def read_json(path, limit=1024 * 1024):
     with ordinary(path, "rb") as f:
-        raw = f.read(1024 * 1024 + 1)
-    if len(raw) > 1024 * 1024:
+        raw = f.read(limit + 1)
+    if len(raw) > limit:
         refuse("host metadata exceeds its byte limit")
     def pairs(items):
         d = {}
@@ -205,7 +208,10 @@ class Installation:
             refuse("task directory is not ordinary")
         state = tasks / "tasks.json"
         if state.exists() or state.is_symlink():
-            schema = read_json(state).get("schema")
+            # The task store holds each run's grant and grows past the other
+            # metadata's bound; `coder` reads up to 16 MiB of it
+            # (MAX_STORE_BYTES in crates/coder/src/task.rs).
+            schema = read_json(state, TASK_STORE_BYTES).get("schema")
             if schema not in manifest["read_state_schemas"]:
                 refuse("retained task state is incompatible with the selected binary")
 
