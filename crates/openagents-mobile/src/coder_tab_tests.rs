@@ -233,3 +233,64 @@ fn each_chat_shows_the_time_of_its_last_message() {
         "{labels:?}"
     );
 }
+
+/// A computer that is still connecting, as right after launch, is not the
+/// same as none added: the chats list stays and says it is connecting.
+#[test]
+fn a_connecting_computer_is_not_a_missing_one() {
+    use crate::coder_tab::{Availability, availability};
+    use coder_computers::synthetic::key;
+    let fixture = Fixture::hosts();
+    let full = fixture.computers.snapshot().clone();
+    let only = |tags: &[u8]| {
+        let mut snapshot = full.clone();
+        let keys: Vec<String> = tags.iter().map(|tag| key(*tag)).collect();
+        snapshot.hosts.retain(|host| keys.contains(&host.key));
+        snapshot
+    };
+    let label = |availability: Availability<'_>| match availability {
+        Availability::NotConfigured => "not configured".to_owned(),
+        Availability::Connecting(host) => format!("connecting {}", host.label),
+        Availability::Offline(host) => format!("offline {}", host.label),
+        Availability::Ready(host) => format!("ready {}", host.label),
+    };
+    assert_eq!(label(availability(&full, None)), "ready Studio Mac");
+    // Build server is connecting; Home NAS retries after a failure.
+    assert_eq!(
+        label(availability(&only(&[0xa2]), None)),
+        "connecting Build server"
+    );
+    assert_eq!(
+        label(availability(&only(&[0xa3]), None)),
+        "connecting Home NAS"
+    );
+    // Switched off, or out of date: added, but offline.
+    assert_eq!(
+        label(availability(&only(&[0xa7]), None)),
+        "offline Travel mini"
+    );
+    assert_eq!(
+        label(availability(&only(&[0xa4]), None)),
+        "offline Old laptop"
+    );
+    // Not enrolled or revoked: nothing this device may run work on.
+    assert_eq!(
+        label(availability(&only(&[0xa5, 0xa6]), None)),
+        "not configured"
+    );
+    assert_eq!(label(availability(&only(&[]), None)), "not configured");
+}
+
+#[allow(dead_code)]
+fn texts(view: &Value) -> Vec<String> {
+    nodes(view)
+        .into_iter()
+        .filter_map(|node| {
+            let props = &node["element"]["props"];
+            props["value"]
+                .as_str()
+                .or(props["label"].as_str())
+                .map(str::to_owned)
+        })
+        .collect()
+}

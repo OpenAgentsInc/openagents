@@ -21,7 +21,10 @@
 use crate::chats::Chats;
 use crate::conversation::Conversation;
 use crate::outbox::{Attempt, Draft, Outbox};
-use coder_computers::{Computers, HostRecord, Snapshot};
+use coder_computers::{
+    Action, Capabilities, Computers, Denial, HostRecord, HostStatus, OfflineCause, Platform,
+    Snapshot, authority,
+};
 use coder_host::CommandAction;
 use nostr::activity_summary::{ActivitySummary, Phase, SubjectKind};
 use rust_native::style::{Color, Space, Style, TextWeight};
@@ -430,25 +433,54 @@ impl CoderTab {
         )
     }
 
+    /// Whether a new chat can start now on the chosen computer.
+    fn availability<'a>(&self, computers: Option<&'a Computers>) -> Availability<'a> {
+        computers.map_or(Availability::NotConfigured, |computers| {
+            availability(computers.snapshot(), self.selected.as_deref())
+        })
+    }
+
     fn home(&self, computers: Option<&Computers>, chats: &Chats) -> Node<Intent> {
         let mut children = vec![heading("coder-title", "Coder")];
-        let chosen = computers.and_then(|c| self.chosen(c));
-        let Some((computers, host)) = computers.zip(chosen) else {
+        let availability = self.availability(computers);
+        let Some(computers) =
+            computers.filter(|_| !matches!(availability, Availability::NotConfigured))
+        else {
             children.push(body(
                 "coder-empty",
                 "Add a computer under Account > Computers, then chat with Coder on it.",
             ));
             return page(children);
         };
-        let place = match Self::workspace(host) {
-            Some(workspace) => format!("On {} · {workspace}", host.label),
-            None => format!("On {}", host.label),
+        let host = match availability {
+            Availability::Ready(host) => {
+                let place = match Self::workspace(host) {
+                    Some(workspace) => format!("On {} · {workspace}", host.label),
+                    None => format!("On {}", host.label),
+                };
+                let mut place_row = vec![status("coder-computer", &place)];
+                if Self::hosts(computers).len() > 1 {
+                    place_row.push(button("coder-next", "Change", Intent::NextComputer));
+                }
+                children.push(row("coder-place", place_row));
+                Some(host)
+            }
+            Availability::Connecting(host) => {
+                children.push(status(
+                    "coder-connecting",
+                    &format!("Connecting to {}…", host.label),
+                ));
+                None
+            }
+            Availability::Offline(host) => {
+                children.push(status(
+                    "coder-offline",
+                    &format!("{} is offline.", host.label),
+                ));
+                None
+            }
+            Availability::NotConfigured => None,
         };
-        let mut place_row = vec![status("coder-computer", &place)];
-        if Self::hosts(computers).len() > 1 {
-            place_row.push(button("coder-next", "Change", Intent::NextComputer));
-        }
-        children.push(row("coder-place", place_row));
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
@@ -468,7 +500,9 @@ impl CoderTab {
                 },
             ));
         }
-        children.push(self.composer(format!("Message Coder on {}", host.label), true, false));
+        if let Some(host) = host {
+            children.push(self.composer(format!("Message Coder on {}", host.label), true, false));
+        }
         page(children)
     }
 
@@ -589,6 +623,65 @@ impl CoderTab {
         let allowed = computers.is_some_and(|c| c.can_operate(&open.host));
         children.push(self.composer(placeholder, allowed, false));
         page(children)
+    }
+}
+
+/// Whether Coder can take a new chat. A computer that is still connecting
+/// is not the same as none added: the first shows the chats while it
+/// connects, and only the second asks for a computer.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Availability<'a> {
+    /// No computer this device may run work on.
+    NotConfigured,
+    /// A computer this device may run work on is connecting, as after launch.
+    Connecting(&'a HostRecord),
+    /// A computer this device may run work on is offline or out of date.
+    Offline(&'a HostRecord),
+    /// A computer can take a chat now.
+    Ready(&'a HostRecord),
+}
+
+/// Whether a new chat can start now, from the typed authority check and host
+/// status, never from the words on screen. A ready computer is `selected`
+/// when that one is ready, else the first.
+pub(crate) fn availability<'a>(snapshot: &'a Snapshot, selected: Option<&str>) -> Availability<'a> {
+    let caps = Capabilities {
+        platform: Platform::Phone,
+        camera: false,
+    };
+    let operate =
+        |host: &HostRecord| authority::check(snapshot, caps, Action::Operate { host: &host.key });
+    let ready: Vec<&HostRecord> = snapshot
+        .hosts
+        .iter()
+        .filter(|host| operate(host).is_ok())
+        .collect();
+    if let Some(host) = ready
+        .iter()
+        .find(|host| Some(host.key.as_str()) == selected)
+        .or_else(|| ready.first())
+    {
+        return Availability::Ready(host);
+    }
+    // A computer this device may run work on once it is reachable.
+    let waiting = |denial: Denial| {
+        snapshot
+            .hosts
+            .iter()
+            .find(|host| operate(host).as_ref() == Err(&denial))
+    };
+    if let Some(host) = waiting(Denial::Offline) {
+        return match HostStatus::derive(host, snapshot.now) {
+            HostStatus::Connecting { .. }
+            | HostStatus::Offline {
+                cause: OfflineCause::NotConnected | OfflineCause::Retrying { .. },
+            } => Availability::Connecting(host),
+            _ => Availability::Offline(host),
+        };
+    }
+    match waiting(Denial::OutOfDate) {
+        Some(host) => Availability::Offline(host),
+        None => Availability::NotConfigured,
     }
 }
 
