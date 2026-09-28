@@ -18,7 +18,8 @@ doors, computer, Gym, or companion. See
 
 ### The ball
 
-The bare world has one object: a 2.4 m ball resting 7 m ahead of where you
+The bare world has three physical objects: a ball, a stack of cubes, and an
+arc of dominoes. The ball is a 2.4 m sphere resting 7 m ahead of where you
 start, including a restored position (or behind you when you face the
 world's edge). Walk into it to push it. It slides, spins up, rolls, and comes to rest on its
 own. It lives in [`verse::ball`](../../crates/verse/src/ball.rs) on the shared
@@ -53,6 +54,35 @@ paint) in alternating octants, so its rotation shows. A disc of stage floor
 (`Material::Stage`) under the ball catches the key as a soft pool of light
 and the ball's shadow, and fades into the field at its rim; the grid's lines
 stay on top. Coder's plaza has no key light and draws exactly as before.
+
+### The stack and the dominoes
+
+Beyond the ball, on either side of the line from the spawn to it, stand a
+stack of cubes and an arc of dominoes
+([`verse::blocks`](../../crates/verse/src/blocks.rs)). They are dynamic boxes
+in the ball's physics world, so the crate's oriented box contacts, friction,
+restitution, and island sleep apply between the blocks, the ground, the
+ball, and the player's capsule, at the ball's fixed step:
+
+- The stack is 2 × 2 × 4 lacquered cubes, 0.8 m on a side and 5 kg each
+  (hollow boxes), in a white and charcoal checker, 18 m ahead of the spawn
+  and 5 m to the left. It is placed exactly at rest, so it sleeps at once and
+  stands until the player walks into it or the ball rolls into it; then it
+  topples, tumbles, and settles as rubble that sleeps again.
+- Ten white dominoes, 1.5 m tall, 0.8 m wide, 0.22 m thick, 8 kg, with a
+  charcoal bar across each face, stand 0.7 m apart along a quarter arc of
+  4 m radius, starting 16 m ahead and 2.5 m to the right and curving
+  away. Walk into the first and the row falls in turn.
+- Both share the ball's frame: a restored spawn lays them out beyond the
+  ball in the direction it was placed, shifted inside the world's walls. A
+  block that leaves the world returns to where it stood.
+- Each gets its own stage pool, and the studio key's shadow region widens
+  to cover the ball and both demos while the ball is near them. The player
+  is kinematic, so walking on through fallen blocks shoves them aside.
+- Asleep, the blocks cost nothing. A tumbling stack costs about 12 µs per
+  step in a release build and 0.2 ms in a debug build
+  (`cargo test -p verse --lib blocks -- --nocapture` prints it). Like the
+  ball, the blocks are local to each device.
 
 To render it offline:
 

@@ -65,12 +65,17 @@ const PLAYER_HEIGHT: f64 = 1.8;
 const PLAYER_MAX_SPEED: f64 = 20.0;
 /// Radius of the floor's pool of light around the ball, m.
 const POOL: f32 = 6.0;
+/// The largest half extent of one shadow region over the ball and the
+/// blocks, m; beyond it the shadow follows the ball alone.
+const SHARED_SHADOW: f32 = 24.0;
 
-/// The bare world's ball and the physics world it rolls in.
+/// The bare world's ball and the physics world it rolls in, which also
+/// holds the stack of cubes and the dominoes ([`crate::blocks`]).
 pub struct Ball {
     world: World,
     clock: FixedStep,
     ball: BodyId,
+    blocks: crate::blocks::Blocks,
     player: BodyId,
     ground: BodyId,
     /// Where the ball rests when reset.
@@ -138,6 +143,10 @@ impl Ball {
                 restitution: RESTITUTION,
             }),
         );
+        let blocks = crate::blocks::Blocks::new(
+            &mut world,
+            &crate::blocks::Layout::new(crate::world::SPAWN.as_dvec3(), DVec3::Z),
+        );
         let spawn = capsule_center(crate::world::SPAWN);
         let player = world.add(Body::new(1.0, DVec3::ONE, spawn).with_kind(BodyKind::Kinematic));
         let r = f64::from(PLAYER_RADIUS);
@@ -164,6 +173,7 @@ impl Ball {
             world,
             clock: FixedStep::new(DT, MAX_STEPS),
             ball,
+            blocks,
             player,
             ground,
             start: START,
@@ -176,6 +186,22 @@ impl Ball {
     #[must_use]
     pub fn body(&self) -> &Body {
         &self.world[self.ball]
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ball_id(&self) -> BodyId {
+        self.ball
+    }
+
+    #[cfg(test)]
+    pub(crate) fn world_mut(&mut self) -> &mut World {
+        &mut self.world
+    }
+
+    /// The stack of cubes and the dominoes.
+    #[must_use]
+    pub fn blocks(&self) -> &crate::blocks::Blocks {
+        &self.blocks
     }
 
     /// The physics world, for inspection.
@@ -231,6 +257,7 @@ impl Ball {
         if !body.pos.is_finite() || body.pos.y < -RADIUS {
             self.reset();
         }
+        self.blocks.recover(&mut self.world);
         self.keep_out(player);
         self.step_time = started.elapsed();
     }
@@ -257,6 +284,13 @@ impl Ball {
         }
         self.start = start;
         self.place(start);
+        // The blocks stand beyond the ball, in the direction it was placed.
+        let layout = crate::blocks::Layout::new(feet_at, start - feet_at);
+        let layout = crate::blocks::Layout {
+            origin: layout.origin + inside(&layout),
+            ..layout
+        };
+        self.blocks.place(&mut self.world, &layout);
         let player = capsule_center(feet);
         let body = &mut self.world[self.player];
         body.pos = player;
@@ -349,9 +383,25 @@ impl Ball {
                 .iter()
                 .map(|v| place(v, &transform, &Mat4::from_quat(orientation))),
         );
-        pool(&mut mesh.lit, Vec3::new(pos.x, 0.0, pos.z));
+        pool(&mut mesh.lit, Vec3::new(pos.x, 0.0, pos.z), POOL, -0.004);
+        self.blocks
+            .draw(&self.world, self.clock.alpha(), &mut mesh.lit);
         if let Some(neon) = &mut mesh.neon {
-            neon.key = Some(key(Vec3::new(pos.x, RADIUS as f32 * 0.5, pos.z)));
+            let mut light = key(Vec3::new(pos.x, RADIUS as f32 * 0.5, pos.z));
+            // One shadow region over the ball and the blocks while they
+            // share the stage; a ball rolled far away keeps its own.
+            let (mut low, mut high) = (pos - Vec3::splat(POOL), pos + Vec3::splat(POOL));
+            for (center, radius) in [self.blocks.stack_pool(), self.blocks.domino_pool()] {
+                low = low.min(center - Vec3::splat(radius));
+                high = high.max(center + Vec3::splat(radius));
+            }
+            let half = ((high - low) * Vec3::new(1.0, 0.0, 1.0)).max_element() / 2.0 + 1.0;
+            if half <= SHARED_SHADOW {
+                light.shadow_center =
+                    Vec3::new((low.x + high.x) / 2.0, 1.0, (low.z + high.z) / 2.0);
+                light.shadow_half = half;
+            }
+            neon.key = Some(light);
         }
     }
 }
@@ -373,6 +423,29 @@ pub fn key(center: Vec3) -> Key {
         shadow_center: center,
         shadow_half: POOL + 1.0,
     }
+}
+
+/// The shift that keeps the blocks laid out in `layout` inside the world's
+/// walls.
+fn inside(layout: &crate::blocks::Layout) -> DVec3 {
+    let limit = f64::from(crate::world::HALF) - 4.0;
+    let mut low = DVec3::splat(f64::MAX);
+    let mut high = DVec3::splat(f64::MIN);
+    for (side, ahead) in [(-8.0, 12.0), (-8.0, 24.0), (12.0, 12.0), (12.0, 24.0)] {
+        let p = layout.at(side, ahead, 0.0);
+        low = low.min(p);
+        high = high.max(p);
+    }
+    let shift = |low: f64, high: f64| {
+        if low < -limit {
+            -limit - low
+        } else if high > limit {
+            limit - high
+        } else {
+            0.0
+        }
+    };
+    DVec3::new(shift(low.x, high.x), 0.0, shift(low.z, high.z))
 }
 
 /// The capsule's center for a player whose feet are at `feet`.
@@ -444,17 +517,17 @@ fn sphere() -> &'static [LitVertex] {
 /// its rim, so the key light pools around the ball and fades into the
 /// field, and the ball's shadow has a surface to fall on. It sits just below
 /// the grid, whose lines stay on top.
-fn pool(out: &mut Vec<LitVertex>, center: Vec3) {
+pub(crate) fn pool(out: &mut Vec<LitVertex>, center: Vec3, radius: f32, depth: f32) {
     const RINGS: usize = 14;
     const SEGMENTS: usize = 64;
     let (color, metallic, roughness) = Surface::Stage.parameters();
     let code = Surface::Stage.code();
     let at = |ring: usize, segment: usize| {
-        let r = POOL * ring as f32 / RINGS as f32;
+        let r = radius * ring as f32 / RINGS as f32;
         let angle = std::f32::consts::TAU * segment as f32 / SEGMENTS as f32;
-        let fade = (1.0 - (r / POOL).powi(2)).max(0.0).powi(2);
+        let fade = (1.0 - (r / radius).powi(2)).max(0.0).powi(2);
         LitVertex {
-            pos: (center + Vec3::new(r * angle.cos(), -0.004, r * angle.sin())).to_array(),
+            pos: (center + Vec3::new(r * angle.cos(), depth, r * angle.sin())).to_array(),
             normal: [0.0, 1.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
             local: [r * angle.cos(), 0.0, r * angle.sin()],
@@ -660,12 +733,17 @@ mod tests {
             assert!((d - RADIUS as f32).abs() < 1e-3);
         }
         // The floor pool lies just under the grid and fades to nothing.
-        let pool = &mesh.lit[ball_vertices..];
+        let pool = &mesh.lit[ball_vertices..ball_vertices + 14 * 64 * 6];
         assert!(pool.iter().all(|v| v.pos[1] < 0.0 && v.pos[1] > -0.01));
         assert!(pool.iter().any(|v| v.params[3] == 0.0));
         assert!(pool.iter().all(|v| v.params[2] == Surface::Stage.code()));
         let key = mesh.neon.and_then(|n| n.key).expect("a studio key");
         assert!(key.dir.y > 0.5 && key.illuminance > 0.0);
-        assert!((key.shadow_center.x - START.x as f32).abs() < 1e-3);
+        // The shadow region covers the ball and the blocks beside it.
+        let reach = (key.shadow_center - START.as_vec3()) * Vec3::new(1.0, 0.0, 1.0);
+        assert!(reach.abs().max_element() + RADIUS as f32 <= key.shadow_half);
+        let (stack, stack_r) = ball.blocks().stack_pool();
+        let stack_reach = (key.shadow_center - stack) * Vec3::new(1.0, 0.0, 1.0);
+        assert!(stack_reach.abs().max_element() + stack_r <= key.shadow_half + 1e-3);
     }
 }

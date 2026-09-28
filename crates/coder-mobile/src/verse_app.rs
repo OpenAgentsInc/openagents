@@ -240,6 +240,9 @@ struct BallPacket {
     speed: f32,
     asleep: bool,
     step_ms: f32,
+    /// Bodies awake in the ball's world, which also holds the stack of
+    /// cubes and the dominoes.
+    awake: usize,
 }
 
 #[derive(Serialize)]
@@ -1556,6 +1559,7 @@ impl Scene {
                 speed: body.vel.length() as f32,
                 asleep: body.sleeping,
                 step_ms: ball.step_time.as_secs_f32() * 1_000.0,
+                awake: ball.world().stats.awake,
             }
         });
         packet.connection = connection(

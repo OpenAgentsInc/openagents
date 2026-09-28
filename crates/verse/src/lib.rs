@@ -12,6 +12,7 @@ pub mod agent;
 pub mod app;
 pub mod avatar;
 pub mod ball;
+pub mod blocks;
 #[cfg(feature = "model-host")]
 pub mod brain;
 pub mod camera;
