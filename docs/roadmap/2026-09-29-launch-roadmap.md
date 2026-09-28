@@ -134,7 +134,7 @@ terminal, motion look, and Vulkan on a physical device haven't been checked.
 | [M2. Playtest feedback in the app](#m2-playtest-feedback-in-the-app) | 2026-10-09 | Planned | [#9882](https://github.com/OpenAgentsInc/openagents/issues/9882), [#9883](https://github.com/OpenAgentsInc/openagents/issues/9883), [#9884](https://github.com/OpenAgentsInc/openagents/issues/9884), [#9887](https://github.com/OpenAgentsInc/openagents/issues/9887) |
 | [M3. Android parity](#m3-android-parity) | 2026-10-12 | In progress | [#9838](https://github.com/OpenAgentsInc/openagents/issues/9838), [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861), [#9876](https://github.com/OpenAgentsInc/openagents/issues/9876), [#9857](https://github.com/OpenAgentsInc/openagents/issues/9857), [#9858](https://github.com/OpenAgentsInc/openagents/issues/9858) |
 | [M4. Wallet: addresses, paying users, deposits, BIP 177](#m4-wallet-addresses-paying-users-deposits-bip-177) | 2026-10-16 | Planned (BIP 177 in progress) | [#9859](https://github.com/OpenAgentsInc/openagents/issues/9859), [#9860](https://github.com/OpenAgentsInc/openagents/issues/9860), [#9862](https://github.com/OpenAgentsInc/openagents/issues/9862), [#9881](https://github.com/OpenAgentsInc/openagents/issues/9881) |
-| [M5. Gym on the web](#m5-gym-on-the-web) | 2026-10-16 | Planned | [#9852](https://github.com/OpenAgentsInc/openagents/issues/9852) |
+| [M5. Gym on the web](#m5-gym-on-the-web) | None | Postponed | [#9852](https://github.com/OpenAgentsInc/openagents/issues/9852) |
 | [M6. Trainer leveling phase 1 and playtest rewards](#m6-trainer-leveling-phase-1-and-playtest-rewards) | 2026-10-26 (end of season 1) | In progress | [#9847](https://github.com/OpenAgentsInc/openagents/issues/9847), [#9885](https://github.com/OpenAgentsInc/openagents/issues/9885), [#9886](https://github.com/OpenAgentsInc/openagents/issues/9886), [#9887](https://github.com/OpenAgentsInc/openagents/issues/9887), epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888) |
 | [M7. Agent spending phase 1](#m7-agent-spending-phase-1) | 2026-10-30 | Planned | [#9863](https://github.com/OpenAgentsInc/openagents/issues/9863) |
 | [M8. x402 receive on mainnet](#m8-x402-receive-on-mainnet) | 2026-10-30 | Planned | [#9832](https://github.com/OpenAgentsInc/openagents/issues/9832) |
@@ -192,9 +192,11 @@ formatter landed in `8d89ddf293`).
 
 ### M5. Gym on the web
 
-A `/gym` page on openagents.com over the same signed leaderboard publication
-the Grid reads ([#9852](https://github.com/OpenAgentsInc/openagents/issues/9852)).
-The Nostr publication itself is done
+Postponed (owner, 2026-09-28): the Gym stays in Verse only for now, and web
+work is on hold. A `/gym` page on openagents.com over the same signed
+leaderboard publication the Grid reads
+([#9852](https://github.com/OpenAgentsInc/openagents/issues/9852)) is built in
+the coder repository but stays undeployed. The Nostr publication itself is done
 ([#9853](https://github.com/OpenAgentsInc/openagents/issues/9853)).
 
 ### M6. Trainer leveling phase 1 and playtest rewards
