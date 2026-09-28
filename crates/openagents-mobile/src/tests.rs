@@ -136,6 +136,21 @@ fn live_control_server_answers() {
     panic!("tailnet read did not finish");
 }
 
+/// Nodes of `kind` in `view`, in document order.
+fn nodes_of<'a>(view: &'a serde_json::Value, kind: &str) -> Vec<&'a serde_json::Value> {
+    let mut out = vec![];
+    let mut pending = vec![&view["root"]];
+    while let Some(node) = pending.pop() {
+        if node["element"]["kind"] == kind {
+            out.push(node);
+        }
+        if let Some(children) = node["element"]["props"]["children"].as_array() {
+            pending.extend(children.iter().rev());
+        }
+    }
+    out
+}
+
 fn key_for(view: &serde_json::Value, label: &str) -> Option<String> {
     let mut pending = vec![&view["root"]];
     while let Some(node) = pending.pop() {
@@ -286,16 +301,13 @@ fn live_chats_from_an_observer() {
         let view = packet.chats.expect("view");
         let text = values(&view);
         if !packet.chats_loading {
-            let messages = text
-                .iter()
-                .filter(|t| *t == "user" || *t == "assistant")
-                .count();
+            let messages = nodes_of(&view, "message").len();
             eprintln!(
-                "opened {chat:?}: {messages} user/assistant messages; tail {:?}",
-                text.last()
+                "opened {chat:?}: {messages} messages; {:?}",
+                &text[..text.len().min(4)]
             );
             assert!(messages > 0, "{text:?}");
-            assert_eq!(packet.chats_follow, Some("chat-end"));
+            assert_eq!(nodes_of(&view, "transcript").len(), 1);
             return;
         }
         assert!(
@@ -395,10 +407,9 @@ fn coder_asks_for_a_computer_before_a_chat() {
     assert!(text.contains(&"Coder".to_string()));
     assert!(
         text.iter()
-            .any(|t| t.starts_with("Add a computer under Computers")),
+            .any(|t| t.starts_with("Add a computer under Account")),
         "{text:?}"
     );
-    assert!(packet.coder_input.is_none());
 }
 
 /// Chats against a real host with tailnet admission, as in
@@ -455,28 +466,20 @@ fn live_chat_list_and_tail() {
     });
     let packet = wait(&mut app, "the newest messages", &|p| !p.chats_loading);
     let reader = packet.chats.unwrap();
-    let text = values(&reader);
-    eprintln!(
-        "opened: {} rows, earlier: {}, text: {:?}",
-        text.len(),
-        key_for(&reader, "Show earlier messages").is_some(),
-        text
-    );
-    assert_eq!(text.last().map(String::as_str), Some("Latest"));
-    if let Some(node) = key_for(&reader, "Show earlier messages") {
-        let before = text.len();
+    let transcript = nodes_of(&reader, "transcript")[0].clone();
+    let before = nodes_of(&reader, "message").len() + nodes_of(&reader, "tool").len();
+    let earlier = !transcript["element"]["props"]["earlier"].is_null();
+    eprintln!("opened: {before} rows, earlier: {earlier}");
+    assert!(before > 0);
+    if earlier {
         app.call(Request::ChatsActivate {
             instance: reader["instance"].as_str().unwrap().into(),
             revision: reader["revision"].as_u64().unwrap(),
-            node,
+            node: transcript["key"].as_str().unwrap().into(),
         });
-        let packet = wait(&mut app, "earlier messages", &|p| {
-            !p.chats_loading && {
-                let v = values(p.chats.as_ref().unwrap());
-                !v.contains(&"Loading earlier messages…".to_string())
-            }
-        });
-        let after = values(&packet.chats.unwrap()).len();
+        let packet = wait(&mut app, "earlier messages", &|p| !p.chats_loading);
+        let reader = packet.chats.unwrap();
+        let after = nodes_of(&reader, "message").len() + nodes_of(&reader, "tool").len();
         eprintln!("earlier: {before} -> {after} rows");
         assert!(after > before);
     }
@@ -497,7 +500,7 @@ fn live_coder_chat_creates_a_task() {
     let coder = loop {
         // The app refreshes Computers every few seconds while a tab shows.
         let coder = app.call(Request::ComputersRefresh).coder.unwrap();
-        if key_for(&coder, "New chat").is_some() {
+        if values(&coder).contains(&"On test-host · openagents".to_string()) {
             break coder;
         }
         assert!(
@@ -508,30 +511,38 @@ fn live_coder_chat_creates_a_task() {
         );
         std::thread::sleep(std::time::Duration::from_millis(500));
     };
-    let node = key_for(&coder, "New chat").expect("new chat");
-    let input = app
-        .call(Request::CoderActivate {
-            instance: coder["instance"].as_str().unwrap().into(),
-            revision: coder["revision"].as_u64().unwrap(),
-            node,
-        })
-        .coder_input
-        .expect("prompt request");
+    // Send from the composer: the chat opens on the new task.
+    let composer = nodes_of(&coder, "composer")[0].clone();
+    let token = composer["element"]["props"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let packet = app.call(Request::CoderInput {
-        token: input.token,
+        token,
         value: "Say hello from the OpenAgents app test.".into(),
     });
-    let text = values(&packet.coder.unwrap());
+    let chat = packet.coder.unwrap();
+    let text = values(&chat);
     eprintln!("coder: {text:?}");
     assert!(
-        text.iter().any(|t| t.starts_with("Sent to Coder")),
+        text.contains(&"Say hello from the OpenAgents app test.".to_string()),
         "{text:?}"
     );
-    // The host's activity summary lists it.
+    assert_eq!(nodes_of(&chat, "transcript").len(), 1);
+    let composer = &nodes_of(&chat, "composer")[0]["element"]["props"];
+    assert_eq!(composer["busy"], true, "a running chat offers stop");
+    // Back on the list, the host's activity summary lists it.
+    let back = key_for(&chat, "Coder").expect("back");
+    app.call(Request::CoderActivate {
+        instance: chat["instance"].as_str().unwrap().into(),
+        revision: chat["revision"].as_u64().unwrap(),
+        node: back,
+    });
     loop {
         let text = values(&app.call(Request::ComputersRefresh).coder.unwrap());
-        if text.iter().any(|t| t.contains(" · test-host · "))
-            && text.contains(&"Say hello from the OpenAgents app test.".to_string())
+        if text
+            .iter()
+            .any(|t| t.starts_with("Say hello from the OpenAgents app test.\n"))
         {
             eprintln!("listed: {text:?}");
             return;

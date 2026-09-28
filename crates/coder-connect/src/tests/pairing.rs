@@ -10,6 +10,7 @@ fn invite(f: &Fixture) -> String {
             coder_history::Config {
                 codex: Some(f.root.clone()),
                 claude: None,
+                coder: None,
             },
             f.now,
             f.now + 3600,
@@ -363,6 +364,7 @@ fn expired_admissions_are_pruned_by_the_invitation_flow() {
                 coder_history::Config {
                     codex: Some(f.root.clone()),
                     claude: None,
+                    coder: None,
                 },
                 f.now,
                 f.now + 3600,
@@ -386,6 +388,7 @@ fn expired_admissions_are_pruned_by_the_invitation_flow() {
             coder_history::Config {
                 codex: Some(f.root.clone()),
                 claude: None,
+                coder: None,
             },
             later,
             later + 3600,
@@ -438,4 +441,103 @@ fn two_devices_racing_for_one_invitation_cannot_both_claim_it() {
     assert_ne!(first.is_ok(), second.is_ok());
     let failure = first.err().or_else(|| second.err()).unwrap();
     assert_eq!(failure.code, ErrorCode::Forbidden);
+}
+
+#[test]
+fn coder_task_source_pairs_and_pages_backward_through_the_observer() {
+    let f = Fixture::new("wss://relay.example/");
+    let tasks = f.root.parent().unwrap().join("tasks");
+    std::fs::create_dir_all(&tasks).unwrap();
+    let task = "c".repeat(64);
+    std::fs::write(
+        tasks.join(format!("{task}.1.atif.jsonl")),
+        concat!(
+            r#"{"record":"session","schema_version":"ATIF-v1.7","at":1,"session":{"id":"synthetic-1"}}"#,
+            "\n",
+            r#"{"record":"step","step":{"at":2,"source":"User","message":"Synthetic Coder task"}}"#,
+            "\n",
+            r#"{"record":"step","step":{"at":3,"source":"Agent","message":"","call":{"id":"c1","name":"shell","arguments":{"command":"ls"},"output":"README.md","outcome":"Completed","milliseconds":1}}}"#,
+            "\n",
+            r#"{"record":"step","step":{"at":4,"source":"Agent","message":"Done."}}"#,
+            "\n",
+        ),
+    )
+    .unwrap();
+    let code = f
+        .host()
+        .invite(
+            &f.code.relay,
+            coder_history::Config {
+                codex: Some(f.root.clone()),
+                claude: None,
+                coder: Some(tasks.clone()),
+            },
+            f.now,
+            f.now + 3600,
+        )
+        .unwrap();
+    let (invitation, pending) = prepare(&f, &code, &f.client_secret);
+    let connection = redeem_local(&f, &invitation, &pending, &f.client_secret).unwrap();
+    assert_eq!(
+        connection
+            .sources
+            .iter()
+            .map(|s| s.kind)
+            .collect::<Vec<_>>(),
+        [SourceKind::Codex, SourceKind::Coder]
+    );
+    let bytes = serde_json::to_vec(&connection).unwrap();
+    assert!(String::from_utf8_lossy(&bytes).contains("\"coder\""));
+    assert!(!String::from_utf8_lossy(&bytes).contains(tasks.to_str().unwrap()));
+
+    let client = Client::new_with_policy(
+        connection.clone(),
+        f.client_secret,
+        RelayPolicy::LoopbackTest,
+    )
+    .unwrap();
+    let ask = |query: Query| {
+        let pending = client.prepare(query, f.now).unwrap();
+        let reply = f
+            .host()
+            .handle(&pending.event, &connection.relay, f.now)
+            .unwrap();
+        client.verify_reply(&pending, &reply, f.now).unwrap()
+    };
+    let Observation::Catalog(catalog) = ask(Query::Catalog(CatalogRequest::default())) else {
+        panic!("catalog expected")
+    };
+    let chat = catalog
+        .entries
+        .iter()
+        .find(|c| c.harness == coder_history::Harness::Coder)
+        .unwrap();
+    assert_eq!(chat.native_id.as_deref(), Some(task.as_str()));
+    assert_eq!(chat.title, "Synthetic Coder task");
+    let Observation::Page(page) = ask(Query::Page(TranscriptRequest {
+        source_id: chat.source_id.clone().unwrap(),
+        cursor: None,
+        max_bytes: coder_history::MAX_PAGE_BYTES,
+        end: Some(coder_history::NEWEST),
+    })) else {
+        panic!("page expected")
+    };
+    assert_eq!(page.previous, None);
+    let views: Vec<_> = page
+        .chunks
+        .iter()
+        .map(|c| {
+            let r = c.readable.as_ref().unwrap();
+            (r.kind.as_str(), r.role.as_deref(), r.text.as_str())
+        })
+        .collect();
+    assert_eq!(
+        views,
+        [
+            ("session", None, ""),
+            ("message", Some("user"), "Synthetic Coder task"),
+            ("tool_call", None, "ls\n\nREADME.md"),
+            ("message", Some("assistant"), "Done."),
+        ]
+    );
 }

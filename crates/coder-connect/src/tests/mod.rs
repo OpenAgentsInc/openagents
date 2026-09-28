@@ -33,6 +33,7 @@ impl Fixture {
                 coder_history::Config {
                     codex: Some(root.clone()),
                     claude: None,
+                    coder: None,
                 },
                 now,
                 now + 3600,

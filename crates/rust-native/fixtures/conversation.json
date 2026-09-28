@@ -1,0 +1,375 @@
+{
+  "schema": "rust-native.view.v2",
+  "instance": "chat",
+  "revision": 1,
+  "root": {
+    "key": "root",
+    "style": {
+      "foreground": null,
+      "background": null,
+      "padding_top": null,
+      "padding_end": null,
+      "padding_bottom": null,
+      "padding_start": null,
+      "gap": null,
+      "weight": null,
+      "align": null
+    },
+    "element": {
+      "kind": "stack",
+      "props": {
+        "axis": "vertical",
+        "children": [
+          {
+            "key": "transcript",
+            "style": {
+              "foreground": null,
+              "background": null,
+              "padding_top": null,
+              "padding_end": null,
+              "padding_bottom": null,
+              "padding_start": null,
+              "gap": null,
+              "weight": null,
+              "align": null
+            },
+            "element": {
+              "kind": "transcript",
+              "props": {
+                "label": "Messages",
+                "children": [
+                  {
+                    "key": "m1",
+                    "style": {
+                      "foreground": null,
+                      "background": null,
+                      "padding_top": null,
+                      "padding_end": null,
+                      "padding_bottom": null,
+                      "padding_start": null,
+                      "gap": null,
+                      "weight": null,
+                      "align": null
+                    },
+                    "element": {
+                      "kind": "message",
+                      "props": {
+                        "role": "user",
+                        "note": null,
+                        "children": [
+                          {
+                            "key": "m1-text",
+                            "style": {
+                              "foreground": null,
+                              "background": null,
+                              "padding_top": null,
+                              "padding_end": null,
+                              "padding_bottom": null,
+                              "padding_start": null,
+                              "gap": null,
+                              "weight": null,
+                              "align": null
+                            },
+                            "element": {
+                              "kind": "markdown",
+                              "props": {
+                                "blocks": [
+                                  {
+                                    "kind": "paragraph",
+                                    "spans": [
+                                      {
+                                        "text": "Fix the "
+                                      },
+                                      {
+                                        "text": "flaky",
+                                        "bold": true
+                                      },
+                                      {
+                                        "text": " test in "
+                                      },
+                                      {
+                                        "text": "ci.rs",
+                                        "code": true
+                                      },
+                                      {
+                                        "text": "."
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "key": "t1",
+                    "style": {
+                      "foreground": null,
+                      "background": null,
+                      "padding_top": null,
+                      "padding_end": null,
+                      "padding_bottom": null,
+                      "padding_start": null,
+                      "gap": null,
+                      "weight": null,
+                      "align": null
+                    },
+                    "element": {
+                      "kind": "tool",
+                      "props": {
+                        "name": "Bash",
+                        "detail": "cargo test -p ci",
+                        "state": "done",
+                        "children": [
+                          {
+                            "key": "t1-output",
+                            "style": {
+                              "foreground": null,
+                              "background": null,
+                              "padding_top": null,
+                              "padding_end": null,
+                              "padding_bottom": null,
+                              "padding_start": null,
+                              "gap": null,
+                              "weight": null,
+                              "align": null
+                            },
+                            "element": {
+                              "kind": "text",
+                              "props": {
+                                "value": "test result: ok. 12 passed",
+                                "role": "code"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "key": "m2",
+                    "style": {
+                      "foreground": null,
+                      "background": null,
+                      "padding_top": null,
+                      "padding_end": null,
+                      "padding_bottom": null,
+                      "padding_start": null,
+                      "gap": null,
+                      "weight": null,
+                      "align": null
+                    },
+                    "element": {
+                      "kind": "message",
+                      "props": {
+                        "role": "assistant",
+                        "note": null,
+                        "children": [
+                          {
+                            "key": "m2-text",
+                            "style": {
+                              "foreground": null,
+                              "background": null,
+                              "padding_top": null,
+                              "padding_end": null,
+                              "padding_bottom": null,
+                              "padding_start": null,
+                              "gap": null,
+                              "weight": null,
+                              "align": null
+                            },
+                            "element": {
+                              "kind": "markdown",
+                              "props": {
+                                "blocks": [
+                                  {
+                                    "kind": "paragraph",
+                                    "spans": [
+                                      {
+                                        "text": "Fixed it."
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "kind": "list",
+                                    "ordered": false,
+                                    "start": 1,
+                                    "items": [
+                                      {
+                                        "blocks": [
+                                          {
+                                            "kind": "paragraph",
+                                            "spans": [
+                                              {
+                                                "text": "Seeded the RNG"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "blocks": [
+                                          {
+                                            "kind": "paragraph",
+                                            "spans": [
+                                              {
+                                                "text": "Added a retry"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "kind": "code",
+                                    "language": "rust",
+                                    "text": "let seed = 7;\n"
+                                  },
+                                  {
+                                    "kind": "table",
+                                    "align": [
+                                      "none",
+                                      "right"
+                                    ],
+                                    "header": [
+                                      [
+                                        {
+                                          "text": "a"
+                                        }
+                                      ],
+                                      [
+                                        {
+                                          "text": "b"
+                                        }
+                                      ]
+                                    ],
+                                    "rows": [
+                                      [
+                                        [
+                                          {
+                                            "text": "1"
+                                          }
+                                        ],
+                                        [
+                                          {
+                                            "text": "2"
+                                          }
+                                        ]
+                                      ]
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "key": "m3",
+                    "style": {
+                      "foreground": null,
+                      "background": null,
+                      "padding_top": null,
+                      "padding_end": null,
+                      "padding_bottom": null,
+                      "padding_start": null,
+                      "gap": null,
+                      "weight": null,
+                      "align": null
+                    },
+                    "element": {
+                      "kind": "message",
+                      "props": {
+                        "role": "system",
+                        "note": "12:04",
+                        "children": [
+                          {
+                            "key": "m3-text",
+                            "style": {
+                              "foreground": null,
+                              "background": null,
+                              "padding_top": null,
+                              "padding_end": null,
+                              "padding_bottom": null,
+                              "padding_start": null,
+                              "gap": null,
+                              "weight": null,
+                              "align": null
+                            },
+                            "element": {
+                              "kind": "text",
+                              "props": {
+                                "value": "Context compacted.",
+                                "role": "status"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "key": "working",
+                    "style": {
+                      "foreground": null,
+                      "background": null,
+                      "padding_top": null,
+                      "padding_end": null,
+                      "padding_bottom": null,
+                      "padding_start": null,
+                      "gap": null,
+                      "weight": null,
+                      "align": null
+                    },
+                    "element": {
+                      "kind": "working",
+                      "props": {
+                        "label": "Coder is working"
+                      }
+                    }
+                  }
+                ],
+                "earlier": {
+                  "label": "Load earlier messages",
+                  "loading": false,
+                  "intent": "earlier"
+                }
+              }
+            }
+          },
+          {
+            "key": "composer",
+            "style": {
+              "foreground": null,
+              "background": null,
+              "padding_top": null,
+              "padding_end": null,
+              "padding_bottom": null,
+              "padding_start": null,
+              "gap": null,
+              "weight": null,
+              "align": null
+            },
+            "element": {
+              "kind": "composer",
+              "props": {
+                "token": "composer-1",
+                "placeholder": "Message Coder",
+                "max_bytes": 16384,
+                "enabled": true,
+                "busy": true,
+                "stop": "stop"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

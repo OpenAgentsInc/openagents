@@ -1204,7 +1204,10 @@ impl<'a> Flow<'a> {
                 axis: Axis::Horizontal,
                 children,
             } => self.row(children, surface),
-            Element::Stack { children, .. } | Element::List { children, .. } => {
+            Element::Stack { children, .. }
+            | Element::List { children, .. }
+            | Element::Transcript { children, .. }
+            | Element::Message { children, .. } => {
                 if node.style.padding_top.is_some() && self.y > 0.0 {
                     self.y += 4.0;
                 }
@@ -1212,7 +1215,20 @@ impl<'a> Flow<'a> {
                     self.block(child, surface);
                 }
             }
-            Element::Surface { .. } => {}
+            // Coder's screens do not send the other conversation elements;
+            // draw their text if one arrives.
+            Element::Markdown { blocks } => {
+                self.text(
+                    &node.key,
+                    &rust_native::markdown::plain(blocks),
+                    Intensity::ThreeQuarters,
+                );
+            }
+            Element::Tool { name, detail, .. } => {
+                self.text(&node.key, &format!("{name} {detail}"), Intensity::Half);
+            }
+            Element::Working { label } => self.text(&node.key, label, Intensity::Half),
+            Element::Surface { .. } | Element::Composer { .. } => {}
         }
     }
 

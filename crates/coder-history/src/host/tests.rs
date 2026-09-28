@@ -28,6 +28,7 @@ impl Fixture {
         History::open(Config {
             codex: Some(self.0.clone()),
             claude: None,
+            coder: None,
         })
         .unwrap()
     }
@@ -316,7 +317,8 @@ fn symlink_sources_and_directories_cannot_escape_selected_roots() {
     assert!(matches!(
         History::open(Config {
             codex: Some(alias),
-            claude: None
+            claude: None,
+            coder: None
         }),
         Err(Error::InvalidRoot)
     ));
@@ -352,6 +354,7 @@ fn claude_projects_and_subagents_are_separate_read_only_sources() {
     let history = History::open(Config {
         codex: None,
         claude: Some(fixture.0.clone()),
+        coder: None,
     })
     .unwrap();
     let page = history.catalog(CatalogRequest::default()).unwrap();
@@ -478,7 +481,8 @@ fn unconfigured_harness_trees_and_credentials_are_never_cataloged() {
     assert!(matches!(
         History::open(Config {
             codex: Some(Path::new("relative").into()),
-            claude: None
+            claude: None,
+            coder: None
         }),
         Err(Error::InvalidRoot)
     ));
@@ -586,4 +590,349 @@ fn catalog_lists_newest_first_with_times_and_first_prompts() {
         Some("2023-11-14T22:13:20Z")
     );
     assert_eq!(page.entries[1].title, "Fix the flaky test");
+}
+
+/// A synthetic Coder task transcript in the log's spelling (`crates/atif`).
+fn atif_lines() -> String {
+    [
+        r#"{"record":"session","schema_version":"ATIF-v1.7","at":1790570162020,"session":{"id":"TASK-1","model":"synthetic","door":"synthetic","repository":"/synthetic","directive":"","state":"","seconds":0,"version":"0.1.0"}}"#,
+        r#"{"record":"step","step":{"at":1790570162024,"source":"User","message":"Summarize the README\nwith detail"}}"#,
+        r#"{"record":"step","step":{"at":1790570162027,"source":"System","message":"Repository adapter admitted by the local operator.","extensions":{"admission":{}}}}"#,
+        r#"{"record":"step","step":{"at":1790570162100,"source":"Agent","message":"","call":{"id":"call-1","name":"shell","arguments":{"command":"head -1 README.md"},"output":"Heading: Synthetic","outcome":"Completed","milliseconds":4}}}"#,
+        r#"{"record":"step","step":{"at":1790570162200,"source":"Agent","message":"The first heading is Synthetic."}}"#,
+        r#"{"record":"end","at":1790570162300,"state":"ended"}"#,
+    ]
+    .map(|line| format!("{line}\n"))
+    .concat()
+}
+
+fn coder_history(fixture: &Fixture) -> History {
+    History::open(Config {
+        codex: None,
+        claude: None,
+        coder: Some(fixture.0.clone()),
+    })
+    .unwrap()
+}
+
+#[test]
+fn coder_tasks_list_flat_atif_attempts_newest_first() {
+    let fixture = Fixture::new();
+    let task = "ab".repeat(32);
+    let older = fixture.write(&format!("{task}.1.atif.jsonl"), atif_lines());
+    let newer = fixture.write(
+        &format!("{task}.2.atif.jsonl"),
+        r#"{"record":"session","at":1,"session":{"id":"x"}}"#.to_owned() + "\n",
+    );
+    // Neither task bookkeeping, other JSONL, nor nested transcripts are chats.
+    fixture.write("tasks.json", b"{}");
+    fixture.write(&format!("repository-launch-{task}.jsonl"), b"{}\n");
+    fixture.write(&format!("nested/{task}.3.atif.jsonl"), atif_lines());
+    let set = |path: &Path, seconds: u64| {
+        OpenOptions::new()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds))
+            .unwrap();
+    };
+    set(&older, 1_700_000_000);
+    set(&newer, 1_800_000_000);
+    let history = coder_history(&fixture);
+    let page = history.catalog(CatalogRequest::default()).unwrap();
+    assert_eq!(page.entries.len(), 2);
+    let (first, second) = (&page.entries[0], &page.entries[1]);
+    assert!(page.entries.iter().all(|c| c.harness == Harness::Coder
+        && c.native_id.as_deref() == Some(task.as_str())
+        && !c.archived
+        && !c.subagent
+        && c.status == SourceStatus::Available));
+    assert_ne!(first.id, second.id, "each attempt is its own chat");
+    assert_eq!(first.title, "Saved Coder chat");
+    assert_eq!(first.updated_at.as_deref(), Some("2027-01-15T08:00:00Z"));
+    assert_eq!(second.title, "Summarize the README");
+    assert_eq!(second.updated_at.as_deref(), Some("2023-11-14T22:13:20Z"));
+    // A second catalog rescans the same directory rather than resuming it.
+    assert_eq!(history.catalog(CatalogRequest::default()).unwrap(), page);
+}
+
+#[test]
+fn coder_steps_project_as_user_system_tool_and_assistant_records() {
+    let fixture = Fixture::new();
+    fixture.write(&format!("{}.1.atif.jsonl", "0".repeat(64)), atif_lines());
+    let history = coder_history(&fixture);
+    let source = first(&history).source_id.unwrap();
+    let page = read(&history, &source, None, MAX_PAGE_BYTES);
+    let views: Vec<_> = page
+        .chunks
+        .iter()
+        .map(|c| c.readable.clone().unwrap())
+        .collect();
+    assert_eq!(views.len(), 6);
+    assert!(views.iter().all(|v| !v.unknown));
+    fn shape(v: &Readable) -> (&str, Option<&str>, Option<&str>) {
+        (v.kind.as_str(), v.role.as_deref(), v.tool_name.as_deref())
+    }
+    assert_eq!(shape(&views[0]), ("session", None, None));
+    assert_eq!(views[0].native_id.as_deref(), Some("TASK-1"));
+    assert_eq!(views[0].text, "");
+    assert_eq!(
+        views[0].timestamp.as_deref(),
+        Some("2026-09-28T04:36:02.020Z")
+    );
+    assert_eq!(shape(&views[1]), ("message", Some("user"), None));
+    assert_eq!(views[1].text, "Summarize the README\nwith detail");
+    assert_eq!(shape(&views[2]), ("adapter", None, None));
+    assert_eq!(views[2].text, "");
+    assert_eq!(shape(&views[3]), ("tool_call", None, Some("shell")));
+    assert_eq!(views[3].call_id.as_deref(), Some("call-1"));
+    assert_eq!(views[3].text, "head -1 README.md\n\nHeading: Synthetic");
+    assert_eq!(shape(&views[4]), ("message", Some("assistant"), None));
+    assert_eq!(views[4].text, "The first heading is Synthetic.");
+    assert_eq!(shape(&views[5]), ("end", None, None));
+}
+
+#[test]
+fn exported_atif_tool_calls_and_observations_project_and_unknown_records_stay_unknown() {
+    let project = |value: serde_json::Value| readable_record(value.to_string().as_bytes()).unwrap();
+    let both = project(serde_json::json!({"record": "step", "step": {
+        "at": 0, "source": "Agent", "message": "Listing files.",
+        "tool_calls": [{"tool_call_id": "c1", "function_name": "shell", "arguments": {"command": "ls"}}],
+        "observation": {"results": [{"source_call_id": "c1", "content": "README.md"}]}
+    }}));
+    assert_eq!(both.kind, "message");
+    assert_eq!(both.role.as_deref(), Some("assistant"));
+    assert_eq!(both.tool_name.as_deref(), Some("shell"));
+    assert_eq!(both.text, "Listing files.\n\nTool: shell ls");
+    let result = project(serde_json::json!({"record": "step", "step": {
+        "at": 0, "source": "Agent", "message": "",
+        "observation": {"results": [{"source_call_id": "c1", "content": "README.md"}]}
+    }}));
+    assert_eq!(result.kind, "tool_result");
+    assert_eq!(result.role.as_deref(), Some("tool"));
+    assert_eq!(result.call_id.as_deref(), Some("c1"));
+    assert_eq!(result.text, "README.md");
+    for unknown in [
+        serde_json::json!({"record": "surprise"}),
+        serde_json::json!({"record": "step", "step": {"source": "Robot", "message": "x"}}),
+        serde_json::json!({"record": "step", "step": "not an object"}),
+    ] {
+        assert!(project(unknown).unknown);
+    }
+    assert!(readable_record(b"{\"record\":\"step\"").unwrap().unknown);
+}
+
+#[test]
+fn coder_transcripts_page_backward_over_whole_records() {
+    let fixture = Fixture::new();
+    let path = fixture.write(&format!("{}.1.atif.jsonl", "f".repeat(64)), atif_lines());
+    let history = coder_history(&fixture);
+    let source = first(&history).source_id.unwrap();
+    let mut end = NEWEST;
+    let mut pages = Vec::new();
+    loop {
+        let page = back(&history, &source, end, 300);
+        assert!(
+            page.chunks
+                .iter()
+                .all(|c| c.complete && c.readable.is_some())
+        );
+        pages.push(
+            page.chunks
+                .iter()
+                .flat_map(|c| STANDARD.decode(&c.raw_base64).unwrap())
+                .collect::<Vec<_>>(),
+        );
+        match page.previous {
+            Some(previous) => end = previous,
+            None => break,
+        }
+    }
+    assert!(pages.len() > 1);
+    let joined: Vec<u8> = pages.into_iter().rev().flatten().collect();
+    assert_eq!(joined, fs::read(&path).unwrap());
+    let newest = back(&history, &source, NEWEST, 300);
+    assert_eq!(
+        newest
+            .chunks
+            .last()
+            .unwrap()
+            .readable
+            .as_ref()
+            .unwrap()
+            .kind,
+        "end"
+    );
+}
+
+#[test]
+fn coder_loop_events_project_as_replies_commands_and_endings() {
+    let system = |extensions: serde_json::Value| {
+        let line = serde_json::json!({"record": "step", "step": {
+            "at": 1_790_570_162_027u64, "source": "System",
+            "message": "Microcoder loop observation.", "extensions": extensions
+        }});
+        readable_record(line.to_string().as_bytes()).unwrap()
+    };
+    let event = |event: serde_json::Value| {
+        system(serde_json::json!({"microcoder": {"seconds": 1.5, "event": event}}))
+    };
+    let view = |r: &Readable| {
+        (
+            r.kind.clone(),
+            r.role.clone(),
+            r.tool_name.clone(),
+            r.text.clone(),
+            r.unknown,
+        )
+    };
+    let limit = "{\"error\":{\"type\":\"usage_limit_reached\",\"message\":\"The usage limit has been reached\",\"plan_type\":\"pro\",\"resets_at\":1791050824,\"eligible_promo\":null,\"limit_window_minutes\":10080,\"resets_in_seconds\":480645}}";
+    let error = format!("the provider returned HTTP 429: {limit}");
+    let generated = |action: serde_json::Value| {
+        serde_json::json!({"event": "generated", "step": 1, "prompt_chars": 1464, "generated": {
+            "action": action, "model": "synthetic", "prompt_tokens": 0, "completion_tokens": 0,
+            "usd": 0.0, "known_usd": 0.0, "cost_unknown": null, "usd_upper": 0.0,
+            "cost_basis": "list_price", "milliseconds": 16844
+        }})
+    };
+    let s = |text: &str| Some(text.to_owned());
+
+    // The shapes of a real run that failed on a provider usage limit.
+    let failed = view(&event(generated(serde_json::json!({"Err": error}))));
+    assert_eq!(
+        (&failed.0, &failed.1, failed.4),
+        (&"message".to_owned(), &s("system"), false)
+    );
+    assert!(
+        failed
+            .3
+            .starts_with("The model call failed: the provider returned HTTP 429: {")
+    );
+    assert!(failed.3.len() <= "The model call failed: ".len() + 300 + "…".len());
+    assert_eq!(
+        view(&event(serde_json::json!({"event": "ended", "outcome": {
+            "ending": {"reason": "bad_replies", "detail": error}, "steps": 3, "seconds": 48.7
+        }}))),
+        (
+            "message".into(),
+            s("system"),
+            None,
+            format!("Coder stopped: the provider returned HTTP 429: {limit}"),
+            false
+        )
+    );
+
+    // A run that worked, built from microcoder's structs.
+    assert_eq!(
+        view(&event(generated(serde_json::json!({"Ok": {
+            "rationale": "Read the README heading.", "commands": ["head -1 README.md"],
+            "view": [], "freeze_tests": false, "expand": [], "finished": false
+        }})))),
+        (
+            "message".into(),
+            s("assistant"),
+            None,
+            "Read the README heading.".into(),
+            false
+        )
+    );
+    assert_eq!(
+        view(&event(generated(serde_json::json!({"Ok": {
+            "rationale": "The heading is Synthetic.", "commands": [], "finished": true
+        }}))))
+        .3,
+        "The heading is Synthetic.\nFinished."
+    );
+    let ran = |exit: serde_json::Value, timed_out: bool| {
+        view(&event(
+            serde_json::json!({"event": "ran", "step": 1, "result": {
+                "command": "head -1 README.md", "exit": exit, "timed_out": timed_out,
+                "seconds": 0.01, "output": "# Synthetic\n"
+            }}),
+        ))
+    };
+    assert_eq!(
+        ran(serde_json::json!(0), false),
+        (
+            "tool_call".into(),
+            None,
+            s("shell"),
+            "head -1 README.md\n\n# Synthetic\n".into(),
+            false
+        )
+    );
+    assert_eq!(
+        ran(serde_json::json!(2), false).3,
+        "head -1 README.md\nexit 2\n\n# Synthetic\n"
+    );
+    assert_eq!(
+        ran(serde_json::Value::Null, true).3,
+        "head -1 README.md\ntimed out\n\n# Synthetic\n"
+    );
+    assert_eq!(
+        view(&event(
+            serde_json::json!({"event": "tested", "step": 2, "froze": true, "results": [
+                {"command": "cargo test\n# more", "exit": 0, "timed_out": false, "seconds": 1.0, "output": ""},
+                {"command": "./check.sh", "exit": 1, "timed_out": false, "seconds": 1.0, "output": "no"}
+            ]})
+        )),
+        (
+            "tool_call".into(),
+            None,
+            s("tests"),
+            "cargo test: exit 0\n./check.sh: exit 1".into(),
+            false
+        )
+    );
+    let ended = |ending: serde_json::Value, steps: u64| {
+        view(&event(serde_json::json!({"event": "ended", "outcome": {
+            "ending": ending, "steps": steps, "seconds": 9.0
+        }})))
+        .3
+    };
+    assert_eq!(
+        ended(serde_json::json!({"reason": "finished"}), 2),
+        "Coder finished in 2 steps."
+    );
+    assert_eq!(
+        ended(serde_json::json!({"reason": "finished"}), 1),
+        "Coder finished in 1 step."
+    );
+    assert_eq!(
+        ended(serde_json::json!({"reason": "step_limit"}), 24),
+        "Coder stopped: step limit"
+    );
+    assert_eq!(
+        ended(serde_json::json!({"reason": "tests_held"}), 9),
+        "Coder stopped: tests held"
+    );
+
+    // Host evidence and the loop's other events are adapter records.
+    for evidence in [
+        system(
+            serde_json::json!({"admission": {"grant": {}}, "controller": {}, "capabilities": {}}),
+        ),
+        system(
+            serde_json::json!({"effect_result": {"sequence": 3, "kind": "codex_request",
+            "result": {"error": error}}}),
+        ),
+        system(serde_json::json!({"decision_response": {"model": "jev", "status": 200}})),
+        system(serde_json::json!({"adapter_summary": {}, "host_fault": null})),
+        event(serde_json::json!({"event": "judged", "step": 1, "judgment": {}})),
+        event(serde_json::json!({"event": "gated", "step": 1, "checked": {}})),
+    ] {
+        assert_eq!(
+            view(&evidence),
+            ("adapter".into(), None, None, String::new(), false)
+        );
+    }
+    // A system step without host evidence is still a system message.
+    let plain = readable_record(
+        br#"{"record":"step","step":{"at":1,"source":"System","message":"Note."}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        view(&plain),
+        ("message".into(), s("system"), None, "Note.".into(), false)
+    );
 }

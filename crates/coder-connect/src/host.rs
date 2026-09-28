@@ -44,6 +44,7 @@ impl Root {
         let label = match kind {
             SourceKind::Codex => "Codex retained history",
             SourceKind::Claude => "Claude retained history",
+            SourceKind::Coder => "Coder task history",
         };
         Ok(Self {
             scope: SourceScope {
@@ -132,6 +133,9 @@ impl Host {
         }
         if let Some(path) = config.claude {
             roots.push(Root::admit(path, SourceKind::Claude)?);
+        }
+        if let Some(path) = config.coder {
+            roots.push(Root::admit(path, SourceKind::Coder)?);
         }
         if roots.is_empty() {
             return fail(
@@ -439,15 +443,13 @@ impl Host {
     }
 }
 fn read(roots: &[Root], query: &Query) -> Result<Observation> {
-    let mut config = coder_history::Config {
-        codex: None,
-        claude: None,
-    };
+    let mut config = coder_history::Config::default();
     for root in roots {
         root.current()?;
         match root.scope.kind {
             SourceKind::Codex => config.codex = Some(root.path.clone()),
             SourceKind::Claude => config.claude = Some(root.path.clone()),
+            SourceKind::Coder => config.coder = Some(root.path.clone()),
         }
     }
     let history = coder_history::History::open(config).map_err(history_error)?;

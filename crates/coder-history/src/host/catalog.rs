@@ -1,4 +1,5 @@
 use super::{History, bounded, confined, digest, encoded_len};
+use crate::project::utc;
 use crate::*;
 use std::collections::{BTreeMap, HashSet};
 use std::io::{BufRead, BufReader, Read};
@@ -24,6 +25,10 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
         let starts: &[&str] = match root.harness {
             Harness::Codex => &["sessions", "archived_sessions"],
             Harness::Claude => &["projects"],
+            Harness::Coder => {
+                tasks(root_index, root, &mut sources, &mut notices, &mut visited)?;
+                continue;
+            }
         };
         for start in starts {
             let mut pending = vec![PathBuf::from(start)];
@@ -94,6 +99,74 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
     sources.sort_by(|a, b| a.id.cmp(&b.id));
     notices.sort_by(|a, b| (&a.code, &a.source_id).cmp(&(&b.code, &b.source_id)));
     Ok((sources, notices))
+}
+
+/// Coder's task directory is flat: each `*.atif.jsonl` directly inside it is
+/// one task attempt's transcript. Other files and subdirectories are ignored.
+fn tasks(
+    root_index: usize,
+    root: &confined::Root,
+    sources: &mut Vec<Source>,
+    notices: &mut Vec<Notice>,
+    visited: &mut usize,
+) -> Result<(), Error> {
+    let listed = root
+        .open_top()
+        .and_then(|directory| confined::names(&directory).map(|names| (directory, names)));
+    let (directory, names) = match listed {
+        Ok(listed) => listed,
+        Err(Error::ResourceLimit) => return Err(Error::ResourceLimit),
+        Err(_) => {
+            return notice(
+                notices,
+                "directory_unavailable",
+                Some(root.source_id(Path::new(""))),
+            );
+        }
+    };
+    for name in names {
+        *visited += 1;
+        if *visited > confined::MAX_ENTRIES {
+            return Err(Error::ResourceLimit);
+        }
+        let path = PathBuf::from(&name);
+        if !name.to_str().is_some_and(|n| n.ends_with(ATIF_SUFFIX)) {
+            continue;
+        }
+        match confined::kind(&directory, &name) {
+            Ok(confined::Kind::File) => sources.push(Source {
+                root: root_index,
+                id: root.source_id(&path),
+                harness: root.harness,
+                archived: false,
+                subagent: false,
+                relative: path,
+            }),
+            Ok(confined::Kind::Symlink) => {
+                notice(notices, "symlink_refused", Some(root.source_id(&path)))?
+            }
+            Err(_) => notice(notices, "entry_unavailable", Some(root.source_id(&path)))?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+const ATIF_SUFFIX: &str = ".atif.jsonl";
+
+/// A Coder transcript's name without its suffix, `<task>.<attempt>`.
+fn attempt(path: &Path) -> Option<&str> {
+    path.file_name()?.to_str()?.strip_suffix(ATIF_SUFFIX)
+}
+
+/// The 64-hex task ID that opens a Coder transcript's file name.
+fn task_id(path: &Path) -> Option<String> {
+    let (task, rest) = attempt(path)?.split_once('.')?;
+    (task.len() == 64
+        && task.bytes().all(|b| b.is_ascii_hexdigit())
+        && !rest.is_empty()
+        && rest.bytes().all(|b| b.is_ascii_digit()))
+    .then(|| task.to_owned())
 }
 
 fn notice(out: &mut Vec<Notice>, code: &str, source_id: Option<String>) -> Result<(), Error> {
@@ -268,6 +341,8 @@ fn head_parts(
                 .get("payload")
                 .and_then(|p| p.get("id").or_else(|| p.get("session_id"))),
             Harness::Claude => v.get("sessionId"),
+            // The file name, not the header, names a Coder task.
+            Harness::Coder => None,
         })
         .and_then(|v| v.as_str())
         .filter(|v| !v.is_empty() && v.len() <= 128)
@@ -278,28 +353,6 @@ fn head_parts(
         .and_then(|v| v.as_str())
         .map(str::to_owned);
     (native, title, SourceStatus::Available, modified)
-}
-
-/// `YYYY-MM-DDTHH:MM:SSZ` for Unix seconds, in UTC.
-fn utc(seconds: u64) -> String {
-    let days = (seconds / 86_400) as i64;
-    let rest = seconds % 86_400;
-    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        rest / 3_600,
-        rest % 3_600 / 60,
-        rest % 60
-    )
 }
 
 /// The first line of the chat's first prompt, for a chat with no title:
@@ -350,7 +403,10 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
                 status,
                 modified,
             } = head(root, source);
-            let native = from_header.or_else(|| uuid_suffix(&source.relative));
+            let native = match root.harness {
+                Harness::Coder => task_id(&source.relative),
+                _ => from_header.or_else(|| uuid_suffix(&source.relative)),
+            };
             let title = native.as_ref().and_then(|id| title_map.get(id));
             if let Some(id) = &native {
                 present.insert(id.clone());
@@ -358,14 +414,23 @@ pub(super) fn page(history: &History, request: CatalogRequest) -> Result<Catalog
             let default = match root.harness {
                 Harness::Codex => "Saved Codex chat",
                 Harness::Claude => "Saved Claude chat",
+                Harness::Coder => "Saved Coder chat",
             };
             let named = title.map(|t| t.name.as_str()).or(from_title.as_deref());
             if named.is_none() {
                 untitled.insert(source.id.clone(), (root_index, source.relative.clone()));
             }
             let (name, truncated) = bounded(named.unwrap_or(default), 256);
-            let id = native
-                .as_ref()
+            // Every attempt of a Coder task shares its task ID, so the
+            // attempt, not the task, is the chat.
+            let identity = match root.harness {
+                Harness::Coder => native
+                    .as_ref()
+                    .and_then(|_| attempt(&source.relative))
+                    .map(str::to_owned),
+                _ => native.clone(),
+            };
+            let id = identity
                 .map(|n| digest(format!("{}\0{n}", root.id).as_bytes()))
                 .unwrap_or_else(|| source.id.clone());
             entries.push((

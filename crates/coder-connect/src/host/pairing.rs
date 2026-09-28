@@ -44,6 +44,9 @@ impl Host {
         if let Some(path) = config.claude {
             roots.push(Root::admit(path, SourceKind::Claude)?);
         }
+        if let Some(path) = config.coder {
+            roots.push(Root::admit(path, SourceKind::Coder)?);
+        }
         if roots.is_empty() {
             return fail(
                 ErrorCode::Forbidden,
@@ -312,7 +315,7 @@ impl Host {
             // digest_bytes uses a prefixed SHA-256 digest; compare its exact shape.
             if i.capability_digest.len() != digest_bytes(b"").len()
                 || i.roots.is_empty()
-                || i.roots.len() > 2
+                || i.roots.len() > 3
                 || i.replies.len() > MAX_PAIR_REPLIES
             {
                 return fail(ErrorCode::Malformed, "retained pairing bounds differ");

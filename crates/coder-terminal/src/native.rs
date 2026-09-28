@@ -14,7 +14,7 @@ use crate::{Intensity, Ladder};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use rust_native::{Activation, Axis, Element, Node, TextRole, View};
+use rust_native::{Activation, Axis, Element, MessageRole, Node, TextRole, ToolState, View};
 use std::collections::BTreeSet;
 
 /// A drawn view.
@@ -149,7 +149,104 @@ impl Draw<'_> {
                     self.style(Intensity::Half),
                 ))]
             }
+            // Conversation elements draw as plain labeled lines.
+            Element::Transcript {
+                label,
+                children,
+                earlier,
+            } => {
+                let mut lines = vec![Line::from(Span::styled(
+                    format!("{pad}{}:", clean(label)),
+                    self.style(Intensity::Half),
+                ))];
+                if let Some(earlier) = earlier {
+                    lines.push(self.control(node, &earlier.label, !earlier.loading, &pad));
+                }
+                for child in children {
+                    lines.extend(self.node(child, indent + 2));
+                }
+                lines
+            }
+            Element::Message {
+                role,
+                note,
+                children,
+            } => {
+                let who = match role {
+                    MessageRole::User => "You",
+                    MessageRole::Assistant => "Assistant",
+                    MessageRole::System => "System",
+                };
+                let heading = match note {
+                    Some(note) => format!("{pad}{who} · {}", clean(note)),
+                    None => format!("{pad}{who}"),
+                };
+                let mut lines = vec![Line::from(Span::styled(
+                    heading,
+                    self.style(Intensity::Half),
+                ))];
+                for child in children {
+                    lines.extend(self.node(child, indent + 2));
+                }
+                lines
+            }
+            Element::Markdown { blocks } => rust_native::markdown::plain(blocks)
+                .split('\n')
+                .map(|part| {
+                    Line::from(Span::styled(
+                        format!("{pad}{}", clean(part)),
+                        self.style(Intensity::ThreeQuarters),
+                    ))
+                })
+                .collect(),
+            Element::Tool {
+                name,
+                detail,
+                state,
+                ..
+            } => {
+                let mark = match state {
+                    ToolState::Running => "…",
+                    ToolState::Done => "✓",
+                    ToolState::Failed => "✗",
+                };
+                vec![Line::from(Span::styled(
+                    format!("{pad}{mark} {} {}", clean(name), clean(detail)),
+                    self.style(Intensity::Half),
+                ))]
+            }
+            Element::Working { label } => vec![Line::from(Span::styled(
+                format!("{pad}{}…", clean(label)),
+                self.style(Intensity::Half),
+            ))],
+            Element::Composer { busy, .. } => {
+                self.out.unsupported.insert("composer");
+                let label = if *busy { "Stop" } else { "Message" };
+                vec![self.control(node, label, *busy, &pad)]
+            }
         }
+    }
+
+    /// One control line, as a button draws.
+    fn control<I>(
+        &mut self,
+        node: &Node<I>,
+        label: &str,
+        enabled: bool,
+        pad: &str,
+    ) -> Line<'static> {
+        let label = clean(&label.replace('\n', " · "));
+        let focused = self.focus == Some(node.key.as_str());
+        let (text, mut style) = if enabled {
+            (format!("[ {label} ]"), self.style(Intensity::Full))
+        } else {
+            (format!("( {label} )"), self.style(Intensity::Quarter))
+        };
+        if focused {
+            style = style.add_modifier(Modifier::REVERSED);
+        }
+        let marker = if focused { "> " } else { "" };
+        Line::from(Span::styled(format!("{pad}{marker}{text}"), style))
     }
 }
 
@@ -187,7 +284,28 @@ fn controls<I>(node: &Node<I>, out: &mut Vec<(String, bool)>) {
             }
         }
         Element::Button { enabled, .. } => out.push((node.key.clone(), *enabled)),
-        Element::Text { .. } | Element::Surface { .. } => {}
+        Element::Transcript {
+            children, earlier, ..
+        } => {
+            if let Some(earlier) = earlier {
+                out.push((node.key.clone(), !earlier.loading));
+            }
+            for child in children {
+                controls(child, out);
+            }
+        }
+        Element::Message { children, .. } | Element::Tool { children, .. } => {
+            for child in children {
+                controls(child, out);
+            }
+        }
+        Element::Composer { busy, stop, .. } => {
+            out.push((node.key.clone(), *busy && stop.is_some()))
+        }
+        Element::Text { .. }
+        | Element::Surface { .. }
+        | Element::Markdown { .. }
+        | Element::Working { .. } => {}
     }
 }
 

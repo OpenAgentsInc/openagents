@@ -156,8 +156,8 @@ pub fn program() -> PathBuf {
 }
 
 #[cfg(feature = "host")]
-/// The history roots a chat invitation admits: `~/.codex` and `~/.claude`
-/// when they exist.
+/// The history roots a chat invitation admits: `~/.codex`, `~/.claude`, and
+/// Coder's task directory `~/.openagents/tasks` when they exist.
 #[must_use]
 pub fn default_sources() -> coder_history::Config {
     let home = std::env::var_os("HOME").map(PathBuf::from);
@@ -165,6 +165,7 @@ pub fn default_sources() -> coder_history::Config {
     coder_history::Config {
         codex: root(".codex"),
         claude: root(".claude"),
+        coder: root(".openagents/tasks"),
     }
 }
 

@@ -14,36 +14,23 @@ struct OpenAgentsApp: App {
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     if phase != .inactive { bridge.lifecycle(phase == .active) }
                 }
+                .nativeFixture()
         }
     }
 }
 
 struct HomeScreen: View {
     @ObservedObject var bridge: MobileBridge
-    @State private var tab = "coder"
 
     var body: some View {
-        TabView(selection: $tab) {
-            CoderTab(bridge: bridge)
-                .tabItem { Label("Coder", systemImage: "chevron.left.forwardslash.chevron.right") }
-                .tag("coder")
-            ComputersTab(bridge: bridge)
-                .tabItem { Label("Computers", systemImage: "desktopcomputer") }
-                .tag("computers")
-            ChatsTab(bridge: bridge)
-                .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
-                .tag("chats")
-            TailnetTab(bridge: bridge)
-                .tabItem { Label("Tailnet", systemImage: "network") }
-                .tag("tailnet")
-        }
-        .tint(.white)
-        .preferredColorScheme(.dark)
-        .fullScreenCover(isPresented: Binding(
-            get: { bridge.packet?.terminal == true },
-            set: { _ in })) {
-            TerminalScreen(bridge: bridge)
-        }
+        AppTabs(bridge: bridge)
+            .tint(.white)
+            .preferredColorScheme(.dark)
+            .fullScreenCover(isPresented: Binding(
+                get: { bridge.packet?.terminal == true },
+                set: { _ in })) {
+                TerminalScreen(bridge: bridge)
+            }
     }
 }
 
@@ -107,26 +94,20 @@ struct CoderTab: View {
     @ObservedObject var bridge: MobileBridge
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if let view = bridge.packet?.coder {
                 NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
                                followChanged: nil,
+                               submit: { token, text in bridge.submit("coder", token: token, value: text) },
                                activate: { node in bridge.activate("coder", view: view, node: node) })
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 Color.clear
             }
-            if let input = bridge.packet?.coder_input {
-                InputBar(input: input, busy: bridge.busy,
-                         submit: { bridge.submit("coder", token: input.token, value: $0) },
-                         cancel: { bridge.cancel("coder", token: input.token) })
-                    .id(input.token)
-            }
         }
         .background(Color.black.ignoresSafeArea())
-        // Task status moves on its own; poll while no message is being typed.
-        .task(id: bridge.packet?.coder_input == nil) {
-            guard bridge.packet?.coder_input == nil else { return }
+        // Task status and a running chat's transcript move on their own.
+        .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 if !Task.isCancelled && !bridge.busy { bridge.refreshComputers() }
@@ -145,7 +126,7 @@ struct ChatsTab: View {
             ZStack(alignment: .topTrailing) {
                 if let view = bridge.packet?.chats {
                     NativeRenderer(node: view.root, revision: view.revision,
-                                   followTarget: bridge.packet?.chats_follow, followChanged: nil,
+                                   followTarget: nil, followChanged: nil,
                                    activate: { node in bridge.activate("chats", view: view, node: node) })
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 } else {

@@ -56,6 +56,8 @@ impl RelayPolicy {
 pub enum SourceKind {
     Codex,
     Claude,
+    /// Coder task transcripts, `*.atif.jsonl` in Coder's task directory.
+    Coder,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -89,10 +91,10 @@ impl Grant {
         }
         policy.validate(&self.relay)?;
         window(self.issued_at, self.expires_at, MAX_GRANT_LIFETIME)?;
-        if self.sources.is_empty() || self.sources.len() > 2 {
+        if self.sources.is_empty() || self.sources.len() > 3 {
             return fail(
                 ErrorCode::Bounds,
-                "grant needs one or two explicit source collections",
+                "grant needs one to three explicit source collections",
             );
         }
         for (i, source) in self.sources.iter().enumerate() {

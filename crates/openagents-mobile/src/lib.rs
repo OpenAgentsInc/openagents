@@ -13,6 +13,7 @@
 mod app;
 mod chats;
 mod coder_tab;
+mod conversation;
 mod tailnet;
 mod tailnet_view;
 

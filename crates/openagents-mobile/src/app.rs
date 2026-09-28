@@ -2,7 +2,7 @@
 //! it opens, and the Tailnet surface.
 
 use crate::chats::{Chats, Purpose as ChatsPurpose};
-use crate::coder_tab::{CoderTab, Purpose as CoderPurpose};
+use crate::coder_tab::CoderTab;
 use crate::tailnet::{Client, Outcome as TailnetOutcome};
 use crate::tailnet_view::{self, Admit, Intent as TailnetIntent, Screen as TailnetScreen};
 use coder_computers::cache::Cache;
@@ -71,12 +71,10 @@ pub enum Request {
         revision: u64,
         node: String,
     },
+    /// A composer's send on the Coder surface.
     CoderInput {
         token: String,
         value: String,
-    },
-    CoderCancel {
-        token: String,
     },
     TailnetActivate {
         instance: String,
@@ -149,13 +147,9 @@ pub struct Packet {
     pub computers_input: Option<InputRequest>,
     pub computers_qr: Option<QrModules>,
     pub coder: Option<serde_json::Value>,
-    /// A value the Coder surface asks the host to collect.
-    pub coder_input: Option<rust_native::input::InputRequest<CoderPurpose>>,
     pub chats: Option<serde_json::Value>,
     /// A value the Chats surface asks the host to collect.
     pub chats_input: Option<rust_native::input::InputRequest<ChatsPurpose>>,
-    /// The Chats node to keep in view, while a chat is open.
-    pub chats_follow: Option<&'static str>,
     /// The Chats surface is reading in the background.
     pub chats_loading: bool,
     pub tailnet: Option<serde_json::Value>,
@@ -388,11 +382,12 @@ impl App {
                     node,
                 },
                 self.computers.as_mut(),
+                &mut self.chats,
             ),
             Request::CoderInput { token, value } => {
-                self.coder.submit(&token, &value, self.computers.as_mut())
+                self.coder
+                    .submit(&token, &value, self.computers.as_mut(), &mut self.chats)
             }
-            Request::CoderCancel { token } => self.coder.cancel(&token),
             Request::TailnetActivate {
                 instance,
                 revision,
@@ -631,7 +626,8 @@ impl App {
                             .as_mut()
                             .is_some_and(|computers| computers.admit(invitation, &label).is_ok());
                     if let Some(chats) = admission.chats.clone() {
-                        self.chats.pair(chats, Some(label));
+                        self.chats
+                            .pair(chats, Some(label), Some(admission.host.clone()));
                     }
                     if added {
                         known.insert(
@@ -677,7 +673,7 @@ impl App {
         self.chats.settle();
         let tailnet = self.render_tailnet();
         let chats = self.chats.render();
-        let coder = self.coder.render(self.computers.as_ref());
+        let coder = self.coder.render(self.computers.as_ref(), &mut self.chats);
         let computers = self.computers.as_ref();
         Packet {
             schema: "openagents.mobile.v1",
@@ -701,10 +697,8 @@ impl App {
                         .collect(),
                 }),
             coder,
-            coder_input: self.coder.input().cloned(),
             chats,
             chats_input: self.chats.input().cloned(),
-            chats_follow: self.chats.follow(),
             chats_loading: self.chats.loading(),
             tailnet,
             tailnet_loading: {

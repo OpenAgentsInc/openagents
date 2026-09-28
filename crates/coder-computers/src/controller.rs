@@ -378,6 +378,23 @@ impl Computers {
         self.rebuild().map_err(Refusal::Failed)
     }
 
+    /// Ask `host` to stop task `task` at `revision`, as the Stop task
+    /// control does, without its confirmation step: a chat client's stop
+    /// control is the confirmation.
+    pub fn stop_task(&mut self, host: &str, task: &str, revision: u64) -> Result<(), Refusal> {
+        self.allow(Action::Operate { host })?;
+        let reason = match self.caps.platform {
+            crate::model::Platform::Phone => "Stopped from a phone.",
+            crate::model::Platform::Desktop => "Stopped from the desktop app.",
+            crate::model::Platform::Terminal => "Stopped from the terminal app.",
+        };
+        self.service
+            .cancel_task(host, task, revision, reason)
+            .map_err(Refusal::Failed)?;
+        self.reload();
+        self.rebuild().map_err(Refusal::Failed)
+    }
+
     /// Order work on `host` without the Order work screen, as a chat client
     /// does: NIP-HOST `task.create` with the prompt's first line as title.
     /// It records the task; the host's own policy decides whether it runs.

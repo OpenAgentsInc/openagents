@@ -75,7 +75,7 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
     let command = args.next().unwrap_or_else(|| "connect".into());
     if matches!(command.as_str(), "help" | "--help" | "-h") {
         println!(
-            "coder-connect connect [--relay wss://relay.openagents.com] [--codex-root PATH] [--claude-root PATH] [--no-codex] [--no-claude] [--expires-secs 86400] [--no-browser] [--state PATH]\n  Display a five-minute computer QR invitation, then keep serving read-only history. Defaults to existing ~/.codex and ~/.claude. With no arguments, runs connect.\ncoder-connect pair --client PUBKEY --relay wss://relay.example/ [--codex-root PATH] [--claude-root PATH] [--expires-secs 86400] [--state PATH]\ncoder-connect serve [--state PATH] [--relay URL] [--once]\ncoder-connect revoke --grant ID [--source ID] [--state PATH]\ncoder-connect public-key [--state PATH]\nKeys remain in the private local store. --loopback-test permits ws only for numeric loopback fixtures."
+            "coder-connect connect [--relay wss://relay.openagents.com] [--codex-root PATH] [--claude-root PATH] [--coder-root PATH] [--no-codex] [--no-claude] [--expires-secs 86400] [--no-browser] [--state PATH]\n  Display a five-minute computer QR invitation, then keep serving read-only history. Defaults to existing ~/.codex and ~/.claude; --coder-root adds a Coder task directory such as ~/.openagents/tasks. With no arguments, runs connect.\ncoder-connect pair --client PUBKEY --relay wss://relay.example/ [--codex-root PATH] [--claude-root PATH] [--coder-root PATH] [--expires-secs 86400] [--state PATH]\ncoder-connect serve [--state PATH] [--relay URL] [--once]\ncoder-connect revoke --grant ID [--source ID] [--state PATH]\ncoder-connect public-key [--state PATH]\nKeys remain in the private local store. --loopback-test permits ws only for numeric loopback fixtures."
         );
         return Ok(());
     }
@@ -105,6 +105,8 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
             let home = std::env::var_os("HOME").map(PathBuf::from);
             let codex = args.value("--codex-root");
             let claude = args.value("--claude-root");
+            let coder = args.value("--coder-root").map(PathBuf::from);
+            // A Coder root adds to the default roots rather than replacing them.
             let explicit_roots = codex.is_some() || claude.is_some();
             let select = |explicit: Option<String>,
                           disabled: bool,
@@ -127,6 +129,7 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
             let config = coder_history::Config {
                 codex: select(codex, args.no_codex, ".codex")?,
                 claude: select(claude, args.no_claude, ".claude")?,
+                coder,
             };
             let lifetime = args
                 .value("--expires-secs")
@@ -134,13 +137,17 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
                 .transpose()?
                 .unwrap_or(86400);
             args.finish()?;
-            if config.codex.is_none() && config.claude.is_none() {
+            if config.codex.is_none() && config.claude.is_none() && config.coder.is_none() {
                 return Err(bad(
                     "no retained history roots found; select --codex-root or --claude-root",
                 ));
             }
             println!("Pair your phone for read-only access to:");
-            for (label, path) in [("Codex", &config.codex), ("Claude", &config.claude)] {
+            for (label, path) in [
+                ("Codex", &config.codex),
+                ("Claude", &config.claude),
+                ("Coder", &config.coder),
+            ] {
                 if let Some(path) = path {
                     println!(
                         "  {label}: {}",
@@ -179,6 +186,7 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
             let relay = args.required("--relay")?;
             let codex = args.value("--codex-root").map(PathBuf::from);
             let claude = args.value("--claude-root").map(PathBuf::from);
+            let coder = args.value("--coder-root").map(PathBuf::from);
             let lifetime = args
                 .value("--expires-secs")
                 .map(|s| s.parse::<u64>().map_err(|_| bad("invalid grant lifetime")))
@@ -196,7 +204,11 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
             let code = host.pair(
                 &client,
                 &relay,
-                coder_history::Config { codex, claude },
+                coder_history::Config {
+                    codex,
+                    claude,
+                    coder,
+                },
                 now,
                 expires,
             )?;
@@ -363,7 +375,7 @@ fn update_display(host: &Host, display: &mut Option<pairing_ui::Display>) -> Res
 pub async fn pair(arguments: &[String]) -> Result<()> {
     if arguments.len() == 1 && matches!(arguments[0].as_str(), "--help" | "-h" | "help") {
         println!(
-            "coder pair [--relay URL] [--codex-root PATH] [--claude-root PATH] [--no-codex] [--no-claude] [--expires-secs 86400] [--no-browser] [--state PATH]\nShow a QR code for read-only phone access to existing Codex and Claude chats. Keep this command running after pairing."
+            "coder pair [--relay URL] [--codex-root PATH] [--claude-root PATH] [--coder-root PATH] [--no-codex] [--no-claude] [--expires-secs 86400] [--no-browser] [--state PATH]\nShow a QR code for read-only phone access to existing Codex and Claude chats. Keep this command running after pairing."
         );
         return Ok(());
     }

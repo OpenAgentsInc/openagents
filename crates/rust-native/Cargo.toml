@@ -10,6 +10,8 @@ description = "Experimental reusable semantic views, typed intents, styles, and 
 include = ["src/**", "examples/**", "docs/**", "README.md", "LICENSE"]
 
 [dependencies]
+# Markdown is parsed in Rust into typed blocks; adapters only lay them out.
+pulldown-cmark = { version = "0.13.4", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

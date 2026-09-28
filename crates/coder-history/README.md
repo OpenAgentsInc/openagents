@@ -1,7 +1,7 @@
 # Saved harness history
 
-`coder-history` reads saved Codex and Claude conversations from explicitly
-selected desktop directories. It provides catalog pages and complete source
+`coder-history` reads saved Codex and Claude conversations and Coder task
+transcripts from explicitly selected desktop directories. It provides catalog pages and complete source
 bytes in bounded transcript pages. It does not start, resume, interrupt, or
 modify a harness. It has no model or network client.
 
@@ -13,7 +13,8 @@ readable-record types on a client without filesystem access. See
 
 ## Read a history
 
-A desktop operator selects absolute `Config.codex` and `Config.claude` roots.
+A desktop operator selects absolute `Config.codex`, `Config.claude`, and
+`Config.coder` roots.
 `History::open(config)` opens those roots. `catalog(CatalogRequest)` enumerates
 saved sources, and `transcript(TranscriptRequest)` reads a source selected by
 its opaque `source_id`. Reopening `History` preserves valid cursors for the
@@ -26,6 +27,12 @@ in the catalog with `status: missing`. The Claude adapter reads JSONL sources
 under `projects/`, including separately labeled `subagents` sources. It uses
 first-record title metadata when present; it does not reconstruct Claude's
 full title history or sort conversations by their last activity.
+
+The Coder adapter reads Coder's task directory, such as `~/.openagents/tasks`.
+It lists only the `<task>.<attempt>.atif.jsonl` files directly inside that
+directory, one chat per task attempt, newest first by last write. Their native
+ID is the 64-hex task ID, and their title is the first line of the first
+`User` step. It ignores subdirectories and every other file there.
 
 These adapters follow locally observed saved-file structures, not a guaranteed
 provider API. Unknown records remain available. The reader does not inspect
@@ -48,6 +55,38 @@ preview behavior. Both parse at most 256 KiB and return `None` for larger record
 without claiming they were omitted. A message can contain multiple tool blocks;
 the single tool metadata fields describe the first recognized block, while raw
 JSON retains all blocks.
+
+A Coder transcript line (`crates/atif`) projects as follows:
+
+| Record | `kind` | `role` | `text` |
+| --- | --- | --- | --- |
+| `session` | `session` | none | empty; `native_id` is the session ID |
+| `User` step | `message` | `user` | the message |
+| `System` step with no extensions | `message` | `system` | the message |
+| `System` step, loop event `generated` with an `Ok` action | `message` | `assistant` | the rationale, then `Finished.` on its own line when finished |
+| `System` step, loop event `generated` with an `Err` | `message` | `system` | `The model call failed: ` and the error's first line, at most 300 bytes |
+| `System` step, loop event `ran` | `tool_call` (`shell`) | none | the command, then `exit N`, `timed out`, or `ended by a signal` when it failed, then a blank line and the output |
+| `System` step, loop event `tested` | `tool_call` (`tests`) | none | one `COMMAND: exit N` line per test, by each command's first line |
+| `System` step, loop event `ended` | `message` | `system` | `Coder finished in N steps.`, or `Coder stopped: ` and the reason |
+| Any other `System` step with extensions | `adapter` | none | empty |
+| `Agent` step with a message | `message` | `assistant` | the message, then `Tool: NAME ARGS` for each call after a blank line |
+| `Agent` step with only a call | `tool_call` | none | the argument summary, then the call's result after a blank line |
+| Step with only an observation | `tool_result` | `tool` | the result content |
+| `Agent` step with only reasoning | `reasoning` | none | the reasoning |
+| `end` | `end` | none | the end state |
+
+A loop event is `extensions.microcoder.event`, the `run::Event` that
+`crates/microcoder` reports. Admission, effect, decision, summary, and fault
+evidence, and the loop's other events, such as `judged` and `gated`, are
+`adapter` records: readers can skip them, and their raw bytes stay available.
+A stop reason other than `bad_replies` is its name in words, such as
+`step limit`; `bad_replies` shows the first line of its detail.
+
+`tool_name` and `call_id` name a step's first call. The argument summary is a
+shell command's text or compact JSON, at most 240 bytes. The reader accepts both
+the log's `call` field and the exported document's `tool_calls` and
+`observation`. A record with another shape stays an explicit unknown
+projection.
 
 Retain `TranscriptPage.next` at EOF and reuse it when polling. A partial final
 line is returned with `pending_line: true`; an append completes the same record

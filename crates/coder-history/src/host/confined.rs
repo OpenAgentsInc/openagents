@@ -68,6 +68,25 @@ impl Root {
         self.open_relative(relative, true)
     }
 
+    /// A fresh descriptor for the root directory itself. Enumerating the
+    /// held descriptor would share its directory position between scans.
+    pub fn open_top(&self) -> Result<File, Error> {
+        // SAFETY: the held descriptor is a live directory and "." is a
+        // NUL-terminated single component that names that same directory.
+        let fd = unsafe {
+            libc::openat(
+                self.directory.as_raw_fd(),
+                c".".as_ptr(),
+                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_DIRECTORY,
+            )
+        };
+        if fd < 0 {
+            return Err(Error::SourceUnreadable);
+        }
+        // SAFETY: openat returned a newly owned descriptor.
+        Ok(unsafe { File::from_raw_fd(fd) })
+    }
+
     fn open_relative(&self, relative: &Path, directory: bool) -> Result<File, Error> {
         let parts: Vec<_> = relative.components().collect();
         if parts.is_empty()

@@ -1,37 +1,47 @@
-//! The Coder surface: start a chat with Coder on one of your computers and
-//! follow it.
+//! The Coder surface: chats with Coder on your computers.
 //!
 //! A new chat is a NIP-HOST `task.create` on the chosen computer, the same
-//! operation as the Computers surface's Order work. With the host's
-//! auto-start policy on, the host runs Coder's engine on it in the chosen
-//! workspace right away; otherwise the task waits in the host's inbox. The
-//! list follows each task through the host's signed activity summaries
-//! (phase and a one-line headline). Reading the engine's full transcript on
-//! the phone is not implemented yet.
+//! operation as the Computers surface's Order work; with the host's
+//! auto-start policy on, the host runs Coder's engine on it right away. An
+//! open chat reads the task's ATIF transcript through the computer's
+//! read-only history observer (its `coder` source) and polls it while the
+//! task runs; the host's signed activity summaries say whether it is
+//! running. Stop is NIP-HOST `task.cancel`. A message in a finished chat
+//! starts a new chat: follow-ups that continue one task are not built yet.
 
+use crate::chats::Chats;
+use crate::conversation::Conversation;
 use coder_computers::{Computers, HostRecord, Snapshot};
 use nostr::activity_summary::{ActivitySummary, Phase, SubjectKind};
-use rust_native::input::InputRequest;
 use rust_native::style::{Color, Space, Style, TextWeight};
-use rust_native::{Activation, Axis, Element, Node, TextRole, ValidatedView, View};
+use rust_native::{Activation, Axis, Element, MessageRole, Node, TextRole, ValidatedView, View};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
-/// The largest prompt, as NIP-HOST `task.create` allows.
+/// The largest message, as NIP-HOST `task.create` allows.
 const MAX_PROMPT_BYTES: usize = 16 * 1024;
 const SHOWN_TASKS: usize = 50;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Intent {
-    NewChat,
     /// Use the next computer that can take work.
     NextComputer,
+    Open {
+        host: String,
+        task: String,
+    },
+    Back,
+    Earlier,
+    Stop,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Purpose {
-    Prompt,
+/// An open chat: one task on one computer.
+struct Open {
+    host: String,
+    task: String,
+    title: String,
+    conversation: Option<Conversation>,
 }
 
 pub struct CoderTab {
@@ -39,12 +49,11 @@ pub struct CoderTab {
     revision: u64,
     current: Option<ValidatedView<Intent>>,
     selected: Option<String>,
-    input: Option<InputRequest<Purpose>>,
     notice: Option<String>,
-    tokens: u64,
-    /// The first line of each chat this device started, by task ID: the
-    /// host's headline is deliberately generic.
-    titles: std::collections::BTreeMap<String, String>,
+    composers: u64,
+    /// The first line of each chat this device started, by task ID.
+    titles: BTreeMap<String, String>,
+    open: Option<Open>,
 }
 
 impl CoderTab {
@@ -54,15 +63,11 @@ impl CoderTab {
             revision: 0,
             current: None,
             selected: None,
-            input: None,
             notice: None,
-            tokens: 0,
-            titles: std::collections::BTreeMap::new(),
+            composers: 1,
+            titles: BTreeMap::new(),
+            open: None,
         }
-    }
-
-    pub fn input(&self) -> Option<&InputRequest<Purpose>> {
-        self.input.as_ref()
     }
 
     /// The computers this device may order work on, in snapshot order.
@@ -94,7 +99,25 @@ impl CoderTab {
             .cloned()
     }
 
-    pub fn activate(&mut self, event: &Activation, computers: Option<&mut Computers>) {
+    /// The newest summary of `task` on `host`.
+    fn summary<'a>(snapshot: &'a Snapshot, host: &str, task: &str) -> Option<&'a ActivitySummary> {
+        snapshot
+            .activity
+            .iter()
+            .filter(|s| s.subject_kind == SubjectKind::Task && s.host == host && s.subject == task)
+            .max_by_key(|s| s.sequence)
+    }
+
+    fn running(phase: Phase) -> bool {
+        matches!(phase, Phase::Queued | Phase::Running | Phase::Waiting)
+    }
+
+    pub fn activate(
+        &mut self,
+        event: &Activation,
+        computers: Option<&mut Computers>,
+        chats: &mut Chats,
+    ) {
         let Some(intent) = self
             .current
             .as_ref()
@@ -103,9 +126,9 @@ impl CoderTab {
         else {
             return;
         };
-        let Some(computers) = computers else { return };
         match intent {
             Intent::NextComputer => {
+                let Some(computers) = computers else { return };
                 let hosts = Self::hosts(computers);
                 let at = self
                     .chosen(computers)
@@ -115,64 +138,79 @@ impl CoderTab {
                     .get((at + 1) % hosts.len().max(1))
                     .map(|host| host.key.clone());
             }
-            Intent::NewChat => {
-                let Some(host) = self.chosen(computers).map(|h| h.key.clone()) else {
-                    return;
-                };
-                if computers
-                    .snapshot()
-                    .host(&host)
-                    .and_then(Self::workspace)
-                    .is_none()
-                    && let Err(refusal) = computers.refresh_workspaces(&host)
+            Intent::Open { host, task } => self.open(host, task, chats),
+            Intent::Back => self.open = None,
+            Intent::Earlier => {
+                if let Some(conversation) = self.open.as_ref().and_then(|o| o.conversation.as_ref())
                 {
-                    self.notice = Some(refusal.reason());
-                    return;
+                    conversation.earlier();
                 }
-                let Some(record) = computers.snapshot().host(&host) else {
+            }
+            Intent::Stop => {
+                let (Some(open), Some(computers)) = (&self.open, computers) else {
                     return;
                 };
-                let Some(workspace) = Self::workspace(record) else {
-                    self.notice = Some(format!(
-                        "{} lists no workspace for Coder yet.",
-                        record.label
-                    ));
+                let Some(revision) =
+                    Self::summary(computers.snapshot(), &open.host, &open.task).map(|s| s.sequence)
+                else {
                     return;
                 };
-                self.tokens += 1;
-                self.notice = None;
-                self.input = Some(InputRequest {
-                    token: format!("coder-prompt-{}", self.tokens),
-                    purpose: Purpose::Prompt,
-                    label: "Message".into(),
-                    prompt: format!(
-                        "What should Coder do? It works on {} in {workspace}.",
-                        record.label
-                    ),
-                    scan: false,
-                    secret: false,
-                    max_bytes: MAX_PROMPT_BYTES,
-                });
+                let (host, task) = (open.host.clone(), open.task.clone());
+                self.notice = computers
+                    .stop_task(&host, &task, revision)
+                    .err()
+                    .map(|refusal| refusal.reason());
             }
         }
     }
 
-    pub fn cancel(&mut self, token: &str) {
-        if self
-            .input
-            .as_ref()
-            .is_some_and(|input| input.token == token)
-        {
-            self.input = None;
+    fn open(&mut self, host: String, task: String, chats: &mut Chats) {
+        let title = self
+            .titles
+            .get(&task)
+            .cloned()
+            .unwrap_or_else(|| "Chat with Coder".into());
+        self.open = Some(Open {
+            host,
+            task,
+            title,
+            conversation: None,
+        });
+        self.attach(chats);
+    }
+
+    /// Find the open chat's transcript once the computer lists it.
+    fn attach(&mut self, chats: &mut Chats) {
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        if open.conversation.is_some() {
+            return;
+        }
+        match chats.coder_chat(&open.host, &open.task) {
+            Some((_, client, chat)) => {
+                if !chat.title.is_empty() && !chat.title.starts_with("Saved ") {
+                    open.title = chat.title.clone();
+                }
+                open.conversation = Some(Conversation::open(chats.runtime(), client, chat));
+            }
+            None => chats.refresh_linked(&open.host),
         }
     }
 
-    pub fn submit(&mut self, token: &str, value: &str, computers: Option<&mut Computers>) {
-        let Some(input) = self.input.take() else {
+    /// Accept a composer's message: a new chat on the chosen computer, or on
+    /// the open chat's computer.
+    pub fn submit(
+        &mut self,
+        token: &str,
+        value: &str,
+        computers: Option<&mut Computers>,
+        chats: &mut Chats,
+    ) {
+        let Some(view) = self.current.as_ref() else {
             return;
         };
-        if input.accept(token, value).is_err() {
-            self.input = Some(input);
+        if view.accept_composer(token, value).is_err() {
             return;
         }
         let prompt = value.trim();
@@ -180,14 +218,33 @@ impl CoderTab {
         if prompt.is_empty() {
             return;
         }
-        let Some(record) = self.chosen(computers) else {
+        let host = match &self.open {
+            Some(open) => open.host.clone(),
+            None => match self.chosen(computers) {
+                Some(record) => record.key.clone(),
+                None => return,
+            },
+        };
+        if computers
+            .snapshot()
+            .host(&host)
+            .and_then(Self::workspace)
+            .is_none()
+            && let Err(refusal) = computers.refresh_workspaces(&host)
+        {
+            self.notice = Some(refusal.reason());
+            return;
+        }
+        let Some(record) = computers.snapshot().host(&host) else {
             return;
         };
-        let (host, label) = (record.key.clone(), record.label.clone());
+        let label = record.label.clone();
         let Some(workspace) = Self::workspace(record) else {
+            self.notice = Some(format!("{label} lists no workspace for Coder yet."));
             return;
         };
-        self.notice = Some(match computers.start_task(&host, &workspace, prompt) {
+        self.composers += 1;
+        match computers.start_task(&host, &workspace, prompt) {
             Ok(task) => {
                 let title: String = prompt
                     .lines()
@@ -196,31 +253,72 @@ impl CoderTab {
                     .chars()
                     .take(80)
                     .collect();
-                self.titles.insert(task, title);
-                format!("Sent to Coder on {label}.")
+                self.titles.insert(task.clone(), title);
+                self.notice = None;
+                self.open(host, task, chats);
             }
-            Err(refusal) => refusal.reason(),
-        });
+            Err(refusal) => self.notice = Some(refusal.reason()),
+        }
     }
 
-    pub fn render(&mut self, computers: Option<&Computers>) -> Option<serde_json::Value> {
+    pub fn render(
+        &mut self,
+        computers: Option<&Computers>,
+        chats: &mut Chats,
+    ) -> Option<serde_json::Value> {
+        self.attach(chats);
+        // Follow a running chat's transcript.
+        if let (Some(open), Some(computers)) = (&self.open, computers)
+            && let Some(conversation) = &open.conversation
+            && Self::summary(computers.snapshot(), &open.host, &open.task)
+                .is_none_or(|s| Self::running(s.phase))
+        {
+            conversation.poll();
+        }
         self.revision += 1;
-        let root = self.root(computers);
-        let view = View::new(self.instance.clone(), self.revision, root)
-            .validate()
-            .ok()?;
+        let view = loop {
+            let root = match &self.open {
+                Some(open) => self.chat(open, computers),
+                None => self.home(computers),
+            };
+            match View::new(self.instance.clone(), self.revision, root).validate() {
+                Ok(view) => break view,
+                // A long chat can outgrow one view; keep its newest half.
+                Err(_) => {
+                    let conversation = self.open.as_ref()?.conversation.as_ref()?;
+                    conversation.shrink();
+                    if conversation.is_empty() {
+                        return None;
+                    }
+                }
+            }
+        };
         let value = serde_json::to_value(view.view()).ok();
         self.current = Some(view);
         value
     }
 
-    fn root(&self, computers: Option<&Computers>) -> Node<Intent> {
+    fn composer(&self, placeholder: String, enabled: bool, busy: bool) -> Node<Intent> {
+        node(
+            "coder-composer",
+            Element::Composer {
+                token: format!("coder-composer-{}", self.composers),
+                placeholder,
+                max_bytes: MAX_PROMPT_BYTES,
+                enabled,
+                busy,
+                stop: busy.then_some(Intent::Stop),
+            },
+        )
+    }
+
+    fn home(&self, computers: Option<&Computers>) -> Node<Intent> {
         let mut children = vec![heading("coder-title", "Coder")];
         let chosen = computers.and_then(|c| self.chosen(c));
         let Some((computers, host)) = computers.zip(chosen) else {
             children.push(body(
                 "coder-empty",
-                "Add a computer under Computers, then start a chat with Coder on it.",
+                "Add a computer under Account > Computers, then chat with Coder on it.",
             ));
             return page(children);
         };
@@ -228,37 +326,115 @@ impl CoderTab {
             Some(workspace) => format!("On {} · {workspace}", host.label),
             None => format!("On {}", host.label),
         };
-        let mut row_children = vec![status("coder-computer", &place)];
+        let mut place_row = vec![status("coder-computer", &place)];
         if Self::hosts(computers).len() > 1 {
-            row_children.push(button("coder-next", "Change", Intent::NextComputer));
+            place_row.push(button("coder-next", "Change", Intent::NextComputer));
         }
-        children.push(row("coder-place", row_children));
-        children.push(button("coder-new", "New chat", Intent::NewChat));
+        children.push(row("coder-place", place_row));
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
         let rows = tasks(computers.snapshot(), &self.titles);
         if rows.is_empty() {
-            children.push(status("coder-none", "No chats with Coder yet."));
+            children.push(status(
+                "coder-none",
+                "No chats yet. Write to Coder below to start one.",
+            ));
         } else {
-            children.push(Node {
-                key: "coder-chats".into(),
-                style: Style::default(),
-                element: Element::List {
+            children.push(node(
+                "coder-chats",
+                Element::List {
                     label: "Chats with Coder".into(),
                     children: rows,
                 },
-            });
+            ));
         }
+        children.push(self.composer(format!("Message Coder on {}", host.label), true, false));
+        page(children)
+    }
+
+    fn chat(&self, open: &Open, computers: Option<&Computers>) -> Node<Intent> {
+        let phase = computers
+            .and_then(|c| Self::summary(c.snapshot(), &open.host, &open.task))
+            .map(|s| s.phase);
+        let running = phase.is_none_or(Self::running);
+        let label = computers
+            .and_then(|c| c.snapshot().host(&open.host))
+            .map_or_else(|| "your computer".to_owned(), |h| h.label.clone());
+        let working = match phase {
+            Some(Phase::Queued) | None => Some("Queued"),
+            Some(Phase::Running) => Some("Coder is working"),
+            Some(Phase::Waiting) => Some("Waiting for you on the computer"),
+            _ => None,
+        };
+        let mut children = vec![
+            row(
+                "coder-chat-header",
+                vec![
+                    button("coder-back", "Coder", Intent::Back),
+                    status(
+                        "coder-chat-place",
+                        &format!("{} · {label}", phase.map_or("Starting", phase_label)),
+                    ),
+                ],
+            ),
+            heading("coder-chat-title", &open.title),
+        ];
+        if let Some(notice) = &self.notice {
+            children.push(status("coder-notice", notice));
+        }
+        let transcript = match &open.conversation {
+            Some(conversation) => {
+                conversation.transcript("coder-transcript", Intent::Earlier, working)
+            }
+            None => {
+                // The computer has not listed the transcript yet: show the
+                // message this device sent.
+                let mut rows = vec![];
+                if let Some(title) = self.titles.get(&open.task) {
+                    rows.push(node(
+                        "coder-sent",
+                        Element::Message {
+                            role: MessageRole::User,
+                            note: None,
+                            children: vec![node(
+                                "coder-sent-text",
+                                Element::Markdown {
+                                    blocks: rust_native::markdown::parse(title),
+                                },
+                            )],
+                        },
+                    ));
+                }
+                rows.push(node(
+                    "coder-waiting",
+                    Element::Working {
+                        label: working.unwrap_or("Loading the chat").into(),
+                    },
+                ));
+                node(
+                    "coder-transcript",
+                    Element::Transcript {
+                        label: "Messages".into(),
+                        children: rows,
+                        earlier: None,
+                    },
+                )
+            }
+        };
+        children.push(transcript);
+        let placeholder = if running {
+            "Coder is working…".to_owned()
+        } else {
+            format!("Message Coder on {label} (starts a new chat)")
+        };
+        children.push(self.composer(placeholder, !running, running));
         page(children)
     }
 }
 
-/// One row per task, newest first, from the newest summary of each.
-fn tasks(
-    snapshot: &Snapshot,
-    titles: &std::collections::BTreeMap<String, String>,
-) -> Vec<Node<Intent>> {
+/// One tappable row per task, newest first, from the newest summary of each.
+fn tasks(snapshot: &Snapshot, titles: &BTreeMap<String, String>) -> Vec<Node<Intent>> {
     let mut newest: Vec<&ActivitySummary> = vec![];
     for summary in snapshot
         .activity
@@ -279,35 +455,27 @@ fn tasks(
         .into_iter()
         .take(SHOWN_TASKS)
         .map(|summary| {
-            let key = format!("task-{}", &summary.subject[..16.min(summary.subject.len())]);
             let label = snapshot
                 .host(&summary.host)
                 .map_or("a computer", |host| host.label.as_str());
-            stack(
-                &key,
-                vec![
-                    text(
-                        &format!("{key}-headline"),
-                        titles.get(&summary.subject).unwrap_or(&summary.headline),
-                        TextRole::Body,
-                        WHITE,
-                        true,
-                    ),
-                    status(
-                        &format!("{key}-detail"),
-                        &format!(
-                            "{} · {label} · {}",
-                            phase(summary.phase),
-                            ago(snapshot.now, summary.updated_at)
-                        ),
-                    ),
-                ],
+            let title = titles.get(&summary.subject).unwrap_or(&summary.headline);
+            button(
+                &format!("task-{}", &summary.subject[..16.min(summary.subject.len())]),
+                &format!(
+                    "{title}\n{} · {label} · {}",
+                    phase_label(summary.phase),
+                    ago(snapshot.now, summary.updated_at)
+                ),
+                Intent::Open {
+                    host: summary.host.clone(),
+                    task: summary.subject.clone(),
+                },
             )
         })
         .collect()
 }
 
-fn phase(phase: Phase) -> &'static str {
+fn phase_label(phase: Phase) -> &'static str {
     match phase {
         Phase::Queued => "Queued",
         Phase::Running => "Working",
@@ -332,20 +500,22 @@ fn ago(now: u64, then: u64) -> String {
 const WHITE: Color = Color::rgb(255, 255, 255);
 const GRAY: Color = Color::rgb(153, 153, 153);
 
-fn page(children: Vec<Node<Intent>>) -> Node<Intent> {
-    let mut node = stack("coder", children);
-    node.style.gap = Some(Space::Sm);
-    node.style.padding_top = Some(Space::Md);
-    node.style.padding_end = Some(Space::Md);
-    node.style.padding_start = Some(Space::Md);
-    node
-}
-
-fn stack(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
+fn node(key: &str, element: Element<Intent>) -> Node<Intent> {
     Node {
         key: key.into(),
+        style: Style::default(),
+        element,
+    }
+}
+
+fn page(children: Vec<Node<Intent>>) -> Node<Intent> {
+    Node {
+        key: "coder".into(),
         style: Style {
-            gap: Some(Space::Xs),
+            gap: Some(Space::Sm),
+            padding_top: Some(Space::Md),
+            padding_end: Some(Space::Md),
+            padding_start: Some(Space::Md),
             ..Style::default()
         },
         element: Element::Stack {

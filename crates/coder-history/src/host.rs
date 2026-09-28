@@ -7,6 +7,9 @@ use std::path::PathBuf;
 pub struct Config {
     pub codex: Option<PathBuf>,
     pub claude: Option<PathBuf>,
+    /// Coder's task directory, such as `~/.openagents/tasks`. Only
+    /// `*.atif.jsonl` files directly inside it are read.
+    pub coder: Option<PathBuf>,
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -31,6 +34,7 @@ impl History {
         for (harness, path) in [
             (Harness::Codex, config.codex),
             (Harness::Claude, config.claude),
+            (Harness::Coder, config.coder),
         ] {
             if let Some(path) = path {
                 roots.push(confined::Root::open(harness, path)?);

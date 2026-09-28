@@ -189,6 +189,7 @@ fn app_redeems_qr_invitation_pages_refreshes_restores_and_erases_revoked_history
             coder_history::Config {
                 codex: Some(source),
                 claude: None,
+                coder: None,
             },
             now,
             now + 3600,
@@ -290,6 +291,7 @@ fn first_read_failure_keeps_the_grant_and_error_until_a_read_succeeds() {
             coder_history::Config {
                 codex: Some(source.clone()),
                 claude: None,
+                coder: None,
             },
             now,
             now + 3600,

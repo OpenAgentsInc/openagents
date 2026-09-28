@@ -2,7 +2,7 @@
 // Application intents stay opaque; native callbacks return identity only.
 import SwiftUI
 
-struct NativeColor: Decodable {
+struct NativeColor: Decodable, Equatable {
     let red: UInt8
     let green: UInt8
     let blue: UInt8
@@ -14,7 +14,7 @@ struct NativeColor: Decodable {
     }
 }
 
-struct NativeStyle: Decodable {
+struct NativeStyle: Decodable, Equatable {
     let foreground: NativeColor?
     let background: NativeColor?
     let padding_top: String?
@@ -42,22 +42,35 @@ struct NativeStyle: Decodable {
     }
 }
 
-struct NativeNode: Decodable, Identifiable {
+struct NativeNode: Decodable, Equatable, Identifiable {
     let key: String
     let style: NativeStyle
     let element: NativeElement
     var id: String { key }
 }
 
-indirect enum NativeElement: Decodable {
+indirect enum NativeElement: Decodable, Equatable {
     case stack(String, [NativeNode])
     case list(String, [NativeNode])
     case text(String, String)
     case button(String, Bool)
     case surface(String, String)
+    /// A conversation, oldest row first, and its optional older-rows control.
+    case transcript(String, [NativeNode], NativeEarlier?)
+    /// A role (`user`, `assistant`, or `system`), a short note, and children.
+    case message(String, String?, [NativeNode])
+    case markdown([NativeMarkdownBlock])
+    /// A tool call's name, one-line detail, state, and expandable children.
+    case tool(String, String, String, [NativeNode])
+    case working(String)
+    case composer(NativeComposerProps)
 
     private enum Keys: String, CodingKey { case kind, props }
-    private enum Props: String, CodingKey { case axis, children, label, value, role, enabled, resource }
+    private enum Props: String, CodingKey {
+        case axis, children, label, value, role, enabled, resource
+        case earlier, note, blocks, name, detail, state
+        case token, placeholder, max_bytes, busy, stop
+    }
 
     init(from decoder: Decoder) throws {
         let object = try decoder.container(keyedBy: Keys.self)
@@ -74,6 +87,28 @@ indirect enum NativeElement: Decodable {
                                        try props.decode(Bool.self, forKey: .enabled))
         case "surface": self = .surface(try props.decode(String.self, forKey: .resource),
                                          try props.decode(String.self, forKey: .label))
+        case "transcript": self = .transcript(try props.decode(String.self, forKey: .label),
+                                               try props.decode([NativeNode].self, forKey: .children),
+                                               try props.decodeIfPresent(NativeEarlier.self, forKey: .earlier))
+        case "message": self = .message(try props.decode(String.self, forKey: .role),
+                                         try props.decodeIfPresent(String.self, forKey: .note),
+                                         try props.decode([NativeNode].self, forKey: .children))
+        case "markdown": self = .markdown(try props.decode([NativeMarkdownBlock].self, forKey: .blocks))
+        case "tool": self = .tool(try props.decode(String.self, forKey: .name),
+                                   try props.decode(String.self, forKey: .detail),
+                                   try props.decode(String.self, forKey: .state),
+                                   try props.decode([NativeNode].self, forKey: .children))
+        case "working": self = .working(try props.decode(String.self, forKey: .label))
+        case "composer":
+            // The stop intent stays opaque; only its presence matters here.
+            let stop = props.contains(.stop) ? !(try props.decodeNil(forKey: .stop)) : false
+            self = .composer(NativeComposerProps(
+                token: try props.decode(String.self, forKey: .token),
+                placeholder: try props.decode(String.self, forKey: .placeholder),
+                maxBytes: try props.decode(Int.self, forKey: .max_bytes),
+                enabled: try props.decode(Bool.self, forKey: .enabled),
+                busy: try props.decode(Bool.self, forKey: .busy),
+                stoppable: stop))
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: object,
                                                     debugDescription: "Unsupported native element")
@@ -104,12 +139,14 @@ struct NativeRenderer: View {
     let followTarget: String?
     let followChanged: ((Bool) -> Void)?
     var surface: ((String, String) -> AnyView)? = nil
+    /// Receives a composer send as the input token and the text.
+    var submit: ((String, String) -> Void)? = nil
     let activate: (String) -> Void
 
     var body: some View {
         content
             .padding(node.style.insets)
-            .foregroundStyle(node.style.foreground?.color ?? .primary)
+            .modifier(NativeForeground(explicit: node.style.foreground?.color))
             .background(node.style.background?.color ?? .clear)
             .fontWeight(node.style.weight == "bold" ? .bold :
                         node.style.weight == "normal" ? .regular : nil)
@@ -146,12 +183,26 @@ struct NativeRenderer: View {
             return surface?(resource, label) ?? AnyView(
                 Text("This device cannot display \(label).")
                     .accessibilityIdentifier("\(node.key)-unsupported"))
+        case .transcript, .message, .markdown, .tool, .working, .composer:
+            return NativeChat.render(node, revision: revision, surface: surface,
+                                     submit: submit, activate: activate)
         }
     }
 
     private func render(_ child: NativeNode) -> NativeRenderer {
         NativeRenderer(node: child, revision: revision, followTarget: followTarget,
-                       followChanged: followChanged, surface: surface, activate: activate)
+                       followChanged: followChanged, surface: surface, submit: submit,
+                       activate: activate)
+    }
+}
+
+/// Applies a node's foreground color, or the tone its container sets.
+private struct NativeForeground: ViewModifier {
+    let explicit: Color?
+    @Environment(\.nativeTone) private var tone
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(explicit ?? tone.color)
     }
 }
 

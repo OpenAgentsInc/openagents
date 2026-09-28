@@ -6,12 +6,16 @@
 //! a native screen. See the crate's docs for implemented and planned layers.
 
 pub mod input;
+pub mod markdown;
 pub mod style;
 pub mod surface;
 pub mod view;
 
 pub use input::{InputError, InputRequest};
-pub use view::{Activation, Axis, Element, Node, TextRole, ValidatedView, View, ViewError};
+pub use view::{
+    Activation, Axis, Earlier, Element, MessageRole, Node, TextRole, ToolState, ValidatedView,
+    View, ViewError,
+};
 
 pub(crate) fn valid_id(value: &str) -> bool {
     !value.is_empty()

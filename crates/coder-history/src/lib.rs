@@ -35,6 +35,8 @@ pub fn record_id(source_id: &str, incarnation: &str, record_offset: u64) -> Stri
 pub enum Harness {
     Codex,
     Claude,
+    /// A Coder task attempt's transcript, `<task>.<attempt>.atif.jsonl`.
+    Coder,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

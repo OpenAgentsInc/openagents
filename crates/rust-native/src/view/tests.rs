@@ -347,3 +347,183 @@ fn markdown_preserves_source_and_old_schema_is_not_reinterpreted() {
         Err(ViewError::Schema)
     ));
 }
+
+mod conversation {
+    use super::super::*;
+    use crate::markdown;
+    use crate::style::Style;
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    enum Chat {
+        Earlier,
+        Stop,
+    }
+
+    fn node(key: &str, element: Element<Chat>) -> Node<Chat> {
+        Node {
+            key: key.into(),
+            style: Style::default(),
+            element,
+        }
+    }
+
+    /// A conversation with every conversation element, as an app builds it.
+    fn sample() -> View<Chat> {
+        let user = node(
+            "m1",
+            Element::Message {
+                role: MessageRole::User,
+                note: None,
+                children: vec![node(
+                    "m1-text",
+                    Element::Markdown {
+                        blocks: markdown::parse("Fix the **flaky** test in `ci.rs`."),
+                    },
+                )],
+            },
+        );
+        let tool = node(
+            "t1",
+            Element::Tool {
+                name: "Bash".into(),
+                detail: "cargo test -p ci".into(),
+                state: ToolState::Done,
+                children: vec![node(
+                    "t1-output",
+                    Element::Text {
+                        value: "test result: ok. 12 passed".into(),
+                        role: TextRole::Code,
+                    },
+                )],
+            },
+        );
+        let reply = node(
+            "m2",
+            Element::Message {
+                role: MessageRole::Assistant,
+                note: None,
+                children: vec![node(
+                    "m2-text",
+                    Element::Markdown {
+                        blocks: markdown::parse(
+                            "Fixed it.\n\n- Seeded the RNG\n- Added a retry\n\n```rust\nlet seed = 7;\n```\n\n| a | b |\n|---|--:|\n| 1 | 2 |",
+                        ),
+                    },
+                )],
+            },
+        );
+        let system = node(
+            "m3",
+            Element::Message {
+                role: MessageRole::System,
+                note: Some("12:04".into()),
+                children: vec![node(
+                    "m3-text",
+                    Element::Text {
+                        value: "Context compacted.".into(),
+                        role: TextRole::Status,
+                    },
+                )],
+            },
+        );
+        let working = node(
+            "working",
+            Element::Working {
+                label: "Coder is working".into(),
+            },
+        );
+        let transcript = node(
+            "transcript",
+            Element::Transcript {
+                label: "Messages".into(),
+                children: vec![user, tool, reply, system, working],
+                earlier: Some(Earlier {
+                    label: "Load earlier messages".into(),
+                    loading: false,
+                    intent: Chat::Earlier,
+                }),
+            },
+        );
+        let composer = node(
+            "composer",
+            Element::Composer {
+                token: "composer-1".into(),
+                placeholder: "Message Coder".into(),
+                max_bytes: 16 * 1024,
+                enabled: true,
+                busy: true,
+                stop: Some(Chat::Stop),
+            },
+        );
+        View::new(
+            "chat",
+            1,
+            node(
+                "root",
+                Element::Stack {
+                    axis: Axis::Vertical,
+                    children: vec![transcript, composer],
+                },
+            ),
+        )
+    }
+
+    #[test]
+    fn a_conversation_validates_and_activates() {
+        let view = sample().validate().expect("valid");
+        let activation = |node: &str| Activation {
+            instance: "chat".into(),
+            revision: 1,
+            node: node.into(),
+        };
+        assert_eq!(view.activate(&activation("transcript")), Ok(&Chat::Earlier));
+        assert_eq!(view.activate(&activation("composer")), Ok(&Chat::Stop));
+        assert_eq!(
+            view.activate(&activation("m2")),
+            Err(ViewError::NotInteractive)
+        );
+        assert_eq!(view.accept_composer("composer-1", "hello"), Ok(()));
+        assert_eq!(
+            view.accept_composer("composer-2", "hello"),
+            Err(crate::InputError::Stale)
+        );
+        assert_eq!(
+            view.accept_composer("composer-1", &"x".repeat(16 * 1024 + 1)),
+            Err(crate::InputError::TooLong)
+        );
+    }
+
+    #[test]
+    fn conversation_elements_refuse_bad_fields() {
+        let mut bad = sample();
+        if let Element::Stack { children, .. } = &mut bad.root.element {
+            children[1].element = Element::Composer {
+                token: "not an id".into(),
+                placeholder: String::new(),
+                max_bytes: 10,
+                enabled: true,
+                busy: false,
+                stop: None,
+            };
+        }
+        assert_eq!(bad.validate().unwrap_err(), ViewError::Identity);
+        let mut bad = sample();
+        if let Element::Stack { children, .. } = &mut bad.root.element {
+            children[1].element = Element::Working { label: " ".into() };
+        }
+        assert_eq!(bad.validate().unwrap_err(), ViewError::MissingLabel);
+    }
+
+    /// The fixture native adapters render and test against. Regenerate with
+    /// `RUST_NATIVE_WRITE_FIXTURES=1`.
+    #[test]
+    fn conversation_fixture_is_current() {
+        let json = serde_json::to_string_pretty(&sample()).expect("json") + "\n";
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/conversation.json");
+        if std::env::var_os("RUST_NATIVE_WRITE_FIXTURES").is_some() {
+            std::fs::write(path, &json).expect("write fixture");
+        }
+        assert_eq!(std::fs::read_to_string(path).expect("fixture"), json);
+    }
+}

@@ -8,29 +8,33 @@ decodes and renders it. The host shares Coder's renderer and native glue
 scanner, the secret field, and the terminal keyboard) instead of copying
 them.
 
-The app has four tabs:
+The app has four tabs, shown as icons:
 
-- **Coder** starts a chat with Coder on one of your computers. A new chat is
-  a NIP-HOST `task.create` in the computer's `openagents` workspace, the
-  same operation as Order work; with the host's auto-start policy on, the
-  host runs Coder's engine on it right away. The list follows each task
-  through the host's signed activity summaries. Reading the engine's replies
-  on the phone is not implemented yet.
-- **Computers** mounts Coder's shared
-  [Computers screens](../../crates/coder-computers/README.md) over the live
-  host client, drawn in white and gray instead of Coder's amber. From a
-  computer you can order work, steer or stop tasks, manage access, and open
-  a terminal ([NIP-TERM](../../nips/openagents/NIP-TERM.md)). The app
-  connects over the best route (LAN, tailnet, public, then the relay) and
-  authenticates both Nostr keys
-  ([NIP-REACH](../../nips/openagents/NIP-REACH.md)).
-- **Chats** lists the Claude and Codex chats saved on every connected
-  computer, newest first, without subagents. A chat opens at its newest
-  messages, read backward from the end, and **Show earlier messages** loads
-  ten more at a time. It uses the read-only
-  observer in `coder-connect` and Coder's readable record projection.
-- **Tailnet** lists the devices on your tailnet with name, operating system,
-  tailnet address, online state, and whether OpenAgents connected to it.
+- **Coder** (`</>`) chats with Coder on your computers. Sending a message
+  starts a NIP-HOST `task.create` in the computer's `openagents` workspace,
+  the same operation as Order work; with the host's auto-start policy on,
+  the host runs Coder's engine right away. An open chat reads the task's
+  ATIF transcript through the computer's read-only history observer (its
+  `coder` source) and follows it while the task runs: the model's replies,
+  the commands it ran with their output, and how the run ended. While Coder
+  works, the send control stops the task (`task.cancel`). A message in a
+  finished chat starts a new chat.
+- **Verse** and **Wallet** are placeholders.
+- **Account** holds **Computers** (Coder's shared Computers screens: add a
+  computer, access, activity, order work, terminal), **Chats on your
+  computers** (the Claude, Codex, and Coder chats saved on every connected
+  computer, newest first, without subagents), **Tailnet**, and **About this
+  device**.
+
+Both chat screens draw Rust Native's conversation elements: a
+bottom-anchored transcript with a jump to the bottom and **Load earlier**,
+messages by role, Markdown parsed in Rust, collapsible tool rows, a working
+row, and a composer with send and stop. The shared iOS renderer
+(`bins/coder-ios/host/App/NativeChat.swift`) reimplements the design of the
+t3code iOS chat (pingdotgg/t3code, MIT) in UIKit and SwiftUI. What is left
+for later is in [docs/chat-later.md](docs/chat-later.md). Launch a simulator
+build with `--rust-native-fixture` to see the sample conversation from
+`crates/rust-native/fixtures/conversation.json`.
 
 ## Automatic setup over the tailnet
 
@@ -86,13 +90,13 @@ uses only its control-plane client.
 | Bundle identifier | `com.openagents.app` |
 | App Store Connect app | `6748620735` (**OpenAgents**) |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `1.0.0` / `5` |
+| Marketing version and build | `1.0.0` / `6` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Archive signing | Manual, Apple Distribution, `OpenAgents App Store` profile |
 
 The App Store Connect record also holds `0.x` builds from an earlier app on
 this bundle identifier. Build numbers only need to be unique within one
-version, so `1.0.0` started at build `1`. Builds `1` to `4` are on TestFlight. Raise the build number for every
+version, so `1.0.0` started at build `1`. Builds `1` to `5` are on TestFlight. Raise the build number for every
 upload; set it in `host/project.yml` or with `OPENAGENTS_IOS_BUILD_NUMBER`.
 
 The `OpenAgents App Store` profile uses the same Apple Distribution

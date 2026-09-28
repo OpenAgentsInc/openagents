@@ -583,8 +583,14 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
             port: crate::tailnet::PORT,
             tailscale: crate::tailnet::program(),
             chats: (!setting.no_chats)
-                .then(crate::tailnet::default_sources)
-                .filter(|sources| sources.codex.is_some() || sources.claude.is_some())
+                .then(|| coder_history::Config {
+                    // This host's own task directory, which --tasks can move.
+                    coder: Some(tasks_dir.clone()).filter(|path| path.is_dir()),
+                    ..crate::tailnet::default_sources()
+                })
+                .filter(|sources| {
+                    sources.codex.is_some() || sources.claude.is_some() || sources.coder.is_some()
+                })
                 .map(|sources| -> Result<_> {
                     Ok(crate::tailnet::Chats {
                         observer: home(".openagents/coder-connect")?,

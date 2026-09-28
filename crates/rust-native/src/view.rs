@@ -79,6 +79,74 @@ pub enum Element<I> {
         enabled: bool,
         intent: I,
     },
+    /// A conversation, oldest row first. Adapters keep the newest row in view
+    /// while the reader is at the bottom, and offer a jump to the bottom when
+    /// the reader scrolls up. Activating the node runs `earlier`.
+    Transcript {
+        label: String,
+        children: Vec<Node<I>>,
+        earlier: Option<Earlier<I>>,
+    },
+    /// One message, drawn by its role. `note` is a short status, such as a
+    /// time or "Not sent".
+    Message {
+        role: MessageRole,
+        note: Option<String>,
+        children: Vec<Node<I>>,
+    },
+    /// Markdown the application parsed. Links stay inert unless the
+    /// application separately admits them.
+    Markdown {
+        blocks: Vec<crate::markdown::Block>,
+    },
+    /// A tool call, one line until the reader expands it to its children.
+    Tool {
+        name: String,
+        detail: String,
+        state: ToolState,
+        children: Vec<Node<I>>,
+    },
+    /// The assistant is working, such as "Coder is working".
+    Working {
+        label: String,
+    },
+    /// A text field with a send control. The adapter answers a send as an
+    /// input answer bound to `token`; activating the node while `busy` runs
+    /// `stop`.
+    Composer {
+        token: String,
+        placeholder: String,
+        max_bytes: usize,
+        enabled: bool,
+        busy: bool,
+        stop: Option<I>,
+    },
+}
+
+/// The control that loads older rows at a transcript's top.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Earlier<I> {
+    pub label: String,
+    /// Older rows are loading; the control shows progress and is inert.
+    pub loading: bool,
+    pub intent: I,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageRole {
+    User,
+    Assistant,
+    System,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolState {
+    Running,
+    Done,
+    Failed,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -189,7 +257,36 @@ impl<I: Serialize> View<I> {
                 return Err(ViewError::NodeLimit);
             }
             match &node.element {
-                Element::Stack { children, .. } | Element::List { children, .. } => {
+                Element::Stack { children, .. }
+                | Element::List { children, .. }
+                | Element::Transcript { children, .. }
+                | Element::Message { children, .. }
+                | Element::Tool { children, .. } => {
+                    match &node.element {
+                        Element::Transcript { label, earlier, .. } => {
+                            check_text(label)?;
+                            if label.trim().is_empty() {
+                                return Err(ViewError::MissingLabel);
+                            }
+                            if let Some(earlier) = earlier {
+                                check_text(&earlier.label)?;
+                                if earlier.label.trim().is_empty() {
+                                    return Err(ViewError::MissingLabel);
+                                }
+                            }
+                        }
+                        Element::Message {
+                            note: Some(note), ..
+                        } => check_text(note)?,
+                        Element::Tool { name, detail, .. } => {
+                            check_text(name)?;
+                            check_text(detail)?;
+                            if name.trim().is_empty() {
+                                return Err(ViewError::MissingLabel);
+                            }
+                        }
+                        _ => {}
+                    }
                     if let Element::List { label, .. } = &node.element {
                         check_text(label)?;
                         if label.trim().is_empty() {
@@ -211,10 +308,32 @@ impl<I: Serialize> View<I> {
                         return Err(ViewError::MissingLabel);
                     }
                 }
-                Element::Button { label, .. } => {
+                Element::Button { label, .. } | Element::Working { label } => {
                     check_text(label)?;
                     if label.trim().is_empty() {
                         return Err(ViewError::MissingLabel);
+                    }
+                }
+                Element::Markdown { blocks } => {
+                    if crate::markdown::text_bytes(blocks) > MAX_TEXT_BYTES {
+                        return Err(ViewError::TextLimit);
+                    }
+                    if depth + crate::markdown::depth(blocks) > MAX_DEPTH {
+                        return Err(ViewError::DepthLimit);
+                    }
+                }
+                Element::Composer {
+                    token,
+                    placeholder,
+                    max_bytes,
+                    ..
+                } => {
+                    if !crate::valid_id(token) {
+                        return Err(ViewError::Identity);
+                    }
+                    check_text(placeholder)?;
+                    if *max_bytes == 0 || *max_bytes > crate::input::MAX_INPUT_VALUE_BYTES {
+                        return Err(ViewError::TextLimit);
                     }
                 }
             }
@@ -259,15 +378,65 @@ impl<I> ValidatedView<I> {
                         ..
                     } => Ok(intent),
                     Element::Button { enabled: false, .. } => Err(ViewError::Disabled),
+                    Element::Transcript {
+                        earlier: Some(earlier),
+                        ..
+                    } if !earlier.loading => Ok(&earlier.intent),
+                    Element::Composer {
+                        busy: true,
+                        stop: Some(stop),
+                        ..
+                    } => Ok(stop),
+                    Element::Transcript { .. } | Element::Composer { .. } => {
+                        Err(ViewError::Disabled)
+                    }
                     _ => Err(ViewError::NotInteractive),
                 };
             }
-            if let Element::Stack { children, .. } | Element::List { children, .. } = &node.element
+            if let Element::Stack { children, .. }
+            | Element::List { children, .. }
+            | Element::Transcript { children, .. }
+            | Element::Message { children, .. }
+            | Element::Tool { children, .. } = &node.element
             {
                 pending.extend(children);
             }
         }
         Err(ViewError::NotInteractive)
+    }
+}
+
+impl<I> ValidatedView<I> {
+    /// Accept a composer's text: `token` must name an enabled composer in
+    /// this view, and the text must fit its bound. The application still
+    /// validates what the text means.
+    pub fn accept_composer(&self, token: &str, text: &str) -> Result<(), crate::InputError> {
+        let mut pending = vec![&self.0.root];
+        while let Some(node) = pending.pop() {
+            match &node.element {
+                Element::Composer {
+                    token: current,
+                    enabled,
+                    max_bytes,
+                    ..
+                } if current == token => {
+                    if !enabled {
+                        return Err(crate::InputError::Stale);
+                    }
+                    if text.len() > *max_bytes {
+                        return Err(crate::InputError::TooLong);
+                    }
+                    return Ok(());
+                }
+                Element::Stack { children, .. }
+                | Element::List { children, .. }
+                | Element::Transcript { children, .. }
+                | Element::Message { children, .. }
+                | Element::Tool { children, .. } => pending.extend(children),
+                _ => {}
+            }
+        }
+        Err(crate::InputError::Stale)
     }
 }
 

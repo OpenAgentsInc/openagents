@@ -132,6 +132,7 @@ fn catalog(app: &App) -> Vec<Node<Intent>> {
             let harness = match chat.harness {
                 coder_history::Harness::Codex => "Codex",
                 coder_history::Harness::Claude => "Claude",
+                coder_history::Harness::Coder => "Coder",
             };
             let updated = chat.updated_at.as_deref().unwrap_or("");
             button(
@@ -646,6 +647,7 @@ mod tests {
         let history = History::open(HistoryConfig {
             codex: Some(source_root),
             claude: None,
+            coder: None,
         })
         .unwrap();
         let mut app = App::new(Config {
@@ -690,6 +692,8 @@ mod tests {
             Element::Text { value, .. } => out.push((&node.key, value)),
             Element::Button { label, .. } => out.push((&node.key, label)),
             Element::Surface { label, .. } => out.push((&node.key, label)),
+            // The reader does not draw conversation elements.
+            _ => {}
         }
     }
 
@@ -751,6 +755,7 @@ mod tests {
         let history = History::open(HistoryConfig {
             codex: Some(source),
             claude: None,
+            coder: None,
         })
         .unwrap();
         let mut app = App::new(Config {

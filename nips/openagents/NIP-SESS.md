@@ -385,9 +385,13 @@ requires a new grant.
 
 A grant is `openagents.history-observer-grant.v1` with `requires: []`, `grant`
 (common ID), `host`, `client` (distinct pubkeys), `relay` (the exact admitted
-URL), `sources` (1–2 `{id, label, kind}` objects), `issued_at`, and `expires_at`.
-Source IDs use common IDs; labels are inert strings of 1–128 bytes; the initial
-kinds are `codex` and `claude`, each occurring at most once. Expiry is later
+URL), `sources` (1–3 `{id, label, kind}` objects), `issued_at`, and `expires_at`.
+Source IDs use common IDs; labels are inert strings of 1–128 bytes; the kinds
+are `codex`, `claude`, and `coder`, each occurring at most once. A `coder`
+source is Coder's task directory, such as `~/.openagents/tasks`: the host reads
+only the `<task>.<attempt>.atif.jsonl` files directly inside it, each one task
+attempt's ATIF transcript, and no other file there. A client that predates
+`coder` refuses a grant that names it. Expiry is later
 than issuance and at most 30 days later. The local operator's explicit pairing
 action is the source-disclosure authorization, not a claim about the original
 engine's owner or controller. The original host-signed grant is encrypted to
@@ -490,7 +494,11 @@ Catalog pages list chats newest first by each source's last write, which is
 also the entry's `updated_at`. The page cursor covers membership, not order:
 a chat that moves between page requests can repeat or be skipped, so readers
 merge pages by chat ID. A chat without a title is named from the first line
-of its first user message that is not injected context. A backward read
+of its first user message that is not injected context. A Coder chat is one
+task attempt: its native ID is the 64-hex task ID from the file name, and its
+title comes from its first `User` step. The reader's readable projection shows
+the model's replies, commands, test runs, and ending from the loop events in
+its `System` steps, and marks the other host evidence as `adapter` records. A backward read
 returns the page of whole records ending at or before `end` (any offset at
 or past the source's length, such as 2^53 − 1, for the newest complete
 record) and, when earlier records remain, `previous`:
