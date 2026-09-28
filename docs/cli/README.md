@@ -474,6 +474,9 @@ openagents wallet channel list
 openagents wallet invoice --msat 1000 --request-hash HEX64 --json
 openagents wallet pay BOLT11 --max-fee-msat 50 --wait 60 --json
 openagents wallet lookup PAYMENT_HASH
+openagents wallet backup DIR                 # seed + config + store snapshot, digests in backup.json
+openagents wallet restore DIR                # into an empty wallet home
+openagents wallet channel close USER_CHANNEL_ID COUNTERPARTY [--force]
 openagents wallet serve                      # the resident node: events as JSON lines, answers control.sock
 openagents wallet service install            # run `wallet serve` from login on (launchd or systemd --user)
 ```
@@ -503,8 +506,8 @@ the same proof, and a payment still pending after `--wait` exits 1 with the
 payment hash for `lookup`. An unpaid inbound preimage is never shown.
 
 Files live in `~/.openagents/wallet` (`OPENAGENTS_WALLET_HOME` overrides):
-`config.json`, the `seed` (mode 0600, never printed), and the `ldk/` store.
-The node needs an Esplora server to start, so every command except `init`
+`config.json`, the `seed` (mode 0600, printed only by `export --reveal`),
+and the `ldk/` store. The node needs an Esplora server to start, so every command except `init`
 needs the network. The x402 validator admits only mainnet and testnet invoices
 (`bc`, `tb`), so signet issues but does not validate. `openagents x402
 advertise` publishes the NIP-CAP `oa-x402-v1` head for a paid endpoint.
@@ -543,6 +546,59 @@ ADDRESS --sats N` serve LSPs that quote an on-chain address. The order document
 also reports `client_balance_sat` (`--our-sats`, sats the LSP pushes to this
 side), `channel_expiry_blocks` (`--expiry-blocks`, default 13 000, about 90
 days), and `channel` once the LSP has funded the channel.
+
+### Backup and restore
+
+The seed and the channel store are two different recovery assets. The
+seed alone recovers every on-chain coin and the node id. Channel funds
+also need `ldk/ldk_node_data.sqlite`: the counterparty holds the only
+other copy of each channel's state, and a node that runs from an older
+copy of that store can broadcast a revoked commitment and lose the
+channel's balance as a penalty.
+
+```sh
+openagents --json wallet backup ~/wallet-backups/2026-09-27
+# {"path":"…","created_at":1790567142,"store":true,"resident_running":true,
+#  "files":[{"path":"seed",…},{"path":"config.json",…},{"path":"ldk/ldk_node_data.sqlite",…}]}
+openagents --json wallet info                    # last_backup: {at, path, files, bytes}
+openagents wallet export --reveal                # the mnemonic, on stdout, nothing else
+openagents wallet export                         # refused: exit 64
+```
+
+`backup DIR` writes the seed, `config.json`, and a consistent snapshot of
+the store (SQLite `VACUUM INTO`, so it is safe while the resident is
+running) into a new private directory, with a `backup.json` manifest that
+records the SHA-256 of every file. It refuses a directory that already
+holds a backup, and records the time, path, and size in
+`last-backup.json` in the wallet home, which `info` reports as
+`last_backup`. Back up after every channel open or LSP order.
+
+Two ways back, into an empty wallet home:
+
+```sh
+# Full restore: seed, config, and the channel store.
+openagents --json wallet restore ~/wallet-backups/2026-09-27
+# Seed only: the mnemonic on stdin, never on the command line.
+cat mnemonic.txt | openagents wallet init --network bitcoin --mnemonic -
+```
+
+`restore` verifies every digest against the manifest before it copies
+anything and refuses a home that already has a seed. After a full
+restore, never run the old copy again: two nodes on one store is the
+revoked-commitment case above. Start the restored node once (`wallet
+info` or `wallet serve`) and it resyncs; channels opened after the
+backup are unknown to it and fall under the seed-only rule.
+
+A restore from the seed alone has the same node id (a
+`restored_wallet_keeps_its_node_id_and_addresses` test pins node id and
+funding addresses across both restore paths) but no channels. The
+funds in each channel then come back only when the counterparty
+force-closes: reconnect to it and ask it to close, or if the peer is
+another `openagents wallet`, run `channel close USER_CHANNEL_ID
+COUNTERPARTY --force` there. LDK's on-chain sweeper on the restored node
+claims its side of the closing transaction once it sees it. `channel
+close` without `--force` is the cooperative close for a channel this
+node still knows, and needs the peer online.
 
 ## Paid HTTP (`openagents x402`, exact Lightning over `http:1`)
 
