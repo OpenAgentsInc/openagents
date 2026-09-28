@@ -672,7 +672,10 @@ impl Scene {
             },
             None => (None, None),
         };
-        let restore_spawn = relay.is_some() && !config.synthetic;
+        // The Grid's shared ball, blocks, and pillar stand at fixed places, so
+        // every visit starts at its spawn in view of them rather than wherever
+        // the relay last saw this player.
+        let restore_spawn = relay.is_some() && !config.synthetic && !config.bare;
         let mut gym_board = verse::gym::Board::new(secret, config.synthetic);
         let initial_gym_error = config
             .gym_code

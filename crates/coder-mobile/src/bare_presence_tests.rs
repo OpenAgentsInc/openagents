@@ -19,8 +19,24 @@ fn bare_scene(relay: &str) -> Scene {
     // The loopback fixture speaks plain `ws://`, which the production relay
     // policy refuses; select it directly. No saved position to restore.
     scene.relay = Some(relay.to_owned());
-    scene.restore_spawn = false;
     scene
+}
+
+#[test]
+fn the_grid_starts_at_its_spawn_rather_than_a_saved_position() {
+    let presence = crate::BarePresence {
+        secret_hex: "11".repeat(32),
+        relay: None,
+    };
+    let scene = Scene::new(crate::verse_ffi::bare_config(
+        800,
+        1200,
+        2.0,
+        false,
+        Some(presence),
+    ))
+    .unwrap();
+    assert!(scene.relay.is_some() && !scene.restore_spawn);
 }
 
 /// Advances the scene and the peer on real time until `done` or `limit`.
