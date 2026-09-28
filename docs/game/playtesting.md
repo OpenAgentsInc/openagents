@@ -180,8 +180,8 @@ Status words follow the [glossary](../glossary.md).
 | Public distribution | Planned for 2026-09-29: a public TestFlight link for iOS and a public APK download for Android (owner steps in the workspace's `NEEDS_OWNER.md`). |
 | TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. Nothing in this repository reads it. |
 | The owner's build notes ("1.0.0 Build 13 Feedback") turned into commits by agents, followed by a build bump (for example `e84de16fd5`, `06d033d663`) | The current loop. It isn't written down anywhere except in commit history. |
-| **Changelog** in Account (`crates/openagents-mobile/src/account.rs`) | Implemented. One entry, "First release". |
-| In-app feedback action, session log, or telemetry of any kind | **None.** The app sends no analytics. |
+| **Changelog** in Account (`crates/openagents-mobile/src/account.rs`) | Implemented. One entry per TestFlight build with a **What to test** line, from build 16 (`a4aa3013de`); a test ties the newest entry to the build number in `project.yml`. |
+| **Report a problem**, **My reports**, and the opt-in **Playtest session** log in Account, and a long press on the tab bar (`crates/playtest`, `crates/openagents-mobile/src/playtest.rs`; iOS) | Implemented in build 16 (`74f2f90be0`), iOS only; Android follows. Reports are sealed to the triage key, which the owner hasn't created yet, so until a build carries it reports wait on the phone. No telemetry: the app sends nothing but a report the tester files. |
 | Triage inbox and triage log: `openagents playtest` reads the triage key's reports, drafts `playtest` issues for a person to approve, and records every acceptance ([playtest-triage.md](playtest-triage.md)) | Implemented ([#9884](https://github.com/OpenAgentsInc/openagents/issues/9884)). It reads reports once the owner creates the triage key and a build carries it. |
 | NIP-XP quests, awards, revocations, and achievement labels; the ledger; the referee tool ([NIP-XP](../../nips/openagents/NIP-XP.md)) | Implemented, with three rules: `kb-transfer`, `reproduce`, and `playtest` ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)). The `playtest` rule, its report (`3195`) and session record (`3196`), and `microcoder xp playtest-keygen`/`playtest-session` exist; the playtest referee key doesn't yet (an owner step), so no playtest award counts. |
 | Levels, titles, and `lv n` name tags | Implemented on desktop Verse only. The Grid's name tags show a pubkey prefix and no level. |
@@ -363,8 +363,9 @@ We stage it, so testing starts today and the app catches up.
 ### Stage 0: what works today (launch day)
 
 The in-app **Report a problem** action
-([#9882](https://github.com/OpenAgentsInc/openagents/issues/9882)) isn't built
-yet, so on 2026-09-29 testers give feedback three ways:
+([#9882](https://github.com/OpenAgentsInc/openagents/issues/9882)) arrives in
+build 16 and sends only once a build carries the triage key, so on
+2026-09-29 testers give feedback three ways:
 
 - **TestFlight feedback (iOS).** Take a screenshot in the app and tap
   **Share Beta Feedback**, or use **Send Beta Feedback** in the TestFlight
@@ -384,6 +385,12 @@ yet, so on 2026-09-29 testers give feedback three ways:
 The owner's own build notes continue as before.
 
 ### Stage 1: a Report action in the app
+
+Status: implemented on iOS in build 16 (`74f2f90be0`), as described below,
+with the triage key still to be created (workspace `NEEDS_OWNER.md`); until
+then reports wait on the phone. Screenshots are cropped top and bottom and
+sent as a small JPEG; reports read on the triage side with
+`openagents playtest inbox` ([triage](playtest-triage.md)).
 
 A **Report** action that files a structured report, signed by the tester's
 key and sent privately:
@@ -642,8 +649,10 @@ unmoderated task list is the four items above.
 
 Published with the link so testers don't spend reports on them:
 
-- **No in-app report yet.** Use TestFlight feedback, the GitHub template, or
-  email ([Stage 0](#stage-0-what-works-today-launch-day)).
+- **No in-app report on builds 14 and 15.** Use TestFlight feedback, the
+  GitHub template, or email ([Stage 0](#stage-0-what-works-today-launch-day)).
+  Build 16 adds **Report a problem**; it sends once a build carries the
+  triage key.
 - **Chat loading over the tailnet can be slow** on long chats; faster reads
   are in progress (host side landed in `4ef967aa40`; the Rust-laid-out
   transcript is [#9833](https://github.com/OpenAgentsInc/openagents/issues/9833)).
