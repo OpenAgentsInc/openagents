@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 use gym_leaderboard::contract::{Board, Cost, Label, Miss, StepKind, TaskStatus, TraceBundle};
 use gym_leaderboard::{
     Output, PUBLISHED, bundle, check, evidence::Reader, generate, microcoder, reference_boards,
-    tb4_delegate, tb4_delegate_dev, tb4_microcoder_kb, tb4_oos,
+    study, tb4_delegate, tb4_delegate_dev, tb4_microcoder_kb, tb4_oos,
 };
 use serde_json::Value;
 
@@ -427,6 +427,7 @@ fn delegate_fixture() -> tempfile::TempDir {
     let mut files = vec![
         format!("{exp}/attempts.json"),
         format!("{exp}/tasks.json"),
+        format!("{exp}/study.json"),
         "docs/terminal-bench/2026-09-27-fable-delegate-repro.md".to_owned(),
     ];
     let attempts: Value =
@@ -951,4 +952,156 @@ fn reference_boards_are_labeled_snapshots_and_never_merged() {
             );
         }
     }
+}
+
+#[test]
+fn the_9776_board_is_unchanged_after_the_port() {
+    // Pinned from the hand-written adapter before #9845 moved the board to
+    // a study descriptor and the generic adapter.
+    // (The board as the adapter returns it, before bundles are attached;
+    // `the_committed_publication_matches_the_evidence` covers the rest.)
+    let (b, _) = tb4_delegate::build(&Reader::new(root())).unwrap();
+    assert_eq!(
+        atif::digest(&serde_json::to_value(&b).unwrap()),
+        "4dbcfaf27d6a02381d66fd6cea31a887ba8386ba39e607ab4766f2aabef7d74f"
+    );
+}
+
+const FIXTURE: &str = "bench/terminal-bench/experiments/2099-01-01-fixture";
+
+fn fixture_row(
+    id: &str,
+    task: &str,
+    series: &str,
+    reward: f64,
+    usd: Option<f64>,
+    verdict: bool,
+) -> Value {
+    serde_json::json!({
+        "id": id, "task": task, "series": series, "trial": format!("trial-{id}"),
+        "reward": reward, "seconds": 100.0,
+        "cost": match usd {
+            Some(usd) => serde_json::json!({"kind": "reported", "usd": usd}),
+            None => serde_json::json!({"kind": "unknown", "lower_bound_usd": 0.4, "upper_bound_usd": null}),
+        },
+        "bar": {"cost_usd": 1.0, "seconds": null, "cost_trial": "ref-1", "time_trial": null,
+                "deadline_seconds": null, "reference_passes": 3, "reference_trials": 5},
+        "verdict": verdict,
+        "knowledge": {"kept": ["a.entry"], "own": ["a.entry"]},
+        "how_it_ended": "finished",
+    })
+}
+
+/// A scratch root holding only a study descriptor and its rows.
+fn study_only(edit: impl FnOnce(&mut Value, &mut Value)) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let mut descriptor = serde_json::json!({
+        "schema": "openagents.gym.study.v1",
+        "board": "fixture-study",
+        "title": "A fixture study",
+        "benchmark": {"name": "Terminal-Bench", "version": "4.0"},
+        "question": "Does the fixture pass under the bar?",
+        "issues": [9845],
+        "subject": {"agent": "Microcoder", "arm": "on", "model": "gpt-6-luna"},
+        "reference": {"name": "Fable 5.1 low", "rule": "Below the cheapest win.", "conditions": "Elsewhere."},
+        "rule": "cost_below_cheapest_win",
+        "labels": ["knowledge_assisted", "list_price"],
+        "headline": "Beat {reference}'s cheapest win on {beats} of {attempts} attempts ({series_beats_in}).",
+        "caveats": [
+            {"code": "in_sample", "text": "{beats_in_sample} of {beats} beats kept knowledge from the same task.", "on_beats": true},
+            {"code": "cost_unknown", "when": "cost_unknown", "text": "{cost_unknown} of {attempts} costs are unknown."},
+        ],
+        "rows": {"path": format!("{FIXTURE}/rows.json")},
+    });
+    let mut rows = serde_json::json!({
+        "schema": "openagents.gym.attempt-row.v1",
+        "rows": [
+            fixture_row("t1.a1", "t1", "screen", 1.0, Some(0.2), true),
+            fixture_row("t1.a2", "t1", "screen", 0.0, Some(0.3), false),
+            fixture_row("t2.a1", "t2", "screen", 1.0, None, false),
+        ],
+        "tallies": {"screen": {"attempts": 3, "passes": 2, "beats": 1, "faults": 0, "cost_unknown": 1}},
+    });
+    edit(&mut descriptor, &mut rows);
+    std::fs::create_dir_all(dir.path().join(FIXTURE)).unwrap();
+    std::fs::write(
+        dir.path().join(format!("{FIXTURE}/study.json")),
+        descriptor.to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join(format!("{FIXTURE}/rows.json")),
+        rows.to_string(),
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn a_study_with_only_a_descriptor_and_rows_generates_a_board() {
+    let dir = study_only(|_, _| {});
+    let reader = Reader::new(dir.path());
+    assert_eq!(
+        study::discover(&reader).unwrap(),
+        vec![format!("{FIXTURE}/study.json")]
+    );
+    let (b, jobs) = study::build(&reader, &format!("{FIXTURE}/study.json")).unwrap();
+    assert!(jobs.is_empty());
+    assert_eq!(b.id, "fixture-study");
+    assert_eq!(
+        (
+            b.totals.attempts,
+            b.totals.passes,
+            b.totals.beats,
+            b.totals.cost_unknown
+        ),
+        (3, 2, 1, 1)
+    );
+    assert_eq!(
+        b.headline,
+        "Beat Fable 5.1 low's cheapest win on 1 of 3 attempts (1 of 3 in screen)."
+    );
+    assert_eq!(
+        b.caveats[0].text,
+        "1 of 1 beats kept knowledge from the same task."
+    );
+    assert_eq!(b.caveats[1].text, "1 of 3 costs are unknown.");
+    let beat = b.attempts.iter().find(|a| a.beat).unwrap();
+    assert_eq!(beat.caveats, vec!["in_sample".to_owned()]);
+    assert!(beat.labels.contains(&Label::InSample));
+    // The unknown cost doesn't beat, and the board says it's a bound.
+    let unknown = b.attempts.iter().find(|a| a.id == "t2.a1").unwrap();
+    assert!(!unknown.beat && unknown.misses == vec![Miss::CostUnknown]);
+    assert!(b.labels.contains(&Label::CostBound));
+    assert_eq!(b.tasks.len(), 2);
+    assert_eq!(b.provenance.evidence.len(), 1);
+}
+
+#[test]
+fn a_study_that_names_an_unknown_rule_or_disagrees_with_its_rows_refuses() {
+    let build = |dir: &tempfile::TempDir| {
+        study::build(&Reader::new(dir.path()), &format!("{FIXTURE}/study.json")).unwrap_err()
+    };
+    let err = build(&study_only(|d, _| {
+        d["rule"] = Value::from("cheaper_than_yesterday")
+    }));
+    assert!(err.0.contains("unknown rule"), "{err}");
+    let err = build(&study_only(|d, _| d["rule"] = Value::from("reference")));
+    assert!(err.0.contains("unknown rule"), "{err}");
+    let err = build(&study_only(|_, r| {
+        r["rows"][1]["verdict"] = Value::Bool(true)
+    }));
+    assert!(err.0.contains("recomputed beat false"), "{err}");
+    let err = build(&study_only(|_, r| {
+        r["tallies"]["screen"]["beats"] = Value::from(2)
+    }));
+    assert!(err.0.contains("beats"), "{err}");
+    let err = build(&study_only(|d, _| {
+        d["headline"] = Value::from("{beats} of {everything}")
+    }));
+    assert!(err.0.contains("unknown placeholder"), "{err}");
+    let err = build(&study_only(|_, r| {
+        r["rows"][1]["bar"]["cost_usd"] = Value::from(2.0)
+    }));
+    assert!(err.0.contains("differs from another row"), "{err}");
 }

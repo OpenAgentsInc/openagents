@@ -24,6 +24,7 @@ pub mod evidence;
 pub mod microcoder;
 pub mod reference_boards;
 pub mod scrub;
+pub mod study;
 pub mod tb21_oos;
 pub mod tb4_delegate;
 pub mod tb4_delegate_dev;
@@ -158,6 +159,34 @@ pub fn generate(root: &Path) -> Result<Output> {
     let mut boards = vec![delegate, tb21, dev, shared_fact, tb4_oos::build(&reader)?];
     for (id, rel) in reference_boards::SNAPSHOTS {
         boards.push(reference_boards::build(&reader, id, rel)?);
+    }
+    // Studies that are only a descriptor and rows, after the boards above,
+    // in path order.
+    for rel in study::discover(&reader)? {
+        if rel == tb4_delegate::DESCRIPTOR {
+            continue;
+        }
+        let (mut board, jobs) = study::build(&reader, &rel)?;
+        for job in &jobs {
+            let bundle = bundle::build(
+                &reader,
+                &bundle::Input {
+                    board: &board.id,
+                    attempt: &job.attempt,
+                    bar: &job.bar,
+                    episode: &job.episode,
+                    own_entries: &job.own_entries,
+                },
+            )?;
+            attach(&mut board, &job.attempt.id, &bundle, &mut bundles)?;
+        }
+        boards.push(board);
+    }
+    let mut ids = std::collections::BTreeSet::new();
+    for board in &boards {
+        if !ids.insert(board.id.as_str()) {
+            return Err(fail!("two boards are named {}", board.id));
+        }
     }
     let leaderboard = leaderboard(boards)?;
     // Compact: a phone fetches it on entry, and the digest is over the

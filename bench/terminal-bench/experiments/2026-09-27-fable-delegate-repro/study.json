@@ -1,0 +1,72 @@
+{
+ "schema": "openagents.gym.study.v1",
+ "board": "tb4-fable-delegate-repro-9776",
+ "title": "Jev-briefed Fable delegate, 14 more tasks",
+ "benchmark": {
+  "name": "Terminal-Bench",
+  "version": "4.0"
+ },
+ "question": "Does s7a1's frozen arm, with nothing changed, beat Fable 5.1 low's cheapest and fastest wins on the other TB4 tasks it could be tried on?",
+ "issues": [
+  9776,
+  9746,
+  9680
+ ],
+ "report": "docs/terminal-bench/2026-09-27-fable-delegate-repro.md",
+ "frozen_commit": "e0414c335603f7e2aa755074abae9b7c686335a4",
+ "subject": {
+  "agent": "Coder One"
+ },
+ "reference": {
+  "name": "Fable 5.1 low",
+  "rule": "A beat is reward 1, known total cost below Fable 5.1 low's cheapest win on the task, and whole-trial time below its fastest win. Unknown cost can't beat.",
+  "conditions": "Public Claude Code runs on another host, with open network and each task's full timeout."
+ },
+ "rule": "beat_cheapest_and_fastest_win",
+ "labels": [
+  "pre_registered",
+  "knowledge_assisted",
+  "list_price",
+  "few_attempts",
+  "reference_other_conditions"
+ ],
+ "headline": "Beat {reference}'s cheapest and fastest win on {beats} of {attempts} attempts ({series_beats}); passed {passes} of {attempts}.",
+ "caveats": [
+  {
+   "code": "in_sample",
+   "text": "{beats_in_sample} of {beats} beats kept knowledge written from earlier runs on the same task. The {tasks_without_own} tasks without their own knowledge beat the bar {beats_without_own} times. The board says nothing about tasks Coder hasn't seen."
+  },
+  {
+   "code": "thin_margin",
+   "when": "thin",
+   "text": "{thin_count} of {beats} beats came in under a bar by less than {thin_margin}: {thin_list}. Claude Code's list-price figure and the reference's cost field can differ by more than that."
+  },
+  {
+   "code": "cost_unknown",
+   "text": "{cost_unknown} of {attempts} delegates ran to their deadline, so their cost is unknown and they count as misses. Their lower-bound estimates price the stream's usage at list price and leave out the call in flight."
+  },
+  {
+   "code": "few_attempts",
+   "text": "Two attempts per task can't estimate a per-task beat rate, and the passes disagree: {series_beats_in}."
+  },
+  {
+   "code": "list_price",
+   "text": "Every cost is a list-price figure on a subscription login, like the reference's, not a bill."
+  },
+  {
+   "code": "reference_conditions",
+   "text": "The reference ran Claude Code 2.1.273 on another host with open network and each task's full timeout. These attempts ran Claude Code 2.1.280 inside Coder One, with only PyPI added to the allowlist and a deadline the delegate wasn't told."
+  }
+ ],
+ "splits": [
+  "own_knowledge"
+ ],
+ "rows": {
+  "path": "bench/terminal-bench/experiments/2026-09-27-fable-delegate-repro/attempts.json",
+  "shape": "openagents.tb.fable_delegate_repro.attempts"
+ },
+ "bars": {
+  "path": "bench/terminal-bench/experiments/2026-09-27-fable-delegate-repro/tasks.json",
+  "shape": "openagents.tb.fable_delegate_repro.tasks.v1"
+ }
+}

@@ -207,9 +207,11 @@ Each source adapter recomputes its study's verdict from each row's own
 numbers and refuses to build when that disagrees with what the study
 recorded:
 
-- The #9776 adapter recomputes every beat (reward 1, known cost below the
+- The #9776 board is a study descriptor (see
+  [How new runs appear](#how-new-runs-appear)) built by the generic
+  adapter, which recomputes every beat (reward 1, known cost below the
   cheapest win, whole-trial time below the fastest win) and compares it
-  with `beat_the_bar`; checks each row's bar against the frozen
+  with the row's `beat_the_bar`; checks each row's bar against the frozen
   `tasks.json`; and checks its per-pass counts and known cost against the
   file's own `tallies`.
 - The #9746 adapter reads three row shapes, one split per series because
@@ -434,9 +436,19 @@ don't change who can read them.
    The app picks up the new publication from the index on its next Gym
    entry.
 
-To make step 2 data-only, experiments should emit a shared per-attempt row
-schema (`openagents.gym.attempt-row.v1`) and a study descriptor, so a new
-study needs a descriptor file rather than Rust.
+Step 2 is data-only ([#9845](https://github.com/OpenAgentsInc/openagents/issues/9845)):
+an experiment's `summarize.py` writes its rows in the shared per-attempt
+schema (`openagents.gym.attempt-row.v1`), and the study commits a
+`study.json` descriptor (`openagents.gym.study.v1`) under
+`bench/terminal-bench/experiments/` or `bench/terminal-bench/studies/`.
+The generic adapter ([`study.rs`](../../crates/gym-leaderboard/src/study.rs))
+finds every descriptor, applies the named beat rule, and runs the verdict,
+bar, and tally cross-checks; the headline and caveats are templates whose
+numbers are placeholders filled from the tallies. An unknown rule or
+placeholder refuses. #9776's board is the first user: its descriptor reads
+its older `attempts.json` through a named converter, and the board is
+byte-identical to the hand-written adapter's. The recipe is in the
+[runbook](../terminal-bench/runbook.md#publish-a-study-to-the-gym).
 
 ## Web parity
 
@@ -461,6 +473,7 @@ Implemented now (`cargo test -p gym-leaderboard`):
 | `the_shared_fact_board_says_what_the_showcase_and_the_gym_say` | The Gym's beats-winner claims recomputed from the same records (8 of 9, 3 of 8, 5 of 9), the showcase's cost ranges and bars, 0 passes before the entry, and the same-task caveat, citing #9776's 4 of 28, on the board and every beat's row. |
 | `the_tb4_out_of_sample_board_says_no_held_out_pass_yet`, `a_study_table_the_numbers_dont_support_refuses_to_build` | 0 of 72 (0 of 24 per round), the code-built negative headline, coverage and exclusion caveats; a tampered win cell or tally refuses to build. |
 | `reference_boards_are_labeled_snapshots_and_never_merged` | Snapshot, host, and fetch time in the headline and caveat, both reconciliation flags per row as the file has them, no attempts or tasks, and no reference row on a subject board. |
+| `the_9776_board_is_unchanged_after_the_port`, `a_study_with_only_a_descriptor_and_rows_generates_a_board`, `a_study_that_names_an_unknown_rule_or_disagrees_with_its_rows_refuses` | #9776's board digest is the pre-port one; a fixture study with only a descriptor and rows builds; an unknown rule or placeholder, a wrong verdict, tally, or bar refuses. |
 | `every_tb21_attempt_has_a_trace`, `a_tb21_pass_bundle_steps_through_the_loop_jev_and_the_verifier` | All 127 TB2.1 attempts reference a bundle whose SHA-256 and size match; one pass's model steps, Jev judgments with their probabilities, commands, tests, finish, verifier, and cost against the bar. |
 | `a_record_that_differs_from_its_manifest_refuses_to_bundle`, `a_review_holds_only_while_its_source_is_unchanged` | A Microcoder record that no longer matches its manifest refuses to bundle; a reviewed match lapses when its source changes. |
 | `generation_is_deterministic`, `the_committed_publication_matches_the_evidence` | Same bytes twice, and the committed files match. |
@@ -488,7 +501,7 @@ Epic [#9839](https://github.com/OpenAgentsInc/openagents/issues/9839).
 | #9842 | #9746 development board | #9840 | Done |
 | #9843 | TB4 knowledge-assisted Microcoder board | #9840, #9841 | Done |
 | #9844 | TB4 out-of-sample board and reference boards | #9840 | Done |
-| #9845 | Shared attempt-row schema and study descriptor | #9840 | Now |
+| #9845 | Shared attempt-row schema and study descriptor | #9840 | Done |
 | #9846 | Rust client: fetch, verify, cache | #9840 | Now |
 | #9848 | Rust view model with the presentation rules | #9840, #9846 | After the Gym port |
 | #9849 | Grid **RESULTS** board and screens | #9846, #9848 | After the Gym port |
