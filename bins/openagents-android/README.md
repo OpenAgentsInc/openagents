@@ -332,5 +332,15 @@ checked: the emulator isn't on a tailnet.
   been exercised on an emulator or a device.
 - Text with the Markdown role outside the conversation elements shows as
   plain text; iOS styles its inline Markdown.
-- No instrumentation tests yet; checks are Rust tests, lint, and the
-  emulator run above.
+- The chat transcript is still a `RecyclerView` of Android widgets. The
+  iPhone app now lays transcripts out in Rust and paints Rust's display
+  lists (#9833, `pulled_transcripts`); Android doesn't yet.
+- Two-thumb sticks with a pinch from other fingers are covered by unit
+  tests (`PinchAdmissionTest`) but not by an emulator run, since `adb`
+  can't inject multi-touch.
+- The agent payment approval sheet, the Coder queue panel, and long-press
+  send choices are built from the iOS design but haven't been exercised
+  on an emulator: neither the fixture wallet nor Coder's offline fixture
+  produces a payment request or a writable running chat.
+- No instrumentation tests yet; checks are Rust tests, lint, unit tests,
+  and the emulator runs above.
