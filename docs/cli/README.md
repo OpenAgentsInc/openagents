@@ -515,15 +515,42 @@ advertise` publishes the NIP-CAP `oa-x402-v1` head for a paid endpoint.
 ### Inbound liquidity from an LSP
 
 A fresh node can pay but not receive until a peer has capacity toward it.
-`init --lsp` names a liquidity provider; `--lsp olympus` picks the Olympus
-(ZEUS) LSPS1 peer for the wallet's network (bitcoin or testnet), and a peer
-given as `NODE_ID@HOST:PORT` speaks LSPS2 unless `--lsp-protocol lsps1` says
-otherwise. LSPS1 is the x402 path: the LSP opens a channel in advance for a
-fee, and this node still signs its own invoices, so its node id stays a valid
-`payTo`. An LSPS2 or Olympus Flow just-in-time channel wraps the first
-payment in an invoice the LSP signs, which the x402 payee check refuses.
-`--lsp-min-msat N` records the smallest payment the LSP forwards (from its
-published fee policy); x402 providers then refuse a toll below it.
+`init --lsp` names a liquidity provider. `--lsp mdk` picks the MoneyDevKit
+LSPS4 peer for the wallet's network (bitcoin, or signet on Mutinynet, where the
+preset also sets the Mutinynet Esplora server); `--lsp olympus` picks the
+Olympus (ZEUS) LSPS1 peer (bitcoin or testnet); and a peer given as
+`NODE_ID@HOST:PORT` speaks LSPS2 unless `--lsp-protocol lsps1|lsps4` says
+otherwise.
+
+Two of these work for x402. With LSPS4, `invoice` asks the LSP for a
+just-in-time route hint and this node builds and signs the invoice itself, so
+the first payment opens the channel and the node id stays a valid `payTo`; no
+funding step comes first. With LSPS1, the LSP opens a channel in advance for a
+fee (`channel buy`). An LSPS2 or Olympus Flow just-in-time channel wraps the
+first payment in an invoice the LSP signs, which the x402 payee check refuses.
+Once a usable channel has enough inbound capacity, `invoice` issues an
+ordinary invoice and no LSP is involved. `--lsp-token` carries an LSPS4 fee
+claim or an LSPS2 token; `--lsp-min-msat N` records the smallest payment the
+LSP forwards (from its published fee policy), and x402 providers then refuse a
+toll below it. The LSPS4 provider takes its fee from the forwarded amount, so
+price it into the toll.
+
+The LSP holds the first payment only for a short time while it opens the
+channel (45 s in MoneyDevKit's service). Against the staging LSP on Mutinynet
+the channel opened but took about 60 s, so the LSP failed the payment back with
+`unknown_next_peer`, and the same invoice stayed unpayable afterward. The
+channel stays open, so the buyer's next challenge gets an ordinary invoice that
+settles at once; x402 buyers retry a failed payment with a fresh challenge.
+
+```sh
+# Signet on Mutinynet against MoneyDevKit's staging LSP.
+openagents wallet init --network signet --lsp mdk
+openagents --json wallet invoice --msat 21000000 --request-hash HASH
+# {"bolt11":"lntbs210u1…","pay_to":"<this node id>","description_hash":"HASH",…}
+```
+
+`crates/wallet` builds on MoneyDevKit's fork of `ldk-node` 0.7 (pinned by
+revision), which adds the LSPS4 client; upstream `ldk-node` 0.7 has none.
 
 ```sh
 openagents wallet init --network bitcoin --lsp olympus
