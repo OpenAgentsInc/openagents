@@ -8,8 +8,10 @@ use serde_json::json;
 use std::str::FromStr;
 
 pub const MAX_BODY: usize = 128 * 1024;
-/// A body on a direct tailnet connection: one sealed reply within NIP-44's
-/// 256 KiB plaintext, less the envelope around it.
+/// A body on a direct tailnet connection. A sealed envelope's inline body is
+/// bounded by NIP-44's 64 KiB standard plaintext, so a direct reply's body
+/// travels beside its sealed envelope (see [`seal_detached`]), encrypted with
+/// NIP-44's 256 KiB client bound and pinned by the envelope's digest.
 pub const MAX_DIRECT_BODY: usize = 248 * 1024;
 pub const MAX_GRANT_LIFETIME: u64 = 30 * 24 * 60 * 60;
 pub const MAX_REQUEST_LIFETIME: u64 = 60;
@@ -407,6 +409,100 @@ pub fn seal_within(
         .map_err(|_| Error::new(ErrorCode::Malformed, "invalid recipient"))?;
     nostr::private_artifact::seal(&body, secret, &recipient, mailbox, issued, random_bytes())
         .map_err(|_| Error::new(ErrorCode::Malformed, "observer envelope cannot be sealed"))
+}
+/// Seal a body that travels beside its envelope: the signed envelope names
+/// the body's digest and size with no inline copy, and the body is NIP-44
+/// encrypted to the same recipient under the same conversation key, up to
+/// NIP-44's 256 KiB client plaintext. Returns the envelope event and the
+/// encrypted body.
+pub fn seal_detached(
+    value: &impl Serialize,
+    schema: &str,
+    secret: &SecretKey,
+    recipient: &str,
+    (mailbox, issued, expires): (&str, u64, u64),
+    max: usize,
+) -> Result<(Event, String)> {
+    let bytes = encoded_within(value, max)?;
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|_| Error::new(ErrorCode::Malformed, "observer body"))?;
+    let body = json!({"v":"openagents.artifact-envelope.v1","requires":[],"artifact":{"digest":contracts::digest_bytes(&bytes),"size":bytes.len(),"media_type":"application/json","schema":schema},"inline":null,"issued_at":issued,"retain_until":expires});
+    let peer = XOnlyPublicKey::from_str(recipient)
+        .map_err(|_| Error::new(ErrorCode::Malformed, "invalid recipient"))?;
+    let event =
+        nostr::private_artifact::seal(&body, secret, &peer, mailbox, issued, random_bytes())
+            .map_err(|_| Error::new(ErrorCode::Malformed, "observer envelope cannot be sealed"))?;
+    let key = nostr::nip44::conversation_key(secret, &peer);
+    let payload = nostr::nip44::encrypt(text, &key, random_bytes())
+        .map_err(|_| Error::new(ErrorCode::Bounds, "observer body cannot be encrypted"))?;
+    Ok((event, payload))
+}
+/// Open a body sealed by [`seal_detached`]: the envelope's signature,
+/// signer, recipient, schema, and lifetimes are checked as by [`open`], and
+/// the decrypted body must be exactly the bytes the envelope names.
+pub fn open_detached<T: DeserializeOwned>(
+    event: &Event,
+    payload: &str,
+    secret: &SecretKey,
+    (signer, recipient): (&str, &str),
+    schema: &str,
+    max: usize,
+) -> Result<T> {
+    if event.content.len() > 400 * 1024 || payload.len() > 4 * max / 3 + 1024 {
+        return fail(
+            ErrorCode::Bounds,
+            "observer detached body exceeds its bound",
+        );
+    }
+    let opened = nostr::private_artifact::open(event, secret).map_err(|_| {
+        Error::new(
+            ErrorCode::Forbidden,
+            "invalid observer signature, encryption, or recipient",
+        )
+    })?;
+    if opened.signer() != signer
+        || opened.recipient() != recipient
+        || opened.artifact().schema.as_deref() != Some(schema)
+        || opened.artifact().media_type != "application/json"
+        || event.created_at != opened.body().issued_at
+        || opened.inline_bytes().is_some()
+    {
+        return fail(
+            ErrorCode::Forbidden,
+            "observer signer, recipient, schema, or issue time differs",
+        );
+    }
+    let own = pubkey(secret);
+    let peer = if own == signer { recipient } else { signer };
+    let peer = XOnlyPublicKey::from_str(peer)
+        .map_err(|_| Error::new(ErrorCode::Malformed, "invalid observer peer"))?;
+    let key = nostr::nip44::conversation_key(secret, &peer);
+    let text = nostr::nip44::decrypt(payload, &key)
+        .map_err(|_| Error::new(ErrorCode::Forbidden, "observer detached body encryption"))?;
+    if text.len() > max {
+        return fail(ErrorCode::Bounds, "observer body exceeds its byte bound");
+    }
+    opened.check_external(text.as_bytes()).map_err(|_| {
+        Error::new(
+            ErrorCode::Forbidden,
+            "observer body differs from the bytes its envelope names",
+        )
+    })?;
+    let value: serde_json::Value = decode_within(text.as_bytes(), max)?;
+    if value["issued_at"].as_u64() != Some(opened.body().issued_at)
+        || value["expires_at"].as_u64() != Some(opened.body().retain_until)
+    {
+        return fail(
+            ErrorCode::Forbidden,
+            "observer body and envelope lifetimes differ",
+        );
+    }
+    serde_json::from_value(value).map_err(|_| {
+        Error::new(
+            ErrorCode::Malformed,
+            "observer fields do not match the supported schema",
+        )
+    })
 }
 pub fn open<T: DeserializeOwned>(
     event: &Event,

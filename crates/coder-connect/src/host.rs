@@ -366,8 +366,12 @@ impl Host {
                             && kept.request_event == event.id
                             && kept.expires_at > now
                     })
-                    .map(|kept| kept.reply.clone());
-                return Ok(Handled::from(kept.unwrap_or_else(|| old.event.clone())));
+                    .map(|kept| Handled {
+                        reply: kept.reply.clone(),
+                        payload: Some(kept.payload.clone()),
+                        read: None,
+                    });
+                return Ok(kept.unwrap_or_else(|| Handled::from(old.event.clone())));
             }
             return self
                 .reply(
@@ -416,8 +420,17 @@ impl Host {
         // A slow reader must not extend a request's grant or freshness window.
         let final_now = clock()?;
         fresh(request.issued_at, request.expires_at, final_now)?;
-        let response =
-            self.reply_within(&secret, event, &request, result, final_now, route.body())?;
+        let (response, payload) = match route {
+            Route::Relay => (
+                self.reply(&secret, event, &request, result, final_now)?,
+                None,
+            ),
+            Route::Direct => {
+                let (reply, payload) =
+                    self.reply_detached(&secret, event, &request, result, final_now)?;
+                (reply, Some(payload))
+            }
+        };
         if admission.replies.len() >= MAX_REPLIES {
             return fail(ErrorCode::Bounds, "observer reply retention limit reached");
         }
@@ -451,7 +464,7 @@ impl Host {
             length,
         });
         self.save(&mut store, &book)?;
-        if route == Route::Direct {
+        if let Some(payload) = &payload {
             let mut kept = kept();
             kept.retain(|_, kept| kept.expires_at > final_now);
             if kept.len() < 64 * MAX_REPLIES {
@@ -461,12 +474,14 @@ impl Host {
                         request_event: event.id.clone(),
                         expires_at: request.expires_at,
                         reply: response.clone(),
+                        payload: payload.clone(),
                     },
                 );
             }
         }
         Ok(Handled {
             reply: response,
+            payload,
             read,
         })
     }
@@ -494,17 +509,6 @@ impl Host {
         result: ReplyResult,
         now: u64,
     ) -> Result<Event> {
-        self.reply_within(secret, event, request, result, now, MAX_BODY)
-    }
-    fn reply_within(
-        &self,
-        secret: &SecretKey,
-        event: &Event,
-        request: &Request,
-        result: ReplyResult,
-        now: u64,
-        max: usize,
-    ) -> Result<Event> {
         let reply = Reply {
             v: REPLY.into(),
             requires: vec![],
@@ -515,13 +519,43 @@ impl Host {
             expires_at: request.expires_at,
             result,
         };
-        seal_within(
+        seal(
+            &reply,
+            REPLY,
+            secret,
+            &event.pubkey,
+            &request.request,
+            now,
+            request.expires_at,
+        )
+    }
+    /// A reply whose body travels beside its sealed envelope, as a direct
+    /// connection carries it: up to [`Route::Direct`]'s body bound.
+    fn reply_detached(
+        &self,
+        secret: &SecretKey,
+        event: &Event,
+        request: &Request,
+        result: ReplyResult,
+        now: u64,
+    ) -> Result<(Event, String)> {
+        let reply = Reply {
+            v: REPLY.into(),
+            requires: vec![],
+            request: request.request.clone(),
+            request_event: event.id.clone(),
+            grant: request.grant.clone(),
+            issued_at: now,
+            expires_at: request.expires_at,
+            result,
+        };
+        seal_detached(
             &reply,
             REPLY,
             secret,
             &event.pubkey,
             (&request.request, now, request.expires_at),
-            max,
+            Route::Direct.body(),
         )
     }
     /// Save `book` and remember it as the validated state of the new file.
@@ -647,11 +681,18 @@ pub struct Read {
 #[derive(Clone, Debug)]
 pub struct Handled {
     pub reply: Event,
+    /// The reply's body, when it travels beside its envelope
+    /// ([`seal_detached`]).
+    pub payload: Option<String>,
     pub read: Option<Read>,
 }
 impl From<Event> for Handled {
     fn from(reply: Event) -> Self {
-        Self { reply, read: None }
+        Self {
+            reply,
+            payload: None,
+            read: None,
+        }
     }
 }
 
@@ -667,6 +708,7 @@ struct Kept {
     request_event: String,
     expires_at: u64,
     reply: Event,
+    payload: String,
 }
 fn kept() -> std::sync::MutexGuard<'static, std::collections::HashMap<(PathBuf, String), Kept>> {
     static KEPT: std::sync::OnceLock<

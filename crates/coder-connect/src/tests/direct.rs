@@ -45,11 +45,11 @@ fn direct_requests_pass_every_relay_check_but_the_relay_binding() {
     assert!(handled.read.is_some());
     assert!(
         client
-            .verify_reply_via(
+            .verify_detached(
                 &pending,
                 &handled.reply,
-                unix_time().unwrap(),
-                Route::Direct
+                handled.payload.as_deref().unwrap(),
+                unix_time().unwrap()
             )
             .is_ok()
     );
@@ -187,15 +187,84 @@ fn direct_bounds_apply_only_to_direct_replies() {
     let handled = f.host().handle_direct(&pending.event).unwrap();
     assert!(matches!(
         client
-            .verify_reply_via(
+            .verify_detached(
                 &pending,
                 &handled.reply,
-                unix_time().unwrap(),
-                Route::Direct
+                handled.payload.as_deref().unwrap(),
+                unix_time().unwrap()
             )
             .unwrap(),
         Observation::Page(_)
     ));
+    // A body larger than a sealed envelope's inline bound travels beside it.
+    let file = f.root.join("sessions/2026/01/01/one.jsonl");
+    let mut bytes = std::fs::read(&file).unwrap();
+    let line = format!(
+        "{{\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"{}\"}}]}}}}\n",
+        "y".repeat(6000)
+    );
+    for _ in 0..20 {
+        bytes.extend_from_slice(line.as_bytes());
+    }
+    std::fs::write(&file, bytes).unwrap();
+    let pending = client
+        .prepare_for(page(&source, big), unix_time().unwrap(), Route::Direct)
+        .unwrap();
+    let handled = f.host().handle_direct(&pending.event).unwrap();
+    let payload = handled.payload.unwrap();
+    assert!(payload.len() > 100 * 1024, "{}", payload.len());
+    let Observation::Page(read) = client
+        .verify_detached(&pending, &handled.reply, &payload, unix_time().unwrap())
+        .unwrap()
+    else {
+        panic!("not a page")
+    };
+    let raw: u64 = read.chunks.iter().map(|c| c.end_offset - c.offset).sum();
+    assert!(raw > 64 * 1024, "{raw}");
+}
+
+#[test]
+fn a_detached_body_must_be_the_bytes_its_envelope_names() {
+    let f = Fixture::new("wss://relay.example/");
+    let key = f.host().key().unwrap();
+    let seal = |expires: u64| {
+        seal_detached(
+            &serde_json::json!({"issued_at": 1, "expires_at": expires}),
+            REPLY,
+            &key,
+            &f.code.client,
+            (&"a".repeat(64), 1, 2),
+            MAX_DIRECT_BODY,
+        )
+        .unwrap()
+    };
+    let (event, payload) = seal(2);
+    let (_, swapped) = seal(3);
+    let open = |payload: &str| {
+        open_detached::<serde_json::Value>(
+            &event,
+            payload,
+            &f.client_secret,
+            (&f.code.host, &f.code.client),
+            REPLY,
+            MAX_DIRECT_BODY,
+        )
+    };
+    assert_eq!(open(&payload).unwrap()["expires_at"], 2);
+    assert_eq!(open(&swapped).unwrap_err().code, ErrorCode::Forbidden);
+    // Another reader's key cannot open it.
+    let stranger = SecretKey::new(&mut secp256k1::rand::rng());
+    assert!(
+        open_detached::<serde_json::Value>(
+            &event,
+            &payload,
+            &stranger,
+            (&f.code.host, &f.code.client),
+            REPLY,
+            MAX_DIRECT_BODY,
+        )
+        .is_err()
+    );
 }
 
 /// Emulate the host's tailnet listener: welcome one connection, then serve

@@ -643,12 +643,9 @@ fn client(saved: &Saved, secret: SecretKey) -> Result<Arc<Client>, String> {
 }
 
 /// The newest chats one read asks for: a relay page, or on a direct
-/// connection enough for the whole list at once.
+/// connection a page large enough for the whole list at once.
 fn head_limit(route: Route) -> u16 {
-    match route {
-        Route::Relay => coder_history::MAX_CATALOG_PAGE,
-        Route::Direct => route.limits().catalog_page.min(CATALOG_WANTED as u16 * 2),
-    }
+    route.limits().catalog_page
 }
 
 /// Follow the computer's nudges: when its task list changes, read its

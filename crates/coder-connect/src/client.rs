@@ -135,6 +135,8 @@ impl Client {
         if self.route() == Route::Direct {
             match self.observe_direct(make(Route::Direct)).await {
                 Err(error) if error.code == ErrorCode::Transport => self.direct_failed(),
+                // No signed reply: read this one through the relay.
+                Err(error) if error.message == direct::UNSIGNED => {}
                 result => return result,
             }
         }
@@ -144,8 +146,11 @@ impl Client {
     async fn observe_direct(&self, query: Query) -> Result<Observation> {
         let connection = self.direct_connection().await?;
         let pending = self.prepare_for(query, unix_time()?, Route::Direct)?;
-        let event = connection.exchange(&pending.event, DIRECT_LIMIT).await?;
-        self.verify_reply_via(&pending, &event, unix_time()?, Route::Direct)
+        let (event, payload) = connection.exchange(&pending.event, DIRECT_LIMIT).await?;
+        match payload {
+            Some(payload) => self.verify_detached(&pending, &event, &payload, unix_time()?),
+            None => self.verify_reply_via(&pending, &event, unix_time()?, Route::Direct),
+        }
     }
     async fn direct_connection(&self) -> Result<Arc<direct::Connection>> {
         let current = || {
@@ -257,6 +262,37 @@ impl Client {
             REPLY,
             route.body(),
         )?;
+        self.check_reply(pending, event, reply, now, route)
+    }
+    /// Verify a direct reply whose body travelled beside its sealed envelope
+    /// ([`seal_detached`]): the envelope pins the body's digest, and every
+    /// check of [`Client::verify_reply_via`] applies.
+    pub fn verify_detached(
+        &self,
+        pending: &Pending,
+        event: &Event,
+        payload: &str,
+        now: u64,
+    ) -> Result<Observation> {
+        self.check_pending(pending, now, Route::Direct)?;
+        let reply: Reply = open_detached(
+            event,
+            payload,
+            &self.secret,
+            (&self.code.host, &self.code.client),
+            REPLY,
+            Route::Direct.body(),
+        )?;
+        self.check_reply(pending, event, reply, now, Route::Direct)
+    }
+    fn check_reply(
+        &self,
+        pending: &Pending,
+        event: &Event,
+        reply: Reply,
+        now: u64,
+        route: Route,
+    ) -> Result<Observation> {
         schema(&reply.v, REPLY, &reply.requires)?;
         window(reply.issued_at, reply.expires_at, MAX_REQUEST_LIFETIME)?;
         fresh(reply.issued_at, reply.expires_at, now)?;

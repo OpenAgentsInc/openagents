@@ -85,8 +85,14 @@ pub struct Ask {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Down {
-    /// The sealed reply to request `id`.
-    Reply { id: u64, event: Box<Event> },
+    /// The sealed reply to request `id`, and its body when it travels
+    /// beside its envelope.
+    Reply {
+        id: u64,
+        event: Box<Event>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        payload: Option<String>,
+    },
     /// Request `id` has no signed reply, with the host's local reason. It is
     /// not authenticated, and the device treats it as a failed read only.
     Refused { id: u64, code: ErrorCode },
@@ -102,6 +108,10 @@ pub enum Change {
     Source(String),
     Catalog,
 }
+
+/// The message of a direct read the host answered with no signed reply: an
+/// unauthenticated local failure, which the client reads through the relay.
+pub const UNSIGNED: &str = "the host answered this direct read with no signed reply";
 
 fn transport(message: &str) -> Error {
     Error::new(ErrorCode::Transport, message)
@@ -221,7 +231,11 @@ impl Connection {
     /// # Errors
     /// A transport error when the connection fails or the reply is late; the
     /// host's local refusal code when it has no signed reply.
-    pub async fn exchange(&self, event: &Event, limit: Duration) -> Result<Event> {
+    pub async fn exchange(
+        &self,
+        event: &Event,
+        limit: Duration,
+    ) -> Result<(Event, Option<String>)> {
         if !self.alive() {
             return Err(transport("the direct connection closed"));
         }
@@ -255,11 +269,11 @@ impl Connection {
         .await;
         lock(&self.waiting).remove(&id);
         match answer {
-            Ok(Ok(Down::Reply { event, .. })) => {
+            Ok(Ok(Down::Reply { event, payload, .. })) => {
                 nostr::private_artifact::admit(&event).map_err(|_| {
                     Error::new(ErrorCode::Forbidden, "host sent an invalid private reply")
                 })?;
-                Ok(*event)
+                Ok((*event, payload))
             }
             Ok(Ok(Down::Refused { code, .. })) => Err(Error::new(
                 if code == ErrorCode::Transport {
@@ -267,7 +281,7 @@ impl Connection {
                 } else {
                     code
                 },
-                "the host answered this read with no signed reply",
+                UNSIGNED,
             )),
             Ok(Ok(_)) => Err(transport("the direct connection mixed up its frames")),
             Ok(Err(error)) => Err(error),
@@ -390,13 +404,18 @@ mod serve {
                 .await
                 .unwrap_or_else(|_| Err(Error::new(ErrorCode::Unavailable, "read failed")));
                 let down = match handled {
-                    Ok(Handled { reply, read }) => {
+                    Ok(Handled {
+                        reply,
+                        payload,
+                        read,
+                    }) => {
                         if let Some(read) = read {
                             remember(&watch, read);
                         }
                         Down::Reply {
                             id,
                             event: Box::new(reply),
+                            payload,
                         }
                     }
                     Err(error) => {

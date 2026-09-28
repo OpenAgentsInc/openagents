@@ -1261,7 +1261,8 @@ fn live_chat_timings() {
             });
             let reader = packet.chats.unwrap();
             let shown = nodes_of(&reader, "message").len() + nodes_of(&reader, "tool").len();
-            eprintln!("chat {index} {attempt}: {took:?}, {shown} rows");
+            let title = row.lines().next().unwrap_or_default();
+            eprintln!("chat {index} {attempt}: {took:?}, {shown} rows ({title:.40})");
             let node = key_for(&reader, "Chats").unwrap();
             app.call(Request::ChatsActivate {
                 instance: reader["instance"].as_str().unwrap().into(),

@@ -618,10 +618,11 @@ the callers admission answers. Refusal codes are `not_tailnet`,
 `unavailable`, `tagged`, `not_owner`, and `not_serving`. After that, each
 line is one frame. The device sends `{id, event}`, where `event` is an
 original signed `3188` request artifact and `id` a connection-local number.
-The host answers `{"reply": {id, event}}` with the original signed reply
-artifact, or `{"refused": {id, code}}` when it has no signed reply (an
-unauthenticated local failure, never a domain result). Frames of different
-requests may be in flight and answered in any order.
+The host answers `{"reply": {id, event, payload}}` with the original signed
+reply artifact, or `{"refused": {id, code}}` when it has no signed reply (an
+unauthenticated local failure, never a domain result, which the device
+reads through the relay instead). Frames of different requests may be in
+flight and answered in any order.
 
 The host runs every check of a relay request: signature, recipient, schema,
 client, current grant, original authorization, source roots, freshness,
@@ -631,9 +632,17 @@ through its relay. The device verifies the reply exactly as a relay reply.
 
 A direct reply may be larger: a transcript page of up to 160 KiB of raw
 source bytes within a 232 KiB encoded page, a catalog page of up to 256
-chats, and an observer body of up to 248 KiB, within NIP-44's 256 KiB
-plaintext. A relay reply keeps the bounds above, and a host refuses a
-direct-sized request that arrives through a relay. A backward page whose
+chats, and an observer body of up to 248 KiB. A sealed envelope's inline
+body is bounded by NIP-44's standard 64 KiB plaintext, so a direct reply's
+body travels beside its envelope: the host seals the reply's envelope with
+`inline: null` and the exact digest and size of the reply's canonical bytes,
+and sends those bytes as `payload`, NIP-44 v2 encrypted to the device under
+the same conversation key with the client plaintext bound of 256 KiB. The
+device opens the envelope, decrypts `payload`, and accepts it only when its
+bytes are exactly the ones the host-signed envelope names; every other
+check is the same. A relay reply keeps the bounds above and its inline
+body, and a host refuses a direct-sized request that arrives through a
+relay. A backward page whose
 whole records do not fit the encoded bound together holds the newest of
 them that do, down to one record.
 
