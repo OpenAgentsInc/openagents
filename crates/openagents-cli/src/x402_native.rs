@@ -10,14 +10,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use coder::generate::GenerateError;
+use coder::relay::{Identity, RelayDoor, parse_pubkey};
 use nostr::contracts::{self, ARTIFACT_ENVELOPE_KIND, ARTIFACT_MARKER, digest_bytes, jcs};
 use nostr::domain::Event;
 use nostr::private_artifact;
 use openagents_x402::facilitator::Facilitator;
 use openagents_x402::native::{
-    self, BYTES_SCHEMA, Emit, NATIVE_ONLY, OPERATOR_CAUSES, Offer, PROFILE, Provider,
-    PurchaseStore, RECORD_SCHEMA, Record, RecordType, Recovery, Signed, artifact_bytes, buyer,
-    bytes_artifact, operator_cause, parse_record, parse_status,
+    self, BYTES_SCHEMA, Emit, NATIVE_ONLY, NO_WORKER, OPERATOR_CAUSES, Offer, PROFILE, Provider,
+    PurchaseStore, RECORD_SCHEMA, Record, RecordType, Recovery, Signed, WORKER_FAILED,
+    WORKER_REFUSED, WORKER_SILENT, artifact_bytes, buyer, bytes_artifact, operator_cause,
+    parse_record, parse_request, parse_status,
 };
 use openagents_x402::server::Receiver;
 use openagents_x402::{FileReplayStore, PaymentPayload, network_id};
@@ -229,20 +232,192 @@ fn run_command(program: &str, args: &[String], input: &[u8]) -> Result<Vec<u8>, 
     }
 }
 
+/// How an admitted purchase's input is turned into its output.
+enum Executor {
+    /// Run a local command with the input on stdin.
+    Command { program: String, args: Vec<String> },
+    /// Hand the input to a NIP-CJ worker as one job and wait for its result.
+    Job(Box<Dispatch>),
+}
+
+/// The worker a job executor posts to and the runtime it waits on.
+struct Dispatch {
+    door: RelayDoor,
+    relay: String,
+    worker: String,
+    runtime: tokio::runtime::Runtime,
+}
+
+/// What an executor reports before its output is ready.
+enum Progress<'a> {
+    /// The running status to publish, before any work starts, so a buyer
+    /// sees the phase change while the work is under way.
+    Running(&'a Emit),
+    /// The job record a NIP-CJ dispatch persisted.
+    Dispatched(&'a Value),
+}
+
+/// The margin kept between the job's wait and the purchase's execution
+/// window, so the failure is recorded before the window closes.
+const WINDOW_MARGIN: u64 = 5;
+
+/// The wait left in an execution window ending at `execute_until`.
+fn window_left(execute_until: u64) -> Duration {
+    Duration::from_secs(
+        execute_until
+            .saturating_sub(unix_now())
+            .saturating_sub(WINDOW_MARGIN)
+            .max(1),
+    )
+}
+
+/// The stable cause a job's failure records on the purchase.
+fn job_cause(error: &GenerateError) -> &'static str {
+    match error {
+        GenerateError::Silent { heard: false, .. } => NO_WORKER,
+        GenerateError::Silent { heard: true, .. } => WORKER_SILENT,
+        GenerateError::Refused { .. } => WORKER_REFUSED,
+        _ => WORKER_FAILED,
+    }
+}
+
+impl Executor {
+    /// Move `purchase` to `running` and produce its output from `input`.
+    fn run(
+        &self,
+        provider: &Provider<'_, FileReplayStore>,
+        buyer: &str,
+        purchase: &str,
+        input: &[u8],
+        execute_until: u64,
+        report: &mut dyn FnMut(Progress<'_>),
+    ) -> Result<Vec<u8>, &'static str> {
+        match self {
+            Self::Command { program, args } => {
+                let running = provider.start(buyer, purchase, unix_now())?;
+                report(Progress::Running(&running));
+                run_command(program, args, input)
+            }
+            Self::Job(dispatch) => {
+                let Dispatch {
+                    door,
+                    relay,
+                    worker,
+                    runtime,
+                } = dispatch.as_ref();
+                let task = String::from_utf8_lossy(input).into_owned();
+                let minutes = window_left(execute_until).as_secs().div_ceil(60).max(1);
+                let payload = json!({
+                    "task": task,
+                    "delegation": {"writes": false, "minutes": minutes},
+                    "client": concat!("openagents x402 ", env!("CARGO_PKG_VERSION")),
+                });
+                let prepared = door
+                    .prepare(payload)
+                    .map_err(|_| "job request could not be encrypted")?;
+                let job = json!({
+                    "relay": relay,
+                    "worker": worker,
+                    "request": prepared.id(),
+                });
+                let running = provider.start_job(buyer, purchase, Some(job.clone()), unix_now())?;
+                report(Progress::Running(&running));
+                report(Progress::Dispatched(&job));
+                let mut sink = |_: &str| {};
+                runtime
+                    .block_on(door.post(&prepared, window_left(execute_until), &mut sink))
+                    .map(|answer| answer.text.into_bytes())
+                    .map_err(|error| job_cause(&error))
+            }
+        }
+    }
+
+    /// Wait for the result of a job an earlier process posted, when this
+    /// executor talks to the same worker.
+    fn follow(&self, job: &Value, execute_until: u64) -> Result<Vec<u8>, &'static str> {
+        let Self::Job(dispatch) = self else {
+            return Err(native::PROVIDER_RESTARTED);
+        };
+        let Dispatch {
+            door,
+            worker,
+            runtime,
+            ..
+        } = dispatch.as_ref();
+        if job["worker"].as_str() != Some(worker.as_str()) {
+            return Err(native::PROVIDER_RESTARTED);
+        }
+        let request = job["request"].as_str().unwrap_or_default();
+        let mut sink = |_: &str| {};
+        runtime
+            .block_on(door.follow(request, window_left(execute_until), &mut sink))
+            .map(|answer| answer.text.into_bytes())
+            .map_err(|error| job_cause(&error))
+    }
+}
+
 // ---------------------------------------------------------------- provider
 
 pub fn serve(output: &Output, words: &[String]) -> u8 {
-    let Some(split) = words.iter().position(|word| word == "--") else {
-        return usage(output, "native-serve needs `-- CMD [ARGS...]`");
-    };
-    let (flags, command) = words.split_at(split);
-    let command = &command[1..];
-    let Some((program, program_args)) = command.split_first() else {
-        return usage(output, "native-serve needs a command after `--`");
+    let (flags, command) = match words.iter().position(|word| word == "--") {
+        Some(split) => (&words[..split], Some(&words[split + 1..])),
+        None => (words, None),
     };
     let args = match Args::parse(flags, SWITCHES) {
         Ok(args) => args,
         Err(message) => return usage(output, &message),
+    };
+    let executor = match (args.option("cj"), command) {
+        (Some(_), Some(_)) => {
+            return usage(
+                output,
+                "native-serve takes either --cj WORKER or `-- CMD`, not both",
+            );
+        }
+        (None, None) => {
+            return usage(
+                output,
+                "native-serve needs `-- CMD [ARGS...]` or --cj WORKER",
+            );
+        }
+        (None, Some(command)) => match command.split_first() {
+            Some((program, program_args)) => Executor::Command {
+                program: program.clone(),
+                args: program_args.to_vec(),
+            },
+            None => return usage(output, "native-serve needs a command after `--`"),
+        },
+        (Some(worker), None) => {
+            let Some(worker_key) = parse_pubkey(worker) else {
+                return usage(output, "--cj takes the worker's npub or 64 lowercase hex");
+            };
+            let party = match Party::load(args.option("as")) {
+                Ok(party) => party,
+                Err(message) => return output.fail("x402", &message),
+            };
+            let identity = match Identity::from_secret(party.secret) {
+                Ok(identity) => identity,
+                Err(message) => return output.fail("x402", &message),
+            };
+            let cj_relay = args
+                .option("cj-relay")
+                .map(str::to_owned)
+                .or_else(|| std::env::var("CODER_RELAY").ok().filter(|s| !s.is_empty()))
+                .unwrap_or_else(|| relay_url(args.option("relay")));
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => return output.fail("x402", &format!("runtime: {error}")),
+            };
+            Executor::Job(Box::new(Dispatch {
+                door: RelayDoor::new(cj_relay.clone(), worker_key, identity),
+                relay: cj_relay,
+                worker: worker_key.to_string(),
+                runtime,
+            }))
+        }
     };
     let Some(slug) = args.option("slug") else {
         return usage(output, "native-serve needs --slug SLUG");
@@ -323,7 +498,7 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
         Ok(recovered) => recovered,
         Err(cause) => return output.fail("x402", &format!("recovery: {cause}")),
     };
-    let mut reruns: HashMap<String, (String, String, native::Phase)> = HashMap::new();
+    let mut reruns: HashMap<String, (String, String, native::Phase, u64)> = HashMap::new();
     let mut rerun_ids = Vec::new();
     for recovery in &recovered {
         if let Recovery::Rerun { input, .. } = recovery
@@ -342,8 +517,62 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
     if let Err(message) = client.listen(filters) {
         return output.fail("x402", &message);
     }
+    let mut served = 0u64;
     for recovery in recovered {
         match recovery {
+            Recovery::Follow {
+                buyer,
+                purchase,
+                job,
+                execute_until,
+            } => {
+                output.line(
+                    &json!({
+                        "event": "following",
+                        "buyer": buyer,
+                        "purchase": purchase,
+                        "job": job,
+                        "execute_until": execute_until,
+                    }),
+                    |value| {
+                        format!(
+                            "following job {} for purchase {}",
+                            &value["job"]["request"].as_str().unwrap_or_default()[..16],
+                            &value["purchase"].as_str().unwrap_or_default()[..16]
+                        )
+                    },
+                );
+                let result = executor.follow(&job, execute_until);
+                let finished = publish_output(&mut client, &party, &buyer, &purchase, result);
+                served += 1;
+                let (emit, cause) = match provider.finish(&buyer, &purchase, finished, unix_now()) {
+                    Ok(emit) => (emit, None),
+                    Err(cause) => (Emit::default(), Some(cause)),
+                };
+                let published = publish_records(&mut client, &party, &buyer, &purchase, &emit);
+                output.line(
+                    &json!({
+                        "event": "followed",
+                        "buyer": buyer,
+                        "purchase": purchase,
+                        "phase": emit.records.last().and_then(|r| parse_status(&r["body"]).ok()).map(|s| s.phase.name()),
+                        "cause": emit.records.last().and_then(|r| parse_status(&r["body"]).ok()).and_then(|s| s.cause).or(cause.map(str::to_owned)),
+                        "records": published.as_ref().ok(),
+                        "relay_error": published.as_ref().err(),
+                    }),
+                    |value| {
+                        format!(
+                            "followed purchase {} -> {}{}",
+                            &value["purchase"].as_str().unwrap_or_default()[..16],
+                            value["phase"].as_str().unwrap_or("error"),
+                            value["cause"]
+                                .as_str()
+                                .map(|cause| format!(": {cause}"))
+                                .unwrap_or_default()
+                        )
+                    },
+                );
+            }
             Recovery::Failed {
                 buyer,
                 purchase,
@@ -395,7 +624,7 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
                         )
                     },
                 );
-                reruns.insert(digest, (buyer, purchase, phase));
+                reruns.insert(digest, (buyer, purchase, phase, execute_until));
             }
         }
     }
@@ -411,6 +640,12 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
             "pay_to": receiver.pay_to(),
             "relay": relay,
             "purchases": purchases_dir(),
+            "executor": match &executor {
+                Executor::Command { program, .. } => json!({"command": program}),
+                Executor::Job(dispatch) => {
+                    json!({"cj": {"relay": dispatch.relay, "worker": dispatch.worker}})
+                }
+            },
         }),
         |value| {
             format!(
@@ -426,7 +661,6 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
     let deadline = (seconds > 0).then(|| Instant::now() + Duration::from_secs(seconds));
     let mut inputs: HashMap<String, Vec<u8>> = HashMap::new();
     let mut seen: Vec<String> = Vec::new();
-    let mut served = 0u64;
     loop {
         if deadline.is_some_and(|end| Instant::now() >= end) {
             break;
@@ -445,23 +679,44 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
             if let Ok(value) = contracts::parse_strict(&opened.bytes)
                 && let Ok(bytes) = artifact_bytes(&value)
             {
-                if let Some((buyer, purchase, phase)) = reruns.remove(&opened.digest) {
-                    let now = unix_now();
-                    let started = if phase == native::Phase::Admitted {
-                        provider.start(&buyer, &purchase, now).map(|running| {
-                            if let Err(message) =
-                                publish_records(&mut client, &party, &buyer, &purchase, &running)
-                            {
-                                output.line(
-                                    &json!({"event": "relay_failed", "purchase": purchase, "cause": message}),
-                                    |value| format!("relay failed: {}", value["cause"]),
-                                );
-                            }
-                        })
+                if let Some((buyer, purchase, phase, execute_until)) = reruns.remove(&opened.digest)
+                {
+                    let result = if phase == native::Phase::Admitted {
+                        executor.run(
+                            &provider,
+                            &buyer,
+                            &purchase,
+                            &bytes,
+                            execute_until,
+                            &mut |progress| match progress {
+                                Progress::Running(running) => {
+                                    if let Err(message) = publish_records(
+                                        &mut client,
+                                        &party,
+                                        &buyer,
+                                        &purchase,
+                                        running,
+                                    ) {
+                                        output.line(
+                                            &json!({"event": "relay_failed", "purchase": purchase, "cause": message}),
+                                            |value| format!("relay failed: {}", value["cause"]),
+                                        );
+                                    }
+                                }
+                                Progress::Dispatched(job) => output.line(
+                                    &json!({"event": "dispatched", "purchase": purchase, "job": job}),
+                                    |value| format!("dispatched job {}", value["job"]["request"]),
+                                ),
+                            },
+                        )
                     } else {
-                        Ok(())
+                        match &executor {
+                            Executor::Command { program, args } => {
+                                run_command(program, args, &bytes)
+                            }
+                            Executor::Job(_) => Err(native::PROVIDER_RESTARTED),
+                        }
                     };
-                    let result = started.and_then(|()| run_command(program, program_args, &bytes));
                     let finished = publish_output(&mut client, &party, &buyer, &purchase, result);
                     served += 1;
                     let outcome = provider.finish(&buyer, &purchase, finished, unix_now());
@@ -542,21 +797,27 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
                     let input = inputs.remove(digest);
                     let result = match input {
                         None => Err("input artifact was not received"),
-                        Some(input) => match provider.start(&buyer, &purchase, unix_now()) {
-                            Ok(running) => {
-                                if let Err(message) = publish_records(
-                                    &mut client,
-                                    &party,
-                                    &buyer,
-                                    &purchase,
-                                    &running,
-                                ) {
-                                    log("relay_failed", json!({"cause": message}));
+                        Some(input) => executor.run(
+                            &provider,
+                            &buyer,
+                            &purchase,
+                            &input,
+                            admitted.execute_until,
+                            &mut |progress| match progress {
+                                Progress::Running(running) => {
+                                    if let Err(message) = publish_records(
+                                        &mut client,
+                                        &party,
+                                        &buyer,
+                                        &purchase,
+                                        running,
+                                    ) {
+                                        log("relay_failed", json!({"cause": message}));
+                                    }
                                 }
-                                run_command(program, program_args, &input)
-                            }
-                            Err(cause) => Err(cause),
-                        },
+                                Progress::Dispatched(job) => log("dispatched", json!({"job": job})),
+                            },
+                        ),
                     };
                     let finished = publish_output(&mut client, &party, &buyer, &purchase, result);
                     served += 1;
@@ -1314,6 +1575,7 @@ fn provider_status(output: &Output, args: &Args) -> u8 {
                     "execute_until": purchase.execute_until,
                     "recover_until": purchase.recover_until,
                     "execute_window_open": now < purchase.execute_until,
+                    "job": purchase.job(),
                 })
             })
             .collect();
@@ -1403,10 +1665,6 @@ pub fn status(output: &Output, words: &[String]) -> u8 {
             "status needs PROVIDER PURCHASE (buyer), or --list / --finish BUYER:PURCHASE --cause CAUSE (provider)",
         );
     };
-    let wait = match args.number::<u64>("wait", 30) {
-        Ok(n) if n > 0 => n,
-        _ => return usage(output, "--wait takes seconds above zero"),
-    };
     let party = match Party::load(args.option("as")) {
         Ok(party) => party,
         Err(message) => return output.fail("x402", &message),
@@ -1423,6 +1681,16 @@ pub fn status(output: &Output, words: &[String]) -> u8 {
     }) {
         Ok(record) => record,
         Err(cause) => return output.fail("x402", &format!("stored request: {cause}")),
+    };
+    // Without --wait, a purchase still running is followed to the end of
+    // its execution window rather than reported unfinished.
+    let default_wait = parse_request(&request_record.body, request_record.issued_at)
+        .map(|request| request.execute_until.saturating_sub(unix_now()) + WINDOW_MARGIN)
+        .unwrap_or(30)
+        .max(30);
+    let wait = match args.number::<u64>("wait", default_wait) {
+        Ok(n) if n > 0 => n,
+        _ => return usage(output, "--wait takes seconds above zero"),
     };
     let relay = relay_url(args.option("relay"));
     let mut client = Client::connect(&relay, party.signer.clone());

@@ -819,6 +819,42 @@ the rerun's output. Purchase `68ca67…12c2` was closed by hand with
 `status --finish … --cause operator_cancelled`, after which `--list` was
 empty.
 
+### Selling a NIP-CJ worker's output (`native-serve --cj WORKER`)
+
+`native-serve --cj WORKER` replaces `-- CMD` with a NIP-CJ worker: after
+admission, the provider signs and encrypts one kind 25900 request carrying
+the input as the job's `task`, records the request ID under `run.job` in
+the purchase store, publishes the `running` status with that job, and only
+then publishes the request to the worker over `--cj-relay` (default
+`CODER_RELAY`, then `--relay`). The worker's result text is the output
+artifact. Worker outcomes map to stable causes: no bound event before the
+contact timeout is `no_worker`, feedback without a result inside the
+execution window is `worker_silent`, a typed `status: error` feedback is
+`worker_refused`, and any relay or shape failure is `worker_failed`.
+
+```sh
+CODER_RELAY=wss://relay.openagents.com openagents x402 native-serve \
+    --slug review --msat 5000 --expiry 900 --cj npub1worker... --json
+openagents x402 status --list --as PROFILE      # open purchases, each with its job
+```
+
+Because the request ID is durable before the job is posted, a provider that
+restarts while a job is running logs `following` and waits for that job's
+result (`Recovery::Follow`) instead of failing the purchase; a job whose
+window has closed fails with `provider_restarted` as before. On the buyer
+side, `status` without `--wait` follows a `running` purchase to the end of
+its execution window instead of exiting 1 while the worker is still at
+work. Input artifacts that are not inline stay out of scope for `--cj`.
+
+Live check on 2026-09-27 (testnet, both wallets on one machine, relay
+`wss://relay.openagents.com`, provider `native-serve --slug cjtest --msat
+1000 --cj a3d81a…ad91`): with no worker running, purchase `d85bf6…6284`
+was paid, `dispatched` job `09972b…4a83`, and ended `failed/no_worker`;
+with `coder-worker --once --decline busy`, purchase `a511cc…a6fe` ended
+`failed/worker_refused` after the worker logged `declined: busy`; with
+`coder-worker --once` on its stub door, purchase `7d35f2…29fc` ended
+`completed` and the buyer printed the worker's answer as the output.
+
 ### Spending policy and ledger (`x402 policy`, `x402 ledger`)
 
 Every buyer (`fetch`, `call`, `buy`) reads `~/.openagents/x402/policy.json`
