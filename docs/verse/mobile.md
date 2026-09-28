@@ -27,7 +27,8 @@ plaza keeps its own fog, from 60 m to 250 m.
 ### The ball
 
 The bare world has three physical objects: a ball, a stack of cubes, and an
-arc of dominoes. Everyone in the world shares them (see [Sharing the ball](#sharing-the-ball)). The ball
+arc of dominoes, plus a fixed pillar whose button puts them back. Everyone in
+the world shares them (see [Sharing the ball](#sharing-the-ball)). The ball
 is a 2.4 m sphere resting 7 m ahead of the world's spawn. Walk into it to
 push it. It slides, spins up, rolls, and comes to rest on its
 own. It lives in [`verse::ball`](../../crates/verse/src/ball.rs) on the shared
@@ -182,6 +183,23 @@ Other players' avatars are drawn 3.3 seconds in the past, but bodies are
 not, so a remote player reaches the ball on screen a little after it
 starts to move. Anyone can move anything: the stamps order claims but do
 not validate them, which suits a toy with no stakes.
+
+#### The reset pillar
+
+A charcoal pillar with a button on top stands 6 m to the right of the spawn
+and 4 m ahead ([`verse::pillar`](../../crates/verse/src/pillar.rs)). The
+bare world has one stick and no action button, so you press the button by
+walking into the pillar: the first touch presses it, holding against it
+does not press again, and presses are at least five seconds apart. The
+button is lit white while anything sits away from home, and it sinks
+briefly when pressed.
+
+A press returns the ball and every block home, at rest, for everyone: it
+raises the epoch, which outranks every earlier claim, and publishes the
+snapshot at once. Players online see everything return within a moment,
+and players who join later find it home. The pillar is a static box in the
+physics world, so the ball and the blocks bounce off it, and the player is
+kept out of it.
 
 ## Walk the world
 

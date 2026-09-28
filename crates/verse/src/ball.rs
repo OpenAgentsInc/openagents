@@ -15,8 +15,8 @@
 //! octant pattern, so its rotation reads. Nothing is drawn on the floor
 //! under it: the grid's lines alone ground it.
 //!
-//! The ball and the blocks stand at fixed places in the world, and every
-//! player in it shares one arrangement: [`Shared`]
+//! The ball, the blocks, and the reset [`Pillar`] stand at fixed places in
+//! the world, and every player in it shares one arrangement: [`Shared`]
 //! decides who moves each body and records where it came to rest, and the
 //! session carries that over NIP-MV.
 
@@ -30,6 +30,7 @@ use crate::controller::{PlayerController, RADIUS as PLAYER_RADIUS};
 use crate::mesh::Mesh;
 use crate::mv::{EntityPose, State};
 use crate::pbr::{Key, LitVertex, Material as Surface};
+use crate::pillar::Pillar;
 use crate::shared::{Pose, Shared};
 
 /// Fixed step length, s: Lagrange 1's `PHYSICS_DT`.
@@ -89,6 +90,8 @@ pub struct Ball {
     layout: crate::blocks::Layout,
     /// Who moves each body, and where each last came to rest.
     shared: Shared,
+    /// The column whose button returns every body home.
+    pillar: Pillar,
     /// Wall-clock time of the last frame's steps.
     pub step_time: Duration,
     /// Steps the last frame ran.
@@ -154,6 +157,7 @@ impl Ball {
         );
         let layout = crate::blocks::Layout::new(crate::world::SPAWN.as_dvec3(), DVec3::Z);
         let blocks = crate::blocks::Blocks::new(&mut world, &layout);
+        Pillar::add(&mut world);
         let pose = |pos, orientation| Pose { pos, orientation };
         let mut bodies = vec![("ball".to_owned(), ball, pose(START, DQuat::IDENTITY))];
         let (mut cubes, mut dominoes) = (0, 0);
@@ -199,6 +203,7 @@ impl Ball {
             ground,
             layout,
             shared,
+            pillar: Pillar::new(),
             step_time: Duration::ZERO,
             steps: 0,
         }
@@ -244,6 +249,12 @@ impl Ball {
     #[must_use]
     pub fn shared(&self) -> &Shared {
         &self.shared
+    }
+
+    /// The reset pillar.
+    #[must_use]
+    pub fn pillar(&self) -> &Pillar {
+        &self.pillar
     }
 
     /// The simulated pose of shared body `id`.
@@ -365,6 +376,9 @@ impl Ball {
         }
         self.blocks.recover(&mut self.world);
         self.keep_out(player);
+        if self.pillar.touch(player, dt) {
+            self.press_reset();
+        }
         self.step_time = started.elapsed();
     }
 
@@ -474,6 +488,8 @@ impl Ball {
         let offset = |id| self.shared.offset(id);
         self.blocks
             .draw(&self.world, self.clock.alpha(), &offset, &mut mesh.lit);
+        self.pillar
+            .draw(self.shared.displaced(&self.world), &mut mesh.lit);
         if let Some(neon) = &mut mesh.neon {
             let mut light = key(Vec3::new(pos.x, RADIUS as f32 * 0.5, pos.z));
             // One shadow region over the ball and the blocks while they
@@ -710,6 +726,39 @@ mod tests {
         idle(&mut ball, &mut player, 60);
         assert!(ball.body().vel.length() < 0.1);
         assert_eq!(ball.world().stats.awake, 0);
+    }
+
+    #[test]
+    fn the_pillar_stops_the_ball_and_resets_everything_when_walked_into() {
+        let mut ball = Ball::new();
+        // Roll the ball straight at the pillar.
+        let at = crate::pillar::AT;
+        let id = ball.ball_id();
+        let body = &mut ball.world_mut()[id];
+        body.pos = DVec3::new(at.x, RADIUS, at.z - 6.0);
+        body.prev_pos = body.pos;
+        body.vel = DVec3::Z * 5.0;
+        body.omega = DVec3::X * (5.0 / RADIUS);
+        body.wake();
+        let far = Vec3::new(-30.0, 0.0, -30.0);
+        let mut player = PlayerController::new(far, 0.0);
+        idle(&mut ball, &mut player, 120);
+        let ball_z = ball.body().pos.z;
+        assert!(
+            ball_z < at.z - crate::pillar::HALF - RADIUS + 0.05,
+            "the pillar stopped the ball: {ball_z}"
+        );
+        assert!(ball.shared().displaced(ball.world()));
+        // Walk into the pillar: everything returns home, at rest.
+        let mut player = PlayerController::new(
+            Vec3::new(at.x as f32 + 4.0, 0.0, at.z as f32),
+            -std::f32::consts::FRAC_PI_2,
+        );
+        walk(&mut ball, &mut player, 90);
+        assert_eq!(ball.pillar().presses(), 1);
+        assert!((ball.body().pos - START).length() < 1e-6);
+        assert!(!ball.shared().displaced(ball.world()));
+        assert_eq!(ball.shared().epoch(), 1);
     }
 
     #[test]

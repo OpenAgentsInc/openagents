@@ -1,7 +1,8 @@
 //! The bare world's shared ball and blocks through real scenes over a
 //! loopback relay: one player pushes the ball and another sees it roll to
-//! the same rest; a player who joins after everyone left finds it there; and
-//! each scene stays inside the mobile relay's event budget. The relay is a local
+//! the same rest; a player who joins after everyone left finds it there; the
+//! pillar's reset reaches a player online and one who joins later; and each
+//! scene stays inside the mobile relay's event budget. The relay is a local
 //! fixture, not the production relay.
 use super::{Config, PointerPhase, Scene};
 use std::time::{Duration, Instant};
@@ -62,6 +63,11 @@ fn apart(a: [f64; 3], b: [f64; 3]) -> f64 {
         .sqrt()
 }
 
+fn displaced(scene: &Scene) -> bool {
+    let ball = scene.world.ball().unwrap();
+    ball.shared().displaced(ball.world())
+}
+
 fn asleep(scene: &Scene) -> bool {
     scene.world.ball().unwrap().body().sleeping
 }
@@ -108,7 +114,7 @@ fn busiest_minute(relay: &loopback_relay::LoopbackRelay, pubkey: &str) -> usize 
 }
 
 #[test]
-fn bare_world_players_share_the_ball_and_its_rest() {
+fn bare_world_players_share_the_ball_its_rest_and_the_reset() {
     let relay = loopback_relay::LoopbackRelay::start();
     let clock = Instant::now();
     let (mut a, mut b) = (bare_scene(&relay.url), bare_scene(&relay.url));
@@ -191,6 +197,46 @@ fn bare_world_players_share_the_ball_and_its_rest() {
         online(s[0]) && apart(ball(s[0]), rest) < 1e-3 && asleep(s[0])
     });
     assert!(found, "C found the ball at {:?}, not {rest:?}", ball(&c));
+
+    // B comes back, and C walks into the pillar. The reset reaches B at
+    // once, and A, who joins afterward, finds everything home.
+    b.activate(true).unwrap();
+    assert!(
+        run(&mut [&mut b, &mut c], clock, Duration::from_secs(8), |s| {
+            online(s[0]) && apart(ball(s[0]), rest) < 1e-3
+        }),
+        "B did not find the ball where it rested"
+    );
+    // Stand three meters in front of the pillar, facing it.
+    let mut front = verse::pillar::AT.as_vec3();
+    front.z -= 3.0;
+    c.world.set_spawn(front, 0.0).unwrap();
+    let pressed = walk(
+        &mut [&mut c, &mut b],
+        0,
+        clock,
+        Duration::from_secs(10),
+        |s| s[0].world.ball().unwrap().pillar().presses() > 0,
+    );
+    assert!(
+        pressed,
+        "C never pressed the pillar: {:?}",
+        c.world.player.pos
+    );
+    assert_eq!(c.world.ball().unwrap().pillar().presses(), 1);
+    assert!(!displaced(&c));
+    let reset = run(&mut [&mut b, &mut c], clock, Duration::from_secs(5), |s| {
+        !displaced(s[0])
+    });
+    assert!(reset, "B still sees the ball at {:?}", ball(&b));
+    a.activate(true).unwrap();
+    let home = run(
+        &mut [&mut a, &mut b, &mut c],
+        clock,
+        Duration::from_secs(8),
+        |s| online(s[0]) && !displaced(s[0]),
+    );
+    assert!(home, "A rejoined to the ball at {:?}", ball(&a));
 
     // Every scene stayed inside the mobile relay's budget.
     for key in [&a.public_key, &b.public_key, &c.public_key] {

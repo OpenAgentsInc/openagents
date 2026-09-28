@@ -57,8 +57,8 @@ const RESTITUTION: f64 = 0.1;
 const TORSIONAL: f64 = 0.01;
 
 /// White and charcoal lacquer, as on the ball.
-const WHITE: [f32; 3] = [0.82, 0.82, 0.80];
-const CHARCOAL: [f32; 3] = [0.035, 0.035, 0.04];
+pub(crate) const WHITE: [f32; 3] = [0.82, 0.82, 0.80];
+pub(crate) const CHARCOAL: [f32; 3] = [0.035, 0.035, 0.04];
 
 /// A block's resting pose, where it returns when reset.
 #[derive(Clone, Copy, Debug)]
@@ -310,9 +310,10 @@ fn pool_around(homes: &[Home], margin: f64) -> (Vec3, f32) {
 
 /// One solid in object space: a triangle list with a flag per vertex for
 /// the accent color.
-struct Solid {
-    vertices: Vec<LitVertex>,
-    accent: Vec<bool>,
+#[derive(Default)]
+pub(crate) struct Solid {
+    pub(crate) vertices: Vec<LitVertex>,
+    pub(crate) accent: Vec<bool>,
 }
 
 fn draw_body(
@@ -344,7 +345,7 @@ fn draw_body(
 
 /// Adds the six faces of a box with half extents `half` centered at
 /// `center` to `out`, each flat-shaded.
-fn push_box(out: &mut Solid, center: Vec3, half: Vec3, accent: bool) {
+pub(crate) fn push_box(out: &mut Solid, center: Vec3, half: Vec3, accent: bool) {
     let (_, metallic, roughness) = Surface::Lacquer.parameters();
     let code = Surface::Lacquer.code();
     for axis in 0..3 {
@@ -589,13 +590,26 @@ mod tests {
     }
 
     #[test]
-    fn the_blocks_stand_inside_the_walls() {
+    fn the_blocks_stand_inside_the_walls_clear_of_the_pillar() {
         let ball = Ball::new();
         let limit = f64::from(crate::world::HALF);
+        let at = crate::pillar::AT;
         for id in ball.blocks().cubes().iter().chain(ball.blocks().dominoes()) {
             let p = ball.world()[*id].pos;
             assert!(p.x.abs() < limit - 1.0 && p.z.abs() < limit - 1.0, "{p:?}");
+            let flat = DVec3::new(p.x - at.x, 0.0, p.z - at.z).length();
+            assert!(flat > 3.0, "{p:?}");
         }
+        let ball_at = crate::ball::START;
+        assert!(DVec3::new(ball_at.x - at.x, 0.0, ball_at.z - at.z).length() > 4.0);
+        // The Grid's portal stands clear of the pillar too.
+        let layout = ball.layout();
+        let gate = layout.at(
+            crate::zones::gate::GRID_PORTAL_AT[0],
+            crate::zones::gate::GRID_PORTAL_AT[1],
+            0.0,
+        );
+        assert!(DVec3::new(gate.x - at.x, 0.0, gate.z - at.z).length() > 6.0);
     }
 
     #[test]

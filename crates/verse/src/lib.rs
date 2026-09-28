@@ -34,6 +34,7 @@ pub mod nav;
 pub mod net;
 pub mod palette;
 pub mod pbr;
+pub mod pillar;
 pub mod render;
 pub mod replay;
 pub mod runtime;

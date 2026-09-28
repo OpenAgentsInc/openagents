@@ -427,6 +427,9 @@ clients who join later through the relay. A client that receives any report
 or rest pose from a newer epoch first returns every body of an older epoch
 home.
 
+The Verse bare world resets from a fixed pillar: walking into it presses
+its button, at most once every five seconds.
+
 ### Event budget
 
 Reports ride in frames that the client sends anyway, so the profile adds

@@ -33,7 +33,8 @@ The app has four tabs, shown as icons:
   **The Grid**) to return (see
   [the Grid's portal](../../docs/verse/mobile.md#the-grids-portal-to-lagrange-1)). Everyone in
   the world shares the ball and the blocks, and finds them where they were
-  left (see [sharing the ball](../../docs/verse/mobile.md#sharing-the-ball)). It fills the screen behind the status bar and the tab bar. The
+  left; walking into the pillar to the right of the spawn puts them all back
+  (see [sharing the ball](../../docs/verse/mobile.md#sharing-the-ball)). It fills the screen behind the status bar and the tab bar. The
   controls are Coder's: drag anywhere to look, push the stick at the bottom
   left to walk, double-tap to jump, and pinch to zoom. The hand/gyroscope
   icon switches touch and motion look, and the crosshair recenters the
