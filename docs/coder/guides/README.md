@@ -9,6 +9,7 @@ plans or analysis, not alternative operating instructions.
 
 | Document | Topic |
 | --- | --- |
+| [activity](activity.md) | Check whether a running `coder` has work in flight before you close its window |
 | [artifact-verification](artifact-verification.md) | Verify a retained artifact |
 | [coder-one-ask](coder-one-ask.md) | Ask Coder One a question about runs, answered from the Gym with checked citations |
 | [coder-one-checks](coder-one-checks.md) | Check claimed behavior with admitted scenarios |

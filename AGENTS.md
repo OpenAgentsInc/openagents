@@ -374,7 +374,11 @@ uses, and marks which are implemented and which are only specified.
   `docs/coder/migration-status.md` for suite implementation status.
   Every conversation records itself to
   `~/.openagents/traces/` as it runs; `docs/coder/runtime/traces.md` covers the
-  location, the opt-out, and what a trace holds. `delegate` hands a
+  location, the opt-out, and what a trace holds. While a turn runs or a
+  delegation has not reported, the process also writes
+  `~/.openagents/activity/<pid>.json`, which `coder activity` reads and
+  `os/bin/coder-close` asks before it closes a window; the mark is taken in
+  `coder::turn::run`, and `docs/coder/guides/activity.md` covers it. `delegate` hands a
   bounded task to an executor and runs a fan-out of them under a stated
   bound; read `docs/coder/runtime/delegate.md` before changing it, and do not
   offer delegation to the model as a tool it may elect. `capability`

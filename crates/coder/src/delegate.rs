@@ -1121,6 +1121,8 @@ impl Delegator {
     /// whatever it ended as — its edits are owed to a reviewer, and
     /// [`Delegation::retained`] names the path.
     pub async fn run(&self, task: Task) -> Delegation {
+        // A delegation counts as work in flight until it reports.
+        let _pending = crate::activity::delegation();
         if let Some(code) = self.unrunnable(&task) {
             return self.ended(
                 task,

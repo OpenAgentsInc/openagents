@@ -1187,11 +1187,11 @@ impl RelayDoor {
         tasks: Vec<Task>,
         width: usize,
     ) -> Vec<Delegation> {
-        stream::iter(
-            tasks
-                .into_iter()
-                .map(|task| self.delegate(capability, task, width)),
-        )
+        stream::iter(tasks.into_iter().map(|task| async move {
+            // Each job counts as work in flight until it reports.
+            let _pending = crate::activity::delegation();
+            self.delegate(capability, task, width).await
+        }))
         .buffered(width.max(1))
         .collect()
         .await

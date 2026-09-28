@@ -182,6 +182,9 @@ pub async fn run(
     draft: String,
     event: &mut (dyn FnMut(Event) + Send),
 ) -> Result<Finished, Failure> {
+    // The turn counts as work in flight until it returns, so `coder
+    // activity` can tell a window's close key that closing ends it.
+    let _running = crate::activity::turn();
     agent.push_user(&draft);
     // A program request is a different turn, so it is asked first and it
     // is one question. `none` — nearly every turn — falls straight

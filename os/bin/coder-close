@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# coder-close: the command that SUPER + W runs on a CoderOS desktop.
+#
+# It closes the focused window, except when a Coder session in that window
+# has work in flight: a turn that is streaming, or a delegation that has not
+# reported. Then the first press shows a notice that says what is running,
+# and a second press on the same window within CODER_CLOSE_SECONDS closes it.
+#
+# How it decides:
+#
+# - It asks the window's processes, not the window's name. `coder-desk
+#   focused` names the window's process. The window is usually a terminal
+#   emulator with Coder as a child, so this script collects that process and
+#   every descendant and asks `coder activity --pid ...` about all of them.
+# - `coder activity` owns the rule for what counts as work in flight
+#   (crates/coder/src/activity.rs). This script only shows the sentence it
+#   prints. It exits 0 while work runs and non-zero otherwise.
+# - A press that cannot ask still closes. A window with no process, a
+#   missing `coder`, and a `coder` that fails all close on the first press.
+#   A window that cannot be closed is worse than a question not asked.
+#
+# The confirmation is a second press rather than a dialog. A dialog would
+# hold this process open, and without a notification daemon it would leave
+# a window that never closes. At worst, a second press is unseen and the
+# next press closes the window.
+#
+# Environment:
+#   CODER_CLOSE_CLIENT   the client to ask (default: coder)
+#   CODER_CLOSE_ARM      the file that records a pending confirmation
+#                        (default: $XDG_RUNTIME_DIR/coder-close.arm)
+#   CODER_CLOSE_SECONDS  how long the second press counts (default: 5)
+set -euo pipefail
+
+CLIENT="${CODER_CLOSE_CLIENT:-coder}"
+ARM="${CODER_CLOSE_ARM:-${XDG_RUNTIME_DIR:-/tmp}/coder-close.arm}"
+SECONDS_TO_CONFIRM="${CODER_CLOSE_SECONDS:-5}"
+
+# The focused window as JSON, or null when there is no desk or no focus.
+focused() {
+    coder-desk focused 2> /dev/null || printf 'null\n'
+}
+
+# One string field of the window's JSON, or nothing.
+field() {
+    printf '%s' "$1" | jq -r --arg key "$2" '.[$key] // empty' 2> /dev/null || true
+}
+
+# The process and every descendant of it, one PID per line.
+descendants() {
+    ps -Ao pid=,ppid= 2> /dev/null | awk -v root="$1" '
+        { pid[NR] = $1; parent[NR] = $2 }
+        END {
+            keep[root] = 1
+            do {
+                grew = 0
+                for (i = 1; i <= NR; i++) {
+                    if (!(pid[i] in keep) && (parent[i] in keep)) {
+                        keep[pid[i]] = 1
+                        grew = 1
+                    }
+                }
+            } while (grew)
+            for (one in keep) print one
+        }
+    ' || true
+}
+
+# Closes the window that was asked about, by its handle, so a focus change
+# while the question runs cannot close a different window.
+close_window() {
+    rm -f "$ARM"
+    if [[ -n $HANDLE ]]; then
+        coder-desk close "$HANDLE" > /dev/null 2>&1 || true
+    fi
+}
+
+# Shows what is running and what to do. Without notify-send, the same text
+# goes to standard error.
+notice() {
+    local body="$1 Press the close key again within ${SECONDS_TO_CONFIRM} seconds to close this window."
+    if command -v notify-send > /dev/null 2>&1; then
+        notify-send --app-name=coder --urgency=critical \
+            --hint="string:x-canonical-private-synchronous:coder-close" \
+            "Coder is working" "$body" > /dev/null 2>&1 || true
+    else
+        printf '%s\n' "$body" >&2
+    fi
+}
+
+window=$(focused)
+HANDLE=$(field "$window" handle)
+pid=$(field "$window" pid)
+
+# Nothing has focus: nothing to close.
+if [[ -z $HANDLE && -z $pid ]]; then
+    exit 0
+fi
+
+# A window without a process, or a host without the client: close it.
+if [[ ! $pid =~ ^[0-9]+$ ]] || ((pid <= 0)); then
+    close_window
+    exit 0
+fi
+if ! command -v "$CLIENT" > /dev/null 2>&1; then
+    close_window
+    exit 0
+fi
+
+asked=()
+while read -r one; do
+    [[ -n $one ]] && asked+=(--pid "$one")
+done < <(descendants "$pid")
+if ((${#asked[@]} == 0)); then
+    asked=(--pid "$pid")
+fi
+
+# Non-zero means idle, not a Coder window, or a client that failed.
+if ! sentence=$("$CLIENT" activity "${asked[@]}" 2> /dev/null); then
+    close_window
+    exit 0
+fi
+
+now=$(date +%s)
+
+# The second press on the window the notice was raised for.
+if [[ -r $ARM ]]; then
+    armed_handle=""
+    armed_until=""
+    read -r armed_handle armed_until < "$ARM" || true
+    if [[ $armed_handle == "$HANDLE" && $armed_until =~ ^[0-9]+$ ]] && ((now <= armed_until)); then
+        close_window
+        exit 0
+    fi
+fi
+
+# The first press on a busy window: record it, show the notice, close nothing.
+printf '%s %s\n' "$HANDLE" "$((now + SECONDS_TO_CONFIRM))" > "$ARM"
+notice "$sentence"

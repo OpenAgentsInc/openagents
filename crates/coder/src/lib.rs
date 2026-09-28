@@ -45,6 +45,7 @@
 //!   The terminal and the headless caller both use it.
 
 pub mod about;
+pub mod activity;
 pub mod agent;
 pub mod capability;
 pub mod child;

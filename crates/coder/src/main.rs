@@ -313,6 +313,12 @@ async fn main() -> ExitCode {
             }
         };
     }
+    if arguments
+        .first()
+        .is_some_and(|argument| argument == "activity")
+    {
+        return ExitCode::from(coder::activity::cli(&arguments[1..]));
+    }
     if arguments.first().is_some_and(|argument| argument == "task") {
         return ExitCode::from(coder::task::cli::run(&arguments[1..]).await);
     }
@@ -369,9 +375,19 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(cli::Invocation::Doctor) => ExitCode::from(checkup::run()),
-        Ok(cli::Invocation::Print(options)) => ExitCode::from(headless::print(options).await),
+        // Both conversation modes publish what they have in flight for
+        // `coder activity`, and remove the record before they exit.
+        Ok(cli::Invocation::Print(options)) => {
+            coder::activity::enable();
+            let code = headless::print(options).await;
+            coder::activity::close();
+            ExitCode::from(code)
+        }
         Ok(cli::Invocation::Interactive { trace, programs }) => {
-            match interactive(trace.as_deref(), programs.as_deref()).await {
+            coder::activity::enable();
+            let result = interactive(trace.as_deref(), programs.as_deref()).await;
+            coder::activity::close();
+            match result {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(error) => {
                     eprintln!("coder: {error}");
