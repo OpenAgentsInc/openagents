@@ -1,0 +1,11 @@
+{
+  "why": "a pinch presses where the pointer is, drags while it holds, and releases when the hand opens",
+  "synthetic": true,
+  "expect": [
+    "point",
+    "press",
+    "drag",
+    "release",
+    "point"
+  ]
+}

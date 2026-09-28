@@ -1,0 +1,804 @@
+# The recording HUD: a strip pinned under the camera circle that shows what
+# the microphone is capturing and starts or stops a recording with one press.
+#
+# The owner cannot tell mid-recording whether audio is reaching the file. A
+# soundcheck once recorded video while the microphone returned an empty
+# stream, and a silent microphone stays invisible until playback. This strip
+# makes it visible: a live level meter reads the same PipeWire node that
+# `screen-record --audio` records from, so a dead or muted microphone draws a
+# flat, dark meter while a working one moves.
+#
+# The strip also names the microphone, because a moving meter is not enough:
+# on 2026-09-07 a whole demo recorded the webcam's microphone while the Blue
+# on the desk sat wedged, and the meter moved the whole time. The label along
+# the top reads the node `screen-record microphone` reports, which is the
+# microphone the host names when it is present and the default source when
+# it is not. Three conditions turn the label and the meter red: the node is
+# not the one the host names (`NOT BLUE`), no capture node exists at all
+# (`NO MIC`), or the node delivers no samples for more than a second
+# (`NO AUDIO`). The last one is the wedge: the device stays enumerated, the
+# stream never runs, and a meter that reads silence and one that reads
+# nothing look the same until the strip counts frames rather than levels.
+#
+# Three controls sit on the strip. The meter is the left and the width of it.
+# A record button starts `screen-record` with audio and no duration, so it
+# runs until pressed again, and it reads `/tmp/screen-record.pid` to reflect
+# whatever a recording is doing even when a key or a Coder run started it. A
+# minus and a plus resize the camera circle without a mouse drag, and because
+# the circle is masked into the picture and the window keeps its aspect ratio,
+# an exact square resize leaves the circle a circle.
+#
+# Why a terminal and not a layer-shell app or a browser window. The strip has
+# to sit under the `selfie` window and follow it, and the desk moves a window
+# by title with `coder-desk shape`, the same verb camera-overlay uses. A layer-shell surface anchors itself to a screen edge rather than to
+# another window, so it could not dock under a camera the owner drags around.
+# A browser window would draw the meter well, but reading the level in a page
+# means `getUserMedia` on the capture source, a second heavy Chromium beside
+# the one browser.nix grants, and a profile to keep them apart. foot is already
+# the session's terminal, already themed amber on the near-black ground through
+# /etc/coderos/foot.ini, opens in twenty milliseconds, and draws the meter in
+# the same braille and block glyphs the console already uses. The level comes
+# from a second `pw-record` on the microphone's node, which PipeWire shares
+# among readers, so the meter does not hold the device against
+# `screen-record`'s own capture. Measured on coderos-4080: a meter tap and a recorder read the Blue
+# at the same time, and the recorder still wrote a full file.
+#
+# The strip follows the camera and shares its lifetime. The watcher waits for
+# the `selfie` window, opens the strip under it, and keeps it docked as the
+# camera moves or resizes. When the camera view closes the strip closes, and
+# when the camera comes back the strip comes back, so the two are on screen
+# together or not at all.
+
+# The recorder's own pid file, the shared truth about whether a recording
+# runs. The default is the path screen-record writes; the override exists for
+# the test, which points it at a scratch file so a run does not touch /tmp.
+PID_FILE="${CODEROS_SCREEN_RECORD_PID:-/tmp/screen-record.pid}"
+
+# The dictation record, the file `dictate-toggle` writes while it holds the
+# microphone. Dictation has no window of its own, and on 2026-09-11 a capture
+# ran six and a half minutes on coderos-4080 because nothing on screen said it
+# was running. The strip reads this record the way it reads the
+# recorder's: the process, not the file.
+DICTATION_FILE="${CODEROS_DICTATION_PID:-/tmp/dictation_recording.pid}"
+
+# The strip's height in pixels and the gap between the circle and the strip.
+# The width is the camera's, so the strip is as wide as the circle it docks
+# under and no wider. The gap is negative, so the strip rides up over the
+# circle's lower edge and the meter reads in line with the bottom of the face
+# rather than floating below it. The panel is transparent and sits above the
+# camera, so the overlap shows only the amber over the lower part of the
+# picture.
+HUD_HEIGHT="${CODEROS_HUD_HEIGHT:-104}"
+HUD_GAP="${CODEROS_HUD_GAP:--48}"
+
+# How many loop passes fall between two raises of the strip. The loop runs at
+# about 25 a second, so 50 is every two seconds.
+RAISE_TICKS="${CODEROS_HUD_RAISE_TICKS:-50}"
+
+# How hard the meter reads the level. The raw value is a signed 16-bit peak,
+# so it runs to 32768; this gain and the clamp decide how much of the meter a
+# voice fills. It is an environment variable so it can be tuned on the box
+# without a rebuild.
+HUD_GAIN="${CODEROS_HUD_GAIN:-1600}"
+
+# The console amber ladder, the rungs crates/coder-ui-core/palette.rs holds
+# and desktop.nix and browser.nix copy. A Nix file cannot read a Rust
+# constant, and neither can this, so the rungs are here again.
+AMBER="255;176;0"      # amber, the bright bars and the labels
+AMBER75="193;134;0"    # amber 75, a lit control
+AMBER50="131;91;0"     # amber 50, the flat baseline and the dim glyphs
+AMBER25="70;49;0"      # amber 25, the dim record dot between blinks
+RECRED="227;66;52"     # the record dot and the error label, the signals that are not amber
+RED75="170;50;39"      # the bars while the microphone is wrong or silent
+RED50="113;33;26"      # the baseline in the same condition
+# The near-black ground is foot's, set in /etc/coderos/foot.ini, so the strip
+# does not paint it and reads the same as the terminal and the browser.
+
+# What the host calls the microphone it names, for the label that says the
+# recording is reading something else. `coderos.desktop.microphone.name`
+# exports it; with none set the label says `WRONG MIC`.
+MIC_NAME="${CODEROS_MICROPHONE_NAME:-}"
+
+# How long the meter may go without a level before the microphone counts as
+# delivering nothing, in loop ticks of about forty milliseconds. A working
+# microphone delivers a level every forty milliseconds, silence included; a
+# wedged one delivers none. The window is long enough to ride out a stall in
+# the graph and short enough that the label turns red within two seconds.
+MIC_DEAD_TICKS="${CODEROS_HUD_DEAD_TICKS:-30}"
+
+# How many reads, a quarter second apart, the strip waits for the camera
+# window before it gives up: the bound camera-overlay's own shaper waits for
+# its window. The test lowers it so a strip with no camera answers in a
+# moment rather than ten seconds.
+CAMERA_TRIES="${CODEROS_HUD_CAMERA_TRIES:-40}"
+
+# The camera window's title, the handle camera-overlay gives it. The strip
+# reads this window's position and size to dock under it.
+CAMERA_TITLE="selfie"
+HUD_TITLE="recording-hud"
+
+# Whether a recording is running now. The pid file is screen-record's, so the
+# answer is the same one `screen-record status` gives and there is no second
+# source of truth.
+is_recording() {
+    local pid
+    [[ -f $PID_FILE ]] || return 1
+    pid=$(cat "$PID_FILE" 2>/dev/null) || return 1
+    [[ -n $pid ]] || return 1
+    kill -0 "$pid" 2>/dev/null
+}
+
+# Whether dictation holds the microphone now. The record's first line is the
+# recorder's pid, and a record whose pid names nothing is not a recording, the
+# same rule `dictate-toggle` itself applies.
+is_dictating() {
+    local pid
+    [[ -f $DICTATION_FILE ]] || return 1
+    pid=$(head -n 1 "$DICTATION_FILE" 2>/dev/null) || return 1
+    [[ $pid =~ ^[0-9]+$ ]] || return 1
+    kill -0 "$pid" 2>/dev/null
+}
+
+# The label for the microphone, as `state<TAB>text`. The state is `ok`,
+# `error`, or `quiet`; the text is what the strip draws. The arguments are
+# whether a capture node exists, whether it is the one the host names,
+# whether it has delivered a level lately, its short name, and whether a
+# recording runs that carries no audio track at all.
+mic_label() {
+    local present=$1 preferred=$2 live=$3 nick=$4 video_only=${5:-0}
+    if (( video_only )); then
+        printf 'quiet\tVIDEO ONLY\n'
+    elif (( ! present )); then
+        printf 'error\tNO MIC\n'
+    elif (( ! live )); then
+        printf 'error\tNO AUDIO · %s\n' "$nick"
+    elif (( ! preferred )); then
+        if [[ -n $MIC_NAME ]]; then
+            printf 'error\tNOT %s · %s\n' "$(printf '%s' "$MIC_NAME" | tr '[:lower:]' '[:upper:]')" "$nick"
+        else
+            printf 'error\tWRONG MIC · %s\n' "$nick"
+        fi
+    else
+        printf 'ok\tMIC · %s\n' "$nick"
+    fi
+}
+
+# The camera window as JSON, or an empty string when it is not on screen.
+camera_client() {
+    coder-desk list 2>/dev/null \
+        | jq -c --arg t "$CAMERA_TITLE" 'map(select(.title == $t)) | .[0] // empty' 2>/dev/null
+}
+
+# The camera window's place and size as one line, `x y width height`, or
+# nothing when it is not on screen. The desk prints a place as an object
+# with `x` and `y` and a size with `width` and `height`; the run loop
+# compares two reads of this line to see the camera move.
+camera_geometry() {
+    camera_client \
+        | jq -r '"\(.at.x) \(.at.y) \(.size.width) \(.size.height)"' 2>/dev/null
+}
+
+# Wait for the camera window, up to `CAMERA_TRIES` reads a quarter second
+# apart. Answers whether it came.
+wait_for_camera() {
+    local tries=0
+    while [[ -z $(camera_client) ]] && (( tries < CAMERA_TRIES )); do
+        sleep 0.25
+        tries=$((tries + 1))
+    done
+    [[ -n $(camera_client) ]]
+}
+
+# The monitor's logical height, for deciding whether the strip fits below the
+# circle or has to sit above it.
+monitor_height() {
+    coder-desk screens 2>/dev/null | jq -r '.[0].size.height // 1080' 2>/dev/null || echo 1080
+}
+
+# Dock the strip under the camera. The strip takes the camera's width and x, so
+# it lines up with the circle, and sits one gap below the circle's lower edge.
+# When that would run off the bottom of the screen it goes above the circle
+# instead.
+place_hud() {
+    local cam sx sy sw sh mh x y
+    cam=$(camera_client)
+    [[ -n $cam ]] || return 1
+
+    sx=$(printf '%s' "$cam" | jq -r '.at.x')
+    sy=$(printf '%s' "$cam" | jq -r '.at.y')
+    sw=$(printf '%s' "$cam" | jq -r '.size.width')
+    sh=$(printf '%s' "$cam" | jq -r '.size.height')
+    mh=$(monitor_height)
+
+    x=$sx
+    y=$((sy + sh + HUD_GAP))
+    if (( y + HUD_HEIGHT > mh )); then
+        y=$((sy - HUD_GAP - HUD_HEIGHT))
+    fi
+    (( y < 0 )) && y=0
+
+    coder-desk shape "title:$HUD_TITLE" --size "${sw}x$HUD_HEIGHT" --at "$x,$y" \
+        >/dev/null 2>&1
+}
+
+# Shape the strip once it is on screen: float it, strip its border and its
+# rounding so it reads as one dark panel, and pin it so it rides across desks
+# with the camera. The flags are the ones camera-overlay sets, in the order
+# the desk applies them. The Coder compositor applies the same rule, a row of
+# `crates/coder-binds`, when the window maps, so the float, border, shadow,
+# and pin calls are for the Hyprland session and go when the session
+# switches; the placing
+# stays, because the strip docks under a window the owner drags.
+shape_hud() {
+    local tries=0
+    while (( tries < 40 )); do
+        coder-desk list 2>/dev/null \
+            | jq -e --arg t "$HUD_TITLE" 'any(.[]; .title == $t)' >/dev/null 2>&1 && break
+        sleep 0.25
+        tries=$((tries + 1))
+    done
+    coder-desk shape "title:$HUD_TITLE" --float --no-aspect --border 0 --rounding 0 \
+        --no-shadow >/dev/null 2>&1
+    # The strip's foot maps in about twenty milliseconds and the camera's mpv
+    # window later, so a strip the session starts beside the camera reaches
+    # this line before `list` has a `selfie` to dock under. Wait for the
+    # camera the way its own shaper waits for its window; the
+    # run loop docks the strip again whenever the camera moves.
+    if wait_for_camera; then
+        place_hud
+    fi
+    coder-desk shape "title:$HUD_TITLE" --pin >/dev/null 2>&1
+    # Above the camera, so the transparent strip draws its amber over the
+    # circle's lower edge rather than behind it.
+    coder-desk raise "title:$HUD_TITLE" >/dev/null 2>&1
+}
+
+# Open the strip. This process becomes foot, the way camera-overlay becomes
+# mpv: the launcher sees one long-lived window, so the strip persists exactly
+# as the camera does and nothing has to supervise a background script. A
+# background shaper floats, pins, and places the window once it appears, and
+# the `run` mode keeps it docked and closes it when the camera goes.
+open_hud() {
+    set +e +o pipefail
+
+    # One strip. If the window is already up, leave it.
+    if coder-desk list 2>/dev/null \
+        | jq -e --arg t "$HUD_TITLE" 'any(.[]; .title == $t)' >/dev/null 2>&1; then
+        echo "The recording HUD is already up." >&2
+        exit 0
+    fi
+
+    # The strip has nothing to dock under until the camera is up, and the
+    # session may start this beside camera-overlay. Wait a little for the
+    # camera, and open nothing when it does not come: no camera, no strip.
+    wait_for_camera || exit 0
+
+    # Shape the window once it appears, then become foot. foot runs this same
+    # file in `run` mode and reads the session's amber theme, so the panel
+    # matches the terminal and the browser. `colors-dark.alpha=0.0` clears its
+    # ground to nothing, so it shows only its amber over whatever is behind,
+    # the way the camera window shows only the circle.
+    shape_hud &
+    exec foot \
+        --title="$HUD_TITLE" \
+        --app-id="$HUD_TITLE" \
+        --config /etc/coderos/foot.ini \
+        --override colors-dark.alpha=0.0 \
+        -- "$0" run
+}
+
+# Start a recording, or stop the one that runs. The button and the space bar
+# both call this. A start records the microphone with no duration, so it runs
+# until the next press, and it writes to the default location `screen-record`
+# picks under ~/Videos.
+toggle_recording() {
+    if is_recording; then
+        screen-record stop >/dev/null 2>&1 || true
+    elif command -v screen-record >/dev/null 2>&1; then
+        screen-record start --audio >/dev/null 2>&1 || true
+    fi
+}
+
+# Resize the camera circle by one step. The window keeps a square aspect and
+# the circle is masked into the picture, so an exact square resize keeps the
+# circle round. The step is clamped so the circle cannot vanish
+# or outgrow the screen.
+resize_camera() {
+    local delta=$1 cam sw new min=200 max=1000
+    cam=$(camera_client)
+    [[ -n $cam ]] || return 0
+    sw=$(printf '%s' "$cam" | jq -r '.size.width')
+    new=$((sw + delta))
+    (( new < min )) && new=$min
+    (( new > max )) && new=$max
+    coder-desk shape "title:$CAMERA_TITLE" --size "${new}x${new}" >/dev/null 2>&1
+    place_hud
+}
+
+# The control row's button columns, one-based, matched against a click's
+# column. The layout is fixed so the regions do not move as the meter
+# changes. The labels are drawn at these columns in draw_controls.
+REC_C0=2 REC_C1=15
+MINUS_C0=18 MINUS_C1=22
+PLUS_C0=24 PLUS_C1=28
+
+# Read the terminal's size, and re-read it when the window resizes. The
+# watcher resizes the strip to the camera's width, so the column count
+# changes under the strip and the drawing has to follow.
+#
+# `rows` is the terminal's own row count, because the control row is the last
+# row and a click reports the row it landed on. A floor of four rows made the
+# two disagree: the strip is 104 pixels tall, which is three rows of the
+# session's font, so every click on the control row reported row three against
+# a `rows` of four and no button ever fired
+#. The floor is
+# two, the least the strip can draw: one meter row and one control row.
+read_size() {
+    local sz
+    sz=$(stty size 2>/dev/null) || sz="24 80"
+    rows=${sz% *}
+    cols=${sz#* }
+    if (( rows < 2 )); then rows=2; fi
+    if (( cols < 20 )); then cols=20; fi
+    # The meter is every row but the control row, and every column.
+    wave_rows=$((rows - 1))
+    wave_width=$cols
+    units_max=$((wave_rows * 8))
+    # Size the history to the width, keeping any samples that still fit.
+    local -a fresh=()
+    local i
+    for (( i = 0; i < wave_width; i++ )); do
+        fresh[i]=${hist[i]:-0}
+    done
+    hist=("${fresh[@]}")
+    if (( ring >= wave_width )); then ring=0; fi
+}
+
+# Which control a click asks for: `record`, `smaller`, `bigger`, or nothing.
+# The SGR report is `\033[<button;col;rowM` on a press, and only a left
+# press on the control row, which is the terminal's last row, reaches a
+# button.
+control_at() {
+    local btn=$1 mc=$2 mr=$3 kind=$4 last_row=$5
+    [[ $kind == "M" ]] || return 0
+    (( btn == 0 )) || return 0
+    (( mr == last_row )) || return 0
+    if (( mc >= REC_C0 && mc <= REC_C1 )); then
+        echo record
+    elif (( mc >= MINUS_C0 && mc <= MINUS_C1 )); then
+        echo smaller
+    elif (( mc >= PLUS_C0 && mc <= PLUS_C1 )); then
+        echo bigger
+    fi
+    return 0
+}
+
+# The strip itself, drawn by foot. This is one screen the size of the window,
+# redrawn about twenty-five times a second: a scrolling meter across the top,
+# a row of controls along the bottom, and a record dot when a recording rolls.
+run_hud() {
+    # A drawing loop runs commands whose non-zero exit is the normal case: a
+    # key read that times out, a poll that finds nothing, a signal to a
+    # process that already left. Turn off the fail-fast the wrapper set, and
+    # keep nounset by giving every variable a value first.
+    set +e +o pipefail
+
+    local cols=0 rows=0 wave_rows=0 wave_width=0 units_max=0
+    local -a hist=()
+    local ring=0 level=0 blink=0 tick=0 cam_size="?" gone=0 last_geom=""
+
+    # The meter's level comes from a second reader on the microphone's node.
+    # The pipeline turns raw signed 16-bit samples into one peak per frame:
+    # pw-record streams the samples, `od` prints them as decimal integers, and
+    # `awk` keeps the largest magnitude over each window and applies the gain.
+    # `stdbuf` unblocks `od` so a peak reaches the meter without a buffer's
+    # delay. PipeWire shares the node, so this does not fight the recorder.
+    #
+    # The pipeline writes a named pipe that the loop reads on a fixed
+    # descriptor, rather than a `coproc`: `coproc` is a bash keyword the macOS
+    # bash a contributor's Mac runs cannot parse, and the sourced test would fail
+    # to load there. The descriptor is opened read-write, so a source that
+    # stops delivering leaves the read to time out rather than to reach end of
+    # file, which is the decay the meter wants.
+    #
+    # The reader targets one node by id, the same one `screen-record` records,
+    # and it starts again when that node changes: a microphone that arrives or
+    # leaves moves the meter to whatever a recording would read now.
+    local afd=-1 fifo="" meter_pid=""
+    stop_meter() {
+        [[ -n $meter_pid ]] && kill "$meter_pid" 2>/dev/null
+        meter_pid=""
+        if (( afd >= 0 )); then
+            exec 3<&-
+            afd=-1
+        fi
+        [[ -n $fifo ]] && rm -f "$fifo"
+        fifo=""
+    }
+    start_meter() {
+        local target=$1
+        local -a target_args=()
+        stop_meter
+        command -v pw-record >/dev/null 2>&1 || return 0
+        [[ -n $target ]] && target_args=(--target="$target")
+        fifo=$(mktemp -u "${TMPDIR:-/tmp}/coderos-hud-meter.XXXXXX")
+        mkfifo "$fifo" 2>/dev/null || { fifo=""; return 0; }
+        exec 3<>"$fifo"
+        afd=3
+        pw-record ${target_args[@]+"${target_args[@]}"} --format=s16 --rate=8000 --channels=1 --latency=20ms - 2>/dev/null \
+            | stdbuf -oL od -An -td2 -v -w2 2>/dev/null \
+            | awk -v gain="$HUD_GAIN" '
+                BEGIN { n = 0; mx = 0; window = 320 }
+                {
+                    v = $1; if (v < 0) v = -v
+                    if (v > mx) mx = v
+                    n++
+                    if (n % window == 0) {
+                        norm = int(mx * gain / 32768)
+                        if (norm > 1000) norm = 1000
+                        print norm
+                        fflush()
+                        mx = 0
+                    }
+                }
+            ' > "$fifo" 2>/dev/null &
+        meter_pid=$!
+    }
+
+    # The microphone the meter reads and the label names. `screen-record
+    # microphone` is the one answer both the recorder and the strip use: the
+    # node a recording reads while one runs, and the node a recording started
+    # now would read otherwise. The strip asks about once a second, and moves
+    # the meter when the node changes.
+    local mic_id="" mic_nick="" mic_present=0 mic_preferred=1 mic_audio=1
+    local mic_known=0 last_level_tick=0
+    refresh_mic() {
+        local report id nick preferred recording
+        command -v screen-record >/dev/null 2>&1 || return 0
+        report=$(screen-record microphone 2>/dev/null) || return 0
+        [[ -n $report ]] || return 0
+        IFS=$'\t' read -r id preferred recording nick < <(printf '%s' "$report" | jq -r '
+            [(.id // "" | tostring),
+             (if .preferred then 1 else 0 end),
+             (if .recording then 1 else 0 end),
+             (.nick // "")] | @tsv
+        ' 2>/dev/null) || return 0
+        mic_known=1
+        mic_nick=$nick
+        mic_preferred=${preferred:-0}
+        mic_audio=${recording:-0}
+        if [[ -n $id ]]; then
+            mic_present=1
+        else
+            mic_present=0
+        fi
+        if [[ $id != "$mic_id" ]]; then
+            mic_id=$id
+            if [[ -n $id ]]; then
+                start_meter "$id"
+            else
+                stop_meter
+            fi
+            # A fresh reader takes a moment to deliver; give it the window.
+            last_level_tick=$tick
+        fi
+    }
+
+    # The first reader. With no recorder to ask, the meter reads the default
+    # source and the label is blank, which is what a host without
+    # `screen-record` had before.
+    if command -v screen-record >/dev/null 2>&1; then
+        refresh_mic
+    else
+        start_meter ""
+    fi
+
+    # Re-read the terminal's size when the window resizes. The watcher
+    # resizes the strip to the camera's width, so the column count changes
+    # under the strip and the drawing has to follow.
+    trap 'read_size' WINCH
+
+    # Raw input, no echo, and no cursor. Ask foot to report a click as an SGR
+    # sequence so the buttons answer a press as well as a key.
+    stty -echo -icanon min 0 time 0 2>/dev/null
+    printf '\033[?25l\033[?1000h\033[?1006h'
+    cleanup() {
+        printf '\033[?1000l\033[?1006l\033[?25h\033[0m\033[2J\033[H'
+        stty sane 2>/dev/null
+        stop_meter
+    }
+    trap cleanup EXIT INT TERM
+
+    read_size
+    printf '\033[2J'
+
+    # Turn a level into a column of glyphs, bottom to top. A full cell is a
+    # block, the top cell is one of the eight partial blocks, and the rest is
+    # the ground. A flat meter still shows a dim baseline, so a dead microphone
+    # reads as a line rather than as nothing at all.
+    local -a eighths=(' ' '▁' '▂' '▃' '▄' '▅' '▆' '▇')
+
+    draw() {
+        local frame="" r c idx u full part row_glyph line
+        # The microphone's condition decides the ladder the meter draws in.
+        # Red means the recording is reading the wrong microphone, none, or
+        # one that delivers nothing; amber means the one the host names, and
+        # a level within the window.
+        local live=1 state="" text="" bright=$AMBER mid=$AMBER75 dim=$AMBER50
+        (( tick - last_level_tick > MIC_DEAD_TICKS )) && live=0
+        if (( mic_known )); then
+            local video_only=0
+            if is_recording && (( ! mic_audio )); then
+                video_only=1
+            fi
+            IFS=$'\t' read -r state text <<< "$(mic_label "$mic_present" "$mic_preferred" "$live" "$mic_nick" "$video_only")"
+            if [[ $state == "error" ]]; then
+                bright=$RECRED
+                mid=$RED75
+                dim=$RED50
+            fi
+        fi
+        frame+='\033[H'
+        # The meter, top row first.
+        for (( r = 0; r < wave_rows; r++ )); do
+            line=""
+            # The row's height from the bottom, in cells. Row 0 is the top.
+            local from_bottom=$((wave_rows - 1 - r))
+            for (( c = 0; c < wave_width; c++ )); do
+                idx=$(( (ring + c) % wave_width ))
+                u=$(( hist[idx] * units_max / 1000 ))
+                (( u < 1 )) && u=1
+                full=$(( u / 8 ))
+                part=$(( u % 8 ))
+                if (( from_bottom < full )); then
+                    row_glyph='█'
+                elif (( from_bottom == full )); then
+                    row_glyph=${eighths[$part]}
+                else
+                    row_glyph=' '
+                fi
+                # The lowest lit cell of a quiet column is the dim baseline; a
+                # taller column is the bright bar.
+                if [[ $row_glyph == ' ' ]]; then
+                    line+=' '
+                elif (( u <= 1 )); then
+                    line+="\033[38;2;${dim}m${row_glyph}"
+                elif (( from_bottom >= full - 1 && full >= 2 )); then
+                    line+="\033[38;2;${bright}m${row_glyph}"
+                else
+                    line+="\033[38;2;${mid}m${row_glyph}"
+                fi
+            done
+            frame+="${line}\033[0m\033[K"
+            (( r < wave_rows - 1 )) && frame+=$'\n'
+        done
+        # The microphone's name rides the top-left corner, in amber when it
+        # is the one the host names and delivering, and in red otherwise. It
+        # is drawn over the meter, the way the record dot is, so the strip
+        # stays one meter tall.
+        if [[ -n $text ]]; then
+            local room=$((cols - 8))
+            (( room < 8 )) && room=8
+            text=${text:0:room}
+            if [[ $state == "error" ]]; then
+                frame+="\033[1;1H\033[1;38;2;${RECRED}m${text}\033[0m"
+            elif [[ $state == "quiet" ]]; then
+                frame+="\033[1;1H\033[38;2;${AMBER50}m${text}\033[0m"
+            else
+                frame+="\033[1;1H\033[38;2;${AMBER}m${text}\033[0m"
+            fi
+        fi
+        # The record dot rides the top-right corner while a recording rolls,
+        # and blinks so a still frame of the screen still shows it.
+        frame+='\033[H'
+        if is_recording; then
+            local label="  REC "
+            local dotcol=$((cols - 6))
+            (( dotcol < 1 )) && dotcol=1
+            frame+="\033[1;${dotcol}H"
+            if (( blink )); then
+                frame+="\033[38;2;${RECRED}m●\033[38;2;${AMBER}m${label}\033[0m"
+            else
+                frame+="\033[38;2;${AMBER25}m●\033[38;2;${AMBER50}m${label}\033[0m"
+            fi
+        fi
+        # The dictation indicator. Dictation opens the microphone from a key
+        # and draws nothing of its own, so this strip is where it shows. It
+        # takes the row under the record dot when a recording is also rolling,
+        # so the two do not overdraw each other, and it blinks, so a still
+        # frame of the screen still carries it.
+        if is_dictating; then
+            local dlabel="● MIC OPEN"
+            local drow=1 dcol
+            if is_recording && (( wave_rows >= 2 )); then
+                drow=2
+            fi
+            dcol=$((cols - ${#dlabel} - 1))
+            (( dcol < 1 )) && dcol=1
+            if (( blink )); then
+                frame+="\033[${drow};${dcol}H\033[1;38;2;${RECRED}m${dlabel}\033[0m"
+            else
+                frame+="\033[${drow};${dcol}H\033[38;2;${AMBER50}m${dlabel}\033[0m"
+            fi
+        fi
+        # The control row.
+        frame+=$'\n'
+        frame+=$(draw_controls)
+        printf '%b' "$frame"
+    }
+
+    draw_controls() {
+        local out="\033[${rows};1H\033[K"
+        local recording_now=0
+        is_recording && recording_now=1
+        if (( recording_now )); then
+            out+="\033[${rows};${REC_C0}H\033[38;2;${AMBER}m[ ■ stop ]\033[0m"
+        else
+            out+="\033[${rows};${REC_C0}H\033[38;2;${AMBER}m[ ● record ]\033[0m"
+        fi
+        out+="\033[${rows};${MINUS_C0}H\033[38;2;${AMBER75}m[ - ]\033[0m"
+        out+="\033[${rows};${PLUS_C0}H\033[38;2;${AMBER75}m[ + ]\033[0m"
+        # The circle's diameter, so the resize keys have a number to read. The
+        # value is the cached one the loop refreshes, not a fresh query every
+        # frame.
+        out+="\033[${rows};$((PLUS_C1 + 2))H\033[38;2;${AMBER50}m${cam_size}px\033[0m"
+        printf '%b' "$out"
+    }
+
+    # A click on the control row. `control_at` decides which control the
+    # press landed on, so the test runs the decision the strip runs.
+    handle_mouse() {
+        case "$(control_at "$1" "$2" "$3" "$4" "$rows")" in
+            record) toggle_recording ;;
+            smaller) resize_camera -40 ;;
+            bigger) resize_camera 40 ;;
+        esac
+    }
+
+    # Read one input event without blocking the meter. A bare byte is a key; an
+    # escape introduces an arrow or an SGR mouse report, which is read to its
+    # terminating letter.
+    handle_input() {
+        local c=""
+        IFS= read -rsN1 -t 0.03 c || return 0
+        [[ -z $c ]] && return 0
+        if [[ $c == ' ' || $c == 'r' || $c == 'R' ]]; then
+            toggle_recording
+        elif [[ $c == '+' || $c == '=' ]]; then
+            resize_camera 40
+        elif [[ $c == '-' || $c == '_' ]]; then
+            resize_camera -40
+        elif [[ $c == $'\033' ]]; then
+            local seq="" ch=""
+            IFS= read -rsN1 -t 0.002 ch || return 0
+            [[ $ch != '[' ]] && return 0
+            # Gather the sequence up to its final letter.
+            while IFS= read -rsN1 -t 0.002 ch; do
+                seq+=$ch
+                [[ $ch =~ [A-Za-z] ]] && break
+            done
+            case "$seq" in
+                '<'*[Mm])
+                    local body=${seq:1}
+                    local kind=${body: -1}
+                    body=${body%[Mm]}
+                    local btn=${body%%;*}
+                    local rest=${body#*;}
+                    local mc=${rest%%;*}
+                    local mr=${rest#*;}
+                    handle_mouse "$btn" "$mc" "$mr" "$kind"
+                    ;;
+                A) resize_camera 40 ;;
+                B) resize_camera -40 ;;
+            esac
+        fi
+    }
+
+    # The loop. Read the newest levels off the meter, scroll them in, take one
+    # input event, and redraw. The blink flips about twice a second.
+    local ticks=0
+    while true; do
+        ticks=$((ticks + 1))
+        # Drain every level the meter has produced since the last pass, and
+        # keep the newest. When none arrived the level decays toward the
+        # baseline, so a source that stops delivering settles to a flat line.
+        local got=0 line=""
+        if (( afd >= 0 )); then
+            while IFS= read -r -t 0.001 -u "$afd" line 2>/dev/null; do
+                level=$line
+                got=1
+            done
+        fi
+        # A level is one integer per line. Guard against a short read leaving
+        # something that arithmetic cannot use, then decay when none arrived so
+        # a source that stopped delivering settles to the baseline.
+        [[ $level =~ ^[0-9]+$ ]] || level=0
+        if (( got )); then
+            last_level_tick=$tick
+        else
+            level=$((level * 7 / 10))
+        fi
+        hist[ring]=$level
+        ring=$(( (ring + 1) % wave_width ))
+
+        handle_input
+
+        tick=$((tick + 1))
+        (( tick % 12 == 0 )) && blink=$((1 - blink))
+
+        # About once a second, ask the recorder which microphone it reads,
+        # so the label follows a microphone that arrives or leaves and the
+        # meter moves with it.
+        (( tick % 25 == 0 )) && refresh_mic
+
+        # About twice a second, follow the camera and check it is still there.
+        # The strip docks itself, so it tracks a camera the owner drags or
+        # resizes, and it closes when the camera view goes: no camera, no
+        # strip. This is the strip's own upkeep, because it is the long-lived
+        # process the way the camera view is mpv, and nothing supervises it. A
+        # single missed query does not close it; two in a row do.
+        if (( tick % 10 == 0 )); then
+            local geom
+            geom=$(camera_geometry)
+            if [[ -z $geom ]]; then
+                gone=$((gone + 1))
+                (( gone >= 2 )) && break
+            else
+                gone=0
+                if [[ $geom != "$last_geom" ]]; then
+                    place_hud
+                    # The strip overlaps the circle's lower edge by `HUD_GAP`,
+                    # and both are pinned floats, whose order is whichever was
+                    # raised last. A dock that does not raise leaves the button
+                    # under the picture, where a click reaches the camera
+                    #.
+                    coder-desk raise "title:$HUD_TITLE" >/dev/null 2>&1
+                    last_geom=$geom
+                    read -r _ _ cam_size _ <<< "$geom"
+                elif (( ticks % RAISE_TICKS == 0 )); then
+                    # Anything that raises the camera puts it over the strip,
+                    # and the camera does not have to move to be raised. A
+                    # raise of the window already at the front of its layer
+                    # moves nothing, so this costs one message.
+                    coder-desk raise "title:$HUD_TITLE" >/dev/null 2>&1
+                fi
+            fi
+        fi
+
+        draw
+        sleep 0.04
+    done
+}
+
+# The dispatch runs when the file is executed, and not when it is sourced. The
+# test sources it with `RECORDING_HUD_LIB` set to reach `is_recording`,
+# `toggle_recording`, `resize_camera`, `place_hud`, `shape_hud`,
+# `camera_geometry`, and `mic_label` with a stub compositor and a stub
+# recorder, which a headless host has neither of.
+if [[ -z ${RECORDING_HUD_LIB:-} ]]; then
+    case "${1:-start}" in
+        start)
+            open_hud
+            ;;
+        run)
+            run_hud
+            ;;
+        stop)
+            # Close the strip. Ending the run process closes the foot window
+            # that hosts it.
+            pkill -f "recording-hud run" 2>/dev/null || true
+            echo "The recording HUD stopped."
+            ;;
+        status)
+            if pgrep -f "recording-hud run" >/dev/null 2>&1; then
+                echo "The recording HUD is up."
+            else
+                echo "The recording HUD is not up."
+            fi
+            ;;
+        *)
+            echo "Usage: recording-hud [start|stop|status]" >&2
+            exit 2
+            ;;
+    esac
+fi

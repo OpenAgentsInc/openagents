@@ -13,6 +13,8 @@ private flake that imports it.
 | Document | What it covers |
 | --- | --- |
 | [Audit of what moves (2026-09-28)](2026-09-28-coderos-audit.md) | Every module, script, and package in `~/coder/os`, what happens to each, the public and private layout, the edit loop for your own host, and the order of work. |
+| [Camera and hands](camera-and-hands.md) | The camera daemon, hand tracking in the Coder compositor, the Jev seam's log, and how to measure it. |
+| [Jev and hand tracking](hands-judge.md) | The design of the Jev seam beside the gesture rules: the trigger, the window, the state, the questions, and the rollout. |
 
 Related requirements:
 

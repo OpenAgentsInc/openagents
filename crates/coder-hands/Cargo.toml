@@ -1,0 +1,75 @@
+# Hand landmarks, pose labels, the pinned model, and the wire format the
+# CoderOS camera daemon publishes them in. Carried from the private Coder
+# repository on 2026-09-28 by the owner's decision to publish it.
+[package]
+name = "coder-hands"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Hand landmarks, pose recognition, and gesture rules for CoderOS."
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = ["landmarker"]
+# The ONNX landmarker, which links ONNX Runtime. `crates/coderos-camera`
+# runs it; `crates/coder-compositor` reads landmarks off the daemon's
+# socket and turns the feature off.
+landmarker = ["dep:ort"]
+# The Jev seam beside the pose rules. Off by default so the camera daemon
+# does not build the client stack. `crates/coder-compositor` turns it on:
+# its hands module pushes each frame into the window and asks about a
+# window the rules cannot settle.
+judge = ["dep:jev", "dep:log", "dep:thiserror", "dep:tokio"]
+
+[dependencies]
+# The direction a swipe carries, which is the desk's own `Dir`, so a
+# gesture names a desk switch in the words the layout reads it in. The
+# crate has no dependencies of its own and runs on every platform.
+coder-wm = { path = "../coder-wm" }
+# `model.toml`, the pinned landmark model, parses through these, the digest
+# check reads the file through `sha2`, and the hands socket carries one
+# JSON object a frame through `serde_json`.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+toml = "0.9"
+# The judge feature's stack: this repository's Jev client and the log the
+# seam writes its records to.
+jev = { path = "../jev", optional = true }
+log = { version = "0.4", optional = true }
+thiserror = { version = "2", optional = true }
+# The runtime one request runs on. The seam's worker thread owns a
+# current-thread runtime and blocks on it, the way `jev::BlockingClient`
+# does, so a caller with no runtime of its own, which is what the
+# compositor is, asks over a channel and waits on no frame.
+tokio = { version = "1", features = ["rt"], optional = true }
+
+[dev-dependencies]
+# The crate's own tests run with the seam on, so `cargo test -p
+# coder-hands` covers the judge, the seam, and the watch beside the pose
+# rules rather than leaving them to a caller's feature list.
+coder-hands = { path = ".", features = ["judge"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The defaults minus `tls-native`: that feature links OpenSSL through
+# `ureq` for the runtime download, and a NixOS host puts no `openssl.pc`
+# on a build's path. `rustls` needs nothing from the host.
+#
+# The version is exact because `os/pkgs/coderos-camera.nix` fetches the
+# static ONNX Runtime this revision of `ort-sys` names, by its digest, and
+# a newer revision names a different archive. Move the two together.
+ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = [
+    "std",
+    "ndarray",
+    "download-binaries",
+    "tls-rustls",
+    "copy-dylibs",
+    "api-27",
+] }
+
+[lints]
+workspace = true

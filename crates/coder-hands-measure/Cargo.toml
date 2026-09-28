@@ -1,0 +1,42 @@
+# The hand measurement: record a labelled run at the camera, then score
+# the desk's gesture rules and the seam beside them against it. Carried
+# from the private Coder repository on 2026-09-28 by the owner's decision
+# to publish it.
+[package]
+name = "coder-hands-measure"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Record a labelled run of hand gestures and score the rules and the seam against it."
+publish.workspace = true
+
+# The measurement is a library with a command line over it, because its
+# own tests read the library and a future caller can too.
+[lib]
+name = "coder_hands_measure"
+path = "src/lib.rs"
+
+[[bin]]
+name = "coder-hands-measure"
+path = "src/main.rs"
+
+[dependencies]
+# The rules, the window, the seam, and where the CoderOS camera daemon
+# keeps its sockets. The measurement reads them rather than a copy, so a
+# constant that moves is scored by replaying the runs already recorded.
+# The default features would link ONNX Runtime; this binary runs no
+# model, so `landmarker` stays off and `judge` alone goes on.
+coder-hands = { path = "../coder-hands", default-features = false, features = [
+    "judge",
+] }
+# The run file and the answers beside it.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+# The direction a swipe carries, which a test names to check that the
+# gestures a run asks for owe acts the rules produce.
+coder-wm = { path = "../coder-wm" }
+
+[lints]
+workspace = true

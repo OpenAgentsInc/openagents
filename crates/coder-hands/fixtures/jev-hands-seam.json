@@ -1,0 +1,295 @@
+{
+  "why": "the hands seam's read of a borderline-pinch window: fixed answers over the recorded request shape",
+  "path": "/v1/systemone",
+  "request": {
+    "model": "jev-latest",
+    "questions": {
+      "addressed": {
+        "criteria": {
+          "false": "The hand is on some other errand and its shapes are incidental: near the body, off-axis, or moving while the person talks.",
+          "true": "The hand's shapes and motion are directed at the desk: held toward the display, paced like an input."
+        },
+        "instructions": "Is the hand in `frames` deliberately operating the screen?",
+        "type": "noul"
+      },
+      "continuing": {
+        "criteria": {
+          "false": "The earlier gesture ended, and this window is a new motion or no motion.",
+          "true": "The pose flickers across a threshold but the held shape and its drift continue the earlier gesture."
+        },
+        "instructions": "Is the gesture in this window the same one `previous.gesture` names, still held rather than ended and restarted?",
+        "type": "noul"
+      },
+      "intent": {
+        "criteria": {
+          "escape": "The hand dismisses what is up: a flick away or a closed hand snapping open, backing out rather than choosing.",
+          "none": "The hand is doing something off the desk: scratching, holding a mug, waving while the person talks. Choose this rather than the nearest gesture.",
+          "point": "The hand aims at a spot on the screen: index finger extended toward the display, the others folded, the tip holding still or drifting toward a target. Not a pinch closing, not a sideways sweep.",
+          "press": "The hand activates what the pointer is over: a pinch closing or a push forward, a deliberate contact. Not an incidental brush of thumb and finger while the hand rests.",
+          "release": "The hand lets go of a press or a drag it was holding: a pinch opening, fingers relaxing. Not a gesture starting.",
+          "rest": "The hand is deliberately still beside the desk: it stays in view but is not operating anything. Not a hand mid-gesture.",
+          "swipe_left": "The hand sweeps toward screen left to move to the desk on that side: a fast sideways crossing, not a slow drift while pointing.",
+          "swipe_right": "The hand sweeps toward screen right to move to the desk on that side: a fast sideways crossing, not a slow drift while pointing."
+        },
+        "instructions": "The state is a one-second window of a tracked hand over a desk: per frame, the pose the deterministic rules saw, the pinch distance and each finger's extension as ratios of palm size, which way the palm faces, and the index fingertip's velocity. `previous` names the last gesture the desk acted on and how many frames ago it ended. What is the hand doing in this window?",
+        "type": "choice"
+      }
+    },
+    "state": {
+      "frames": [
+        {
+          "extension": [
+            1.4693968296051025,
+            0.8831939101219177,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.9479432106018066,
+          "pose": "flat hand",
+          "tip_velocity": [
+            0.0,
+            0.0
+          ],
+          "x": 0.41999998688697815,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.4693968296051025,
+            0.8769897818565369,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.9084456562995911,
+          "pose": "flat hand",
+          "tip_velocity": [
+            0.009999990463256836,
+            0.0
+          ],
+          "x": 0.429999977350235,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.4693968296051025,
+            0.8725312352180481,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.8689479231834412,
+          "pose": "flat hand",
+          "tip_velocity": [
+            0.010000020265579224,
+            0.0
+          ],
+          "x": 0.4399999976158142,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.4693968296051025,
+            0.8698451519012451,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.8294503688812256,
+          "pose": "flat hand",
+          "tip_velocity": [
+            0.009999990463256836,
+            0.0
+          ],
+          "x": 0.44999998807907104,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.4693968296051025,
+            0.8689479231834412,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.7899527549743652,
+          "pose": "flat hand",
+          "tip_velocity": [
+            0.009999990463256836,
+            0.0
+          ],
+          "x": 0.4599999785423279,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.4693968296051025,
+            0.8698451519012451,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.7504551410675049,
+          "pose": "flat hand",
+          "tip_velocity": [
+            0.009999990463256836,
+            0.0
+          ],
+          "x": 0.4699999690055847,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.4693968296051025,
+            0.8725312352180481,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.7109574675559998,
+          "pose": "flat hand",
+          "tip_velocity": [
+            0.010000020265579224,
+            0.0
+          ],
+          "x": 0.47999998927116394,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.4693968296051025,
+            0.8769897222518921,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.6714598536491394,
+          "pose": "flat hand",
+          "tip_velocity": [
+            0.009999990463256836,
+            0.0
+          ],
+          "x": 0.4899999797344208,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.2620712518692017,
+            0.8689479231834412,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.3554786741733551,
+          "pose": "pinch",
+          "tip_velocity": [
+            -0.029999971389770508,
+            0.0
+          ],
+          "x": 0.46000000834465027,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.2620712518692017,
+            0.8689479231834412,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.3554786741733551,
+          "pose": "pinch",
+          "tip_velocity": [
+            0.0,
+            0.0
+          ],
+          "x": 0.46000000834465027,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.2620712518692017,
+            0.8689479231834412,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.3554786741733551,
+          "pose": "pinch",
+          "tip_velocity": [
+            0.0,
+            0.0
+          ],
+          "x": 0.46000000834465027,
+          "y": 0.3799999952316284
+        },
+        {
+          "extension": [
+            1.2620712518692017,
+            0.8689479231834412,
+            0.47397154569625854,
+            0.47397154569625854,
+            0.47397154569625854
+          ],
+          "facing": 0.42901715636253357,
+          "pinch": 0.3554786741733551,
+          "pose": "none",
+          "tip_velocity": [
+            0.0,
+            0.0
+          ],
+          "x": 0.46000000834465027,
+          "y": 0.3799999952316284
+        }
+      ],
+      "previous": null,
+      "second_hand": false
+    }
+  },
+  "response": {
+    "answers": {
+      "addressed": {
+        "noul": 0.92,
+        "type": "noul"
+      },
+      "continuing": {
+        "noul": 0.15,
+        "type": "noul"
+      },
+      "intent": {
+        "choice": "press",
+        "confidence": 0.8,
+        "probabilities": {
+          "escape": 0.02,
+          "none": 0.01,
+          "point": 0.03,
+          "press": 0.8,
+          "release": 0.08,
+          "rest": 0.04,
+          "swipe_left": 0.02,
+          "swipe_right": 0.02
+        },
+        "type": "choice"
+      }
+    },
+    "model": "jev-1.13.0",
+    "usage": {
+      "input_tokens": 640,
+      "output_tokens": 41
+    }
+  },
+  "request_id": "req-hands-demo",
+  "status": 200
+}

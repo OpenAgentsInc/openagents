@@ -97,6 +97,9 @@
         # The Coder Wayland compositor, which a host runs with
         # `coderos.desktop.compositor = "coder"` or on its trial TTY.
         coder-compositor = pkgs.callPackage ./pkgs/coder-compositor.nix { };
+        # The camera daemon that owns the camera node and publishes hand
+        # landmarks for the compositor.
+        coderos-camera = pkgs.callPackage ./pkgs/coderos-camera.nix { };
       };
 
       # A host with only the base module, and a host with every capability
@@ -200,12 +203,22 @@
               map (bind: bind.key) grant.extraBinds == [ "D" "Z" "G" ]
               && builtins.length grant.extraRules == 5
               && (lib.head grant.extraRules).effects.center
-              && grant.launchers == [ "dictation" "presentation" "browser" "android" ];
+              && grant.launchers == [ "dictation" "presentation" "browser" "android" "camera" "hands" ];
+            # The capability modules add their rows after the default start
+            # list rather than replacing it: the Coder window first, then the
+            # camera daemon, the circle, and the recording strip.
+            startOk =
+              builtins.length grant.start == 4
+              && lib.hasSuffix "/bin/coder-pane" (lib.head grant.start)
+              && lib.tail grant.start == [ "coderos-camera serve" "camera-overlay" "recording-hud" ]
+              && lib.elem "exec-once = coderos-camera serve" lines;
           in
           if missing != [ ] then
             throw "hyprland.conf is missing: ${lib.concatStringsSep "; " missing}"
           else if !grantOk then
             throw "compositor.json does not carry the host's entries: ${builtins.toJSON grant}"
+          else if !startOk then
+            throw "the start list lost its default or a capability's rows: ${builtins.toJSON grant.start}"
           else
             evaluates "extension-points" host;
       };

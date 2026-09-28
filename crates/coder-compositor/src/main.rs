@@ -21,9 +21,9 @@
 //! `desktop.nix` writes for Hyprland, read when a window maps and when its
 //! app-id or title changes.
 //!
-//! Hand tracking is not in this build. `hands.rs` keeps the interface the
-//! state, the renderer, and the Super+H row call, with tracking always off,
-//! and #9874 fills it in when `coder-hands` and the camera daemon move.
+//! Hand tracking reads the CoderOS camera daemon's landmarks in `hands.rs`
+//! and draws the hand over every window in `hands_overlay.rs`. Super+H,
+//! or a host grant that names `hands`, turns it on.
 //!
 //! The hardware backend's latency waits for a run on the hardware; the
 //! nested backend's was measured on 2026-09-16.
@@ -42,6 +42,7 @@ mod extras;
 mod focus;
 mod handlers;
 mod hands;
+mod hands_overlay;
 mod idle;
 mod input;
 mod keys;

@@ -97,9 +97,16 @@ let
     font=Cascadia Mono 12
   '';
 
+  # What the session opens at every login: the host's `start` list, then
+  # the rows the capability modules add through `capabilityStart`. Keeping
+  # the two apart is what lets a module add a row without replacing the
+  # default list, because a definition of `start` anywhere drops its
+  # default.
+  sessionStart = cfg.start ++ cfg.capabilityStart;
+
   # The start list as Hyprland reads it, one `exec-once` row a line, at the
   # column the text below puts the first one.
-  startLines = lib.concatMapStringsSep "\n    " (row: "exec-once = ${row}") cfg.start;
+  startLines = lib.concatMapStringsSep "\n    " (row: "exec-once = ${row}") sessionStart;
 
   # Whether a module turned a launcher on. Each module that owns a launcher
   # row of `crates/coder-binds` adds its name to `launchers`, so this file
@@ -205,7 +212,7 @@ let
     pane = "${cfg.panePackage}/bin/coder-pane";
     terminal = "${pkgs.foot}/bin/foot";
     command = cfg.command;
-    start = cfg.start;
+    start = sessionStart;
     launchers = compositorLaunchers;
     extraBinds = map extraBindGrant cfg.extraBinds;
     extraRules = map extraRuleGrant cfg.extraWindowRules;
@@ -795,6 +802,20 @@ in
         compositor's session reads the same rows from its grant.
 
         The default is the Coder window. Name the whole list to change it.
+        The capability modules add their own rows after this list, through
+        `capabilityStart`, so naming it keeps theirs.
+      '';
+    };
+
+    capabilityStart = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      internal = true;
+      description = ''
+        The command lines the capability modules of this flake open at every
+        login, after `start`. Each module adds its rows when its option is
+        on, and `lib.mkBefore` or `lib.mkAfter` orders one module's rows
+        against another's. The session opens them in the list's order.
       '';
     };
 

@@ -20,10 +20,16 @@ coder-binds = { path = "../coder-binds" }
 # The desk protocol's types, in `coder_desk::protocol`, and its server:
 # the socket, the framing, and the dispatch.
 coder-desk = { path = "../coder-desk" }
-# Hand tracking reads `coder-hands`, which moves with the camera daemon in
-# #9874. Until then `src/hands.rs` keeps the interface with tracking off,
-# and that change adds the dependency here.
-#
+# The landmark joints, the wire line the camera daemon publishes them on,
+# the gesture rules the desk reads a hand by, where the camera daemon
+# keeps its sockets, and the Jev seam that judges a window the pose rules
+# cannot settle. `crates/coder-hands-measure` reads the same four modules,
+# which is why they are there and not here. The default features would
+# link ONNX Runtime; the compositor reads landmarks and runs no model, so
+# `landmarker` stays off and `judge` alone goes on.
+coder-hands = { path = "../coder-hands", default-features = false, features = [
+    "judge",
+] }
 # The one dwindle layout: nine desks, floats, fullscreen, and maximize.
 coder-wm = { path = "../coder-wm" }
 log = "0.4"

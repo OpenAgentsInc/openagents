@@ -39,7 +39,7 @@ use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::wlr_layer::Layer;
 
 use crate::cursor::Cursor;
-use crate::hands::Picture;
+use crate::hands_overlay::Picture;
 use crate::layout::{self, Placed};
 
 // One element of a frame: a window or a layer surface as the space places

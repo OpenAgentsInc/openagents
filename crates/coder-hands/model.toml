@@ -1,0 +1,17 @@
+# The pinned hand landmark model.
+#
+# `crates/coder-hands/src/model.rs` compiles this file in. On Linux the
+# camera daemon fetches the file at first use to
+# `~/.openagents/quest/models/`, refuse it when its SHA-256 differs from the
+# digest here, and name the URL and the digest they expected in the error.
+# Move the pin by changing the URL and the digest together; `sha256sum` on
+# the downloaded file prints the digest.
+#
+# The file is the MediaPipe hand landmark model as OpenCV Zoo exports it to
+# ONNX (Apache-2.0), at the commit that added it, so the URL answers the
+# same bytes on every fetch. It takes one 224x224 RGB frame in NHWC order
+# with values in 0..1 and answers 21 landmarks in the frame's pixels.
+url = "https://github.com/opencv/opencv_zoo/raw/56cef36ae45e5a6da7eba01a91631f6d7e955da1/models/handpose_estimation_mediapipe/handpose_estimation_mediapipe_2023feb.onnx"
+sha256 = "db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c"
+file = "hand_landmarker.onnx"
+size = 4099621

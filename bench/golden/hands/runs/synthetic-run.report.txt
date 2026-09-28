@@ -1,0 +1,47 @@
+Run: bench/golden/hands/runs/synthetic-run.jsonl
+Recorded from: a camera the run does not name.
+Frames: 286 over 9.5 s, 30.0 a second. 226 carried a hand.
+The seam's window holds 30 frame(s) at that rate, which is 1.00 s.
+Label runs: median 1.00 s. Windows: 197, of which 87 cover more than one gesture; median 2.0 label(s) a window.
+
+Asks: 2 over the run, 0.21 a second. The trigger held 1 more ambiguous window(s) back, which the desk records as skipped rather than dropping.
+If every round trip took the whole second the deadline allows, one request in flight would carry 2 of those 2 ask(s).
+
+thin     flicker  spacing   asks   a second   paced  served   spacing 0 is the unspaced trigger
+0.15           1        0      3       0.32       0       2
+0.15           1        1      2       0.21       1       2
+0.15           1        2      1       0.11       2       1
+0.05           1        1      2       0.21       1       2
+0.25           1        1      2       0.21       1       2
+0.15           3        1      1       0.11       1       1
+0.15           8        1      1       0.11       1       1
+
+Gesture       cues  acted   hand  stray  moves  first act  flips  margin p10/p50/p90      thin  asks
+point            1      1      1      0     44     0.00 s    0.0  +0.30/+0.30/+0.30         0%     0
+pinch            1      1      1      0     52     0.73 s    2.0  +0.05/+0.30/+0.30        40%     1
+swipe_left       1      1      1      0      0     0.63 s    0.0  +0.29/+0.29/+0.29         0%     1
+fist             1      1      1      0      0     2.00 s    0.0  +0.31/+0.31/+0.31         0%     0
+
+acted counts the cues where every act the gesture owes appeared;
+hand counts the cues the rules read a hand in; stray counts
+commands the cue never asked for; thin is the share of frames
+whose margin the seam reads as ambiguous.
+
+Count-in: 4 stretch(es), 60 frame(s), 0 command(s) nobody asked for, 0 pointer move(s), 0 ask(s).
+
+Seam: 2 window(s) asked about, 2 answered, 0 failed, 0 with no answer beside them.
+Deadline met by 1 of 2. Round trip p10/p50/p90: 420/1450/1450 ms.
+confidence 0.72/0.86/0.86; addressed 0.88/0.91/0.91; continuing 0.10/0.12/0.12.
+
+Gesture       windows  seam right  seam wrong  seam quiet  rules right
+pinch               1           1           0           0            1
+swipe_left          1           0           1           0            0
+
+On the windows asked about: the seam named an owed act 1 time(s) and another command 1 time(s); the rules did an owed act 1 time(s).
+
+Floor     acts  right  wrong   one floor for every action, the two other floors unchanged
+0.50         2      1      1
+0.60         2      1      1
+0.70         2      1      1
+0.80         1      1      0
+0.90         0      0      0

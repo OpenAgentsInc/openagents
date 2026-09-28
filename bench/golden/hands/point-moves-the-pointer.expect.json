@@ -1,0 +1,7 @@
+{
+  "why": "an index finger extended over a curled middle finger moves the pointer and presses nothing",
+  "synthetic": true,
+  "expect": [
+    "point"
+  ]
+}

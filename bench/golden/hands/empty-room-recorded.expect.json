@@ -1,0 +1,5 @@
+{
+  "why": "six seconds of the camera daemon with nobody at the camera: two frames the tracker read as a fist, too few to hold anything, so the desk is asked for nothing",
+  "synthetic": false,
+  "expect": []
+}

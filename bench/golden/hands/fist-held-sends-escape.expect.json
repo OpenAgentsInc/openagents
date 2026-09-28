@@ -1,0 +1,7 @@
+{
+  "why": "a fist held two seconds sends Escape once, and holding it longer sends no second one",
+  "synthetic": true,
+  "expect": [
+    "escape"
+  ]
+}

@@ -167,10 +167,6 @@ fn now(state: &Coder) -> u32 {
 
 /// Puts the pointer at a point in the shared space, held to the screens,
 /// and tells the client under it, as a device's absolute motion does.
-#[expect(
-    dead_code,
-    reason = "the hands reader calls it, and it returns in #9874"
-)]
 pub fn pointer_to(state: &mut Coder, at: (f64, f64)) {
     let (x, y) = state.screens.clamp(at.0, at.1);
     state.pointer_at = (x, y).into();
@@ -195,10 +191,6 @@ pub fn button(state: &mut Coder, code: u32, pressed: bool) {
 /// Presses and releases one key on the seat's keyboard, by its evdev
 /// code, so the focused client reads it under the seat's keymap. The
 /// bind table is not consulted: a hand sends no chord.
-#[expect(
-    dead_code,
-    reason = "the hands reader calls it, and it returns in #9874"
-)]
 pub fn key_tap(state: &mut Coder, evdev: u32) {
     let code = Keycode::new(evdev + 8);
     for key_state in [KeyState::Pressed, KeyState::Released] {

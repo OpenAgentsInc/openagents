@@ -1,0 +1,12 @@
+{
+  "why": "a pinch that sits at the pose rule's own bound presses on a margin near zero, which is the reading the Jev seam asks about",
+  "synthetic": true,
+  "expect": [
+    "point",
+    "press",
+    "drag",
+    "release",
+    "point"
+  ],
+  "margin_under": 0.15
+}

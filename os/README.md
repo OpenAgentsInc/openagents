@@ -15,7 +15,7 @@ The plan for moving CoderOS here, and the list of what moves next, is
 | `nixosModules.coderos` | The base system and every optional capability, each off by default. `nixosModules.default` is the same module. |
 | `devShells.x86_64-linux.compositor` | `pkg-config` and the system libraries Smithay links, for `cargo test -p coder-wm -p coder-compositor` with the pinned toolchain. |
 | `devShells.x86_64-linux.android` | The Android SDK, NDK, JDK 17, Gradle, and `cargo-ndk` that `scripts/build-coder-android.sh` and `scripts/build-openagents-android.sh` build with. |
-| `packages.x86_64-linux` | `coder-desk`, the desk command the CoderOS scripts run instead of `hyprctl`, built from `crates/coder-desk-cli` by `pkgs/coder-desk.nix`, and `coder-compositor`, the optional Coder Wayland compositor, built from `crates/coder-compositor` by `pkgs/coder-compositor.nix`. Modules that run a program from this workspace add its build here. |
+| `packages.x86_64-linux` | `coder-desk`, the desk command the CoderOS scripts run instead of `hyprctl`, built from `crates/coder-desk-cli` by `pkgs/coder-desk.nix`, `coder-compositor`, the optional Coder Wayland compositor, built from `crates/coder-compositor` by `pkgs/coder-compositor.nix`, and `coderos-camera`, the camera daemon, built from `crates/coderos-camera` by `pkgs/coderos-camera.nix` with its ONNX Runtime fetched by digest. Modules that run a program from this workspace add its build here. |
 | `checks.x86_64-linux` | Evaluates a stub host with the base module alone, and with every capability turned on, and the example workstation against a stub hardware file. |
 
 `nixpkgs` is pinned to one revision in `flake.nix` and `flake.lock`. A host
@@ -94,6 +94,9 @@ to pin the new revision.
 | `capture.nix` | `coderos.desktop.screenRecording.*`, `coderos.desktop.dictation.*`, `coderos.desktop.microphone.*` | Screen recording with `bin/screen-record`, push-to-talk dictation on SUPER + V with `bin/dictate-toggle`, and the rules that pick, keep, and set the gain of the microphone you name. Every microphone value is empty until you set it. |
 | `presentation.nix` | `coderos.desktop.presentation.*` | SUPER + P sets the screen up to be watched and puts it back, with `bin/presentation-mode`. |
 | `browser.nix` | `coderos.desktop.browser.*` | The Coder Browser on SUPER + B: ungoogled-chromium, dark, with the DevTools Protocol on a loopback port, launched by `bin/coder-browser`. Every browser name on the host opens it, and `coder-open-url` opens a URL in it from a sandboxed application. |
+| `camera.nix` | `coderos.desktop.camera.*` | The camera daemon `coderos-camera`, which owns the camera node and serves a `v4l2loopback` node, a recording, and hand landmarks at once, and the circular camera view on SUPER + C with `bin/camera-overlay` and `bin/camera-toggle`. Writes its grant to `/etc/coderos/camera.json`. See [Camera and hands](../docs/os/camera-and-hands.md). |
+| `hands.nix` | `coderos.desktop.hands.*` | Hand tracking as desk input in the Coder compositor, from the camera daemon's landmarks, with SUPER + H to turn it off and on. `judge` turns on the Jev seam beside the gesture rules in shadow. Needs the camera. |
+| `recording-hud.nix` | none | The strip under the camera circle that shows the microphone's level and starts and stops a recording, with `bin/recording-hud`. Present when the camera and screen recording are both on. |
 | `android.nix` | `coderos.desktop.android.*` | The Android emulator on KVM with one system image, launched by `bin/android-emulator`. It turns on Xwayland for the session and writes what it installed to `/etc/coderos/android.json`. Needs the desktop. |
 | `tailscale.nix` | `coderos.tailscale.*` | Joins the host to a tailnet so other machines reach it by a stable name. The auth key stays in a file on the host, never in the Nix store. Tailscale SSH stays off unless you turn it on. |
 | `cpu-limits.nix` | `coderos.cpuLimits.*` | Caps CPU package power, boost frequency, and build parallelism, and reapplies the caps every five minutes and after a resume. Every value is null until you set it. The file holds one measured example. |
@@ -134,7 +137,8 @@ The keys follow Omarchy's tiling set:
 | SUPER + 1 to 9, SUPER + SHIFT + 1 to 9 | Go to a workspace, and send the window to one. |
 | SUPER + J, SUPER + SPACE or D, SUPER + F, SUPER + CTRL + F | Turn the split, float, fullscreen, and fill the tiling area. |
 | CTRL + ALT + TAB, SUPER + ALT + arrows, SUPER + SHIFT + ALT + arrows, SUPER + CTRL + ALT + arrows | Focus another monitor, send the window to one, and send the whole workspace to one. |
-| SUPER + V, P, B, A | Dictation, presentation mode, the browser, and the Android emulator, when each is on. |
+| SUPER + V, P, B, A, C | Dictation, presentation mode, the browser, the Android emulator, and the camera view, when each is on. |
+| SUPER + H | Hand tracking in the Coder compositor, when it is on. |
 | SUPER + mouse | Move a float with the left button and resize it with the right. |
 | SUPER + SHIFT + E | End the session. |
 
@@ -288,6 +292,8 @@ os/tests/coder-browser.sh
 os/tests/dictate-toggle.sh
 os/tests/presentation-mode.sh
 os/tests/screen-record.sh
+os/tests/coderos-camera.sh
+os/tests/recording-hud.sh
 ```
 
 ## Nix and shell in this repository

@@ -18,6 +18,9 @@ in
     ./capture.nix
     ./presentation.nix
     ./browser.nix
+    ./camera.nix
+    ./hands.nix
+    ./recording-hud.nix
     ./android.nix
     ./tailscale.nix
     ./cpu-limits.nix

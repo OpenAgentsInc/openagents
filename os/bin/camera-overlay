@@ -1,0 +1,220 @@
+# A circular camera view from a webcam on this machine.
+#
+# The window is what makes this work: it floats, it is pinned, and
+# `screen-record` captures it because it is on the screen. Nothing composites
+# the picture into the recording; the compositor already did.
+#
+# The circle is in the picture rather than in the window. mpv crops the
+# camera to a square, then a libavfilter graph multiplies in an alpha mask
+# that is opaque inside the inscribed circle and transparent outside it, and
+# the window is cleared to a colour with no alpha before the picture is
+# blended over it. So the window is a rectangle whose content is a circle on
+# nothing, and its shape no longer matters: a drag with SUPER and the left
+# mouse button moves a circle, a drag with the right button scales one, and a
+# window that a drag left wider than tall shows the circle centred in it with
+# clear margins, because mpv keeps the video's aspect and the letterbox it
+# draws is that same clear colour.
+#
+# The clear colour is `--background=color` with `#00000000`, on `gpu-next`.
+# `--background=none` reads as the option for this and is not: on mpv 0.41
+# with gpu-next it skips the clear, so the picture's alpha reaches the
+# compositor and the letterbox keeps whatever was in the buffer, which is
+# black, and the same under `--vo=gpu`. Both were tried on `coderos-4080`.
+#
+# The other way to do this, keeping the window square and setting its
+# rounding to half its side after each resize, does not hold on Hyprland
+# 0.55.4. The event socket reports no resize (none of the events Hyprland
+# 0.55.4 posts fires on a size change), so a script can only poll
+# `coder-desk list` and re-shape after the fact, and every frame between the
+# resize and the re-shape draws a rounded rectangle. The picture's own alpha
+# never lags the window.
+#
+# The mask costs nothing per frame. A `color` source and `geq` draw it once,
+# `trim` ends that stream after one frame, and `loop` repeats the frame for as
+# long as the camera runs, so `geq` runs once at startup rather than for every
+# frame; measured against the crop alone on `coderos-4080`, the graph adds
+# under a millisecond of CPU per frame.
+#
+# The shaping is asked for rather than declared as window rules, because the
+# running Hyprland session holds the configuration it started with and a
+# `shape` reaches it now. The Coder compositor applies the same rule, a row
+# of `crates/coder-binds`, when the window maps, so the calls below are for
+# the Hyprland session and go when the session switches. `--aspect` holds
+# the window square under a mouse resize, `--border 0` keeps the session
+# from drawing a border around the transparent rectangle, and `--pin`
+# carries the view across desks. desktop.nix declares
+# the same set as rules for a session that starts after this file landed.
+#
+# This reads a local camera. An earlier version pulled an iPhone over the
+# network from a Mac through Continuity Camera, which worked and was worse on
+# every axis that mattered: latency, colour, framing, and the number of things
+# that had to be running.
+#
+# The node it reads is the one the camera daemon serves. `coderos-camera`
+# opens the camera itself once and writes every frame to a `v4l2loopback`
+# node, `CODEROS_CAMERA_LOOPBACK`, so the circle, a recording, hand
+# tracking, and Zoom read the camera at the same time. The loopback serves
+# YUYV, so the demuxer is told that rather than MJPEG. A host with no
+# loopback in its session reads the camera itself, `CODEROS_CAMERA_DEVICE`,
+# as MJPEG, and then holds it alone. The loopback has no picture until the
+# daemon writes one, and mpv opens it as a capture node only from then, so
+# `start` waits for the daemon to report the loopback up before it opens
+# the player.
+
+DEVICE="${CODEROS_CAMERA_DEVICE:-/dev/video0}"
+LOOPBACK="${CODEROS_CAMERA_LOOPBACK:-}"
+NODE="${LOOPBACK:-$DEVICE}"
+if [ -n "$LOOPBACK" ]; then
+    FORMAT="${CODEROS_CAMERA_FORMAT:-yuyv422}"
+else
+    FORMAT="${CODEROS_CAMERA_FORMAT:-mjpeg}"
+fi
+SIZE="${CODEROS_CAMERA_SIZE:-560}"
+MARGIN="${CODEROS_CAMERA_MARGIN:-140}"
+CAPTURE="${CODEROS_CAMERA_CAPTURE:-1280x720}"
+# How long `start` waits for the daemon to serve the loopback, in tenths
+# of a second. The daemon opens the camera in under a second on
+# coderos-4080; the wait covers a session where the daemon's row starts
+# after this one.
+LOOPBACK_WAIT="${CODEROS_CAMERA_LOOPBACK_WAIT:-150}"
+# How long the shaper waits for the player's window, in tenths of a second.
+# mpv maps the window in well under a second once the node delivers a frame;
+# the wait covers a slow first frame, and the shaper says so when it runs out.
+SHAPE_WAIT="${CODEROS_CAMERA_SHAPE_WAIT:-100}"
+
+# The square the camera is cropped to, which is the mask's side. The crop
+# takes the capture's height, so the mask is that many pixels on a side, and
+# the `scale` after the crop pins the video to the same number in case the
+# camera answers the capture request with another size.
+SIDE="${CAPTURE#*x}"
+
+# The graph. `[vid1]` is the camera; `[vo]` is what mpv draws. The alpha
+# expression is 255 inside the circle, 0 outside, and one pixel of ramp at
+# the edge so the rim is not stepped. Commas inside a filter's expression are
+# escaped for libavfilter, which otherwise reads them as the next filter.
+MASK="[vid1]crop=ih:ih,scale=${SIDE}:${SIDE},format=yuva420p[v];"
+MASK+="color=c=black:s=${SIDE}x${SIDE}:r=30,format=gray,"
+MASK+="geq=lum=clip(255*(W/2-hypot(X-W/2\,Y-H/2)+0.5)\,0\,255),"
+MASK+="trim=end_frame=1,loop=loop=-1:size=1:start=0[m];"
+MASK+="[v][m]alphamerge[vo]"
+
+# Whether the daemon reports the loopback up. `coderos-camera --json
+# outputs` answers one JSON object, and the loopback's row carries `up`
+# once the daemon has set the node's format and written a frame.
+loopback_up() {
+    coderos-camera --json outputs 2>/dev/null \
+        | jq -e 'any(.outputs[]?; .name == "loopback" and .state == "up")' >/dev/null 2>&1
+}
+
+# Waits for the daemon to serve the loopback. Says why when it does not:
+# the session should have started `coderos-camera serve`, and a person at a
+# shell can.
+await_loopback() {
+    local tries=0
+    while [ "$tries" -lt "$LOOPBACK_WAIT" ]; do
+        loopback_up && return 0
+        sleep 0.1
+        tries=$((tries + 1))
+    done
+    echo "The camera daemon is not serving $LOOPBACK. Start it with \`coderos-camera serve\`, or read \`coderos-camera status\`." >&2
+    return 1
+}
+
+# Shapes the window the player maps. Nothing reads this function's exit
+# status, because it runs detached from the process that becomes the player,
+# so it says on stderr which step failed and what the session answered. A
+# shaper that failed used to look exactly like one that worked.
+shape() {
+    local tries=0 out
+    while [ "$tries" -lt "$SHAPE_WAIT" ]; do
+        coder-desk list 2>/dev/null \
+            | jq -e 'any(.[]; .title == "selfie")' >/dev/null 2>&1 && break
+        sleep 0.1
+        tries=$((tries + 1))
+    done
+    if [ "$tries" -ge "$SHAPE_WAIT" ]; then
+        echo "The camera window never appeared, so the circle keeps whatever shape the session gave it. Read \`coder-desk list\` for the windows the session holds." >&2
+        return 1
+    fi
+
+    local w h
+    w=$(coder-desk screens 2>/dev/null | jq -r '.[0].size.width // empty' 2>/dev/null || true)
+    h=$(coder-desk screens 2>/dev/null | jq -r '.[0].size.height // empty' 2>/dev/null || true)
+    [ -n "$w" ] || w=1920
+    [ -n "$h" ] || h=1080
+
+    # One `shape` per group, in the order the session applies them: float the
+    # window, size it, then draw it without a border or a rounded corner.
+    if ! out=$(coder-desk shape title:selfie --float --size "${SIZE}x${SIZE}" \
+        --aspect --border 0 --rounding 0 2>&1); then
+        echo "The session did not float the camera window: ${out:-coder-desk failed and said nothing}" >&2
+        return 1
+    fi
+    sleep 0.3
+    # Top right. The bottom right is where a terminal's output ends up and
+    # where a person is usually looking; the top right is out of the way.
+    if ! out=$(coder-desk shape title:selfie --at "$((w - SIZE - MARGIN)),$MARGIN" 2>&1); then
+        echo "The session did not place the camera window: ${out:-coder-desk failed and said nothing}" >&2
+        return 1
+    fi
+    if ! out=$(coder-desk shape title:selfie --pin 2>&1); then
+        echo "The session did not pin the camera window: ${out:-coder-desk failed and said nothing}" >&2
+        return 1
+    fi
+}
+
+case "${1:-start}" in
+  start)
+    if pgrep -x mpv >/dev/null 2>&1; then
+      echo "The camera view is already up." >&2
+      exit 0
+    fi
+    if [ -n "$LOOPBACK" ]; then
+      await_loopback || exit 1
+    elif [ ! -e "$DEVICE" ]; then
+      echo "No camera at $DEVICE. Plug one in, or set CODEROS_CAMERA_DEVICE." >&2
+      exit 1
+    fi
+    # The shaper runs in a child of a child, and this shell reaps the fork
+    # that started it before `exec` replaces this process with the player.
+    # A plain `shape &` left the shaper for the player to reap, and mpv
+    # never waits, so `ps` carried a defunct `camera-overlay` under it for
+    # the life of the session. The inner child
+    # outlives its parent and is reaped by init instead. The other two ways
+    # out cost more: `exec` has to stay, because `stop`, `status`, and the
+    # toggle find the player by name and this process is it, and the shaper
+    # cannot finish first, because it waits for a window the player has not
+    # mapped yet. Nothing here reads the shaper's status, so the shaper
+    # reports its own failure.
+    ( shape & ) &
+    shaper=$!
+    wait "$shaper" || true
+    # No mirror: the picture goes out the way the camera sees it, which is
+    # the way a viewer of the recording sees it too.
+    exec mpv \
+      --title=selfie \
+      --no-border --no-osc --osd-level=0 \
+      --no-input-default-bindings --input-conf=/dev/null \
+      --profile=low-latency --untimed --cache=no \
+      --vo=gpu-next --background=color --background-color="#00000000" \
+      --lavfi-complex="$MASK" \
+      --demuxer-lavf-o=input_format="$FORMAT",video_size="$CAPTURE",framerate=30 \
+      --really-quiet \
+      "av://v4l2:${NODE}"
+    ;;
+  stop)
+    pkill -x mpv 2>/dev/null || true
+    echo "Camera view stopped."
+    ;;
+  status)
+    if pgrep -x mpv >/dev/null 2>&1; then
+      echo "The camera view is up on ${NODE}."
+    else
+      echo "No camera view."
+    fi
+    ;;
+  *)
+    echo "Usage: camera-overlay [start|stop|status]" >&2
+    exit 2
+    ;;
+esac

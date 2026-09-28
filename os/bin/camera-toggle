@@ -1,0 +1,32 @@
+# Toggle the camera view and its recording HUD together, on SUPER + C.
+#
+# The camera view is the `selfie` window camera-overlay opens, and the HUD is
+# the strip recording-hud docks under it. The two belong on screen together or
+# not at all, so one key turns the pair on and off: when the camera is up this
+# tears both down, and when it is off this starts the camera and the HUD.
+#
+# The HUD is started only when the host has it. recording-hud exists when
+# screen recording is on as well as the camera, so a host with the camera alone
+# toggles the camera by itself. The recording-hud watcher is a singleton that
+# waits for the camera, so starting it when it already runs is a no-op and
+# starting it before the camera is fine.
+#
+# The key toggles a window, not the camera. The camera daemon
+# `coderos-camera` owns the node for the life of the session and serves the
+# circle, a recording, hand tracking, and Zoom at once, so closing the
+# circle hands nothing over and opening it takes nothing away. What the key does
+# ask the daemon is whether it is there: a session whose daemon died, or a
+# session started by hand, gets one started before the circle opens the
+# loopback node, because the node has no picture without it.
+
+if coder-desk list 2>/dev/null | jq -e 'any(.[]; .title == "selfie")' >/dev/null 2>&1; then
+    command -v recording-hud >/dev/null 2>&1 && recording-hud stop
+    camera-overlay stop
+else
+    if [ -n "${CODEROS_CAMERA_LOOPBACK:-}" ] && ! coderos-camera status >/dev/null 2>&1; then
+        echo "The camera daemon is not running; starting it." >&2
+        coderos-camera serve &
+    fi
+    camera-overlay start &
+    command -v recording-hud >/dev/null 2>&1 && recording-hud start &
+fi

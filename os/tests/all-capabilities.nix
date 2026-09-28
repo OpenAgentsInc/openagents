@@ -25,6 +25,11 @@
       browser.enable = true;
       screenRecording.enable = true;
       dictation.enable = true;
+      camera.enable = true;
+      hands = {
+        enable = true;
+        judge = true;
+      };
       microphone = {
         node = "alsa_input.usb-Example_Microphone.*";
         name = "Desk mic";
