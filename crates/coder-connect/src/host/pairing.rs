@@ -13,7 +13,7 @@ pub(super) struct RetainedInvitation {
     grant_expires_at: u64,
     roots: Vec<Root>,
     pub(super) cancelled: bool,
-    grant: Option<String>,
+    pub(super) grant: Option<String>,
     replies: BTreeMap<String, RetainedReply>,
 }
 impl Host {
@@ -230,9 +230,7 @@ impl Host {
                 let admission = if let Some(grant) = &invitation.grant {
                     book.admissions.get(grant).expect("validated grant")
                 } else {
-                    if book.admissions.len() >= 64 {
-                        return fail(ErrorCode::Bounds, "observer grant retention limit reached");
-                    }
+                    supersede(&mut book.admissions, &book.invitations, &event.pubkey, now)?;
                     let grant = Grant {
                         v: GRANT.into(),
                         requires: vec![],

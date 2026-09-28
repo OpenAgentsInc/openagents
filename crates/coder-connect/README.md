@@ -128,7 +128,15 @@ blocks later reads and cached retries. It cannot erase content already received
 by a client or recall an already admitted reply in flight.
 
 Grant lifetime defaults to one day and cannot exceed 30 days. Renewal creates
-a new grant rather than reviving an expired or revoked ID. Source-root
+a new grant rather than reviving an expired or revoked ID.
+
+A device key holds one grant. When a device pairs again, its new grant
+supersedes its earlier ones in the same commit: they are revoked, and they
+leave the store once no retained invitation names them. The store keeps at
+most 64 grants. A revoked grant never blocks a new pairing: while the store is
+full, the longest-revoked grant leaves it, and a request under a grant that
+left is refused. Only 64 live grants, one for each of 64 devices, refuse a new
+device. Source-root
 replacement also needs new admission; the host pins canonical path, device,
 and inode and checks them before and after reading.
 

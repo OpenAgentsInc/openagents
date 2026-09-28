@@ -7,6 +7,8 @@ use std::os::unix::fs::MetadataExt;
 
 pub const MAX_READS_PER_MINUTE: u32 = 240;
 const MAX_REPLIES: usize = 256;
+/// The book retains at most this many grants, live or revoked.
+const MAX_ADMISSIONS: usize = 64;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -154,9 +156,7 @@ impl Host {
             .retain(|_, i| i.expires_at.saturating_add(MAX_REQUEST_LIFETIME) > now);
         book.admissions
             .retain(|_, a| a.grant.expires_at.saturating_add(MAX_REQUEST_LIFETIME) > now);
-        if book.admissions.len() >= 64 {
-            return fail(ErrorCode::Bounds, "observer grant retention limit reached");
-        }
+        supersede(&mut book.admissions, &book.invitations, client, now)?;
         let grant = Grant {
             v: GRANT.into(),
             requires: vec![],
@@ -611,7 +611,7 @@ impl Host {
         };
         if book.v != "coder-connect.store.v1"
             || book.host != pubkey(secret)
-            || book.admissions.len() > 64
+            || book.admissions.len() > MAX_ADMISSIONS
         {
             return fail(
                 ErrorCode::Malformed,
@@ -653,6 +653,48 @@ impl Host {
         self.validate_invitations(&book, secret)?;
         Ok(book)
     }
+}
+/// Make room for a new grant to `client`: that device's earlier grants are
+/// superseded, so one device key holds one grant; and while the book is
+/// full, the longest-revoked grant leaves it, so a revoked or superseded
+/// grant never blocks a new pairing. A grant that a retained invitation
+/// names stays in the book, revoked, until the invitation leaves it. A
+/// request under a grant that left the book is refused and reads nothing.
+///
+/// # Errors
+/// Refuses with `Bounds` when every retained grant is live.
+fn supersede(
+    admissions: &mut BTreeMap<String, Admission>,
+    invitations: &BTreeMap<String, pairing::RetainedInvitation>,
+    client: &str,
+    now: u64,
+) -> Result<()> {
+    let named: std::collections::BTreeSet<&str> = invitations
+        .values()
+        .filter_map(|i| i.grant.as_deref())
+        .collect();
+    admissions.retain(|id, a| a.grant.client != client || named.contains(id.as_str()));
+    for admission in admissions.values_mut() {
+        if admission.grant.client == client {
+            admission.revoked_at.get_or_insert(now);
+            // Previously encrypted replies can no longer be served by this host.
+            admission.replies.clear();
+        }
+    }
+    while admissions.len() >= MAX_ADMISSIONS {
+        let oldest = admissions
+            .iter()
+            .filter(|(id, a)| a.revoked_at.is_some() && !named.contains(id.as_str()))
+            .min_by_key(|(_, a)| a.revoked_at)
+            .map(|(id, _)| id.clone());
+        match oldest {
+            Some(id) => {
+                admissions.remove(&id);
+            }
+            None => return fail(ErrorCode::Bounds, "observer grant retention limit reached"),
+        }
+    }
+    Ok(())
 }
 /// A validated book and the exact file it was read from or saved to.
 struct Memo {

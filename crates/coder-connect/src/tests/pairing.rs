@@ -356,10 +356,11 @@ fn export_synthetic_qr_fixture() {
 #[test]
 fn expired_admissions_are_pruned_by_the_invitation_flow() {
     let f = Fixture::new("wss://relay.example/");
+    // Live grants to 64 devices fill the book; the fixture's is the first.
     for _ in 1..64 {
         f.host()
             .pair(
-                &pubkey(&f.client_secret),
+                &pubkey(&SecretKey::new(&mut secp256k1::rand::rng())),
                 &f.code.relay,
                 coder_history::Config {
                     codex: Some(f.root.clone()),
@@ -372,7 +373,8 @@ fn expired_admissions_are_pruned_by_the_invitation_flow() {
             .unwrap();
     }
     let code = invite(&f);
-    let (_, pending) = prepare(&f, &code, &f.client_secret);
+    let newcomer = SecretKey::new(&mut secp256k1::rand::rng());
+    let (_, pending) = prepare(&f, &code, &newcomer);
     assert_eq!(
         f.host()
             .handle(&pending.event, &f.code.relay, f.now)
@@ -540,4 +542,168 @@ fn coder_task_source_pairs_and_pages_backward_through_the_observer() {
             ("message", Some("assistant"), "Done."),
         ]
     );
+}
+
+fn paired(f: &Fixture, client: &SecretKey, now: u64) -> ConnectionCode {
+    f.host()
+        .pair(
+            &pubkey(client),
+            &f.code.relay,
+            coder_history::Config {
+                codex: Some(f.root.clone()),
+                claude: None,
+                coder: None,
+            },
+            now,
+            now + 3600,
+        )
+        .unwrap()
+}
+fn catalog_as(
+    f: &Fixture,
+    code: &ConnectionCode,
+    secret: SecretKey,
+    now: u64,
+) -> std::result::Result<(), ErrorCode> {
+    let client = Client::new_with_policy(code.clone(), secret, RelayPolicy::LoopbackTest).unwrap();
+    let pending = client
+        .prepare(Query::Catalog(CatalogRequest::default()), now)
+        .map_err(|e| e.code)?;
+    let reply = f
+        .host()
+        .handle(&pending.event, &code.relay, now)
+        .map_err(|e| e.code)?;
+    client
+        .verify_reply(&pending, &reply, now)
+        .map(|_| ())
+        .map_err(|e| e.code)
+}
+fn grants_of(f: &Fixture, client: &SecretKey) -> usize {
+    let book: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(f.state.join("observer.json")).unwrap()).unwrap();
+    book["admissions"]
+        .as_object()
+        .unwrap()
+        .values()
+        .filter(|a| a["grant"]["client"] == pubkey(client).as_str())
+        .count()
+}
+/// Redeem a fresh invitation issued at `now` as `secret`.
+fn repair(f: &Fixture, secret: &SecretKey, now: u64) -> (pairing::Pending, ConnectionCode) {
+    let code = f
+        .host()
+        .invite(
+            &f.code.relay,
+            coder_history::Config {
+                codex: Some(f.root.clone()),
+                claude: None,
+                coder: None,
+            },
+            now,
+            now + 3600,
+        )
+        .unwrap();
+    let invitation = Invitation::parse(&code, now, RelayPolicy::LoopbackTest).unwrap();
+    let pending = pairing::prepare(&invitation, secret, now, RelayPolicy::LoopbackTest).unwrap();
+    let reply = f.host().handle(&pending.event, &f.code.relay, now).unwrap();
+    let connection = pairing::verify(
+        &invitation,
+        &pending,
+        &reply,
+        secret,
+        now,
+        RelayPolicy::LoopbackTest,
+    )
+    .unwrap();
+    (pending, connection)
+}
+#[test]
+fn a_device_that_pairs_again_holds_one_grant() {
+    let f = Fixture::new("wss://relay.example/");
+    // Past times, so each connection code is current for the client.
+    let t0 = f.now - 1000;
+    let (_, first) = repair(&f, &f.client_secret, t0);
+    // The fixture's grant, which no invitation names, leaves the book.
+    assert_eq!(grants_of(&f, &f.client_secret), 1);
+    let (pending, second) = repair(&f, &f.client_secret, t0);
+    assert_ne!(second.grant, first.grant);
+    // An invitation still names the first grant: it stays, revoked.
+    assert_eq!(grants_of(&f, &f.client_secret), 2);
+    assert_eq!(
+        catalog_as(&f, &first, f.client_secret, t0),
+        Err(ErrorCode::Revoked)
+    );
+    assert_eq!(catalog_as(&f, &second, f.client_secret, t0), Ok(()));
+    // An exact retry of the redemption gets the same grant.
+    let retried = f.host().handle(&pending.event, &f.code.relay, t0).unwrap();
+    let again = f.host().handle(&pending.event, &f.code.relay, t0).unwrap();
+    assert_eq!(retried.id, again.id);
+    // Once no invitation names them, earlier grants leave the book.
+    let later = t0 + pairing::LIFETIME + MAX_REQUEST_LIFETIME + 1;
+    let third = paired(&f, &f.client_secret, later);
+    assert_eq!(grants_of(&f, &f.client_secret), 1);
+    assert_eq!(catalog_as(&f, &third, f.client_secret, later), Ok(()));
+    assert_eq!(
+        catalog_as(&f, &second, f.client_secret, later),
+        Err(ErrorCode::Forbidden)
+    );
+    // Another device's grant is untouched.
+    let other = SecretKey::new(&mut secp256k1::rand::rng());
+    let theirs = paired(&f, &other, later);
+    paired(&f, &f.client_secret, later);
+    assert_eq!(catalog_as(&f, &theirs, other, later), Ok(()));
+}
+#[test]
+fn revoked_grants_never_block_a_new_pairing() {
+    let f = Fixture::new("wss://relay.example/");
+    let mut devices = vec![(f.client_secret, f.code.clone())];
+    for _ in 1..64 {
+        let secret = SecretKey::new(&mut secp256k1::rand::rng());
+        devices.push((secret, paired(&f, &secret, f.now)));
+    }
+    // A full book of live grants refuses a new device.
+    let newcomer = SecretKey::new(&mut secp256k1::rand::rng());
+    let refused = f.host().pair(
+        &pubkey(&newcomer),
+        &f.code.relay,
+        coder_history::Config {
+            codex: Some(f.root.clone()),
+            claude: None,
+            coder: None,
+        },
+        f.now,
+        f.now + 3600,
+    );
+    assert_eq!(refused.unwrap_err().code, ErrorCode::Bounds);
+    // Revoked grants make room, the longest-revoked first.
+    f.host()
+        .revoke(&devices[5].1.grant, None, f.now - 2)
+        .unwrap();
+    f.host()
+        .revoke(&devices[3].1.grant, None, f.now - 1)
+        .unwrap();
+    let first = paired(&f, &newcomer, f.now);
+    assert_eq!(catalog_as(&f, &first, newcomer, f.now), Ok(()));
+    assert_eq!(
+        catalog_as(&f, &devices[5].1, devices[5].0, f.now),
+        Err(ErrorCode::Forbidden)
+    );
+    assert_eq!(
+        catalog_as(&f, &devices[3].1, devices[3].0, f.now),
+        Err(ErrorCode::Revoked)
+    );
+    let another = SecretKey::new(&mut secp256k1::rand::rng());
+    let second = paired(&f, &another, f.now);
+    assert_eq!(catalog_as(&f, &second, another, f.now), Ok(()));
+    assert_eq!(
+        catalog_as(&f, &devices[3].1, devices[3].0, f.now),
+        Err(ErrorCode::Forbidden)
+    );
+    // Every live grant still reads.
+    for (secret, code) in devices
+        .iter()
+        .filter(|(_, c)| c.grant != devices[5].1.grant && c.grant != devices[3].1.grant)
+    {
+        assert_eq!(catalog_as(&f, code, *secret, f.now), Ok(()));
+    }
 }
