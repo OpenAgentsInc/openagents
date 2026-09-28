@@ -391,6 +391,7 @@ mod tests {
                 Element::Button {
                     label: label.into(),
                     enabled,
+                    icon: None,
                     intent,
                 },
             )

@@ -53,7 +53,8 @@ indirect enum NativeElement: Decodable, Equatable {
     case stack(String, [NativeNode])
     case list(String, [NativeNode])
     case text(String, String)
-    case button(String, Bool)
+    /// A label, an enabled state, and an optional glyph.
+    case button(String, Bool, NativeIcon?)
     case surface(String, String)
     /// A conversation, oldest row first, and its optional older-rows control.
     case transcript(String, [NativeNode], NativeEarlier?)
@@ -67,7 +68,7 @@ indirect enum NativeElement: Decodable, Equatable {
 
     private enum Keys: String, CodingKey { case kind, props }
     private enum Props: String, CodingKey {
-        case axis, children, label, value, role, enabled, resource
+        case axis, children, label, value, role, enabled, resource, icon
         case earlier, note, blocks, name, detail, state
         case token, placeholder, max_bytes, busy, stop
     }
@@ -84,7 +85,8 @@ indirect enum NativeElement: Decodable, Equatable {
         case "text": self = .text(try props.decode(String.self, forKey: .value),
                                    try props.decode(String.self, forKey: .role))
         case "button": self = .button(try props.decode(String.self, forKey: .label),
-                                       try props.decode(Bool.self, forKey: .enabled))
+                                       try props.decode(Bool.self, forKey: .enabled),
+                                       try props.decodeIfPresent(NativeIcon.self, forKey: .icon))
         case "surface": self = .surface(try props.decode(String.self, forKey: .resource),
                                          try props.decode(String.self, forKey: .label))
         case "transcript": self = .transcript(try props.decode(String.self, forKey: .label),
@@ -113,6 +115,59 @@ indirect enum NativeElement: Decodable, Equatable {
             throw DecodingError.dataCorruptedError(forKey: .kind, in: object,
                                                     debugDescription: "Unsupported native element")
         }
+    }
+}
+
+/// A button's glyph. An unknown glyph decodes to no symbol, and the button
+/// shows its label.
+struct NativeIcon: Decodable, Equatable {
+    let glyph: String
+    let circular: Bool
+
+    var symbol: String? {
+        switch glyph {
+        case "back": "chevron.backward"
+        case "compose": "square.and.pencil"
+        default: nil
+        }
+    }
+}
+
+/// A glyph button: a circle with the glyph and a spoken label, or a glyph
+/// before a visible label, as a back link.
+private struct NativeIconButton: View {
+    let key: String
+    let label: String
+    let enabled: Bool
+    let icon: NativeIcon
+    let activate: (String) -> Void
+
+    var body: some View {
+        Button { activate(key) } label: {
+            if icon.circular {
+                Image(systemName: icon.symbol ?? "circle")
+                    .font(.system(size: 17, weight: .medium))
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color(uiColor: NativeChatPalette.raised)))
+                    .overlay(Circle().strokeBorder(Color(uiColor: NativeChatPalette.border), lineWidth: 0.5))
+                    .contentShape(Circle())
+            } else {
+                // Top-aligned rows keep the label level with text beside it;
+                // the padding widens the tap target without moving it.
+                HStack(spacing: 4) {
+                    Image(systemName: icon.symbol ?? "circle").font(.system(size: 17, weight: .semibold))
+                    Text(label)
+                }
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+                .padding(.vertical, -10)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(key)
     }
 }
 
@@ -169,7 +224,10 @@ struct NativeRenderer: View {
             return AnyView(NativeList(key: node.key, rows: children, label: label, revision: revision,
                                      followTarget: followTarget, followChanged: followChanged,
                                      surface: surface, activate: activate))
-        case let .button(label, enabled):
+        case let .button(label, enabled, icon?) where icon.symbol != nil:
+            return AnyView(NativeIconButton(key: node.key, label: label, enabled: enabled, icon: icon,
+                                            activate: activate))
+        case let .button(label, enabled, _):
             return AnyView(Button(label) { activate(node.key) }.disabled(!enabled)
                 .accessibilityIdentifier(node.key))
         case let .text(value, "terminal"):

@@ -74,9 +74,13 @@ pub enum Element<I> {
         value: String,
         role: TextRole,
     },
+    /// A control that runs `intent`. `label` is its visible label, or,
+    /// with a circular `icon`, its spoken name.
     Button {
         label: String,
         enabled: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<Icon>,
         intent: I,
     },
     /// A conversation, oldest row first. Adapters keep the newest row in view
@@ -121,6 +125,27 @@ pub enum Element<I> {
         busy: bool,
         stop: Option<I>,
     },
+}
+
+/// A glyph a button draws. An adapter that cannot draw it shows the
+/// button's label instead, so a button's meaning never depends on the glyph.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Icon {
+    pub glyph: Glyph,
+    /// Draw only the glyph in a circle, with the label as its spoken name.
+    /// Otherwise the glyph leads the visible label, as a back link does.
+    pub circular: bool,
+}
+
+/// The closed set of button glyphs. Adapters map each to a native symbol.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Glyph {
+    /// Go back to the previous screen.
+    Back,
+    /// Start something new, such as a chat.
+    Compose,
 }
 
 /// The control that loads older rows at a transcript's top.

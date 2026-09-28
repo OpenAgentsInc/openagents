@@ -16,8 +16,8 @@ pub mod view;
 
 pub use input::{InputError, InputRequest};
 pub use view::{
-    Activation, Axis, Earlier, Element, MessageRole, Node, TextRole, ToolState, ValidatedView,
-    View, ViewError,
+    Activation, Axis, Earlier, Element, Glyph, Icon, MessageRole, Node, TextRole, ToolState,
+    ValidatedView, View, ViewError,
 };
 
 pub(crate) fn valid_id(value: &str) -> bool {

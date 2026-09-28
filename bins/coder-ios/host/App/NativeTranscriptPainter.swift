@@ -1896,7 +1896,7 @@ extension NativeElement: Encodable {
             var p = try props("text")
             try p.encode(value, forKey: .value)
             try p.encode(role, forKey: .role)
-        case let .button(label, enabled):
+        case let .button(label, enabled, _):
             var p = try props("button")
             try p.encode(label, forKey: .label)
             try p.encode(enabled, forKey: .enabled)

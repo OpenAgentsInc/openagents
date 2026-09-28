@@ -25,7 +25,9 @@ use coder_computers::{Computers, HostRecord, Snapshot};
 use coder_host::CommandAction;
 use nostr::activity_summary::{ActivitySummary, Phase, SubjectKind};
 use rust_native::style::{Color, Space, Style, TextWeight};
-use rust_native::{Activation, Axis, Element, MessageRole, Node, TextRole, ValidatedView, View};
+use rust_native::{
+    Activation, Axis, Element, Glyph, Icon, MessageRole, Node, TextRole, ValidatedView, View,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -494,10 +496,12 @@ impl CoderTab {
             _ => None,
         };
         let mut children = vec![
+            // The breadcrumb bar: back to the chats list, and where the
+            // chat runs.
             row(
                 "coder-chat-header",
                 vec![
-                    button("coder-back", "Coder", Intent::Back),
+                    icon_button("coder-back", "Coder", Glyph::Back, false, Intent::Back),
                     status(
                         "coder-chat-place",
                         &format!("{} · {label}", phase.map_or("Starting", phase_label)),
@@ -784,6 +788,22 @@ fn status(key: &str, value: &str) -> Node<Intent> {
     text(key, value, TextRole::Status, GRAY, false)
 }
 
+/// A button that draws `glyph`: in a circle when `circular`, with the label
+/// as its spoken name, or before the visible label.
+fn icon_button(
+    key: &str,
+    label: &str,
+    glyph: Glyph,
+    circular: bool,
+    intent: Intent,
+) -> Node<Intent> {
+    let mut node = button(key, label, intent);
+    if let Element::Button { icon, .. } = &mut node.element {
+        *icon = Some(Icon { glyph, circular });
+    }
+    node
+}
+
 fn button(key: &str, label: &str, intent: Intent) -> Node<Intent> {
     Node {
         key: key.into(),
@@ -794,6 +814,7 @@ fn button(key: &str, label: &str, intent: Intent) -> Node<Intent> {
         element: Element::Button {
             label: label.into(),
             enabled: true,
+            icon: None,
             intent,
         },
     }

@@ -69,6 +69,7 @@ fn control(
         element: Element::Button {
             label: label.into(),
             enabled,
+            icon: None,
             intent,
         },
     });

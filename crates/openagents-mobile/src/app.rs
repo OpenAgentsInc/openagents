@@ -31,6 +31,14 @@ pub struct Config {
     pub secret_hex: String,
 }
 
+/// In a debug build, `OPENAGENTS_COMPUTERS_FIXTURE` set in the environment
+/// swaps the live client for Coder's offline Computers fixture, for
+/// simulator checks: `SIMCTL_CHILD_OPENAGENTS_COMPUTERS_FIXTURE=1 xcrun simctl
+/// launch ...`. The fixture contacts no host or relay. Release builds ignore it.
+fn fixture_requested() -> bool {
+    cfg!(debug_assertions) && std::env::var_os("OPENAGENTS_COMPUTERS_FIXTURE").is_some()
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
@@ -242,7 +250,12 @@ impl App {
         let mut terminals = None;
         // A phone never runs a host; it reaches hosts through the live
         // client, which keeps its grants in their own encrypted store.
-        let service: Box<dyn coder_computers::ComputersService + Send> =
+        let service: Box<dyn coder_computers::ComputersService + Send> = if fixture_requested() {
+            Box::new(coder_computers::synthetic::Synthetic::fixture(
+                Platform::Phone,
+                now,
+            ))
+        } else {
             match Cache::open(&config.state_dir.join("computers"), &secret).and_then(|cache| {
                 let mut settings = Settings::new(Platform::Phone);
                 settings.now = now;
@@ -266,7 +279,8 @@ impl App {
                         now,
                     ))
                 }
-            };
+            }
+        };
         let capabilities = Capabilities {
             platform: Platform::Phone,
             camera: true,

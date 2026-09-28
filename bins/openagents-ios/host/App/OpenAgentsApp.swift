@@ -106,6 +106,7 @@ struct CoderTab: View {
             }
         }
         .background(Color.black.ignoresSafeArea())
+        .task { await CoderLaunchTaps.run(bridge) }
         // Task status and a running chat's transcript move on their own.
         .task {
             while !Task.isCancelled {
@@ -113,6 +114,38 @@ struct CoderTab: View {
                 if !Task.isCancelled && !bridge.busy { bridge.refreshComputers() }
             }
         }
+    }
+}
+
+/// Simulator checks: `--coder-tap KEY[,KEY...]` taps Coder nodes in order
+/// once the surface shows them. A key ending in `*` taps the first node whose
+/// key starts with the rest, such as `task-*` for the first chat.
+enum CoderLaunchTaps {
+    @MainActor static func run(_ bridge: MobileBridge) async {
+        #if DEBUG || targetEnvironment(simulator)
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "--coder-tap"), index + 1 < arguments.count else { return }
+        for key in arguments[index + 1].split(separator: ",").map(String.init) {
+            for _ in 0..<20 {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let view = bridge.packet?.coder, let node = find(key, in: view.root) else { continue }
+                bridge.activate("coder", view: view, node: node)
+                break
+            }
+        }
+        #endif
+    }
+
+    private static func find(_ key: String, in node: NativeNode) -> String? {
+        let matches = key.hasSuffix("*") ? node.key.hasPrefix(String(key.dropLast())) : node.key == key
+        if matches { return node.key }
+        let children: [NativeNode]
+        switch node.element {
+        case let .stack(_, nodes), let .list(_, nodes), let .transcript(_, nodes, _): children = nodes
+        default: children = []
+        }
+        for child in children { if let found = find(key, in: child) { return found } }
+        return nil
     }
 }
 

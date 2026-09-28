@@ -725,9 +725,15 @@ pub fn without_intents<I>(node: &Node<I>) -> Node<()> {
             value: value.clone(),
             role: *role,
         },
-        Element::Button { label, enabled, .. } => Element::Button {
+        Element::Button {
+            label,
+            enabled,
+            icon,
+            ..
+        } => Element::Button {
             label: label.clone(),
             enabled: *enabled,
+            icon: *icon,
             intent: (),
         },
         Element::Transcript {

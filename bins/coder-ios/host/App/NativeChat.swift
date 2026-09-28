@@ -110,7 +110,7 @@ enum NativePlainText {
         switch node.element {
         case let .text(value, _): return value
         case let .markdown(blocks): return of(blocks)
-        case let .button(label, _): return label
+        case let .button(label, _, _): return label
         case let .working(label): return label
         case let .tool(name, detail, _, children):
             return ([detail.isEmpty ? name : "\(name) \(detail)"] + children.map(of)).joined(separator: "\n")

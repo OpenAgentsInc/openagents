@@ -771,6 +771,7 @@ fn button(key: &str, label: &str, intent: Intent) -> Node<Intent> {
         element: Element::Button {
             label: label.into(),
             enabled: true,
+            icon: None,
             intent,
         },
     }

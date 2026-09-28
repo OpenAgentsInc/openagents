@@ -241,6 +241,7 @@ fn button(key: &str, label: &str, intent: TerminalIntent, enabled: bool) -> Node
         element: Element::Button {
             label: label.into(),
             enabled,
+            icon: None,
             intent,
         },
     }

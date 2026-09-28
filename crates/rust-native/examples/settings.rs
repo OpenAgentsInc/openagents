@@ -33,6 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         element: Element::Button {
                             label: "Open preferences".into(),
                             enabled: true,
+                            icon: None,
                             intent: Intent::OpenPreferences,
                         },
                     },

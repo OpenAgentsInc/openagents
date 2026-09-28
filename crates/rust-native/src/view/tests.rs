@@ -67,6 +67,7 @@ fn sample() -> View<Intent> {
                         element: Element::Button {
                             label: "Inspect task".into(),
                             enabled: true,
+                            icon: None,
                             intent: Intent::InspectTask {
                                 task: "task-1".into(),
                             },
@@ -186,6 +187,7 @@ fn encoded_budget_includes_intents_and_escaping() {
     source.root.element = Element::Button {
         label: "Inspect".into(),
         enabled: true,
+        icon: None,
         intent: Intent::InspectTask {
             task: "x".repeat(MAX_VIEW_BYTES),
         },
@@ -195,6 +197,7 @@ fn encoded_budget_includes_intents_and_escaping() {
     source.root.element = Element::Button {
         label: "  ".into(),
         enabled: true,
+        icon: None,
         intent: Intent::InspectTask {
             task: "task-1".into(),
         },
@@ -235,6 +238,7 @@ fn json_nesting_bound_includes_intents_but_not_quoted_brackets() {
             element: Element::Button {
                 label: "Inspect".into(),
                 enabled: true,
+                icon: None,
                 intent,
             },
         },
@@ -526,4 +530,46 @@ mod conversation {
         }
         assert_eq!(std::fs::read_to_string(path).expect("fixture"), json);
     }
+}
+
+#[test]
+fn a_button_icon_is_optional_and_keeps_its_label() {
+    let button = |icon| {
+        View::new(
+            "instance",
+            1,
+            Node {
+                key: "new-chat".into(),
+                style: Style::default(),
+                element: Element::Button {
+                    label: "New chat".into(),
+                    enabled: true,
+                    icon,
+                    intent: Intent::InspectTask {
+                        task: "task-1".into(),
+                    },
+                },
+            },
+        )
+    };
+    // A plain button encodes as before, so older adapters read it unchanged.
+    let plain = button(None).validate().unwrap().to_json().unwrap();
+    assert!(!String::from_utf8(plain.clone()).unwrap().contains("icon"));
+    View::<Intent>::from_json(&plain).unwrap();
+    let icon = Icon {
+        glyph: Glyph::Compose,
+        circular: true,
+    };
+    let encoded = button(Some(icon)).validate().unwrap().to_json().unwrap();
+    let decoded = View::<Intent>::from_json(&encoded).unwrap();
+    assert!(matches!(
+        decoded.view().root.element,
+        Element::Button { icon: Some(i), .. } if i == icon
+    ));
+    // A circular glyph still needs a spoken name.
+    let mut unnamed = button(Some(icon));
+    if let Element::Button { label, .. } = &mut unnamed.root.element {
+        *label = " ".into();
+    }
+    assert!(matches!(unnamed.validate(), Err(ViewError::MissingLabel)));
 }
