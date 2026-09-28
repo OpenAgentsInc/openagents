@@ -3,7 +3,7 @@
 //!
 //! A conversation is a list of turns. Sending a message adds the user's
 //! turn and asks the [`Door`] for the reply in the background; the reply
-//! streams into a [`Reply`] that the Chat tab draws as it grows, and joins
+//! streams into a [`Reply`] that the Coder tab draws as it grows, and joins
 //! the turns when it ends. A failed reply leaves no turn: the chat shows why
 //! and offers to try again. When the person runs Coder on a computer from a
 //! conversation, the task it started is remembered with it.

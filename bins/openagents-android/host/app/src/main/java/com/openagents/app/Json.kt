@@ -20,7 +20,7 @@ internal fun packet(text: String, schema: String): JSONObject {
     require(text.toByteArray().size in 1..2_097_152) { "OpenAgents returned an unreadable screen." }
     return JSONObject(text).also {
         require(it.getString("schema") == schema) { "This app does not support the returned screen version." }
-        for (key in listOf("computers", "coder", "chats", "tailnet", "view")) it.objectOrNull(key)?.let { view ->
+        for (key in listOf("computers", "coder", "tailnet", "view")) it.objectOrNull(key)?.let { view ->
             require(view.getString("schema") == "rust-native.view.v2") { "Unsupported Rust Native view version." }
         }
     }

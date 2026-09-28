@@ -117,6 +117,11 @@ pub struct List {
     /// When this device sent each chat's first message, by task ID.
     #[serde(default)]
     pub sent: BTreeMap<String, u64>,
+    /// When this device last started a chat in each workspace of each
+    /// computer, by host key and workspace label; new chats and the
+    /// suggested workspaces follow it.
+    #[serde(default)]
+    pub used: BTreeMap<String, u64>,
 }
 
 /// The list and the store it lives in. Without a store it lasts only as

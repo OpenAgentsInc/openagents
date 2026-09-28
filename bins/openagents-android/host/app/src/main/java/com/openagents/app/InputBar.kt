@@ -12,7 +12,7 @@ import org.json.JSONObject
 
 /**
  * The keyboard or camera for a value Rust asks for (an input request on the
- * Computers or Chats surface). Rust validates every value; nothing here is
+ * Computers surface). Rust validates every value; nothing here is
  * kept. A secret request uses a masked field with no suggestions or autofill,
  * and the field is cleared after each send.
  */

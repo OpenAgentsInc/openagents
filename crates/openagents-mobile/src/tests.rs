@@ -286,8 +286,8 @@ fn nodes_of(view: &serde_json::Value, kind: &str) -> Vec<serde_json::Value> {
     out
 }
 
-/// Open the Coder tab's New chat screen and wait until its computer can take
-/// a chat, as `ready` says of the screen's text. Returns the screen.
+/// Wait on the Coder tab's new chat, where it opens, until its computer
+/// can take a chat, as `ready` says of the screen's text. Returns the screen.
 fn new_chat(
     app: &mut App,
     deadline: std::time::Instant,
@@ -295,19 +295,8 @@ fn new_chat(
 ) -> serde_json::Value {
     loop {
         let coder = app.call(Request::ComputersRefresh).coder.unwrap();
-        if let Some(new) = nodes_of(&coder, "button")
-            .into_iter()
-            .find(|node| node["key"] == "coder-new")
-        {
-            app.call(Request::CoderActivate {
-                instance: coder["instance"].as_str().unwrap().into(),
-                revision: coder["revision"].as_u64().unwrap(),
-                node: new["key"].as_str().unwrap().into(),
-            });
-            continue;
-        }
-        // A new chat starts with the basic Coder; this one runs on the
-        // computer.
+        // A new chat targets a ready computer; before it is ready it starts
+        // with the basic Coder, and this one runs on the computer.
         if let Some(start) = nodes_of(&coder, "button").into_iter().find(|node| {
             node["key"] == "coder-where"
                 && node["element"]["props"]["label"]
@@ -381,122 +370,6 @@ fn paste_invitation_asks_for_the_invitation() {
 }
 
 #[test]
-fn chats_start_by_asking_for_a_computer() {
-    let (mut app, _dir) = app();
-    let packet = app.call(Request::Snapshot);
-    let view = packet.chats.expect("chats view");
-    let text = values(&view);
-    assert!(text.contains(&"Add a computer".to_string()), "{text:?}");
-    let node = key_for(&view, "Add a computer").expect("add control");
-    let packet = app.call(Request::ChatsActivate {
-        instance: view["instance"].as_str().expect("instance").into(),
-        revision: view["revision"].as_u64().expect("revision"),
-        node,
-    });
-    let input = packet.chats_input.expect("input request");
-    assert!(input.scan);
-    // Not a pairing code: the pairing fails with a notice, off the queue.
-    let packet = app.call(Request::ChatsInput {
-        token: input.token.clone(),
-        value: "not an invitation".into(),
-    });
-    assert!(packet.chats_input.is_none());
-    for _ in 0..100 {
-        let packet = app.call(Request::Snapshot);
-        let text = values(&packet.chats.expect("chats view"));
-        if text.iter().any(|t| t.starts_with("Pairing failed")) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    panic!("no pairing notice");
-}
-
-/// Reads chats from a real observer. Set `OPENAGENTS_TEST_CHAT_SECRET` to the
-/// device secret hex and `OPENAGENTS_TEST_CHAT_CODE` to a connection code
-/// file from `coder-connect pair --client <device key>`, with
-/// `coder-connect serve` running.
-#[test]
-#[ignore = "network: needs a running coder-connect observer"]
-fn live_chats_from_an_observer() {
-    let secret = std::env::var("OPENAGENTS_TEST_CHAT_SECRET").expect("secret");
-    let code = std::fs::read_to_string(std::env::var("OPENAGENTS_TEST_CHAT_CODE").expect("code"))
-        .expect("code file");
-    let dir = tempfile::tempdir().expect("temp dir");
-    let mut app = App::new(Config {
-        state_dir: dir.path().to_path_buf(),
-        secret_hex: secret,
-    })
-    .expect("app");
-    let view = app.call(Request::Snapshot).chats.expect("view");
-    let node = key_for(&view, "Add a computer").expect("add");
-    let input = app
-        .call(Request::ChatsActivate {
-            instance: view["instance"].as_str().expect("instance").into(),
-            revision: view["revision"].as_u64().expect("revision"),
-            node,
-        })
-        .chats_input
-        .expect("input");
-    app.call(Request::ChatsInput {
-        token: input.token,
-        value: code,
-    });
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-    let view = loop {
-        let packet = app.call(Request::Snapshot);
-        // Name the computer when asked.
-        if let Some(input) = packet.chats_input {
-            app.call(Request::ChatsInput {
-                token: input.token,
-                value: "This Mac".into(),
-            });
-            continue;
-        }
-        let view = packet.chats.expect("view");
-        if !packet.chats_loading && key_for(&view, "Forget").is_some() {
-            break view;
-        }
-        assert!(std::time::Instant::now() < deadline, "{:?}", values(&view));
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    };
-    let text = values(&view);
-    eprintln!("catalog: {:?}", &text[..text.len().min(8)]);
-    let chat = text
-        .iter()
-        .find(|t| t.contains("\nClaude · This Mac") || t.contains("\nCodex · This Mac"))
-        .expect("a chat from this computer")
-        .clone();
-    let node = key_for(&view, &chat).expect("chat row");
-    app.call(Request::ChatsActivate {
-        instance: view["instance"].as_str().expect("instance").into(),
-        revision: view["revision"].as_u64().expect("revision"),
-        node,
-    });
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-    loop {
-        let packet = app.call(Request::Snapshot);
-        let view = packet.chats.expect("view");
-        let text = values(&view);
-        if !packet.chats_loading {
-            let messages = nodes_of(&view, "message").len();
-            eprintln!(
-                "opened {chat:?}: {messages} messages; {:?}",
-                &text[..text.len().min(4)]
-            );
-            assert!(messages > 0, "{text:?}");
-            assert_eq!(nodes_of(&view, "transcript").len(), 1);
-            return;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "transcript did not load"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
-}
-
-#[test]
 fn computers_screens_draw_in_neutral_colors() {
     let (mut app, _dir) = app();
     let view = app
@@ -561,111 +434,35 @@ fn live_tailnet_admission_adds_the_computer_and_its_chats() {
     assert!(app.hosts().contains(&host), "{:?}", app.hosts());
     let computers = values(&app.call(Request::Snapshot).computers.expect("computers"));
     eprintln!("computers: {computers:?}");
+    // Its Coder chats read through the chat pairing the answer carried.
     loop {
-        let packet = app.call(Request::Snapshot);
-        let chats = values(&packet.chats.expect("chats"));
-        if !packet.chats_loading
-            && chats
-                .iter()
-                .any(|t| t.ends_with(" chats") && t != "0 chats")
-        {
-            eprintln!("chats: {:?}", &chats[..chats.len().min(6)]);
+        app.call(Request::Snapshot);
+        if app.chats_linked(&host) {
             return;
         }
-        assert!(std::time::Instant::now() < deadline, "{chats:?}");
+        assert!(std::time::Instant::now() < deadline, "no chat pairing");
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
 }
 
-/// With no computer, the Chat tab still offers a chat: the list and its
-/// New chat button, and never a request to add a computer first.
+/// With no computer, the Coder tab opens on a new chat with the basic
+/// Coder, ready to type, and offers connecting a computer beside it rather
+/// than asking for one first.
 #[test]
-fn the_chat_tab_needs_no_computer() {
+fn the_coder_tab_needs_no_computer() {
     let (mut app, _dir) = app();
     let packet = app.call(Request::Snapshot);
     let coder = packet.coder.expect("coder view");
     let text = values(&coder);
-    assert!(text.contains(&"Chats".to_string()), "{text:?}");
-    assert!(
-        !text.iter().any(|t| t.contains("Add a computer")),
-        "{text:?}"
-    );
-    assert!(key_for(&coder, "New chat").is_some(), "{text:?}");
+    assert!(text.contains(&"Coder".to_string()), "{text:?}");
+    assert!(text.contains(&"Chat with Coder".to_string()), "{text:?}");
+    assert!(key_for(&coder, "Connect a computer").is_some(), "{text:?}");
+    let composer = &nodes_of(&coder, "composer")[0]["element"]["props"];
+    assert_eq!(composer["enabled"], true);
+    assert_eq!(composer["focus"], true);
+    assert!(key_for(&coder, "Previous chats").is_some(), "{text:?}");
     assert!(!packet.chat_streaming);
     assert!(packet.coder_go.is_none());
-}
-
-/// Chats against a real host with tailnet admission, as in
-/// `live_tailnet_admission_adds_the_computer_and_its_chats`: newest first
-/// without subagents, and the newest chat opens at its end with earlier
-/// messages on request. It only reads.
-#[test]
-#[ignore = "network: needs a host with tailnet admission"]
-fn live_chat_list_and_tail() {
-    let address = std::env::var("OPENAGENTS_TEST_ADMISSION").expect("address");
-    let (mut app, _dir) = app();
-    app.set_tailnet(Screen::Devices(Tailnet {
-        name: None,
-        this_device: None,
-        devices: vec![Device {
-            name: "test-computer".into(),
-            os: "macOS".into(),
-            address,
-            online: Some(true),
-        }],
-    }));
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-    let wait = |app: &mut App, what: &str, done: &dyn Fn(&crate::app::Packet) -> bool| loop {
-        let packet = app.call(Request::Snapshot);
-        if done(&packet) {
-            return packet;
-        }
-        assert!(std::time::Instant::now() < deadline, "waiting for {what}");
-        std::thread::sleep(std::time::Duration::from_millis(250));
-    };
-    // The chat list, newest first, with times.
-    let packet = wait(&mut app, "chats", &|p| {
-        !p.chats_loading && key_for(p.chats.as_ref().unwrap(), "Forget").is_some()
-    });
-    let chats = packet.chats.unwrap();
-    let rows: Vec<String> = values(&chats)
-        .into_iter()
-        .filter(|t| t.contains('\n'))
-        .collect();
-    eprintln!("newest chats: {:?}", &rows[..rows.len().min(5)]);
-    assert!(rows.len() >= 5);
-    assert!(rows.iter().all(|row| !row.contains("subagent")));
-    let times: Vec<&str> = rows
-        .iter()
-        .map(|row| row.rsplit(" · ").next().unwrap())
-        .collect();
-    assert!(times.windows(2).all(|pair| pair[0] >= pair[1]), "{times:?}");
-    // Open the newest chat: it arrives whole, ending at the latest message.
-    let node = key_for(&chats, &rows[0]).unwrap();
-    app.call(Request::ChatsActivate {
-        instance: chats["instance"].as_str().unwrap().into(),
-        revision: chats["revision"].as_u64().unwrap(),
-        node,
-    });
-    let packet = wait(&mut app, "the newest messages", &|p| !p.chats_loading);
-    let reader = packet.chats.unwrap();
-    let transcript = nodes_of(&reader, "transcript")[0].clone();
-    let before = nodes_of(&reader, "message").len() + nodes_of(&reader, "tool").len();
-    let earlier = !transcript["element"]["props"]["earlier"].is_null();
-    eprintln!("opened: {before} rows, earlier: {earlier}");
-    assert!(before > 0);
-    if earlier {
-        app.call(Request::ChatsActivate {
-            instance: reader["instance"].as_str().unwrap().into(),
-            revision: reader["revision"].as_u64().unwrap(),
-            node: transcript["key"].as_str().unwrap().into(),
-        });
-        let packet = wait(&mut app, "earlier messages", &|p| !p.chats_loading);
-        let reader = packet.chats.unwrap();
-        let after = nodes_of(&reader, "message").len() + nodes_of(&reader, "tool").len();
-        eprintln!("earlier: {before} -> {after} rows");
-        assert!(after > before);
-    }
 }
 
 /// A new Coder chat becomes a task on a real host. Set
@@ -717,8 +514,8 @@ fn live_coder_chat_creates_a_task() {
         assert_eq!(choices[0], "Queue for next turn", "{choices:?}");
         assert_eq!(composer["busy"], false);
         assert_eq!(composer["enabled"], true);
-        // Back on the list, the host's activity summary lists it.
-        let back = key_for(&chat, "Chats").expect("back");
+        // In the previous chats, the host's activity summary lists it.
+        let back = key_for(&chat, "Previous chats").expect("menu");
         app.call(Request::CoderActivate {
             instance: chat["instance"].as_str().unwrap().into(),
             revision: chat["revision"].as_u64().unwrap(),
@@ -759,7 +556,11 @@ fn live_coder_chat_shows_a_task_transcript() {
     }));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
     let coder = loop {
-        let coder = app.call(Request::ComputersRefresh).coder.unwrap();
+        let mut coder = app.call(Request::ComputersRefresh).coder.unwrap();
+        // The previous chats are behind the menu button.
+        if let Some(menu) = key_for(&coder, "Previous chats") {
+            coder = tap(&mut app, &coder, &menu);
+        }
         let rows: Vec<String> = values(&coder)
             .into_iter()
             .filter(|t| t.contains('\n'))
@@ -1283,9 +1084,9 @@ fn live_coder_chat_starts_promptly_follows_its_turns_and_reopens_at_once() {
             text.get(1).is_some_and(|place| place.starts_with("Done"))
                 && text.iter().any(|t| t.trim().eq_ignore_ascii_case("again"))
         });
-        // Back on the list and in again: the messages show at once.
+        // Out to the previous chats and in again: the messages show at once.
         let chat = app.call(Request::Snapshot).coder.unwrap();
-        let list = tap(app, &chat, &key_for(&chat, "Chats").expect("back"));
+        let list = tap(app, &chat, &key_for(&chat, "Previous chats").expect("menu"));
         let row = format!("task-{}", &task.1[..16]);
         let reopened = tap(app, &list, &row);
         let text = values(&reopened);
@@ -1298,15 +1099,17 @@ fn live_coder_chat_starts_promptly_follows_its_turns_and_reopens_at_once() {
     });
 }
 
-/// Timings of the Chats surface against a real host with tailnet admission,
-/// as the owner sees them: the chat list loading on an existing pairing,
-/// and the newest chats opening with nothing kept on the phone. Set
+/// Timings of the Coder tab against a real host with tailnet admission, as
+/// the owner sees them: until a new chat on the computer is ready to type,
+/// until the previous chats list its Coder chats, and opening the newest
+/// ones with nothing kept on the phone and again. Set
 /// `OPENAGENTS_TEST_ADMISSION`. It only reads, and prints what it measured.
 #[test]
 #[ignore = "network: needs a host with tailnet admission"]
-fn live_chat_timings() {
+fn live_coder_timings() {
     let address = std::env::var("OPENAGENTS_TEST_ADMISSION").expect("address");
     let (mut app, _dir) = app();
+    app.call(Request::Lifecycle { active: true });
     app.set_tailnet(Screen::Devices(Tailnet {
         name: None,
         this_device: None,
@@ -1317,73 +1120,64 @@ fn live_chat_timings() {
             online: Some(true),
         }],
     }));
-    let wait = |app: &mut App, what: &str, done: &dyn Fn(&crate::app::Packet) -> bool| {
+    let wait = |app: &mut App, what: &str, done: &dyn Fn(&serde_json::Value) -> bool| {
         let started = std::time::Instant::now();
         loop {
-            let packet = app.call(Request::Snapshot);
-            if done(&packet) {
-                return (packet, started.elapsed());
+            let coder = app.call(Request::ComputersRefresh).coder.unwrap();
+            if done(&coder) {
+                return (coder, started.elapsed());
             }
             assert!(
                 started.elapsed() < std::time::Duration::from_secs(120),
-                "waiting for {what}"
+                "waiting for {what}: {:?}",
+                values(&coder)
             );
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     };
-    let listed = |p: &crate::app::Packet| {
-        !p.chats_loading
-            && p.chats.as_ref().is_some_and(|chats| {
-                key_for(chats, "Forget").is_some()
-                    && values(chats).iter().any(|t| t.ends_with(" chats"))
-            })
-    };
-    let (_, took) = wait(&mut app, "admission and the chat list", &listed);
-    eprintln!("admission, pairing, and chat list: {took:?}");
-    let mut list = None;
-    for round in 0..3 {
-        let chats = app.call(Request::Snapshot).chats.unwrap();
-        let node = key_for(&chats, "Refresh").unwrap();
-        app.call(Request::ChatsActivate {
-            instance: chats["instance"].as_str().unwrap().into(),
-            revision: chats["revision"].as_u64().unwrap(),
-            node,
-        });
-        let (packet, took) = wait(&mut app, "the chat list", &listed);
-        eprintln!("chat list load {round}: {took:?}");
-        list = packet.chats;
-    }
-    let list = list.unwrap();
-    let rows: Vec<String> = values(&list)
-        .into_iter()
-        .filter(|t| t.contains('\n'))
+    let (landing, took) = wait(&mut app, "a new chat on the computer", &|coder| {
+        values(coder)
+            .iter()
+            .any(|t| t.starts_with("On ") && t.contains(" · "))
+            && nodes_of(coder, "composer")
+                .first()
+                .is_some_and(|c| c["element"]["props"]["enabled"] == true)
+    });
+    eprintln!("admission until a new chat on the computer is ready to type: {took:?}");
+    let menu = key_for(&landing, "Previous chats").unwrap();
+    let started = std::time::Instant::now();
+    tap(&mut app, &landing, &menu);
+    let (list, took) = wait(&mut app, "the previous chats", &|coder| {
+        nodes_of(coder, "button")
+            .iter()
+            .any(|b| b["key"].as_str().is_some_and(|k| k.starts_with("task-")))
+    });
+    eprintln!(
+        "previous chats with Coder tasks: {took:?} ({:?} since the tap)",
+        started.elapsed()
+    );
+    let rows: Vec<String> = nodes_of(&list, "button")
+        .iter()
+        .filter_map(|b| b["key"].as_str().filter(|k| k.starts_with("task-")))
+        .map(str::to_owned)
         .collect();
     for (index, row) in rows.iter().take(3).enumerate() {
         for attempt in ["open", "reopen"] {
-            let chats = app.call(Request::Snapshot).chats.unwrap();
-            let node = key_for(&chats, row).unwrap();
-            app.call(Request::ChatsActivate {
-                instance: chats["instance"].as_str().unwrap().into(),
-                revision: chats["revision"].as_u64().unwrap(),
-                node,
+            let list = app.call(Request::Snapshot).coder.unwrap();
+            let list = match key_for(&list, "Previous chats") {
+                Some(menu) => tap(&mut app, &list, &menu),
+                None => list,
+            };
+            let started = std::time::Instant::now();
+            tap(&mut app, &list, row);
+            let (chat, took) = wait(&mut app, "the chat", &|coder| {
+                !nodes_of(coder, "message").is_empty() || !nodes_of(coder, "tool").is_empty()
             });
-            let (packet, took) = wait(&mut app, "the chat", &|p| {
-                !p.chats_loading
-                    && p.chats.as_ref().is_some_and(|reader| {
-                        !nodes_of(reader, "message").is_empty()
-                            || !nodes_of(reader, "tool").is_empty()
-                    })
-            });
-            let reader = packet.chats.unwrap();
-            let shown = nodes_of(&reader, "message").len() + nodes_of(&reader, "tool").len();
-            let title = row.lines().next().unwrap_or_default();
-            eprintln!("chat {index} {attempt}: {took:?}, {shown} rows ({title:.40})");
-            let node = key_for(&reader, "Chats").unwrap();
-            app.call(Request::ChatsActivate {
-                instance: reader["instance"].as_str().unwrap().into(),
-                revision: reader["revision"].as_u64().unwrap(),
-                node,
-            });
+            let shown = nodes_of(&chat, "message").len() + nodes_of(&chat, "tool").len();
+            eprintln!(
+                "coder chat {index} {attempt}: {took:?} ({:?} since the tap), {shown} rows",
+                started.elapsed()
+            );
         }
     }
 }

@@ -36,7 +36,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     var failure: String? = null; private set
     var pending = 0; private set
     val busy get() = pending > 0
-    /** Counts the Chat tab's requests to open Account > Computers. */
+    /** Counts the Coder tab's requests to open Account > Computers. */
     var computersRequested = 0; private set
 
     init {
@@ -224,7 +224,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     fun refreshComputers() = send(json("op" to "computers_refresh"))
     fun snapshot() = send(json("op" to "snapshot"))
 
-    /** An activation on a surface: `computers`, `coder`, `chats`, `tailnet`, or `terminal`. */
+    /** An activation on a surface: `computers`, `coder`, `tailnet`, or `terminal`. */
     fun activate(surface: String, view: JSONObject, node: String) =
         send(json("op" to "${surface}_activate", "instance" to view.getString("instance"),
             "revision" to view.getLong("revision"), "node" to node))

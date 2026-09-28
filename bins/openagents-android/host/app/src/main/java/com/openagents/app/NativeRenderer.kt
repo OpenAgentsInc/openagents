@@ -238,6 +238,7 @@ class NativeRenderer(
     private fun glyph(props: JSONObject): Int? = when (props.objectOrNull("icon")?.optString("glyph")) {
         "back" -> R.drawable.ic_glyph_back
         "compose" -> R.drawable.ic_glyph_compose
+        "menu" -> R.drawable.ic_glyph_menu
         else -> null
     }
 

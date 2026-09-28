@@ -29,11 +29,10 @@ import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
 
 /**
- * The four tabs, shown as icons; each keeps a spoken name for TalkBack. The
- * Chat tab's name stays `CODER`, the name the playtest session log uses.
+ * The four tabs, shown as icons; each keeps a spoken name for TalkBack.
  */
 enum class AppTab(val title: String, val icon: Int) {
-    CODER("Chat", R.drawable.ic_tab_chat),
+    CODER("Coder", R.drawable.ic_tab_coder),
     VERSE("Verse", R.drawable.ic_tab_verse),
     WALLET("Wallet", R.drawable.ic_tab_wallet),
     ACCOUNT("Account", R.drawable.ic_tab_account),
@@ -55,7 +54,7 @@ class MainActivity : ComponentActivity() {
     private var route: AccountRoute? = null
     private var resumed = false
     private var ticks = 0
-    /** The Chat tab's requests to open Account > Computers, as last handled. */
+    /** The Coder tab's requests to open Account > Computers, as last handled. */
     private var computersShown = 0
     private var statusTop = 0
 
@@ -209,7 +208,7 @@ class MainActivity : ComponentActivity() {
         }
         select(tab)
         open(route)
-        // Debug builds only: `--es coder_tap KEY[,KEY...]` taps Chat nodes in
+        // Debug builds only: `--es coder_tap KEY[,KEY...]` taps Coder nodes in
         // order (a key ending in `*` taps the first whose key starts with the
         // rest), then `--es coder_send TEXT` sends TEXT from the composer.
         if (BuildConfig.DEBUG) {

@@ -75,9 +75,6 @@ struct AppPacket: Decodable {
     let chat_streaming: Bool?
     /// Show another tab's screen once: `computers` is Account > Computers.
     let coder_go: String?
-    let chats: NativeView?
-    let chats_input: ComputersInput?
-    let chats_loading: Bool
     let tailnet: NativeView?
     let tailnet_loading: Bool
     let open_url: String?
@@ -288,7 +285,7 @@ final class MobileBridge: ObservableObject {
     @Published private(set) var terminalView: NativeView?
     @Published private(set) var failure: String?
     @Published private(set) var pending = 0
-    /// Counts the Chat tab's requests to open Account > Computers.
+    /// Counts the Coder tab's requests to open Account > Computers.
     @Published private(set) var computersRequested = 0
     private let queue = DispatchQueue(label: "com.openagents.app.rust")
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer?
@@ -337,8 +334,6 @@ final class MobileBridge: ObservableObject {
     func activate(_ surface: String, view: NativeView, node: String) {
         send(["op": "\(surface)_activate", "instance": view.instance, "revision": view.revision, "node": node])
     }
-
-    func refreshChats() { send(["op": "chats_refresh"]) }
 
     /// Hand Rust the Spark wallet's seed from Keychain. Rust ignores a
     /// repeat. The Mutinynet test wallet's key, which this replaced, is
@@ -436,7 +431,7 @@ final class MobileBridge: ObservableObject {
     /// `home`, `add`, `activity`, `owner_key`, `keep_directory`, or `refresh`.
     func computersGo(_ destination: String) { send(["op": "computers_go", "to": destination]) }
 
-    /// Answer or close an input request on the Computers or Chats surface.
+    /// Answer or close an input request, or send from a composer.
     func submit(_ surface: String, token: String, value: String) {
         send(["op": "\(surface)_input", "token": token, "value": value])
     }

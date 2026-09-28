@@ -262,8 +262,8 @@ private struct ComputerRow: View {
     }
 }
 
-/// The Chat tab: conversations with the basic Coder, and Coder's chats on
-/// the computers.
+/// The Coder tab: Rust opens it on a new chat ready to type, with previous
+/// Coder chats behind the menu button.
 struct CoderTab: View {
     @ObservedObject var bridge: MobileBridge
 
@@ -302,7 +302,7 @@ struct CoderTab: View {
 
 /// Simulator checks: `--coder-tap KEY[,KEY...]` taps Coder nodes in order
 /// once the surface shows them. A key ending in `*` taps the first node whose
-/// key starts with the rest, such as `task-*` for the first chat. Then
+/// key starts with the rest, such as `task-*` for the first chat in the menu. Then
 /// `--coder-send TEXT` sends TEXT from the screen's composer.
 enum CoderLaunchTaps {
     @MainActor static func run(_ bridge: MobileBridge) async {

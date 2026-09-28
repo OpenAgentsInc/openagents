@@ -13,27 +13,40 @@ The Android build, with the same tabs and the same Rust library, is in
 
 The app has four tabs, shown as icons:
 
-- **Chat** (a chat bubble) is a list of conversations, newest first. A new
-  chat is a conversation with the basic Coder, which needs no computer: each
-  message is a NIP-CJ conversation job signed by the device key and sent,
-  NIP-44 encrypted, through `relay.openagents.com` to the OpenAgents chat
-  worker, and the reply streams back as partials drawn with incremental
-  Markdown. The app holds no model key; the worker meters each caller key
-  (see `INVARIANTS.md`). From a conversation, **Run Coder on** a computer starts Coder on
-  it with the conversation so far; with no computer,
-  **Connect a computer to run Coder** opens Account > Computers. The same list shows
-  Coder's chats on your computers:
-  a message there starts a NIP-HOST `task.create` in the computer's `openagents` workspace,
-  the same operation as Order work; with the host's auto-start policy on,
-  the host runs Coder's engine right away. An open chat reads the task's
-  ATIF transcript through the computer's read-only history observer (its
-  `coder` source) and follows it while the task runs: the model's replies,
-  the commands it ran with their output, and how the run ended. A message in
-  a finished chat continues the same task, and a message while Coder works
-  queues for its next turn; a long press on send offers the other ways to
-  send, **Edit queue** edits what waits, and a question or approval request
-  from Coder is answered in the chat. Every message is a durable NIP-HOST
+- **Coder** (the code icon) opens on a new chat, ready to type: the
+  composer has the cursor, the line above it says what the message starts,
+  and a few suggested actions sit above the field. With a computer this
+  phone may operate ready, a new chat starts Coder there: a NIP-HOST
+  `task.create` in the workspace the line names, the same operation as
+  Order work; with the host's auto-start policy on, the host runs Coder's
+  engine right away. **Chat here instead** switches to the basic Coder,
+  **Start on** switches back, **Change** picks another computer, and the
+  workspace buttons pick another of its workspaces (the one this phone used
+  last comes first). The suggestions also continue the newest chats, and
+  with no computer added they offer **Connect a computer**, which opens
+  Account > Computers. The basic Coder needs no computer: each message is a
+  NIP-CJ conversation job signed by the device key and sent, NIP-44
+  encrypted, through `relay.openagents.com` to the OpenAgents chat worker,
+  and the reply streams back as partials drawn with incremental Markdown.
+  The app holds no model key; the worker meters each caller key (see
+  `INVARIANTS.md`). From a conversation, **Run Coder on** a computer starts
+  Coder on it with the conversation so far.
+  The menu button at the top left opens the previous chats, newest first:
+  basic conversations and Coder's tasks on your computers, painted from
+  what the phone kept while the computers are read again. Only Coder's
+  chats show; the phone does not list Claude Code, Codex, OpenCode, or
+  Devin sessions. An open Coder chat reads the task's ATIF transcript
+  through the computer's read-only history observer (its `coder` source)
+  and follows it while the task runs: the model's replies, the commands it
+  ran with their output, and how the run ended. A message in a finished
+  chat continues the same task, and a message while Coder works queues for
+  its next turn; a long press on send offers the other ways to send,
+  **Edit queue** edits what waits, and a question or approval request from
+  Coder is answered in the chat. Every message is a durable NIP-HOST
   `task.command` (see [what comes later](docs/chat-later.md#built-since-build-6)).
+  When the app comes to the foreground or the tab shows, Rust opens each
+  computer's history connections, so the first read or send waits for no
+  connection.
 - **Verse** (globe) is Verse's bare world: the plaza's ground grid in white
   and gray on a dark field, with your character in the center, the other
   players in the same world, and one large ball ahead of you. Walk into the
@@ -202,8 +215,8 @@ tailnet for an invitation. A host answers only a device that `tailscale
 whois` names as its own Tailscale user, so your phone gets one and nobody
 else's does. The app redeems it through the normal NIP-HOST enrollment, and
 the host signs the grant, so revocation and the device list work as usual.
-The same answer carries a chat invitation, so the computer's chats appear
-without running `coder pair`. The phone must be on the tailnet, through the
+The same answer carries a chat invitation, so the computer's Coder chats
+appear without running `coder pair`. The phone must be on the tailnet, through the
 Tailscale app, to reach the computer.
 
 A computer without tailnet admission can still be added from **Computers >

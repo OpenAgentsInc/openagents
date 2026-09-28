@@ -1,6 +1,5 @@
-// The app's four tabs: Chat, Verse, Wallet, and Account. The tab bar shows
-// icons only; each tab keeps a spoken name for VoiceOver. The Chat tab's
-// value stays `coder`, the name the playtest session log uses.
+// The app's four tabs: Coder, Verse, Wallet, and Account. The tab bar shows
+// icons only; each tab keeps a spoken name for VoiceOver.
 import SwiftUI
 import UIKit
 
@@ -9,7 +8,7 @@ enum AppTab: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .coder: "Chat"
+        case .coder: "Coder"
         case .verse: "Verse"
         case .wallet: "Wallet"
         case .account: "Account"
@@ -18,7 +17,7 @@ enum AppTab: String, CaseIterable {
 
     var symbol: String {
         switch self {
-        case .coder: "bubble.left.and.bubble.right"
+        case .coder: "chevron.left.forwardslash.chevron.right"
         case .verse: "globe"
         // `wallet.bifold` arrived in iOS 18.
         case .wallet: UIImage(systemName: "wallet.bifold") == nil ? "creditcard" : "wallet.bifold"
@@ -109,7 +108,7 @@ struct AppTabs: View {
             place.tab = tab
             bridge.playtestScreen(tab: place.tabName, route: place.routeName)
         }
-        // A chat asked to connect a computer: Account > Computers.
+        // Coder asked to connect a computer: Account > Computers.
         .onChange(of: bridge.computersRequested) { _, _ in tab = .account }
         .onAppear {
             #if targetEnvironment(simulator)

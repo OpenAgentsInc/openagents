@@ -179,6 +179,9 @@ pub enum Glyph {
     Back,
     /// Start something new, such as a chat.
     Compose,
+    /// Open a list of earlier items beside the screen, such as previous
+    /// chats: a hamburger.
+    Menu,
 }
 
 /// The control that loads older rows at a transcript's top.

@@ -13,27 +13,33 @@ tabs, navigation, the camera, keyboards, the Keystore, and the Verse
 
 The app has four tabs, shown as white icons on black:
 
-- **Chat** (a chat bubble) is a list of conversations, newest first. A new
-  chat is a conversation with the basic Coder, which needs no computer: each
-  message is a NIP-CJ conversation job signed by the device key and sent,
-  NIP-44 encrypted, through `relay.openagents.com` to the OpenAgents chat
-  worker, and the reply streams back as partials drawn with incremental
-  Markdown. The app holds no model key; the worker meters each caller key
-  (see `INVARIANTS.md`). From a conversation, **Run Coder on** a computer starts Coder on
-  it with the conversation so far; with no computer,
-  **Connect a computer to run Coder** opens Account > Computers. The same list shows
-  Coder's chats on your computers:
-  a message there starts a NIP-HOST `task.create` on the chosen computer, and the chat follows
-  the task's transcript. Later messages are durable `task.command`s that
-  continue, queue, steer, or answer; a long press on send offers the other
-  ways to send, as a menu.
-  The chats list has a round **New chat** button (the compose glyph) that
-  opens the New chat screen with the cursor in its field; an open chat
-  has a breadcrumb back to the list beside its phase and computer; a
-  waiting question makes the composer answer it, and an approval request
-  adds **Approve** and **Deny**. Chats last shown stay listed across a
-  relaunch. This is the iPhone app's Chat tab; Rust decides everything
-  it shows.
+- **Coder** (the code icon) opens on a new chat, ready to type: the
+  composer has the cursor, the line above it says what the message starts,
+  and a few suggested actions sit above the field. With a computer this
+  phone may operate ready, a new chat starts Coder there as a NIP-HOST
+  `task.create` in the workspace the line names; **Chat here instead**
+  switches to the basic Coder, **Start on** switches back, **Change** picks
+  another computer, and the workspace buttons pick another of its
+  workspaces (the one this phone used last comes first). The suggestions
+  also continue the newest chats, and with no computer added they offer
+  **Connect a computer**, which opens Account > Computers. The basic Coder
+  needs no computer: each message is a NIP-CJ conversation job signed by
+  the device key and sent, NIP-44 encrypted, through `relay.openagents.com`
+  to the OpenAgents chat worker, and the reply streams back as partials
+  drawn with incremental Markdown. The app holds no model key; the worker
+  meters each caller key (see `INVARIANTS.md`). From a conversation,
+  **Run Coder on** a computer starts Coder on it with the conversation so
+  far. The menu button at the top left opens the previous chats, newest
+  first: basic conversations and Coder's tasks on your computers, painted
+  from what the phone kept while the computers are read again. Only Coder's
+  chats show; the phone does not list Claude Code, Codex, OpenCode, or
+  Devin sessions. An open Coder chat follows the task's transcript. Later
+  messages are durable `task.command`s that continue, queue, steer, or
+  answer; a long press on send offers the other ways to send, as a menu.
+  An open chat's header has the menu button, its phase and computer, and a
+  round **New chat** button; a waiting question makes the composer answer
+  it, and an approval request adds **Approve** and **Deny**. This is the
+  iPhone app's Coder tab; Rust decides everything it shows.
 - **Verse** (globe) mounts Verse's bare world (`coder_mobile::VerseHandle` in
   bare mode) in a `SurfaceView` and forwards touches, pinch, and rotation
   samples as Coder's `coder.verse.v1` requests. Rust draws the movement
@@ -114,13 +120,12 @@ The app has four tabs, shown as white icons on black:
   default, shown cropped exactly as it would be sent, and never offered on
   the Wallet tab or a key screen (Rust refuses one there anyway); see
   [Playtesting](../../docs/game/playtesting.md). The
-  Coder tab reads your computers' chats, as on iOS; Account no longer
-  lists them.
+  Coder tab reads your computers' Coder chats, as on iOS.
 
 Tailnet admission works as on iOS: after you sign in on the Tailnet screen,
 the app asks each device on the tailnet for an invitation, and a computer
 running `coder host serve --tailnet-admission standard` adds itself and its
-chats. The phone must be on the tailnet through the Tailscale app to reach
+Coder chats. The phone must be on the tailnet through the Tailscale app to reach
 the computer.
 
 The transcript is painted from Rust's layout, as on iOS

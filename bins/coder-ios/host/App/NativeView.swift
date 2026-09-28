@@ -134,6 +134,7 @@ struct NativeIcon: Decodable, Equatable {
         switch glyph {
         case "back": "chevron.backward"
         case "compose": "square.and.pencil"
+        case "menu": "line.3.horizontal"
         default: nil
         }
     }

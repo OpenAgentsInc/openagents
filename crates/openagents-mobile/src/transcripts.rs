@@ -1,7 +1,6 @@
-//! Chats' transcripts as last shown, kept in memory and in the app's
-//! encrypted store, so an open chat shows at once while its computer is
-//! read again in the background: Coder chats by task, and the Chats tab's
-//! chats by a digest of their computer and chat ID.
+//! Coder chats' transcripts as last shown, by task, kept in memory and in
+//! the app's encrypted store, so an open chat shows at once while its
+//! computer is read again in the background.
 //!
 //! It is a display cache: a chat read from its computer always replaces
 //! its copy, a copy of a turn the computer moved past is replaced by the
@@ -15,15 +14,12 @@ use std::collections::HashMap;
 const INDEX: &str = "coder-transcripts";
 /// The prefix of each kept Coder chat's key; the task ID follows.
 const PREFIX: &str = "coder-transcript-";
-/// The same for the Chats tab's chats.
-const CHATS_INDEX: &str = "chats-transcripts";
-const CHATS_PREFIX: &str = "chats-transcript-";
 /// The most chats kept on disk.
 pub const MAX_KEPT: usize = 32;
 /// The most plaintext one kept chat may take; older rows go first.
 const MAX_BYTES: usize = 160 * 1024;
 
-/// Kept transcripts by task, or by chat digest.
+/// Kept transcripts by task.
 pub struct Transcripts {
     cache: Option<Cache>,
     index_key: &'static str,
@@ -38,12 +34,6 @@ impl Transcripts {
     /// the app runs.
     pub fn open(cache: Option<Cache>) -> Self {
         Self::named(cache, INDEX, PREFIX)
-    }
-
-    /// The Chats tab's transcripts kept in `cache`, keyed by a hexadecimal
-    /// digest of each chat's computer and ID.
-    pub fn chats(cache: Option<Cache>) -> Self {
-        Self::named(cache, CHATS_INDEX, CHATS_PREFIX)
     }
 
     fn named(cache: Option<Cache>, index_key: &'static str, prefix: &'static str) -> Self {

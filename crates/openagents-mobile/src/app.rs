@@ -1,7 +1,7 @@
-//! One OpenAgents app lifetime: the Computers surface, the terminal screen
-//! it opens, and the Tailnet surface.
+//! One OpenAgents app lifetime: the Coder tab, the Computers surface, the
+//! terminal screen it opens, and the Tailnet surface.
 
-use crate::chats::{Chats, Purpose as ChatsPurpose};
+use crate::chats::Chats;
 use crate::coder_tab::CoderTab;
 use crate::computers_home::{
     self, Choice as ComputersChoice, Destination as ComputersDestination, Home,
@@ -141,19 +141,6 @@ pub enum Request {
     ComputersGo {
         to: ComputersDestination,
     },
-    ChatsActivate {
-        instance: String,
-        revision: u64,
-        node: String,
-    },
-    ChatsInput {
-        token: String,
-        value: String,
-    },
-    ChatsCancel {
-        token: String,
-    },
-    ChatsRefresh,
     CoderActivate {
         instance: String,
         revision: u64,
@@ -556,11 +543,6 @@ pub struct Packet {
     /// Show this screen of another tab, once: `computers` is Account >
     /// Computers, where a computer is connected.
     pub coder_go: Option<crate::coder_tab::Go>,
-    pub chats: Option<serde_json::Value>,
-    /// A value the Chats surface asks the host to collect.
-    pub chats_input: Option<rust_native::input::InputRequest<ChatsPurpose>>,
-    /// The Chats surface is reading in the background.
-    pub chats_loading: bool,
     pub tailnet: Option<serde_json::Value>,
     /// The Tailnet surface is reading in the background.
     pub tailnet_loading: bool,
@@ -628,6 +610,7 @@ pub struct App {
     device: String,
     device_npub: String,
     computers: Option<Computers>,
+    /// The computers' Coder chats, read through their history observers.
     chats: Chats,
     coder: CoderTab,
     terminals: Option<Terminals>,
@@ -722,12 +705,10 @@ impl App {
             runtime.handle().clone(),
             secret,
             Cache::open(&config.state_dir.join("chats"), &secret),
-            format!("chats:{}", id()),
-        )
-        .with_pulled_transcripts(launch.pulled_transcripts)
-        .with_transcripts(crate::transcripts::Transcripts::chats(
-            Cache::open(&config.state_dir.join("chats-transcripts"), &secret).ok(),
-        ));
+        );
+        // The phone shows only Coder's chats now; the transcripts the
+        // all-harness Chats list kept are not read again.
+        let _ = std::fs::remove_dir_all(config.state_dir.join("chats-transcripts"));
         let admissions = Cache::open(&config.state_dir.join("admissions"), &secret);
         // Chats read directly at each admitted computer's tailnet listener,
         // including pairings made before the phone remembered its address.
@@ -1042,6 +1023,7 @@ impl App {
                     self.spend.soon();
                     self.wallet.refresh_if_open();
                     self.chats.refresh();
+                    self.chats.warm();
                     self.load_tailnet(None, TAILNET_REFRESH_LIMIT);
                 }
             }
@@ -1092,18 +1074,6 @@ impl App {
                     let _ = computers_home::go(computers, to);
                 }
             }
-            Request::ChatsActivate {
-                instance,
-                revision,
-                node,
-            } => self.chats.activate(&Activation {
-                instance,
-                revision,
-                node,
-            }),
-            Request::ChatsInput { token, value } => self.chats.submit(&token, &value),
-            Request::ChatsCancel { token } => self.chats.cancel(&token),
-            Request::ChatsRefresh => self.chats.refresh(),
             Request::CoderActivate {
                 instance,
                 revision,
@@ -1192,6 +1162,11 @@ impl App {
             | Request::PlaytestSession { .. }
             | Request::PlaytestClear => {}
             Request::PlaytestScreen { tab, route } => {
+                // The Coder tab shows: open its computers' connections now,
+                // so its first read or send pays none.
+                if tab == playtest::session::Tab::Coder {
+                    self.chats.warm();
+                }
                 let route = self.place(tab, route);
                 self.playtest.screen(tab, route);
             }
@@ -1463,7 +1438,7 @@ impl App {
                         .map(|ip| std::net::SocketAddr::from((ip, coder_host::tailnet::PORT)));
                     if let Some(chats) = admission.chats.clone() {
                         self.chats
-                            .pair(chats, Some(label), Some(admission.host.clone()), direct);
+                            .pair(chats, label, admission.host.clone(), direct);
                     }
                     if added {
                         known.insert(
@@ -1560,7 +1535,6 @@ impl App {
         self.chats.settle();
         self.poll_spends();
         let tailnet = self.render_tailnet();
-        let chats = self.chats.render();
         // Chat commands that waited for their computer try again.
         self.coder.flush(self.computers.as_mut());
         let coder = self.coder.render(self.computers.as_ref(), &mut self.chats);
@@ -1619,9 +1593,6 @@ impl App {
             coder_live: self.coder.live(self.computers.as_ref()) || self.spend.live(),
             chat_streaming: self.coder.streaming(),
             coder_go: self.coder.take_go(),
-            chats,
-            chats_input: self.chats.input().cloned(),
-            chats_loading: self.chats.loading(),
             tailnet,
             tailnet_loading: {
                 let state = self.lock_tailnet();
@@ -1695,6 +1666,12 @@ impl App {
                 Err(refusal) => return Err(format!("{refusal:?}")),
             }
         }
+    }
+
+    /// Whether a current chat pairing is linked to Computers host `host`.
+    #[cfg(test)]
+    pub(crate) fn chats_linked(&self, host: &str) -> bool {
+        self.chats.linked(host, now())
     }
 
     #[cfg(test)]
