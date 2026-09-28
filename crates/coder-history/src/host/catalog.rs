@@ -103,6 +103,7 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
 
 /// Coder's task directory is flat: each `*.atif.jsonl` directly inside it is
 /// one task attempt's transcript. Other files and subdirectories are ignored.
+/// A transcript of a task the owner archived is listed as archived.
 fn tasks(
     root_index: usize,
     root: &confined::Root,
@@ -124,6 +125,7 @@ fn tasks(
             );
         }
     };
+    let archived = archived_tasks(root, notices)?;
     for name in names {
         *visited += 1;
         if *visited > confined::MAX_ENTRIES {
@@ -138,7 +140,7 @@ fn tasks(
                 root: root_index,
                 id: root.source_id(&path),
                 harness: root.harness,
-                archived: false,
+                archived: task_id(&path).is_some_and(|task| archived.contains(&task)),
                 subagent: false,
                 relative: path,
             }),
@@ -153,6 +155,46 @@ fn tasks(
 }
 
 const ATIF_SUFFIX: &str = ".atif.jsonl";
+/// The task store's archive record (`openagents.coder.task-archive.v1`).
+const ARCHIVE_FILE: &str = "archive.json";
+const ARCHIVE_SCHEMA: &str = "openagents.coder.task-archive.v1";
+const MAX_ARCHIVE_BYTES: u64 = 1024 * 1024;
+
+/// The task IDs the owner archived. A missing record archives nothing; an
+/// unreadable or malformed one archives nothing and leaves a notice, so a
+/// chat is never hidden by accident.
+fn archived_tasks(
+    root: &confined::Root,
+    notices: &mut Vec<Notice>,
+) -> Result<HashSet<String>, Error> {
+    #[derive(serde::Deserialize)]
+    struct Record {
+        schema: String,
+        tasks: BTreeMap<String, serde::de::IgnoredAny>,
+    }
+    let path = Path::new(ARCHIVE_FILE);
+    let unreadable = |notices: &mut Vec<Notice>| {
+        notice(notices, "archive_unavailable", Some(root.source_id(path))).map(|()| HashSet::new())
+    };
+    let file = match root.open_file(path) {
+        Ok(file) => file,
+        Err(Error::SourceMissing) => return Ok(HashSet::new()),
+        Err(_) => return unreadable(notices),
+    };
+    let mut bytes = Vec::new();
+    if file
+        .take(MAX_ARCHIVE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .is_err()
+        || bytes.len() as u64 > MAX_ARCHIVE_BYTES
+    {
+        return unreadable(notices);
+    }
+    match serde_json::from_slice::<Record>(&bytes) {
+        Ok(record) if record.schema == ARCHIVE_SCHEMA => Ok(record.tasks.into_keys().collect()),
+        _ => unreadable(notices),
+    }
+}
 
 /// A Coder transcript's name without its suffix, `<task>.<attempt>`.
 fn attempt(path: &Path) -> Option<&str> {

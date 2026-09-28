@@ -292,6 +292,10 @@ pub enum Operation {
         revision: u64,
         reason: String,
     },
+    /// Take a finished or cancelled task off every device's lists. It
+    /// deletes nothing; the host's owner can restore it.
+    #[serde(rename = "task.archive")]
+    ArchiveTask { task: String },
     /// List the workspace labels `task.create` accepts on this host.
     #[serde(rename = "workspace.list")]
     ListWorkspaces {},
@@ -310,6 +314,7 @@ impl Operation {
             Self::OpenTerminal { .. } => "terminal.open",
             Self::SteerTask { .. } => "task.steer",
             Self::CancelTask { .. } => "task.cancel",
+            Self::ArchiveTask { .. } => "task.archive",
             Self::ListWorkspaces {} => "workspace.list",
         }
     }
@@ -327,6 +332,7 @@ impl Operation {
             Self::CreateTask { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
+            | Self::ArchiveTask { .. }
             | Self::ListWorkspaces {} => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
@@ -401,6 +407,7 @@ impl Operation {
                 safe(*revision)?;
                 text(reason, 512)?;
             }
+            Self::ArchiveTask { task } => identity(task).map_err(Error::from)?,
         }
         Ok(())
     }
@@ -548,7 +555,8 @@ impl Outcome {
                 Operation::CreateTask { .. }
                 | Operation::OpenTerminal { .. }
                 | Operation::SteerTask { .. }
-                | Operation::CancelTask { .. },
+                | Operation::CancelTask { .. }
+                | Operation::ArchiveTask { .. },
                 Self::Dispatched { receipt },
             ) => receipt.operation == op.name(),
             _ => false,

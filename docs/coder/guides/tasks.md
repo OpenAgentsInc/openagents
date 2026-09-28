@@ -82,6 +82,28 @@ opening the store. A cancel command passed to `submit` never cancels a task.
 Unknown fields, duplicate JSON keys, invalid identities, and unsupported
 schemas refuse rather than being ignored.
 
+## Archive a task
+
+Archiving takes a finished or cancelled task off every device's lists and
+deletes nothing:
+
+```bash
+coder task archive TASK_ID --reason "Test chat from a live smoke"
+coder task restore TASK_ID
+```
+
+The resident host stops publishing an archived task's activity summary, and
+the history observer lists its transcript as an archived chat, which the
+OpenAgents app's Chats and Coder lists leave out. The task document, its
+commands, its run evidence, and its transcript stay in place. The record is
+`archive.json` in the store, written under the store's lock; a binary that
+predates it ignores it and lists every task. A task that has not ended
+refuses. An enrolled device with the `operate` right archives a task with
+NIP-HOST `task.archive`; only the owner restores one.
+
+Live tests and smokes that create tasks on a real host archive them when
+they finish, so they never appear among the owner's chats.
+
 ## Persistence and recovery
 
 The store is private to the local OS user. On supported Unix hosts, its

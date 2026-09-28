@@ -393,7 +393,8 @@ impl Host {
             Operation::CreateTask { .. }
             | Operation::OpenTerminal { .. }
             | Operation::SteerTask { .. }
-            | Operation::CancelTask { .. } => {
+            | Operation::CancelTask { .. }
+            | Operation::ArchiveTask { .. } => {
                 // Record the admitted intent before the effect. A crash after
                 // dispatch replays the same idempotency key, never a new one.
                 if book.replies.len() >= MAX_REPLIES {

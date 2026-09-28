@@ -728,6 +728,48 @@ impl App {
             .expect("admitted");
     }
 
+    /// The host and task of the open Coder chat.
+    #[cfg(test)]
+    pub(crate) fn open_coder_task(&self) -> Option<(String, String)> {
+        self.coder.open_task()
+    }
+
+    /// Archive a live test's task once it has ended, so the test leaves
+    /// nothing in the owner's lists. It waits up to `limit` for the task to
+    /// end, stopping it first when it still runs.
+    #[cfg(test)]
+    pub(crate) fn archive_task_for_test(
+        &mut self,
+        (host, task): (String, String),
+        limit: Duration,
+    ) -> Result<(), String> {
+        let computers = self.computers.as_mut().ok_or("no computers")?;
+        let deadline = std::time::Instant::now() + limit;
+        let mut stopped = false;
+        loop {
+            match computers.archive_task(&host, &task) {
+                Ok(()) => return Ok(()),
+                // `conflict`: the task has not ended yet.
+                Err(_) if std::time::Instant::now() < deadline => {
+                    if !stopped {
+                        let revision = computers
+                            .snapshot()
+                            .activity
+                            .iter()
+                            .filter(|s| s.host == host && s.subject == task)
+                            .map(|s| s.sequence)
+                            .max();
+                        if let Some(revision) = revision {
+                            stopped = computers.stop_task(&host, &task, revision).is_ok();
+                        }
+                    }
+                    std::thread::sleep(Duration::from_secs(2));
+                }
+                Err(refusal) => return Err(format!("{refusal:?}")),
+            }
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn hosts(&self) -> Vec<String> {
         self.computers

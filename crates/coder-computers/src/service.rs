@@ -184,6 +184,15 @@ pub trait ComputersService {
             "this client can't cancel work",
         ))
     }
+    /// Take a finished or cancelled task off every device's lists
+    /// (`task.archive`). The host deletes nothing.
+    fn archive_task(&mut self, host: &str, task: &str) -> Result<()> {
+        let _ = (host, task);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't archive work",
+        ))
+    }
 }
 
 /// A service for a build with no host client. It reports an empty list and

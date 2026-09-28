@@ -98,8 +98,19 @@ pub trait Tasks: Send + Sync {
         reason: &str,
     ) -> Result<TaskRef, Code>;
 
-    /// Every task's current revision and phase, including changes made
-    /// outside a device operation, such as an auto-started run finishing.
+    /// Take a finished or cancelled task off every device's lists, deleting
+    /// nothing. Archiving an archived task succeeds again. The default
+    /// refuses as `unsupported`.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn archive(&self, _key: &str, _device: &str, _task: &str) -> Result<(), Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// Every listed task's current revision and phase, including changes
+    /// made outside a device operation, such as an auto-started run
+    /// finishing. Archived tasks are not listed.
     /// The host publishes a summary when a revision changes. The default
     /// reports none.
     fn current(&self) -> Vec<TaskRef> {

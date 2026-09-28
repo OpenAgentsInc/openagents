@@ -21,6 +21,7 @@ pub const RECEIPT_SCHEMA: &str = "openagents.coder.task-receipt.v1";
 pub const STORE_SCHEMA: &str = "openagents.coder.task-store.v2";
 
 pub mod adapter;
+pub mod archive;
 pub mod artifact;
 pub mod autostart;
 pub mod capacity;

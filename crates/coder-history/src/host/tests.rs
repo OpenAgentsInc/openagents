@@ -657,6 +657,44 @@ fn coder_tasks_list_flat_atif_attempts_newest_first() {
 }
 
 #[test]
+fn a_task_the_owner_archived_lists_as_an_archived_chat() {
+    let fixture = Fixture::new();
+    let (kept, archived) = ("ab".repeat(32), "cd".repeat(32));
+    fixture.write(&format!("{kept}.1.atif.jsonl"), atif_lines());
+    fixture.write(&format!("{archived}.1.atif.jsonl"), atif_lines());
+    let history = coder_history(&fixture);
+    let flags = |history: &History| {
+        let page = history.catalog(CatalogRequest::default()).unwrap();
+        let mut flags: Vec<(String, bool)> = page
+            .entries
+            .iter()
+            .map(|c| (c.native_id.clone().unwrap(), c.archived))
+            .collect();
+        flags.sort();
+        (flags, page.notices)
+    };
+    // Without a record nothing is archived.
+    assert_eq!(
+        flags(&history).0,
+        [(kept.clone(), false), (archived.clone(), false)]
+    );
+    fixture.write(
+        "archive.json",
+        format!(
+            r#"{{"schema":"openagents.coder.task-archive.v1","tasks":{{"{archived}":{{"at":5,"reason":"Test chat","by":{{"kind":"owner"}}}}}}}}"#
+        ),
+    );
+    let (listed, notices) = flags(&history);
+    assert_eq!(listed, [(kept.clone(), false), (archived.clone(), true)]);
+    assert!(notices.is_empty());
+    // A malformed record hides nothing and says so.
+    fixture.write("archive.json", b"{\"schema\":\"other\",\"tasks\":{}}");
+    let (listed, notices) = flags(&history);
+    assert_eq!(listed, [(kept, false), (archived, false)]);
+    assert_eq!(notices[0].code, "archive_unavailable");
+}
+
+#[test]
 fn coder_steps_project_as_user_system_tool_and_assistant_records() {
     let fixture = Fixture::new();
     fixture.write(&format!("{}.1.atif.jsonl", "0".repeat(64)), atif_lines());

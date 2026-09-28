@@ -41,6 +41,13 @@ changes remain exempt from Rust checks. Read `docs/verification.md` for scope
 and prerequisites. Use a separate Cargo target directory per worktree, and keep
 workspace formatting changes separate from behavior changes.
 
+Live tests and smokes against the owner's real computers must not leave
+chats in the owner's lists. Archive every Coder task a smoke creates when it
+ends (`coder task archive TASK_ID --reason ...` on the host, or NIP-HOST
+`task.archive`), as the `archiving` helper in
+`crates/openagents-mobile/src/tests.rs` does, and pass
+`--no-session-persistence` to a `claude -p` probe so it saves no Claude chat.
+
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
 

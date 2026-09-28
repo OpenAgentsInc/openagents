@@ -13,6 +13,18 @@ fn app() -> (App, tempfile::TempDir) {
     (app, dir)
 }
 
+/// Run the rest of a live test that created a task on a real host, then
+/// archive that task whatever the outcome, so the test leaves nothing in the
+/// owner's task and chat lists. The host keeps the task's record.
+fn archiving(app: &mut App, task: (String, String), rest: impl FnOnce(&mut App)) {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rest(&mut *app)));
+    let archived = app.archive_task_for_test(task, std::time::Duration::from_secs(300));
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+    archived.expect("the test's task is archived");
+}
+
 fn device(name: &str, os: &str, online: Option<bool>) -> Device {
     Device {
         name: name.into(),
@@ -529,35 +541,38 @@ fn live_coder_chat_creates_a_task() {
         token,
         value: "Say hello from the OpenAgents app test.".into(),
     });
-    let chat = packet.coder.unwrap();
-    let text = values(&chat);
-    eprintln!("coder: {text:?}");
-    assert!(
-        text.contains(&"Say hello from the OpenAgents app test.".to_string()),
-        "{text:?}"
-    );
-    assert_eq!(nodes_of(&chat, "transcript").len(), 1);
-    let composer = &nodes_of(&chat, "composer")[0]["element"]["props"];
-    assert_eq!(composer["busy"], true, "a running chat offers stop");
-    // Back on the list, the host's activity summary lists it.
-    let back = key_for(&chat, "Coder").expect("back");
-    app.call(Request::CoderActivate {
-        instance: chat["instance"].as_str().unwrap().into(),
-        revision: chat["revision"].as_u64().unwrap(),
-        node: back,
-    });
-    loop {
-        let text = values(&app.call(Request::ComputersRefresh).coder.unwrap());
-        if text
-            .iter()
-            .any(|t| t.starts_with("Say hello from the OpenAgents app test.\n"))
-        {
-            eprintln!("listed: {text:?}");
-            return;
+    let task = app.open_coder_task().expect("the chat opens on its task");
+    archiving(&mut app, task, |app| {
+        let chat = packet.coder.unwrap();
+        let text = values(&chat);
+        eprintln!("coder: {text:?}");
+        assert!(
+            text.contains(&"Say hello from the OpenAgents app test.".to_string()),
+            "{text:?}"
+        );
+        assert_eq!(nodes_of(&chat, "transcript").len(), 1);
+        let composer = &nodes_of(&chat, "composer")[0]["element"]["props"];
+        assert_eq!(composer["busy"], true, "a running chat offers stop");
+        // Back on the list, the host's activity summary lists it.
+        let back = key_for(&chat, "Coder").expect("back");
+        app.call(Request::CoderActivate {
+            instance: chat["instance"].as_str().unwrap().into(),
+            revision: chat["revision"].as_u64().unwrap(),
+            node: back,
+        });
+        loop {
+            let text = values(&app.call(Request::ComputersRefresh).coder.unwrap());
+            if text
+                .iter()
+                .any(|t| t.starts_with("Say hello from the OpenAgents app test.\n"))
+            {
+                eprintln!("listed: {text:?}");
+                return;
+            }
+            assert!(std::time::Instant::now() < deadline, "{text:?}");
+            std::thread::sleep(std::time::Duration::from_millis(500));
         }
-        assert!(std::time::Instant::now() < deadline, "{text:?}");
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
+    });
 }
 
 /// Coder chats against a real host with tailnet admission that already ran
@@ -660,25 +675,49 @@ fn live_coder_chat_runs_a_task() {
         token,
         value: prompt,
     });
-    let mut last = String::new();
-    loop {
-        let chat = app.call(Request::ComputersRefresh).coder.unwrap();
-        let text = values(&chat);
-        let place = text.get(1).cloned().unwrap_or_default();
-        if place != last {
-            eprintln!("status: {place}");
-            last = place.clone();
+    let task = app.open_coder_task().expect("the chat opens on its task");
+    archiving(&mut app, task, |app| {
+        let mut last = String::new();
+        loop {
+            let chat = app.call(Request::ComputersRefresh).coder.unwrap();
+            let text = values(&chat);
+            let place = text.get(1).cloned().unwrap_or_default();
+            if place != last {
+                eprintln!("status: {place}");
+                last = place.clone();
+            }
+            let running = !nodes_of(&chat, "working").is_empty();
+            if !running
+                && (place.starts_with("Done")
+                    || place.starts_with("Failed")
+                    || place.starts_with("Stopped"))
+            {
+                eprintln!("final: {text:?}");
+                return;
+            }
+            assert!(std::time::Instant::now() < deadline, "{text:?}");
+            std::thread::sleep(std::time::Duration::from_secs(3));
         }
-        let running = !nodes_of(&chat, "working").is_empty();
-        if !running
-            && (place.starts_with("Done")
-                || place.starts_with("Failed")
-                || place.starts_with("Stopped"))
-        {
-            eprintln!("final: {text:?}");
-            return;
-        }
-        assert!(std::time::Instant::now() < deadline, "{text:?}");
-        std::thread::sleep(std::time::Duration::from_secs(3));
-    }
+    });
+}
+
+/// The Coder list leaves out a task whose saved chat is archived, and keeps
+/// one with no saved chat yet or an unarchived one.
+#[test]
+fn the_coder_list_leaves_out_archived_tasks() {
+    let chat = |archived| coder_history::Chat {
+        id: "chat".into(),
+        harness: coder_history::Harness::Coder,
+        native_id: Some("ab".repeat(32)),
+        title: "Hello".into(),
+        title_truncated: false,
+        updated_at: None,
+        archived,
+        subagent: false,
+        source_id: Some("source".into()),
+        status: coder_history::SourceStatus::Available,
+    };
+    assert!(crate::coder_tab::archived(Some(&chat(true))));
+    assert!(!crate::coder_tab::archived(Some(&chat(false))));
+    assert!(!crate::coder_tab::archived(None));
 }

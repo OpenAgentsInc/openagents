@@ -143,10 +143,34 @@ impl Tasks for Inbox {
         })
     }
 
+    fn archive(&self, _key: &str, device: &str, task: &str) -> Result<(), Code> {
+        let by = super::archive::By::Device {
+            key: device.to_owned(),
+        };
+        super::archive::archive(
+            &self.store,
+            task,
+            "Archived by an enrolled device",
+            by,
+            super::autostart::unix_now(),
+        )
+        .map(|_| ())
+        .map_err(refusal)
+    }
+
+    /// Archived tasks are left out, so the host never publishes their
+    /// summaries again.
     fn current(&self) -> Vec<TaskRef> {
+        let archived = super::archive::archived(&self.store);
         Store::open(&self.store)
             .and_then(|store| store.list())
-            .map(|tasks| tasks.iter().map(current).collect())
+            .map(|tasks| {
+                tasks
+                    .iter()
+                    .filter(|task| !archived.contains(&task.task_id))
+                    .map(current)
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -305,6 +329,40 @@ mod tests {
         assert_eq!(
             inbox.create(&"b".repeat(64), "device", &unknown),
             Err(Code::Forbidden)
+        );
+    }
+
+    #[test]
+    fn an_archived_task_leaves_the_current_list_and_only_an_ended_one_archives() {
+        let temp = tempfile::tempdir().unwrap();
+        let inbox = inbox(temp.path());
+        let device = "ab".repeat(32);
+        let task = "c".repeat(64);
+        inbox.create(&task, &device, &create()).unwrap();
+        // A queued task is still work in progress.
+        assert_eq!(
+            inbox.archive(&"d".repeat(64), &device, &task),
+            Err(Code::Conflict)
+        );
+        assert_eq!(
+            inbox.archive(&"d".repeat(64), &device, &"9".repeat(64)),
+            Err(Code::Forbidden)
+        );
+        inbox
+            .cancel(&"e".repeat(64), &device, &task, 1, "Not needed")
+            .unwrap();
+        assert_eq!(inbox.current().len(), 1);
+        inbox.archive(&"f".repeat(64), &device, &task).unwrap();
+        // A retry succeeds again.
+        inbox.archive(&"f".repeat(64), &device, &task).unwrap();
+        assert!(inbox.current().is_empty());
+        // Nothing is deleted.
+        let shown = Store::open(inbox.store()).unwrap().show(&task).unwrap();
+        assert_eq!(shown.status, Status::Cancelled);
+        let entries = super::super::archive::entries(inbox.store()).unwrap();
+        assert_eq!(
+            entries[&task].by,
+            super::super::archive::By::Device { key: device }
         );
     }
 

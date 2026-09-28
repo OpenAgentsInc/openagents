@@ -70,6 +70,14 @@ impl CoderTab {
         }
     }
 
+    /// The host and task of the open chat.
+    #[cfg(test)]
+    pub(crate) fn open_task(&self) -> Option<(String, String)> {
+        self.open
+            .as_ref()
+            .map(|open| (open.host.clone(), open.task.clone()))
+    }
+
     /// The computers this device may order work on, in snapshot order.
     fn hosts(computers: &Computers) -> Vec<&HostRecord> {
         computers
@@ -441,7 +449,14 @@ impl CoderTab {
     }
 }
 
+/// Whether the Coder list leaves a task out: its host's owner or a device
+/// archived it, which the task's saved chat says.
+pub(crate) fn archived(chat: Option<&coder_history::Chat>) -> bool {
+    chat.is_some_and(|chat| chat.archived)
+}
+
 /// One tappable row per task, newest first, from the newest summary of each.
+/// Archived tasks are left out.
 fn tasks(
     snapshot: &Snapshot,
     titles: &BTreeMap<String, String>,
@@ -462,6 +477,14 @@ fn tasks(
             None => newest.push(summary),
         }
     }
+    newest.retain(|summary| {
+        !archived(
+            chats
+                .coder_chat(&summary.host, &summary.subject)
+                .as_ref()
+                .map(|(_, _, chat)| chat),
+        )
+    });
     newest.sort_by_key(|summary| std::cmp::Reverse(summary.updated_at));
     newest
         .into_iter()

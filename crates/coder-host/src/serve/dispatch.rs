@@ -70,6 +70,14 @@ impl Dispatch for Dispatcher {
                 let result = tasks.cancel(request, device, task, *revision, reason);
                 self.task(op, result)
             }
+            // An archived task leaves the lists, so it publishes no summary.
+            Operation::ArchiveTask { task } => {
+                tasks.archive(request, device, task)?;
+                Ok(Receipt {
+                    operation: op.name().into(),
+                    reference: task.clone(),
+                })
+            }
             Operation::OpenTerminal { cols, rows } => {
                 // No workspace at all is a configuration the host cannot
                 // serve (`unsupported`); a configured root that is not a

@@ -395,6 +395,17 @@ impl Computers {
         self.rebuild().map_err(Refusal::Failed)
     }
 
+    /// Take a finished or cancelled task on `host` off every device's
+    /// lists (`task.archive`). The host keeps its record and transcript.
+    pub fn archive_task(&mut self, host: &str, task: &str) -> Result<(), Refusal> {
+        self.allow(Action::Operate { host })?;
+        self.service
+            .archive_task(host, task)
+            .map_err(Refusal::Failed)?;
+        self.reload();
+        self.rebuild().map_err(Refusal::Failed)
+    }
+
     /// Order work on `host` without the Order work screen, as a chat client
     /// does: NIP-HOST `task.create` with the prompt's first line as title.
     /// It records the task; the host's own policy decides whether it runs.

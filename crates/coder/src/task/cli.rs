@@ -21,6 +21,8 @@ Usage:
   coder task recover TASK_ID [--store DIRECTORY]
   coder task view TASK_ID [--limit 100] [--cursor JSON] [--store DIRECTORY]
   coder task artifact TASK_ID --path RELATIVE_PATH [--store DIRECTORY]
+  coder task archive TASK_ID --reason TEXT [--store DIRECTORY]
+  coder task restore TASK_ID [--store DIRECTORY]
 
 Submit and cancel read the exact versioned command bytes from a file (or -
 for stdin). Keep the same command ID and file bytes when retrying. Cancellation
@@ -31,6 +33,8 @@ execution grant admits the bounded-command adapter through start (detached host)
 or execute (foreground host). Cancellation acknowledges a request; inspect the
 execution result for confirmed stop. Recover records owner loss as unknown and
 never reruns an effect. Model adapters are not admitted by this path.
+Archive takes a finished or cancelled task off every device's task and chat
+lists and deletes nothing; restore shows it again.
 See docs/coder/guides/tasks.md for command fixtures and recovery behavior.
 
 Exit codes: 0 success, 1 store/command refusal, 64 invalid CLI usage.";
@@ -48,6 +52,8 @@ enum Operation {
     Recover(String),
     View(String, Option<task::view::Cursor>, usize),
     Artifact(String, PathBuf),
+    Archive(String, String),
+    Restore(String),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -64,6 +70,7 @@ fn parse(arguments: &[String]) -> Result<Options, String> {
     let mut cursor = None;
     let mut limit = None;
     let mut artifact_path = None;
+    let mut reason = None;
     let mut id = None;
     let mut rest = rest.iter();
     while let Some(argument) = rest.next() {
@@ -73,6 +80,12 @@ fn parse(arguments: &[String]) -> Result<Options, String> {
                     return Err("give --path once".into());
                 }
                 artifact_path = Some(PathBuf::from(rest.next().ok_or("--path needs a value")?));
+            }
+            "--reason" => {
+                if reason.is_some() {
+                    return Err("give --reason once".into());
+                }
+                reason = Some(rest.next().ok_or("--reason needs a value")?.clone());
             }
             "--cursor" | "--limit" => {
                 let value = rest
@@ -110,7 +123,9 @@ fn parse(arguments: &[String]) -> Result<Options, String> {
                 || verb == "show"
                 || verb == "recover"
                 || verb == "view"
-                || verb == "artifact")
+                || verb == "artifact"
+                || verb == "archive"
+                || verb == "restore")
                 && !argument.starts_with('-')
                 && id.is_none() =>
             {
@@ -136,6 +151,11 @@ fn parse(arguments: &[String]) -> Result<Options, String> {
             artifact_path.take().ok_or("artifact needs --path")?,
         ),
         "recover" if file.is_none() => Operation::Recover(id.ok_or("recover needs a task ID")?),
+        "archive" if file.is_none() => Operation::Archive(
+            id.ok_or("archive needs a task ID")?,
+            reason.take().ok_or("archive needs --reason")?,
+        ),
+        "restore" if file.is_none() => Operation::Restore(id.ok_or("restore needs a task ID")?),
         "submit" => Operation::Submit(file.ok_or("submit needs --file")?),
         "cancel" => Operation::Cancel(file.ok_or("cancel needs --file")?),
         "correct" => Operation::Correct(file.ok_or("correct needs --file")?),
@@ -147,6 +167,9 @@ fn parse(arguments: &[String]) -> Result<Options, String> {
     };
     if artifact_path.is_some() {
         return Err("--path applies only to artifact".into());
+    }
+    if reason.is_some() {
+        return Err("--reason applies only to archive".into());
     }
     if cursor.is_some() || limit.is_some() {
         return Err("--cursor and --limit apply only to view".into());
@@ -226,6 +249,8 @@ pub async fn run(arguments: &[String]) -> u8 {
         | Operation::Start(_)
         | Operation::View(..)
         | Operation::Artifact(..)
+        | Operation::Archive(..)
+        | Operation::Restore(_)
         | Operation::Check(_) => None,
     };
     let directory = match options.store {
@@ -266,6 +291,24 @@ pub async fn run(arguments: &[String]) -> u8 {
         Operation::View(id, cursor, limit) => {
             return match task::view::read(&directory, id, cursor.as_ref(), *limit) {
                 Ok(view) => output(&json!(view)),
+                Err(error) => failure(error.code(), error),
+            };
+        }
+        Operation::Archive(id, reason) => {
+            return match task::archive::archive(
+                &directory,
+                id,
+                reason,
+                task::archive::By::Owner,
+                task::autostart::unix_now(),
+            ) {
+                Ok(archived) => output(&json!({"task": id, "archived": archived})),
+                Err(error) => failure(error.code(), error),
+            };
+        }
+        Operation::Restore(id) => {
+            return match task::archive::restore(&directory, id) {
+                Ok(restored) => output(&json!({"task": id, "restored": restored})),
                 Err(error) => failure(error.code(), error),
             };
         }
@@ -405,6 +448,9 @@ mod tests {
             vec!["list", "--file", "x"],
             vec!["submit", "--file", "a", "--file", "b"],
             vec!["list", "--store", "a", "--store", "b"],
+            vec!["archive", "task-1"],
+            vec!["archive", "--reason", "Test chat"],
+            vec!["show", "task-1", "--reason", "Test chat"],
         ] {
             assert!(parse(&args(&values)).is_err(), "{values:?}");
         }
@@ -418,6 +464,21 @@ mod tests {
                 operation: Operation::Submit("-".into()),
                 store: Some("/tmp/tasks".into())
             }
+        );
+    }
+
+    #[test]
+    fn parses_archive_and_restore() {
+        assert_eq!(
+            parse(&args(&["archive", "task-1", "--reason", "Test chat"])).unwrap(),
+            Options {
+                operation: Operation::Archive("task-1".into(), "Test chat".into()),
+                store: None
+            }
+        );
+        assert_eq!(
+            parse(&args(&["restore", "task-1"])).unwrap().operation,
+            Operation::Restore("task-1".into())
         );
     }
 }

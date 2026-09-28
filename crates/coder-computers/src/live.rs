@@ -1639,6 +1639,11 @@ impl ComputersService for Live {
         .map(|_| ())
     }
 
+    fn archive_task(&mut self, host: &str, task: &str) -> Result<()> {
+        self.dispatched(host, Operation::ArchiveTask { task: task.into() })
+            .map(|_| ())
+    }
+
     fn complete_first_run(&mut self) -> Result<()> {
         lock(&self.shared.state).saved.first_run_complete = true;
         self.save()

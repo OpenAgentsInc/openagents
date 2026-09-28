@@ -331,6 +331,7 @@ A request is `openagents.host-request.v1`:
 | `task.create` | `operate` | `dispatched` |
 | `task.steer` | `operate` | `dispatched` |
 | `task.cancel` | `operate` | `dispatched` |
+| `task.archive` | `operate` | `dispatched` |
 | `terminal.open` | `terminal` | `dispatched` |
 | `workspace.list` | `operate` | `workspaces` |
 
@@ -352,7 +353,14 @@ at most 16 KiB or a single-line reason of at most 512 bytes. They follow the
 steer records replacement instructions and supersedes a running context, a
 cancel requests a stop, and another revision refuses as `stale`. Neither
 grants execution authority. A host answers
-either only after the effect's owner accepts it. `dispatched` returns
+either only after the effect's owner accepts it.
+`task.archive` carries `{task}`: it takes a finished or cancelled task off
+every device's lists and deletes nothing. The host stops publishing the
+task's activity summary, and its history observer lists the task's
+transcript as an archived chat, which chat lists leave out. A task that has
+not ended refuses as `conflict`, and archiving an archived task succeeds
+again. Only the host's owner restores an archived task. An older host that
+predates it refuses it as `malformed` or `unsupported`. `dispatched` returns
 `{operation, reference}`: the handling receipt, not evidence that a task ran
 or a terminal produced output. Other profiles can register further
 operations with exactly one required right each.
