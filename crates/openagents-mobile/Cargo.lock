@@ -1519,17 +1519,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "coder-boundary"
-version = "0.1.0"
-dependencies = [
- "errno",
- "libc",
- "serde",
- "sha2 0.10.9",
- "tempfile",
-]
-
-[[package]]
 name = "coder-computers"
 version = "0.1.0"
 dependencies = [
@@ -1671,6 +1660,18 @@ dependencies = [
  "serde",
  "termcolor",
  "unicode-width",
+]
+
+[[package]]
+name = "codex-transport"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "libc",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -3747,7 +3748,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 name = "knowledge"
 version = "0.1.0"
 dependencies = [
- "microluna",
+ "codex-transport",
  "nostr",
  "openrouter",
  "secp256k1 0.31.1",
@@ -4031,22 +4032,6 @@ checksum = "89550ee9f79e88fef3119de263694973a8adb26c21d75322164fb8c493039fe2"
 dependencies = [
  "portable-atomic",
  "rapidhash",
-]
-
-[[package]]
-name = "microluna"
-version = "0.1.0"
-dependencies = [
- "atif",
- "base64 0.22.1",
- "coder-boundary",
- "futures-util",
- "libc",
- "reqwest",
- "serde",
- "serde_json",
- "supervise",
- "tokio",
 ]
 
 [[package]]
@@ -6150,14 +6135,6 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
-
-[[package]]
-name = "supervise"
-version = "0.1.0"
-dependencies = [
- "libc",
- "tokio",
-]
 
 [[package]]
 name = "swash"
