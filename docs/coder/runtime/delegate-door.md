@@ -14,7 +14,7 @@ delegation target.
 Status: implemented in `crates/coder` (`delegate_door.rs` and
 `delegate_door/microcoder.rs`, wired through `agent.rs` and
 `generate.rs`). The Microcoder loop is `crates/microcoder-loop`, and the
-CLI turns are `coder_one::terminal`. The terminal and `coder -p` both
+CLI turns are `coder_delegate::terminal` (`crates/coder-delegate`). The terminal and `coder -p` both
 reach the door, because both run `coder::turn::run`. Issue
 [#9578](https://github.com/OpenAgentsInc/openagents/issues/9578) holds the
 plan, and [#9879](https://github.com/OpenAgentsInc/openagents/issues/9879)
@@ -100,7 +100,9 @@ brief    code packs the request, the conversation, and the kept evidence
 delegate the executor answers the briefing inside a coder-boundary boundary
 ```
 
-Every step is Coder One's library: `JevJudge::survey` for the probes and
+Every step is the library Coder One also runs, split into
+`crates/coder-delegate` so Coder builds without Microluna
+([#9889](https://github.com/OpenAgentsInc/openagents/issues/9889)): `JevJudge::survey` for the probes and
 judgments, `Briefing::build_under` for the briefing, and
 `Cli::execute_watched` for the adapter. Coder does not keep a second copy.
 The configuration is the reference policy
@@ -110,9 +112,9 @@ Opus 5.5 at low effort, six tools, the five-minute prompt cache, and a
 strong executor beating a model that explores on its own; see
 [the component study](../../optimization/coder-components.md).
 
-Coder One's judge and recorder are not `Send` either, so this turn also
-runs on a thread of its own. Coder One's progress lines, which an episode
-prints to standard output, go to the door through `coder_one::say`
+The judge and recorder are not `Send` either, so this turn also
+runs on a thread of its own. The turn's progress lines, which an episode
+prints to standard output, go to the door through `coder_delegate::say`
 instead, so the terminal keeps its screen and `coder -p` keeps standard
 output for the reply.
 
@@ -231,10 +233,10 @@ took. A Microcoder turn records each loop observation (Jev's judgment,
 the generation with its tokens and cost, and each command), failover's
 `route_capacity`, `route_switch`, and `route_exhausted` steps, and a
 `delegation` summary with the provider standings, the ending, and the
-refusals the turn met. A CLI turn records every step Coder One recorded:
+refusals the turn met. A CLI turn records every step the turn recorded:
 the probe plan and operations, each Jev call with its usage, the
 executor's normalized events, and the `delegate` call, then a
-`delegation` step with `coder_one::episode::usage`. `coder -p --json`
+`delegation` step with `coder_delegate::usage::usage`. `coder -p --json`
 reports the total as `cost_usd`, and the terminal shows it per turn. A
 cost with any unknown part is null, never zero.
 

@@ -1,20 +1,18 @@
 [package]
-name = "coder-one"
+name = "coder-delegate"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Coder One: a minimal agent that turns a GitHub issue into a pull request, with Jev judgments steering each step."
+description = "What Coder's terminal turn runs, split from Coder One without Microluna: the Claude Code and Codex adapters, the probe battery and Jev's judge, the briefing, and the terminal turn."
 publish.workspace = true
 
 [dependencies]
 atif = { path = "../atif" }
 coder-boundary = { path = "../coder-boundary" }
-coder-delegate = { path = "../coder-delegate" }
 coder-history = { path = "../coder-history", default-features = false }
 futures-util = "0.3"
 indexmap = "2"
 jev = { path = "../jev" }
-microluna = { path = "../microluna" }
 plugin = { path = "../plugin" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
@@ -25,7 +23,6 @@ supervise = { path = "../supervise" }
 tokio = { version = "1", features = ["macros", "rt", "time"] }
 
 [dev-dependencies]
-coder-boundary = { path = "../coder-boundary" }
 tempfile = "3"
 
 [lints]

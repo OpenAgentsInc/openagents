@@ -18,7 +18,7 @@
 //! 3. Code packs a briefing from the request and the conversation.
 //! 4. The executor runs it, inside a `coder-boundary` boundary.
 //!
-//! See [`coder_one::terminal`] for the four steps and the policy they run.
+//! See [`coder_delegate::terminal`] for the four steps and the policy they run.
 //!
 //! # Which door answers
 //!
@@ -60,9 +60,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use coder_one::delegate::{Agent as Cli, Credential, Status as DelegateStatus};
-use coder_one::stream::{Event as StreamEvent, Kind};
-use coder_one::terminal::{self, Progress};
+use coder_delegate::delegate::{Agent as Cli, Credential, Status as DelegateStatus};
+use coder_delegate::stream::{Event as StreamEvent, Kind};
+use coder_delegate::terminal::{self, Progress};
 use serde_json::Value;
 
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, StubGenerate, Usage};
@@ -214,7 +214,7 @@ impl Target {
         book: &capacity::Book,
         now: u64,
     ) -> Self {
-        let (binary, credential) = coder_one::delegate::resolve(agent, &env);
+        let (binary, credential) = coder_delegate::delegate::resolve(agent, &env);
         let agent = Agent::Cli(agent);
         let refusal = agent
             .provider()
@@ -405,7 +405,7 @@ impl CodexLogin {
 /// A sentence when the login is missing, unreadable, not a ChatGPT
 /// sign-in, or within ten minutes of expiring.
 pub fn codex_login(env: &impl Fn(&str) -> Option<String>) -> Result<CodexLogin, String> {
-    let path = coder_one::delegate::codex_auth_file(env)
+    let path = coder_delegate::delegate::codex_auth_file(env)
         .ok_or("no CODEX_HOME or HOME to find the Codex login in")?;
     let login = codex_transport::codex::Login::load(&path).map_err(|error| error.to_string())?;
     Ok(CodexLogin {
@@ -632,16 +632,16 @@ fn explicit_door(env: &impl Fn(&str) -> Option<String>) -> Option<String> {
 /// The Jev client Coder One's judge asks through, and where its key came
 /// from. `None` when this machine has no TypeSafe key.
 pub fn jev_from(env: &impl Fn(&str) -> Option<String>) -> (Option<jev::Client>, String) {
-    let Some(dir) = coder_one::credentials::openagents_dir() else {
+    let Some(dir) = coder_delegate::credentials::openagents_dir() else {
         return (None, "no home directory to read jev.json from".to_string());
     };
-    match coder_one::credentials::jev_key(env, &dir) {
-        Ok(found) => match coder_one::credentials::jev_client(&found.secret) {
+    match coder_delegate::credentials::jev_key(env, &dir) {
+        Ok(found) => match coder_delegate::credentials::jev_client(&found.secret) {
             Ok(client) => (
                 Some(client),
                 format!(
                     "{} from {}",
-                    coder_one::credentials::JEV_MODEL,
+                    coder_delegate::credentials::JEV_MODEL,
                     found.source
                 ),
             ),
@@ -744,7 +744,7 @@ impl DelegateDoor {
             ),
             Agent::Cli(Cli::ClaudeCode) => model
                 .clone()
-                .unwrap_or_else(|| terminal::policy().policy.executor.model),
+                .unwrap_or_else(|| terminal::policy().executor.model),
             Agent::Cli(cli) => model
                 .clone()
                 .unwrap_or_else(|| cli.default_model().to_string()),
@@ -884,16 +884,12 @@ impl DelegateDoor {
             credential: self.target.credential,
             jev: self.jev.clone(),
             artifacts: self.artifacts(turn),
-            script: None,
-            // The issue flow works in a clone of its own and opens a draft
-            // pull request, so the operator's permit governs it, not this
-            // turn's route.
-            issues: crate::permit::Permit::operator().executes(),
+            // The CLI turn never starts the issue flow; Microcoder's turn
+            // does ([`microcoder`]).
+            issues: false,
             issue: false,
             review: false,
-            // The manifest comes from the operator's environment.
-            policy: None,
-            seal: None,
+            extra: (),
         };
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<FromThread>();
         // Coder One's judge and recorder are not `Send`, so the turn runs
@@ -1159,7 +1155,7 @@ impl Mapper {
             }
             Kind::AssistantClaim { .. } => None,
             Kind::CommandStarted { command } => {
-                let shown = coder_one::stream::unwrap_shell(command);
+                let shown = coder_delegate::stream::unwrap_shell(command);
                 self.open.push((shown.clone(), Instant::now()));
                 Some(Update::Proposed(Proposal {
                     command: shown,
@@ -1171,7 +1167,7 @@ impl Mapper {
                 exit_code,
                 output,
             } => {
-                let shown = coder_one::stream::unwrap_shell(command);
+                let shown = coder_delegate::stream::unwrap_shell(command);
                 let index = self
                     .open
                     .iter()
@@ -1255,7 +1251,7 @@ impl Generate for DelegateDoor {
 /// the reference policy's, for `coder doctor` to state.
 #[must_use]
 pub fn deadline() -> Duration {
-    Duration::from_secs(terminal::policy().policy.executor.deadline_sec)
+    Duration::from_secs(terminal::policy().executor.deadline_sec)
 }
 
 /// Whether this host can enforce the boundary a delegated turn runs in.
@@ -1659,7 +1655,7 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             eprintln!("skipped: {why}");
             return None;
         }
-        let binary = coder_one::adapter::standin::install(&dir.join("bin"), "claude", WRITER);
+        let binary = coder_delegate::adapter::standin::install(&dir.join("bin"), "claude", WRITER);
         let target = Target {
             binary: Some(binary),
             ..target(Cli::ClaudeCode, true, Credential::CliLogin)

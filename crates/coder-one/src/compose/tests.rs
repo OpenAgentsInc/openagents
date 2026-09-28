@@ -1296,7 +1296,7 @@ fn throttled(name: &str) -> Script {
     let mut script = script(name, 0, 0);
     script.format = Format::Claude;
     script.opening = false;
-    script.events = crate::delegate::tests::THROTTLED
+    script.events = crate::delegate::testing::THROTTLED
         .lines()
         .map(|line| {
             at(

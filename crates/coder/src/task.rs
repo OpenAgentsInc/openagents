@@ -33,8 +33,8 @@ pub mod owner;
 pub mod remote;
 pub mod usage;
 pub mod view;
-/// Per-engine steering semantics; see [`coder_one::steering`].
-pub use coder_one::steering;
+/// Per-engine steering semantics; see [`coder_delegate::steering`].
+pub use coder_delegate::steering;
 /// The most turns one task can take. A follow-up past it is refused.
 pub const MAX_TURNS: usize = 64;
 /// The largest command, including JSON whitespace, in bytes.
@@ -255,7 +255,7 @@ impl Task {
 /// adapter's statement, whose acknowledgment the step names.
 pub(crate) fn consumed_steers(
     task: &Task,
-    steering: &coder_one::steering::Steering,
+    steering: &coder_delegate::steering::Steering,
 ) -> Vec<atif::Step> {
     task.unconsumed_steers()
         .into_iter()

@@ -9,7 +9,7 @@ publish.workspace = true
 [features]
 default = ["desktop"]
 desktop = ["dep:winit", "model-host", "xp-host", "replay-host", "capture"]
-model-host = ["dep:coder", "dep:coder-one"]
+model-host = ["dep:coder", "dep:coder-delegate"]
 xp-host = ["dep:xp-ledger"]
 replay-host = ["dep:gym", "dep:knowledge"]
 capture = []
@@ -17,7 +17,7 @@ capture = []
 [dependencies]
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
-coder-one = { path = "../coder-one", optional = true }
+coder-delegate = { path = "../coder-delegate", optional = true }
 coder-ui = { path = "../coder-ui" }
 rust-native = { path = "../rust-native" }
 physics = { path = "../physics" }

@@ -178,11 +178,11 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
     use crate::delegate::{BRIEFING_CAP, Briefing, BriefingInputs};
 
-    pub(crate) fn entry(id: &str, body: &str) -> Entry {
+    pub fn entry(id: &str, body: &str) -> Entry {
         let text = format!("---\nid: {id}\nversion: 2\n---\n\n{body}\n");
         Entry {
             id: id.to_string(),

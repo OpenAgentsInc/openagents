@@ -147,15 +147,17 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         credential: Credential::CodexAuthFile,
         jev: options.jev.clone(),
         artifacts: artifacts.clone(),
-        script: options.script.as_ref().map(|(_, replies)| replies.clone()),
         issues: false,
         issue: true,
         review: false,
-        policy: options
-            .policy
-            .as_ref()
-            .map(|chosen| chosen.manifest.clone()),
-        seal: Some(seal),
+        extra: crate::terminal::Micro {
+            script: options.script.as_ref().map(|(_, replies)| replies.clone()),
+            policy: options
+                .policy
+                .as_ref()
+                .map(|chosen| chosen.manifest.clone()),
+            seal: Some(seal),
+        },
     };
     let prepared = Prepared {
         inner,

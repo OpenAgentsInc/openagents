@@ -390,7 +390,7 @@ uses, and marks which are implemented and which are only specified.
   answers a turn through Microcoder's loop in process, on the first
   connected provider with capacity in the capacity book (the Codex login,
   then Claude Code's login, then Vertex when configured), failing over mid-turn when one refuses for a
-  usage or rate limit; else through Coder One's probes, Jev's judgments, a
+  usage or rate limit; else through `coder-delegate`'s probes, Jev's judgments, a
   briefing, and Claude Code or Codex when one is installed, signed in, and
   has capacity, with the Open Responses door as the fallback. The permit
   maps to its `coder-boundary` boundary, and `coder-worker` never reaches
@@ -463,6 +463,14 @@ uses, and marks which are implemented and which are only specified.
   (`coder_one::micro`, the `microluna-*` policies) and the `microluna`
   binary, so recorded evidence stays reproducible. Don't build new work
   on it; Coder's terminal no longer runs it.
+- `crates/coder-delegate` — what Coder's terminal turn runs, split out
+  of Coder One so Coder and Verse build without Microluna (#9889): the
+  Claude Code and Codex adapters, the probe battery and Jev's judge, the
+  briefing, the policy sections a turn reads, and the terminal turn
+  (`coder_delegate::terminal`), with an `Engine` hook an in-process loop
+  answers through. Coder One re-exports each module under its old path.
+  It must not depend on `crates/microluna`; `cargo tree -p coder -i
+  microluna` finds no package.
 - `crates/coder-one` — Coder One, a minimal standalone agent that turns a
   GitHub issue into a pull request. Each step asks Jev for typed
   judgments over the state, puts them in the prompt, generates one

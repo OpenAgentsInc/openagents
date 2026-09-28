@@ -324,8 +324,13 @@ pub async fn work(
             absorb(&mut answer, reviewed);
             say!("issue ▸ running the tests and checks on the change");
             let checked = Recorder::default();
-            let (problems, ran) =
-                gate(&workdir, inner.jev.as_ref(), &checked, inner.seal.as_ref()).await;
+            let (problems, ran) = gate(
+                &workdir,
+                inner.jev.as_ref(),
+                &checked,
+                inner.extra.seal.as_ref(),
+            )
+            .await;
             remaining = problems;
             answer.steps.extend(checked.steps());
             // A fix round can't give the host a boundary it lacks.

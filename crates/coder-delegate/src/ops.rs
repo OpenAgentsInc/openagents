@@ -984,7 +984,7 @@ pub async fn run_all(
 
 /// Strips credentials from a child's environment and keeps Git and Python
 /// from writing anything they would only write opportunistically.
-pub(crate) fn quiet_environment(command: &mut std::process::Command) {
+pub fn quiet_environment(command: &mut std::process::Command) {
     for (name, _) in std::env::vars_os() {
         if name.to_str().is_some_and(crate::shell::is_credential) {
             command.env_remove(&name);
@@ -1283,7 +1283,7 @@ pub fn effect_classes(captures: &[Capture]) -> BTreeSet<&'static str> {
     captures.iter().map(|c| c.effects.class.word()).collect()
 }
 
-pub(crate) fn hex(bytes: &[u8]) -> String {
+pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 

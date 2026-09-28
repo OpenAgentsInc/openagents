@@ -1,7 +1,7 @@
 use super::*;
 
 /// An `.npy` file as `numpy.save` writes it.
-pub(crate) fn npy(descr: &str, shape: &[usize], data: &[u8]) -> Vec<u8> {
+pub fn npy(descr: &str, shape: &[usize], data: &[u8]) -> Vec<u8> {
     let shape_text = match shape {
         [one] => format!("({one},)"),
         dims => format!(
@@ -26,7 +26,7 @@ pub(crate) fn npy(descr: &str, shape: &[usize], data: &[u8]) -> Vec<u8> {
     out
 }
 
-pub(crate) fn f8(values: &[f64]) -> Vec<u8> {
+pub fn f8(values: &[f64]) -> Vec<u8> {
     values.iter().flat_map(|v| v.to_le_bytes()).collect()
 }
 

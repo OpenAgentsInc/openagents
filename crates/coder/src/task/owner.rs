@@ -11,13 +11,14 @@ use supervise::{Input, Job, Limits};
 
 /// A bounded command reads its instructions once, at admission, like any
 /// task-owner run; its command itself takes no input.
-pub const BOUNDED_COMMAND_STEERING: coder_one::steering::Steering = coder_one::steering::Steering {
-    adapter: "bounded-command",
-    native: coder_one::steering::Native::TurnBoundary,
-    emulation: None,
-    acknowledgment: coder_one::steering::Acknowledgment::NextTurnStart,
-    limitations: &["The command's standard input is closed."],
-};
+pub const BOUNDED_COMMAND_STEERING: coder_delegate::steering::Steering =
+    coder_delegate::steering::Steering {
+        adapter: "bounded-command",
+        native: coder_delegate::steering::Native::TurnBoundary,
+        emulation: None,
+        acknowledgment: coder_delegate::steering::Acknowledgment::NextTurnStart,
+        limitations: &["The command's standard input is closed."],
+    };
 
 pub const GRANT_SCHEMA: &str = "openagents.coder.task-execution-grant.v1";
 const MAX_HOST_EVENTS: usize = 8192;

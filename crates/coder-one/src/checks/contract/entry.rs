@@ -66,11 +66,7 @@ pub enum Discovery {
 /// The largest program text read for a usage line.
 const PROGRAM_MAX: u64 = 256 * 1024;
 
-/// Extensions of files that are code or documentation, never data.
-const CODE: &[&str] = &[
-    "py", "pyc", "sh", "bash", "js", "mjs", "ts", "rs", "go", "c", "h", "cc", "cpp", "hpp", "java",
-    "rb", "pl", "pm", "v", "md", "rst", "toml", "cfg", "ini", "lock", "bas", "frm", "cls",
-];
+use coder_delegate::files::CODE;
 
 /// Directories a package search never enters.
 const SKIPPED: &[&str] = &[
@@ -401,12 +397,7 @@ fn usage_line(line: &str, program: &str) -> Option<Usage> {
     Some(usage)
 }
 
-fn extension(path: &str) -> Option<String> {
-    let name = path.rsplit('/').next().unwrap_or(path);
-    name.rsplit_once('.')
-        .filter(|(stem, _)| !stem.is_empty())
-        .map(|(_, e)| e.to_lowercase())
-}
+use coder_delegate::files::extension;
 
 /// The data files for `usage`, in order, when their count fits: exactly
 /// the required count, or at least it when the program takes more. Each

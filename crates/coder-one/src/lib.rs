@@ -19,68 +19,45 @@
 //! the task to Claude Code with a briefing code builds from the evidence.
 
 pub mod accept;
-pub mod action;
-pub mod adapter;
-pub mod agent;
 pub mod ask;
 pub mod baseline;
-pub mod briefing_jev;
-pub mod briefing_knowledge;
 pub mod capabilities;
 pub mod capture;
 pub mod checks;
-pub mod collect;
 pub mod component;
 pub mod compose;
 pub mod contamination;
-pub mod credentials;
-pub mod data_profile;
-pub mod deadline;
 pub mod decision;
-pub mod delegate;
 pub mod departures;
 pub mod effort;
-pub mod environment;
 pub mod episode;
 pub mod fire;
 pub mod generate;
 pub mod grade;
-pub mod guests;
 pub mod handoff;
 pub mod issue_eval;
 pub mod issue_turn;
-pub mod judge;
-pub mod limit;
 pub mod localize;
 pub mod micro;
 pub mod minitask;
-pub mod monitor;
-pub mod ops;
-pub mod pack;
 pub mod policy;
-pub mod probes;
 pub mod profile;
 pub mod prompt;
 pub mod proposal;
-pub mod record;
 pub mod repair;
-pub mod requirements;
 pub mod review_rule;
-pub mod say;
-pub mod scripted;
-pub mod session;
-pub mod shell;
 pub mod snapshot;
 pub mod stall;
-pub mod state;
-pub mod steering;
-pub mod stream;
 pub mod study;
 pub mod support;
-pub mod system;
-pub mod tail;
 pub mod terminal;
-pub mod transport;
+
+pub use coder_delegate::{
+    action, adapter, agent, briefing_jev, briefing_knowledge, collect, credentials, data_profile,
+    deadline, delegate, environment, files, guests, judge, limit, monitor, ops, pack, probes,
+    record, requirements, say, scripted, session, shell, state, steering, stream, system, tail,
+    transport, usage,
+};
 
 pub use action::Action;
 pub use agent::{Bounds, Ended, Generate, Judge, Judgments, Shell, run};

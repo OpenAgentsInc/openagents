@@ -103,7 +103,7 @@ impl Section {
     }
 }
 
-const SECURITY: &str = include_str!("../prompts/claude-code-2.1.280/02-security.md");
+const SECURITY: &str = include_str!("../../coder-one/prompts/claude-code-2.1.280/02-security.md");
 
 /// The protected sections: every variant carries each one.
 pub const PROTECTED: &[&str] = &["security"];
@@ -133,7 +133,7 @@ pub const LIBRARY: &[Section] = &[
     Section {
         id: "role",
         status: Status::Core,
-        text: include_str!("../prompts/headless/role.md"),
+        text: include_str!("../../coder-one/prompts/headless/role.md"),
         note: "Headless identity: no reader, no answers.",
         question: None,
     },
@@ -147,35 +147,35 @@ pub const LIBRARY: &[Section] = &[
     Section {
         id: "authority",
         status: Status::Core,
-        text: include_str!("../prompts/headless/authority.md"),
+        text: include_str!("../../coder-one/prompts/headless/authority.md"),
         note: "Replaces the rule to confirm hard-to-reverse actions, which nobody answers headless.",
         question: None,
     },
     Section {
         id: "verify",
         status: Status::Core,
-        text: include_str!("../prompts/headless/verify.md"),
+        text: include_str!("../../coder-one/prompts/headless/verify.md"),
         note: "The checker grades the final state; replaces Codex's rule against running tests unasked.",
         question: None,
     },
     Section {
         id: "report",
         status: Status::Core,
-        text: include_str!("../prompts/headless/report.md"),
+        text: include_str!("../../coder-one/prompts/headless/report.md"),
         note: "Faithful final report.",
         question: None,
     },
     Section {
         id: "code-style",
         status: Status::Core,
-        text: include_str!("../prompts/headless/code-style.md"),
+        text: include_str!("../../coder-one/prompts/headless/code-style.md"),
         note: "Claude Code's code-style line, kept.",
         question: None,
     },
     Section {
         id: "long-builds",
         status: Status::Optional,
-        text: include_str!("../prompts/headless/long-builds.md"),
+        text: include_str!("../../coder-one/prompts/headless/long-builds.md"),
         note: "Long builds and compilations.",
         question: Some(
             "Does the task in `issue` require building or compiling code, such as a C extension, a native library, or a project with a build system, that may take minutes?",
@@ -184,7 +184,7 @@ pub const LIBRARY: &[Section] = &[
     Section {
         id: "packages",
         status: Status::Optional,
-        text: include_str!("../prompts/headless/packages.md"),
+        text: include_str!("../../coder-one/prompts/headless/packages.md"),
         note: "Package installation.",
         question: Some(
             "Does the task in `issue` require installing packages or libraries, with pip, npm, apt, or another package manager, before the work can be done?",
@@ -193,7 +193,7 @@ pub const LIBRARY: &[Section] = &[
     Section {
         id: "data-parsing",
         status: Status::Optional,
-        text: include_str!("../prompts/headless/data-parsing.md"),
+        text: include_str!("../../coder-one/prompts/headless/data-parsing.md"),
         note: "Parsing logs and data by field.",
         question: Some(
             "Does the task in `issue` require reading and parsing logs, data files, or a database to compute or extract results?",
@@ -202,7 +202,7 @@ pub const LIBRARY: &[Section] = &[
     Section {
         id: "git-recovery",
         status: Status::Optional,
-        text: include_str!("../prompts/headless/git-recovery.md"),
+        text: include_str!("../../coder-one/prompts/headless/git-recovery.md"),
         note: "Recovering lost Git work.",
         question: Some(
             "Does the task in `issue` involve recovering, repairing, or inspecting Git history, such as lost commits, a detached HEAD, or leaked secrets in past commits?",
@@ -211,7 +211,7 @@ pub const LIBRARY: &[Section] = &[
     Section {
         id: "concurrency",
         status: Status::Optional,
-        text: include_str!("../prompts/headless/concurrency.md"),
+        text: include_str!("../../coder-one/prompts/headless/concurrency.md"),
         note: "Cancellation and cleanup in concurrent code.",
         question: Some(
             "Does the task in `issue` involve concurrent or asynchronous code, where cancellation, interruption, or cleanup of running tasks matters?",
@@ -220,7 +220,7 @@ pub const LIBRARY: &[Section] = &[
     Section {
         id: "services",
         status: Status::Optional,
-        text: include_str!("../prompts/headless/services.md"),
+        text: include_str!("../../coder-one/prompts/headless/services.md"),
         note: "Servers and other long-running programs.",
         question: Some(
             "Does the task in `issue` require starting a server, a daemon, or another program that keeps running while the task is checked?",
@@ -234,7 +234,7 @@ pub const CLAUDE_CODE_DEFAULT: &[Section] = &[
     default(
         "default:role",
         Status::Tune,
-        include_str!("../prompts/claude-code-2.1.280/01-role.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/01-role.md"),
         "Role line; interactive framing.",
     ),
     default(
@@ -246,61 +246,61 @@ pub const CLAUDE_CODE_DEFAULT: &[Section] = &[
     default(
         "default:harness",
         Status::Remove,
-        include_str!("../prompts/claude-code-2.1.280/03-harness.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/03-harness.md"),
         "Markdown display, permission modes, hooks, clickable references: no reader.",
     ),
     default(
         "default:code-style",
         Status::Keep,
-        include_str!("../prompts/claude-code-2.1.280/04-code-style.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/04-code-style.md"),
         "Relevant to edits.",
     ),
     default(
         "default:pronouns",
         Status::Remove,
-        include_str!("../prompts/claude-code-2.1.280/05-pronouns.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/05-pronouns.md"),
         "No reader.",
     ),
     default(
         "default:confirm-actions",
         Status::Replace,
-        include_str!("../prompts/claude-code-2.1.280/06-confirm-actions.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/06-confirm-actions.md"),
         "Conflicts with headless work, where nobody answers; the core's authority statement replaces it.",
     ),
     default(
         "default:report-faithfully",
         Status::Keep,
-        include_str!("../prompts/claude-code-2.1.280/07-report-faithfully.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/07-report-faithfully.md"),
         "Relevant to the final report.",
     ),
     default(
         "default:memory",
         Status::Remove,
-        include_str!("../prompts/claude-code-2.1.280/08-memory.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/08-memory.md"),
         "Writes files outside the task.",
     ),
     default(
         "default:environment-catalog",
         Status::Remove,
-        include_str!("../prompts/claude-code-2.1.280/09-environment-catalog.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/09-environment-catalog.md"),
         "Model catalog, Claude Code surfaces, fast mode: irrelevant.",
     ),
     default(
         "default:context-management",
         Status::Tune,
-        include_str!("../prompts/claude-code-2.1.280/10-context-management.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/10-context-management.md"),
         "Rarely relevant to a short task.",
     ),
     default(
         "default:act-when-ready",
         Status::Keep,
-        include_str!("../prompts/claude-code-2.1.280/11-act-when-ready.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/11-act-when-ready.md"),
         "Discourages re-deriving established facts.",
     ),
     default(
         "default:token-budget",
         Status::Tune,
-        include_str!("../prompts/claude-code-2.1.280/12-token-budget.md"),
+        include_str!("../../coder-one/prompts/claude-code-2.1.280/12-token-budget.md"),
         "The context budget line.",
     ),
 ];
@@ -312,55 +312,55 @@ pub const CODEX_DEFAULT: &[Section] = &[
     default(
         "default:role",
         Status::Tune,
-        include_str!("../prompts/codex-0.155.1/01-role.md"),
+        include_str!("../../coder-one/prompts/codex-0.155.1/01-role.md"),
         "Identity; collaborative framing.",
     ),
     default(
         "default:personality",
         Status::Remove,
-        include_str!("../prompts/codex-0.155.1/02-personality.md"),
+        include_str!("../../coder-one/prompts/codex-0.155.1/02-personality.md"),
         "Personality and writing style: no reader.",
     ),
     default(
         "default:permission",
         Status::Replace,
-        include_str!("../prompts/codex-0.155.1/03-permission.md"),
+        include_str!("../../coder-one/prompts/codex-0.155.1/03-permission.md"),
         "When to ask the user; nobody answers headless.",
     ),
     default(
         "default:autonomy",
         Status::Keep,
-        include_str!("../prompts/codex-0.155.1/04-autonomy.md"),
+        include_str!("../../coder-one/prompts/codex-0.155.1/04-autonomy.md"),
         "Persistence until the goal is met.",
     ),
     default(
         "default:working-with-user",
         Status::Tune,
-        include_str!("../prompts/codex-0.155.1/05-working-with-user.md"),
+        include_str!("../../coder-one/prompts/codex-0.155.1/05-working-with-user.md"),
         "Commentary and final channels, formatting, visualizations: mostly for a reader.",
     ),
     default(
         "default:rules",
         Status::Tune,
-        include_str!("../prompts/codex-0.155.1/06-rules.md"),
+        include_str!("../../coder-one/prompts/codex-0.155.1/06-rules.md"),
         "Search and shell rules; includes a rule against running tests unasked.",
     ),
     default(
         "default:skills",
         Status::Remove,
-        include_str!("../prompts/codex-0.155.1/07-skills.md"),
+        include_str!("../../coder-one/prompts/codex-0.155.1/07-skills.md"),
         "No skills are installed in a task container.",
     ),
     default(
         "default:apps",
         Status::Remove,
-        include_str!("../prompts/codex-0.155.1/08-apps.md"),
+        include_str!("../../coder-one/prompts/codex-0.155.1/08-apps.md"),
         "No connectors.",
     ),
     default(
         "default:plugins",
         Status::Remove,
-        include_str!("../prompts/codex-0.155.1/09-plugins.md"),
+        include_str!("../../coder-one/prompts/codex-0.155.1/09-plugins.md"),
         "No plugins.",
     ),
 ];
@@ -960,7 +960,9 @@ mod tests {
 
     #[test]
     fn the_checked_in_library_record_is_current() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(LIBRARY_FILE);
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../coder-one")
+            .join(LIBRARY_FILE);
         let text = std::fs::read_to_string(&path).unwrap_or_default();
         let expected = format!(
             "{}\n",

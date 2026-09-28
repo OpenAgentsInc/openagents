@@ -24,11 +24,11 @@ pub const NAME: &str = "microcoder-repository";
 /// it: that is task-level CTRL cancellation, not steering. The emulated
 /// operation, which a device must choose, stops the run and continues the
 /// task with the message as its next turn.
-pub const STEERING: coder_one::steering::Steering = coder_one::steering::Steering {
+pub const STEERING: coder_delegate::steering::Steering = coder_delegate::steering::Steering {
     adapter: NAME,
-    native: coder_one::steering::Native::TurnBoundary,
-    emulation: Some(coder_one::steering::Emulation::CancelAndContinue),
-    acknowledgment: coder_one::steering::Acknowledgment::NextTurnStart,
+    native: coder_delegate::steering::Native::TurnBoundary,
+    emulation: Some(coder_delegate::steering::Emulation::CancelAndContinue),
+    acknowledgment: coder_delegate::steering::Acknowledgment::NextTurnStart,
     limitations: &[
         "A run reads its instructions once, at admission.",
         "Emulation stops the running turn and starts the next turn with the message.",

@@ -2487,10 +2487,7 @@ pub fn changes_since(start: &Path, workdir: &Path) -> String {
             String::from_utf8_lossy(&out.stdout).replace(&start.display().to_string(), "(start)")
         }
         _ => {
-            let (before, after) = (
-                crate::micro::parallel::tree(start),
-                crate::micro::parallel::tree(workdir),
-            );
+            let (before, after) = (crate::files::tree(start), crate::files::tree(workdir));
             let mut lines = Vec::new();
             for (path, sha) in &after {
                 match before.get(path) {
@@ -2540,9 +2537,7 @@ fn start_copy(workdir: &Path) -> Option<PathBuf> {
         std::process::id(),
         atif::now_ms()
     ));
-    crate::handoff::copy_tree(workdir, &copy)
-        .ok()
-        .map(|()| copy)
+    crate::files::copy_tree(workdir, &copy).ok().map(|()| copy)
 }
 
 /// What changed in the working directory, for the closing check: Git's
@@ -2925,8 +2920,80 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+/// Fixtures and a scripted executor for tests of this crate and of Coder
+/// One. Not for production use.
+#[doc(hidden)]
+pub mod testing {
+    use std::time::Duration;
+
+    use serde_json::{Map, Value, json};
+
+    use super::{Briefing, DEFAULT_MODEL, Executor, Report, Status, Summary};
+
+    pub const RESULT: &str = r#"{"type":"system","subtype":"init","model":"claude-opus-5-5","claude_code_version":"2.1.280","apiKeySource":"none"}
+{"type":"assistant","message":{"id":"msg_1","usage":{"input_tokens":3,"cache_creation_input_tokens":9000,"cache_read_input_tokens":10000,"output_tokens":40}}}
+{"type":"assistant","message":{"id":"msg_1","usage":{"input_tokens":3,"cache_creation_input_tokens":9000,"cache_read_input_tokens":10000,"output_tokens":90}}}
+{"type":"assistant","message":{"id":"msg_2","usage":{"input_tokens":5,"cache_creation_input_tokens":500,"cache_read_input_tokens":19000,"output_tokens":20}}}
+{"type":"result","subtype":"success","is_error":false,"num_turns":3,"result":"Fixed the parser.","total_cost_usd":0.25,"duration_ms":9000,"duration_api_ms":8000,"session_id":"s-1","usage":{"input_tokens":8,"cache_creation_input_tokens":9500,"cache_read_input_tokens":29000,"output_tokens":110}}
+"#;
+
+    /// A retained Claude Code session the subscription limit throttled
+    /// before its first turn (Terminal-Bench 4.0, 2026-09-23).
+    pub const THROTTLED: &str =
+        include_str!("../../coder-one/fixtures/usage-limit/claude-session-limit.stream.jsonl");
+
+    /// An executor that answers from a script and keeps what it was sent.
+    pub struct FakeExecutor {
+        pub reports: Vec<Report>,
+        pub sent: Vec<String>,
+    }
+
+    impl Executor for FakeExecutor {
+        fn agent(&self) -> &str {
+            "claude-code"
+        }
+        fn cost_provenance(&self) -> &'static str {
+            "cli_list_price"
+        }
+        fn model(&self) -> &str {
+            DEFAULT_MODEL
+        }
+        fn deadline(&self) -> Duration {
+            Duration::from_secs(600)
+        }
+        fn describe(&self) -> Map<String, Value> {
+            let mut extra = Map::new();
+            extra.insert("credential".to_string(), json!("subscription_oauth"));
+            extra
+        }
+        async fn execute(&mut self, briefing: &Briefing) -> Report {
+            self.sent.push(briefing.text.clone());
+            self.reports.remove(0)
+        }
+    }
+
+    /// A report with `status`, answered from [`RESULT`] when it answered.
+    pub fn report(status: Status) -> Report {
+        let summary = if status == Status::Answered {
+            Summary::parse(RESULT)
+        } else {
+            Summary::default()
+        };
+        Report {
+            status,
+            summary,
+            milliseconds: 9_100,
+            stderr: String::new(),
+            stream: Some(
+                json!({ "path": "artifacts/delegate-1.stream.jsonl", "truncated": false }),
+            ),
+        }
+    }
+}
+
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
+    use super::testing::{FakeExecutor, RESULT, THROTTLED, report};
     use super::*;
 
     /// A workspace outside Git shows the closing check a real diff against
@@ -2937,7 +3004,7 @@ pub(crate) mod tests {
         let (start, now) = (root.path().join("start"), root.path().join("now"));
         std::fs::create_dir_all(&start).unwrap();
         std::fs::write(start.join("stats.py"), "biased = True\n").unwrap();
-        crate::handoff::copy_tree(&start, &now).unwrap();
+        crate::files::copy_tree(&start, &now).unwrap();
         assert_eq!(
             changes_since(&start, &now),
             "Nothing changed since the start."
@@ -3210,13 +3277,6 @@ pub(crate) mod tests {
         assert!(Mode::parse("sometimes").is_err());
     }
 
-    const RESULT: &str = r#"{"type":"system","subtype":"init","model":"claude-opus-5-5","claude_code_version":"2.1.280","apiKeySource":"none"}
-{"type":"assistant","message":{"id":"msg_1","usage":{"input_tokens":3,"cache_creation_input_tokens":9000,"cache_read_input_tokens":10000,"output_tokens":40}}}
-{"type":"assistant","message":{"id":"msg_1","usage":{"input_tokens":3,"cache_creation_input_tokens":9000,"cache_read_input_tokens":10000,"output_tokens":90}}}
-{"type":"assistant","message":{"id":"msg_2","usage":{"input_tokens":5,"cache_creation_input_tokens":500,"cache_read_input_tokens":19000,"output_tokens":20}}}
-{"type":"result","subtype":"success","is_error":false,"num_turns":3,"result":"Fixed the parser.","total_cost_usd":0.25,"duration_ms":9000,"duration_api_ms":8000,"session_id":"s-1","usage":{"input_tokens":8,"cache_creation_input_tokens":9500,"cache_read_input_tokens":29000,"output_tokens":110}}
-"#;
-
     #[test]
     fn the_stream_summary_reads_the_result_and_counts_api_calls() {
         let summary = Summary::parse(RESULT);
@@ -3331,13 +3391,9 @@ pub(crate) mod tests {
         assert_eq!(Credential::ApiKey.cost_provenance(), "cli_reported");
     }
 
-    /// A retained Claude Code session the subscription limit throttled
-    /// before its first turn (Terminal-Bench 4.0, 2026-09-23).
-    pub(crate) const THROTTLED: &str =
-        include_str!("../fixtures/usage-limit/claude-session-limit.stream.jsonl");
     /// A retained session throttled mid-run, after real work.
     const THROTTLED_MID_RUN: &str =
-        include_str!("../fixtures/usage-limit/claude-mid-session-limit.stream.jsonl");
+        include_str!("../../coder-one/fixtures/usage-limit/claude-mid-session-limit.stream.jsonl");
 
     #[test]
     fn a_throttled_claude_session_is_a_usage_limit_with_its_reset_time() {
@@ -3475,53 +3531,6 @@ pub(crate) mod tests {
         assert_eq!(limit.provider, "anthropic");
         assert!(limit.message.contains("usage limit"));
         assert_eq!(report(Status::Answered).limit("claude-code"), None);
-    }
-
-    /// An executor that answers from a script and keeps what it was sent.
-    pub(crate) struct FakeExecutor {
-        pub reports: Vec<Report>,
-        pub sent: Vec<String>,
-    }
-
-    impl Executor for FakeExecutor {
-        fn agent(&self) -> &str {
-            "claude-code"
-        }
-        fn cost_provenance(&self) -> &'static str {
-            "cli_list_price"
-        }
-        fn model(&self) -> &str {
-            DEFAULT_MODEL
-        }
-        fn deadline(&self) -> Duration {
-            Duration::from_secs(600)
-        }
-        fn describe(&self) -> Map<String, Value> {
-            let mut extra = Map::new();
-            extra.insert("credential".to_string(), json!("subscription_oauth"));
-            extra
-        }
-        async fn execute(&mut self, briefing: &Briefing) -> Report {
-            self.sent.push(briefing.text.clone());
-            self.reports.remove(0)
-        }
-    }
-
-    pub(crate) fn report(status: Status) -> Report {
-        let summary = if status == Status::Answered {
-            Summary::parse(RESULT)
-        } else {
-            Summary::default()
-        };
-        Report {
-            status,
-            summary,
-            milliseconds: 9_100,
-            stderr: String::new(),
-            stream: Some(
-                json!({ "path": "artifacts/delegate-1.stream.jsonl", "truncated": false }),
-            ),
-        }
     }
 
     #[tokio::test]

@@ -78,7 +78,7 @@ fn report() -> (Vec<String>, bool) {
         let state = match (&target.binary, target.credential, &target.problem) {
             _ if !target.agent.is_cli() => "runs in this process".to_string(),
             (None, _, _) => "not installed".to_string(),
-            (Some(path), coder_one::delegate::Credential::Missing, _) => {
+            (Some(path), coder_delegate::delegate::Credential::Missing, _) => {
                 format!("{}, not signed in", path.display())
             }
             (Some(path), _, Some(problem)) => format!("{}, skipped: {problem}", path.display()),
@@ -129,8 +129,8 @@ fn report() -> (Vec<String>, bool) {
         }
     }
 
-    let policy = coder_one::terminal::policy();
-    let executor = &policy.policy.executor;
+    let policy = coder_delegate::terminal::policy();
+    let executor = &policy.executor;
     match chosen {
         Some(Chosen::Delegate(target)) if !target.agent.is_cli() => {
             let (provider, model) = target.provider().map_or(("none", "none"), |state| {
@@ -161,9 +161,9 @@ fn report() -> (Vec<String>, bool) {
             lines.push(format!(
                 "{:<10} {} ({}), sha256 {}",
                 "policy",
-                coder_one::terminal::POLICY_FILE,
-                policy.name.as_deref().unwrap_or("unnamed"),
-                policy.digest(),
+                coder_delegate::terminal::POLICY_FILE,
+                coder_delegate::terminal::policy_name(),
+                coder_delegate::terminal::policy_digest(),
             ));
         }
     }

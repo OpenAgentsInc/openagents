@@ -17,18 +17,17 @@
 //! coder-one component suite evidence.probes [--fixtures DIR] [--jev recorded]
 //! ```
 
+pub use coder_delegate::component::{evidence, jev, pack};
+
 pub mod baseline;
 pub mod checks;
 pub mod cli;
 pub mod data_profile;
 pub mod departures;
-pub mod evidence;
 pub mod extract;
 pub mod finish;
 pub mod grade;
-pub mod jev;
 pub mod monitor;
-pub mod pack;
 pub mod repair;
 pub mod replay;
 pub mod review;
@@ -1802,5 +1801,53 @@ impl Component for HandoffComponent {
                 metrics,
             })
         })
+    }
+}
+
+/// The requirement map's labeled suite, which reads this module's
+/// fixtures, moved here with `crate::requirements` to `coder-delegate`.
+#[cfg(test)]
+mod requirements_suite {
+    use crate::record::Recorder;
+    use serde_json::json;
+
+    /// The labeled suite, with recorded Jev: every instruction fully
+    /// covered, and recall and precision reported for every labeled task.
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_labeled_suite_scores_recall_and_precision_with_recorded_jev() {
+        use crate::component::{JevChoice, find, fixtures_for, suite};
+        let component = find("task.requirements").unwrap();
+        let dirs = fixtures_for(&crate::component::default_fixtures(), component.id());
+        assert!(dirs.len() >= 10, "{dirs:?}");
+        let jev = suite(
+            component.as_ref(),
+            &dirs,
+            &JevChoice::Recorded,
+            &Recorder::default(),
+            false,
+        )
+        .await
+        .unwrap();
+        let rule = suite(
+            component.as_ref(),
+            &dirs,
+            &JevChoice::Off,
+            &Recorder::default(),
+            false,
+        )
+        .await
+        .unwrap();
+        for run in jev.runs.iter().chain(&rule.runs) {
+            assert!(run.error.is_none(), "{}: {:?}", run.fixture, run.error);
+            assert_eq!(run.metrics["coverage"], json!(1.0), "{}", run.fixture);
+            assert!(run.metrics.contains_key("recall"), "{}", run.fixture);
+            assert!(run.metrics.contains_key("precision"), "{}", run.fixture);
+        }
+        assert!(jev.runs.iter().all(|run| run.jev.get("miss").is_none()));
+        let mean = |suite: &crate::component::Suite, metric: &str| {
+            suite.summary()["metrics"][metric]["mean"].as_f64().unwrap()
+        };
+        assert!(mean(&jev, "recall") >= 0.95, "{}", mean(&jev, "recall"));
+        assert!(mean(&jev, "precision") >= mean(&rule, "precision"));
     }
 }

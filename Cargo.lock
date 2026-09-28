@@ -1009,8 +1009,8 @@ dependencies = [
  "capability",
  "coder-boundary",
  "coder-connect",
+ "coder-delegate",
  "coder-host",
- "coder-one",
  "coder-setup",
  "coder-terminal",
  "coderbench",
@@ -1149,6 +1149,27 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "coder-delegate"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "coder-boundary",
+ "coder-history",
+ "futures-util",
+ "indexmap",
+ "jev",
+ "plugin",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "supervise",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -1301,6 +1322,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "coder-boundary",
+ "coder-delegate",
  "coder-history",
  "futures-util",
  "indexmap",
@@ -8499,7 +8521,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "coder",
- "coder-one",
+ "coder-delegate",
  "coder-ui",
  "futures-util",
  "glam",

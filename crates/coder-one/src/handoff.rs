@@ -483,35 +483,7 @@ fn snapshot(dir: &Path) -> BTreeMap<String, Option<String>> {
     files
 }
 
-/// Copies `from` into `to`, `.git` included, replacing what `to` held.
-///
-/// # Errors
-///
-/// Returns a message when a file can't be copied.
-pub fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
-    if to.exists() {
-        std::fs::remove_dir_all(to).map_err(|error| format!("{}: {error}", to.display()))?;
-    }
-    std::fs::create_dir_all(to).map_err(|error| format!("{}: {error}", to.display()))?;
-    for entry in std::fs::read_dir(from)
-        .map_err(|error| format!("{}: {error}", from.display()))?
-        .flatten()
-    {
-        let path = entry.path();
-        let target = to.join(entry.file_name());
-        let kind = entry.file_type().map_err(|error| error.to_string())?;
-        if kind.is_dir() {
-            copy_tree(&path, &target)?;
-        } else if kind.is_symlink() {
-            let link = std::fs::read_link(&path).map_err(|error| error.to_string())?;
-            std::os::unix::fs::symlink(link, &target).map_err(|error| error.to_string())?;
-        } else {
-            std::fs::copy(&path, &target)
-                .map_err(|error| format!("{}: {error}", path.display()))?;
-        }
-    }
-    Ok(())
-}
+pub use coder_delegate::files::copy_tree;
 
 /// A handoff brief, built by code from the workspace and the session.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -317,7 +317,7 @@ fn delimited(head: &str, delimiter: u8) -> bool {
 #[must_use]
 pub fn classify(path: &str, head: &[u8]) -> Option<Kind> {
     let name = path.rsplit('/').next().unwrap_or(path);
-    if !crate::checks::contract::entry::wide::is_input_name(name) {
+    if !crate::files::is_input_name(name) {
         return None;
     }
     let ext = extension(path);
@@ -1500,7 +1500,7 @@ pub fn profile(root: &Path, params: &Params) -> Profile {
     let deadline = Duration::from_millis(params.wall_ms);
     let mut out = Profile::default();
     let mut budget = params.total_bytes;
-    for path in crate::micro::parallel::workspace_files(root) {
+    for path in crate::files::workspace_files(root) {
         if path.split('/').any(|part| part.starts_with('.')) {
             continue;
         }
@@ -1513,7 +1513,7 @@ pub fn profile(root: &Path, params: &Params) -> Profile {
         if out.files.len() >= params.max_files || started.elapsed() >= deadline {
             let name = path.rsplit('/').next().unwrap_or(&path);
             let known = EXTENSIONS.iter().any(|(e, _)| *e == ext);
-            if known && crate::checks::contract::entry::wide::is_input_name(name) {
+            if known && crate::files::is_input_name(name) {
                 out.skipped.push((
                     path,
                     if out.files.len() >= params.max_files {

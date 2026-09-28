@@ -619,10 +619,10 @@ fn a_turn_with_a_target_is_delegated_and_streams_its_progress() {
     let work = dir.path().join("work");
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&work).unwrap();
-    let claude = coder_one::adapter::standin::install(
+    let claude = coder_delegate::adapter::standin::install(
         &dir.path().join("bin"),
         "claude",
-        coder_one::adapter::standin::CLAUDE,
+        coder_delegate::adapter::standin::CLAUDE,
     );
     let trace = dir.path().join("delegated.atif.jsonl");
     let mut command = Command::new(env!("CARGO_BIN_EXE_coder"));

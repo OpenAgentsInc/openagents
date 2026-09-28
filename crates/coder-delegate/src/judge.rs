@@ -53,7 +53,7 @@ const MAX_CHUNKS: usize = 12;
 const MAX_CHUNK_CHARS: usize = 1_500;
 /// A file code found that might matter to the issue.
 #[derive(Debug, Clone)]
-pub(crate) struct Candidate {
+pub struct Candidate {
     path: String,
     hits: usize,
     excerpt: String,
@@ -110,9 +110,9 @@ pub struct JevJudge {
 const PROBE_OUTPUT_CHARS: usize = 6_000;
 
 /// The most files the survey judges, in batches of [`SURVEY_BATCH`].
-pub(crate) const SURVEY_FILES: usize = 100;
+pub const SURVEY_FILES: usize = 100;
 /// Probe v2's smaller survey pool: Jev's file survey was most of its cost.
-pub(crate) const SURVEY_FILES_V2: usize = 40;
+pub const SURVEY_FILES_V2: usize = 40;
 /// The most characters of one likely edit target probe v2 hands on.
 const EDIT_TARGET_CHARS: usize = 16_000;
 /// The most characters of one file, and of all files, the survey puts in
@@ -974,7 +974,7 @@ impl JevJudge {
     /// The files the survey judges: those the issue names, then by
     /// keyword hits, then build manifests, then short paths, at most
     /// [`SURVEY_FILES`].
-    pub(crate) fn survey_pool(&self, issue: &Issue) -> Vec<Candidate> {
+    pub fn survey_pool(&self, issue: &Issue) -> Vec<Candidate> {
         let (tracked, hits) = self.search();
         let mut order: Vec<String> = self.candidates(issue).into_iter().map(|c| c.path).collect();
         let mut ranked: Vec<(&String, &usize)> = hits.iter().collect();
@@ -1726,7 +1726,7 @@ fn chunk(output: &str) -> Vec<String> {
 /// Files under `root` a search should read: relative paths, skipping
 /// hidden directories, dependency and build trees, and files over 256
 /// KiB, at most 5,000 files.
-pub(crate) fn walk(root: &std::path::Path) -> Vec<String> {
+pub fn walk(root: &std::path::Path) -> Vec<String> {
     const SKIP: &[&str] = &[
         "node_modules",
         "target",
@@ -1773,7 +1773,7 @@ pub(crate) fn walk(root: &std::path::Path) -> Vec<String> {
 
 /// Runs Git read-only: no optional locks and no index refresh, so even
 /// `git status` leaves the index alone, and with no prompt or pager.
-pub(crate) fn git(workdir: &std::path::Path, args: &[&str]) -> String {
+pub fn git(workdir: &std::path::Path, args: &[&str]) -> String {
     let mut command = Command::new("git");
     command
         .args(crate::ops::READ_ONLY_GIT)
@@ -1795,7 +1795,7 @@ pub fn clip(text: &str, max: usize) -> String {
 }
 
 /// The last `max` characters of `text`, marked when cut.
-pub(crate) fn clip_tail(text: &str, max: usize) -> String {
+pub fn clip_tail(text: &str, max: usize) -> String {
     let count = text.chars().count();
     if count <= max {
         return text.to_string();

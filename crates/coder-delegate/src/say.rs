@@ -75,14 +75,17 @@ pub fn seconds(ms: u128) -> String {
     format!("{:.1} s", ms as f64 / 1000.0)
 }
 
-/// Says a formatted progress line through [`line`].
-macro_rules! say {
+/// Says a formatted progress line through [`line`]. Use it as
+/// `say::say!`; the exported name is an implementation detail.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __say {
     ($($arg:tt)*) => {
         $crate::say::line(&format!($($arg)*))
     };
 }
 
-pub(crate) use say;
+pub use crate::__say as say;
 
 #[cfg(test)]
 mod tests {

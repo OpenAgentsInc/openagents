@@ -49,24 +49,12 @@ pub const SHARED_MIN: f64 = 0.4;
 /// many consecutive units.
 pub const MAX_UNITS: usize = 6;
 
-/// The most workspace files listed, and read for names.
-pub const MAX_FILES: usize = 4_000;
+pub use coder_delegate::files::MAX_FILES;
 
 /// The largest workspace the host copies for lanes, in bytes.
 pub const MAX_COPY_BYTES: u64 = 256 * 1024 * 1024;
 
-/// Directories a lane's diff ignores: caches a test run rewrites, and the
-/// Git database, which a merge of files doesn't carry.
-pub const UNMERGED: [&str; 5] = [
-    ".git",
-    "__pycache__",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
-];
-
-/// Directories the file list for evidence skips, besides [`UNMERGED`].
-const UNLISTED: [&str; 6] = ["node_modules", "target", ".venv", "venv", "dist", "build"];
+pub use coder_delegate::files::UNMERGED;
 
 /// One unit of red work: red tests, the requirements they check, and the
 /// workspace files their evidence names.
@@ -111,38 +99,7 @@ pub fn copyable(dir: &Path) -> bool {
     true
 }
 
-/// The workspace's files, relative to `dir`, sorted, without caches,
-/// dependency trees, and build output, at most [`MAX_FILES`].
-#[must_use]
-pub fn workspace_files(dir: &Path) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(at) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&at) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let Ok(kind) = entry.file_type() else {
-                continue;
-            };
-            if kind.is_dir() {
-                if !UNMERGED.contains(&name.as_str()) && !UNLISTED.contains(&name.as_str()) {
-                    stack.push(path);
-                }
-            } else if let Ok(relative) = path.strip_prefix(dir) {
-                out.push(relative.to_string_lossy().into_owned());
-                if out.len() >= MAX_FILES {
-                    out.sort();
-                    return out;
-                }
-            }
-        }
-    }
-    out.sort();
-    out
-}
+pub use coder_delegate::files::workspace_files;
 
 /// Whether `needle` occurs in `text` as a whole name: not inside a longer
 /// identifier or path segment.
@@ -397,46 +354,7 @@ pub fn lanes(units: &[Unit], shared: &dyn Fn(usize, usize) -> bool, cap: usize) 
         .collect()
 }
 
-/// Every file under `dir` a merge compares, by path relative to `dir`,
-/// with its SHA-256 (a symbolic link by its target), skipping
-/// [`UNMERGED`] directories and compiled Python files.
-#[must_use]
-pub fn tree(dir: &Path) -> BTreeMap<String, String> {
-    let mut out = BTreeMap::new();
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(at) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&at) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let Ok(kind) = entry.file_type() else {
-                continue;
-            };
-            let Ok(relative) = path.strip_prefix(dir) else {
-                continue;
-            };
-            let relative = relative.to_string_lossy().into_owned();
-            if kind.is_dir() {
-                if !UNMERGED.contains(&name.as_str()) {
-                    stack.push(path);
-                }
-            } else if kind.is_symlink() {
-                let target = std::fs::read_link(&path).unwrap_or_default();
-                out.insert(
-                    relative,
-                    crate::accept::sha256(format!("link:{}", target.display()).as_bytes()),
-                );
-            } else if !name.ends_with(".pyc")
-                && let Ok(bytes) = std::fs::read(&path)
-            {
-                out.insert(relative, crate::accept::sha256(&bytes));
-            }
-        }
-    }
-    out
-}
+pub use coder_delegate::files::tree;
 
 /// A lane whose changes weren't applied, and the files that clashed.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

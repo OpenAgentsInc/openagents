@@ -108,10 +108,10 @@ fn pick_door() -> Option<(String, ResponsesDoor)> {
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty())
     };
-    let dir = coder_one::credentials::openagents_dir()?;
-    let found = coder_one::credentials::bearer(env, &dir).ok()?;
+    let dir = coder_delegate::credentials::openagents_dir()?;
+    let found = coder_delegate::credentials::bearer(env, &dir).ok()?;
     let base = env("OPENAGENTS_DOOR_URL")
-        .unwrap_or_else(|| coder_one::credentials::GENERATION_BASE_URL.to_owned());
+        .unwrap_or_else(|| coder_delegate::credentials::GENERATION_BASE_URL.to_owned());
     let door = ResponsesDoor::new(base, FREE_LANE, found.secret.expose());
     Some(("the OpenAgents free lane".to_owned(), door))
 }

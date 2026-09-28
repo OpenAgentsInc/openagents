@@ -56,19 +56,7 @@ pub const DATA_EXTENSIONS: &[&str] = &[
     "npy", "npz", "csv", "tsv", "json", "jsonl", "ndjson", "parquet", "txt", "log", "dat",
 ];
 
-/// Names that are a project's configuration or documentation, never its
-/// input.
-pub const NOT_INPUT: &[&str] = &[
-    "package.json",
-    "package-lock.json",
-    "composer.json",
-    "tsconfig.json",
-    "jsconfig.json",
-    "requirements.txt",
-    "constraints.txt",
-    "cmakelists.txt",
-    "robots.txt",
-];
+pub use coder_delegate::files::NOT_INPUT;
 
 /// Shipped input files used, at most.
 pub const MAX_SHIPPED: usize = 12;
@@ -94,22 +82,7 @@ const PER_KIND: usize = 2;
 /// The depth a nested package search reaches below its root.
 const PACKAGE_DEPTH: usize = 2;
 
-/// Whether a file name can be a task input: not hidden, not code or
-/// documentation, and not a project's configuration or lockfile.
-#[must_use]
-pub fn is_input_name(name: &str) -> bool {
-    let lower = name.to_lowercase();
-    !name.starts_with('.')
-        && !NOT_INPUT.contains(&lower.as_str())
-        && !lower.starts_with("requirements")
-        && !lower.starts_with("readme")
-        && !lower.starts_with("license")
-        && !lower.starts_with("changelog")
-        && !lower.ends_with(".lock")
-        && !lower.starts_with("tsconfig")
-        && lower != "makefile"
-        && !super::extension(name).is_some_and(|e| super::CODE.contains(&e.as_str()))
-}
+pub use coder_delegate::files::is_input_name;
 
 fn sorted_entries(dir: &Path) -> Vec<(String, bool)> {
     let mut out: Vec<(String, bool)> = std::fs::read_dir(dir)
