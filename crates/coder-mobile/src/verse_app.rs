@@ -1320,6 +1320,18 @@ impl Scene {
             self.reset_motion();
         }
         self.advance_motion(camera_dt as f32);
+        // Other players' avatars, where they are drawn, are solid.
+        let now = Instant::now();
+        self.world
+            .set_avatars(self.session.as_ref().map_or_else(Vec::new, |session| {
+                session
+                    .crowd
+                    .shown(now)
+                    .into_iter()
+                    .filter(|shown| shown.role == "avatar")
+                    .map(|shown| shown.pos)
+                    .collect()
+            }));
         let input = self.input();
         let revision = self.world.zone_revision;
         self.world.tick(&input, dt);

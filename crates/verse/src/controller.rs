@@ -28,6 +28,8 @@ pub const GRAVITY: f32 = 9.81 * 1.6;
 pub const JUMP_VELOCITY: f32 = 6.2;
 /// The character's collision radius in meters.
 pub const RADIUS: f32 = 0.45;
+/// Height of a player's avatar collider, in meters.
+pub const AVATAR_HEIGHT: f32 = 1.8;
 
 /// The movement intent for one frame, resolved from raw keys and buttons.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -179,6 +181,45 @@ impl PlayerController {
         let limit = bound - RADIUS;
         self.pos.x = self.pos.x.clamp(-limit, limit);
         self.pos.z = self.pos.z.clamp(-limit, limit);
+    }
+
+    /// Keeps the character out of other players' avatars: each is a
+    /// standing capsule of the same radius and height at feet position
+    /// `other`. Overlapping ones push the character straight away along the
+    /// ground, then walls and the world's edge apply again, so an avatar
+    /// can never push the character into a building.
+    pub fn separate(&mut self, others: &[Vec3], blockers: &[Footprint], bound: f32) {
+        let reach = RADIUS * 2.0;
+        let mut moved = false;
+        for other in others {
+            if !other.is_finite() || (other.y - self.pos.y).abs() >= AVATAR_HEIGHT {
+                continue;
+            }
+            let dx = self.pos.x - other.x;
+            let dz = self.pos.z - other.z;
+            let distance = dx.hypot(dz);
+            if distance >= reach {
+                continue;
+            }
+            let (nx, nz) = if distance > 1e-4 {
+                (dx / distance, dz / distance)
+            } else {
+                // Standing exactly on another player: step back.
+                let back = -self.forward();
+                (back.x, back.z)
+            };
+            self.pos.x = other.x + nx * reach;
+            self.pos.z = other.z + nz * reach;
+            moved = true;
+        }
+        if moved {
+            for block in blockers {
+                self.push_out(block);
+            }
+            let limit = bound - RADIUS;
+            self.pos.x = self.pos.x.clamp(-limit, limit);
+            self.pos.z = self.pos.z.clamp(-limit, limit);
+        }
     }
 
     /// Moves the character out of `block` along the shallowest axis.

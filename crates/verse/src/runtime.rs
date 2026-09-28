@@ -111,6 +111,9 @@ pub struct WorldRuntime {
     bare: bool,
     /// The bare world's ball, which the player pushes.
     ball: Option<Box<crate::ball::Ball>>,
+    /// Other players' avatars where they are drawn, feet positions. The
+    /// player cannot walk through them.
+    avatars: Vec<Vec3>,
 }
 
 impl Default for WorldRuntime {
@@ -138,6 +141,7 @@ impl WorldRuntime {
             navigation: Navigation::default(),
             bare: false,
             ball: None,
+            avatars: Vec::new(),
         }
     }
 
@@ -195,6 +199,16 @@ impl WorldRuntime {
             atmosphere.fog_end = crate::render::BARE_FOG_END;
         }
         atmosphere
+    }
+
+    /// Other players' avatars, by feet position, as the host draws them
+    /// this frame. The next ticks keep the player out of each; an empty
+    /// list removes them. Only the plaza collides, where players share a
+    /// world.
+    pub fn set_avatars(&mut self, avatars: impl IntoIterator<Item = Vec3>) {
+        self.avatars.clear();
+        self.avatars
+            .extend(avatars.into_iter().filter(|p| p.is_finite()).take(512));
     }
 
     /// Start ordinary walking to an exact clear ground position.
@@ -310,6 +324,10 @@ impl WorldRuntime {
             self.walk_route(dt);
         } else {
             self.update_player(input, dt);
+        }
+        if self.is_plaza() && !self.avatars.is_empty() {
+            self.player
+                .separate(&self.avatars, &self.world.blockers, self.zone_half());
         }
         // The ball waits on the Grid while the player visits a zone.
         if self.is_plaza()
@@ -1076,6 +1094,50 @@ mod tests {
         );
         runtime.tick(&InputState::default(), 0.1);
         assert!(runtime.player.airborne());
+    }
+
+    #[test]
+    fn players_cannot_walk_through_each_others_avatars() {
+        for (mut runtime, start) in [
+            (WorldRuntime::bare(), Vec3::new(40.0, 0.0, -60.0)),
+            (WorldRuntime::new(), world::SPAWN),
+        ] {
+            runtime.set_spawn(start, 0.0).unwrap();
+            // Another player stands 4 m to the right, away from the ball
+            // and the blocks ahead; strafing right walks at them (-X).
+            let other = start + Vec3::NEG_X * 4.0;
+            runtime.set_avatars([other]);
+            let walk = InputState {
+                strafe_right: true,
+                ..InputState::default()
+            };
+            for _ in 0..120 {
+                runtime.tick(&walk, 1.0 / 60.0);
+                let offset = runtime.player.pos - other;
+                assert!(
+                    offset.x.hypot(offset.z) >= crate::controller::RADIUS * 2.0 - 1e-3,
+                    "{:?}",
+                    runtime.player.pos
+                );
+            }
+            // It stopped against them instead of passing through.
+            assert!(runtime.player.pos.x > other.x);
+            // With nobody there, the way is open again.
+            runtime.set_avatars([]);
+            for _ in 0..60 {
+                runtime.tick(&walk, 1.0 / 60.0);
+            }
+            assert!(runtime.player.pos.x < other.x - 1.0);
+        }
+        // An avatar that walks onto the player pushes the player aside.
+        let mut runtime = WorldRuntime::bare();
+        runtime.set_spawn(Vec3::new(40.0, 0.0, -60.0), 0.0).unwrap();
+        runtime.set_avatars([Vec3::new(40.2, 0.0, -60.0)]);
+        runtime.tick(&InputState::default(), 1.0 / 60.0);
+        assert!(runtime.player.pos.x < 40.2 - crate::controller::RADIUS * 2.0 + 1e-3);
+        // Nonfinite positions are ignored.
+        runtime.set_avatars([Vec3::NAN]);
+        assert!(runtime.avatars.is_empty());
     }
 
     #[test]

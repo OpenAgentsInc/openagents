@@ -453,6 +453,12 @@ bare world needs:
   Each drawn position lies between two received poses, so avatars walk
   continuously instead of jumping at every frame, at the cost of that delay.
   An avatar with no frame for 10 seconds rests dim at its last saved state.
+- **Collision.** Other players' avatars are solid where they are drawn: the
+  player is a standing capsule 0.45 m in radius and 1.8 m tall, and walking
+  into another avatar stops against it instead of passing through. An
+  avatar that walks onto the player pushes the player aside along the
+  ground, never into a wall. Coder's plaza applies the same rule; zones do
+  not. The ball and the blocks still pass through other players.
 - **Pausing.** Switching tabs or backgrounding the app deactivates the world,
   which closes the relay connection: nothing more is published or received,
   and remote avatars are cleared. Returning starts a fresh presence session.
