@@ -174,6 +174,11 @@ async fn tailscale_json(program: &Path, args: &[&str]) -> Result<serde_json::Val
         Duration::from_secs(5),
         tokio::process::Command::new(program)
             .args(args)
+            // The macOS app's binary acts as the command-line tool only when
+            // SHLVL is set, as a shell sets it; under launchd it would start
+            // the app instead and never answer.
+            .env("SHLVL", "1")
+            .stdin(std::process::Stdio::null())
             .kill_on_drop(true)
             .output(),
     )
