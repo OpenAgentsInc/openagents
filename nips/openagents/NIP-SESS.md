@@ -660,12 +660,15 @@ instead; an exact retry gets the kept bytes, or that conflict once the host
 no longer has them.
 
 The host may also send a nudge, `{"changed": {source}}` or `"catalog"`, when
-a source this connection read grew or changed, or when the Coder task
-directory of a catalog this connection read changed. A nudge carries only a
-source ID already disclosed on that connection and no bytes, length, or
-title; it is a hint to read again through an ordinary request, and grants
-nothing. A host watches a source for at most ten minutes after its last read
-on that connection.
+a source this connection read grew or changed, or when the chat list of a
+catalog this connection read changed: a chat started, ended, or was renamed
+or archived in any admitted root, at once, or a listed chat grew, at most
+every two seconds and only after the device read the list since the last
+such nudge. A nudge carries only a source ID already disclosed on that
+connection and no bytes, length, or title; it is a hint to read again
+through an ordinary request, and grants nothing. A host watches a source,
+and a catalog's roots, for at most ten minutes after its last read on that
+connection.
 
 ### Expiry, revocation, and disclosure limits
 

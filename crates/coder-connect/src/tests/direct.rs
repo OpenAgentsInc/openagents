@@ -363,3 +363,41 @@ async fn a_host_without_direct_reads_falls_back_to_the_relay_route() {
     .await;
     assert_eq!(client.route(), Route::Relay);
 }
+
+#[tokio::test]
+async fn a_direct_connection_nudges_the_catalog_when_any_harness_starts_a_chat() {
+    let f = Fixture::new("wss://relay.example/");
+    let address = listener(Arc::new(f.host())).await;
+    let client = Arc::new(f.client());
+    client.set_direct(Some(address));
+    let mut changes = client.changes();
+    // No catalog read yet: a new chat nudges nothing.
+    let early = f.root.join("sessions/2026/01/01/early.jsonl");
+    std::fs::write(
+        &early,
+        b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"early\"}}\n",
+    )
+    .unwrap();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(300), changes.recv())
+            .await
+            .is_err()
+    );
+    client
+        .observe(Query::Catalog(CatalogRequest::default()))
+        .await
+        .unwrap();
+    // A Codex chat starts in a new day's folder: the list changed.
+    let day = f.root.join("sessions/2026/01/02");
+    std::fs::create_dir_all(&day).unwrap();
+    std::fs::write(
+        day.join("two.jsonl"),
+        b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"second-chat\"}}\n",
+    )
+    .unwrap();
+    let change = tokio::time::timeout(std::time::Duration::from_secs(4), changes.recv())
+        .await
+        .expect("a nudge")
+        .unwrap();
+    assert_eq!(change, Change::Catalog);
+}

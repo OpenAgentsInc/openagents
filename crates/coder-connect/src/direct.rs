@@ -15,8 +15,9 @@
 //! the reply exactly as it verifies a relay reply. A reply may be as large as
 //! [`Route::Direct`] allows. The host can also send a content-free nudge, a
 //! source ID it already disclosed on this connection or `catalog`, when a
-//! chat it read here grows or the task directory changes; the device then
-//! reads as usual.
+//! chat it read here grows or, after a catalog read, its chat list changes;
+//! the device then reads as usual. Filesystem notifications drive the
+//! nudges (see `watch`), with a slow look at everything as a backstop.
 
 use crate::{Error, ErrorCode, Result};
 use nostr::domain::Event;
@@ -331,7 +332,11 @@ async fn receive(
 pub use serve::serve;
 
 #[cfg(feature = "host")]
+mod watch;
+
+#[cfg(feature = "host")]
 mod serve {
+    use super::watch;
     use super::*;
     use crate::host::{Handled, Host};
     use crate::protocol::Query;
@@ -343,8 +348,18 @@ mod serve {
     const IN_FLIGHT: usize = 4;
     /// A connection with no request for this long closes.
     const IDLE: Duration = Duration::from_secs(15 * 60);
-    /// How often watched chats are looked at.
+    /// After a look at a change, how long the rest of its burst collects
+    /// before the next look.
+    const SETTLE: Duration = Duration::from_millis(50);
+    /// How often watched chats are looked at when the platform notifies of
+    /// every change: a backstop only.
+    const BACKSTOP: Duration = Duration::from_secs(5);
+    /// How often they are looked at when it cannot watch every root.
     const WATCH_EVERY: Duration = Duration::from_millis(250);
+    /// The most often a chat growing sends a catalog nudge, since the device
+    /// reads the whole list for one. A chat that starts, ends, or is renamed
+    /// or archived sends one at once.
+    const GROWN_EVERY: Duration = Duration::from_secs(2);
     /// A chat is watched for this long after its last read here.
     const WATCH_FOR: Duration = Duration::from_secs(10 * 60);
     /// The most chats one connection watches.
@@ -352,15 +367,41 @@ mod serve {
 
     struct Watched {
         sources: coder_history::Config,
+        /// The chat's roots, opened once rather than at every look.
+        history: Option<coder_history::History>,
         seen: Option<(String, u64)>,
         read_at: Instant,
+    }
+
+    /// The chat list a connection read, and its task directory's last change.
+    struct Listed {
+        sources: coder_history::Config,
+        tasks: Option<(std::path::PathBuf, Option<std::time::SystemTime>)>,
+        read_at: Instant,
+        /// A chat grew since the last catalog nudge.
+        grown: bool,
+        nudged_at: Option<Instant>,
     }
 
     #[derive(Default)]
     struct Watch {
         chats: HashMap<String, Watched>,
-        /// The task directory and its last change, once a catalog was read.
-        tasks: Option<(std::path::PathBuf, Option<std::time::SystemTime>, Instant)>,
+        listed: Option<Listed>,
+        inbox: Arc<watch::Inbox>,
+        subscription: Option<watch::Subscription>,
+    }
+
+    /// The roots a grant admits.
+    fn roots(sources: &coder_history::Config) -> impl Iterator<Item = &std::path::PathBuf> {
+        [
+            &sources.codex,
+            &sources.claude,
+            &sources.coder,
+            &sources.opencode,
+            &sources.devin,
+        ]
+        .into_iter()
+        .flatten()
     }
 
     /// Serve a welcomed connection until the device closes it, it stays idle,
@@ -437,7 +478,7 @@ mod serve {
     }
 
     /// Watch what a read disclosed: a transcript page's source from the
-    /// length it read, or, for a catalog, the task directory.
+    /// length it read, or, for a catalog, every root it listed.
     fn remember(watch: &Mutex<Watch>, read: crate::host::Read) {
         let mut watch = lock(watch);
         match read.query {
@@ -454,6 +495,7 @@ mod serve {
                 }
                 let entry = watch.chats.entry(page.source_id).or_insert(Watched {
                     sources: read.sources.clone(),
+                    history: None,
                     seen: None,
                     read_at: Instant::now(),
                 });
@@ -463,12 +505,45 @@ mod serve {
                 }
             }
             Query::Catalog(_) => {
-                if let Some(tasks) = read.sources.coder {
+                let tasks = read.sources.coder.clone().map(|tasks| {
                     let changed = changed_at(&tasks);
-                    watch.tasks = Some((tasks, changed, Instant::now()));
-                }
+                    (tasks, changed)
+                });
+                let nudged_at = watch.listed.as_ref().and_then(|l| l.nudged_at);
+                watch.listed = Some(Listed {
+                    sources: read.sources,
+                    tasks,
+                    read_at: Instant::now(),
+                    grown: false,
+                    nudged_at,
+                });
             }
         }
+        resubscribe(&mut watch);
+    }
+
+    /// Follow exactly the roots of what this connection watches.
+    fn resubscribe(watch: &mut Watch) {
+        let mut wanted: Vec<std::path::PathBuf> = watch
+            .chats
+            .values()
+            .flat_map(|w| roots(&w.sources))
+            .chain(watch.listed.iter().flat_map(|l| roots(&l.sources)))
+            .cloned()
+            .collect();
+        wanted.sort();
+        wanted.dedup();
+        let current = watch.subscription.as_ref().map(watch::Subscription::roots);
+        if current == Some(wanted.as_slice()) || (current.is_none() && wanted.is_empty()) {
+            return;
+        }
+        // The new subscription holds the shared roots before the old one
+        // drops, so they are never unwatched in between.
+        watch.subscription = if wanted.is_empty() {
+            None
+        } else {
+            Some(watch::subscribe(wanted, &watch.inbox))
+        };
     }
 
     fn changed_at(directory: &std::path::Path) -> Option<std::time::SystemTime> {
@@ -478,12 +553,33 @@ mod serve {
     }
 
     async fn watch_loop(watch: Arc<Mutex<Watch>>, outbound: mpsc::Sender<Down>) {
-        let mut tick = tokio::time::interval(WATCH_EVERY);
-        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let inbox = lock(&watch).inbox.clone();
+        let mut backstop_at = Instant::now() + BACKSTOP;
         loop {
-            tick.tick().await;
+            let (complete, due) = {
+                let watch = lock(&watch);
+                let complete = watch.subscription.as_ref().is_none_or(|s| s.complete);
+                let due = watch
+                    .listed
+                    .as_ref()
+                    .filter(|l| l.grown)
+                    .and_then(|l| l.nudged_at.filter(|at| l.read_at >= *at))
+                    .map(|at| at + GROWN_EVERY);
+                (complete, due)
+            };
+            if !complete {
+                backstop_at = backstop_at.min(Instant::now() + WATCH_EVERY);
+            }
+            let wake = due.map_or(backstop_at, |due| due.min(backstop_at));
+            let (backstop, changed) = tokio::select! {
+                () = inbox.changed() => (false, true),
+                () = tokio::time::sleep_until(wake.into()) => (Instant::now() >= backstop_at, false),
+            };
+            if backstop {
+                backstop_at = Instant::now() + if complete { BACKSTOP } else { WATCH_EVERY };
+            }
             let watch = watch.clone();
-            let nudges = tokio::task::spawn_blocking(move || look(&watch))
+            let nudges = tokio::task::spawn_blocking(move || look(&watch, backstop))
                 .await
                 .unwrap_or_default();
             for nudge in nudges {
@@ -491,43 +587,77 @@ mod serve {
                     return;
                 }
             }
+            if changed {
+                // The first change of a burst is looked at at once; the
+                // rest of it collects in the inbox for one more look.
+                tokio::time::sleep(SETTLE).await;
+            }
         }
     }
 
-    /// What changed since the last look.
-    fn look(watch: &Mutex<Watch>) -> Vec<Down> {
+    /// What changed since the last look. A backstop look checks everything
+    /// and reopens each chat's roots; otherwise only a change the platform
+    /// reported is looked at.
+    fn look(watch: &Mutex<Watch>, backstop: bool) -> Vec<Down> {
         let mut watch = lock(watch);
+        let touched = watch.inbox.take();
         let mut nudges = vec![];
+        let before = watch.chats.len();
         watch
             .chats
             .retain(|_, watched| watched.read_at.elapsed() < WATCH_FOR);
-        for (source, watched) in &mut watch.chats {
-            let Ok(history) = coder_history::History::open(watched.sources.clone()) else {
-                continue;
-            };
-            let now = history.source_length(source);
-            if now.is_some() && now != watched.seen {
-                if watched.seen.is_some() {
-                    nudges.push(Down::Changed {
-                        source: source.clone(),
-                    });
+        if watch
+            .listed
+            .as_ref()
+            .is_some_and(|l| l.read_at.elapsed() >= WATCH_FOR)
+        {
+            watch.listed = None;
+        }
+        if touched.any || backstop {
+            for (source, watched) in &mut watch.chats {
+                if backstop || watched.history.is_none() {
+                    watched.history = coder_history::History::open(watched.sources.clone()).ok();
                 }
-                watched.seen = now;
+                let Some(history) = &watched.history else {
+                    continue;
+                };
+                let now = history.source_length(source);
+                if now.is_some() && now != watched.seen {
+                    if watched.seen.is_some() {
+                        nudges.push(Down::Changed {
+                            source: source.clone(),
+                        });
+                    }
+                    watched.seen = now;
+                }
             }
         }
-        if watch
-            .tasks
-            .as_ref()
-            .is_some_and(|(_, _, at)| at.elapsed() >= WATCH_FOR)
-        {
-            watch.tasks = None;
-        }
-        if let Some((tasks, seen, _)) = &mut watch.tasks {
-            let now = changed_at(tasks);
-            if now != *seen {
-                *seen = now;
+        if let Some(listed) = &mut watch.listed {
+            let mut listing = touched.listing;
+            if let Some((tasks, seen)) = &mut listed.tasks
+                && backstop
+            {
+                let now = changed_at(tasks);
+                if now != *seen {
+                    *seen = now;
+                    listing = true;
+                }
+            }
+            listed.grown |= touched.any;
+            // A growing chat nudges again only once the device read the list
+            // since the last nudge, so a device that stopped reading it is
+            // not nudged for every change.
+            let due = listed
+                .nudged_at
+                .is_none_or(|at| at.elapsed() >= GROWN_EVERY && listed.read_at >= at);
+            if listing || (listed.grown && due) {
+                listed.grown = false;
+                listed.nudged_at = Some(Instant::now());
                 nudges.push(Down::Catalog);
             }
+        }
+        if watch.chats.len() != before || watch.listed.is_none() {
+            resubscribe(&mut watch);
         }
         nudges
     }
